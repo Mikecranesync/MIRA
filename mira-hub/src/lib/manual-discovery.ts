@@ -11,13 +11,25 @@
  *
  * Call pattern mirrors the existing drive-pack pre-check in
  * src/app/api/assets/[id]/chat/route.ts: MIRA_ASK_URL default, optional
- * X-Mira-Key, AbortSignal.timeout, any failure falls through.
+ * X-Mira-Key (from MANUAL_DISCOVERY_API_KEY), AbortSignal.timeout, any failure
+ * falls through.
  */
 
 export interface DiscoveryIdentity {
   manufacturer?: string | null;
   model?: string | null;
   catalogNumber?: string | null;
+}
+
+/**
+ * Who is asking (#4160 S4, PRD R13/R14) — required so the router can reserve
+ * the provider query against per-user/tenant/global Postgres caps. userId is
+ * nullable in the TYPE (callers without a signed-in session exist) but a null
+ * value means the search never runs — see discoverManual().
+ */
+export interface DiscoveryContext {
+  tenantId: string;
+  userId: string | null;
 }
 
 export interface DiscoveryCandidate {
@@ -28,6 +40,22 @@ export interface DiscoveryCandidate {
   docType: string | null;
   isDirectPdf: boolean;
   validated: boolean;
+}
+
+/**
+ * Additive provider-query accounting for the Turn Flight Recorder's
+ * acquisition spans (#4160 gate R15) — parsed from the router's
+ * `search_stats` object, itself additive on every mira-ask response. An old
+ * mira-ask version that predates this field, or any malformed shape, must
+ * keep working: see parseSearchStats() below.
+ */
+export interface DiscoverySearchStats {
+  providerQueries: number | null;
+  refusedQueries: number | null;
+  /** The cap scope at capacity right now ("user_cap"/"tenant_cap"/"global_cap"/...), or null. */
+  quotaDenied: string | null;
+  /** Candidate documents considered while producing this result (0 when none). */
+  candidates: number | null;
 }
 
 export interface DiscoveryResult {
@@ -48,11 +76,44 @@ export interface DiscoveryResult {
    * discovery service (200 right now) — the official next step when nothing
    * could be found or trusted. */
   oemRequestUrl: string | null;
+  /** The search service answered with reason="quota_exceeded" — a per-user,
+   * per-tenant, or global daily/monthly cap is at capacity RIGHT NOW (#4160
+   * S4). This is NEVER the same as "no manual exists" (PRD R5) — the caller
+   * must say "limit reached", not "not found". */
+  quotaExceeded: boolean;
+  /** Provider-query accounting for this call, or null/absent — absent on an
+   * old mira-ask version or a malformed response; never fabricated. OPTIONAL
+   * so pre-existing test literals of this shape (which predate this field,
+   * same as the pre-existing oemRequestUrl/quotaExceeded gap in
+   * confirm.test.ts) keep type-checking without adding a new tsc error. */
+  searchStats?: DiscoverySearchStats | null;
 }
 
 function requestUrl(body: Record<string, unknown> | null | undefined): string | null {
   const u = body?.oem_request_url;
   return typeof u === "string" && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : null;
+}
+
+function numOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Parse the additive `search_stats` object. Absent or malformed -> null,
+ * never throws, never fabricates a 0 for a field the body didn't actually
+ * carry (an old mira-ask version keeps working — the Hub just has nothing to
+ * show for that run).
+ */
+function parseSearchStats(body: Record<string, unknown> | null | undefined): DiscoverySearchStats | null {
+  const s = body?.search_stats;
+  if (!s || typeof s !== "object") return null;
+  const r = s as Record<string, unknown>;
+  return {
+    providerQueries: numOrNull(r.provider_queries),
+    refusedQueries: numOrNull(r.refused_queries),
+    quotaDenied: str(r.quota_denied),
+    candidates: numOrNull(r.candidates),
+  };
 }
 
 const DEFAULT_ASK_URL = "http://mira-ask:8011";
@@ -63,7 +124,7 @@ const DISCOVERY_TIMEOUT_MS = 60_000;
 const NO_MANUAL = "no official manual found";
 const UNAVAILABLE = "search service unavailable";
 
-function unavailable(reason = UNAVAILABLE): DiscoveryResult {
+function unavailable(reason = UNAVAILABLE, searchStats: DiscoverySearchStats | null = null): DiscoveryResult {
   return {
     serviceAvailable: false,
     found: false,
@@ -74,10 +135,12 @@ function unavailable(reason = UNAVAILABLE): DiscoveryResult {
     trustedDistributorHost: false,
     reason,
     oemRequestUrl: null,
+    quotaExceeded: false,
+    searchStats,
   };
 }
 
-function notFound(reason = NO_MANUAL): DiscoveryResult {
+function notFound(reason = NO_MANUAL, searchStats: DiscoverySearchStats | null = null): DiscoveryResult {
   return {
     serviceAvailable: true,
     found: false,
@@ -88,6 +151,28 @@ function notFound(reason = NO_MANUAL): DiscoveryResult {
     trustedDistributorHost: false,
     reason,
     oemRequestUrl: null,
+    quotaExceeded: false,
+    searchStats,
+  };
+}
+
+function quotaExceededResult(
+  reason: string,
+  oemRequestUrl: string | null,
+  searchStats: DiscoverySearchStats | null = null,
+): DiscoveryResult {
+  return {
+    serviceAvailable: true,
+    found: false,
+    candidate: null,
+    validated: false,
+    isDirectPdf: false,
+    oemHost: false,
+    trustedDistributorHost: false,
+    reason,
+    oemRequestUrl,
+    quotaExceeded: true,
+    searchStats,
   };
 }
 
@@ -100,13 +185,27 @@ function str(v: unknown): string | null {
 /**
  * Ask the router for an official manual for this identity. Best-effort:
  * resolves to a typed result, never throws.
+ *
+ * `ctx` identifies the caller (#4160 S4, PRD R13/R14) — every search is
+ * reserved against per-user/tenant/global Postgres caps on the router side,
+ * so a caller with no signed-in user is refused HERE, before any request:
+ * never invent an identity to let a search through.
  */
-export async function discoverManual(identity: DiscoveryIdentity): Promise<DiscoveryResult> {
+export async function discoverManual(
+  identity: DiscoveryIdentity,
+  ctx: DiscoveryContext,
+): Promise<DiscoveryResult> {
   const manufacturer = str(identity.manufacturer);
   const model = str(identity.model);
   const catalogNumber = str(identity.catalogNumber);
-  if (!manufacturer || !(model || catalogNumber)) {
-    return notFound("manufacturer and model are required to search for a manual");
+  if (!(model || catalogNumber)) {
+    return notFound("a model or part number is required to search for a manual");
+  }
+
+  const tenantId = str(ctx.tenantId);
+  const userId = str(ctx.userId);
+  if (!tenantId || !userId) {
+    return unavailable("a signed-in user is required to search for a manual");
   }
 
   const base = (process.env.MIRA_ASK_URL ?? DEFAULT_ASK_URL).replace(/\/+$/, "");
@@ -116,11 +215,19 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(process.env.ASK_API_KEY ? { "X-Mira-Key": process.env.ASK_API_KEY } : {}),
+        // Required identity (#4160 S4) — the router 400s without it.
+        "X-Mira-Tenant": tenantId,
+        "X-Mira-User": userId,
+        // The router's own key (#4160 S2) — not the shared ASK_API_KEY, which
+        // belongs to the kiosk-facing endpoints. Unset → the router answers
+        // 503, which lands below as "search service unavailable".
+        ...(process.env.MANUAL_DISCOVERY_API_KEY
+          ? { "X-Mira-Key": process.env.MANUAL_DISCOVERY_API_KEY }
+          : {}),
       },
       body: JSON.stringify({
-        manufacturer,
-        model: model ?? catalogNumber,
+        ...(manufacturer ? { manufacturer } : {}),
+        ...(model ? { model } : {}),
         ...(catalogNumber ? { catalog_number: catalogNumber } : {}),
       }),
       signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
@@ -134,13 +241,39 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
   }
 
   const body = (raw ?? {}) as Record<string, unknown>;
+  if (body.reason === "quota_exceeded") {
+    // A cap denial must NEVER look like "no manual exists" (PRD R5) — a
+    // distinct, named outcome so the caller says "limit reached".
+    return quotaExceededResult(
+      str(body.reason_detail) || "manual-search limit reached",
+      requestUrl(body),
+      parseSearchStats(body),
+    );
+  }
+  if (body.reason === "search_unavailable") {
+    // Pre-existing defect fixed here (#4160 S4 code review): the router
+    // answers HTTP 200 with found=false, reason="search_unavailable" for BOTH
+    // a timeout/exception AND quota_unavailable — an infra miss, not "we
+    // looked and found nothing". The generic found!==true branch below used
+    // to map this to notFound() (serviceAvailable:true), which acquireManualForIdentity
+    // then turned into "no_manual_found" — indistinguishable from a genuine
+    // miss. This must read as "could not look" — but still carry the OEM
+    // request link when the router sent one (every _NO_RESULT-shaped router
+    // response includes oem_request_url; the bare unavailable() default of
+    // null would otherwise silently drop it, same spread pattern as the
+    // notFound() branch below).
+    return {
+      ...unavailable(str(body.reason_detail) || UNAVAILABLE, parseSearchStats(body)),
+      oemRequestUrl: requestUrl(body),
+    };
+  }
   const c = (body.candidate ?? null) as Record<string, unknown> | null;
   const url = c ? str(c.url) : null;
   if (body.found !== true || !url) {
     // Prefer the judge's human line ("Read the PDF: a newspaper article…") over
     // the code ("judged_not_applicable") — the phone renders this verbatim.
     return {
-      ...notFound(str(body.reason_detail) || str(body.reason) || NO_MANUAL),
+      ...notFound(str(body.reason_detail) || str(body.reason) || NO_MANUAL, parseSearchStats(body)),
       oemRequestUrl: requestUrl(body),
     };
   }
@@ -149,7 +282,7 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
     try {
       host = new URL(url).hostname;
     } catch {
-      return notFound("the search result was not a usable URL");
+      return notFound("the search result was not a usable URL", parseSearchStats(body));
     }
   }
 
@@ -173,6 +306,8 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
     trustedDistributorHost: body.trusted_distributor_host === true,
     reason: str(body.reason_detail) || str(body.reason) || "candidate manual found",
     oemRequestUrl: requestUrl(body),
+    quotaExceeded: false,
+    searchStats: parseSearchStats(body),
   };
 }
 
@@ -201,6 +336,9 @@ const OEM_HOSTS: Record<string, string[]> = {
   yaskawa: ["yaskawa.com"],
   omron: ["omron.com"],
   festo: ["festo.com"],
+  // SMC documentation lives on regional first-party hosts (static.smc.eu,
+  // smcworld.com, content2.smcetech.com), not only smcusa.com.
+  smc: ["smcusa.com", "smc.eu", "smcworld.com", "smcetech.com"],
   sick: ["sick.com"],
   banner: ["bannerengineering.com"],
   "mitsubishi electric": ["mitsubishielectric.com"],
@@ -212,6 +350,15 @@ const OEM_HOSTS: Record<string, string[]> = {
   phoenix: ["phoenixcontact.com"],
   "phoenix contact": ["phoenixcontact.com"],
 };
+
+/**
+ * The shared OEM maker table, read-only, for corpus-independent maker
+ * recognition (Manual-First PRD R1, candidate-identity.ts). One table: the
+ * same entries decide which hosts count as a maker's own documentation.
+ */
+export function oemMakerTable(): ReadonlyArray<{ name: string; domains: readonly string[] }> {
+  return Object.entries(OEM_HOSTS).map(([name, domains]) => ({ name, domains }));
+}
 
 /**
  * Can WE independently confirm that `host` is this manufacturer's own

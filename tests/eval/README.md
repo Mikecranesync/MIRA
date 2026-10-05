@@ -4,11 +4,11 @@ Extracted from CLAUDE.md. Quick commands are still in CLAUDE.md; this has the fu
 
 ## Continuous Eval Loop
 
-MIRA has two automated eval tiers — 51 scenario fixtures (31 `NN_*.yaml` + 20 `vfd_*.yaml`), 5 binary checkpoints + 4 LLM-as-judge dimensions (v2.6.0+).
+MIRA has two automated eval tiers — 67 scenario fixture files in `tests/eval/fixtures/` (45 `NN_*.yaml` + 20 `vfd_*.yaml` + 2 outside the loader globs: `02b_pf525_f0004_5digit.yaml`, `vision_gemini_smoke.yaml`), of which **65 are executed** by `offline_run.py` (`[0-9][0-9]_*.yaml` + `vfd_*.yaml`); 5 binary checkpoints + 4 LLM-as-judge dimensions (v2.6.0+). Counts verified 2026-10-03; the pass-rate denominator is 65 (SDLC v1 §12.3).
 
 | Path | Purpose |
 |------|---------|
-| `tests/eval/fixtures/` | YAML scenario fixtures (51 total: 31 `NN_*.yaml` + 20 VFD `vfd_*.yaml`) |
+| `tests/eval/fixtures/` | YAML scenario fixtures (67 files; 65 match the loader globs — see above) |
 | `tests/eval/run_eval.py` | CLI runner — `python3 tests/eval/run_eval.py` |
 | `tests/eval/grader.py` | 5 binary checkpoint definitions |
 | `tests/eval/judge.py` | LLM-as-judge — 4 Likert dimensions, cross-model routing |

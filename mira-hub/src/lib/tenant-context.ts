@@ -25,10 +25,17 @@ export async function withTenantContext<T>(
 ): Promise<T> {
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    await client.query("SET LOCAL ROLE factorylm_app");
-    await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
-    await client.query("SELECT set_config('app.current_tenant_id', $1, true)", [tenantId]);
+    // #4130: two round trips, not four. Each statement here is a full network
+    // round trip (~76 ms staging→Neon) and every tenant-scoped read pays it, so
+    // the preamble is collapsed without changing its effect: BEGIN + SET LOCAL
+    // ROLE travel as one parameterless (simple-protocol) query, and both
+    // transaction-local settings are written by one SELECT. The role and both
+    // keys are in force before `fn` runs, exactly as before.
+    await client.query("BEGIN; SET LOCAL ROLE factorylm_app");
+    await client.query(
+      "SELECT set_config('app.tenant_id', $1, true), set_config('app.current_tenant_id', $1, true)",
+      [tenantId],
+    );
     const result = await fn(client);
     await client.query("COMMIT");
     return result;

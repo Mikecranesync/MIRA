@@ -42,15 +42,24 @@ rather than guess.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import ipaddress
 import json
 import logging
 import os
 import re
 import socket
+import ssl
+import time
+from collections.abc import Generator, Iterable
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
+import httpcore
 import httpx
+
+from . import quota as _quota
 
 logger = logging.getLogger("mira.manual_search")
 
@@ -159,7 +168,11 @@ OEM_DOMAINS: dict[str, tuple[str, ...]] = {
     "baldor": ("baldor.com", "abb.com"),
     "weg": ("weg.net",),
     "festo": ("festo.com",),
-    "smc": ("smcusa.com",),
+    # SMC publishes manuals on regional first-party hosts. Verified 2026-09-29:
+    # discovery found the VQ(C)1000 instruction manual at static.smc.eu, but
+    # with only smcusa.com listed it scored as non-OEM and stopped at review.
+    "smc": ("smcusa.com", "smc.eu", "smcworld.com", "smcetech.com"),
+    "smc corporation": ("smcusa.com", "smc.eu", "smcworld.com", "smcetech.com"),
     "ifm": ("ifm.com",),
     "balluff": ("balluff.com",),
     # Hoists / cranes (2026-08-26, UMS3-0335 end-truck case): the OEM hosts its
@@ -196,6 +209,11 @@ DENY_HOSTS: frozenset[str] = frozenset(
         "kupdf.net",
         "pdf4pro.com",
         "vdocuments.net",
+        # Preprint servers are never equipment documentation (2026-09-29: an
+        # MG17 gearbox search returned a bioRxiv tissue-imaging paper).
+        "biorxiv.org",
+        "medrxiv.org",
+        "arxiv.org",
     }
 )
 
@@ -223,7 +241,9 @@ TRUSTED_DOMAINS: tuple[tuple[str, int], ...] = (
 # Manufacturer -> the OEM's own "request an owner's manual" form. Offered when
 # discovery cannot find or validate a manual (2026-08-26, Harrington UMS3-0335:
 # every copy of the Series 3 manual is bot-walled or JS-rendered; the OEM's
-# door is this form). Always re-probed before it is offered — never a dead link.
+# door is this form). A curated, static link: the technician's own browser
+# opens it. The server never fetches it (Manual-First PRD R7, Codex G1 —
+# the old live probe read an uncapped body before any search admission).
 OEM_MANUAL_REQUEST: dict[str, str] = {
     "harrington": "https://www.harringtonhoists.com/owners-manual-request",
     "harrington hoists": "https://www.harringtonhoists.com/owners-manual-request",
@@ -232,22 +252,12 @@ OEM_MANUAL_REQUEST: dict[str, str] = {
 
 
 async def oem_request_link(make: str) -> str | None:
-    """The OEM's manual-request page for `make`, only if it answers 200 right
-    now (SSRF-guarded probe, redirects re-validated). None otherwise."""
-    url = OEM_MANUAL_REQUEST.get(_norm(make))
-    if not url:
-        return None
-    try:
-        async with httpx.AsyncClient(
-            timeout=HEAD_TIMEOUT,
-            follow_redirects=False,
-            transport=_transport_for_tests,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
-        ) as client:
-            r = await _guarded_probe(client, "GET", url)
-            return url if r is not None and r.status_code == 200 else None
-    except httpx.HTTPError:
-        return None
+    """The OEM's curated manual-request page for `make`, or None.
+
+    No network I/O: the link comes only from OEM_MANUAL_REQUEST, never from
+    search results, and is opened by the technician's browser. Kept async so
+    existing awaiting callers are unchanged."""
+    return OEM_MANUAL_REQUEST.get(_norm(make))
 
 
 def _norm(s: str) -> str:
@@ -392,9 +402,122 @@ def _clean_title(title: str) -> str:
     return t.strip(" -|")
 
 
+# ── Provider-query budget (Manual-First PRD R13, Codex G2) ───────────────────
+#
+# One search_manual() call can send pass 1, one pass-2 query per model variant
+# (up to 4), and pass 3 — six paid provider queries. Caps and the dollar
+# budget must count those queries, not operations. A caller opens a budget
+# around its search_manual() call; every query checks and spends it here, at
+# the single place a query leaves this process. A query past the ceiling is
+# not sent and reads as "no results" to the caller.
+_DEFAULT_MAX_PROVIDER_QUERIES = 4
+
+
+def max_provider_queries() -> int:
+    """Per-call ceiling on provider queries (MANUAL_SEARCH_MAX_PROVIDER_QUERIES)."""
+    try:
+        n = int(os.environ.get("MANUAL_SEARCH_MAX_PROVIDER_QUERIES", ""))
+    except ValueError:
+        return _DEFAULT_MAX_PROVIDER_QUERIES
+    return n if n >= 1 else _DEFAULT_MAX_PROVIDER_QUERIES
+
+
+@dataclass
+class ProviderQueryBudget:
+    limit: int
+    used: int = 0
+    refused: int = 0
+    # Set to the quota denial reason ("user_cap"/"tenant_cap"/"global_cap"/
+    # "quota_unavailable"/"no_identity") the FIRST time one occurs in this
+    # call. Once set, every remaining query in the call is refused WITHOUT
+    # touching Postgres again — a DB outage must not cost up to six
+    # connect-timeouts inside one search_manual() call (#4160 S4).
+    quota_denied: str | None = None
+    # Candidate documents this call actually EXAMINED — read by the judge or
+    # HEAD-validated — keyed by URL (#4160 R15, Codex #4194 F4). Recorded as
+    # they are examined, so a timeout keeps the partial count.
+    examined: set[str] = field(default_factory=set)
+
+
+_provider_budget: contextvars.ContextVar[ProviderQueryBudget | None] = contextvars.ContextVar(
+    "manual_search_provider_budget", default=None
+)
+
+
+def _note_examined(urls: Iterable[str]) -> None:
+    """Record candidate documents examined in this call (no-op outside a budget)."""
+    budget = _provider_budget.get()
+    if budget is not None:
+        budget.examined.update(urls)
+
+
+@contextmanager
+def provider_query_budget(limit: int | None = None) -> Generator[ProviderQueryBudget]:
+    """Scope one search_manual() call to at most `limit` provider queries.
+
+    The budget object is mutable, so tasks spawned inside the block (e.g.
+    asyncio.wait_for) spend the same budget; read `.used` after the call."""
+    budget = ProviderQueryBudget(limit=limit or max_provider_queries())
+    token = _provider_budget.set(budget)
+    try:
+        yield budget
+    finally:
+        _provider_budget.reset(token)
+
+
 async def _serper_search(query: str, num: int = 10) -> list[dict]:
+    """The one place a provider query leaves this process.
+
+    Order matters (code-review follow-up, #4160 S4): the per-call ceiling is checked FIRST
+    (free — no I/O) and does not touch the quota accounting at all. Only a
+    query that passes the ceiling spends a Postgres reservation. `used` is
+    incremented ONLY on an actual send, so a quota-denied query is never
+    double-counted as both used and refused.
+    """
     if not SERPER_API_KEY:
         raise RuntimeError("SERPER_API_KEY is not configured")
+    budget = _provider_budget.get()
+    if budget is not None:
+        if budget.used >= budget.limit:
+            budget.refused += 1
+            logger.info(
+                "MANUAL_SEARCH_PROVIDER_CEILING limit=%d refused_query=%s",
+                budget.limit,
+                query[:120],
+            )
+            return []
+        if budget.quota_denied is not None:
+            # A prior query in THIS call already hit the quota gate — stop
+            # re-reserving (see the ProviderQueryBudget.quota_denied comment).
+            budget.refused += 1
+            return []
+
+    identity = _quota.current_quota_identity()
+    if identity is None:
+        # PRD R14: a caller that cannot supply a tenant/user identity gets no
+        # web search at all — never invent one. The bot-vision web rung
+        # (shared/visual/equipment.py) supplies none and is meant to land here.
+        if budget is not None:
+            budget.refused += 1
+            budget.quota_denied = "no_identity"
+        logger.info("MANUAL_SEARCH_QUOTA_DENIED reason=no_identity")
+        return []
+
+    reason = await _quota.reserve_provider_query(identity)
+    if reason != "ok":
+        if budget is not None:
+            budget.refused += 1
+            budget.quota_denied = reason
+        logger.info("MANUAL_SEARCH_QUOTA_DENIED reason=%s", reason)
+        return []
+
+    if budget is not None:
+        budget.used += 1
+    return await _serper_post(query, num)
+
+
+async def _serper_post(query: str, num: int) -> list[dict]:
+    """The one paid provider request. Only _serper_search calls it."""
     headers = {"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"}
     body = {"q": query, "num": num}
     async with httpx.AsyncClient(timeout=SEARCH_TIMEOUT) as client:
@@ -412,9 +535,9 @@ async def _serper_search(query: str, num: int = 10) -> list[dict]:
 # http(s) only, every hop's hostname must resolve EXCLUSIVELY to public
 # addresses (private / loopback / link-local / reserved / multicast / v4-mapped
 # all rejected), redirects are followed MANUALLY with each hop re-validated,
-# and reads are streamed with a hard byte cap. Residual risk, same as the Hub
-# side: DNS rebinding between the resolve and the connect — no allowlist can
-# exist for open-web discovery, so this is documented rather than closed.
+# and reads are streamed with a hard byte cap. DNS rebinding between the check
+# and the connect is closed by _PinnedNetworkBackend below (#4160 S3a): the
+# connection dials the address that passed the check, never a second lookup.
 
 _MAX_REDIRECT_HOPS = 5
 _PROBE_READ_CAP = 512
@@ -479,6 +602,158 @@ def _url_is_probeable(url: str) -> bool:
 _transport_for_tests: httpx.AsyncBaseTransport | None = None
 
 
+# ── DNS resolve-and-pin (Manual-First PRD R6, #4160 S3a) ─────────────────────
+#
+# _url_is_probeable resolves the name and checks it, but the socket layer used
+# to resolve it AGAIN at connect time — a rebinding host could answer "public"
+# to the check and "10.0.0.5" to the connect. This backend closes that window:
+# it resolves once, refuses the connection if ANY answer is non-public, and
+# dials the checked address. httpcore still passes the URL hostname as the TLS
+# server_hostname, so SNI and certificate/hostname verification are unchanged.
+# Every redirect hop and every retry opens its connection through here.
+
+
+def _inner_network_backend() -> httpcore.AsyncNetworkBackend:
+    """The real socket layer (test seam: tests swap in a recorder)."""
+    return httpcore.AnyIOBackend()
+
+
+def _resolve_public(host: str, port: int) -> list[str]:
+    """Sync (DNS-blocking) — call via asyncio.to_thread. Returns every checked
+    public address for `host` (answer order, de-duplicated), or raises
+    ConnectError if resolution fails or ANY answer is non-public."""
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError as e:
+        raise httpcore.ConnectError(f"manual-search dns failed for {host[:80]}") from e
+    addrs = list(dict.fromkeys(str(info[4][0]).split("%")[0] for info in infos))
+    if not addrs:
+        raise httpcore.ConnectError(f"manual-search dns empty for {host[:80]}")
+    for a in addrs:
+        try:
+            public = _ip_is_public(ipaddress.ip_address(a))
+        except ValueError:
+            public = False
+        if not public:
+            raise httpcore.ConnectError(
+                f"manual-search connect blocked: {host[:80]} -> non-public address"
+            )
+    return addrs
+
+
+# RFC 8305 "Connection Attempt Delay" — the stagger between address attempts.
+_HAPPY_EYEBALLS_DELAY_S = 0.25
+
+
+class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
+    def __init__(self) -> None:
+        self._inner = _inner_network_backend()
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        # One deadline covers resolution AND dialing, as AnyIOBackend's own
+        # fail_after did before pinning (#4163 Codex F2). The checked addresses
+        # are then raced happy-eyeballs style, so a dead or stalled first address
+        # (e.g. a broken IPv6 route) falls back without re-resolving (Codex F1/r2).
+        loop = asyncio.get_running_loop()
+        deadline = None if timeout is None else loop.time() + timeout
+
+        def remaining() -> float | None:
+            return None if deadline is None else deadline - loop.time()
+
+        try:
+            addrs = await asyncio.wait_for(
+                asyncio.to_thread(_resolve_public, host, port), remaining()
+            )
+        except TimeoutError as e:
+            raise httpcore.ConnectTimeout(f"manual-search dns timed out for {host[:80]}") from e
+        return await self._staggered_connect(
+            host, addrs, port, remaining, local_address, socket_options
+        )
+
+    async def _staggered_connect(self, host, addrs, port, remaining, local_address, socket_options):
+        """Happy-eyeballs over the CHECKED literals (#4163 Codex r2): start the
+        next address after _HAPPY_EYEBALLS_DELAY_S (or at once when an attempt
+        fails), first success wins, losers are cancelled and closed. A stalled
+        first address can no longer eat the whole connect budget."""
+
+        async def attempt(ip: str):
+            return await self._inner.connect_tcp(
+                ip,
+                port,
+                timeout=remaining(),
+                local_address=local_address,
+                socket_options=socket_options,
+            )
+
+        pending: set[asyncio.Task] = set()
+        errors: list[BaseException] = []
+        winner = None
+        idx = 0
+        try:
+            while winner is None:
+                if idx < len(addrs):
+                    pending.add(asyncio.ensure_future(attempt(addrs[idx])))
+                    idx += 1
+                if not pending:
+                    break  # every address failed
+                left = remaining()
+                if left is not None and left <= 0:
+                    break  # overall deadline
+                wait = _HAPPY_EYEBALLS_DELAY_S if idx < len(addrs) else left
+                if left is not None and wait is not None:
+                    wait = min(wait, left)
+                done, pending = await asyncio.wait(
+                    pending, timeout=wait, return_when=asyncio.FIRST_COMPLETED
+                )
+                for t in done:
+                    if t.exception() is not None:
+                        errors.append(t.exception())
+                    elif winner is None:
+                        winner = t.result()
+                    else:
+                        await t.result().aclose()  # a second success loses: close it
+        finally:
+            for t in pending:
+                t.cancel()
+            for t in pending:
+                try:
+                    loser = await t
+                except BaseException:  # noqa: BLE001 — cancelled/failed losers are expected
+                    continue
+                if loser is not winner:
+                    await loser.aclose()
+        if winner is not None:
+            return winner
+        left = remaining()
+        if left is not None and left <= 0:
+            raise httpcore.ConnectTimeout(f"manual-search connect timed out for {host[:80]}")
+        last = errors[-1] if errors else None
+        raise httpcore.ConnectError(f"manual-search could not connect to {host[:80]}") from last
+
+    async def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        raise httpcore.ConnectError("manual-search never connects to unix sockets")
+
+    async def sleep(self, seconds: float) -> None:
+        await self._inner.sleep(seconds)
+
+
+def _probe_transport() -> httpx.AsyncBaseTransport:
+    """Transport for every probe/fetch of an untrusted URL: the pinned backend
+    with TLS verification on. The test seam, when set, wins."""
+    if _transport_for_tests is not None:
+        return _transport_for_tests
+    transport = httpx.AsyncHTTPTransport()
+    # httpx does not expose httpcore's network_backend; rebuild its pool with
+    # the pinned backend. tests/test_manual_search_dns_pin.py asserts this
+    # wiring so an httpx upgrade that moves `_pool` fails loudly instead of
+    # silently resolving through the default backend again.
+    transport._pool = httpcore.AsyncConnectionPool(
+        ssl_context=ssl.create_default_context(),
+        network_backend=_PinnedNetworkBackend(),
+    )
+    return transport
+
+
 async def _guarded_probe(
     client: httpx.AsyncClient, method: str, url: str, headers: dict | None = None
 ) -> httpx.Response | None:
@@ -516,7 +791,8 @@ async def validate_pdf(url: str) -> bool:
         async with httpx.AsyncClient(
             timeout=HEAD_TIMEOUT,
             follow_redirects=False,
-            transport=_transport_for_tests,
+            transport=_probe_transport(),
+            trust_env=False,  # never route an untrusted probe through an env proxy
             headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
         ) as client:
             try:
@@ -583,7 +859,15 @@ def _collect(organic: list[dict], make: str, model: str) -> list[dict]:
     return out
 
 
-async def search_manual(make: str, model: str) -> dict | None:
+class ManualSearchUnavailable(RuntimeError):
+    """Every search pass failed: the search could not run (#4150 F3).
+
+    Distinct from ``None`` (the search ran and found nothing), so a caller can
+    tell a technician "I couldn't search" instead of "there is no manual".
+    """
+
+
+async def search_manual(make: str, model: str, deadline_at: float | None = None) -> dict | None:
     """Multi-pass real-time search for a (make, model) manual.
 
     Returns the best HEAD-validated PDF candidate, or a lower-confidence
@@ -591,32 +875,56 @@ async def search_manual(make: str, model: str) -> dict | None:
     or ``None`` if nothing scored at all. Callers MUST check ``validated``
     and ``is_direct_pdf`` before treating a result as a trustable manual
     link — this function never decides trust on the caller's behalf.
+
+    ``deadline_at`` (``time.monotonic()`` seconds) is the caller's own timeout; the
+    judge's optional upgrade batch is capped by it so a timeout never costs the
+    match already found.
     """
+    started_at = time.monotonic()  # the judge's upgrade deadline counts from here
     make = (make or "").strip()
     model = (model or "").strip()
     if not (make or model):
         return None
 
     candidates: list[dict] = []
+    # Availability is judged from requests actually SENT (#4171 Codex F2): a
+    # pass refused by the per-call ceiling or the quota returns [] without a
+    # request, and must not count as "searched and found nothing" — otherwise a
+    # total provider outage reads as "no manual exists".
+    sent = 0
+    failures = 0
+
+    async def _send(query: str, label: str) -> list[dict] | None:
+        nonlocal sent, failures
+        budget = _provider_budget.get()
+        before = budget.used if budget is not None else None
+        try:
+            hits = await _serper_search(query)
+        except Exception:
+            sent += 1
+            failures += 1
+            logger.exception("Serper %s failed", label)
+            return None
+        if before is None or (budget is not None and budget.used > before):
+            sent += 1
+        return hits
 
     # Pass 1: site-scoped PDF — highest precision.
     oem_domains = _oem_domains_for(make)
     if oem_domains:
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
-        try:
-            candidates.extend(_collect(await _serper_search(q1), make, model))
-        except Exception:
-            logger.exception("Serper q1 (site-scoped) failed")
+        hits = await _send(q1, "q1 (site-scoped)")
+        if hits:
+            candidates.extend(_collect(hits, make, model))
 
     # Pass 2: typed PDF — broader, still PDFs only.
     if not any(c["is_direct_pdf"] for c in candidates):
         for i, variant in enumerate(_model_variants(model) or [model]):
             q2 = f"{make} {variant} manual filetype:pdf"
-            try:
-                found = _collect(await _serper_search(q2), make, model)
-            except Exception:
-                logger.exception("Serper q2 (filetype:pdf) failed")
+            hits = await _send(q2, "q2 (filetype:pdf)")
+            if hits is None:
                 continue
+            found = _collect(hits, make, model)
             if i:
                 # A hit from a re-hyphenated form is a weaker signal than one
                 # from the nameplate's own spelling: it must not win a tie.
@@ -627,12 +935,13 @@ async def search_manual(make: str, model: str) -> dict | None:
     # Pass 3: widest fallback — accept landing pages too if nothing above.
     if not candidates:
         q3 = f"{make} {model} manual pdf"
-        try:
-            candidates.extend(_collect(await _serper_search(q3), make, model))
-        except Exception:
-            logger.exception("Serper q3 (wide) failed")
+        hits = await _send(q3, "q3 (wide)")
+        if hits:
+            candidates.extend(_collect(hits, make, model))
 
     if not candidates:
+        if sent and failures == sent:
+            raise ManualSearchUnavailable(f"all {sent} sent search requests failed")
         return None
 
     # Dedupe on URL while preserving order, then sort by score desc.
@@ -653,8 +962,14 @@ async def search_manual(make: str, model: str) -> dict | None:
     # Any judge failure leaves the legacy HEAD-validate path below untouched.
     judged_any = False
     rejected_out: list[dict] = []
-    if _judge.judge_enabled():
-        ranked = await _judge.judge_candidates(make, model, deduped)
+    # A catalog-only query may be based on text read from a user photo. Keep
+    # that narrowly scoped lookup from sending candidate PDF text to the LLM
+    # judge; the result remains an unconfirmed search candidate.
+    use_judge = bool(make) and _judge.judge_enabled()
+    if use_judge:
+        ranked = await _judge.judge_candidates(  # records what it reads
+            make, model, deduped, started_at=started_at, deadline_at=deadline_at
+        )
         # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
         # lines so a false positive can be traced from the phone back to the read.
         _top = ranked[0] if ranked else None
@@ -711,9 +1026,11 @@ async def search_manual(make: str, model: str) -> dict | None:
 
     # HEAD-validate the top few; first one that confirms PDF wins.
     for c in deduped[:5]:
+        if not c.get("validated"):
+            _note_examined([c["url"]])
         if c.get("validated") or await validate_pdf(c["url"]):
             c["validated"] = True
-            if _judge.judge_enabled():
+            if use_judge:
                 # The judge is on but this candidate was never READ (fetch
                 # blocked / too big / no text / model output unparseable).
                 # Canary run 1 (2026-08-26): the only real GS10 hit came back
@@ -736,7 +1053,7 @@ async def search_manual(make: str, model: str) -> dict | None:
     # caller can hold it for human review. Never promote an unvalidated
     # candidate to a trusted manual link.
     deduped[0]["validated"] = False
-    if _judge.judge_enabled():
+    if use_judge:
         deduped[0].setdefault("reason", _judge.REASON_JUDGE_UNAVAILABLE)
         deduped[0].setdefault(
             "reason_detail", "Could not read the candidate PDF — review before use."

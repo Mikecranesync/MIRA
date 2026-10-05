@@ -19,12 +19,15 @@
 import type {
   ContextSnapshot,
   EvidenceBasisKind,
+  IdentityProposal,
   InteractionPart,
   InteractionThread,
   InteractionTurn,
   Lifecycle,
+  ManualSearchStatus,
   SourceReference,
 } from "../../../packages/factorylm-interaction/src";
+import { sameManufacturerModel } from "../../../packages/factorylm-interaction/src";
 import type {
   EvidenceCitation,
   MachineEvidenceEntry,
@@ -52,6 +55,17 @@ export interface HubNotebookMeta {
   readonly asset?: { readonly id: string; readonly name: string; readonly unsPath?: string | null } | null;
   /** `identityStatus === "user_confirmed" | "verified"` AND `asset.confirmedAt` set — never inferred client-side. */
   readonly identityConfirmed: boolean;
+  /**
+   * The notebook's CURRENT confirmed manufacturer+model — `identityStatus`
+   * `user_confirmed`/`verified`, regardless of `asset` BINDING (a separate
+   * concept `identity-proposal.ts`'s confirm route never creates;
+   * `identityConfirmed` above also requires that binding). Settles a
+   * persisted `identity_proposal` card that no longer matches the notebook's
+   * current identity (light-review fix, PR #4195) — never read for
+   * grounding/authorization, which stay `identityConfirmed`'s job. `null`/
+   * omitted: not (yet) confirmed.
+   */
+  readonly confirmedIdentity?: { readonly manufacturer: string; readonly model: string } | null;
   /** One ISO timestamp per hydrate/turn; the caller passes it so tests stay deterministic. */
   readonly capturedAt: string;
 }
@@ -193,6 +207,34 @@ export function hasIdentityDispute(evidence: readonly unknown[]): boolean {
 }
 
 /**
+ * The persisted `{kind:"identity_proposal", manufacturer, model, ...}` entry
+ * (#4120/#4175), or null. `splitEvidence` drops it the same way it drops
+ * `identity_dispute` — no `docId`, not a typed entry it knows — so it is read
+ * straight off the raw evidence array here, same pattern as
+ * `hasIdentityDispute` above. chat/route.ts persists this entry on EVERY
+ * reply path (answered and abstained) so a reload renders the SAME confirm
+ * card the live turn offered (T2 acceptance). The live-stream half (while a
+ * turn is still in flight) is a narrower, accepted gap: `readNotebookStream`
+ * / `StreamResult` (`mira-hub/src/components/equipment/notebook-chat-utils.ts`)
+ * are guarded legacy presentation under the Unified UI Cutover and do not
+ * carry this field — see the PR body for the BLOCKED note.
+ */
+export function identityProposalOf(evidence: readonly unknown[]): IdentityProposal | null {
+  for (const e of evidence) {
+    if (typeof e !== "object" || e === null) continue;
+    const r = e as Record<string, unknown>;
+    if (r.kind !== "identity_proposal") continue;
+    if (typeof r.manufacturer !== "string" || typeof r.model !== "string") continue;
+    return {
+      manufacturer: r.manufacturer,
+      model: r.model,
+      ...(typeof r.catalogNumber === "string" && r.catalogNumber ? { catalogNumber: r.catalogNumber } : {}),
+    };
+  }
+  return null;
+}
+
+/**
  * A completed live stream → the assistant turn's parts, in the shell's order:
  * text, sources, basis, machine/visual evidence, safety, follow-ups, error.
  * Honesty rules carried from the classic web notebook:
@@ -323,6 +365,20 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
         : GENERIC_ABSTENTION_COPY);
   if (text) parts.push({ type: "text", text });
   if (disputed) parts.push({ type: "identity_dispute" });
+  // T2 (#4175): rendered on EVERY reply path (chat/route.ts persists it that
+  // way — "the client offers 'Use its manuals' / 'Not this' on an abstained
+  // turn too, not only an answered one") — never gated by `stopped`/`error`.
+  const proposal = identityProposalOf(row.evidence);
+  if (proposal) {
+    // Light-review fix (PR #4195): settle against the notebook's CURRENT
+    // confirmed identity — `meta` (not `persistedMeta`'s served-context
+    // variant used for `context` above), so a rebind AFTER this turn still
+    // settles it correctly, never the frozen context this turn was served
+    // with.
+    const current = meta.confirmedIdentity ?? null;
+    const priorOutcome = current ? (sameManufacturerModel(proposal, current) ? "confirmed" : "superseded") : undefined;
+    parts.push({ type: "identity_proposal", ...proposal, ...(priorOutcome ? { priorOutcome } : {}) });
+  }
   if (!stopped && row.answerStatus !== "error") {
     for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId) });
     if (row.basis) {
@@ -357,6 +413,39 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     updatedAt: at,
   };
   return [question, answer];
+}
+
+/**
+ * T2 (#4189 F6) — overlay the notebook's CURRENT manual-search status (the
+ * GET route's `manualSearch` field — `currentManualSearchStatus`, computed
+ * FRESH on every read, never persisted on a turn) onto the LAST assistant
+ * turn's parts, mirroring where the live SSE stream pairs it with that
+ * turn's own `identity_proposal` card. This is the "post-turn refresh"
+ * render path the PR body's BLOCKED note names: the Hub's live, in-flight
+ * stream (`notebook-chat-utils.ts`, guarded legacy presentation) cannot carry
+ * this status while a turn is still streaming, so it appears here, once the
+ * send completes and `hub-host.tsx` re-loads detail — not before.
+ * `status: null` (no acquisition running/recorded, or the flag is off)
+ * returns the turns unchanged.
+ */
+export function withManualSearchStatus(
+  turns: readonly InteractionTurn[],
+  status: ManualSearchStatus | null,
+): InteractionTurn[] {
+  if (!status) return [...turns];
+  let lastAssistantIndex = -1;
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i]!.role === "assistant") lastAssistantIndex = i;
+  }
+  if (lastAssistantIndex === -1) return [...turns];
+  const part: InteractionPart = {
+    type: "manual_search_status",
+    manufacturer: status.manufacturer,
+    model: status.model,
+    running: status.running,
+    ...(status.message ? { message: status.message } : {}),
+  };
+  return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
 }
 
 export function threadFromPersisted(

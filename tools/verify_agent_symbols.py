@@ -39,7 +39,8 @@ EXCLUDE_DIR_NAMES = {
     ".pytest_cache", ".hypothesis", "dist", "build", ".codegraph",
 }
 
-DEF_RE = re.compile(r"^\s*(?:def|class)\s+(\w+)\b")
+# `async def` counts: search_manual/validate_pdf were reported "fabricated" without it.
+DEF_RE = re.compile(r"^\s*(?:async\s+def|def|class)\s+(\w+)\b")
 CONST_RE = re.compile(r"^(\w+)\s*[:=]")
 
 FIRST_PARTY_ROOTS = {

@@ -24,9 +24,11 @@ import { resolveScan } from "../lib/scan-landing";
 import {
   LEGACY_THREAD_ID,
   notebookIdFromProject,
+  projectIdForNotebook,
   sourcesRefFromItem,
   notebookMachines,
   notebookProjects,
+  threadItemId,
   threadRefFromItem,
 } from "../unified/notebook-tree";
 import { NotebookScreen } from "./NotebookScreen";
@@ -34,6 +36,7 @@ import type { UnifiedShellHost } from "./UnifiedChat";
 import { UnifiedChat } from "./UnifiedChat";
 import { UnifiedAboutUpdates } from "../unified/UnifiedAboutUpdates";
 import { UnifiedCreateProject } from "../unified/UnifiedCreateProject";
+import { UnifiedProjectRoot } from "../unified/UnifiedProjectRoot";
 
 const LAST_NOTEBOOK_KEY = "flm.unified.notebook.v1";
 const LAST_THREAD_KEY = (notebookId: string) => `flm.unified.thread.v1.${notebookId}`;
@@ -68,8 +71,17 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [draftThreadId, setDraftThreadId] = useState<string | null>(null);
+  // Every chat started this session, per notebook (newest first). The server
+  // list is a boot-time snapshot, so these would otherwise vanish from the
+  // drawer and the project root as soon as another thread is opened (#4188).
+  const [localThreads, setLocalThreads] = useState<Readonly<Record<string, readonly string[]>>>({});
   const [homeVisible, setHomeVisible] = useState(true);
+  // #4188: where hardware BACK out of a notebook's chat thread lands — that
+  // project's recent-threads list — rather than falling straight through to
+  // `homeVisible`'s empty global composer. Mutually exclusive with
+  // `homeVisible`; every funnel that opens a thread (`open`, `startNewThread`)
+  // clears this the same way it already clears `homeVisible`.
+  const [projectRootVisible, setProjectRootVisible] = useState(false);
   const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
   const [queuedOpenAddSources, setQueuedOpenAddSources] = useState(false);
   const [queuedSensorStart, setQueuedSensorStart] = useState<"read-scan" | null>(null);
@@ -114,9 +126,9 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     const activeThread = threadId ?? restored ?? latestThreadId(notebook);
     setSelected(id);
     setSelectedThreadId(activeThread);
-    setDraftThreadId(null);
     setQueuedOpenAddSources(false);
     setHomeVisible(false);
+    setProjectRootVisible(false);
     void withSessionLocalProducer(async () => {
       await preferencesStore.set(LAST_NOTEBOOK_KEY, id);
       await preferencesStore.set(LAST_THREAD_KEY(id), activeThread);
@@ -136,16 +148,40 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           if (live) setDeepLinkNotice(`Unrecognized link: ${deepLink.raw}`);
           return;
         }
-        const outcome = await resolveScan(deepLink.tag, { getAssetByTag, openAssetNotebook }, "qr");
+        // Keep the notebook openAssetNotebook returns: it may be brand new and
+        // absent from the list until the refresh below lands (or fails), and
+        // without it there is no project to return to on BACK (#4188).
+        const captured: { notebook: Notebook | null } = { notebook: null };
+        const outcome = await resolveScan(
+          deepLink.tag,
+          {
+            getAssetByTag,
+            openAssetNotebook: async (...args: Parameters<typeof openAssetNotebook>) => {
+              captured.notebook = await openAssetNotebook(...args);
+              return captured.notebook;
+            },
+          },
+          "qr",
+        );
         if (!live) return;
         if (outcome.kind === "notebook") {
           setDeepLinkNotice(null);
-          open(outcome.notebookId);
+          const opened = captured.notebook;
+          const withOpened = (list: Notebook[]): Notebook[] =>
+            opened && !list.some((nb) => nb.id === opened.id) ? [opened, ...list] : list;
+          if (opened) setNotebooks((current) => withOpened(current ?? []));
+          // open() reads the list from this render, which does not contain a
+          // just-added notebook yet, so it would fall back to the legacy thread.
+          // Name the opened notebook's latest thread explicitly in that case
+          // only; a notebook already listed keeps open()'s own resume rules.
+          const listedAlready = notebooks?.some((nb) => nb.id === outcome.notebookId) ?? false;
+          open(outcome.notebookId, opened && !listedAlready ? latestThreadId(opened) : undefined);
           // The notebook may be new (openAssetNotebook can create it); refresh
-          // the drawer so it lists what the technician is now inside.
+          // the drawer so it lists what the technician is now inside. A refresh
+          // that lags the create must not drop the notebook just opened.
           try {
             const list = await listNotebooks();
-            if (live) setNotebooks(list);
+            if (live) setNotebooks(withOpened(list));
           } catch {
             // The conversation is already open; a stale drawer is tolerable.
           }
@@ -175,9 +211,10 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     const threadId = createThreadId();
     setSelected(id);
     setSelectedThreadId(threadId);
-    setDraftThreadId(threadId);
+    setLocalThreads((current) => ({ ...current, [id]: [threadId, ...(current[id] ?? [])] }));
     setQueuedOpenAddSources(false);
     setHomeVisible(false);
+    setProjectRootVisible(false);
     void withSessionLocalProducer(async () => {
       await preferencesStore.set(LAST_NOTEBOOK_KEY, id);
       await preferencesStore.set(LAST_THREAD_KEY(id), threadId);
@@ -221,25 +258,42 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   const navigationNotebooks = useMemo<Notebook[]>(() => {
     if (!notebooks) return [];
     return notebooks.map((notebook) => {
-      if (notebook.id !== selected || !draftThreadId) return notebook;
-      if (notebook.threads?.some((thread) => thread.id === draftThreadId)) return notebook;
+      const missing = (localThreads[notebook.id] ?? []).filter(
+        (threadId) => !notebook.threads?.some((thread) => thread.id === threadId),
+      );
+      if (missing.length === 0) return notebook;
+      // threadRows() synthesizes the notebook's legacy conversation only while
+      // its summaries are empty. Adding session chats would hide it, so keep it
+      // explicitly; a blank title takes the notebook's label there (#4188 F4).
+      const server: Notebook["threads"] =
+        notebook.threads && notebook.threads.length > 0
+          ? notebook.threads
+          : [{
+              id: LEGACY_THREAD_ID,
+              notebookId: notebook.id,
+              title: "",
+              createdAt: notebook.createdAt ?? "",
+              updatedAt: notebook.createdAt ?? "",
+              turnCount: 0,
+              sharedLegacy: true,
+            }];
       return {
         ...notebook,
         threads: [
-          {
-            id: draftThreadId,
+          ...missing.map((threadId) => ({
+            id: threadId,
             notebookId: notebook.id,
             title: "New chat",
             createdAt: "",
             updatedAt: "",
             turnCount: 0,
             sharedLegacy: false,
-          },
-          ...(notebook.threads ?? []),
+          })),
+          ...(server ?? []),
         ],
       };
     });
-  }, [draftThreadId, notebooks, selected]);
+  }, [localThreads, notebooks]);
 
   const host = useMemo<UnifiedShellHost | null>(() => {
     if (!notebooks) return null;
@@ -281,11 +335,35 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigationNotebooks, notebooks, me.email, signingOut, open]);
 
+  // #4188: the project root's title + recent-threads list — the SAME
+  // `Project` the drawer's ProjectTree renders (`host.projects`), so the
+  // title matches exactly (tag · name for a bound machine, display name
+  // otherwise) and the thread rows are the SAME `ProjectItem`s `onOpenItem`
+  // already knows how to open. `threadRows()` (inside `notebookProjects`)
+  // orders by server `updated_at DESC`, so this is already most-recent-first;
+  // the just-left thread is always present because every thread the project
+  // has is listed, not just a recent subset.
+  const currentProject = useMemo(
+    () => host?.projects.find((project) => project.id === projectIdForNotebook(selected ?? "")) ?? null,
+    [host, selected],
+  );
+  // The server order is a boot-time snapshot: chatting in an older thread does
+  // not re-rank it. Float the thread just left to the top so it is always the
+  // first row, whatever the stale order says (#4188 light review).
+  const currentProjectThreads = useMemo<readonly ProjectItem[]>(() => {
+    const threads = currentProject?.children.filter((node): node is ProjectItem => node.kind === "thread") ?? [];
+    if (!selected || !selectedThreadId) return threads;
+    const leftId = threadItemId(selected, selectedThreadId);
+    const left = threads.find((item) => item.id === leftId);
+    return left ? [left, ...threads.filter((item) => item !== left)] : threads;
+  }, [currentProject, selected, selectedThreadId]);
+
   // NotebookScreen owns Android Back while a conversation is mounted. Every
   // root-owned state must replace that handler explicitly: otherwise the
   // unmounted notebook leaves its last callback behind and About can minimize
   // the app instead of returning to the conversation.
-  const rootOwnsBack = homeVisible || showAbout || showCreateProject || Boolean(error) || !notebooks || !host || !selected;
+  const rootOwnsBack =
+    homeVisible || projectRootVisible || showAbout || showCreateProject || Boolean(error) || !notebooks || !host || !selected;
   useEffect(() => {
     if (!rootOwnsBack) return;
     const previous = backRef.current;
@@ -298,6 +376,13 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         setShowAbout(false);
         return true;
       }
+      // Project root → global home (the next rung of the BACK ladder below
+      // NotebookScreen's own "thread → project root", #4188).
+      if (projectRootVisible) {
+        setProjectRootVisible(false);
+        setHomeVisible(true);
+        return true;
+      }
       if (homeVisible) return true;
       return false;
     };
@@ -305,7 +390,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     return () => {
       if (backRef.current === handleBack) backRef.current = previous;
     };
-  }, [backRef, rootOwnsBack, homeVisible, showAbout, showCreateProject]);
+  }, [backRef, rootOwnsBack, homeVisible, projectRootVisible, showAbout, showCreateProject]);
 
   if (showCreateProject) {
     return (
@@ -412,6 +497,24 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     );
   }
 
+  if (projectRootVisible) {
+    return (
+      <>
+      {notice}
+      <UnifiedProjectRoot
+        title={currentProject?.name ?? "FactoryLM"}
+        threads={currentProjectThreads}
+        onOpenThread={(item) => host.onOpenItem(item)}
+        onNewChat={() => startNewThread(selected)}
+        onBack={() => {
+          setProjectRootVisible(false);
+          setHomeVisible(true);
+        }}
+      />
+      </>
+    );
+  }
+
   return (
     <div className="unified-root" data-testid="unified-root" data-notebook-id={selected}>
       {notice}
@@ -423,7 +526,11 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         openAddSources={queuedOpenAddSources}
         unifiedShell={host}
         backRef={backRef}
-        onExit={() => setHomeVisible(true)}
+        // A project root needs a project to show. A notebook the list does not
+        // contain yet (a QR deep link can create one; its drawer refresh may
+        // fail or lag) has none, so BACK goes to the global home instead of a
+        // fabricated, empty "FactoryLM" project page (#4188 light review).
+        onExit={() => (currentProject ? setProjectRootVisible(true) : setHomeVisible(true))}
         onOpenNotebook={open}
         initialQuestion={queuedQuestion}
         onInitialQuestionSent={() => setQueuedQuestion(null)}

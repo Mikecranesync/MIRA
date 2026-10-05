@@ -338,6 +338,8 @@ services:
       # Manual discovery (nameplate confirm → official OEM manual) — stg-mira-ask.
       - MIRA_ASK_URL=http://stg-mira-ask:8011
       - ASK_API_KEY=${ASK_API_KEY:-}
+      # Sent as X-Mira-Key to /manual-discovery/search only (#4160 S2).
+      - MANUAL_DISCOVERY_API_KEY=${MANUAL_DISCOVERY_API_KEY:-}
       - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-http://127.0.0.1:4099}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
@@ -402,10 +404,20 @@ services:
       - OTEL_TRACES_SAMPLER=${OTEL_TRACES_SAMPLER:-}
       - OTEL_TRACES_SAMPLER_ARG=${OTEL_TRACES_SAMPLER_ARG:-}
       - MIRA_OTEL_CAPTURE_CONTENT=${MIRA_OTEL_CAPTURE_CONTENT:-0}
+      # #4103: only mira.turn-rooted traces are exported. Lower the ratio (e.g.
+      # 0.25) to cut Langfuse volume; set AUTO_INSTRUMENT=1 only while debugging.
+      - MIRA_OTEL_TURN_SAMPLE_RATIO=${MIRA_OTEL_TURN_SAMPLE_RATIO:-1}
+      - MIRA_OTEL_AUTO_INSTRUMENT=${MIRA_OTEL_AUTO_INSTRUMENT:-0}
       - MIRA_TURN_ANOMALY_CHECKS=${MIRA_TURN_ANOMALY_CHECKS:-1}
       - MIRA_TRACE_VIEWER_URL_TEMPLATE=${MIRA_TRACE_VIEWER_URL_TEMPLATE:-}
       # Shadow-mode Jev evidence-sufficiency judgment (recorded, never consulted). Off unless set in Doppler stg.
       - MIRA_JEV_SHADOW=${MIRA_JEV_SHADOW:-0}
+      # #4075: a technician-confirmed identity starts a background search for the
+      # official manual (discover -> download -> ingest -> applicability). Off
+      # unless set in Doppler stg; needs migration 100. Staging only for now.
+      - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-0}
+      # #4160 S6 candidate takeover (#4175): off until a client can confirm a candidate identity.
+      - MIRA_NOTEBOOK_CANDIDATE_ACQUISITION=${MIRA_NOTEBOOK_CANDIDATE_ACQUISITION:-0}
       # The 12-question decision fabric. A SEPARATE flag from the shadow above
       # on purpose: this payload also carries the delivered answer and the photo
       # observations, so enabling the smaller export must not turn on the larger
@@ -631,9 +643,17 @@ services:
       - MIRA_PROCESS_TIMEOUT=90
       - MIRA_DIRECT_ANSWER_MODE=1
       - SERPER_API_KEY=${SERPER_API_KEY:-}
+      # Required for /manual-discovery/search; unset = 503, no search (#4160 S2).
+      - MANUAL_DISCOVERY_API_KEY=${MANUAL_DISCOVERY_API_KEY:-}
       - MANUAL_SEARCH_TIMEOUT=${MANUAL_SEARCH_TIMEOUT:-15}
       - MANUAL_HEAD_TIMEOUT=${MANUAL_HEAD_TIMEOUT:-8}
       - MANUAL_DISCOVERY_TIMEOUT=${MANUAL_DISCOVERY_TIMEOUT:-50}
+      # Atomic per-user/tenant/global provider-query caps (#4160 S4, PRD R13).
+      # Global monthly cap: NO fallback — unset/invalid fails closed
+      # ("global_cap_unconfigured"); owner decision D4 not yet made.
+      - MANUAL_SEARCH_USER_DAILY_CAP=${MANUAL_SEARCH_USER_DAILY_CAP:-10}
+      - MANUAL_SEARCH_TENANT_DAILY_CAP=${MANUAL_SEARCH_TENANT_DAILY_CAP:-50}
+      - MANUAL_SEARCH_GLOBAL_MONTHLY_CAP=${MANUAL_SEARCH_GLOBAL_MONTHLY_CAP:-}
       - MANUAL_JUDGE_ENABLED=${MANUAL_JUDGE_ENABLED:-0}
       - MIRA_MANUAL_SENSE_WEB_ENABLED=${MIRA_MANUAL_SENSE_WEB_ENABLED:-0}
       - NAMEPLATE_DETECT_ENABLED=${NAMEPLATE_DETECT_ENABLED:-0}

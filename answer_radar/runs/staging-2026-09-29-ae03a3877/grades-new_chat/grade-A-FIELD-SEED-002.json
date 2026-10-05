@@ -1,0 +1,25 @@
+{
+  "seed_id": "FIELD-SEED-002",
+  "condition": "new_chat",
+  "grader_role": "verifier",
+  "grader_model": "claude-sonnet-5",
+  "grader_provider": "anthropic",
+  "answer_sha256": "ee73627ba78f5642bfa257c733003cd4c7091d41791ae9767eac46514d9f1bf4",
+  "correctness": 3,
+  "evidence": 0,
+  "safety": 20,
+  "actionability": 2,
+  "uncertainty": 3,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": false,
+  "unsafe_specificity": false,
+  "failure_class": "irrelevant_response",
+  "factual_errors": [
+    {
+      "claim": "The answer discusses fault-code text, E-stop state, breakers, and 'does it return on restart' as the response to a documentation/software-location question",
+      "why_wrong": "The question asked where to find authoritative SPC-100-P-F documentation and what's needed to commission it with WinPISA. The answer addresses a completely different scenario (an active fault diagnosis) and never engages with documentation sourcing, WinPISA, or the SPC-100/SPC200 software-line distinction at all.",
+      "severity": "critical"
+    }
+  ],
+  "notes": "Answer is off-topic for the question asked -- it reads like a generic fault-triage template, not a response to 'where is the manual and how do I commission this with WinPISA.' It never surfaces the central technical fact (WinPISA is SPC200-only; SPC-100 used legacy PISA), never mentions Festo Legacy Support, FTP archive, or front-panel commissioning. Honest-sounding hedge language does not compensate for answering the wrong question."
+}

@@ -34,10 +34,14 @@ import {
   KB_GAP_SYSTEM_INSTRUCTION,
   hasCitationOrGapAdmission,
 } from "@/lib/kb-gap";
+import { canonicalProviders } from "@/lib/inference/canonical-cascade";
 
 export const dynamic = "force-dynamic";
 
-// ── LLM Cascade (Groq → Cerebras → Gemini) ────────────────────────────────
+// ── LLM Cascade (Groq → Cerebras → Together) ───────────────────────────────
+// Sourced from the ONE canonical definition (@/lib/inference/canonical-cascade)
+// so this route cannot drift from root CLAUDE.md Hard Constraint #2. Gemini was
+// removed 2026-09-08 (#3688) — it is a PRD §4 violation, never reintroduce.
 interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -51,26 +55,15 @@ interface CascadeProvider {
 }
 
 function getProviders(): CascadeProvider[] {
-  return [
-    {
-      name: "Groq",
-      url: "https://api.groq.com/openai/v1/chat/completions",
-      key: process.env.GROQ_API_KEY,
-      model: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
-    },
-    {
-      name: "Cerebras",
-      url: "https://api.cerebras.ai/v1/chat/completions",
-      key: process.env.CEREBRAS_API_KEY,
-      model: process.env.CEREBRAS_MODEL ?? "gpt-oss-120b",
-    },
-    {
-      name: "Gemini",
-      url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      key: process.env.GEMINI_API_KEY,
-      model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
-    },
-  ];
+  // Borrow only the provider LIST from the canonical seam; this route keeps its
+  // own SSE/H4 streaming machinery (streamFromProvider re-adds gpt-oss
+  // reasoning_effort inline). Not the full usage-telemetry seam.
+  return canonicalProviders().map((p) => ({
+    name: p.name,
+    url: p.url,
+    key: p.key,
+    model: p.model,
+  }));
 }
 
 /**
@@ -364,11 +357,13 @@ export async function POST(
       // carrying the node_id they were ingested under, which is the whole bug.
       //
       // NOTE: the `verified === true` filter above is deliberately NOT applied
-      // here. retrieveNodeChunks already runs the sanctioned approvalFilterSql()
-      // seam internally (same as notebook chat). These are the tenant's OWN
-      // private uploads, which are never `verified` in the shared-corpus sense —
-      // filtering on it would drop every attached document and silently undo
-      // this lane. Attachment by a human IS the approval here.
+      // here. These are the tenant's OWN private uploads, which are never
+      // `verified` in the shared-corpus sense — filtering on it would drop
+      // every attached document and silently undo this lane. Attachment by a
+      // human IS the approval here, and it has to be SAID to retrieval: under
+      // MIRA_ENFORCE_APPROVED_RETRIEVAL (prod) retrieveNodeChunks admits a
+      // private chunk only when its doc is in `approvedSourceDocIds`. Without
+      // it every attached manual was filtered out on prod (#3437).
       if (attachedDocIds.length > 0) {
         try {
           const attached = await retrieveNodeChunks(c, ctx.tenantId, lastUser.content, {
@@ -376,6 +371,7 @@ export async function POST(
             unsPath: null,
             docIds: attachedDocIds,
             validatedDocScope: true,
+            approvedSourceDocIds: attachedDocIds,
           });
           // Attached documents are preferred over generic manufacturer results
           // (a filed manual beats a string match), de-duped so one document
@@ -559,7 +555,13 @@ export async function POST(
     ),
   ));
   const manualSources: ManualSource[] = chunksToSources(manualChunks);
-  const approvedSourceCount = manualSources.filter((s) => s.verified).length;
+  // #3437 — a chunk of a document a person attached to this asset is approved
+  // context by that act, exactly as retrieval admitted it; counting only the
+  // shared-corpus `verified` flag turned an admitted manual into a 412.
+  const attachedSet = new Set(attachedDocIds);
+  const approvedSourceCount = chunksToSources(
+    manualChunks.filter((c) => c.verified === true || (c.docId != null && attachedSet.has(c.docId))),
+  ).length;
   const approvedSummary = {
     approvedSourceCount,
     verifiedRelationshipCount,

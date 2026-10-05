@@ -21,7 +21,7 @@ The gate runs on every PR — no path filter. This costs ~3 min of CI per PR but
 
 ## Non-goals
 
-- **Not a UI environment.** No staging mira-hub, no staging Atlas, no staging nginx. The staging bot exists to test the engine path, not the customer surface.
+- **Not a UI environment** *(as written in May 2026 — superseded: `deploy-staging.yml` now stands up and health-checks a staging Hub and Atlas on the production host, and `retrieval-acceptance.yml` drives six live Hub scenarios against it; see `docs/architecture/mira-sdlc-v1.md` §5–§6)*. The original staging bot tested the engine path only.
 - **Not a load test.** 10 questions, not a benchmark.
 - **Not a replacement for DeepEval.** See "vs existing eval surfaces" below.
 - **Not a sandbox for arbitrary scripts.** The staging bot is for in-process Supervisor calls in CI plus a single-operator manual loop on CHARLIE — not multi-user.
@@ -161,14 +161,18 @@ Failures post a PR comment listing the failing question(s), the rubric breakdown
 
 ## Deploy gating
 
-`deploy-vps.yml` still triggers on `workflow_run: ["Smoke Test"]` succeeding (same as before). We **add** a pre-deploy verification step that:
+> **Historical (May 2026).** `deploy-vps.yml` is now `workflow_dispatch` only, takes `approved_rc_sha`, and has **no**
+> `skip_staging_gate` / `skip_reason` inputs (it rejects every `skip_*` input). The Staging Gate check below shipped;
+> the trigger and the bypass described here did not survive. Current rules: `docs/architecture/mira-sdlc-v1.md` §5–§7.
+
+`deploy-vps.yml` triggered on `workflow_run: ["Smoke Test"]` succeeding at the time of writing. We **add** a pre-deploy verification step that:
 
 1. Takes the deploy target SHA on `main`.
 2. Resolves it back to the originating PR's head SHA via `gh api /repos/.../commits/$SHA/pulls`. This is necessary because the repo uses squash-merge — the commit on `main` is a *new* SHA that no PR workflow ever ran on.
 3. Asks GitHub for the most recent Staging Gate run on that PR head SHA.
 4. Aborts the deploy unless `status:conclusion == completed:success`.
 
-The hotfix `workflow_dispatch` path is preserved with a new input `skip_staging_gate=true` for emergencies. The skip MUST be recorded in the linked incident.
+The hotfix `workflow_dispatch` path was to be preserved with a new input `skip_staging_gate=true` for emergencies. **Not implemented — and deliberately not: the live workflow has no bypass inputs (SDLC v1 §10.1).**
 
 The change is in the same PR but called out so the operator can roll back the verifier (`continue-on-error: true` on the step) if the gate is flaky in the first week.
 

@@ -81,13 +81,14 @@ Every change to engine / bot / pipeline / mira-web / migrations / KB seeds goes 
 1. **Code on a feature branch.** Conventional commit (`feat/fix/refactor/...`). Local docker compose if relevant.
 2. **Open PR to `main`.** `smoke-test.yml` runs automatically (plus `code-review.yml`, `ci.yml`, `enforcement-audit.yml`, etc.).
 3. **All required checks green.** If a check fails, fix it. Do not bypass with `--no-verify` or by skipping required reviewers.
-4. **Merge to `main`.** `smoke-test.yml` re-runs on the merge commit; `deploy-vps.yml` triggers on its success.
-5. **Verify on production.** Smoke the affected route (`bash install/smoke_test.sh`). For UI: screenshot rule (`docs/promo-screenshots/`). For bots: send a real message to `@FactoryLM_Diagnose` and inspect the reply against grounding rules.
+4. **Merge to `main`.** `version-tag.yml` tags the merge (`vX.Y.Z` + `rollback/<date>-vX.Y.Z`). `smoke-test.yml` re-runs on the push but gates nothing: **nothing deploys automatically.**
+5. **Stage, accept, then deploy by hand.** `deploy-staging.yml` (`approved_rc_sha`, a commit on `main`) → staging receipt → acceptance → `deploy-vps.yml` (`workflow_dispatch` only, `approved_rc_sha`, optional `services`). `authorize-source` refuses without an unexpired staging receipt and a green Staging Gate on the PR head. Full rules: `docs/architecture/mira-sdlc-v1.md` §5–§8.
+6. **Verify on production.** Dispatch `smoke-test.yml` after the deploy (push-time smoke ran before it) and smoke the affected route (`bash install/smoke_test.sh`). For UI: screenshot rule (`docs/promo-screenshots/`). For bots: send a real message to `@FactoryLM_Diagnose` and inspect the reply against grounding rules.
 
-Hotfix path (production is degraded, normal flow too slow):
-- `workflow_dispatch` on `deploy-vps.yml` with a specific `services:` list.
-- File a follow-up PR with the actual fix on a branch within 24 hours so it goes through the normal gate.
-- Note the bypass in the PR description.
+Hotfix path (production is degraded, normal flow too slow) — **there is no gate bypass**; `deploy-vps.yml` rejects every `skip_*` input:
+- Open an `incident` issue first; open the fix PR as `fix(hotfix): …`, `Risk: R3`.
+- Clear the queue, merge through the required contexts, stage, accept, then dispatch `deploy-vps.yml` with the narrowest `services:` list containing the fix. Receipt and drift gates apply unchanged.
+- Regression disposition within 24 hours (`docs/architecture/mira-sdlc-v1.md` §10.1, §10.3).
 
 ---
 
@@ -101,6 +102,7 @@ The point isn't process for its own sake. The point is: when a customer hits a r
 
 ## Pointers
 
+- `docs/architecture/mira-sdlc-v1.md` — **the SDLC specification (ratified 2026-10-03)**: lifecycle, risk classes, review lanes, staging → acceptance → production receipts, rollback, incidents. This document keeps the environment hard rules; the SDLC spec governs the process around them
 - `CLAUDE.md` § **Environments** — short rule card every session loads
 - `.claude/CLAUDE.md` § **Environment boundaries** — product-rule angle
 - `tools/hooks/prod-guard.sh` — PreToolUse enforcement

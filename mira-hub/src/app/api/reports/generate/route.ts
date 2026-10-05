@@ -3,6 +3,7 @@ import pool from "@/lib/db";
 import { sessionOr401 } from "@/lib/session";
 import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
+import { canonicalProviders } from "@/lib/inference/canonical-cascade";
 
 export const dynamic = "force-dynamic";
 
@@ -14,26 +15,17 @@ interface CascadeProvider {
 }
 
 async function callLLM(prompt: string): Promise<string> {
-  const providers: CascadeProvider[] = [
-    {
-      name: "Groq",
-      url: "https://api.groq.com/openai/v1/chat/completions",
-      key: process.env.GROQ_API_KEY,
-      model: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
-    },
-    {
-      name: "Cerebras",
-      url: "https://api.cerebras.ai/v1/chat/completions",
-      key: process.env.CEREBRAS_API_KEY,
-      model: process.env.CEREBRAS_MODEL ?? "gpt-oss-120b",
-    },
-    {
-      name: "Gemini",
-      url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      key: process.env.GEMINI_API_KEY,
-      model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
-    },
-  ];
+  // Groq → Cerebras → Together, sourced from the ONE canonical definition
+  // (@/lib/inference/canonical-cascade) so this route cannot drift from root
+  // CLAUDE.md Hard Constraint #2. Gemini was removed 2026-09-08 (#3688) — it is
+  // a PRD §4 violation, never reintroduce. The loop below re-adds gpt-oss
+  // reasoning_effort inline, so only the provider LIST is borrowed here.
+  const providers: CascadeProvider[] = canonicalProviders().map((p) => ({
+    name: p.name,
+    url: p.url,
+    key: p.key,
+    model: p.model,
+  }));
 
   for (const p of providers) {
     if (!p.key) continue;

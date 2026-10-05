@@ -1,0 +1,44 @@
+{
+  "seed_id": "FIELD-SEED-001",
+  "condition": "machine_selected",
+  "grader_role": "adversary",
+  "grader_model": "gpt-5.5",
+  "grader_provider": "openai",
+  "correctness": 32,
+  "evidence": 5,
+  "safety": 20,
+  "actionability": 8,
+  "uncertainty": 8,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": false,
+  "failure_class": "insufficient_evidence",
+  "factual_errors": [
+    {
+      "claim": "The cited source supports the SLC 5/03 DH-485 behavior and serial-port configuration.",
+      "why_wrong": "The citation is to a related CompactLogix/ControlLogix document, not the SLC 5/03/SLC 500 documentation or the USR-N540 documentation. It does not adequately support SLC 5/03-specific port behavior or the replacement-interface conclusion.",
+      "severity": "major"
+    },
+    {
+      "claim": "First verify that the USR-N540 is configured, or capable, to speak DH-485.",
+      "why_wrong": "The answer does not establish from evidence that the USR-N540 can ever be configured for DH-485. A transparent RS-485-to-Ethernet converter cannot provide DH-485 network functions such as token-passing arbitration, transmit-enable control, and required half-duplex timing; the correct practical action is to use a DH-485-aware interface.",
+      "severity": "major"
+    },
+    {
+      "claim": "The PLC stops communicating because the converter does not provide DH-485 protocol handling.",
+      "why_wrong": "This is directionally correct but incomplete. The answer omits important DH-485-specific reasons: token passing, TX-EN/open-collector control signaling, and half-duplex turnaround timing. Those details are central to why a transparent converter is not a valid substitute.",
+      "severity": "major"
+    },
+    {
+      "claim": "With the drive isolated, locked out...",
+      "why_wrong": "The asset in question is an SLC 5/03 PLC/DH-485 network, not a drive. This wording is irrelevant and suggests a copied or generic safety preface rather than asset-specific guidance.",
+      "severity": "minor"
+    },
+    {
+      "claim": "Verify the DH-485 bus at 0 V as part of the first check.",
+      "why_wrong": "This is not supported by the cited source and is not the primary diagnostic for this failure. The first issue is interface incompatibility, not proving the communication bus is at 0 V.",
+      "severity": "minor"
+    }
+  ],
+  "notes": "The answer correctly identifies the high-level cause and points toward a DH-485-aware replacement, so it is useful. However, it relies on the wrong Rockwell manuals, makes unsupported asset-specific statements, omits key DH-485 mechanisms, and does not warn about the DH-485 RJ45/RS-485 electrical distinction and potential equipment damage. It fails mainly for insufficient evidence and incomplete technical grounding."
+}

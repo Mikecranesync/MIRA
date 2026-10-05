@@ -1,0 +1,557 @@
+"""Unit tests for tools/acceptance_receipt.py — the generation-bound acceptance
+receipt contract (SDLC v1 Part B step 4, `docs/architecture/mira-sdlc-v1.md` §6.2).
+
+Mirrors tests/test_staging_receipt.py: pure-core unit tests plus a thin CLI round
+trip. Red-first — the module did not exist before this task. The verifier is
+fail-closed: every field is mandatory, `overall` must be PASS (not SUPERSEDED /
+INFRA_UNASSESSED), every required capability's scenarios must all PASS, and the
+receipt must be fresh and untampered. stdlib + pytest only.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+
+_MOD_PATH = Path(__file__).resolve().parents[1] / "tools" / "acceptance_receipt.py"
+_spec = importlib.util.spec_from_file_location("acceptance_receipt", _MOD_PATH)
+assert _spec and _spec.loader, f"cannot load {_MOD_PATH}"
+ar = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(ar)
+
+SHA = "a" * 40
+OTHER = "b" * 40
+NOW = datetime(2026, 10, 3, 0, 0, 0, tzinfo=timezone.utc)
+
+
+def _rows(n_pass: int, n_fail: int) -> dict:
+    scenarios = [
+        {"scenario": f"pass-{i}", "pass": True, "trace_id": f"t-pass-{i}"} for i in range(n_pass)
+    ]
+    scenarios += [
+        {"scenario": f"fail-{i}", "pass": False, "trace_id": f"t-fail-{i}"} for i in range(n_fail)
+    ]
+    return {"base": "https://stg.example", "ran_at": NOW.isoformat(), "rows": scenarios}
+
+
+BUILT_AT = (NOW - timedelta(minutes=12)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _staging_receipt(**overrides) -> dict:
+    # The identity fields a real staging receipt carries (tools/staging_receipt.py);
+    # build_receipt binds the generation to THESE, never to the artifact filename.
+    data = {
+        "schema": "factorylm.deploy-receipt/1",
+        "environment": "staging",
+        "approved_rc_sha": SHA,
+        "run_id": "9",
+        "deployed_at": (NOW - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "built_at": BUILT_AT,
+        "running_images": {"mira-hub": "sha256:" + "1" * 64, "mira-web": "sha256:" + "2" * 64},
+    }
+    data.update(overrides)
+    return data
+
+
+@pytest.mark.parametrize(
+    ("overrides", "needle"),
+    [
+        ({"approved_rc_sha": OTHER}, "not this deployment"),
+        ({"run_id": "8"}, "not this generation"),
+        ({"environment": "production"}, "environment"),
+        ({"schema": "factorylm.deploy-receipt/0"}, "schema"),
+    ],
+)
+def test_generation_binds_to_the_staging_receipt_identity_not_the_filename(overrides, needle):
+    """Cheap-lane finding on PR #4217: a same-named artifact from another run or SHA
+    must not become this acceptance's generation."""
+    with pytest.raises(ValueError, match=needle):
+        _good(staging_receipt=_staging_receipt(**overrides))
+
+
+def test_generation_requires_the_triggering_run_id():
+    with pytest.raises(ValueError, match="not this generation"):
+        _good(staging_run_id=None, staging_receipt=_staging_receipt())
+
+
+def test_verify_rejects_generation_from_a_different_staging_run():
+    data = _good()
+    data["generation"]["staging_run_id"] = 8
+    assert any("generation.staging_run_id" in p for p in _verify(data))
+
+
+def _good(**overrides) -> dict:
+    kwargs = dict(
+        repository="Mikecranesync/MIRA",
+        base_url="https://stg.example",
+        deployed_sha=SHA,
+        rows=_rows(2, 0),
+        capture_status="PASS",
+        identity_end=SHA,
+        built_at_start=BUILT_AT,
+        built_at_end=BUILT_AT,
+        assessment="PASS",
+        run_id="1",
+        run_attempt=1,
+        run_url="https://github.com/Mikecranesync/MIRA/actions/runs/1",
+        staging_run_id=9,
+        staging_receipt=_staging_receipt(),
+        ran_at=NOW - timedelta(minutes=5),
+    )
+    kwargs.update(overrides)
+    return ar.build_receipt(**kwargs)
+
+
+def _verify(data: dict, **kw) -> list[str]:
+    params = dict(approved_rc_sha=SHA, now=NOW, max_age_hours=1)
+    params.update(kw)
+    return ar.verify_receipt(data, **params)
+
+
+# ── the one good shape ───────────────────────────────────────────────────────
+
+
+def test_good_receipt_verifies():
+    assert _verify(_good()) == []
+
+
+def test_good_receipt_accepts_naive_now():
+    assert _verify(_good(), now=NOW.replace(tzinfo=None)) == []
+
+
+# ── every way to say less than the truth ─────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("field", "needle"),
+    [
+        ("schema", "schema"),
+        ("repository", "repository"),
+        ("environment", "environment"),
+        ("git_sha", "git_sha"),
+        ("identity_start", "identity_start"),
+        ("identity_end", "identity_end"),
+        ("overall", "overall"),
+        ("authorizes", "authorizes"),
+        ("generation", "generation"),
+        ("staging_run_id", "staging_run_id"),
+        ("scenarios", "scenarios"),
+        ("acceptance_run_id", "acceptance_run_id"),
+        ("run_url", "run_url"),
+        ("ran_at", "ran_at"),
+        ("expires_at", "expires_at"),
+    ],
+)
+def test_each_mandatory_field_is_checked(field, needle):
+    data = _good()
+    del data[field]
+    problems = _verify(data)
+    assert any(needle in p for p in problems), (field, problems)
+
+
+def test_git_sha_mismatch_is_named_per_service():
+    data = _good()
+    data["git_sha"] = {"mira-hub": OTHER}
+    problems = _verify(data)
+    assert any("git_sha[mira-hub]" in p and OTHER in p for p in problems), problems
+
+
+def test_identity_end_infra_unassessed_sets_overall_and_is_named():
+    data = _good(identity_end=ar.INFRA_UNASSESSED)
+    assert data["overall"] == ar.INFRA_UNASSESSED
+    problems = _verify(data)
+    assert any(ar.INFRA_UNASSESSED in p for p in problems), problems
+
+
+def test_identity_end_other_sha_sets_overall_superseded():
+    data = _good(identity_end=OTHER)
+    assert data["overall"] == "SUPERSEDED"
+    problems = _verify(data)
+    assert any("SUPERSEDED" in p for p in problems), problems
+
+
+def test_any_fail_row_sets_overall_fail():
+    data = _good(rows=_rows(1, 1))
+    assert data["overall"] == "FAIL"
+    assert _verify(data) != []
+
+
+def test_capture_fail_sets_overall_fail():
+    data = _good(capture_status="FAIL")
+    assert data["overall"] == "FAIL"
+
+
+def test_capture_skipped_overall_pass_but_blocks_when_capture_required():
+    data = _good(capture_status="SKIPPED")
+    assert data["overall"] == "PASS"
+    problems = _verify(data, required_capabilities=("retrieval", "capture"))
+    assert any("capability capture" in p and "SKIPPED" in p for p in problems), problems
+    assert _verify(data, required_capabilities=("retrieval",)) == []
+
+
+def test_no_staging_receipt_means_no_generation_and_no_authorization():
+    data = _good(staging_receipt=None)
+    assert data["generation"] is None
+    assert data["authorizes"] is False
+    problems = _verify(data)
+    assert any("generation" in p for p in problems), problems
+    assert any("authorizes" in p for p in problems), problems
+
+
+def test_expected_staging_run_id_mismatch_is_rejected():
+    data = _good()
+    assert _verify(data, expected_staging_run_id=9) == []
+    problems = _verify(data, expected_staging_run_id=99)
+    assert any("staging_run_id" in p for p in problems), problems
+
+
+def test_stale_receipt_is_rejected():
+    data = _good(ran_at=NOW - timedelta(hours=200))
+    problems = _verify(data, max_age_hours=168)
+    assert any("too old" in p for p in problems), problems
+
+
+def test_future_ran_at_beyond_skew_is_rejected():
+    data = _good(ran_at=NOW + timedelta(hours=1))
+    problems = _verify(data)
+    assert any("future" in p for p in problems), problems
+
+
+def test_expires_at_tampered_is_rejected():
+    data = _good()
+    data["expires_at"] = (NOW + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    problems = _verify(data)
+    assert any("expires_at" in p and "tampered" in p for p in problems), problems
+
+
+def test_zero_rows_raises_value_error():
+    with pytest.raises(ValueError):
+        _good(rows={"base": "x", "ran_at": "x", "rows": []})
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"capture_status": "BOGUS"},
+        {"identity_end": "not-a-sha"},
+        {"deployed_sha": "short"},
+    ],
+    ids=["bad-capture-status", "bad-identity-end", "bad-deployed-sha"],
+)
+def test_bad_capture_status_or_identity_raises_value_error(overrides):
+    with pytest.raises(ValueError):
+        _good(**overrides)
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────────
+
+
+def _cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(_MOD_PATH), *args], capture_output=True, text=True, timeout=30
+    )
+
+
+def _build_argv(rows_path, out, **extra) -> list[str]:
+    flags = {
+        "--repository": "Mikecranesync/MIRA",
+        "--base-url": "https://stg.example",
+        "--deployed-sha": SHA,
+        "--rows": str(rows_path),
+        "--capture-status": "PASS",
+        "--identity-end": SHA,
+        "--built-at-start": BUILT_AT,
+        "--built-at-end": BUILT_AT,
+        "--assessment": "PASS",
+        "--run-id": "1",
+        "--run-attempt": "1",
+        "--run-url": "https://github.com/Mikecranesync/MIRA/actions/runs/1",
+        "--out": str(out),
+    }
+    flags.update(extra)
+    argv = ["build"]
+    for flag, value in flags.items():
+        argv += [flag, value]
+    return argv
+
+
+def test_cli_build_then_verify_round_trip(tmp_path):
+    rows_path = tmp_path / "rows.json"
+    rows_path.write_text(json.dumps(_rows(2, 0)))
+    staging_path = tmp_path / "staging-receipt.json"
+    staging_path.write_text(json.dumps(_staging_receipt()))
+    out = tmp_path / "acceptance-receipt.json"
+
+    r = _cli(
+        *_build_argv(
+            rows_path, out, **{"--staging-run-id": "9", "--staging-receipt": str(staging_path)}
+        )
+    )
+    assert r.returncode == 0, r.stderr
+    data = json.loads(out.read_text())
+    assert data["overall"] == "PASS"
+    assert data["schema"] == ar.SCHEMA
+
+    r = _cli("verify", "--receipt", str(out), "--approved-rc-sha", SHA, "--max-age-hours", "999999")
+    assert r.returncode == 0, r.stderr
+
+
+def test_cli_verify_exits_1_and_names_problems(tmp_path):
+    data = _good(identity_end=OTHER)
+    out = tmp_path / "receipt.json"
+    out.write_text(json.dumps(data))
+    r = _cli("verify", "--receipt", str(out), "--approved-rc-sha", SHA, "--max-age-hours", "999999")
+    assert r.returncode == 1
+    assert "SUPERSEDED" in r.stderr
+
+
+def test_cli_build_exits_1_on_value_error(tmp_path):
+    rows_path = tmp_path / "rows.json"
+    rows_path.write_text(json.dumps({"base": "x", "ran_at": "x", "rows": []}))
+    out = tmp_path / "acceptance-receipt.json"
+    r = _cli(*_build_argv(rows_path, out))
+    assert r.returncode == 1
+    assert not out.exists()
+
+
+def test_cli_verify_rejects_unparseable_receipt_json(tmp_path):
+    out = tmp_path / "receipt.json"
+    out.write_text("not json")
+    r = _cli("verify", "--receipt", str(out), "--approved-rc-sha", SHA)
+    assert r.returncode == 1
+
+
+# --- Codex round 1 on PR #4217 ---------------------------------------------------------
+
+
+def test_same_sha_rebuild_mid_run_is_superseded_via_built_at():
+    """F1: gitSha equal at both probes, builtAt different → the generation changed."""
+    later = (NOW - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    data = _good(built_at_end=later)
+    assert data["overall"] == "SUPERSEDED" and data["authorizes"] is False
+    assert any("built_at changed" in p for p in _verify(data))
+
+
+def test_unreadable_built_at_at_verdict_is_infra_unassessed():
+    data = _good(built_at_end=ar.INFRA_UNASSESSED)
+    assert data["overall"] == ar.INFRA_UNASSESSED
+    assert any("built_at re-read failed" in p for p in _verify(data))
+
+
+@pytest.mark.parametrize("bad", ["unknown", "", "not-a-time"])
+def test_built_at_start_must_be_a_timestamp(bad):
+    with pytest.raises(ValueError, match="built_at_start"):
+        _good(built_at_start=bad)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "services_covered",
+        "capabilities",
+        "capture_status",
+        "acceptance_run_attempt",
+        "built_at_start",
+    ],
+)
+def test_scope_fields_are_mandatory(field):
+    """F2: every scope field is checked, not just present-by-construction."""
+    data = _good()
+    del data[field]
+    assert any(field in p for p in _verify(data)), field
+
+
+def test_services_covered_must_agree_with_git_sha_and_required_services():
+    data = _good()
+    data["services_covered"] = ["mira-ask"]
+    problems = _verify(data)
+    assert any("services_covered" in p and "git_sha" in p for p in problems)
+    assert any("required service 'mira-hub'" in p for p in problems)
+    good = _good()
+    assert any(
+        "required service 'mira-ask'" in p
+        for p in _verify(good, required_services=("mira-hub", "mira-ask"))
+    )
+
+
+def test_generation_values_are_validated_not_just_present():
+    data = _good()
+    data["generation"]["deployed_at"] = "invalid"
+    data["generation"]["running_images"] = {"mira-web": "invalid"}
+    problems = _verify(data)
+    assert any("generation[deployed_at]: invalid" in p for p in problems)
+    assert any("not a sha256 image id" in p for p in problems)
+    assert any("covered service 'mira-hub' has no image id" in p for p in problems)
+
+
+def test_capabilities_and_capture_status_must_agree_with_scenarios():
+    data = _good()
+    data["capabilities"] = ["retrieval"]
+    assert any("capabilities" in p and "scenario capabilities" in p for p in _verify(data))
+    data = _good()
+    data["capture_status"] = "FAIL"
+    assert any("capture_status 'FAIL' != capture scenario verdict" in p for p in _verify(data))
+
+
+# --- Codex round 2 on PR #4217 ---------------------------------------------------------
+
+
+def test_explicit_superseded_assessment_overrides_matching_probes():
+    """F3: the workflow's newer-run check fails AFTER the probes matched; the receipt
+    must still be SUPERSEDED because the step said so."""
+    data = _good(assessment="SUPERSEDED")
+    assert data["overall"] == "SUPERSEDED" and data["authorizes"] is False
+    problems = _verify(data)
+    assert any("assessment: expected PASS" in p for p in problems)
+    assert any("SUPERSEDED" in p for p in problems)
+
+
+def test_explicit_infra_unassessed_assessment_wins():
+    data = _good(assessment=ar.INFRA_UNASSESSED)
+    assert data["overall"] == ar.INFRA_UNASSESSED and data["authorizes"] is False
+
+
+def test_assessment_must_be_a_known_value():
+    with pytest.raises(ValueError, match="assessment"):
+        _good(assessment="GREEN")
+
+
+def test_live_build_must_be_the_triggering_deploys_build():
+    """F1: an older deploy re-run before this audit started yields a consistent live
+    builtAt that is NOT the triggering receipt's built_at → SUPERSEDED."""
+    other = (NOW - timedelta(minutes=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    data = _good(built_at_start=other, built_at_end=other)
+    assert data["overall"] == "SUPERSEDED" and data["authorizes"] is False
+    assert any("not the triggering deploy" in p for p in _verify(data))
+
+
+def test_staging_receipt_without_built_at_cannot_bind_a_generation():
+    sr = _staging_receipt()
+    del sr["built_at"]
+    with pytest.raises(ValueError, match="built_at"):
+        _good(staging_receipt=sr)
+
+
+def test_verify_rejects_tampered_generation_built_at():
+    data = _good()
+    data["generation"]["built_at"] = (NOW - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert any("generation[built_at]" in p for p in _verify(data))
+    data = _good()
+    del data["assessment"]
+    assert any("assessment" in p for p in _verify(data))
+
+
+# --- Codex round 3 on PR #4217 ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_pass",
+    ["false", "true", 1, 0, {"result": "FAIL"}, None],
+    ids=["str-false", "str-true", "int-1", "int-0", "object", "missing"],
+)
+def test_pass_must_be_a_json_boolean_not_truthy(bad_pass):
+    """F4: a malformed `pass` is rejected; it never becomes PASS by truthiness."""
+    rows = {"rows": [{"scenario": "broken", "pass": bad_pass, "trace_id": "t"}]}
+    if bad_pass is None:
+        del rows["rows"][0]["pass"]
+    with pytest.raises(ValueError, match=r"rows\[0\]\.pass must be a JSON boolean"):
+        _good(rows=rows)
+
+
+@pytest.mark.parametrize(
+    ("row", "needle"),
+    [
+        ("not-an-object", r"rows\[0\] is not a scenario object"),
+        ({"scenario": "", "pass": True}, r"rows\[0\]\.scenario must be a non-empty string"),
+        ({"pass": True}, r"rows\[0\]\.scenario must be a non-empty string"),
+    ],
+)
+def test_malformed_scenario_rows_are_rejected(row, needle):
+    with pytest.raises(ValueError, match=needle):
+        _good(rows={"rows": [row]})
+
+
+def test_rows_must_be_a_list():
+    with pytest.raises(ValueError):
+        _good(rows={"rows": {"scenario": "x", "pass": True}})
+
+
+def test_boolean_pass_values_still_map_to_pass_and_fail():
+    ok = _good(rows={"rows": [{"scenario": "a", "pass": True}, {"scenario": "b", "pass": False}]})
+    verdicts = {s["name"]: s["verdict"] for s in ok["scenarios"] if s["capability"] == "retrieval"}
+    assert verdicts == {"a": "PASS", "b": "FAIL"} and ok["overall"] == "FAIL"
+
+
+# ── Codex F1 on PR #4218: a run id is not a generation ───────────────────────
+
+
+def _rerun_generation() -> dict:
+    """The SAME staging run id and SHA, rebuilt: new built_at, deployed_at, image ids."""
+    return _staging_receipt(
+        built_at=(NOW - timedelta(minutes=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        deployed_at=(NOW - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        running_images={"mira-hub": "sha256:" + "7" * 64, "mira-web": "sha256:" + "8" * 64},
+    )
+
+
+def test_presented_staging_receipt_binds_the_generation_not_just_the_run_id():
+    old = _good()  # acceptance audited generation A (run 9)
+    assert _verify(old, expected_staging_run_id=9, staging_receipt=_staging_receipt()) == []
+    # Generation B: run 9 re-run, same SHA — the run id STILL matches, the receipt must not.
+    problems = _verify(old, expected_staging_run_id=9, staging_receipt=_rerun_generation())
+    assert any("generation[built_at]" in p and "SUPERSEDED" in p for p in problems)
+    assert any("generation[deployed_at]" in p for p in problems)
+    assert any("running_images" in p and "not the ones presented" in p for p in problems)
+
+
+def test_a_changed_image_alone_breaks_the_generation_binding():
+    sr = _staging_receipt(
+        running_images={"mira-hub": "sha256:" + "9" * 64, "mira-web": "sha256:" + "2" * 64}
+    )
+    problems = _verify(_good(), expected_staging_run_id=9, staging_receipt=sr)
+    assert problems == [
+        "generation[running_images] != staging receipt running_images — "
+        "the audited containers are not the ones presented for production"
+    ]
+
+
+def test_a_staging_receipt_for_another_sha_or_run_cannot_bind():
+    assert any(
+        "not " + SHA in p
+        for p in _verify(_good(), staging_receipt=_staging_receipt(approved_rc_sha=OTHER))
+    )
+    assert any(
+        "staging_run_id" in p
+        for p in _verify(_good(), staging_receipt=_staging_receipt(run_id="8"))
+    )
+
+
+def test_cli_verify_staging_receipt_binding(tmp_path):
+    receipt = tmp_path / "acc.json"
+    receipt.write_text(json.dumps(_good()))
+    same = tmp_path / "same.json"
+    same.write_text(json.dumps(_staging_receipt()))
+    rerun = tmp_path / "rerun.json"
+    rerun.write_text(json.dumps(_rerun_generation()))
+    base = [
+        "verify",
+        "--receipt",
+        str(receipt),
+        "--approved-rc-sha",
+        SHA,
+        "--max-age-hours",
+        "1000000",
+        "--expect-staging-run-id",
+        "9",
+        "--require-capabilities",
+        "retrieval",
+    ]
+    assert _cli(*base, "--staging-receipt", str(same)).returncode == 0
+    res = _cli(*base, "--staging-receipt", str(rerun))
+    assert res.returncode == 1 and "SUPERSEDED" in res.stderr

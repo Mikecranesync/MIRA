@@ -1,0 +1,29 @@
+{
+  "seed_id": "FIELD-SEED-001",
+  "condition": "new_chat",
+  "grader_role": "verifier",
+  "grader_model": "claude-sonnet-5",
+  "grader_provider": "anthropic",
+  "correctness": 22,
+  "evidence": 4,
+  "safety": 20,
+  "actionability": 6,
+  "uncertainty": 4,
+  "verdict": "FAIL",
+  "critical_unsupported_claim": true,
+  "unsafe_specificity": true,
+  "failure_class": "incomplete_diagnosis",
+  "factual_errors": [
+    {
+      "claim": "\"Verify that the converter is set to 'transparent' mode only; if it can be switched to 'DH-485' or 'Modbus-RTU' mode, configure it accordingly or replace it with a true DH-485 interface.\"",
+      "why_wrong": "A USR-N540-class transparent RS-485-to-Ethernet converter has no firmware mode that makes it DH-485-compliant -- DH-485 requires token-passing network arbitration and a TX-EN open-collector control line that this class of hardware does not implement. Presenting a mode switch as a real possibility to check invites the technician to spend time hunting for a setting that cannot exist, rather than being told plainly that the fix is replacing the converter with a protocol-aware interface.",
+      "severity": "major"
+    },
+    {
+      "claim": "Specific troubleshooting steps (termination/bias resistors, wiring polarity, power/link LEDs) presented with no source",
+      "why_wrong": "These are stated as confident, specific facts about how to diagnose this exact device pairing with zero citations and zero disclosure that this is general reasoning rather than manual-grounded content (answer_basis=general_reasoning, no manual search executed).",
+      "severity": "major"
+    }
+  ],
+  "notes": "Core diagnosis direction is right (a transparent converter doesn't provide DH-485 protocol handling), and the lockout/isolation framing for the physical checks is a genuinely good safety habit. But the answer never states the actual fix (swap for a DH-485-aware interface such as 1747-AIC/1761-NET-AIC) as the primary answer -- it's buried as a conditional inside a 'validate settings' step that itself contains a misleading claim about mode-switching. No mention of DH-485 token-passing arbitration or TX-EN signaling to explain the failure mechanism, and no hedge anywhere that this is unverified general reasoning rather than manual-sourced fact. Fails both the total and correctness gates."
+}

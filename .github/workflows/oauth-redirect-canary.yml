@@ -91,7 +91,20 @@ jobs:
           # Build the body via printf so each line has NO leading whitespace —
           # 4+ leading spaces would render the whole issue as a code block. No
           # backticks anywhere (avoids bash command substitution in the body).
+          # SDLC v1 §10.3 fixed fields first (one per line, exactly these keys; the
+          # body is the record of truth). A canary cannot attribute a deploy, so
+          # deploy_run/deploy_sha are "none"; restored_at stays "open" until a
+          # human edits the body; restoring_action starts as "none".
+          first_seen="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           body=$(printf '%s\n' \
+            "first_seen: ${first_seen}" \
+            "deploy_run: none" \
+            "deploy_sha: none" \
+            "services: mira-hub (Google OAuth sign-in on app.factorylm.com)" \
+            "impact: Google sign-in rejected with redirect_uri_mismatch" \
+            "restored_at: open" \
+            "restoring_action: none" \
+            "" \
             "The hourly OAuth redirect canary detected a Google redirect_uri_mismatch." \
             "**Google sign-in is broken on https://app.factorylm.com right now.**" \
             "" \
@@ -103,13 +116,36 @@ jobs:
           # Ensure the label exists (no-op if it already does).
           gh label create oauth-incident --color B60205 \
             --description "Google OAuth sign-in incident (canary)" 2>/dev/null || true
+          # SDLC v1 §10.3: every canary-opened failure record also carries the
+          # generic `incident` label so the observation window (§9), the metrics
+          # (§12.3) and the regression disposition are counted off ONE label.
+          gh label create incident --color B60205 \
+            --description "Production failure record; SDLC v1 10.3 fixed fields, see docs/agents/issue-tracker.md" 2>/dev/null || true
           # Dedup by a stable title marker so a multi-hour outage updates ONE
           # issue instead of opening a new one every hour.
-          existing=$(gh issue list --state open --search 'in:title redirect_uri_mismatch' \
-            --json number --jq '.[0].number // empty')
+          # Narrow the dedup target to this canary's own label (Codex F1, PR #4212): a
+          # title substring alone could pick a stale or hand-renamed issue.
+          matches=$(gh issue list --state open --label oauth-incident --search 'in:title redirect_uri_mismatch' \
+            --json number --jq '[.[].number]')
+          count=$(printf '%s' "$matches" | jq 'length')
+          # More than one open match is a maintenance state, not an outage of the canary:
+          # update the NEWEST (highest number) deterministically and flag the duplicates
+          # for cleanup — never strand the live signal, never pick an arbitrary one
+          # (Codex rounds 2 and 3, PR #4212).
+          if [ "$count" -gt 1 ]; then
+            echo "::warning::$count open issues match the incident dedup ($matches); updating the newest, close or retitle the stale ones"
+          fi
+          existing=$(printf '%s' "$matches" | jq -r 'max // empty')
           if [ -n "$existing" ]; then
+            # Label FIRST, then comment (Codex F1, PR #4212): if the label add fails the
+            # run goes red without leaving a half-updated record (comment present, label
+            # absent). An existing failure record without the `incident` label is an
+            # incomplete record; the observation window and metrics key on that label
+            # (SDLC v1 §9, §12.3). `--add-label` is idempotent when the label is present.
+            gh issue edit "$existing" --add-label incident \
+              || { echo "::error::could not add the incident label to #$existing; comment withheld"; exit 1; }
             gh issue comment "$existing" --body "$body"
             echo "commented on existing incident #$existing"
           else
-            gh issue create --title "$title" --body "$body" --label oauth-incident
+            gh issue create --title "$title" --body "$body" --label oauth-incident --label incident
           fi

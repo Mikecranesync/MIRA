@@ -74,6 +74,9 @@ vi.mock("@/lib/visual-evidence-context", () => ({
 }));
 
 import { POST } from "../confirm/route";
+import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
+import { recordFromOutcome } from "@/capabilities/notebook-manual-acquisition";
+import { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY } from "@/capabilities/manual-search-copy";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
@@ -167,6 +170,16 @@ function importableDiscovery() {
     trustedDistributorHost: false,
     reason: "validated OEM PDF",
   };
+}
+
+/**
+ * #4160 S6 — the full `DiscoveryResult` shape (`importableDiscovery()` predates
+ * `oemRequestUrl`/`quotaExceeded`, same pre-existing gap the S4 test above
+ * works around with its own literal). Used only by new S6 tests so they add
+ * no tsc error beyond this file's pre-existing baseline.
+ */
+function importableDiscoveryTyped() {
+  return { ...importableDiscovery(), oemRequestUrl: null, quotaExceeded: false };
 }
 
 function pdfDownload() {
@@ -351,7 +364,10 @@ describe("discovery terminal states", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe("search_unavailable");
-    expect(body.message).toBe("search service unavailable");
+    // #4160 gate NO-GO: the technician sees the approved outage sentence; the
+    // service's own reason is kept for diagnostics, never shown as the message.
+    expect(body.message).toBe(MANUAL_SEARCH_UNAVAILABLE_COPY);
+    expect(body.reason).toBe("search service unavailable");
     expect(body.manual).toBeNull();
     expect(body.candidate).toBeNull();
     expect(safeDownloadPdf).not.toHaveBeenCalled();
@@ -491,6 +507,440 @@ describe("manual import: candidate until the document proves itself", () => {
     expect(JSON.stringify(ev)).not.toMatch(/X-Mira-Key|ASK_API_KEY|api[_-]?key/i);
   });
 
+  // #4075 / Codex #4118 F3 — a background search passes a FENCED promoter. When
+  // it refuses (the notebook's identity changed mid-search), the manual must be
+  // left a disabled candidate — never enabled for the corrected machine.
+  const acquireInput = {
+    tenantId: TENANT_ID,
+    userId: "u1",
+    notebookId: NOTEBOOK_ID,
+    nodeId: "node-1",
+    identity: { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" },
+  };
+  const provingText = () =>
+    vi.mocked(withTenantContext).mockResolvedValue([
+      { content: "Allen-Bradley PowerFlex 525, catalog 25B-D010N104", page: 12 },
+    ]);
+
+  // #4160 S6 — basis="candidate": acquireManualForIdentity forces promote=false
+  // (extending requiresUserConfirmation, not duplicating it) even when the
+  // document's own text proves the identity, and stamps the REAL verdict
+  // separately as candidateApplicability so the fenced writer (and, after
+  // confirmation, migration 104) can still find it. R8: the judge may only
+  // ever reject — it never upgrades a 'candidate' verdict to 'verified' just
+  // because this is a candidate-basis search.
+  describe("#4160 S6 — basis='candidate' never promotes from this function", () => {
+    it("the document text proves the identity (catalog_number_exact), but the write is forced to candidate/disabled — the REAL verdict rides as candidateApplicability", async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      provingText();
+      const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
+      const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
+      expect(writeSourceState).toHaveBeenCalledTimes(1);
+      const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+      // Forced, not the verdict's own verified/true:
+      expect(patch.matchState).toBe("candidate");
+      expect(patch.enabledByDefault).toBe(false);
+      // But the real verdict is NOT lost — it rides separately for the fenced
+      // writer / migration 104 to act on once the technician confirms:
+      expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBe("verified");
+      expect((patch.matchEvidence as Record<string, unknown>).decisionMethod).toBe("catalog_number_exact");
+      // The outcome reflects what the (stubbed) writer actually persisted —
+      // never "complete" from a candidate-basis search this function ran.
+      expect(out.status).toBe("candidate_review");
+    });
+
+    it("control: the SAME document/identity under basis='confirmed' (default) promotes normally — proves the forcing is basis-specific, not a general regression", async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      provingText();
+      const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+      await acquireManualForIdentity({ ...acquireInput, writeSourceState });
+      const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+      expect(patch.matchState).toBe("verified");
+      expect(patch.enabledByDefault).toBe(true);
+      expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBeUndefined();
+    });
+
+    it("an unproven document (candidate verdict) stays candidate either way, and still stamps candidateApplicability='candidate' for basis='candidate'", async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      vi.mocked(withTenantContext).mockResolvedValue([{ content: "SEW MOVITRAC B operating instructions", page: 1 }]);
+      const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
+      await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
+      const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+      expect(patch.matchState).toBe("candidate");
+      expect(patch.enabledByDefault).toBe(false);
+      expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBe("candidate");
+    });
+
+    it("R4: a candidate-basis identity with no catalogNumber reaches discoverManual as manufacturer + model only", async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      provingText();
+      const noCatalog = { ...acquireInput, identity: { manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: undefined }, basis: "candidate" as const };
+      await acquireManualForIdentity(noCatalog);
+      const [calledIdentity] = vi.mocked(discoverManual).mock.calls.at(-1)!;
+      expect(calledIdentity).toMatchObject({ manufacturer: "SMC", model: "SS5Y3-DUW01302" });
+      expect((calledIdentity as Record<string, unknown>).catalogNumber).toBeUndefined();
+    });
+  });
+
+  // Codex r1 F3 (HIGH, #4172) — candidateApplicability must NEVER read 'verified'
+  // when the discovery result itself required a human review hold
+  // (probeUnvalidated: an unvalidated-by-the-service candidate, probed only
+  // because it is independently OEM-hosted). Both promotion paths —
+  // fencedWriter's promoteNow (the common race) and migration 104 (confirm
+  // arrives after the search finishes) — gate ONLY on candidateApplicability,
+  // so a document whose BYTES were never provenance-validated must stamp
+  // 'candidate' even when its TEXT matches exactly. Reuses the exact
+  // candidate/identity the #3400 suite already proved is probed-but-unvalidated
+  // (literature.rockwellautomation.com, independently Allen-Bradley-hosted).
+  describe("Codex r1 F3 (#4172) — candidateApplicability never 'verified' on an unvalidated download", () => {
+    it("probeUnvalidated + exact matching text (catalog_number_exact) → candidateApplicability stays 'candidate'", async () => {
+      vi.mocked(discoverManual).mockResolvedValue({ ...importableDiscoveryTyped(), validated: false });
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      provingText(); // exact catalog number in the text — would be catalog_number_exact/verified
+      const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
+      const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
+      const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+      const ev = patch.matchEvidence as Record<string, unknown>;
+      expect(ev.decisionMethod).toBe("catalog_number_exact"); // the verdict IS verified...
+      expect(ev.candidateApplicability).toBe("candidate"); // ...but never stamped as such
+      expect(out.status).toBe("candidate_review");
+      // Codex post-cap 4 F9: the outcome carries the stamp, so the chat never
+      // promises that confirming will turn this document on.
+      expect((out.payload as { manual?: { candidateApplicability?: string } }).manual?.candidateApplicability).toBe("candidate");
+      expect(recordFromOutcome("K", null, out).promotes_on_confirm).toBe(false);
+    });
+
+    it("control: the SAME text, with a VALIDATED discovery result, stamps candidateApplicability='verified'", async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped()); // validated: true (importableDiscovery())
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      provingText();
+      const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
+      const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
+      const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+      const ev = patch.matchEvidence as Record<string, unknown>;
+      expect(ev.candidateApplicability).toBe("verified");
+      expect((out.payload as { manual?: { candidateApplicability?: string } }).manual?.candidateApplicability).toBe("verified");
+      expect(recordFromOutcome("K", null, out).promotes_on_confirm).toBe(true);
+    });
+  });
+
+  // Codex post-cap 5 F10 (#4172): the "confirm and I'll answer from it" promise
+  // follows the PERSISTED row, not the attempted verdict. A source the notebook
+  // already had as verified and the technician switched off keeps its own
+  // state and evidence (upsert preserves them), so confirming cannot enable it.
+  it("Codex post-cap 5 F10: a re-found source persisted verified+disabled never reports promotes_on_confirm", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: false }));
+    const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
+    const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+    expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBe("verified"); // attempted
+    expect((out.payload as { manual?: { candidateApplicability?: string } }).manual?.candidateApplicability).toBeUndefined();
+    expect(recordFromOutcome("K", null, out).promotes_on_confirm).toBe(false);
+  });
+
+  it("Codex #4118 F3/F5: a refusing writer leaves the manual un-enabled and writes NOTHING after the refusal", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(setSourceState).mockClear();
+    const writeSourceState = vi.fn(async () => ({ matchState: "candidate", enabledByDefault: false }));
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState });
+    // Exactly one attempt (the promotion) — no demotion afterwards.
+    expect(writeSourceState).toHaveBeenCalledTimes(1);
+    expect((writeSourceState.mock.calls[0] as unknown[])[3]).toMatchObject({
+      matchState: "verified",
+      enabledByDefault: true,
+      matchEvidence: expect.objectContaining({ decisionMethod: "catalog_number_exact" }),
+    });
+    expect(setSourceState).not.toHaveBeenCalled();
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.manual).toMatchObject({ matchState: "candidate", enabledByDefault: false, docId: MANUAL_DOC_ID });
+  });
+
+  // #4160 S4 — a quota-cap denial must never look like "no manual exists"
+  // (PRD R5), and the Hub must pass the caller's identity through to the
+  // search so the router can even evaluate the cap in the first place.
+  it("#4160 S4: discovery.quotaExceeded maps to status search_limit_reached, not no_manual_found", async () => {
+    vi.mocked(discoverManual).mockResolvedValue({
+      serviceAvailable: true,
+      found: false,
+      candidate: null,
+      validated: false,
+      isDirectPdf: false,
+      oemHost: false,
+      trustedDistributorHost: false,
+      reason: "Daily manual-search limit reached for this user.",
+      quotaExceeded: true,
+      oemRequestUrl: null,
+    });
+    const out = await acquireManualForIdentity(acquireInput);
+    expect(out.status).toBe("search_limit_reached");
+    // #4160 gate NO-GO: the approved limit sentence, verbatim; the service's
+    // scoped reason stays on the payload for diagnostics.
+    expect(out.payload.message).toBe(MANUAL_SEARCH_LIMIT_COPY);
+    expect(out.payload.reason).toBe("Daily manual-search limit reached for this user.");
+  });
+
+  it("control: quotaExceeded:false with no candidate still maps to no_manual_found", async () => {
+    vi.mocked(discoverManual).mockResolvedValue({
+      serviceAvailable: true,
+      found: false,
+      candidate: null,
+      validated: false,
+      isDirectPdf: false,
+      oemHost: false,
+      trustedDistributorHost: false,
+      reason: "no official manual found",
+      quotaExceeded: false,
+      oemRequestUrl: null,
+    });
+    const out = await acquireManualForIdentity(acquireInput);
+    expect(out.status).toBe("no_manual_found");
+  });
+
+  it("#4160 S4: passes the caller's identity through to discoverManual as the second argument", async () => {
+    // Fully-typed literal (not the shared importableDiscovery() helper, which
+    // predates quotaExceeded/oemRequestUrl and is out of scope to fix here)
+    // so this NEW test adds no tsc error beyond this file's pre-existing baseline.
+    vi.mocked(discoverManual).mockResolvedValue({
+      ...importableDiscovery(),
+      oemRequestUrl: null,
+      quotaExceeded: false,
+    });
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    await acquireManualForIdentity(acquireInput);
+    expect(discoverManual).toHaveBeenCalledWith(
+      expect.objectContaining({ manufacturer: "Allen-Bradley", model: "525" }),
+      { tenantId: TENANT_ID, userId: "u1" },
+    );
+  });
+
+  it("Codex #4118 r3 F5: a refusing attach hook (lost ownership) skips every later write", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    vi.mocked(setSourceState).mockClear();
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+    const attach = vi.fn(async () => false);
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, attach });
+    expect(attach).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, expect.any(String), MANUAL_DOC_ID, expect.any(Array), expect.anything());
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+    expect(writeSourceState).not.toHaveBeenCalled();
+    expect(setSourceState).not.toHaveBeenCalled();
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.manual).toMatchObject({ docId: MANUAL_DOC_ID, attachSkipped: true });
+    // #4177 Codex r7 F9: lost ownership is an explicit UNATTACHED outcome —
+    // nothing was added, the reply never claims the manual is in Sources, and
+    // the durable record never claims an attachment.
+    expect(out.payload.manual).toMatchObject({ attached: false });
+    expect(out.payload.linked).toBe(false);
+    expect(out.payload.ownershipLost).toBe(true);
+    expect(String(out.payload.message)).not.toMatch(/already in this notebook/i);
+    expect(String(out.payload.message)).toMatch(/not added|was not added/i);
+    const rec = recordFromOutcome("ALLENBRADLEY|525|", null, out);
+    expect(rec.attached_indexed).toBe(false);
+    expect(rec.promotes_on_confirm).toBe(false);
+    expect(rec.linked).toBe(false);
+    expect(rec.state).toBe("candidate_review");
+  });
+
+  // #4177 Codex r8 F10: the FILE-ONLY path (ingest threw) must report lost
+  // ownership the same way — never "saved and viewable in this notebook" when
+  // no file link was created.
+  for (const [label, ingestError] of [
+    ["a scanned PDF (NoExtractableTextError)", new NoExtractableTextError("520-um001.pdf")],
+    ["a generic ingestion error", new Error("connection terminated unexpectedly")],
+  ] as const) {
+    it(`Codex r8 F10: ${label} + a refusing attach hook (lost ownership) → unattached, nothing claimed saved`, async () => {
+      vi.mocked(discoverManual).mockResolvedValue(importableDiscovery() as never);
+      vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+      vi.mocked(ingestPdfToNode).mockRejectedValueOnce(ingestError);
+      vi.mocked(attachFileToTargets).mockClear();
+      const attach = vi.fn(async () => false);
+      const out = await acquireManualForIdentity({ ...acquireInput, attach });
+      expect(attach).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, expect.any(String), null, expect.any(Array), expect.anything());
+      expect(attachFileToTargets).not.toHaveBeenCalled();
+      expect(out.status).toBe("candidate_review");
+      expect(out.payload.manual).toMatchObject({ docId: null, attached: false });
+      expect(out.payload.linked).toBe(false);
+      expect(out.payload.ownershipLost).toBe(true);
+      expect(out.payload.ingestFailed).toBeUndefined();
+      const text = `${out.payload.message} ${out.payload.warning ?? ""}`;
+      expect(text).not.toMatch(/saved|viewable|already in this notebook/i);
+      expect(text).toMatch(/not added/i);
+      const rec = recordFromOutcome("ALLENBRADLEY|525|", null, out);
+      expect(rec.attached_indexed).toBe(false);
+      expect(rec.linked).toBe(false);
+      expect(rec.state).toBe("candidate_review");
+    });
+  }
+
+  it("Codex r8 F10 control: a scanned PDF with an ACCEPTING attach hook is still saved as a viewable file", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery() as never);
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    vi.mocked(ingestPdfToNode).mockRejectedValueOnce(new NoExtractableTextError("520-um001.pdf"));
+    const out = await acquireManualForIdentity({ ...acquireInput, attach: vi.fn(async () => true) });
+    expect(out.status).toBe("no_extractable_text");
+    expect(out.payload.linked).toBe(true);
+    expect(String(out.payload.message)).toMatch(/viewable file only/i);
+  });
+
+
+  it("control: an accepting writer yields complete + verified, and the default path still enables", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const accepted = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "verified", enabledByDefault: true })),
+    });
+    expect(accepted.status).toBe("complete");
+    expect(accepted.payload.manual).toMatchObject({ matchState: "verified", enabledByDefault: true });
+    vi.mocked(setSourceState).mockClear();
+    const byDefault = await acquireManualForIdentity(acquireInput);
+    expect(byDefault.status).toBe("complete");
+    expect(vi.mocked(setSourceState).mock.calls.at(-1)![3]).toMatchObject({ matchState: "verified", enabledByDefault: true });
+  });
+
+  it("Codex #4118 F8: a technician's decision the writer declined is reported as it stands, never as enabled", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const rejected = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "rejected", enabledByDefault: false })),
+    });
+    expect(rejected.status).toBe("candidate_review");
+    expect(rejected.payload.manual).toMatchObject({ matchState: "rejected", enabledByDefault: false, attached: false });
+    const disabled = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "verified", enabledByDefault: false })),
+    });
+    expect(disabled.status).toBe("candidate_review");
+    expect(disabled.payload.manual).toMatchObject({ matchState: "verified", enabledByDefault: false, attached: true });
+    const confirmed = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "user_confirmed", enabledByDefault: true })),
+    });
+    expect(confirmed.status).toBe("complete");
+  });
+
+  it("Codex #4118 F9: a source removed before the write is not reported as added", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const gone = await acquireManualForIdentity({ ...acquireInput, writeSourceState: vi.fn(async () => null) });
+    expect(gone.status).toBe("candidate_review");
+    expect(gone.payload.manual).toMatchObject({ attached: false, enabledByDefault: false });
+    expect(String(gone.payload.message)).toMatch(/not among this notebook's sources/);
+    // The default (route) writer: a zero-row update is also "not attached".
+    vi.mocked(setSourceState).mockResolvedValueOnce(false);
+    const routeGone = await acquireManualForIdentity(acquireInput);
+    expect(routeGone.status).toBe("candidate_review");
+    expect(routeGone.payload.manual).toMatchObject({ attached: false });
+  });
+
+  it("Codex #4118 r13 F17: a failed chunk read is retryable — no verdict, no source write", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    vi.mocked(withTenantContext).mockRejectedValueOnce(new Error("connection terminated unexpectedly"));
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState });
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.retryable).toBe(true);
+    expect(writeSourceState).not.toHaveBeenCalled();
+    expect(out.payload.manual).toMatchObject({ docId: MANUAL_DOC_ID, matchState: "candidate", enabledByDefault: false });
+  });
+
+  it("Codex #4118 r13 F17: a writer that throws is retryable, never 'not added'", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => {
+        throw new Error("connection terminated unexpectedly");
+      }),
+    });
+    expect(out.payload.retryable).toBe(true);
+    expect(out.payload.manual).not.toMatchObject({ attached: false });
+  });
+
+  it("Codex #4118 r13 F17 control: a successful read + write is not marked retryable", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => ({ matchState: "verified", enabledByDefault: true })),
+    });
+    expect(out.status).toBe("complete");
+    expect(out.payload.retryable).toBeUndefined();
+  });
+
+  it("Codex #4118 r14 F18: an attach gate that throws is retryable and attaches nothing", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      attach: vi.fn(async () => {
+        throw new Error("connection terminated unexpectedly");
+      }),
+    });
+    expect(out.payload.retryable).toBe(true);
+    expect(out.payload.linked).toBe(false);
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+  });
+
+  it("Codex #4118 r14 F19: a manual the technician removed is never attached again", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, attach: vi.fn(async () => "removed" as const) });
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.removedByTechnician).toBe(true);
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+    expect(writeSourceState).not.toHaveBeenCalled();
+  });
+
+  it("Codex #4118 r15 F19: 'resume' assesses the existing source without re-attaching", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    vi.mocked(attachFileToTargets).mockClear();
+    const writeSourceState = vi.fn(async () => ({ matchState: "verified", enabledByDefault: true }));
+    const out = await acquireManualForIdentity({ ...acquireInput, writeSourceState, attach: vi.fn(async () => "resume" as const) });
+    expect(attachFileToTargets).not.toHaveBeenCalled();
+    expect(writeSourceState).toHaveBeenCalledTimes(1);
+    expect(out.status).toBe("complete");
+  });
+
+  it("Codex #4118 r15 F19: a source gone at write time is reported as removed by the technician", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    provingText();
+    const out = await acquireManualForIdentity({
+      ...acquireInput,
+      writeSourceState: vi.fn(async () => null),
+      attach: vi.fn(async () => "resume" as const),
+    });
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.removedByTechnician).toBe(true);
+    expect(out.payload.linked).toBe(false);
+  });
+
   it("reuses an existing parsed document on exact-byte dedup without re-parsing", async () => {
     vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
     vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
@@ -529,6 +979,18 @@ describe("scanned manuals are stored, viewable, and never a chat source", () => 
     expect(attachArgs[2][0]).toMatchObject({ role: "manual" });
     expect(attachArgs[2][0].matchState).toBeUndefined();
     expect(setSourceState).not.toHaveBeenCalled();
+    expect(body.ingestFailed).toBe(false);
+  });
+
+  it("Codex #4118 r12 F16: a NON-scan ingest failure is flagged retryable (ingestFailed), a scan is not", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
+    vi.mocked(ingestPdfToNode).mockRejectedValue(new Error("connection terminated unexpectedly"));
+    const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(body.status).toBe("candidate_review");
+    expect(body.ingestFailed).toBe(true);
+    expect(body.manual).toMatchObject({ docId: null, indexed: false });
   });
 });
 
@@ -1223,5 +1685,351 @@ describe("visual-observation correction (Slice 3)", () => {
     expect(correctVisualObservations).toHaveBeenCalledWith(
       expect.objectContaining({ corrections: [{ observationId: OBS_2, value: "GS10" }] }),
     );
+  });
+});
+
+// #4160 S7 (owner decision 2026-10-01 §2): with the acquisition flag on, the
+// confirm-time search runs under the lifecycle, so a limit denial or an outage
+// is RECORDED on the notebook and the chat's existing retry recovers it on the
+// next question — the technician never repeats the nameplate flow.
+describe("#4160 S7 — confirm-time acquisition is recorded for server-side recovery", () => {
+  const limited = () => ({
+    serviceAvailable: true, found: false, candidate: null, validated: false, isDirectPdf: false,
+    oemHost: false, trustedDistributorHost: false, reason: "Daily manual-search limit reached for this user.",
+    quotaExceeded: true, oemRequestUrl: null,
+  });
+  const unreachable = () => ({
+    serviceAvailable: false, found: false, candidate: null, validated: false, isDirectPdf: false,
+    oemHost: false, trustedDistributorHost: false, reason: "search service unavailable",
+  });
+  /** The notebook's OWN confirmed identity is the nameplate identity — the only
+   *  case the chat's retry can recover (#4178 tracks components in other notebooks). */
+  const sameMachine = () =>
+    vi.mocked(getNotebook).mockResolvedValue({
+      ...(notebook as object),
+      manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104", identityStatus: "user_confirmed",
+    } as never);
+  /** A tenant-context client. `claim` is "won" (gen g1) per mode: always, never (a live
+   *  running search), or only for an EXPLICIT confirmation ($7 true — a terminal record). */
+  const lifecycleDb = (mode: "wins" | "running" | "terminal", adoptedStamp?: Record<string, unknown>) => {
+    const queries: { sql: string; params: unknown[] }[] = [];
+    const impl = async (_t: string, fn: (c: unknown) => unknown) =>
+      fn({
+        query: vi.fn(async (sql: string, params: unknown[]) => {
+          queries.push({ sql, params });
+          if (/RETURNING manual_acquisition->>'gen'/.test(sql)) {
+            const wins = mode === "wins" || (mode === "terminal" && params[6] === true);
+            return { rowCount: wins ? 1 : 0, rows: wins ? [{ gen: "g1" }] : [] };
+          }
+          if (/^\s*SELECT manual_acquisition/.test(sql)) return { rows: [] };
+          if (/\? 'adopted_identity'/.test(sql))
+            return { rows: adoptedStamp ? [{ match_evidence: { adopted_identity: adoptedStamp } }] : [] };
+          return { rowCount: 1, rows: [] };
+        }),
+      });
+    vi.mocked(withTenantContext).mockImplementation(impl as never);
+    return queries;
+  };
+  const withFlag = async (on: boolean, run: () => Promise<void>) => {
+    const prev = process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION;
+    if (on) process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION = "1";
+    else delete process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION;
+    try {
+      await run();
+    } finally {
+      if (prev === undefined) delete process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION;
+      else process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION = prev;
+    }
+  };
+  const claimed = (queries: { sql: string; params: unknown[] }[]) => queries.some((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql));
+  const finishedState = (queries: { sql: string; params: unknown[] }[]) => {
+    const q = queries.find((x) => /jsonb_set/.test(x.sql));
+    return q ? (JSON.parse(q.params[2] as string) as { state: string }).state : null;
+  };
+
+  it("a limit denial at confirm (the notebook's own machine) is recorded as search_limit_reached and answered honestly", async () => {
+    await withFlag(true, async () => {
+      sameMachine();
+      const queries = lifecycleDb("wins");
+      vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+      const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+      const body = await res.json();
+      expect(body.status).toBe("search_limit_reached");
+      expect(String(body.message)).not.toMatch(/tomorrow|no manual|couldn't find/i);
+      expect(claimed(queries)).toBe(true);
+      expect(finishedState(queries)).toBe("search_limit_reached");
+    });
+  });
+  it("an outage at confirm is recorded as search_unavailable (retryable)", async () => {
+    await withFlag(true, async () => {
+      sameMachine();
+      const queries = lifecycleDb("wins");
+      vi.mocked(discoverManual).mockResolvedValue(unreachable() as never);
+      const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+      expect((await res.json()).status).toBe("search_unavailable");
+      expect(finishedState(queries)).toBe("search_unavailable");
+    });
+  });
+  // Codex r1 F2: an explicit confirmation over a TERMINAL record (e.g. an earlier
+  // no_manual_found) owns a new generation and persists its real outcome.
+  it("Codex r1 F2: re-confirming over a terminal record still records the new outcome", async () => {
+    await withFlag(true, async () => {
+      sameMachine();
+      const queries = lifecycleDb("terminal");
+      vi.mocked(discoverManual).mockResolvedValue(unreachable() as never);
+      const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+      expect((await res.json()).status).toBe("search_unavailable");
+      expect(finishedState(queries)).toBe("search_unavailable");
+    });
+  });
+  it("a LIVE running search for this key refuses the claim: the technician is still answered inline — once, unrecorded", async () => {
+    await withFlag(true, async () => {
+      sameMachine();
+      const queries = lifecycleDb("running");
+      vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+      const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+      expect((await res.json()).status).toBe("search_limit_reached");
+      expect(discoverManual).toHaveBeenCalledTimes(1);
+      expect(finishedState(queries)).toBeNull();
+    });
+  });
+  // #4178 (Pixel NO-GO, owner goal "easiest for techs"): on a BLANK notebook —
+  // no maker, model or catalog, not confirmed, not bound to an asset — the
+  // nameplate the technician just confirmed IS the machine's identity. It is
+  // adopted, so the search is recorded and the chat's retry recovers it.
+  describe("#4178 — a blank notebook adopts the confirmed nameplate identity", () => {
+    const ASSET_UUID = "a5e70000-0000-4000-8000-000000000001";
+    const blank = (extra: Record<string, unknown> = {}) =>
+      vi.mocked(getNotebook).mockResolvedValue({
+        ...(notebook as object),
+        manufacturer: null, model: null, catalogNumber: null, identityStatus: "unknown", asset: null,
+        ...extra,
+      } as never);
+    const adoption = (queries: { sql: string; params: unknown[] }[]) =>
+      queries.find((q) => /UPDATE equipment_notebooks[\s\S]*identity_source_type = 'nameplate_image'/.test(q.sql));
+
+    it("adopts maker/model/catalog (never the serial) and records the confirm-time search for recovery", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+        const body = await res.json();
+        const a = adoption(queries);
+        expect(a).toBeDefined();
+        expect(a!.params).toEqual(expect.arrayContaining(["Allen-Bradley", "525", "25B-D010N104"]));
+        expect(JSON.stringify(a!.params)).not.toContain("SN-99");
+        // the WHERE re-checks blankness atomically (a parallel chat cannot be overwritten)
+        expect(a!.sql).toMatch(/identity_status IN \('unknown', 'candidate'\)/);
+        expect(a!.sql).toMatch(/equipment_entity_id IS NULL/);
+        expect(body.status).toBe("search_limit_reached");
+        expect(body.identityAdopted).toBe(true);
+        expect(claimed(queries)).toBe(true);
+        expect(finishedState(queries)).toBe("search_limit_reached");
+      });
+    });
+
+    it("control: a notebook with its own identity is never renamed after a component", async () => {
+      await withFlag(true, async () => {
+        const queries = lifecycleDb("wins"); // default fixture: Nobody Inc / RIDE-1
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        const body = await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
+        expect(adoption(queries)).toBeUndefined();
+        expect(body.identityAdopted).toBeUndefined();
+        expect(finishedState(queries)).toBeNull();
+      });
+    });
+
+    it("control: a blank notebook BOUND to an asset is not adopted (the asset is the machine)", async () => {
+      await withFlag(true, async () => {
+        blank({ asset: { entityId: ASSET_UUID } });
+        const queries = lifecycleDb("wins");
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
+        expect(adoption(queries)).toBeUndefined();
+      });
+    });
+
+    it("control: a nameplate with a maker but no model or catalog is not adopted", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        await POST(makeReq({ ...baseBody, identity: { manufacturer: "Allen-Bradley" } }), makeParams(NOTEBOOK_ID));
+        expect(adoption(queries)).toBeUndefined();
+      });
+    });
+
+    it("adoption records WHICH photo named the notebook, in the same single UPDATE (no second write)", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+        const a = adoption(queries)!;
+        expect(a.sql).toMatch(/identity_source_ref = 'nameplate:' \|\| \$6::text/);
+        expect(a.params[5]).toBe(PHOTO_FILE_ID);
+        // provenance is never a separate, losable write on the source row
+        expect(queries.some((q) => /adopted_identity/.test(q.sql))).toBe(false);
+      });
+    });
+
+    // Codex #4191: correcting the SAME photo after an adoption moves the notebook
+    // (and its recorded search) to the corrected identity. WHICH notebooks qualify
+    // is decided inside the UPDATE (proven on real Postgres in
+    // capabilities/__tests__/nameplate-identity-adoption.pg.test.ts); here the route
+    // must ask, and act on the answer.
+    describe("Codex #4191 — a correction of the adopting photo re-adopts", () => {
+      const ADOPTED = { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" };
+      const CORRECTED = { manufacturer: "Allen-Bradley", model: "755", catalogNumber: "20G11NC022AA0NNNNN" };
+      const adopted = (extra: Record<string, unknown> = {}) =>
+        vi.mocked(getNotebook).mockResolvedValue({
+          ...(notebook as object), ...ADOPTED, identityStatus: "user_confirmed", identitySourceType: "nameplate_image", asset: null,
+          ...extra,
+        } as never);
+      const correct = () => makeReq({ ...baseBody, identity: { ...CORRECTED, serialNumber: "SN-99" } });
+
+      it("a nameplate-sourced notebook asks the conditional UPDATE; when it moves, ITS search is recorded", async () => {
+        await withFlag(true, async () => {
+          adopted();
+          const queries = lifecycleDb("wins");
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          const body = await (await POST(correct(), makeParams(NOTEBOOK_ID))).json();
+          const a = adoption(queries)!;
+          expect(a.params).toEqual(expect.arrayContaining(["755", "20G11NC022AA0NNNNN", PHOTO_FILE_ID]));
+          expect(JSON.stringify(a.params)).not.toContain("SN-99");
+          expect(body.identityAdopted).toBe(true);
+          expect(finishedState(queries)).toBe("search_limit_reached");
+          const claim = queries.find((q) => /RETURNING manual_acquisition->>'gen'/.test(q.sql))!;
+          expect(JSON.stringify(claim.params)).toContain("755");
+        });
+      });
+
+      it("when the UPDATE refuses (another photo, an edit, a binding), the search stays inline and unrecorded", async () => {
+        await withFlag(true, async () => {
+          adopted();
+          const queries = lifecycleDb("wins");
+          const impl = vi.mocked(withTenantContext).getMockImplementation()!;
+          vi.mocked(withTenantContext).mockImplementation((async (t: string, fn: (c: unknown) => unknown) =>
+            impl(t, (async (c: unknown) => {
+              const client = c as { query: (sql: string, params: unknown[]) => Promise<unknown> };
+              const orig = client.query;
+              client.query = vi.fn(async (sql: string, params: unknown[]) =>
+                /identity_source_ref = 'nameplate:'/.test(sql) ? { rowCount: 0, rows: [] } : orig(sql, params),
+              );
+              return fn(client);
+            }) as never)) as never);
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          const body = await (await POST(correct(), makeParams(NOTEBOOK_ID))).json();
+          expect(body.status).toBe("search_limit_reached");
+          expect(body.identityAdopted).toBeUndefined();
+          expect(finishedState(queries)).toBeNull();
+        });
+      });
+
+      it("control: a notebook whose identity was TYPED is never sent to the adoption UPDATE", async () => {
+        await withFlag(true, async () => {
+          adopted({ identitySourceType: "user" });
+          const queries = lifecycleDb("wins");
+          vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+          await POST(correct(), makeParams(NOTEBOOK_ID));
+          expect(adoption(queries)).toBeUndefined();
+        });
+      });
+    });
+
+    // Codex #4191 r3 F4: a failed identity save must not be followed by a search
+    // under an identity that did not save. The phone already turns any non-2xx
+    // into its error state ("Edit the details and try again"), and the same
+    // confirm key replays straight back into this adoption.
+    it("a database failure saving the identity is a retryable 503 — no manual search under an unsaved identity", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        const impl = vi.mocked(withTenantContext).getMockImplementation()!;
+        vi.mocked(withTenantContext).mockImplementation((async (t: string, fn: (c: unknown) => unknown) =>
+          impl(t, (async (c: unknown) => {
+            const client = c as { query: (sql: string, params: unknown[]) => Promise<unknown> };
+            const orig = client.query;
+            client.query = vi.fn(async (sql: string, params: unknown[]) => {
+              if (/identity_source_ref = 'nameplate:'/.test(sql)) throw new Error("connection reset");
+              return orig(sql, params);
+            });
+            return fn(client);
+          }) as never)) as never);
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+        expect(res.status).toBe(503);
+        const body = await res.json();
+        expect(body).toMatchObject({ ok: false, error: "identity_save_failed", retryable: true });
+        expect(discoverManual).not.toHaveBeenCalled();
+        expect(claimed(queries)).toBe(false);
+      });
+    });
+
+    it("a lost adoption race (row no longer blank) falls back to the inline, unrecorded search — never an error", async () => {
+      await withFlag(true, async () => {
+        blank();
+        const queries = lifecycleDb("wins");
+        const impl = vi.mocked(withTenantContext).getMockImplementation()!;
+        vi.mocked(withTenantContext).mockImplementation((async (t: string, fn: (c: unknown) => unknown) =>
+          impl(t, (async (c: unknown) => {
+            const client = c as { query: (sql: string, params: unknown[]) => Promise<unknown> };
+            const orig = client.query;
+            client.query = vi.fn(async (sql: string, params: unknown[]) => {
+              if (/identity_source_type = 'nameplate_image'/.test(sql)) {
+                queries.push({ sql, params });
+                return { rowCount: 0, rows: [] };
+              }
+              return orig(sql, params);
+            });
+            return fn(client);
+          }) as never)) as never);
+        vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+        const body = await (await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID))).json();
+        expect(body.status).toBe("search_limit_reached");
+        expect(body.identityAdopted).toBeUndefined();
+        expect(finishedState(queries)).toBeNull();
+      });
+    });
+  });
+
+  // Codex r1 F1: a COMPONENT nameplate in a notebook whose own identity differs
+  // (the default fixture: Nobody Inc / RIDE-1 vs Allen-Bradley / 525) is not
+  // recorded on the notebook-level record — the chat's retry could not consume
+  // it and the notebook's own search would overwrite it. Inline, as before.
+  // Tracked in #4178.
+  it("Codex r1 F1: a component nameplate in a differently-identified notebook stays inline and unrecorded", async () => {
+    await withFlag(true, async () => {
+      const queries = lifecycleDb("wins");
+      vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+      const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+      expect((await res.json()).status).toBe("search_limit_reached");
+      expect(claimed(queries)).toBe(false);
+      expect(finishedState(queries)).toBeNull();
+    });
+  });
+  // Updated for #4178: a BLANK unbound notebook now adopts the nameplate and IS
+  // recorded (see the #4178 block). An unbound notebook that already names a
+  // DIFFERENT machine still stays inline and unrecorded — Codex r1 F1 holds.
+  it("Codex r1 F1: an unbound notebook naming a different machine stays inline and unrecorded", async () => {
+    await withFlag(true, async () => {
+      vi.mocked(getNotebook).mockResolvedValue({ ...(notebook as object), manufacturer: "Nobody Inc", model: "RIDE-1", identityStatus: "unknown", asset: null } as never);
+      const queries = lifecycleDb("wins");
+      vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+      await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+      expect(claimed(queries)).toBe(false);
+    });
+  });
+  it("flag off: exactly today's inline search — no lifecycle record", async () => {
+    await withFlag(false, async () => {
+      sameMachine();
+      const queries = lifecycleDb("wins");
+      vi.mocked(discoverManual).mockResolvedValue(limited() as never);
+      const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+      expect((await res.json()).status).toBe("search_limit_reached");
+      expect(claimed(queries)).toBe(false);
+      expect(finishedState(queries)).toBeNull();
+    });
   });
 });

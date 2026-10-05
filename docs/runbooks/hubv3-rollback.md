@@ -1,5 +1,7 @@
 # HubV3 Rollback Runbook
 
+> **Historical (2026-06-20 release).** Two mechanics below no longer exist: `deploy-vps.yml` has no `ref=` input (dispatch with `-f approved_rc_sha=<40-hex>` of the known-good commit, which must be on `main`, and the receipt, acceptance and drift gates apply unchanged), and `/VERSION` was deleted in #3064 (the version is derived from the latest `v*` tag; nothing to bump in a revert PR). The general rollback runbook is `docs/runbooks/rollback.md` (SDLC v1 Part B step 10); `docs/architecture/mira-sdlc-v1.md` §10.2 is the rule.
+
 **Scope:** rolling back the HubV3 contextualization-intake release (VERSION `3.29.0`, `mira-hub/v2.13.0`, `mira-contextualizer/v2.3.0`) from production.
 **Owner:** whoever runs the `#2068 → main` merge + deploy.
 **Companion:** `docs/plans/2026-06-20-hubv3-contextualization-intake-prd.md`, `docs/versioning.md`, `docs/environments.md`.
@@ -49,6 +51,7 @@ Redeploy the **monorepo baseline tag** (not a `mira-hub/v*` tag — those are st
 
 ```bash
 # From an authorized shell (repo write + production environment):
+# (historical form; today: -f approved_rc_sha=<the 40-hex commit the checkpoint tag points at>)
 gh workflow run deploy-vps.yml -f services="mira-hub" -f ref="checkpoint/pre-hubv3-2026-06-20"
 # = v3.28.3 = commit 529d62e2, which is exactly what prod ran before this release.
 # (contextualizer is a desktop app, not VPS-deployed — only re-pin if a bad build shipped)
@@ -94,7 +97,7 @@ git checkout -b revert/hubv3 origin/main
 git revert -m 1 <merge-commit-SHA>     # the #2068 → main merge commit (recorded above)
 git push -u origin revert/hubv3
 gh pr create --base main --title "revert: HubV3 (#2068) — <reason>" --fill
-# version-gate needs a forward bump: set /VERSION to 3.29.1 in the revert PR.
+# (historical) version-gate needed a forward bump of /VERSION; both were deleted in #3064 — no bump today.
 ```
 Then ROLLBACK A + B. Anchor for diffing "what changed": `checkpoint/pre-hubv3-2026-06-20`.
 
@@ -102,7 +105,7 @@ Then ROLLBACK A + B. Anchor for diffing "what changed": `checkpoint/pre-hubv3-20
 
 ## Post-rollback
 
-1. Confirm `/VERSION` and the live tag prod runs match the intended rolled-back state.
+1. Confirm the `v*` tag at the deployed SHA (`/api/health` `gitSha`) matches the intended rolled-back state (`/VERSION` no longer exists).
 2. Smoke green on both domains + Telegram.
 3. File an incident note in `docs/known-issues.md` with the failure + which rollback was used.
 4. Re-open `#2068` (or a fresh branch) with the fix before re-attempting the merge.

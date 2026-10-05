@@ -1,0 +1,13 @@
+{
+ "planted": "in base\\.replace\\(\"app-staging\", \"\"\\)",
+ "keywords_any": [
+  "substring",
+  "hostname",
+  "allowlist",
+  "attacker",
+  "urlparse",
+  "host"
+ ],
+ "min_severity": "medium",
+ "provenance": "#4182 Codex r11 F20 + cheap lane 2026-10-03: substring guard; https://app-staging.factorylm.com.attacker.example passes"
+}

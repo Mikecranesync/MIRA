@@ -4,7 +4,7 @@
 #
 # WHY THIS EXISTS
 # ---------------
-# The hook carries seven guards and, until this file, was executed by no CI job
+# The hook carries eight guards and, until this file, was executed by no CI job
 # and no test — the only `githooks` reference under .github/ is a comment in
 # code-review.yml, which *reimplements* one section as a backstop rather than
 # running the hook. Three live defects were found in it on 2026-07-29, one of
@@ -43,6 +43,8 @@ HOOK="$REPO_ROOT/.githooks/pre-commit"
 [ -f "$HOOK" ] || { echo "FATAL: $HOOK not found" >&2; exit 2; }
 
 FIXTURE_DIR="$REPO_ROOT/.precommit-hook-fixtures"
+GUARDED_FIXTURE="$REPO_ROOT/mira-mobile/src/screens/.precommit lifecycle guard fixture.tsx"
+CANONICAL_FIXTURE="$REPO_ROOT/mira-mobile/src/unified/.precommit-lifecycle-guard-fixture.ts"
 SHIM_DIR=""
 PASS=0
 FAIL=0
@@ -69,8 +71,9 @@ fi
 cleanup() {
   cd "$REPO_ROOT" 2>/dev/null || return
   # Only ever touches its own fixture path.
-  git reset -q -- "$FIXTURE_DIR" 2>/dev/null || true
+  git reset -q -- "$FIXTURE_DIR" "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE" 2>/dev/null || true
   rm -rf "$FIXTURE_DIR"
+  rm -f "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE"
   [ -n "$SHIM_DIR" ] && rm -rf "$SHIM_DIR"
 }
 trap cleanup EXIT
@@ -164,6 +167,9 @@ echo "[3] dead python: symbol check reports SKIPPED, never a pass"
 make_fixtures
 make_dead_tool_shims python3 python py
 OUT=$(PATH="$SHIM_DIR:$PATH" run_hook)
+RC=$?
+assert_eq "$RC" "1" "missing Python blocks when lifecycle policy cannot run"
+assert_contains "$OUT" "UI lifecycle policy could not run" "lifecycle check fails closed"
 assert_contains "$OUT" "symbol check SKIPPED, not passed" "says SKIPPED"
 assert_not_contains "$OUT" "verify_agent_symbols: no"     "does NOT report a successful run"
 cleanup; trap cleanup EXIT
@@ -181,6 +187,38 @@ git add -- "$FIXTURE_DIR/good.sh"
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "0"                        "hook exits 0 on a clean staged set"
 assert_not_contains "$OUT" "Failed:   1"   "reports no failures"
+cleanup; trap cleanup EXIT
+echo
+
+# ---------------------------------------------------------------------------
+# 5. A guarded legacy UI path must be stopped before commit with an actionable
+#    route to the canonical shell. This executes the real registry-backed
+#    lifecycle classifier through the production hook.
+# ---------------------------------------------------------------------------
+echo "[5] guarded legacy UI: hook blocks and routes work to canonical adapters"
+printf 'export const precommitLifecycleGuardFixture = true;\n' > "$GUARDED_FIXTURE"
+git add -- "$GUARDED_FIXTURE"
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                      "hook blocks a guarded legacy UI path"
+assert_contains "$OUT" "Guarded legacy UI route staged" "names the lifecycle violation"
+assert_contains "$OUT" "mira-mobile/src/screens/.precommit lifecycle guard fixture.tsx" \
+  "lists the exact guarded path"
+assert_contains "$OUT" "mira-mobile/src/unified/**"      "points mobile work to the canonical adapter"
+assert_contains "$OUT" "Automation must not bypass"     "tells agents not to evade the blocker"
+cleanup; trap cleanup EXIT
+echo
+
+# ---------------------------------------------------------------------------
+# 6. The existing mobile unified adapter is canonical and must remain open.
+#    A guard that blocks both old and new paths would push agents back toward
+#    bypassing it rather than guide them to the intended seam.
+# ---------------------------------------------------------------------------
+echo "[6] canonical mobile adapter: hook allows the intended route"
+printf 'export const precommitLifecycleGuardFixture = true;\n' > "$CANONICAL_FIXTURE"
+git add -- "$CANONICAL_FIXTURE"
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "0"                                  "hook allows the canonical unified adapter"
+assert_contains "$OUT" "No guarded legacy UI paths staged" "reports the lifecycle check passed"
 cleanup; trap cleanup EXIT
 echo
 

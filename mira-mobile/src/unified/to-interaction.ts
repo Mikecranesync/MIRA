@@ -16,10 +16,12 @@ import type {
   InteractionTurn,
   Lifecycle,
   Machine,
+  ManualSearchStatus,
   Project,
   ShellFixture,
   SourceReference,
 } from "@factorylm/interaction";
+import { sameManufacturerModel } from "@factorylm/interaction";
 import type { AdapterMessage, MessagePart } from "../chat-adapter/contract";
 import type { ChatCitation } from "../lib/sse";
 
@@ -33,6 +35,15 @@ export interface UnifiedNotebookMeta {
   readonly asset?: { readonly id: string; readonly name: string; readonly unsPath?: string | null } | null;
   /** The notebook's identity status is user_confirmed (server-owned; never inferred). */
   readonly identityConfirmed: boolean;
+  /**
+   * The notebook's CURRENT confirmed manufacturer+model — mirrors the Hub's
+   * own `confirmedIdentity` (to-interaction.ts): `identityStatus`
+   * `user_confirmed`/`verified`, independent of `identityConfirmed` above
+   * (asset BINDING, a separate concept the #4120 confirm route never
+   * creates). Settles a persisted `identity_proposal` card that no longer
+   * matches (light-review fix, PR #4195) — never read for grounding.
+   */
+  readonly confirmedIdentity?: { readonly manufacturer: string; readonly model: string } | null;
   /** ISO timestamp used as the context capture time; the caller passes one value per hydrate. */
   readonly capturedAt: string;
 }
@@ -194,8 +205,62 @@ export function toInteractionPart(part: MessagePart): InteractionPart {
     case "identity_dispute":
       return { type: "identity_dispute" };
     case "unknown":
-      return { type: "unknown", raw: part.raw };
+      return unknownInteractionPart(part.raw);
   }
+}
+
+/** A raw string field, or null — never coerced from a non-string. */
+function rawString(raw: Record<string, unknown>, key: string): string | null {
+  const v = raw[key];
+  return typeof v === "string" ? v : null;
+}
+
+/**
+ * `{type:"unknown", raw}` is the mobile chat-adapter's generic passthrough for
+ * any server frame kind this contract version doesn't model — the ONE place
+ * (per `src/lib/sse.ts`'s "one canonical parser" rule) that already carries an
+ * `identity_proposal` or `manual_search_status` frame's full JSON all the way
+ * from the wire to the shell, un-reshaped. Recognizing a known `raw.kind` HERE
+ * — in the canonical, unguarded adapter — turns it into the shared part
+ * `PartRenderer` knows how to confirm/show, without touching `sse.ts` or
+ * `turns-to-parts.ts` (both guarded legacy presentation, #FACTORYLM-UNIFIED-
+ * UI-CUTOVER-001). Anything else still falls back to `unknown` verbatim —
+ * never a crash, never a guess (PRD §9.2).
+ */
+function unknownInteractionPart(raw: unknown): InteractionPart {
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    const r = raw as Record<string, unknown>;
+    if (r.kind === "identity_proposal") {
+      const manufacturer = rawString(r, "manufacturer");
+      const model = rawString(r, "model");
+      if (manufacturer && model) {
+        const catalogNumber = rawString(r, "catalogNumber");
+        return { type: "identity_proposal", manufacturer, model, ...(catalogNumber ? { catalogNumber } : {}) };
+      }
+    } else if (r.kind === "manual_search_status") {
+      const manufacturer = rawString(r, "manufacturer");
+      const model = rawString(r, "model");
+      if (manufacturer && model && typeof r.running === "boolean") {
+        const message = rawString(r, "message");
+        // Codex round 5 F15 (#4195): `startedAt` is the search's own
+        // GENERATION (the chat route's `manualSearchStatusFrame` now stamps
+        // it on every live frame) — the shared follower's
+        // `observeLiveManualSearchFrame` needs it to tell a genuinely NEW
+        // search apart from a replay of an old one. Dropping it here would
+        // silently reintroduce the F15 bug on mobile.
+        const startedAt = rawString(r, "startedAt");
+        return {
+          type: "manual_search_status",
+          manufacturer,
+          model,
+          running: r.running,
+          ...(message ? { message } : {}),
+          ...(startedAt ? { startedAt } : {}),
+        };
+      }
+    }
+  }
+  return { type: "unknown", raw };
 }
 
 export function lifecycleOf(msg: AdapterMessage): Lifecycle {
@@ -207,13 +272,27 @@ export function lifecycleOf(msg: AdapterMessage): Lifecycle {
   }
 }
 
+/**
+ * Settle a persisted/live `identity_proposal` part against the notebook's
+ * CURRENT confirmed identity (light-review fix, PR #4195) — mirrors the
+ * Hub's own `to-interaction.ts`. Any other part type passes through
+ * untouched; a notebook with no confirmed identity yet leaves the part
+ * untouched too (today's live card applies).
+ */
+function settleIdentityProposal(part: InteractionPart, meta: UnifiedNotebookMeta): InteractionPart {
+  if (part.type !== "identity_proposal") return part;
+  const current = meta.confirmedIdentity ?? null;
+  if (!current) return part;
+  return { ...part, priorOutcome: sameManufacturerModel(part, current) ? "confirmed" : "superseded" };
+}
+
 export function toTurn(msg: AdapterMessage, meta: UnifiedNotebookMeta): InteractionTurn {
   const disputed = msg.parts.some((part) => part.type === "identity_dispute");
   return {
     id: msg.id,
     threadId: threadIdFor(meta),
     role: msg.role,
-    parts: msg.parts.map(toInteractionPart),
+    parts: msg.parts.map(toInteractionPart).map((part) => settleIdentityProposal(part, meta)),
     lifecycle: lifecycleOf(msg),
     context: contextFor(meta, disputed),
     createdAt: meta.capturedAt,
@@ -235,6 +314,122 @@ export function toThread(messages: readonly AdapterMessage[], meta: UnifiedNoteb
     createdAt: meta.capturedAt,
     updatedAt: meta.capturedAt,
   };
+}
+
+/**
+ * Codex F4 (#4189) — the most recent `manual_search_status` part across the
+ * thread (persisted or live), or null. Read straight off the already-mapped
+ * `InteractionTurn[]`, the same part the live SSE passthrough already
+ * produces (`toInteractionPart`'s `unknownInteractionPart`); this is just the
+ * lookup `UnifiedChat`'s bounded re-check needs to know what to resolve.
+ */
+export function latestManualSearchStatus(
+  turns: readonly InteractionTurn[],
+): Extract<InteractionPart, { type: "manual_search_status" }> | null {
+  let latest: Extract<InteractionPart, { type: "manual_search_status" }> | null = null;
+  for (const t of turns) {
+    for (const p of t.parts) if (p.type === "manual_search_status") latest = p;
+  }
+  return latest;
+}
+
+/**
+ * Codex F4 round 2 (#4189/#4195) — render the CURRENT manual-search status,
+ * whether or not a live frame ever carried one. The server never persists
+ * `manual_search_status` (deliberately transient — chat/route.ts's own
+ * comment), so after a reload, or for a hydration-time GET check, there is
+ * NO existing part to replace — the realistic case, not the exception. If a
+ * matching part already exists — a live frame arrived this session — it is
+ * replaced in place; otherwise the status is APPENDED to the last assistant
+ * turn (unless `options.allowAppend` is `false` — see
+ * `withManualSearchOverrides` below), mirroring the Hub's own
+ * `withManualSearchStatus`. Thread identity (ids, lifecycle, other parts) is
+ * untouched either way.
+ *
+ * Codex round 6 F17 (#4195): matching is keyed on GENERATION (`startedAt`)
+ * first, whenever BOTH the candidate part and the override carry one — two
+ * DIFFERENT searches for the identical manufacturer/model (a retry) must
+ * never be conflated into the same rendered card. Falls back to
+ * manufacturer+model identity only when either side lacks a generation (an
+ * older server, or the optimistic pre-first-read override right after a
+ * confirm) — unchanged from before F17.
+ */
+export function withManualSearchOverride(
+  thread: InteractionThread,
+  override: ManualSearchStatus | null,
+  options: { readonly allowAppend?: boolean } = {},
+): InteractionThread {
+  if (!override) return thread;
+  const allowAppend = options.allowAppend ?? true;
+  const part: InteractionPart = {
+    type: "manual_search_status",
+    manufacturer: override.manufacturer,
+    model: override.model,
+    running: override.running,
+    ...(override.message ? { message: override.message } : {}),
+    // Codex round 5 F15 (#4195): carry the override's own generation through
+    // to the rendered part, same as every other field — `override` already
+    // has it (it comes from a GET/confirm read or the follower's own
+    // status), this just stops silently dropping it on the way to render.
+    ...(override.startedAt ? { startedAt: override.startedAt } : {}),
+  };
+  const matches = (p: InteractionPart) => {
+    if (p.type !== "manual_search_status") return false;
+    if (override.startedAt && p.startedAt) return p.startedAt === override.startedAt;
+    return p.manufacturer === override.manufacturer && p.model === override.model;
+  };
+  let replaced = false;
+  const replacedTurns = thread.turns.map((t) => {
+    if (!t.parts.some(matches)) return t;
+    replaced = true;
+    return { ...t, parts: t.parts.map((p) => (matches(p) ? part : p)) };
+  });
+  if (replaced) return { ...thread, turns: replacedTurns };
+  if (!allowAppend) return thread;
+  let lastAssistantIndex = -1;
+  for (let i = 0; i < replacedTurns.length; i++) if (replacedTurns[i]!.role === "assistant") lastAssistantIndex = i;
+  if (lastAssistantIndex === -1) return thread;
+  return {
+    ...thread,
+    turns: replacedTurns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t)),
+  };
+}
+
+/**
+ * Codex round 6 F17 (#4195): apply EVERY known outcome onto the thread, not
+ * just the single most-recently-active search. Before this, `UnifiedChat`
+ * held exactly ONE `follow` state; the moment a SECOND, different search
+ * (SMC resolves, then a different Rockwell search starts and resolves) took
+ * over that single slot, the first search's turn had nothing left overlaying
+ * it and reverted to whatever raw (possibly still `running: true`) frame is
+ * baked into `baseThread`, indefinitely — the search had genuinely settled,
+ * but its outcome was only ever remembered in the one slot that a later
+ * search then overwrote.
+ *
+ * `historical` is every OTHER generation's settled/unresolved outcome
+ * (`UnifiedChat`'s `settledManualSearches` map, keyed by generation) — each
+ * may only REPLACE a matching part, never append (`allowAppend: false`): an
+ * append targets "the last assistant turn" in the CURRENT thread, which
+ * after a notebook switch or a newer turn is a turn that has nothing to do
+ * with that historical search; appending it there would render one
+ * notebook's old status under an unrelated turn.
+ *
+ * `active` is the CURRENTLY-followed generation's status (or `null`) and is
+ * applied LAST, with the normal match-or-append behavior — so it always
+ * wins for its own generation even if a stale `historical` entry for the
+ * SAME key is still present (e.g. `reseedManualSearchFollow` reopening an
+ * already-settled generation to `following` on a fresh authoritative read).
+ */
+export function withManualSearchOverrides(
+  thread: InteractionThread,
+  historical: readonly ManualSearchStatus[],
+  active: ManualSearchStatus | null,
+): InteractionThread {
+  const afterHistorical = historical.reduce(
+    (acc, status) => withManualSearchOverride(acc, status, { allowAppend: false }),
+    thread,
+  );
+  return withManualSearchOverride(afterHistorical, active);
 }
 
 /** Citation lookup so the host's own viewer opens the real `ChatCitation` behind a shell `source`. */

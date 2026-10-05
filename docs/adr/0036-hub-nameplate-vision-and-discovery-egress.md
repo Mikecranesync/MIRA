@@ -1,7 +1,12 @@
-# ADR-0036 — Hub nameplate vision + manual-discovery egress: a policy decision REQUIRED before this ships
+# ADR-0036 — Hub nameplate vision + manual-discovery egress policy
 
-**Status: PROPOSED — NOT accepted. Blocks merge of the nameplate→manual arc until the
-owner decides.** This ADR does not, by itself, authorize anything.
+**Status: SPLIT.**
+- **Manual discovery (Serper): ACCEPTED, option (C), 2026-09-30** — owner decision D1 on
+  the Manual-First PRD v1.7.1 (recorded at
+  https://github.com/Mikecranesync/MIRA/issues/4160#issuecomment-5922449058). Automatic,
+  identity-only search, within the limits in § "Accepted Serper scope" below.
+- **Nameplate vision (Together / optional Groq): still PROPOSED — NOT accepted.** Options
+  (A)/(B) remain the owner's decision; nothing here authorizes runtime vision egress.
 **Date:** 2026-08-16
 **Raised by:** Codex review of PR #3245 (rounds 1–2): "the Hub calls Together directly,
 bypassing the governed inference router/sanitizer; Serper lacks a documented production
@@ -26,7 +31,7 @@ plus the narrow governed Together exception … for the FactoryLM AI **paid-trai
 workstream only." Under that text:
 - Hub nameplate vision on Together is **outside** the existing Together carve-out (it is
   runtime recognition, not paid training).
-- **Serper is not permitted at all.**
+- **Serper was not permitted at all** (resolved for identity-only discovery by D1 below).
 
 So this arc **cannot be made compliant by code changes**. It needs the owner to decide
 whether to expand the cloud-egress policy. That decision is this ADR.
@@ -60,14 +65,41 @@ whether to expand the cloud-egress policy. That decision is this ADR.
   (`safe-download.ts`) and mitigated the same way (allowlist on the actual download).
 - Credentials Doppler-managed; provider error text credential-scrubbed (PRD §20).
 
-## Until this ADR is accepted
+## Accepted Serper scope (D1, 2026-09-30)
+
+These limits are the policy; code that exceeds them is a defect, not a reading of the ADR.
+
+- **What may be sent:** the manufacturer slug, the part/model token, and an optional catalog
+  number — nothing else (PRD R4). Never observation text, the question, the photo, tenant,
+  site, asset tag, serial number, notebook content, or PII. Tenant/user context travels only
+  inside our services, for caps and audit.
+- **When:** automatically, when the Manual-First trigger holds (PRD R2) — a candidate identity
+  plus manual/documentation intent, or an identity read from a nameplate/label. Searching
+  never writes notebook identity, and the first manual-grounded answer still waits for one
+  technician confirmation (D2 / PRD R3).
+- **How much:** every Serper call is a counted provider query — at most 4 per call
+  (S1, #4161), 10 per user per day and 50 per tenant per day, plus a global breaker
+  (D4 / PRD R13). The monthly dollar ceiling is an open owner input; the breaker does not run
+  in production on an invented figure.
+- **Who may call:** only an authenticated caller — `/manual-discovery/search` fails closed
+  without `MANUAL_DISCOVERY_API_KEY` (#4162).
+- **Fetching results:** every probe and download dials only DNS answers that passed the
+  public-address check, on every redirect hop (#4163 mira-ask, #4164 Hub). The DNS-rebinding
+  residual described above is closed. Only a PDF on the maker's own documentation host may be
+  labelled a manual (PRD R7).
+- **What a result is:** a candidate. It is not trusted until the applicability check and the
+  technician confirmation pass; tenant finds enter the shared library only by curation (D3).
+
+## Until the remaining decision is accepted
 
 - The nameplate detector ships DARK (`NAMEPLATE_DETECT_ENABLED=0`).
-- The Hub vision + Serper paths exist in code but this ADR records that enabling them in
-  production is **blocked on the owner's policy decision**, not on any further engineering.
+- The Hub runtime vision path exists in code but enabling it in production is **blocked on
+  the owner's policy decision** (A/B), not on further engineering. Serper discovery is no
+  longer blocked by this ADR; it is bounded by § "Accepted Serper scope".
 
 ## Consequences
 
-If accepted with an explicit `AGENTS.md`/PRD amendment: one documented place explains why
-these two egresses exist and their hard scope limits. If declined: option (B)/(D) is the
-engineering follow-up. Either way, no self-approval — the amendment is an owner action.
+The Serper half is accepted and `AGENTS.md` §2 names it, pointing here for the limits. The
+vision half is unchanged: if accepted (A), amend `AGENTS.md` §2 + PRD §4 the same way; if
+declined, option (B) is the engineering follow-up. No self-approval — each acceptance is an
+owner decision, recorded with a link like D1's above.

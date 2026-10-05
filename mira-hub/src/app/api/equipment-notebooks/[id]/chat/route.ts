@@ -37,6 +37,7 @@
  * Together). The legacy list still contains Gemini; that divergence is exactly
  * what the seam removes (P0004 map §10 Q4).
  */
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { context, SpanStatusCode, trace, type Context, type Span } from "@opentelemetry/api";
 import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
@@ -45,6 +46,21 @@ import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evide
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
+import {
+  proposeIdentityFromText,
+  unconfirmedMachineDirective,
+  type IdentityProposal,
+  type NotebookIdentityProposalFrame,
+} from "@/capabilities/identity-proposal";
+import {
+  acquisitionEnabled,
+  acquisitionKey,
+  candidateAcquisitionEnabled,
+  acquisitionDeclineText,
+  readAcquisition,
+  reconcileAcquisition,
+  startManualAcquisition,
+} from "@/capabilities/notebook-manual-acquisition";
 import { evaluateTurnDecision } from "@/capabilities/observability/jev-decision";
 import { buildTurnDecisionState, type TurnDecisionState } from "@/capabilities/observability/turn-decision-state";
 import {
@@ -87,6 +103,23 @@ import {
 } from "@/lib/safety-classifier";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
+import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
+import { withPhotoProvenance } from "@/capabilities/photo-provenance";
+import { withRetailCodeNote } from "@/capabilities/retail-codes";
+import {
+  PART_SEARCH_CANCEL,
+  asksPartCompatibility,
+  isPartSearchProposal,
+  partSearchConfirmation,
+  partSearchDecision,
+  pendingPartSearchProposal,
+  unambiguousPartNumber,
+  type PartSearchDecision,
+  type PartSearchProposalEntry,
+} from "@/capabilities/photo-part-lookup";
+import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
+import { citationTitle } from "@/capabilities/citation-title";
+import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
   buildRequestBody,
@@ -146,6 +179,7 @@ import {
   type VisualEvidenceRow,
 } from "@/lib/visual-evidence-context";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
+import { discoverManual } from "@/lib/manual-discovery";
 import {
   approvedAskEnforcementEnabled,
   approvedContextReady,
@@ -177,6 +211,7 @@ import {
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
+import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import {
   selectForSemanticCheck,
@@ -204,7 +239,7 @@ ANSWER SHAPE — a technician is standing at the machine and needs the answer fa
 - Do NOT open with background, generic safety boilerplate, or a restatement of the question.
 
 ENERGY STATE — this rule outranks brevity:
-- If an answer directs physical contact with wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part, state the required energy-isolation state IN THE SAME SENTENCE as the instruction — not as a trailing caution. e.g. "With the drive isolated, locked out and the DC bus verified at 0 V, check continuity across terminals 07-08 [2]."
+- If an answer directs physical contact with wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part, state the required energy-isolation state IN THE SAME SENTENCE as the instruction — not as a trailing caution. e.g. "With the drive isolated, locked out and the DC bus confirmed dead with a meter, check continuity across terminals 07-08 [2]." Write the verification without a voltage number — a number there reads as a machine rating.
 - Never omit that clause to keep the answer short. Brevity is for the explanation, never for the isolation condition.
 - Describe an observation (what a reading means) without an isolation clause; an instruction to touch, open, remove, or probe always carries one.
 - NEVER hand over a procedure for measuring, probing, opening, or otherwise working on equipment energized at 480 V class or higher. That is qualified-person work under NFPA 70E (arc-flash boundary and PPE determination, live-work permit). Redirect to the de-energize + lockout/tagout path, and to a qualified electrician for any diagnostic that genuinely requires energized equipment.
@@ -247,13 +282,13 @@ MACHINE OVERVIEW — if asked what you know about the machine, or for an overvie
 const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. No manual for this machine has been loaded, so you are reasoning from general electrical, mechanical, and controls knowledge.
 
 ANSWER SHAPE — the technician needs something they can act on:
-- Lead with the most likely cause or the first thing to check, in the FIRST sentence.
-- Then a short ordered list of checks, cheapest and safest first.
+- If the technician is troubleshooting or doing work on equipment, lead with the most likely cause or the first thing to check, in the FIRST sentence, then give a short ordered list of checks, cheapest and safest first.
+- If the question asks how something works, what something means, or what a term is, answer it as an explanation in a few sentences. Do NOT turn it into a procedure, and do not add checks, measurements, or lockout steps nobody asked for.
 - Ask a diagnostic question when one answer would genuinely change your advice. Ask at most one.
 - Keep it under about 150 words.
 
 HONESTY:
-- You have NO manual for this machine. Never state a specific parameter number, terminal number, torque value, fault-code meaning, or wiring detail as if it were confirmed for this exact model. Say what it typically is and that it must be verified against the unit's own manual.
+- You have NO manual for this machine. Never decode a part number, model suffix, connector code, or product-family string from pattern-matching. Do not state compatibility or interchangeability as fact without a source that explicitly supports it. Say plainly that it is unverified and ask to search the exact label text or check the manufacturer's documentation.
 - If a question asks for plant-specific values (relief valve setpoint, motor baseline current, pump suction lift limit, compressor pressure), abstain plainly. The technician's site configuration is not in your training; nameplate data or maintenance records are required.
 - If the question genuinely cannot be answered without model-specific or plant-specific documentation, say that plainly and name which document would settle it.
 - You searched NO documentation. Never write "the documentation does not specify", "the manual doesn't say", or anything implying you looked something up and it was missing. Say "I'm answering from general knowledge, not this machine's manual" instead.
@@ -308,7 +343,7 @@ async function buildCitations(
     seen.set(key, {
       citationId: String(seen.size + 1),
       docId: c.docId ?? "",
-      sourceTitle: c.title || "Attached document",
+      sourceTitle: citationTitle(c),
       page: c.sourcePage,
       fileId: null,
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.
@@ -631,6 +666,53 @@ function replayBasisLabel(basis: EvidenceBasis): string {
  *  A duplicate request never reaches retrieval/provider work. Safety is sent
  *  before content and repeated in the response header, so a second transport
  *  interruption remains fail-closed. */
+function isIdentityProposalEntry(e: unknown): e is NotebookIdentityProposalFrame {
+  if (typeof e !== "object" || e === null) return false;
+  const r = e as { kind?: unknown; manufacturer?: unknown; model?: unknown };
+  return r.kind === "identity_proposal" && typeof r.manufacturer === "string" && typeof r.model === "string";
+}
+
+/**
+ * T2 (#4189) — the background candidate-basis manual search's progress, for
+ * the SAME proposed (not yet confirmed) identity the `identity_proposal`
+ * frame names. Transient only — unlike `proposalEntries`, this is NEVER
+ * added to a persisted turn's `evidence[]`: a search's "running" state would
+ * read as permanently stale on reload once the search finishes. A client
+ * that didn't catch it live simply sees no status line, same as any other
+ * live-only SSE frame (`content`, `trace`).
+ *
+ * Reuses `manualSearchRunning` (#4183) and `candidateAcquisitionText`
+ * (#4160 S6) verbatim — no new acquisition-state logic. Scoped to the
+ * CANDIDATE basis only: the confirmed-identity search
+ * (`manualSearchRunning === "confirmed"`) has no proposal to pair a card
+ * with and keeps its existing (prose-only) UX, unchanged.
+ *
+ * Codex round 5 F15 (#4195): `startedAt` — the search's own generation, the
+ * SAME DB value the GET route (`currentManualSearchStatus`) reports for this
+ * identity — rides on EVERY frame (running or settled), never only the
+ * running one. Without it, a live SSE frame carries no way to tell a
+ * genuinely NEW candidate search apart from a replay of an old one; see
+ * `manual-search-follow.ts`'s `observeLiveManualSearchFrame`.
+ */
+function manualSearchStatusFrame(
+  identityProposal: IdentityProposal | null,
+  manualSearchRunning: "confirmed" | "candidate" | null,
+  candidateAcquisitionText: string | null,
+  candidateSearchStartedAt?: string,
+): Record<string, unknown> | null {
+  if (!identityProposal) return null;
+  const running = manualSearchRunning === "candidate";
+  if (!running && !candidateAcquisitionText) return null;
+  return {
+    kind: "manual_search_status",
+    manufacturer: identityProposal.manufacturer,
+    model: identityProposal.model,
+    running,
+    ...(!running && candidateAcquisitionText ? { message: candidateAcquisitionText } : {}),
+    ...(candidateSearchStartedAt ? { startedAt: candidateSearchStartedAt } : {}),
+  };
+}
+
 function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   const enc = new TextEncoder();
   const citations = turn.evidence.filter(
@@ -653,6 +735,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   const identityDisputed = turn.evidence.some(
     (entry) => typeof entry === "object" && entry !== null && (entry as { kind?: unknown }).kind === "identity_dispute",
   );
+  const storedProposal = turn.evidence.find(isIdentityProposalEntry) ?? null;
   const basis = REPLAY_BASES.has(turn.basis as EvidenceBasis) ? turn.basis as EvidenceBasis : null;
 
   const stream = new ReadableStream<Uint8Array>({
@@ -706,6 +789,17 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
           ? { kind: "status", status: "error", message: "No answer provider available." }
           : { kind: "status", status: "answered" };
       emit(status);
+      // Codex #4120 F4 — the stored proposal replays exactly as it was delivered.
+      if (storedProposal) controller.enqueue(enc.encode(sse(storedProposal)));
+      // #4150 — a replayed search proposal offers the same exact confirmation.
+      const storedPartSearch = turn.evidence.find(isPartSearchProposal);
+      if (storedPartSearch) {
+        const chips: NotebookFollowupsFrame = {
+          kind: "followups",
+          suggestions: [partSearchConfirmation(storedPartSearch.candidate), PART_SEARCH_CANCEL],
+        };
+        controller.enqueue(enc.encode(sse(chips)));
+      }
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
     },
@@ -858,7 +952,9 @@ async function handleChatTurn(
   // "active" for it) — see the design doc's own caveat about this.
   const tracer = getTracer();
   const turnId = clientRequestId ?? crypto.randomUUID();
-  const rootSpan = tracer.startSpan("mira.turn");
+  // #4103: a root of its own, not a child of the framework request span, so
+  // the turn-only sampler keeps it (see capabilities/observability/turn-sampler).
+  const rootSpan = tracer.startSpan("mira.turn", { root: true });
   const rootCtx = trace.setSpan(context.active(), rootSpan);
   const rootTraceId = rootSpan.isRecording() ? rootSpan.spanContext().traceId : null;
   setSpanAttrs(
@@ -967,17 +1063,23 @@ async function handleChatTurn(
     serviceVersion: serviceVersion(),
     traceId: rootTraceId,
   });
+  // Stage spans also carry a monotonic start, so the durable packet's
+  // `timings_ms` is measured whether or not the span is sampled for export
+  // (#4103: an unsampled span has no start/end timestamps).
+  const stageStart = new WeakMap<Span, number>();
+  const startStage = (name: string): Span => {
+    const span = tracer.startSpan(name, undefined, rootCtx);
+    stageStart.set(span, performance.now());
+    return span;
+  };
   // End a stage span and copy its measured duration into the durable packet
-  // (`timings_ms`). The trace already carries exact start/end timestamps; this
-  // is the copy that survives telemetry retention. Never throws.
+  // (`timings_ms`), the copy that survives telemetry retention. Never throws.
   const endTimed = (span: Span, stage: keyof TurnEvidencePacket["timings_ms"]): void => {
     try {
-      const readable = span as unknown as { startTime?: [number, number]; endTime?: [number, number]; ended?: boolean };
       span.end();
-      if (readable.startTime && readable.endTime) {
-        const ms = Math.round(
-          (readable.endTime[0] - readable.startTime[0]) * 1000 + (readable.endTime[1] - readable.startTime[1]) / 1e6,
-        );
+      const started = stageStart.get(span);
+      if (started !== undefined) {
+        const ms = Math.round(performance.now() - started);
         if (ms >= 0) rec.timing(stage, ms);
       }
     } catch {
@@ -1379,7 +1481,7 @@ async function handleChatTurn(
 
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
-  const identityResolveSpan = tracer.startSpan("identity.resolve", undefined, rootCtx);
+  const identityResolveSpan = startStage("identity.resolve");
   openChildren.add(identityResolveSpan);
   const boundAsset: ResolvedAsset = await releaseClaimOnFailure(() =>
     resolveBoundAsset(ctx.tenantId, notebookId),
@@ -1645,7 +1747,7 @@ async function handleChatTurn(
 
   // Non-English questions search the English corpus in English (answered in their own language).
   const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history), translateForSearch);
-  const retrievalSpan = tracer.startSpan("retrieval.execute", undefined, rootCtx);
+  const retrievalSpan = startStage("retrieval.execute");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
   //   2. no sources, but EQUIPMENT CONTEXT → oem_corpus_bm25 (shared OEM library,
@@ -1717,6 +1819,63 @@ async function handleChatTurn(
     }
   })();
   const oemModel = oemIdentity.model;
+  // #4095 (owner decisions 2026-09-28/29) — "propose, then confirm". A general
+  // turn in an UNBOUND notebook that names a library manufacturer and a model
+  // gets an identity_proposal frame. It never binds, never scopes retrieval on
+  // this turn (retrieval above is already decided), and the answer is told the
+  // machine is unconfirmed so it cannot state that machine's specs or service
+  // procedures. Fail-open: any error means no proposal.
+  // Codex r1 F2 (#4172, MEDIUM): this IIFE's OWN `oemManufacturer !== null`
+  // bail covers only the RC1 fallback (a maker the corpus does NOT recognise
+  // at all). A corpus-RECOGNISED maker (oemManufacturer set, e.g. Siemens)
+  // with zero applicable chunks still needs a proposal + candidate
+  // acquisition — handled by the separate, narrower reassignment below, once
+  // `chunks` is known, so a maker OEM retrieval actually grounds is never
+  // second-guessed by a redundant "unconfirmed machine" proposal.
+  let identityProposal: IdentityProposal | null = await (async () => {
+    if (!general || notebookRetrieval || oemManufacturer !== null) return null;
+    // Only a notebook with NO identity at all: not bound to an asset, and loaded
+    // (fail closed when it could not be read) — Codex #4120 F3.
+    if (!nb || boundAsset.state !== "unbound") return null;
+    if (nb.manufacturer?.trim() || nb.model?.trim()) return null;
+    let fromCorpus: IdentityProposal | null = null;
+    let client: PoolClient | null = null;
+    try {
+      client = await pool.connect();
+      fromCorpus = proposeIdentityFromText(message, await corpusManufacturers(client));
+    } catch (err) {
+      console.error("[notebook-chat] identity proposal skipped:", err instanceof Error ? err.message : err);
+    } finally {
+      try {
+        client?.release();
+      } catch {
+        /* already released */
+      }
+    }
+    if (fromCorpus) return fromCorpus;
+    // RC1 fix (#4160 S6): proposeIdentityFromText only recognises a maker that
+    // already has corpus rows (corpusManufacturers) — a maker with none (the
+    // SMC valve trace that started Manual-First) could never be proposed.
+    // Fall back to the corpus-INDEPENDENT candidate reader (#4150's label
+    // parser, candidate-identity.ts), over the SAME photo observation
+    // (photoTextForOem — notebookRetrieval is false here, so it is the real
+    // text) and this turn's typed message. Still only a candidate: never
+    // binds, never writes a notebook identity column, never scopes retrieval.
+    // Codex r2 F4 / F13 (#4172): only when the candidate takeover can actually
+    // run (both flags; #4175). Otherwise the turn stays exactly as before S6
+    // (the explicit, confirm-first photo search below keeps the turn).
+    if (!candidateAcquisitionEnabled()) return null;
+    try {
+      const candidate = extractCandidateIdentity(photoTextForOem, message);
+      // #4172 Codex r3/post-cap: the ONE candidate validator (serials and
+      // ambiguity across photo AND typed text) — see isSafeCandidateSearchIdentity.
+      if (!candidate?.manufacturer || !isSafeCandidateSearchIdentity(photoTextForOem, message, candidate.part, candidate.manufacturer)) return null;
+      return { manufacturer: candidate.manufacturer, model: candidate.part };
+    } catch (err) {
+      console.error("[notebook-chat] candidate identity proposal skipped:", err instanceof Error ? err.message : err);
+      return null;
+    }
+  })();
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
@@ -1847,6 +2006,54 @@ async function handleChatTurn(
     endTimed(retrievalSpan, "retrieval");
   }
 
+  // Codex r1 F2 (#4172, MEDIUM) — a corpus-RECOGNISED maker (oemManufacturer
+  // set from the photo) whose OEM retrieval found ZERO applicable chunks
+  // still qualifies for the SAME "propose, then confirm" + candidate
+  // acquisition as the RC1 fallback above. Only when chunks ARE found does
+  // OEM retrieval actually ground the turn — a redundant proposal there would
+  // contradict the cited answer the technician is about to receive, so this
+  // never fires then (no duplicate discovery). `oemManufacturer.source` can
+  // only be "photo" here: "notebook" would mean `nb.manufacturer` is set,
+  // which the RC1 IIFE's own unbound-identity guard already excludes.
+  if (
+    !identityProposal &&
+    general &&
+    !notebookRetrieval &&
+    nb &&
+    boundAsset.state === "unbound" &&
+    !(nb.manufacturer?.trim() || nb.model?.trim()) &&
+    oemManufacturer !== null &&
+    chunks.length === 0 &&
+    candidateAcquisitionEnabled()
+  ) {
+    // Codex r2 F2 (#4172): the OEM model parser knows a finite set of model
+    // families, so a valid part it does not recognise (oemModel null) falls back
+    // to the corpus-independent label reader — but only when that reader names
+    // the SAME maker, which keeps its ambiguity and serial exclusions intact.
+    const candidate = extractCandidateIdentity(photoTextForOem, message);
+    const candidatePart =
+      candidate?.manufacturer && candidate.manufacturer.toLowerCase() === oemManufacturer.name.toLowerCase()
+        ? candidate.part
+        : null;
+    // #4172 (owner decision after Codex post-cap 2): the search identity comes
+    // ONLY from the serial-safe label reader. The OEM retrieval parser may
+    // normalise a serial ("TP 700" → TP700) or pick a second machine, so it never
+    // chooses what leaves; if it names a DIFFERENT model, nothing is searched.
+    const model =
+      candidatePart &&
+      (!oemModel || oemModel.value.toUpperCase() === candidatePart.toUpperCase()) &&
+      isSafeCandidateSearchIdentity(photoTextForOem, message, candidatePart, oemManufacturer.name)
+        ? candidatePart
+        : null;
+    if (model) identityProposal = { manufacturer: oemManufacturer.name, model };
+  }
+  // Codex #4120 F4 — persisted with the turn so an idempotent retry and the
+  // history reload deliver the same proposal the live stream did. Computed
+  // here (after the F2 reassignment above) so it reflects the FINAL proposal.
+  const proposalEntries: NotebookIdentityProposalFrame[] = identityProposal
+    ? [{ kind: "identity_proposal", ...identityProposal }]
+    : [];
+
   // Once retrieval has produced chunks — from the notebook's own sources OR the
   // shared OEM corpus — the turn is DOCUMENT-GROUNDED for everything
   // downstream: grounding rules in the system prompt, [n] citation markers,
@@ -1898,6 +2105,227 @@ async function handleChatTurn(
     boundAndEmpty && asksForDocumentedValue(message, oemModel!.value)
       ? `${oemManufacturer!.name} ${oemModel!.value}`
       : null;
+  // A label transcription is usable as a literal search key, not as confirmed
+  // identity. #4150 owner decision: a request never searches. It can only
+  // propose the EXACT string MIRA would send; egress happens on the next turn,
+  // and only if that turn is the exact confirmation of that same string and the
+  // photo still yields it. Never bind the notebook or auto-import a candidate.
+  const photoTextForPartLookup = (lookRow?.text ?? priorLookRows[0]?.text ?? "").trim();
+  const photoPartNumber = unambiguousPartNumber(photoTextForPartLookup);
+  // PRD R1 (#4160 S5): the maker read from the SAME label via the shared OEM
+  // maker table — never the corpus — so a maker with no rows can still be
+  // searched for. Only meaningful when it names the same part.
+  const photoCandidate = extractCandidateIdentity(photoTextForPartLookup);
+  const photoMaker = photoCandidate && photoCandidate.part === photoPartNumber ? photoCandidate.manufacturer : null;
+  // Codex r1 F1 (#4172, HIGH): mutually exclusive with #4160 S6's candidate
+  // acquisition — the maker-less part-only proposal ("search the web for just
+  // this label text") must never also fire and contend for the same reply.
+  //
+  // Codex r2 F1/F4 (#4172): "owns the turn" is decided ONCE, from the FINAL
+  // candidate identity (photo and typed text together) and the exact trigger
+  // the acquisition block below runs on — never from the photo's maker alone.
+  // When automatic acquisition is off, or this turn would not start it, the
+  // explicit confirm-first search keeps the turn (pre-S6 behaviour).
+  const candidateAcquisitionOwnsTurn =
+    identityProposal !== null &&
+    Boolean(nb) &&
+    candidateAcquisitionEnabled() &&
+    acquisitionKey({
+      identityStatus: "user_confirmed",
+      manufacturer: identityProposal.manufacturer,
+      model: identityProposal.model,
+      catalogNumber: "",
+    }) !== null &&
+    // The single egress gate: every proposal path (including #4120's corpus
+    // proposal) passes the same candidate validator before any search starts.
+    isSafeCandidateSearchIdentity(photoTextForOem, message, identityProposal.model, identityProposal.manufacturer) &&
+    ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
+  const partSearchEligible = chunks.length === 0 && general && oemManufacturer === null && !candidateAcquisitionOwnsTurn;
+  // The technician's own immediately preceding turn in this thread carries any
+  // pending proposal. #4185/#4186 (the #4160 Pixel walk incident): read it on
+  // EVERY eligible turn, not only an exact confirm/cancel string — otherwise a
+  // short affirmative, an unquoted confirmation, or an unrelated reply can
+  // never see a pending offer, and it silently expires instead of staying
+  // valid or being re-shown. Fail closed on any read error.
+  let previousTurnEvidence: unknown[] = [];
+  let previousTurnId: string | null = null;
+  if (partSearchEligible) {
+    try {
+      const last = (await listTurns(ctx.tenantId, notebookId, 1, { viewerUserId: ctx.userId, threadId })).at(-1);
+      if (last && last.ownerUserId === ctx.userId) {
+        previousTurnEvidence = last.evidence;
+        previousTurnId = last.id;
+      }
+    } catch (err) {
+      console.error("[notebook-chat] part-search proposal lookup failed (no search):", err instanceof Error ? err.message : err);
+    }
+  }
+  const partSearch: PartSearchDecision = partSearchEligible
+    ? partSearchDecision({
+        message,
+        candidate: photoPartNumber,
+        manufacturer: photoMaker,
+        previousEvidence: previousTurnEvidence,
+        previousTurnId,
+      })
+    : { action: "none" };
+  let photoPartLookup: {
+    action: "proposed" | "searched" | "cancelled" | "mismatch" | "limited" | "unavailable" | "expired";
+    searched: boolean;
+    part_number: string | null;
+    found: boolean;
+    candidate_host: string | null;
+    message: string;
+    proposal: PartSearchProposalEntry | null;
+  } | null = null;
+  if (partSearch.action === "propose") {
+    const c = partSearch.candidate;
+    // #4185/#4186: age > 1 means this is a RE-SHOW of an offer that a
+    // non-matching reply didn't expire — keep the ORIGINAL maker it was bound
+    // to (never re-derive from this turn's photo, which may carry none) so a
+    // later confirmation is still checked against the identity actually
+    // offered. age === 1 is always a fresh proposal from this turn's photo.
+    const reshown = partSearch.age > 1 ? pendingPartSearchProposal(previousTurnEvidence) : null;
+    const maker = reshown ? (reshown.manufacturer ?? null) : photoMaker;
+    // #4193 Codex round 3 F7: a FRESH propose (age 1) has no origin from the
+    // pure decision yet, and must NOT fall back to `turnId` — `turnId` is
+    // the client-request/tracing id (line ~912: `clientRequestId ??
+    // crypto.randomUUID()`), never the row this turn is about to be
+    // persisted under (that id comes from the database's own
+    // `gen_random_uuid()` default, migration 073 — recordTurn's INSERT never
+    // supplies `id`). Falling back to it persisted an origin that matched no
+    // real row, so claimPartSearchProposal's `WHERE id = originTurnId`
+    // always missed and even a technician's first, never-claimed
+    // confirmation was refused as "already used" (Codex round 3 F7).
+    //
+    // The fix needs no new plumbing: a fresh propose simply omits
+    // `originTurnId` (exactly the true-legacy shape F6 already handles).
+    // The very next read of this entry — a confirmation or a re-show —
+    // resolves its origin from `previousTurnId`, which by then IS the real
+    // persisted row id (it comes from `listTurns()`, reading an
+    // already-written row). A re-show (age > 1) still carries the resolved
+    // origin forward unchanged from `partSearchDecision()`.
+    const originTurnId = partSearch.originTurnId;
+    photoPartLookup = {
+      action: "proposed",
+      searched: false,
+      part_number: c,
+      found: false,
+      candidate_host: null,
+      message: `I can search the web for a manual using only the exact label text \"${c}\"${maker ? ` and the maker name \"${maker}\" printed with it` : ""}. Nothing else would be sent: no photo, no conversation, no notebook text. I haven't searched. To go ahead, reply exactly: ${partSearchConfirmation(c)}. Otherwise reply: ${PART_SEARCH_CANCEL}.`,
+      proposal: { kind: "part_search_proposal", candidate: c, manufacturer: maker, age: partSearch.age, originTurnId },
+    };
+  } else if (partSearch.action === "expired") {
+    // #4193 Codex F2: one more re-show would have minted an offer the very
+    // next turn could never confirm. Say plainly that it expired, with no
+    // chip and no "reply exactly" instructions — `proposal: null` means no
+    // followups frame is emitted below and nothing new is persisted to act on.
+    photoPartLookup = {
+      action: "expired",
+      searched: false,
+      part_number: partSearch.candidate,
+      found: false,
+      candidate_host: null,
+      message: `That search offer has expired. Ask me again to look up the manual for \"${partSearch.candidate}\" and I'll show you exactly what would be sent before searching.`,
+      proposal: null,
+    };
+  } else if (partSearch.action === "cancelled") {
+    photoPartLookup = {
+      action: "cancelled",
+      searched: false,
+      part_number: partSearch.candidate,
+      found: false,
+      candidate_host: null,
+      message: `OK. I won't search the web for \"${partSearch.candidate}\".`,
+      proposal: null,
+    };
+  } else if (partSearch.action === "mismatch") {
+    photoPartLookup = {
+      action: "mismatch",
+      searched: false,
+      part_number: partSearch.candidate,
+      found: false,
+      candidate_host: null,
+      message: "I didn't search. That confirmation doesn't match a search I offered for this photo in the previous message. Ask me to look up the manual and I'll show you exactly what would be sent first.",
+      proposal: null,
+    };
+  } else if (partSearch.action === "search") {
+    const confirmedPart = partSearch.candidate;
+    // One proposal authorizes ONE search (#4171 Codex F3; redesigned #4193
+    // Codex round 2 F3+F6): spend it atomically BEFORE any egress, locked and
+    // marked consumed on the offer's ORIGIN turn row — never on whichever
+    // turn happens to hold the copy actually being confirmed. A re-show
+    // persists a copy of the same logical offer onto a NEW turn, but every
+    // copy shares one origin, so a racing or retried confirmation against
+    // ANY copy finds the SAME row already spent.
+    const claimed = ctx.userId
+      ? await claimPartSearchProposal({
+          tenantId: ctx.tenantId,
+          notebookId,
+          originTurnId: partSearch.originTurnId,
+          ownerUserId: ctx.userId,
+        })
+      : false;
+    // Only the confirmed string leaves: no photo, chat or notebook text.
+    const result = claimed
+      ? await discoverManual(
+          { ...(photoMaker ? { manufacturer: photoMaker } : {}), catalogNumber: confirmedPart },
+          { tenantId: ctx.tenantId, userId: ctx.userId ?? null },
+        )
+      : null;
+    if (!result) {
+      photoPartLookup = {
+        action: "mismatch",
+        searched: false,
+        part_number: confirmedPart,
+        found: false,
+        candidate_host: null,
+        message: `I didn't search. That confirmation for \"${confirmedPart}\" was already used. Ask me to look up the manual again if you want a new search.`,
+        proposal: null,
+      };
+    } else if (result.quotaExceeded) {
+      // A quota refusal is not a completed search (#4171 Codex F1, PRD R5):
+      // say the limit stopped it, and record searched=false.
+      photoPartLookup = {
+        action: "limited",
+        searched: false,
+        part_number: confirmedPart,
+        found: false,
+        candidate_host: null,
+        // #4160 S7 (owner decision 2026-10-01 §1): the approved sentence,
+        // verbatim — never a reset time the backend does not know (the denial
+        // may be the daily or the monthly cap).
+        message: `I didn't search for \"${confirmedPart}\": ${result.reason || "the manual-search limit has been reached"}. Manual-search limit reached — try again later, or upload the manual yourself.`,
+        proposal: null,
+      };
+    } else {
+      const candidate = result.candidate;
+      const manualUrl = candidate && /^https:\/\/[^\s"'<>]+$/.test(candidate.url) ? candidate.url : null;
+      const manualHost = manualUrl ? new URL(manualUrl).hostname : null;
+      const messageText = !result.serviceAvailable
+        ? `I couldn't reach manual search, so I did not check whether a PDF exists for the label text \"${confirmedPart}\". I have not confirmed what the code identifies.`
+        : candidate && manualUrl && manualHost
+          ? `I searched for a manual using the exact label text \"${confirmedPart}\". I found a possible result from ${manualHost}: ${manualUrl}. I can't verify from this label alone that it is the right part's manual, so I haven't added it as a source or used it to answer.`
+          : `I searched for a manual using the exact label text \"${confirmedPart}\" and found no candidate. The part type and code meaning are still unconfirmed.`;
+      // An outage is not a completed search (#4171 Codex F5): searched=false.
+      photoPartLookup = {
+        action: result.serviceAvailable ? "searched" : "unavailable",
+        searched: result.serviceAvailable,
+        part_number: confirmedPart,
+        found: Boolean(candidate),
+        candidate_host: manualHost,
+        message: messageText,
+        proposal: null,
+      };
+    }
+  }
+  const unverifiedPartCompatibility =
+    chunks.length === 0 &&
+    asksPartCompatibility(message) &&
+    photoPartNumber !== null;
+  const photoPartCompatibilityText = unverifiedPartCompatibility
+    ? `I can't verify whether those parts are interchangeable from this photo. The label appears to read \"${photoPartNumber}\", but that is an unconfirmed transcription; I won't guess what the code means or say another part is a substitute without a source that confirms compatibility. Ask me to look up the manual for \"${photoPartNumber}\" and I can search for a candidate.`
+    : null;
   // #4068 (owner decision 2026-09-27, "both"): a troubleshooting/procedure
   // question about THIS machine with nothing citable declines honestly instead
   // of an uncited general answer. Teaching questions never match.
@@ -1908,16 +2336,285 @@ async function handleChatTurn(
     !missingModelManual && boundAndEmpty && !machineRequestRefused && asksAboutThisEquipment(message, oemModel!.value)
       ? `${oemManufacturer!.name} ${oemModel!.value}`
       : null;
+  // #4075 — the automatic official-manual search for a CONFIRMED identity. Only
+  // when the notebook's own bound model found nothing and this turn is about to
+  // decline for lack of a manual. The chat never runs the search inline: it
+  // starts it (the fallback for notebooks created before the create-time trigger)
+  // and reports the recorded state honestly. Identity is the notebook's own
+  // confirmed fields — never this message's free text.
+  let manualAcquisition: { state: string; started_this_turn: boolean; candidate_host: string | null } | null = null;
+  let acquisitionText: string | null = null;
+  // #4160 S6 PRD R16-lite — the candidate-basis search's honest status line,
+  // relayed through unconfirmedMachineDirective below (never a new SSE frame).
+  let candidateAcquisitionText: string | null = null;
+  // #4160 gate NO-GO (PRD "Never"): true while MIRA's own official-manual search
+  // for this notebook is running, so a specificity fallback this turn says the
+  // search is underway instead of telling the tech to fetch the manual.
+  // "candidate" wins over "confirmed": its manual lands turned off, so the
+  // fallback must also say to turn it on (Codex #4183 F1).
+  let manualSearchRunning: "confirmed" | "candidate" | null = null;
+  // Codex round 5 F15 (#4195) — the candidate search's own generation (the
+  // DB's `started_at`, never this route's local clock), threaded onto the
+  // LIVE `manual_search_status` SSE frame below so the shared mobile/Hub
+  // follower can tell a genuinely NEW search apart from a replay of an old
+  // one. Scoped to the candidate basis only, matching `manualSearchStatusFrame`.
+  let candidateSearchStartedAt: string | undefined;
+  if (
+    (missingModelManual || noEvidenceForMachine) &&
+    !oemRetrievalFailed &&
+    nb &&
+    oemManufacturer?.source === "notebook" &&
+    oemModel?.source === "notebook" &&
+    acquisitionEnabled()
+  ) {
+    const identity = {
+      identityStatus: nb.identityStatus,
+      manufacturer: nb.manufacturer,
+      model: nb.model,
+      catalogNumber: nb.catalogNumber,
+    };
+    const key = acquisitionKey(identity);
+    if (key) {
+      let acq = await readAcquisition(ctx.tenantId, notebookId);
+      let started = false;
+      // A matching "running" record also goes back through the atomic claim:
+      // its stale-window predicate recovers a search orphaned by a restart,
+      // and refuses (started=false) while a live search still holds it. A
+      // "search_unavailable" record does too — the claim retries it once its
+      // backoff has passed (Codex #4118 r7 F12).
+      // A retryable record is reconciled FIRST: a manual its attempt attached
+      // and the technician then removed is never re-fetched (Codex #4118 r14 F19).
+      // "search_limit_reached" (#4160 S4) is retryable the same way: its claim
+      // predicate only lets it through once a new UTC day has started
+      // (#4168 Codex F1 — without this the promised next-day retry never ran).
+      const retryable = (s: string) => s === "search_unavailable" || s === "search_limit_reached";
+      if (acq && acq.key === key && retryable(acq.state)) {
+        acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
+      }
+      if (
+        !acq ||
+        acq.key !== key ||
+        acq.state === "running" ||
+        (retryable(acq.state) && !acq.source_removed)
+      ) {
+        started = await startManualAcquisition({
+          tenantId: ctx.tenantId,
+          userId: ctx.userId ?? null,
+          notebookId,
+          nodeId: nb.nodeId,
+          identity,
+          turnSpanContext: rootSpan.spanContext(),
+        });
+        if (started) {
+          acq = {
+            key,
+            state: "running",
+            started_at: new Date().toISOString(),
+            finished_at: null,
+            candidate_host: null,
+            match_state: null,
+            oem_request_url: null,
+          };
+        }
+      }
+      if (!started) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
+      if (acq && acq.key === key) {
+        manualAcquisition = { state: acq.state, started_this_turn: started, candidate_host: acq.candidate_host };
+        acquisitionText = acquisitionDeclineText(acq, key, `${oemManufacturer.name} ${oemModel.value}`);
+        if (acq.state === "running" && manualSearchRunning === null) manualSearchRunning = "confirmed";
+      }
+    }
+  }
+  // #4160 S6 — candidate-basis background acquisition (PRD R2). When a
+  // candidate identity was proposed THIS turn (the RC1-fixed label read, or
+  // the pre-existing #4120 corpus proposal above), start the SAME search the
+  // eventual PATCH confirm would trigger — keyed EXACTLY as acquisitionKey()
+  // would key the identity that bind writes (manufacturer, model = the
+  // proposal's part, catalog empty) — so a second identical photo, or the
+  // real confirm, reuse this search instead of starting a new one (claim()
+  // idempotency, unchanged). `identity` below is a LOCAL object built only to
+  // compute the matching key and feed discovery/applicability — nothing here
+  // calls updateNotebook or writes any notebook identity column. The write
+  // itself can never enable a source before confirmation (fenced in
+  // notebook-manual-acquisition.ts, basis="candidate"); migration 104
+  // promotes it once the technician confirms this SAME identity.
+  // The trigger (decided above as candidateAcquisitionOwnsTurn): half 1, the
+  // identity came from a label read — this turn's photo text yielded an
+  // unambiguous part; half 2, the turn explicitly asks for the manual.
+  if (candidateAcquisitionOwnsTurn && identityProposal && nb) {
+    {
+      const candidateIdentity = {
+        identityStatus: "user_confirmed" as const,
+        manufacturer: identityProposal.manufacturer,
+        model: identityProposal.model,
+        catalogNumber: "",
+      };
+      const candidateKey = acquisitionKey(candidateIdentity);
+      if (candidateKey) {
+        let cAcq = await readAcquisition(ctx.tenantId, notebookId);
+        let cStarted = false;
+        const retryableState = (s: string) => s === "search_unavailable" || s === "search_limit_reached";
+        if (cAcq && cAcq.key === candidateKey && retryableState(cAcq.state)) {
+          cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
+        }
+        if (
+          !cAcq ||
+          cAcq.key !== candidateKey ||
+          cAcq.state === "running" ||
+          (retryableState(cAcq.state) && !cAcq.source_removed)
+        ) {
+          cStarted = await startManualAcquisition({
+            tenantId: ctx.tenantId,
+            userId: ctx.userId ?? null,
+            notebookId,
+            nodeId: nb.nodeId,
+            identity: candidateIdentity,
+            basis: "candidate",
+            turnSpanContext: rootSpan.spanContext(),
+          });
+          if (cStarted) {
+            cAcq = {
+              key: candidateKey,
+              state: "running",
+              started_at: new Date().toISOString(),
+              finished_at: null,
+              candidate_host: null,
+              match_state: null,
+              oem_request_url: null,
+            };
+          }
+        }
+        if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
+        if (cAcq && cAcq.key === candidateKey) {
+          if (cAcq.state === "running") manualSearchRunning = "candidate";
+          candidateAcquisitionText = acquisitionDeclineText(
+            cAcq,
+            candidateKey,
+            `${identityProposal.manufacturer} ${identityProposal.model}`,
+            "candidate",
+          );
+          // Codex round 5 F15 (#4195): `cAcq.started_at` above is EITHER the
+          // DB's own value (the initial `readAcquisition`/`reconcileAcquisition`
+          // read, never synthesized) OR, when THIS call just claimed the
+          // search, the local placeholder set a few lines up — which is NOT
+          // the DB's `now()` (`claim()`'s own clock) and would drift from
+          // what the GET route (`currentManualSearchStatus`) reports for the
+          // SAME search. Only in that freshly-claimed case, re-read the
+          // record `claim()` actually wrote; every other path already holds
+          // an authoritative value. A failed/mismatched re-read just omits
+          // `startedAt` from the frame (never invents one, never blocks the
+          // reply — same fail-open posture as the rest of this capability).
+          if (cStarted) {
+            const authoritative = await readAcquisition(ctx.tenantId, notebookId);
+            candidateSearchStartedAt =
+              authoritative && authoritative.key === candidateKey ? authoritative.started_at ?? undefined : undefined;
+          } else {
+            candidateSearchStartedAt = cAcq.started_at ?? undefined;
+          }
+        }
+      }
+    }
+  }
+  // Codex r3 F5 (#4177, #4160 S7) — recovery must not depend on how this turn
+  // is answered. The #4075 block above runs only when the OEM answer-route is
+  // about to decline for lack of a manual, which a SOURCE-SELECTED turn never
+  // reaches (notebook sources own it, oemManufacturer is null). After a
+  // nameplate confirmation the nameplate source is enabled by default, so the
+  // technician's normal next question is exactly that turn — and a recorded
+  // limit denial / outage sat untouched unless every source was deselected.
+  // So: a RETRYABLE record for the notebook's OWN confirmed identity is
+  // reconciled and sent back through the claim here regardless of routing,
+  // and (Codex r4 F6) a RUNNING record goes back through the claim too — its
+  // stale-window predicate resumes a search orphaned by a restart or recorded
+  // as running on concurrent indexing, and refuses while a live search holds
+  // it (same as the #4075 block). The claim keeps every existing rule
+  // (UTC-day boundary, 30-minute backoff, MAX_AUTOMATIC_RETRIES, live-running
+  // refusal); reconcile keeps the source-removal rule. Nothing here starts a
+  // NEW search, changes retrieval, or alters the reply — the turn stays
+  // grounded in its selected sources; the packet records the recovery
+  // (`manual_acquisition`) for the flight recorder.
+  if (manualAcquisition === null && nb && acquisitionEnabled()) {
+    const identity = {
+      identityStatus: nb.identityStatus,
+      manufacturer: nb.manufacturer,
+      model: nb.model,
+      catalogNumber: nb.catalogNumber,
+    };
+    const key = acquisitionKey(identity);
+    if (key) {
+      let acq = await readAcquisition(ctx.tenantId, notebookId);
+      const retryable = acq !== null && (acq.state === "search_unavailable" || acq.state === "search_limit_reached");
+      if (acq && acq.key === key && (retryable || acq.state === "running")) {
+        if (retryable) acq = await reconcileAcquisition(ctx.tenantId, notebookId, acq);
+        if (acq && acq.key === key && !acq.source_removed) {
+          const started = await startManualAcquisition({
+            tenantId: ctx.tenantId,
+            userId: ctx.userId ?? null,
+            notebookId,
+            nodeId: nb.nodeId,
+            identity,
+            turnSpanContext: rootSpan.spanContext(),
+          });
+          manualAcquisition = started
+            ? { state: "running", started_this_turn: true, candidate_host: null }
+            : { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };
+        }
+      }
+    }
+  }
+  // Covers the S7 recovery block above too (a source-selected turn that
+  // re-started or found a still-running search).
+  if (manualAcquisition?.state === "running" && manualSearchRunning === null) manualSearchRunning = "confirmed";
+  rec.stage("retrieval", {
+    manual_acquisition: manualAcquisition,
+    photo_part_manual_lookup: photoPartLookup
+      ? {
+          action: photoPartLookup.action,
+          searched: photoPartLookup.searched,
+          part_number_sha256: photoPartLookup.part_number
+            ? createHash("sha256").update(photoPartLookup.part_number).digest("hex")
+            : null,
+          found: photoPartLookup.found,
+          candidate_host: photoPartLookup.candidate_host,
+        }
+      : null,
+  });
+  // #4128 — a credential or firmware-recovery question about THIS equipment in
+  // a chat where nothing identifies the equipment: no sources, no notebook or
+  // photo identity, no proposal (a named machine keeps #4095's proposal path).
+  // Generic steps for an unknown device are guesses; the #4094 detector picks
+  // the kinds, and a teaching question never matches asksAboutThisEquipment.
+  const unidentifiedServiceText =
+    !notebookRetrieval && oemManufacturer === null && oemModel === null && identityProposal === null &&
+    !groundedMachineEntry && !machineRequestRefused && asksAboutThisEquipment(message, null)
+      ? unidentifiedServiceDecline(message)
+      : null;
+
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine) && !groundedMachineEntry && !safetyTrigger) {
+  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
     const abstainAnswerText = oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
       ? `I couldn't reach the manual library just now, so I won't guess at an answer for your ${(missingModelManual ?? noEvidenceForMachine)!}. Please try again in a moment.`
+      : unidentifiedServiceText
+      ? unidentifiedServiceText
+      : photoPartLookup
+      ? photoPartLookup.message
+      : photoPartCompatibilityText
+      ? photoPartCompatibilityText
+      : (missingModelManual || noEvidenceForMachine) && declineKind(message)
+      ? declineText(declineKind(message)!, (missingModelManual ?? noEvidenceForMachine)!, oemManufacturer!.name)
+      : acquisitionText
+      ? acquisitionText
+      // Codex r1 F1 (#4172, HIGH) — a candidate acquisition's honest status
+      // (never "I haven't searched": the search either started or already
+      // reported a result) outranks a generic "couldn't find" fallback.
+      : candidateAcquisitionText
+      ? candidateAcquisitionText
       : missingModelManual
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : noEvidenceForMachine
@@ -1930,7 +2627,7 @@ async function handleChatTurn(
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
-      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
       answer_chars: abstainAnswerText?.length ?? 0,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,
@@ -1942,13 +2639,13 @@ async function handleChatTurn(
       {
         "mira.answer_gate.invoked": true,
         "mira.answer_gate.decision": "insufficient_evidence",
-        "mira.answer_gate.reason": oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+        "mira.answer_gate.reason": oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
         "mira.answer_gate.answer_chars": abstainAnswerText?.length ?? 0,
       },
       gateAnswerGateSpan,
     );
     gateAnswerGateSpan.end();
-    const gatePersistSpan = tracer.startSpan("turn.persist", undefined, rootCtx);
+    const gatePersistSpan = startStage("turn.persist");
     const gateTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
       // 086: the owner is the authenticated technician (session), never the body.
       ownerUserId: ctx.userId,
@@ -1961,7 +2658,18 @@ async function handleChatTurn(
       enabledSourceDocIds: docIds,
       // #3788: the verified photo is part of the record of this refusal, so a
       // history read renders the same card the live turn showed.
-      evidence: [...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
+      evidence: [
+        ...disputeEntries,
+        ...(visualEntry ? [visualEntry] : []),
+        // #4150 — the pending proposal is what a confirmation is checked against.
+        ...(photoPartLookup?.proposal ? [photoPartLookup.proposal] : []),
+        // Codex r1 F1 (#4172, HIGH) — the identity_proposal entry is what the
+        // client's later confirm/reject PATCH is checked against, and what a
+        // history reload needs to render the same proposal the live turn
+        // carried (once a client renders it — #4095). Persisted on EVERY reply
+        // path, abstention included.
+        ...proposalEntries,
+      ],
       model: null,
       // An abstain about a specific machine is still a record about that
       // machine — omitting the snapshot here would make "what has MIRA been
@@ -2014,6 +2722,24 @@ async function handleChatTurn(
           controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
         }
         controller.enqueue(enc.encode(sse(status)));
+        // Codex r1 F1 (#4172, HIGH) — emitted whatever the answer status
+        // (mirrors the answered path below): the client offers "Use its
+        // manuals" / "Not this" on an abstained turn too, not only an
+        // answered one.
+        if (identityProposal) {
+          const proposalFrame: NotebookIdentityProposalFrame = { kind: "identity_proposal", ...identityProposal };
+          controller.enqueue(enc.encode(sse(proposalFrame)));
+        }
+        // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt);
+        if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
+        if (photoPartLookup?.proposal) {
+          const chips: NotebookFollowupsFrame = {
+            kind: "followups",
+            suggestions: [partSearchConfirmation(photoPartLookup.proposal.candidate), PART_SEARCH_CANCEL],
+          };
+          controller.enqueue(enc.encode(sse(chips)));
+        }
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
         controller.close();
       },
@@ -2131,6 +2857,12 @@ async function handleChatTurn(
   rec.stage("identity", {
     manufacturer_present: Boolean(nb?.manufacturer),
     model_present: Boolean(nb?.model),
+    proposal: identityProposal
+      ? {
+          manufacturer: identityProposal.manufacturer,
+          model_sha256: createHash("sha256").update(identityProposal.model.toUpperCase().replace(/[^A-Z0-9]/g, "")).digest("hex"),
+        }
+      : null,
   });
   setSpanAttrs(
     {
@@ -2161,8 +2893,20 @@ async function handleChatTurn(
           : "Identity SELECTED but NOT yet confirmed — if the answer depends on which machine this is, say the identity is unconfirmed.")
       : "";
   const loadedDocs = srcs.map((s) => s.filename).filter(Boolean).join(", ") || "none";
-  const machineContext =
-    `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
+  // #4099: the block is emitted only when it states a fact — a known identity,
+  // a bound asset, loaded documents, or a disputed identity. On a blank chat it
+  // said only "an unspecified machine", "none" and a quick-start note that
+  // applies to no document, and that noise measurably broke answers: on
+  // gpt-oss-120b (Groq, the served model/params) the Q9 option letter
+  // contradicted its own correct explanation in 11 of 24 samples with the
+  // block vs 0 of 24 without; the ablation isolated the "Equipment: an
+  // unspecified machine" line. The general prompt already says no manual is
+  // loaded, so nothing is lost.
+  const machineHasFacts =
+    identityDisputed || Boolean(nb?.manufacturer || nb?.model) || boundAsset.state === "resolved" || srcs.length > 0;
+  const machineContext = !machineHasFacts
+    ? ""
+    : `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
     `- Equipment: ${identity}${nb?.displayName && !identityDisputed ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
     `- Loaded source documents: ${loadedDocs}.\n` +
     `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
@@ -2240,11 +2984,17 @@ async function handleChatTurn(
   // Visual (photographed nameplate) evidence rides after machine evidence; with
   // none the string is byte-identical to before.
   const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
-  const systemPrompt = withStepSafety(withAnswerLanguage(
+  // #4131: a label data identifier ("1P <order no.>") in this turn's photo
+  // context gets its standard meaning stated; otherwise byte-identical.
+  // #4133: a retail/warehouse code (FNSKU) in the photo context is named as
+  // not-a-part-number; otherwise byte-identical.
+  // #4143: a photo in context gets the "quote the label text" note — inside the
+  // #4131/#4133 label notes, which stay last.
+  const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
-      : withVisual + machineContext,
- ));
+      : withVisual + machineContext + (identityProposal ? unconfirmedMachineDirective(identityProposal, candidateAcquisitionText) : ""),
+ )), lookContext), lookContext), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
@@ -2261,7 +3011,7 @@ async function handleChatTurn(
     buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, lookContext),
   );
   {
-    const contextSpan = tracer.startSpan("context.assemble", undefined, rootCtx);
+    const contextSpan = startStage("context.assemble");
     // Same identity rule as retrieval.returned_doc_ids: doc id for notebook
     // chunks, source_url#page for shared-OEM chunks (which carry no doc id) —
     // so "what reached the model" is never empty when chunks did.
@@ -2413,7 +3163,7 @@ async function handleChatTurn(
         // also land here — checking once at the top of the loop covers all of
         // them (e.g. Groq 429 arriving after the technician tapped Stop).
         if (clientAbort.signal.aborted) break cascade;
-        genSpan = tracer.startSpan(`chat ${provider.model}`, undefined, rootCtx);
+        genSpan = startStage(`chat ${provider.model}`);
         genOutcome = "exception";
         genResponseId = null;
         const genAttemptStartedAt = Date.now();
@@ -2682,7 +3432,7 @@ async function handleChatTurn(
           stoppedAnswerGateSpan,
         );
         stoppedAnswerGateSpan.end();
-        const stoppedPersistSpan = tracer.startSpan("turn.persist", undefined, rootCtx);
+        const stoppedPersistSpan = startStage("turn.persist");
         let stoppedTurnRowId: string | null = null;
         try {
           stoppedTurnRowId = await recordTurn(ctx.tenantId, notebookId, {
@@ -2782,8 +3532,20 @@ async function handleChatTurn(
       // The specificity lane keys on "no documents behind the answer", which
       // is `!docGrounded` (an OEM-grounded turn is held to the citation
       // contract, exactly like a notebook-grounded one).
-      const validation = validateAnswer({ answerText, question: message, general: !docGrounded, served, refused, evidenceSufficient });
+      const validation = validateAnswer({
+        answerText,
+        question: message,
+        general: !docGrounded,
+        served,
+        refused,
+        evidenceSufficient,
+        manualSearchRunning,
+      });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
+      // #4098: which quantity word + unit the exact-rating rule matched —
+      // closed-vocabulary tokens, never text — so false refusals are
+      // diagnosable from the Turn Evidence Packet. Recorded gate on or off.
+      const gateMatch = !validation.ok && validation.match ? validation.match : null;
       if (!validation.ok) {
         console.error(
           `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
@@ -2973,6 +3735,7 @@ async function handleChatTurn(
           jev_input_tokens: jev.input_tokens,
           citations_shipped: emittedCitations.length,
           evidence_followed: evidenceFollowed,
+          gate_match: gateMatch,
         });
         // SHADOW. Assemble the judgeable view of this turn while the text still
         // exists. The packet deliberately stores no question and no answer, so
@@ -3087,7 +3850,7 @@ async function handleChatTurn(
       // Complete the durable turn before touching the response controller.
       // Cancellation during the semantic judge closes that controller; a
       // later enqueue may throw, but terminal truth must already be replayable.
-      const finalPersistSpan = tracer.startSpan("turn.persist", undefined, rootCtx);
+      const finalPersistSpan = startStage("turn.persist");
       let finalTurnRowId: string | null = null;
       try {
         finalTurnRowId = await recordTurn(ctx.tenantId, notebookId, {
@@ -3107,9 +3870,10 @@ async function handleChatTurn(
                   { kind: "safety_stop", trigger: outputRejected.violation } satisfies SafetyStopEntry,
                   ...disputeEntries,
                   ...(visualEntry ? [visualEntry] : []),
+                  ...proposalEntries,
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries]
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries],
+              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries]
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
@@ -3219,6 +3983,18 @@ async function handleChatTurn(
       // empty, so no facet chip can name unproven evidence).
       // A disputed identity never gets machine-flavoured follow-ups ("… on this
       // drive?") — the technician must re-select the machine first.
+      // #4095 — the proposal rides next to the answer for a client that
+      // renders it (none ships that yet; unknown frames are ignored). Emitted
+      // whatever the answer status.
+      if (identityProposal) {
+        const proposalFrame: NotebookIdentityProposalFrame = { kind: "identity_proposal", ...identityProposal };
+        controller.enqueue(enc.encode(sse(proposalFrame)));
+      }
+      // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
+      {
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt);
+        if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
+      }
       if (answerStatus === "answered" && !identityDisputed && !outputRejected) {
         const provenFacets = plan.facets.length
           ? [...facetEvidencePages(chunks, plan.facets)]

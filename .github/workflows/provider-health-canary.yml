@@ -111,7 +111,20 @@ jobs:
           title="LLM provider coverage ${sev}: ${summary}"
           # printf so each line has NO leading whitespace (4+ spaces => code block)
           # and NO backticks (avoids bash command substitution in the body).
+          # SDLC v1 §10.3 fixed fields first (one per line, exactly these keys; the
+          # body is the record of truth). A canary cannot attribute a deploy, so
+          # deploy_run/deploy_sha are "none"; restored_at stays "open" until a
+          # human edits the body; restoring_action starts as "none".
+          first_seen="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           body=$(printf '%s\n' \
+            "first_seen: ${first_seen}" \
+            "deploy_run: none" \
+            "deploy_sha: none" \
+            "services: mira-bots (LLM cascade providers: ${down})" \
+            "impact: reduced LLM provider coverage — ${summary}" \
+            "restored_at: open" \
+            "restoring_action: none" \
+            "" \
             "The provider-health canary found one or more LLM cascade providers DOWN." \
             "" \
             "Status: ${summary}" \
@@ -129,13 +142,36 @@ jobs:
             "Health prior deaths: Gemini 403 (replaced by Together), Cerebras llama3.1-8b 404 (-> gpt-oss-120b).")
           gh label create provider-incident --color B60205 \
             --description "LLM cascade provider coverage incident (canary)" 2>/dev/null || true
+          # SDLC v1 §10.3: every canary-opened failure record also carries the
+          # generic `incident` label so the observation window (§9), the metrics
+          # (§12.3) and the regression disposition are counted off ONE label.
+          gh label create incident --color B60205 \
+            --description "Production failure record; SDLC v1 10.3 fixed fields, see docs/agents/issue-tracker.md" 2>/dev/null || true
           # Dedup by a stable title marker so a multi-cycle outage updates ONE
           # issue instead of opening a new one every 6h.
-          existing=$(gh issue list --state open --search 'in:title "LLM provider coverage"' \
-            --json number --jq '.[0].number // empty')
+          # Narrow the dedup target to this canary's own label (Codex F1, PR #4212): a
+          # title substring alone could pick a stale or hand-renamed issue.
+          matches=$(gh issue list --state open --label provider-incident --search 'in:title "LLM provider coverage"' \
+            --json number --jq '[.[].number]')
+          count=$(printf '%s' "$matches" | jq 'length')
+          # More than one open match is a maintenance state, not an outage of the canary:
+          # update the NEWEST (highest number) deterministically and flag the duplicates
+          # for cleanup — never strand the live signal, never pick an arbitrary one
+          # (Codex rounds 2 and 3, PR #4212).
+          if [ "$count" -gt 1 ]; then
+            echo "::warning::$count open issues match the incident dedup ($matches); updating the newest, close or retitle the stale ones"
+          fi
+          existing=$(printf '%s' "$matches" | jq -r 'max // empty')
           if [ -n "$existing" ]; then
+            # Label FIRST, then comment (Codex F1, PR #4212): if the label add fails the
+            # run goes red without leaving a half-updated record (comment present, label
+            # absent). An existing failure record without the `incident` label is an
+            # incomplete record; the observation window and metrics key on that label
+            # (SDLC v1 §9, §12.3). `--add-label` is idempotent when the label is present.
+            gh issue edit "$existing" --add-label incident \
+              || { echo "::error::could not add the incident label to #$existing; comment withheld"; exit 1; }
             gh issue comment "$existing" --body "$body"
             echo "commented on existing incident #$existing"
           else
-            gh issue create --title "$title" --body "$body" --label provider-incident
+            gh issue create --title "$title" --body "$body" --label provider-incident --label incident
           fi

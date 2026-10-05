@@ -373,49 +373,39 @@ class FakeCursor:
 class TestWriteProposedRowsRLS:
     """write_proposed_rows — RLS set_config + idempotent insert."""
 
-    def test_write_sets_rls_config(self):
+    # The writer module is loaded lazily (`_schematic = None` until first use), so
+    # each test loads it itself rather than relying on an earlier test in the same
+    # xdist worker having done so (#4196).
+
+    def test_write_sets_rls_config(self, monkeypatch):
         """First call to write_proposed_rows issues set_config for RLS."""
         fake_cur = FakeCursor()
 
         # Mock the reused writer to do nothing (just record it was called)
-        original_write = wiring_intake._schematic.base.write_rows
-
         def mock_write(cur, tenant_id, rows):
             return (len(rows), 0)
 
-        wiring_intake._schematic.base.write_rows = mock_write
+        monkeypatch.setattr(wiring_intake._load_schematic().base, "write_rows", mock_write)
 
-        try:
-            wiring_intake.write_proposed_rows(fake_cur, "tenant-123", [])
-            # Should have called set_config
-            rls_calls = [
-                c for c in fake_cur.execute_calls if "set_config" in c["sql"].lower()
-            ]
-            assert len(rls_calls) >= 1
-            assert "app.current_tenant_id" in rls_calls[0]["sql"]
-            assert "tenant-123" in str(rls_calls[0]["params"])
-        finally:
-            wiring_intake._schematic.base.write_rows = original_write
+        wiring_intake.write_proposed_rows(fake_cur, "tenant-123", [])
+        # Should have called set_config
+        rls_calls = [c for c in fake_cur.execute_calls if "set_config" in c["sql"].lower()]
+        assert len(rls_calls) >= 1
+        assert "app.current_tenant_id" in rls_calls[0]["sql"]
+        assert "tenant-123" in str(rls_calls[0]["params"])
 
-    def test_write_returns_inserted_skipped(self):
+    def test_write_returns_inserted_skipped(self, monkeypatch):
         """write_proposed_rows returns (inserted, skipped) tuple."""
         fake_cur = FakeCursor()
-
-        original_write = wiring_intake._schematic.base.write_rows
 
         def mock_write(cur, tenant_id, rows):
             return (10, 3)
 
-        wiring_intake._schematic.base.write_rows = mock_write
+        monkeypatch.setattr(wiring_intake._load_schematic().base, "write_rows", mock_write)
 
-        try:
-            inserted, skipped = wiring_intake.write_proposed_rows(
-                fake_cur, "tenant-123", []
-            )
-            assert inserted == 10
-            assert skipped == 3
-        finally:
-            wiring_intake._schematic.base.write_rows = original_write
+        inserted, skipped = wiring_intake.write_proposed_rows(fake_cur, "tenant-123", [])
+        assert inserted == 10
+        assert skipped == 3
 
 
 # ── Asset normalization ──────────────────────────────────────────────────────

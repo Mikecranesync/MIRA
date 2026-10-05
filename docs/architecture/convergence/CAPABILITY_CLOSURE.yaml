@@ -294,7 +294,8 @@ capabilities:
       - "DONE 2026-08-27 - variable observed inside all five prod consumer containers; in-process gate True in mira-ask/mira-pipeline/mira-bot-telegram; 28 unverified chunks recalled with the gate off vs 0 with it on (see evidence)."
       - "Record an owner."
       - "REVIEW DEFERRED 2026-09-06 -> 2026-10-05 (reason): the 2026-09-05 review date lapsed with the owner still unassigned, which failed the capability-closure check on every open PR and blocked the #3597 release train. Nothing about the capability changed - it is production_enabled and runtime-proven (evidence above). The only open item remains recording an owner; that is the owner's decision (Mike), not this deferral's. Re-decide by the new date."
-    review_by: "2026-10-05"
+      - "REVIEW DEFERRED 2026-10-01 -> 2026-10-14 (reason): moved without re-deciding, together with machine_memory_observer_cv101, so a date lapsing mid-queue does not fail CI Gate on every open PR again; owner-approved agent PR (same route as #4027). Recording an owner is still the open item. Re-decide by the new date."
+    review_by: "2026-10-14"
 
   # =========================================================================
   - id: technician_context_contract
@@ -494,9 +495,13 @@ capabilities:
     promotion_criteria:
       - "Mike sets MACHINE_MEMORY_OBSERVER_ENABLED=1, _ASSET_ID, _EMAIL/_PASSWORD in Doppler prd; redeploy dogfood worker+beat via deploy-vps.yml."
       - "series.json: consecutive_days >= 7, defects == [], real_fault_window_with_rows == true."
-    review_by: "2026-09-30"
+    review_by: "2026-10-14"
     notes: >-
       Workstream C of docs/prd/2026-08-29-technician-beta-recovery-prd.md (PR #3486).
+      REVIEW DEFERRED 2026-10-01 -> 2026-10-14: the 2026-09-30 date lapsed at UTC
+      midnight and failed CI Gate on every open PR and on main. Moved without
+      re-deciding by an owner-approved agent PR (same route as #4027); nothing
+      about the capability changed. Re-decide by the new date.
 
 # ---------------------------------------------------------------------------
 # Gate flags deliberately NOT tracked as product capabilities. Each needs a
@@ -570,6 +575,61 @@ capabilities:
       Slice 1 of docs/plans/2026-08-26-technician-copilot-prd-phase0-audit.md (PR #3411).
 
   # =========================================================================
+  - id: notebook_manual_acquisition
+    purpose: >-
+      When a technician confirms a machine's identity (Scan machine creates the
+      notebook as user_confirmed), search for that machine's official manual in
+      the background through the nameplate-confirm pipeline (discover, hardened
+      download, ingest, applicability check against the document's own text),
+      and let the notebook chat report the outcome honestly instead of a generic
+      "upload the manual".
+    customer_outcome: >-
+      A technician who scans a machine finds its manual already in Sources — or
+      is told plainly that MIRA is still looking, found a candidate to check, or
+      could not find one (with the manufacturer's request link).
+    # The Hub reads MIRA_NOTEBOOK_MANUAL_ACQUISITION (TypeScript). feature_flag is
+    # omitted because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/capabilities/notebook-manual-acquisition.ts"
+      - "mira-hub/src/capabilities/manual-acquisition.ts   # moved verbatim from nameplate/confirm"
+    consumers:
+      - "mira-hub/src/app/api/equipment-notebooks/route.ts          # create-time trigger"
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts # decline-time fallback + honest state"
+    schema:
+      - "mira-hub/db/migrations/100_notebook_manual_acquisition.sql"
+      - "mira-hub/db/migrations/101_notebook_manual_acquisition_revoke_trigger.sql   # identity change revokes auto-enabled manuals atomically"
+      - "mira-hub/db/migrations/102_notebook_manual_acquisition_revoke_spares_confirmed.sql   # the revocation never touches a technician-confirmed manual"
+    environments:
+      dev: unset
+      staging: unset
+      production: unset
+    state: deployed_disabled
+    reason: >-
+      New in #4075 slice 2. Ships off: the create-time trigger also fires for
+      eval harnesses that create confirmed notebooks, so it is enabled in staging
+      only after merge and migration 100, and measured before any production
+      decision.
+    owner: "Mike Harper"
+    ci_jobs:
+      - mira-hub-unit        # notebook-manual-acquisition + chat-flight-recorder + create-starts-manual-acquisition suites
+    required_checks: []
+    evidence: []
+    rollback: >-
+      Set MIRA_NOTEBOOK_MANUAL_ACQUISITION=0 (or unset) in Doppler and redeploy
+      mira-hub. The column is additive and nullable; code fails open without it.
+    blocker: >-
+      Not enabled anywhere yet. Needs migration 100 on staging and a staging
+      walk (scan a machine, ask, see the state change) before promotion.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Staging: set the flag after 100 is applied; scan SMC VQ1000-FPG and STEPPERONLINE MG17 notebooks; record the packet manual_acquisition states."
+      - "Production: owner decision after the staging walk and the #4102 human-readiness run."
+    review_by: "2026-10-27"
+    notes: >-
+      Pairs with manual_discovery_judge: without the judge, discovery can return
+      an unrelated PDF (2026-09-29 probe: a bioRxiv paper for an MG17 gearbox);
+      applicability keeps it disabled, but the judge keeps it off the screen.
+
   - id: unified_ui_shell
     purpose: >-
       Shared FactoryLM presentation shell (design tokens, interaction

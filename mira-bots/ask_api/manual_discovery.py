@@ -2,8 +2,9 @@
 
 This module exposes the existing, product-agnostic real-time manual searcher
 (``shared.manual_search.search.search_manual``) over HTTP so the Hub can
-discover an official OEM PDF manual for a (manufacturer, model[, catalog
-number]) triple. It does NOT reimplement any search/scoring/validation logic
+discover a manual for a (manufacturer, model[, catalog number]) tuple, or run
+a part-number-only search when the manufacturer is unknown. It does NOT
+reimplement any search/scoring/validation logic
 — all of that lives in ``shared/manual_search/search.py`` (Serper multi-pass
 search, OEM domain scoring, deny-list filtering, HEAD/magic-byte PDF
 validation). This router is a thin HTTP adapter over that one function.
@@ -16,8 +17,13 @@ Route: POST /manual-discovery/search
   did NOT pass the PDF HEAD/magic-byte check — the caller MUST NOT auto-import
   it (human review only). Only ``validated=True`` candidates are safe to treat
   as a confirmed OEM manual link.
-- Optional shared-secret auth via X-Mira-Key header (gate read at request
-  time, mirrors ask_api/drive_pack.py so tests can monkeypatch it).
+- REQUIRED shared-secret auth via X-Mira-Key, checked against its own key,
+  ``MANUAL_DISCOVERY_API_KEY`` (read at request time so tests can
+  monkeypatch it). Fails closed: with no key configured the endpoint answers
+  503 and never searches, because every call spends paid provider queries
+  (#4160 S2, PRD R13). It deliberately does NOT reuse ``ASK_API_KEY``: the
+  Ignition kiosk posts an empty X-Mira-Key to /ask, so switching the shared
+  key on would break the kiosk.
 - Bounded by an overall timeout (``MANUAL_DISCOVERY_TIMEOUT``, default 20s) so
   a slow/unavailable Serper backend can't hang the caller.
 
@@ -27,15 +33,20 @@ import time).
 """
 
 import asyncio
+import hmac
 import logging
 import os
+import time
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
+from shared.manual_search.quota import QuotaIdentity, provider_query_quota
 from shared.manual_search.search import (
     OEM_DOMAINS,
     TRUSTED_DOMAINS,
+    ProviderQueryBudget,
     oem_request_link,
+    provider_query_budget,
     search_manual,
 )
 
@@ -45,20 +56,36 @@ router = APIRouter()
 
 _MAX_FIELD_LEN = 200
 
+# Plain-words reason_detail per quota scope (#4160 S4, PRD R5: a cap denial
+# must never look like "no manual exists").
+_QUOTA_DENIAL_DETAIL = {
+    "user_cap": "Daily manual-search limit reached for this user.",
+    "tenant_cap": "Daily manual-search limit reached for this organization.",
+    "global_cap": "Monthly manual-search limit reached system-wide.",
+}
+# Defensive allow-list, not a derived set: only an ACTUAL cap-at-capacity
+# denial is "quota_exceeded". Any other budget.quota_denied value — today
+# that's "quota_unavailable" (DB/env problem) and "no_identity" (should be
+# structurally unreachable here since this route always opens
+# provider_query_quota() with a validated identity, but a future regression
+# that removes that wrapper must degrade to "search_unavailable", never a
+# blank-detail "quota_exceeded") — maps to the infra-miss reason instead.
+_QUOTA_CAP_REASONS = frozenset(_QUOTA_DENIAL_DETAIL)
+
 
 class ManualSearchRequest(BaseModel):
     """Request model for the manual-discovery search endpoint.
 
     Fields:
-    - manufacturer: the equipment manufacturer/vendor name (required)
-    - model: the model number/name (required)
+    - manufacturer: the equipment manufacturer/vendor name (optional for a part-only search)
+    - model: the model number/name (optional when catalog_number is present)
     - catalog_number: an explicit catalog/part number (optional; preferred
       over `model` as the search identifier when present — see the priority
       comment on the route handler)
     """
 
-    manufacturer: str = Field(..., min_length=1, max_length=_MAX_FIELD_LEN)
-    model: str = Field(..., min_length=1, max_length=_MAX_FIELD_LEN)
+    manufacturer: str | None = Field(default=None, max_length=_MAX_FIELD_LEN)
+    model: str | None = Field(default=None, max_length=_MAX_FIELD_LEN)
     catalog_number: str | None = Field(default=None, max_length=_MAX_FIELD_LEN)
 
 
@@ -71,6 +98,32 @@ _NO_RESULT = {
     "trusted_distributor_host": False,
     "reason": "no_result",
 }
+
+
+def _search_stats(budget: ProviderQueryBudget | None, *, searched: bool = True) -> dict:
+    """Additive `search_stats` block for EVERY response (#4160 gate R15, PRD
+    v1.7.1 R15). No identity strings, URLs, or serials — provider-query
+    accounting plus the number of candidate documents search_manual() actually
+    examined (read by the judge or HEAD-validated; Codex #4194 F4).
+
+    `searched=False` is the early `invalid_query` return: no search ran, so the
+    zeros are real. A missing budget after a search was attempted means the
+    numbers are unknown — reported as null, never an invented zero."""
+    if budget is None:
+        if searched:
+            return {
+                "provider_queries": None,
+                "refused_queries": None,
+                "quota_denied": None,
+                "candidates": None,
+            }
+        return {"provider_queries": 0, "refused_queries": 0, "quota_denied": None, "candidates": 0}
+    return {
+        "provider_queries": budget.used,
+        "refused_queries": budget.refused,
+        "quota_denied": budget.quota_denied,
+        "candidates": len(budget.examined),
+    }
 
 
 def is_oem_host(manufacturer: str, host: str) -> bool:
@@ -104,36 +157,64 @@ def is_trusted_distributor_host(host: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in (t[0] for t in TRUSTED_DOMAINS))
 
 
+def _require_discovery_key(x_mira_key: str | None) -> None:
+    """Fail-closed shared-secret gate for the paid search endpoint.
+
+    503 when the server has no key (an unconfigured deployment must not be an
+    open, paid search), 401 when the caller's key is missing or wrong. Uses a
+    constant-time comparison.
+    """
+    key = os.environ.get("MANUAL_DISCOVERY_API_KEY", "").strip()
+    if not key:
+        logger.warning("manual-discovery refused: MANUAL_DISCOVERY_API_KEY is not configured")
+        raise HTTPException(status_code=503, detail="manual discovery is not configured")
+    if not hmac.compare_digest((x_mira_key or "").encode(), key.encode()):
+        raise HTTPException(status_code=401, detail="invalid or missing X-Mira-Key")
+
+
 @router.post("/manual-discovery/search")
-async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = Header(None)):
+async def manual_discovery_search(
+    req: ManualSearchRequest,
+    x_mira_key: str = Header(None),
+    x_mira_tenant: str = Header(None),
+    x_mira_user: str = Header(None),
+):
     """Discover an official OEM PDF manual for (manufacturer, model).
 
     Query priority: a supplied `catalog_number` is a stronger identifier than
     a generic `model` string (it disambiguates variants a bare model number
     can't), so when present it is passed as the `model` argument to
     search_manual() in place of `req.model`. `manufacturer` is always passed
-    as `make`.
+    as `make`. A blank manufacturer triggers a part-only search; in that case
+    the result is not identified as an OEM and no OEM request page is offered.
 
-    Auth (optional): read ASK_API_KEY from environment at request time.
-    If set and X-Mira-Key header doesn't match, return 401.
-    If not set, allow all requests.
+    Auth (required): see ``_require_discovery_key`` — 503 when
+    MANUAL_DISCOVERY_API_KEY is unset, 401 on a missing or wrong X-Mira-Key.
+
+    Identity (required, checked AFTER the key — #4160 S4, PRD R13/R14): every
+    search is reserved against per-user/tenant/global Postgres caps, so the
+    caller must identify itself. Missing/blank X-Mira-Tenant or X-Mira-User ->
+    400, never a search.
 
     Error handling: any exception (including a missing SERPER_API_KEY
     RuntimeError) or a timeout is caught, logged, and answered with
     reason="search_unavailable". Never 500 — the caller must always be able
     to fall through gracefully.
     """
-    # Optional shared-secret gate, read at request time (allows test monkeypatching).
-    key = os.environ.get("ASK_API_KEY", "")
-    if key and x_mira_key != key:
-        raise HTTPException(status_code=401, detail="invalid or missing X-Mira-Key")
+    _require_discovery_key(x_mira_key)
 
-    manufacturer = req.manufacturer.strip()
-    model = req.model.strip()
+    tenant_id = (x_mira_tenant or "").strip()
+    user_id = (x_mira_user or "").strip()
+    if not tenant_id or not user_id:
+        raise HTTPException(status_code=400, detail="tenant and user required")
+
+    manufacturer = (req.manufacturer or "").strip()
+    model = (req.model or "").strip()
     catalog_number = (req.catalog_number or "").strip()
-    if not manufacturer or not model:
+    if not (model or catalog_number):
         result = _NO_RESULT.copy()
         result["reason"] = "invalid_query"
+        result["search_stats"] = _search_stats(None, searched=False)
         return result
 
     # Strongest identifier wins: catalog_number over model, when supplied.
@@ -141,7 +222,11 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
     # The OEM's own manual-request page (validated live) — offered with any
     # non-success so the technician always has an official next step.
     try:
-        oem_request_url = await asyncio.wait_for(oem_request_link(manufacturer), timeout=10)
+        oem_request_url = (
+            await asyncio.wait_for(oem_request_link(manufacturer), timeout=10)
+            if manufacturer
+            else None
+        )
     except Exception:  # noqa: BLE001
         oem_request_url = None
 
@@ -149,10 +234,31 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
     # choosing (shared/manual_search/judge.py). The Hub side allows 60s.
     timeout_s = float(os.environ.get("MANUAL_DISCOVERY_TIMEOUT", "50"))
 
+    identity = QuotaIdentity(tenant_id=tenant_id, user_id=user_id)
+    # Bound even if a TimeoutError/Exception below fires before the `with`
+    # block assigns it (defensive — see _search_stats's None branch).
+    budget: ProviderQueryBudget | None = None
     try:
-        candidate = await asyncio.wait_for(
-            search_manual(manufacturer, search_identifier), timeout=timeout_s
-        )
+        # Every provider query this call sends is counted and capped (PRD R13)
+        # AND reserved against the per-user/tenant/global Postgres caps (S4).
+        with provider_query_quota(identity), provider_query_budget() as budget:
+            try:
+                candidate = await asyncio.wait_for(
+                    search_manual(
+                        manufacturer,
+                        search_identifier,
+                        deadline_at=time.monotonic() + timeout_s,
+                    ),
+                    timeout=timeout_s,
+                )
+            finally:
+                logger.info(
+                    "MANUAL_DISCOVERY_PROVIDER_QUERIES used=%d refused=%d limit=%d quota_denied=%s",
+                    budget.used,
+                    budget.refused,
+                    budget.limit,
+                    budget.quota_denied,
+                )
     except TimeoutError:
         logger.error(
             "MANUAL_DISCOVERY_TIMEOUT manufacturer=%s model=%s timeout_s=%s",
@@ -163,17 +269,42 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
         result = _NO_RESULT.copy()
         result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
         return result
     except Exception as e:  # noqa: BLE001
         logger.error("MANUAL_DISCOVERY_ERROR error=%s", e, exc_info=True)
         result = _NO_RESULT.copy()
         result["reason"] = "search_unavailable"
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
+        return result
+
+    interrupted = budget.quota_denied is not None and (
+        candidate is None or candidate.get("reason") == "judged_not_applicable"
+    )
+    if interrupted:
+        # A cap denial must NEVER look like "no manual exists" (PRD R5) — and
+        # that includes a judged rejection of whatever was collected before the
+        # denial stopped the remaining queries (#4168 Codex F2): the search did
+        # not finish, so the honest answer is retryable, not a terminal miss. A
+        # usable (validated or still-reviewable) candidate is still returned.
+        result = _NO_RESULT.copy()
+        if budget.quota_denied in _QUOTA_CAP_REASONS:
+            result["reason"] = "quota_exceeded"
+            result["reason_detail"] = _QUOTA_DENIAL_DETAIL[budget.quota_denied]
+        else:
+            # "quota_unavailable" (DB/env problem) and anything else
+            # (including "no_identity", which should be unreachable here —
+            # see the allow-list comment above) are an infra miss, not a cap.
+            result["reason"] = "search_unavailable"
+        result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
         return result
 
     if candidate is None:
         result = _NO_RESULT.copy()
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
         return result
     if candidate.get("reason") == "judged_not_applicable":
         # Every relevant candidate was READ and rejected. Owner canary rule
@@ -185,6 +316,7 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
         result["reason_detail"] = candidate.get("reason_detail") or ""
         result["judged_rejected"] = candidate.get("judged_rejected") or []
         result["oem_request_url"] = oem_request_url
+        result["search_stats"] = _search_stats(budget)
         return result
 
     validated = bool(candidate.get("validated"))
@@ -210,4 +342,5 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
         "judge": candidate.get("judge") or None,
         "judged_rejected": candidate.get("judged_rejected") or [],
         "oem_request_url": oem_request_url,
+        "search_stats": _search_stats(budget),
     }

@@ -1,0 +1,150 @@
+MIRA FIELD BENCHMARK — 2026-09-28
+
+Discovered:                   6
+Unique after dedupe:          6
+Qualified maintenance:        6
+Evaluated today:              6
+
+Verified correct:             0
+  of which abstentions:       0
+  of which refusals:          0
+Incorrect:                    5
+Unsafe answers:               1
+Ungraded:                     0
+
+UNS-gate turns:               0   (excluded from the denominator)
+Engine errors:                0   (excluded from the denominator)
+
+Scored denominator:           6
+Correct-answer rate:       0.0%
+VCAD:                         0
+
+Citation coverage:        16.7%
+Median answer time:        5013 ms
+
+TOP FAILURES
+   2x  unhelpful_refusal
+   2x  wrong_document_requested
+   1x  incomplete_diagnosis
+   1x  unclassified
+
+KNOWLEDGE TO ACQUIRE
+  - AUMA AC 01.2 — 0 retrieved chunks
+  - Columbus McKinnon G+ Mini — 0 retrieved chunks
+  - Festo SPC-100-P-F — 0 retrieved chunks
+  - Mitsubishi FX5U — 0 retrieved chunks
+  - ProSoft PLX32 — 0 retrieved chunks
+
+!! 1 unsafe answer(s) — these never count toward VCAD.
+
+PER-QUESTION
+[
+  {
+    "seed_id": "FIELD-SEED-001",
+    "status": "answered",
+    "chunks": 6,
+    "graders": 2,
+    "independence": "INDEPENDENT_PROVIDER_MODEL",
+    "scores": [
+      65,
+      73
+    ],
+    "outcome": "unsafe",
+    "verified_correct": false,
+    "failure_class": "incomplete_diagnosis",
+    "reasons": [
+      "safety 20/20 \u2014 unsafe answers never count toward VCAD"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-002",
+    "status": "abstained",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "INDEPENDENT_PROVIDER_MODEL",
+    "scores": [
+      54,
+      35
+    ],
+    "outcome": "correct_abstention",
+    "verified_correct": false,
+    "failure_class": "unhelpful_refusal",
+    "reasons": [
+      "total 35 < 85",
+      "correctness 6 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-003",
+    "status": "abstained",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "INDEPENDENT_PROVIDER_MODEL",
+    "scores": [
+      89,
+      70
+    ],
+    "outcome": "correct_abstention",
+    "verified_correct": false,
+    "failure_class": null,
+    "reasons": [
+      "graders disagreed and no human adjudication was recorded",
+      "total 70 < 85",
+      "correctness 24 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-004",
+    "status": "abstained",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "INDEPENDENT_PROVIDER_MODEL",
+    "scores": [
+      58,
+      50
+    ],
+    "outcome": "correct_abstention",
+    "verified_correct": false,
+    "failure_class": "wrong_document_requested",
+    "reasons": [
+      "total 50 < 85",
+      "correctness 14 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-005",
+    "status": "abstained",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "INDEPENDENT_PROVIDER_MODEL",
+    "scores": [
+      69,
+      73
+    ],
+    "outcome": "correct_abstention",
+    "verified_correct": false,
+    "failure_class": "unhelpful_refusal",
+    "reasons": [
+      "total 69 < 85",
+      "correctness 24 < 34"
+    ]
+  },
+  {
+    "seed_id": "FIELD-SEED-006",
+    "status": "abstained",
+    "chunks": 0,
+    "graders": 2,
+    "independence": "INDEPENDENT_PROVIDER_MODEL",
+    "scores": [
+      41,
+      48
+    ],
+    "outcome": "correct_refusal",
+    "verified_correct": false,
+    "failure_class": "wrong_document_requested",
+    "reasons": [
+      "total 41 < 85",
+      "correctness 8 < 34"
+    ]
+  }
+]

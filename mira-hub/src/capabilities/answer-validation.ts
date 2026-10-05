@@ -28,6 +28,7 @@
  * Zero-token by design — no inference call (`.claude/rules/zero-token-architecture.md`).
  */
 
+import { stepEnergyContradiction } from "./step-energy";
 
 export type AnswerValidation =
   | { ok: true }
@@ -46,6 +47,9 @@ export type AnswerValidation =
       detail: string;
       /** Full deterministic replacement served instead of the candidate. */
       replacement: string;
+      /** Closed-vocabulary facts about the match (never answer text), safe to
+       *  record on the Turn Evidence Packet (#4098). */
+      match?: { term: string; unit: string };
     };
 
 /* ------------------------------------------------------------------------ *
@@ -144,6 +148,54 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   {
     id: "must-remain-energized",
     re: /\b(?:must|should|can|may|needs?\s+to|has\s+to)\s+(?:remain|stay|be\s+kept|be\s+left)\s+(?:energized|live|hot|powered(?:\s+on)?|running)\b[^.!?\n]{0,60}\b(?:during|while|for|when)\b[^.!?\n]{0,40}\b(?:reset(?:ting)?|repair\w*|servic\w*|maintenance|work(?:ing)?|clear(?:ing)?|replac\w*|remov\w*|open(?:ing)?|troubleshoot\w*|fault|adjust\w*|inspect\w*)\b/i,
+  },
+  // #3902 (the #3790 retest paraphrases the semantic judge alone caught). The
+  // floor must not depend on judge availability, so each shape is pinned in
+  // answer-validation-3902-paraphrases.test.ts with negated/benign controls.
+  //
+  // S1/S5: approval stated about the energized WORK itself — "energized reset
+  // is approved". The predicate must follow the noun directly ("is not
+  // approved" / "is never approved" fail the adjacency), and a following
+  // "permit" keeps NFPA 70E permit prose ("energized work permit is approved")
+  // out.
+  {
+    id: "energized-work-approved",
+    // R1 (Codex): `(?<![\w-])` keeps "de-energized work is safe" out, and the
+    // noun→predicate gap is at most four plain words — no clause punctuation,
+    // no negation — so "energized reset, which is never safe, ... is approved"
+    // cannot bridge two clauses. R3 (Codex F5): a governing "No" / "Not all" /
+    // "Never" directly before the noun phrase negates the approval.
+    re: /(?<![\w-])(?<!\b(?:no|not\s+all|never)\s+)(?:energi[sz]ed|live|hot|power[-\s]on)\s+(?:[\w-]+\s+){0,2}?(?:reset|work|inspection|servicing|maintenance|repair|testing|troubleshooting)s?\b(?!\s+permits?\b)(?:\s+(?!(?:not|never|no)\b)[\w()\[\]-]+){0,4}?\s+(?:is|are|has\s+been|was)\s+(?:approved|allowed|permitted|acceptable|fine|ok(?:ay)?|safe|authori[sz]ed)\b/i,
+  },
+  // R2 (Codex): the predicate gap is bounded like energized-work-approved —
+  // ≤4 plain words, no clause punctuation, no not/never/no.
+  // S3: the hazard action, coupled to an energized/running machine, then
+  // affirmed by a predicate — "Resetting E-12 on a running TS-440 is fine".
+  // "is not safe" / "is dangerous" fail the predicate adjacency and stay with
+  // BOUND_PROHIBITION.
+  {
+    id: "energized-action-affirmed",
+    re: /\b(?:reset(?:ting)?|work(?:ing)?|servic\w+|repair(?:ing)?|inspect(?:ing|ion)?|clear(?:ing)?|adjust(?:ing)?|touch(?:ing)?|open(?:ing)?)\b[^.!?\n]{0,40}?\b(?:on|with|while|when)\s+(?:an?\s+|the\s+|it\s+(?:is\s+)?)?(?:[\w-]+\s+){0,2}?(?:energi[sz]ed|live|running|hot|powered)\b(?:\s+(?!(?:not|never|no)\b)[\w()\[\]-]+){0,4}?\s+(?:is|are)\s+(?:fine|ok(?:ay)?|safe|acceptable|allowed|permitted|approved)\b/i,
+  },
+  // S6: passive permission with the energized state as a manner adverb —
+  // "the seal bar can be inspected live". "cannot"/"can not"/"should never"
+  // fail the modal→be adjacency. "tested" is deliberately absent: testing for
+  // absence of voltage is a legitimate qualified-person step.
+  {
+    id: "passive-energized-permission",
+    // R3 (Codex F5): "never/don't assume … can be inspected live" is caution,
+    // not permission. The lookbehind stays inside one clause (no ; : . ! ?).
+    re: /(?<!\b(?:never|don't|do\s+not)\s+(?:assume|think|believe|expect)\b[^.!?\n;:]{0,40})\b(?:can|may|could|should)\s+(?:safely\s+|still\s+)?be\s+(?:inspected|serviced|reset|repaired|adjusted|cleaned|touched|handled|opened|worked\s+on|cleared|replaced|removed)\s+(?:while\s+(?:it\s+is\s+|still\s+)?)?(?:live|energi[sz]ed|hot|running|powered(?:\s+on)?|with\s+(?:the\s+)?power\s+(?:still\s+)?on)\b/i,
+  },
+  // R2 (Codex): the gap may not cross ; or : or pass an isolation word
+  // ("leave it on for monitoring; lock out, then repair" is the safe sequence).
+  // S7: "leave the machine on, press RESET, and check the seal bar" — keeping
+  // the MACHINE (not a guard) on, then an imperative hazard action joined by a
+  // comma/and/then. Observation-only follow-ups ("leave the machine on and
+  // watch the HMI") have no hazard verb in the imperative slot.
+  {
+    id: "leave-on-then-act",
+    re: /(?<!\bnot\s)(?<!\bnever\s)(?<!n't\s)\b(?:leave|keep)\s+(?:the\s+|this\s+)?(?:machine|unit|equipment|power|drive|motor|press|line|conveyor|system|sealer|it)\s+(?:on|running|energi[sz]ed|powered(?:\s+on)?|live)\b(?:(?!\b(?:lock\w*|tag\w*|isolat\w*|de-?energi[sz]\w*|shut\w*|loto)\b)[^.!?\n;:]){0,40}?(?:,|\band\b|\bthen\b)\s+(?:then\s+)?(?:press\s+(?:the\s+)?reset|reset|open(?!\s+(?:the\s+)?(?:hmi|screen|alarm|menu|page|display|tab|app|log|history|trend|faceplate)\b)|remove|replace|repair|service|adjust|touch|reach\s+(?:into|in))\b/i,
   },
   // Iteration-3 blocker: MODAL/advisory instruction heads — "You should
   // reset … while energized" / "It is advisable to perform maintenance while
@@ -620,8 +672,13 @@ const QTY =
   "(?:rated|rating|ratings|range|maximum|minimum|max|min|nominal|operating|supply|input|output|limit|limits|spec|specification|tolerance|clearance|torque|pressure|voltage|current|speed|temperature|frequency|power|capacity|width|height|length|depth|weight|diameter|thickness|gap|setting|setpoint)";
 const HEDGE =
   /\b(?:typically|usually|often|generally|commonly|normally|for example|e\.g\.|such as|many|most|some|industrial|standard|common|might|may|could|would|should|approximately|around|about|roughly|likely)\b/i;
+// Capture groups name WHICH quantity word and unit matched — closed-vocabulary
+// tokens of this grammar, never answer text (#4098: the Turn Evidence Packet
+// may carry these, so a false refusal can be diagnosed from staging turns).
+// Groups: 1 quantity word, 2 unit (quantity-first); 3 unit, 4 rating word
+// (value-first). Adding groups does not change what matches.
 const EXACT_RATING_RE = new RegExp(
-  `\\b${QTY}\\b[^.!?\\n]{0,60}?\\b(?:is|are|of|=|:|at)\\s*(?:${RANGE}|${NUM})\\s*${UNIT}\\b|\\b(?:${RANGE}|${NUM})\\s*${UNIT}\\b[^.!?\\n]{0,40}?\\b(?:rated|rating|nominal|maximum|minimum|operating range|limit)\\b`,
+  `\\b(${QTY})\\b[^.!?\\n]{0,60}?\\b(?:is|are|of|=|:|at)\\s*(?:${RANGE}|${NUM})\\s*(${UNIT})\\b|\\b(?:${RANGE}|${NUM})\\s*(${UNIT})\\b[^.!?\\n]{0,40}?\\b(rated|rating|nominal|maximum|minimum|operating range|limit)\\b`,
   "i",
 );
 
@@ -629,11 +686,90 @@ const EXACT_RATING_RE = new RegExp(
  *  hedged, so "industrial HMIs typically run 0–50 °C" survives while
  *  "the operating range is 0…+50 °C" (asserted as this machine's fact) does not. */
 export function unsupportedExactRating(text: string): string | null {
+  return exactRatingMatch(text)?.excerpt ?? null;
+}
+
+/** Which part of the exact-rating grammar fired. `term` and `unit` are tokens
+ *  of this file's closed vocabulary (lower-cased), safe for the text-free
+ *  Turn Evidence Packet; `excerpt` is answer text and is for server logs only. */
+export type ExactRatingMatch = { excerpt: string; term: string; unit: string };
+
+// #4098 (Mike's decision, 2026-09-28): an established DEFINITION is not a claim
+// about this machine. "A PT100 has a nominal resistance of 100 Ω at 0 °C" is
+// the IEC 60751 definition of the sensor type, and was blocked 5/5 on staging
+// (731649c23).
+//
+// The exemption is a CLOSED TEMPLATE over a whole clause, never a span or a
+// value set (#4108 review rounds 1-2: value sets let unrelated numbers launder
+// invented ones; spans detached a value from its sensor and quantity, stripped
+// a range's endpoint or a negative sign). A clause is a definition only when
+// the entire clause reads "[a|the] PTnnn['s] [sensor|element|RTD] [has|is|reads]
+// [a] [nominal|base] [resistance|value] [of|is] [a] [nominal] R Ω at 0 °C",
+// with R equal to that clause's OWN designation (PT100 → 100 Ω, PT1000 →
+// 1 000 Ω). Those clauses are removed and the full rating grammar re-runs on
+// everything else, so a lead resistance, a limit, a range, a swapped value or
+// any other claim still blocks.
+const RTD_DEFINITION_CLAUSE_RE = new RegExp(
+  "^\\s*(?:(?:a|an|the)\\s+)?pt[-\\s]?(100|500|1000)(?:'s)?" +
+    "(?:\\s+(?:sensor|element|rtd))?(?:\\s+(?:has|is|reads))?(?:\\s+an?)?" +
+    "(?:\\s+(?:nominal|base))?(?:\\s+(?:resistance|value))?(?:\\s+(?:of|is))?" +
+    "(?:\\s+a)?(?:\\s+nominal)?" +
+    "\\s+(\\d{1,3}(?:,\\d{3})*|\\d+)(?:\\s*(k))?\\s?(?:ohms?|ω)" +
+    "\\s+at\\s+0\\s*°\\s?c(?:\\s+nominal)?\\s*[.!]?\\s*$",
+  "i",
+);
+// Also the "The nominal resistance of a PT1000 is 1000 ohms at 0 °C" order.
+const RTD_DEFINITION_CLAUSE_RE_2 = new RegExp(
+  "^\\s*the\\s+(?:nominal|base)\\s+resistance\\s+of\\s+(?:(?:a|an|the)\\s+)?" +
+    "pt[-\\s]?(100|500|1000)\\s+is\\s+(\\d{1,3}(?:,\\d{3})*|\\d+)(?:\\s*(k))?\\s?(?:ohms?|ω)" +
+    "\\s+at\\s+0\\s*°\\s?c\\s*[.!]?\\s*$",
+  "i",
+);
+
+function isRtdDefinitionClause(clause: string): boolean {
+  for (const re of [RTD_DEFINITION_CLAUSE_RE, RTD_DEFINITION_CLAUSE_RE_2]) {
+    const m = re.exec(clause);
+    if (m) {
+      const ohms = Number(m[2].replace(/,/g, "")) * (m[3] ? 1000 : 1);
+      return ohms === Number(m[1]);
+    }
+  }
+  return false;
+}
+
+/** The sentence with every whole-clause RTD definition blanked out, and every
+ *  other byte — including the separators — left exactly as written (#4108
+ *  review round 3: rebuilding with commas broke the rating grammar's own
+ *  "220 and 480 V" range syntax). Clauses are delimited by ", " / ";" / " and "
+ *  / " whereas " / " while " / " vs."; a thousands comma ("1,000") has no
+ *  following space, so it never splits a number. */
+function withoutRtdDefinitions(sentence: string): string {
+  // The capture group keeps each separator in the array at the odd indexes.
+  const parts = sentence.split(/(,\s+|;\s*|\s+(?:and|whereas|while|vs\.?|versus)\s+)/i);
+  let changed = false;
+  for (let i = 0; i < parts.length; i += 2) {
+    if (isRtdDefinitionClause(parts[i])) {
+      parts[i] = "";
+      changed = true;
+    }
+  }
+  return changed ? parts.join("") : sentence;
+}
+
+export function exactRatingMatch(text: string): ExactRatingMatch | null {
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     if (!sentence.trim()) continue;
     if (HEDGE.test(sentence)) continue;
-    const m = EXACT_RATING_RE.exec(sentence);
-    if (m) return m[0].slice(0, 160);
+    // Report the claim that survives the exemption, not the exempt definition
+    // (#4108 review round 2 F3: gate_match must name what actually blocked).
+    const m = EXACT_RATING_RE.test(sentence) ? EXACT_RATING_RE.exec(withoutRtdDefinitions(sentence)) : null;
+    if (m) {
+      return {
+        excerpt: m[0].slice(0, 160),
+        term: (m[1] ?? m[4] ?? "").toLowerCase(),
+        unit: (m[2] ?? m[3] ?? "").toLowerCase().replace(/\s+/g, ""),
+      };
+    }
   }
   return null;
 }
@@ -659,6 +795,7 @@ const NON_VERIFICATION =
   /\b(?:cannot|can'?t|unable\s+to|not\s+(?:able\s+to\s+)?(?:verify|confirm)|couldn'?t|unverified|don'?t\s+have|do\s+not\s+have|no\s+documentation|not\s+documented|isn'?t\s+documented|won'?t\s+guess|not\s+something\s+I\s+can)\b/i;
 
 const FAULT_CONTEXT = /\b(?:fault|alarm|error|code|trip(?:ped|s)?)\b/i;
+
 
 /* ------------------------------------------------------------------------ *
  * Detection-only canonicalization                                           *
@@ -845,17 +982,49 @@ function codeMeaningViolation(
 
 /** Deterministic replacement for a specificity rejection — honest about the
  *  gap, still useful, funnels to upload (#3787 two-lane design, guardrails
- *  2–4). Never interpolates model output beyond the technician-shaped code. */
-export function specificityFallback(code: string | null): string {
+ *  2–4). Never interpolates model output beyond the technician-shaped code.
+ *
+ *  #4098 / #4104 review: the old copy offered only fault-triage steps, so a
+ *  request for a manual or software got "confirm the exact code on the
+ *  display" (Answer Radar seed 002). Choosing the copy by classifying the
+ *  question failed in both directions under review ("keeps tripping" lost
+ *  triage; "I lost the manual" gained it). So nothing is classified: the
+ *  fallback offers both next steps, each labelled with when it applies.
+ *  Copy only — what is withheld is unchanged. */
+const MANUAL_SELF_SERVE_LINE =
+  "- If you need the document itself: get it from the manufacturer's support or documentation site, or your distributor, searching by the exact model or part number on the nameplate. For obsolete equipment, ask them for the archived manual (and any required software) by name.";
+/** #4160 gate NO-GO (PRD "Never"): while MIRA's own automatic search for the
+ *  official manual is running, never send the technician off to fetch it —
+ *  say the search is underway and where the manual will appear. */
+const MANUAL_SEARCH_RUNNING_LINE =
+  "- If you need the document itself: I'm already searching for the official manual for this equipment. When I find it, it will show up in this notebook's Sources — ask again then and I'll answer from it with a page reference.";
+/** Codex #4183 F1: a CANDIDATE-basis manual lands turned off pending the
+ *  technician's check (the identity is unconfirmed), so asking again alone
+ *  cannot ground an answer — say to turn it on first. */
+const MANUAL_SEARCH_RUNNING_CANDIDATE_LINE =
+  "- If you need the document itself: I'm already searching for the official manual for this equipment. When I find it, it'll be saved to this notebook's Sources, turned off until you check it — turn it on there if it's right and ask again, and I'll answer from it with a page reference.";
+
+/** Which automatic manual search is running for this notebook, if any. */
+export type ManualSearchRunning = "confirmed" | "candidate" | null;
+
+export function specificityFallback(
+  code: string | null,
+  opts: { manualSearchRunning?: ManualSearchRunning } = {},
+): string {
   const head = code
     ? `I can't verify what ${code} means on this machine from the evidence in this conversation, and I won't guess at machine-specific facts.`
     : `I can't verify that machine-specific detail from the evidence in this conversation, and I won't guess.`;
   return `${head}
 
-What I can tell you honestly:
-- Confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly.
-- With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
-- Note whether the problem returns immediately on restart or only under load — that separates a latched trip from an active condition.
+What you can do next:
+- If this is about a fault or a stopped machine: confirm the exact code and any text shown on the display — fault text often names the failing subsystem directly. With the machine electrically isolated, check the basics: supply power, E-stop state, tripped breakers, loose terminals, and anything that changed since it last ran.
+${
+    opts.manualSearchRunning === "candidate"
+      ? MANUAL_SEARCH_RUNNING_CANDIDATE_LINE
+      : opts.manualSearchRunning === "confirmed"
+        ? MANUAL_SEARCH_RUNNING_LINE
+        : MANUAL_SELF_SERVE_LINE
+  }
 
 If you add this machine's manual as a source and ask again, I'll give you the exact answer with a page reference.`;
 }
@@ -878,8 +1047,169 @@ function hazardWarning(violation: string, detail: string, answerText: string): A
   };
 }
 
+// #4110 (staging 134eec706, Q3): "De-energize, lockout/tagout … verify zero
+// volts. 2. Measure the actual line voltage at the drive's input terminals."
+// After a lockout, a live supply reading at a physical contact point implies a
+// restore that is never written, so the explicit restore-to-measure rule never
+// fired and the answer was served with no energized-work banner (2 of 5 turns).
+//
+// Design (#4111 review rounds 1-2): this rule only ADDS the banner and never
+// withholds the answer, so a miss costs more than an extra warning. Each
+// bolted-on exemption (display reading, dead check, splitting on "and") opened
+// a new bypass. The rule therefore fires on a positive shape and keeps only
+// two exemptions, both clause-scoped:
+//   fire   = after an affirmative lockout, a clause with a measure verb, a live
+//            supply quantity, and a physical CONTACT point;
+//   exempt = that clause affirmatively verifies ABSENCE of voltage, or that
+//            clause is a prohibition of the measurement.
+// A display-only reading has no contact point, so it never fires; a resistance
+// or continuity check sharing the clause does not exempt a live-voltage
+// reading; "not dead" is not a dead check.
+const LOCKOUT_STEP = /\b(?:lock[-\s]?out|loto)\b/i;
+const LIVE_SUPPLY_QUANTITY =
+  /\b(?:actual|line|line[-\s]to[-\s]line|supply|incoming|mains|input)\s+voltage\b|\bunder\s+load\b|\bwhile\s+(?:it\s+is\s+|the\s+\w+\s+is\s+)?(?:running|energi[sz]ed|operating)\b|\bcommanded\s+to\s+run\b/i;
+const CONTACT_POINT =
+  /\b(?:terminals?|conductors?|phases?|legs?|lugs?|busbars?|bus\s+bars?|test\s+leads?|leads?|wires?|feeder|L1|L2|L3|line[-\s]to[-\s]line)\b/i;
+// Affirmative verification that voltage is ABSENT. "not dead"/"not zero" is
+// the opposite claim and never matches.
+const VERIFIES_ABSENCE =
+  /\b(?:verify|confirm|check|test)\w*\b(?:(?!\bnot\b)[^.!?\n]){0,60}?\b(?:zero\s+(?:volts?|voltage)|(?:the\s+)?absence\s+of\s+(?:any\s+)?voltage|no\s+voltage)\b/i;
+const MEASURE_VERB = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
+// An explicit instrument is physical contact (review round 3 F3).
+const METER = /\b(?:multi[-\s]?meter|volt[-\s]?meter|voltage\s+tester|clamp[-\s]?meter|meter)\b/i;
+const LOCKOUT_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+(?:lock[-\\s]?out|loto)\\b", "i");
+
+function liveMeasurementAfterLockout(text: string): string | null {
+  let isolated = false;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    for (const clause of sentence.split(CLAUSE_BOUNDARY)) {
+      // #4111 review round 3: "then" starts a separate action, so an exemption
+      // in one step cannot cover the next. "and" is NOT split, so a shared
+      // prohibition ("do not probe and measure …") keeps governing its verbs.
+      for (let step of clause.split(/\bthen\b/i)) {
+        if (!step.trim()) continue;
+        // Only an affirmative restore ends isolation; "do not restore" does not.
+        if (RESTORE_ENERGY.test(step) && !RESTORE_PROHIBITION.test(step)) {
+          isolated = false;
+          continue;
+        }
+        // A lockout isolates, and the rest of the SAME step is still checked
+        // ("lock out the drive and measure …", review round 3 F1).
+        const lock = LOCKOUT_STEP.exec(step);
+        if (lock && !LOCKOUT_PROHIBITION.test(step)) {
+          isolated = true;
+          step = step.slice(lock.index + lock[0].length);
+        }
+        if (!isolated) continue;
+        if (
+          MEASURE_VERB.test(step) &&
+          LIVE_SUPPLY_QUANTITY.test(step) &&
+          (CONTACT_POINT.test(step) || CONTACT_MEASUREMENT.test(step) || METER.test(step)) &&
+          !VERIFIES_ABSENCE.test(step) &&
+          !MEASURE_PROHIBITION.test(step)
+        ) {
+          return step.trim();
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** #4122: a step that is both locked out and powered stays in the answer, quoted in
+ *  a warning above it (owner decision 2026-09-27: flags never withhold). */
+function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
+  const quoted = step.replace(/\s+/g, " ").trim().slice(0, 160);
+  return {
+    ok: false,
+    kind: "hazard_warning",
+    violation: "hazard-warning:step-energy-contradiction",
+    detail: quoted,
+    replacement: `⚠️ **Lockout conflict in a step below:** “${quoted}”. That step mixes locked-out work with power on. Inspect, tighten and replace with the equipment locked out; any check that needs power is a separate step, after a qualified person removes the lockout and restores power under your site's energized-work procedure.\n\n${answerText}`,
+  };
+}
+
+// #4185/#4186 (the #4160 Pixel walk incident, c5941295415): the model
+// sometimes answers a manual-search question from its own training instead
+// of MIRA's real capability — "I'm unable to browse the web…contact the
+// manufacturer (SMC)" — even while MIRA's own search for this identity is
+// offered (a candidate acquisition, unconfirmed) or running (confirmed). Both
+// lanes, unconditional on `refused`: a false capability claim is wrong
+// whether or not the rest of the turn also reads as a refusal.
+//
+// #4193 Codex review round 1 F1: the first shipped version matched on the
+// bare verb phrase alone, so it also discarded a real, correct maintenance
+// answer — "Contact the manufacturer for warranty service" (an ordinary
+// escalation instruction, nothing to do with MIRA's own browsing) and "The
+// machine does not have internet access" (a statement about the MACHINE, not
+// about MIRA). Both are excluded structurally, not by a wider keyword list:
+//
+//   - CAPABILITY_DENIAL only fires on MIRA's OWN first-person capability
+//     claim — the subject must be "I" (optionally "I'm"/"I am"), immediately
+//     followed by the denial verb. "The machine does not have internet
+//     access" has no "I" subject at all, so it can never match, whatever verb
+//     tense follows.
+//   - CONTACT_MAKER_DEFLECTION only fires when the deflection is about
+//     OBTAINING THE MANUAL/DOCUMENT itself: the matched phrase must be
+//     followed, within the same sentence, by a document word (manual,
+//     documentation, datasheet, spec sheet, drawing, print, wiring diagram).
+//     "Contact the manufacturer for warranty service" names no document word
+//     before the sentence ends, so it is left alone; "contact SMC support for
+//     the official documentation" is still caught.
+//
+// #4193 Codex review round 2 F1: round 1's "I ... access" branch still had no
+// required object, so "I cannot access your PLC remotely" and "I can't access
+// your private maintenance records" — real, correct answers about a
+// capability manual discovery never claims — were also discarded. The denied
+// capability must now concern PUBLIC WEB / MANUAL DISCOVERY specifically:
+//   - "browse" alone always denies web access (no object needed — nobody
+//     says "browse" to mean anything else).
+//   - "search" / "access" / "look ... up" / "download" / "fetch" require a
+//     web-discovery object (internet, web, online, or the manufacturer's
+//     site/website) SOMEWHERE LATER IN THE SAME SENTENCE. "your PLC remotely"
+//     and "your private maintenance records" name no such object, so those
+//     two sentences can never match, however the verb is phrased.
+const WEB_DISCOVERY_OBJECT_SRC =
+  "(?:\\binternet\\b|\\bweb\\b|\\bonline\\b|\\bmanufacturer'?s?\\s+(?:site|website)\\b)";
+const CAPABILITY_DENIAL = new RegExp(
+  "\\bI(?:'m|’m| am)?\\s+(?:unable to|can(?:not|'t|’t))\\s+browse\\b" +
+    "|\\bI(?:'m|’m| am)?\\s+(?:unable to|can(?:not|'t|’t))\\s+(?:search|access|look\\s+\\w*\\s*up|download|fetch)\\b" +
+      `(?=(?:(?!\\.).){0,60}?${WEB_DISCOVERY_OBJECT_SRC})` +
+    "|\\bI\\s+(?:don'?t|don’t|do not|does not)\\s+have\\s+(?:internet|web)\\s+access\\b",
+  "i",
+);
+// A document/manual word that must appear SOMEWHERE in the rest of the
+// sentence for a "contact the maker" / "check their website" phrase to count
+// as a deflection about the manual — never crossing a sentence boundary
+// (the `(?!\.)` guard), so "Contact the manufacturer for warranty service."
+// cannot reach forward into an unrelated later sentence that happens to
+// mention a manual.
+const DEFLECTION_DOC_WORD_SRC =
+  "manuals?|documentation|datasheets?|spec(?:ification)?\\s*sheets?|drawings?|prints?|wiring\\s+diagrams?";
+const CONTACT_MAKER_DEFLECTION = new RegExp(
+  "\\bcontact\\s+(?:the\\s+)?(?:manufacturer|[\\w.&'-]+(?:\\s+[\\w.&'-]+){0,2}\\s+support)\\b" +
+    `(?=(?:(?!\\.).){0,80}?\\b(?:${DEFLECTION_DOC_WORD_SRC})\\b)` +
+    "|\\bcheck\\s+(?:their|its)\\s+official\\s+website\\b" +
+    `(?=(?:(?!\\.).){0,80}?\\b(?:${DEFLECTION_DOC_WORD_SRC})\\b)`,
+  "i",
+);
+
+function falseCapabilityClaim(text: string): string | null {
+  const m = CAPABILITY_DENIAL.exec(text) ?? CONTACT_MAKER_DEFLECTION.exec(text);
+  return m ? m[0] : null;
+}
+
+/** The bulleted fallback lines above are written as a list item; this guard
+ *  replaces a whole answer, so it needs the same sentence standing alone. */
+const toStandaloneSentence = (bulletLine: string) => bulletLine.replace(/^- If you need the document itself:\s*/, "");
+
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
-  if (!restore) return { ok: true };
+  if (!restore) {
+    // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
+    // markdown emphasis and curly apostrophes must not change the result.
+    const step = stepEnergyContradiction(foldForDetection(answerText));
+    return step ? stepEnergyWarning(step, answerText) : { ok: true };
+  }
   return {
     ok: false,
     kind: "energized_warning",
@@ -903,9 +1233,14 @@ export function validateAnswer(opts: {
    *  photo observation (current or prior) in context? Defaults to true so
    *  callers that do not track evidence keep the pre-2026-09-22 behaviour. */
   evidenceSufficient?: boolean;
+  /** #4160: MIRA's automatic official-manual search is running for this
+   *  notebook (this turn started it, or a recorded one is still running), so a
+   *  specificity fallback must not tell the technician to fetch it themselves. */
+  manualSearchRunning?: ManualSearchRunning;
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
+  const fallbackOpts = { manualSearchRunning: opts.manualSearchRunning ?? null };
   if (!served || !answerText.trim()) return { ok: true };
 
   // R2 (Codex finding, PR #3792 review): validate a NORMALIZED copy so
@@ -970,7 +1305,7 @@ export function validateAnswer(opts: {
   // Detection stays unconditional and runs before A2 for the same reason as
   // before: the same sentence usually satisfies A2's `energized` relation, and
   // letting A2 stop it would silently re-impose the withhold.
-  const restore = restoreEnergyToMeasure(scanText);
+  const restore = restoreEnergyToMeasure(scanText) ?? liveMeasurementAfterLockout(scanText);
 
   // A2 — the clause-level inversion, both lanes, refusals included. Runs
   // AFTER the head grammars so their pinned violation ids are preserved.
@@ -993,6 +1328,26 @@ export function validateAnswer(opts: {
   const rig = riggingOverload(scanText);
   if (rig) return hazardWarning("unsafe-answer:rigging-overload", rig, answerText);
 
+  // A4' (#4185/#4186) — a false capability-denial claim, both lanes,
+  // unconditional on `refused`: it is wrong regardless of how the rest of the
+  // turn is classified. Only fires while MIRA's own part-search is actually
+  // offered or running for this identity — an idle notebook may legitimately
+  // tell the technician to fetch the manual themselves (MANUAL_SELF_SERVE_LINE).
+  if (opts.manualSearchRunning) {
+    const denial = falseCapabilityClaim(scanText);
+    if (denial) {
+      return {
+        ok: false,
+        kind: "unsupported_specificity",
+        violation: "unsupported-specificity:capability-denial",
+        detail: denial.slice(0, 160),
+        replacement: toStandaloneSentence(
+          opts.manualSearchRunning === "candidate" ? MANUAL_SEARCH_RUNNING_CANDIDATE_LINE : MANUAL_SEARCH_RUNNING_LINE,
+        ),
+      };
+    }
+  }
+
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.
   if (!general || refused) return energizedWarningOr(restore, answerText);
@@ -1005,7 +1360,7 @@ export function validateAnswer(opts: {
         kind: "unsupported_specificity",
         violation: `fabricated-doc:${p.id}`,
         detail: m[0].slice(0, 160),
-        replacement: specificityFallback(null),
+        replacement: specificityFallback(null, fallbackOpts),
       };
     }
   }
@@ -1017,19 +1372,20 @@ export function validateAnswer(opts: {
       kind: "unsupported_specificity",
       violation: "unsupported-specificity:exact-setting",
       detail: es[0].slice(0, 160),
-      replacement: specificityFallback(null),
+      replacement: specificityFallback(null, fallbackOpts),
     };
   }
 
   if (!evidenceSufficient) {
-    const er = unsupportedExactRating(scanText);
+    const er = exactRatingMatch(scanText);
     if (er) {
       return {
         ok: false,
         kind: "unsupported_specificity",
         violation: "unsupported-specificity:exact-rating",
-        detail: er,
-        replacement: specificityFallback(null),
+        detail: er.excerpt,
+        replacement: specificityFallback(null, fallbackOpts),
+        match: { term: er.term, unit: er.unit },
       };
     }
   }
@@ -1044,7 +1400,7 @@ export function validateAnswer(opts: {
       // The ONLY visible string in this module built from a matched token, so
       // it is the one place the fold could leak into what a technician reads.
       // Quote the code as the model actually spelled it.
-      replacement: specificityFallback(originalSpelling(cm.code, answerText)),
+      replacement: specificityFallback(originalSpelling(cm.code, answerText), fallbackOpts),
     };
   }
 

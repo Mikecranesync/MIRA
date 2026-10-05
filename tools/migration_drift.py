@@ -103,6 +103,15 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - DB glue
         "--warn-only", action="store_true", help="report drift but always exit 0 (advisory)"
     )
     parser.add_argument("--database-url", default=None, help="override NEON_DATABASE_URL")
+    parser.add_argument(
+        "--root",
+        default=None,
+        help=(
+            "repository root whose migration dirs are scanned (default: this file's repo). "
+            "Lets a TRUSTED-BASE copy of this validator scan the CANDIDATE checkout "
+            "(SDLC v1 §5.2 / step 5)"
+        ),
+    )
     args = parser.parse_args(argv)
 
     db_url = args.database_url or os.getenv("NEON_DATABASE_URL") or os.getenv("DATABASE_URL")
@@ -114,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - DB glue
 
     applied = asyncio.run(_read_applied_migrations(db_url))
 
-    repo = repo_migrations()
+    repo = repo_migrations(root=Path(args.root).resolve() if args.root else None)
     drift = find_drift(repo, applied)
     print(render(repo, applied, drift), end="")
 

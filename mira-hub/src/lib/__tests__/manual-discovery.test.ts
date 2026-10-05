@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { discoverManual, allowedHostsForCandidate } from "@/lib/manual-discovery";
 
 const IDENTITY = { manufacturer: "Allen-Bradley", model: "525", catalogNumber: "25B-D010N104" };
+const CTX = { tenantId: "test-tenant", userId: "test-user" };
 
 const FOUND_BODY = {
   found: true,
@@ -32,6 +33,7 @@ const FOUND_BODY = {
 beforeEach(() => {
   delete process.env.MIRA_ASK_URL;
   delete process.env.ASK_API_KEY;
+  delete process.env.MANUAL_DISCOVERY_API_KEY;
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -45,7 +47,7 @@ describe("discoverManual — happy path", () => {
       .mockResolvedValue(new Response(JSON.stringify(FOUND_BODY), { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
 
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.serviceAvailable).toBe(true);
     expect(res.found).toBe(true);
     expect(res.validated).toBe(true);
@@ -67,27 +69,76 @@ describe("discoverManual — happy path", () => {
     });
     // No key configured → no header.
     expect((init.headers as Record<string, string>)["X-Mira-Key"]).toBeUndefined();
+    // #4160 S4: required identity headers always sent.
+    expect((init.headers as Record<string, string>)["X-Mira-Tenant"]).toBe("test-tenant");
+    expect((init.headers as Record<string, string>)["X-Mira-User"]).toBe("test-user");
   });
 
-  it("honors MIRA_ASK_URL and sends X-Mira-Key when ASK_API_KEY is set", async () => {
+  it("never calls the service when ctx.userId is null, and refuses honestly", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const res = await discoverManual(IDENTITY, { tenantId: "t1", userId: null });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.serviceAvailable).toBe(false);
+    expect(res.found).toBe(false);
+    expect(res.quotaExceeded).toBe(false);
+    expect(res.reason).toMatch(/signed-in user/i);
+  });
+
+  it("never calls the service when ctx.tenantId is blank", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const res = await discoverManual(IDENTITY, { tenantId: "   ", userId: "u1" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.serviceAvailable).toBe(false);
+  });
+
+  it("honors MIRA_ASK_URL and sends X-Mira-Key when MANUAL_DISCOVERY_API_KEY is set", async () => {
     process.env.MIRA_ASK_URL = "http://ask.internal:9000/";
-    process.env.ASK_API_KEY = "k123";
+    process.env.MANUAL_DISCOVERY_API_KEY = "k123";
     const fetchSpy = vi
       .fn()
       .mockResolvedValue(new Response(JSON.stringify(FOUND_BODY), { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
 
-    await discoverManual(IDENTITY);
+    await discoverManual(IDENTITY, CTX);
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://ask.internal:9000/manual-discovery/search");
     expect((init.headers as Record<string, string>)["X-Mira-Key"]).toBe("k123");
   });
+
+  // #4160 S2: the endpoint has its own key. The shared ASK_API_KEY belongs to
+  // the kiosk-facing endpoints and must not leak to this one.
+  it("never sends the shared ASK_API_KEY to the discovery endpoint", async () => {
+    process.env.ASK_API_KEY = "shared-kiosk-key";
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(FOUND_BODY), { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await discoverManual(IDENTITY, CTX);
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["X-Mira-Key"]).toBeUndefined();
+  });
 });
 
 describe("discoverManual — honest degradation", () => {
+  it("reports 'search service unavailable' when the router refuses an unconfigured key (503)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: "manual discovery is not configured" }), { status: 503 }),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.serviceAvailable).toBe(false);
+    expect(res.found).toBe(false);
+    expect(res.candidate).toBeNull();
+  });
+
   it("reports 'search service unavailable' on a network failure and invents nothing", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ETIMEDOUT")));
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.serviceAvailable).toBe(false);
     expect(res.found).toBe(false);
     expect(res.candidate).toBeNull();
@@ -96,15 +147,28 @@ describe("discoverManual — honest degradation", () => {
 
   it("reports unavailable on a non-200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("boom", { status: 500 })));
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.serviceAvailable).toBe(false);
     expect(res.candidate).toBeNull();
   });
 
   it("reports unavailable on a malformed body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json", { status: 200 })));
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.serviceAvailable).toBe(false);
+    expect(res.candidate).toBeNull();
+  });
+
+  it("#4150 F3: an HTTP-200 search_unavailable is 'could not look', not 'found nothing'", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ found: false, candidate: null, reason: "search_unavailable" }), { status: 200 }),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.serviceAvailable).toBe(false);
+    expect(res.found).toBe(false);
     expect(res.candidate).toBeNull();
   });
 
@@ -117,7 +181,7 @@ describe("discoverManual — honest degradation", () => {
         }),
       ),
     );
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.serviceAvailable).toBe(true);
     expect(res.found).toBe(false);
     expect(res.reason).toBe("no OEM PDF");
@@ -130,18 +194,118 @@ describe("discoverManual — honest degradation", () => {
         new Response(JSON.stringify({ found: true, candidate: { title: "x" } }), { status: 200 }),
       ),
     );
-    const res = await discoverManual(IDENTITY);
+    const res = await discoverManual(IDENTITY, CTX);
     expect(res.found).toBe(false);
     expect(res.candidate).toBeNull();
   });
 
-  it("never calls the service without a manufacturer and a model/catalog", async () => {
+  // ── #4160 S4: a quota denial must never look like "no manual exists" ──────
+
+  it("maps reason=quota_exceeded to a distinct quotaExceeded result, not a plain miss", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            found: false,
+            candidate: null,
+            reason: "quota_exceeded",
+            reason_detail: "Daily manual-search limit reached for this user.",
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.serviceAvailable).toBe(true);
+    expect(res.found).toBe(false);
+    expect(res.quotaExceeded).toBe(true);
+    expect(res.reason).toBe("Daily manual-search limit reached for this user.");
+  });
+
+  it("a quota_exceeded body with no reason_detail still reports quotaExceeded with a sane reason", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ found: false, candidate: null, reason: "quota_exceeded" }), {
+          status: 200,
+        }),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.quotaExceeded).toBe(true);
+    expect(res.reason.length).toBeGreaterThan(0);
+  });
+
+  it("control: a plain miss (no cap language in reason) is NOT quotaExceeded", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ found: false, candidate: null, reason: "no_result" }), {
+          status: 200,
+        }),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.quotaExceeded).toBe(false);
+  });
+
+  it("a server-reported reason=search_unavailable (quota_unavailable or a timeout) is 'could not look', not 'found nothing' (pre-existing defect fixed in S4)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ found: false, candidate: null, reason: "search_unavailable" }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    // Before the fix this was serviceAvailable:true (notFound()) — acquisition
+    // then reported "no_manual_found" for what was actually an infra miss.
+    expect(res.serviceAvailable).toBe(false);
+    expect(res.found).toBe(false);
+    expect(res.quotaExceeded).toBe(false);
+  });
+
+  it("preserves oemRequestUrl on a search_unavailable response (the router still sends one with every miss shape)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            found: false,
+            candidate: null,
+            reason: "search_unavailable",
+            oem_request_url: "https://www.harringtonhoists.com/owners-manual-request",
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.serviceAvailable).toBe(false);
+    expect(res.oemRequestUrl).toBe("https://www.harringtonhoists.com/owners-manual-request");
+  });
+
+  it("sends a part number without inventing a manufacturer", async () => {
+    const fetchSpy = vi.fn();
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify({ found: false, reason: "no_result" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const res = await discoverManual({ catalogNumber: "NI8U-S12-AP6" }, CTX);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ catalog_number: "NI8U-S12-AP6" });
+    expect(res.found).toBe(false);
+  });
+
+  it("does not call the service without any model or part number", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
-    const res = await discoverManual({ manufacturer: "Allen-Bradley" });
+    const res = await discoverManual({ manufacturer: "Allen-Bradley" }, CTX);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(res.found).toBe(false);
-    expect(res.reason).toMatch(/manufacturer and model/i);
+    expect(res.reason).toMatch(/model or part number/i);
   });
 });
 
@@ -195,6 +359,16 @@ describe("isOemDocumentationHost", () => {
     expect(isOemDocumentationHost("SIEMENS", "literature.rockwellautomation.com")).toBe(false);
   });
 
+  it("accepts SMC regional documentation hosts and rejects lookalikes", async () => {
+    const { isOemDocumentationHost } = await import("../manual-discovery");
+    // 2026-09-29 staging probe: the real VQ(C)1000 manual is on static.smc.eu.
+    expect(isOemDocumentationHost("SMC", "static.smc.eu")).toBe(true);
+    expect(isOemDocumentationHost("SMC", "content2.smcetech.com")).toBe(true);
+    expect(isOemDocumentationHost("SMC Corporation", "www.smcworld.com")).toBe(true);
+    expect(isOemDocumentationHost("SMC", "notsmc.eu")).toBe(false);
+    expect(isOemDocumentationHost("SMC", "smc.eu.attacker.net")).toBe(false);
+  });
+
   it("rejects when the manufacturer is unknown to the table", async () => {
     const { isOemDocumentationHost } = await import("../manual-discovery");
     expect(isOemDocumentationHost("Nobody Inc", "nobody.com")).toBe(false);
@@ -236,7 +410,7 @@ describe("discoverManual — judge rejections disappear honestly", () => {
         ),
       ),
     );
-    const r = await discoverManual({ manufacturer: "Harrington", model: "UMS3-0335", catalogNumber: null });
+    const r = await discoverManual({ manufacturer: "Harrington", model: "UMS3-0335", catalogNumber: null }, CTX);
     expect(r.serviceAvailable).toBe(true);
     expect(r.found).toBe(false);
     expect(r.candidate).toBeNull();
@@ -251,7 +425,95 @@ describe("discoverManual — judge rejections disappear honestly", () => {
         new Response(JSON.stringify({ found: false, candidate: null, reason: "no_result", oem_request_url: "javascript:alert(1)" }), { status: 200 }),
       ),
     );
-    const r = await discoverManual({ manufacturer: "X", model: "Y", catalogNumber: null });
+    const r = await discoverManual({ manufacturer: "X", model: "Y", catalogNumber: null }, CTX);
     expect(r.oemRequestUrl).toBeNull();
+  });
+});
+
+// #4160 gate R15 — search_stats: additive provider-query accounting parsed
+// into the OPTIONAL DiscoveryResult.searchStats. Absent/malformed -> null,
+// never throws, and an old mira-ask version (no search_stats key at all)
+// must keep working exactly as before.
+describe("discoverManual — searchStats parsing (#4160 gate R15)", () => {
+  const respond = (body: Record<string, unknown>) =>
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 })));
+
+  it("parses a well-formed search_stats block on a found response", async () => {
+    respond({
+      ...FOUND_BODY,
+      search_stats: { provider_queries: 4, refused_queries: 1, quota_denied: null, candidates: 3 },
+    });
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.found).toBe(true);
+    expect(r.searchStats).toEqual({ providerQueries: 4, refusedQueries: 1, quotaDenied: null, candidates: 3 });
+  });
+
+  it("parses the quota_denied scope string on a quota_exceeded response", async () => {
+    respond({
+      found: false,
+      candidate: null,
+      reason: "quota_exceeded",
+      reason_detail: "Daily manual-search limit reached for this user.",
+      search_stats: { provider_queries: 1, refused_queries: 1, quota_denied: "user_cap", candidates: 0 },
+    });
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.quotaExceeded).toBe(true);
+    expect(r.searchStats).toEqual({ providerQueries: 1, refusedQueries: 1, quotaDenied: "user_cap", candidates: 0 });
+  });
+
+  it("parses search_stats on a search_unavailable response", async () => {
+    respond({
+      found: false,
+      candidate: null,
+      reason: "search_unavailable",
+      search_stats: { provider_queries: 2, refused_queries: 0, quota_denied: null, candidates: 0 },
+    });
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.serviceAvailable).toBe(false);
+    expect(r.searchStats).toEqual({ providerQueries: 2, refusedQueries: 0, quotaDenied: null, candidates: 0 });
+  });
+
+  it("parses search_stats on a plain no-result response", async () => {
+    respond({
+      found: false,
+      candidate: null,
+      reason: "no_result",
+      search_stats: { provider_queries: 3, refused_queries: 0, quota_denied: null, candidates: 0 },
+    });
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.found).toBe(false);
+    expect(r.searchStats).toEqual({ providerQueries: 3, refusedQueries: 0, quotaDenied: null, candidates: 0 });
+  });
+
+  it("is null when the router (an old mira-ask version) sends no search_stats at all", async () => {
+    respond(FOUND_BODY);
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.found).toBe(true);
+    expect(r.searchStats).toBeNull();
+  });
+
+  it("is null, never throws, and never fabricates a 0 when search_stats is malformed", async () => {
+    respond({ ...FOUND_BODY, search_stats: "not-an-object" });
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.found).toBe(true);
+    expect(r.searchStats).toBeNull();
+  });
+
+  it("is null when search_stats is present but every field is the wrong type", async () => {
+    respond({
+      ...FOUND_BODY,
+      search_stats: { provider_queries: "4", refused_queries: null, quota_denied: 7, candidates: "three" },
+    });
+    const r = await discoverManual(IDENTITY, CTX);
+    // The object itself parses (it IS an object), but each field that fails
+    // its own type check reads null — never a fabricated number.
+    expect(r.searchStats).toEqual({ providerQueries: null, refusedQueries: null, quotaDenied: null, candidates: null });
+  });
+
+  it("never throws when the HTTP response has no body at all (service unavailable)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 503 })));
+    const r = await discoverManual(IDENTITY, CTX);
+    expect(r.serviceAvailable).toBe(false);
+    expect(r.searchStats).toBeNull();
   });
 });

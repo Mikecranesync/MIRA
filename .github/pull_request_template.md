@@ -12,6 +12,19 @@ trace why this code looks the way it does.
 
 -
 
+Risk: R_ — <one-line reason>
+
+<!--
+REQUIRED on every PR, including docs-only (SDLC v1 §2.2, docs/architecture/mira-sdlc-v1.md). Replace
+`R_` with exactly one of R0 (inert docs), R1 (low-risk product), R2 (behavioral / retrieval / model /
+data), R3 (safety / security / auth / tenant / migration / production-control / governance), and give
+the one-line reason. A line left as `R_`, blank, or missing is NOT a valid declaration: the merger
+treats it as a merge blocker (doctrine today — no check validates it yet; the lifecycle-guard rules
+about blank/placeholder values below apply to THAT section, not to this line). Effective risk =
+max(declared, trusted-path floor, reviewer findings); a declared class never lowers it; any reviewer
+may raise it with a reason. R3 needs an exact-head Codex GREEN before merge.
+-->
+
 ## Spec reference
 
 `docs/specs/_____.md`
@@ -88,7 +101,6 @@ verify the known blind spots with grep. Rules: .claude/rules/codegraph-usage.md.
 - [ ] Write-path integration tests pass (`pytest tests/integration/test_write_paths.py`)
 - [ ] Enum drift check passes (`python scripts/check_enum_drift.py`)
 - [ ] No new secrets in diff (`git diff --cached | rg -i 'api[_-]?key|secret|token|password'`)
-- [ ] CHANGELOG entry added if this changes user-visible behavior
 
 ## Test plan
 

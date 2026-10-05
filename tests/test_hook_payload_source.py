@@ -285,6 +285,153 @@ def test_prod_guard_does_not_fire_on_prose_or_regex_text(command, should_deny):
     )
 
 
+# SDLC v1 Part B step 2 (docs/architecture/mira-sdlc-v1.md §11.1, drift item D14):
+# production moved to the OVH VPS on 2026-09-15, and until 2026-10-03 PROD_HOST knew
+# only the dead DigitalOcean address, so every mutation against the real prod host
+# was allowed. The IP and hostname are the prod markers; a bare `ubuntu@` is NOT
+# (that user exists on every stock Ubuntu box), so the non-prod ubuntu@ case is
+# pinned as allowed.
+_OVH_IP = "40.160.141.61"
+_OVH_HOST = "vps-2d884531.vps.ovh.us"
+
+
+@pytest.mark.parametrize(
+    "command,should_deny",
+    [
+        (f"ssh ubuntu@{_OVH_IP} {_D} {_C} down", True),
+        (f"ssh ubuntu@{_OVH_IP} sudo systemctl restart nginx", True),
+        (f"ssh ubuntu@{_OVH_HOST} {_D} {_C} up -d", True),
+        (f"scp artifact.tar ubuntu@{_OVH_IP}:/opt/mira/", True),
+        (f"rsync -a dist/ ubuntu@{_OVH_HOST}:/opt/mira/", True),
+        # read-only inspection of the OVH host stays allowed
+        (f"ssh ubuntu@{_OVH_IP} {_D} ps", False),
+        (f"ssh ubuntu@{_OVH_HOST} tail -n 50 /var/log/nginx/error.log", False),
+        # a bare ubuntu@ on a non-prod host is not a prod marker
+        (f"ssh ubuntu@192.168.1.11 {_D} {_C} up -d", False),
+        ("scp x.tar ubuntu@bravo:/tmp/", False),
+    ],
+)
+def test_prod_guard_covers_ovh_production_host(command, should_deny):
+    proc = subprocess.run(
+        ["bash", str(REPO / "tools" / "hooks" / "prod-guard.sh")],
+        input=json.dumps({"tool_input": {"command": command}}),
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
+        env={**os.environ, "MIRA_ALLOW_PROD": "0"},
+    )
+    denied = '"permissionDecision":"deny"' in proc.stdout
+    assert denied is should_deny, (
+        f"prod-guard {'should deny' if should_deny else 'should allow'}: {command!r} "
+        f"(stdout={proc.stdout.strip()[:120]!r})"
+    )
+
+
+# docs/environments.md hard rule #1 ("NEVER run psql / raw SQL against prod NeonDB
+# from a code session") had no enforcer until SDLC v1 step 2: prod-guard only knew
+# SSH hosts. The prod compute endpoint is `ep-purple-hall-ahimeyn0` (factorylm/prd);
+# staging/dev are on other endpoints. Either a libpq URL carrying that endpoint, or a
+# the endpoint together with a SQL client verb, a DB-library marker (psycopg, asyncpg,
+# node `pg`, …) or an interpreter running inline code, or a Doppler `prd` config
+# together with a client verb or library marker, denies — unanchored on purpose, so
+# wrapper shells and library clients cannot carry the connection past the guard
+# (cheap-lane rounds 1–2 on PR #4211). Reading a secret value, naming the endpoint in
+# prose/grep, inline code without the endpoint, and staging/dev SQL stay allowed.
+# Tokens are split so this file's own text does not trip the guard while being
+# written or grepped (same trick as `_D`/`_C` above).
+_EP = "ep-purple-" + "hall-ahimeyn0"
+_SQL = "ps" + "ql"
+_DUMP = "pg_" + "dump"
+_PRD = "pr" + "d"
+_PGURL = "postgres" + "ql://"
+
+
+@pytest.mark.parametrize(
+    "command,should_deny",
+    [
+        (
+            f'{_D} run --rm -i postgres:16 {_SQL} "{_PGURL}u:p@{_EP}.us-east-1.aws.neon.tech/neondb"',
+            True,
+        ),
+        (f"node -e \"new (require('pg').Client)('{_PGURL}u:p@{_EP}.neon.tech/db')\"", True),
+        (f'doppler run --project factorylm --config {_PRD} -- {_SQL} "$NEON_DATABASE_URL"', True),
+        (f'doppler run -p factorylm -c {_PRD} -- {_DUMP} "$NEON_DATABASE_URL" > dump.sql', True),
+        (f'{_SQL} "host={_EP}.us-east-1.aws.neon.tech dbname=neondb"', True),
+        # wrapper shells must not carry the client past the guard
+        (f"doppler run -c {_PRD} -- bash -lc '{_SQL} \"$NEON_DATABASE_URL\"'", True),
+        (f'doppler run --config {_PRD} -- sh -c "{_DUMP} $NEON_DATABASE_URL > d.sql"', True),
+        (
+            f"doppler run -c {_PRD} -- python3 -c \"import subprocess; subprocess.run(['{_SQL}', '-c', 'select 1'])\"",
+            True,
+        ),
+        (f"docker run --rm postgres:16 bash -lc '{_SQL} host={_EP}.neon.tech'", True),
+        # library clients: no CLI verb, no URL, still a connection to prod
+        (
+            f"python3 -c \"import psycopg2; psycopg2.connect(host='{_EP}.neon.tech', dbname='neondb')\"",
+            True,
+        ),
+        (
+            f"node -e \"new (require('pg').Client)({{host: '{_EP}.neon.tech'}}).query('select 1')\"",
+            True,
+        ),
+        (f"doppler run -c {_PRD} -- node -e \"require('pg').Pool().query('select 1')\"", True),
+        (f"doppler run --config {_PRD} -- python3 -c 'import asyncpg; asyncpg.connect()'", True),
+        (f"python3 -c \"print(open('x').read())\" {_EP}", True),
+        # native clients with no library marker: under a prd config, inline code is the vector (Codex F1)
+        (
+            f"doppler run -c {_PRD} -- bun -e \"import {{ SQL }} from 'bun'; new SQL(process.env.NEON_DATABASE_URL).unsafe('select 1')\"",
+            True,
+        ),
+        (
+            f"doppler run -c {_PRD} -- deno eval \"import postgres from 'npm:postgres'; "
+            f"await postgres(Deno.env.get('URL')).unsafe('select 1')\"",
+            True,
+        ),
+        (f'doppler run --config {_PRD} -- deno eval "console.log(1)"', True),
+        (f"echo 'select 1' | doppler run -c {_PRD} -- node -", True),
+        (f"doppler run -c {_PRD} -- python3 -c 'print(1)'", True),
+        # every Doppler spelling of the prod config
+        (f'doppler run --config={_PRD} -- {_SQL} "$NEON_DATABASE_URL"', True),
+        (f"doppler run -c={_PRD} -- node -e \"require('pg').Pool().query('select 1')\"", True),
+        (f'doppler run -p factorylm --config  {_PRD}  -- {_DUMP} "$NEON_DATABASE_URL"', True),
+        # allowed: reading the secret, prose, grep, inline code without a prod signal, non-prod configs
+        ("python3 -c \"print('hello')\"", False),
+        (
+            f"doppler secrets get NEON_DATABASE_URL --project factorylm --config={_PRD} --plain",
+            False,
+        ),
+        (f'doppler run --config=stg -- {_SQL} "$NEON_DATABASE_URL"', False),
+        ("node -e \"require('pg'); console.log(1)\"", False),
+        ('deno eval "console.log(1)"', False),
+        ('doppler run -c stg -- deno eval "console.log(1)"', False),
+        (
+            f"doppler secrets get NEON_DATABASE_URL --project factorylm --config {_PRD} --plain",
+            False,
+        ),
+        (f"grep -rn {_EP} docs/", False),
+        (f'doppler run -p factorylm -c stg -- {_SQL} "$NEON_DATABASE_URL"', False),
+        (f'doppler run -p factorylm -c dev -- {_SQL} "$NEON_DATABASE_URL"', False),
+        (f'git commit -m "{_SQL} recipe for the {_PRD} ledger"', False),
+        (f'git commit -m "document the {_EP} endpoint and the staging twin"', False),
+        (f"doppler run -c {_PRD} -- {_D} ps", False),
+    ],
+)
+def test_prod_guard_blocks_sql_against_production_neon(command, should_deny):
+    proc = subprocess.run(
+        ["bash", str(REPO / "tools" / "hooks" / "prod-guard.sh")],
+        input=json.dumps({"tool_input": {"command": command}}),
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
+        env={**os.environ, "MIRA_ALLOW_PROD": "0"},
+    )
+    denied = '"permissionDecision":"deny"' in proc.stdout
+    assert denied is should_deny, (
+        f"prod-guard {'should deny' if should_deny else 'should allow'}: {command!r} "
+        f"(stdout={proc.stdout.strip()[:120]!r})"
+    )
+
+
 def test_prod_guard_anchor_excludes_backtick_and_pipe():
     """Pin the anchor itself, so the fix is not silently undone by 'restoring' the
     two characters that look like they belong in a list of shell separators."""

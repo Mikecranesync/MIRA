@@ -36,8 +36,11 @@ on:
 permissions:
   contents: read
 
+# Shared with retrieval-acceptance.yml (SDLC v1 §6.2 / step 4): a staging deploy
+# waits for a running acceptance audit, so the generation under audit cannot be
+# replaced mid-run. Concurrency groups are repo-wide, not per workflow.
 concurrency:
-  group: deploy-staging-vps
+  group: staging-environment
   cancel-in-progress: false
 
 jobs:
@@ -76,6 +79,18 @@ jobs:
           if ! gh api "repos/$GITHUB_REPOSITORY/commits/$APPROVED_RC_SHA" --jq '.sha' >/dev/null 2>&1; then
             fail "SHA $APPROVED_RC_SHA not present in the repository"
           fi
+
+          # SDLC v1 §5.2 (Part B step 4): the acceptance run executes the DEPLOYED
+          # tree's provisioner and harness with staging credentials, so a staged
+          # commit must be one that has passed the merge gates — reachable from
+          # main. This job has no checkout, so ask the API: for `main...<sha>`,
+          # `identical` or `behind` means <sha> is an ancestor of main; `ahead`,
+          # `diverged`, or any error (404, rate limit, empty) FAILS CLOSED.
+          ANCESTRY="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$APPROVED_RC_SHA" --jq '.status' 2>/dev/null || true)"
+          case "$ANCESTRY" in
+            identical|behind) ;;
+            *) fail "approved_rc_sha $APPROVED_RC_SHA is not on main (compare status: ${ANCESTRY:-api error}); stage only merged commits (SDLC v1 §5.2)" ;;
+          esac
 
           if [ -n "$SERVICES_INPUT" ]; then
             SERVICE_LIST_PATTERN='^[a-z0-9-]+( [a-z0-9-]+)*$'
@@ -370,7 +385,12 @@ jobs:
           export NEXTAUTH_URL_INTERNAL="${NEXTAUTH_URL_INTERNAL:-http://${STAGING_HOST}:4101/api/auth}"
 
           echo "=== Build staging images (no-cache, fresh base) ==="
+          # #4103: the stg config carries OTEL_EXPORTER_OTLP_* for the runtime
+          # containers. BuildKit reads those too and exported every build step
+          # (moby.filesync ...) to Langfuse as its own trace. Builds don't need them.
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config stg -- \
+            env -u OTEL_EXPORTER_OTLP_ENDPOINT -u OTEL_EXPORTER_OTLP_TRACES_ENDPOINT \
+            -u OTEL_EXPORTER_OTLP_HEADERS -u OTEL_EXPORTER_OTLP_PROTOCOL \
             docker compose -p "$PROJECT" -f "$COMPOSE_FILE" build --no-cache --pull "${TARGET_LIST[@]}"
 
           echo "=== Bring up full staging stack ==="
@@ -483,6 +503,11 @@ jobs:
               "running_images": pairs(os.environ["RUNNING_IDS"]),
               "target": {"host": os.environ["STAGING_HOST"], "compose": "docker-compose.staging-vps.yml"},
               "deployed_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              # The build-generation identity the Hub reports as /api/health builtAt
+              # (MIRA_BUILD_TIME, stamped above). The acceptance run requires both of
+              # its live probes to equal THIS value, so a receipt can only ever
+              # certify the generation this deploy produced (SDLC v1 §6.2, step 4).
+              "built_at": os.environ["MIRA_BUILD_TIME"],
           }
           print("FACTORYLM_DEPLOY_RECEIPT_JSON=" + json.dumps(receipt, separators=(",", ":"), sort_keys=True))
           PYRECEIPT
