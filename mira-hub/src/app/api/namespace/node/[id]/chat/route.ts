@@ -376,7 +376,7 @@ export async function POST(
         });
   const systemPrompt = withStepSafety(withAnswerLanguage(
     appendManualContext(
-      safetyFlag ? `${baseSystemPrompt}\n\n${flagDirectiveFor(safetyFlag)}` : baseSystemPrompt,
+      safetyFlag ? `${baseSystemPrompt}\n\n${flagDirectiveFor(safetyFlag, lastUser.content)}` : baseSystemPrompt,
       nodeChunks,
     ),
   ));
