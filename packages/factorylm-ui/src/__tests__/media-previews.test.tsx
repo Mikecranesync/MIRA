@@ -11,6 +11,7 @@
  * Run: cd apps/factorylm-ui-lab && bun test ../../packages/factorylm-ui/src/__tests__/media-previews.test.tsx
  */
 import { afterEach, describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
 import type { InteractionPart, ShellFixture } from "@factorylm/interaction";
 import { renderHarness, type HarnessView } from "./harness";
 
@@ -134,5 +135,21 @@ describe("source viewer", () => {
     const viewer = openFirstSource(render("grounded-answer", sourceWith(href)));
     expect(viewer.querySelector("iframe")).toBeNull();
     expect(viewer.querySelector("a")).toBeNull();
+  });
+});
+
+// Staging proof on #4285 showed "Open document in a new tab" rendering like plain
+// text (the shell's base styles flatten anchors). It is an action, so it wears the
+// accent ink and an underline, and both openers show a focus ring.
+describe("open affordances look like links", () => {
+  const css = readFileSync(new URL("../conversation.css", import.meta.url), "utf8");
+  const rule = (selector: string) => css.split("\n").find((l) => l.startsWith(`${selector} {`)) ?? "";
+  it("the source viewer's open link is accent-coloured and underlined", () => {
+    const open = rule(".fl-source-viewer__open");
+    expect(open).toContain("color: var(--fl-workspace-accent-ink)");
+    expect(open).toContain("text-decoration: underline");
+  });
+  it("both openers show a keyboard focus ring", () => {
+    expect(css).toMatch(/\.fl-source-viewer__open:focus-visible, \.fl-photo:focus-visible \{ outline: 2px solid var\(--fl-workspace-accent\)/);
   });
 });
