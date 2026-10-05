@@ -1,5 +1,6 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { jwtDecrypt } from "jose";
+import { landingRedirect } from "@/capabilities/hub-landing";
 
 // Next.js 16 middleware runs in the edge runtime. We must NOT import
 // `node:crypto` or `next-auth/middleware` here — both pull native modules
@@ -206,9 +207,12 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   // come back with callbackUrl=/feed, losing the destination (#1952). `redirect()`
   // from a Server Component is silently swallowed in Next.js 16.2.4 standalone +
   // basePath (chunked 0-byte response, no Location header), so it lives here.
-  if (pathname === "/") {
+  // Staging lands on the FactoryLM shell (/v3) instead — root and /feed both;
+  // every other environment keeps "/" → "/feed" (capabilities/hub-landing.ts).
+  const landing = landingRedirect(pathname);
+  if (landing) {
     const url = req.nextUrl.clone();
-    url.pathname = "/feed";
+    url.pathname = landing;
     url.search = "";
     return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
