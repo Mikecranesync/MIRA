@@ -87,6 +87,9 @@ class _FakeConn:
     def commit(self):
         self.commits += 1
 
+    def rollback(self):
+        pass
+
 
 def _vec():
     return [0.01] * mod.EXPECTED_DIM
@@ -164,3 +167,52 @@ def test_refuses_to_run_without_an_embedder_url(monkeypatch):
     monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
     monkeypatch.setattr(mod.sys, "argv", ["backfill"])
     assert mod.main() == 2
+
+
+class _TxConn:
+    """Transaction-faithful fake: UPDATEs are pending until COMMIT; an error aborts the
+    transaction, after which COMMIT is a rollback (PostgreSQL semantics)."""
+
+    def __init__(self, deny_after: int):
+        self.deny_after = deny_after
+        self.calls = 0
+        self.pending: list[str] = []
+        self.persisted: list[str] = []
+        self.aborted = False
+
+    def execute(self, stmt, params=None):
+        self.calls += 1
+        if self.calls > self.deny_after:
+            self.aborted = True
+            raise mod.PermissionDenied("permission denied for table knowledge_entries")
+        self.pending.append(params["id"])
+        return _Res(1)
+
+    def commit(self):
+        if not self.aborted:
+            self.persisted += self.pending
+        self.pending = []
+        self.aborted = False
+
+    def rollback(self):
+        self.pending = []
+        self.aborted = False
+
+
+def test_permission_error_mid_batch_reports_only_what_persisted():
+    # batch=20: rows a and b are written into the open batch, c is denied. The batch
+    # is rolled back, so nothing persisted and nothing may be reported as embedded.
+    conn = _TxConn(deny_after=2)
+    r = mod.backfill_rows(conn, [("a", "x"), ("b", "y"), ("c", "z")], lambda c: _vec(), batch=20)
+    assert r.stop_reason == "permission_denied" and r.exit_code == 1
+    assert conn.persisted == []
+    assert r.embedded == len(conn.persisted) == 0
+
+
+def test_permission_error_keeps_earlier_committed_batches():
+    conn = _TxConn(deny_after=3)
+    rows = [(str(i), "x") for i in range(6)]
+    r = mod.backfill_rows(conn, rows, lambda c: _vec(), batch=2)
+    # batch 1 (0,1) committed; 2 written then 3 denied -> batch 2 rolled back
+    assert conn.persisted == ["0", "1"]
+    assert r.embedded == 2 and r.stop_reason == "permission_denied"

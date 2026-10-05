@@ -91,6 +91,17 @@ def backfill_rows(conn, rows, embed_fn, batch: int) -> BackfillResult:
     (the embedder is unreachable). Never overwrites an existing vector."""
     r = BackfillResult(candidates=len(rows))
     consecutive_failures = 0
+    # Counts for the open (uncommitted) batch. They reach `r` only on COMMIT, so a
+    # rolled-back batch is never reported as embedded.
+    pending_written = pending_skipped = 0
+
+    def commit() -> None:
+        nonlocal pending_written, pending_skipped
+        conn.commit()
+        r.embedded += pending_written
+        r.skipped_already_embedded += pending_skipped
+        pending_written = pending_skipped = 0
+
     for i, (row_id, content) in enumerate(rows, 1):
         if not content or not content.strip():
             r.skipped_empty += 1
@@ -116,18 +127,23 @@ def backfill_rows(conn, rows, embed_fn, batch: int) -> BackfillResult:
             written = conn.execute(text(UPDATE_SQL), {"emb": str(vec), "id": row_id}).rowcount
         except Exception as exc:  # noqa: BLE001 - classify, then stop or re-raise
             if _is_permission_error(exc):
+                # The error aborted the transaction: the open batch is lost. Roll it
+                # back explicitly and count its rows as failed, not embedded.
+                conn.rollback()
+                r.failed += pending_written
+                pending_written = pending_skipped = 0
                 r.stop_reason = "permission_denied"
                 logger.error("  stop: %s", exc)
-                break
+                return r
             raise
         if written:
-            r.embedded += 1
+            pending_written += 1
         else:
-            r.skipped_already_embedded += 1
+            pending_skipped += 1
         if i % batch == 0:
-            conn.commit()
+            commit()
             logger.info("  committed: embedded=%d of %d", r.embedded, len(rows))
-    conn.commit()
+    commit()
     return r
 
 
