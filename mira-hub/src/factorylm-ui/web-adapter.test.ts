@@ -149,3 +149,55 @@ describe("onBack", () => {
     expect(back).not.toHaveBeenCalled();
   });
 });
+
+describe("photo previews and paste/drop intake (upload parity, 2026-10-05)", () => {
+  function urls() {
+    let n = 0;
+    const revoked: string[] = [];
+    return {
+      revoked,
+      createObjectURL: (_: File) => `blob:test/${++n}`,
+      revokeObjectURL: (u: string) => { revoked.push(u); },
+    };
+  }
+
+  it("gives a picked photo a local preview, and a PDF none", async () => {
+    const u = urls();
+    let next: File = file("plate.jpg", "image/jpeg");
+    const a = createWebAdapter(deps({ ...u, pickFile: async () => next }));
+    expect((await a.attachPhoto())?.previewUrl).toBe("blob:test/1");
+    next = file("g120.pdf", "application/pdf");
+    expect((await a.attachFile())?.previewUrl).toBeUndefined();
+  });
+
+  it("releases the preview when the chip is removed, when the host forgets it, and on eviction", async () => {
+    const u = urls();
+    const a = createWebAdapter(deps({ ...u, pickFile: async () => file("p.jpg", "image/jpeg") }));
+    const removed = (await a.attachPhoto())!;
+    a.release!(removed.id);
+    expect(u.revoked).toEqual([removed.previewUrl]);
+    expect(a.heldFile(removed.id)).toBeUndefined();
+
+    const sent = (await a.attachPhoto())!;
+    a.forget(sent.id);
+    expect(u.revoked).toContain(sent.previewUrl);
+
+    const first = (await a.attachPhoto())!;
+    for (let i = 0; i < 8; i++) await a.attachPhoto();
+    expect(u.revoked).toContain(first.previewUrl); // oldest evicted past MAX_HELD
+  });
+
+  it("adopts pasted/dropped files through the same accept rule as the File picker", () => {
+    const u = urls();
+    const a = createWebAdapter(deps(u));
+    const taken = a.adoptFiles!([
+      file("plate.jpg", "image/jpeg"),
+      file("manual.pdf", "application/pdf"),
+      file("readings.csv", ""),
+      file("setup.exe", "application/x-msdownload"),
+    ]);
+    expect(taken.map((t) => [t.name, t.kind])).toEqual([["plate.jpg", "photo"], ["manual.pdf", "pdf"], ["readings.csv", "file"]]);
+    expect(taken[0].previewUrl).toBe("blob:test/1");
+    for (const t of taken) expect(a.heldFile(t.id)).toBeDefined();
+  });
+});
