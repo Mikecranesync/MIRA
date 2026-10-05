@@ -603,28 +603,24 @@ export function isWeakAndResult(rows: Array<Record<string, unknown>>): boolean {
 const rowKey = (r: Record<string, unknown>): string =>
   `${r.source_url ?? ""}|${r.source_page ?? ""}|${r.content ?? ""}`;
 
-async function runBm25Query(
-  client: PoolClient,
-  tenantId: string,
-  query: string,
-  topK: number,
-  manufacturer: string | null,
-  model: string | null = null,
-  /** #4069 F3: union the OR pass even when AND is strong — for callers that
-   *  post-filter (the family fallback), whose strong AND rows may all be
-   *  discarded afterwards. */
-  alwaysOr = false,
-  /** #4069: the exact family predicate (familySqlTerms) applied to
-   *  model/title/URL BEFORE the LIMIT, so other-family rows — including ones
-   *  that merely MENTION the family — cannot fill the window. */
-  familyTerms: Array<{ match: string; unless: string | null }> | null = null,
-  /** Codex #4069 pass 26: match the maker as a WHOLE WORD in SQL ("sew" admits
-   *  "SEW-EURODRIVE GmbH", never "Sewon"), so every AND/OR/weak-result step
-   *  sees only the bound vendor group — a post-filter cannot restore an OR
-   *  pass a wrong maker's strong AND hit suppressed. */
-  makerWholeWord = false,
-): Promise<ManualChunk[]> {
-  const params: unknown[] = [tenantId, boundBm25Query(query)];
+/**
+ * Build the manufacturer / model / family SQL scoping clauses, appending their
+ * parameters to `params` and returning the clause fragments with positions that
+ * match. Shared by the BM25 passes and the #4224 code-token lane so both carry
+ * IDENTICAL cross-vendor scoping — a second copy that drifted would re-open the
+ * wrong-maker/wrong-model admission bugs (#2178/#3966/#4069) on one lane only.
+ * Mutates `params` in place; call it once per independent query param array.
+ */
+function buildScopeClauses(
+  params: unknown[],
+  opts: {
+    manufacturer: string | null;
+    model: string | null;
+    familyTerms: Array<{ match: string; unless: string | null }> | null;
+    makerWholeWord: boolean;
+  },
+): { mfrClause: string; modelClause: string; familyClause: string } {
+  const { manufacturer, model, familyTerms, makerWholeWord } = opts;
   let mfrClause = "";
   if (manufacturer && makerWholeWord) {
     const literal = manufacturer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -673,6 +669,37 @@ async function runBm25Query(
     });
     familyClause = `AND (${ors.join(" OR ")})`;
   }
+  return { mfrClause, modelClause, familyClause };
+}
+
+async function runBm25Query(
+  client: PoolClient,
+  tenantId: string,
+  query: string,
+  topK: number,
+  manufacturer: string | null,
+  model: string | null = null,
+  /** #4069 F3: union the OR pass even when AND is strong — for callers that
+   *  post-filter (the family fallback), whose strong AND rows may all be
+   *  discarded afterwards. */
+  alwaysOr = false,
+  /** #4069: the exact family predicate (familySqlTerms) applied to
+   *  model/title/URL BEFORE the LIMIT, so other-family rows — including ones
+   *  that merely MENTION the family — cannot fill the window. */
+  familyTerms: Array<{ match: string; unless: string | null }> | null = null,
+  /** Codex #4069 pass 26: match the maker as a WHOLE WORD in SQL ("sew" admits
+   *  "SEW-EURODRIVE GmbH", never "Sewon"), so every AND/OR/weak-result step
+   *  sees only the bound vendor group — a post-filter cannot restore an OR
+   *  pass a wrong maker's strong AND hit suppressed. */
+  makerWholeWord = false,
+): Promise<ManualChunk[]> {
+  const params: unknown[] = [tenantId, boundBm25Query(query)];
+  const { mfrClause, modelClause, familyClause } = buildScopeClauses(params, {
+    manufacturer,
+    model,
+    familyTerms,
+    makerWholeWord,
+  });
   params.push(topK);
   const limitParam = `$${params.length}`;
 
@@ -723,6 +750,62 @@ async function runBm25Query(
     // Post-cap F2: a post-filtering caller (alwaysOr) filters BEFORE limiting,
     // so strong AND rows it will discard cannot crowd its OR rows out here.
     if (!alwaysOr) rows = rows.slice(0, topK);
+  }
+
+  // #4224 Defect A — whole-token code lane for the quickstart surface. A chunk
+  // that literally contains the fault code the technician named IS the answer,
+  // but BM25 can bury it under pages matching the question's ordinary words
+  // ("mean", "inverter"). Mirror retrieveNodeChunks' lane (#4236): reuse
+  // codeTokenMatcher's whole-token regex ("ova" must not hit "removal") and the
+  // SAME scope clauses (buildScopeClauses) so a code hit can only come from the
+  // bound manufacturer/model/family. Prepend — a verbatim code match leads.
+  //
+  // Stay disjoint from #1875: retrieveManualChunks already runs a terse
+  // re-query for the BM25-tokenizable F-codes extractFaultCodes owns (F004,
+  // E001, A002). Drop those here so one keyword-adjacent F-code never fires
+  // both passes — this lane covers ONLY the whole-token class #1875 cannot
+  // reach (two-letter/dotted/bare-digit/mixed-case: ovA, E.OV1, Alarm 7, 3210).
+  const ownedByFaultCodePass = new Set(extractFaultCodes(query).map((c) => c.toUpperCase()));
+  const codeTokens = expandIndustrialQuery(query).codeTokens.filter(
+    (t) => !ownedByFaultCodePass.has(t.toUpperCase()),
+  );
+  if (codeTokens.length > 0) {
+    const codeParams: unknown[] = [tenantId];
+    const codeScope = buildScopeClauses(codeParams, { manufacturer, model, familyTerms, makerWholeWord });
+    codeParams.push(codeTokens.map((t) => codeTokenMatcher(t).sql));
+    const codePatterns = `$${codeParams.length}`;
+    codeParams.push(topK);
+    const codeLimit = `$${codeParams.length}`;
+    const codeRes = await client.query(
+      `SELECT
+          content,
+          manufacturer,
+          model_number,
+          source_url,
+          source_page,
+          metadata->>'chunk_index' AS chunk_index,
+          metadata->>'title' AS title,
+          verified,
+          2::float4 AS rank
+        FROM knowledge_entries
+        WHERE (is_private = false OR tenant_id = $1)
+          ${approvalFilterSql()}
+          ${codeScope.mfrClause}
+          ${codeScope.modelClause}
+          ${codeScope.familyClause}
+          AND content ~* ANY(${codePatterns}::text[])
+        ORDER BY source_page NULLS LAST
+        LIMIT ${codeLimit}`,
+      codeParams,
+    );
+    const seen = new Set(rows.map(rowKey));
+    const codeFresh = codeRes.rows.filter((r: Record<string, unknown>) => !seen.has(rowKey(r)));
+    if (codeFresh.length > 0) {
+      rows = [...codeFresh, ...rows];
+      // A post-filtering caller (alwaysOr) caps downstream; others cap here so
+      // the prepended code hits displace the weakest BM25 rows, not add beyond topK.
+      if (!alwaysOr) rows = rows.slice(0, topK);
+    }
   }
 
   return rows.map((r: Record<string, unknown>) => ({
