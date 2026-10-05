@@ -68,6 +68,32 @@ REQUIRED_FIELDS = ("id", "purpose", "state", "owner", "environments", "evidence"
 _ON = {"1", "true", "on", "enabled"}
 
 
+def duplicate_keys(text: str) -> list[str]:
+    """Keys that appear twice in one mapping, as "line N: key".
+
+    yaml.safe_load keeps the last value of a repeated key without a word, which
+    once hid unified_ui_shell's staging rollback behind an older `rollback`
+    (#4284). Composes nodes with the safe loader; never constructs objects.
+    """
+    root = yaml.compose(text, Loader=yaml.SafeLoader)
+    out: list[str] = []
+    stack = [root] if root is not None else []
+    while stack:
+        node = stack.pop()
+        if isinstance(node, yaml.MappingNode):
+            seen: set[str] = set()
+            for key_node, value_node in node.value:
+                key = getattr(key_node, "value", None)
+                if isinstance(key, str):
+                    if key in seen:
+                        out.append(f"line {key_node.start_mark.line + 1}: {key}")
+                    seen.add(key)
+                stack.append(value_node)
+        elif isinstance(node, yaml.SequenceNode):
+            stack.extend(node.value)
+    return out
+
+
 class Finding:
     __slots__ = ("cap", "rule", "message", "acknowledged")
 
@@ -468,7 +494,17 @@ def main(argv: list[str] | None = None) -> int:
     if not path.exists():
         print(f"error: registry not found at {a.registry}", file=sys.stderr)
         return 2
-    registry = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    text = path.read_text(encoding="utf-8")
+    dupes = duplicate_keys(text)
+    if dupes:
+        print(
+            "Capability closure: duplicate mapping keys (YAML keeps only the last, silently):",
+            file=sys.stderr,
+        )
+        for d in dupes:
+            print(f"  - {d}", file=sys.stderr)
+        return 1
+    registry = yaml.safe_load(text) or {}
 
     if a.discover:
         missing = discover_unregistered(registry, ROOT)

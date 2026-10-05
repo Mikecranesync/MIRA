@@ -85,13 +85,25 @@ def test_unified_ui_shell_records_the_merged_mobile_canary_truth():
     assert cap["environments"]["staging"] == "1"
     assert "Gate 3" in cap["owner_exception"] and "NOT been passed" in cap["owner_exception"]
     assert cap["environments"]["production"] == "unset"
-    assert cap["rollback"]
+    # One rollback field covering both delivery paths (Codex F3: a second key overwrote the first).
+    assert "flm.chatui.v1" in cap["rollback"] and "deploy-staging.yml" in cap["rollback"]
     assert cap["environments"]["canary"] == "1"
     assert any("mira-mobile" in consumer for consumer in cap["consumers"])
     assert "factorylm-ui-lab.yml:shared-ui" in cap["ci_jobs"]
     assert "mobile-unit-tests" in cap["ci_jobs"]
     assert "Shared UI contract (bun 1.4.0)" in cap["required_checks"]
     assert cap["required_checks_observed_on"] == "2026-09-06"
+
+
+def test_the_registry_has_no_duplicate_keys():
+    """#4284 Codex F3: a repeated key silently drops the earlier value."""
+    assert cc.duplicate_keys(REGISTRY.read_text(encoding="utf-8")) == []
+
+
+def test_duplicate_keys_names_the_repeat():
+    text = "capabilities:\n  - id: a\n    rollback: one\n    state: x\n    rollback: two\n"
+    assert cc.duplicate_keys(text) == ["line 5: rollback"]
+    assert cc.duplicate_keys("capabilities:\n  - id: a\n    rollback: one\n") == []
 
 
 def test_every_gate_flag_in_code_is_accounted_for():
