@@ -390,8 +390,13 @@ def _versions_since(candidate: str, head: str, repo: Path) -> dict[str, set[str]
         "--",
         *MIGRATION_DIRS,
     )
-    # -z: each change is ":<modes> <blobs> <status>" NUL "<path>" NUL, paths never quoted;
-    # with --no-renames every change has exactly one path
+    return _raw_versions(raw)
+
+
+def _raw_versions(raw: str) -> dict[str, set[str]]:
+    """Parse ``git log --raw -z --no-renames`` output: each change is
+    ":<old mode> <new mode> <old blob> <new blob> <status>" NUL "<path>" NUL, paths never
+    quoted, exactly one path per change. Anything else is an error (exit 2), never a guess."""
     out: dict[str, set[str]] = {}
     tokens = raw.split("\0")
     i = 0
@@ -400,9 +405,11 @@ def _versions_since(candidate: str, head: str, repo: Path) -> dict[str, set[str]
         if not meta.startswith(":"):
             i += 1
             continue
-        path = tokens[i + 1]
+        fields = meta.split()
+        if len(fields) != 5 or i + 1 >= len(tokens) or not tokens[i + 1]:
+            raise ValueError(f"unexpected git log --raw record: {meta!r}")
+        path, new_blob = tokens[i + 1], fields[3]
         i += 2
-        new_blob = meta.split()[3]
         if path.endswith(".sql"):
             versions = out.setdefault(path, set())
             if new_blob.strip("0"):  # all zeros = deleted at that commit

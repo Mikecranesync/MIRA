@@ -752,6 +752,30 @@ def test_a_migration_name_with_whitespace_is_refused_by_the_gate():
     assert "whitespace" in problems
 
 
+@pytest.mark.parametrize(
+    "raw",
+    [
+        ":100644 100644 " + "a" * 40 + " " + "b" * 40 + " M",  # metadata with no path after it
+        ":100644 100644 " + "a" * 40 + " M\0mira-hub/db/migrations/x.sql\0",  # too few fields
+    ],
+)
+def test_incomplete_git_output_is_an_error_not_a_crash(raw):
+    """A truncated or malformed record must raise ValueError (compat exit 2, 'error'), never an
+    IndexError, whose exit code 1 would read as a judged invalid (pre-round-7 screen)."""
+    with pytest.raises(ValueError, match="git log"):
+        rc._raw_versions(raw)
+
+
+def test_raw_versions_reads_paths_and_ignores_deletions():
+    a, b, z = "a" * 40, "b" * 40, "0" * 40
+    raw = (
+        f":000000 100644 {z} {a} A\0mira-hub/db/migrations/1.sql\0"
+        f"\n:100644 000000 {a} {z} D\0mira-hub/db/migrations/1.sql\0"
+        f":100644 100644 {a} {b} M\0mira-hub/db/migrations/notes.txt\0"
+    )
+    assert rc._raw_versions(raw) == {"mira-hub/db/migrations/1.sql": {a}}
+
+
 def test_a_file_outside_the_migration_dirs_is_ignored(tmp_path):
     repo, cand = _repo(tmp_path)
     head = _land(repo, {"docs/notes.sql": "DROP TABLE a;\n"}, {})
