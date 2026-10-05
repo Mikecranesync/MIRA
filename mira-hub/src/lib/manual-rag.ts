@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { resolveDuplicateDocAliases } from "@/lib/uploads";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import {
@@ -842,7 +843,7 @@ async function runBm25Query(
  * Caller MUST run this inside `withTenantContext` so RLS scopes kg_entities and
  * knowledge_entries to the current tenant.
  */
-export async function retrieveNodeChunks(
+async function retrieveScopedNodeChunks(
   client: PoolClient,
   tenantId: string,
   query: string,
@@ -1318,4 +1319,48 @@ export function chunksToSources(chunks: ManualChunk[]): ManualSource[] {
     });
   }
   return out;
+}
+
+type NodeChunkOpts = Parameters<typeof retrieveScopedNodeChunks>[3];
+
+/**
+ * Retrieve a node's chunks, following duplicate uploads to their original
+ * (Codex review of #4091 at 1082ad199, F6; owner decision 2026-10-05 "alias at
+ * read"). An upload recorded "duplicate of <original>" owns no chunks, so a doc
+ * scope naming it would retrieve nothing. Each requested id is resolved to the
+ * chunk owner before the scoped read, and the owner's chunks come back labelled
+ * with the id the caller asked for — so citations, the approval/admission sets
+ * and source snapshots all keep seeing the requested scope. When the original
+ * is itself in scope its chunks keep its own id (counted once). Unscoped
+ * (node-subtree) reads never consult the resolver.
+ */
+export async function retrieveNodeChunks(
+  client: PoolClient,
+  tenantId: string,
+  query: string,
+  opts: NodeChunkOpts,
+): Promise<ManualChunk[]> {
+  const requested = opts.docIds ?? (opts.docId ? [opts.docId] : []);
+  const aliases = requested.length > 0 ? await resolveDuplicateDocAliases(tenantId, requested) : new Map<string, string>();
+  if (aliases.size === 0) return retrieveScopedNodeChunks(client, tenantId, query, opts);
+
+  const owner = (id: string) => aliases.get(id) ?? id;
+  const inScope = new Set(requested);
+  const labelFor = new Map<string, string>();
+  for (const id of requested) {
+    const original = aliases.get(id);
+    if (original && !inScope.has(original) && !labelFor.has(original)) labelFor.set(original, id);
+  }
+  const chunks = await retrieveScopedNodeChunks(client, tenantId, query, {
+    ...opts,
+    docId: opts.docId ? owner(opts.docId) : opts.docId,
+    docIds: opts.docIds ? [...new Set(opts.docIds.map(owner))] : opts.docIds,
+    approvedSourceDocIds: opts.approvedSourceDocIds
+      ? [...new Set(opts.approvedSourceDocIds.map(owner))]
+      : opts.approvedSourceDocIds,
+  });
+  return chunks.map((c) => {
+    const label = c.docId ? labelFor.get(c.docId) : undefined;
+    return label ? { ...c, docId: label } : c;
+  });
 }

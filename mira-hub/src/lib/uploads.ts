@@ -230,6 +230,41 @@ export async function findDuplicateUpload(
   return rows.length > 0 ? rowToUpload(rows[0]) : null;
 }
 
+/**
+ * Codex review of #4091 at 1082ad199, F6 (owner decision 2026-10-05, "alias at
+ * read"): an upload recorded parsed "duplicate of <original>" owns no chunks,
+ * so a consumer that looks a document up by its own id must read its
+ * original's. Maps each such id to its original — one hop, because
+ * findDuplicateUpload never picks a duplicate as an original and an original's
+ * delete repoints its duplicates to the heir. The join keeps it inside the
+ * caller's tenant. Ids that are not duplicates are absent from the map.
+ *
+ * Fails open (empty map): aliasing only ever adds coverage, so a lookup error
+ * leaves every id exactly as it was before this existed.
+ */
+export async function resolveDuplicateDocAliases(
+  tenantId: string,
+  ids: readonly string[],
+): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  try {
+    const { rows } = await pool.query(
+      `SELECT d.id::text AS id, o.id::text AS original_id
+         FROM hub_uploads d
+         JOIN hub_uploads o
+           ON o.tenant_id = d.tenant_id
+          AND o.id::text = substring(d.status_detail FROM length('duplicate of ') + 1)
+        WHERE d.tenant_id = $1 AND d.id = ANY($2::uuid[])
+          AND d.status = 'parsed' AND d.status_detail LIKE 'duplicate of %'`,
+      [tenantId, [...ids]],
+    );
+    return new Map(rows.map((r: Record<string, unknown>) => [String(r.id), String(r.original_id)]));
+  } catch (err) {
+    console.warn("[uploads] duplicate alias lookup skipped:", err instanceof Error ? err.message : err);
+    return new Map();
+  }
+}
+
 export async function listUploads(tenantId = DEFAULT_TENANT_ID): Promise<Upload[]> {
   await ensureUploadsSchema();
   const { rows } = await pool.query(
