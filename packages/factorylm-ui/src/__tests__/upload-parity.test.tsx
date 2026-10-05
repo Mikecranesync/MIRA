@@ -257,3 +257,21 @@ describe("the photo viewer sits above every shell layer (#4288 Codex r1 F1)", ()
     expect(adapter.calls).toContain("onBack");
   });
 });
+
+describe("unsent attachments are released when the composer goes away (#4288 Codex r2 F3)", () => {
+  it("unmounting with a pending photo releases it; a removed or sent one is not released twice", async () => {
+    const adapter = intakeAdapter();
+    const sent: string[] = [];
+    const view = renderHarness({ surface: "web", fixture: "machine-ask", adapter, hooks: { onSend: (_t: string, a: readonly Attachment[] = []) => { sent.push(...a.map((x) => x.id)); } } });
+    const box = view.container.querySelector("textarea") as HTMLTextAreaElement;
+    const jpeg = (name: string) => new File([new Uint8Array([1])], name, { type: "image/jpeg" });
+    act(() => { box.dispatchEvent(fileEvent("paste", [jpeg("sent.jpg")])); });
+    view.submit(view.container.querySelector('form[aria-label="Composer"]') as HTMLFormElement);
+    expect(sent).toHaveLength(1);
+    act(() => { box.dispatchEvent(fileEvent("paste", [jpeg("left.jpg")])); });
+    expect(adapter.released).toEqual([]);
+    view.cleanup();
+    expect(adapter.adopted).toEqual(["sent.jpg", "left.jpg"]);
+    expect(adapter.released).toEqual(["adopted-0-left.jpg"]);
+  });
+});

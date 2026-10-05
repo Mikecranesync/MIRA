@@ -1,5 +1,5 @@
 import type { Attachment, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
-import { useState, type ClipboardEvent, type Dispatch, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { AttachmentMenu } from "./AttachmentMenu";
 import { Overlay } from "./Overlay";
 import { openableUrl } from "./links";
@@ -53,6 +53,15 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   const [busy, setBusy] = useState<AdapterOperation | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  // Attachments still in the composer when it goes away (navigation, a host
+  // swapping the shell) can never be sent or removed: release their bytes and
+  // previews. A sent attachment has already left `pending`, so its preview —
+  // which the host's outgoing message may still show — is not touched.
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  useEffect(() => () => {
+    for (const item of pendingRef.current) adapter.release?.(item.attachment.id);
+  }, [adapter]);
   // Previews that failed to decode (e.g. HEIC in Chrome) fall back to the name.
   const [brokenPreviews, setBrokenPreviews] = useState<ReadonlySet<string>>(() => new Set());
   const machine = machineName(state, state.activeContext.machineId);
@@ -133,6 +142,9 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         if (sent.length > 0) {
           const handed = new Set(sent.map((item) => item.attachment.id));
           setPending((current) => current.filter((item) => !handed.has(item.attachment.id)));
+          // Synchronously too: an unmount in this same tick must not release
+          // what was just handed to the host (its message still shows it).
+          pendingRef.current = pendingRef.current.filter((item) => !handed.has(item.attachment.id));
         }
         dispatch({ type: "set-draft", draft: "" });
         dispatch({ type: "set-send-error", error: null });
