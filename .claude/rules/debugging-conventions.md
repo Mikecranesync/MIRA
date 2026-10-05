@@ -37,11 +37,95 @@ bcrypt prefix guesses on the Atlas signin work).
 - A "MISSING" / 404 / 401 result against an unverified name or path is
   **inconclusive**, not a finding. Confirm the name first, then trust the result.
 
+## 3. Positive-control every instrument before believing what it says
+
+**Before treating any red or green as evidence, prove the instrument can produce
+the other answer.** A check that cannot express failure has not been run — it has
+been *assumed*. The failure looks identical to success, which is why this needs a
+rule rather than care.
+
+Concretely, before citing a result:
+
+- **A mutation is only "caught" if the UNMUTATED run first FINDS the tests and
+  PASSES.** Confirm the test count. `vitest run "src/app/api/foo/\[id\]/bar"`
+  matches nothing, prints `No test files found`, and exits **1** — indistinguishable
+  from a caught mutation. So does a typo in a path filter.
+- **Confirm the mutation actually landed**, e.g. `git diff --numstat` shows the
+  expected insertions/deletions at the expected line — not appended after a
+  trailing `exit 0`, not in a comment, not in a sibling copy of the string.
+- **Confirm the mutation fails the RIGHT assertion, by name.** A red at a different
+  test means the mutation exercised something else and the target is still
+  undefended.
+- **A clean scan is only clean if you know what it could not see.** State the
+  exclusions. `git for-each-ref 'refs/remotes/origin/*' --contains <sha>` cannot
+  match two-level branch names (`origin/fix/my-branch`) and returns 0 for a commit
+  provably on one — use unglobbed `refs/remotes/`. `git grep -E "\bword\b"` matches
+  nothing in this repo. Nested worktrees inflate or invent results for any scanner
+  that walks the tree.
+- **Never `cmd | tail` or `cmd | grep` a gate** — `$?` is the pipe's. Use
+  `if cmd > log 2>&1; then rc=0; else rc=$?; fi`, or `PIPESTATUS`.
+- **`&&` chains silently truncate on a zero-count `grep -c`** (exit 1), swallowing
+  every later check in the chain. Separate verification steps with `;` or run them
+  individually.
+- **Two interpreters, two answers.** `/usr/bin/python3` is 3.9 here and raises
+  `TypeError` on `X | None` annotations *before doing any work*; Homebrew's 3.14
+  lacks `markdown_it`. A traceback from the wrong interpreter is not a policy
+  failure. Print `sys.executable` before blaming code.
+
+**When two counts of the same thing disagree, suspect the counters before the
+code — and check whether they share a notion of "a line."** The sharpest instance
+of this family is not a guard that cannot fail; it is a **measurement taken with
+the wrong instrument**, whose disagreement with reality then reads as a defect in
+the subject.
+
+Worked example (2026-09-09): a test scanned buttons with the JS regex
+`/<button[^>]*>/`. Counting the same files with `grep -cE '<button[^>]*>'` gave
+11/1/1 where the source had 14/3/1, and the 5-tag gap was written into a code
+comment as "5 of 18 buttons invisible to the old regex." **It was zero.** `[^>]`
+matches a newline in JavaScript, so the JS regex crossed multi-line tags without
+difficulty; `grep` is line-oriented and cannot. Two instruments, one differing
+property, and the difference blamed on the code. The comment named specific
+counts, which is exactly what makes a wrong one durable — the next reader has no
+reason to doubt it.
+
+Same shape, different sign: `grep -c 'role="status"'` returning 2 before and 3
+after a change, where two of the three were *comments about* `role="status"` —
+counting prose the compiler never sees.
+
+**Before reporting a count as a finding: re-measure with the instrument the code
+actually uses.**
+
+**The trap has two directions, and the second erodes trust between people.**
+A non-landing mutation produces **false accusation** as readily as false
+confidence: the run goes green and you conclude *someone else's* guard is
+decorative, or their fix is unverified. On 2026-09-08 one reviewer nearly filed
+defects against two other sessions' work from mutations that had never landed —
+each time it was `git diff --numstat` printing nothing, not judgement, that
+stopped it. "Be careful with other people's work" is an attitude and attitudes
+go first under deadline; **"read the diff before the result"** survives.
+
+**A near neighbour: counting prose about the mechanism instead of the
+mechanism.** A `grep -c 'role="status"'` that returns 2 before and 3 after looks
+like a behaviour change; two of the three were *comments about* `role="status"`.
+The same defect flags a button whose only `onClick` appears in a neighbouring
+comment. Strip comments, or assert on parsed structure, before counting.
+
+**Why this is a rule.** On 2026-09-08/09 a single session hit eight distinct
+instances in one night — a broken `&&` chain, a path filter that ran zero tests
+and exited 1, a reachability glob blind to two-level names, a local reproduction
+that "confirmed" a different failure, a `tsc` delta misread as baseline, an
+eslint exit-2 read as a lint state, a mutation batch voided by a shell-collapsed
+argument, and a review "dispatched" to an idle session that never started. Every
+one returned the shape the reader expected. **The positive control caught every
+instance it was applied to, and nothing else caught any of them.**
+
 ## When this applies
 
 - Any perf/latency/slowness diagnosis in `mira-bots/`, `mira-hub/`,
   `mira-pipeline/`, `mira-web/`, or infra.
 - Any db-inspect / row-existence check, any new SQL, any auth-path probe.
+- **Any mutation test, guard verification, CI-failure reproduction, or repo-wide
+  scan whose result you intend to state as a fact.**
 
 ## When this does NOT apply
 
