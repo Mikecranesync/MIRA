@@ -519,6 +519,15 @@ describe("a digitless variant code after a known series name", () => {
   it("control: two variants are two machines", () => {
     expect(proposeIdentityFromText("Compare SEW-Eurodrive MOVITRAC LTE-B and MOVITRAC LTP-B", SEW)).toBeNull();
   });
+  it("review F1: a variant after TWO series names is never proposed with a word dropped", () => {
+    expect(proposeIdentityFromText("Danfoss VLT AutomationDrive XX-Y is down", ["Danfoss"])).toBeNull();
+  });
+  it("review F2: a lowercase second variant still makes it two machines", () => {
+    expect(proposeIdentityFromText("Compare SEW-Eurodrive MOVITRAC LTE-B and movitrac ltp-b", SEW)).toBeNull();
+  });
+  it("control: a lowercase variant is not proposed, like every lowercase model", () => {
+    expect(proposeIdentityFromText("SEW-Eurodrive movitrac lte-b drive", SEW)).toBeNull();
+  });
   it("control: a digit-bearing model after a series name keeps its existing form", () => {
     expect(proposeIdentityFromText("Siemens SINAMICS G120C trips on overvoltage", SEW)).toEqual({ manufacturer: "Siemens", model: "G120C" });
   });

@@ -154,7 +154,9 @@ function modelSpanAt(tokens: string[]): string | null {
   const span = plainModelSpanAt(rest);
   if (span) return span;
   // "SEW-Eurodrive MOVITRAC LTE-B": the series stays in a digitless variant's model.
-  return isVariantCode(rest[0]) ? `${tokens[tokens.length - rest.length - 1]} ${rest[0]}` : null;
+  // Only after exactly ONE series name — two ("VLT AutomationDrive XX-Y") would
+  // either drop a word or disagree with the ambiguity scan (#4248 review F1).
+  return tokens.length - rest.length === 1 && isVariantCode(rest[0]) ? `${tokens[0]} ${rest[0]}` : null;
 }
 
 function plainModelSpanAt(tokens: string[]): string | null {
@@ -350,7 +352,9 @@ function modelMentions(message: string, chosenModel: string): string[] {
       continue;
     }
     // A series name and its digitless variant ("MOVITRAC LTP-B") is a machine.
-    if (SERIES_WORDS.has(t.toUpperCase()) && isVariantCode(next)) {
+    // Case-insensitive, like every other mention here: this scan can only REMOVE
+    // a proposal ("MOVITRAC LTE-B and movitrac ltp-b" — #4248 review F2).
+    if (SERIES_WORDS.has(t.toUpperCase()) && isVariantCode(next?.toUpperCase())) {
       out.push(`${t} ${next}`);
       i++;
       continue;
