@@ -94,6 +94,10 @@
 .fl-attachment__status { color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
 .fl-attachment[data-attachment-status="queued"] { border-color: var(--fl-workspace-warn-line); }
 .fl-attachment[data-attachment-status="failed"] { border-color: var(--fl-workspace-fault-line); }
+/* A photo in a message is just the picture, as in any chat app — no card
+   chrome. While it uploads it is dimmed, not outlined in a warning colour. */
+.fl-attachment.fl-attachment--photo { padding: 0; border: 0; background: transparent; }
+.fl-attachment--photo[data-attachment-status="queued"] img { opacity: 0.7; }
 .fl-source__locator { grid-column: 2; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
 .fl-source__locator code { font-family: var(--fl-workspace-mono); font-size: inherit; }
 .fl-source[aria-pressed="true"] { border-color: var(--fl-workspace-accent-line); background: var(--fl-workspace-accent-tint); }
@@ -299,7 +303,7 @@
 .fl-thread__jump[disabled] { display: none; }
 
 /* In-app photo viewer: a native <dialog>; the browser owns focus and Escape. */
-.fl-photo-viewer { inline-size: min(100vw, 64rem); max-inline-size: 100vw; max-block-size: 100dvh; margin: auto; padding: var(--fl-workspace-space-2); border: 0; border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-raised); color: var(--fl-workspace-ink); }
+.fl-photo-viewer { inline-size: min(100vw, 64rem); max-inline-size: 100vw; max-block-size: 100dvh; margin: auto; padding: var(--fl-workspace-space-2); border: 0; border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-surface); color: var(--fl-workspace-ink); box-shadow: var(--fl-workspace-shadow-pop); }
 .fl-photo-viewer::backdrop { background: var(--fl-workspace-scrim); }
 .fl-photo-viewer__bar { display: flex; justify-content: space-between; align-items: center; gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-2); }
 .fl-photo-viewer__open { color: var(--fl-workspace-accent-ink); text-decoration: underline; }
