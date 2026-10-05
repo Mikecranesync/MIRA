@@ -627,10 +627,14 @@ export type AttachSourceOpts = {
 };
 
 /**
- * Attach a document the CALLER created in the same request (nameplate confirm
- * materializes its doc, then attaches it). A document a technician picked
- * from elsewhere is attached with attachSourceHeld, which serializes with the
- * upload delete (Codex review of #4091, F7).
+ * Attach a document WITHOUT holding its upload row. Its only remaining caller is
+ * nameplate confirm, and that route also re-attaches an already-ingested upload
+ * (its `already_ingested` branch), so a concurrent upload delete CAN race this
+ * attach and leave a dangling source (Codex review of #4091 at cb0741f6e, F7 —
+ * an earlier version of this comment wrongly said the caller only attaches what
+ * it created). Moving that route to attachSourceHeld needs its lifecycle-guarded
+ * unit tests updated by a human commit; until then this race is a known residual.
+ * Every other attach uses attachSourceHeld.
  */
 export async function attachSource(
   tenantId: string,

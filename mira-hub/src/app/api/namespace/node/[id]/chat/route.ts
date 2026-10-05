@@ -284,9 +284,11 @@ export async function POST(
   // approved-context count below. Unlinked drafts are not.
   const admittedDocIds = new Set(docId ? [docId, ...linkedDocIds] : linkedDocIds);
   // Review of #4091 (Codex @ 1082ad199, F6): a "duplicate of" upload owns no
-  // chunks, so its filename is read from its original's. Retrieval keeps the
-  // opened id (retrieveNodeChunks follows the alias and relabels).
-  const docChunkOwner = docId ? ((await resolveDuplicateDocAliases(ctx.tenantId, [docId])).get(docId) ?? docId) : null;
+  // chunks, so its filename is read from its original's, and retrieval follows
+  // the same aliases (relabelling to the opened id). Resolved HERE, before the
+  // tenant transaction below takes a connection — never inside it (F8).
+  const docAliases = await resolveDuplicateDocAliases(ctx.tenantId, docId ? [docId, ...linkedDocIds] : linkedDocIds);
+  const docChunkOwner = docId ? (docAliases.get(docId) ?? docId) : null;
   let nodeRow: { name: string; uns_path: string | null } | null = null;
   let docFilename: string | null = null;
   let docMissing = false;
@@ -327,6 +329,7 @@ export async function POST(
         nodeId: id,
         unsPath: row.uns_path,
         ...(docId ? { docId, approvedSourceDocIds: [docId] } : {}),
+        docAliases,
       });
       let allChunks = chunks;
       if (linkedDocIds.length > 0) {
@@ -339,6 +342,7 @@ export async function POST(
           // approval gate. Without this, prod retrieval kept only
           // `verified = true` rows and every linked private upload vanished.
           approvedSourceDocIds: linkedDocIds,
+          docAliases,
         });
         allChunks = mergeChunks(chunks, linkedChunks);
       }
