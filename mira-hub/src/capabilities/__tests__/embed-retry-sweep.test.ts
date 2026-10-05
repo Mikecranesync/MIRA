@@ -1,23 +1,26 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { embedRetryAllPending } from "../embed-retry-sweep";
 
-// Mock the pool module
+// Mock the pool module BEFORE importing the module under test
 vi.mock("@/lib/db", () => ({
   default: {
     query: vi.fn(),
   },
 }));
 
+import { embedRetryAllPending } from "../embed-retry-sweep";
+import pool from "@/lib/db";
+
 describe("embed-retry-sweep", () => {
   let poolMock: any;
 
   beforeEach(() => {
-    poolMock = require("@/lib/db").default;
+    // Access the mocked pool directly — vi.mock returns the mocked object
+    poolMock = pool as any;
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    vi.resetModules();
+    vi.clearAllMocks();
   });
 
   describe("embedRetryAllPending", () => {
@@ -95,6 +98,59 @@ describe("embed-retry-sweep", () => {
 
       // Both calls got the same result
       expect(result.chunks_attempted).toBe(0);
+    });
+
+    it("logs completion summary with attempted and embedded counts", async () => {
+      // Setup: one chunk that embeds successfully
+      poolMock.query
+        .mockResolvedValueOnce({
+          rows: [{ id: "chunk-1", content: "test content" }],
+        })
+        .mockResolvedValueOnce({ rows: [] }); // next batch is empty
+
+      const embedFn = vi.fn(async () => ({ vec: [0.1, 0.2, 0.3] }));
+
+      // Spy on console.log to verify completion summary is logged
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const result = await embedRetryAllPending(embedFn);
+
+      // Verify the completion summary was logged
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining("[embed-retry-sweep] completed"),
+        expect.stringContaining("attempted=1 embedded=1"),
+        expect.stringContaining("ok"),
+      );
+
+      // Verify the result
+      expect(result.chunks_attempted).toBe(1);
+      expect(result.chunks_embedded).toBe(1);
+
+      logSpy.mockRestore();
+    });
+
+    it("logs circuit breaker reason when embedder fails", async () => {
+      // Setup: one chunk but embedder fails
+      poolMock.query.mockResolvedValueOnce({
+        rows: [{ id: "chunk-1", content: "test content" }],
+      });
+
+      const embedFn = vi.fn(async () => ({
+        code: "embedder_unavailable",
+      }));
+
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const result = await embedRetryAllPending(embedFn);
+
+      // Verify the circuit breaker reason was logged
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining("[embed-retry-sweep] completed"),
+        expect.stringContaining("attempted=1 embedded=0"),
+        expect.stringContaining("circuit_broken=embedder_unavailable"),
+      );
+
+      logSpy.mockRestore();
     });
   });
 });

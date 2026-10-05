@@ -171,11 +171,20 @@ export async function embedRetryAllPending(
       circuitBrokenReason ??= "select_failed";
     }
 
-    return {
+    // Log completion summary
+    const summary = {
       chunks_attempted: chunksAttempted,
       chunks_embedded: chunksEmbedded,
       circuit_broken_reason: circuitBrokenReason,
     };
+
+    console.log(
+      "[embed-retry-sweep] completed",
+      `attempted=${summary.chunks_attempted} embedded=${summary.chunks_embedded}`,
+      circuitBrokenReason ? `circuit_broken=${circuitBrokenReason}` : "ok",
+    );
+
+    return summary;
   })();
 
   sweepInFlight

@@ -5,8 +5,19 @@ import {
   captureContentEnabled,
   telemetryEnabled,
 } from "@/capabilities/observability/config";
+import { scheduleEmbedRetrySweep } from "@/capabilities/embed-retry-sweep";
 
 export const dynamic = "force-dynamic";
+
+// Initialize the embed-retry-sweep scheduler on the first health check.
+// This ensures failed embeddings are retried periodically.
+let sweepScheduled = false;
+function initSweepScheduler() {
+  if (!sweepScheduled) {
+    sweepScheduled = true;
+    scheduleEmbedRetrySweep();
+  }
+}
 
 /**
  * Liveness + env-sanity probe. Returns 503 if a secret the hub depends on
@@ -16,6 +27,9 @@ export const dynamic = "force-dynamic";
  * other API route.
  */
 export function GET() {
+  // Initialize the embed-retry-sweep scheduler on first health check
+  initSweepScheduler();
+
   // Deploy identity (#2226) — baked at build time, surfaced here so the same
   // probe that reports liveness also says WHICH code is live. See /api/version.
   const identity = {
