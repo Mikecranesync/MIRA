@@ -963,15 +963,17 @@ function codeMeaningViolation(
         // "Q-447-Delta (usually) means/indicates/is a …" — a definition,
         // hedged or not. Hedges do not rescue an invented meaning.
         const VERBS =
-          "(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b";
+          "(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the(?!\\s+one\\b))|is\\s+caused\\s+by|occurs\\s+when)\\b";
         const defFrame = new RegExp(`["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+${VERBS}`, "i");
         // A short "on/for/in <machine>" qualifier between the code and the verb
         // does not rescue it either: "Fault F49123 on a Siemens drive generally
         // indicates…" shipped uncited on staging (Golden Walk 2026-10-05). Only
         // when the code is the clause's SUBJECT — "Clearing fault F004 on the
         // keypad is a separate step" describes an operation (Codex #4238 r7 F7).
+        // Codex #4238 r8 F8: also catches standalone "The code …" and numbered
+        // lists "1) Fault …". F9: "is the one" is deictic, not definitional.
         const qualifiedFrame = new RegExp(
-          `^\\W*(?:(?:the|this|that)\\s+)?(?:(?:fault|alarm|error|trip|warning)(?:\\s+code)?\\s+)?["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?\\s+${VERBS}`,
+          `^[^a-zA-Z]*(?:(?:the|this|that)\\s+)?(?:(?:fault|alarm|error|trip|warning|code)(?:\\s+code)?\\s+)?["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?\\s+${VERBS}`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"

@@ -72,6 +72,34 @@ describe("code meaning with a qualifier between the code and the verb", () => {
   });
 });
 
+describe("F8: standalone 'code' and numbered-list prefixes (Codex r8)", () => {
+  it("withholds a definition starting with 'The code ...'", () => {
+    const v = run("The code F49123 on a Siemens drive generally indicates a motor overload condition.", F49123_Q);
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.violation).toBe("unsupported-specificity:code-meaning-asserted");
+  });
+
+  it("withholds a definition prefixed with a numbered list marker", () => {
+    const v = run("1) Fault F49123 on a Siemens drive generally indicates a motor overload condition.", F49123_Q);
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.violation).toBe("unsupported-specificity:code-meaning-asserted");
+  });
+});
+
+describe("F9: non-definitional predicates after 'is the' (Codex r8)", () => {
+  const q = "How do I clear fault F004";
+
+  it("allows a procedural selection predicate", () => {
+    expect(run("Fault F004 on the keypad is the one to select before pressing reset.", q).ok).toBe(true);
+  });
+
+  it("allows a conversational reference predicate", () => {
+    expect(run("Fault F004 on this drive is the one you reported earlier.", q).ok).toBe(true);
+  });
+});
+
 describe("the grounded lane is unchanged (owner decision 2026-10-05)", () => {
   it("does not apply the code-meaning rule to a grounded draft", () => {
     expect(run(F49123_A, F49123_Q, { general: false }).ok).toBe(true);
