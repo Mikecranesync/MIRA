@@ -65,12 +65,38 @@ export interface SweepResult {
 interface SweepDeps {
   list: (limit: number) => Promise<PendingTarget[]>;
   embed: (tenantId: string, sourceUrl: string) => Promise<EmbedPassResult>;
+  /** Fixed-string embed: tells a global outage from a failure specific to one upload. */
+  probe?: () => Promise<{ vec: number[] } | { code: EmbedFailureCode }>;
+  now?: () => number;
 }
 
 const DEFAULT_DEPS: SweepDeps = {
   list: (limit) => listPendingEmbedTargets(limit),
   embed: embedPendingNodeChunks,
+  probe: probeEmbedder,
 };
+
+// Codes that mean the embedder (or the database) cannot serve ANY upload right
+// now — the sweep stops. Any other zero-progress failure (an HTTP error on one
+// upload's content, a failed UPDATE) may be specific to that upload: the sweep
+// probes the embedder with a fixed string, and if that succeeds it sets the
+// upload aside for an hour and moves on, so one bad upload cannot hold the oldest
+// slot of every sweep and starve the rest (Codex review of #4293).
+const GLOBAL_CODES: ReadonlySet<EmbedFailureCode> = new Set([
+  "embedder_not_configured",
+  "embedder_unavailable",
+  "embedder_timeout",
+  "embedding_dimension_mismatch",
+  "db_permission_denied",
+  "select_failed",
+]);
+const COOLDOWN_MS = 60 * 60_000;
+const coolingUntil = new Map<string, number>();
+const targetKey = (t: PendingTarget) => `${t.tenantId}\u0000${t.sourceUrl}`;
+
+export function __resetSweepCooldownForTests(): void {
+  coolingUntil.clear();
+}
 
 let inFlight: Promise<SweepResult> | null = null;
 
@@ -84,9 +110,13 @@ export function sweepPendingEmbeds(opts: { maxTargets: number }, deps: SweepDeps
 }
 
 async function runSweep(maxTargets: number, deps: SweepDeps): Promise<SweepResult> {
+  const now = (deps.now ?? Date.now)();
+  for (const [k, until] of coolingUntil) if (until <= now) coolingUntil.delete(k);
   let targets: PendingTarget[];
   try {
-    targets = await deps.list(maxTargets);
+    // Over-fetch by the number of uploads cooling down so they cannot use up the bound.
+    const listed = await deps.list(maxTargets + coolingUntil.size);
+    targets = listed.filter((t) => !coolingUntil.has(targetKey(t))).slice(0, maxTargets);
   } catch (err) {
     console.error("[embed-retry-sweep] listing failed:", err instanceof Error ? err.message : err);
     return { targets: 0, embedded: 0, stoppedOn: "list_failed" };
@@ -96,10 +126,13 @@ async function runSweep(maxTargets: number, deps: SweepDeps): Promise<SweepResul
     const r = await deps.embed(t.tenantId, t.sourceUrl);
     embedded += r.embedded;
     if (r.state === "disabled") return { targets: targets.length, embedded, stoppedOn: "disabled" };
-    // Nothing written for this upload: the embedder (or the DB) cannot serve it
-    // now, and it will not serve the next one either. Try again next sweep.
     if (r.state === "degraded" && r.embedded === 0) {
-      return { targets: targets.length, embedded, stoppedOn: r.code ?? "embedder_unavailable" };
+      const code = r.code ?? "embedder_unavailable";
+      if (GLOBAL_CODES.has(code)) return { targets: targets.length, embedded, stoppedOn: code };
+      // Possibly specific to this upload: is the embedder itself serving?
+      const p = deps.probe ? await deps.probe().catch(() => ({ code: "embedder_unavailable" as const })) : { code };
+      if (!("vec" in p)) return { targets: targets.length, embedded, stoppedOn: p.code };
+      coolingUntil.set(targetKey(t), now + COOLDOWN_MS);
     }
   }
   return { targets: targets.length, embedded, stoppedOn: null };

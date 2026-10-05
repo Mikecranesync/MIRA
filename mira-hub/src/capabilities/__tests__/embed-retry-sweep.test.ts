@@ -23,6 +23,7 @@ import {
   startEmbedRetrySweep,
   embedderStatus,
   __resetEmbedderStatusForTests,
+  __resetSweepCooldownForTests,
 } from "@/capabilities/embed-retry-sweep";
 
 const T1 = { tenantId: "11111111-1111-4111-8111-111111111111", sourceUrl: "node://a/manual-1.pdf" };
@@ -96,6 +97,49 @@ describe("sweepPendingEmbeds", () => {
     expect(list).toHaveBeenCalledTimes(1);
     expect(embed).toHaveBeenCalledTimes(1);
     expect(ra).toBe(rb);
+  });
+
+  it("an upload-specific failure does not block later uploads (Codex #4293 F1)", async () => {
+    __resetSweepCooldownForTests();
+    const httpErr = { embedded: 0, state: "degraded" as const, code: "embedder_http_error" as const, permanent: false };
+    const embed = vi.fn(async (_t: string, url: string) => (url === T1.sourceUrl ? httpErr : ok(4)));
+    const probe = vi.fn(async () => ({ vec: [0.1] }));
+    let now = 0;
+    const deps = { list: async () => [T1, T2], embed, probe, now: () => now };
+    const r1 = await sweepPendingEmbeds({ maxTargets: 10 }, deps);
+    expect(r1).toMatchObject({ embedded: 4, stoppedOn: null });
+    expect(probe).toHaveBeenCalledTimes(1);
+    // the failing upload cools down; the next sweeps do not retry it every time
+    now += 10 * 60_000;
+    await sweepPendingEmbeds({ maxTargets: 10 }, deps);
+    expect(embed.mock.calls.filter(([, u]) => u === T1.sourceUrl)).toHaveLength(1);
+    // ...but it stays retryable once the cooldown has passed
+    now += 60 * 60_000;
+    await sweepPendingEmbeds({ maxTargets: 10 }, deps);
+    expect(embed.mock.calls.filter(([, u]) => u === T1.sourceUrl)).toHaveLength(2);
+  });
+
+  it("an upload-specific code with a failing probe is a global outage: stop", async () => {
+    __resetSweepCooldownForTests();
+    const httpErr = { embedded: 0, state: "degraded" as const, code: "embedder_http_error" as const, permanent: false };
+    const embed = vi.fn(async () => httpErr);
+    const probe = vi.fn(async () => ({ code: "embedder_http_error" as const }));
+    const r = await sweepPendingEmbeds({ maxTargets: 10 }, { list: async () => [T1, T2], embed, probe });
+    expect(embed).toHaveBeenCalledTimes(1);
+    expect(r.stoppedOn).toBe("embedder_http_error");
+  });
+
+  it("a cooling-down upload does not use up the bounded listing", async () => {
+    __resetSweepCooldownForTests();
+    const httpErr = { embedded: 0, state: "degraded" as const, code: "embedder_http_error" as const, permanent: false };
+    const embed = vi.fn(async (_t: string, url: string) => (url === T1.sourceUrl ? httpErr : ok(1)));
+    const probe = vi.fn(async () => ({ vec: [0.1] }));
+    const list = vi.fn(async (limit: number) => [T1, T2, T3].slice(0, limit));
+    await sweepPendingEmbeds({ maxTargets: 1 }, { list, embed, probe, now: () => 0 });
+    // T1 is cooling down: a 1-target sweep must still reach a different upload
+    const r = await sweepPendingEmbeds({ maxTargets: 1 }, { list, embed, probe, now: () => 1 });
+    expect(r.embedded).toBe(1);
+    expect(embed.mock.calls.at(-1)?.[1]).toBe(T2.sourceUrl);
   });
 
   it("never throws: a listing failure is reported, not raised", async () => {
