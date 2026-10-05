@@ -15,6 +15,7 @@ import type {
 } from "@factorylm/interaction";
 import { IdentityAlreadyConfirmedError } from "@factorylm/interaction";
 import { useEffect, useState, type Dispatch, type ReactNode } from "react";
+import { openableUrl } from "./links";
 
 /** Optional host hooks. When absent the shell stays fixture-only (reducer mock actions). */
 export interface HostHooks {
@@ -465,9 +466,16 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
 
     case "visual_observation": {
       const { observation } = part;
-      return <Card type="visual_observation" label="IMG · Photo observation" extra={{ "data-verified": String(observation.verified) }}>
+      // The photo itself, when the host says where it lives: a thumbnail that
+      // opens the full-size image in the browser's own viewer. The raw file id
+      // is only printed when there is no picture to show instead.
+      const preview = openableUrl(observation.previewUrl);
+      return <Card type="visual_observation" label="IMG · Photo observation" extra={{ "data-verified": String(observation.verified), "data-file-id": observation.fileId }}>
+        {preview ? <a className="fl-photo" href={preview} target="_blank" rel="noopener noreferrer" aria-label="Open the full-size photo">
+          <img src={preview} alt={`Photo captured ${observation.capturedAt}`} loading="lazy" decoding="async" />
+        </a> : null}
         <dl className="fl-card__facts">
-          <div><dt>File</dt><dd>{observation.fileId}</dd></div>
+          {preview ? null : <div><dt>File</dt><dd>{observation.fileId}</dd></div>}
           <div><dt>Captured</dt><dd>{observation.capturedAt}</dd></div>
           <div><dt>Provenance</dt><dd>{observation.provenance.replace("_", " ")}</dd></div>
           <div><dt>Verified</dt><dd>{observation.verified ? "yes" : "no"}</dd></div>
