@@ -14,5 +14,9 @@ export const dynamic = "force-dynamic";
  * chunks, and the canary passed while every upload went BM25-only).
  */
 export function GET() {
-  return NextResponse.json({ service: "mira-hub", embedder: embedderStatus(), ts: Date.now() });
+  return NextResponse.json({
+    service: "mira-hub",
+    embedder: embedderStatus(),
+    ts: Date.now(),
+  });
 }

@@ -30,7 +30,10 @@ export interface PendingTarget {
 }
 
 interface Queryable {
-  query: (sql: string, params: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  query: (
+    sql: string,
+    params: unknown[],
+  ) => Promise<{ rows: Record<string, unknown>[] }>;
 }
 
 /**
@@ -42,7 +45,10 @@ interface Queryable {
  * pending uploads. Each upload is then embedded by `embedPendingNodeChunks`
  * under its own tenant context, exactly as at upload time.
  */
-export async function listPendingEmbedTargets(limit: number, db: Queryable = pool as unknown as Queryable): Promise<PendingTarget[]> {
+export async function listPendingEmbedTargets(
+  limit: number,
+  db: Queryable = pool as unknown as Queryable,
+): Promise<PendingTarget[]> {
   const r = await db.query(
     `SELECT tenant_id::text AS tenant_id, source_url
        FROM knowledge_entries
@@ -52,7 +58,10 @@ export async function listPendingEmbedTargets(limit: number, db: Queryable = poo
       LIMIT $1`,
     [limit],
   );
-  return r.rows.map((row) => ({ tenantId: String(row.tenant_id), sourceUrl: String(row.source_url) }));
+  return r.rows.map((row) => ({
+    tenantId: String(row.tenant_id),
+    sourceUrl: String(row.source_url),
+  }));
 }
 
 export interface SweepResult {
@@ -76,16 +85,16 @@ const DEFAULT_DEPS: SweepDeps = {
   probe: probeEmbedder,
 };
 
-// Codes that mean the embedder (or the database) cannot serve ANY upload right
-// now — the sweep stops. Any other zero-progress failure (an HTTP error on one
+// Codes that cannot be specific to one upload — configuration, model or grant
+// problems that hold for every upload — stop the sweep without probing. Any other
+// zero-progress failure (an HTTP error, a timeout or a dropped connection on one
 // upload's content, a failed UPDATE) may be specific to that upload: the sweep
 // probes the embedder with a fixed string, and if that succeeds it sets the
 // upload aside for an hour and moves on, so one bad upload cannot hold the oldest
-// slot of every sweep and starve the rest (Codex review of #4293).
+// slot of every sweep and starve the rest. If the probe fails too, it is an
+// outage and the sweep stops (Codex review of #4293, rounds 1 and 2).
 const GLOBAL_CODES: ReadonlySet<EmbedFailureCode> = new Set([
   "embedder_not_configured",
-  "embedder_unavailable",
-  "embedder_timeout",
   "embedding_dimension_mismatch",
   "db_permission_denied",
   "select_failed",
@@ -101,7 +110,10 @@ export function __resetSweepCooldownForTests(): void {
 let inFlight: Promise<SweepResult> | null = null;
 
 /** One bounded sweep. Single-flight: a call while one runs joins it. Never throws. */
-export function sweepPendingEmbeds(opts: { maxTargets: number }, deps: SweepDeps = DEFAULT_DEPS): Promise<SweepResult> {
+export function sweepPendingEmbeds(
+  opts: { maxTargets: number },
+  deps: SweepDeps = DEFAULT_DEPS,
+): Promise<SweepResult> {
   if (inFlight) return inFlight;
   inFlight = runSweep(opts.maxTargets, deps).finally(() => {
     inFlight = null;
@@ -109,29 +121,45 @@ export function sweepPendingEmbeds(opts: { maxTargets: number }, deps: SweepDeps
   return inFlight;
 }
 
-async function runSweep(maxTargets: number, deps: SweepDeps): Promise<SweepResult> {
+async function runSweep(
+  maxTargets: number,
+  deps: SweepDeps,
+): Promise<SweepResult> {
   const now = (deps.now ?? Date.now)();
-  for (const [k, until] of coolingUntil) if (until <= now) coolingUntil.delete(k);
+  for (const [k, until] of coolingUntil)
+    if (until <= now) coolingUntil.delete(k);
   let targets: PendingTarget[];
   try {
     // Over-fetch by the number of uploads cooling down so they cannot use up the bound.
     const listed = await deps.list(maxTargets + coolingUntil.size);
-    targets = listed.filter((t) => !coolingUntil.has(targetKey(t))).slice(0, maxTargets);
+    targets = listed
+      .filter((t) => !coolingUntil.has(targetKey(t)))
+      .slice(0, maxTargets);
   } catch (err) {
-    console.error("[embed-retry-sweep] listing failed:", err instanceof Error ? err.message : err);
+    console.error(
+      "[embed-retry-sweep] listing failed:",
+      err instanceof Error ? err.message : err,
+    );
     return { targets: 0, embedded: 0, stoppedOn: "list_failed" };
   }
   let embedded = 0;
   for (const t of targets) {
     const r = await deps.embed(t.tenantId, t.sourceUrl);
     embedded += r.embedded;
-    if (r.state === "disabled") return { targets: targets.length, embedded, stoppedOn: "disabled" };
+    if (r.state === "disabled")
+      return { targets: targets.length, embedded, stoppedOn: "disabled" };
     if (r.state === "degraded" && r.embedded === 0) {
       const code = r.code ?? "embedder_unavailable";
-      if (GLOBAL_CODES.has(code)) return { targets: targets.length, embedded, stoppedOn: code };
+      if (GLOBAL_CODES.has(code))
+        return { targets: targets.length, embedded, stoppedOn: code };
       // Possibly specific to this upload: is the embedder itself serving?
-      const p = deps.probe ? await deps.probe().catch(() => ({ code: "embedder_unavailable" as const })) : { code };
-      if (!("vec" in p)) return { targets: targets.length, embedded, stoppedOn: p.code };
+      const p = deps.probe
+        ? await deps
+            .probe()
+            .catch(() => ({ code: "embedder_unavailable" as const }))
+        : { code };
+      if (!("vec" in p))
+        return { targets: targets.length, embedded, stoppedOn: p.code };
       coolingUntil.set(targetKey(t), now + COOLDOWN_MS);
     }
   }
@@ -146,7 +174,14 @@ export function startEmbedRetrySweep(
   const tick = async () => {
     const r = await run({ maxTargets: opts.maxTargets });
     if (r.targets > 0 || r.stoppedOn) {
-      console.log(JSON.stringify({ service: "mira-hub", component: "embed-retry-sweep", event: "sweep", ...r }));
+      console.log(
+        JSON.stringify({
+          service: "mira-hub",
+          component: "embed-retry-sweep",
+          event: "sweep",
+          ...r,
+        }),
+      );
     }
   };
   let interval: ReturnType<typeof setInterval> | null = null;
@@ -175,7 +210,11 @@ export function ensureEmbedRetrySweep(
 ): boolean {
   if (started || process.env.NODE_EMBED_RETRY_SWEEP === "0") return false;
   started = true;
-  const stop = start({ firstDelayMs: 60_000, intervalMs: 600_000, maxTargets: 25 });
+  const stop = start({
+    firstDelayMs: 60_000,
+    intervalMs: 600_000,
+    maxTargets: 25,
+  });
   process.once("SIGTERM", stop);
   return true;
 }
@@ -204,7 +243,10 @@ const STATUS_BY_CODE: Partial<Record<EmbedFailureCode, EmbedderStatus>> = {
 };
 
 const PROBE_INTERVAL_MS = 60_000;
-let cached: { status: EmbedderStatus; checkedAt: number | null } = { status: "unknown", checkedAt: null };
+let cached: { status: EmbedderStatus; checkedAt: number | null } = {
+  status: "unknown",
+  checkedAt: null,
+};
 let probing = false;
 
 type Probe = () => Promise<{ vec: number[] } | { code: EmbedFailureCode }>;
@@ -218,11 +260,17 @@ export function embedderStatus(
 ): { status: EmbedderStatus; model: string; checkedAt: number | null } {
   const probe = deps.probe ?? probeEmbedder;
   const now = (deps.now ?? Date.now)();
-  if (!probing && (cached.checkedAt === null || now - cached.checkedAt >= PROBE_INTERVAL_MS)) {
+  if (
+    !probing &&
+    (cached.checkedAt === null || now - cached.checkedAt >= PROBE_INTERVAL_MS)
+  ) {
     probing = true;
     void probe()
       .then((r) => {
-        cached = { status: "vec" in r ? "ok" : (STATUS_BY_CODE[r.code] ?? "unreachable"), checkedAt: now };
+        cached = {
+          status: "vec" in r ? "ok" : (STATUS_BY_CODE[r.code] ?? "unreachable"),
+          checkedAt: now,
+        };
       })
       .catch(() => {
         cached = { status: "unreachable", checkedAt: now };
@@ -231,7 +279,11 @@ export function embedderStatus(
         probing = false;
       });
   }
-  return { status: cached.status, model: "nomic-embed-text", checkedAt: cached.checkedAt };
+  return {
+    status: cached.status,
+    model: "nomic-embed-text",
+    checkedAt: cached.checkedAt,
+  };
 }
 
 export function __resetEmbedderStatusForTests(): void {

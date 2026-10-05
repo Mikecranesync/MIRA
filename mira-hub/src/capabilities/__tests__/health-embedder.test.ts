@@ -10,7 +10,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const probe = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/node-knowledge-ingest", () => ({ probeEmbedder: probe, embedPendingNodeChunks: vi.fn() }));
+vi.mock("@/lib/node-knowledge-ingest", () => ({
+  probeEmbedder: probe,
+  embedPendingNodeChunks: vi.fn(),
+}));
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn() } }));
 
 import { GET as embedderGET } from "@/app/api/health/embedder/route";
@@ -40,21 +43,30 @@ describe("/api/health/embedder", () => {
   it("stays 200 while the embedder is unreachable, and reports it", async () => {
     probe.mockResolvedValue({ code: "embedder_unavailable" });
     const first = await embedderGET().json();
-    expect(first.embedder).toMatchObject({ status: "unknown", model: "nomic-embed-text" });
-    await vi.waitFor(async () => expect((await embedderGET().json()).embedder.status).toBe("unreachable"));
+    expect(first.embedder).toMatchObject({
+      status: "unknown",
+      model: "nomic-embed-text",
+    });
+    await vi.waitFor(async () =>
+      expect((await embedderGET().json()).embedder.status).toBe("unreachable"),
+    );
     expect(embedderGET().status).toBe(200);
   });
 
   it("reports ok once a probe returns a vector", async () => {
     probe.mockResolvedValue({ vec: new Array(768).fill(0.1) });
     embedderGET();
-    await vi.waitFor(async () => expect((await embedderGET().json()).embedder.status).toBe("ok"));
+    await vi.waitFor(async () =>
+      expect((await embedderGET().json()).embedder.status).toBe("ok"),
+    );
   });
 
   it("never exposes the embedder URL or host", async () => {
     probe.mockResolvedValue({ code: "embedder_timeout" });
     embedderGET();
-    await vi.waitFor(async () => expect((await embedderGET().json()).embedder.status).toBe("timeout"));
+    await vi.waitFor(async () =>
+      expect((await embedderGET().json()).embedder.status).toBe("timeout"),
+    );
     const text = JSON.stringify(await embedderGET().json());
     expect(text).not.toContain("100.86.236.11");
     expect(text).not.toContain("11434");
@@ -75,7 +87,11 @@ describe("retry sweep start", () => {
     expect(ensureEmbedRetrySweep(start)).toBe(true);
     expect(ensureEmbedRetrySweep(start)).toBe(false);
     expect(start).toHaveBeenCalledTimes(1);
-    expect(start).toHaveBeenCalledWith({ firstDelayMs: 60_000, intervalMs: 600_000, maxTargets: 25 });
+    expect(start).toHaveBeenCalledWith({
+      firstDelayMs: 60_000,
+      intervalMs: 600_000,
+      maxTargets: 25,
+    });
   });
 
   it("is off with NODE_EMBED_RETRY_SWEEP=0", () => {

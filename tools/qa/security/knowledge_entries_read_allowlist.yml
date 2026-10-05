@@ -105,7 +105,7 @@ approved:
     query_snippet: |
       SELECT count(*) FROM knowledge_entries WHERE content ILIKE %s
   # Embed retry sweep (2026-10-05 embedding outage)
-  "mira-hub/src/capabilities/embed-retry-sweep.ts:48":
+  "mira-hub/src/capabilities/embed-retry-sweep.ts:54":
     approved_classification: UNFILTERED
     query_sha256: "b4ff4392b40f00be083c4abc2afe0a1b36cf442fbb19c80fff58005abf03973a"
     reason: "Embed retry sweep lists (tenant_id, source_url) pairs of node_attachment chunks still missing a vector, across tenants on the raw owner pool (RLS scopes a connection to one tenant). Returns ids only, never content, never to a user; each pair is then embedded by embedPendingNodeChunks under that tenant's own context."
