@@ -75,5 +75,20 @@ export function createLabAdapter(context: () => LabAdapterContext, onCall: () =>
       record("onBack");
       return "handled";
     },
+    // Paste/drop: the lab keeps a pasted or dropped file in memory only, so a
+    // photo can show its real thumbnail in the chip. Nothing leaves the page.
+    adoptFiles: (picked) => picked.map((file) => {
+      record(`adoptFiles:${file.name}`);
+      const kind = file.type.startsWith("image/") ? "photo" : file.type === "application/pdf" ? "pdf" : "file";
+      return {
+        id: `lab-adopted-${(photos += 1)}`,
+        name: file.name,
+        mediaType: file.type || "application/octet-stream",
+        kind,
+        status: "ready",
+        ...(kind === "photo" ? { previewUrl: URL.createObjectURL(file) } : {}),
+      } satisfies Attachment;
+    }),
+    release: (id) => record(`release:${id}`),
   };
 }
