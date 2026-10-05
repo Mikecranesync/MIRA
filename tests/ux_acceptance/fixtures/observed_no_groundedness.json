@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "buildSha": "0000000000000000000000000000000000000005",
+  "surface": "mobile",
+  "route": "/notebook/sensor-v0-overnight",
+  "viewport": {
+    "width": 412,
+    "height": 915
+  },
+  "_provenance": "Pixel 9a 2026-09-07. Two answers, one manual-backed and one general knowledge, with NO evidence_basis part emitted at all. parts.tsx:139 shows the shell can render one, so the defect is that mobile does not emit it \u2014 a missing part, not a missing attribute.",
+  "nodes": [
+    {
+      "id": "a1",
+      "tag": "div",
+      "text": "Serial number 49849 is listed on the nameplate.",
+      "attrs": {
+        "class": "fl-turn__parts"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "a2",
+      "tag": "div",
+      "text": "A grinding noise usually indicates bearing wear.",
+      "attrs": {
+        "class": "fl-turn__parts"
+      },
+      "rendered": true,
+      "hittable": true
+    }
+  ],
+  "styleProperties": [
+    "color",
+    "background-color"
+  ]
+}
