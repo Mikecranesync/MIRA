@@ -35,6 +35,7 @@ import type {
   VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { isMachineEvidenceEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
+import { API_BASE } from "@/lib/config";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { splitEvidence } from "@/components/equipment/notebook-chat-utils";
@@ -123,14 +124,37 @@ export function answerTurnId(rowId: string): string {
   return `${rowId}-a`;
 }
 
+/** The byte route that serves a parked original (photo or document) inline —
+ *  the same door the classic notebook's photo thumbnail, its source page and
+ *  the mobile file preview already use. */
+export function fileUrl(fileId: string): string {
+  return `${API_BASE}/api/namespace/files/${encodeURIComponent(fileId)}/`;
+}
+
+/** Where a citation opens, by the classic source page's rule
+ *  ((hub)/equipment/[id]/source/[docId]): the canonical origin wins (085), so a
+ *  photo-derived doc opens the photograph, which has no page; otherwise the
+ *  doc's own parked file at its cited page; otherwise a manufacturer manual's
+ *  own http(s) address. Undefined when there is nothing to open. */
+export function citationHref(citation: EvidenceCitation): string | undefined {
+  const page = citation.page ? `#page=${citation.page}` : "";
+  if (citation.originFileId) return fileUrl(citation.originFileId);
+  if (citation.fileId) return `${fileUrl(citation.fileId)}${page}`;
+  const url = citation.sourceUrl ?? "";
+  if (/^https?:\/\//i.test(url)) return url.includes("#") ? url : `${url}${page}`;
+  return undefined;
+}
+
 export function sourceFor(citation: EvidenceCitation, turnId: string): SourceReference {
   const page = citation.page ?? null;
   const locator = page !== null ? `p. ${page}` : citation.quote ? citation.quote.slice(0, 80) : "cited passage";
+  const href = citationHref(citation);
   return {
     id: sourceIdFor(turnId, citation.citationId),
     title: citation.sourceTitle,
     kind: citation.fileId ? "workspace_file" : "oem_documentation",
     locator,
+    ...(href ? { href } : {}),
   };
 }
 
@@ -154,7 +178,7 @@ export function machineEvidencePart(entry: MachineEvidenceEntry): InteractionPar
 export function visualObservationPart(entry: VisualObservationEntry): InteractionPart {
   return {
     type: "visual_observation",
-    observation: { fileId: entry.fileId, capturedAt: entry.capturedAt, provenance: "phone_photo", verified: false },
+    observation: { fileId: entry.fileId, capturedAt: entry.capturedAt, provenance: "phone_photo", verified: false, previewUrl: fileUrl(entry.fileId) },
   };
 }
 

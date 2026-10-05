@@ -44,6 +44,10 @@ export type EvidenceCitation = {
    *  doc's own file IS the original) and on pre-085 persisted turns (the
    *  read path enriches those server-side). */
   originFileId?: string | null;
+  /** A manufacturer manual's own http(s) address (shared-library chunks have
+   *  no parked file), so the shell can open it. Absent on older turns and on
+   *  docs without a web address. */
+  sourceUrl?: string | null;
   quote: string | null;
   /** Room for richer selectors later without changing the API shape (PRD §14). */
   selector?: { type: "page" | "text" | "bbox" | "section"; value: unknown };
