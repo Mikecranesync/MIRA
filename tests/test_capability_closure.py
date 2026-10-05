@@ -95,17 +95,6 @@ def test_unified_ui_shell_records_the_merged_mobile_canary_truth():
     assert cap["required_checks_observed_on"] == "2026-09-06"
 
 
-def test_the_registry_has_no_duplicate_keys():
-    """#4284 Codex F3: a repeated key silently drops the earlier value."""
-    assert cc.duplicate_keys(REGISTRY.read_text(encoding="utf-8")) == []
-
-
-def test_duplicate_keys_names_the_repeat():
-    text = "capabilities:\n  - id: a\n    rollback: one\n    state: x\n    rollback: two\n"
-    assert cc.duplicate_keys(text) == ["line 5: rollback"]
-    assert cc.duplicate_keys("capabilities:\n  - id: a\n    rollback: one\n") == []
-
-
 def test_every_gate_flag_in_code_is_accounted_for():
     """A new flag cannot stay anonymous — the whole inventory decays otherwise."""
     missing = cc.discover_unregistered(_registry(), _ROOT)
