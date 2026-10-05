@@ -10,7 +10,7 @@ lxml>=6.1.1
 
 # NeonDB
 # 2.1 defaults PostgreSQL URLs to psycopg 3; these services use psycopg2.
-sqlalchemy>=2.0.50,<2.1
+sqlalchemy>=2.1.2,<2.2
 psycopg2-binary>=2.9.12
 
 # Apify
