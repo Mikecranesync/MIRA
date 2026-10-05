@@ -275,3 +275,27 @@ describe("unsent attachments are released when the composer goes away (#4288 Cod
     expect(adapter.released).toEqual(["adopted-0-left.jpg"]);
   });
 });
+
+describe("an open photo owns Tab over any shell layer (#4288 Codex r4 F5)", () => {
+  it("with the navigation drawer trapping Tab, Tab inside the open viewer is not cancelled or pulled to the drawer", () => {
+    const view = renderHarness({ surface: "mobile", fixture: "attachments", adapter: fakeAdapter(), hooks, transformFixture: (f: ShellFixture): ShellFixture => ({
+      ...f,
+      thread: { ...f.thread, turns: f.thread.turns.map((t) => ({ ...t, parts: t.parts.map((p): InteractionPart =>
+        p.type === "attachment" && p.attachment.kind === "photo" ? { ...p, attachment: { ...p.attachment, previewUrl: "/api/namespace/files/file-nameplate/" } } : p) })) },
+    }) });
+    views.push(view);
+    view.dispatch({ type: "set-navigation-visible", visible: true });
+    // Precondition: on the phone surface the drawer is an active modal layer, so it traps Tab.
+    expect(view.container.querySelector('.fl-overlay[data-layer="navigation"][data-active="true"][data-modal="true"]')).not.toBeNull();
+    const link = view.container.querySelector<HTMLAnchorElement>("a.fl-photo");
+    act(() => { link?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })); });
+    const dialog = view.container.querySelector<HTMLDialogElement>("dialog.fl-photo-viewer")!;
+    expect(dialog.open).toBe(true);
+    const close = Array.from(dialog.querySelectorAll("button")).find((b) => b.textContent === "Close")!;
+    close.focus();
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    act(() => { close.dispatchEvent(tab); });
+    expect(tab.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(close);
+  });
+});
