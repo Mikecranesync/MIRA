@@ -407,5 +407,45 @@ cleanup; trap cleanup EXIT
 echo
 
 # ---------------------------------------------------------------------------
+# 16–17. The Claude-side PreToolUse layer (tools/hooks/guarded_approval_guard.py).
+#    Defence in depth only: it denies the obvious routes around the approval and
+#    turns a guarded commit into a visible prompt, but grants nothing.
+# ---------------------------------------------------------------------------
+claude_hook_decision() {
+  printf '%s' "$1" | python3 tools/hooks/guarded_approval_guard.py \
+    | python3 -c 'import json,sys; d=sys.stdin.read().strip(); print(json.loads(d)["hookSpecificOutput"]["permissionDecision"] if d else "allow")'
+}
+
+echo "[16] Claude hook: denies routes around the approval, allows ordinary work"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit --no-verify -m x"}}')" "deny" \
+  "denies git commit --no-verify"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit -nm x"}}')" "deny" \
+  "denies the short -n form inside a flag cluster"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit -m \"text mentions -n and --no-verify\""}}')" "allow" \
+  "control: the words inside a commit message are not flags"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"echo {} > .git/mira-guarded-approvals/x.json"}}')" "deny" \
+  "denies a Bash write into the approval store"
+assert_eq "$(claude_hook_decision '{"tool_name":"Write","tool_input":{"file_path":"/r/.git/mira-guarded-approvals/a.json"}}')" "deny" \
+  "denies a Write into the approval store"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"script -q /dev/null python3 tools/guarded_commit_approval.py approve"}}')" "deny" \
+  "denies faking a terminal around approve"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"python3 tools/guarded_commit_approval.py status"}}')" "allow" \
+  "control: reading approval status is allowed"
+echo
+
+echo "[17] Claude hook: a commit with guarded paths staged becomes a prompt, never a grant"
+stage_guarded_fixture
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}')" "ask" \
+  "asks before a commit that includes a guarded path"
+cleanup; trap cleanup EXIT
+mkdir -p "$FIXTURE_DIR"
+printf 'ok\n' > "$FIXTURE_DIR/plain.txt"
+git add -- "$FIXTURE_DIR/plain.txt"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}')" "allow" \
+  "control: an ordinary commit is not prompted"
+cleanup; trap cleanup EXIT
+echo
+
+# ---------------------------------------------------------------------------
 echo "=== summary: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ] || exit 1
