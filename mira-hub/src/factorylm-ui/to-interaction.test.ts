@@ -7,6 +7,7 @@ import {
   basisKind,
   citationIndex,
   contextFor,
+  fileUrl,
   hasIdentityDispute,
   hasTerminalSafetyStop,
   identityProposalOf,
@@ -116,7 +117,7 @@ describe("partsFromStream", () => {
     expect(parts[2]).toEqual({ type: "evidence_basis", basis: { kind: "oem_documentation", label: "oem_documentation", authorized: false } });
     expect(parts[3]).toMatchObject({ evidence: { preSeconds: 30, postSeconds: 30, rowCount: 4, freshness: "stale", source: "recorded" } });
     // The chat route carries no verification signal; the mapper must never claim one.
-    expect(parts[4]).toEqual({ type: "visual_observation", observation: { fileId: "f9fdad9c", capturedAt: AT, provenance: "phone_photo", verified: false } });
+    expect(parts[4]).toEqual({ type: "visual_observation", observation: { fileId: "f9fdad9c", capturedAt: AT, provenance: "phone_photo", verified: false, previewUrl: fileUrl("f9fdad9c") } });
   });
 
   it("machine evidence with reason unavailable keeps the reason; live freshness is source live", () => {
@@ -217,7 +218,7 @@ describe("partsFromStream", () => {
     }), LIVE);
     expect(parts).toEqual([
       { type: "text", text: copy },
-      { type: "visual_observation", observation: { fileId: visual.fileId, capturedAt: AT, provenance: "phone_photo", verified: false } },
+      { type: "visual_observation", observation: { fileId: visual.fileId, capturedAt: AT, provenance: "phone_photo", verified: false, previewUrl: fileUrl(visual.fileId) } },
     ]);
   });
 
@@ -354,7 +355,7 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
     }), meta);
     expect(a.parts).toEqual([
       { type: "text", text: "I saw your photo, but I couldn't find anything about it in the selected sources." },
-      { type: "visual_observation", observation: { fileId: visual.fileId, capturedAt: AT, provenance: "phone_photo", verified: false } },
+      { type: "visual_observation", observation: { fileId: visual.fileId, capturedAt: AT, provenance: "phone_photo", verified: false, previewUrl: fileUrl(visual.fileId) } },
     ]);
   });
 });

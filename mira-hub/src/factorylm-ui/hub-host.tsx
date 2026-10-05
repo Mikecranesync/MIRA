@@ -56,6 +56,7 @@ import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
+import { OnboardingGate } from "./onboarding-gate";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus } from "./to-interaction";
 import {
@@ -819,15 +820,17 @@ export function HubShellHost() {
 
   return (
     <div className="hub-shell-host" data-testid="hub-shell">
-      <FactoryLMShell
-        state={view}
-        dispatch={dispatch}
-        adapter={adapter}
-        hooks={hooks}
-        conversationSurface="assistant"
-        onOpenItem={onOpenItem}
-        onSelectProject={onSelectProject}
-      />
+      <OnboardingGate>
+        <FactoryLMShell
+          state={view}
+          dispatch={dispatch}
+          adapter={adapter}
+          hooks={hooks}
+          conversationSurface="assistant"
+          onOpenItem={onOpenItem}
+          onSelectProject={onSelectProject}
+        />
+      </OnboardingGate>
     </div>
   );
 }
