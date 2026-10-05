@@ -33,6 +33,8 @@ export function createLabAdapter(context: () => LabAdapterContext, onCall: () =>
   };
   let photos = 0;
   let files = 0;
+  // Object URLs minted for pasted/dropped photos, revoked when the chip goes.
+  const previews = new Map<string, string>();
 
   const attachment = (base: typeof PHOTO | typeof FILE, id: string): Attachment => ({
     id,
@@ -80,15 +82,19 @@ export function createLabAdapter(context: () => LabAdapterContext, onCall: () =>
     adoptFiles: (picked) => picked.map((file) => {
       record(`adoptFiles:${file.name}`);
       const kind = file.type.startsWith("image/") ? "photo" : file.type === "application/pdf" ? "pdf" : "file";
-      return {
-        id: `lab-adopted-${(photos += 1)}`,
-        name: file.name,
-        mediaType: file.type || "application/octet-stream",
-        kind,
-        status: "ready",
-        ...(kind === "photo" ? { previewUrl: URL.createObjectURL(file) } : {}),
-      } satisfies Attachment;
+      const id = `lab-adopted-${(photos += 1)}`;
+      const attachment: Attachment = { id, name: file.name, mediaType: file.type || "application/octet-stream", kind, status: "ready" };
+      if (kind !== "photo") return attachment;
+      const previewUrl = URL.createObjectURL(file);
+      previews.set(id, previewUrl);
+      return { ...attachment, previewUrl };
     }),
-    release: (id) => record(`release:${id}`),
+    release: (id) => {
+      record(`release:${id}`);
+      const url = previews.get(id);
+      if (url === undefined) return;
+      previews.delete(id);
+      URL.revokeObjectURL(url);
+    },
   };
 }

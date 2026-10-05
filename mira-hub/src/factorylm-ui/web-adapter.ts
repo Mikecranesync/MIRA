@@ -36,7 +36,7 @@ export interface WebAdapterDeps {
 }
 
 const IMAGE_ACCEPT = "image/*";
-const FILE_ACCEPT = "application/pdf,image/*,.csv,.txt,.md";
+const FILE_ACCEPT = "application/pdf,.pdf,image/*,.csv,.txt,.md";
 
 /** The picker's `accept` rule, applied to a pasted or dropped file. */
 function accepts(accept: string, file: File): boolean {

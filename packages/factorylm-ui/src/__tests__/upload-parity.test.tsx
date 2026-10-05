@@ -11,6 +11,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { act } from "react";
 import type { Attachment, InteractionPart, PlatformAdapter, ShellFixture } from "@factorylm/interaction";
+import { BACK_EVENT } from "../FactoryLMShell";
 import { fakeAdapter, renderHarness, type HarnessView } from "./harness";
 
 const views: HarnessView[] = [];
@@ -215,5 +216,44 @@ describe("in-app photo viewer", () => {
     const view = render(fakeAdapter(), "attachments", withPreview("javascript:alert(1)"));
     expect(view.container.querySelector('[data-part-type="attachment"] a')).toBeNull();
     expect(view.container.querySelector('[data-part-type="attachment"] img')).toBeNull();
+  });
+});
+
+describe("the photo viewer sits above every shell layer (#4288 Codex r1 F1)", () => {
+  const withPreview = (f: ShellFixture): ShellFixture => ({
+    ...f,
+    thread: { ...f.thread, turns: f.thread.turns.map((t) => ({ ...t, parts: t.parts.map((p): InteractionPart =>
+      p.type === "attachment" && p.attachment.kind === "photo" ? { ...p, attachment: { ...p.attachment, previewUrl: "/api/namespace/files/file-nameplate/" } } : p) })) },
+  });
+  function openViewer() {
+    const adapter = fakeAdapter();
+    const view = render(adapter, "attachments", withPreview);
+    const link = view.container.querySelector<HTMLAnchorElement>("a.fl-photo");
+    act(() => { link?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })); });
+    const dialog = view.container.querySelector<HTMLDialogElement>("dialog.fl-photo-viewer");
+    expect(dialog?.open).toBe(true);
+    return { adapter, dialog: dialog! };
+  }
+
+  it("Escape is left to the browser: the shell neither cancels it nor calls the host's Back", () => {
+    const { adapter } = openViewer();
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    act(() => { document.dispatchEvent(escape); });
+    expect(escape.defaultPrevented).toBe(false);
+    expect(adapter.calls).not.toContain("onBack");
+  });
+
+  it("Back closes the photo first, without reaching the host", () => {
+    const { adapter, dialog } = openViewer();
+    act(() => { document.dispatchEvent(new Event(BACK_EVENT, { cancelable: true })); });
+    expect(dialog.open).toBe(false);
+    expect(adapter.calls).not.toContain("onBack");
+  });
+
+  it("control: with no photo open, Back still goes to the host", () => {
+    const adapter = fakeAdapter();
+    render(adapter, "attachments", withPreview);
+    act(() => { document.dispatchEvent(new Event(BACK_EVENT, { cancelable: true })); });
+    expect(adapter.calls).toContain("onBack");
   });
 });

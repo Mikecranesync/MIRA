@@ -200,4 +200,11 @@ describe("photo previews and paste/drop intake (upload parity, 2026-10-05)", () 
     expect(taken[0].previewUrl).toBe("blob:test/1");
     for (const t of taken) expect(a.heldFile(t.id)).toBeDefined();
   });
+
+  it("a dropped PDF with no MIME type is taken, as the picker takes it (#4288 Codex r1 F2)", () => {
+    const a = createWebAdapter(deps(urls()));
+    const [pdf] = a.adoptFiles!([file("manual.PDF", "")]);
+    expect(pdf).toMatchObject({ name: "manual.PDF", kind: "pdf", mediaType: "application/octet-stream" });
+    expect(a.heldFile(pdf.id)).toBeDefined();
+  });
 });
