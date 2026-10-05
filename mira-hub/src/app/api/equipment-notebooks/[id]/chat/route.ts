@@ -3540,6 +3540,9 @@ async function handleChatTurn(
         refused,
         evidenceSufficient,
         manualSearchRunning,
+        // A doc-grounded draft that cites none of its chunks is backed by
+        // nothing; the validator then holds it to the code-meaning rule.
+        citedSources: docGrounded ? citationsUsedInAnswer(answerText, citations).length > 0 : undefined,
       });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
       // #4098: which quantity word + unit the exact-rating rule matched —

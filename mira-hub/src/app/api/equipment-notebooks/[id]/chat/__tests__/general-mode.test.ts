@@ -221,6 +221,43 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
     );
   });
 
+  // Golden Walk 2026-10-05 (staging a9795440): uncited fault-code definitions
+  // shipped as "answered" — in the general lane, and on turns that retrieved
+  // chunks but cited none. The technician gets the honest fallback instead.
+  const UNCITED_DEFINITION =
+    "Fault F49123 on a Siemens drive generally indicates a **motor overload or over‑current condition** detected by the drive’s internal protection.";
+  const answerOf = async (res: Response) =>
+    (await frames(res)).filter((x) => x.kind === "content").map((x) => x.content).join("");
+
+  it("never ships an uncited fault-code meaning in the general lane", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(UNCITED_DEFINITION), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive", mode: "general" }), params));
+    expect(text).toContain("can't verify what F49123 means");
+    expect(text).not.toMatch(/overload/i);
+  });
+
+  it("never ships an uncited fault-code meaning when chunks were retrieved but none are cited", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      { docId: "d1", filename: "G120C.pdf", page: 12, content: "Commissioning the converter with the operator panel." },
+    ]);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(UNCITED_DEFINITION), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive" }), params));
+    expect(text).toContain("can't verify what F49123 means");
+    expect(text).not.toMatch(/overload/i);
+  });
+
+  it("keeps a cited fault-code meaning on a grounded turn", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      { docId: "d1", filename: "PF525.pdf", page: 87, content: "Fault F004 is DC bus undervoltage." },
+    ]);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("F004 is DC bus undervoltage [1]."), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F004 mean on this drive" }), params));
+    expect(text).toContain("DC bus undervoltage");
+  });
+
   it("a grounded refusal makes NO basis claim", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);

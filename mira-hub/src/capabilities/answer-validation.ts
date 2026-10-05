@@ -961,9 +961,12 @@ function codeMeaningViolation(
         if (!inFaultContext && !asked.has(tok.toLowerCase())) continue;
         const esc = escapeRe(tok);
         // "Q-447-Delta (usually) means/indicates/is a …" — a definition,
-        // hedged or not. Hedges do not rescue an invented meaning.
+        // hedged or not. Hedges do not rescue an invented meaning. A short
+        // "on/for/in <machine>" qualifier between the code and the verb does
+        // not either: "Fault F49123 on a Siemens drive generally indicates…"
+        // shipped uncited on staging (Golden Walk 2026-10-05).
         const defFrame = new RegExp(
-          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?)?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"
@@ -1237,6 +1240,11 @@ export function validateAnswer(opts: {
    *  notebook (this turn started it, or a recorded one is still running), so a
    *  specificity fallback must not tell the technician to fetch it themselves. */
   manualSearchRunning?: ManualSearchRunning;
+  /** Did the answer cite at least one shipped source? `false` on a turn that
+   *  retrieved chunks but cited none of them: nothing backs its claims, so the
+   *  code-meaning rule applies as in the general lane. Omitted = unknown, and
+   *  the grounded lane keeps relying on the citation contract alone. */
+  citedSources?: boolean;
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
@@ -1348,6 +1356,14 @@ export function validateAnswer(opts: {
     }
   }
 
+  // B' — a grounded turn that cites nothing has no citation contract to lean
+  // on, so an asserted fault-code meaning is as unbacked as in the general
+  // lane (Golden Walk 2026-10-05: uncited definitions shipped as "answered").
+  if (!general && !refused && opts.citedSources === false) {
+    const uncited = codeMeaningViolation(scanText, scanQuestion);
+    if (uncited) return codeMeaningRejection(uncited, answerText, fallbackOpts);
+  }
+
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.
   if (!general || refused) return energizedWarningOr(restore, answerText);
@@ -1391,20 +1407,26 @@ export function validateAnswer(opts: {
   }
 
   const cm = codeMeaningViolation(scanText, scanQuestion);
-  if (cm) {
-    return {
-      ok: false,
-      kind: "unsupported_specificity",
-      violation: "unsupported-specificity:code-meaning-asserted",
-      detail: cm.excerpt,
-      // The ONLY visible string in this module built from a matched token, so
-      // it is the one place the fold could leak into what a technician reads.
-      // Quote the code as the model actually spelled it.
-      replacement: specificityFallback(originalSpelling(cm.code, answerText), fallbackOpts),
-    };
-  }
+  if (cm) return codeMeaningRejection(cm, answerText, fallbackOpts);
 
   return energizedWarningOr(restore, answerText);
+}
+
+function codeMeaningRejection(
+  cm: { code: string; excerpt: string },
+  answerText: string,
+  fallbackOpts: { manualSearchRunning: ManualSearchRunning },
+): AnswerValidation {
+  return {
+    ok: false,
+    kind: "unsupported_specificity",
+    violation: "unsupported-specificity:code-meaning-asserted",
+    detail: cm.excerpt,
+    // The ONLY visible string in this module built from a matched token, so
+    // it is the one place the fold could leak into what a technician reads.
+    // Quote the code as the model actually spelled it.
+    replacement: specificityFallback(originalSpelling(cm.code, answerText), fallbackOpts),
+  };
 }
 
 /** Split accepted text into whitespace-boundary pieces (~≤120 chars) so the
