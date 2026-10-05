@@ -60,6 +60,13 @@ describe("code meaning with a qualifier between the code and the verb", () => {
     expect(run("I can't verify what F49123 on a Siemens drive indicates without its manual.", F49123_Q).ok).toBe(true);
   });
 
+  it("control: a procedure that mentions the code is not a definition (Codex r7 F7)", () => {
+    const q = "How do I clear fault F004";
+    expect(run("Clearing fault F004 on the keypad is a separate step after fixing the cause.", q).ok).toBe(true);
+    expect(run("Clearing F004 on a Siemens drive is the last step after correcting the cause.", q).ok).toBe(true);
+    expect(run("To reset fault F004 on this drive is a two-step process.", q).ok).toBe(true);
+  });
+
   it("does not treat a location sentence as a definition when no code is asked", () => {
     expect(run("The drive on this line is a PowerFlex 525 mounted in the MCC.", "Where is the drive").ok).toBe(true);
   });

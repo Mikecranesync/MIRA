@@ -961,12 +961,17 @@ function codeMeaningViolation(
         if (!inFaultContext && !asked.has(tok.toLowerCase())) continue;
         const esc = escapeRe(tok);
         // "Q-447-Delta (usually) means/indicates/is a …" — a definition,
-        // hedged or not. Hedges do not rescue an invented meaning. A short
-        // "on/for/in <machine>" qualifier between the code and the verb does
-        // not either: "Fault F49123 on a Siemens drive generally indicates…"
-        // shipped uncited on staging (Golden Walk 2026-10-05).
-        const defFrame = new RegExp(
-          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?)?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+        // hedged or not. Hedges do not rescue an invented meaning.
+        const VERBS =
+          "(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b";
+        const defFrame = new RegExp(`["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+${VERBS}`, "i");
+        // A short "on/for/in <machine>" qualifier between the code and the verb
+        // does not rescue it either: "Fault F49123 on a Siemens drive generally
+        // indicates…" shipped uncited on staging (Golden Walk 2026-10-05). Only
+        // when the code is the clause's SUBJECT — "Clearing fault F004 on the
+        // keypad is a separate step" describes an operation (Codex #4238 r7 F7).
+        const qualifiedFrame = new RegExp(
+          `^\\W*(?:(?:the|this|that)\\s+)?(?:(?:fault|alarm|error|trip|warning)(?:\\s+code)?\\s+)?["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?\\s+${VERBS}`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"
@@ -974,7 +979,7 @@ function codeMeaningViolation(
           `\\b(?:reason|cause)\\b[^.!?\\n]{0,60}\\b(?:seeing|getting|displaying|showing)\\s*["'\`]?${esc}["'\`]?[^.!?\\n]{0,25}\\bis\\b`,
           "i",
         );
-        if (defFrame.test(clause) || causeFrame.test(clause)) {
+        if (defFrame.test(clause) || qualifiedFrame.test(clause) || causeFrame.test(clause)) {
           return { code: tok, excerpt: s.slice(0, 160) };
         }
       }
