@@ -460,3 +460,28 @@ describe("Golden Walk — a product-series name before the model", () => {
     expect(proposeIdentityFromText("Danfoss VLT AutomationDrive AquaDrive FC 302", MAKERS)).toBeNull();
   });
 });
+
+// Golden Walk 2026-10-05 (staging a9795440): "I'm at an ABB ACS580 drive" was
+// proposed as model "580". The manual search then could not confirm the ACS580
+// manual covered "580", left it off, and ABB flipped between PASS and FAIL. The
+// parser narrows ACS to its digits on purpose (model_number substring scoping),
+// but the identity a technician confirms is the manufacturer's model name.
+describe("an ACS model keeps its series in the proposal", () => {
+  const ABB = ["ABB", "Rockwell Automation", "Siemens"];
+  it("proposes ACS580 for a joined ACS580", () => {
+    expect(proposeIdentityFromText("I'm at an ABB ACS580 drive and need its manual", ABB)).toEqual({ manufacturer: "ABB", model: "ACS580" });
+  });
+  it("proposes ACS355 for a spaced 'ACS 355'", () => {
+    expect(proposeIdentityFromText("ABB ACS 355 trips on overvoltage", ABB)).toEqual({ manufacturer: "ABB", model: "ACS355" });
+  });
+  it("is the same machine when the model is repeated in either spelling", () => {
+    expect(proposeIdentityFromText("ABB ACS580 faulted. What does fault 3210 mean on the ACS580?", ABB)).toEqual({ manufacturer: "ABB", model: "ACS580" });
+  });
+  it("control: PowerFlex and Micro aliases still narrow to the family number", () => {
+    expect(proposeIdentityFromText("Rockwell Automation PF525 trips on startup", ABB)).toEqual({ manufacturer: "Rockwell Automation", model: "525" });
+    expect(proposeIdentityFromText("Rockwell Automation Micro820 lost its program", ABB)).toEqual({ manufacturer: "Rockwell Automation", model: "820" });
+  });
+  it("control: two different ACS models are still two machines", () => {
+    expect(proposeIdentityFromText("Compare ABB ACS580 and ACS880", ABB)).toBeNull();
+  });
+});
