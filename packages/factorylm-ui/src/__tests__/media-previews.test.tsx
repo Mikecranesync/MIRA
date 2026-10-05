@@ -76,6 +76,13 @@ describe("photo observation", () => {
     expect(card.textContent).toContain("file-nameplate");
   });
 
+  it("refuses a same-site-looking path a browser would send to another site", () => {
+    const card = photoCard(render("machine-evidence", (p) =>
+      p.type === "visual_observation" ? { ...p, observation: { ...p.observation, previewUrl: "/\\evil.example/x.jpg" } } : p));
+    expect(card.querySelector("img")).toBeNull();
+    expect(card.querySelector("a")).toBeNull();
+  });
+
   it("refuses an address that is not a web or same-site path", () => {
     const card = photoCard(render("machine-evidence", (p) =>
       p.type === "visual_observation" ? { ...p, observation: { ...p.observation, previewUrl: "javascript:alert(1)" } } : p));
@@ -113,6 +120,18 @@ describe("source viewer", () => {
 
   it("refuses an address that is not a web or same-site path", () => {
     const viewer = openFirstSource(render("grounded-answer", sourceWith("javascript:alert(1)")));
+    expect(viewer.querySelector("iframe")).toBeNull();
+    expect(viewer.querySelector("a")).toBeNull();
+  });
+
+  // #4285 Codex F1: browsers normalise "/\\host" and "/<tab>/host" to another
+  // origin, so a path that only LOOKS same-site must never be framed or linked.
+  it.each([
+    ["slash-backslash", "/\\evil.example/doc.pdf"],
+    ["slash-tab-slash", "/\t/evil.example/doc.pdf"],
+    ["slash-newline-slash", "/\n/evil.example/doc.pdf"],
+  ])("refuses a %s address that a browser would send to another site", (_label, href) => {
+    const viewer = openFirstSource(render("grounded-answer", sourceWith(href)));
     expect(viewer.querySelector("iframe")).toBeNull();
     expect(viewer.querySelector("a")).toBeNull();
   });

@@ -7,6 +7,11 @@
  */
 export function openableUrl(raw: string | undefined): string | null {
   if (!raw) return null;
+  // A browser rewrites a backslash to "/" and drops tabs/newlines while parsing
+  // a URL, so "/\\evil.example" or "/<tab>/evil.example" — which look like
+  // same-site paths here — resolve to another site (#4285 Codex F1). No address
+  // we produce contains either, so refuse them outright.
+  if (/[\\\u0000-\u001f\u007f]/.test(raw)) return null;
   return isSameSite(raw) || /^https?:\/\//i.test(raw) || /^blob:/i.test(raw) ? raw : null;
 }
 
