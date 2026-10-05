@@ -94,45 +94,53 @@ jobs:
           # can be re-run (uploading a new one) only up to 30 days after it started (GitHub docs,
           # "Re-running workflows and jobs"), so RECEIPT_WALK_DAYS = 121 lists them all.
           WINDOW_START="$(python3 -I "$TOOL" window-start --days "$RECEIPT_WALK_DAYS")"
-          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --created ">=$WINDOW_START" --limit "$RECEIPT_WALK_CAP" --json databaseId,updatedAt --jq '.[] | "\(.databaseId) \(.updatedAt)"')"
+          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --created ">=$WINDOW_START" --limit "$RECEIPT_WALK_CAP" --json databaseId,updatedAt,attempt --jq '.[] | "\(.databaseId) \(.updatedAt) \(.attempt)"')"
           GAPS="$RUNNER_TEMP/receipt-gaps.tsv"
-          RECEIPTLESS="$RUNNER_TEMP/receiptless-runs.tsv"
+          SWAP_CHECKS="$RUNNER_TEMP/swap-checks.tsv"
           : > "$GAPS"
-          : > "$RECEIPTLESS"
+          : > "$SWAP_CHECKS"
           # A listing cut at the cap leaves older runs unread; any of them may hold a newer deployment.
           if [ "$(grep -c . <<< "$RUNS" || true)" -ge "$RECEIPT_WALK_CAP" ]; then
             printf '%s\t%s\t%s\n' "$(tail -n 1 <<< "$RUNS" | cut -d' ' -f1)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "run listing truncated at $RECEIPT_WALK_CAP, older runs unread" >> "$GAPS"
           fi
           # Pass 1: every readable receipt. An unreadable one is recorded as a gap with its run's
           # updatedAt (it cannot have deployed after that), never a stop and never a fallback.
-          while read -r run updated; do
+          while read -r run updated attempt; do
             [ -n "$run" ] || continue
             [[ "$run" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected run id '$run'"; exit 1; }
+            [[ "$attempt" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected attempt '$attempt' for run $run"; exit 1; }
             [[ "$updated" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || { echo "::error::unexpected updatedAt '$updated' for run $run"; exit 1; }
             ART="$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
               --jq '[.artifacts[] | select(.name | startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end')"
-            if [ -z "$ART" ]; then printf '%s\t%s\n' "$run" "$updated" >> "$RECEIPTLESS"; continue; fi
+            if [ -z "$ART" ]; then printf '%s\t%s\t1\n' "$run" "$updated" >> "$SWAP_CHECKS"; continue; fi
             read -r ART_ID ART_EXPIRED <<< "$ART"
             [[ "$ART_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected artifact id '$ART_ID'"; exit 1; }
             if [ "$ART_EXPIRED" != "false" ]; then printf '%s\t%s\t%s\n' "$run" "$updated" "receipt expired" >> "$GAPS"; continue; fi
+            # A re-run attempt can swap production again after the attempt that wrote this receipt.
+            [ "$attempt" = "1" ] || printf '%s\t%s\t2\n' "$run" "$updated" >> "$SWAP_CHECKS"
             install -d -m 700 "$DIR/$run"
             gh api "/repos/$REPO/actions/artifacts/$ART_ID/zip" > "$DIR/$run.zip"
             unzip -o -q "$DIR/$run.zip" -d "$DIR/$run"
             rm -f "$DIR/$run.zip"
           done <<< "$RUNS"
-          # Pass 2: a run without a receipt matters only if it ended after the oldest receipt read
-          # (otherwise it cannot post-date any of them); only then ask whether its Deploy step ran
-          # in any attempt. The swap is in that step, before the receipt, so such a run may have
-          # changed production with no receipt (it failed after the swap, or its receipt is gone).
+          # Pass 2: a run without a receipt, or a re-run (attempt > 1) with one, matters only if it
+          # ended after the oldest receipt read (otherwise it cannot post-date any of them); only
+          # then count the attempts whose Deploy step ran. The swap is in that step, before the
+          # receipt: a receipt-less run whose Deploy ran may have changed production with no
+          # receipt, and a re-run whose Deploy ran in two attempts may have swapped again after
+          # the receipt that is still readable.
           SINCE="$(python3 -I "$TOOL" since --receipts-dir "$DIR")"
-          while IFS=$'\t' read -r run updated; do
+          while IFS=$'\t' read -r run updated need; do
             [ -n "$run" ] && [ -n "$SINCE" ] || continue
             [[ "$updated" < "$SINCE" ]] && continue
             SWAP_RAN="$(gh api --paginate "/repos/$REPO/actions/runs/$run/jobs?per_page=100&filter=all" \
               --jq '[.jobs[].steps[]? | select(.name == "Deploy" and .conclusion != null and .conclusion != "skipped")] | length' \
               | awk '{ n += $1 } END { print n + 0 }')"
-            [ "$SWAP_RAN" = "0" ] || printf '%s\t%s\t%s\n' "$run" "$updated" "production may have changed without a receipt (its Deploy step ran)" >> "$GAPS"
-          done < "$RECEIPTLESS"
+            if [ "$SWAP_RAN" -ge "$need" ]; then
+              if [ "$need" = "1" ]; then why="production may have changed without a receipt (its Deploy step ran)"; else why="re-run: its Deploy step ran in $SWAP_RAN attempts, so its receipt may predate the last swap"; fi
+              printf '%s\t%s\t%s\n' "$run" "$updated" "$why" >> "$GAPS"
+            fi
+          done < "$SWAP_CHECKS"
           echo "receipts: $(find "$DIR" -name production-receipt.json | wc -l); unreadable: $(wc -l < "$GAPS")" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Designate the recovery candidates

@@ -45,37 +45,39 @@ Every production deploy records, **per deployed service**, a `rollback_candidate
 set -euo pipefail
 REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 CAP=1000
-DIR=$(mktemp -d); GAPS="$DIR.gaps"; LESS="$DIR.receiptless"; : > "$GAPS"; : > "$LESS"
+DIR=$(mktemp -d); GAPS="$DIR.gaps"; CHECKS="$DIR.swap-checks"; : > "$GAPS"; : > "$CHECKS"
 # Same walk as deploy-vps.yml and rollback-candidate-refresh.yml: only main-branch dispatches (a run
 # dispatched from another ref executes ITS copy of the workflow and could upload a receipt of its own
 # making), any conclusion, created in the last 121 days. Pass 1 reads every readable receipt; an
-# unreadable one is a gap bounded by its run's updatedAt. Pass 2 asks whether a receipt-less run that
-# could post-date them ran its Deploy step (the swap precedes the receipt).
+# unreadable one is a gap bounded by its run's updatedAt. Pass 2 counts the attempts whose Deploy step
+# ran (the swap precedes the receipt) for a receipt-less run, or a re-run with a receipt, that could
+# post-date them: one such attempt without a receipt, or two in a re-run, is a gap.
 gh run list --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed \
   --created ">=$(python3 tools/rollback_candidates.py window-start --days 121)" --limit "$CAP" \
-  --json databaseId,updatedAt --jq '.[] | "\(.databaseId) \(.updatedAt)"' > "$DIR.runs"
+  --json databaseId,updatedAt,attempt --jq '.[] | "\(.databaseId) \(.updatedAt) \(.attempt)"' > "$DIR.runs"
 if [ "$(grep -c . "$DIR.runs" || true)" -ge "$CAP" ]; then   # truncated: older runs unread
   printf '%s\t%s\trun listing truncated\n' "$(tail -n 1 "$DIR.runs" | cut -d' ' -f1)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GAPS"
 fi
-while read -r run updated; do
+while read -r run updated attempt; do
   art=$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
     --jq '[.artifacts[] | select(.name|startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end')
-  if [ -z "$art" ]; then printf '%s\t%s\n' "$run" "$updated" >> "$LESS"; continue; fi
+  if [ -z "$art" ]; then printf '%s\t%s\t1\n' "$run" "$updated" >> "$CHECKS"; continue; fi
   read -r id expired <<< "$art"
   if [ "$expired" != "false" ]; then printf '%s\t%s\treceipt expired\n' "$run" "$updated" >> "$GAPS"; continue; fi
+  [ "$attempt" = "1" ] || printf '%s\t%s\t2\n' "$run" "$updated" >> "$CHECKS"   # a re-run may have swapped again
   mkdir -p "$DIR/$run"
   gh api "/repos/$REPO/actions/artifacts/$id/zip" > "$DIR/$run.zip"
   unzip -o -q "$DIR/$run.zip" -d "$DIR/$run"
   rm "$DIR/$run.zip"
 done < "$DIR.runs"
 since=$(python3 tools/rollback_candidates.py since --receipts-dir "$DIR")
-while IFS=$'\t' read -r run updated; do
+while IFS=$'\t' read -r run updated need; do
   [ -n "$since" ] && [[ ! "$updated" < "$since" ]] || continue
   ran=$(gh api --paginate "/repos/$REPO/actions/runs/$run/jobs?per_page=100&filter=all" \
     --jq '[.jobs[].steps[]? | select(.name == "Deploy" and .conclusion != null and .conclusion != "skipped")] | length' \
     | awk '{ n += $1 } END { print n + 0 }')
-  [ "$ran" = "0" ] || printf '%s\t%s\tproduction may have changed without a receipt\n' "$run" "$updated" >> "$GAPS"
-done < "$LESS"
+  [ "$ran" -lt "$need" ] || printf '%s\t%s\tproduction may have changed without a receipt\n' "$run" "$updated" >> "$GAPS"
+done < "$CHECKS"
 python3 tools/rollback_candidates.py designate --receipts-dir "$DIR" \
   --inventory "mira-hub mira-web mira-ask" --gaps "$GAPS" --out "$DIR.designation"   # what production designates now
 # A service whose current receipt predates the field: the walk the deploy uses gives its previous

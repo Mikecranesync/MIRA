@@ -37,6 +37,7 @@ B = "76887423c6c84d0871d531af98927423b02bfb5a"
 C = "648896996d906b4c1df828a3eafd0771f6534a27"
 NEW = "33dc98f6bac948a2587ed980c938b71d0fa4434a"
 IMG = "sha256:" + "a" * 64
+ALL_SVCS = "mira-hub mira-web mira-ask"
 
 pytestmark = pytest.mark.skipif(
     shutil.which("jq") is None, reason="jq is required (ubuntu-latest ships it)"
@@ -101,7 +102,7 @@ if args[:2] == ["run", "list"]:
     runs = [r for r in runs if want in (None, r.get("status", "completed"), r.get("conclusion", "success"))]
     if "--limit" in args:
         runs = runs[: int(args[args.index("--limit") + 1])]
-    emit([{"databaseId": int(r["id"]), "updatedAt": r.get("updatedAt", "2026-10-03T12:00:00Z")} for r in runs])
+    emit([{"databaseId": int(r["id"]), "updatedAt": r.get("updatedAt", "2026-10-03T12:00:00Z"), "attempt": r.get("attempt", 1)} for r in runs])
 if args and args[0] == "api":
     raw = next(a for a in args[1:] if a.lstrip("/").startswith("repos/"))
     key = raw.lstrip("/").split("/", 3)[3]
@@ -296,7 +297,7 @@ def test_refresh_lists_only_main_dispatch_deploy_runs():
 
 def _walk_block(run: str) -> str:
     start = run.index("WINDOW_START=")
-    end = run.index('done < "$RECEIPTLESS"') + len('done < "$RECEIPTLESS"')
+    end = run.index('done < "$SWAP_CHECKS"') + len('done < "$SWAP_CHECKS"')
     return "\n".join(line for line in run[start:end].splitlines() if "N=$((N + 1))" not in line)
 
 
@@ -575,6 +576,61 @@ def test_a_vanished_rerun_behind_full_coverage_is_caught(tmp_path):
     assert all(e["sha"] is None for e in _cands(tmp_path).values())
 
 
+def _deploy_attempts(n: int) -> dict:
+    """Jobs (filter=all, so every attempt) of a run whose Deploy step ran in ``n`` attempts."""
+    return {
+        "jobs": [
+            {
+                "name": "Deploy",
+                "run_attempt": a,
+                "steps": [{"name": "Deploy", "conclusion": "success" if a == 1 else "failure"}],
+            }
+            for a in range(1, n + 1)
+        ]
+    }
+
+
+def _rerun_fixtures(tmp: Path, attempts: int, deploys: int) -> dict:
+    """The oldest receipted run (0994b31a, 09-27) was re-run on 10-02, after C's 10-01 deploy;
+    its attempt-1 receipt is still readable."""
+    fx = _prod_fixtures(tmp)
+    old = "36350115024"
+    fx["runs"] = [
+        r if r != old else {"id": old, "attempt": attempts, "updatedAt": "2026-10-02T00:00:00Z"}
+        for r in fx["runs"]
+    ]
+    fx["api"][f"actions/runs/{old}/jobs?per_page=100&filter=all"] = _deploy_attempts(deploys)
+    return fx
+
+
+def test_a_rerun_that_deployed_again_behind_its_old_receipt_is_a_gap(tmp_path):
+    """Codex #4222 r7 F15: a re-run can swap production and fail before a new receipt while
+    its first attempt's receipt stays readable; a Deploy step in two attempts is a gap."""
+    res = _run_record(tmp_path, _rerun_fixtures(tmp_path, attempts=2, deploys=2), ALL_SVCS)
+    assert res.returncode == 0, res.stdout + res.stderr
+    cands = _cands(tmp_path)
+    assert all(e["sha"] is None for e in cands.values()), cands
+    assert "unresolved: run 36350115024" in cands["mira-hub"]["reason"]
+
+
+def test_a_rerun_whose_deploy_ran_once_is_not_a_gap(tmp_path):
+    """Attempt 1 failed before the swap, attempt 2 deployed and wrote the receipt: one swap,
+    and the receipt read is its receipt."""
+    res = _run_record(tmp_path, _rerun_fixtures(tmp_path, attempts=2, deploys=1), ALL_SVCS)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert {s: e["sha"] for s, e in _cands(tmp_path).items()} == {
+        "mira-hub": C,
+        "mira-ask": C,
+        "mira-web": B,
+    }
+
+
+def test_a_receipted_first_attempt_run_is_never_asked_for_jobs(tmp_path):
+    res = _run_record(tmp_path, _prod_fixtures(tmp_path), ALL_SVCS)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert not [c for c in _calls(tmp_path) if c[0] == "api" and "/jobs" in c[1]]
+
+
 def test_a_receiptless_run_older_than_every_receipt_is_not_even_asked(tmp_path):
     """Pass 2 asks for job lists only where a gap could matter."""
     fx = _prod_fixtures(tmp_path)
@@ -690,6 +746,19 @@ def test_refresh_an_expired_newest_receipt_is_lost_not_bootstrap(tmp_path):
         f"Rollback designation lost for {s}" for s in ("mira-ask", "mira-hub", "mira-web")
     ]
     assert all(_arg(c, "--label") == "incident" for c in _creates(tmp_path))
+
+
+def test_refresh_a_rerun_that_deployed_again_loses_every_service(tmp_path):
+    """Codex #4222 r7 F15, daily check: the gap post-dates every current receipt."""
+    done, d = _run_refresh(tmp_path, _rerun_fixtures(tmp_path, attempts=2, deploys=2))
+    assert sorted(d["lost"]) == ["mira-ask", "mira-hub", "mira-web"], d
+    assert "36350115024" in d["lost"]["mira-hub"]
+
+
+def test_the_runbook_snippet_sees_a_rerun_that_deployed_again(tmp_path):
+    res = _run_runbook(tmp_path, _rerun_fixtures(tmp_path, attempts=2, deploys=2))
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert sorted(_designation(res)["lost"]) == ["mira-ask", "mira-hub", "mira-web"]
 
 
 def test_refresh_a_vanished_newest_receipt_is_lost(tmp_path):
