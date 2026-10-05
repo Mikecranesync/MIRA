@@ -485,3 +485,41 @@ describe("an ACS model keeps its series in the proposal", () => {
     expect(proposeIdentityFromText("Compare ABB ACS580 and ACS880", ABB)).toBeNull();
   });
 });
+
+// Golden Walk 2026-10-05: "I'm at an SEW-Eurodrive MOVITRAC LTE-B drive" got no
+// proposal. SEW-Eurodrive is in the library; the variant "LTE-B" carries no digit,
+// so it never parsed as a model. After a KNOWN series name, a hyphenated
+// all-caps variant code is the model, and the series stays in it — "LTE-B"
+// alone names nothing a manual search can confirm.
+describe("a digitless variant code after a known series name", () => {
+  const SEW = ["SEW-Eurodrive", "Siemens", "Rockwell Automation"];
+  it("proposes MOVITRAC LTE-B", () => {
+    expect(proposeIdentityFromText("I'm at an SEW-Eurodrive MOVITRAC LTE-B drive and need its manual", SEW)).toEqual({
+      manufacturer: "SEW-Eurodrive",
+      model: "MOVITRAC LTE-B",
+    });
+  });
+  it("proposes MOVITRAC LTP-B", () => {
+    expect(proposeIdentityFromText("SEW-Eurodrive MOVITRAC LTP-B shows O-Volt", SEW)).toEqual({
+      manufacturer: "SEW-Eurodrive",
+      model: "MOVITRAC LTP-B",
+    });
+  });
+  it("control: without a series name a digitless code is never a model", () => {
+    expect(proposeIdentityFromText("SEW-Eurodrive LTE-B drive faulted", SEW)).toBeNull();
+  });
+  it("control: an ordinary capitalised word after a series name is never a model", () => {
+    expect(proposeIdentityFromText("Siemens SINAMICS FAULT on the line", SEW)).toBeNull();
+    expect(proposeIdentityFromText("Siemens SINAMICS VFD keeps tripping", SEW)).toBeNull();
+  });
+  it("control: an interface or label code after a series name is never a model", () => {
+    expect(proposeIdentityFromText("SEW-Eurodrive MOVITRAC RS-485 link down", SEW)).toBeNull();
+    expect(proposeIdentityFromText("SEW-Eurodrive MOVITRAC SN-AB serial", SEW)).toBeNull();
+  });
+  it("control: two variants are two machines", () => {
+    expect(proposeIdentityFromText("Compare SEW-Eurodrive MOVITRAC LTE-B and MOVITRAC LTP-B", SEW)).toBeNull();
+  });
+  it("control: a digit-bearing model after a series name keeps its existing form", () => {
+    expect(proposeIdentityFromText("Siemens SINAMICS G120C trips on overvoltage", SEW)).toEqual({ manufacturer: "Siemens", model: "G120C" });
+  });
+});
