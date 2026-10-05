@@ -157,3 +157,81 @@ describe("notebook retrieval surfaces the fault code the question names", () => 
     expect(await pagesFor(DECOY_DOC, "What does fault ovA mean on this drive")).not.toContain(70);
   });
 });
+
+// Defect A (#4224, quickstart half): #4236 gave retrieveNodeChunks (notebook) a
+// whole-token code lane, but the anonymous /quickstart/ask surface calls
+// retrieveManualChunks → runBm25Query, which had none. So a public OEM manual
+// holding the asked code verbatim lost to pages that matched the question's
+// OTHER words — the stranger-walk's "right manual, 'not in the excerpts'".
+// These mirror the notebook block above on the manufacturer-scoped OEM surface.
+describe("quickstart retrieval surfaces the fault code the question names", () => {
+  const MFR = "Mitsubishi";
+  const MODEL = "FR-E800";
+  const DECOY_MFR = "Danfoss";
+
+  async function seedMfr(mfr: string, model: string, page: number, content: string) {
+    await client.query(
+      `INSERT INTO knowledge_entries
+         (tenant_id, content, manufacturer, model_number, source_url, source_page, verified, is_private)
+       VALUES ($1, $2, $3, $4, $5, $6, true, false)`,
+      [TENANT, content, mfr, model, `https://test.invalid/${encodeURIComponent(mfr)}.pdf`, page],
+    );
+  }
+  async function pagesFor(question: string, mfr: string, allowTenantFallback = true) {
+    const hits = await retrieveManualChunks(client, TENANT, question, {
+      manufacturer: mfr,
+      topK: 6,
+      allowTenantFallback,
+    });
+    return hits.map((h) => h.sourcePage);
+  }
+
+  beforeAll(async () => {
+    // 30 distractor pages rich in the question's ordinary words (inverter, mean,
+    // fault) so BM25 ranks them above the code page.
+    for (let p = 1; p <= 30; p++) {
+      await seedMfr(
+        MFR, MODEL, p,
+        `The inverter output mean value on page ${p}. Set the inverter parameter and check the inverter display when a fault occurs.`,
+      );
+    }
+    // The answer page — the dotted code shares no other word with the question.
+    await seedMfr(MFR, MODEL, 15, "(H12) 24\nE.OV1\nRegenerative\novervoltage trip\nduring acceleration");
+    // A different vendor's page that merely CONTAINS the ovA substring ("removal").
+    await seedMfr(DECOY_MFR, "FC-51", 70, "Cover removal: lift the cover clear of the terminal block.");
+    // The decoy vendor's OWN code page, so the manufacturer-scope control below
+    // returns a real (non-empty) Danfoss hit rather than passing on emptiness.
+    await seedMfr(DECOY_MFR, "FC-51", 42, "Alarm 7\nDC-link overvoltage detected on the drive.");
+    // A THIRD vendor whose page documents the SAME code string ("Alarm 7"). This
+    // is the row the manufacturer scope must exclude: it matches the code token
+    // verbatim, so only the scope clause keeps it out of a Danfoss-scoped answer.
+    // Drop the code lane's scope clauses and this page leaks — that is what makes
+    // the scope assertion below load-bearing rather than trivially true.
+    await seedMfr("Yaskawa", "GA500", 88, "Alarm 7\nOverload trip on the drive output stage.");
+  });
+
+  it("finds a dotted fault code that shares no other word with its page", async () => {
+    expect(await pagesFor("What does E.OV1 mean on this inverter", MFR)).toContain(15);
+  });
+
+  it("never admits a word that merely contains the code (whole-token, not ILIKE substring)", async () => {
+    expect(await pagesFor("What does fault ovA mean on this drive", DECOY_MFR)).not.toContain(70);
+  });
+
+  it("keeps the code lane manufacturer-scoped — no cross-vendor code hit", async () => {
+    // Within a manufacturer-scoped call the code lane carries the SAME mfr/model/
+    // family clauses as the BM25 passes, so a wrong-vendor code page cannot leak
+    // in. Fallback OFF isolates that invariant from retrieveManualChunks' separate
+    // tenant-wide fallback (which, by design, widens to the whole OEM corpus when
+    // the named maker has no coverage — the route's stripConflictingVendors, not
+    // this lane, is what prunes cross-vendor rows after that widening).
+    // Ask the Danfoss drive for "Alarm 7": the lane surfaces Danfoss's own page 42
+    // (proving it works, not just that the result is empty) and must EXCLUDE the
+    // Yaskawa page 88 that documents the identical code string. Page 88 is the
+    // load-bearing assertion — it matches the code token verbatim, so only the
+    // scope clause keeps it out; drop the clause and 88 leaks.
+    const danfoss = await pagesFor("What does Alarm 7 mean on this drive", DECOY_MFR, false);
+    expect(danfoss).toContain(42);
+    expect(danfoss).not.toContain(88);
+  });
+});
