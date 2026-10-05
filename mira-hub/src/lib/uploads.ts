@@ -326,9 +326,16 @@ export async function updateUploadStatus(
  * status check and the transition are one statement, so a concurrent re-pick
  * and retry cannot both start a pipeline for the same terminal row, and
  * neither can act on a row another request has already requeued. Reusing the
- * row (not deleting and recreating it) keeps doc_id stable, so a still-running
- * pipeline from before a cancel writes to the same upload, where chunk writes
- * are idempotent (ON CONFLICT on tenant + source_url + chunk_index).
+ * row (not deleting and recreating it) keeps doc_id stable.
+ *
+ * The claim also removes every chunk an earlier attempt left, in the same
+ * transaction (Codex review of #4091 at 2dfe80b81, F3). Chunk writes keep an
+ * existing index (ON CONFLICT DO NOTHING on tenant + source_url + chunk_index,
+ * and the source URL is stable per upload), so without the purge a retry of
+ * changed bytes kept the old chunks — and a shorter new version kept the old
+ * tail — while the row read parsed with the new hash. The DELETE runs as its
+ * own statement after the claim, so it sees chunks an older writer committed
+ * while the claim waited on that writer's row lock.
  */
 export async function claimUploadForRequeue(
   id: string,
@@ -339,17 +346,37 @@ export async function claimUploadForRequeue(
    *  the winning claim, so a later Retry fetches from it (#4085 review F2). */
   freshDownloadUrl?: string | null,
 ): Promise<Upload | null> {
-  const { rows } = await pool.query(
-    `UPDATE hub_uploads
-        SET status = 'queued', status_detail = $4,
-            external_download_url = COALESCE($5, external_download_url),
-            attempt_id = gen_random_uuid(),
-            updated_at = NOW()
-      WHERE id = $1 AND tenant_id = $2 AND status = ANY($3::text[])
-      RETURNING *`,
-    [id, tenantId, [...from], detail, freshDownloadUrl ?? null],
-  );
-  return rows.length > 0 ? rowToUpload(rows[0]) : null;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(
+      `UPDATE hub_uploads
+          SET status = 'queued', status_detail = $4,
+              external_download_url = COALESCE($5, external_download_url),
+              attempt_id = gen_random_uuid(),
+              updated_at = NOW()
+        WHERE id = $1 AND tenant_id = $2 AND status = ANY($3::text[])
+        RETURNING *`,
+      [id, tenantId, [...from], detail, freshDownloadUrl ?? null],
+    );
+    if (rows.length === 0) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    await client.query(
+      `
+      DELETE FROM knowledge_entries
+       WHERE doc_id = $1::uuid AND tenant_id::text = $2 AND is_private = true`,
+      [id, tenantId],
+    );
+    await client.query("COMMIT");
+    return rowToUpload(rows[0]);
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /** A pipeline's attempt was revoked (cancel, delete, or a newer requeue). The
@@ -366,6 +393,14 @@ export class UploadAttemptRevokedError extends Error {
  * `attemptId` and is not cancelled. Throws UploadAttemptRevokedError otherwise,
  * so a superseded pipeline can never overwrite a newer attempt's status (#4085
  * review) or flip a cancelled upload to parsed (#4088 review).
+ *
+ * `extras.duplicateOf` (a parsed "duplicate of <id>" write) runs in one
+ * transaction that first holds the original FOR SHARE and confirms it still
+ * owns its chunks (Codex review of #4091 at 2dfe80b81, F1). The lock order is
+ * the delete's (original first, then its dependents): either a delete of the
+ * original ran first and this returns "duplicate_source_gone" with nothing
+ * written — the caller then ingests the bytes itself — or this commits first
+ * and the delete's dependent sweep finds this row and hands it the chunks.
  */
 export async function updateUploadStatusForAttempt(
   id: string,
@@ -373,10 +408,15 @@ export async function updateUploadStatusForAttempt(
   attemptId: string | null,
   status: UploadStatus,
   detail?: string | null,
-  extras?: { kbFileId?: string; kbChunkCount?: number; kgEntityId?: string; ingestRoute?: string },
-): Promise<void> {
-  const { rowCount } = await pool.query(
-    `
+  extras?: {
+    kbFileId?: string;
+    kbChunkCount?: number;
+    kgEntityId?: string;
+    ingestRoute?: string;
+    duplicateOf?: string;
+  },
+): Promise<"ok" | "duplicate_source_gone"> {
+  const sql = `
     UPDATE hub_uploads
        SET status = $3,
            status_detail = COALESCE($4, status_detail),
@@ -389,20 +429,47 @@ export async function updateUploadStatusForAttempt(
        AND tenant_id = $2
        AND attempt_id IS NOT DISTINCT FROM $9::uuid
        AND status <> 'cancelled'
-  `,
-    [
-      id,
-      tenantId,
-      status,
-      detail ?? null,
-      extras?.kbFileId ?? null,
-      extras?.kbChunkCount ?? null,
-      extras?.kgEntityId ?? null,
-      extras?.ingestRoute ?? null,
-      attemptId,
-    ],
-  );
-  if ((rowCount ?? 0) === 0) throw new UploadAttemptRevokedError(id);
+  `;
+  const params = [
+    id,
+    tenantId,
+    status,
+    detail ?? null,
+    extras?.kbFileId ?? null,
+    extras?.kbChunkCount ?? null,
+    extras?.kgEntityId ?? null,
+    extras?.ingestRoute ?? null,
+    attemptId,
+  ];
+  if (!extras?.duplicateOf) {
+    const { rowCount } = await pool.query(sql, params);
+    if ((rowCount ?? 0) === 0) throw new UploadAttemptRevokedError(id);
+    return "ok";
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const source = await client.query(
+      `SELECT 1 FROM hub_uploads
+        WHERE id = $1 AND tenant_id = $2 AND status = 'parsed' AND ingest_route = 'v2'
+          AND (status_detail IS NULL OR status_detail NOT LIKE 'duplicate of %')
+        FOR SHARE`,
+      [extras.duplicateOf, tenantId],
+    );
+    if ((source.rowCount ?? 0) === 0) {
+      await client.query("ROLLBACK");
+      return "duplicate_source_gone";
+    }
+    const { rowCount } = await client.query(sql, params);
+    if ((rowCount ?? 0) === 0) throw new UploadAttemptRevokedError(id);
+    await client.query("COMMIT");
+    return "ok";
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**

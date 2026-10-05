@@ -82,7 +82,7 @@ const input = (over: Partial<PipelineInput> = {}): PipelineInput => ({
 const statuses = () => vi.mocked(updateUploadStatusForAttempt).mock.calls.map((c) => [c[3], c[5]]);
 
 beforeEach(() => {
-  vi.mocked(updateUploadStatusForAttempt).mockReset().mockResolvedValue(undefined);
+  vi.mocked(updateUploadStatusForAttempt).mockReset().mockResolvedValue("ok");
   vi.mocked(setUploadContentSha256).mockClear();
   vi.mocked(findDuplicateUpload).mockClear().mockResolvedValue(null);
   vi.mocked(forwardToIngest).mockClear();
@@ -143,11 +143,47 @@ describe("runIngestPipeline — cloud documents land citable (#1806)", () => {
   it("099: a revoked attempt (cancel/delete/requeue) stops the pipeline — no forward, no chunks, no 'failed'", async () => {
     vi.mocked(updateUploadStatusForAttempt).mockImplementation(async (_id, _t, _a, status) => {
       if (status === "parsing") throw new UploadAttemptRevokedError("up-1");
+      return "ok";
     });
     await runIngestPipeline(input());
     expect(writePdfChunksForNode).not.toHaveBeenCalled();
     expect(forwardToIngest).not.toHaveBeenCalled();
     expect(statuses().some(([s]) => s === "failed")).toBe(false);
+  });
+
+  describe("duplicates are recorded under the original's lock (Codex #4091 @ 2dfe80b81, F1)", () => {
+    const original = { id: "up-orig", kbChunkCount: 42 } as unknown as Awaited<ReturnType<typeof findDuplicateUpload>>;
+    const isDupWrite = (detail: unknown) => typeof detail === "string" && detail.startsWith("duplicate of ");
+
+    it("names the original on the duplicate write, and chunks nothing", async () => {
+      vi.mocked(findDuplicateUpload).mockResolvedValue(original);
+      await runIngestPipeline(input());
+      const dup = vi.mocked(updateUploadStatusForAttempt).mock.calls.find((c) => isDupWrite(c[4]));
+      expect(dup?.[3]).toBe("parsed");
+      expect(dup?.[5]).toMatchObject({ duplicateOf: "up-orig", kbChunkCount: 42, ingestRoute: "v2" });
+      expect(writePdfChunksForNode).not.toHaveBeenCalled();
+    });
+
+    it("ingests the bytes itself when the original was deleted first — never a dangling duplicate", async () => {
+      vi.mocked(findDuplicateUpload).mockResolvedValue(original);
+      vi.mocked(updateUploadStatusForAttempt).mockImplementation(async (_id, _t, _a, _s, detail) =>
+        isDupWrite(detail) ? "duplicate_source_gone" : "ok",
+      );
+      await runIngestPipeline(input());
+      expect(writePdfChunksForNode).toHaveBeenCalledOnce();
+      expect(statuses()).toContainEqual(["parsed", { kbChunkCount: 7, kgEntityId: "inbox-1", ingestRoute: "v2" }]);
+    });
+
+    it("a revoked attempt during the duplicate write stops — it does not fall through to chunking", async () => {
+      vi.mocked(findDuplicateUpload).mockResolvedValue(original);
+      vi.mocked(updateUploadStatusForAttempt).mockImplementation(async (_id, _t, _a, _s, detail) => {
+        if (isDupWrite(detail)) throw new UploadAttemptRevokedError("up-1");
+        return "ok";
+      });
+      await runIngestPipeline(input());
+      expect(writePdfChunksForNode).not.toHaveBeenCalled();
+      expect(statuses().some(([s]) => s === "failed")).toBe(false);
+    });
   });
 
   it("photos keep the photo door", async () => {
