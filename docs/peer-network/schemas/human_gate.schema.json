@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factorylm.com/schemas/peer-network/1.2.0/human_gate.schema.json",
+  "title": "peer-network human_gate",
+  "version": "1.2.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "gate_id",
+    "kind",
+    "mission_id",
+    "state",
+    "requested_at"
+  ],
+  "properties": {
+    "gate_id": {
+      "type": "string",
+      "pattern": "^\\S(?:.*\\S)?$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "merge",
+        "deploy_production",
+        "architecture",
+        "secret",
+        "protected_infrastructure",
+        "physical_test"
+      ]
+    },
+    "mission_id": {
+      "type": "string",
+      "pattern": "^[A-Z0-9-]+$",
+      "description": "F6 (Codex HOLD): a real mission ID, never blank/whitespace/free text — patterned like claim + event mission_id. A gate is the record of a human decision ON a mission; a blank mission is not one."
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "open",
+        "approved",
+        "denied",
+        "withdrawn"
+      ]
+    },
+    "decided_by": {
+      "type": "string",
+      "pattern": "^\\S(?:.*\\S)?$",
+      "description": "The human who decided. Nonblank \u2014 whitespace (what a paste produces) is rejected."
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "note": {
+      "type": "string"
+    },
+    "decision_ref": {
+      "type": "string",
+      "pattern": "^\\S(?:.*\\S)?$",
+      "description": "Provenance: the immutable GitHub comment / review URL or id that records the decision."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "approved",
+              "denied"
+            ]
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "decided_by",
+          "decided_at",
+          "decision_ref"
+        ]
+      }
+    }
+  ],
+  "description": "A human decision on a merge / production deploy / architecture / secret / protected-infrastructure / physical-test gate. A gate in state approved or denied MUST name decided_by and decided_at \u2014 an approval with no human and no time is not a decision (law 12)."
+}
