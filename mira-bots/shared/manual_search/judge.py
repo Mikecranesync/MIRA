@@ -27,6 +27,7 @@ heuristic path intact.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import io
 import json
 import logging
@@ -92,6 +93,18 @@ REASON_JUDGED_REJECTED = "judged_not_applicable"
 REASON_JUDGE_UNAVAILABLE = "judge_unavailable"
 
 
+# Why the last fetch/extract in THIS task returned nothing (acquisition trail
+# only). A context variable, not a return value, so the fetch/extract
+# signatures — and every test double standing in for them — stay unchanged.
+_READ_REASON: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "manual_judge_read_reason", default=None
+)
+
+
+def _why(reason: str) -> None:
+    _READ_REASON.set(reason)
+
+
 # ── fetch (SSRF-guarded, byte-capped) ────────────────────────────────────────
 
 
@@ -111,27 +124,40 @@ async def fetch_pdf_bytes(url: str, max_bytes: int = MAX_BYTES) -> bytes | None:
             for _ in range(_search._MAX_REDIRECT_HOPS + 1):
                 if not await asyncio.to_thread(_search._url_is_probeable, current):
                     logger.info("judge fetch blocked by SSRF guard: %s", current[:120])
+                    _why("ssrf_blocked")
                     return None
                 async with client.stream("GET", current) as r:
                     if r.status_code in (301, 302, 303, 307, 308):
                         loc = r.headers.get("location")
                         if not loc:
+                            _why("redirect_without_location")
                             return None
                         current = _search.urljoin(current, loc)
                         continue
                     if r.status_code >= 400:
+                        _why(f"http_{r.status_code}")
                         return None
                     buf = io.BytesIO()
                     async for chunk in r.aiter_bytes():
                         buf.write(chunk)
                         if buf.tell() > max_bytes:
                             logger.info("judge fetch exceeded byte cap: %s", current[:120])
+                            _why("byte_cap")
                             return None
                     data = buf.getvalue()
-                    return data if data[:5] == b"%PDF-" else None
+                    if data[:5] != b"%PDF-":
+                        _why("not_pdf")
+                        return None
+                    return data
+            _why("too_many_redirects")
             return None
     except (httpx.HTTPError, OSError, asyncio.TimeoutError) as e:  # noqa: PERF203
         logger.info("judge fetch failed %s: %s", url[:120], e)
+        _why(
+            "fetch_timeout"
+            if isinstance(e, (httpx.TimeoutException, asyncio.TimeoutError))
+            else "fetch_error"
+        )
         return None
 
 
@@ -189,6 +215,7 @@ async def extract_text(data: bytes, max_pages: int = MAX_PAGES, max_chars: int =
         )
     except (OSError, ValueError) as e:
         logger.info("judge extraction could not start: %s", e)
+        _why("extract_error")
         return ""
     try:
         out, _ = await asyncio.wait_for(proc.communicate(data), timeout=EXTRACT_TIMEOUT)
@@ -204,11 +231,14 @@ async def extract_text(data: bytes, max_pages: int = MAX_PAGES, max_chars: int =
             await proc.wait()
         except Exception:  # noqa: BLE001
             pass
+        _why("extract_timeout")
         return ""
     except Exception as e:  # noqa: BLE001
         logger.info("judge text extraction failed: %s", e)
+        _why("extract_error")
         return ""
     if proc.returncode != 0:
+        _why("extract_error")
         return ""
     return out.decode("utf-8", "replace")[:max_chars]
 
@@ -369,19 +399,23 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
     # Counted as examined the moment the read starts, so a timeout that
     # cancels the batch keeps the partial count (#4160 R15, Codex #4194 r2 F4).
     _search._note_examined([cand["url"]])
+    _READ_REASON.set(None)
     data = await fetch_pdf_bytes(cand["url"])
     if data is None:
-        cand["judge"] = {"status": "unfetched"}
+        cand["judge"] = {"status": "unfetched", "reason": _READ_REASON.get()}
         return cand
     # The bytes are a real PDF — that is the same proof validate_pdf gives.
     cand["validated"] = True
     text = await extract_text(data)
     if not text.strip():
-        cand["judge"] = {"status": "no_text"}
+        cand["judge"] = {"status": "no_text", "reason": _READ_REASON.get()}
         return cand
     verdict = await judge_text(make, model, cand, text)
     if verdict is None:
-        cand["judge"] = {"status": "unavailable"}
+        cand["judge"] = {
+            "status": "unavailable",
+            "reason": "judge_model_unavailable_or_unparseable",
+        }
         return cand
     verdict["status"] = "judged"
     verdict["text_chars"] = len(text)
@@ -563,6 +597,7 @@ async def judge_candidates(
     candidates: list[dict],
     started_at: float | None = None,
     deadline_at: float | None = None,
+    trace: dict | None = None,
 ) -> list[dict]:
     """Read direct-PDF candidates in batches of ``MAX_CANDIDATES`` — candidates
     that mention the make in their URL/title first, then by heuristic score —
@@ -574,12 +609,21 @@ async def judge_candidates(
     Series 3 manual at 30; reading only the top four judged four tax forms and
     never opened the manual.
     """
+    if trace is None:
+        trace = {}  # the acquisition trail's view; never read for decisions
     if not candidates:
+        trace["stop"] = "no_candidates"
         return candidates
     pdfs = [c for c in candidates if c.get("is_direct_pdf")]
     queue = [c for c in pdfs if relevant(c, make, model)] or pdfs
     queue.sort(key=lambda c: (_mentions_make(c, make), c.get("score", 0)), reverse=True)
+    not_queued = {c["url"]: "not_direct_pdf" for c in candidates if not c.get("is_direct_pdf")}
+    not_queued.update({c["url"]: "not_relevant" for c in pdfs if c not in queue})
+    not_queued.update({c["url"]: "over_max_total" for c in queue[MAX_TOTAL:]})
     queue = queue[:MAX_TOTAL]
+    trace["queue"] = [c["url"] for c in queue]
+    trace["not_queued"] = not_queued
+    trace["stop"] = "queue_exhausted"
     # The upgrade deadline counts from when the whole search began (search_manual
     # passes it): judging that starts late must not run past the discovery timeout.
     t0 = time.monotonic() if started_at is None else started_at
@@ -598,20 +642,25 @@ async def judge_candidates(
                 if remaining < UPGRADE_MIN_BATCH_S:
                     reads.cancel()
                     logger.info("judge upgrade skipped: %.1fs left", max(remaining, 0.0))
+                    trace["stop"] = "upgrade_skipped_no_time"
                     break
                 await asyncio.wait_for(reads, timeout=remaining)
             else:
                 await reads
         except asyncio.TimeoutError:
             logger.info("judge upgrade batch hit its deadline; keeping the match in hand")
+            trace["stop"] = "upgrade_deadline"
             break
         except Exception as e:  # noqa: BLE001 — belt and braces; _judge_one never raises
             logger.info("judge_candidates degraded: %s", e)
         # Stop on an ideal match. A plain match (wrong volume, wrong language, or
         # a chapter) earns one more batch, then the best match so far stands.
         if any(is_ideal(c) for c in batch):
+            trace["stop"] = "ideal_match"
             break
         if any(is_match(c) for c in candidates) and len(queue) > MAX_CANDIDATES:
+            for c in queue[MAX_CANDIDATES:]:
+                trace["not_queued"][c["url"]] = "upgrade_batch_limit"
             queue = queue[:MAX_CANDIDATES]
     return rank(candidates)
 

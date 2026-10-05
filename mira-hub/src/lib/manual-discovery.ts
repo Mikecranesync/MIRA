@@ -58,6 +58,44 @@ export interface DiscoverySearchStats {
   candidates: number | null;
 }
 
+/**
+ * One candidate the search considered (Golden Walk 2026-10-05): how it scored,
+ * whether the judge read it and why not, what the judge decided, where it
+ * ranked, and whether it won. Observability only — never read for a decision.
+ * Fields mirror mira-ask's `candidate_trail` (search.py AcquisitionTrail).
+ */
+export interface CandidateTrailRow {
+  rank: number | null;
+  url: string;
+  host: string | null;
+  title: string | null;
+  score: number | null;
+  pass: string | null;
+  read: string | null;
+  readReason: string | null;
+  notQueued: string | null;
+  isManual: boolean | null;
+  docType: string | null;
+  scope: string | null;
+  listsFaultCodes: boolean | null;
+  language: string | null;
+  textLanguage: string | null;
+  confidence: number | null;
+  provider: string | null;
+  selected: boolean;
+}
+
+export interface CandidateTrail {
+  version: number;
+  queries: { pass: string | null; query: string | null; result: string | null; hits: number | null }[];
+  stop: string | null;
+  candidates: CandidateTrailRow[];
+  candidateCount: number | null;
+}
+
+/** Rows kept on the persisted acquisition record (the JSONB stays small). */
+export const TRAIL_ROWS_PERSISTED = 10;
+
 export interface DiscoveryResult {
   /** The search service answered (whether or not it found anything). */
   serviceAvailable: boolean;
@@ -87,6 +125,9 @@ export interface DiscoveryResult {
    * same as the pre-existing oemRequestUrl/quotaExceeded gap in
    * confirm.test.ts) keep type-checking without adding a new tsc error. */
   searchStats?: DiscoverySearchStats | null;
+  /** Why this document won, per candidate (additive, like searchStats; null on an
+   *  old mira-ask or a malformed body — never fabricated). */
+  candidateTrail?: CandidateTrail | null;
 }
 
 function requestUrl(body: Record<string, unknown> | null | undefined): string | null {
@@ -113,6 +154,72 @@ function parseSearchStats(body: Record<string, unknown> | null | undefined): Dis
     refusedQueries: numOrNull(r.refused_queries),
     quotaDenied: str(r.quota_denied),
     candidates: numOrNull(r.candidates),
+  };
+}
+
+function boolOrNull(v: unknown): boolean | null {
+  return typeof v === "boolean" ? v : null;
+}
+
+/** A URL without its query string or fragment (signed download tokens never persist). */
+function bareUrl(v: unknown): string | null {
+  const u = str(v);
+  if (!u) return null;
+  try {
+    const p = new URL(u);
+    return `${p.protocol}//${p.host}${p.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse the additive `candidate_trail`. Absent or malformed -> null; each row is
+ * rebuilt field by field from known primitives (nothing else from the body is
+ * kept), capped at TRAIL_ROWS_PERSISTED in rank order. Never throws.
+ */
+export function parseCandidateTrail(body: Record<string, unknown> | null | undefined): CandidateTrail | null {
+  const t = body?.candidate_trail;
+  if (!t || typeof t !== "object") return null;
+  const r = t as Record<string, unknown>;
+  if (!Array.isArray(r.candidates)) return null;
+  const candidates: CandidateTrailRow[] = [];
+  for (const raw of r.candidates.slice(0, TRAIL_ROWS_PERSISTED)) {
+    if (!raw || typeof raw !== "object") continue;
+    const c = raw as Record<string, unknown>;
+    const url = bareUrl(c.url);
+    if (!url) continue;
+    candidates.push({
+      rank: numOrNull(c.rank),
+      url,
+      host: str(c.host),
+      title: str(c.title)?.slice(0, 120) ?? null,
+      score: numOrNull(c.score),
+      pass: str(c.pass),
+      read: str(c.read),
+      readReason: str(c.read_reason),
+      notQueued: str(c.not_queued),
+      isManual: boolOrNull(c.is_manual),
+      docType: str(c.doc_type),
+      scope: str(c.scope),
+      listsFaultCodes: boolOrNull(c.lists_fault_codes),
+      language: str(c.language),
+      textLanguage: str(c.text_language),
+      confidence: numOrNull(c.confidence),
+      provider: str(c.provider),
+      selected: c.selected === true,
+    });
+  }
+  const queries = (Array.isArray(r.queries) ? r.queries : [])
+    .slice(0, 8)
+    .filter((q): q is Record<string, unknown> => Boolean(q) && typeof q === "object")
+    .map((q) => ({ pass: str(q.pass), query: str(q.query)?.slice(0, 200) ?? null, result: str(q.result), hits: numOrNull(q.hits) }));
+  return {
+    version: numOrNull(r.version) ?? 0,
+    queries,
+    stop: str(r.stop),
+    candidates,
+    candidateCount: numOrNull(r.candidate_count),
   };
 }
 
@@ -241,14 +348,14 @@ export async function discoverManual(
   }
 
   const body = (raw ?? {}) as Record<string, unknown>;
+  const candidateTrail = parseCandidateTrail(body);
   if (body.reason === "quota_exceeded") {
     // A cap denial must NEVER look like "no manual exists" (PRD R5) — a
     // distinct, named outcome so the caller says "limit reached".
-    return quotaExceededResult(
-      str(body.reason_detail) || "manual-search limit reached",
-      requestUrl(body),
-      parseSearchStats(body),
-    );
+    return {
+      ...quotaExceededResult(str(body.reason_detail) || "manual-search limit reached", requestUrl(body), parseSearchStats(body)),
+      candidateTrail,
+    };
   }
   if (body.reason === "search_unavailable") {
     // Pre-existing defect fixed here (#4160 S4 code review): the router
@@ -265,6 +372,7 @@ export async function discoverManual(
     return {
       ...unavailable(str(body.reason_detail) || UNAVAILABLE, parseSearchStats(body)),
       oemRequestUrl: requestUrl(body),
+      candidateTrail,
     };
   }
   const c = (body.candidate ?? null) as Record<string, unknown> | null;
@@ -275,6 +383,7 @@ export async function discoverManual(
     return {
       ...notFound(str(body.reason_detail) || str(body.reason) || NO_MANUAL, parseSearchStats(body)),
       oemRequestUrl: requestUrl(body),
+      candidateTrail,
     };
   }
   let host = c ? (str(c.host) ?? "") : "";
@@ -282,7 +391,7 @@ export async function discoverManual(
     try {
       host = new URL(url).hostname;
     } catch {
-      return notFound("the search result was not a usable URL", parseSearchStats(body));
+      return { ...notFound("the search result was not a usable URL", parseSearchStats(body)), candidateTrail };
     }
   }
 
@@ -308,6 +417,7 @@ export async function discoverManual(
     oemRequestUrl: requestUrl(body),
     quotaExceeded: false,
     searchStats: parseSearchStats(body),
+    candidateTrail,
   };
 }
 

@@ -465,6 +465,95 @@ def provider_query_budget(limit: int | None = None) -> Generator[ProviderQueryBu
         _provider_budget.reset(token)
 
 
+# ── Acquisition trail (Golden Walk 2026-10-05) ──────────────────────────────
+#
+# Why did THIS document win? Until now the answer lived only in mira-ask log
+# lines nobody can read on staging (ABB ACS580 picked a Portuguese manual on
+# staging and an English one in every local replay). A caller opens a trail
+# around its search_manual() call; the search records what it asked, every
+# candidate it considered, how each one was read, how they ranked and why the
+# judge stopped. Observability only: nothing here changes which candidate wins.
+TRAIL_VERSION = 1
+TRAIL_MAX_CANDIDATES = 20
+_TRAIL_JUDGE_FIELDS = (
+    "is_manual",
+    "doc_type",
+    "scope",
+    "lists_fault_codes",
+    "language",
+    "text_language",
+    "fault_heading",
+    "confidence",
+    "provider",
+    "model",
+)
+
+
+def trail_url(url: str) -> str:
+    """The URL without its query string or fragment: signed download tokens
+    (ABB's ``x-sign``) are credentials-like and would make one document look
+    like many."""
+    p = urlparse(url or "")
+    return f"{p.scheme}://{p.netloc}{p.path}" if p.scheme and p.netloc else (url or "")[:200]
+
+
+@dataclass
+class AcquisitionTrail:
+    queries: list[dict] = field(default_factory=list)
+    candidates: list[dict] = field(default_factory=list)  # the deduped pool, mutated by the judge
+    ranked: list[dict] | None = None
+    judge: dict = field(default_factory=dict)  # filled by judge_candidates(trace=...)
+
+    def to_dict(self, selected_url: str | None = None) -> dict:
+        order = self.ranked if self.ranked is not None else self.candidates
+        queued = {u: i for i, u in enumerate(self.judge.get("queue") or [])}
+        not_queued = self.judge.get("not_queued") or {}
+        rows = []
+        for rank, c in enumerate(order):
+            j = c.get("judge") or {}
+            url = c.get("url", "")
+            row = {
+                "rank": rank,
+                "url": trail_url(url),
+                "host": c.get("host", ""),
+                "title": (c.get("title") or "")[:120],
+                "score": c.get("score"),
+                "pass": c.get("pass"),
+                "direct_pdf": bool(c.get("is_direct_pdf")),
+                "queue_pos": queued.get(url),
+                "not_queued": not_queued.get(url),
+                "read": j.get("status") or "unread",
+                "read_reason": None if j.get("status") == "judged" else j.get("reason"),
+                "selected": bool(selected_url) and url == selected_url,
+            }
+            if j.get("status") == "judged":
+                row.update({k: j.get(k) for k in _TRAIL_JUDGE_FIELDS})
+            rows.append(row)
+        return {
+            "version": TRAIL_VERSION,
+            "queries": self.queries,
+            "stop": self.judge.get("stop"),
+            "candidates": rows[:TRAIL_MAX_CANDIDATES],
+            "candidate_count": len(rows),
+        }
+
+
+_trail: contextvars.ContextVar[AcquisitionTrail | None] = contextvars.ContextVar(
+    "manual_search_trail", default=None
+)
+
+
+@contextmanager
+def acquisition_trail() -> Generator[AcquisitionTrail]:
+    """Record one search_manual() call's queries, candidates and ranking."""
+    trail = AcquisitionTrail()
+    token = _trail.set(trail)
+    try:
+        yield trail
+    finally:
+        _trail.reset(token)
+
+
 async def _serper_search(query: str, num: int = 10) -> list[dict]:
     """The one place a provider query leaves this process.
 
@@ -836,6 +925,13 @@ async def validate_pdf(url: str) -> bool:
         return False
 
 
+def _tagged(found: list[dict], label: str) -> list[dict]:
+    """Which query pass produced each candidate (acquisition trail only)."""
+    for c in found:
+        c["pass"] = label
+    return found
+
+
 def _collect(organic: list[dict], make: str, model: str) -> list[dict]:
     out: list[dict] = []
     for hit in organic:
@@ -894,6 +990,8 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
     sent = 0
     failures = 0
 
+    trail = _trail.get()
+
     async def _send(query: str, label: str) -> list[dict] | None:
         nonlocal sent, failures
         budget = _provider_budget.get()
@@ -904,9 +1002,23 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
             sent += 1
             failures += 1
             logger.exception("Serper %s failed", label)
+            if trail is not None:
+                trail.queries.append(
+                    {"pass": label.split(" ")[0], "query": query, "result": "error"}
+                )
             return None
-        if before is None or (budget is not None and budget.used > before):
+        sent_now = before is None or (budget is not None and budget.used > before)
+        if sent_now:
             sent += 1
+        if trail is not None:
+            trail.queries.append(
+                {
+                    "pass": label.split(" ")[0],
+                    "query": query,
+                    "result": "sent" if sent_now else "refused",
+                    "hits": len(hits),
+                }
+            )
         return hits
 
     # Pass 1: site-scoped PDF — highest precision.
@@ -915,7 +1027,7 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
         hits = await _send(q1, "q1 (site-scoped)")
         if hits:
-            candidates.extend(_collect(hits, make, model))
+            candidates.extend(_tagged(_collect(hits, make, model), "q1"))
 
     # Pass 2: typed PDF — broader, still PDFs only.
     if not any(c["is_direct_pdf"] for c in candidates):
@@ -924,7 +1036,7 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
             hits = await _send(q2, "q2 (filetype:pdf)")
             if hits is None:
                 continue
-            found = _collect(hits, make, model)
+            found = _tagged(_collect(hits, make, model), "q2")
             if i:
                 # A hit from a re-hyphenated form is a weaker signal than one
                 # from the nameplate's own spelling: it must not win a tie.
@@ -937,7 +1049,7 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
         q3 = f"{make} {model} manual pdf"
         hits = await _send(q3, "q3 (wide)")
         if hits:
-            candidates.extend(_collect(hits, make, model))
+            candidates.extend(_tagged(_collect(hits, make, model), "q3"))
 
     if not candidates:
         if sent and failures == sent:
@@ -953,6 +1065,8 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
         seen.add(c["url"])
         deduped.append(c)
     deduped.sort(key=lambda c: c["score"], reverse=True)
+    if trail is not None:
+        trail.candidates = deduped
 
     # Read before choosing (2026-08-26): fetch the top direct-PDF candidates,
     # extract their first pages, and let the canonical text cascade judge
@@ -968,8 +1082,15 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
     use_judge = bool(make) and _judge.judge_enabled()
     if use_judge:
         ranked = await _judge.judge_candidates(  # records what it reads
-            make, model, deduped, started_at=started_at, deadline_at=deadline_at
+            make,
+            model,
+            deduped,
+            started_at=started_at,
+            deadline_at=deadline_at,
+            trace=trail.judge if trail is not None else None,
         )
+        if trail is not None:
+            trail.ranked = ranked
         # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
         # lines so a false positive can be traced from the phone back to the read.
         _top = ranked[0] if ranked else None
