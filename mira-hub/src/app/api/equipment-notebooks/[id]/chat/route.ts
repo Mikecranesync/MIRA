@@ -346,6 +346,9 @@ async function buildCitations(
       sourceTitle: citationTitle(c),
       page: c.sourcePage,
       fileId: null,
+      // A manufacturer manual's own address, so the reader can open it; only a
+      // place a browser can actually go (http/https) is carried.
+      ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: c.sourceUrl } : {}),
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.
       quote: relevantQuoteWindow(c.content, question),
     });
