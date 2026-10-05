@@ -83,7 +83,9 @@ describe("updateUploadStatusForAttempt", () => {
 describe("claimUploadForRequeue / cancelUpload revoke the running attempt", () => {
   it("a requeue claim mints a new attempt", async () => {
     await claimUploadForRequeue("u-1", "t-1", ["failed"], "user retry");
-    expect(sqls()[0]).toMatch(/attempt_id = gen_random_uuid\(\)/);
+    // The claim runs inside a transaction (it also purges earlier attempts'
+    // chunks — uploads-claim-requeue.test.ts), so find the claim statement.
+    expect(sqls().find((x) => x.startsWith("UPDATE hub_uploads"))).toMatch(/attempt_id = gen_random_uuid\(\)/);
   });
 
   it("cancel rotates the attempt and removes that attempt's chunks in one transaction", async () => {

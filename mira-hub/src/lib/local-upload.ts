@@ -220,21 +220,36 @@ export async function writeDocumentToInbox(p: {
   // ARPK 1b — content dedup: an exact re-drop of already-indexed bytes into
   // the Inbox is marked parsed-as-duplicate instead of chunked again (the
   // 158x-ingest class). Best-effort: a lookup failure falls through to a
-  // normal ingest, never a lost upload.
+  // normal ingest, never a lost upload. The duplicate write holds the original
+  // for its transaction; if the original was deleted first, the bytes are
+  // ingested here instead of recording a duplicate of nothing (Codex review of
+  // #4091 at 2dfe80b81, F1). A revoked attempt stops, like every other write.
   if (p.contentSha256) {
+    let dup: Awaited<ReturnType<typeof findDuplicateUpload>> = null;
     try {
-      const dup = await findDuplicateUpload(p.tenantId, p.contentSha256, inbox.nodeId);
-      if (dup) {
-        await updateUploadStatusForAttempt(p.uploadId, p.tenantId, p.attemptId, "parsed", `duplicate of ${dup.id}`, {
+      dup = await findDuplicateUpload(p.tenantId, p.contentSha256, inbox.nodeId);
+    } catch (err) {
+      log.error("dedup_lookup_skipped", err);
+    }
+    if (dup) {
+      const marked = await updateUploadStatusForAttempt(
+        p.uploadId,
+        p.tenantId,
+        p.attemptId,
+        "parsed",
+        `duplicate of ${dup.id}`,
+        {
           kbChunkCount: dup.kbChunkCount ?? undefined,
           kgEntityId: inbox.nodeId,
           ingestRoute: "v2",
-        });
+          duplicateOf: dup.id,
+        },
+      );
+      if (marked !== "duplicate_source_gone") {
         log.log("parsed", { kind: "document", route: "v2", duplicateOf: dup.id, nodeId: inbox.nodeId });
         return;
       }
-    } catch (err) {
-      log.error("dedup_lookup_skipped", err);
+      log.log("duplicate_source_gone", { duplicateOf: dup.id, nodeId: inbox.nodeId });
     }
   }
 
