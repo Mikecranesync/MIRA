@@ -56,9 +56,61 @@ export type ExpandedQuery = {
   variants: string[];
   /** Verbatim tokens (uppercased) the answer chunk is likely keyed on. */
   exactTokens: string[];
+  /** Fault/alarm codes the question names ("ovA", "E.OV1", "Alarm 7", "3210"),
+   *  as typed. Matched as WHOLE tokens via codeTokenMatcher — never substrings,
+   *  because "ova" sits inside "removal" and "Alarm 7" inside "ALARM 70". */
+  codeTokens: string[];
   /** Quoted phrases the user asked to match verbatim. */
   phrases: string[];
 };
+
+// A code is picked up only next to a fault keyword (or, for dotted codes like
+// Mitsubishi's E.OV1, anywhere), and only when its SHAPE is code-like: mixed
+// case (ovA, ObF — not mere title case), letters+digits (OC1, F30002), a dot,
+// or 3+ digits (ABB 3210).
+// A 1–2 digit number is meaningless alone, so it stays bound to its keyword
+// ("Alarm 7"). Plain words ("this", "history", "mean") never qualify.
+const CODE_AFTER_KEYWORD =
+  /\b(fault|alarm|warning|error|trip)(?:\s+code)?\s*#?\s*([A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)/gi;
+const DOTTED_CODE = /\b[A-Za-z]{1,3}\.[A-Za-z]{1,4}\d{0,3}\b/g;
+
+function codeLike(tok: string): boolean {
+  if (/^\d+$/.test(tok)) return tok.length >= 3;
+  if (/[.-]/.test(tok) && /[A-Za-z]/.test(tok)) return true;
+  if (/\d/.test(tok) && /[A-Za-z]/.test(tok)) return true;
+  // Mixed case means a lowercase letter BEFORE an uppercase one (ovA, ObF, oC).
+  // Title case alone ("History", "Reset") is ordinary capitalization, not a code.
+  return /[a-z][A-Za-z]*[A-Z]/.test(tok);
+}
+
+function extractCodeTokens(q: string): string[] {
+  const out = new Set<string>();
+  for (const m of q.matchAll(CODE_AFTER_KEYWORD)) {
+    const tok = m[2];
+    if (/^\d{1,2}$/.test(tok)) out.add(`${m[1]} ${tok}`);
+    else if (codeLike(tok)) out.add(tok);
+  }
+  for (const m of q.matchAll(DOTTED_CODE)) {
+    const after = m[0].split(".")[1];
+    if (after.length >= 2 && /[A-Z0-9]/.test(after)) out.add(m[0]);
+  }
+  return [...out];
+}
+
+/** One source for both match sites: the SQL exact lane (`content ~* sql`) and
+ *  the rerank boost (`re.test`). Whole token, case-insensitive, any whitespace
+ *  between words, regex metacharacters (the dot in E.OV1) taken literally. */
+export function codeTokenMatcher(tok: string): { sql: string; re: RegExp } {
+  const body = tok
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+");
+  return {
+    sql: `(^|[^[:alnum:]])${body}([^[:alnum:]]|$)`,
+    re: new RegExp(`(?<![A-Za-z0-9])${body}(?![A-Za-z0-9])`, "i"),
+  };
+}
 
 export function expandIndustrialQuery(query: string): ExpandedQuery {
   const q = query.trim();
@@ -102,6 +154,7 @@ export function expandIndustrialQuery(query: string): ExpandedQuery {
   return {
     variants: [...new Set(variants)].slice(0, 4),
     exactTokens: [...exact].slice(0, 8),
+    codeTokens: extractCodeTokens(q).slice(0, 4),
     phrases: phrases.slice(0, 4),
   };
 }
@@ -252,6 +305,7 @@ export function rerankChunks<T extends Rerankable>(
 ): T[] {
   const exact = expanded.exactTokens.map((t) => t.toLowerCase());
   const phrases = expanded.phrases.map((p) => p.toLowerCase());
+  const codeRes = (expanded.codeTokens ?? []).map((t) => codeTokenMatcher(t).re);
   const synTerms = expanded.variants
     .slice(1)
     .join(" ")
@@ -277,6 +331,12 @@ export function rerankChunks<T extends Rerankable>(
     for (const t of exact) {
       if (t && text.includes(t)) {
         score += exactWeight; // exact ID present verbatim
+        exactHit = true;
+      }
+    }
+    for (const re of codeRes) {
+      if (re.test(c.content)) {
+        score += exactWeight; // the asked fault code, as a whole token
         exactHit = true;
       }
     }

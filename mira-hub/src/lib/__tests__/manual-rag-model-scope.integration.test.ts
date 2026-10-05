@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool, type PoolClient } from "pg";
-import { retrieveManualChunks } from "../manual-rag";
+import { retrieveManualChunks, retrieveNodeChunks } from "../manual-rag";
 import { inferEquipmentType } from "../equipment-type";
 
 const TENANT = "39700000-0000-4000-8000-000000000001";
@@ -30,7 +30,11 @@ beforeAll(async () => {
       source_page integer,
       metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
       verified boolean NOT NULL DEFAULT true,
-      is_private boolean NOT NULL DEFAULT false
+      is_private boolean NOT NULL DEFAULT false,
+      doc_id uuid,
+      ingest_route text,
+      page_start integer,
+      section_path text
     ) ON COMMIT DROP
   `);
   for (const model of [
@@ -95,5 +99,61 @@ describe("identity-bound OEM model SQL", () => {
     expect(await modelsFor("AX%_7")).toEqual(["AX%_7"]);
     expect(await modelsFor("AX.7")).toEqual(["AX.7"]);
     expect(await modelsFor("12AX%_7")).toEqual(["12AX%_7"]);
+  });
+});
+
+// Golden Walk 2026-10-04: acquired manuals held the asked code verbatim, but the
+// page never reached the excerpts. Mitsubishi's question shares no other word
+// with its fault table, and a Portuguese ABB manual shares none either — only
+// the whole-token code lane can surface them. The decoy pins the "whole token"
+// half: "removal" must not be admitted as the code "ovA". (ALARM 7 vs ALARM 70
+// is a ranking property — the word "alarm" admits both via BM25 — and is pinned
+// in notebook-query.test.ts.)
+describe("notebook retrieval surfaces the fault code the question names", () => {
+  const NB_TENANT = "39700000-0000-4000-8000-000000000003";
+  const DOC = "39700000-0000-4000-8000-0000000000d1";
+  const PT_DOC = "39700000-0000-4000-8000-0000000000d2";
+  const DECOY_DOC = "39700000-0000-4000-8000-0000000000d3";
+
+  async function seed(doc: string, page: number, content: string) {
+    await client.query(
+      `INSERT INTO knowledge_entries
+         (tenant_id, content, manufacturer, model_number, source_url, source_page, page_start,
+          doc_id, ingest_route, metadata, verified, is_private)
+       VALUES ($1, $2, '', '', 'https://test.invalid/m.pdf', $3, $3, $4, 'v2', '{"node_id":"n1"}', true, true)`,
+      [NB_TENANT, content, page, doc],
+    );
+  }
+  async function pagesFor(doc: string, question: string) {
+    const hits = await retrieveNodeChunks(client, NB_TENANT, question, {
+      nodeId: "n1", unsPath: null, topK: 6, docIds: [doc], rawQuery: question,
+      validatedDocScope: true, approvedSourceDocIds: [doc],
+    });
+    return hits.map((h) => h.sourcePage);
+  }
+
+  beforeAll(async () => {
+    for (let p = 1; p <= 30; p++) {
+      await seed(DOC, p, `The inverter output mean value on page ${p}. Set the inverter parameter and check the inverter display.`);
+    }
+    await seed(DOC, 15, "(H12) 24\nE.OV1\nRegenerative\novervoltage trip\nduring acceleration");
+    for (let p = 1; p <= 40; p++) {
+      await seed(PT_DOC, p, `Página ${p}. A falha do inversor pode ser redefinida pelo painel. Parâmetro ${p} define o drive quando ocorre uma falha.`);
+    }
+    for (let p = 1; p <= 10; p++) await seed(DECOY_DOC, p, `Cooling specification table ${p}.`);
+    await seed(DECOY_DOC, 70, "Cover removal: lift the cover clear of the terminal block.");
+    await seed(PT_DOC, 540, "Código Causa\n2310 Sobrecorrente\n3210 Sobretensão do barramento CC\n3220 Subtensão");
+  });
+
+  it("finds a dotted code that shares no other word with its page", async () => {
+    expect((await pagesFor(DOC, "What does E.OV1 mean on this inverter"))[0]).toBe(15);
+  });
+
+  it("finds a numeric code in a manual written in another language", async () => {
+    expect((await pagesFor(PT_DOC, "What does fault 3210 mean on this drive"))[0]).toBe(540);
+  });
+
+  it("never admits a word that merely contains the code", async () => {
+    expect(await pagesFor(DECOY_DOC, "What does fault ovA mean on this drive")).not.toContain(70);
   });
 });
