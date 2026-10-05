@@ -91,7 +91,7 @@ jobs:
           echo "2-hour cadence doesn't spam red. Configure"
           echo "TELEGRAM_TEST_SESSION_B64 in the 'staging' environment."
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         if: steps.check_files.outputs.missing == '0' && steps.check_session.outputs.have_session == '1'
         with:
           python-version: "3.12"
