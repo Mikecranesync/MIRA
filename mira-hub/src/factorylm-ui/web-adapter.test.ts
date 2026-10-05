@@ -170,7 +170,7 @@ describe("photo previews and paste/drop intake (upload parity, 2026-10-05)", () 
     expect((await a.attachFile())?.previewUrl).toBeUndefined();
   });
 
-  it("releases the preview when the chip is removed, when the host forgets it, and on eviction", async () => {
+  it("releases the preview on remove and on release after send, keeps it through forget, and on eviction", async () => {
     const u = urls();
     const a = createWebAdapter(deps({ ...u, pickFile: async () => file("p.jpg", "image/jpeg") }));
     const removed = (await a.attachPhoto())!;
@@ -178,8 +178,13 @@ describe("photo previews and paste/drop intake (upload parity, 2026-10-05)", () 
     expect(u.revoked).toEqual([removed.previewUrl]);
     expect(a.heldFile(removed.id)).toBeUndefined();
 
+    // Sent: the host forgets the bytes, but the outgoing message still shows
+    // the picture — the preview survives until the host releases it.
     const sent = (await a.attachPhoto())!;
     a.forget(sent.id);
+    expect(a.heldFile(sent.id)).toBeUndefined();
+    expect(u.revoked).not.toContain(sent.previewUrl);
+    a.release!(sent.id);
     expect(u.revoked).toContain(sent.previewUrl);
 
     const first = (await a.attachPhoto())!;

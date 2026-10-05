@@ -84,25 +84,31 @@ export interface HubWebAdapter extends PlatformAdapter {
 const MAX_HELD = 8;
 
 export function createWebAdapter(deps: WebAdapterDeps): HubWebAdapter {
-  const held = new Map<string, { file: File; previewUrl?: string }>();
+  const held = new Map<string, File>();
+  // A photo's preview outlives its bytes: the host uploads and forgets the
+  // file, but the technician's outgoing message still shows the picture until
+  // the server's copy replaces it. Only `release` (or eviction) revokes it.
+  const previews = new Map<string, string>();
   const createUrl = deps.createObjectURL ?? ((file: File) => URL.createObjectURL(file));
   const revokeUrl = deps.revokeObjectURL ?? ((url: string) => URL.revokeObjectURL(url));
-  const drop = (id: string) => {
-    const entry = held.get(id);
-    if (!entry) return;
+  const release = (id: string) => {
     held.delete(id);
-    if (entry.previewUrl) revokeUrl(entry.previewUrl);
+    const url = previews.get(id);
+    if (url === undefined) return;
+    previews.delete(id);
+    revokeUrl(url);
   };
   // One intake for the picker, paste and drop: same Attachment shape, same
   // bound. A photo gets a local `blob:` preview so its chip can show it.
   const hold = (file: File): Attachment => {
     const previewUrl = kindOf(file) === "photo" ? createUrl(file) : undefined;
     const attachment = toAttachment(file, deps.newId(), previewUrl);
-    held.set(attachment.id, { file, previewUrl });
+    held.set(attachment.id, file);
+    if (previewUrl) previews.set(attachment.id, previewUrl);
     // Bound what is held: the oldest file is released past MAX_HELD (Map keeps
     // insertion order). A chip whose bytes were released fails closed at send
     // ("attach it again").
-    while (held.size > MAX_HELD) drop(held.keys().next().value as string);
+    while (held.size > MAX_HELD) release(held.keys().next().value as string);
     return attachment;
   };
   const pick = async (accept: string, capture?: "environment" | "user"): Promise<Attachment | null> => {
@@ -111,9 +117,9 @@ export function createWebAdapter(deps: WebAdapterDeps): HubWebAdapter {
   };
 
   return {
-    heldFile: (id: string) => held.get(id)?.file,
-    forget: drop,
-    release: drop,
+    heldFile: (id: string) => held.get(id),
+    forget: (id: string) => { held.delete(id); },
+    release,
     // Pasted/dropped files pass the same `accept` rule as the File picker;
     // anything else is left out (the Composer reports what was refused).
     adoptFiles: (files: readonly File[]) => files.filter((f) => accepts(FILE_ACCEPT, f)).map(hold),

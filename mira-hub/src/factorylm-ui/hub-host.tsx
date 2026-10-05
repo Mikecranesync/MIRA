@@ -54,6 +54,7 @@ import {
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
+import { HOME_THREAD, withOutgoing, type Outgoing } from "./outgoing-turn";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { OnboardingGate } from "./onboarding-gate";
@@ -150,6 +151,8 @@ export function HubShellHost() {
   useEffect(() => { selectionRef.current = selection; }, [selection]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [live, setLive] = useState<Live | null>(null);
+  // The technician's message from the moment Send is tapped (outgoing-turn.ts).
+  const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -353,7 +356,12 @@ export function HubShellHost() {
   // re-render and no moment where the shell shows stale turns.
   const view = useMemo<ShellState>(() => {
     if (!detail || !meta || !selection) {
-      return notebooks ? shellReducer(state, { type: "hydrate", data: { thread: EMPTY_FIXTURE.thread, projects, machines } }) : state;
+      // HOME, or a thread whose detail is still loading: the outgoing message
+      // still shows (a first send creates its project before anything else).
+      const openId = selection ? shellThreadId(selection) : HOME_THREAD;
+      const turns = withOutgoing([], [], outgoing, openId, EMPTY_FIXTURE.thread.id, state.activeContext);
+      const thread = turns.length ? { ...EMPTY_FIXTURE.thread, turns } : EMPTY_FIXTURE.thread;
+      return notebooks ? shellReducer(state, { type: "hydrate", data: { thread, projects, machines } }) : state;
     }
     const base = fixtureFor(detail.notebook, selection, detail.turns, meta, projects, machines);
     // T2 (#4189 F6): the post-turn-refresh render path — `withManualSearchStatus`
@@ -362,7 +370,7 @@ export function HubShellHost() {
     // `notebook-chat-utils.ts` (guarded legacy presentation) carries no such
     // frame, so this appears only once `loadDetail` has re-fetched.
     const turns = withManualSearchStatus(
-      [...threadFromPersisted(detail.turns, meta).turns, ...liveTurns],
+      withOutgoing(threadFromPersisted(detail.turns, meta).turns, liveTurns, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta)),
       // Codex #4195 round 2 F6: the FOLLOWED status (hydration/confirm-seeded,
       // ticking toward resolution) takes precedence over the raw per-render
       // read, so an idle Hub still updates once a backgrounded search settles.
@@ -370,7 +378,15 @@ export function HubShellHost() {
     );
     const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, notebooks, follow]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, notebooks, follow, outgoing]);
+
+  /** The outgoing message is done: the server's row (or the restored draft) takes over. */
+  const dropOutgoing = useCallback(() => {
+    setOutgoing((cur) => {
+      for (const a of cur?.attachments ?? []) adapter.release?.(a.id);
+      return null;
+    });
+  }, [adapter]);
 
   // --- the send path: the canonical notebook-chat route, streamed ---
   const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection) => {
@@ -403,6 +419,7 @@ export function HubShellHost() {
       await loadDetail(sel);
       await loadNotebooks();
       setLive((cur) => (cur && cur.id === id ? null : cur));
+      dropOutgoing();
     } catch (err) {
       const retained = retainedStreamInterruption(err);
       if (retained) {
@@ -420,13 +437,14 @@ export function HubShellHost() {
       }
       const message = err instanceof Error ? err.message : String(err);
       setLive((cur) => (cur && cur.id === id ? null : cur));
+      dropOutgoing();
       setFailedBody({ body, question });
       dispatch({ type: "set-send-error", error: message });
       dispatch({ type: "set-draft", draft: question });
     } finally {
       if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
     }
-  }, [selection, loadDetail, loadNotebooks]);
+  }, [selection, loadDetail, loadNotebooks, dropOutgoing]);
 
   /**
    * #4019 — attachments ride the turn they were attached to. Upload through the
@@ -480,6 +498,7 @@ export function HubShellHost() {
     }
     if (outcome === "sent") return;
     setBusy(false);
+    dropOutgoing();
     // Stopped or navigated away: nothing was posted; the question goes back
     // only if the technician is still on the thread it was typed in.
     if (outcome === "cancelled") {
@@ -493,7 +512,7 @@ export function HubShellHost() {
       error: outcome.reattach === false ? outcome.failure! : `${outcome.failure} Attach it again, then send.`,
     });
     dispatch({ type: "set-draft", draft: text });
-  }, [adapter, send]);
+  }, [adapter, send, dropOutgoing]);
 
   /** Create a project through the same contract as the legacy "New notebook" button. */
   const createNotebook = useCallback(async (body: { displayName: string; identitySourceType?: "user" }): Promise<string | null> => {
@@ -519,14 +538,16 @@ export function HubShellHost() {
     if (plan.kind === "create") {
       setBusy(true);
       try { notebookId = await createNotebook(plan.body); }
-      catch (err) { dispatch({ type: "set-send-error", error: err instanceof Error ? err.message : String(err) }); dispatch({ type: "set-draft", draft: q }); return; }
+      catch (err) { dropOutgoing(); dispatch({ type: "set-send-error", error: err instanceof Error ? err.message : String(err) }); dispatch({ type: "set-draft", draft: q }); return; }
       finally { setBusy(false); }
     }
     // No id means the create was refused (401 → signed-out screen) — hand the
     // technician their question back rather than dropping it.
-    if (!notebookId) { dispatch({ type: "set-draft", draft: q }); return; }
+    if (!notebookId) { dropOutgoing(); dispatch({ type: "set-draft", draft: q }); return; }
     const sel: HubSelection = { notebookId, threadId: newThreadId() };
     select(sel);
+    // The message typed on HOME now belongs to the thread just created for it.
+    setOutgoing((cur) => (cur && cur.threadId === HOME_THREAD ? { ...cur, threadId: shellThreadId(sel) } : cur));
     if (files.length === 0) {
       await send(chatBodyFor(q, [], [], sel), q, sel);
       return;
@@ -545,22 +566,24 @@ export function HubShellHost() {
       for (const f of files) adapter.forget(f.attachment.id);
       if (uploadAbortRef.current === ctrl) uploadAbortRef.current = null;
       setBusy(false);
+      dropOutgoing();
       return;
     }
     if (target.kind !== "ok") {
       if (uploadAbortRef.current === ctrl) uploadAbortRef.current = null;
       setBusy(false);
     }
-    if (target.kind === "signed_out") { setSignedOut(true); return; }
+    if (target.kind === "signed_out") { dropOutgoing(); setSignedOut(true); return; }
     if (target.kind === "failed") {
       // Codex #4024 F4: the Composer already cleared the draft — hand it back.
       for (const f of files) adapter.forget(f.attachment.id);
+      dropOutgoing();
       dispatch({ type: "set-send-error", error: "Couldn't open the project to upload into. Attach the file again, then send." });
       dispatch({ type: "set-draft", draft: q });
       return;
     }
     await composeAndSend(q, files, sel, target.nodeId, [], [], ctrl);
-  }, [adapter, createNotebook, select, send, composeAndSend]);
+  }, [adapter, createNotebook, select, send, composeAndSend, dropOutgoing]);
 
   const onSend = useCallback((text: string, attachments: readonly Attachment[] = []) => {
     const q = text.trim();
@@ -575,13 +598,20 @@ export function HubShellHost() {
     // for "keep the draft, show this plain-language error". On HOME that is
     // the guard against creating a duplicate "General" before the list is
     // known (#3875 F2); inside a notebook, against sending before its detail.
+    // Shown at once, before any upload, project creation or stream (outgoing-turn.ts).
+    const beginOutgoing = (threadId: string) => setOutgoing((prev) => {
+      for (const a of prev?.attachments ?? []) adapter.release?.(a.id);
+      return { id: `out-${Date.now()}`, threadId, question: q, attachments: files.map((f) => f.attachment), startedAt: new Date().toISOString() };
+    });
     if (!selection) {
       const plan = homeSendPlan(notebooks);
       if (plan.kind === "loading") throw new Error(NO_PROJECT_ERROR);
+      beginOutgoing(HOME_THREAD);
       void sendFromHome(plan, q, files);
       return;
     }
     if (!detail) throw new Error(NO_PROJECT_ERROR);
+    beginOutgoing(shellThreadId(selection));
     if (files.length > 0) {
       void composeAndSend(q, files, selection, detail.notebook.nodeId, docIds, historyRows(detail.turns));
       return;
