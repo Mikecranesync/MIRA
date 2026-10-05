@@ -815,7 +815,10 @@ services:
       # attachment stayed embedding IS NULL, and the read path threw outright.
       # Same declaration + default as mira-core / mira-ingest / mira-pipeline /
       # the two bots; the real value comes from Doppler.
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # Set HERE, not from Doppler: the shared Doppler value names Bravo's tailnet
+      # address, which this host cannot reach (2026-10-05 outage). The colocated
+      # mira-ollama service below serves the same model digest.
+      - OLLAMA_BASE_URL=http://mira-ollama:11434
       # P0004G canonical inference seam. OFF unless explicitly set to "1" —
       # with it unset the notebook-chat route keeps using the pre-existing
       # inline cascade, so this line changes nothing until someone flips it.
@@ -1160,6 +1163,39 @@ services:
     depends_on:
       - mira-hub
 
+  # Embedder for the Hub, on THIS host (2026-10-05 outage). The host is not on the
+  # tailnet, so Bravo's Ollama (Doppler OLLAMA_BASE_URL) is unreachable from here and
+  # every embed-on-write failed after the 2026-09-19 move to OVH. Same runtime and
+  # model digest as Bravo (Ollama 0.22.0, nomic-embed-text v1.5 = 0a109f422b47), so the
+  # vectors stay comparable with the ~94k already stored. No ports: Ollama has no
+  # auth, so it is reachable only on the internal network. Healthy only once the
+  # pinned model digest is present.
+  mira-ollama:
+    image: ollama/ollama:0.22.0
+    container_name: mira-ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        ollama serve & pid=$$!;
+        until ollama list >/dev/null 2>&1; do sleep 1; done;
+        ollama pull nomic-embed-text:v1.5;
+        wait $$pid
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    volumes:
+      - mira-ollama-models:/root/.ollama
+    networks:
+      - mira-net
+    restart: unless-stopped
+    mem_limit: 2g
+    memswap_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list | grep -E '^nomic-embed-text:v1.5[[:space:]]+0a109f422b47'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
 networks:
   mira-net:
     driver: bridge
@@ -1174,6 +1210,7 @@ networks:
     name: mira-plc-dash_default
 
 volumes:
+  mira-ollama-models:
   mira-webui-data:
   mira-leads-data:
   mira-redis-data:
