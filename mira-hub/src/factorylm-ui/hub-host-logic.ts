@@ -8,6 +8,7 @@ import type { ManualSearchStatus, ShellFixture } from "../../../packages/factory
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
+import { shouldRedirectToOnboarding } from "@/lib/onboarding-flow";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
@@ -427,4 +428,25 @@ export function createLatestLoadTracker(): {
       return self;
     },
   };
+}
+
+/**
+ * #4284 Codex F1: on staging the shell is the landing page, so it must make the
+ * same onboarding decision `/feed` makes (#1901) — a tenant whose setup wizard
+ * is not started or still in progress is sent to `/onboarding`. Fail-safe like
+ * `/feed`: a failed, non-OK or malformed read keeps the technician where they
+ * are. Loop-safe: `/onboarding` never redirects back here.
+ */
+export async function onboardingRedirect(
+  getJson: (path: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>,
+): Promise<"/onboarding" | null> {
+  try {
+    const res = await getJson("/api/wizard/company");
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    const status = String((data as { status?: unknown } | null)?.status ?? "");
+    return shouldRedirectToOnboarding(status) ? "/onboarding" : null;
+  } catch {
+    return null;
+  }
 }
