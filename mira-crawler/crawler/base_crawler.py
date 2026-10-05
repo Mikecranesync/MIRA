@@ -109,15 +109,17 @@ class BaseCrawler:
             logger.info("Already indexed (content dedup): %s", url)
             return 0
 
-        # Convert
+        # Convert. A curated source may declare max_pages (sources.yaml) when its
+        # evidence lies past the parsers' 300-page default; both PDF paths get it.
+        page_limit = {"max_pages": entry["max_pages"]} if entry.get("max_pages") else {}
         if fmt == "html":
             blocks = extract_from_html(data, min_chars=self.config.chunk_min_chars)
         elif self.config.use_docling:
-            blocks = extract_from_docling(data, min_chars=self.config.chunk_min_chars)
+            blocks = extract_from_docling(data, min_chars=self.config.chunk_min_chars, **page_limit)
             if not blocks:
-                blocks = extract_from_pdf(data, min_chars=self.config.chunk_min_chars)
+                blocks = extract_from_pdf(data, min_chars=self.config.chunk_min_chars, **page_limit)
         else:
-            blocks = extract_from_pdf(data, min_chars=self.config.chunk_min_chars)
+            blocks = extract_from_pdf(data, min_chars=self.config.chunk_min_chars, **page_limit)
 
         if not blocks:
             logger.warning("No blocks extracted from %s", url)
