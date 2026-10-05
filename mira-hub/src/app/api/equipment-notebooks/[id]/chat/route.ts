@@ -45,7 +45,7 @@ import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observabili
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
-import { answersOnAttachedMiss, attachedMissPrompt } from "@/capabilities/mira-contract";
+import { ATTACHED_MISS_LEAD, answersOnAttachedMiss, attachedMissPrompt } from "@/capabilities/mira-contract";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
   proposeIdentityFromText,
@@ -478,11 +478,8 @@ export function isRefusal(answer: string): boolean {
   // F1 (MEDIUM, Codex r1 on PR #4255): strip the attached-miss disclosure lead
   // before checking, so that lead itself never trips refusal detection while
   // genuine documentation refusals in the remaining answer still do.
-  const ATTACHED_MISS_LEAD = "Nothing in your attached documents matched this question, so this answer is from general knowledge.";
-  const cleanedAnswer = answer.startsWith(ATTACHED_MISS_LEAD) 
-    ? answer.slice(ATTACHED_MISS_LEAD.length).trim()
-    : answer;
-  const a = cleanedAnswer.toLowerCase();
+  const opened = answer.trimStart();
+  const a = (opened.startsWith(ATTACHED_MISS_LEAD) ? opened.slice(ATTACHED_MISS_LEAD.length) : answer).toLowerCase();
   return (
     /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
     /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a) &&
@@ -1736,13 +1733,11 @@ async function handleChatTurn(
   // in scope for a notebook that has no attached documents.
   // Fail-open by construction (a synchronous throw inside either helper must
   // not fail the turn either — the old `.catch` only covered rejections).
-  let nbReadFailed = false;
   const [nb, srcs] = await Promise.all([
     (async () => {
       try {
         return await getNotebook(ctx.tenantId, notebookId);
       } catch {
-        nbReadFailed = true;
         return null;
       }
     })(),
@@ -2606,13 +2601,13 @@ async function handleChatTurn(
   // about THIS machine in a machine-bound notebook (#4068), and every decline
   // lane in the condition below. A null prompt (the general prompt drifted from
   // the lines it rewrites) keeps the abstain too.
-  // F3 (HIGH, Codex r1 on PR #4255): fail closed when the notebook identity
-  // read failed — a failed read must not qualify as "no bound machine".
-  // F2 (MEDIUM, Codex r1 on PR #4255): require notebookRetrieval (a completed
-  // scoped notebook-document search over validated docs). Photo-only or
-  // zero-source requests with no validated docs keep existing behavior.
+  // Two more preconditions (Codex r1 on #4255): the notebook identity must have
+  // loaded — a failed or empty read is not "no bound machine" (F3) — and a
+  // notebook-document search must actually have run over a non-empty validated
+  // doc set; a zero-source turn let through by a safety trigger searched
+  // nothing, so there is no attached miss to disclose (F2).
   const attachedMissBoundModel = nb?.model?.trim() || null;
-  const attachedMissSystemPrompt = !nbReadFailed && notebookRetrieval && answersOnAttachedMiss({
+  const attachedMissSystemPrompt = nb !== null && notebookRetrieval && docIds.length > 0 && answersOnAttachedMiss({
     general,
     sourceOnly: body.mode === "source_only",
     chunkCount: chunks.length,

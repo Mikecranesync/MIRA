@@ -258,8 +258,20 @@ describe("#3959 slice 1 — attached sources, nothing matched", () => {
     expect(status?.status).toBe("insufficient_evidence");
   });
 
+  it("F3 — when getNotebook resolves no notebook, the attached-miss lane must not activate either", async () => {
+    process.env.MIRA_PERSONA_CONTRACT = "1";
+    // An unloaded identity is not "no bound machine": a null read must fail
+    // closed exactly like a thrown one.
+    domainMock.getNotebook.mockResolvedValueOnce(null as never);
+    const { fetchMock, status } = await ask({ message: QUESTION });
+    expect(domainMock.getNotebook).toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(status?.status).toBe("insufficient_evidence");
+  });
+
   it("F1 — the lead plus ordinary diagnostic advice with physical-inspection negations is not a refusal", async () => {
     process.env.MIRA_PERSONA_CONTRACT = "1";
+    domainMock.getNotebook.mockResolvedValue(unbound() as never);
     const advice = "A weak coil supply can cause chatter. If you cannot see the armature moving, isolate and lock out the equipment before inspecting it.";
     const fetchMock = vi.fn(async () => providerStream(`${ATTACHED_MISS_LEAD} ${advice}`));
     vi.stubGlobal("fetch", fetchMock);
@@ -269,8 +281,20 @@ describe("#3959 slice 1 — attached sources, nothing matched", () => {
     expect(status?.status).toBe("answered");
   });
 
+  it("F1 — the lead is recognised after leading whitespace too", async () => {
+    process.env.MIRA_PERSONA_CONTRACT = "1";
+    domainMock.getNotebook.mockResolvedValue(unbound() as never);
+    const advice = "A weak coil supply can cause chatter. If you cannot see the armature moving, isolate and lock out the equipment before inspecting it.";
+    const fetchMock = vi.fn(async () => providerStream(`\n${ATTACHED_MISS_LEAD} ${advice}`));
+    vi.stubGlobal("fetch", fetchMock);
+    const fr = await frames(await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_A] }), params));
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    expect(fr.find((f) => f.kind === "status")?.status).toBe("answered");
+  });
+
   it("F1 control — a genuine documents refusal after the lead still trips refusal detection", async () => {
     process.env.MIRA_PERSONA_CONTRACT = "1";
+    domainMock.getNotebook.mockResolvedValue(unbound() as never);
     const refusal = "I couldn't find that specification in the documents you selected.";
     const fetchMock = vi.fn(async () => providerStream(`${ATTACHED_MISS_LEAD} ${refusal}`));
     vi.stubGlobal("fetch", fetchMock);
@@ -280,34 +304,26 @@ describe("#3959 slice 1 — attached sources, nothing matched", () => {
     expect(status?.status).toBe("insufficient_evidence");
   });
 
-  it("F2 — zero sources with a photo claim does not activate the attached-miss lane", async () => {
+  it("F2 — a grounded zero-source hazard turn searched no documents, so it never claims an attached miss", async () => {
     process.env.MIRA_PERSONA_CONTRACT = "1";
+    // Codex r1 F2 on #4255. A grounded zero-source turn reaches the gate only
+    // when a safety trigger lets it past the no-sources refusal (route: the
+    // `!validated.ok && !general && !safetyTrigger` 422). No notebook document
+    // was searched, so "Nothing in your attached documents matched" is false.
     domainMock.validateChatSources.mockResolvedValueOnce({ ok: false, error: "no_sources_selected" } as never);
-    filesMock.photoLinkedToTarget.mockResolvedValueOnce({ fileId: "photo-123", capturedAt: "2026-10-01T10:00:00Z" });
-    const body = { message: "What do you see in this photo?", mode: "general", sourceDocIds: [], visualEvidence: { fileId: "photo-123" } };
-    const fetchMock = vi.fn(async () => providerStream(`Check the nameplate for the model number.`));
-    vi.stubGlobal("fetch", fetchMock);
-    const fr = await frames(await POST(chatReq(body), params));
-    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
-    const sent = fetchMock.mock.calls[0] as unknown as [string, { body: string }] | undefined;
-    const system = sent ? (JSON.parse(sent[1].body).messages[0].content as string) : null;
+    const { fetchMock, system } = await ask({ message: "Can I check the 480V feeder while energized?", sourceDocIds: [] });
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalled();
     expect(system).not.toContain(ATTACHED_MISS_LEAD);
-    expect(system).toContain("No manual for this machine has been loaded");
   });
 
-  it("F2 control — verified photo claim keeps existing behavior when retrieval is skipped", async () => {
+  it("F2 control — a general-mode zero-source photo turn keeps main's general prompt", async () => {
     process.env.MIRA_PERSONA_CONTRACT = "1";
     domainMock.validateChatSources.mockResolvedValueOnce({ ok: false, error: "no_sources_selected" } as never);
     filesMock.photoLinkedToTarget.mockResolvedValueOnce({ fileId: "photo-456", capturedAt: "2026-10-01T10:00:00Z" });
-    const body = { message: "What do you see?", mode: "general", sourceDocIds: [], visualEvidence: { fileId: "photo-456" } };
-    const fetchMock = vi.fn(async () => providerStream(`I need more information.`));
-    vi.stubGlobal("fetch", fetchMock);
-    const fr = await frames(await POST(chatReq(body), params));
-    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
-    const sent = fetchMock.mock.calls[0] as unknown as [string, { body: string }] | undefined;
-    const system = sent ? (JSON.parse(sent[1].body).messages[0].content as string) : null;
+    const { fetchMock, system } = await ask({ mode: "general", sourceDocIds: [], visualEvidence: { fileId: "photo-456" } });
     expect(fetchMock).toHaveBeenCalled();
     expect(system).not.toContain(ATTACHED_MISS_LEAD);
+    expect(system).toContain("No manual for this machine has been loaded");
   });
 });
