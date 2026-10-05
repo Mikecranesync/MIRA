@@ -70,7 +70,7 @@ one of the two paths.
 
 ## Rollback
 
-If smoke fails and the cause is the new deploy, follow `docs/runbooks/hubv3-rollback.md`.
+If smoke fails and the cause is the new deploy, follow `docs/runbooks/rollback.md`.
 
 ## Notes / open cutover items
 

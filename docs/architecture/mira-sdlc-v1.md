@@ -513,8 +513,16 @@ Rollback is a **forward deploy of a known-good SHA** through the same gates, plu
 | Drill | One drill before v1 is declared adopted: deploy the designated candidate to staging, run acceptance, exercise `deploy-vps.yml` `authorize-source` against it with the smallest safe `services`, and walk A→B→rollback-to-A with B current >168 h; record run ids in the runbook. A receipt-only staging drill does not count. |
 | Runbook | `docs/runbooks/rollback.md` (R3 governance doc) replaces `hubv3-rollback.md`, whose `-f ref=` input no longer exists. |
 
-State today: no `rollback_candidate` field, no refresh schedule, no recorded drill. **DOCTRINE until
-Part B step 10.**
+State (Part B step 10): **partly enforced.** Every production receipt written since step 10 records the per-service
+`rollback_candidate` (computed in `authorize-source` from the earlier production receipts, stamped
+after the deploy, `tools/rollback_candidates.py`); `rollback-candidate-refresh.yml` checks the
+designated candidates daily — compatibility, evidence verified with `authorize-source`'s validators
+and flags, refresh due within 72 h — and opens an `incident` issue when readiness is lost. **Not yet
+automated:** the re-deploy to staging, because a `deploy-staging.yml` run dispatched with a workflow's
+`GITHUB_TOKEN` does not fire `workflow_run` and `authorize-source` accepts only `workflow_run`-produced
+acceptance receipts; a human re-stages on the workflow's request until an owner decision (a scoped
+dispatch credential, or a provenance-model change) closes it. **No drill recorded yet.** Runbook:
+`docs/runbooks/rollback.md`.
 
 ### 10.3 Failure → regression
 
@@ -808,3 +816,6 @@ cheap-lane saturation (2026-10-03); post-cap Codex rounds after main-merge with
   trusted-base validators). Status text only; no rule text changed.
 - 2026-10-04 — Part B step 6 completed: §4.2, §4.5 and §12.1 describe the head-bound `Cheap Review`
   check-run (`.github/workflows/cheap-review-check.yml`, advisory). Status text only; no rule text changed.
+- 2026-10-04 — Part B step 10 (code and docs): §10.2 state text — `rollback_candidate` on the production
+  receipt, the daily candidate check, `docs/runbooks/rollback.md`; automated re-staging and the drill
+  remain open. Status text only; no rule text changed.

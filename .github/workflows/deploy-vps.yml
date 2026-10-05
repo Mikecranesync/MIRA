@@ -69,7 +69,10 @@ jobs:
     name: Authorize production source
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 10, not 5: the §10.2 receipt walk reads the artifact list of every deploy run of the last
+    # RECEIPT_WALK_DAYS (measured 70 s for 191 runs from a workstation, 2026-10-04) before any
+    # production job starts.
+    timeout-minutes: 10
     outputs:
       approved_rc_sha: ${{ steps.validate.outputs.approved_rc_sha }}
       approved_release_tag: ${{ steps.resolve-tag.outputs.approved_release_tag }}
@@ -78,10 +81,18 @@ jobs:
       # resolution every receipt check and the deploy itself consume (§6.2).
       effective_services: ${{ steps.validate.outputs.effective_services }}
       staging_run_id: ${{ steps.staging-receipt.outputs.staging_run_id }}
+      # SDLC v1 §10.2 (step 10): per-service recovery candidates, stamped onto the
+      # production receipt after the deploy.
+      rollback_candidates: ${{ steps.rollback-candidates.outputs.rollback_candidates }}
     env:
       # Must equal the deploy script's default TARGETS fallback (the three-service
       # OVH set) — pinned by tests/test_deploy_vps_production_authorization.py.
       PRODUCTION_DEFAULT_SERVICES: "mira-hub mira-web mira-ask"
+      # §10.2 receipt walk window (90-day receipt retention + 30-day re-run limit + 1) and
+      # listing cap; must equal rollback-candidate-refresh.yml (pinned by
+      # tests/test_rollback_candidate_refresh.py).
+      RECEIPT_WALK_DAYS: "121"
+      RECEIPT_WALK_CAP: "1000"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -166,7 +177,7 @@ jobs:
             exit 1
           fi
           install -d -m 700 "$RUNNER_TEMP/trusted"
-          for f in tools/staging_receipt.py tools/acceptance_receipt.py; do
+          for f in tools/staging_receipt.py tools/acceptance_receipt.py tools/rollback_candidates.py; do
             git show "$TRUSTED_BASE_SHA:$f" > "$RUNNER_TEMP/trusted/$(basename "$f")"
             [ -s "$RUNNER_TEMP/trusted/$(basename "$f")" ] || { echo "::error::trusted base has no $f"; exit 1; }
           done
@@ -371,6 +382,91 @@ jobs:
             --staging-receipt "$RUNNER_TEMP/staging-receipt.json" \
             --require-capabilities retrieval,capture --require-services mira-hub
           echo "acceptance receipt verified: run ${RUN_URL} (generation = staging run ${STAGING_RUN_ID})" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # SDLC v1 §10.2 (Part B step 10): per service in the deploy target set, the
+      # recovery candidate is the newest RECEIPTED production SHA of that service that
+      # is not the one being deployed — read from production receipts, never from the
+      # host checkout (PRIOR_SHA) or from tags. Computed here, before any production
+      # credential or the host is touched, and stamped onto the production receipt
+      # after the deploy. The walk reads every readable receipt of the completed deploy runs
+      # of the last RECEIPT_WALK_DAYS and only then selects by deployed_at: a re-run of an older
+      # run can carry the newest deployment, so run order and coverage prove nothing about
+      # time. A receipted run counts whatever its conclusion. A run with no readable receipt
+      # (expired, or a run whose Deploy step ran — the swap precedes the receipt — and left
+      # none) is a gap bounded by its run's updatedAt; a service whose candidate such a gap
+      # could post-date gets sha: null with that reason, never a possibly stale target. A
+      # deploy re-run (attempt > 1) reuses these outputs, so it stamps every candidate null.
+      # Any malformed receipt or API failure fails closed.
+      # Only main-branch workflow_dispatch runs count: a run dispatched from another ref executes
+      # THAT ref's copy of this file and could upload a production-receipt-* of its own making.
+      - name: Record rollback candidates (SDLC v1 §10.2)
+        id: rollback-candidates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPROVED_RC_SHA: ${{ steps.validate.outputs.approved_rc_sha }}
+          EFFECTIVE_SERVICES: ${{ steps.validate.outputs.effective_services }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "$RECEIPT_WALK_DAYS" =~ ^[1-9][0-9]{0,3}$ && "$RECEIPT_WALK_CAP" =~ ^[1-9][0-9]{0,4}$ ]] || { echo "::error::RECEIPT_WALK_DAYS and RECEIPT_WALK_CAP must be positive integers"; exit 1; }
+          DIR="$RUNNER_TEMP/production-receipts"
+          install -d -m 700 "$DIR"
+          TOOL="$RUNNER_TEMP/trusted/rollback_candidates.py"
+          # Every run that can still matter: a receipt lives 90 days after its upload, and a run
+          # can be re-run (uploading a new one) only up to 30 days after it started (GitHub docs,
+          # "Re-running workflows and jobs"), so RECEIPT_WALK_DAYS = 121 lists them all.
+          WINDOW_START="$(python3 -I "$TOOL" window-start --days "$RECEIPT_WALK_DAYS")"
+          RUNS="$(gh run list --repo "$REPO" --workflow deploy-vps.yml --branch main --event workflow_dispatch --status completed --created ">=$WINDOW_START" --limit "$RECEIPT_WALK_CAP" --json databaseId,updatedAt,attempt --jq '.[] | "\(.databaseId) \(.updatedAt) \(.attempt)"')"
+          GAPS="$RUNNER_TEMP/receipt-gaps.tsv"
+          SWAP_CHECKS="$RUNNER_TEMP/swap-checks.tsv"
+          : > "$GAPS"
+          : > "$SWAP_CHECKS"
+          # A listing cut at the cap leaves older runs unread; any of them may hold a newer deployment.
+          if [ "$(grep -c . <<< "$RUNS" || true)" -ge "$RECEIPT_WALK_CAP" ]; then
+            printf '%s\t%s\t%s\n' "$(tail -n 1 <<< "$RUNS" | cut -d' ' -f1)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "run listing truncated at $RECEIPT_WALK_CAP, older runs unread" >> "$GAPS"
+          fi
+          # Pass 1: every readable receipt. An unreadable one is recorded as a gap with its run's
+          # updatedAt (it cannot have deployed after that), never a stop and never a fallback.
+          while read -r run updated attempt; do
+            [ -n "$run" ] || continue
+            [[ "$run" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected run id '$run'"; exit 1; }
+            [[ "$attempt" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected attempt '$attempt' for run $run"; exit 1; }
+            [[ "$updated" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || { echo "::error::unexpected updatedAt '$updated' for run $run"; exit 1; }
+            ART="$(gh api "/repos/$REPO/actions/runs/$run/artifacts" \
+              --jq '[.artifacts[] | select(.name | startswith("production-receipt-"))] | if length > 1 then error("more than one production receipt in run") elif length == 0 then empty else "\(.[0].id) \(.[0].expired)" end')"
+            if [ -z "$ART" ]; then printf '%s\t%s\t1\n' "$run" "$updated" >> "$SWAP_CHECKS"; continue; fi
+            read -r ART_ID ART_EXPIRED <<< "$ART"
+            [[ "$ART_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::unexpected artifact id '$ART_ID'"; exit 1; }
+            if [ "$ART_EXPIRED" != "false" ]; then printf '%s\t%s\t%s\n' "$run" "$updated" "receipt expired" >> "$GAPS"; continue; fi
+            # A re-run attempt can swap production again after the attempt that wrote this receipt.
+            [ "$attempt" = "1" ] || printf '%s\t%s\t2\n' "$run" "$updated" >> "$SWAP_CHECKS"
+            install -d -m 700 "$DIR/$run"
+            gh api "/repos/$REPO/actions/artifacts/$ART_ID/zip" > "$DIR/$run.zip"
+            unzip -o -q "$DIR/$run.zip" -d "$DIR/$run"
+            rm -f "$DIR/$run.zip"
+          done <<< "$RUNS"
+          # Pass 2: a run without a receipt, or a re-run (attempt > 1) with one, matters only if it
+          # ended after the oldest receipt read (otherwise it cannot post-date any of them); only
+          # then count the attempts whose Deploy step ran. The swap is in that step, before the
+          # receipt: a receipt-less run whose Deploy ran may have changed production with no
+          # receipt, and a re-run whose Deploy ran in two attempts may have swapped again after
+          # the receipt that is still readable.
+          SINCE="$(python3 -I "$TOOL" since --receipts-dir "$DIR")"
+          while IFS=$'\t' read -r run updated need; do
+            [ -n "$run" ] && [ -n "$SINCE" ] || continue
+            [[ "$updated" < "$SINCE" ]] && continue
+            SWAP_RAN="$(gh api --paginate "/repos/$REPO/actions/runs/$run/jobs?per_page=100&filter=all" \
+              --jq '[.jobs[].steps[]? | select(.name == "Deploy" and .conclusion != null and .conclusion != "skipped")] | length' \
+              | awk '{ n += $1 } END { print n + 0 }')"
+            if [ "$SWAP_RAN" -ge "$need" ]; then
+              if [ "$need" = "1" ]; then why="production may have changed without a receipt (its Deploy step ran)"; else why="re-run: its Deploy step ran in $SWAP_RAN attempts, so its receipt may predate the last swap"; fi
+              printf '%s\t%s\t%s\n' "$run" "$updated" "$why" >> "$GAPS"
+            fi
+          done < "$SWAP_CHECKS"
+          CANDIDATES="$(python3 -I "$TOOL" candidates --receipts-dir "$DIR" \
+            --deploying "$APPROVED_RC_SHA" --services "$EFFECTIVE_SERVICES" --gaps "$GAPS")"
+          echo "rollback_candidates=$CANDIDATES" >> "$GITHUB_OUTPUT"
+          echo "rollback candidates: $CANDIDATES" | tee -a "$GITHUB_STEP_SUMMARY"
 
   # The migration gate intentionally runs on a separate runner from the VPS
   # deploy. It receives the prod DB URL but never the SSH key; the deploy job
@@ -925,6 +1021,7 @@ jobs:
           TRUSTED_BASE_SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ID: ${{ github.run_id }}
+          ROLLBACK_CANDIDATES: ${{ needs.authorize-source.outputs.rollback_candidates }}
         run: |
           set -euo pipefail
           # Trusted-base validator (§5.2); the receipt must prove the ACTUAL deployed
@@ -934,8 +1031,14 @@ jobs:
           git fetch --no-tags origin "$TRUSTED_BASE_SHA"
           install -d -m 700 "$RUNNER_TEMP/trusted"
           git show "$TRUSTED_BASE_SHA:tools/staging_receipt.py" > "$RUNNER_TEMP/trusted/staging_receipt.py"
+          git show "$TRUSTED_BASE_SHA:tools/rollback_candidates.py" > "$RUNNER_TEMP/trusted/rollback_candidates.py"
           python3 -I "$RUNNER_TEMP/trusted/staging_receipt.py" extract --log "$RUNNER_TEMP/deploy.out" --out production-receipt.json \
             --set "run_url=$RUN_URL" --set "run_id=$RUN_ID"
+          # §10.2: the per-service recovery candidates computed by authorize-source,
+          # validated again against this receipt's SHA and the deploy target set.
+          python3 -I "$RUNNER_TEMP/trusted/rollback_candidates.py" stamp --receipt production-receipt.json \
+            --candidates-json "$ROLLBACK_CANDIDATES" --services "$EFFECTIVE_SERVICES" \
+            --attempt "$GITHUB_RUN_ATTEMPT"
           python3 -I "$RUNNER_TEMP/trusted/staging_receipt.py" verify --receipt production-receipt.json \
             --approved-rc-sha "$APPROVED_RC_SHA" --environment production --max-age-hours 1 \
             --effective-services "${EFFECTIVE_SERVICES// /,}" | tee -a "$GITHUB_STEP_SUMMARY"
