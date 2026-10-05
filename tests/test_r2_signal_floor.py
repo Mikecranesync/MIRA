@@ -45,6 +45,8 @@ def test_every_signal_path_exists_in_the_repository():
         ("mira-hub/src/lib/session.ts", "tenant", "R3"),
         ("mira-hub/db/migrations/104_new_table.sql", "migration", "R3"),
         ("mira-core/mira-ingest/db/migrations/014_x.sql", "migration", "R3"),
+        # its expand labels decide rollback readiness (SDLC v1 step 10): a relabel is R3
+        ("tools/migration_compat.txt", "migration", "R3"),
         ("mira-bots/shared/engine.py", "retrieval", "R2"),
         ("mira-bots/shared/inference/router.py", "retrieval", "R2"),
         ("mira-hub/src/lib/manual-rag.ts", "retrieval", "R2"),

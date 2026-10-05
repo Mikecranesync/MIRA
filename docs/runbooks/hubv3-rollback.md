@@ -1,6 +1,6 @@
 # HubV3 Rollback Runbook
 
-> **Historical (2026-06-20 release).** Two mechanics below no longer exist: `deploy-vps.yml` has no `ref=` input (dispatch with `-f approved_rc_sha=<40-hex>` of the known-good commit, which must be on `main`, and the receipt, acceptance and drift gates apply unchanged), and `/VERSION` was deleted in #3064 (the version is derived from the latest `v*` tag; nothing to bump in a revert PR). The general rollback runbook is `docs/runbooks/rollback.md` (SDLC v1 Part B step 10, pending); until it lands, `docs/architecture/mira-sdlc-v1.md` §10.2 is the rule.
+> **Historical (2026-06-20 release).** Two mechanics below no longer exist: `deploy-vps.yml` has no `ref=` input (dispatch with `-f approved_rc_sha=<40-hex>` of the known-good commit, which must be on `main`, and the receipt, acceptance and drift gates apply unchanged), and `/VERSION` was deleted in #3064 (the version is derived from the latest `v*` tag; nothing to bump in a revert PR). The general rollback runbook is `docs/runbooks/rollback.md` (SDLC v1 Part B step 10); `docs/architecture/mira-sdlc-v1.md` §10.2 is the rule.
 
 **Scope:** rolling back the HubV3 contextualization-intake release (VERSION `3.29.0`, `mira-hub/v2.13.0`, `mira-contextualizer/v2.3.0`) from production.
 **Owner:** whoever runs the `#2068 → main` merge + deploy.
