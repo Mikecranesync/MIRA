@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import {
+  codeTokenMatcher,
   expandIndustrialQuery,
   rerankChunks,
   classifyBroad,
@@ -913,11 +914,13 @@ export async function retrieveNodeChunks(
   // stemming/exact-token loss the bakeoff flagged, with no schema migration
   // (doc-scoped candidate set is small, so the scan is cheap).
   const expanded = expandIndustrialQuery(q);
-  const runExactLane = async (tokens: string[]) => {
-    if (tokens.length === 0) return [];
+  // `match` picks the predicate: ILIKE substring for the legacy exact tokens,
+  // or a whole-token regex for fault codes (codeTokenMatcher) — "%ova%" would
+  // also hit "removal", and "%alarm 7%" every "ALARM 70".
+  const runExactLane = async (patterns: string[], match: "ilike" | "regex" = "ilike") => {
+    if (patterns.length === 0) return [];
     // Independent, clean param numbering: $1 tenant, $2 nodeIds, $3 patterns,
     // $4 limit, $5 docIds (only when doc-scoped).
-    const patterns = tokens.map((t) => `%${t}%`);
     const exactParams: unknown[] = [tenantId, nodeIds, patterns, POOL];
     let exactDocClause = "";
     if (allowedDocIds.length > 0) {
@@ -940,7 +943,7 @@ export async function retrieveNodeChunks(
           ${approvalClauseExact}
           ${nodeClauseExact}
           ${exactDocClause}
-          AND content ILIKE ANY($3::text[])
+          AND content ${match === "regex" ? "~*" : "ILIKE"} ANY($3::text[])
         ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST
         LIMIT $4`,
       exactParams,
@@ -964,7 +967,8 @@ export async function retrieveNodeChunks(
 
   add(await runRetrieval(AND_TSQUERY, expanded.variants[0]));
   for (const v of expanded.variants.slice(1)) add(await runRetrieval(OR_TSQUERY, v));
-  add(await runExactLane(expanded.exactTokens));
+  add(await runExactLane(expanded.exactTokens.map((t) => `%${t}%`)));
+  add(await runExactLane(expanded.codeTokens.map((t) => codeTokenMatcher(t).sql), "regex"));
   // Message-native pass: when the query was conversation-augmented, the raw
   // words get their own OR pass — otherwise the thread's exact IDs dominate
   // every variant and the chunk answering the message's OWN subject (keypad
