@@ -942,6 +942,12 @@ function codeMeaningViolation(
   const text = isBacked ? answer.replace(/([.!?])[ \t]+((?:\[\d+\][ \t]*)+)/g, " $2$1 ") : answer;
   const sentences = text.split(/(?<=[.!?])\s+|\n+/);
   for (const s of sentences) {
+    // Backing is SENTENCE-scoped (owner decision 2026-10-05, Codex #4238 r3):
+    // clause-scoping rejected correctly cited answers ("F004 indicates DC bus
+    // undervoltage, according to the manual [1]"). Accepted gap: an unrelated
+    // citation in the same sentence as an invented definition is not caught
+    // here; the citation contract and the semantic answer judge still apply.
+    if (isBacked?.(s)) continue;
     const inFaultContext = FAULT_CONTEXT.test(s);
     // R1 (Codex finding, PR #3792 review): the honest-uncertainty exemption is
     // CLAUSE-scoped, not sentence-scoped. "I can't verify the manual, but
@@ -952,9 +958,6 @@ function codeMeaningViolation(
     const clauses = s.split(/[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b/i);
     for (const clause of clauses) {
       if (NON_VERIFICATION.test(clause)) continue;
-      // Backing is clause-scoped like the exemption above: a citation on the
-      // neighbouring clause does not back this one (Codex #4238 r2 F1).
-      if (isBacked?.(clause)) continue;
       for (const tok of clause.match(FAULT_CODE_TOKEN) ?? []) {
         // FAULT_CODE_TOKEN's trailing suffix is unbounded, so a model stuck in
         // a repetition loop yields a "fault code" thousands of characters long.
@@ -1308,8 +1311,8 @@ export function validateAnswer(opts: {
     const cm = general
       ? codeMeaningViolation(scanText, scanQuestion)
       : ids
-        ? codeMeaningViolation(scanText, scanQuestion, (clause) =>
-            [...clause.matchAll(/\[(\d+)\]/g)].some((m) => ids.includes(m[1])),
+        ? codeMeaningViolation(scanText, scanQuestion, (sentence) =>
+            [...sentence.matchAll(/\[(\d+)\]/g)].some((m) => ids.includes(m[1])),
           )
         : null;
     if (cm) return codeMeaningRejection(cm, answerText, fallbackOpts);

@@ -86,9 +86,14 @@ describe("a retrieved-but-uncited turn is held to the code-meaning rule", () => 
     expect(run("Fault F49123 indicates a motor overload. [1]", F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
   });
 
-  it("is not exempted by a citation on another clause of the same sentence (Codex r2 F1)", () => {
+  it("keeps a cited definition whose citation follows a trailing clause (Codex r3 F2)", () => {
+    const cited = "Fault F49123 indicates a motor overload, according to the supplied manual [1].";
+    expect(run(cited, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
+  });
+
+  it("documents the accepted gap: an unrelated citation in the SAME sentence backs it (owner decision 2026-10-05)", () => {
     const sameSentence = "The converter is commissioned using its operator panel [1]; Fault F49123 on a Siemens drive generally indicates a motor overload condition.";
-    expect(run(sameSentence, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
+    expect(run(sameSentence, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
   });
 
   it("does not accept a marker that resolves to nothing", () => {
