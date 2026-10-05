@@ -222,8 +222,8 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
   });
 
   // Golden Walk 2026-10-05 (staging a9795440): uncited fault-code definitions
-  // shipped as "answered" — in the general lane, and on turns that retrieved
-  // chunks but cited none. The technician gets the honest fallback instead.
+  // shipped as "answered" in the general lane. The technician gets the honest
+  // fallback instead. The grounded lane is unchanged (owner decision).
   const UNCITED_DEFINITION =
     "Fault F49123 on a Siemens drive generally indicates a **motor overload or over‑current condition** detected by the drive’s internal protection.";
   const answerOf = async (res: Response) =>
@@ -237,29 +237,6 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
     expect(text).not.toMatch(/overload/i);
   });
 
-  it("never ships an uncited fault-code meaning when chunks were retrieved but none are cited", async () => {
-    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
-    ragMock.retrieveNodeChunks.mockResolvedValue([
-      { docId: "d1", filename: "G120C.pdf", page: 12, content: "Commissioning the converter with the operator panel." },
-    ]);
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(UNCITED_DEFINITION), { status: 200 })));
-    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive" }), params));
-    expect(text).toContain("can't verify what F49123 means");
-    expect(text).not.toMatch(/overload/i);
-  });
-
-  it("an unrelated citation elsewhere does not carry an uncited definition out (Codex #4238 r1 F1)", async () => {
-    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
-    ragMock.retrieveNodeChunks.mockResolvedValue([
-      { docId: "d1", filename: "G120C.pdf", page: 12, content: "Commissioning the converter with the operator panel." },
-    ]);
-    const mixed = `${UNCITED_DEFINITION} The converter is commissioned using its operator panel [1].`;
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(mixed), { status: 200 })));
-    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive" }), params));
-    expect(text).toContain("can't verify what F49123 means");
-    expect(text).not.toMatch(/overload/i);
-  });
-
   it("a safety warning does not carry an uncited definition out (Codex #4238 r1 F2)", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
     const hazardous = `Lockout is not required. ${UNCITED_DEFINITION}`;
@@ -269,36 +246,22 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
     expect(text).not.toMatch(/overload/i);
   });
 
-  it("a citation on a different claim of the same sentence does not carry a definition out (Codex #4238 r3/r4 F1)", async () => {
-    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
-    ragMock.retrieveNodeChunks.mockResolvedValue([
-      { docId: "d1", filename: "G120C.pdf", page: 12, content: "Commissioning the converter with the operator panel." },
-    ]);
-    const sameSentence = "The converter is commissioned using its operator panel [1] and Fault F49123 on a Siemens drive generally indicates a motor overload condition.";
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(sameSentence), { status: 200 })));
-    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive" }), params));
+  it("a refusal-classified draft cannot carry a definition out (Codex #4238 r2 F2)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const mixed = `I cannot find this code in the supplied manual. ${UNCITED_DEFINITION}`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(mixed), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive", mode: "general" }), params));
     expect(text).not.toMatch(/overload/i);
+    const call = nbMock.recordTurn.mock.calls.at(-1) as unknown[] | undefined;
+    expect(JSON.stringify(call?.[2] ?? {})).not.toMatch(/overload/i);
   });
 
-  for (const lane of ["general", "grounded"] as const) {
-    it(`a refusal-classified draft cannot carry a definition out in the ${lane} lane (Codex #4238 r2 F2)`, async () => {
-      if (lane === "general") {
-        nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
-      } else {
-        nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
-        ragMock.retrieveNodeChunks.mockResolvedValue([
-          { docId: "d1", filename: "G120C.pdf", page: 12, content: "Commissioning the converter with the operator panel." },
-        ]);
-      }
-      const mixed = `I cannot find this code in the supplied manual. ${UNCITED_DEFINITION}`;
-      vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(mixed), { status: 200 })));
-      const body = { message: "What does fault F49123 mean on this drive", ...(lane === "general" ? { mode: "general" } : {}) };
-      const text = await answerOf(await POST(req(body), params));
-      expect(text).not.toMatch(/overload/i);
-      const call = nbMock.recordTurn.mock.calls.at(-1) as unknown[] | undefined;
-      expect(JSON.stringify(call?.[2] ?? {})).not.toMatch(/overload/i);
-    });
-  }
+  it("procedural 'is cleared after' wording survives in the general lane (Codex #4238 r5 F5)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("F004 is cleared after the fault is resolved."), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "How do I clear fault F004", mode: "general" }), params));
+    expect(text).toContain("F004 is cleared after the fault is resolved.");
+  });
 
   it("keeps a cited fault-code meaning on a grounded turn", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });

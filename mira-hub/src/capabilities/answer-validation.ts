@@ -930,50 +930,24 @@ function questionCodes(question: string): Set<string> {
 }
 
 /** "F004 is DC bus undervoltage" defines the code with no article (Codex #4238
- *  r4 F4). A bare "is" counts only before a fault-kind noun, so "F004 is shown
- *  on the display" / "is cleared by pressing Stop" / "is still active" do not. */
+ *  r4 F4). A bare "is" counts only when a short NOUN PHRASE ending in a
+ *  fault-kind noun follows: the first word is not a participle or adverb and no
+ *  word in it is a preposition, so "F004 is cleared after the fault is
+ *  resolved", "is shown with an error message" and "is still active" do not
+ *  (r5 F5). */
+const BARE_IS_DEFINITION =
+  "is\\s+(?!(?:[a-z]+ed|shown|set|reset|seen|given|done|held|found|known|written|still|also|now|then|not|only|being|usually|typically|often|generally)\\b)(?:(?!(?:after|before|by|with|when|until|if|on|in|at|from|while|during|once|for|to)\\b)[\\w-]+\\s+){0,4}?";
 const FAULT_KIND_NOUN =
   "(?:fault|error|alarm|trip|condition|overvoltage|undervoltage|overcurrent|overload|overheat\\w*|over-?temperature|over-?voltage|under-?voltage|over-?current|loss|failure|short\\s+circuit|ground\\s+fault)";
-
-/** A clause that only attributes a source: "according to the manual [1]",
- *  "per [1]", "see [1]", or bare markers. */
-function attributionOnly(clause: string): boolean {
-  const rest = clause.replace(/\[\d+\]/g, " ").replace(/[()\s.!?]+/g, " ").trim();
-  return rest === "" || /^(?:according\s+to|per|see|as\s+(?:stated|shown|listed|described|given)\s+in|from|source)\b.{0,80}$/i.test(rest);
-}
-
-/** Is THIS definition claim backed by a resolving citation (Codex #4238 r2-r4)?
- *  The claim runs from the code to the clause end, cut where an "and/while/
- *  whereas" joins an independent clause ("… overload and the converter is
- *  commissioned [1]"). Backed when the claim itself carries a marker, when the
- *  clauses after it are attribution-only and carry one ("…, according to the
- *  manual [1]"), or when an attribution-only clause leads it ("According to the
- *  manual [1], F004 …"). A marker on a different claim never backs it. */
-function claimIsCited(clauses: string[], ci: number, codeAt: number, hasRef: (t: string) => boolean): boolean {
-  let claim = clauses[ci].slice(codeAt);
-  const join = claim.search(/\s(?:and|while|whereas)\s+(?:the|this|that|these|those|it|its|you|your|we|they|a|an)\b/i);
-  if (join >= 0) claim = claim.slice(0, join);
-  if (hasRef(claim)) return true;
-  if (join < 0) {
-    for (let j = ci + 1; j < clauses.length && attributionOnly(clauses[j]); j++) {
-      if (hasRef(clauses[j])) return true;
-    }
-  }
-  return ci > 0 && attributionOnly(clauses[ci - 1]) && hasRef(clauses[ci - 1]);
-}
 
 function codeMeaningViolation(
   answer: string,
   question: string,
-  hasRef?: (text: string) => boolean,
 ): { code: string; excerpt: string } | null {
   const asked = questionCodes(question);
   // Sentence-level DETECTION only — the draft is never rewritten piecewise
   // (research §"Correct the specificity gate": no uncontrolled splitting).
-  // A marker placed after the full stop ("…overload. [1]") belongs to the
-  // sentence before it, so it is moved inside for the backing check.
-  const text = hasRef ? answer.replace(/([.!?])[ \t]+((?:\[\d+\][ \t]*)+)/g, " $2$1 ") : answer;
-  const sentences = text.split(/(?<=[.!?])\s+|\n+/);
+  const sentences = answer.split(/(?<=[.!?])\s+|\n+/);
   for (const s of sentences) {
     const inFaultContext = FAULT_CONTEXT.test(s);
     // R1 (Codex finding, PR #3792 review): the honest-uncertainty exemption is
@@ -983,7 +957,7 @@ function codeMeaningViolation(
     // "I can't verify what Q-447-Delta means" keeps its exemption because the
     // non-verification and the definition frame share one clause.
     const clauses = s.split(/[,;:]|—|–|\bbut\b|\bhowever\b|\byet\b/i);
-    for (const [ci, clause] of clauses.entries()) {
+    for (const clause of clauses) {
       if (NON_VERIFICATION.test(clause)) continue;
       for (const tok of clause.match(FAULT_CODE_TOKEN) ?? []) {
         // FAULT_CODE_TOKEN's trailing suffix is unbounded, so a model stuck in
@@ -1003,7 +977,7 @@ function codeMeaningViolation(
         // not either: "Fault F49123 on a Siemens drive generally indicates…"
         // shipped uncited on staging (Golden Walk 2026-10-05).
         const defFrame = new RegExp(
-          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?)?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when|is\\s+(?:[\\w-]+\\s+){0,4}?${FAULT_KIND_NOUN})\\b`,
+          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?)?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when|${BARE_IS_DEFINITION}${FAULT_KIND_NOUN})\\b`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"
@@ -1012,7 +986,6 @@ function codeMeaningViolation(
           "i",
         );
         if (defFrame.test(clause) || causeFrame.test(clause)) {
-          if (hasRef && claimIsCited(clauses, ci, Math.max(0, clause.indexOf(tok)), hasRef)) continue;
           return { code: tok, excerpt: s.slice(0, 160) };
         }
       }
@@ -1278,12 +1251,6 @@ export function validateAnswer(opts: {
    *  notebook (this turn started it, or a recorded one is still running), so a
    *  specificity fallback must not tell the technician to fetch it themselves. */
   manualSearchRunning?: ManualSearchRunning;
-  /** Grounded turns: the [n] marker ids that resolve to a retrieved source.
-   *  A fault-code definition sentence carrying none of them is unbacked, so the
-   *  code-meaning rule applies to it as in the general lane — a citation
-   *  elsewhere in the answer does not back it (Codex #4238 r1 F1). Omitted =
-   *  unknown, and the grounded lane relies on the citation contract alone. */
-  resolvingCitationIds?: readonly string[];
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
@@ -1327,22 +1294,16 @@ export function validateAnswer(opts: {
   // Fault-code meaning, decided BEFORE the safety warnings: a warning keeps the
   // draft and quotes it, so returning one first shipped an uncited definition
   // inside it (Codex #4238 r1 F2). Withholding the draft also removes the step
-  // the warning would have quoted. General lane: any asserted meaning.
-  // Grounded lane: a definition sentence with no resolving [n] of its own
-  // (Golden Walk 2026-10-05 — uncited definitions shipped as "answered").
+  // the warning would have quoted. General lane only (owner decision
+  // 2026-10-05): the grounded lane keeps the citation contract — matching a
+  // citation to the claim it backs is a semantic judgment no sentence-splitting
+  // rule got right across five review rounds.
   // Independent of the answer-wide refusal verdict: "I cannot find this code
   // … F49123 indicates a motor overload" is classified a refusal yet asserts a
   // meaning (Codex #4238 r2 F2). Honest non-verification stays exempt through
   // the clause-level NON_VERIFICATION check inside codeMeaningViolation.
-  {
-    const ids = opts.resolvingCitationIds;
-    const cm = general
-      ? codeMeaningViolation(scanText, scanQuestion)
-      : ids
-        ? codeMeaningViolation(scanText, scanQuestion, (text) =>
-            [...text.matchAll(/\[(\d+)\]/g)].some((m) => ids.includes(m[1])),
-          )
-        : null;
+  if (general) {
+    const cm = codeMeaningViolation(scanText, scanQuestion);
     if (cm) return codeMeaningRejection(cm, answerText, fallbackOpts);
   }
 

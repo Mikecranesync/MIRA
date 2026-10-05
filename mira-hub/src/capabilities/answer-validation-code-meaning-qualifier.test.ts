@@ -6,13 +6,12 @@
  * 1. Each answer put the machine between the code and the verb — "Fault F49123
  *    on a Siemens drive generally indicates…", "Error E42 on most VFDs is a…".
  *    The definition frame required the verb to follow the code directly.
- * 2. The rule ran only in the general lane. A turn that retrieved chunks
- *    skipped it entirely, so an uncited definition shipped as "answered". The
- *    route now passes `resolvingCitationIds` (the [n] numbers that resolve to a
- *    retrieved source); a definition sentence carrying none of them is held to
- *    the same rule. A citation elsewhere in the answer does not back it.
- * 3. A non-withholding safety warning returned before the rule ran, so the
+ * 2. A non-withholding safety warning returned before the rule ran, so the
  *    warning shipped with the uncited definition still in it.
+ * 3. A refusal-classified draft skipped the rule entirely.
+ *
+ * Scope (owner decision 2026-10-05): the GENERAL lane, where all three live
+ * failures happened. The grounded lane keeps the citation contract.
  */
 import { describe, it, expect } from "vitest";
 import { validateAnswer } from "./answer-validation";
@@ -30,7 +29,7 @@ const F30002_A =
 const run = (
   answerText: string,
   question: string,
-  extra: { general?: boolean; resolvingCitationIds?: string[]; refused?: boolean } = {},
+  extra: { general?: boolean; refused?: boolean } = {},
 ) =>
   validateAnswer({
     answerText,
@@ -39,7 +38,6 @@ const run = (
     served: true,
     refused: extra.refused ?? false,
     evidenceSufficient: false,
-    resolvingCitationIds: extra.resolvingCitationIds,
   });
 
 describe("code meaning with a qualifier between the code and the verb", () => {
@@ -67,72 +65,21 @@ describe("code meaning with a qualifier between the code and the verb", () => {
   });
 });
 
-describe("a retrieved-but-uncited turn is held to the code-meaning rule", () => {
-  it("withholds an uncited definition when chunks were retrieved but none are cited", () => {
-    const v = run(F49123_A, F49123_Q, { general: false, resolvingCitationIds: ["1"] });
-    expect(v.ok).toBe(false);
-    if (v.ok) return;
-    expect(v.violation).toBe("unsupported-specificity:code-meaning-asserted");
-  });
-
-  it("is not exempted by an unrelated citation elsewhere in the answer (Codex r1 F1)", () => {
-    const mixed = `${F49123_A} The converter is commissioned using its operator panel [1].`;
-    const v = run(mixed, F49123_Q, { general: false, resolvingCitationIds: ["1"] });
-    expect(v.ok).toBe(false);
-  });
-
-  it("leaves a definition that carries its own resolving citation to the citation contract", () => {
-    expect(run("Fault F49123 indicates a motor overload [1].", F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
-    expect(run("Fault F49123 indicates a motor overload. [1]", F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
-  });
-
-  it("keeps a cited definition whose citation follows a trailing clause (Codex r3 F2)", () => {
-    const cited = "Fault F49123 indicates a motor overload, according to the supplied manual [1].";
-    expect(run(cited, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
-  });
-
-  it("is not backed by an unrelated citation joined with 'and' before the definition (Codex r3/r4 F1)", () => {
-    const before = "The converter is commissioned using its operator panel [1] and Fault F49123 on a Siemens drive generally indicates a motor overload condition.";
-    expect(run(before, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
-    const semicolon = "The converter is commissioned using its operator panel [1]; Fault F49123 on a Siemens drive generally indicates a motor overload condition.";
-    expect(run(semicolon, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
-  });
-
-  it("is not backed by an unrelated citation on a clause joined after the definition", () => {
-    const after = "Fault F49123 indicates a motor overload and the converter is commissioned using its operator panel [1].";
-    expect(run(after, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
-  });
-
-  it("control: attribution before or after the definition backs it", () => {
-    const ok = (a: string) => expect(run(a, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
-    ok("According to the supplied manual [1], Fault F49123 indicates a motor overload.");
-    ok("Per the manual [1]: Fault F49123 indicates a motor overload.");
-    ok("Fault F49123 indicates a motor overload and over-current condition [1].");
-    ok("Fault F49123 indicates a motor overload (see [1]).");
-  });
-  it("does not accept a marker that resolves to nothing", () => {
-    expect(run("Fault F49123 indicates a motor overload [7].", F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
-  });
-
-  it("keeps the old grounded behaviour when the caller does not say", () => {
+describe("the grounded lane is unchanged (owner decision 2026-10-05)", () => {
+  it("does not apply the code-meaning rule to a grounded draft", () => {
     expect(run(F49123_A, F49123_Q, { general: false }).ok).toBe(true);
   });
 });
 
 describe("a safety warning cannot carry an uncited definition out (Codex r1 F2)", () => {
   const HAZ = "Lockout is not required. ";
-  for (const lane of [
-    { name: "general", extra: { general: true } },
-    { name: "grounded", extra: { general: false, resolvingCitationIds: ["1"] } },
-  ]) {
-    it(`withholds the definition in the ${lane.name} lane`, () => {
-      const v = run(HAZ + F49123_A, F49123_Q, lane.extra);
-      expect(v.ok).toBe(false);
-      if (v.ok) return;
-      expect(v.violation).toBe("unsupported-specificity:code-meaning-asserted");
-      expect(v.replacement).not.toMatch(/overload/i);
-    });
-  }
+  it("withholds the definition", () => {
+    const v = run(HAZ + F49123_A, F49123_Q);
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.violation).toBe("unsupported-specificity:code-meaning-asserted");
+    expect(v.replacement).not.toMatch(/overload/i);
+  });
 
   it("control: a hazard with no definition is still a warning with the answer kept", () => {
     const v = run(`${HAZ}Check the DC bus first.`, F49123_Q);
@@ -144,43 +91,34 @@ describe("a safety warning cannot carry an uncited definition out (Codex r1 F2)"
 });
 
 describe("a refusal-classified draft is still checked (Codex r2 F2)", () => {
-  const MIXED = `I cannot find this code in the supplied manual. ${F49123_A}`;
-  for (const lane of [
-    { name: "general", extra: { general: true, refused: true } },
-    { name: "grounded", extra: { general: false, refused: true, resolvingCitationIds: ["1"] } },
-  ]) {
-    it(`withholds a mixed refusal + definition in the ${lane.name} lane`, () => {
-      const v = run(MIXED, F49123_Q, lane.extra);
-      expect(v.ok).toBe(false);
-      if (v.ok) return;
-      expect(v.violation).toBe("unsupported-specificity:code-meaning-asserted");
-    });
-  }
+  it("withholds a mixed refusal + definition", () => {
+    const v = run(`I cannot find this code in the supplied manual. ${F49123_A}`, F49123_Q, { refused: true });
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.violation).toBe("unsupported-specificity:code-meaning-asserted");
+  });
 
   it("control: an honest refusal alone is untouched", () => {
     expect(run("I can't verify what F49123 means on this drive from the supplied manual.", F49123_Q, { refused: true }).ok).toBe(true);
-    expect(run("I cannot find this code in the supplied manual.", F49123_Q, { general: false, refused: true, resolvingCitationIds: ["1"] }).ok).toBe(true);
+    expect(run("I cannot find this code in the supplied manual.", F49123_Q, { refused: true }).ok).toBe(true);
   });
 });
 
-describe("a bare 'is' definition is a definition (Codex r4 F4)", () => {
+describe("a bare 'is' definition is a definition (Codex r4 F4, r5 F5)", () => {
   const F004_Q = "What does fault F004 mean on this drive";
-  it("withholds 'F004 is DC bus undervoltage' with no citation, in both lanes", () => {
-    for (const a of ["Fault F004 is DC bus undervoltage.", "F004 is DC bus undervoltage."]) {
-      expect(run(a, F004_Q).ok).toBe(false);
-      expect(run(a, F004_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
-    }
+  it("withholds 'F004 is DC bus undervoltage'", () => {
+    expect(run("Fault F004 is DC bus undervoltage.", F004_Q).ok).toBe(false);
+    expect(run("F004 is DC bus undervoltage.", F004_Q).ok).toBe(false);
   });
-  it("control: a cited bare 'is' definition is kept", () => {
-    expect(run("F004 is DC bus undervoltage [1].", F004_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
-  });
-  it("control: 'is' that does not define the code is not a definition", () => {
+  it("control: procedural and display wording is not a definition", () => {
     for (const a of [
       "F004 is shown on the display after the drive trips.",
       "F004 is cleared by pressing Stop once the cause is fixed.",
       "F004 is still active on the keypad.",
+      "F004 is cleared after the fault is resolved.",
+      "F004 is shown with an error message on the display.",
     ]) {
-      expect(run(a, F004_Q).ok).toBe(true);
+      expect(run(a, "How do I clear fault F004").ok, a).toBe(true);
     }
   });
 });
