@@ -45,6 +45,8 @@ HOOK="$REPO_ROOT/.githooks/pre-commit"
 FIXTURE_DIR="$REPO_ROOT/.precommit-hook-fixtures"
 GUARDED_FIXTURE="$REPO_ROOT/mira-mobile/src/screens/.precommit lifecycle guard fixture.tsx"
 CANONICAL_FIXTURE="$REPO_ROOT/mira-mobile/src/unified/.precommit-lifecycle-guard-fixture.ts"
+WORKFLOW_FIXTURE="$REPO_ROOT/.github/workflows/.precommit-approval-fixture.yml"
+APPROVAL_RECORDS=()
 SHIM_DIR=""
 PASS=0
 FAIL=0
@@ -71,9 +73,13 @@ fi
 cleanup() {
   cd "$REPO_ROOT" 2>/dev/null || return
   # Only ever touches its own fixture path.
-  git reset -q -- "$FIXTURE_DIR" "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE" 2>/dev/null || true
+  git reset -q -- "$FIXTURE_DIR" "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE" "$WORKFLOW_FIXTURE" 2>/dev/null || true
   rm -rf "$FIXTURE_DIR"
-  rm -f "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE"
+  rm -f "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE" "$WORKFLOW_FIXTURE"
+  # Only the approval records this run wrote; never the store or its audit log.
+  local rec
+  for rec in "${APPROVAL_RECORDS[@]+"${APPROVAL_RECORDS[@]}"}"; do rm -f "$rec"; done
+  APPROVAL_RECORDS=()
   [ -n "$SHIM_DIR" ] && rm -rf "$SHIM_DIR"
 }
 trap cleanup EXIT
@@ -126,6 +132,45 @@ make_dead_tool_shims() {
 }
 
 run_hook() { bash "$HOOK" 2>&1; }
+
+# Write an approval record for the CURRENT index through the tool's own library
+# function — a TEST-HARNESS approval, not a human one (the real `approve`
+# requires the owner at a terminal, which this harness deliberately never
+# fakes). Optional $1: a JSON object merged over the record to make it stale or
+# tampered, or the literal MALFORMED to write unparseable bytes.
+write_test_approval() {
+  local rec
+  rec=$(python3 - "${1:-}" <<'PY'
+import json
+import sys
+
+sys.path.insert(0, "tools")
+import guarded_commit_approval as g
+
+b = g.binding()
+path = g.write_record(
+    b,
+    g.guarded_paths([p for _, p in b["staged"]]),
+    approved_by="test-harness (not a human approval)",
+    confirmed_via="test-harness",
+)
+patch = sys.argv[1]
+if patch == "MALFORMED":
+    path.write_text("{not json", encoding="utf-8")
+elif patch:
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record.update(json.loads(patch))
+    path.write_text(json.dumps(record), encoding="utf-8")
+print(path)
+PY
+) || { bad "could not write a test approval record"; return 1; }
+  APPROVAL_RECORDS+=("$rec")
+}
+
+stage_guarded_fixture() {
+  printf 'export const precommitLifecycleGuardFixture = %s;\n' "${1:-true}" > "$GUARDED_FIXTURE"
+  git add -- "$GUARDED_FIXTURE"
+}
 
 echo "=== .githooks/pre-commit — executable coverage ==="
 echo
@@ -205,6 +250,9 @@ assert_contains "$OUT" "mira-mobile/src/screens/.precommit lifecycle guard fixtu
   "lists the exact guarded path"
 assert_contains "$OUT" "mira-mobile/src/unified/**"      "points mobile work to the canonical adapter"
 assert_contains "$OUT" "Automation must not bypass"     "tells agents not to evade the blocker"
+assert_contains "$OUT" "no owner approval for this exact staged tree" \
+  "unapproved: names the missing owner approval"
+assert_contains "$OUT" "guarded_commit_approval.py approve" "points the owner at the supported approval"
 cleanup; trap cleanup EXIT
 echo
 
@@ -219,6 +267,142 @@ git add -- "$CANONICAL_FIXTURE"
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "0"                                  "hook allows the canonical unified adapter"
 assert_contains "$OUT" "No guarded legacy UI paths staged" "reports the lifecycle check passed"
+cleanup; trap cleanup EXIT
+echo
+
+# ---------------------------------------------------------------------------
+# 7–15. Owner approval for one exact guarded commit (tools/guarded_commit_approval.py).
+#    The approval must clear ONLY the lifecycle verdict, ONLY for the tree, path
+#    list, branch and HEAD it names, and never while another check fails. Each
+#    "blocked" case below differs from the approved case [7] in one respect.
+# ---------------------------------------------------------------------------
+echo "[7] approved: an exact approval clears the lifecycle check"
+stage_guarded_fixture
+write_test_approval
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "0"                                               "hook allows the approved guarded tree"
+assert_contains "$OUT" "owner approval bound to this exact tree"  "says the approval was used"
+assert_contains "$OUT" "test-harness (not a human approval)"      "names who approved"
+cleanup; trap cleanup EXIT
+echo
+
+echo "[8] changed content: re-staging after approval voids it"
+stage_guarded_fixture
+write_test_approval
+stage_guarded_fixture false
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                                  "hook blocks a re-staged edit"
+assert_contains "$OUT" "no owner approval for this exact staged tree" "the approval does not follow the edit"
+cleanup; trap cleanup EXIT
+echo
+
+echo "[9] extra staged file: an unapproved addition voids it"
+stage_guarded_fixture
+write_test_approval
+mkdir -p "$FIXTURE_DIR"
+printf 'extra\n' > "$FIXTURE_DIR/extra.txt"
+git add -- "$FIXTURE_DIR/extra.txt"
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                                  "hook blocks an extra staged file"
+assert_contains "$OUT" "no owner approval for this exact staged tree" "the approval covers only its tree"
+cleanup; trap cleanup EXIT
+echo
+
+echo "[10] stale binding: HEAD moved, branch differs, or approval expired"
+stage_guarded_fixture
+write_test_approval '{"base": "0000000000000000000000000000000000000000"}'
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks an approval for a different HEAD"
+assert_contains "$OUT" "approval is stale: base"     "names the moved HEAD"
+cleanup; trap cleanup EXIT
+stage_guarded_fixture
+write_test_approval '{"branch": "some-other-branch"}'
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks an approval for a different branch"
+assert_contains "$OUT" "approval is stale: branch"   "names the branch mismatch"
+cleanup; trap cleanup EXIT
+stage_guarded_fixture
+write_test_approval '{"expires_at": "2000-01-01T00:00:00+00:00"}'
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks an expired approval"
+assert_contains "$OUT" "approval expired"            "names the expiry"
+cleanup; trap cleanup EXIT
+echo
+
+echo "[11] tampered records fail closed"
+stage_guarded_fixture
+write_test_approval MALFORMED
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks an unparseable record"
+assert_contains "$OUT" "unreadable"                  "names the unreadable record"
+cleanup; trap cleanup EXIT
+stage_guarded_fixture
+write_test_approval '{"version": 99}'
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks an unknown record version"
+assert_contains "$OUT" "unknown version"             "names the version mismatch"
+cleanup; trap cleanup EXIT
+stage_guarded_fixture
+write_test_approval '{"allowed_paths": []}'
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks a guarded path the owner did not see"
+assert_contains "$OUT" "not covered by the approval" "names the uncovered guarded path"
+cleanup; trap cleanup EXIT
+echo
+
+echo "[12] approved guarded change + shellcheck failure: still blocked"
+make_fixtures
+stage_guarded_fixture
+write_test_approval
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                               "an approval never clears shellcheck"
+assert_contains "$OUT" "owner approval bound to this exact tree"  "the lifecycle verdict alone was cleared"
+assert_contains "$OUT" "beta_undefined_ascii"                     "shellcheck still ran and reported"
+cleanup; trap cleanup EXIT
+echo
+
+echo "[13] approved guarded change + planted secret: still blocked"
+if command -v gitleaks >/dev/null 2>&1; then
+  # Assembled at runtime so this harness file itself never contains a token.
+  TOKEN="gh""p_$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 36)"
+  printf 'export const precommitLifecycleGuardFixture = "%s";\n' "$TOKEN" > "$GUARDED_FIXTURE"
+  git add -- "$GUARDED_FIXTURE"
+  write_test_approval
+  OUT=$(run_hook); RC=$?
+  assert_eq "$RC" "1"                                               "an approval never clears gitleaks"
+  assert_contains "$OUT" "owner approval bound to this exact tree"  "the lifecycle verdict alone was cleared"
+  assert_contains "$OUT" "gitleaks detected secrets"                "gitleaks still ran and blocked"
+else
+  echo "  SKIP gitleaks not installed here (CI image installs shellcheck + ripgrep only)"
+fi
+cleanup; trap cleanup EXIT
+echo
+
+echo "[14] approved invalid workflow: actionlint still blocks"
+if command -v actionlint >/dev/null 2>&1; then
+  printf 'name: approval fixture\non: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ${{ not.a.context }}\n' \
+    > "$WORKFLOW_FIXTURE"
+  git add -- "$WORKFLOW_FIXTURE"
+  write_test_approval
+  OUT=$(run_hook); RC=$?
+  assert_eq "$RC" "1"                                               "an approval never clears actionlint"
+  assert_contains "$OUT" "owner approval bound to this exact tree"  "the guarded workflow itself was approved"
+  assert_contains "$OUT" "actionlint failed"                        "actionlint still ran and blocked"
+else
+  echo "  SKIP actionlint not installed here (the CI gate is .github/workflows/actionlint.yml)"
+fi
+cleanup; trap cleanup EXIT
+echo
+
+echo "[15] approve refuses without a terminal (an agent cannot self-approve)"
+stage_guarded_fixture
+OUT=$(python3 tools/guarded_commit_approval.py approve </dev/null 2>&1); RC=$?
+if (exec </dev/tty) 2>/dev/null; then
+  echo "  SKIP this shell has a controlling terminal; the refusal path is proven in CI"
+else
+  assert_eq "$RC" "1"                                  "approve exits 1 with no controlling terminal"
+  assert_contains "$OUT" "needs the owner at a real terminal" "explains why it refused"
+fi
 cleanup; trap cleanup EXIT
 echo
 
