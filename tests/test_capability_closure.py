@@ -79,7 +79,13 @@ def test_the_committed_registry_has_no_unacknowledged_findings():
 def test_unified_ui_shell_records_the_merged_mobile_canary_truth():
     cap = next(c for c in _registry()["capabilities"] if c["id"] == "unified_ui_shell")
 
-    assert cap["state"] == "canary_enabled"
+    # Staging default by owner exception (#4284, 2026-10-05) — the record must
+    # say the charter's Gate 3 has NOT passed, so it is never read as that proof.
+    assert cap["state"] == "staging_enabled"
+    assert cap["environments"]["staging"] == "1"
+    assert "Gate 3" in cap["owner_exception"] and "NOT been passed" in cap["owner_exception"]
+    assert cap["environments"]["production"] == "unset"
+    assert cap["rollback"]
     assert cap["environments"]["canary"] == "1"
     assert any("mira-mobile" in consumer for consumer in cap["consumers"])
     assert "factorylm-ui-lab.yml:shared-ui" in cap["ci_jobs"]

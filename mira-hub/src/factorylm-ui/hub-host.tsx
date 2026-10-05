@@ -19,6 +19,7 @@
  * always available. `/feed` remains the default landing until Gate 6.
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import {
   PROFILES,
   createShellState,
@@ -75,6 +76,7 @@ import {
   latestRequestGate,
   metaFor,
   newThreadId,
+  onboardingRedirect,
   retainedStreamInterruption,
   searchForSelection,
   selectionFromSearch,
@@ -210,6 +212,17 @@ export function HubShellHost() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     void loadNotebooks();
   }, [loadNotebooks]);
+
+  // #4284 Codex F1: the shell is staging's landing page, so an unfinished
+  // tenant is sent into the setup wizard exactly as /feed does (#1901).
+  const router = useRouter();
+  useEffect(() => {
+    let cancelled = false;
+    void onboardingRedirect((path) => fetch(`${API_BASE}${path}`, { cache: "no-store" })).then((to) => {
+      if (to && !cancelled) router.replace(to);
+    });
+    return () => { cancelled = true; };
+  }, [router]);
 
   // Codex r15–r16 F30: the ONE gate for starting manual-search following. Every
   // seed (hydration in loadDetail, confirm) goes through seedManualSearch, so
