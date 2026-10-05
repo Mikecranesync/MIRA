@@ -22,6 +22,7 @@
  */
 import { withTenantContext } from "@/lib/tenant-context";
 import type { NotebookSource } from "@/lib/equipment-notebooks";
+import type { CandidateTrail } from "@/lib/manual-discovery";
 import { attachFileToTargetsTx } from "@/lib/workspace-files";
 import type { SpanContext } from "@opentelemetry/api";
 import {
@@ -84,6 +85,9 @@ export interface AcquisitionRecord {
   download_reason?: string | null;
   /** Set at read time: the acquired source was since removed or rejected by the technician. */
   source_removed?: boolean;
+  /** Why the search picked what it picked: queries, each candidate's read/verdict/rank
+   *  (Golden Walk 2026-10-05). Observability only; nothing reads it for a decision. */
+  candidate_trail?: CandidateTrail;
 }
 
 export interface ConfirmedIdentity {
@@ -384,6 +388,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     download_reason: downloadReason,
     linked: p.linked === true,
     ...(p.removedByTechnician === true ? { source_removed: true } : {}),
+    ...(out.candidateTrail ? { candidate_trail: out.candidateTrail } : {}),
   };
 }
 

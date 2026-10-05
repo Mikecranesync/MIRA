@@ -126,6 +126,17 @@ export function setSpanAttrs(attrs: SpanAttrs, span?: Span): void {
   target.setAttributes(sanitizeAttrs(attrs));
 }
 
+/**
+ * Record a span EVENT (a timestamped attribute bag on one span), through the
+ * same allowlist + clamp + redaction as span attributes. Used for one event per
+ * manual-acquisition candidate, so a single trace explains why a document won.
+ */
+export function addSpanEvent(name: string, attrs: SpanAttrs, span?: Span): void {
+  const target = span ?? trace.getActiveSpan();
+  if (!target) return;
+  target.addEvent(name, sanitizeAttrs(attrs));
+}
+
 export function activeTraceId(): string | null {
   const span = trace.getActiveSpan();
   if (!span || !span.isRecording()) return null;

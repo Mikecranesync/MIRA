@@ -24,11 +24,16 @@ import {
   releaseIngestClaim,
 } from "@/lib/workspace-files";
 import { ingestPdfToNode, deleteOrphanNodeIngest, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
-import { discoverManual, allowedHostsForCandidate, isOemDocumentationHost } from "@/lib/manual-discovery";
+import {
+  discoverManual,
+  allowedHostsForCandidate,
+  isOemDocumentationHost,
+  type CandidateTrail,
+} from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
 import type { SpanContext } from "@opentelemetry/api";
-import { safeSpan, setActiveSpanAttrs } from "@/capabilities/observability/acquisition-spans";
+import { addActiveSpanEvent, safeSpan, setActiveSpanAttrs } from "@/capabilities/observability/acquisition-spans";
 
 /** Manuals are big; 80 MB is generous for an OEM PDF and still bounded. */
 const MAX_MANUAL_BYTES = 80 * 1024 * 1024;
@@ -64,6 +69,10 @@ export interface ManualAcquisitionOutcome {
   status: ManualAcquisitionStatus;
   /** The route's response fields for this status, exactly as before the move. */
   payload: Record<string, unknown>;
+  /** Why the search picked what it picked (Golden Walk 2026-10-05). Kept OFF the
+   *  payload so no route response changes shape; only the acquisition record
+   *  persists it. Observability only. */
+  candidateTrail?: CandidateTrail | null;
 }
 
 export interface ManualAcquisitionInput {
@@ -197,7 +206,9 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
       "mira.acquisition.started_this_turn": turn !== undefined,
     },
     async () => {
-      const out = await acquireInner(input);
+      const sink: { trail: CandidateTrail | null } = { trail: null };
+      const out = await acquireInner(input, sink);
+      if (sink.trail) out.candidateTrail = sink.trail;
       setActiveSpanAttrs({ "mira.acquisition.outcome": out.status });
       return out;
     },
@@ -208,7 +219,44 @@ export async function acquireManualForIdentity(input: ManualAcquisitionInput): P
   );
 }
 
-async function acquireInner(input: ManualAcquisitionInput): Promise<ManualAcquisitionOutcome> {
+/**
+ * One span event per candidate: one trace answers "why did THIS document win?".
+ * Identity-free on purpose — acquisition spans never carry the machine's
+ * manufacturer/model, a candidate URL, host or title (#4160 R15, Codex #4194:
+ * see manual-acquisition-spans.test.ts's leak check). Those live only on the
+ * tenant-scoped acquisition record; `mira.candidate.rank` joins the two.
+ */
+function recordTrailOnSpan(trail: CandidateTrail): void {
+  setActiveSpanAttrs({
+    "mira.acquisition.trail.stop": trail.stop,
+    "mira.acquisition.trail.queries": trail.queries.map((q) => `${q.pass ?? "?"}:${q.result ?? "?"}:${q.hits ?? "?"}`),
+    "mira.acquisition.trail.candidate_count": trail.candidateCount,
+  });
+  for (const c of trail.candidates) {
+    addActiveSpanEvent("manual_acquisition.candidate", {
+      "mira.candidate.rank": c.rank,
+      "mira.candidate.score": c.score,
+      "mira.candidate.pass": c.pass,
+      "mira.candidate.read": c.read,
+      "mira.candidate.read_reason": c.readReason,
+      "mira.candidate.not_queued": c.notQueued,
+      "mira.candidate.is_manual": c.isManual,
+      "mira.candidate.doc_type": c.docType,
+      "mira.candidate.scope": c.scope,
+      "mira.candidate.lists_fault_codes": c.listsFaultCodes,
+      "mira.candidate.language": c.language,
+      "mira.candidate.text_language": c.textLanguage,
+      "mira.candidate.confidence": c.confidence,
+      "mira.candidate.provider": c.provider,
+      "mira.candidate.selected": c.selected,
+    });
+  }
+}
+
+async function acquireInner(
+  input: ManualAcquisitionInput,
+  sink: { trail: CandidateTrail | null } = { trail: null },
+): Promise<ManualAcquisitionOutcome> {
   const { identity, notebookId } = input;
   const ctx = { tenantId: input.tenantId, userId: input.userId };
   const notebook = { nodeId: input.nodeId };
@@ -244,8 +292,10 @@ async function acquireInner(input: ManualAcquisitionInput): Promise<ManualAcquis
       "mira.acquisition.cost_usd":
         providerQueries === null ? null : Math.round(providerQueries * providerQueryCostUsd() * 1e6) / 1e6,
     });
+    if (d.candidateTrail) recordTrailOnSpan(d.candidateTrail);
     return d;
   });
+  sink.trail = discovery.candidateTrail ?? null;
   if (discovery.quotaExceeded) {
     // A cap denial must NEVER look like "no manual exists" (PRD R5, #4160 S4).
     // The service's own reason stays on the payload for diagnostics; the
