@@ -183,13 +183,14 @@ export function parseCandidateTrail(body: Record<string, unknown> | null | undef
   if (!t || typeof t !== "object") return null;
   const r = t as Record<string, unknown>;
   if (!Array.isArray(r.candidates)) return null;
-  const candidates: CandidateTrailRow[] = [];
-  for (const raw of r.candidates.slice(0, TRAIL_ROWS_PERSISTED)) {
+  const parsed: CandidateTrailRow[] = [];
+  // mira-ask sends at most 20 rows; parse a bounded number either way.
+  for (const raw of r.candidates.slice(0, 40)) {
     if (!raw || typeof raw !== "object") continue;
     const c = raw as Record<string, unknown>;
     const url = bareUrl(c.url);
     if (!url) continue;
-    candidates.push({
+    parsed.push({
       rank: numOrNull(c.rank),
       url,
       host: str(c.host),
@@ -210,6 +211,12 @@ export function parseCandidateTrail(body: Record<string, unknown> | null | undef
       selected: c.selected === true,
     });
   }
+  // Keep the first TRAIL_ROWS_PERSISTED rows, but never without the winner: a
+  // winner ranked past the cap takes the last slot, keeping its real rank
+  // (Codex #4253 F1).
+  let candidates = parsed.slice(0, TRAIL_ROWS_PERSISTED);
+  const winner = parsed.find((c) => c.selected);
+  if (winner && !candidates.includes(winner)) candidates = [...candidates.slice(0, TRAIL_ROWS_PERSISTED - 1), winner];
   const queries = (Array.isArray(r.queries) ? r.queries : [])
     .slice(0, 8)
     .filter((q): q is Record<string, unknown> => Boolean(q) && typeof q === "object")

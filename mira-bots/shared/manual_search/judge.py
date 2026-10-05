@@ -400,16 +400,21 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
     # cancels the batch keeps the partial count (#4160 R15, Codex #4194 r2 F4).
     _search._note_examined([cand["url"]])
     _READ_REASON.set(None)
+    # Which stage a read is in, so a read cut off by a deadline or cancellation is
+    # reported as interrupted at that stage, not as unread (Codex #4253 F2).
+    cand["_read_stage"] = "fetch"
     data = await fetch_pdf_bytes(cand["url"])
     if data is None:
         cand["judge"] = {"status": "unfetched", "reason": _READ_REASON.get()}
         return cand
     # The bytes are a real PDF — that is the same proof validate_pdf gives.
     cand["validated"] = True
+    cand["_read_stage"] = "extract"
     text = await extract_text(data)
     if not text.strip():
         cand["judge"] = {"status": "no_text", "reason": _READ_REASON.get()}
         return cand
+    cand["_read_stage"] = "judge"
     verdict = await judge_text(make, model, cand, text)
     if verdict is None:
         cand["judge"] = {
@@ -454,6 +459,14 @@ async def _judge_one(make: str, model: str, cand: dict) -> dict:
         ),
     )
     return cand
+
+
+def _mark_interrupted(cands: list[dict], why: str) -> None:
+    """Annotate reads that started but never finished; drop the stage marker from all."""
+    for c in cands:
+        stage = c.pop("_read_stage", None)
+        if stage and not c.get("judge"):
+            c["judge"] = {"status": "interrupted", "reason": f"{why}_during_{stage}"}
 
 
 def is_match(c: dict) -> bool:
@@ -623,7 +636,34 @@ async def judge_candidates(
     queue = queue[:MAX_TOTAL]
     trace["queue"] = [c["url"] for c in queue]
     trace["not_queued"] = not_queued
-    trace["stop"] = "queue_exhausted"
+    try:
+        return await _judge_queue(
+            make,
+            model,
+            candidates,
+            queue,
+            started_at=started_at,
+            deadline_at=deadline_at,
+            trace=trace,
+        )
+    except asyncio.CancelledError:
+        # The caller's own timeout cancelled the search mid-read: say so, and keep
+        # cancellation propagating (Codex #4253 F2).
+        trace["stop"] = "cancelled"
+        _mark_interrupted(candidates, "cancelled")
+        raise
+
+
+async def _judge_queue(
+    make: str,
+    model: str,
+    candidates: list[dict],
+    queue: list[dict],
+    *,
+    started_at: float | None,
+    deadline_at: float | None,
+    trace: dict,
+) -> list[dict]:
     # The upgrade deadline counts from when the whole search began (search_manual
     # passes it): judging that starts late must not run past the discovery timeout.
     t0 = time.monotonic() if started_at is None else started_at
@@ -643,6 +683,7 @@ async def judge_candidates(
                     reads.cancel()
                     logger.info("judge upgrade skipped: %.1fs left", max(remaining, 0.0))
                     trace["stop"] = "upgrade_skipped_no_time"
+                    _mark_interrupted(batch, "upgrade_skipped")
                     break
                 await asyncio.wait_for(reads, timeout=remaining)
             else:
@@ -650,6 +691,7 @@ async def judge_candidates(
         except asyncio.TimeoutError:
             logger.info("judge upgrade batch hit its deadline; keeping the match in hand")
             trace["stop"] = "upgrade_deadline"
+            _mark_interrupted(batch, "upgrade_deadline")
             break
         except Exception as e:  # noqa: BLE001 — belt and braces; _judge_one never raises
             logger.info("judge_candidates degraded: %s", e)
@@ -662,6 +704,9 @@ async def judge_candidates(
             for c in queue[MAX_CANDIDATES:]:
                 trace["not_queued"][c["url"]] = "upgrade_batch_limit"
             queue = queue[:MAX_CANDIDATES]
+    else:
+        trace["stop"] = "queue_exhausted"
+    _mark_interrupted(candidates, "unfinished")
     return rank(candidates)
 
 

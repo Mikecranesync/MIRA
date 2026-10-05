@@ -74,6 +74,15 @@ describe("parseCandidateTrail", () => {
     expect(t?.candidates).toHaveLength(TRAIL_ROWS_PERSISTED);
   });
 
+  it("Codex #4253 F1: keeps the winner when it ranks past the cap, with its real rank", () => {
+    const rows = Array.from({ length: 20 }, (_, i) => row(i, { selected: i === 15 }));
+    const t = parseCandidateTrail({ candidate_trail: { version: 1, candidates: rows } });
+    expect(t?.candidates).toHaveLength(TRAIL_ROWS_PERSISTED);
+    const winners = t?.candidates.filter((c) => c.selected) ?? [];
+    expect(winners).toHaveLength(1);
+    expect(winners[0].rank).toBe(15);
+  });
+
   it("keeps only known primitive fields", () => {
     const t = parseCandidateTrail({
       candidate_trail: {

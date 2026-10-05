@@ -533,9 +533,20 @@ class AcquisitionTrail:
             "version": TRAIL_VERSION,
             "queries": self.queries,
             "stop": self.judge.get("stop"),
-            "candidates": rows[:TRAIL_MAX_CANDIDATES],
+            "candidates": _capped_keeping_winner(rows),
             "candidate_count": len(rows),
         }
+
+
+def _capped_keeping_winner(rows: list[dict]) -> list[dict]:
+    """The first TRAIL_MAX_CANDIDATES rows, but never without the winner: a fallback
+    winner ranked past the cap takes the last slot, keeping its real rank (Codex
+    #4253 F1)."""
+    kept = rows[:TRAIL_MAX_CANDIDATES]
+    if any(r["selected"] for r in kept):
+        return kept
+    winner = next((r for r in rows if r["selected"]), None)
+    return kept if winner is None else kept[: TRAIL_MAX_CANDIDATES - 1] + [winner]
 
 
 _trail: contextvars.ContextVar[AcquisitionTrail | None] = contextvars.ContextVar(

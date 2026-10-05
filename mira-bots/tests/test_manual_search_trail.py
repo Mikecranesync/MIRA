@@ -284,3 +284,157 @@ def test_endpoint_attaches_the_trail_when_nothing_is_found(monkeypatch):
     body = _endpoint(monkeypatch, None)
     assert body["found"] is False
     assert body["candidate_trail"]["candidates"][0]["selected"] is False
+
+
+# ── Codex #4253 r1 ───────────────────────────────────────────────────────────
+
+
+def test_f1_the_winner_survives_the_row_cap():
+    """A fallback winner ranked beyond the cap is still in the trail, with its real rank."""
+    pool = [
+        {
+            "url": f"https://oem.example.com/d{i}.pdf",
+            "host": "oem.example.com",
+            "score": 200 - i,
+            "is_direct_pdf": True,
+        }
+        for i in range(30)
+    ]
+    trail = search_mod.AcquisitionTrail(candidates=pool)
+    out = trail.to_dict("https://oem.example.com/d24.pdf")
+    assert len(out["candidates"]) == search_mod.TRAIL_MAX_CANDIDATES
+    selected = [r for r in out["candidates"] if r["selected"]]
+    assert len(selected) == 1 and selected[0]["rank"] == 24
+    assert out["candidate_count"] == 30
+
+
+def test_f1_a_winner_inside_the_cap_is_not_duplicated():
+    pool = [
+        {"url": f"https://oem.example.com/d{i}.pdf", "score": 1, "is_direct_pdf": True}
+        for i in range(30)
+    ]
+    out = search_mod.AcquisitionTrail(candidates=pool).to_dict("https://oem.example.com/d3.pdf")
+    assert [r["rank"] for r in out["candidates"]] == list(range(search_mod.TRAIL_MAX_CANDIDATES))
+    assert sum(r["selected"] for r in out["candidates"]) == 1
+
+
+async def test_f2_a_cancelled_read_is_reported_as_interrupted_not_exhausted(monkeypatch):
+    import asyncio
+
+    started = asyncio.Event()
+
+    async def stalled_fetch(url, max_bytes=judge.MAX_BYTES):
+        started.set()
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", stalled_fetch)
+    cands = [
+        {
+            "url": "https://oem.example.com/m.pdf",
+            "title": "Model X manual",
+            "score": 150,
+            "is_direct_pdf": True,
+        }
+    ]
+    trace: dict = {}
+    task = asyncio.create_task(judge.judge_candidates("ExampleOEM", "Model X", cands, trace=trace))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert trace["stop"] == "cancelled"
+    assert cands[0]["judge"] == {"status": "interrupted", "reason": "cancelled_during_fetch"}
+
+
+async def test_f2_an_upgrade_batch_past_its_deadline_marks_its_reads_interrupted(monkeypatch):
+    import asyncio
+
+    monkeypatch.setattr(judge, "UPGRADE_DEADLINE_S", 0.3)
+    monkeypatch.setattr(judge, "UPGRADE_MIN_BATCH_S", 0.01)
+    monkeypatch.setattr(judge, "MAX_CANDIDATES", 1)
+    monkeypatch.setattr(judge, "_router", _Router())
+
+    async def fetch(url, max_bytes=judge.MAX_BYTES):
+        if url.endswith("slow.pdf"):
+            await asyncio.sleep(5)
+        return b"%PDF-1.4 " + url.encode()
+
+    async def extract(data, max_pages=8, max_chars=7000):
+        # The first document is a match but not ideal (no fault list): it buys an upgrade batch.
+        return EN_TEXT.replace("fault", "status")
+
+    class _NoFaults(_Router):
+        async def complete(self, messages, max_tokens=1024, session_id="x", sanitize=True):
+            content, usage = await super().complete(messages, max_tokens, session_id, sanitize)
+            return content.replace('"lists_fault_codes": true', '"lists_fault_codes": false'), usage
+
+    monkeypatch.setattr(judge, "_router", _NoFaults())
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", fetch)
+    monkeypatch.setattr(judge, "extract_text", extract)
+    cands = [
+        {
+            "url": "https://oem.example.com/first.pdf",
+            "title": "Model X manual",
+            "score": 150,
+            "is_direct_pdf": True,
+        },
+        {
+            "url": "https://oem.example.com/slow.pdf",
+            "title": "Model X manual",
+            "score": 140,
+            "is_direct_pdf": True,
+        },
+    ]
+    trace: dict = {}
+    await judge.judge_candidates("ExampleOEM", "Model X", cands, trace=trace)
+    assert trace["stop"] == "upgrade_deadline"
+    slow = next(c for c in cands if c["url"].endswith("slow.pdf"))
+    assert slow["judge"] == {"status": "interrupted", "reason": "upgrade_deadline_during_fetch"}
+
+
+def test_f2_endpoint_timeout_reports_the_interruption(monkeypatch):
+    import asyncio
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import ask_api.manual_discovery as md
+
+    monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "k")
+    monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.5")
+
+    async def serper(query, num=10):
+        return [
+            {
+                "link": "https://oem.example.com/docs/model-x/user-manual.pdf",
+                "title": "Model X user manual",
+            }
+        ]
+
+    async def stalled_fetch(url, max_bytes=judge.MAX_BYTES):
+        await asyncio.sleep(30)
+
+    async def no_link(make):
+        return None
+
+    async def ok(_identity):
+        return "ok"
+
+    monkeypatch.setattr(search_mod, "_serper_search", serper)
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", stalled_fetch)
+    monkeypatch.setattr(judge, "judge_enabled", lambda: True)
+    monkeypatch.setattr(md, "oem_request_link", no_link)
+    import shared.manual_search.quota as quota
+
+    monkeypatch.setattr(quota, "reserve_provider_query", ok)
+    app = FastAPI()
+    app.include_router(md.router)
+    client = TestClient(app, headers={"X-Mira-Key": "k", "X-Mira-Tenant": "t", "X-Mira-User": "u"})
+    body = client.post(
+        "/manual-discovery/search", json={"manufacturer": "ExampleOEM", "model": "Model X"}
+    ).json()
+    assert body["reason"] == "search_unavailable"
+    trail = body["candidate_trail"]
+    assert trail["stop"] == "cancelled"
+    row = trail["candidates"][0]
+    assert row["read"] == "interrupted" and row["read_reason"] == "cancelled_during_fetch"
