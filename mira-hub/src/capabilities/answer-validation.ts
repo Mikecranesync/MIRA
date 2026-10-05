@@ -929,17 +929,6 @@ function questionCodes(question: string): Set<string> {
   return new Set((question.match(FAULT_CODE_TOKEN) ?? []).map((t) => t.toLowerCase()));
 }
 
-/** "F004 is DC bus undervoltage" defines the code with no article (Codex #4238
- *  r4 F4). A bare "is" counts only when a short NOUN PHRASE ending in a
- *  fault-kind noun follows: the first word is not a participle or adverb and no
- *  word in it is a preposition, so "F004 is cleared after the fault is
- *  resolved", "is shown with an error message" and "is still active" do not
- *  (r5 F5). */
-const BARE_IS_DEFINITION =
-  "is\\s+(?!(?:[a-z]+ed|shown|set|reset|seen|given|done|held|found|known|written|still|also|now|then|not|only|being|usually|typically|often|generally)\\b)(?:(?!(?:after|before|by|with|when|until|if|on|in|at|from|while|during|once|for|to)\\b)[\\w-]+\\s+){0,4}?";
-const FAULT_KIND_NOUN =
-  "(?:fault|error|alarm|trip|condition|overvoltage|undervoltage|overcurrent|overload|overheat\\w*|over-?temperature|over-?voltage|under-?voltage|over-?current|loss|failure|short\\s+circuit|ground\\s+fault)";
-
 function codeMeaningViolation(
   answer: string,
   question: string,
@@ -977,7 +966,7 @@ function codeMeaningViolation(
         // not either: "Fault F49123 on a Siemens drive generally indicates…"
         // shipped uncited on staging (Golden Walk 2026-10-05).
         const defFrame = new RegExp(
-          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?)?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when|${BARE_IS_DEFINITION}${FAULT_KIND_NOUN})\\b`,
+          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?(?:\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?)?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"

@@ -256,13 +256,6 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
     expect(JSON.stringify(call?.[2] ?? {})).not.toMatch(/overload/i);
   });
 
-  it("procedural 'is cleared after' wording survives in the general lane (Codex #4238 r5 F5)", async () => {
-    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("F004 is cleared after the fault is resolved."), { status: 200 })));
-    const text = await answerOf(await POST(req({ message: "How do I clear fault F004", mode: "general" }), params));
-    expect(text).toContain("F004 is cleared after the fault is resolved.");
-  });
-
   it("keeps a cited fault-code meaning on a grounded turn", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([

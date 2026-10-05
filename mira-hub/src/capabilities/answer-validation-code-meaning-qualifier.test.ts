@@ -103,22 +103,3 @@ describe("a refusal-classified draft is still checked (Codex r2 F2)", () => {
     expect(run("I cannot find this code in the supplied manual.", F49123_Q, { refused: true }).ok).toBe(true);
   });
 });
-
-describe("a bare 'is' definition is a definition (Codex r4 F4, r5 F5)", () => {
-  const F004_Q = "What does fault F004 mean on this drive";
-  it("withholds 'F004 is DC bus undervoltage'", () => {
-    expect(run("Fault F004 is DC bus undervoltage.", F004_Q).ok).toBe(false);
-    expect(run("F004 is DC bus undervoltage.", F004_Q).ok).toBe(false);
-  });
-  it("control: procedural and display wording is not a definition", () => {
-    for (const a of [
-      "F004 is shown on the display after the drive trips.",
-      "F004 is cleared by pressing Stop once the cause is fixed.",
-      "F004 is still active on the keypad.",
-      "F004 is cleared after the fault is resolved.",
-      "F004 is shown with an error message on the display.",
-    ]) {
-      expect(run(a, "How do I clear fault F004").ok, a).toBe(true);
-    }
-  });
-});
