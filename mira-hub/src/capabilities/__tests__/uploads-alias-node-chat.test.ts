@@ -79,7 +79,14 @@ describe("doc-scoped node chat on a duplicate upload (F6)", () => {
     const res = await POST(req(DUP), { params: Promise.resolve({ id: NODE }) });
     expect(res.status).not.toBe(404);
     expect(filenameLookups).toEqual([ORIG]);
-    expect(vi.mocked(retrieveNodeChunks).mock.calls[0]?.[3]).toMatchObject({ docId: DUP, approvedSourceDocIds: [DUP] });
+    const opts = vi.mocked(retrieveNodeChunks).mock.calls[0]?.[3];
+    expect(opts).toMatchObject({ docId: DUP, approvedSourceDocIds: [DUP] });
+    expect(opts?.docAliases?.get(DUP)).toBe(ORIG);
+    // F8: resolved once, BEFORE the tenant transaction took its connection.
+    expect(vi.mocked(resolveDuplicateDocAliases)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(resolveDuplicateDocAliases).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(withTenantContext).mock.invocationCallOrder[0],
+    );
   });
 
   it("control: a document that owns no chunks and is not a duplicate is still a 404", async () => {

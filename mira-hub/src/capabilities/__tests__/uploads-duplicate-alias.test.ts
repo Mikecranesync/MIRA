@@ -10,10 +10,12 @@ import type { PoolClient } from "pg";
  *
  * Owner decision 2026-10-05 ("Alias at read"): one chunk set; consumers follow
  * "duplicate of" one hop to the original. resolveDuplicateDocAliases is the
- * single tenant-validated resolver; retrieveNodeChunks applies it at the
- * retrieval choke point and labels the original's chunks with the id the
- * caller asked for, so citations, admission and source snapshots stay
- * consistent with the requested scope.
+ * single tenant-validated resolver; callers resolve BEFORE they open the
+ * connection they pass to retrieveNodeChunks (Codex @ cb0741f6e, F8 — a nested
+ * pool connection starved the 5-connection pool), and retrieveNodeChunks
+ * follows the map, labelling the original's chunks with the id the caller
+ * asked for, so citations, admission and source snapshots stay consistent with
+ * the requested scope.
  */
 
 const ORIG = "aaaaaaaa-0000-4000-8000-00000000000a";
@@ -102,8 +104,9 @@ describe("retrieveNodeChunks follows a duplicate to its original's chunks", () =
   const scopeParams = (calls: Call[]) =>
     calls.filter((c) => /AND doc_id = ANY\(\$5::uuid\[\]\)/.test(c.sql)).map((c) => c.params[4]);
 
+  const aliases = new Map([[DUP, ORIG]]);
+
   it("queries the original's chunks for a duplicate in scope, and labels them with the requested id", async () => {
-    db.rows = [{ id: DUP, original_id: ORIG }];
     const { client: c, calls } = client(ORIG);
     const chunks = await retrieveNodeChunks(c, T, "what does F004 mean", {
       nodeId: "n1",
@@ -111,6 +114,7 @@ describe("retrieveNodeChunks follows a duplicate to its original's chunks", () =
       docIds: [DUP],
       approvedSourceDocIds: [DUP],
       validatedDocScope: true,
+      docAliases: aliases,
     });
     const scopes = scopeParams(calls);
     expect(scopes.length).toBeGreaterThan(0);
@@ -120,21 +124,25 @@ describe("retrieveNodeChunks follows a duplicate to its original's chunks", () =
   });
 
   it("doc-scoped (single docId) chat follows the alias the same way", async () => {
-    db.rows = [{ id: DUP, original_id: ORIG }];
     const { client: c, calls } = client(ORIG);
-    const chunks = await retrieveNodeChunks(c, T, "what does F004 mean", { nodeId: "n1", unsPath: null, docId: DUP });
+    const chunks = await retrieveNodeChunks(c, T, "what does F004 mean", {
+      nodeId: "n1",
+      unsPath: null,
+      docId: DUP,
+      docAliases: aliases,
+    });
     for (const s of scopeParams(calls)) expect(s).toEqual([ORIG]);
     expect(chunks.every((ch) => ch.docId === DUP)).toBe(true);
   });
 
   it("when the original is ALSO in scope, its chunks keep the original's id (no double count)", async () => {
-    db.rows = [{ id: DUP, original_id: ORIG }];
     const { client: c, calls } = client(ORIG);
     const chunks = await retrieveNodeChunks(c, T, "what does F004 mean", {
       nodeId: "n1",
       unsPath: null,
       docIds: [ORIG, DUP],
       validatedDocScope: true,
+      docAliases: aliases,
     });
     for (const s of scopeParams(calls)) expect(s).toEqual([ORIG]);
     expect(chunks.every((ch) => ch.docId === ORIG)).toBe(true);
@@ -152,9 +160,17 @@ describe("retrieveNodeChunks follows a duplicate to its original's chunks", () =
     expect(chunks.every((ch) => ch.docId === OTHER)).toBe(true);
   });
 
-  it("an unscoped (node subtree) read never consults the resolver", async () => {
-    const { client: c } = client(OTHER);
-    await retrieveNodeChunks(c, T, "what does F004 mean", { nodeId: "n1", unsPath: null });
+  it("F8: retrieval never takes a second pool connection, even with a doc scope", async () => {
+    db.rows = [{ id: DUP, original_id: ORIG }];
+    const { client: c } = client(ORIG);
+    await retrieveNodeChunks(c, T, "what does F004 mean", {
+      nodeId: "n1",
+      unsPath: null,
+      docIds: [DUP],
+      validatedDocScope: true,
+      docAliases: aliases,
+    });
+    await retrieveNodeChunks(c, T, "what does F004 mean", { nodeId: "n1", unsPath: null, docId: DUP });
     expect(db.calls).toEqual([]);
   });
 });

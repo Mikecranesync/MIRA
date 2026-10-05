@@ -56,6 +56,7 @@ import {
 } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
+import { resolveDuplicateDocAliases } from "@/lib/uploads";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
@@ -2452,6 +2453,12 @@ async function handleChatTurn(
   const retrievalDiagnostics: { vectorLane?: string; queryRewrite?: string } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
+
+  // Review of #4091 (Codex @ 1082ad199/cb0741f6e, F6/F8): a "duplicate of"
+  // source owns no chunks; retrieval follows it to its original. Resolved
+  // before the tenant transaction takes a connection, never inside it.
+  const docAliases =
+    notebookRetrieval && docIds.length > 0 ? await resolveDuplicateDocAliases(ctx.tenantId, docIds) : undefined;
   const chunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
         // Raw pool on purpose (hybrid corpus law — see manual-rag.ts header):
@@ -2520,6 +2527,7 @@ async function handleChatTurn(
             // The manual-vocabulary restatement of the message (query-rewrite.ts);
             // undefined when the flag is off or the rewrite failed.
             rewrittenQuery: queryRewrite.rewritten ?? undefined,
+            docAliases,
           }),
         ),
       );
