@@ -173,6 +173,26 @@ tiers:
       crawl_pattern: direct
       description: "SLC 500 Modular Hardware Style user manual (1747-UM011) — SLC 5/01-5/05 processors, status LEDs, major/minor faults, troubleshooting"
 
+    # ── Schneider Electric (Altivar drives) — download.schneider-electric.com/files is
+    # public, zero-login, and has no robots.txt; it 301s to download.se.com, whose
+    # robots.txt disallows only PNG renditions, software and firmware. The Programming
+    # Manual carries the detected-error list (e.g. OBF = DC bus overvoltage); the
+    # Getting Started guide web search finds does not (Golden Walk 2026-10-05). The
+    # se.com document page 403s to automated clients; this download URL does not.
+    # Verified with this crawler's User-Agent 2026-10-05: 206/application/pdf,
+    # NVE41295.06 (04/2025), English, 460 pages, 7,165,399 bytes,
+    # sha256 f5e9bb48167a2787e3186b37a3878e57777debd814ff280b781ecc9271d6d7d5.
+    schneider_altivar_atv320_programming:
+      url: "https://download.schneider-electric.com/files?p_Doc_Ref=NVE41295"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Schneider Electric
+      equipment_id: Altivar-ATV320
+      # #4141: model-bound retrieval filters on model_number
+      model_number: "ATV320"
+      crawl_pattern: direct
+      description: "Altivar Machine ATV320 Programming Manual (NVE41295) — parameters, detected-error codes, diagnostics and troubleshooting"
+
     # ── Siemens (SINAMICS drives) — cache.industry.siemens.com/dl/files/ is public,
     # zero-login (robots.txt disallows only /dl/dl-media/ + /dl/media/, not /dl/files/).
     # List Manuals carry the full fault/alarm/parameter reference. Verified 2026-07-27.
