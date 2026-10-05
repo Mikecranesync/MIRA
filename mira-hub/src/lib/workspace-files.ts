@@ -511,38 +511,44 @@ export async function attachFileToTargets(
 ): Promise<{ ok: true; links: AttachOutcome[] } | AttachError> {
   if (!UUID_RE.test(fileId)) return { ok: false, error: "file_not_found" };
   try {
-    return await withTenantContext(tenantId, async (c) => {
-      // FOR SHARE: an upload delete clears this file's upload_id and removes its
-      // notebook sources under FOR UPDATE on the same row (deleteUploadAndKnowledge).
-      // Holding the row for this transaction means the source row written below
-      // uses an upload_id that cannot be deleted underneath it — a delete either
-      // runs first (we then read NULL and add no source) or waits and removes
-      // what we added (review of #4084).
-      const f = await c.query<{ id: string; upload_id: string | null }>(
-        `SELECT id::text AS id, upload_id::text AS upload_id
-           FROM namespace_direct_uploads
-          WHERE tenant_id = $1::uuid AND id = $2::uuid
-          FOR SHARE`,
-        [tenantId, fileId],
-      );
-      if (f.rows.length === 0) {
-        return { ok: false as const, error: "file_not_found" as const };
-      }
-      const links = await attachTargetsTx(
-        c,
-        tenantId,
-        { id: f.rows[0].id, uploadId: f.rows[0].upload_id },
-        targets,
-        opts.createdBy ?? null,
-      );
-      return { ok: true as const, links };
-    });
+    return await withTenantContext(tenantId, (c) => attachFileToTargetsTx(c, tenantId, fileId, targets, opts));
   } catch (err) {
     if (err instanceof TargetNotFoundError) {
       return { ok: false, error: "target_not_found", targetType: err.targetType, targetId: err.targetId };
     }
     throw err;
   }
+}
+
+/**
+ * attachFileToTargets inside the CALLER's transaction, so a caller can make the
+ * attach conditional on rows it has locked in the same transaction (the
+ * background manual search honoring a technician's removal — Codex #4118 r15
+ * F19). Throws TargetNotFoundError like attachTargetsTx.
+ */
+export async function attachFileToTargetsTx(
+  c: PoolClient,
+  tenantId: string,
+  fileId: string,
+  targets: AttachTarget[],
+  opts: { createdBy?: string | null } = {},
+): Promise<{ ok: true; links: AttachOutcome[] } | { ok: false; error: "file_not_found" }> {
+  if (!UUID_RE.test(fileId)) return { ok: false, error: "file_not_found" };
+  const f = await c.query<{ id: string; upload_id: string | null }>(
+    `SELECT id::text AS id, upload_id::text AS upload_id
+       FROM namespace_direct_uploads
+      WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+    [tenantId, fileId],
+  );
+  if (f.rows.length === 0) return { ok: false, error: "file_not_found" };
+  const links = await attachTargetsTx(
+    c,
+    tenantId,
+    { id: f.rows[0].id, uploadId: f.rows[0].upload_id },
+    targets,
+    opts.createdBy ?? null,
+  );
+  return { ok: true, links };
 }
 
 /**
