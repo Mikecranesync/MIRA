@@ -269,6 +269,37 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
     expect(text).not.toMatch(/overload/i);
   });
 
+  it("a citation on another clause of the same sentence does not carry a definition out (Codex #4238 r2 F1)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      { docId: "d1", filename: "G120C.pdf", page: 12, content: "Commissioning the converter with the operator panel." },
+    ]);
+    const sameSentence = "The converter is commissioned using its operator panel [1]; Fault F49123 on a Siemens drive generally indicates a motor overload condition.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(sameSentence), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive" }), params));
+    expect(text).not.toMatch(/overload/i);
+  });
+
+  for (const lane of ["general", "grounded"] as const) {
+    it(`a refusal-classified draft cannot carry a definition out in the ${lane} lane (Codex #4238 r2 F2)`, async () => {
+      if (lane === "general") {
+        nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+      } else {
+        nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+        ragMock.retrieveNodeChunks.mockResolvedValue([
+          { docId: "d1", filename: "G120C.pdf", page: 12, content: "Commissioning the converter with the operator panel." },
+        ]);
+      }
+      const mixed = `I cannot find this code in the supplied manual. ${UNCITED_DEFINITION}`;
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(mixed), { status: 200 })));
+      const body = { message: "What does fault F49123 mean on this drive", ...(lane === "general" ? { mode: "general" } : {}) };
+      const text = await answerOf(await POST(req(body), params));
+      expect(text).not.toMatch(/overload/i);
+      const call = nbMock.recordTurn.mock.calls.at(-1) as unknown[] | undefined;
+      expect(JSON.stringify(call?.[2] ?? {})).not.toMatch(/overload/i);
+    });
+  }
+
   it("keeps a cited fault-code meaning on a grounded turn", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([

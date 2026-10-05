@@ -27,13 +27,17 @@ const F30002_Q = "What does fault F30002 mean on this drive";
 const F30002_A =
   "Fault **F30002** on a Siemens SINAMICS G120C indicates a **“DC‑bus over‑voltage”** condition. The drive has detected that the voltage on the DC link is too high.";
 
-const run = (answerText: string, question: string, extra: { general?: boolean; resolvingCitationIds?: string[] } = {}) =>
+const run = (
+  answerText: string,
+  question: string,
+  extra: { general?: boolean; resolvingCitationIds?: string[]; refused?: boolean } = {},
+) =>
   validateAnswer({
     answerText,
     question,
     general: extra.general ?? true,
     served: true,
-    refused: false,
+    refused: extra.refused ?? false,
     evidenceSufficient: false,
     resolvingCitationIds: extra.resolvingCitationIds,
   });
@@ -82,6 +86,11 @@ describe("a retrieved-but-uncited turn is held to the code-meaning rule", () => 
     expect(run("Fault F49123 indicates a motor overload. [1]", F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(true);
   });
 
+  it("is not exempted by a citation on another clause of the same sentence (Codex r2 F1)", () => {
+    const sameSentence = "The converter is commissioned using its operator panel [1]; Fault F49123 on a Siemens drive generally indicates a motor overload condition.";
+    expect(run(sameSentence, F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
+  });
+
   it("does not accept a marker that resolves to nothing", () => {
     expect(run("Fault F49123 indicates a motor overload [7].", F49123_Q, { general: false, resolvingCitationIds: ["1"] }).ok).toBe(false);
   });
@@ -112,5 +121,25 @@ describe("a safety warning cannot carry an uncited definition out (Codex r1 F2)"
     if (v.ok) return;
     expect(v.kind).toBe("hazard_warning");
     expect(v.replacement).toContain("Check the DC bus first.");
+  });
+});
+
+describe("a refusal-classified draft is still checked (Codex r2 F2)", () => {
+  const MIXED = `I cannot find this code in the supplied manual. ${F49123_A}`;
+  for (const lane of [
+    { name: "general", extra: { general: true, refused: true } },
+    { name: "grounded", extra: { general: false, refused: true, resolvingCitationIds: ["1"] } },
+  ]) {
+    it(`withholds a mixed refusal + definition in the ${lane.name} lane`, () => {
+      const v = run(MIXED, F49123_Q, lane.extra);
+      expect(v.ok).toBe(false);
+      if (v.ok) return;
+      expect(v.violation).toBe("unsupported-specificity:code-meaning-asserted");
+    });
+  }
+
+  it("control: an honest refusal alone is untouched", () => {
+    expect(run("I can't verify what F49123 means on this drive from the supplied manual.", F49123_Q, { refused: true }).ok).toBe(true);
+    expect(run("I cannot find this code in the supplied manual.", F49123_Q, { general: false, refused: true, resolvingCitationIds: ["1"] }).ok).toBe(true);
   });
 });
