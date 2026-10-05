@@ -190,6 +190,9 @@ tiers:
       equipment_id: Altivar-ATV320
       # #4141: model-bound retrieval filters on model_number
       model_number: "ATV320"
+      # 460 pages; the detected-error troubleshooting (OBF cause/remedy) is on page
+      # 412, past the parsers' 300-page default (Codex #4254 F1).
+      max_pages: 480
       crawl_pattern: direct
       description: "Altivar Machine ATV320 Programming Manual (NVE41295) — parameters, detected-error codes, diagnostics and troubleshooting"
 
