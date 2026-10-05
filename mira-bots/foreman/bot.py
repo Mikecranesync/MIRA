@@ -17,6 +17,7 @@ import os
 import sys
 from typing import Any, Optional
 
+from shadow import ShadowRecorder, ShadowStore, network_enabled
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
 from specialists import render_roster, routing_card_enabled
@@ -25,6 +26,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+
 logger = logging.getLogger("foreman")
 
 try:
@@ -155,6 +157,18 @@ class ForemanBot:
         # Register event handlers
         self.app.event("message")(self.handle_message)
 
+        # FLEET-PEER-NETWORK-001 Slice B — shadow state. Default OFF: with the
+        # flag unset this is inert and the bot behaves exactly as before.
+        self._shadow_enabled = network_enabled()
+        self._shadow_store = (
+            ShadowStore(os.environ.get("FOREMAN_SHADOW_DB", "foreman_shadow.db"))
+            if self._shadow_enabled
+            else None
+        )
+        self.shadow = ShadowRecorder(self._shadow_store, self._shadow_enabled) if self._shadow_store else None
+        if self._shadow_enabled:
+            logger.info("shadow state ENABLED (observe-only; manual workflow remains authoritative)")
+
     async def initialize(self) -> None:
         """Initialize bot: fetch bot_user_id and log identity."""
         try:
@@ -234,6 +248,15 @@ class ForemanBot:
         if len(self.seen_events) > 500:
             self.seen_events.clear()
 
+        # Slice B: durable dedup. The in-memory set above is kept exactly as it
+        # was — this only ADDS survival across restart, and the 500-entry clear
+        # that silently reopened the window for older events.
+        if self._shadow_store is not None:
+            first_time = self._shadow_store.mark_seen(ts, event.get("channel", ""))
+            if not first_time:
+                logger.info("Ignoring duplicate event across restart ts=%s", ts)
+                return
+
         # SAFETY: Reject ALL bot messages BEFORE invoking Grok
         if self._is_bot_message(event):
             logger.info(
@@ -269,6 +292,19 @@ class ForemanBot:
             thread_ts,
             text[:100],
         )
+
+        # Slice B: one mission context per Slack thread, persisted so a restart
+        # rejoins the same mission instead of minting a second one. The context
+        # is ESTABLISHED here and consumed by a later slice — routing Grok
+        # through it would change live behaviour, which shadow mode forbids.
+        if self.shadow is not None:
+            mission_id = self._shadow_store.mission_for(channel, thread_ts)
+            self.shadow.observe(
+                channel=channel,
+                thread_ts=thread_ts,
+                decision="observe_message",
+                rationale=f"mission={mission_id} user={user} len={len(text)}",
+            )
 
         # Invoke Grok via Cursor cloud agent
         try:
