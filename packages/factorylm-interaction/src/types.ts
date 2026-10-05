@@ -185,6 +185,10 @@ export interface SourceReference {
   readonly title: string;
   readonly kind: "oem_documentation" | "workspace_file" | "machine_history";
   readonly locator: string;
+  /** Where the cited document opens, resolved by the host: a same-site path
+   *  (shown inline, e.g. a parked PDF at `#page=N`) or an absolute http(s)
+   *  manual URL (opened in a new tab). Absent: the locator is the reference. */
+  readonly href?: string;
 }
 
 export type EvidenceBasisKind =
@@ -217,6 +221,10 @@ export interface VisualObservation {
   readonly capturedAt: string;
   readonly provenance: "phone_photo";
   readonly verified: boolean;
+  /** Where the photo itself can be fetched, resolved by the host (same-site
+   *  path or http(s) URL). Present: the shell shows a thumbnail that opens the
+   *  full-size photo. Absent: facts only. */
+  readonly previewUrl?: string;
 }
 
 export interface SafetyNotice {
