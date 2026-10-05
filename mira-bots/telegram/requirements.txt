@@ -17,4 +17,4 @@ youtube-transcript-api>=1.2.4
 # inert without their keys.
 pydantic>=2.0,<2.12  # <2.12: 2.12+ breaks the RAG worker structured-output model build (unable to infer type for attribute "description"); see engine.py:5686
 anthropic>=0.116.0
-openai>=1.66.0
+openai>=3.23.0
