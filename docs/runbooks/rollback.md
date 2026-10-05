@@ -225,3 +225,4 @@ dispatches, so it runs only on Mike's explicit go.
 | Date | What | Run / artifact | Result |
 |---|---|---|---|
 | 2026-10-04 | Candidates computed locally (read-only) from the three real production receipts, runs 36350115024, 36369296665, 36805202089 | — | Hub/Ask → `648896996`, Web → `76887423`; `designate` → no candidate (no receipt records the field yet) |
+| 2026-10-05 | First `rollback-candidate-refresh.yml` run on `main` (manual dispatch after #4222 merged as `076c6cf0f`, tag `v3.385.0`) | run 37249013848 | success: 8 production receipts read, 0 gaps, `lost: {}`, `NO_CANDIDATE` (expected: no production receipt records `rollback_candidate` until the next production deploy) |
