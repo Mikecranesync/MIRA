@@ -114,8 +114,21 @@ def _create_fake_ollama(
     state_dir = tmpdir / ".ollama_state"
     state_dir.mkdir(exist_ok=True)
     
+    # Portable counter increment (no $RANDOM, works in dash)
     script_content = textwrap.dedent(f'''#!/bin/sh
         STATE_DIR="{state_dir}"
+        
+        get_next_id() {{
+            counter_file="$STATE_DIR/counter"
+            if [ -f "$counter_file" ]; then
+                count=$(cat "$counter_file")
+            else
+                count=0
+            fi
+            count=$((count + 1))
+            echo "$count" > "$counter_file"
+            echo "$count"
+        }}
         
         if [ "$1" = "serve" ]; then
             echo $$ > "$STATE_DIR/serve_pid"
@@ -128,7 +141,8 @@ def _create_fake_ollama(
                 while true; do sleep 1; done
             fi
         elif [ "$1" = "list" ]; then
-            echo $$ > "$STATE_DIR/list_pid_$RANDOM"
+            list_id=$(get_next_id)
+            echo $$ > "$STATE_DIR/list_pid_$list_id"
             if [ "{hang_operation}" = "list" ]; then
                 while true; do sleep 1; done
             fi
@@ -211,7 +225,7 @@ def test_staging_command_extracts_and_decodes():
 
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
 def test_cold_start_success_under_2s():
-    """Cold start succeeds with 2s caps, explicitly stops serve."""
+    """Cold start succeeds with 2s caps, waits for bootstrap-complete."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
     
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -260,13 +274,25 @@ def test_cold_start_success_under_2s():
             cwd=str(tmp_path),
         )
         
-        # Wait for bootstrap complete
-        time.sleep(1)
+        # Wait for bootstrap complete message
+        max_wait = 10
+        for _ in range(max_wait * 10):
+            if (state_dir / "stop").exists():
+                break
+            # Check if process wrote anything indicating completion
+            try:
+                # Non-blocking check if complete message appeared
+                if proc.poll() is None:
+                    time.sleep(0.1)
+                else:
+                    break
+            except:
+                time.sleep(0.1)
         
-        # Explicitly stop serve
+        # Now stop serve
         (state_dir / "stop").touch()
         
-        stdout, stderr = proc.communicate(timeout=10)
+        stdout, stderr = proc.communicate(timeout=5)
         
         assert proc.returncode == 0, f"stderr: {stderr}"
         assert "Bootstrap complete" in stderr
@@ -404,19 +430,34 @@ def test_hung_list_no_process_leak():
         state_dir = tmp_path / ".ollama_state"
         state_dir.mkdir()
         
-        # Serve becomes ready, then list hangs
+        # Portable counter (no $RANDOM)
         ollama_script = tmp_path / "ollama"
         script_content = textwrap.dedent(f'''#!/bin/sh
             STATE_DIR="{state_dir}"
+            
+            get_next_id() {{
+                counter_file="$STATE_DIR/counter"
+                if [ -f "$counter_file" ]; then
+                    count=$(cat "$counter_file")
+                else
+                    count=0
+                fi
+                count=$((count + 1))
+                echo "$count" > "$counter_file"
+                echo "$count"
+            }}
+            
             if [ "$1" = "serve" ]; then
                 echo $$ > "$STATE_DIR/serve_pid"
                 touch "$STATE_DIR/serving" "$STATE_DIR/ready"
                 while true; do sleep 1; done
             elif [ "$1" = "list" ]; then
-                echo $$ > "$STATE_DIR/list_pid_$RANDOM"
+                list_id=$(get_next_id)
+                echo $$ > "$STATE_DIR/list_pid_$list_id"
                 [ -f "$STATE_DIR/ready" ] || exit 1
                 if [ -f "$STATE_DIR/post_ready" ]; then
                     # Hang on post-ready list calls
+                    touch "$STATE_DIR/hung"
                     while true; do sleep 1; done
                 else
                     # First readiness probe succeeds
@@ -445,10 +486,13 @@ def test_hung_list_no_process_leak():
         
         time.sleep(0.5)
         
+        # Assert hang was injected
+        assert (state_dir / "hung").exists(), "Test bug: hang never injected"
+        
         # Check no processes alive
         alive = _check_processes_alive(state_dir, ["serve", "list"])
         
-        assert result.returncode != 0
+        assert result.returncode != 0, f"Should fail, stderr: {result.stderr}"
         assert len(alive) == 0, f"leaked {len(alive)} processes: {alive}"
 
 
@@ -593,20 +637,34 @@ def test_final_list_timeout_no_leak():
         state_dir = tmp_path / ".ollama_state"
         state_dir.mkdir()
         
-        # Passes all checks until final list, which hangs
+        # Portable counter (no $RANDOM, works in dash)
         ollama_script = tmp_path / "ollama"
         script_content = textwrap.dedent(f'''#!/bin/sh
             STATE_DIR="{state_dir}"
+            
+            get_next_id() {{
+                counter_file="$STATE_DIR/counter"
+                if [ -f "$counter_file" ]; then
+                    count=$(cat "$counter_file")
+                else
+                    count=0
+                fi
+                count=$((count + 1))
+                echo "$count" > "$counter_file"
+                echo "$count"
+            }}
+            
             if [ "$1" = "serve" ]; then
                 echo $$ > "$STATE_DIR/serve_pid"
                 touch "$STATE_DIR/serving" "$STATE_DIR/ready"
                 while true; do sleep 1; done
             elif [ "$1" = "list" ]; then
-                echo $$ > "$STATE_DIR/list_pid_$RANDOM"
+                list_id=$(get_next_id)
+                echo $$ > "$STATE_DIR/list_pid_$list_id"
                 [ -f "$STATE_DIR/ready" ] || exit 1
-                list_count=$(ls "$STATE_DIR"/list_pid_* 2>/dev/null | wc -l)
-                if [ "$list_count" -ge 5 ]; then
-                    # Final list hangs
+                # Hang on 5th or later list call (final verify)
+                if [ "$list_id" -ge 5 ]; then
+                    touch "$STATE_DIR/hung_at_$list_id"
                     while true; do sleep 1; done
                 fi
                 # Early lists succeed
@@ -637,8 +695,15 @@ def test_final_list_timeout_no_leak():
         )
         
         time.sleep(0.5)
+        
+        # Assert hang was injected (at 5th call or later)
+        hung_files = list(state_dir.glob("hung_at_*"))
+        assert len(hung_files) > 0, f"Test bug: final-list hang never injected (counter files: {list(state_dir.glob('list_pid_*'))})"
+        
+        # Check no processes alive
         alive = _check_processes_alive(state_dir, ["serve", "list"])
         
-        assert result.returncode != 0
-        assert "Final verification" in result.stderr or "ollama list (final verify)" in result.stderr
+        assert result.returncode != 0, f"Should fail with final-list timeout, stderr: {result.stderr}"
+        assert "Final verification" in result.stderr or "ollama list (final verify)" in result.stderr, \
+            f"Missing expected diagnostic, stderr: {result.stderr}"
         assert len(alive) == 0, f"leaked {len(alive)} processes (serve must be cleaned up via trap): {alive}"
