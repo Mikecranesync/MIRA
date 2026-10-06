@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from enum import Enum
 
 import pytest
 
@@ -26,10 +27,19 @@ PROD_BASE = ROOT / "docker-compose.saas.yml"
 PROD_OVERLAY = ROOT / "docker-compose.production.yml"
 STG = ROOT / "docker-compose.staging-vps.yml"
 
+
+class ComposeFailureType(Enum):
+    """Type of compose resolution failure."""
+    ABSENT = "absent"  # Binary not found
+    NONZERO_EXIT = "nonzero_exit"  # Installed but returned nonzero
+    TIMEOUT = "timeout"  # Installed but timed out
+
+
 # Shared isolated config used by both probe and renders
 _ISOLATED_DOCKER_CONFIG = None
 _COMPOSE_BASE_CMD = None
 _COMPOSE_SKIP_REASON = None
+_COMPOSE_FAILURE_TYPE = None
 
 
 def _get_isolated_config():
@@ -51,10 +61,11 @@ def _get_isolated_env() -> dict[str, str]:
 def _resolve_compose_executable() -> tuple[str, ...] | None:
     """Resolve docker compose executable (standalone or plugin) under isolated config.
     
-    Returns tuple of base command args, or None with _COMPOSE_SKIP_REASON set if unavailable.
+    Returns tuple of base command args, or None with _COMPOSE_SKIP_REASON and
+    _COMPOSE_FAILURE_TYPE set if unavailable.
     Safe to call at collection time - never raises.
     """
-    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON
+    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON, _COMPOSE_FAILURE_TYPE
     
     if _COMPOSE_BASE_CMD is not None:
         return _COMPOSE_BASE_CMD
@@ -63,7 +74,7 @@ def _resolve_compose_executable() -> tuple[str, ...] | None:
         return None
     
     env = _get_isolated_env()
-    failures = []  # Track installed-but-failed candidates
+    failures = []  # Track installed-but-failed candidates: (cmd, failure_type, returncode, stdout, stderr)
     
     # Try standalone docker-compose first
     try:
@@ -80,11 +91,11 @@ def _resolve_compose_executable() -> tuple[str, ...] | None:
             return _COMPOSE_BASE_CMD
         else:
             # Installed but failed (nonzero exit)
-            failures.append(("docker-compose", result.returncode, result.stdout, result.stderr))
+            failures.append(("docker-compose", ComposeFailureType.NONZERO_EXIT, result.returncode, result.stdout, result.stderr))
     except FileNotFoundError:
         pass  # Not installed, try next candidate
     except subprocess.TimeoutExpired as e:
-        failures.append(("docker-compose", None, None, f"timed out after {e.timeout}s"))
+        failures.append(("docker-compose", ComposeFailureType.TIMEOUT, None, None, f"timed out after {e.timeout}s"))
     
     # Try docker compose plugin
     try:
@@ -101,25 +112,28 @@ def _resolve_compose_executable() -> tuple[str, ...] | None:
             return _COMPOSE_BASE_CMD
         else:
             # Installed but failed (nonzero exit)
-            failures.append(("docker compose", result.returncode, result.stdout, result.stderr))
+            failures.append(("docker compose", ComposeFailureType.NONZERO_EXIT, result.returncode, result.stdout, result.stderr))
     except FileNotFoundError:
         pass  # Not installed
     except subprocess.TimeoutExpired as e:
-        failures.append(("docker compose", None, None, f"timed out after {e.timeout}s"))
+        failures.append(("docker compose", ComposeFailureType.TIMEOUT, None, None, f"timed out after {e.timeout}s"))
     
     # If any candidate was installed but failed, that's an error (fail loud)
     if failures:
-        cmd, returncode, stdout, stderr = failures[0]
-        if returncode is not None:
+        cmd, failure_type, returncode, stdout, stderr = failures[0]
+        _COMPOSE_FAILURE_TYPE = failure_type
+        
+        if failure_type == ComposeFailureType.NONZERO_EXIT:
             _COMPOSE_SKIP_REASON = (
                 f"{cmd} version returned exit {returncode}.\n"
                 f"stdout: {stdout}\nstderr: {stderr}"
             )
-        else:
+        else:  # TIMEOUT
             _COMPOSE_SKIP_REASON = f"{cmd} version {stderr}"
         return None
     
     # All candidates genuinely absent - skip
+    _COMPOSE_FAILURE_TYPE = ComposeFailureType.ABSENT
     _COMPOSE_SKIP_REASON = "no supported docker-compose or docker compose found under isolated DOCKER_CONFIG"
     return None
 
@@ -131,12 +145,12 @@ def _has_docker_compose() -> bool:
     Returns False if no compose binary found (skip case).
     Raises RuntimeError for installed-but-broken or timeout cases.
     """
-    # Resolve once; this may set skip reason
+    # Resolve once; this may set skip reason and failure type
     base_cmd = _resolve_compose_executable()
     
     if base_cmd is None:
-        # Check if skip reason indicates installed-but-failed vs genuinely absent
-        if _COMPOSE_SKIP_REASON and ("returned exit" in _COMPOSE_SKIP_REASON or "timeout" in _COMPOSE_SKIP_REASON):
+        # Check failure type to distinguish installed-but-failed vs genuinely absent
+        if _COMPOSE_FAILURE_TYPE in (ComposeFailureType.NONZERO_EXIT, ComposeFailureType.TIMEOUT):
             # Installed but failed - fail loud
             raise RuntimeError(_COMPOSE_SKIP_REASON)
         # Genuinely absent - skip case
@@ -331,7 +345,8 @@ def test_compose_capability_guard_absent_skips():
             pytest.skip("docker compose is installed (cannot test absent case)")
         else:
             # This is the expected path when absent
-            assert _COMPOSE_SKIP_REASON is not None, "Skip reason must be set when compose absent"
+            assert _COMPOSE_FAILURE_TYPE == ComposeFailureType.ABSENT, \
+                "Failure type must be ABSENT when compose genuinely not found"
     except RuntimeError:
         pytest.skip("docker compose exists but broken (not absent)")
 
@@ -339,11 +354,13 @@ def test_compose_capability_guard_absent_skips():
 def test_compose_capability_guard_nonzero_fails(monkeypatch):
     """Installed-but-failing Compose (nonzero version exit) must FAIL, not skip."""
     # Reset resolver state
-    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON
+    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON, _COMPOSE_FAILURE_TYPE
     original_cmd = _COMPOSE_BASE_CMD
     original_reason = _COMPOSE_SKIP_REASON
+    original_type = _COMPOSE_FAILURE_TYPE
     _COMPOSE_BASE_CMD = None
     _COMPOSE_SKIP_REASON = None
+    _COMPOSE_FAILURE_TYPE = None
     
     try:
         # Mock subprocess.run to return nonzero on version check
@@ -368,15 +385,18 @@ def test_compose_capability_guard_nonzero_fails(monkeypatch):
         # Restore state
         _COMPOSE_BASE_CMD = original_cmd
         _COMPOSE_SKIP_REASON = original_reason
+        _COMPOSE_FAILURE_TYPE = original_type
 
 
 def test_compose_capability_guard_timeout_fails(monkeypatch):
     """Hung Compose (version timeout) must FAIL, not skip."""
-    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON
+    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON, _COMPOSE_FAILURE_TYPE
     original_cmd = _COMPOSE_BASE_CMD
     original_reason = _COMPOSE_SKIP_REASON
+    original_type = _COMPOSE_FAILURE_TYPE
     _COMPOSE_BASE_CMD = None
     _COMPOSE_SKIP_REASON = None
+    _COMPOSE_FAILURE_TYPE = None
     
     try:
         # Mock subprocess.run to raise TimeoutExpired
@@ -394,6 +414,7 @@ def test_compose_capability_guard_timeout_fails(monkeypatch):
     finally:
         _COMPOSE_BASE_CMD = original_cmd
         _COMPOSE_SKIP_REASON = original_reason
+        _COMPOSE_FAILURE_TYPE = original_type
 
 
 def test_argv_immutability_regression(monkeypatch):
@@ -403,13 +424,15 @@ def test_argv_immutability_regression(monkeypatch):
     the shared base command list, causing second render to fail with 'unknown
     shorthand flag: f'.
     """
-    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON
+    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON, _COMPOSE_FAILURE_TYPE
     
     # Save and reset resolver state
     original_cmd = _COMPOSE_BASE_CMD
     original_reason = _COMPOSE_SKIP_REASON
+    original_type = _COMPOSE_FAILURE_TYPE
     _COMPOSE_BASE_CMD = ("docker", "compose")  # Force a known base
     _COMPOSE_SKIP_REASON = None
+    _COMPOSE_FAILURE_TYPE = None
     
     try:
         # Track all subprocess.run calls
@@ -453,12 +476,23 @@ def test_argv_immutability_regression(monkeypatch):
         _render_config([STG], {})
         second_render_cmd = calls[-1]
         
-        # Probe
-        _has_docker_compose()
+        # Explicit probe: force subprocess call by directly invoking with isolated env
+        probe_result = subprocess.run(
+            list(_COMPOSE_BASE_CMD) + ["version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            env=_get_isolated_env(),
+        )
         probe_cmd = calls[-1]
         
-        # Verify all commands start with exactly the base
+        # Verify base argv unchanged
         base = list(_COMPOSE_BASE_CMD)
+        assert base == ["docker", "compose"], \
+            f"Base command was mutated: expected ['docker', 'compose'], got {base}"
+        
+        # Verify all commands start with exactly the base
         assert first_render_cmd[:len(base)] == base, \
             f"First render command {first_render_cmd} doesn't start with base {base}"
         assert second_render_cmd[:len(base)] == base, \
@@ -477,6 +511,7 @@ def test_argv_immutability_regression(monkeypatch):
     finally:
         _COMPOSE_BASE_CMD = original_cmd
         _COMPOSE_SKIP_REASON = original_reason
+        _COMPOSE_FAILURE_TYPE = original_type
 
 
 @pytest.mark.skipif(not _compose_available_or_skip(), reason="docker compose binary not found")
