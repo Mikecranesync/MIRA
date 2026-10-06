@@ -47,6 +47,7 @@ GUARDED_FIXTURE="$REPO_ROOT/mira-mobile/src/screens/.precommit lifecycle guard f
 CANONICAL_FIXTURE="$REPO_ROOT/mira-mobile/src/unified/.precommit-lifecycle-guard-fixture.ts"
 WORKFLOW_FIXTURE="$REPO_ROOT/.github/workflows/.precommit-approval-fixture.yml"
 APPROVAL_RECORDS=()
+TMP_APPROVAL_REPO=""
 SHIM_DIR=""
 PASS=0
 FAIL=0
@@ -80,9 +81,29 @@ cleanup() {
   local rec
   for rec in "${APPROVAL_RECORDS[@]+"${APPROVAL_RECORDS[@]}"}"; do rm -f "$rec"; done
   APPROVAL_RECORDS=()
+  [ -n "$TMP_APPROVAL_REPO" ] && rm -rf "$TMP_APPROVAL_REPO"
+  TMP_APPROVAL_REPO=""
   [ -n "$SHIM_DIR" ] && rm -rf "$SHIM_DIR"
 }
-trap cleanup EXIT
+# Approvals bind to a named branch and refuse a detached HEAD by design. CI's
+# actions/checkout of a pull_request leaves HEAD detached, so move a detached
+# checkout onto a throwaway branch at the SAME commit (no file changes; the
+# index is already empty) and put it back, detached, on exit.
+HARNESS_BRANCH=""
+HARNESS_DETACHED_AT=""
+if ! git symbolic-ref -q HEAD >/dev/null 2>&1; then
+  HARNESS_DETACHED_AT=$(git rev-parse HEAD)
+  HARNESS_BRANCH="precommit-harness-$(git rev-parse --short=12 HEAD)"
+  git switch -q -c "$HARNESS_BRANCH" || { echo "FATAL: could not leave detached HEAD" >&2; exit 2; }
+fi
+restore_head() {
+  [ -n "$HARNESS_BRANCH" ] || return 0
+  cd "$REPO_ROOT" 2>/dev/null || return 0
+  git switch -q --detach "$HARNESS_DETACHED_AT" 2>/dev/null && git branch -q -D "$HARNESS_BRANCH" 2>/dev/null
+  HARNESS_BRANCH=""
+}
+on_exit() { cleanup; restore_head; }
+trap on_exit EXIT
 
 ok()   { PASS=$((PASS + 1)); printf '  \033[0;32mPASS\033[0m %s\n' "$1"; }
 bad()  { FAIL=$((FAIL + 1)); printf '  \033[0;31mFAIL\033[0m %s\n' "$1"; }
@@ -188,7 +209,7 @@ assert_contains     "$OUT" "alpha_undefined"          "reports the finding on th
 assert_contains     "$OUT" "beta_undefined_ascii"     "reports the LATER finding (the dropped one)"
 assert_not_contains "$OUT" "commitBuffer"             "no encoding abort"
 assert_contains     "$OUT" "bad.sh:2:"                "uses -f gcc file:line:col format"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -201,7 +222,7 @@ make_dead_tool_shims rg
 OUT=$(PATH="$SHIM_DIR:$PATH" run_hook)
 assert_contains     "$OUT" "SKIPPED, not passed"      "says SKIPPED"
 assert_not_contains "$OUT" "No debug artifacts found" "does NOT claim a clean scan"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -217,7 +238,7 @@ assert_eq "$RC" "1" "missing Python blocks when lifecycle policy cannot run"
 assert_contains "$OUT" "UI lifecycle policy could not run" "lifecycle check fails closed"
 assert_contains "$OUT" "symbol check SKIPPED, not passed" "says SKIPPED"
 assert_not_contains "$OUT" "verify_agent_symbols: no"     "does NOT report a successful run"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -232,7 +253,7 @@ git add -- "$FIXTURE_DIR/good.sh"
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "0"                        "hook exits 0 on a clean staged set"
 assert_not_contains "$OUT" "Failed:   1"   "reports no failures"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -253,7 +274,7 @@ assert_contains "$OUT" "Automation must not bypass"     "tells agents not to eva
 assert_contains "$OUT" "no owner approval for this exact staged tree" \
   "unapproved: names the missing owner approval"
 assert_contains "$OUT" "guarded_commit_approval.py approve" "points the owner at the supported approval"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -267,7 +288,7 @@ git add -- "$CANONICAL_FIXTURE"
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "0"                                  "hook allows the canonical unified adapter"
 assert_contains "$OUT" "No guarded legacy UI paths staged" "reports the lifecycle check passed"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -283,7 +304,7 @@ OUT=$(run_hook); RC=$?
 assert_eq "$RC" "0"                                               "hook allows the approved guarded tree"
 assert_contains "$OUT" "owner approval bound to this exact tree"  "says the approval was used"
 assert_contains "$OUT" "test-harness (not a human approval)"      "names who approved"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 echo "[8] changed content: re-staging after approval voids it"
@@ -293,7 +314,7 @@ stage_guarded_fixture false
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "1"                                                  "hook blocks a re-staged edit"
 assert_contains "$OUT" "no owner approval for this exact staged tree" "the approval does not follow the edit"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 echo "[9] extra staged file: an unapproved addition voids it"
@@ -305,7 +326,7 @@ git add -- "$FIXTURE_DIR/extra.txt"
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "1"                                                  "hook blocks an extra staged file"
 assert_contains "$OUT" "no owner approval for this exact staged tree" "the approval covers only its tree"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 echo "[10] stale binding: HEAD moved, branch differs, or approval expired"
@@ -314,19 +335,19 @@ write_test_approval '{"base": "0000000000000000000000000000000000000000"}'
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "1"                                  "hook blocks an approval for a different HEAD"
 assert_contains "$OUT" "approval is stale: base"     "names the moved HEAD"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 stage_guarded_fixture
 write_test_approval '{"branch": "some-other-branch"}'
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "1"                                  "hook blocks an approval for a different branch"
 assert_contains "$OUT" "approval is stale: branch"   "names the branch mismatch"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 stage_guarded_fixture
 write_test_approval '{"expires_at": "2000-01-01T00:00:00+00:00"}'
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "1"                                  "hook blocks an expired approval"
 assert_contains "$OUT" "approval expired"            "names the expiry"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 echo "[11] tampered records fail closed"
@@ -335,19 +356,19 @@ write_test_approval MALFORMED
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "1"                                  "hook blocks an unparseable record"
 assert_contains "$OUT" "unreadable"                  "names the unreadable record"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 stage_guarded_fixture
 write_test_approval '{"version": 99}'
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "1"                                  "hook blocks an unknown record version"
 assert_contains "$OUT" "unknown version"             "names the version mismatch"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 stage_guarded_fixture
 write_test_approval '{"allowed_paths": []}'
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "1"                                  "hook blocks a guarded path the owner did not see"
 assert_contains "$OUT" "not covered by the approval" "names the uncovered guarded path"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 echo "[12] approved guarded change + shellcheck failure: still blocked"
@@ -358,7 +379,7 @@ OUT=$(run_hook); RC=$?
 assert_eq "$RC" "1"                                               "an approval never clears shellcheck"
 assert_contains "$OUT" "owner approval bound to this exact tree"  "the lifecycle verdict alone was cleared"
 assert_contains "$OUT" "beta_undefined_ascii"                     "shellcheck still ran and reported"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 echo "[13] approved guarded change + planted secret: still blocked"
@@ -375,7 +396,7 @@ if command -v gitleaks >/dev/null 2>&1; then
 else
   echo "  SKIP gitleaks not installed here (CI image installs shellcheck + ripgrep only)"
 fi
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 echo "[14] approved invalid workflow: actionlint still blocks"
@@ -391,7 +412,7 @@ if command -v actionlint >/dev/null 2>&1; then
 else
   echo "  SKIP actionlint not installed here (the CI gate is .github/workflows/actionlint.yml)"
 fi
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 echo "[15] approve refuses without a terminal (an agent cannot self-approve)"
@@ -403,7 +424,7 @@ else
   assert_eq "$RC" "1"                                  "approve exits 1 with no controlling terminal"
   assert_contains "$OUT" "needs the owner at a real terminal" "explains why it refused"
 fi
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -437,13 +458,78 @@ echo "[17] Claude hook: a commit with guarded paths staged becomes a prompt, nev
 stage_guarded_fixture
 assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}')" "ask" \
   "asks before a commit that includes a guarded path"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 mkdir -p "$FIXTURE_DIR"
 printf 'ok\n' > "$FIXTURE_DIR/plain.txt"
 git add -- "$FIXTURE_DIR/plain.txt"
 assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}')" "allow" \
   "control: an ordinary commit is not prompted"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
+echo
+
+# ---------------------------------------------------------------------------
+# 18. The interactive approval path, end to end, on a real pseudo-terminal —
+#     in a THROWAWAY repository. The record it writes lives in that repo's own
+#     git dir, so it cannot authorize anything in this one. This proves the
+#     terminal I/O works (a single "r+" stream on /dev/tty does not: a tty is not
+#     seekable), which [7]-[15] cannot, because they write records directly.
+# ---------------------------------------------------------------------------
+drive_approve_on_pty() { # $1 = repo, $2 = "right" or "wrong" confirmation
+  python3 - "$REPO_ROOT/tools/guarded_commit_approval.py" "$1" "$2" <<'PY'
+import os, pty, re, select, sys, time
+
+tool, repo, answer = sys.argv[1:4]
+pid, fd = pty.fork()
+if pid == 0:
+    os.chdir(repo)
+    os.execvp(sys.executable, [sys.executable, tool, "approve"])
+buf, deadline = b"", time.time() + 60
+while b"to approve: " not in buf and time.time() < deadline:
+    if select.select([fd], [], [], 1)[0]:
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        buf += chunk
+m = re.search(rb"staged tree\s+([0-9a-f]{40})", buf)
+if m:
+    os.write(fd, (m.group(1)[:12] if answer == "right" else b"000000000000") + b"\n")
+rest = b""
+while True:
+    try:
+        chunk = os.read(fd, 4096)
+    except OSError:
+        break
+    if not chunk:
+        break
+    rest += chunk
+_, status = os.waitpid(pid, 0)
+print("PROMPT_SEEN" if m else "NO_PROMPT")
+print(f"EXIT={os.waitstatus_to_exitcode(status)}")
+PY
+}
+
+echo "[18] interactive approve on a real pseudo-terminal (throwaway repo)"
+TMP_APPROVAL_REPO=$(mktemp -d)
+git -C "$TMP_APPROVAL_REPO" init -q
+git -C "$TMP_APPROVAL_REPO" switch -q -c approval-pty-test 2>/dev/null || git -C "$TMP_APPROVAL_REPO" checkout -q -b approval-pty-test
+git -C "$TMP_APPROVAL_REPO" -c user.name=harness -c user.email=harness@example.invalid commit -q --allow-empty -m init
+mkdir -p "$TMP_APPROVAL_REPO/.github/workflows"
+printf 'name: pty fixture\non: workflow_dispatch\njobs: {}\n' > "$TMP_APPROVAL_REPO/.github/workflows/pty-fixture.yml"
+git -C "$TMP_APPROVAL_REPO" add .github/workflows/pty-fixture.yml
+OUT=$(drive_approve_on_pty "$TMP_APPROVAL_REPO" wrong)
+assert_contains "$OUT" "PROMPT_SEEN"  "the confirmation prompt renders on a real terminal"
+assert_contains "$OUT" "EXIT=1"       "a wrong confirmation approves nothing"
+VOUT=$(cd "$TMP_APPROVAL_REPO" && python3 "$REPO_ROOT/tools/guarded_commit_approval.py" verify --files .github/workflows/pty-fixture.yml 2>&1); VRC=$?
+assert_eq "$VRC" "1"                  "control: no record after a wrong confirmation"
+OUT=$(drive_approve_on_pty "$TMP_APPROVAL_REPO" right)
+assert_contains "$OUT" "EXIT=0"       "the right confirmation approves on a real terminal"
+VOUT=$(cd "$TMP_APPROVAL_REPO" && python3 "$REPO_ROOT/tools/guarded_commit_approval.py" verify --files .github/workflows/pty-fixture.yml 2>&1); VRC=$?
+assert_eq "$VRC" "0"                  "the record it wrote verifies for that exact tree"
+assert_contains "$VOUT" "via tty"     "the record says it came from a terminal"
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------

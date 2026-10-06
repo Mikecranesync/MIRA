@@ -205,16 +205,19 @@ def approve() -> str:
     if not guarded:
         raise Refused("nothing guarded is staged; the hook does not need an approval")
     try:
-        tty = open("/dev/tty", "r+", encoding="utf-8")
+        # Separate read and write streams: a terminal is not seekable, so a
+        # single text "r+" stream (BufferedRandom) fails on a real tty.
+        tty_in = open("/dev/tty", "r", encoding="utf-8")
+        tty_out = open("/dev/tty", "w", encoding="utf-8")
     except OSError as exc:
         raise Refused(
             "approve needs the owner at a real terminal (no controlling terminal here: "
             f"{exc.strerror}). Claude Code's Bash tool has none by design; run this in a "
             "separate Terminal window."
         ) from exc
-    with tty:
+    with tty_in, tty_out:
         stat = _git("diff", "--cached", "--stat")
-        tty.write(
+        tty_out.write(
             "\nApprove this exact guarded commit?\n"
             f"  repository   {b['origin'] or '(no origin)'}  [{b['repo_common_dir']}]\n"
             f"  branch       {b['branch']}\n"
@@ -226,11 +229,15 @@ def approve() -> str:
             "branch switch voids it. Every other pre-commit check still runs.\n"
             f"Type the first {CONFIRM_CHARS} characters of the staged tree hash to approve: "
         )
-        tty.flush()
-        typed = tty.readline().strip()
+        tty_out.flush()
+        typed = tty_in.readline().strip()
     if typed != b["tree"][:CONFIRM_CHARS]:
         raise Refused("confirmation did not match the staged tree hash; nothing approved")
-    who = f"{_git('config', '--get', 'user.name').strip() or '?'} ({getpass.getuser()})"
+    # `git config --get` exits 1 when the key is unset; that must not abort an approval.
+    name = subprocess.run(
+        ["git", "config", "--get", "user.name"], capture_output=True, text=True
+    ).stdout.strip()
+    who = f"{name or '?'} ({getpass.getuser()})"
     path = write_record(b, guarded, approved_by=who, confirmed_via="tty")
     return (
         f"approved {', '.join(guarded)} for tree {b['tree'][:12]} on {b['branch']}; record {path}"
