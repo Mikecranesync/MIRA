@@ -262,7 +262,7 @@ def fake_codex(tmp_path):
     return fake
 
 
-def _shim(tmp_path, fake, args, effort="", rc="0", extra_env=None):
+def _shim(tmp_path, fake, args, effort="", rc="0", extra_env=None, skip_snapshot_check=True):
     env = dict(
         os.environ,
         REVIEW_REAL_CODEX=str(fake),
@@ -273,6 +273,9 @@ def _shim(tmp_path, fake, args, effort="", rc="0", extra_env=None):
         FAKE_RC=rc,
         **(extra_env or {}),
     )
+    # Test-only escape: most hermetic tests don't need snapshot checking
+    if skip_snapshot_check:
+        env["REVIEW_SKIP_SNAPSHOT_CHECK"] = "1"
     return subprocess.run(
         ["bash", str(SHIM), *args], input="PROMPT", text=True, capture_output=True, env=env
     )
@@ -556,14 +559,19 @@ def test_the_owners_newest_review_wins_by_id_not_list_order():
 
 def test_shim_refuses_when_the_reviewed_head_is_not_the_routed_head(tmp_path, fake_codex):
     env_extra = {"REVIEW_EXPECTED_HEAD": "a" * 40, "ADV_REVIEW_CANDIDATE_SHA": "b" * 40}
-    r = _shim(tmp_path, fake_codex, ["exec", "-"], extra_env=env_extra)
+    r = _shim(tmp_path, fake_codex, ["exec", "-"], extra_env=env_extra, skip_snapshot_check=False)
     assert r.returncode == 65 and not (tmp_path / "args").exists()
     assert not (tmp_path / "usage.jsonl.started").exists()  # refused = provably no spend
 
 
 def test_shim_refuses_when_the_base_moved(tmp_path, fake_codex):
-    env_extra = {"REVIEW_EXPECTED_BASE": "a" * 40, "ADV_REVIEW_TRUSTED_BASE_SHA": "c" * 40}
-    assert _shim(tmp_path, fake_codex, ["exec", "-"], extra_env=env_extra).returncode == 65
+    env_extra = {
+        "REVIEW_EXPECTED_HEAD": "a" * 40,
+        "ADV_REVIEW_CANDIDATE_SHA": "a" * 40,
+        "REVIEW_EXPECTED_BASE": "a" * 40,
+        "ADV_REVIEW_TRUSTED_BASE_SHA": "c" * 40,
+    }
+    assert _shim(tmp_path, fake_codex, ["exec", "-"], extra_env=env_extra, skip_snapshot_check=False).returncode == 65
 
 
 def test_shim_runs_when_head_and_base_match(tmp_path, fake_codex):
@@ -573,8 +581,17 @@ def test_shim_runs_when_head_and_base_match(tmp_path, fake_codex):
         "REVIEW_EXPECTED_BASE": "c" * 40,
         "ADV_REVIEW_TRUSTED_BASE_SHA": "c" * 40,
     }
-    r = _shim(tmp_path, fake_codex, ["exec", "-"], extra_env=env_extra)
+    r = _shim(tmp_path, fake_codex, ["exec", "-"], extra_env=env_extra, skip_snapshot_check=False)
     assert r.returncode == 0 and (tmp_path / "usage.jsonl.started").exists()
+
+
+def test_shim_refuses_when_expected_values_are_unset(tmp_path, fake_codex):
+    # Without REVIEW_SKIP_SNAPSHOT_CHECK and without REVIEW_EXPECTED_*, the shim refuses
+    r = _shim(tmp_path, fake_codex, ["exec", "-"], skip_snapshot_check=False)
+    assert r.returncode == 66
+    assert "is unset" in r.stderr
+    assert not (tmp_path / "args").exists()
+    assert not (tmp_path / "usage.jsonl.started").exists()
 
 
 def test_killing_the_shim_kills_codex_itself(tmp_path):
@@ -586,6 +603,7 @@ def test_killing_the_shim_kills_codex_itself(tmp_path):
         REVIEW_REAL_CODEX=str(fake),
         REVIEW_USAGE_FILE=str(tmp_path / "u.jsonl"),
         FAKE_PID=str(tmp_path / "pid"),
+        REVIEW_SKIP_SNAPSHOT_CHECK="1",
     )
     p = subprocess.Popen(["bash", str(SHIM), "exec", "-"], env=env, stdin=subprocess.DEVNULL)
     for _ in range(100):

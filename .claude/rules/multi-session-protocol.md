@@ -121,11 +121,14 @@ or unauthorized at the HEAD you are working from, that is the
 missing-tooling case: **fail closed** per the invariant below — do not
 resurrect old pins or ad-hoc copies.
 
-**Default route (2026-10-02, owner decision):** invoke the lane through
-`tools/review_router/router.py` from a base-branch checkout. It runs required
-CI first, routes the trusted entrypoint to a risk-tiered model, and enforces a
-dollar budget (`docs/review-cost-ladder.md`). Critical paths keep today's
-defaults, and every invariant below is unchanged.
+**Router (2026-10-03, owner decision):** `tools/review_router/router.py` is
+**opt-in, invoked manually by an operator, and not automatic** (per SDLC v1
+§4.3 (D1) it runs on the owner's authorization, on every R3 change, every PR
+touching a guarded path, plus critical paths the owner names or disputed
+findings). Run it from a base-branch checkout. It runs required CI first, routes
+the trusted entrypoint to a risk-tiered model, and enforces a dollar budget
+(`docs/review-cost-ladder.md`). Critical paths keep today's defaults, and every
+invariant below is unchanged.
 
 **The review ledger is durable and GitHub-backed.** Budget rounds, round
 reservations (run_ids), verdicts, and remediation dispositions are counted

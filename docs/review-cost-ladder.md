@@ -59,8 +59,9 @@ change spanning 3 or more top-level modules each escalate. Critical stays critic
 - **No unproven zeros:** a launched run with no usage record is charged its
   estimate and flagged `usage_unknown`. A run the shim refused is a proven zero.
 - **Concurrent runs:** the budget check and a reservation of the estimate happen
-  atomically under an exclusive `flock`. The run settles to its actual cost, and
-  a crashed run stays charged at the estimate.
+  atomically under an exclusive `flock` (shared across worktrees of one repo clone,
+  but not across separate clones or machines). The run settles to its actual cost,
+  and a crashed run stays charged at the estimate.
 - **Trusted routing evidence:** prior-round evidence comes only from review
   comments the authenticated owner posted as a `User`, newest by comment id. A
   forged comment can neither suppress escalation nor skip the finding→test rule.

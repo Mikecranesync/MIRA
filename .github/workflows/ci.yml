@@ -470,6 +470,7 @@ jobs:
         run: |
           set -o pipefail
           pytest tests/review_router/ -q -p no:cacheprovider | tee /tmp/review_router.txt
+          # Require at least 10 tests passed (2+ digits); catches zero-collection and suite moves
           grep -Eq '^[0-9]{2,} passed' /tmp/review_router.txt
 
       - name: Manufacturer alias consistency + normalizer (#1596/#2263)

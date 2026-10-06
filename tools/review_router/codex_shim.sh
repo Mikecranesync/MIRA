@@ -23,14 +23,25 @@ if [ "${1:-}" != "exec" ]; then
 fi
 shift
 
-for pair in "REVIEW_EXPECTED_HEAD:ADV_REVIEW_CANDIDATE_SHA" "REVIEW_EXPECTED_BASE:ADV_REVIEW_TRUSTED_BASE_SHA"; do
-  want_var="${pair%%:*}"; got_var="${pair##*:}"
-  want="${!want_var:-}"; got="${!got_var:-}"
-  if [ -n "$want" ] && [ "$want" != "$got" ]; then
-    echo "codex_shim: $got_var '$got' != routed $want_var '$want'; refusing (PR moved after routing)" >&2
-    exit 65
-  fi
-done
+# Snapshot binding: when the router set REVIEW_EXPECTED_HEAD/BASE, verify the
+# trusted wrapper captured the same snapshot. Missing expected values mean the
+# router never set them, which should never happen in a routed invocation.
+# REVIEW_SKIP_SNAPSHOT_CHECK (test-only escape): when non-empty, skip the check
+# entirely. Used by hermetic tests that invoke the shim without routing.
+if [ -z "${REVIEW_SKIP_SNAPSHOT_CHECK:-}" ]; then
+  for pair in "REVIEW_EXPECTED_HEAD:ADV_REVIEW_CANDIDATE_SHA" "REVIEW_EXPECTED_BASE:ADV_REVIEW_TRUSTED_BASE_SHA"; do
+    want_var="${pair%%:*}"; got_var="${pair##*:}"
+    want="${!want_var:-}"; got="${!got_var:-}"
+    if [ -z "$want" ]; then
+      echo "codex_shim: $want_var is unset; refusing (snapshot check required without REVIEW_SKIP_SNAPSHOT_CHECK)" >&2
+      exit 66
+    fi
+    if [ "$want" != "$got" ]; then
+      echo "codex_shim: $got_var '$got' != routed $want_var '$want'; refusing (PR moved after routing)" >&2
+      exit 65
+    fi
+  done
+fi
 
 extra=(--json)
 if [ -n "${REVIEW_EFFORT:-}" ]; then

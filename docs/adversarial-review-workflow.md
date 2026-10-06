@@ -81,10 +81,13 @@ ADV_REVIEW_HUMAN_AUTHORIZED=1 \
   bash -s -- "$PR" --review-only
 ```
 
-### Default route: the cost router (2026-10-02)
+### Router: opt-in, manual operator invocation (2026-10-03)
 
-Run the gate through `tools/review_router/router.py`, from a checkout of the
-base branch. It invokes **this same trusted entrypoint, unchanged**, after:
+`tools/review_router/router.py` is **opt-in, invoked manually by an operator,
+and not automatic** (per SDLC v1 §4.3 (D1) it runs on the owner's authorization,
+on every R3 change, every PR touching a guarded path, plus critical paths the
+owner names or disputed findings). Run it from a checkout of the base branch. It
+invokes **this same trusted entrypoint, unchanged**, after:
 - **$0 checks first:** the PR's required CI checks must be green at the exact
   head, and after a round with findings a test file must have changed;
 - **routing by risk tier:**
@@ -95,7 +98,9 @@ base branch. It invokes **this same trusted entrypoint, unchanged**, after:
 - **dollar limits:** a per-round ceiling and a total budget, with per-call token
   usage and cost recorded through a `CODEX_BIN` shim.
 
-The router refuses to run when its own files differ from the base. GREEN,
+The router's self-check catches accidental drift when its own files differ from
+the base; the real protection is running the router from a checkout of the base
+branch (a tampered router runs its own code before checking itself). GREEN,
 coverage, the round cap and the post-cap rule are unchanged. Calling the trusted
 entrypoint directly (above) remains a valid fallback. Design, measurements and
 tests: `docs/review-cost-ladder.md`.
