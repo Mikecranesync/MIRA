@@ -16,6 +16,7 @@ import type {
 import { IdentityAlreadyConfirmedError } from "@factorylm/interaction";
 import { useEffect, useState, type Dispatch, type ReactNode } from "react";
 import { openableUrl } from "./links";
+import { PhotoThumb } from "./PhotoViewer";
 
 /** Optional host hooks. When absent the shell stays fixture-only (reducer mock actions). */
 export interface HostHooks {
@@ -243,7 +244,7 @@ const SOURCE_KIND_LABEL = {
   machine_history: "HIST",
 } as const;
 
-const ATTACHMENT_KIND_LABEL = { photo: "IMG", pdf: "PDF", file: "FILE" } as const;
+export const ATTACHMENT_KIND_LABEL = { photo: "IMG", pdf: "PDF", file: "FILE" } as const;
 
 function Card({ type, label, title, children, className, extra }: {
   readonly type: InteractionPart["type"];
@@ -411,6 +412,12 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
 
     case "attachment": {
       const { attachment } = part;
+      const preview = openableUrl(attachment.previewUrl);
+      // A picture the host can show (the user's own photo): the thumbnail is
+      // the attachment, as in any chat app. Otherwise the original name row.
+      if (preview) return <div className="fl-part fl-attachment fl-attachment--photo" data-part-type="attachment" data-attachment-status={attachment.status}>
+        <PhotoThumb className="fl-photo" src={preview} alt={attachment.name} />
+      </div>;
       return <div className="fl-part fl-attachment" data-part-type="attachment" data-attachment-status={attachment.status}>
         <span className="fl-attachment__kind">{ATTACHMENT_KIND_LABEL[attachment.kind]}</span>
         <span className="fl-attachment__name">{attachment.name}</span>
@@ -467,13 +474,11 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
     case "visual_observation": {
       const { observation } = part;
       // The photo itself, when the host says where it lives: a thumbnail that
-      // opens the full-size image in the browser's own viewer. The raw file id
+      // opens the full-size image in an in-app (native <dialog>) viewer. The raw file id
       // is only printed when there is no picture to show instead.
       const preview = openableUrl(observation.previewUrl);
       return <Card type="visual_observation" label="IMG · Photo observation" extra={{ "data-verified": String(observation.verified), "data-file-id": observation.fileId }}>
-        {preview ? <a className="fl-photo" href={preview} target="_blank" rel="noopener noreferrer" aria-label="Open the full-size photo">
-          <img src={preview} alt={`Photo captured ${observation.capturedAt}`} loading="lazy" decoding="async" />
-        </a> : null}
+        {preview ? <PhotoThumb className="fl-photo" src={preview} alt={`Photo captured ${observation.capturedAt}`} /> : null}
         <dl className="fl-card__facts">
           {preview ? null : <div><dt>File</dt><dd>{observation.fileId}</dd></div>}
           <div><dt>Captured</dt><dd>{observation.capturedAt}</dd></div>

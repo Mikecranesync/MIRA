@@ -664,14 +664,22 @@ capabilities:
       - "mira-mobile/src/unified/                           # platform adapter and notebook transforms"
     consumers:
       - "mira-mobile canary                     # device-local flm.chatui.v1=unified opt-in"
-      - "mira-hub /v3                           # merged on main; not yet deployed/default"
+      - "mira-hub /v3                           # staging default landing by owner exception (#4284); production opt-in only"
     schema: []
     environments:
       dev: unset
       canary: "1"                             # signed OTA canary 1.1.7 at main f5f994a78
-      staging: unset
+      staging: "1"                            # owner exception 2026-10-05 (#4284): / and /feed land on /v3; Gate 3 NOT passed
       production: unset
-    state: canary_enabled
+    state: staging_enabled
+    owner_exception: >-
+      Staging default WITHOUT the charter's Gate 3. On 2026-10-05 the owner
+      (Mike) asked to "make this [/v3] the preferred and only staging
+      environment"; #4284 makes a signed-in staging technician land on /v3 from
+      / and /feed (and sends an unfinished tenant to /onboarding, as /feed did).
+      The Golden Conversation on a physical device (UNIFIED_UI_CUTOVER.md §8
+      Gate 3) has NOT been passed; this record must not be read as that proof,
+      and production stays on the classic landing until it is.
     owner: null
     owner_missing: >-
       Multi-CPU program coordinated through the mission issue, not a single
@@ -726,7 +734,12 @@ capabilities:
       `flm.chatui.v1` preference to `v2`/`legacy`; this switches presentation
       without changing the notebook API, stored turns, evidence, or safety
       seams. If the canary bundle itself is bad, use the signed OTA rollback
-      procedure in docs/release/android/ota.md. Production remains unset.
+      procedure in docs/release/android/ota.md. Staging (owner exception,
+      #4284): revert #4284 and redeploy staging with deploy-staging.yml, or
+      remove deployment.environment.name=staging from the staging Hub's
+      OTEL_RESOURCE_ATTRIBUTES; either returns staging's / to the classic
+      /feed, and the classic Hub routes stay deployed on staging throughout.
+      Production remains unset.
     reason: >-
       The shared shell is connected and CI-covered on the opt-in mobile canary
       and is hosted at Hub `/v3` on main, but production still reports recovery

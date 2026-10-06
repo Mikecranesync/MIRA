@@ -1,0 +1,114 @@
+{
+ "_provenance": "Golden Walk recon 2026-10-05: local search_manual replay on origin/main cb60c115a, production cascade (groq), Serper pass-1 pool for Allen-Bradley / 525; verdicts copied from .planning/golden-walk/recon/replay-judge.json rep 0 (identical in reps 1-2 except pc001 doc_type). has_F005 = pdftotext of the OEM PDF grepped for F005 (du001 p4 and pc001 contain it; 520com-um001, the EtherNet/IP adapter manual, does not). 520-um001 (34.5 MB) exceeds the judge byte cap and is never read.",
+ "make": "Allen-Bradley",
+ "model": "525",
+ "candidates": [
+  {
+   "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/du/520-du001_-en-e.pdf",
+   "title": "PowerFlex 525 Adjustable Frequency AC Drive",
+   "score": 175,
+   "is_direct_pdf": true,
+   "judge": {
+    "status": "judged",
+    "is_manual": true,
+    "doc_type": "user_manual",
+    "scope": "complete",
+    "lists_fault_codes": true,
+    "language": "en",
+    "text_language": "en",
+    "fault_heading": false,
+    "confidence": 0.96
+   },
+   "has_F005": true
+  },
+  {
+   "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520com-um001_-en-e.pdf",
+   "title": "PowerFlex 525 Embedded EtherNet/IP Adapter",
+   "score": 175,
+   "is_direct_pdf": true,
+   "judge": {
+    "status": "judged",
+    "is_manual": true,
+    "doc_type": "user_manual",
+    "scope": "complete",
+    "lists_fault_codes": true,
+    "language": "en",
+    "text_language": "en",
+    "fault_heading": false,
+    "confidence": 0.96
+   },
+   "has_F005": false
+  },
+  {
+   "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/pc/520-pc001_-en-p.pdf",
+   "title": "PowerFlex 525 Adjustable Frequency AC Drive",
+   "score": 175,
+   "is_direct_pdf": true,
+   "judge": {
+    "status": "judged",
+    "is_manual": true,
+    "doc_type": "installation_manual",
+    "scope": "complete",
+    "lists_fault_codes": false,
+    "language": "en",
+    "text_language": "en",
+    "fault_heading": false,
+    "confidence": 0.96
+   },
+   "has_F005": true
+  },
+  {
+   "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/rm/syslib-rm048_-en-p.pdf",
+   "title": "PowerFlex 523/525 Variable Frequency Drives (P_PF52x)",
+   "score": 175,
+   "is_direct_pdf": true
+  },
+  {
+   "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf",
+   "title": "PowerFlex 520-series Adjustable Frequency AC Drive",
+   "score": 150,
+   "is_direct_pdf": true
+  },
+  {
+   "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/qs/520-qs001_-en-e.pdf",
+   "title": "PowerFlex 520-Series Adjustable Frequency AC Drive ...",
+   "score": 150,
+   "is_direct_pdf": true
+  },
+  {
+   "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-es-e.pdf",
+   "title": "Variador de CA de frecuencia ajustable PowerFlex serie 520",
+   "score": 150,
+   "is_direct_pdf": true
+  },
+  {
+   "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/td/520-td001_-en-e.pdf",
+   "title": "PowerFlex 520-series AC Drive Specifications",
+   "score": 150,
+   "is_direct_pdf": true
+  },
+  {
+   "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-de-e.pdf",
+   "title": "PowerFlex-Frequenzumrichter der Serie 520",
+   "score": 150,
+   "is_direct_pdf": true
+  },
+  {
+   "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520com-um002_-en-e.pdf",
+   "title": "PowerFlex 525 DeviceNet Adapter",
+   "score": 175,
+   "is_direct_pdf": true,
+   "judge": {
+    "status": "judged",
+    "is_manual": false,
+    "doc_type": "user_manual",
+    "scope": "complete",
+    "lists_fault_codes": false,
+    "language": "en",
+    "text_language": "en",
+    "fault_heading": false,
+    "confidence": 0.98
+   }
+  }
+ ]
+}
