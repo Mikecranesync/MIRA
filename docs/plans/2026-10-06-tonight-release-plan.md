@@ -113,13 +113,14 @@ today's behavior, so a rollback never ends up worse than now.
       **MET on product surface**.
 
 A known snag on this walk is **#4290**: on a phone, `/v3` opens with the navigation drawer covering
-the chat on every load. The fix is ready to build (below). Ideally it ships with step 2.
+the chat on every load. **Fixed in PR #4298** (tested, with before/after screenshots). Merge it
+before step 2 so it ships in the same staging and production run.
 
 ---
 
 ## Ready-to-build extras (ranked by customer value)
 
-1. **#4290 drawer covers the chat on a phone** (small, R1). The cause is confirmed:
+1. **#4290 drawer covers the chat on a phone** — **built: PR #4298** (small, R1). The cause is confirmed:
    `mira-hub/src/factorylm-ui/hub-host.tsx:175` starts the shell with
    `set-navigation-visible: true`. On desktop that is invisible: the sidebar is static, and the
    drawer CSS (`shell.css` ~L152), `inert` and `topLayer()` all apply only under
