@@ -108,6 +108,15 @@ describe("the saved message keeps its photo", () => {
     expect(a.parts.map((p) => p.type)).toContain("error");
   });
 
+  it("a FAILED photo question keeps its photo; the failed answer claims no observation (#4289 F4)", () => {
+    const photo = { kind: "visual_observation", fileId: "f9fdad9c", capturedAt: AT, provenance: "phone_photo" };
+    const failedRow = { ...row([photo]), answerStatus: "error", answerText: null } as unknown as Parameters<typeof turnsFromPersisted>[0];
+    const [q, a] = turnsFromPersisted(failedRow, meta);
+    expect(q.parts.map((p) => p.type)).toEqual(["text", "attachment"]);
+    expect(a.lifecycle).toBe("failed");
+    expect(a.parts.map((p) => p.type)).toEqual(["error"]);
+  });
+
   it("control: a question without a photo stays text only", () => {
     const [q] = turnsFromPersisted(row([]), meta);
     expect(q.parts).toEqual([{ type: "text", text: "what is this?" }]);

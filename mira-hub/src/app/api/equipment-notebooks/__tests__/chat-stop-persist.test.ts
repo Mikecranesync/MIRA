@@ -413,6 +413,22 @@ describe("STRM-2 — client stops generation mid-stream", () => {
     ]);
   });
 
+  it("a photo question whose providers all fail keeps its photo on the saved row (#4289 F4) — no partial, no basis", async () => {
+    const PHOTO = "55555555-5555-4555-8555-555555555555";
+    filesMock.photoLinkedToTarget.mockResolvedValueOnce({ fileId: PHOTO, capturedAt: "2026-10-05T20:00:00.000Z" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 500 })));
+
+    const res = await POST(chatReq({ message: "what is this?", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }), params);
+    await res.text();
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    expect(turn).toMatchObject({ answerStatus: "error", answerText: null, basis: null });
+    expect(turn.evidence).toEqual([
+      { kind: "visual_observation", fileId: PHOTO, capturedAt: "2026-10-05T20:00:00.000Z", provenance: "phone_photo" },
+    ]);
+  });
+
   it("stopping with nothing streamed yet persists answer_text null", async () => {
     const provider = hangingProvider([]);
     vi.stubGlobal("fetch", vi.fn(async () => provider.res));
