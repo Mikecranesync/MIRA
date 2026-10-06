@@ -28,7 +28,8 @@ STG = ROOT / "docker-compose.staging-vps.yml"
 
 # Shared isolated config used by both probe and renders
 _ISOLATED_DOCKER_CONFIG = None
-_COMPOSE_EXECUTABLE = None
+_COMPOSE_BASE_CMD = None
+_COMPOSE_SKIP_REASON = None
 
 
 def _get_isolated_config():
@@ -39,29 +40,87 @@ def _get_isolated_config():
     return _ISOLATED_DOCKER_CONFIG
 
 
-def _resolve_compose_executable():
-    """Resolve the docker compose executable once, reuse everywhere."""
-    global _COMPOSE_EXECUTABLE
-    if _COMPOSE_EXECUTABLE is None:
-        _COMPOSE_EXECUTABLE = ["docker", "compose"]
-    return _COMPOSE_EXECUTABLE
+def _get_isolated_env() -> dict[str, str]:
+    """Build the isolated environment used by both probe and renders."""
+    return {
+        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+        "DOCKER_CONFIG": _get_isolated_config(),
+    }
+
+
+def _resolve_compose_executable() -> tuple[str, ...] | None:
+    """Resolve docker compose executable (standalone or plugin) under isolated config.
+    
+    Returns tuple of base command args, or None with _COMPOSE_SKIP_REASON set if unavailable.
+    Safe to call at collection time - never raises.
+    """
+    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON
+    
+    if _COMPOSE_BASE_CMD is not None:
+        return _COMPOSE_BASE_CMD
+    
+    if _COMPOSE_SKIP_REASON is not None:
+        return None
+    
+    env = _get_isolated_env()
+    
+    # Try standalone docker-compose first
+    try:
+        result = subprocess.run(
+            ["docker-compose", "version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            env=env,
+        )
+        if result.returncode == 0 and ("docker-compose version" in result.stdout.lower() or "version" in result.stdout):
+            _COMPOSE_BASE_CMD = ("docker-compose",)
+            return _COMPOSE_BASE_CMD
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    
+    # Try docker compose plugin
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            env=env,
+        )
+        if result.returncode == 0 and ("docker compose version" in result.stdout.lower() or "version" in result.stdout):
+            _COMPOSE_BASE_CMD = ("docker", "compose")
+            return _COMPOSE_BASE_CMD
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    
+    # No supported compose found
+    _COMPOSE_SKIP_REASON = "no supported docker-compose or docker compose found under isolated DOCKER_CONFIG"
+    return None
 
 
 def _has_docker_compose() -> bool:
     """Check if docker compose is available and working.
     
-    Uses the SAME isolated config that renders will use.
-    Returns True only if binary exists and version check succeeds.
-    Raises an exception for installed-but-failing or timeout cases.
+    Returns True only if a supported compose exists and version check succeeds.
+    Returns False if no compose binary found (skip case).
+    Raises RuntimeError for installed-but-broken or timeout cases.
     """
+    env = _get_isolated_env()
+    
+    # Resolve once; this may set skip reason
+    base_cmd = _resolve_compose_executable()
+    
+    if base_cmd is None:
+        # No compose found - skip case
+        return False
+    
+    # Verify it works under isolated config
     try:
-        cmd = _resolve_compose_executable() + ["version"]
-        env = {
-            "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
-            "DOCKER_CONFIG": _get_isolated_config(),
-        }
         result = subprocess.run(
-            cmd,
+            list(base_cmd) + ["version"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -70,21 +129,13 @@ def _has_docker_compose() -> bool:
         )
         if result.returncode != 0:
             raise RuntimeError(
-                f"docker compose version returned exit {result.returncode}.\n"
+                f"{' '.join(base_cmd)} version returned exit {result.returncode}.\n"
                 f"stdout: {result.stdout}\nstderr: {result.stderr}"
             )
-        if not ("Docker Compose version" in result.stdout or "version" in result.stdout):
-            raise RuntimeError(
-                f"docker compose version succeeded but output unexpected.\n"
-                f"stdout: {result.stdout}"
-            )
         return True
-    except FileNotFoundError:
-        # Binary not found - this is the only case we skip for
-        return False
     except subprocess.TimeoutExpired as e:
         raise RuntimeError(
-            f"docker compose version timed out after {e.timeout}s"
+            f"{' '.join(base_cmd)} version timed out after {e.timeout}s"
         ) from e
 
 
@@ -103,7 +154,12 @@ def _render_config(compose_files: list[Path], env: dict[str, str], cwd: Path | N
         subprocess.CalledProcessError: If docker compose config fails
         subprocess.TimeoutExpired: If render takes >60s
     """
-    cmd = _resolve_compose_executable()
+    base_cmd = _resolve_compose_executable()
+    if base_cmd is None:
+        raise RuntimeError(f"Cannot render: {_COMPOSE_SKIP_REASON}")
+    
+    # CRITICAL: Build fresh argv copy - never mutate shared base_cmd
+    cmd = list(base_cmd)
     for f in compose_files:
         cmd.extend(["-f", str(f)])
     # Explicit empty env-file prevents picking up .env from cwd or parents
@@ -112,8 +168,7 @@ def _render_config(compose_files: list[Path], env: dict[str, str], cwd: Path | N
     
     # Use SAME isolated Docker config as the probe
     render_env = {
-        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
-        "DOCKER_CONFIG": _get_isolated_config(),
+        **_get_isolated_env(),
         "NEON_DATABASE_URL": "postgresql://dummy:dummy@localhost/dummy",
         "MCP_REST_API_KEY": "dummy",
         "ATLAS_DB_PASSWORD": "dummy",
@@ -142,10 +197,13 @@ def _render_config(compose_files: list[Path], env: dict[str, str], cwd: Path | N
 def _compose_available_or_skip():
     """Skip test only if Compose binary not found; fail on other errors."""
     try:
-        return _has_docker_compose()
-    except RuntimeError:
+        available = _has_docker_compose()
+        if not available and _COMPOSE_SKIP_REASON:
+            pytest.skip(_COMPOSE_SKIP_REASON)
+        return available
+    except RuntimeError as e:
         # Compose exists but failed/timed out - don't skip, let it fail
-        pytest.fail("docker compose exists but is broken - see _has_docker_compose")
+        pytest.fail(f"docker compose exists but is broken: {e}")
 
 
 @pytest.mark.skipif(not _compose_available_or_skip(), reason="docker compose binary not found")
@@ -261,46 +319,157 @@ def test_staging_mira_ollama_has_no_published_ports():
 def test_compose_capability_guard_absent_skips():
     """When docker compose binary is absent, _has_docker_compose returns False."""
     try:
-        _has_docker_compose()
-        # If we reach here, compose is installed - skip this control test
-        pytest.skip("docker compose is installed (cannot test absent case)")
+        available = _has_docker_compose()
+        if available:
+            pytest.skip("docker compose is installed (cannot test absent case)")
+        else:
+            # This is the expected path when absent
+            assert _COMPOSE_SKIP_REASON is not None, "Skip reason must be set when compose absent"
     except RuntimeError:
-        # Compose exists but is broken - not the absent case
         pytest.skip("docker compose exists but broken (not absent)")
 
 
 def test_compose_capability_guard_nonzero_fails(monkeypatch):
     """Installed-but-failing Compose (nonzero version exit) must FAIL, not skip."""
-    # Mock subprocess.run to return nonzero exit
-    def mock_run(*args, **kwargs):
-        return subprocess.CompletedProcess(
-            args=args[0],
-            returncode=1,
-            stdout="",
-            stderr="compose plugin not found",
-        )
+    # Reset resolver state
+    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON
+    original_cmd = _COMPOSE_BASE_CMD
+    original_reason = _COMPOSE_SKIP_REASON
+    _COMPOSE_BASE_CMD = None
+    _COMPOSE_SKIP_REASON = None
     
-    monkeypatch.setattr(subprocess, "run", mock_run)
+    try:
+        # Mock subprocess.run to return nonzero on version check
+        original_run = subprocess.run
+        def mock_run(cmd, *args, **kwargs):
+            if "version" in cmd:
+                return subprocess.CompletedProcess(
+                    args=cmd,
+                    returncode=1,
+                    stdout="",
+                    stderr="compose plugin not found",
+                )
+            return original_run(cmd, *args, **kwargs)
+        
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        
+        # This must raise RuntimeError, not return False
+        with pytest.raises(RuntimeError, match="returned exit 1"):
+            _has_docker_compose()
     
-    # This must raise RuntimeError, not return False
-    with pytest.raises(RuntimeError, match="returned exit 1"):
-        _has_docker_compose()
+    finally:
+        # Restore state
+        _COMPOSE_BASE_CMD = original_cmd
+        _COMPOSE_SKIP_REASON = original_reason
 
 
 def test_compose_capability_guard_timeout_fails(monkeypatch):
     """Hung Compose (version timeout) must FAIL, not skip."""
-    # Mock subprocess.run to raise TimeoutExpired
-    def mock_run(*args, **kwargs):
-        raise subprocess.TimeoutExpired(
-            cmd=args[0],
-            timeout=10,
-        )
+    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON
+    original_cmd = _COMPOSE_BASE_CMD
+    original_reason = _COMPOSE_SKIP_REASON
+    _COMPOSE_BASE_CMD = None
+    _COMPOSE_SKIP_REASON = None
     
-    monkeypatch.setattr(subprocess, "run", mock_run)
+    try:
+        # Mock subprocess.run to raise TimeoutExpired
+        def mock_run(cmd, *args, **kwargs):
+            if "version" in cmd:
+                raise subprocess.TimeoutExpired(cmd=cmd, timeout=10)
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+        
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        
+        # This must raise RuntimeError, not return False
+        with pytest.raises(RuntimeError, match="timed out"):
+            _has_docker_compose()
     
-    # This must raise RuntimeError, not return False
-    with pytest.raises(RuntimeError, match="timed out"):
+    finally:
+        _COMPOSE_BASE_CMD = original_cmd
+        _COMPOSE_SKIP_REASON = original_reason
+
+
+def test_argv_immutability_regression(monkeypatch):
+    """Consecutive render -> render -> probe must not mutate shared base argv.
+    
+    Regression test for shared-state mutation bug where _render_config extended
+    the shared base command list, causing second render to fail with 'unknown
+    shorthand flag: f'.
+    """
+    global _COMPOSE_BASE_CMD, _COMPOSE_SKIP_REASON
+    
+    # Save and reset resolver state
+    original_cmd = _COMPOSE_BASE_CMD
+    original_reason = _COMPOSE_SKIP_REASON
+    _COMPOSE_BASE_CMD = ("docker", "compose")  # Force a known base
+    _COMPOSE_SKIP_REASON = None
+    
+    try:
+        # Track all subprocess.run calls
+        calls = []
+        original_run = subprocess.run
+        
+        def mock_run(cmd, *args, **kwargs):
+            calls.append(list(cmd))
+            # Mock successful compose responses
+            if cmd[-1] == "version":
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=0,
+                    stdout="Docker Compose version v2.0.0", stderr=""
+                )
+            elif "config" in cmd:
+                # Return minimal valid config
+                mock_config = {
+                    "services": {
+                        "mira-hub": {
+                            "environment": {
+                                "OLLAMA_BASE_URL": "http://mira-ollama:11434",
+                                "NODE_EMBED_RETRY_SWEEP": "1"
+                            }
+                        },
+                        "mira-ollama": {}
+                    }
+                }
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=0,
+                    stdout=json.dumps(mock_config), stderr=""
+                )
+            return original_run(cmd, *args, **kwargs)
+        
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        
+        # First render
+        _render_config([PROD_BASE], {})
+        first_render_cmd = calls[-1]
+        
+        # Second render
+        _render_config([STG], {})
+        second_render_cmd = calls[-1]
+        
+        # Probe
         _has_docker_compose()
+        probe_cmd = calls[-1]
+        
+        # Verify all commands start with exactly the base
+        base = list(_COMPOSE_BASE_CMD)
+        assert first_render_cmd[:len(base)] == base, \
+            f"First render command {first_render_cmd} doesn't start with base {base}"
+        assert second_render_cmd[:len(base)] == base, \
+            f"Second render command {second_render_cmd} doesn't start with base {base}"
+        assert probe_cmd[:len(base)] == base, \
+            f"Probe command {probe_cmd} doesn't start with base {base}"
+        
+        # Verify first render didn't pollute second
+        assert "-f" in first_render_cmd and "-f" in second_render_cmd, \
+            "Both renders must have -f flags"
+        
+        # Verify probe is just version check
+        assert probe_cmd == base + ["version"], \
+            f"Probe must be clean version check, got {probe_cmd}"
+    
+    finally:
+        _COMPOSE_BASE_CMD = original_cmd
+        _COMPOSE_SKIP_REASON = original_reason
 
 
 @pytest.mark.skipif(not _compose_available_or_skip(), reason="docker compose binary not found")
