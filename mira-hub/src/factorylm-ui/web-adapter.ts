@@ -30,10 +30,24 @@ export interface WebAdapterDeps {
   origin: string;
   /** Monotonic id source; injected to keep tests deterministic. */
   newId(): string;
+  /** `URL.createObjectURL` / `revokeObjectURL`; default to the browser's own. */
+  createObjectURL?(file: File): string;
+  revokeObjectURL?(url: string): void;
 }
 
 const IMAGE_ACCEPT = "image/*";
-const FILE_ACCEPT = "application/pdf,image/*,.csv,.txt,.md";
+const FILE_ACCEPT = "application/pdf,.pdf,image/*,.csv,.txt,.md";
+
+/** The picker's `accept` rule, applied to a pasted or dropped file. */
+function accepts(accept: string, file: File): boolean {
+  const name = file.name.toLowerCase();
+  return accept.split(",").some((rule) => {
+    const r = rule.trim().toLowerCase();
+    if (r.startsWith(".")) return name.endsWith(r);
+    if (r.endsWith("/*")) return file.type.startsWith(r.slice(0, -1));
+    return file.type === r;
+  });
+}
 
 function kindOf(file: File): Attachment["kind"] {
   if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) return "pdf";
@@ -41,7 +55,7 @@ function kindOf(file: File): Attachment["kind"] {
   return "file";
 }
 
-function toAttachment(file: File, id: string): Attachment {
+function toAttachment(file: File, id: string, previewUrl?: string): Attachment {
   return {
     id,
     name: file.name,
@@ -53,6 +67,7 @@ function toAttachment(file: File, id: string): Attachment {
     // "ready" means *selected*, not *uploaded*. The host owns the upload and
     // moves this to queued/failed; the adapter must not claim more than it did.
     status: "ready",
+    ...(previewUrl ? { previewUrl } : {}),
   };
 }
 
@@ -69,22 +84,39 @@ export interface HubWebAdapter extends PlatformAdapter {
 const MAX_HELD = 8;
 
 export function createWebAdapter(deps: WebAdapterDeps): HubWebAdapter {
-  const held = new Map<string, File>();
+  const held = new Map<string, { file: File; previewUrl?: string }>();
+  const createUrl = deps.createObjectURL ?? ((file: File) => URL.createObjectURL(file));
+  const revokeUrl = deps.revokeObjectURL ?? ((url: string) => URL.revokeObjectURL(url));
+  const drop = (id: string) => {
+    const entry = held.get(id);
+    if (!entry) return;
+    held.delete(id);
+    if (entry.previewUrl) revokeUrl(entry.previewUrl);
+  };
+  // One intake for the picker, paste and drop: same Attachment shape, same
+  // bound. A photo gets a local `blob:` preview so its chip can show it.
+  const hold = (file: File): Attachment => {
+    const previewUrl = kindOf(file) === "photo" ? createUrl(file) : undefined;
+    const attachment = toAttachment(file, deps.newId(), previewUrl);
+    held.set(attachment.id, { file, previewUrl });
+    // Bound what is held: the oldest file is released past MAX_HELD (Map keeps
+    // insertion order). A chip whose bytes were released fails closed at send
+    // ("attach it again").
+    while (held.size > MAX_HELD) drop(held.keys().next().value as string);
+    return attachment;
+  };
   const pick = async (accept: string, capture?: "environment" | "user"): Promise<Attachment | null> => {
     const file = await deps.pickFile(accept, capture);
-    if (!file) return null;
-    const attachment = toAttachment(file, deps.newId());
-    held.set(attachment.id, file);
-    // A removed chip sends the adapter no event, so bound what is held: the
-    // oldest file is released past MAX_HELD (Map keeps insertion order). A
-    // chip whose bytes were released fails closed at send ("attach it again").
-    while (held.size > MAX_HELD) held.delete(held.keys().next().value as string);
-    return attachment;
+    return file ? hold(file) : null;
   };
 
   return {
-    heldFile: (id: string) => held.get(id),
-    forget: (id: string) => { held.delete(id); },
+    heldFile: (id: string) => held.get(id)?.file,
+    forget: drop,
+    release: drop,
+    // Pasted/dropped files pass the same `accept` rule as the File picker;
+    // anything else is left out (the Composer reports what was refused).
+    adoptFiles: (files: readonly File[]) => files.filter((f) => accepts(FILE_ACCEPT, f)).map(hold),
 
     attachPhoto: () => pick(IMAGE_ACCEPT),
 

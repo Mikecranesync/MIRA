@@ -178,6 +178,10 @@ export interface Attachment {
   readonly mediaType: string;
   readonly kind: "photo" | "pdf" | "file";
   readonly status: "ready" | "queued" | "failed";
+  /** Where a picture of the attachment can be shown (same-site path, http(s)
+   *  or a host-made `blob:`). Present: the shell shows a thumbnail. Absent:
+   *  the name only — the behaviour before this field existed. */
+  readonly previewUrl?: string;
 }
 
 export interface SourceReference {

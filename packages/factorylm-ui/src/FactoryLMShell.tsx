@@ -154,14 +154,20 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
   closeTopRef.current = closeTop;
 
   useEffect(() => {
+    // A native modal <dialog> (the photo viewer) sits above every shell layer:
+    // Escape is the browser's to close it, and Back closes it before anything
+    // underneath — never navigates away from an open photo.
+    const openDialog = () => document.querySelector<HTMLDialogElement>("dialog[open]");
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.key !== "Escape" || event.defaultPrevented || openDialog()) return;
       event.preventDefault();
       closeTopRef.current();
     };
     const onBack = (event: Event) => {
       event.preventDefault();
-      closeTopRef.current();
+      const dialog = openDialog();
+      if (dialog) dialog.close();
+      else closeTopRef.current();
     };
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener(BACK_EVENT, onBack);
