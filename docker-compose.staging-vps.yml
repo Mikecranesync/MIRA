@@ -746,6 +746,7 @@ services:
         ollama serve & pid=$$!;
         until ollama list >/dev/null 2>&1; do sleep 1; done;
         ollama pull nomic-embed-text:v1.5;
+        ollama cp nomic-embed-text:v1.5 nomic-embed-text:latest;
         wait $$pid
     environment:
       - OLLAMA_KEEP_ALIVE=24h
@@ -757,7 +758,7 @@ services:
     mem_limit: 2g
     memswap_limit: 2g
     healthcheck:
-      test: ["CMD-SHELL", "ollama list | grep -E '^nomic-embed-text:v1.5[[:space:]]+0a109f422b47'"]
+      test: ["CMD-SHELL", "ollama list | grep -E '^nomic-embed-text:v1.5[[:space:]]+0a109f422b47' && ollama list | grep -E '^nomic-embed-text:latest[[:space:]]+0a109f422b47'"]
       interval: 30s
       timeout: 10s
       retries: 5

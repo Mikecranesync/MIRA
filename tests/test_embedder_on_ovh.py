@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PROD = ROOT / "docker-compose.saas.yml"
 STG = ROOT / "docker-compose.staging-vps.yml"
 DEPLOY = ROOT / ".github" / "workflows" / "deploy-vps.yml"
+DEPLOY_STG = ROOT / ".github" / "workflows" / "deploy-staging.yml"
 
 IMAGE = "ollama/ollama:0.22.0"  # Bravo runs 0.22.0
 MODEL = "nomic-embed-text:v1.5"
@@ -107,3 +108,129 @@ def test_deploy_can_ship_the_image_only_service():
     pull = text.index("pull --ignore-buildable $TARGETS")
     identity = text.index("=== Built image identities ===")
     assert build < pull < identity, "pull image-only targets before the identity check"
+
+
+def test_staging_includes_ollama_in_allowlist_and_targets():
+    """F3: Staging must authorize mira-ollama and include it in default TARGETS.
+    
+    Production's receipt verifier checks staging receipts for every effective
+    service. If staging doesn't build/pull/inspect mira-ollama, the staging
+    receipt won't contain its image identity, and production deployment of
+    mira-ollama would fail the verification.
+    """
+    text = DEPLOY_STG.read_text()
+    
+    # Check allowlist (the case statement that validates SERVICES input)
+    allowlist_section = text[text.index("case \"$service\" in"):text.index("esac", text.index("case \"$service\" in"))]
+    assert "mira-ollama" in allowlist_section, \
+        "staging allowlist must include mira-ollama so it can be deployed manually"
+    
+    # Check default TARGETS
+    targets_line = next(line for line in text.splitlines() if line.strip().startswith('TARGETS="${SERVICES:-'))
+    assert "mira-ollama" in targets_line, \
+        "staging default TARGETS must include mira-ollama so its receipt covers it"
+    
+    # Staging must also pull image-only targets before the identity check
+    build_idx = text.index("docker compose -p \"$PROJECT\" -f \"$COMPOSE_FILE\" build --no-cache --pull")
+    pull_idx = text.index("pull --ignore-buildable")
+    identity_idx = text.index("=== Built image identities ===")
+    assert build_idx < pull_idx < identity_idx, \
+        "staging must pull image-only targets after build and before image identity check"
+
+
+def test_model_tag_alias_created_at_startup():
+    """F2: The startup command must create a :latest alias from :v1.5.
+    
+    Hub code requests 'nomic-embed-text' (untagged = :latest), but the compose
+    files pull 'nomic-embed-text:v1.5'. Without a :latest alias, embeds would
+    fail. Verify both files create the alias via `ollama cp`.
+    """
+    for path in (PROD, STG):
+        svc = _svc(path, "mira-ollama")
+        cmd = " ".join(svc.get("entrypoint") or []) + " " + " ".join(
+            svc["command"] if isinstance(svc.get("command"), list) else [str(svc.get("command") or "")]
+        )
+        assert "ollama pull nomic-embed-text:v1.5" in cmd, f"{path.name}: must pull v1.5"
+        assert "ollama cp nomic-embed-text:v1.5 nomic-embed-text:latest" in cmd, \
+            f"{path.name}: must create :latest alias so Hub's untagged requests work"
+
+
+def test_healthcheck_requires_both_model_tags():
+    """F2: The healthcheck must verify BOTH v1.5 and :latest exist with the correct digest.
+    
+    If only v1.5 is checked, the healthcheck could pass while Hub embed requests
+    (which ask for untagged = :latest) would fail. Both tags must be present.
+    """
+    for path in (PROD, STG):
+        hc = _healthcheck_text(_svc(path, "mira-ollama"))
+        assert "nomic-embed-text:v1.5" in hc and DIGEST in hc, \
+            f"{path.name}: healthcheck must verify v1.5 with digest {DIGEST}"
+        assert "nomic-embed-text:latest" in hc, \
+            f"{path.name}: healthcheck must also verify :latest alias exists"
+
+
+def test_hub_embed_callers_use_available_model():
+    """F2: Hub embedding callers request a model name Ollama will resolve.
+    
+    The Hub's write path (node-knowledge-ingest.ts) and read path
+    (asset-intelligence.ts) both send a model name to the embedder. That name
+    must either be untagged (resolved to :latest, which the startup creates) or
+    explicitly v1.5. This test verifies the Hub code would work with the models
+    the compose files provide.
+    """
+    ingest = ROOT / "mira-hub" / "src" / "lib" / "node-knowledge-ingest.ts"
+    asset_intel = ROOT / "mira-hub" / "src" / "lib" / "agents" / "asset-intelligence.ts"
+    
+    ingest_text = ingest.read_text()
+    asset_text = asset_intel.read_text()
+    
+    # Both files should reference nomic-embed-text (untagged or with a tag that
+    # the compose files provide). The model name is passed to the /api/embeddings
+    # endpoint. Verify the constants/literals used would resolve correctly.
+    
+    # node-knowledge-ingest.ts defines EMBED_MODEL
+    assert 'EMBED_MODEL = "nomic-embed-text"' in ingest_text or \
+           'EMBED_MODEL = "nomic-embed-text:latest"' in ingest_text or \
+           'EMBED_MODEL = "nomic-embed-text:v1.5"' in ingest_text, \
+           "node-knowledge-ingest.ts must use an available model tag"
+    
+    # asset-intelligence.ts hardcodes the model in the fetch body
+    assert '"nomic-embed-text"' in asset_text or \
+           '"nomic-embed-text:latest"' in asset_text or \
+           '"nomic-embed-text:v1.5"' in asset_text, \
+           "asset-intelligence.ts must request an available model"
+    
+    # The startup creates :latest from v1.5, so untagged "nomic-embed-text" works.
+    # If either file used a DIFFERENT tag (e.g., :v2.0), this test would fail.
+
+
+def test_production_overlay_does_not_override_embedder_url():
+    """F1: The production overlay must not override the Hub's OLLAMA_BASE_URL.
+    
+    The base saas.yml sets it to the internal mira-ollama service. The production
+    overlay previously overrode it with ${OLLAMA_BASE_URL:-}, which would take the
+    Doppler value (Bravo's unreachable tailnet address) when present. This test
+    verifies the overlay does NOT set OLLAMA_BASE_URL, so the base value wins.
+    """
+    prod_overlay = ROOT / "docker-compose.production.yml"
+    text = prod_overlay.read_text()
+    
+    # The production overlay must NOT contain an OLLAMA_BASE_URL line in the
+    # mira-hub environment section. The base saas.yml sets it correctly.
+    # Parse manually to avoid the !override tag issue with yaml.safe_load.
+    in_hub_env = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if "mira-hub:" in line:
+            in_hub_env = True
+        elif in_hub_env and stripped.startswith("environment:"):
+            in_hub_env = True
+        elif in_hub_env and (line.startswith("  ") or not stripped):
+            # Skip comments
+            if not stripped.startswith("#") and "OLLAMA_BASE_URL:" in line:
+                raise AssertionError(
+                    f"production overlay must not set OLLAMA_BASE_URL; found: {stripped}. "
+                    f"The base saas.yml sets it correctly to {URL}"
+                )
+        elif in_hub_env and not line.startswith(" "):
+            break  # End of mira-hub service
