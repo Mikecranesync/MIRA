@@ -3448,7 +3448,11 @@ async function handleChatTurn(
             answerStatus: "error",
             answerText: partialText,
             enabledSourceDocIds: docIds,
-            evidence: [...hazardEntries, ...disputeEntries],
+            // The technician's own photo stays on their saved question (#4289
+            // F3); a stop is still not an answer — hydration shows no
+            // observation, citation or basis on a stopped answer, and prior-look
+            // grounding reads answered turns only.
+            evidence: [...hazardEntries, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
             model: stoppedModel,
             basis: null,
             ...assetSnapshot,
@@ -3876,7 +3880,9 @@ async function handleChatTurn(
                   ...proposalEntries,
                 ]
               : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries]
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries],
+            // Not served: the technician's own photo still stays on their saved
+            // question (#4289 F4); hydration shows no observation on a failed answer.
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : [])],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,

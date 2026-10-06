@@ -1,8 +1,9 @@
 import type { Attachment, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
-import { useState, type Dispatch, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { AttachmentMenu } from "./AttachmentMenu";
 import { Overlay } from "./Overlay";
-import { machineName, type HostHooks } from "./parts";
+import { openableUrl } from "./links";
+import { ATTACHMENT_KIND_LABEL, machineName, type HostHooks } from "./parts";
 
 import { withoutStatusCode } from "./SendError";
 
@@ -51,6 +52,18 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   const [pending, setPending] = useState<readonly PendingAttachment[]>([]);
   const [busy, setBusy] = useState<AdapterOperation | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  // Attachments still in the composer when it goes away (navigation, a host
+  // swapping the shell) can never be sent or removed: release their bytes and
+  // previews. A sent attachment has already left `pending`, so its preview —
+  // which the host's outgoing message may still show — is not touched.
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  useEffect(() => () => {
+    for (const item of pendingRef.current) adapter.release?.(item.attachment.id);
+  }, [adapter]);
+  // Previews that failed to decode (e.g. HEIC in Chrome) fall back to the name.
+  const [brokenPreviews, setBrokenPreviews] = useState<ReadonlySet<string>>(() => new Set());
   const machine = machineName(state, state.activeContext.machineId);
   const native = state.profile.nativeDevice;
 
@@ -85,6 +98,33 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     });
   };
 
+  // Paste and drop take the same path as the picker, through the host's own
+  // intake; a host without `adoptFiles` (mobile today) keeps the old behaviour.
+  const adopt = (files: readonly File[]) => {
+    if (!adapter.adoptFiles || files.length === 0 || state.profile.publicDemo) return false;
+    const accepted = adapter.adoptFiles(files);
+    const captured = { threadId: state.thread.id, machineId: state.activeContext.machineId, machineLabel: machine ?? "no machine" };
+    if (accepted.length > 0) setPending((current) => [...current, ...accepted.map((attachment) => ({ attachment, ...captured }))]);
+    setFailure(accepted.length < files.length ? "That file type can't be attached. Attach a photo, PDF, or text file." : null);
+    return true;
+  };
+  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(event.clipboardData?.files ?? []);
+    // Text paste is untouched; only a paste that carries files is taken over.
+    if (files.length > 0 && adopt(files)) event.preventDefault();
+  };
+  const dragHasFiles = (event: DragEvent<HTMLFormElement>) => Array.from(event.dataTransfer?.types ?? []).includes("Files");
+  const onDragOver = (event: DragEvent<HTMLFormElement>) => {
+    if (!adapter.adoptFiles || !dragHasFiles(event)) return;
+    event.preventDefault();
+    if (!dragOver) setDragOver(true);
+  };
+  const onDrop = (event: DragEvent<HTMLFormElement>) => {
+    setDragOver(false);
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length > 0 && adopt(files)) event.preventDefault();
+  };
+
   const scan = () => run("scan", adapter.scanMachine, (machineId) => {
     if (machineId) dispatch({ type: "select-machine", machineId });
   });
@@ -102,6 +142,9 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         if (sent.length > 0) {
           const handed = new Set(sent.map((item) => item.attachment.id));
           setPending((current) => current.filter((item) => !handed.has(item.attachment.id)));
+          // Synchronously too: an unmount in this same tick must not release
+          // what was just handed to the host (its message still shows it).
+          pendingRef.current = pendingRef.current.filter((item) => !handed.has(item.attachment.id));
         }
         dispatch({ type: "set-draft", draft: "" });
         dispatch({ type: "set-send-error", error: null });
@@ -135,7 +178,16 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     send();
   };
 
-  return <form className="fl-composer" aria-label="Composer" data-menu-open={state.attachmentMenuVisible} onSubmit={onSubmit}>
+  return <form
+    className="fl-composer"
+    aria-label="Composer"
+    data-menu-open={state.attachmentMenuVisible}
+    data-drag-over={dragOver || undefined}
+    onSubmit={onSubmit}
+    onDragOver={onDragOver}
+    onDragLeave={() => setDragOver(false)}
+    onDrop={onDrop}
+  >
     {state.offline.state !== "online" ? <p className="fl-composer__sync" role="status" aria-label="Sync status" aria-live="polite" aria-atomic="true" data-sync-state={state.offline.state}>
       {OFFLINE_LABEL[state.offline.state]} · {state.offline.pendingChanges} pending
       {state.offline.detail ? ` · ${state.offline.detail}` : ""}
@@ -151,13 +203,25 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
       >
         {/* One element, not bare text nodes: the row is a flex container, and
             each loose text node would become its own flex item and stack. */}
+        {(() => {
+          const preview = brokenPreviews.has(item.attachment.id) ? null : openableUrl(item.attachment.previewUrl);
+          return preview
+            ? <img
+              className="fl-composer__pending-thumb"
+              src={preview}
+              alt=""
+              onError={() => setBrokenPreviews((current) => new Set(current).add(item.attachment.id))}
+            />
+            : <span className="fl-composer__pending-badge" aria-hidden="true">{ATTACHMENT_KIND_LABEL[item.attachment.kind]}</span>;
+        })()}
         <span className="fl-composer__pending-label">
-          {item.attachment.name} · captured for {item.machineLabel}
+          <span className="fl-composer__pending-name">{item.attachment.name}</span>
+          {item.machineId ? ` · captured for ${item.machineLabel}` : ""}
           {item.machineId !== state.activeContext.machineId ? " · not the active machine" : ""}
           {/* A real host sends what it is handed; only the fixture-only shell
               must admit that nothing leaves. Saying "not sent in this lab" on a
               device would be the shell lying about the host's behaviour. */}
-          {hooks?.onSend ? " · attached" : " · pending · not sent in this lab"}
+          {hooks?.onSend ? "" : " · pending · not sent in this lab"}
         </span>
         {/* Attaching is a two-step commit — pick, then send — so the technician
             must be able to back out of the pick. Without this the wrong photo
@@ -168,7 +232,10 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
           type="button"
           className="fl-composer__pending-remove"
           aria-label={`Remove ${item.attachment.name}`}
-          onClick={() => setPending((current) => current.filter((p) => p.attachment.id !== item.attachment.id))}
+          onClick={() => {
+            adapter.release?.(item.attachment.id);
+            setPending((current) => current.filter((p) => p.attachment.id !== item.attachment.id));
+          }}
         >×</button>
       </li>)}
     </ul> : null}
@@ -231,6 +298,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         value={state.draft}
         onChange={(event) => dispatch({ type: "set-draft", draft: event.currentTarget.value })}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
       />
       {hooks?.busy && hooks.onStop
         ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={hooks.onStop}>■</button>

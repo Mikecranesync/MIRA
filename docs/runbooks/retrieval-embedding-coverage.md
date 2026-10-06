@@ -55,8 +55,28 @@ doppler run -p factorylm -c stg -- python tools/backfill_knowledge_embeddings.py
 # scope if needed:  --source-type field-guide   --limit 50
 ```
 
-Idempotent (touches only NULLs); runs `ANALYZE knowledge_entries` after the batch
-to refresh IVFFlat stats. Expect `embedded=N failed=0`.
+Idempotent: the UPDATE writes only where `embedding IS NULL`, so a vector the Hub
+wrote meanwhile is never overwritten (it counts as `skipped_already_embedded`). It runs
+`ANALYZE knowledge_entries` after a batch that wrote anything.
+
+The last line is machine-readable:
+`BACKFILL_RESULT {"candidates":…,"embedded":…,"skipped_already_embedded":…,"skipped_empty":…,"failed":…,"stop_reason":…}`.
+The exit code is **non-zero on any failure** (it used to be 0 unless nothing succeeded).
+The run stops early, with `stop_reason`, on:
+- `dimension_mismatch` (wrong model);
+- `permission_denied` (the role cannot UPDATE);
+- `embedder_unreachable` (a whole batch of consecutive embed failures).
+
+**Recovery after an outage: bounded, resumable slices.**
+1. Dry-run first.
+2. Pick one source type that is verified to be affected (e.g. `--source-type node_attachment`).
+3. Run `--limit 200 --batch 20`.
+4. Re-measure the NULL count after each slice: the embedding-coverage canary, or the dry run.
+5. Continue only while `failed=0` and the count drops.
+6. Stop on any `stop_reason` and fix the cause first.
+
+`OLLAMA_BASE_URL` must point at an embedder serving the same `nomic-embed-text`
+digest (768-dim) the query path uses; the tool refuses to run without it.
 
 ### 3. Verify on the production path, raw (the acceptance check)
 
