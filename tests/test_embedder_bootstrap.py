@@ -559,3 +559,262 @@ def test_wrong_digest_after_pull():
         
         assert result.returncode != 0
         assert "wrong digest" in result.stderr
+
+
+def test_hung_ollama_list_in_readiness_loop():
+    """Hung ollama list in readiness loop -> bounded exit."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        
+        # Create ollama that hangs on list
+        ollama_script = tmp_path / "ollama"
+        state_dir = tmp_path / ".ollama_state"
+        state_dir.mkdir(exist_ok=True)
+        
+        script_content = textwrap.dedent(f'''#!/bin/sh
+            STATE_DIR="{state_dir}"
+            
+            if [ "$1" = "serve" ]; then
+                touch "$STATE_DIR/serving"
+                while true; do sleep 1; done
+            elif [ "$1" = "list" ]; then
+                # Hang forever
+                while true; do sleep 1; done
+            fi
+        ''')
+        
+        ollama_script.write_text(script_content)
+        ollama_script.chmod(0o755)
+        
+        test_script = tmp_path / "test_bootstrap.sh"
+        # Short caps for fast test
+        test_script.write_text(textwrap.dedent(f'''#!/bin/sh
+            set -e
+            export PATH="{tmp_path}:$PATH"
+            
+            cleanup() {{ kill $1 2>/dev/null || true; }};
+            bounded_wait() {{
+              local pid=$1 cap=$2 waited=0;
+              while [ $waited -lt $cap ]; do
+                if ! kill -0 $pid 2>/dev/null; then wait $pid 2>/dev/null; return $?; fi;
+                sleep 0.1; waited=$((waited + 1));
+              done;
+              cleanup $pid; return 124;
+            }};
+            
+            ollama serve & serve_pid=$!;
+            ready=0; elapsed=0;
+            READY_CAP=2;
+            
+            while [ $elapsed -lt $READY_CAP ]; do
+              if ! kill -0 $serve_pid 2>/dev/null; then
+                echo "ERROR: serve died" >&2;
+                exit 1;
+              fi;
+              ollama list >/dev/null 2>&1 & list_pid=$!;
+              if bounded_wait $list_pid 2; then ready=1; break; fi;
+              cleanup $list_pid;
+              sleep 0.1; elapsed=$((elapsed + 1));
+            done;
+            
+            if [ $ready -eq 0 ]; then
+              echo "ERROR: never ready within cap" >&2;
+              cleanup $serve_pid; exit 1;
+            fi;
+        '''))
+        test_script.chmod(0o755)
+        
+        result = subprocess.run(
+            [str(test_script)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        
+        assert result.returncode != 0
+        assert "never ready within cap" in result.stderr
+
+
+def test_hung_ollama_pull_bounded():
+    """Hung ollama pull is bounded and allows retries."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        
+        # Create ollama where list succeeds but pull hangs
+        ollama_script = tmp_path / "ollama"
+        state_dir = tmp_path / ".ollama_state"
+        state_dir.mkdir(exist_ok=True)
+        
+        script_content = textwrap.dedent(f'''#!/bin/sh
+            STATE_DIR="{state_dir}"
+            
+            if [ "$1" = "serve" ]; then
+                touch "$STATE_DIR/serving"
+                touch "$STATE_DIR/ready"
+                while true; do sleep 1; done
+            elif [ "$1" = "list" ]; then
+                if [ -f "$STATE_DIR/ready" ]; then
+                    echo "nomic-embed-text:latest    0a109f422b47    128 MB    1 day ago"
+                    exit 0
+                fi
+                exit 1
+            elif [ "$1" = "pull" ]; then
+                # Hang forever
+                while true; do sleep 1; done
+            fi
+        ''')
+        
+        ollama_script.write_text(script_content)
+        ollama_script.chmod(0o755)
+        
+        test_script = tmp_path / "test_bootstrap.sh"
+        test_script.write_text(textwrap.dedent(f'''#!/bin/sh
+            set -e
+            export PATH="{tmp_path}:$PATH"
+            
+            cleanup() {{ kill $1 2>/dev/null || true; }};
+            bounded_wait() {{
+              local pid=$1 cap=$2 waited=0;
+              while [ $waited -lt $cap ]; do
+                if ! kill -0 $pid 2>/dev/null; then wait $pid 2>/dev/null; return $?; fi;
+                sleep 0.1; waited=$((waited + 1));
+              done;
+              cleanup $pid; return 124;
+            }};
+            
+            ollama serve & serve_pid=$!;
+            
+            # Wait ready
+            for i in $(seq 1 30); do
+              ollama list >/dev/null 2>&1 & list_pid=$!;
+              if bounded_wait $list_pid 5; then break; fi;
+              cleanup $list_pid;
+            done;
+            
+            # Try pull with bounded timeout (short for test)
+            MODEL='nomic-embed-text:v1.5';
+            PULL_RETRIES=2;
+            CALL_TIMEOUT=1;
+            pull_success=0;
+            
+            for attempt in $(seq 1 $PULL_RETRIES); do
+              echo "Pull attempt $attempt..." >&2;
+              ollama pull "$MODEL" & pull_pid=$!;
+              if bounded_wait $pull_pid $CALL_TIMEOUT; then
+                pull_success=1; break;
+              fi;
+              cleanup $pull_pid;
+            done;
+            
+            if [ $pull_success -eq 0 ]; then
+              echo "ERROR: Failed to pull after $PULL_RETRIES attempts" >&2;
+              cleanup $serve_pid; exit 1;
+            fi;
+        '''))
+        test_script.chmod(0o755)
+        
+        result = subprocess.run(
+            [str(test_script)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        
+        assert result.returncode != 0
+        assert "Failed to pull" in result.stderr
+        # Verify retries happened
+        assert "Pull attempt 1" in result.stderr
+        assert "Pull attempt 2" in result.stderr
+
+
+def test_alias_copy_failure_final_verification():
+    """Alias copy failure detected by final verification -> non-zero exit."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        
+        # Create ollama where cp succeeds but :latest still doesn't appear
+        ollama_script = tmp_path / "ollama"
+        state_dir = tmp_path / ".ollama_state"
+        state_dir.mkdir(exist_ok=True)
+        
+        script_content = textwrap.dedent(f'''#!/bin/sh
+            STATE_DIR="{state_dir}"
+            
+            if [ "$1" = "serve" ]; then
+                touch "$STATE_DIR/serving"
+                touch "$STATE_DIR/ready"
+                while true; do sleep 1; done
+            elif [ "$1" = "list" ]; then
+                if [ -f "$STATE_DIR/ready" ]; then
+                    # Only v1.5 exists, :latest missing (cp silently failed)
+                    echo "nomic-embed-text:v1.5    0a109f422b47    128 MB    1 day ago"
+                    exit 0
+                fi
+                exit 1
+            elif [ "$1" = "cp" ]; then
+                # cp exits 0 but doesn't actually create :latest
+                exit 0
+            fi
+        ''')
+        
+        ollama_script.write_text(script_content)
+        ollama_script.chmod(0o755)
+        
+        test_script = tmp_path / "test_bootstrap.sh"
+        test_script.write_text(textwrap.dedent(f'''#!/bin/sh
+            set -e
+            export PATH="{tmp_path}:$PATH"
+            
+            cleanup() {{ kill $1 2>/dev/null || true; }};
+            bounded_wait() {{
+              local pid=$1 cap=$2 waited=0;
+              while [ $waited -lt $cap ]; do
+                if ! kill -0 $pid 2>/dev/null; then wait $pid 2>/dev/null; return $?; fi;
+                sleep 0.1; waited=$((waited + 1));
+              done;
+              cleanup $pid; return 124;
+            }};
+            
+            ollama serve & serve_pid=$!;
+            MODEL='nomic-embed-text:v1.5';
+            DIGEST='0a109f422b47';
+            
+            # Wait ready
+            for i in $(seq 1 30); do
+              ollama list >/dev/null 2>&1 & list_pid=$!;
+              if bounded_wait $list_pid 5; then break; fi;
+              cleanup $list_pid;
+            done;
+            
+            # Skip pull (model cached)
+            if ollama list | grep -qE "^$MODEL[[:space:]]+$DIGEST"; then
+              echo "Model cached" >&2;
+            fi;
+            
+            # Try alias copy
+            if ! ollama list | grep -qE '^nomic-embed-text:latest[[:space:]]+'$DIGEST; then
+              ollama cp "$MODEL" nomic-embed-text:latest & cp_pid=$!;
+              if ! bounded_wait $cp_pid 5; then
+                echo "ERROR: ollama cp timed out" >&2;
+                cleanup $cp_pid; cleanup $serve_pid; exit 1;
+              fi;
+            fi;
+            
+            # Final verification - BOTH tags must exist
+            if ! ollama list | grep -qE '^nomic-embed-text:v1\\.5[[:space:]]+'$DIGEST ||
+               ! ollama list | grep -qE '^nomic-embed-text:latest[[:space:]]+'$DIGEST; then
+              echo "ERROR: Final verification failed - both tags must resolve to $DIGEST" >&2;
+              cleanup $serve_pid; exit 1;
+            fi;
+        '''))
+        test_script.chmod(0o755)
+        
+        result = subprocess.run(
+            [str(test_script)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        
+        assert result.returncode != 0
+        assert "Final verification failed" in result.stderr
