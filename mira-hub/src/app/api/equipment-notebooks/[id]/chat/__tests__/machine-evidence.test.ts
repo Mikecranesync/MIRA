@@ -654,13 +654,17 @@ describe("visualEvidence — the server verifies the link and re-derives the ent
     expect(kinds).toEqual(["citation", "machine_evidence", "visual_observation"]);
   });
 
-  it("a failed (unserved) turn persists no photo entry", async () => {
+  it("a failed (unserved) turn keeps only the question's photo — no citation, machine entry or basis (#4289 F4)", async () => {
+    // Before #4289 a failed row dropped the photo entirely, so the technician's
+    // own message lost its photo on reload. It now keeps the verified photo for
+    // the QUESTION; both hydrations show no observation on a failed answer
+    // (notebook-chat-utils persistedTurns, to-interaction turnsFromPersisted).
     dbMock.handlers = [LINKED];
     vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
     const fr = await frames(await POST(req({ message: "q", sourceDocIds: [DOC_A], visualEvidence: VE }), params));
     expect(fr.find((f) => f.kind === "status")!.status).toBe("error");
-    const persisted = persistedTurn<{ evidence: unknown[]; basis: string | null }>();
-    expect(persisted.evidence).toEqual([]);
+    const persisted = persistedTurn<{ evidence: { kind?: string }[]; basis: string | null }>();
+    expect(persisted.evidence.map((e) => e.kind)).toEqual(["visual_observation"]);
     expect(persisted.basis).toBeNull();
   });
 

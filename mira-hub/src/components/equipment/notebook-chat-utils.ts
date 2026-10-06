@@ -478,7 +478,9 @@ export function persistedTurns(rows: PersistedTurn[]): HydratedTurn[] {
         // D5: the Machine Replay card survives reload too (stopped turns carry none).
         ...(!stopped && machineEvidence.length ? { machineEvidence } : {}),
         // D3 (S5): the Visual observation card survives reload the same way.
-        ...(!stopped && visualEvidence.length ? { visualEvidence } : {}),
+        // A failed answer (error, no text) shows none: its row keeps the photo
+        // only so the question keeps it in the canonical shell (#4289 F4).
+        ...(!stopped && t.answerStatus !== "error" && visualEvidence.length ? { visualEvidence } : {}),
         // Safety marker — a reloaded safety turn is distinguishable from a
         // normal `answered` turn: the `safetyNotice` field carries the trigger.
         ...(!stopped && terminalSafetyNotice ? { safetyNotice: terminalSafetyNotice } : {}),
