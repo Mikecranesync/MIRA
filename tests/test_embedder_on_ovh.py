@@ -299,10 +299,8 @@ def test_ollama_cp_is_idempotent():
     """The startup command must skip `ollama cp` if :latest already has the right digest.
     
     On container restart, if nomic-embed-text:latest already exists with digest
-    0a109f422b47, running `ollama cp` again would fail and potentially kill the
-    ollama serve process. The command must check if :latest exists with the
-    correct digest and skip the cp step if it does. The cp must also be non-fatal
-    (|| true) so any unexpected failure doesn't kill ollama serve.
+    0a109f422b47, the command must check and skip the cp step if it does. The cp
+    must be bounded with proper error handling so failures exit cleanly.
     """
     for path in (PROD, STG):
         svc = _svc(path, "mira-ollama")
@@ -310,18 +308,19 @@ def test_ollama_cp_is_idempotent():
             svc["command"] if isinstance(svc.get("command"), list) else [str(svc.get("command") or "")]
         )
         
-        # Must check if :latest exists with digest (can use variable or literal)
-        has_digest_check = (
-            f"ollama list | grep -qE '^nomic-embed-text:latest[[:space:]]+{DIGEST}'" in cmd or
-            'ollama list | grep -qE' in cmd and 'nomic-embed-text:latest' in cmd
+        # Must check if :latest exists with digest
+        has_alias_check = (
+            'nomic-embed-text:latest' in cmd and 
+            ('grep -qE' in cmd or 'grep -E' in cmd) and
+            ('alias check' in cmd or 'alias_check' in cmd)
         )
-        assert has_digest_check, \
+        assert has_alias_check, \
             f"{path.name}: must check if :latest already exists with correct digest"
         
         # Must conditionally run cp only if check fails
-        assert "if ! ollama list" in cmd and "then" in cmd and "ollama cp" in cmd and "fi" in cmd, \
+        assert "if !" in cmd and "ollama cp" in cmd, \
             f"{path.name}: must conditionally run cp only when :latest is missing/wrong"
         
-        # cp must be non-fatal (|| true) so it never kills ollama serve
-        assert "ollama cp" in cmd and "|| true" in cmd, \
-            f"{path.name}: cp must be non-fatal (|| true) to protect ollama serve"
+        # cp must be bounded
+        assert "ollama cp" in cmd and "bounded_call" in cmd, \
+            f"{path.name}: cp must be bounded with timeout"

@@ -186,6 +186,20 @@ value stays as it is, because tailnet tools such as the backfill below still use
 The Hub deliberately does **not** `depends_on` the embedder. If the model pull ever fails, the Hub
 still starts and degrades to BM25-only, recording a failure code, instead of staying down.
 
+**Bootstrap timeouts (all operations bounded).** Every `ollama` CLI call in the startup script runs
+with a bounded timeout to prevent indefinite hangs:
+
+| Operation | Timeout | Justification |
+|---|---|---|
+| `ollama list` | 5s (`OLLAMA_LIST_TIMEOUT`) | Local registry read, no network; should complete <1s under normal load |
+| `ollama cp` | 10s (`OLLAMA_CP_TIMEOUT`) | Local model copy operation; model data already present, metadata-only |
+| `ollama pull` | 300s (`OLLAMA_PULL_TIMEOUT`) | Network download of ~128MB model; allows for slow connections; retried up to 5 times |
+| Ready deadline | 120s (`OLLAMA_READY_CAP`) | Real wall-clock time for serve to initialize and become responsive; measured with `date +%s` |
+
+The readiness deadline uses real elapsed time, not iteration count, so a 120s cap means 120s of
+wall-clock time regardless of probe duration. Failure diagnostics state the operation, whether it
+timed out or exited non-zero (with exit code), and the real elapsed time vs. cap.
+
 **Disk.** The image is about 3.8 GB compressed. Check free space on the host first, and prune the
 Docker build cache if it is low. It held 62 GB, 58.6 GB of it reclaimable, on 2026-10-05.
 
