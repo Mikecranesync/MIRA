@@ -109,7 +109,10 @@ function buildCsp(nonce: string, pathname: string): string {
     `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://apis.google.com https://js.stripe.com https://www.dropbox.com`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.stripe.com`,
     `font-src 'self' https://fonts.gstatic.com`,
-    `img-src 'self' data: https:`,
+    // blob: shows a photo the technician just picked, before it is uploaded
+    // (`URL.createObjectURL` in factorylm-ui/web-adapter.ts). A blob: URL can
+    // only be minted by this page's own script, so it adds no outside origin.
+    `img-src 'self' data: blob: https:`,
     `connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com https://www.dropbox.com`,
     // Command Center display hosts (DISPLAY_FRAME_SRC) are appended so the framed
     // HMI loads. CSP checks the post-redirect URL, so even though the iframe src is

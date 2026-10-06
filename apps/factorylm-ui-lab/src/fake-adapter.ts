@@ -33,6 +33,8 @@ export function createLabAdapter(context: () => LabAdapterContext, onCall: () =>
   };
   let photos = 0;
   let files = 0;
+  // Object URLs minted for pasted/dropped photos, revoked when the chip goes.
+  const previews = new Map<string, string>();
 
   const attachment = (base: typeof PHOTO | typeof FILE, id: string): Attachment => ({
     id,
@@ -74,6 +76,25 @@ export function createLabAdapter(context: () => LabAdapterContext, onCall: () =>
     onBack: () => {
       record("onBack");
       return "handled";
+    },
+    // Paste/drop: the lab keeps a pasted or dropped file in memory only, so a
+    // photo can show its real thumbnail in the chip. Nothing leaves the page.
+    adoptFiles: (picked) => picked.map((file) => {
+      record(`adoptFiles:${file.name}`);
+      const kind = file.type.startsWith("image/") ? "photo" : file.type === "application/pdf" ? "pdf" : "file";
+      const id = `lab-adopted-${(photos += 1)}`;
+      const attachment: Attachment = { id, name: file.name, mediaType: file.type || "application/octet-stream", kind, status: "ready" };
+      if (kind !== "photo") return attachment;
+      const previewUrl = URL.createObjectURL(file);
+      previews.set(id, previewUrl);
+      return { ...attachment, previewUrl };
+    }),
+    release: (id) => {
+      record(`release:${id}`);
+      const url = previews.get(id);
+      if (url === undefined) return;
+      previews.delete(id);
+      URL.revokeObjectURL(url);
     },
   };
 }

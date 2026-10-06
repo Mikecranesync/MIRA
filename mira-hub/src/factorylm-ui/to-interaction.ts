@@ -145,6 +145,14 @@ export function citationHref(citation: EvidenceCitation): string | undefined {
   return undefined;
 }
 
+/** The photo a question carried, as an attachment on the question turn itself. */
+export function questionPhotoPart(entry: { fileId: string }): InteractionPart {
+  return {
+    type: "attachment",
+    attachment: { id: entry.fileId, name: "Photo", mediaType: "image/*", kind: "photo", status: "ready", previewUrl: fileUrl(entry.fileId) },
+  };
+}
+
 export function sourceFor(citation: EvidenceCitation, turnId: string): SourceReference {
   const page = citation.page ?? null;
   const locator = page !== null ? `p. ${page}` : citation.quote ? citation.quote.slice(0, 80) : "cited passage";
@@ -371,7 +379,8 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     id: `${row.id}-q`,
     threadId,
     role: "user",
-    parts: [{ type: "text", text: row.question }],
+    // The technician's own photo shows on their own message, as in any chat app.
+    parts: [{ type: "text", text: row.question }, ...visualEvidence.map(questionPhotoPart)],
     lifecycle: "completed",
     context,
     createdAt: at,
