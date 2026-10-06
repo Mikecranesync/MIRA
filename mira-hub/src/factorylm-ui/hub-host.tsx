@@ -54,7 +54,7 @@ import {
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
-import { HOME_THREAD, withOutgoing, type Outgoing } from "./outgoing-turn";
+import { HOME_THREAD, createOutgoingOwner, withOutgoing, type Outgoing } from "./outgoing-turn";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { OnboardingGate } from "./onboarding-gate";
@@ -104,6 +104,8 @@ type Live = {
   readonly result: CompatibleStreamResult | null;
   readonly stopped: boolean;
   readonly startedAt: string;
+  /** The outgoing message this stream answers (null: a retry, or none). */
+  readonly outgoingId: string | null;
 };
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<{ status: number; data: T | null }> {
@@ -359,7 +361,7 @@ export function HubShellHost() {
       // HOME, or a thread whose detail is still loading: the outgoing message
       // still shows (a first send creates its project before anything else).
       const openId = selection ? shellThreadId(selection) : HOME_THREAD;
-      const turns = withOutgoing([], [], outgoing, openId, EMPTY_FIXTURE.thread.id, state.activeContext);
+      const turns = withOutgoing([], { turns: [], outgoingId: null }, outgoing, openId, EMPTY_FIXTURE.thread.id, state.activeContext);
       const thread = turns.length ? { ...EMPTY_FIXTURE.thread, turns } : EMPTY_FIXTURE.thread;
       return notebooks ? shellReducer(state, { type: "hydrate", data: { thread, projects, machines } }) : state;
     }
@@ -370,7 +372,7 @@ export function HubShellHost() {
     // `notebook-chat-utils.ts` (guarded legacy presentation) carries no such
     // frame, so this appears only once `loadDetail` has re-fetched.
     const turns = withManualSearchStatus(
-      withOutgoing(threadFromPersisted(detail.turns, meta).turns, liveTurns, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta)),
+      withOutgoing(threadFromPersisted(detail.turns, meta).turns, { turns: liveTurns, outgoingId: live?.outgoingId ?? null }, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta)),
       // Codex #4195 round 2 F6: the FOLLOWED status (hydration/confirm-seeded,
       // ticking toward resolution) takes precedence over the raw per-render
       // read, so an idle Hub still updates once a backgrounded search settles.
@@ -378,15 +380,15 @@ export function HubShellHost() {
     );
     const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, notebooks, follow, outgoing]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing]);
 
+  // The outgoing message owns its photo previews until it is dropped; leaving
+  // the hub releases whatever it still holds (Codex #4289 F2).
+  const outgoingOwner = useMemo(() => createOutgoingOwner((id) => adapter.release?.(id), setOutgoing), [adapter]);
+  useEffect(() => () => outgoingOwner.dispose(), [outgoingOwner]);
+  const putOutgoing = outgoingOwner.put;
   /** The outgoing message is done: the server's row (or the restored draft) takes over. */
-  const dropOutgoing = useCallback(() => {
-    setOutgoing((cur) => {
-      for (const a of cur?.attachments ?? []) adapter.release?.(a.id);
-      return null;
-    });
-  }, [adapter]);
+  const dropOutgoing = outgoingOwner.drop;
 
   // --- the send path: the canonical notebook-chat route, streamed ---
   const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection) => {
@@ -395,9 +397,10 @@ export function HubShellHost() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     const id = `live-${Date.now()}`;
+    const outgoingId = outgoingOwner.current?.id ?? null;
     setFailedBody(null);
     dispatch({ type: "set-send-error", error: null });
-    setLive({ id, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString() });
+    setLive({ id, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString(), outgoingId });
     setBusy(true);
     try {
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
@@ -419,7 +422,7 @@ export function HubShellHost() {
       await loadDetail(sel);
       await loadNotebooks();
       setLive((cur) => (cur && cur.id === id ? null : cur));
-      dropOutgoing();
+      dropOutgoing(outgoingId);
     } catch (err) {
       const retained = retainedStreamInterruption(err);
       if (retained) {
@@ -437,14 +440,14 @@ export function HubShellHost() {
       }
       const message = err instanceof Error ? err.message : String(err);
       setLive((cur) => (cur && cur.id === id ? null : cur));
-      dropOutgoing();
+      dropOutgoing(outgoingId);
       setFailedBody({ body, question });
       dispatch({ type: "set-send-error", error: message });
       dispatch({ type: "set-draft", draft: question });
     } finally {
       if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
     }
-  }, [selection, loadDetail, loadNotebooks, dropOutgoing]);
+  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner]);
 
   /**
    * #4019 — attachments ride the turn they were attached to. Upload through the
@@ -547,7 +550,8 @@ export function HubShellHost() {
     const sel: HubSelection = { notebookId, threadId: newThreadId() };
     select(sel);
     // The message typed on HOME now belongs to the thread just created for it.
-    setOutgoing((cur) => (cur && cur.threadId === HOME_THREAD ? { ...cur, threadId: shellThreadId(sel) } : cur));
+    const home = outgoingOwner.current;
+    if (home && home.threadId === HOME_THREAD) putOutgoing({ ...home, threadId: shellThreadId(sel) });
     if (files.length === 0) {
       await send(chatBodyFor(q, [], [], sel), q, sel);
       return;
@@ -583,7 +587,7 @@ export function HubShellHost() {
       return;
     }
     await composeAndSend(q, files, sel, target.nodeId, [], [], ctrl);
-  }, [adapter, createNotebook, select, send, composeAndSend, dropOutgoing]);
+  }, [adapter, createNotebook, select, send, composeAndSend, dropOutgoing, putOutgoing, outgoingOwner]);
 
   const onSend = useCallback((text: string, attachments: readonly Attachment[] = []) => {
     const q = text.trim();
@@ -599,10 +603,9 @@ export function HubShellHost() {
     // the guard against creating a duplicate "General" before the list is
     // known (#3875 F2); inside a notebook, against sending before its detail.
     // Shown at once, before any upload, project creation or stream (outgoing-turn.ts).
-    const beginOutgoing = (threadId: string) => setOutgoing((prev) => {
-      for (const a of prev?.attachments ?? []) adapter.release?.(a.id);
-      return { id: `out-${Date.now()}`, threadId, question: q, attachments: files.map((f) => f.attachment), startedAt: new Date().toISOString() };
-    });
+    const beginOutgoing = (threadId: string) => putOutgoing(
+      { id: `out-${Date.now()}`, threadId, question: q, attachments: files.map((f) => f.attachment), startedAt: new Date().toISOString() },
+    );
     if (!selection) {
       const plan = homeSendPlan(notebooks);
       if (plan.kind === "loading") throw new Error(NO_PROJECT_ERROR);
@@ -617,7 +620,7 @@ export function HubShellHost() {
       return;
     }
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
-  }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend]);
+  }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing]);
 
   const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
   const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);

@@ -45,21 +45,69 @@ export function outgoingTurn(outgoing: Outgoing, threadId: string, context: Cont
 }
 
 /**
- * The turns to show for the open thread. `streaming` are the live stream's
- * [question, answer] turns (empty before the stream starts). An outgoing
- * message from another thread is never shown.
+ * Who owns an outgoing message's photo previews: the message, from Send until
+ * it is dropped or replaced, and the host on teardown (Codex #4289 F2). A
+ * stale send's drop (with its id) never drops a newer message.
+ */
+export interface OutgoingOwner {
+  readonly current: Outgoing | null;
+  put(next: Outgoing | null): void;
+  drop(id?: string | null): void;
+  dispose(): void;
+}
+
+export function createOutgoingOwner(release: (attachmentId: string) => void, onChange: (outgoing: Outgoing | null) => void): OutgoingOwner {
+  let current: Outgoing | null = null;
+  const releaseAll = (o: Outgoing | null, keep: Outgoing | null) => {
+    if (!o || o === keep) return;
+    const kept = new Set(keep?.attachments.map((a) => a.id) ?? []);
+    for (const a of o.attachments) if (!kept.has(a.id)) release(a.id);
+  };
+  const put = (next: Outgoing | null) => {
+    releaseAll(current, next);
+    current = next;
+    onChange(next);
+  };
+  return {
+    get current() { return current; },
+    put,
+    drop(id) {
+      if (id !== undefined && current?.id !== id) return;
+      put(null);
+    },
+    dispose() {
+      releaseAll(current, null);
+      current = null;
+    },
+  };
+}
+
+/** The live stream's turns, and the outgoing message that started it (null: none did). */
+export interface Streaming {
+  readonly turns: readonly InteractionTurn[];
+  readonly outgoingId: string | null;
+}
+
+/**
+ * The turns to show for the open thread. `streaming.turns` are the live
+ * stream's [question, answer] turns (empty before the stream starts). Only the
+ * stream this outgoing message started carries its photo; an older retained
+ * exchange (a stopped answer) stays as it was, with the new message after it.
+ * An outgoing message from another thread is never shown.
  */
 export function withOutgoing(
   persisted: readonly InteractionTurn[],
-  streaming: readonly InteractionTurn[],
+  streaming: Streaming,
   outgoing: Outgoing | null,
   openThreadId: string | null,
   threadId: string,
   context: ContextSnapshot,
 ): InteractionTurn[] {
-  if (!outgoing || outgoing.threadId !== openThreadId) return [...persisted, ...streaming];
-  if (streaming.length === 0) return [...persisted, outgoingTurn(outgoing, threadId, context)];
+  if (!outgoing || outgoing.threadId !== openThreadId) return [...persisted, ...streaming.turns];
+  if (streaming.turns.length === 0 || streaming.outgoingId !== outgoing.id) {
+    return [...persisted, ...streaming.turns, outgoingTurn(outgoing, threadId, context)];
+  }
   // The stream's question turn is text-only; give it the photo the technician sent.
-  const [question, ...rest] = streaming;
+  const [question, ...rest] = streaming.turns;
   return [...persisted, { ...question, parts: [...question.parts, ...outgoingParts(outgoing)] }, ...rest];
 }
