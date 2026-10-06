@@ -1231,6 +1231,7 @@ services:
           return 1;
         };
         ollama serve & serve_pid=$$!;
+        trap 'cleanup $$serve_pid' EXIT;
         ready=0; ready_start=$$(now);
         while true; do
           elapsed=$$(($$( now ) - ready_start));
@@ -1257,7 +1258,6 @@ services:
             echo "ERROR: ollama serve died before ready after $${elapsed}s" >&2;
           else
             echo "ERROR: ollama serve never became ready (elapsed: $${elapsed}s, cap: $${READY_CAP}s)" >&2;
-            cleanup $$serve_pid;
           fi;
           exit 1;
         fi;
@@ -1278,30 +1278,34 @@ services:
           done;
           if [ $$pull_success -eq 0 ]; then
             echo "ERROR: Failed to pull $${MODEL} after $${PULL_RETRIES} attempts" >&2;
-            cleanup $$serve_pid; exit 1;
+            exit 1;
           fi;
         fi;
         if ! bounded_list $$LIST_TIMEOUT "ollama list (digest verify)" | grep -qE "^$${MODEL}[[:space:]]+$${DIGEST}"; then
           echo "ERROR: Model $${MODEL} has wrong digest (expected $${DIGEST})" >&2;
-          cleanup $$serve_pid; exit 1;
+          exit 1;
         fi;
         if ! bounded_list $$LIST_TIMEOUT "ollama list (alias check)" | grep -qE '^nomic-embed-text:latest[[:space:]]+'"$${DIGEST}"; then
           ollama cp "$$MODEL" nomic-embed-text:latest & cp_pid=$$!;
           if ! bounded_call $$cp_pid $$CP_TIMEOUT "ollama cp"; then
-            cleanup $$serve_pid; exit 1;
+            exit 1;
           fi;
         fi;
+        set +e;
         list_out=$$(bounded_list $$LIST_TIMEOUT "ollama list (final verify)");
-        if [ $$? -ne 0 ]; then
+        list_code=$$?;
+        set -e;
+        if [ $$list_code -ne 0 ]; then
           echo "ERROR: Final verification: ollama list failed" >&2;
-          cleanup $$serve_pid; exit 1;
+          exit 1;
         fi;
         if ! echo "$$list_out" | grep -qE '^nomic-embed-text:v1\.5[[:space:]]+'"$${DIGEST}" ||
            ! echo "$$list_out" | grep -qE '^nomic-embed-text:latest[[:space:]]+'"$${DIGEST}"; then
           echo "ERROR: Final verification failed - both tags must resolve to $${DIGEST}" >&2;
-          cleanup $$serve_pid; exit 1;
+          exit 1;
         fi;
         echo "Bootstrap complete, ollama serve running" >&2;
+        trap - EXIT;
         wait $$serve_pid
     environment:
       - OLLAMA_KEEP_ALIVE=24h
