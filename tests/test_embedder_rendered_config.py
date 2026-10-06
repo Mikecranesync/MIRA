@@ -63,6 +63,7 @@ def _resolve_compose_executable() -> tuple[str, ...] | None:
         return None
     
     env = _get_isolated_env()
+    failures = []  # Track installed-but-failed candidates
     
     # Try standalone docker-compose first
     try:
@@ -77,8 +78,13 @@ def _resolve_compose_executable() -> tuple[str, ...] | None:
         if result.returncode == 0 and ("docker-compose version" in result.stdout.lower() or "version" in result.stdout):
             _COMPOSE_BASE_CMD = ("docker-compose",)
             return _COMPOSE_BASE_CMD
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+        else:
+            # Installed but failed (nonzero exit)
+            failures.append(("docker-compose", result.returncode, result.stdout, result.stderr))
+    except FileNotFoundError:
+        pass  # Not installed, try next candidate
+    except subprocess.TimeoutExpired as e:
+        failures.append(("docker-compose", None, None, f"timeout after {e.timeout}s"))
     
     # Try docker compose plugin
     try:
@@ -93,10 +99,27 @@ def _resolve_compose_executable() -> tuple[str, ...] | None:
         if result.returncode == 0 and ("docker compose version" in result.stdout.lower() or "version" in result.stdout):
             _COMPOSE_BASE_CMD = ("docker", "compose")
             return _COMPOSE_BASE_CMD
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+        else:
+            # Installed but failed (nonzero exit)
+            failures.append(("docker compose", result.returncode, result.stdout, result.stderr))
+    except FileNotFoundError:
+        pass  # Not installed
+    except subprocess.TimeoutExpired as e:
+        failures.append(("docker compose", None, None, f"timeout after {e.timeout}s"))
     
-    # No supported compose found
+    # If any candidate was installed but failed, that's an error (fail loud)
+    if failures:
+        cmd, returncode, stdout, stderr = failures[0]
+        if returncode is not None:
+            _COMPOSE_SKIP_REASON = (
+                f"{cmd} version returned exit {returncode}.\n"
+                f"stdout: {stdout}\nstderr: {stderr}"
+            )
+        else:
+            _COMPOSE_SKIP_REASON = f"{cmd} version {stderr}"
+        return None
+    
+    # All candidates genuinely absent - skip
     _COMPOSE_SKIP_REASON = "no supported docker-compose or docker compose found under isolated DOCKER_CONFIG"
     return None
 
@@ -108,35 +131,19 @@ def _has_docker_compose() -> bool:
     Returns False if no compose binary found (skip case).
     Raises RuntimeError for installed-but-broken or timeout cases.
     """
-    env = _get_isolated_env()
-    
     # Resolve once; this may set skip reason
     base_cmd = _resolve_compose_executable()
     
     if base_cmd is None:
-        # No compose found - skip case
+        # Check if skip reason indicates installed-but-failed vs genuinely absent
+        if _COMPOSE_SKIP_REASON and ("returned exit" in _COMPOSE_SKIP_REASON or "timeout" in _COMPOSE_SKIP_REASON):
+            # Installed but failed - fail loud
+            raise RuntimeError(_COMPOSE_SKIP_REASON)
+        # Genuinely absent - skip case
         return False
     
-    # Verify it works under isolated config
-    try:
-        result = subprocess.run(
-            list(base_cmd) + ["version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-            env=env,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"{' '.join(base_cmd)} version returned exit {result.returncode}.\n"
-                f"stdout: {result.stdout}\nstderr: {result.stderr}"
-            )
-        return True
-    except subprocess.TimeoutExpired as e:
-        raise RuntimeError(
-            f"{' '.join(base_cmd)} version timed out after {e.timeout}s"
-        ) from e
+    # base_cmd is valid, return True (resolver already verified it works)
+    return True
 
 
 def _render_config(compose_files: list[Path], env: dict[str, str], cwd: Path | None = None) -> dict:
