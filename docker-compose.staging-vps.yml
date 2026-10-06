@@ -746,7 +746,9 @@ services:
         ollama serve & pid=$$!;
         until ollama list >/dev/null 2>&1; do sleep 1; done;
         ollama pull nomic-embed-text:v1.5;
-        ollama cp nomic-embed-text:v1.5 nomic-embed-text:latest;
+        if ! ollama list | grep -qE '^nomic-embed-text:latest[[:space:]]+0a109f422b47'; then
+          ollama cp nomic-embed-text:v1.5 nomic-embed-text:latest || true;
+        fi;
         wait $$pid
     environment:
       - OLLAMA_KEEP_ALIVE=24h

@@ -143,6 +143,7 @@ See local CLAUDE.md in each module for deep context.
 | mira-historian-worker | — | mira-net |
 | mira-historian-beat | — | mira-net |
 | mira-cmms-sync | — | mira-net, cmms-ext |
+| mira-ollama | — | mira-net |
 
 Profile-gated rows start only with `docker compose --profile <name> up`. Staging: `docker-compose.staging-vps.yml` (`stg-*` names) — see `docs/environments.md`.
 

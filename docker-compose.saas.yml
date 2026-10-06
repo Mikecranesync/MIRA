@@ -1170,6 +1170,8 @@ services:
   # vectors stay comparable with the ~94k already stored. No ports: Ollama has no
   # auth, so it is reachable only on the internal network. Healthy only once the
   # pinned model digest is present.
+  # Scope: This shared saas.yml base is used ONLY for OVH production (paired with
+  # docker-compose.production.yml). Staging/dev use separate compose files.
   mira-ollama:
     image: ollama/ollama:0.22.0
     container_name: mira-ollama
@@ -1179,7 +1181,9 @@ services:
         ollama serve & pid=$$!;
         until ollama list >/dev/null 2>&1; do sleep 1; done;
         ollama pull nomic-embed-text:v1.5;
-        ollama cp nomic-embed-text:v1.5 nomic-embed-text:latest;
+        if ! ollama list | grep -qE '^nomic-embed-text:latest[[:space:]]+0a109f422b47'; then
+          ollama cp nomic-embed-text:v1.5 nomic-embed-text:latest || true;
+        fi;
         wait $$pid
     environment:
       - OLLAMA_KEEP_ALIVE=24h
