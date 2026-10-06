@@ -236,6 +236,52 @@ def test_production_overlay_does_not_override_embedder_url():
             break  # End of mira-hub service
 
 
+def test_node_embed_retry_sweep_is_forwarded_to_hub():
+    """The Hub must receive NODE_EMBED_RETRY_SWEEP so the rollback switch works.
+    
+    PR #4293 added the embed retry sweep with an off switch (NODE_EMBED_RETRY_SWEEP),
+    but the variable was never forwarded into the Hub container in the OVH compose
+    files. This test verifies both saas.yml and staging-vps.yml forward it with the
+    correct default (unset → 1, explicit 0 → 0).
+    """
+    for path in (PROD, STG):
+        env = _env(_svc(path, "mira-hub"))
+        # The key must be present, and the value must have the ${VAR:-1} pattern
+        # (or just be present with any forwarding pattern)
+        assert "NODE_EMBED_RETRY_SWEEP" in env, \
+            f"{path.name}: Hub must receive NODE_EMBED_RETRY_SWEEP"
+        value = env["NODE_EMBED_RETRY_SWEEP"]
+        # It should forward from the environment with a default of 1
+        assert "${NODE_EMBED_RETRY_SWEEP" in value and ":-1}" in value, \
+            f"{path.name}: NODE_EMBED_RETRY_SWEEP should default to 1 (found: {value})"
+
+
+def test_production_overlay_does_not_override_node_embed_retry_sweep():
+    """The production overlay must not override NODE_EMBED_RETRY_SWEEP.
+    
+    The base saas.yml sets it with the correct default. The production overlay
+    must not override it, just like OLLAMA_BASE_URL.
+    """
+    prod_overlay = ROOT / "docker-compose.production.yml"
+    text = prod_overlay.read_text()
+    
+    in_hub_env = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if "mira-hub:" in line:
+            in_hub_env = True
+        elif in_hub_env and stripped.startswith("environment:"):
+            in_hub_env = True
+        elif in_hub_env and (line.startswith("  ") or not stripped):
+            if not stripped.startswith("#") and "NODE_EMBED_RETRY_SWEEP:" in line:
+                raise AssertionError(
+                    f"production overlay must not set NODE_EMBED_RETRY_SWEEP; found: {stripped}. "
+                    f"The base saas.yml sets it correctly with default 1"
+                )
+        elif in_hub_env and not line.startswith(" "):
+            break
+
+
 def test_ollama_cp_is_idempotent():
     """The startup command must skip `ollama cp` if :latest already has the right digest.
     

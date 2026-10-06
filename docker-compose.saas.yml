@@ -819,6 +819,9 @@ services:
       # address, which this host cannot reach (2026-10-05 outage). The colocated
       # mira-ollama service below serves the same model digest.
       - OLLAMA_BASE_URL=http://mira-ollama:11434
+      # Embed retry sweep (#4293): backfill embed-on-write failures with an off switch.
+      # Default ON (unset → 1); explicit 0 disables the sweep without rebuild.
+      - NODE_EMBED_RETRY_SWEEP=${NODE_EMBED_RETRY_SWEEP:-1}
       # P0004G canonical inference seam. OFF unless explicitly set to "1" —
       # with it unset the notebook-chat route keeps using the pre-existing
       # inline cascade, so this line changes nothing until someone flips it.
