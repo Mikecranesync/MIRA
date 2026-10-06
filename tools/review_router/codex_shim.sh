@@ -18,6 +18,16 @@ set -euo pipefail
 REAL_CODEX="${REVIEW_REAL_CODEX:-$(command -v codex)}"
 : "${REVIEW_USAGE_FILE:?REVIEW_USAGE_FILE must name the usage capture file}"
 
+# Verify REAL_CODEX exists and is executable before use
+if [ ! -f "$REAL_CODEX" ]; then
+  echo "codex_shim: REAL_CODEX '$REAL_CODEX' does not exist" >&2
+  exit 67
+fi
+if [ ! -x "$REAL_CODEX" ]; then
+  echo "codex_shim: REAL_CODEX '$REAL_CODEX' is not executable" >&2
+  exit 67
+fi
+
 if [ "${1:-}" != "exec" ]; then
   exec "$REAL_CODEX" "$@"   # not a review run: pass through untouched
 fi

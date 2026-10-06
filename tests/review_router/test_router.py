@@ -321,6 +321,49 @@ def test_shim_passes_non_exec_commands_through_untouched(tmp_path, fake_codex):
     assert (tmp_path / "args").read_text().split("\n")[:-1] == ["login", "status"]
 
 
+def test_shim_refuses_when_real_codex_does_not_exist(tmp_path):
+    """The shim checks that REAL_CODEX exists before attempting to exec it."""
+    env = dict(
+        os.environ,
+        REVIEW_REAL_CODEX=str(tmp_path / "nonexistent-codex"),
+        REVIEW_USAGE_FILE=str(tmp_path / "usage.jsonl"),
+        REVIEW_SKIP_SNAPSHOT_CHECK="1",
+    )
+    r = subprocess.run(
+        ["bash", str(SHIM), "exec", "-"],
+        input="PROMPT",
+        text=True,
+        capture_output=True,
+        env=env,
+    )
+    assert r.returncode == 67
+    assert "does not exist" in r.stderr
+    assert "nonexistent-codex" in r.stderr
+
+
+def test_shim_refuses_when_real_codex_is_not_executable(tmp_path):
+    """The shim checks that REAL_CODEX is executable before attempting to exec it."""
+    fake = tmp_path / "not-executable"
+    fake.write_text("#!/usr/bin/env bash\necho test\n")
+    # Don't make it executable
+    env = dict(
+        os.environ,
+        REVIEW_REAL_CODEX=str(fake),
+        REVIEW_USAGE_FILE=str(tmp_path / "usage.jsonl"),
+        REVIEW_SKIP_SNAPSHOT_CHECK="1",
+    )
+    r = subprocess.run(
+        ["bash", str(SHIM), "exec", "-"],
+        input="PROMPT",
+        text=True,
+        capture_output=True,
+        env=env,
+    )
+    assert r.returncode == 67
+    assert "is not executable" in r.stderr
+    assert str(fake) in r.stderr
+
+
 def test_prices_file_is_dated_and_sourced():
     meta = json.loads((ROUTER_DIR / "prices.json").read_text())
     assert meta["source"].startswith("https://") and meta["fetched"]
@@ -592,6 +635,58 @@ def test_shim_refuses_when_expected_values_are_unset(tmp_path, fake_codex):
     assert "is unset" in r.stderr
     assert not (tmp_path / "args").exists()
     assert not (tmp_path / "usage.jsonl.started").exists()
+
+
+def test_router_strips_skip_snapshot_check_from_shim_environment(tmp_path, monkeypatch):
+    """The router strips REVIEW_SKIP_SNAPSHOT_CHECK from the environment it passes
+    to the shim, so a stray test escape in the operator's shell can't disable the
+    snapshot check. Only tests that invoke the shim directly can set it."""
+    ledger = tmp_path / "costs.jsonl"
+    env_captured = {}
+
+    def fake_reserve(*args, **kwargs):
+        # Always allow the run
+        return True, "ok", "test-rid-12345678"
+
+    def fake_subprocess_run(cmd, **kwargs):
+        # Capture the environment the router passes to bash (which runs the trusted script)
+        if cmd[0] == "bash" and cmd[1] == "-s":
+            env_captured.update(kwargs.get("env", {}))
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        # Everything else: pass through or stub
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(router, "reserve", fake_reserve)
+    monkeypatch.setattr(subprocess, "run", fake_subprocess_run)
+    monkeypatch.setattr(
+        router,
+        "pr_facts",
+        lambda pr: {
+            "base_ref": "main",
+            "base_sha": BASE_SHA,
+            "head": HEAD_SHA,
+            "merge_base": BASE_SHA,
+            "paths": ["docs/x.md"],
+            "diff_chars": 100,
+        },
+    )
+    monkeypatch.setattr(router, "prior_round", lambda pr: {})
+    monkeypatch.setattr(router, "deterministic_stage", lambda head, base: ([], []))
+    monkeypatch.setattr(router, "untrusted_tooling", lambda ref: [])
+    monkeypatch.setattr(router, "router_on_base", lambda ref: True)
+
+    # Set REVIEW_SKIP_SNAPSHOT_CHECK in the operator's environment
+    monkeypatch.setenv("REVIEW_SKIP_SNAPSHOT_CHECK", "1")
+
+    # Run the router (it will hit our stubs above and capture the env it passes to bash)
+    router.main(["1", "--ledger", str(ledger), "--no-prefilter"])
+
+    # Verify that REVIEW_SKIP_SNAPSHOT_CHECK is NOT in the environment the router
+    # passed to the trusted script (which passes it to the shim)
+    assert "REVIEW_SKIP_SNAPSHOT_CHECK" not in env_captured
+    # But verify the router did set the variables it should set
+    assert "CODEX_BIN" in env_captured
+    assert "REVIEW_EXPECTED_HEAD" in env_captured
 
 
 def test_killing_the_shim_kills_codex_itself(tmp_path):

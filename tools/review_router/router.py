@@ -714,6 +714,9 @@ def main(argv: list[str] | None = None) -> int:
         REVIEW_EXPECTED_HEAD=facts["head"],
         REVIEW_EXPECTED_BASE=facts["base_sha"],
     )
+    # Strip test-only escape hatches from the environment so only tests that
+    # call the shim directly can set them, never via the operator's environment.
+    env.pop("REVIEW_SKIP_SNAPSHOT_CHECK", None)
     if args.authorized:
         env["ADV_REVIEW_HUMAN_AUTHORIZED"] = "1"
     trusted = _run(
