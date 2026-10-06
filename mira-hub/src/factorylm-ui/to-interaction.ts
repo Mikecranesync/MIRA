@@ -38,7 +38,7 @@ import { isMachineEvidenceEntry, isSafetyNoticeEntry, isVisualObservationEntry }
 import { API_BASE } from "@/lib/config";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
-import { splitEvidence } from "@/components/equipment/notebook-chat-utils";
+import { BASIS_LABEL, splitEvidence } from "@/components/equipment/notebook-chat-utils";
 
 type StatusAwareStreamResult = StreamResult & { statusMessage?: string | null };
 
@@ -106,6 +106,15 @@ const BASIS_BY_VALUE: Readonly<Record<string, EvidenceBasisKind>> = {
 export function basisKind(basis: string): EvidenceBasisKind {
   const normalized = basis.trim().toLowerCase().replace(/\s+/g, "_");
   return BASIS_BY_VALUE[normalized] ?? "general_reasoning";
+}
+
+/** The answer's basis chip. Its words are the classic notebook's caption for
+ *  the kind (#4025: it read "● oem_documentation" under a technician's own
+ *  cited upload), so an unknown value reads as general guidance, never as
+ *  itself. `authorized` is server-owned; nothing here carries it. */
+function basisPart(basis: string): InteractionPart {
+  const kind = basisKind(basis);
+  return { type: "evidence_basis", basis: { kind, label: BASIS_LABEL[kind], authorized: false } };
 }
 
 /**
@@ -294,10 +303,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
 
   if (!nonAnswer) {
     for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId) });
-    if (result.basis) {
-      // `authorized` is server-owned; the stream carries no such signal, so it is never asserted.
-      parts.push({ type: "evidence_basis", basis: { kind: basisKind(result.basis), label: result.basis, authorized: false } });
-    }
+    if (result.basis) parts.push(basisPart(result.basis));
     if (result.machineEvidence) parts.push(machineEvidencePart(result.machineEvidence));
     if (result.visualEvidence) parts.push(visualObservationPart(result.visualEvidence));
     if (result.safetyNotice) parts.push(safetyNoticePart(result.safetyNotice));
@@ -414,9 +420,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
   }
   if (!stopped && row.answerStatus !== "error") {
     for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId) });
-    if (row.basis) {
-      parts.push({ type: "evidence_basis", basis: { kind: basisKind(row.basis), label: row.basis, authorized: false } });
-    }
+    if (row.basis) parts.push(basisPart(row.basis));
     for (const m of machineEvidence) parts.push(machineEvidencePart(m));
     for (const v of visualEvidence) parts.push(visualObservationPart(v));
     for (const n of notices) parts.push(safetyNoticePart(n));

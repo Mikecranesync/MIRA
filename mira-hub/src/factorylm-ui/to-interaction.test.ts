@@ -114,7 +114,7 @@ describe("partsFromStream", () => {
       visualEvidence: { kind: "visual_observation", fileId: "f9fdad9c", capturedAt: AT, provenance: "phone_photo" },
     }), LIVE);
     expect(parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "machine_evidence", "visual_observation", "followups"]);
-    expect(parts[2]).toEqual({ type: "evidence_basis", basis: { kind: "oem_documentation", label: "oem_documentation", authorized: false } });
+    expect(parts[2]).toEqual({ type: "evidence_basis", basis: { kind: "oem_documentation", label: "Grounded in this notebook's sources.", authorized: false } });
     expect(parts[3]).toMatchObject({ evidence: { preSeconds: 30, postSeconds: 30, rowCount: 4, freshness: "stale", source: "recorded" } });
     // The chat route carries no verification signal; the mapper must never claim one.
     expect(parts[4]).toEqual({ type: "visual_observation", observation: { fileId: "f9fdad9c", capturedAt: AT, provenance: "phone_photo", verified: false, previewUrl: fileUrl("f9fdad9c") } });
@@ -515,5 +515,44 @@ describe("threadFromPersisted / citationIndex", () => {
     // Without a live turn id, live citations are not indexed at all (never under a guessed key).
     expect(citationIndex([older], [live]).size).toBe(1);
     expect(hasIdentityDispute([citation])).toBe(false);
+  });
+});
+
+// #4025: the /v3 answer chip read "● oem_documentation" under a technician's
+// own cited upload (desktop #4024 proof, Pixel prod v1.2.0 2026-10-04). The
+// chip must carry the classic notebook's caption for the basis, never the
+// server's enum key, on the live stream and after a reload alike.
+describe("evidence basis chip — a caption, never the server key (#4025)", () => {
+  const CAPTIONS = {
+    oem_documentation: "Grounded in this notebook's sources.",
+    general_reasoning: "General guidance — not grounded in this machine's documents.",
+    workspace_evidence: "Grounded in workspace evidence.",
+    identified_component: "Grounded in the identified component.",
+    machine_history: "Grounded in recorded machine history — not live.",
+    live_machine_evidence: "Grounded in live machine evidence.",
+  } as const;
+  const basisPart = (parts: readonly { type: string }[]) => parts.find((p) => p.type === "evidence_basis") as
+    | { basis: { kind: string; label: string; authorized: boolean } }
+    | undefined;
+
+  for (const [basis, caption] of Object.entries(CAPTIONS)) {
+    it(`${basis}: live stream and persisted row both show "${caption}"`, () => {
+      const live = basisPart(partsFromStream(stream({ basis }), LIVE));
+      const [, replayed] = turnsFromPersisted(row({ basis }), meta);
+      const saved = basisPart(replayed.parts);
+      for (const part of [live, saved]) {
+        expect(part?.basis.label).toBe(caption);
+        expect(part?.basis.label).not.toBe(basis);
+        expect(part?.basis.kind).toBe(basis);
+      }
+    });
+  }
+
+  it("an unknown basis is captioned as general guidance — never a stronger claim, never the raw value", () => {
+    const live = basisPart(partsFromStream(stream({ basis: "verified_by_oem" }), LIVE));
+    const [, replayed] = turnsFromPersisted(row({ basis: "verified_by_oem" }), meta);
+    for (const part of [live, basisPart(replayed.parts)]) {
+      expect(part?.basis).toEqual({ kind: "general_reasoning", label: CAPTIONS.general_reasoning, authorized: false });
+    }
   });
 });
