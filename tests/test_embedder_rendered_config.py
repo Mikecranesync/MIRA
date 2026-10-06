@@ -216,15 +216,12 @@ def _render_config(compose_files: list[Path], env: dict[str, str], cwd: Path | N
 
 
 def _compose_available_or_skip():
-    """Skip test only if Compose binary not found; fail on other errors."""
+    """Check if compose available for skipif decorator. Returns bool only."""
     try:
-        available = _has_docker_compose()
-        if not available and _COMPOSE_SKIP_REASON:
-            pytest.skip(_COMPOSE_SKIP_REASON)
-        return available
-    except RuntimeError as e:
-        # Compose exists but failed/timed out - don't skip, let it fail
-        pytest.fail(f"docker compose exists but is broken: {e}")
+        return _has_docker_compose()
+    except RuntimeError:
+        # Compose exists but broken - return True so test runs and can fail properly
+        return True
 
 
 @pytest.mark.skipif(not _compose_available_or_skip(), reason="docker compose binary not found")

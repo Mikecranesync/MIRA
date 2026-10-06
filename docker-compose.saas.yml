@@ -1184,26 +1184,33 @@ services:
         set -e;
         READY_CAP=$${OLLAMA_READY_CAP:-120};
         PULL_RETRIES=$${OLLAMA_PULL_RETRIES:-5};
+        CALL_TIMEOUT=$${OLLAMA_CALL_TIMEOUT:-30};
         MODEL='nomic-embed-text:v1.5';
         DIGEST='0a109f422b47';
-        ollama serve & pid=$$!;
+        cleanup() { kill $$1 2>/dev/null || true; };
+        bounded_wait() {
+          local pid=$$1 cap=$$2 waited=0;
+          while [ $$waited -lt $$cap ]; do
+            if ! kill -0 $$pid 2>/dev/null; then wait $$pid 2>/dev/null; return $$?; fi;
+            sleep 1; waited=$$((waited + 1));
+          done;
+          cleanup $$pid; return 124;
+        };
+        ollama serve & serve_pid=$$!;
         ready=0; elapsed=0;
         while [ $$elapsed -lt $$READY_CAP ]; do
-          if ! kill -0 $$pid 2>/dev/null; then
+          if ! kill -0 $$serve_pid 2>/dev/null; then
             echo "ERROR: ollama serve died before ready (after $${elapsed}s)" >&2;
             exit 1;
           fi;
-          if ollama list >/dev/null 2>&1; then
-            ready=1;
-            break;
-          fi;
-          sleep 1;
-          elapsed=$$((elapsed + 1));
+          ollama list >/dev/null 2>&1 & list_pid=$$!;
+          if bounded_wait $$list_pid 5; then ready=1; break; fi;
+          cleanup $$list_pid;
+          sleep 1; elapsed=$$((elapsed + 1));
         done;
         if [ $$ready -eq 0 ]; then
           echo "ERROR: ollama serve never became ready within $${READY_CAP}s" >&2;
-          kill $$pid 2>/dev/null || true;
-          exit 1;
+          cleanup $$serve_pid; exit 1;
         fi;
         if ollama list | grep -qE "^$${MODEL}[[:space:]]+$${DIGEST}"; then
           echo "Model $${MODEL} already cached with digest $${DIGEST}, skipping pull";
@@ -1211,31 +1218,38 @@ services:
           pull_success=0;
           for attempt in $$(seq 1 $$PULL_RETRIES); do
             echo "Pulling $${MODEL} (attempt $$attempt/$$PULL_RETRIES)...";
-            if ollama pull "$$MODEL"; then
-              pull_success=1;
-              break;
+            ollama pull "$$MODEL" & pull_pid=$$!;
+            if bounded_wait $$pull_pid $$CALL_TIMEOUT; then
+              pull_success=1; break;
             fi;
+            cleanup $$pull_pid;
             if [ $$attempt -lt $$PULL_RETRIES ]; then
-              echo "Pull failed, retrying...";
-              sleep 2;
+              echo "Pull timed out or failed, retrying..."; sleep 2;
             fi;
           done;
           if [ $$pull_success -eq 0 ]; then
             echo "ERROR: Failed to pull $${MODEL} after $${PULL_RETRIES} attempts" >&2;
-            kill $$pid 2>/dev/null || true;
-            exit 1;
+            cleanup $$serve_pid; exit 1;
           fi;
         fi;
         if ! ollama list | grep -qE "^$${MODEL}[[:space:]]+$${DIGEST}"; then
           echo "ERROR: Model $${MODEL} has wrong digest (expected $${DIGEST})" >&2;
-          kill $$pid 2>/dev/null || true;
-          exit 1;
+          cleanup $$serve_pid; exit 1;
         fi;
         if ! ollama list | grep -qE '^nomic-embed-text:latest[[:space:]]+'"$${DIGEST}"; then
-          ollama cp "$${MODEL}" nomic-embed-text:latest || true;
+          ollama cp "$$MODEL" nomic-embed-text:latest & cp_pid=$$!;
+          if ! bounded_wait $$cp_pid 10; then
+            echo "ERROR: ollama cp timed out" >&2;
+            cleanup $$cp_pid; cleanup $$serve_pid; exit 1;
+          fi;
+        fi;
+        if ! ollama list | grep -qE '^nomic-embed-text:v1\.5[[:space:]]+'"$${DIGEST}" ||
+           ! ollama list | grep -qE '^nomic-embed-text:latest[[:space:]]+'"$${DIGEST}"; then
+          echo "ERROR: Final verification failed - both tags must resolve to $${DIGEST}" >&2;
+          cleanup $$serve_pid; exit 1;
         fi;
         echo "Bootstrap complete, ollama serve running";
-        wait $$pid
+        wait $$serve_pid
     environment:
       - OLLAMA_KEEP_ALIVE=24h
     volumes:

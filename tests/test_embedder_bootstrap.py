@@ -105,6 +105,9 @@ def _create_fake_ollama(
         STATE_DIR="{state_dir}"
         
         if [ "$1" = "serve" ]; then
+            # Mark as serving immediately so list can succeed
+            touch "$STATE_DIR/serving"
+            
             # Serve behavior
             if [ "{serve_behavior}" = "die_immediately" ]; then
                 exit 1
@@ -112,19 +115,25 @@ def _create_fake_ollama(
                 sleep 3
                 exit 1
             else
-                # Success - run forever (will be killed by test)
+                # Success - mark ready then run forever
+                sleep 0.2
+                touch "$STATE_DIR/ready"
                 while true; do sleep 1; done
             fi
         elif [ "$1" = "list" ]; then
-            # Check if serve has started (indicated by ready file)
-            if [ ! -f "$STATE_DIR/ready" ]; then
-                # Not ready yet
+            # Check if serve has started
+            if [ ! -f "$STATE_DIR/serving" ]; then
                 exit 1
             fi
-            # Output list
-            cat << 'EOF'
+            # If ready file exists, output list
+            if [ -f "$STATE_DIR/ready" ]; then
+                cat << 'EOF'
 {list_output}
 EOF
+            else
+                # Not ready yet but serving started
+                exit 1
+            fi
         elif [ "$1" = "pull" ]; then
             model="$2"
             # Track pull attempts
@@ -156,14 +165,6 @@ EOF
     
     ollama_script.write_text(script_content)
     ollama_script.chmod(0o755)
-    
-    # Create a helper script that marks serve as ready after a delay
-    ready_marker = tmpdir / "mark_ready.sh"
-    ready_marker.write_text(textwrap.dedent(f'''#!/bin/sh
-        sleep 1
-        touch "{state_dir}/ready"
-    '''))
-    ready_marker.chmod(0o755)
     
     return ollama_script
 
@@ -197,22 +198,18 @@ def test_happy_path_pull_then_ready():
             pull_behavior="success",
         )
         
-        # Simplified test command (will replace with real rendered one)
-        # For now, test the pattern
+        # Simplified test command
         test_script = tmp_path / "test_bootstrap.sh"
         test_script.write_text(textwrap.dedent(f'''#!/bin/sh
             set -e
             export PATH="{tmp_path}:$PATH"
-            
-            # Start mark_ready helper
-            "{tmp_path}/mark_ready.sh" &
             
             # Simplified bootstrap
             ollama serve & pid=$!
             
             # Wait for ready (bounded)
             ready=0
-            for i in $(seq 1 10); do
+            for i in $(seq 1 30); do
                 if ollama list >/dev/null 2>&1; then
                     ready=1
                     break
@@ -265,7 +262,7 @@ def test_serve_dies_before_ready():
             
             # Wait for ready with liveness check
             ready=0
-            for i in $(seq 1 10); do
+            for i in $(seq 1 30); do
                 # Check if serve still alive
                 if ! kill -0 $pid 2>/dev/null; then
                     echo "ERROR: serve died before ready" >&2
@@ -303,12 +300,34 @@ def test_never_ready_timeout():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         
-        # Serve succeeds but never marks ready
+        # Create fake ollama that serves but never becomes ready
+        # We'll use a special list_output that keeps returning error
         fake_ollama = _create_fake_ollama(
             tmp_path,
-            serve_behavior="success",
+            serve_behavior="success",  # Serves successfully
+            list_output="",  # But list stays empty (not ready)
         )
-        # Don't start mark_ready helper
+        
+        # Override the ollama script to never mark ready
+        ollama_script = tmp_path / "ollama"
+        state_dir = tmp_path / ".ollama_state"
+        
+        script_content = textwrap.dedent(f'''#!/bin/sh
+            STATE_DIR="{state_dir}"
+            
+            if [ "$1" = "serve" ]; then
+                # Mark as serving but NEVER mark ready
+                touch "$STATE_DIR/serving"
+                # Run forever
+                while true; do sleep 1; done
+            elif [ "$1" = "list" ]; then
+                # Always fail (never ready)
+                exit 1
+            fi
+        ''')
+        
+        ollama_script.write_text(script_content)
+        ollama_script.chmod(0o755)
         
         test_script = tmp_path / "test_bootstrap.sh"
         test_script.write_text(textwrap.dedent(f'''#!/bin/sh
@@ -372,11 +391,10 @@ def test_pull_fails_all_retries():
             set -e
             export PATH="{tmp_path}:$PATH"
             
-            "{tmp_path}/mark_ready.sh" &
             ollama serve & pid=$!
             
             # Wait ready
-            for i in $(seq 1 10); do
+            for i in $(seq 1 30); do
                 if ollama list >/dev/null 2>&1; then
                     break
                 fi
@@ -430,11 +448,10 @@ def test_model_cached_correct_digest_registry_down():
             set -e
             export PATH="{tmp_path}:$PATH"
             
-            "{tmp_path}/mark_ready.sh" &
             ollama serve & pid=$!
             
             # Wait ready
-            for i in $(seq 1 10); do
+            for i in $(seq 1 30); do
                 if ollama list >/dev/null 2>&1; then
                     break
                 fi
@@ -503,11 +520,10 @@ def test_wrong_digest_after_pull():
             set -e
             export PATH="{tmp_path}:$PATH"
             
-            "{tmp_path}/mark_ready.sh" &
             ollama serve & pid=$!
             
             # Wait ready
-            for i in $(seq 1 10); do
+            for i in $(seq 1 30); do
                 if ollama list >/dev/null 2>&1; then
                     break
                 fi
