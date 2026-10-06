@@ -13,12 +13,10 @@ available and will skip cleanly if it's not (e.g., in CI without Docker).
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
-import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PROD_BASE = ROOT / "docker-compose.saas.yml"
@@ -27,30 +25,46 @@ STG = ROOT / "docker-compose.staging-vps.yml"
 
 
 def _has_docker_compose() -> bool:
-    """Check if docker compose is available."""
-    return shutil.which("docker") is not None
+    """Check if docker compose is available and working."""
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+        return "Docker Compose version" in result.stdout or "version" in result.stdout
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return False
 
 
 def _render_config(compose_files: list[Path], env: dict[str, str]) -> dict:
-    """Render compose config with throwaway env vars.
+    """Render compose config with throwaway env vars, fully isolated.
     
     Args:
         compose_files: List of compose file paths (base + overlays)
         env: Environment variables to set for rendering
         
     Returns:
-        Parsed YAML of the rendered config
+        Parsed JSON of the rendered config
         
     Raises:
         subprocess.CalledProcessError: If docker compose config fails
+        subprocess.TimeoutExpired: If render takes >60s
     """
+    import os
+    
     cmd = ["docker", "compose"]
     for f in compose_files:
         cmd.extend(["-f", str(f)])
-    cmd.append("config")
+    cmd.extend(["config", "--format", "json"])
     
-    # Merge env with minimal required vars (avoid Doppler/real secrets)
+    # Fully isolated environment: PATH only, plus minimal required vars.
+    # No COMPOSE_FILE, COMPOSE_PROJECT_NAME, or stray .env from runner cwd.
+    # Explicit project dir set to repo root so compose doesn't walk upward.
     render_env = {
+        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
         "NEON_DATABASE_URL": "postgresql://dummy:dummy@localhost/dummy",
         "MCP_REST_API_KEY": "dummy",
         "ATLAS_DB_PASSWORD": "dummy",
@@ -69,12 +83,14 @@ def _render_config(compose_files: list[Path], env: dict[str, str]) -> dict:
         env=render_env,
         capture_output=True,
         text=True,
+        timeout=60,
         check=True,
+        cwd=str(ROOT),  # Explicit project dir = repo root
     )
-    return yaml.safe_load(result.stdout)
+    return json.loads(result.stdout)
 
 
-@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
+@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose version check failed or unavailable")
 def test_prod_conflicting_ollama_base_url_cannot_override():
     """A host OLLAMA_BASE_URL env var cannot override the Hub's literal in production.
     
@@ -88,17 +104,14 @@ def test_prod_conflicting_ollama_base_url_cannot_override():
         {"OLLAMA_BASE_URL": "http://wrong-host:11434"},
     )
     
-    hub_env = {
-        item.split("=", 1)[0]: item.split("=", 1)[1]
-        for item in config["services"]["mira-hub"]["environment"]
-        if "=" in item
-    }
+    # With --format json, environment is a mapping
+    hub_env = config["services"]["mira-hub"]["environment"]
     
     assert hub_env["OLLAMA_BASE_URL"] == "http://mira-ollama:11434", \
         "Production Hub's OLLAMA_BASE_URL must be the literal internal service, not the host env var"
 
 
-@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
+@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose version check failed or unavailable")
 def test_staging_conflicting_ollama_base_url_cannot_override():
     """A host OLLAMA_BASE_URL env var cannot override the Hub's literal in staging."""
     config = _render_config(
@@ -106,17 +119,13 @@ def test_staging_conflicting_ollama_base_url_cannot_override():
         {"OLLAMA_BASE_URL": "http://wrong-host:11434"},
     )
     
-    hub_env = {
-        item.split("=", 1)[0]: item.split("=", 1)[1]
-        for item in config["services"]["mira-hub"]["environment"]
-        if "=" in item
-    }
+    hub_env = config["services"]["mira-hub"]["environment"]
     
     assert hub_env["OLLAMA_BASE_URL"] == "http://mira-ollama:11434", \
         "Staging Hub's OLLAMA_BASE_URL must be the literal internal service, not the host env var"
 
 
-@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
+@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose version check failed or unavailable")
 def test_prod_node_embed_retry_sweep_unset_renders_one():
     """NODE_EMBED_RETRY_SWEEP unset renders to "1" in production.
     
@@ -128,17 +137,13 @@ def test_prod_node_embed_retry_sweep_unset_renders_one():
         {},  # NODE_EMBED_RETRY_SWEEP unset
     )
     
-    hub_env = {
-        item.split("=", 1)[0]: item.split("=", 1)[1]
-        for item in config["services"]["mira-hub"]["environment"]
-        if "=" in item
-    }
+    hub_env = config["services"]["mira-hub"]["environment"]
     
     assert hub_env.get("NODE_EMBED_RETRY_SWEEP") == "1", \
         "Production Hub must receive NODE_EMBED_RETRY_SWEEP=1 when unset (default ON)"
 
 
-@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
+@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose version check failed or unavailable")
 def test_prod_node_embed_retry_sweep_explicit_zero_renders_zero():
     """NODE_EMBED_RETRY_SWEEP=0 renders to "0" in production.
     
@@ -150,47 +155,35 @@ def test_prod_node_embed_retry_sweep_explicit_zero_renders_zero():
         {"NODE_EMBED_RETRY_SWEEP": "0"},
     )
     
-    hub_env = {
-        item.split("=", 1)[0]: item.split("=", 1)[1]
-        for item in config["services"]["mira-hub"]["environment"]
-        if "=" in item
-    }
+    hub_env = config["services"]["mira-hub"]["environment"]
     
     assert hub_env.get("NODE_EMBED_RETRY_SWEEP") == "0", \
         "Production Hub must receive NODE_EMBED_RETRY_SWEEP=0 when explicitly disabled"
 
 
-@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
+@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose version check failed or unavailable")
 def test_staging_node_embed_retry_sweep_unset_renders_one():
     """NODE_EMBED_RETRY_SWEEP unset renders to "1" in staging."""
     config = _render_config([STG], {})
     
-    hub_env = {
-        item.split("=", 1)[0]: item.split("=", 1)[1]
-        for item in config["services"]["mira-hub"]["environment"]
-        if "=" in item
-    }
+    hub_env = config["services"]["mira-hub"]["environment"]
     
     assert hub_env.get("NODE_EMBED_RETRY_SWEEP") == "1", \
         "Staging Hub must receive NODE_EMBED_RETRY_SWEEP=1 when unset (default ON)"
 
 
-@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
+@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose version check failed or unavailable")
 def test_staging_node_embed_retry_sweep_explicit_zero_renders_zero():
     """NODE_EMBED_RETRY_SWEEP=0 renders to "0" in staging."""
     config = _render_config([STG], {"NODE_EMBED_RETRY_SWEEP": "0"})
     
-    hub_env = {
-        item.split("=", 1)[0]: item.split("=", 1)[1]
-        for item in config["services"]["mira-hub"]["environment"]
-        if "=" in item
-    }
+    hub_env = config["services"]["mira-hub"]["environment"]
     
     assert hub_env.get("NODE_EMBED_RETRY_SWEEP") == "0", \
         "Staging Hub must receive NODE_EMBED_RETRY_SWEEP=0 when explicitly disabled"
 
 
-@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
+@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose version check failed or unavailable")
 def test_prod_mira_ollama_has_no_published_ports():
     """The rendered mira-ollama service must not publish any ports in production.
     
@@ -206,7 +199,7 @@ def test_prod_mira_ollama_has_no_published_ports():
         "Production mira-ollama must not publish any ports (Ollama has no auth)"
 
 
-@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
+@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose version check failed or unavailable")
 def test_staging_mira_ollama_has_no_published_ports():
     """The rendered mira-ollama service must not publish any ports in staging."""
     config = _render_config([STG], {})
