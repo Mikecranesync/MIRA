@@ -108,13 +108,18 @@ export function basisKind(basis: string): EvidenceBasisKind {
   return BASIS_BY_VALUE[normalized] ?? "general_reasoning";
 }
 
+/** One caption per shell basis kind — the classic notebook's wording. Typed
+ *  against the SHELL's kind union, so a kind added there without a caption
+ *  here fails to compile instead of rendering an undefined label. */
+const BASIS_CAPTION: Readonly<Record<EvidenceBasisKind, string>> = BASIS_LABEL;
+
 /** The answer's basis chip. Its words are the classic notebook's caption for
  *  the kind (#4025: it read "● oem_documentation" under a technician's own
  *  cited upload), so an unknown value reads as general guidance, never as
  *  itself. `authorized` is server-owned; nothing here carries it. */
 function basisPart(basis: string): InteractionPart {
   const kind = basisKind(basis);
-  return { type: "evidence_basis", basis: { kind, label: BASIS_LABEL[kind], authorized: false } };
+  return { type: "evidence_basis", basis: { kind, label: BASIS_CAPTION[kind], authorized: false } };
 }
 
 /**
