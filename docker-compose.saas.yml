@@ -1181,12 +1181,60 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
+        set -e;
+        READY_CAP=$${OLLAMA_READY_CAP:-120};
+        PULL_RETRIES=$${OLLAMA_PULL_RETRIES:-5};
+        MODEL='nomic-embed-text:v1.5';
+        DIGEST='0a109f422b47';
         ollama serve & pid=$$!;
-        until ollama list >/dev/null 2>&1; do sleep 1; done;
-        ollama pull nomic-embed-text:v1.5;
-        if ! ollama list | grep -qE '^nomic-embed-text:latest[[:space:]]+0a109f422b47'; then
-          ollama cp nomic-embed-text:v1.5 nomic-embed-text:latest || true;
+        ready=0; elapsed=0;
+        while [ $$elapsed -lt $$READY_CAP ]; do
+          if ! kill -0 $$pid 2>/dev/null; then
+            echo "ERROR: ollama serve died before ready (after $${elapsed}s)" >&2;
+            exit 1;
+          fi;
+          if ollama list >/dev/null 2>&1; then
+            ready=1;
+            break;
+          fi;
+          sleep 1;
+          elapsed=$$((elapsed + 1));
+        done;
+        if [ $$ready -eq 0 ]; then
+          echo "ERROR: ollama serve never became ready within $${READY_CAP}s" >&2;
+          kill $$pid 2>/dev/null || true;
+          exit 1;
         fi;
+        if ollama list | grep -qE "^$${MODEL}[[:space:]]+$${DIGEST}"; then
+          echo "Model $${MODEL} already cached with digest $${DIGEST}, skipping pull";
+        else
+          pull_success=0;
+          for attempt in $$(seq 1 $$PULL_RETRIES); do
+            echo "Pulling $${MODEL} (attempt $$attempt/$$PULL_RETRIES)...";
+            if ollama pull "$$MODEL"; then
+              pull_success=1;
+              break;
+            fi;
+            if [ $$attempt -lt $$PULL_RETRIES ]; then
+              echo "Pull failed, retrying...";
+              sleep 2;
+            fi;
+          done;
+          if [ $$pull_success -eq 0 ]; then
+            echo "ERROR: Failed to pull $${MODEL} after $${PULL_RETRIES} attempts" >&2;
+            kill $$pid 2>/dev/null || true;
+            exit 1;
+          fi;
+        fi;
+        if ! ollama list | grep -qE "^$${MODEL}[[:space:]]+$${DIGEST}"; then
+          echo "ERROR: Model $${MODEL} has wrong digest (expected $${DIGEST})" >&2;
+          kill $$pid 2>/dev/null || true;
+          exit 1;
+        fi;
+        if ! ollama list | grep -qE '^nomic-embed-text:latest[[:space:]]+'"$${DIGEST}"; then
+          ollama cp "$${MODEL}" nomic-embed-text:latest || true;
+        fi;
+        echo "Bootstrap complete, ollama serve running";
         wait $$pid
     environment:
       - OLLAMA_KEEP_ALIVE=24h
