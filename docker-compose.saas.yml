@@ -1190,7 +1190,7 @@ services:
         MODEL='nomic-embed-text:v1.5';
         DIGEST='0a109f422b47';
         now() { date +%s; };
-        cleanup() { kill $$1 2>/dev/null || true; };
+        cleanup() { kill $$1 2>/dev/null || true; wait $$1 2>/dev/null || true; };
         bounded_call() {
           local pid=$$1 cap=$$2 op=$$3 start;
           start=$$(now); waited=0;
@@ -1205,32 +1205,63 @@ services:
             fi;
             sleep 1; waited=$$((waited + 1));
           done;
-          cleanup $$pid;
           elapsed=$$(($$( now ) - start));
+          if ! kill -0 $$pid 2>/dev/null; then
+            wait $$pid 2>/dev/null; code=$$?;
+            if [ $$code -ne 0 ]; then
+              echo "ERROR: $$op exited $$code after $${elapsed}s" >&2;
+            fi;
+            return $$code;
+          fi;
+          cleanup $$pid;
           echo "ERROR: $$op timed out after $${elapsed}s (cap: $${cap}s)" >&2;
           return 124;
         };
+        bounded_list() {
+          local cap=$$1 op=$$2 tmpfile start elapsed remaining;
+          tmpfile="/tmp/ollama_list_$$$$.tmp";
+          start=$$(now);
+          ollama list > "$$tmpfile" 2>&1 & pid=$$!;
+          if bounded_call $$pid $$cap "$$op"; then
+            cat "$$tmpfile";
+            rm -f "$$tmpfile";
+            return 0;
+          fi;
+          rm -f "$$tmpfile";
+          return 1;
+        };
         ollama serve & serve_pid=$$!;
         ready=0; ready_start=$$(now);
-        while [ $$(($$( now ) - ready_start)) -lt $$READY_CAP ]; do
+        while true; do
+          elapsed=$$(($$( now ) - ready_start));
+          if [ $$elapsed -ge $$READY_CAP ]; then break; fi;
           if ! kill -0 $$serve_pid 2>/dev/null; then
-            elapsed=$$(($$( now ) - ready_start));
             echo "ERROR: ollama serve died before ready after $${elapsed}s" >&2;
             exit 1;
           fi;
-          ollama list >/dev/null 2>&1 & list_pid=$$!;
-          if bounded_call $$list_pid $$LIST_TIMEOUT "ollama list (readiness probe)"; then
+          remaining=$$((READY_CAP - elapsed));
+          probe_cap=$$((remaining < LIST_TIMEOUT ? remaining : LIST_TIMEOUT));
+          if [ $$probe_cap -le 0 ]; then break; fi;
+          if ollama list >/dev/null 2>&1 & list_pid=$$!; bounded_call $$list_pid $$probe_cap "ollama list (readiness probe)"; then
             ready=1; break;
           fi;
-          sleep 1;
-        done;
-        if [ $$ready -eq 0 ]; then
           elapsed=$$(($$( now ) - ready_start));
-          echo "ERROR: ollama serve never became ready (elapsed: $${elapsed}s, cap: $${READY_CAP}s)" >&2;
-          cleanup $$serve_pid; exit 1;
+          remaining=$$((READY_CAP - elapsed));
+          if [ $$remaining -le 0 ]; then break; fi;
+          sleep_time=$$((remaining < 1 ? remaining : 1));
+          if [ $$sleep_time -gt 0 ]; then sleep $$sleep_time; fi;
+        done;
+        elapsed=$$(($$( now ) - ready_start));
+        if [ $$ready -eq 0 ]; then
+          if ! kill -0 $$serve_pid 2>/dev/null; then
+            echo "ERROR: ollama serve died before ready after $${elapsed}s" >&2;
+          else
+            echo "ERROR: ollama serve never became ready (elapsed: $${elapsed}s, cap: $${READY_CAP}s)" >&2;
+            cleanup $$serve_pid;
+          fi;
+          exit 1;
         fi;
-        ollama list 2>&1 | grep -qE "^$${MODEL}[[:space:]]+$${DIGEST}" & check_pid=$$!;
-        if bounded_call $$check_pid $$LIST_TIMEOUT "ollama list (cache check)"; then
+        if bounded_list $$LIST_TIMEOUT "ollama list (cache check)" | grep -qE "^$${MODEL}[[:space:]]+$${DIGEST}"; then
           echo "Model $${MODEL} cached with digest $${DIGEST}, skipping pull" >&2;
         else
           pull_success=0;
@@ -1250,32 +1281,26 @@ services:
             cleanup $$serve_pid; exit 1;
           fi;
         fi;
-        ollama list 2>&1 | grep -qE "^$${MODEL}[[:space:]]+$${DIGEST}" & verify_pid=$$!;
-        if ! bounded_call $$verify_pid $$LIST_TIMEOUT "ollama list (digest verify)"; then
+        if ! bounded_list $$LIST_TIMEOUT "ollama list (digest verify)" | grep -qE "^$${MODEL}[[:space:]]+$${DIGEST}"; then
           echo "ERROR: Model $${MODEL} has wrong digest (expected $${DIGEST})" >&2;
           cleanup $$serve_pid; exit 1;
         fi;
-        ollama list 2>&1 | grep -qE '^nomic-embed-text:latest[[:space:]]+'"$${DIGEST}" & alias_check_pid=$$!;
-        if ! bounded_call $$alias_check_pid $$LIST_TIMEOUT "ollama list (alias check)"; then
+        if ! bounded_list $$LIST_TIMEOUT "ollama list (alias check)" | grep -qE '^nomic-embed-text:latest[[:space:]]+'"$${DIGEST}"; then
           ollama cp "$$MODEL" nomic-embed-text:latest & cp_pid=$$!;
           if ! bounded_call $$cp_pid $$CP_TIMEOUT "ollama cp"; then
             cleanup $$serve_pid; exit 1;
           fi;
         fi;
-        tmpfile="/tmp/ollama_list_final_$$$$";
-        ollama list > "$$tmpfile" 2>&1 & final_list_pid=$$!;
-        if ! bounded_call $$final_list_pid $$LIST_TIMEOUT "ollama list (final verify)"; then
-          rm -f "$$tmpfile";
+        list_out=$$(bounded_list $$LIST_TIMEOUT "ollama list (final verify)");
+        if [ $$? -ne 0 ]; then
           echo "ERROR: Final verification: ollama list failed" >&2;
           cleanup $$serve_pid; exit 1;
         fi;
-        if ! grep -qE '^nomic-embed-text:v1\.5[[:space:]]+'"$${DIGEST}" "$$tmpfile" ||
-           ! grep -qE '^nomic-embed-text:latest[[:space:]]+'"$${DIGEST}" "$$tmpfile"; then
+        if ! echo "$$list_out" | grep -qE '^nomic-embed-text:v1\.5[[:space:]]+'"$${DIGEST}" ||
+           ! echo "$$list_out" | grep -qE '^nomic-embed-text:latest[[:space:]]+'"$${DIGEST}"; then
           echo "ERROR: Final verification failed - both tags must resolve to $${DIGEST}" >&2;
-          rm -f "$$tmpfile";
           cleanup $$serve_pid; exit 1;
         fi;
-        rm -f "$$tmpfile";
         echo "Bootstrap complete, ollama serve running" >&2;
         wait $$serve_pid
     environment:

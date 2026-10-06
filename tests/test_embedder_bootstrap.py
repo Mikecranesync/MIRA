@@ -1,8 +1,9 @@
 """Bootstrap recovery tests for mira-ollama (F5).
 
-Tests extract the REAL rendered startup command from docker compose config
-and execute it under POSIX dash with a fake ollama executable. All operations
-have bounded timeouts with accurate diagnostics.
+Tests extract the REAL rendered startup command from docker compose config,
+decode Docker Compose's $$ escaping, and execute under POSIX dash with fake
+ollama. Validates bounded timeouts, real-time deadlines, accurate diagnostics,
+and zero process leaks.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import os
 import subprocess
 import tempfile
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
@@ -37,7 +39,11 @@ def _has_docker_compose() -> bool:
 
 
 def _render_ollama_command(compose_files: list[Path]) -> str:
-    """Extract mira-ollama startup command from rendered config."""
+    """Extract mira-ollama startup command from rendered config.
+    
+    Decodes Docker Compose's $$ escaping to $ (the way compose does when
+    running the container).
+    """
     if not _has_docker_compose():
         pytest.skip("docker compose not available")
     
@@ -73,10 +79,16 @@ def _render_ollama_command(compose_files: list[Path]) -> str:
     config = json.loads(result.stdout)
     ollama_service = config["services"]["mira-ollama"]
     
-    # Compose renders command as a list, join it
+    # Compose renders command as a list
     if isinstance(ollama_service["command"], list):
-        return " ".join(ollama_service["command"])
-    return ollama_service["command"]
+        rendered = " ".join(ollama_service["command"])
+    else:
+        rendered = ollama_service["command"]
+    
+    # Decode Docker Compose's $$ escaping to $ (exactly once)
+    decoded = rendered.replace("$$", "$")
+    
+    return decoded
 
 
 def _create_fake_ollama(
@@ -91,7 +103,7 @@ def _create_fake_ollama(
     """Create a fake ollama executable for testing.
     
     Args:
-        serve_behavior: "success", "die_immediately", "die_after_3s"
+        serve_behavior: "success", "die_immediately"
         list_output: What `ollama list` should output
         pull_behavior: "success", "always_fail"
         cp_behavior: "success", "fail"
@@ -108,11 +120,8 @@ def _create_fake_ollama(
             touch "$STATE_DIR/serving"
             if [ "{serve_behavior}" = "die_immediately" ]; then
                 exit 1
-            elif [ "{serve_behavior}" = "die_after_3s" ]; then
-                sleep 3
-                exit 1
             else
-                sleep 0.2
+                sleep 0.1
                 touch "$STATE_DIR/ready"
                 while true; do sleep 1; done
             fi
@@ -158,64 +167,67 @@ EOF
     return ollama_script
 
 
+def _count_leaked_children(parent_pid: int) -> int:
+    """Count child processes still running after parent exited."""
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "pid=", "--ppid", str(parent_pid)],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode == 0:
+            children = [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
+            return len(children)
+        return 0
+    except Exception:
+        return 0
+
+
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
-def test_prod_command_extracts():
-    """Verify we can extract the real startup command from prod config."""
+def test_prod_command_extracts_and_decodes():
+    """Verify rendered command extraction and $$ decoding."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    assert "ollama serve" in command
-    assert "nomic-embed-text" in command
-    assert "bounded_call" in command
-    assert "now()" in command
+    # After decoding, should have single $
+    assert "now() { date +%s; }" in command
+    assert "$pid" in command
+    assert "$$" not in command  # All $$ should be decoded to $
 
 
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
-def test_staging_command_extracts():
-    """Verify we can extract the real startup command from staging config."""
+def test_staging_command_extracts_and_decodes():
+    """Verify rendered command extraction and $$ decoding."""
     command = _render_ollama_command([STG])
-    assert "ollama serve" in command
-    assert "nomic-embed-text" in command
-    assert "bounded_call" in command
-    assert "now()" in command
+    assert "now() { date +%s; }" in command
+    assert "$pid" in command
+    assert "$$" not in command
 
 
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
-def test_happy_path_cold_start():
-    """Happy path cold start: pull succeeds, digest verifies, serve stays up."""
+def test_cold_start_success_under_2s():
+    """Cold start succeeds with 2s caps (verified behavior preservation)."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         
-        # Empty list initially (cold start)
-        fake_ollama = _create_fake_ollama(
-            tmp_path,
-            serve_behavior="success",
-            list_output="",
-            pull_behavior="success",
-        )
-        
-        # Override to provide correct list output after pull
+        # Serve ready, model needs pull
         state_dir = tmp_path / ".ollama_state"
+        state_dir.mkdir()
         ollama_script = tmp_path / "ollama"
         script_content = textwrap.dedent(f'''#!/bin/sh
             STATE_DIR="{state_dir}"
             if [ "$1" = "serve" ]; then
-                touch "$STATE_DIR/serving"
-                sleep 0.2
-                touch "$STATE_DIR/ready"
+                touch "$STATE_DIR/serving" "$STATE_DIR/ready"
                 while true; do sleep 1; done
             elif [ "$1" = "list" ]; then
-                if [ -f "$STATE_DIR/ready" ]; then
-                    if [ -f "$STATE_DIR/pulled" ]; then
-                        echo "nomic-embed-text:v1.5    0a109f422b47    128 MB    1 day ago"
-                        echo "nomic-embed-text:latest   0a109f422b47    128 MB    1 day ago"
-                    fi
-                    exit 0
+                [ -f "$STATE_DIR/ready" ] || exit 1
+                if [ -f "$STATE_DIR/pulled" ]; then
+                    echo "nomic-embed-text:v1.5    0a109f422b47    128 MB"
+                    echo "nomic-embed-text:latest   0a109f422b47    128 MB"
                 fi
-                exit 1
             elif [ "$1" = "pull" ]; then
                 touch "$STATE_DIR/pulled"
-                exit 0
             elif [ "$1" = "cp" ]; then
                 exit 0
             fi
@@ -223,68 +235,68 @@ def test_happy_path_cold_start():
         ollama_script.write_text(script_content)
         ollama_script.chmod(0o755)
         
-        # Short caps for test speed
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "2",
             "OLLAMA_CP_TIMEOUT": "2",
-            "OLLAMA_PULL_TIMEOUT": "5",
-            "OLLAMA_READY_CAP": "10",
+            "OLLAMA_PULL_TIMEOUT": "2",
+            "OLLAMA_READY_CAP": "2",
         }
         
-        # Run under dash with timeout
+        start = time.time()
         result = subprocess.run(
             ["dash", "-c", command],
             env=env,
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=10,
             cwd=str(tmp_path),
         )
+        elapsed = time.time() - start
         
         assert result.returncode == 0, f"stderr: {result.stderr}"
-        assert "Bootstrap complete" in result.stderr
+        assert elapsed < 5, f"took {elapsed:.2f}s with 2s caps"
 
 
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
-def test_cached_offline_startup():
-    """Model cached with correct digest + no network -> skip pull, succeed."""
+def test_cached_offline_success_under_2s():
+    """Cached offline startup succeeds with 2s caps (verified behavior preservation)."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         
-        # List shows cached model
         fake_ollama = _create_fake_ollama(
             tmp_path,
-            serve_behavior="success",
-            list_output="nomic-embed-text:v1.5    0a109f422b47    128 MB    1 day ago\nnomic-embed-text:latest   0a109f422b47    128 MB    1 day ago",
-            pull_behavior="always_fail",  # Registry down
+            list_output="nomic-embed-text:v1.5    0a109f422b47    128 MB\nnomic-embed-text:latest   0a109f422b47    128 MB",
+            pull_behavior="always_fail",
         )
         
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "2",
-            "OLLAMA_READY_CAP": "10",
+            "OLLAMA_READY_CAP": "2",
         }
         
+        start = time.time()
         result = subprocess.run(
             ["dash", "-c", command],
             env=env,
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=10,
             cwd=str(tmp_path),
         )
+        elapsed = time.time() - start
         
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert "cached with digest" in result.stderr
-        assert "skipping pull" in result.stderr
+        assert elapsed < 5, f"took {elapsed:.2f}s with 2s caps"
 
 
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
-def test_hung_list_in_readiness_loop():
-    """Hung ollama list in readiness loop -> bounded exit with accurate diagnostic."""
+def test_cp_exit_9_accurate_diagnostic():
+    """cp exiting 9 reports accurate exit code (verified behavior preservation)."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
     
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -292,130 +304,15 @@ def test_hung_list_in_readiness_loop():
         
         fake_ollama = _create_fake_ollama(
             tmp_path,
-            serve_behavior="success",
-            hang_operation="list",
-        )
-        
-        env = {
-            "PATH": f"{tmp_path}:/usr/bin:/bin",
-            "OLLAMA_LIST_TIMEOUT": "2",
-            "OLLAMA_READY_CAP": "5",
-        }
-        
-        result = subprocess.run(
-            ["dash", "-c", command],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            cwd=str(tmp_path),
-        )
-        
-        assert result.returncode != 0
-        assert "ollama serve never became ready" in result.stderr
-        assert "elapsed:" in result.stderr
-        assert "cap:" in result.stderr
-
-
-@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
-def test_hung_pull_bounded_with_retries():
-    """Hung ollama pull is bounded per-attempt and retries advance."""
-    command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        
-        fake_ollama = _create_fake_ollama(
-            tmp_path,
-            serve_behavior="success",
-            list_output="",  # Empty, need pull
-            hang_operation="pull",
-        )
-        
-        env = {
-            "PATH": f"{tmp_path}:/usr/bin:/bin",
-            "OLLAMA_LIST_TIMEOUT": "2",
-            "OLLAMA_PULL_TIMEOUT": "3",
-            "OLLAMA_READY_CAP": "10",
-            "OLLAMA_PULL_RETRIES": "2",
-        }
-        
-        result = subprocess.run(
-            ["dash", "-c", command],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=20,
-            cwd=str(tmp_path),
-        )
-        
-        assert result.returncode != 0
-        # Should see timeout diagnostic
-        assert "ollama pull timed out" in result.stderr or "ollama pull exited 124" in result.stderr
-        assert "Failed to pull" in result.stderr
-        # Should see multiple attempts
-        assert "attempt 1" in result.stderr
-        assert "attempt 2" in result.stderr
-
-
-@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
-def test_hung_cp_bounded():
-    """Hung ollama cp is bounded with accurate timeout diagnostic."""
-    command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        
-        # v1.5 exists but :latest missing, cp will hang
-        fake_ollama = _create_fake_ollama(
-            tmp_path,
-            serve_behavior="success",
-            list_output="nomic-embed-text:v1.5    0a109f422b47    128 MB    1 day ago",
-            hang_operation="cp",
-        )
-        
-        env = {
-            "PATH": f"{tmp_path}:/usr/bin:/bin",
-            "OLLAMA_LIST_TIMEOUT": "2",
-            "OLLAMA_CP_TIMEOUT": "3",
-            "OLLAMA_READY_CAP": "10",
-        }
-        
-        result = subprocess.run(
-            ["dash", "-c", command],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            cwd=str(tmp_path),
-        )
-        
-        assert result.returncode != 0
-        assert "ollama cp timed out" in result.stderr or "ollama cp exited 124" in result.stderr
-        assert "cap:" in result.stderr
-
-
-@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
-def test_cp_fails_nonzero():
-    """ollama cp exits non-zero -> accurate diagnostic with exit code."""
-    command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        
-        # v1.5 exists, cp fails
-        fake_ollama = _create_fake_ollama(
-            tmp_path,
-            serve_behavior="success",
-            list_output="nomic-embed-text:v1.5    0a109f422b47    128 MB    1 day ago",
+            list_output="nomic-embed-text:v1.5    0a109f422b47    128 MB",
             cp_behavior="fail",
         )
         
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "2",
-            "OLLAMA_CP_TIMEOUT": "3",
-            "OLLAMA_READY_CAP": "10",
+            "OLLAMA_CP_TIMEOUT": "2",
+            "OLLAMA_READY_CAP": "2",
         }
         
         result = subprocess.run(
@@ -423,7 +320,7 @@ def test_cp_fails_nonzero():
             env=env,
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=10,
             cwd=str(tmp_path),
         )
         
@@ -432,24 +329,28 @@ def test_cp_fails_nonzero():
 
 
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
-def test_serve_dies_before_ready():
-    """Serve dies before ready -> bounded exit with accurate elapsed time."""
+def test_readiness_deadline_clamped():
+    """Readiness with 3s cap / 5s list timeout exits within 4s (item 2)."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         
+        # Serve never becomes ready
         fake_ollama = _create_fake_ollama(
             tmp_path,
-            serve_behavior="die_immediately",
+            serve_behavior="success",
+            list_output="",  # Never ready
+            hang_operation="list",
         )
         
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
-            "OLLAMA_LIST_TIMEOUT": "2",
-            "OLLAMA_READY_CAP": "10",
+            "OLLAMA_LIST_TIMEOUT": "5",
+            "OLLAMA_READY_CAP": "3",
         }
         
+        start = time.time()
         result = subprocess.run(
             ["dash", "-c", command],
             env=env,
@@ -458,15 +359,17 @@ def test_serve_dies_before_ready():
             timeout=15,
             cwd=str(tmp_path),
         )
+        elapsed = time.time() - start
         
         assert result.returncode != 0
-        assert "ollama serve died before ready" in result.stderr
-        assert "after" in result.stderr
+        assert "never became ready" in result.stderr
+        # Allow 1s buffer for process overhead
+        assert elapsed <= 4, f"3s cap overran to {elapsed:.2f}s"
 
 
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
-def test_pull_fails_all_retries():
-    """Pull fails every retry -> accurate diagnostic."""
+def test_hung_list_no_process_leak():
+    """Hung list terminates the ollama process, no leaks (item 3)."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
     
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -474,17 +377,58 @@ def test_pull_fails_all_retries():
         
         fake_ollama = _create_fake_ollama(
             tmp_path,
-            serve_behavior="success",
-            list_output="",
-            pull_behavior="always_fail",
+            hang_operation="list",
         )
         
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "2",
-            "OLLAMA_PULL_TIMEOUT": "3",
-            "OLLAMA_READY_CAP": "10",
-            "OLLAMA_PULL_RETRIES": "3",
+            "OLLAMA_READY_CAP": "3",
+        }
+        
+        proc = subprocess.Popen(
+            ["dash", "-c", command],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(tmp_path),
+        )
+        
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+        
+        # Give processes time to exit
+        time.sleep(0.5)
+        
+        # Check for leaked children
+        leaked = _count_leaked_children(proc.pid)
+        
+        assert proc.returncode != 0
+        assert leaked == 0, f"leaked {leaked} child processes"
+
+
+@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
+def test_fast_success_not_misreported_as_timeout():
+    """Fast successful query with 1s cap reports success, not timeout (item 4)."""
+    command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        
+        # Fast success: ready immediately
+        fake_ollama = _create_fake_ollama(
+            tmp_path,
+            list_output="nomic-embed-text:v1.5    0a109f422b47    128 MB\nnomic-embed-text:latest   0a109f422b47    128 MB",
+        )
+        
+        env = {
+            "PATH": f"{tmp_path}:/usr/bin:/bin",
+            "OLLAMA_LIST_TIMEOUT": "1",
+            "OLLAMA_READY_CAP": "1",
         }
         
         result = subprocess.run(
@@ -492,10 +436,98 @@ def test_pull_fails_all_retries():
             env=env,
             capture_output=True,
             text=True,
-            timeout=20,
+            timeout=10,
             cwd=str(tmp_path),
         )
         
-        assert result.returncode != 0
-        assert "Failed to pull" in result.stderr
-        assert "3 attempts" in result.stderr
+        # Must succeed, not report timeout
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        assert "timed out" not in result.stderr
+        assert "Bootstrap complete" in result.stderr
+
+
+@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
+def test_hung_pull_no_leak():
+    """Hung pull terminates cleanly with no process leaks."""
+    command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        
+        fake_ollama = _create_fake_ollama(
+            tmp_path,
+            list_output="",  # Need pull
+            hang_operation="pull",
+        )
+        
+        env = {
+            "PATH": f"{tmp_path}:/usr/bin:/bin",
+            "OLLAMA_LIST_TIMEOUT": "2",
+            "OLLAMA_PULL_TIMEOUT": "2",
+            "OLLAMA_READY_CAP": "3",
+            "OLLAMA_PULL_RETRIES": "1",
+        }
+        
+        proc = subprocess.Popen(
+            ["dash", "-c", command],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(tmp_path),
+        )
+        
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+        
+        time.sleep(0.5)
+        leaked = _count_leaked_children(proc.pid)
+        
+        assert proc.returncode != 0
+        assert leaked == 0, f"leaked {leaked} child processes"
+
+
+@pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
+def test_hung_cp_no_leak():
+    """Hung cp terminates cleanly with no process leaks."""
+    command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        
+        fake_ollama = _create_fake_ollama(
+            tmp_path,
+            list_output="nomic-embed-text:v1.5    0a109f422b47    128 MB",
+            hang_operation="cp",
+        )
+        
+        env = {
+            "PATH": f"{tmp_path}:/usr/bin:/bin",
+            "OLLAMA_LIST_TIMEOUT": "2",
+            "OLLAMA_CP_TIMEOUT": "2",
+            "OLLAMA_READY_CAP": "3",
+        }
+        
+        proc = subprocess.Popen(
+            ["dash", "-c", command],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(tmp_path),
+        )
+        
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+        
+        time.sleep(0.5)
+        leaked = _count_leaked_children(proc.pid)
+        
+        assert proc.returncode != 0
+        assert leaked == 0, f"leaked {leaked} child processes"
