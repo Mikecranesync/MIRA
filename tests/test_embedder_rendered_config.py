@@ -84,7 +84,7 @@ def _resolve_compose_executable() -> tuple[str, ...] | None:
     except FileNotFoundError:
         pass  # Not installed, try next candidate
     except subprocess.TimeoutExpired as e:
-        failures.append(("docker-compose", None, None, f"timeout after {e.timeout}s"))
+        failures.append(("docker-compose", None, None, f"timed out after {e.timeout}s"))
     
     # Try docker compose plugin
     try:
@@ -105,7 +105,7 @@ def _resolve_compose_executable() -> tuple[str, ...] | None:
     except FileNotFoundError:
         pass  # Not installed
     except subprocess.TimeoutExpired as e:
-        failures.append(("docker compose", None, None, f"timeout after {e.timeout}s"))
+        failures.append(("docker compose", None, None, f"timed out after {e.timeout}s"))
     
     # If any candidate was installed but failed, that's an error (fail loud)
     if failures:
