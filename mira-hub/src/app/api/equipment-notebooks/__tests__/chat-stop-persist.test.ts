@@ -62,6 +62,18 @@ const persistMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/inference/persist-usage", () => persistMock);
 
+// Photo link lookup: none by default; the stopped-photo test links one.
+const filesMock = vi.hoisted(() => ({
+  photoLinkedToTarget: vi.fn(async (): Promise<{ fileId: string; capturedAt: string } | null> => null),
+}));
+vi.mock("@/lib/workspace-files", () => filesMock);
+// The verified photo has no stored LOOK observation yet (real helpers otherwise).
+vi.mock("@/lib/visual-evidence-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/visual-evidence-context")>()),
+  loadVisualEvidenceForPhoto: vi.fn(async () => null),
+  loadRecentLookObservations: vi.fn(async () => []),
+}));
+
 import { POST } from "../[id]/chat/route";
 
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -374,6 +386,31 @@ describe("STRM-2 — client stops generation mid-stream", () => {
       basis: null,
       model: null,
     });
+  });
+
+  it("a stopped photo question keeps its photo on the saved row (#4289 F3) — and still no citations or basis", async () => {
+    const PHOTO = "55555555-5555-4555-8555-555555555555";
+    filesMock.photoLinkedToTarget.mockResolvedValueOnce({ fileId: PHOTO, capturedAt: "2026-10-05T20:00:00.000Z" });
+    const provider = hangingProvider(["The plate ", "reads "]);
+    vi.stubGlobal("fetch", vi.fn(async () => provider.res));
+
+    const res = await POST(chatReq({ message: "what is this?", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }), params);
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let received = "";
+    while (!received.includes("reads")) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      received += dec.decode(value, { stream: true });
+    }
+    await reader.cancel();
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
+    const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    expect(turn).toMatchObject({ answerStatus: "error", answerText: "The plate reads ", basis: null });
+    expect(turn.evidence).toEqual([
+      { kind: "visual_observation", fileId: PHOTO, capturedAt: "2026-10-05T20:00:00.000Z", provenance: "phone_photo" },
+    ]);
   });
 
   it("stopping with nothing streamed yet persists answer_text null", async () => {

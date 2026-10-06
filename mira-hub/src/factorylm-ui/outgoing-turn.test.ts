@@ -98,6 +98,16 @@ describe("the saved message keeps its photo", () => {
     ]);
   });
 
+  it("a STOPPED photo question keeps its photo; the stopped answer claims no observation (#4289 F3)", () => {
+    const photo = { kind: "visual_observation", fileId: "f9fdad9c", capturedAt: AT, provenance: "phone_photo" };
+    const stoppedRow = { ...row([photo]), answerStatus: "error", answerText: "The plate reads " } as unknown as Parameters<typeof turnsFromPersisted>[0];
+    const [q, a] = turnsFromPersisted(stoppedRow, meta);
+    expect(q.parts.map((p) => p.type)).toEqual(["text", "attachment"]);
+    expect(a.lifecycle).toBe("stopped");
+    expect(a.parts.map((p) => p.type)).not.toContain("visual_observation");
+    expect(a.parts.map((p) => p.type)).toContain("error");
+  });
+
   it("control: a question without a photo stays text only", () => {
     const [q] = turnsFromPersisted(row([]), meta);
     expect(q.parts).toEqual([{ type: "text", text: "what is this?" }]);

@@ -3448,7 +3448,11 @@ async function handleChatTurn(
             answerStatus: "error",
             answerText: partialText,
             enabledSourceDocIds: docIds,
-            evidence: [...hazardEntries, ...disputeEntries],
+            // The technician's own photo stays on their saved question (#4289
+            // F3); a stop is still not an answer — hydration shows no
+            // observation, citation or basis on a stopped answer, and prior-look
+            // grounding reads answered turns only.
+            evidence: [...hazardEntries, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
             model: stoppedModel,
             basis: null,
             ...assetSnapshot,
