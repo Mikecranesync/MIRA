@@ -104,6 +104,14 @@ approved:
     reason: "Corpus-wide token existence COUNT for the fabricated-parameter detector (#3165); count(*) only, no content returned, no tenant dimension by construction."
     query_snippet: |
       SELECT count(*) FROM knowledge_entries WHERE content ILIKE %s
+  # Embed retry sweep (2026-10-05 embedding outage)
+  "mira-hub/src/capabilities/embed-retry-sweep.ts:54":
+    approved_classification: UNFILTERED
+    query_sha256: "b4ff4392b40f00be083c4abc2afe0a1b36cf442fbb19c80fff58005abf03973a"
+    reason: "Embed retry sweep lists (tenant_id, source_url) pairs of node_attachment chunks still missing a vector, across tenants on the raw owner pool (RLS scopes a connection to one tenant). Returns ids only, never content, never to a user; each pair is then embedded by embedPendingNodeChunks under that tenant's own context."
+    query_snippet: |
+      FROM knowledge_entries
+            WHERE source_type = 'node_attachment' AND embedding IS NULL AND source_url IS NOT NULL
   # Test fixture: demonstrating TENANT-ONLY bug class #1761
   "mira-web/src/seed/knowledge-seed.ts:473":
     approved_classification: UNFILTERED

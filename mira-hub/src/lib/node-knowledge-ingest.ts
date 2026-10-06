@@ -226,6 +226,16 @@ async function embedText(
 }
 
 /**
+ * One embed of a fixed string with the write path's own model and dimension —
+ * the health probe for the embedder (capabilities/embed-retry-sweep.ts). Same
+ * return shape as the write path, so a probe failure carries the same code an
+ * upload would hit.
+ */
+export function probeEmbedder(): Promise<{ vec: number[] } | { code: EmbedFailureCode }> {
+  return embedText("embedder health probe");
+}
+
+/**
  * Best-effort trailing pass: embed the just-written node_attachment chunks for one
  * upload so they're visible to the KB VECTOR ranker (asset-intelligence.searchKB
  * filters `embedding IS NOT NULL`), not only the BM25/text fallback (#2099).
