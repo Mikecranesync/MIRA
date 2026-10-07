@@ -63,6 +63,7 @@ import {
   NO_PROJECT_ERROR,
   applyConfirmIdentityResult,
   chatBodyFor,
+  generalGuidanceRequest,
   createLatestLoadTracker,
   detailQueryFor,
   enabledDocIds,
@@ -606,6 +607,16 @@ export function HubShellHost() {
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
   }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing]);
 
+  /** F004 M2 (#4303): the technician chose general guidance on a turn whose
+   *  server status offered it — a NEW general turn linked to that one. */
+  const onRequestGeneralGuidance = useCallback((turnId: string) => {
+    if (busy || !selection || !detail) return;
+    const req = generalGuidanceRequest(turnId, detail.turns, selection);
+    if (!req) return;
+    putOutgoing({ id: `out-${Date.now()}`, threadId: shellThreadId(selection), question: req.question, attachments: [], startedAt: new Date().toISOString() });
+    void send(req.body, req.question);
+  }, [busy, selection, detail, send, putOutgoing]);
+
   const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
   const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);
 
@@ -817,6 +828,7 @@ export function HubShellHost() {
       ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
       : {}),
     ...(selection?.notebookId ? { onConfirmIdentity: onConfirmIdentity } : {}),
+    ...(selection?.notebookId ? { onRequestGeneralGuidance } : {}),
     onSource: (source) => openSource(source.id),
     onNewChat,
     onCreateProject,

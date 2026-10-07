@@ -11,6 +11,8 @@ import {
   NO_PROJECT_ERROR,
   chatBodyFor,
   detailQueryFor,
+  generalGuidanceBodyFor,
+  generalGuidanceRequest,
   enabledDocIds,
   errorMessageFor,
   fixtureFor,
@@ -144,10 +146,10 @@ describe("errorMessageFor — every route error code in plain language (Codex #3
 
 describe("detailQueryFor — every detail load names its thread (Codex #3839 review: legacy must not hydrate every thread)", () => {
   it("the legacy selection asks for ?threadId=legacy explicitly — never an omitted parameter", () => {
-    expect(detailQueryFor({ notebookId: "nb-1", threadId: "legacy" })).toBe("?threadId=legacy");
+    expect(detailQueryFor({ notebookId: "nb-1", threadId: "legacy" })).toBe("?threadId=legacy&caps=grounding_status_v1");
   });
   it("a named thread is passed through, URL-encoded", () => {
-    expect(detailQueryFor({ notebookId: "nb-1", threadId: "t/1 x" })).toBe("?threadId=t%2F1%20x");
+    expect(detailQueryFor({ notebookId: "nb-1", threadId: "t/1 x" })).toBe("?threadId=t%2F1%20x&caps=grounding_status_v1");
   });
   it("no selection shape produces an empty query", () => {
     for (const threadId of ["legacy", "abc", "3f2a:ok"]) expect(detailQueryFor({ notebookId: "nb", threadId })).toMatch(/^\?threadId=.+/);
@@ -614,5 +616,53 @@ describe("createLatestLoadTracker — a superseded load reports the load that re
   it("control: a load nothing superseded keeps its own result", async () => {
     const tracker = createLatestLoadTracker();
     await expect(tracker.start(async () => true)).resolves.toBe(true);
+  });
+});
+
+describe("F004 M2 — the Hub declares grounding_status_v1 and asks for general guidance explicitly (#4303)", () => {
+  const sel = { notebookId: "nb-1", threadId: "t1" };
+  it("every chat body declares exactly the grounding-status capability", () => {
+    expect(chatBodyFor("q", ["doc-a"], [], sel).clientCapabilities).toEqual(["grounding_status_v1"]);
+    expect(chatBodyFor("q", [], [], sel).clientCapabilities).toEqual(["grounding_status_v1"]);
+  });
+  it("every detail load asks for the entry", () => {
+    expect(detailQueryFor(sel)).toContain("caps=grounding_status_v1");
+  });
+  it("an ordinary send never carries a fallback link", () => {
+    expect("fallbackOf" in chatBodyFor("q", ["doc-a"], [], sel)).toBe(false);
+    expect("fallbackOf" in chatBodyFor("q", [], [], sel)).toBe(false);
+  });
+  it("the general-guidance request is a NEW general turn, no sources, linked to the failed turn, same thread", () => {
+    const failed = "11111111-1111-4111-8111-111111111111";
+    const ordinary = chatBodyFor("What does F004 mean", ["doc-a"], [], sel);
+    const body = generalGuidanceBodyFor("What does F004 mean", failed, [], sel);
+    expect(body).toMatchObject({
+      message: "What does F004 mean",
+      sourceDocIds: [],
+      mode: "general",
+      fallbackOf: failed,
+      threadId: "t1",
+      clientCapabilities: ["grounding_status_v1"],
+    });
+    expect(body.clientRequestId).not.toBe(ordinary.clientRequestId);
+  });
+});
+
+describe("generalGuidanceRequest — a tap resolves to the failed turn's own question (#4303)", () => {
+  const sel = { notebookId: "nb-1", threadId: "t1" };
+  const ROW = "11111111-1111-4111-8111-111111111111";
+  const turns = [
+    { id: "00000000-0000-4000-8000-000000000000", question: "earlier", answerStatus: "answered", answerText: "ok", evidence: [] },
+    { id: ROW, question: "What does F004 mean", answerStatus: "insufficient_evidence", answerText: null, evidence: [] },
+  ];
+  it("re-asks the failed turn's question in general mode, linked to its row", () => {
+    const req = generalGuidanceRequest(`${ROW}-a`, turns, sel)!;
+    expect(req.question).toBe("What does F004 mean");
+    expect(req.body).toMatchObject({ message: "What does F004 mean", mode: "general", sourceDocIds: [], fallbackOf: ROW });
+  });
+  it("a live turn or an unknown row resolves to nothing — never a guess", () => {
+    expect(generalGuidanceRequest("live-1700000000000-a", turns, sel)).toBeNull();
+    expect(generalGuidanceRequest("99999999-9999-4999-8999-999999999999-a", turns, sel)).toBeNull();
+    expect(generalGuidanceRequest(`${ROW}-q`, turns, sel)).toBeNull();
   });
 });
