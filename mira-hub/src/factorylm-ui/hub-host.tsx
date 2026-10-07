@@ -20,8 +20,6 @@
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import {
-  PROFILES,
-  createShellState,
   shellReducer,
   type Attachment,
   IdentityAlreadyConfirmedError,
@@ -61,6 +59,7 @@ import { OnboardingGate } from "./onboarding-gate";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus } from "./to-interaction";
 import {
+  EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
   applyConfirmIdentityResult,
   chatBodyFor,
@@ -72,6 +71,7 @@ import {
   groundingLineFor,
   historyRows,
   homeSendPlan,
+  initialHubShellState,
   initialSelection,
   landingSelection,
   latestRequestGate,
@@ -126,20 +126,6 @@ function writeSearch(search: string): void {
   if (`${window.location.pathname}${window.location.search}` !== next) window.history.replaceState(window.history.state, "", next);
 }
 
-const EMPTY_FIXTURE = {
-  id: "hub-empty",
-  title: "FactoryLM",
-  review: { themes: ["light", "dark"] as const, viewports: ["desktop"] as const, surfaces: ["hub"] as const },
-  thread: {
-    id: "hub-empty:thread", tenantId: "tenant", notebookId: "", title: "FactoryLM", mode: "ask" as const,
-    visibility: "workspace" as const, turns: [], createdAt: "1970-01-01T00:00:00.000Z", updatedAt: "1970-01-01T00:00:00.000Z",
-  },
-  projects: [],
-  machines: [],
-  activeContext: { tenantId: "tenant", machineIdentity: "not_applicable" as const, evidenceAuthorization: "not_applicable" as const, capturedAt: "1970-01-01T00:00:00.000Z" },
-  offline: { state: "online" as const, pendingChanges: 0 },
-};
-
 export function HubShellHost() {
   // One capture timestamp per mount (state, not a ref: it is read during render).
   const [capturedAt] = useState(() => new Date().toISOString());
@@ -171,9 +157,7 @@ export function HubShellHost() {
   // The web adapter holds the picked bytes until onSend uploads them (#4019).
   const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 
-  const [state, dispatch] = useReducer(shellReducer, undefined, () =>
-    shellReducer(createShellState(EMPTY_FIXTURE, PROFILES.hub), { type: "set-navigation-visible", visible: true }),
-  );
+  const [state, dispatch] = useReducer(shellReducer, undefined, initialHubShellState);
 
   /**
    * Tell the reducer WHICH thread is open, from event handlers (never effects).
@@ -316,7 +300,7 @@ export function HubShellHost() {
   const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
   const machines = useMemo(() => notebookMachines(notebooks ?? []), [notebooks]);
   const meta = useMemo(
-    () => (detail && selection ? metaFor(detail.notebook, selection, null, capturedAt) : null),
+    () => (detail && selection ? metaFor(detail.notebook, selection, null, capturedAt, detail.sources) : null),
     [detail, selection, capturedAt],
   );
   const docIds = useMemo(() => enabledDocIds(detail?.sources ?? []), [detail]);
@@ -339,7 +323,7 @@ export function HubShellHost() {
     let parts: InteractionPart[];
     let lifecycle: InteractionTurn["lifecycle"];
     if (live.result) {
-      parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId });
+      parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId, notebookDocIds: meta.notebookDocIds });
       lifecycle = lifecycleFromStream(live.result, { stopped: live.stopped });
     } else {
       parts = live.content ? [{ type: "text", text: live.content }] : [];
