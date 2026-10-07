@@ -4,13 +4,39 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import type { ManualSearchStatus, ShellFixture } from "../../../packages/factorylm-interaction/src";
+import { PROFILES, createShellState, shellReducer, type ManualSearchStatus, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { shouldRedirectToOnboarding } from "@/lib/onboarding-flow";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
+
+/** The shell's fixture before any notebook loads: an empty, untitled thread. */
+export const EMPTY_FIXTURE = {
+  id: "hub-empty",
+  title: "FactoryLM",
+  review: { themes: ["light", "dark"] as const, viewports: ["desktop"] as const, surfaces: ["hub"] as const },
+  thread: {
+    id: "hub-empty:thread", tenantId: "tenant", notebookId: "", title: "FactoryLM", mode: "ask" as const,
+    visibility: "workspace" as const, turns: [], createdAt: "1970-01-01T00:00:00.000Z", updatedAt: "1970-01-01T00:00:00.000Z",
+  },
+  projects: [],
+  machines: [],
+  activeContext: { tenantId: "tenant", machineIdentity: "not_applicable" as const, evidenceAuthorization: "not_applicable" as const, capturedAt: "1970-01-01T00:00:00.000Z" },
+  offline: { state: "online" as const, pendingChanges: 0 },
+};
+
+/**
+ * The state `/v3` opens with. Navigation starts CLOSED (#4290): at phone width
+ * the sidebar is a modal drawer, so opening it on every load put a menu over
+ * the conversation and the technician had to dismiss it before typing. On a
+ * desktop the sidebar is static and this flag has no effect (the drawer CSS,
+ * `inert` and `topLayer` all key on the narrow-viewport query).
+ */
+export function initialHubShellState(): ShellState {
+  return shellReducer(createShellState(EMPTY_FIXTURE, PROFILES.hub), { type: "set-navigation-visible", visible: false });
+}
 
 export interface HubSelection {
   readonly notebookId: string;
@@ -164,8 +190,17 @@ export function detailQueryFor(sel: HubSelection): string {
 }
 
 /** Server-owned identity → shell meta. `identityConfirmed` is true only when the
- *  notebook's identity is user-confirmed/verified AND the binding is confirmed. */
-export function metaFor(nb: EquipmentNotebook, sel: HubSelection, tenantId: string | null, capturedAt: string): HubNotebookMeta {
+ *  notebook's identity is user-confirmed/verified AND the binding is confirmed.
+ *  `sources` (the notebook's loaded sources) become `notebookDocIds`, which the
+ *  basis chip needs before it may say "this notebook's sources" (#4025);
+ *  without them meta carries none and the chip never says it. */
+export function metaFor(
+  nb: EquipmentNotebook,
+  sel: HubSelection,
+  tenantId: string | null,
+  capturedAt: string,
+  sources?: readonly Pick<NotebookSource, "docId" | "matchState">[],
+): HubNotebookMeta {
   const asset = nb.asset
     ? { id: nb.asset.entityId, name: machineNameFor(nb), unsPath: null }
     : null;
@@ -184,6 +219,7 @@ export function metaFor(nb: EquipmentNotebook, sel: HubSelection, tenantId: stri
     // identityStatus directly and never creates an asset binding, so that
     // common case needs this field even when `identityConfirmed` is false.
     confirmedIdentity: identitySettled && nb.manufacturer && nb.model ? { manufacturer: nb.manufacturer, model: nb.model } : null,
+    ...(sources ? { notebookDocIds: notebookSourceDocIds(sources) } : {}),
     capturedAt,
   };
 }
@@ -192,6 +228,12 @@ export function metaFor(nb: EquipmentNotebook, sel: HubSelection, tenantId: stri
  *  classic notebook's rule, unchanged. */
 export function enabledDocIds(sources: readonly Pick<NotebookSource, "docId" | "enabledByDefault" | "matchState">[]): string[] {
   return sources.filter((s) => s.enabledByDefault && s.matchState !== "rejected").map((s) => s.docId);
+}
+
+/** The notebook's own sources, enabled or not — what the basis chip may call
+ *  "this notebook's sources" (#4025). A rejected match was never one. */
+export function notebookSourceDocIds(sources: readonly Pick<NotebookSource, "docId" | "matchState">[]): string[] {
+  return sources.filter((s) => s.docId !== "" && s.matchState !== "rejected").map((s) => s.docId);
 }
 
 /** Multi-turn memory for the route: persisted rows first, then any completed
