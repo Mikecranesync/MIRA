@@ -1,3 +1,28 @@
+# Hot Cache — 2026-10-06 — power-outage recovery
+
+A power outage at ~01:50–02:05Z dropped every local (Mac) session. Nothing committed was lost.
+Recovery triage from a cloud session; refresh live state before acting.
+
+- **#4292 embedder-on-OVH — the critical path.** The production embedder has been broken since the
+  2026-09-19 OVH move (Hub embeds go to Bravo's tailnet address, which OVH cannot reach), so every
+  new upload is BM25-only. Head `127bb082` (Cursor agent, 05:40Z) addresses Codex F1/F2/F3; 44/45
+  checks green. The **only red is Legacy UI Lifecycle Guard**: it needs a fresh exact-head Codex
+  GREEN (the last review was of `39cee78`). The PR is also `behind` main. Codex runs on CHARLIE.
+  Merge needs a human.
+- **Release order agreed with Mike:** #4292 merges → one staging deploy of the new `main`
+  (`deploy-staging.yml`, approved_rc_sha = merge SHA) → phone parity on the emulator → **one**
+  production deploy on Mike's "go". Do NOT deploy the older candidate `cb60c115a`: it is 10
+  commits behind (missing #4288/#4289/#4291/#4293) and has no migrations to justify a separate run.
+- **Production deploy order for #4292** (runbook §5a): `services=mira-ollama` first and healthy, then
+  `mira-hub`. `PRODUCTION_DEFAULT_SERVICES` omits mira-ollama, so a default dispatch will NOT ship it.
+- **Dependabot:** the five mira-web bumps (#4276, #4277, #4279, #4281, #4282) all fail on a stale
+  bun lockfile, and they also need a Codex GREEN for the guarded `package.json`. #4276 is
+  stripe 22→23 (major, billing). #4278 sqlalchemy 2.1 breaks five real-Postgres session
+  tests, so do not merge it. #4280 is green but is a major anthropic SDK bump.
+- **Physical:** the pulley print on the 3D printer was mid-run at the outage and needs restarting.
+
+---
+
 # Hot Cache — 2026-09-19 — customer-ready unified experience release train
 
 **Start here:** [`docs/mira/CUSTOMER_READY_UNIFIED_EXPERIENCE.md`](../docs/mira/CUSTOMER_READY_UNIFIED_EXPERIENCE.md).
