@@ -417,13 +417,32 @@ echo
 
 echo "[15] approve refuses without a terminal (an agent cannot self-approve)"
 stage_guarded_fixture
-OUT=$(python3 tools/guarded_commit_approval.py approve </dev/null 2>&1); RC=$?
-if (exec </dev/tty) 2>/dev/null; then
-  echo "  SKIP this shell has a controlling terminal; the refusal path is proven in CI"
-else
-  assert_eq "$RC" "1"                                  "approve exits 1 with no controlling terminal"
-  assert_contains "$OUT" "needs the owner at a real terminal" "explains why it refused"
-fi
+# approve reads /dev/tty, not stdin, so run it in a NEW session (setsid): that
+# has no controlling terminal, the same as an agent's shell. Without this, a
+# human running the harness from a real terminal sat at the prompt here
+# forever (Codex r2 F5). The timeout turns any future wait into a failure.
+OUT=$(python3 - <<'PY' 2>&1
+import subprocess
+import sys
+
+try:
+    r = subprocess.run(
+        [sys.executable, "tools/guarded_commit_approval.py", "approve"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        start_new_session=True,
+        timeout=60,
+    )
+except subprocess.TimeoutExpired:
+    print("TIMEOUT: approve waited for input with no controlling terminal")
+    sys.exit(124)
+sys.stdout.write(r.stdout + r.stderr)
+sys.exit(r.returncode)
+PY
+); RC=$?
+assert_eq "$RC" "1"                                  "approve exits 1 with no controlling terminal"
+assert_contains "$OUT" "needs the owner at a real terminal" "explains why it refused"
 cleanup; trap on_exit EXIT
 echo
 
