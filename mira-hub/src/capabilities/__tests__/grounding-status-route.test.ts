@@ -79,6 +79,9 @@ vi.mock("@/lib/inference/persist-usage", () => persistMock);
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { GET } from "@/app/api/equipment-notebooks/[id]/route";
+import { chatBodyFor, detailQueryFor, generalGuidanceRequest } from "@/factorylm-ui/hub-host-logic";
+import { threadFromPersisted } from "@/factorylm-ui/to-interaction";
+import { groundingStatusLine } from "../../../../packages/factorylm-ui/src/grounding-status";
 
 const chatReq = (body: unknown, init: { signal?: AbortSignal } = {}) =>
   new NextRequest("http://test/api/equipment-notebooks/nb/chat", {
@@ -556,5 +559,86 @@ describe("F004 v2 M1 — live = saved = replay, old clients, flag off, legacy tu
       await (await POST(chatReq({ message: Q, sourceDocIds: [DOC_A], clientRequestId: REQ_ID, clientCapabilities: CAPS }), params)).text(),
     );
     expect(groundingFrame(frames)).toBeUndefined();
+  });
+});
+
+// End-to-end through the REAL server route and the REAL Hub client code (only
+// the database and the model are faked): the body the Hub builds → the route →
+// the saved row → the history GET → the shell parts → the explicit tap → the
+// linked general turn → reload. Proves the two halves speak one contract.
+describe("F004 M2 round trip — Hub client ↔ server (#4303)", () => {
+  const ROW = "77777777-7777-4777-8777-777777777777";
+  const SEL = { notebookId: NB, threadId: "legacy" };
+  const META = { notebookId: NB, title: "Line 1 drive", identityConfirmed: false, capturedAt: "2026-10-07T00:00:00.000Z" };
+  const REFUSAL = "The provided excerpts do not contain information about fault F004 on this drive.";
+  const GENERAL = "Check the incoming supply voltage and the wiring to the drive.";
+  type Row = { id: string; question: string; answerStatus: string; answerText: string | null; evidence: unknown[]; basis: string | null };
+  const savedRow = (id: string): Row => {
+    const r = recorded();
+    return {
+      id,
+      question: String(r.question),
+      answerStatus: String(r.answerStatus),
+      answerText: (r.answerText as string | null) ?? null,
+      evidence: r.evidence as unknown[],
+      basis: (r.basis as string | null) ?? null,
+    };
+  };
+  async function post(body: unknown, answer: string) {
+    vi.stubGlobal("fetch", vi.fn(async () => completingProvider(answer)));
+    const res = await POST(chatReq(body), params);
+    expect(res.status).toBe(200);
+    const frames = parseFrames(await res.text());
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    return frames;
+  }
+  async function history(rows: Row[]) {
+    domainMock.listTurns.mockResolvedValue(rows as never);
+    const json = (await (await GET(getReq(detailQueryFor(SEL).replace(/^\?/, "")), params)).json()) as { turns: Row[] };
+    return json.turns;
+  }
+  const statusOf = (t: { parts: readonly { type: string }[] }) => t.parts.find((p) => p.type === "grounding_status") as Record<string, unknown> | undefined;
+
+  it("refusal → honest status + offer on reload → tap → ONE linked general turn → reload shows it used", async () => {
+    // 1. The Hub's own body, a manual selected.
+    const first = await post(chatBodyFor(Q, [DOC_A], [], SEL), REFUSAL);
+    expect(first.find((f) => f.kind === "status")).toMatchObject({ status: "insufficient_evidence" });
+    const failed = savedRow(ROW);
+
+    // 2. Reload: the GET the Hub makes, then the Hub's own mapping.
+    let turns = await history([failed]);
+    let answers = threadFromPersisted(turns as never, META).turns.filter((t) => t.role === "assistant");
+    const status = statusOf(answers[0]!)!;
+    expect(status).toMatchObject({ outcome: "refused_with_passages", fallbackOffered: true, manualSearched: true });
+    expect(answers[0]!.parts.some((p) => p.type === "evidence_basis")).toBe(false);
+    expect(groundingStatusLine(status as never)).toContain("read passages from the selected manual");
+
+    // 3. The tap: the Hub resolves the shell turn to the linked general request.
+    const req = generalGuidanceRequest(answers[0]!.id, turns as never, SEL)!;
+    domainMock.recordTurn.mockClear();
+    domainMock.getFallbackSourceTurn.mockResolvedValue({ id: ROW, evidence: failed.evidence } as never);
+    domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [], nodeId: "n1" } as never);
+    domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Scratch" } as never);
+    ragMock.retrieveNodeChunks.mockClear();
+    const second = await post(req.body, GENERAL);
+    expect(domainMock.getFallbackSourceTurn).toHaveBeenCalledWith(TENANT_A, NB, expect.objectContaining({ turnId: ROW }));
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(groundingFrame(second)).toMatchObject({ outcome: "answered_without_manual", fallback: { of: ROW } });
+    const general = savedRow("88888888-8888-4888-8888-888888888888");
+    expect(general.question).toBe(Q);
+
+    // 4. Reload again: the offer is used, the new answer is labelled general.
+    turns = await history([failed, general]);
+    answers = threadFromPersisted(turns as never, META).turns.filter((t) => t.role === "assistant");
+    expect(statusOf(answers[0]!)).toMatchObject({ fallbackUsed: true });
+    expect(groundingStatusLine(statusOf(answers[1]!) as never)).toBe("General guidance — not from your manual.");
+  });
+
+  it("control — server flag off: the same Hub body and history render exactly as before (no entry, no offer)", async () => {
+    process.env.NOTEBOOK_GROUNDING_STATUS_ENABLED = "0";
+    await post(chatBodyFor(Q, [DOC_A], [], SEL), REFUSAL);
+    const turns = await history([savedRow(ROW)]);
+    const answers = threadFromPersisted(turns as never, META).turns.filter((t) => t.role === "assistant");
+    expect(statusOf(answers[0]!)).toBeUndefined();
   });
 });
