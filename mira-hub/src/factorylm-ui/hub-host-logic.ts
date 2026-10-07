@@ -4,13 +4,39 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import type { ManualSearchStatus, ShellFixture } from "../../../packages/factorylm-interaction/src";
+import { PROFILES, createShellState, shellReducer, type ManualSearchStatus, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { shouldRedirectToOnboarding } from "@/lib/onboarding-flow";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
+
+/** The shell's fixture before any notebook loads: an empty, untitled thread. */
+export const EMPTY_FIXTURE = {
+  id: "hub-empty",
+  title: "FactoryLM",
+  review: { themes: ["light", "dark"] as const, viewports: ["desktop"] as const, surfaces: ["hub"] as const },
+  thread: {
+    id: "hub-empty:thread", tenantId: "tenant", notebookId: "", title: "FactoryLM", mode: "ask" as const,
+    visibility: "workspace" as const, turns: [], createdAt: "1970-01-01T00:00:00.000Z", updatedAt: "1970-01-01T00:00:00.000Z",
+  },
+  projects: [],
+  machines: [],
+  activeContext: { tenantId: "tenant", machineIdentity: "not_applicable" as const, evidenceAuthorization: "not_applicable" as const, capturedAt: "1970-01-01T00:00:00.000Z" },
+  offline: { state: "online" as const, pendingChanges: 0 },
+};
+
+/**
+ * The state `/v3` opens with. Navigation starts CLOSED (#4290): at phone width
+ * the sidebar is a modal drawer, so opening it on every load put a menu over
+ * the conversation and the technician had to dismiss it before typing. On a
+ * desktop the sidebar is static and this flag has no effect (the drawer CSS,
+ * `inert` and `topLayer` all key on the narrow-viewport query).
+ */
+export function initialHubShellState(): ShellState {
+  return shellReducer(createShellState(EMPTY_FIXTURE, PROFILES.hub), { type: "set-navigation-visible", visible: false });
+}
 
 export interface HubSelection {
   readonly notebookId: string;
