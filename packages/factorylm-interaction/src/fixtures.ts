@@ -21,6 +21,7 @@ export const FIXTURE_IDS = Object.freeze([
   "work-run",
   "error-retry",
   "identity-proposal",
+  "manual-limitation",
   "offline-sync",
   "enterprise-inspector",
   "long-history",
@@ -391,6 +392,35 @@ const fixtureData: Record<FixtureId, ShellFixture> = {
     projects: [],
     machines: [],
     activeContext: GENERAL_CONTEXT,
+    offline: { state: "online", pendingChanges: 0 },
+  },
+  "manual-limitation": {
+    id: "manual-limitation",
+    title: "Honest limitation and explicit general guidance",
+    review: REVIEW,
+    thread: thread("thread-manual-limitation", "Fault F004 on Drive A", DRIVE_A_CONTEXT, [
+      turn("turn-manual-question", "thread-manual-limitation", "user", DRIVE_A_CONTEXT, [
+        { type: "text", text: "What does fault F004 mean on this drive?" },
+      ]),
+      // F004 (#4303): the selected manual was searched and nothing came back.
+      // The server offered explicit general guidance (rule F); nothing switched modes.
+      turn("turn-manual-abstained", "thread-manual-limitation", "assistant", DRIVE_A_CONTEXT, [
+        { type: "text", text: "I couldn't find that in the selected sources." },
+        { type: "grounding_status", outcome: "abstained_no_passages", manualSearched: true, fallbackOffered: true, isGeneralFallback: false },
+      ]),
+      turn("turn-manual-uncited", "thread-manual-limitation", "assistant", DRIVE_A_CONTEXT, [
+        { type: "text", text: "Check the DC bus voltage at the drive input." },
+        { type: "grounding_status", outcome: "answered_uncited_with_passages", manualSearched: true, fallbackOffered: false, isGeneralFallback: false },
+      ]),
+      turn("turn-manual-general", "thread-manual-limitation", "assistant", DRIVE_A_CONTEXT, [
+        { type: "text", text: "Undervoltage faults usually point at the incoming supply. Measure it with a meter." },
+        { type: "evidence_basis", basis: { kind: "general_reasoning", label: "General guidance — not grounded in your documents", authorized: false } },
+        { type: "grounding_status", outcome: "answered_without_manual", manualSearched: false, fallbackOffered: false, isGeneralFallback: true },
+      ]),
+    ]),
+    projects: PROJECTS,
+    machines: MACHINES,
+    activeContext: DRIVE_A_CONTEXT,
     offline: { state: "online", pendingChanges: 0 },
   },
   "offline-sync": {

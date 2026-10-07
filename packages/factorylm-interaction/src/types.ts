@@ -396,6 +396,37 @@ export interface ManualSearchStatus {
   readonly startedAt?: string;
 }
 
+/**
+ * F004 (mira-hub `capabilities/grounding-status.ts`, PR #4303): the outcome of
+ * one turn as the SERVER recorded it — whether the selected manual was
+ * searched, whether passages came back, whether the answer points at one. The
+ * host adapter projects the server's `grounding_status` evidence entry into
+ * this shape; the renderer never infers it from answer text.
+ */
+export type GroundingOutcome =
+  | "safety_stop"
+  | "stopped"
+  | "provider_error"
+  | "abstained_no_passages"
+  | "abstained_retrieval_unavailable"
+  | "refused_with_passages"
+  | "refused_without_passages"
+  | "answered_citation_linked"
+  | "answered_uncited_with_passages"
+  | "answered_without_manual";
+
+export interface GroundingStatus {
+  readonly outcome: GroundingOutcome;
+  /** The selected manual was actually searched this turn (retrieval attempted). */
+  readonly manualSearched: boolean;
+  /** Server-owned (rule F): may the renderer offer "Get general guidance (not from the manual)"? */
+  readonly fallbackOffered: boolean;
+  /** This answer IS general guidance the technician asked for from an earlier failed turn. */
+  readonly isGeneralFallback: boolean;
+  /** Set by the HOST ADAPTER: a later turn already used this turn's offer, so no live action. */
+  readonly fallbackUsed?: boolean;
+}
+
 export interface ContextSnapshot {
   readonly tenantId: string;
   readonly projectId?: string;
@@ -451,6 +482,9 @@ export type InteractionPart =
   /** Background manual-search progress for THAT SAME unconfirmed identity (#4160 S6 /
    *  #4189). Flattened to mirror `ManualSearchStatus`, plus the part's own `type`. */
   | ({ readonly type: "manual_search_status" } & ManualSearchStatus)
+  /** F004: what this turn's evidence was, plus the server's offer of explicit
+   *  general guidance. Flattened like `manual_search_status`. */
+  | ({ readonly type: "grounding_status" } & GroundingStatus)
   | { readonly type: "unknown"; readonly raw: unknown };
 
 export interface InteractionTurn {
