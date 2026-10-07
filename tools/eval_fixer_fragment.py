@@ -388,6 +388,13 @@ def main(argv: list[str] | None = None) -> int:
         release_lock(args.date, worker)
         return 0
     if args.publish:
+        # Off by default since 2026-10-01: the nightly wiki-fragment PR was noise. The
+        # scorecard still reaches #1876 via the agent's own issue comment. Exit 5 is the
+        # wrapper's existing "nothing to deliver" code, so no wrapper change is needed.
+        if os.environ.get("EVAL_FIXER_PUBLISH_WIKI", "0") != "1":
+            print("publish skipped: wiki fragment PRs are opt-in (EVAL_FIXER_PUBLISH_WIKI=1)",
+                  file=sys.stderr)
+            return 5
         repo = Path(args.repo) if args.repo else Path(__file__).resolve().parents[1]
         ok, reason = publish_fragment(args.date, worker, repo=repo)
         print(reason, file=sys.stderr)
