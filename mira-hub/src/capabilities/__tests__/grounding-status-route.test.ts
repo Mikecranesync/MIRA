@@ -4,7 +4,10 @@
  * client that declares `grounding_status_v1` while the flag is on, keeps live =
  * saved = replay, and validates the explicit general-guidance link.
  *
- * Run: cd mira-hub && ./node_modules/.bin/vitest run src/app/api/equipment-notebooks/__tests__/chat-grounding-status.test.ts
+ * Lives under capabilities/ (not next to the route) because test files under
+ * mira-hub/src/app/** are guarded legacy paths (tools/ui_surface_lifecycle_guard.py).
+ *
+ * Run: cd mira-hub && ./node_modules/.bin/vitest run src/capabilities/__tests__/grounding-status-route.test.ts
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -74,8 +77,8 @@ const persistMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/inference/persist-usage", () => persistMock);
 
-import { POST } from "../[id]/chat/route";
-import { GET } from "../[id]/route";
+import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { GET } from "@/app/api/equipment-notebooks/[id]/route";
 
 const chatReq = (body: unknown, init: { signal?: AbortSignal } = {}) =>
   new NextRequest("http://test/api/equipment-notebooks/nb/chat", {
