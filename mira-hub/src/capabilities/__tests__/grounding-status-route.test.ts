@@ -275,6 +275,34 @@ describe("F004 v2 M1 — outcomes on the main path (flag on, capability declared
     expect(savedGrounding()).toMatchObject({ fallback: { offered: false } });
   });
 
+  it("T13 provenance: scope ids come from the server-validated list, never the request body", async () => {
+    // Request asks for a second, valid-looking UUID (another tenant's or another
+    // notebook's document) plus junk; the server authorizes only DOC_A.
+    const DOC_FOREIGN = "99999999-9999-4999-8999-999999999999";
+    const requested = [DOC_A, DOC_FOREIGN, "not-a-uuid"];
+    domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" } as never);
+    const { frames } = await ask(
+      { clientCapabilities: CAPS, sourceDocIds: requested },
+      "F004 is an UnderVoltage fault: the DC bus fell below its minimum [1].",
+    );
+    // Precondition: the request list really differed and reached the validator.
+    expect(domainMock.validateChatSources).toHaveBeenCalledWith(TENANT_A, NB, requested);
+    // Retrieval was scoped to the authorized list only.
+    const retrievalOpts = (ragMock.retrieveNodeChunks.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+    expect(retrievalOpts.approvedSourceDocIds).toEqual([DOC_A]);
+    // Live and saved status record only the authorized list.
+    for (const g of [groundingFrame(frames), savedGrounding()]) {
+      expect(g).toMatchObject({
+        outcome: "answered_citation_linked",
+        retrieval: { scopeDocIds: [DOC_A], returnedDocIds: [DOC_A] },
+        citation: { linkedDocIds: [DOC_A] },
+        droppedRefCount: 0,
+      });
+      expect(JSON.stringify(g)).not.toContain(DOC_FOREIGN);
+      expect(JSON.stringify(g)).not.toContain("not-a-uuid");
+    }
+  });
+
   it("T5 notebook retrieval throws → no saved turn, no provider call (the recovery gap stays visible)", async () => {
     ragMock.retrieveNodeChunks.mockRejectedValue(new Error("db down") as never);
     const fetchMock = vi.fn(async () => completingProvider("x"));

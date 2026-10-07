@@ -1,243 +1,185 @@
-# F004 contract proposal: separate retrieval and citation status, and require a tap before falling back on the phone
+# F004 grounding-status contract — document revision 3 (wire version 1)
 
-**Status:** proposal only. No code has been implemented; this document authorizes no implementation, spend, merge or deploy. Each step in §7 needs separate approval.
-**Base:** `main` @ `f83e9df255533e7c09d3f6b40e72e8aacfc91b44`. Design reference: draft PR #4303.
-**Risk class:** R2. It changes a shared contract and two client surfaces. It needs no migration, no tenant-filter change and no safety-policy change.
+**Status:** the server half (milestones M1 + correction C1) is **implemented on PR #4303 behind a flag that is off and cannot yet be turned on** (§7). Client display (M2) and the phone's explicit choice (M3) are **not built**. This document authorizes no merge, deploy, flag change or further implementation.
+**Risk class:** R2 — a shared server contract on the notebook chat route. No migration, tenant-filter, provider, prompt or safety-policy change.
 
-## 0. What F004 does and does not establish
+## 0. Document revision vs wire version
 
-The exact cause of the two observed F004 turns is still **unresolved**. Three candidates remain open, and none is proven:
+These are two different numbers. Don't confuse them.
+
+| | What it is | Value |
+|---|---|---|
+| **Document revision** | Which edition of this text you are reading | **r3** (this file) |
+| **Wire version** | The `v` field inside every stored/streamed entry, and the capability name a client declares | **`v: 1`**, capability **`grounding_status_v1`** |
+
+Revision history:
+
+- **r1** (`92135941d`): first proposal. It used the terms `validated` / `grounded`, a single `docIds` list and a `retrievalFailed` field. **None of that shipped**; r1's field list is obsolete.
+- **r2**: delivered in the working session and approved by the owner as the basis for M1; never committed. Introduced capability negotiation, `outcome`, `manualCited`, "citation linked" and the fallback link.
+- **r3** (this file): r2 as actually implemented, plus correction C1 (shared-library references, reference-format validation, `droppedRefCount`).
+
+Wire version 1 is defined by **this** revision. No deployed server has ever written an entry (the flag is not plumbed into any container — §7), so the r1 shape never existed on the wire. Any future change that an existing `grounding_status_v1` client could misread must bump **both** `v` and the capability name; adding a field a v1 reader can ignore does not.
+
+## 1. What F004 does and does not establish
+
+The cause of the two observed F004 turns is **unresolved**. Three candidates remain open and none is proven:
 
 - **B:** passages were retrieved, the model answered without citing them, and the turn was labelled general.
 - **A2:** passages were retrieved, the model refused, and the phone silently re-asked in general mode.
-- **A1:** the scope missed, so zero passages came back and the phone silently re-asked.
+- **A1:** the scope missed, zero passages came back, and the phone silently re-asked.
 
-Two sources would settle it:
+The per-turn rows and the staging `jev-shadow-report` for that window have not been read. This contract does not depend on which candidate it was: in all three, the server discarded *why* the turn ended. The contract records that reason. It does not improve retrieval, change which passages are found, or judge whether a passage supports a claim.
 
-- the per-turn rows (`answer_status`, `basis`, source counts), which need `factorylm/stg` access;
-- the staging `jev-shadow-report` CSV for 2026-10-06 22:00Z to 2026-10-07 00:24Z. The 06:17Z run on 2026-10-07 covers that window, but downloading its artifact from this container is blocked.
+## 2. The entry (implemented)
 
-**This proposal does not depend on knowing which candidate it was.** In all three the server discards *why* the turn ended, and in A1 and A2 the phone then changes mode without telling the technician. The proposal fixes that contract; it does not claim to fix F004 retrieval quality.
-
-## 1. Two statuses, never merged
-
-Both statuses are carried in one persisted evidence entry. It contains ids and counts only, never chunk text:
+One object per saved turn, built once by `buildGroundingStatus` in `mira-hub/src/capabilities/grounding-status.ts` (pure, deterministic, no inference). It is appended to the existing `equipment_notebook_turns.evidence` JSONB array — **no migration** (`evidence` has no CHECK). It contains ids, references and counts only: never chunk text, answer text, prompts, credentials or signed URLs.
 
 ```ts
-// mira-hub/src/capabilities/grounding-status.ts (new, unguarded)
-type RetrievalStatus =
-  | "passages_found"        // ≥1 chunk from the validated in-scope doc set entered the prompt
-  | "no_passages_in_scope"  // retrieval ran, returned 0 → today's abstain gate (route.ts L2599)
-  | "not_attempted";        // general mode or no node: the selected manual was NOT consulted
-
-type CitationStatus =
-  | "validated"      // ≥1 [n] marker resolved to a chunk that was retrieved in scope this turn
-  | "uncited"        // an answer was produced with no resolvable marker
-  | "refused"        // model output matched the refusal verdict → insufficient_evidence (L3521/L3676)
-  | "not_applicable";// no model call (abstain) or not_attempted retrieval
-
 interface GroundingStatusEntry {
   kind: "grounding_status";
   v: 1;
+  outcome: GroundingOutcome;               // exactly one — §3
   retrieval: {
-    status: RetrievalStatus;
-    reason?: "general_mode" | "no_node";   // only when not_attempted
-    passageCount: number;                    // chunks that entered the prompt
-    docIds: string[];                        // returned doc ids (≤32, same cap as the trace)
+    status: "passages_found" | "no_passages" | "unavailable" | "not_attempted";
+    notAttemptedReason?: "general_mode" | "no_manual_scope";   // only with not_attempted
+    scopeDocIds: string[];        // server-validated notebook doc scope (UUIDs only)
+    passageCount: number;         // passages that entered the prompt
+    returnedDocIds: string[];     // notebook passages, by document UUID
+    returnedSourceRefs: string[]; // shared-library passages, as "<origin+path>#p<page|?>"
   };
   citation: {
-    status: CitationStatus;
-    citedDocIds: string[];
-    unresolvedMarkerCount: number;           // [n] markers silently dropped today
+    status: "linked" | "uncited" | "refused" | "not_applicable";
+    linkedDocIds: string[];       // filled only when status === "linked"
+    linkedSourceRefs: string[];   // filled only when status === "linked"
+    unresolvedMarkerCount: number;// [n] markers matching no retrieved passage (linked/uncited only, else 0)
   };
-  grounded: boolean;                         // === (citation.status === "validated"), derived, never set independently
-  fallbackOf?: string;                       // turn id of the failed manual-based attempt this general turn replaced
-  retrievalFailed?: true;                    // OEM branch only: carries the existing oemRetrievalFailed (§1 rule 5)
+  manualCited: boolean;           // === (citation.status === "linked"); never set independently
+  droppedRefCount: number;        // references dropped for bad format, across all three lists
+  fallback: {
+    offered: boolean;             // may a client offer "general guidance (not from the manual)"? — §5
+    of?: string;                  // this general answer was requested from that failed turn — §5
+  };
 }
 ```
 
-Rules:
+### Terminology
 
-1. `grounded` is true **only** when `citation.status === "validated"`. If passages reached the prompt but the answer has no validated citation, the turn is `passages_found` + `uncited`, so `grounded` is false, whatever `basis` says.
-2. "Validated" means a citation marker **resolves** to an in-scope retrieved chunk. It does **not** prove that the passage supports the claim. Semantic support remains the job of the existing groundedness scorer, and this contract does not claim to replace it (see test T3b).
-3. `basis` keeps its migration-084 enum and its current derivation. The status entry adds a reason to `basis`; it does not change `basis`. A new `basis` value would need a migration because of the 084 CHECK, so none is added.
-4. `answer_status` (073 CHECK: `answered | insufficient_evidence | error`) is unchanged.
-5. **Retrieval errors.** Today the notebook-retrieval path at L1922 runs inside `releaseClaimOnFailure`: an error abandons the claim, returns an HTTP error before streaming, and persists **no turn**. The contract keeps that behavior, because no answer is better than an unlabelled one. The proposal adds no `retrieval_error` status to a persisted row: there is no row to carry it. That part of the path is pinned by test (T5).
-   - The OEM-corpus branch (L1907) works differently. It catches the error, sets `oemRetrievalFailed`, and continues with `[]`. That turn persists `retrieval.status = "no_passages_in_scope"` plus `retrievalFailed: true`. This is the one optional additive field: it carries the existing `oemRetrievalFailed` value forward instead of dropping it.
+- **`manualCited` / citation `linked`:** at least one `[n]` marker in the shipped answer resolves to a passage retrieved **for this turn**. It does **not** mean the passage supports the sentence. Semantic support stays with the existing groundedness / JEV signals. Test T3b pins this limit: an irrelevant passage cited as `[1]` still reads `linked`.
+- **`uncited`:** an answer was produced, passages were in the prompt, and no marker resolved. The answer is not manual-cited, whatever its `basis` label says.
+- **`refused`:** the model's output matched the refusal verdict, or the pre-display answer gate withheld a non-unsafe answer.
+- `basis` (migration 084) and `answer_status` (073) are **unchanged**. The entry adds a reason; it changes neither column.
 
-## 2. Example outcomes
+### References (C1)
 
-| Case | answer_status | basis (unchanged rule) | retrieval | citation | grounded | Phone shows |
+- **Notebook documents** are identified by document UUID. A non-UUID doc id is dropped and counted.
+- **Shared-library (OEM) passages** have no notebook doc id. They are recorded as `<origin+path>#p<page>` — the evidence packet's convention — with `#p?` when the page is missing or not a non-negative integer. Only `http:`/`https:` URLs are accepted. Credentials, query string and fragment are stripped before storage. A reference longer than 512 characters, or any other format, is dropped and counted in `droppedRefCount`.
+- Each list is de-duplicated and capped at 32 entries.
+- **Format validation is not authorization.** What authorizes a reference is where it came from (§6): the scope is the server-validated list, passages come from tenant-scoped retrieval of that scope, and citations are built only from those passages. Before C1, a cited shared-library passage was recorded as `manualCited: true` with no linked reference; it is now kept in `linkedSourceRefs`.
+
+## 3. Deterministic precedence (implemented — first matching row wins)
+
+| # | Condition | `outcome` | `citation.status` | `fallback.offered` |
+|---|---|---|---|---|
+| 0 | Request rejected before a turn is saved (400/401/412, notebook-retrieval error, claim failure) | — no row, no entry — | — | — (§8 gap) |
+| 1 | Terminal Safety STOP (`unsafe_answer`) | `safety_stop` | `not_applicable` | false, always |
+| 2 | Technician stopped the answer | `stopped` | `not_applicable` | false (Retry is the action) |
+| 3 | Provider called, nothing served | `provider_error` | `not_applicable` | false |
+| 4 | Zero-evidence abstain (no model call), shared library unreachable | `abstained_retrieval_unavailable` | `not_applicable` | rule F |
+| 5 | Zero-evidence abstain, otherwise | `abstained_no_passages` | `not_applicable` | rule F |
+| 6 | Refused, passages in the prompt | `refused_with_passages` | `refused` | rule F |
+| 7 | Refused, no passages | `refused_without_passages` | `refused` | rule F |
+| 8 | Answered, ≥1 emitted citation | `answered_citation_linked` | `linked` | false |
+| 9 | Answered, passages in the prompt, no emitted citation | `answered_uncited_with_passages` | `uncited` | rule F |
+| 10 | Answered, no passages | `answered_without_manual` | `not_applicable` | false |
+
+`retrieval.status` is computed independently of the outcome:
+
+1. `not_attempted` when neither notebook nor shared-library retrieval ran — with `notAttemptedReason` `general_mode` (general mode) or `no_manual_scope` (anything else);
+2. else `unavailable` when the shared-library lookup failed (this takes precedence over any passages that were found);
+3. else `passages_found` when ≥1 passage entered the prompt;
+4. else `no_passages`.
+
+**Rule F:** `fallback.offered = !notebookBound && scopeDocIds.length > 0 && !general`, applied only on rows 4, 5, 6, 7 and 9. A notebook bound to a resolved machine keeps its abstention — an answer about that machine is grounded or it is not. The action is never offered after a safety stop, a stop or a provider error.
+
+## 4. Capability negotiation (implemented)
+
+The server flag `NOTEBOOK_GROUNDING_STATUS_ENABLED` is on only for `1` or `true` (trimmed, case-insensitive). Unset, empty, `0`, `false` and any other value are **off**.
+
+| Flag | Request declares `grounding_status_v1`? | Entry saved | Live frame | History | Replay | Refusal status text |
 |---|---|---|---|---|---|---|
-| Manual passage cited `[1]` | answered | oem_documentation / workspace_evidence | passages_found, 1–6 | validated, citedDocIds=[DOC_A] | true | answer + citations (as today) |
-| F004 candidate B: passages found, answer has no `[n]` | answered | general_reasoning | passages_found, n | uncited | **false** | answer + "Your manual was searched, but this answer doesn't cite it. Treat it as general guidance." |
-| Irrelevant passages, model answers anyway with no `[n]` | answered | general_reasoning | passages_found | uncited | false | same as above |
-| Answer has only `[7]` against 3 chunks | answered | general_reasoning | passages_found | uncited, unresolvedMarkerCount=1 | false | same as above |
-| F004 candidate A2: passages found, model refuses | insufficient_evidence | null | passages_found | refused | false | failed bubble kept + "The manual was searched but didn't answer this." + **[Answer without the manual]** |
-| F004 candidate A1: zero passages in scope | insufficient_evidence | null (no model call) | no_passages_in_scope, 0 | not_applicable | false | failed bubble kept + "Nothing in the selected manual matched." + **[Answer without the manual]** |
-| Technician taps the fallback | answered | general_reasoning | not_attempted, reason=general_mode | uncited or not_applicable | false | new general answer, linked `fallbackOf=<failed turn id>`, labelled "General guidance, not from your manual" |
-| Notebook retrieval throws | (no turn) | — | — | — | — | error with retry (as today), no answer |
-| Turn saved before this change | any | as stored | **absent** | absent | **unknown** (never inferred true) | exactly what it shows today |
+| off | either | no | no | unchanged | unchanged | `Not found in the selected sources.` |
+| on | no | **yes** | no | entry stripped | entry not re-emitted | `Not found in the selected sources.` |
+| on | yes | yes | yes | entry kept | stored entry re-emitted | `I couldn't answer that from the selected sources.` |
 
-## 3. One carrier for live responses, saved history and replay
+- **How a client declares:** the chat POST body carries `clientCapabilities: ["grounding_status_v1"]` (a comma-separated string is also accepted); the notebook detail GET carries `?caps=grounding_status_v1`. Match is exact after trimming.
+- **Older clients:** with the flag on and no declaration, live output, history and replay are byte-identical to flag-off (test T10). An installed phone build would otherwise render the unknown entry as an "Unrecognized part" box; the negotiation exists to prevent that.
+- The zero-passage abstain wording is unchanged in every row.
 
-- **Live response:** the route emits the entry as its **own SSE frame**, byte-identical to the saved entry (`{kind:"grounding_status", …}`). It is not a field on the existing evidence frame. *(Corrected after checking: the phone's `sse.ts` copies only known fields off the evidence frame, so a `grounding` field there would be dropped. Reading it would need an edit to that frozen file. A frame kind the phone doesn't know already arrives intact as `unknownFrames` (`sse.ts` L87/L172 → `turns-to-parts.ts` L364), so the unguarded unified adapter can pick it up with no `sse.ts` change.)*
-- **Web live view:** the web stream parser (`mira-hub/src/components/equipment/notebook-chat-utils.ts` L243-267) is **guarded** and ignores unknown frames. But `hub-host.tsx` L422 reloads the saved turns right after every send, so web shows the status from the saved entry as soon as the answer finishes, with no guarded edit. It is not shown while the answer is still streaming; that is accepted and stated.
-- **Saved history:** the same object is appended to `equipment_notebook_turns.evidence` (JSONB) by the existing `recordTurn` calls: the normal persist step at L3863, the stopped-turn persist at L3441, and the abstain persist at L2652. A stopped turn records `citation.status = "not_applicable"`, `grounded = false`. `listTurns` already returns `evidence` as-is, so its SQL does not change.
-- **Replay:** `replayNotebookTurnResponse` (L719-819) reads the persisted entry and puts it on the replayed frame. Live, reload and replay are therefore built from one object, written once, and tests can compare them directly.
-- **One builder:** `buildGroundingStatus({retrievalRan, reason, chunks, emittedCitations, unresolvedMarkers, refusal, modelCalled})` in `capabilities/grounding-status.ts` is the only producer. It is pure and has its own unit test.
+## 5. Explicit general-guidance link (implemented server side)
 
-### Compatibility, verified by reading the code (not assumed)
+- **Request:** `{ mode: "general", fallbackOf: "<failed turn id>", … }`.
+- **Validated before** the request claim, retrieval or any model call, and only while the flag is on. The id must be a UUID and the request must be in general mode. `getFallbackSourceTurn` (`mira-hub/src/lib/equipment-notebooks.ts`) then requires, in SQL: the session's tenant, this notebook, this turn id, `owner_user_id` = the session user (strict — a legacy ownerless row does not qualify), the same thread (`IS NOT DISTINCT FROM`), and `client_request_state = 'complete'`. The stored entry on that turn must have `fallback.offered === true`.
+- **Failure:** `400 {error:"fallback_of_invalid"}`; if the lookup itself errors, `503 {error:"fallback_check_failed"}`. Neither calls the model.
+- **Success:** the new general turn's entry carries `fallback.of = <validated id>` (the database value, never the body string). The original failed turn is not modified.
+- **Flag off:** `fallbackOf` is ignored exactly as today — no lookup, no 400.
 
-- **No migration.** `evidence` is `JSONB NOT NULL DEFAULT '[]'` and has no CHECK (073 L96). The only CHECK in 073 is on `answer_status`; the 084 CHECK is on `basis`, which this proposal doesn't touch. Every server-side reader of `evidence` selects entries by predicate, so they ignore the new kind:
-  - replay (L721: string `docId`);
-  - the prior-look loop (L1399);
-  - `enrichCitationsWithOrigin`;
-  - the request-claim SQL (`e->>'kind' = 'safety_stop'`, `equipment-notebooks.ts` L1329-1371);
-  - hub `to-interaction` (`identityProposalOf`, `hasIdentityDispute`);
-  - part-search-claim.
+## 6. Live, history and replay (implemented)
 
-  A real-database insert test is not possible from scratch: the migration directory has no base-table bootstrap (the 003 `knowledge_entries` gap), so this evidence comes from reading the code.
-- **⚠ Compatibility hazard on installed phone builds (found and verified).**
-  1. Mobile `unknownEvidenceEntries` (`turns-to-parts.ts` L32-45) passes through only these evidence kinds: citations, `machine_evidence`, `visual_observation`, `safety_notice`, `safety_stop` and `identity_dispute`. Any other kind becomes a `{type:"unknown", raw}` part (L214/L274).
-  2. On the unified shell, `unifiedPart` → `unknownInteractionPart` (`unified/to-interaction.ts` L247-281) gives that part to `PartRenderer`, which shows a visible "Unrecognized part (preserved for inspection)" `<details>` containing the JSON (`packages/factorylm-ui/src/parts.tsx` L621-631).
-  3. The classic runtime maps it to `data-unknown`, for which there is no renderer.
+- **One object.** The builder runs once per saved turn at each of the three save points: the zero-evidence abstain, the stopped answer, and the final answer (which also covers safety stop, provider error and refusal). That same object is persisted and, for a declaring client, streamed.
+- **Live:** a `{kind:"grounding_status", …}` SSE frame immediately before the `status` frame, on the abstain path and the final path. A stopped turn is saved but gets no live frame (the client has disconnected).
+- **History:** `GET /api/equipment-notebooks/[id]` strips the entry from every turn's `evidence` unless shown (§4).
+- **Replay** (same `clientRequestId`): re-emits the **stored** entry, never a recomputed one, immediately before `status`, only for a declaring request. The replay request must repeat the original body, capability included, because the request claim is bound to the full body.
+- **Legacy turns** (saved without an entry) list and replay exactly as before and are never shown as `manualCited` (T12).
+- **Provenance of every id:**
+  - scope ids — `validateChatSources` filters the requested ids by tenant and notebook; the request body is only an intersection request;
+  - passages — `retrieveNodeChunks` with the session tenant and `approvedSourceDocIds` = that validated list;
+  - citations — built only from those passages; emitted citations are the subset the answer actually used;
+  - `fallback.of` — the id returned by the scoped database lookup.
 
-  **Consequence:** if the server writes the entry before the phone update reaches installed devices, technicians see a raw JSON box on every new turn.
+  Route test T13 pins the first two: a request listing an extra valid-looking UUID and a junk id, with the server authorizing only one document, yields retrieval, live entry and saved entry that contain only the authorized id.
 
-  **Mitigation, which sets the order:**
-  1. The phone change ships first. `unknownInteractionPart` recognises `raw.kind === "grounding_status"` the same way it already recognises `identity_proposal` and `manual_search_status`. That file is unguarded and needs no edit to the guarded `turns-to-parts.ts`.
-  2. The server starts writing the entry only after that update is live. It goes behind the server flag `NOTEBOOK_GROUNDING_STATUS_ENABLED`, default off. The flag is the rollout switch, and is recorded in `CAPABILITY_CLOSURE.yaml` per the finish-capability rule.
-  3. Test T9 pins that an installed-build-shaped turn with the entry renders no "unknown" part.
-- **Web (`/v3` hub).** Hub `to-interaction` does not turn unrecognised evidence kinds into unknown parts, so the entry is ignored until it is used.
+## 7. Enablement status (implemented code, not enabled)
 
-## 4. Phone behavior
+The flag is **not plumbed**. The `mira-hub` services in `docker-compose.saas.yml` and `docker-compose.staging-vps.yml` use explicit `environment:` lists that do not include `NOTEBOOK_GROUNDING_STATUS_ENABLED`, so a Doppler value alone never reaches the container. Enabling anywhere first needs a reviewed Compose change. The capability record `notebook_grounding_status` in `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml` is `implemented_unconnected` and says so.
 
-Current behavior: `NotebookScreen.sendQuestion` L392-409 re-asks silently. Five conditions trigger it:
+## 8. Not built yet
 
-- `!replay`
-- `!notebook.asset`
-- `body.mode === undefined`, which means scope was non-empty, so an applicable manual was selected
-- `!truncated`
-- `status === "insufficient_evidence"`
+### M2 — display the honest evidence status (customer-visible)
 
-In that case the phone re-asks with `{scope: [], mode: "general"}`. The failed bubble is replaced and the attempts are not linked. This is intentional behavior from #3862/#3742 and is pinned by `mira-mobile/src/screens/__tests__/notebook-composer.test.tsx` L240.
+Nothing reads the entry yet. M2 adds:
 
-Proposed behavior, which is an **intentional reversal** of that test:
+- the capability declaration on web (`chatBodyFor` / `detailQueryFor` in `mira-hub/src/factorylm-ui/hub-host-logic.ts`) and phone (`askNotebook` and the detail GET in `mira-mobile/src/api/resources.ts`);
+- a recognizer in `mira-mobile/src/unified/to-interaction.ts` and `mira-hub/src/factorylm-ui/to-interaction.ts`;
+- one shared `grounding_status` part in `packages/factorylm-interaction` + `packages/factorylm-ui`, including for refusals saved with `basis: null`;
+- status lines that describe the attempt, never the manual's content (e.g. "MIRA read passages from <manual> but couldn't answer from them. That doesn't mean the manual doesn't cover it.").
 
-1. When an applicable manual was selected and the result is `insufficient_evidence`, the phone does **not** re-ask. The failed bubble stays in the thread.
-2. Under it, the phone shows a plain-language explanation derived from `grounding`:
-   - `no_passages_in_scope` → "Nothing in <manual> matched this question."
-   - `refused` → "<manual> was searched but didn't answer this."
-   - grounding missing (older server) → "<manual> didn't answer this."
-3. The phone shows one explicit action: **"Answer without the manual (general guidance)"**. Tapping it sends `{scope: [], mode: "general", clientRequestId: <new>, fallbackOf: <failed turn id>}`. The server validates that `fallbackOf` is a turn in the **same notebook, tenant and owner** (tenant isolation), then persists it on the new turn's grounding entry. If validation fails, it answers 400 (`fallback_of_invalid`) without calling the model.
-4. The general answer is labelled "General guidance, not from your manual". This uses the existing `general_reasoning` caption, plus the link back to the failed attempt.
-5. If no applicable manual was selected (the scope was empty to begin with), behavior is unchanged.
-6. **Trade-off to accept or reject.** The test name at L240 shows the auto re-ask was built for *general* questions asked with a manual attached (e.g. "what does a VFD do"). After this change those also need one tap. That is the cost of never silently switching modes.
+Preconditions: a fresh `[WORK-CLAIM]` on #3626 for the shared packages lane; #4298 (which touches the same `hub-host*` files) merged or merged in.
 
-Ownership of the phone change:
+### M3 — explicit choice before general guidance
 
-- The guarded `NotebookScreen.tsx` change is **removing** the auto branch and passing `fallbackOf` through `handlers`.
-  - It removes a hidden behavior; it does not add a new legacy feature.
-  - It still needs a `## Lifecycle guard rationale` and an exact-head Codex GREEN.
-- The explanation and button render in the unguarded `UnifiedChat.tsx` / `unified/*`.
-- A shared part change in `packages/factorylm-ui` / `packages/factorylm-interaction` is required for the button. Those packages are a one-writer lane, so check `[WORK-CLAIM]` on #3626 before claiming.
+Today `mira-mobile/src/screens/NotebookScreen.tsx` silently re-asks in general mode after a manual-selected `insufficient_evidence` on an unbound notebook (#3862/#3742, pinned by `notebook-composer.test.tsx`). M3 removes that branch, keeps the failed turn, and sends `fallbackOf` only when the technician taps the offered action. `NotebookScreen.tsx` is a frozen legacy path: it needs a lifecycle guard rationale and an exact-head Codex GREEN. The re-ask test is intentionally reversed; its opposite-direction control stays.
 
-## 5. Exact files affected
+## 9. Recovery gaps and residuals (unresolved)
 
-| File | Change | Guarded? |
+1. **Notebook-retrieval errors** and the **approved-context 412** save no turn, so there is no entry, nothing to replay and nothing to link a fallback to (T5 pins the retrieval-error behavior). A durable "attempt failed" row is a separate change.
+2. **Refusals keep `basis: general_reasoning`** and the label "General guidance…". The entry distinguishes them (`refused_with_passages`); the label itself is unchanged until M2 renders the entry.
+3. **Old phone builds keep the silent re-ask** until M3 reaches them. OTA availability is not adoption; measure general-mode turns without `fallbackOf` that immediately follow an `insufficient_evidence` turn in the same thread.
+4. **"Linked" is not "supports"** (T3b).
+5. **F004's cause remains unknown** (§1).
+
+## 10. Test evidence map (PR #4303)
+
+| Behavior | Tests | Mutation controls |
 |---|---|---|
-| `mira-hub/src/capabilities/grounding-status.ts` (new) | pure builder + types | no |
-| `mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts` | count unresolved markers next to `citationsUsedInAnswer`; call builder at L2652 (abstain), L3441 (stopped), L3863 (persist), replay L719-819; validate `fallbackOf`; behind flag | no |
-| `mira-hub/src/lib/notebook-chat-types.ts` | new `NotebookGroundingStatusFrame` in the frame union; `fallbackOf?` on request body | no |
-| `mira-hub/src/lib/equipment-notebooks.ts` | type only (`evidence` already passed through); helper to look up `fallbackOf` turn scoped by tenant+notebook+owner | no |
-| `mira-hub/src/factorylm-ui/to-interaction.ts` | read `grounding` → caption for uncited / refused | no |
-| `packages/factorylm-interaction/src/types.ts` | optional `grounding` on `EvidenceBasis` + fallback action | shared lane (claim) |
-| `packages/factorylm-ui/src/parts.tsx` | render explanation + explicit fallback button | shared lane (claim) |
-| `mira-mobile/src/unified/to-interaction.ts` | recognise `grounding_status` raw kind (ships first) | no |
-| `mira-mobile/src/screens/UnifiedChat.tsx` | wire fallback action → handler | no |
-| `mira-mobile/src/screens/NotebookScreen.tsx` | remove silent re-ask; send `fallbackOf` | **yes** — rationale + Codex GREEN |
-| `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml` | flag record | no |
+| Precedence rows, `manualCited` derivation, rule F | unit B1–B4; route T1–T4b | M1–M4 |
+| Retrieved but uncited stays uncited; unresolved markers counted | route T2, T3, T3c | M6 |
+| Honest refusal wording only for declaring clients | route T4 + control | M16 |
+| Live = saved = replay; stored, not recomputed | route T9, T4b, T6 | M10, M18, M19 |
+| Older clients unchanged (live, history, replay) | route T10 | M7–M9 |
+| Flag default off, and off for malformed values | unit flag tests; route T11 | M5, C1-M6, C1-M7 |
+| `fallbackOf` scoped by session tenant/notebook/owner/thread, offered, general only | route T7 matrix; unit SQL-predicate test | M11–M15 |
+| References typed, bounded, content-free, no credentials/signed URLs | unit B5 + C1 block | C1-M1…C1-M11 |
+| Scope/retrieval ids are the server-validated list, not the request body | route T13 | P1–P3 |
+| Notebook-retrieval error saves nothing (the gap stays visible) | route T5 | M17 |
 
-Not touched: providers, prompts, the refusal verdict text set, safety policy, retrieval ranking, `retrieveNodeChunks`, migrations, SDLC tooling, coding-agent orchestration.
-
-## 6. Red-first tests
-
-Each test is written first and shown failing on `main` for the reason it names (the counts get recorded), then shown green. For the guards, a mutation is reapplied to prove the test bites. The harness is the one already proven in `f004-characterization.scratch.test.ts`: 7/7 pass on main, and mutations M1–M4 plus the refusal mutation each turned the intended test red.
-
-**Hub route:** `mira-hub/src/app/api/equipment-notebooks/__tests__/chat-grounding-status.test.ts`
-
-- **T1, cited relevant passage.** One chunk is returned and the model answers with `[1]`. Expect: `retrieval.passages_found`, `citation.validated`, `grounded=true`, `citedDocIds=[DOC_A]`.
-  - *Red on main:* no `grounding` on the frame or the persisted evidence.
-  - *Mutation:* derive `grounded` from `passageCount > 0` → T2 goes red.
-- **T2, retrieved but uncited (F004 candidate B).** Chunk returned, answer with no `[n]`. Expect: `basis` is still `general_reasoning` (control: unchanged), `passages_found`, `uncited`, `grounded=false`.
-- **T3, irrelevant passages.** The chunk is about F012 and the answer is uncited. Expect `uncited`, `grounded=false`.
-- **T3b, limitation pin.** The chunk is about F012 and the answer still writes `[1]`. Expect `validated`. This test exists to document that marker validation does not measure relevance; it must not be read as proof of grounding.
-- **T3c, unresolved marker.** The answer cites `[7]` with 3 chunks. Expect `uncited`, `unresolvedMarkerCount=1`.
-- **T4, refusal (A2).** The refusal text from the scratch test. Expect `insufficient_evidence`, `passages_found`, `refused`, and that a model call happened.
-- **T4b, abstain (A1).** Zero chunks. Expect `no_passages_in_scope`, `not_applicable`, no `fetch`, `model:null`, and that the entry was persisted through the abstain `recordTurn`.
-- **T5, retrieval error.** `retrieveNodeChunks` rejects. Expect: no provider call, no persisted `answered` row, claim abandoned, error response.
-  - *Characterization (green on main, kept as a guard):* mutating the code to catch the error and continue must turn this test red.
-  - *Control:* the OEM-branch failure continues, with `retrievalFailed: true`.
-- **T6, explicit mode switch.** `mode:"general"` + `fallbackOf=<turn in same notebook>`. Expect: retrieval not called, `not_attempted/general_mode`, `fallbackOf` persisted.
-  - *Control:* without `fallbackOf`, everything else behaves the same.
-- **T7, tenant isolation.**
-  - `fallbackOf` pointing at a turn in another tenant → 400 `fallback_of_invalid`, no model call.
-  - Turn in another notebook of the same tenant → 400.
-  - Another owner → 400.
-  - *Control:* same tenant, notebook and owner → 200.
-  - Re-run the existing scratch TENANT test to confirm retrieval still uses `ctx.tenantId`.
-- **T8, live = reload = replay.** For T1, T2, T4 and T4b, three objects must match field for field:
-  - the `grounding` on the live frame;
-  - the entry in `recordTurn`'s evidence argument (which is what `listTurns` returns);
-  - the `grounding` on the replay frame (same `clientRequestId`).
-  - *Mutation:* make the replay path recompute instead of reading the stored entry → this test goes red.
-- **T8d, stopped turn.** The client stops mid-answer after passages were retrieved. Expect `not_applicable` and `grounded=false` on the L3441 row.
-- **T8b, legacy turn.** A persisted row with no entry replays with `grounding` absent and is never marked grounded.
-- **T8c, flag off.** Frames and evidence are byte-identical to today. This control proves the server-off rollout is inert.
-
-**Pure builder:** `mira-hub/src/capabilities/__tests__/grounding-status.test.ts`
-
-- Every row of the §2 table.
-- The `grounded` derivation property: true if and only if `validated`.
-- `docIds` capped at 32.
-- No `content` field anywhere in the output (ids and counts only).
-
-**Mobile:**
-
-- **T9.** `mira-mobile/src/unified/__tests__/to-interaction.grounding.test.ts`: a turn with a `grounding_status` entry produces **no** `unknown` part.
-  - *Red on main:* today it shows the "Unrecognized part" box.
-- **T10.** Rewrite `notebook-composer.test.tsx` L240 (the intentional reversal; its opposite-direction test at L271 stays unchanged as a control):
-  - with a manual selected and `insufficient_evidence`, exactly **one** POST is sent;
-  - the failed bubble stays;
-  - the fallback button is visible.
-- **T11.** Tapping the button sends a second POST with `mode:"general"`, `scope:[]`, a **new** `clientRequestId`, and `fallbackOf=<first turn id>`. Both bubbles stay.
-- **T12, control.**
-  - Empty scope: behavior is unchanged.
-  - `notebook.asset` bound: behavior is unchanged.
-  - Replay path: no button, no auto POST.
-
-**Hub web:** `mira-hub/src/factorylm-ui/to-interaction.test.ts`
-
-- The uncited and refused captions render.
-- A legacy turn without `grounding` renders exactly as it does today (snapshot control).
-
-## 7. Order, gates, and what this does not cover
-
-1. Write the tests red-first and record the counts.
-2. Ship the builder plus the server, with the flag off; T8c proves the flag-off path is inert.
-3. Ship the phone recogniser (T9) by OTA.
-4. Ship the phone and shared-UI fallback change: the lifecycle rationale plus a Codex exact-head GREEN for the `NotebookScreen.tsx` change.
-5. Turn the flag on in staging and run the stranger walk on an emulator (`tools/mobile-e2e/`).
-6. Promote to production.
-
-Each step is a separate PR with a `Risk:` line and needs separate approval.
-
-This proposal does **not**:
-
-- determine the F004 cause;
-- improve retrieval;
-- change which passages are found;
-- assess semantic relevance.
-
-Once the staging rows or the CSV are available, the `grounding` entry on future turns will make the next failure like F004 diagnosable from the turn row alone.
+Run: `cd mira-hub && ./node_modules/.bin/vitest run src/capabilities/__tests__/grounding-status.test.ts src/capabilities/__tests__/grounding-status-route.test.ts`
