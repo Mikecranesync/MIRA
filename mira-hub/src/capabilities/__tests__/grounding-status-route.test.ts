@@ -366,6 +366,22 @@ describe("F004 v2 M1 — explicit general guidance, ownership-checked (§5)", ()
     expect(domainMock.recordTurn).toHaveBeenCalledTimes(1);
   });
 
+  it("T8c a link sent as the failed turn's REQUEST id is saved as the canonical row id the lookup returned", async () => {
+    domainMock.getNotebook.mockResolvedValueOnce({ id: NB, displayName: "Scratch" } as never);
+    domainMock.getFallbackSourceTurn.mockResolvedValue(offeredRow as never);
+    domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [], nodeId: "n1" } as never);
+    const { frames } = await ask(
+      { sourceDocIds: [], mode: "general", fallbackOf: REQ_ID, clientCapabilities: CAPS },
+      "Check the incoming supply voltage and the wiring to the drive.",
+    );
+    // Precondition: the lookup received the request id the client sent.
+    expect(domainMock.getFallbackSourceTurn).toHaveBeenCalledWith(TENANT_A, NB, expect.objectContaining({ turnId: REQ_ID }));
+    for (const g of [groundingFrame(frames), savedGrounding()]) {
+      expect(g).toMatchObject({ fallback: { of: FAILED_TURN } });
+      expect(JSON.stringify(g)).not.toContain(REQ_ID);
+    }
+  });
+
   it("T8b a general answer that asserts a code's meaning is withheld by the existing gate → refused_without_passages, never manualCited", async () => {
     domainMock.getNotebook.mockResolvedValueOnce({ id: NB, displayName: "Scratch" } as never);
     domainMock.getFallbackSourceTurn.mockResolvedValue(offeredRow as never);

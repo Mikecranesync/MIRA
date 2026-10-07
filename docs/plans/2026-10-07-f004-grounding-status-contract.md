@@ -117,10 +117,10 @@ The server flag `NOTEBOOK_GROUNDING_STATUS_ENABLED` is on only for `1` or `true`
 
 ## 5. Explicit general-guidance link (implemented server side)
 
-- **Request:** `{ mode: "general", fallbackOf: "<failed turn id>", … }`.
+- **Request:** `{ mode: "general", fallbackOf: "<failed turn id>", … }`. The id may be the failed turn's row id or the `clientRequestId` it was sent with (a phone holds only the latter for an answer it just received live; the stream never carries the row id).
 - **Validated before** the request claim, retrieval or any model call, and only while the flag is on. The id must be a UUID and the request must be in general mode. `getFallbackSourceTurn` (`mira-hub/src/lib/equipment-notebooks.ts`) then requires, in SQL: the session's tenant, this notebook, this turn id, `owner_user_id` = the session user (strict — a legacy ownerless row does not qualify), the same thread (`IS NOT DISTINCT FROM`), and `client_request_state = 'complete'`. The stored entry on that turn must have `fallback.offered === true`.
 - **Failure:** `400 {error:"fallback_of_invalid"}`; if the lookup itself errors, `503 {error:"fallback_check_failed"}`. Neither calls the model.
-- **Success:** the new general turn's entry carries `fallback.of = <validated id>` (the database value, never the body string). The original failed turn is not modified.
+- **Success:** the new general turn's entry carries `fallback.of = <row id>` — the database row id the lookup returned, never the body string, whichever id the client sent. The original failed turn is not modified.
 - **Flag off:** `fallbackOf` is ignored exactly as today — no lookup, no 400.
 
 ## 6. Live, history and replay (implemented)

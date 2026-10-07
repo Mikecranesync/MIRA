@@ -1638,6 +1638,11 @@ export async function resolveBoundAsset(
  * tenant, notebook and thread. Strict ownership: a legacy ownerless row never
  * qualifies, so a link can never point at someone else's conversation. The
  * caller still checks the stored entry offered the action.
+ *
+ * `turnId` is the turn's row id OR the request id it was sent with: a phone
+ * that just received the answer live holds only the latter (the stream never
+ * carries the row id). Either way the ROW id is returned, so the stored link
+ * is canonical. Request ids are unique per tenant+notebook+owner (088).
  */
 export async function getFallbackSourceTurn(
   tenantId: string,
@@ -1652,10 +1657,12 @@ export async function getFallbackSourceTurn(
          FROM equipment_notebook_turns
         WHERE tenant_id = $1::uuid
           AND notebook_id = $2::uuid
-          AND id = $3::uuid
+          AND (id = $3::uuid OR client_request_id = $3::uuid)
           AND owner_user_id = $4
           AND thread_id IS NOT DISTINCT FROM $5
-          AND client_request_state = 'complete'`,
+          AND client_request_state = 'complete'
+        ORDER BY (id = $3::uuid) DESC
+        LIMIT 1`,
       [tenantId, notebookId, opts.turnId, owner, storedThreadId(opts.threadId)],
     );
     const r = res.rows[0] as Record<string, unknown> | undefined;
