@@ -103,7 +103,7 @@ import {
   withSafetyFlag,
 } from "@/lib/safety-classifier";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
-import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
+import { makeCitationNormalizer, normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
 import { withPhotoProvenance } from "@/capabilities/photo-provenance";
 import { withRetailCodeNote } from "@/capabilities/retail-codes";
@@ -431,30 +431,8 @@ export function makeGeneralBracketStripper(): { push: (delta: string) => string;
   };
 }
 
-export function makeCitationNormalizer(): { push: (delta: string) => string; flush: () => string } {
-  let pending = "";
-  return {
-    push(delta: string): string {
-      let buf = pending + delta;
-      // Replace any COMPLETE fancy-bracket citation with [n].
-      buf = buf.replace(/【\s*(\d+)(?:\s*†[^】]*)?】/g, "[$1]");
-      // If an unclosed `【` remains, hold from it back (marker split across deltas).
-      const open = buf.lastIndexOf("【");
-      if (open !== -1) {
-        pending = buf.slice(open);
-        return buf.slice(0, open);
-      }
-      pending = "";
-      return buf;
-    },
-    // Emit any held text at stream end (a malformed/unclosed marker), normalized.
-    flush(): string {
-      const out = pending.replace(/【\s*(\d+)(?:\s*†[^】]*)?】/g, "[$1]");
-      pending = "";
-      return out;
-    },
-  };
-}
+// Moved to capabilities/answer-shape.ts so NodeChat shares it; re-exported for existing importers.
+export { makeCitationNormalizer };
 
 /** A prose refusal ("I could not find that in the selected sources") must NOT
  *  ship citations — otherwise unrelated retrieved pages render as false proof

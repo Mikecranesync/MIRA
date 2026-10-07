@@ -34,7 +34,7 @@ import {
 } from "@/lib/approved-context";
 import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import { withAnswerLanguage } from "@/capabilities/answer-language";
-import { withStepSafety } from "@/capabilities/answer-shape";
+import { makeCitationNormalizer, withStepSafety } from "@/capabilities/answer-shape";
 import { linkedDocIdsForNode } from "@/lib/workspace-files";
 import { canonicalProviders } from "@/lib/inference/canonical-cascade";
 
@@ -95,8 +95,16 @@ export async function drainProviderStream(
   const dec = new TextDecoder();
   let buffer = "";
   let served = false;
+  // `【1】` → `[1]` (gpt-oss), so a cited answer is recognised as cited.
+  const markers = makeCitationNormalizer();
+  const emit = (text: string) => {
+    if (!text) return;
+    responseBuffer.push(text);
+    controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: text })}\n\n`));
+  };
 
   const finish = () => {
+    emit(markers.flush());
     if (served) controller.enqueue(enc.encode("data: [DONE]\n\n"));
     return served;
   };
@@ -121,8 +129,7 @@ export async function drainProviderStream(
         const delta = parsed.choices?.[0]?.delta?.content;
         if (delta) {
           served = true;
-          responseBuffer.push(delta);
-          controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: delta })}\n\n`));
+          emit(markers.push(delta));
         }
         if (parsed.choices?.[0]?.finish_reason === "stop") return finish();
       } catch {
@@ -130,6 +137,8 @@ export async function drainProviderStream(
       }
     }
   }
+  // Body closed without a terminator: release any held partial marker text.
+  emit(markers.flush());
   return served;
 }
 
