@@ -50,10 +50,9 @@ services:
       OPENWEBUI_API_KEY: ""
       NANGO_SERVER_URL: disabled://recovery
       HUB_CMMS_API_URL: http://cmms-not-started.invalid:8080
-      # Embedder (nomic-embed-text) over Tailscale when Doppler provides it;
-      # unset => BM25-only retrieval. Never the base `host.docker.internal`
-      # default (there is no local Ollama on the production host).
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      # OLLAMA_BASE_URL: the base compose sets this to the colocated mira-ollama
+      # service (internal network, no tailnet). NOT overridden here — the shared
+      # Doppler value names Bravo's tailnet address, which this host cannot reach.
 
     # Preserve the EXISTING named upload-buffer volume. Under compose project
     # `mira` this resolves to the live `mira_mira-hub-upload-buffers`; keeping the

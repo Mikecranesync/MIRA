@@ -100,7 +100,7 @@ jobs:
             SEEN_SERVICES=" "
             for service in $SERVICES_INPUT; do
               case "$service" in
-                atlas-api|atlas-db|atlas-frontend|atlas-minio|mira-bot-telegram|mira-cmms-sync|mira-hub|mira-mcp|mira-pipeline|mira-tika|mira-web)
+                atlas-api|atlas-db|atlas-frontend|atlas-minio|mira-bot-telegram|mira-cmms-sync|mira-hub|mira-mcp|mira-ollama|mira-pipeline|mira-tika|mira-web)
                   ;;
                 *)
                   fail "service is not in the staging compose allowlist: $service"
@@ -346,11 +346,14 @@ jobs:
           # smoke (nameplate photo -> Drive Commander pack answer) runs against
           # stg-mira-bot-telegram, and build/force-recreate below are scoped to
           # $TARGETS, so omitting it leaves the bot on a stale image forever
-          # (a `docker compose up -d` alone never rebuilds). NOTE: mira-bot-slack
-          # is intentionally NOT here — staging runs no Slack bot (see the
-          # header comment in docker-compose.staging-vps.yml; SLACK_BOT_TOKEN is
-          # deliberately omitted), so adding it would fail `compose build`.
-          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram mira-ask}"
+          # (a `docker compose up -d` alone never rebuilds). mira-ollama MUST
+          # also be in TARGETS: its image identity is recorded in the staging
+          # receipt, and production's receipt verifier checks every effective
+          # service. NOTE: mira-bot-slack is intentionally NOT here — staging
+          # runs no Slack bot (see the header comment in
+          # docker-compose.staging-vps.yml; SLACK_BOT_TOKEN is deliberately
+          # omitted), so adding it would fail `compose build`.
+          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram mira-ask mira-ollama}"
           read -r -a TARGET_LIST <<< "$TARGETS"
           echo "Rebuild targets: $TARGETS"
 
@@ -392,6 +395,10 @@ jobs:
             env -u OTEL_EXPORTER_OTLP_ENDPOINT -u OTEL_EXPORTER_OTLP_TRACES_ENDPOINT \
             -u OTEL_EXPORTER_OTLP_HEADERS -u OTEL_EXPORTER_OTLP_PROTOCOL \
             docker compose -p "$PROJECT" -f "$COMPOSE_FILE" build --no-cache --pull "${TARGET_LIST[@]}"
+
+          echo "=== Pull image-only targets (e.g. mira-ollama) before image identity check ==="
+          doppler run --project factorylm --config stg -- \
+            docker compose -p "$PROJECT" -f "$COMPOSE_FILE" pull --ignore-buildable "${TARGET_LIST[@]}"
 
           echo "=== Bring up full staging stack ==="
           doppler run --project factorylm --config stg -- \

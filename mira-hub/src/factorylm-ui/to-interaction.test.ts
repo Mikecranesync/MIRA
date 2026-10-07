@@ -114,7 +114,7 @@ describe("partsFromStream", () => {
       visualEvidence: { kind: "visual_observation", fileId: "f9fdad9c", capturedAt: AT, provenance: "phone_photo" },
     }), LIVE);
     expect(parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "machine_evidence", "visual_observation", "followups"]);
-    expect(parts[2]).toEqual({ type: "evidence_basis", basis: { kind: "oem_documentation", label: "oem_documentation", authorized: false } });
+    expect(parts[2]).toEqual({ type: "evidence_basis", basis: { kind: "oem_documentation", label: "Grounded in the cited documentation.", authorized: false } });
     expect(parts[3]).toMatchObject({ evidence: { preSeconds: 30, postSeconds: 30, rowCount: 4, freshness: "stale", source: "recorded" } });
     // The chat route carries no verification signal; the mapper must never claim one.
     expect(parts[4]).toEqual({ type: "visual_observation", observation: { fileId: "f9fdad9c", capturedAt: AT, provenance: "phone_photo", verified: false, previewUrl: fileUrl("f9fdad9c") } });
@@ -515,5 +515,76 @@ describe("threadFromPersisted / citationIndex", () => {
     // Without a live turn id, live citations are not indexed at all (never under a guessed key).
     expect(citationIndex([older], [live]).size).toBe(1);
     expect(hasIdentityDispute([citation])).toBe(false);
+  });
+});
+
+// #4025: the /v3 answer chip read "● oem_documentation" under a technician's
+// own cited upload (desktop #4024 proof, Pixel prod v1.2.0 2026-10-04). The
+// chip carries a caption for the basis, never the server's enum key, on the
+// live stream and after a reload alike. A documentation basis names the
+// notebook only when every citation is provably one of the notebook's own
+// sources (Codex #4301 F1): the route sends `oem_documentation` for a
+// shared-library answer too, and the label that told them apart never
+// reaches this adapter.
+describe("evidence basis chip — a caption, never the server key (#4025)", () => {
+  const CAPTIONS = {
+    general_reasoning: "General guidance — not grounded in this machine's documents.",
+    workspace_evidence: "Grounded in workspace evidence.",
+    identified_component: "Grounded in the identified component.",
+    machine_history: "Grounded in recorded machine history — not live.",
+    live_machine_evidence: "Grounded in live machine evidence.",
+  } as const;
+  const NOTEBOOK_SOURCES = "Grounded in this notebook's sources.";
+  const CITED_DOCUMENTATION = "Grounded in the cited documentation.";
+  const basisPart = (parts: readonly { type: string }[]) => parts.find((p) => p.type === "evidence_basis") as
+    | { basis: { kind: string; label: string; authorized: boolean } }
+    | undefined;
+  /** The same answer, live (stream) and saved (persisted row), both projected with `notebookDocIds`. */
+  function both(citations: EvidenceCitation[], notebookDocIds?: readonly string[], basis = "oem_documentation") {
+    const live = basisPart(partsFromStream(stream({ basis, citations }), { ...LIVE, ...(notebookDocIds ? { notebookDocIds } : {}) }));
+    const [, replayed] = turnsFromPersisted(row({ basis, evidence: citations }), { ...meta, ...(notebookDocIds ? { notebookDocIds } : {}) });
+    return [live, basisPart(replayed.parts)];
+  }
+  const library: EvidenceCitation = { ...citation, citationId: "2", docId: "", sourceTitle: "Yaskawa GA500 manual", page: 889, sourceUrl: "https://example.com/ga500.pdf" };
+
+  for (const [basis, caption] of Object.entries(CAPTIONS)) {
+    it(`${basis}: live stream and persisted row both show "${caption}"`, () => {
+      for (const part of both([citation], ["doc-1"], basis)) {
+        expect(part?.basis.label).toBe(caption);
+        expect(part?.basis.label).not.toBe(basis);
+        expect(part?.basis.kind).toBe(basis);
+      }
+    });
+  }
+
+  it("oem_documentation citing only the notebook's own sources names the notebook, live and saved", () => {
+    for (const part of both([citation], ["doc-1", "doc-9"])) {
+      expect(part?.basis).toEqual({ kind: "oem_documentation", label: NOTEBOOK_SOURCES, authorized: false });
+    }
+  });
+
+  it("a cited shared-library answer never claims the notebook's sources, live and saved (Codex #4301 F1)", () => {
+    for (const part of both([library], ["doc-1"])) {
+      expect(part?.basis).toEqual({ kind: "oem_documentation", label: CITED_DOCUMENTATION, authorized: false });
+      expect(part?.basis.label).not.toMatch(/notebook/i);
+    }
+  });
+
+  it("without the notebook's source ids the adapter cannot prove notebook provenance, so it does not claim it", () => {
+    for (const part of both([citation])) expect(part?.basis.label).toBe(CITED_DOCUMENTATION);
+  });
+
+  it("a mixed answer (one notebook source, one library chunk) is not captioned as the notebook's", () => {
+    for (const part of both([citation, library], ["doc-1"])) expect(part?.basis.label).toBe(CITED_DOCUMENTATION);
+  });
+
+  it("a cited doc that is not (or no longer) one of the notebook's sources is not captioned as the notebook's", () => {
+    for (const part of both([citation], ["doc-2"])) expect(part?.basis.label).toBe(CITED_DOCUMENTATION);
+  });
+
+  it("an unknown basis is captioned as general guidance — never a stronger claim, never the raw value", () => {
+    for (const part of both([citation], ["doc-1"], "verified_by_oem")) {
+      expect(part?.basis).toEqual({ kind: "general_reasoning", label: CAPTIONS.general_reasoning, authorized: false });
+    }
   });
 });

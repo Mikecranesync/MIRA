@@ -88,6 +88,11 @@
           },
           {
             "type": "command",
+            "command": "python3 tools/hooks/guarded_approval_guard.py",
+            "timeout": 15
+          },
+          {
+            "type": "command",
             "if": "Bash(git commit*)",
             "command": "STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' 2>/dev/null || true); if [ -n \"$STAGED_PY\" ] && command -v ruff >/dev/null 2>&1; then ruff format --check --force-exclude $STAGED_PY >/tmp/mira-commit-format.log 2>&1 || echo 'heads up: staged Python file(s) are not ruff-formatted -- run: ruff format <file> (see /tmp/mira-commit-format.log)'; fi; exit 0",
             "timeout": 15,
@@ -101,6 +106,10 @@
           {
             "type": "command",
             "command": "bash tools/hooks/worktree-file-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "python3 tools/hooks/guarded_approval_guard.py"
           }
         ]
       }

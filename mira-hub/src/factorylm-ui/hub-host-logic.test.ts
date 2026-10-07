@@ -20,6 +20,7 @@ import {
   latestRequestGate,
   metaFor,
   newThreadId,
+  notebookSourceDocIds,
   retainedStreamInterruption,
   searchForSelection,
   selectionFromSearch,
@@ -233,6 +234,18 @@ describe("metaFor — identity is server-owned", () => {
     expect(metaFor(nb({ identityStatus: "unknown" }), sel, null, "T").confirmedIdentity).toBeNull();
     expect(metaFor(nb({ manufacturer: null, model: null }), sel, null, "T").confirmedIdentity).toBeNull();
   });
+
+  // #4025: the /v3 basis chip names the notebook only for citations among its
+  // own sources, so meta must carry them — and carry nothing when the host
+  // has not loaded them (the chip then never claims the notebook).
+  it("carries the notebook's own source ids when given its sources, and none otherwise", () => {
+    const sources = [
+      { docId: "a", matchState: "user_confirmed" as const },
+      { docId: "r", matchState: "rejected" as const },
+    ];
+    expect(metaFor(nb(), sel, null, "T", sources).notebookDocIds).toEqual(["a"]);
+    expect(metaFor(nb(), sel, null, "T").notebookDocIds).toBeUndefined();
+  });
 });
 
 describe("enabledDocIds / historyRows / groundingLineFor", () => {
@@ -242,6 +255,14 @@ describe("enabledDocIds / historyRows / groundingLineFor", () => {
       { docId: "b", enabledByDefault: false, matchState: "user_confirmed" },
       { docId: "c", enabledByDefault: true, matchState: "rejected" },
     ])).toEqual(["a"]);
+  });
+  it("the notebook's own sources are every non-rejected source, enabled or not (#4025 basis caption)", () => {
+    expect(notebookSourceDocIds([
+      { docId: "a", matchState: "user_confirmed" },
+      { docId: "b", matchState: "user_confirmed" },
+      { docId: "c", matchState: "rejected" },
+      { docId: "", matchState: "user_confirmed" },
+    ])).toEqual(["a", "b"]);
   });
   it("history excludes stopped and failed answers but keeps their questions", () => {
     expect(historyRows([
