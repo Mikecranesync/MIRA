@@ -164,8 +164,17 @@ export function detailQueryFor(sel: HubSelection): string {
 }
 
 /** Server-owned identity → shell meta. `identityConfirmed` is true only when the
- *  notebook's identity is user-confirmed/verified AND the binding is confirmed. */
-export function metaFor(nb: EquipmentNotebook, sel: HubSelection, tenantId: string | null, capturedAt: string): HubNotebookMeta {
+ *  notebook's identity is user-confirmed/verified AND the binding is confirmed.
+ *  `sources` (the notebook's loaded sources) become `notebookDocIds`, which the
+ *  basis chip needs before it may say "this notebook's sources" (#4025);
+ *  without them meta carries none and the chip never says it. */
+export function metaFor(
+  nb: EquipmentNotebook,
+  sel: HubSelection,
+  tenantId: string | null,
+  capturedAt: string,
+  sources?: readonly Pick<NotebookSource, "docId" | "matchState">[],
+): HubNotebookMeta {
   const asset = nb.asset
     ? { id: nb.asset.entityId, name: machineNameFor(nb), unsPath: null }
     : null;
@@ -184,6 +193,7 @@ export function metaFor(nb: EquipmentNotebook, sel: HubSelection, tenantId: stri
     // identityStatus directly and never creates an asset binding, so that
     // common case needs this field even when `identityConfirmed` is false.
     confirmedIdentity: identitySettled && nb.manufacturer && nb.model ? { manufacturer: nb.manufacturer, model: nb.model } : null,
+    ...(sources ? { notebookDocIds: notebookSourceDocIds(sources) } : {}),
     capturedAt,
   };
 }
@@ -192,6 +202,12 @@ export function metaFor(nb: EquipmentNotebook, sel: HubSelection, tenantId: stri
  *  classic notebook's rule, unchanged. */
 export function enabledDocIds(sources: readonly Pick<NotebookSource, "docId" | "enabledByDefault" | "matchState">[]): string[] {
   return sources.filter((s) => s.enabledByDefault && s.matchState !== "rejected").map((s) => s.docId);
+}
+
+/** The notebook's own sources, enabled or not — what the basis chip may call
+ *  "this notebook's sources" (#4025). A rejected match was never one. */
+export function notebookSourceDocIds(sources: readonly Pick<NotebookSource, "docId" | "matchState">[]): string[] {
+  return sources.filter((s) => s.docId !== "" && s.matchState !== "rejected").map((s) => s.docId);
 }
 
 /** Multi-turn memory for the route: persisted rows first, then any completed
