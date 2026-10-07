@@ -316,7 +316,7 @@ export function HubShellHost() {
   const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
   const machines = useMemo(() => notebookMachines(notebooks ?? []), [notebooks]);
   const meta = useMemo(
-    () => (detail && selection ? metaFor(detail.notebook, selection, null, capturedAt) : null),
+    () => (detail && selection ? metaFor(detail.notebook, selection, null, capturedAt, detail.sources) : null),
     [detail, selection, capturedAt],
   );
   const docIds = useMemo(() => enabledDocIds(detail?.sources ?? []), [detail]);
@@ -339,7 +339,7 @@ export function HubShellHost() {
     let parts: InteractionPart[];
     let lifecycle: InteractionTurn["lifecycle"];
     if (live.result) {
-      parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId });
+      parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId, notebookDocIds: meta.notebookDocIds });
       lifecycle = lifecycleFromStream(live.result, { stopped: live.stopped });
     } else {
       parts = live.content ? [{ type: "text", text: live.content }] : [];
