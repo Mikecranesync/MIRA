@@ -642,6 +642,10 @@ capabilities:
       "nothing was found" - and general guidance is never a silent switch.
     # The Hub reads NOTEBOOK_GROUNDING_STATUS_ENABLED (TypeScript). feature_flag is
     # omitted because tools/capability_closure.py discovers flags in Python only.
+    # NOT PLUMBED: the mira-hub service in docker-compose.saas.yml and
+    # docker-compose.staging-vps.yml takes an explicit `environment:` list with no
+    # env_file, and this flag is not on either list. A Doppler value alone never
+    # reaches the container; enabling it needs a reviewed Compose change first.
     entrypoints:
       - "mira-hub/src/capabilities/grounding-status.ts"
       - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # persist + live frame + replay + fallbackOf check"
@@ -666,12 +670,15 @@ capabilities:
     required_checks: []
     evidence: []
     rollback: >-
-      Unset NOTEBOOK_GROUNDING_STATUS_ENABLED (or set it to 0) in Doppler and
-      redeploy mira-hub. Nothing new is written or shown; already-saved entries
-      stay in evidence[] and are stripped from every history response while the
-      flag is off. No schema change to undo.
+      Today the flag cannot be on anywhere: it is absent from the mira-hub
+      Compose environment lists, so there is nothing to roll back. Once a
+      reviewed Compose change plumbs it, set it to 0 (or unset it) in Doppler and
+      redeploy mira-hub through deploy-vps.yml. Nothing new is written or shown;
+      already-saved entries stay in evidence[] and are stripped from every
+      history response while the flag is off. No schema change to undo.
     acknowledged_rules: []
     promotion_criteria:
+      - "Compose plumbing reviewed and merged: NOTEBOOK_GROUNDING_STATUS_ENABLED added to the mira-hub environment list in docker-compose.staging-vps.yml (and later docker-compose.saas.yml). Until then a Doppler value has no effect."
       - "M2 merged: the web and phone readers declare grounding_status_v1 and render the status and the action."
       - "Staging: flag on; a manual-selected uncited answer, a refusal and an abstain each show the right status on a phone and on web, and an older build shows no change."
       - "Production: owner decision after the staging walk; M3 (no silent re-ask) before or with it."

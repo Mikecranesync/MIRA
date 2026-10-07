@@ -10,7 +10,7 @@ import {
   countUnresolvedMarkers,
   declaresGroundingStatus,
   groundingStatusEnabled,
-  returnedDocIdsOf,
+  sourceReferencesOf,
   showGroundingStatus,
   withoutUndeclaredGroundingStatus,
   type GroundingStatusInputs,
@@ -112,19 +112,75 @@ describe("B5 — content-free and bounded", () => {
     const json = JSON.stringify(b({ passages: [{ ...passage, content: "secret manual text" } as never] }));
     expect(json).not.toMatch(/secret manual text|"content"|"text"|"answer"/);
   });
-  it("caps id lists at 32", () => {
-    const many = Array.from({ length: 50 }, (_, i) => ({ docId: `d${i}` }));
-    const e = b({ passages: many, scopeDocIds: many.map((m) => m.docId), emittedCitations: many });
+  it("caps every id and reference list at 32 (a bound on size, not a validity check)", () => {
+    const uuid = (i: number) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+    const docs = Array.from({ length: 50 }, (_, i) => ({ docId: uuid(i) }));
+    const oem = Array.from({ length: 50 }, (_, i) => ({ docId: null, sourceUrl: `https://oem.example/m${i}.pdf`, sourcePage: 1, page: 1 }));
+    const e = b({ passages: [...docs, ...oem], scopeDocIds: docs.map((d) => d.docId), emittedCitations: [...docs, ...oem] });
     expect(e.retrieval.returnedDocIds).toHaveLength(32);
+    expect(e.retrieval.returnedSourceRefs).toHaveLength(32);
     expect(e.retrieval.scopeDocIds).toHaveLength(32);
     expect(e.citation.linkedDocIds).toHaveLength(32);
-    expect(e.retrieval.passageCount).toBe(50);
+    expect(e.citation.linkedSourceRefs).toHaveLength(32);
+    expect(e.retrieval.passageCount).toBe(100);
+    expect(e.droppedRefCount).toBe(0);
   });
-  it("OEM passages are identified by url + page, like the evidence packet", () => {
-    expect(returnedDocIdsOf([{ docId: null, sourceUrl: "https://oem/x.pdf", sourcePage: 9 }, { docId: DOC }])).toEqual([
-      "https://oem/x.pdf#p9",
-      DOC,
+});
+
+describe("C1 — source references: notebook ids vs shared-library url/page refs", () => {
+  const OEM = { docId: null, sourceUrl: "https://oem.example/drives/pf525.pdf", sourcePage: 167 };
+  it("a cited shared-library passage is recorded by url + page (existing #p convention), not lost", () => {
+    const e = b({ passages: [OEM], scopeDocIds: [], emittedCitations: [{ docId: "", sourceUrl: OEM.sourceUrl, page: 167 }] });
+    expect(e).toMatchObject({
+      outcome: "answered_citation_linked",
+      manualCited: true,
+      retrieval: { returnedDocIds: [], returnedSourceRefs: ["https://oem.example/drives/pf525.pdf#p167"] },
+      citation: { linkedDocIds: [], linkedSourceRefs: ["https://oem.example/drives/pf525.pdf#p167"] },
+    });
+  });
+  it("keeps notebook document ids and external references in separate lists", () => {
+    const e = b({ passages: [passage, OEM], emittedCitations: [{ docId: DOC }, { docId: "", sourceUrl: OEM.sourceUrl, page: 167 }] });
+    expect(e.retrieval.returnedDocIds).toEqual([DOC]);
+    expect(e.retrieval.returnedSourceRefs).toEqual(["https://oem.example/drives/pf525.pdf#p167"]);
+    expect(e.citation.linkedDocIds).toEqual([DOC]);
+    expect(e.citation.linkedSourceRefs).toEqual(["https://oem.example/drives/pf525.pdf#p167"]);
+  });
+  it("an unknown page keeps the packet's #p? marker", () => {
+    expect(sourceReferencesOf([{ docId: null, sourceUrl: "https://oem.example/a.pdf", sourcePage: null }]).sourceRefs).toEqual([
+      "https://oem.example/a.pdf#p?",
     ]);
+  });
+  it("never stores credentials, signed-URL query strings or fragments", () => {
+    const r = sourceReferencesOf([
+      { docId: null, sourceUrl: "https://user:secret@oem.example/a.pdf?X-Amz-Signature=abc&token=t#frag", sourcePage: 3 },
+    ]);
+    expect(r.sourceRefs).toEqual(["https://oem.example/a.pdf#p3"]);
+    expect(JSON.stringify(r)).not.toMatch(/secret|user|Signature|token|frag/);
+  });
+  it("drops and counts malformed references; format checks are not authorization", () => {
+    const e = b({
+      scopeDocIds: [DOC, "not-a-uuid", "<script>", ""],
+      passages: [
+        passage,
+        { docId: "'; DROP TABLE x;--" },
+        { docId: null, sourceUrl: "javascript:alert(1)", sourcePage: 1 },
+        { docId: null, sourceUrl: "node:525-manual", sourcePage: 1 },
+        { docId: null, sourceUrl: `https://oem.example/${"x".repeat(600)}.pdf`, sourcePage: 1 },
+        { docId: null, sourceUrl: null },
+      ],
+      emittedCitations: [{ docId: "ZZZ" }],
+    });
+    expect(e.retrieval.scopeDocIds).toEqual([DOC]);
+    expect(e.retrieval.returnedDocIds).toEqual([DOC]);
+    expect(e.retrieval.returnedSourceRefs).toEqual([]);
+    expect(e.citation.linkedDocIds).toEqual([]);
+    // scope: 3 bad; passages: 5 bad; citation: 1 bad
+    expect(e.droppedRefCount).toBe(9);
+    // the passage count is what entered the prompt, valid reference or not
+    expect(e.retrieval.passageCount).toBe(6);
+  });
+  it("a valid-looking reference changes nothing about whether the answer is cited", () => {
+    expect(b({ emittedCitations: [] })).toMatchObject({ manualCited: false, citation: { status: "uncited" } });
   });
 });
 
@@ -143,6 +199,15 @@ describe("flag and capability gates", () => {
     expect(groundingStatusEnabled({ NOTEBOOK_GROUNDING_STATUS_ENABLED: "0" })).toBe(false);
     expect(groundingStatusEnabled({ NOTEBOOK_GROUNDING_STATUS_ENABLED: "1" })).toBe(true);
     expect(groundingStatusEnabled({ NOTEBOOK_GROUNDING_STATUS_ENABLED: "true" })).toBe(true);
+  });
+  it("C1: false, empty and malformed values are OFF; only 1/true (any case, surrounding space) are ON", () => {
+    const on = (v: string) => groundingStatusEnabled({ NOTEBOOK_GROUNDING_STATUS_ENABLED: v });
+    for (const v of ["", " ", "false", "FALSE", "False", "off", "no", "yes", "on", "2", "-1", "01", "1.0", "truee", "true; rm -rf /", "1 && true", "\uFF11"]) {
+      expect(on(v), JSON.stringify(v)).toBe(false);
+    }
+    for (const v of ["1", " 1 ", "1\n", "true", "TRUE", "True", " true "]) {
+      expect(on(v), JSON.stringify(v)).toBe(true);
+    }
   });
   it("only an exact capability declaration counts", () => {
     expect(declaresGroundingStatus(["grounding_status_v1"])).toBe(true);

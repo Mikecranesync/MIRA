@@ -62,17 +62,26 @@ export interface GroundingStatusEntry {
   retrieval: {
     status: RetrievalStatus;
     notAttemptedReason?: "general_mode" | "no_manual_scope";
+    /** Notebook document ids (UUIDs) in the server-validated scope. */
     scopeDocIds: string[];
     passageCount: number;
+    /** Notebook document ids (UUIDs) of the passages that entered the prompt. */
     returnedDocIds: string[];
+    /** Shared-library passages as `<origin+path>#p<page|?>` (the evidence
+     *  packet's convention), with credentials, query and fragment removed. */
+    returnedSourceRefs: string[];
   };
   citation: {
     status: CitationStatus;
     linkedDocIds: string[];
+    linkedSourceRefs: string[];
     unresolvedMarkerCount: number;
   };
-  /** Derived: `citation.status === "linked"`. Never set independently. */
+  /** Derived: `citation.status === "linked"`. Never set independently. A
+   *  well-formed reference is not authorization and not proof of support. */
   manualCited: boolean;
+  /** References dropped because their format was not a UUID / http(s) ref. */
+  droppedRefCount: number;
   fallback: {
     /** May the client offer "Get general guidance (not from the manual)"? */
     offered: boolean;
@@ -110,7 +119,7 @@ export interface GroundingStatusInputs {
   /** Passages that entered the prompt. */
   passages: readonly PassageRef[];
   /** Citations the answer actually shipped (resolved [n] → a retrieved passage). */
-  emittedCitations: readonly { docId?: string | null }[];
+  emittedCitations: readonly { docId?: string | null; sourceUrl?: string | null; page?: number | null }[];
   /** [n] markers in the answer that resolve to no retrieved passage. */
   unresolvedMarkerCount: number;
   /** The notebook is bound to a resolved machine. */
@@ -121,13 +130,54 @@ export interface GroundingStatusInputs {
 
 const CAP = 32;
 
-const unique = (xs: readonly (string | null | undefined)[]): string[] =>
-  [...new Set(xs.filter((x): x is string => typeof x === "string" && x.length > 0))].slice(0, CAP);
+const MAX_REF_CHARS = 512;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Same identity rule as the Turn Evidence Packet's `retrieval.returned_doc_ids`
- *  (chat route): notebook chunks by doc id, shared OEM chunks by url + page. */
-export function returnedDocIdsOf(passages: readonly PassageRef[]): string[] {
-  return unique(passages.map((c) => c.docId || (c.sourceUrl ? `${c.sourceUrl}#p${c.sourcePage ?? "?"}` : null)));
+const unique = (xs: readonly string[]): string[] => [...new Set(xs)].slice(0, CAP);
+
+/** A shared-library reference in the evidence packet's `<url>#p<page>` form —
+ *  http(s) only, with credentials, query string and fragment removed so no
+ *  secret or signed URL is ever stored. Null when not a usable reference. */
+function sourceRef(url: string | null | undefined, page: number | null | undefined): string | null {
+  if (typeof url !== "string" || !url) return null;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  const p = typeof page === "number" && Number.isInteger(page) && page >= 0 ? String(page) : "?";
+  const ref = `${u.origin}${u.pathname}#p${p}`;
+  return ref.length <= MAX_REF_CHARS ? ref : null;
+}
+
+type RefKind = { docId: string } | { sourceRef: string } | null;
+
+/** Notebook passages are identified by their document UUID; shared-library
+ *  passages (no doc id) by url + page. Anything else is malformed (null). */
+function refOf(docId: string | null | undefined, url: string | null | undefined, page: number | null | undefined): RefKind {
+  if (typeof docId === "string" && docId) return UUID_RE.test(docId) ? { docId } : null;
+  const ref = sourceRef(url, page);
+  return ref ? { sourceRef: ref } : null;
+}
+
+function splitRefs(refs: readonly RefKind[]): { docIds: string[]; sourceRefs: string[]; dropped: number } {
+  const docIds: string[] = [];
+  const sourceRefs: string[] = [];
+  let dropped = 0;
+  for (const r of refs) {
+    if (!r) dropped++;
+    else if ("docId" in r) docIds.push(r.docId);
+    else sourceRefs.push(r.sourceRef);
+  }
+  return { docIds: unique(docIds), sourceRefs: unique(sourceRefs), dropped };
+}
+
+/** The references of the passages that entered the prompt, split into
+ *  notebook document ids and shared-library refs; malformed ones are counted. */
+export function sourceReferencesOf(passages: readonly PassageRef[]): { docIds: string[]; sourceRefs: string[]; dropped: number } {
+  return splitRefs(passages.map((c) => refOf(c.docId, c.sourceUrl, c.sourcePage)));
 }
 
 /** Distinct [n] markers in `answer` that match no retrieved passage's citation id. */
@@ -142,6 +192,8 @@ export function countUnresolvedMarkers(answer: string, citations: readonly { cit
 /** Deterministic precedence (contract v2 §3): the first matching row wins. */
 export function buildGroundingStatus(i: GroundingStatusInputs): GroundingStatusEntry {
   const passageCount = i.passages.length;
+  const scope = splitRefs(i.scopeDocIds.map((d) => (typeof d === "string" && UUID_RE.test(d) ? { docId: d } : null)));
+  const returned = sourceReferencesOf(i.passages);
   const retrievalStatus: RetrievalStatus = !i.retrievalAttempted
     ? "not_attempted"
     : i.retrievalUnavailable
@@ -154,9 +206,10 @@ export function buildGroundingStatus(i: GroundingStatusInputs): GroundingStatusE
     ...(retrievalStatus === "not_attempted"
       ? { notAttemptedReason: i.general ? ("general_mode" as const) : ("no_manual_scope" as const) }
       : {}),
-    scopeDocIds: unique(i.scopeDocIds),
+    scopeDocIds: scope.docIds,
     passageCount,
-    returnedDocIds: returnedDocIdsOf(i.passages),
+    returnedDocIds: returned.docIds,
+    returnedSourceRefs: returned.sourceRefs,
   };
   const docGrounded = passageCount > 0;
   // Rule F: the general-guidance action is offered only for a selected manual
@@ -191,6 +244,11 @@ export function buildGroundingStatus(i: GroundingStatusInputs): GroundingStatusE
     outcome = "answered_without_manual";
   }
 
+  const linked =
+    citationStatus === "linked"
+      ? splitRefs(i.emittedCitations.map((c) => refOf(c.docId, c.sourceUrl, c.page)))
+      : { docIds: [], sourceRefs: [], dropped: 0 };
+
   return {
     kind: "grounding_status",
     v: 1,
@@ -198,10 +256,12 @@ export function buildGroundingStatus(i: GroundingStatusInputs): GroundingStatusE
     retrieval,
     citation: {
       status: citationStatus,
-      linkedDocIds: citationStatus === "linked" ? unique(i.emittedCitations.map((c) => c.docId)) : [],
+      linkedDocIds: linked.docIds,
+      linkedSourceRefs: linked.sourceRefs,
       unresolvedMarkerCount: citationStatus === "linked" || citationStatus === "uncited" ? i.unresolvedMarkerCount : 0,
     },
     manualCited: citationStatus === "linked",
+    droppedRefCount: scope.dropped + returned.dropped + linked.dropped,
     fallback: { offered, ...(i.fallbackOf ? { of: i.fallbackOf } : {}) },
   };
 }
