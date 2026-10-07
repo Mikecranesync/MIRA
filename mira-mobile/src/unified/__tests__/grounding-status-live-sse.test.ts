@@ -65,6 +65,8 @@ describe("grounding_status: live stream and saved row agree on the phone", () =>
       type: "grounding_status",
       outcome: "refused_with_passages",
       manualSearched: true,
+      searchScope: "selected_manual",
+      passagesFrom: "selected_manual",
       fallbackOffered: true,
       isGeneralFallback: false,
     });

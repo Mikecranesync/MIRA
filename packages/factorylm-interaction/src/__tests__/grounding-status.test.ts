@@ -28,9 +28,43 @@ describe("groundingStatusFromEntry", () => {
     expect(groundingStatusFromEntry(entry())).toEqual({
       outcome: "refused_with_passages",
       manualSearched: true,
+      searchScope: "selected_manual",
+      passagesFrom: "selected_manual",
       fallbackOffered: true,
       isGeneralFallback: false,
     });
+  });
+  // Codex #4303 r1 F1: the copy must know WHAT was searched, not just whether.
+  it("no retrieval at all (e.g. the unidentified service decline) searched nothing", () => {
+    const s = groundingStatusFromEntry(entry({
+      outcome: "abstained_no_passages",
+      retrieval: { status: "not_attempted", notAttemptedReason: "no_manual_scope", scopeDocIds: [], passageCount: 0, returnedDocIds: [], returnedSourceRefs: [] },
+    }));
+    expect(s).toMatchObject({ manualSearched: false, searchScope: "none", passagesFrom: null });
+  });
+  it("a search with no selected manual is a shared-library search", () => {
+    const s = groundingStatusFromEntry(entry({
+      outcome: "abstained_no_passages",
+      retrieval: { status: "no_passages", scopeDocIds: [], passageCount: 0, returnedDocIds: [], returnedSourceRefs: [] },
+    }));
+    expect(s).toMatchObject({ manualSearched: true, searchScope: "shared_library", passagesFrom: null });
+  });
+  it("passages read only from the shared library are attributed to it, even when a manual was selected", () => {
+    const s = groundingStatusFromEntry(entry({
+      retrieval: { status: "passages_found", scopeDocIds: ["d"], passageCount: 1, returnedDocIds: [], returnedSourceRefs: ["https://oem.example/m.pdf#p4"] },
+    }));
+    expect(s).toMatchObject({ searchScope: "selected_manual", passagesFrom: "shared_library" });
+  });
+  it("passages are attributed only when the search actually found some", () => {
+    const s = groundingStatusFromEntry(entry({
+      outcome: "abstained_no_passages",
+      retrieval: { status: "no_passages", scopeDocIds: ["d"], passageCount: 0, returnedDocIds: ["d"], returnedSourceRefs: [] },
+    }));
+    expect(s).toMatchObject({ searchScope: "selected_manual", passagesFrom: null });
+  });
+  it("malformed retrieval scope lists are read as empty, never trusted", () => {
+    const s = groundingStatusFromEntry(entry({ retrieval: { status: "no_passages", scopeDocIds: "d", returnedDocIds: 7 } }));
+    expect(s).toMatchObject({ searchScope: "shared_library", passagesFrom: null });
   });
   it("a turn that never searched the manual is not 'manualSearched'", () => {
     expect(groundingStatusFromEntry(entry({ retrieval: { status: "not_attempted" } }))?.manualSearched).toBe(false);

@@ -44,7 +44,7 @@ function withStatus(patch: Partial<GroundingStatus>) {
   });
 }
 
-const base: GroundingStatus = { outcome: "abstained_no_passages", manualSearched: true, fallbackOffered: false, isGeneralFallback: false };
+const base: GroundingStatus = { outcome: "abstained_no_passages", manualSearched: true, searchScope: "selected_manual", passagesFrom: "selected_manual", fallbackOffered: false, isGeneralFallback: false };
 const line = (patch: Partial<GroundingStatus>) => groundingStatusLine({ ...base, ...patch });
 
 describe("groundingStatusLine — honest copy per outcome", () => {
@@ -62,7 +62,7 @@ describe("groundingStatusLine — honest copy per outcome", () => {
     expect(line({ outcome: "refused_without_passages", manualSearched: true })).toBe(line({ outcome: "abstained_no_passages" }));
   });
   it("a refusal where no manual was searched (general mode) adds no manual claim", () => {
-    expect(line({ outcome: "refused_without_passages", manualSearched: false })).toBeNull();
+    expect(line({ outcome: "refused_without_passages", manualSearched: false, searchScope: "none", passagesFrom: null })).toBeNull();
   });
   it("uncited answer with passages is labelled as not pointing at the manual", () => {
     expect(line({ outcome: "answered_uncited_with_passages" })).toContain("doesn't point to a passage in the selected manual");
@@ -92,6 +92,64 @@ describe("groundingStatusLine — honest copy per outcome", () => {
         expect(l.replace("doesn't mean the manual doesn't cover it", "")).not.toMatch(/manual (doesn't|does not) (cover|contain|have)/i);
       }
     }
+  });
+});
+
+describe("groundingStatusLine — never claims a search that did not happen (Codex #4303 r1 F1)", () => {
+  const noSearch = { manualSearched: false, searchScope: "none", passagesFrom: null } as const;
+  it("an abstention with no retrieval at all (the service decline) says nothing about a search", () => {
+    expect(line({ outcome: "abstained_no_passages", ...noSearch })).toBeNull();
+    expect(line({ outcome: "refused_without_passages", ...noSearch })).toBeNull();
+  });
+  it("a shared-library search that found nothing names the library, not a selected manual", () => {
+    const l = line({ outcome: "abstained_no_passages", searchScope: "shared_library", passagesFrom: null })!;
+    expect(l).toContain("shared manual library");
+    expect(l).not.toContain("selected manual");
+    expect(l).toContain("doesn't mean");
+  });
+  it("passages read from the shared library are attributed to it", () => {
+    const refused = line({ outcome: "refused_with_passages", searchScope: "selected_manual", passagesFrom: "shared_library" })!;
+    expect(refused).toContain("shared manual library");
+    expect(refused).not.toContain("selected manual");
+    const uncited = line({ outcome: "answered_uncited_with_passages", searchScope: "shared_library", passagesFrom: "shared_library" })!;
+    expect(uncited).toContain("shared manual library");
+    expect(uncited).not.toContain("selected manual");
+  });
+  it("control: a selected-manual search keeps the selected-manual wording", () => {
+    expect(line({ outcome: "abstained_no_passages" })).toContain("selected manual");
+    expect(line({ outcome: "refused_with_passages" })).toContain("selected manual");
+  });
+});
+
+describe("general-guidance action settles when the request finishes (Codex #4303 r1 F2)", () => {
+  const ASKING = "Asking for general guidance";
+  it("a completed request replaces 'Asking…' with a settled line and no live action", async () => {
+    let finish: (ok: boolean) => void = () => {};
+    const view = render({ onRequestGeneralGuidance: () => new Promise<boolean>((r) => { finish = r; }) });
+    view.click(view.buttonNamed(ACTION)!);
+    expect(view.container.textContent).toContain(ASKING);
+    expect(view.buttonNamed(ACTION)).toBeNull(); // no double send while in flight
+    finish(true); await view.flush();
+    expect(view.container.textContent).not.toContain(ASKING);
+    expect(view.container.textContent).toContain("General guidance was requested below");
+    expect(view.buttonNamed(ACTION)).toBeNull();
+  });
+  it("a failed request drops 'Asking…', says so, and offers the action again", async () => {
+    let finish: (ok: boolean) => void = () => {};
+    const view = render({ onRequestGeneralGuidance: () => new Promise<boolean>((r) => { finish = r; }) });
+    view.click(view.buttonNamed(ACTION)!);
+    finish(false); await view.flush();
+    expect(view.container.textContent).not.toContain(ASKING);
+    expect(view.container.textContent).toContain("Couldn't get general guidance");
+    expect(view.buttonNamed(ACTION)).not.toBeNull();
+  });
+  it("a rejected request is treated as a failure, never left 'Asking…'", async () => {
+    let fail: (e: unknown) => void = () => {};
+    const view = render({ onRequestGeneralGuidance: () => new Promise<boolean>((_r, j) => { fail = j; }) });
+    view.click(view.buttonNamed(ACTION)!);
+    fail(new Error("network")); await view.flush();
+    expect(view.container.textContent).not.toContain(ASKING);
+    expect(view.buttonNamed(ACTION)).not.toBeNull();
   });
 });
 

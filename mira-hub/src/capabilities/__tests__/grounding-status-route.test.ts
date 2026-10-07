@@ -61,6 +61,9 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
 
 const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
+  // The shared-library (OEM) search. Reached only when a test also gives the
+  // pool a connect(); without one the route fails open exactly as before.
+  retrieveManualChunks: vi.fn(async () => [] as unknown[]),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn((q: string) => q),
 }));
@@ -632,6 +635,53 @@ describe("F004 M2 round trip — Hub client ↔ server (#4303)", () => {
     answers = threadFromPersisted(turns as never, META).turns.filter((t) => t.role === "assistant");
     expect(statusOf(answers[0]!)).toMatchObject({ fallbackUsed: true });
     expect(groundingStatusLine(statusOf(answers[1]!) as never)).toBe("General guidance — not from your manual.");
+  });
+
+  // Codex #4303 r1 F1: the status line must never claim a search that did not run,
+  // and must name the shared library when no manual was selected.
+  const SERVICE_Q = "What is the service password for this drive";
+  const shownText = (rows: Row[]) =>
+    threadFromPersisted(rows as never, META).turns
+      .filter((t) => t.role === "assistant")
+      .map((t) => { const s = statusOf(t); return s ? groundingStatusLine(s as never) ?? "" : ""; })
+      .join(" ");
+
+  it("F1: an unidentified, source-free service-password question declines without retrieval — no search is claimed, live or after reload", async () => {
+    domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Scratch", manufacturer: null, model: null } as never);
+    domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [], nodeId: "n1" } as never);
+    const frames = await post(chatBodyFor(SERVICE_Q, [], [], SEL), "unused");
+    // Precondition: this really is the no-retrieval decline, not a search that found nothing.
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(groundingFrame(frames)).toMatchObject({ outcome: "abstained_no_passages", retrieval: { status: "not_attempted" } });
+    const turns = await history([savedRow(ROW)]);
+    const status = statusOf(threadFromPersisted(turns as never, META).turns.find((t) => t.role === "assistant")!)!;
+    expect(status).toMatchObject({ manualSearched: false, searchScope: "none" });
+    expect(shownText(turns)).not.toMatch(/search|selected manual/i);
+  });
+
+  it("F1: an identified notebook with no selected manual that finds nothing names the shared library, not a selected manual", async () => {
+    // Pinned, never inherited: an earlier test leaves an unidentified notebook behind.
+    domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Line 1 drive", manufacturer: "Allen-Bradley", model: "525" } as never);
+    domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [], nodeId: "n1" } as never);
+    ragMock.retrieveManualChunks.mockResolvedValue([] as never);
+    const pool = poolMock as unknown as { connect?: () => Promise<unknown> };
+    pool.connect = async () => ({ query: async () => ({ rows: [] }), release: () => {} });
+    try {
+      // A question about THIS machine: an empty shared-library search declines (#4069) rather than answering generally.
+      const frames = await post(chatBodyFor("Why does my 525 trip on F004", [], [], SEL), "unused");
+      // Precondition: the shared-library search really ran, over no selected document, and found nothing.
+      expect(ragMock.retrieveManualChunks).toHaveBeenCalled();
+      expect(groundingFrame(frames)).toMatchObject({
+        outcome: "abstained_no_passages",
+        retrieval: { status: "no_passages", scopeDocIds: [] },
+      });
+      const turns = await history([savedRow(ROW)]);
+      const text = shownText(turns);
+      expect(text).toContain("shared manual library");
+      expect(text).not.toContain("selected manual");
+    } finally {
+      delete pool.connect;
+    }
   });
 
   it("control — server flag off: the same Hub body and history render exactly as before (no entry, no offer)", async () => {

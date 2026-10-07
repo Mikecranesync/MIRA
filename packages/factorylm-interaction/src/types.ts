@@ -415,10 +415,20 @@ export type GroundingOutcome =
   | "answered_uncited_with_passages"
   | "answered_without_manual";
 
+export type GroundingSearchScope = "selected_manual" | "shared_library" | "none";
+
 export interface GroundingStatus {
   readonly outcome: GroundingOutcome;
-  /** The selected manual was actually searched this turn (retrieval attempted). */
+  /** Some manual search ran this turn (retrieval attempted) — `searchScope !== "none"`. */
   readonly manualSearched: boolean;
+  /**
+   * WHAT was searched (Codex #4303 r1 F1): a manual the technician selected,
+   * the shared manual library (no selected manual), or nothing at all — copy
+   * must never claim a search that did not run, or name the wrong one.
+   */
+  readonly searchScope: GroundingSearchScope;
+  /** Where the passages MIRA read came from, or null when none were read. */
+  readonly passagesFrom: "selected_manual" | "shared_library" | null;
   /** Server-owned (rule F): may the renderer offer "Get general guidance (not from the manual)"? */
   readonly fallbackOffered: boolean;
   /** This answer IS general guidance the technician asked for from an earlier failed turn. */

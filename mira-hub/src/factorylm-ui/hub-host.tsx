@@ -376,8 +376,10 @@ export function HubShellHost() {
   const dropOutgoing = outgoingOwner.drop;
 
   // --- the send path: the canonical notebook-chat route, streamed ---
-  const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection) => {
-    if (!sel) return;
+  const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection): Promise<boolean> => {
+    // Resolves true only when the answer streamed to completion (F004: the
+    // general-guidance action settles on it — Codex #4303 r1 F2).
+    if (!sel) return false;
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -391,7 +393,7 @@ export function HubShellHost() {
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal,
       });
-      if (res.status === 401) { setSignedOut(true); return; }
+      if (res.status === 401) { setSignedOut(true); return false; }
       if (!res.ok || !res.body) {
         // The route's own error codes, in plain language; never a bare status code.
         let code = "";
@@ -408,6 +410,7 @@ export function HubShellHost() {
       await loadNotebooks();
       setLive((cur) => (cur && cur.id === id ? null : cur));
       dropOutgoing(outgoingId);
+      return true;
     } catch (err) {
       const retained = retainedStreamInterruption(err);
       if (retained) {
@@ -421,7 +424,7 @@ export function HubShellHost() {
           setFailedBody({ body, question });
           dispatch({ type: "set-send-error", error: message });
         }
-        return;
+        return false;
       }
       const message = err instanceof Error ? err.message : String(err);
       setLive((cur) => (cur && cur.id === id ? null : cur));
@@ -429,6 +432,7 @@ export function HubShellHost() {
       setFailedBody({ body, question });
       dispatch({ type: "set-send-error", error: message });
       dispatch({ type: "set-draft", draft: question });
+      return false;
     } finally {
       if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
     }
@@ -609,12 +613,12 @@ export function HubShellHost() {
 
   /** F004 M2 (#4303): the technician chose general guidance on a turn whose
    *  server status offered it — a NEW general turn linked to that one. */
-  const onRequestGeneralGuidance = useCallback((turnId: string) => {
-    if (busy || !selection || !detail) return;
+  const onRequestGeneralGuidance = useCallback((turnId: string): Promise<boolean> => {
+    if (busy || !selection || !detail) return Promise.resolve(false);
     const req = generalGuidanceRequest(turnId, detail.turns, selection);
-    if (!req) return;
+    if (!req) return Promise.resolve(false);
     putOutgoing({ id: `out-${Date.now()}`, threadId: shellThreadId(selection), question: req.question, attachments: [], startedAt: new Date().toISOString() });
-    void send(req.body, req.question);
+    return send(req.body, req.question);
   }, [busy, selection, detail, send, putOutgoing]);
 
   const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);

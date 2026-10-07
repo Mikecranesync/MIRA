@@ -438,6 +438,8 @@ describe("grounding_status — evidence status on the phone (F004 M2)", () => {
       type: "grounding_status",
       outcome: "refused_with_passages",
       manualSearched: true,
+      searchScope: "selected_manual",
+      passagesFrom: "selected_manual",
       fallbackOffered: true,
       isGeneralFallback: false,
     });

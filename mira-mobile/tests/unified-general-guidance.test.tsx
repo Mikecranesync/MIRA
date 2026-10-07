@@ -142,6 +142,20 @@ describe("unified phone: an explicit choice replaces the silent general re-ask (
     expect(screen.getByText("General guidance — not from your manual.")).toBeTruthy();
     // The offer was used: no live action remains to send a second general turn.
     expect(screen.queryByRole("button", { name: ACTION })).toBeNull();
+    // Codex #4303 r1 F2: the failed turn settles — it does not keep saying "Asking…".
+    expect(screen.queryByText(/Asking for general guidance/)).toBeNull();
+    expect(screen.getByText("General guidance was requested below.")).toBeTruthy();
+  });
+
+  it("Codex #4303 r1 F2: a general request that fails leaves no 'Asking…' and offers the action again", async () => {
+    api.getNotebookDetail.mockResolvedValue(detail());
+    api.askNotebook.mockResolvedValueOnce(REFUSED).mockRejectedValueOnce(new Error("network down"));
+    await mountAndAsk();
+    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: ACTION })); });
+    await waitFor(() => expect(api.askNotebook).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText(/Asking for general guidance/)).toBeNull());
+    expect(screen.getByText(/Couldn't get general guidance/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: ACTION })).toBeTruthy();
   });
 
   it("declares the capability on the unified shell — chat body and detail load", async () => {

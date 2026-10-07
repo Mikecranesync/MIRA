@@ -337,9 +337,12 @@ export function NotebookScreen({
     scopeOverride?: readonly string[],
     /** F004: the technician chose general guidance on this failed turn. */
     generalFor?: { readonly fallbackOf: string },
-  ) => {
+  ): Promise<boolean> => {
+    // Resolves true only when a complete answer arrived (F004: the explicit
+    // general-guidance action settles on it — Codex #4303 r1 F2).
+    let completed = false;
     const question = replay?.question ?? raw.trim();
-    if (!question || busy) return;
+    if (!question || busy) return false;
     // Confirmed sources ALWAYS ride the turn, bound machine or not (#3862): the
     // manual a project uploaded is the reason it exists, and the server grounds
     // on the scope, not on an asset binding. #3745 had gated this on
@@ -441,6 +444,7 @@ export function NotebookScreen({
         }
       } else {
         setLiveTurns((t) => [...t, { q: question, a, requestId: body.clientRequestId }]);
+        completed = true;
       }
     } catch (e) {
       const partial = pendingRef.current?.a ?? EMPTY_TURN;
@@ -477,6 +481,7 @@ export function NotebookScreen({
       setPending(null);
       setBusy(false);
     }
+    return completed;
   };
   const stopGeneration = () => abortRef.current?.abort();
   const canStopGeneration =
@@ -949,7 +954,9 @@ export function NotebookScreen({
             // linked to the failed turn (row id, or a live turn's request id).
             onRequestGeneralGuidance: (turnId: string) => {
               const target = generalGuidanceTarget(turnId, turns, liveTurns);
-              if (target) void sendQuestion(target.question, undefined, undefined, undefined, { fallbackOf: target.fallbackOf });
+              return target
+                ? sendQuestion(target.question, undefined, undefined, undefined, { fallbackOf: target.fallbackOf })
+                : Promise.resolve(false);
             },
           }}
           initialQuestion={initialQuestion}

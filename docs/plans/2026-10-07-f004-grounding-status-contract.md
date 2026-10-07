@@ -1,4 +1,4 @@
-# F004 grounding-status contract — document revision 4 (wire version 1)
+# F004 grounding-status contract — document revision 5 (wire version 1)
 
 **Status:** the server half (M1 + correction C1), both clients' display (M2) and the phone's explicit choice (M3) are **implemented on PR #4303**, not merged or deployed. With the server flag off, the evidence-status behaviour does not run; §11 lists the PR's changes that are **not** behind the flag. This document authorizes no merge, deploy or flag change.
 **Risk class:** R3 (PR #4303 as a whole). It combines a shared server contract on the notebook chat route, guarded phone files, an ungated output change on the NodeChat route the beta gate drives, and a production-image dependency upgrade (§11). There is no migration, tenant-filter, provider, prompt or safety-policy change.
@@ -9,7 +9,7 @@ These are two different numbers. Don't confuse them.
 
 | | What it is | Value |
 |---|---|---|
-| **Document revision** | Which edition of this text you are reading | **r4** (this file) |
+| **Document revision** | Which edition of this text you are reading | **r5** (this file) |
 | **Wire version** | The `v` field inside every stored/streamed entry, and the capability name a client declares | **`v: 1`**, capability **`grounding_status_v1`** |
 
 Revision history:
@@ -17,7 +17,8 @@ Revision history:
 - **r1** (`92135941d`): first proposal. It used the terms `validated` / `grounded`, a single `docIds` list and a `retrievalFailed` field. **None of that shipped**; r1's field list is obsolete.
 - **r2**: delivered in the working session and approved by the owner as the basis for M1; never committed. Introduced capability negotiation, `outcome`, `manualCited`, "citation linked" and the fallback link.
 - **r3**: r2 as actually implemented, plus correction C1 (shared-library references, reference-format validation, `droppedRefCount`).
-- **r4** (this file): adds the client half (§8) and the request-id form of `fallbackOf` (§5). The wire shape is unchanged — still `v: 1`.
+- **r4**: adds the client half (§8) and the request-id form of `fallbackOf` (§5). The wire shape is unchanged — still `v: 1`.
+- **r5** (this file): fixes Codex #4303 round 1 (F1, F2) in the client half. The reader now says **what** was searched, and the general-guidance action settles when its request finishes (§8). The wire shape is unchanged — still `v: 1`. Only the client-side projection gained two fields, derived from fields every v1 entry already carries.
 
 Wire version 1 is defined by **this** revision. No deployed server has ever written an entry (no container has had the flag on — §7), so the r1 shape never existed on the wire. Any future change that an existing `grounding_status_v1` client could misread must bump **both** `v` and the capability name; adding a field a v1 reader can ignore does not.
 
@@ -148,14 +149,26 @@ The server flag `NOTEBOOK_GROUNDING_STATUS_ENABLED` is on only for `1` or `true`
 ### M2 — the evidence status is shown
 
 - **One reader.** `packages/factorylm-interaction/src/grounding-status.ts` turns a v1 entry into the shared `grounding_status` part; anything malformed or of another version is ignored, never shown raw. The Hub and the phone both use it.
-- **One renderer.** `packages/factorylm-ui` renders one line about what the attempt did and never claims the manual lacks the answer:
+- **What was searched (r5, Codex #4303 r1 F1).** The reader derives two client-side fields from the existing v1 retrieval fields:
+  - `searchScope`:
+    - `none` when `retrieval.status` is `not_attempted` (for example, the unidentified service-password decline);
+    - otherwise `selected_manual` when `scopeDocIds` is non-empty;
+    - otherwise `shared_library`.
+  - `passagesFrom`:
+    - `null` unless `retrieval.status` is `passages_found`;
+    - otherwise `selected_manual` when `returnedDocIds` is non-empty;
+    - otherwise `shared_library` when `returnedSourceRefs` is non-empty.
+  - Lists that are not arrays count as empty.
+- **One renderer.** `packages/factorylm-ui` renders one line about what the attempt did. It never claims that a search ran when none did, never names the wrong source, and never claims the manual lacks the answer:
 
   | outcome | line |
   |---|---|
-  | `abstained_no_passages`, `refused_without_passages` (manual searched) | "The search didn't find a passage in the selected manual for this question. That doesn't mean the manual doesn't cover it." |
-  | `refused_with_passages` | "MIRA read passages from the selected manual but couldn't answer from them. That doesn't mean the manual doesn't cover it." |
+  | `abstained_no_passages`, `refused_without_passages`, `searchScope` = `selected_manual` | "The search didn't find a passage in the selected manual for this question. That doesn't mean the manual doesn't cover it." |
+  | the same outcomes, `searchScope` = `shared_library` | "The search of the shared manual library didn't find a passage for this question. That doesn't mean no manual covers it." |
+  | the same outcomes, `searchScope` = `none` | no line (no search ran, so none is claimed) |
+  | `refused_with_passages` | "MIRA read passages from the selected manual but couldn't answer from them. …". When `passagesFrom` is `shared_library`, it names the shared manual library instead. |
   | `abstained_retrieval_unavailable` | "The manual library couldn't be reached just now, so this wasn't checked against it. Try again in a moment." |
-  | `answered_uncited_with_passages` | "This answer doesn't point to a passage in the selected manual. Treat it as general guidance." |
+  | `answered_uncited_with_passages` | "This answer doesn't point to a passage in the selected manual. Treat it as general guidance." When `passagesFrom` is `shared_library`, it names the shared manual library instead. |
   | `answered_without_manual` with `fallback.of` | "General guidance — not from your manual." |
   | linked, plain general, stop, safety stop, provider error | no line (existing presentation already says it) |
 
@@ -165,7 +178,13 @@ The server flag `NOTEBOOK_GROUNDING_STATUS_ENABLED` is on only for `1` or `true`
 
 ### M3 — explicit choice before general guidance
 
-- The action "Get general guidance (not from the manual)" appears only where the server offered it (rule F, §3). It settles after one tap; after reload, an offer a later turn already used shows "General guidance was requested below."
+- The action "Get general guidance (not from the manual)" appears only where the server offered it (rule F, §3).
+- **The tap always settles (r5, Codex #4303 r1 F2).** The host's handler resolves `true` when the general answer arrived, and `false` (or rejects) when it did not.
+  - While the request is in flight: "Asking for general guidance…", and no second tap is possible.
+  - On success: "General guidance was requested below."
+  - On failure: "Couldn't get general guidance. Try again.", and the action is offered again.
+  - After reload: an offer a later turn already used shows "General guidance was requested below."
+  - A host that returns nothing keeps the old one-tap latch.
 - The tap re-asks the failed turn's **own question** as a new general turn with no sources and its own request id, linked by `fallbackOf` (saved turn: row id; phone live turn: the request id it was sent with — §5).
 - The phone's #3862 silent re-ask no longer runs when the server sent its evidence status. **With the flag off it is unchanged** — the old behaviour is what "disabled" means here, and it stops only when the flag is turned on.
 - Guarded legacy files changed: `mira-mobile/src/api/resources.ts` and `mira-mobile/src/screens/NotebookScreen.tsx` (lifecycle rationale + exact-head Codex GREEN before merge).
@@ -194,6 +213,8 @@ The server flag `NOTEBOOK_GROUNDING_STATUS_ENABLED` is on only for `1` or `true`
 | Notebook-retrieval error saves nothing (the gap stays visible) | route T5 | M17 |
 | `fallbackOf` by request id resolves to the row id, owner/notebook/thread/complete only | real-Postgres integration (6); route T8c | owner, notebook, thread, pending, request-id |
 | Status copy never claims the manual lacks the answer; action only where offered, once | ui `grounding-status.test.tsx` (17) | 6 |
+| r5 F1: no search claimed when none ran; library vs selected manual named correctly (reader + copy) | interaction `grounding-status.test.ts` (+5); ui `grounding-status.test.tsx` (+4); route round trip: unidentified service-password decline and identified-notebook library decline (+2) | R1–R3, C1, C2; through the route: H-R1, H-C1 |
+| r5 F2: the action settles on success, offers again on failure or rejection, and never double-sends | ui (+3); phone `unified-general-guidance.test.tsx` (+1, and the tap test now asserts the settled line) | P1–P3; phone M1–M3 |
 | Hub declares + maps + links; refusal drops the general chip; used offer settles on reload | hub `to-interaction` / `hub-host-logic` tests | 6 |
 | Hub client ↔ real route round trip (refusal → reload → tap → linked general → reload) | route "round trip" (2) | 2 |
 | Phone: one ask then explicit tap; flag-off re-ask unchanged; bound notebook no action; reload links by row id | `mira-mobile/tests/unified-general-guidance.test.tsx` (6; 5 red on old code) | 5 |

@@ -337,7 +337,7 @@ export interface UnifiedChatHandlers
    * manual)" on this shell answer turn. The host sends a NEW general turn
    * linked to it; nothing switches modes without this tap.
    */
-  readonly onRequestGeneralGuidance?: (turnId: string) => void;
+  readonly onRequestGeneralGuidance?: (turnId: string) => void | Promise<boolean>;
 }
 
 function initialState(messages: ReturnType<typeof threadMessages>, meta: UnifiedNotebookMeta, host?: UnifiedShellHost): ShellState {

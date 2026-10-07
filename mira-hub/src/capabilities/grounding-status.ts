@@ -1,5 +1,5 @@
 /**
- * F004 grounding status (contract document r4, wire v1, PR #4303): what a notebook turn's
+ * F004 grounding status (contract document r5, wire v1, PR #4303): what a notebook turn's
  * evidence actually was, kept as two statuses that are never merged.
  *
  *   retrieval — did passages from the selected manual reach the prompt?

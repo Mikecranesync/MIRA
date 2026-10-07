@@ -1,4 +1,4 @@
-import type { GroundingOutcome, GroundingStatus } from "./types";
+import type { GroundingOutcome, GroundingSearchScope, GroundingStatus } from "./types";
 
 /**
  * F004 (#4303): the ONE reader of the server's `grounding_status` evidence
@@ -38,14 +38,36 @@ export function isGroundingStatusEntry(raw: unknown): boolean {
   return entryOf(raw) !== null;
 }
 
+/** A non-empty array, read defensively: anything else counts as empty. */
+function nonEmpty(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
+}
+
 export function groundingStatusFromEntry(raw: unknown): GroundingStatus | null {
   const r = entryOf(raw);
   if (!r) return null;
   const retrieval = record(r.retrieval);
   const fallback = record(r.fallback);
+  const searched = typeof retrieval?.status === "string" && retrieval.status !== "not_attempted";
+  // `scopeDocIds` is the server-validated selection; with none, the search
+  // (if any) was over the shared manual library.
+  const searchScope: GroundingSearchScope = !searched
+    ? "none"
+    : nonEmpty(retrieval?.scopeDocIds)
+      ? "selected_manual"
+      : "shared_library";
+  const passagesFrom = retrieval?.status !== "passages_found"
+    ? null
+    : nonEmpty(retrieval?.returnedDocIds)
+      ? ("selected_manual" as const)
+      : nonEmpty(retrieval?.returnedSourceRefs)
+        ? ("shared_library" as const)
+        : null;
   return {
     outcome: r.outcome as GroundingOutcome,
-    manualSearched: typeof retrieval?.status === "string" && retrieval.status !== "not_attempted",
+    manualSearched: searched,
+    searchScope,
+    passagesFrom,
     fallbackOffered: fallback?.offered === true,
     isGeneralFallback: typeof fallback?.of === "string" && fallback.of.length > 0,
   };

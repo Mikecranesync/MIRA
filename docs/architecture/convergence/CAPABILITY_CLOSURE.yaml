@@ -634,7 +634,7 @@ capabilities:
   - id: notebook_grounding_status
     purpose: >-
       Record each notebook turn's retrieval status and citation status as two
-      separate facts (F004 contract r4, wire v1, PR #4303), and link an explicit
+      separate facts (F004 contract r5, wire v1, PR #4303), and link an explicit
       general-guidance request to the failed manual-based turn it came from.
     customer_outcome: >-
       A technician can tell "the manual was searched and this answer cites it"

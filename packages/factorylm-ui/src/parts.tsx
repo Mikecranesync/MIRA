@@ -138,9 +138,11 @@ export interface HostHooks {
    * manual)" on a turn whose server status offered it. The host sends a NEW
    * general-mode turn linked to this one (`fallbackOf`); nothing switches
    * modes on its own. Rendered only on a server-offered turn; without a host
-   * the button is honestly disabled.
+   * the button is honestly disabled. A host that resolves `true` once the
+   * general answer arrived (or `false` / rejects when it did not) lets the
+   * part settle instead of saying "Asking…" forever (Codex #4303 r1 F2).
    */
-  readonly onRequestGeneralGuidance?: (turnId: string) => void;
+  readonly onRequestGeneralGuidance?: (turnId: string) => void | Promise<boolean>;
   readonly busy?: boolean;
 }
 
@@ -417,21 +419,40 @@ function GroundingStatusPart({ part, turn, hooks }: {
   readonly turn: InteractionTurn;
   readonly hooks?: HostHooks;
 }) {
-  const [asked, setAsked] = useState(false);
+  // "asking" is the one-tap latch (no second send while in flight); it always
+  // settles: "requested" when the host reports the general answer arrived,
+  // "failed" (action offered again) when it did not.
+  const [request, setRequest] = useState<"idle" | "asking" | "requested" | "failed">("idle");
   const statusLine = groundingStatusLine(part);
   const onAsk = hooks?.onRequestGeneralGuidance;
-  const live = part.fallbackOffered && !part.fallbackUsed && !asked;
+  const used = part.fallbackUsed === true || request === "requested";
+  const live = part.fallbackOffered && !used && request !== "asking";
+  const ask = () => {
+    if (!onAsk || hooks?.busy || request === "asking") return;
+    setRequest("asking");
+    let pending: void | Promise<boolean>;
+    try {
+      pending = onAsk(turn.id);
+    } catch {
+      setRequest("failed");
+      return;
+    }
+    // A host that reports nothing keeps the one-tap latch (it cannot say whether the answer came).
+    if (!pending) return;
+    pending.then((ok) => setRequest(ok ? "requested" : "failed"), () => setRequest("failed"));
+  };
   if (!statusLine && !part.fallbackOffered) return null;
   return <div className="fl-part fl-grounding" role="status" data-part-type="grounding_status" data-outcome={part.outcome}>
     {statusLine ? <p>{statusLine}</p> : null}
+    {part.fallbackOffered && request === "failed" && !used ? <p role="alert" className="fl-card__meta">Couldn't get general guidance. Try again.</p> : null}
     {live ? <div className="fl-card__actions">
       <button type="button"
         disabled={!onAsk || Boolean(hooks?.busy)}
         title={onAsk ? undefined : "General guidance isn't available on this surface yet"}
-        onClick={() => { if (!onAsk || hooks?.busy) return; setAsked(true); onAsk(turn.id); }}>{GENERAL_GUIDANCE_ACTION}</button>
+        onClick={ask}>{GENERAL_GUIDANCE_ACTION}</button>
     </div> : null}
-    {part.fallbackOffered && asked ? <p className="fl-card__meta">Asking for general guidance…</p> : null}
-    {part.fallbackOffered && part.fallbackUsed && !asked ? <p className="fl-card__meta">General guidance was requested below.</p> : null}
+    {part.fallbackOffered && request === "asking" ? <p className="fl-card__meta">Asking for general guidance…</p> : null}
+    {part.fallbackOffered && used ? <p className="fl-card__meta">General guidance was requested below.</p> : null}
   </div>;
 }
 

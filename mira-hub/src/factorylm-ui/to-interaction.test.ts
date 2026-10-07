@@ -614,6 +614,8 @@ describe("grounding_status — the turn's evidence status on reload (F004 M2, #4
       type: "grounding_status",
       outcome: "abstained_no_passages",
       manualSearched: true,
+      searchScope: "selected_manual",
+      passagesFrom: null,
       fallbackOffered: true,
       isGeneralFallback: false,
     });
