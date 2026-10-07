@@ -6,7 +6,7 @@
  * completed row. The link always resolves to the canonical ROW id.
  *
  * Run: cd mira-hub && TEST_DATABASE_URL=… MIRA_TEST_DB_CONFIRM=DISPOSABLE node scripts/setup-integration-db.mjs
- *      && npx vitest run --config vitest.integration.config.ts src/lib/__tests__/fallback-source-turn
+ *      && npx vitest run --config vitest.integration.config.ts src/capabilities/__tests__/fallback-source-turn
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -26,7 +26,7 @@ const { pool } = await vi.hoisted(async () => {
 
 vi.mock("@/lib/db", () => ({ default: pool }));
 
-import { getFallbackSourceTurn } from "../equipment-notebooks";
+import { getFallbackSourceTurn } from "@/lib/equipment-notebooks";
 
 const run = process.env.TEST_DATABASE_URL ? describe : describe.skip;
 
