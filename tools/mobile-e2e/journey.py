@@ -644,6 +644,10 @@ HONEST_STATUS_LINES = (
     "couldn't answer from them",
     "manual library couldn't be reached",
     "doesn't point to a passage in the selected manual",
+    # Codex #4303 r1 F1: a search with no selected manual names the shared library.
+    "shared manual library didn't find a passage",
+    "read passages from the shared manual library",
+    "doesn't point to a passage in the shared manual library",
 )
 GENERAL_ACTION = "Get general guidance (not from the manual)"
 GENERAL_LABEL = "General guidance — not from your manual."
@@ -688,6 +692,33 @@ def limitation(dev: Device, question: str) -> str:
     dev.screenshot("limitation-general")
     log("limitation", "explicit general guidance verified")
     return line
+
+
+GENERAL_USED = "General guidance was requested below."
+
+
+def reopened(dev: Device, notebook_name: str, status_line: str) -> None:
+    """F004 outcome, last clause: after the app is killed and reopened, the same
+    notebook shows the same result -- the failed turn's honest status, the labelled
+    general answer, and the offer marked as used (not live again)."""
+    log("reopen", notebook_name)
+    launch(dev)
+    if dev.find(status_line[:60]) is None:
+        # Cold launch may land on the notebook list rather than the last thread.
+        dev.tap_text(notebook_name, timeout=90)
+    dev.wait_for(status_line[:60], timeout=120, keep_foreground=True)
+    texts = dev.texts()
+    if not any(GENERAL_LABEL in t for t in texts):
+        dev.screenshot("reopen-no-general")
+        raise Fail("after reopening, the labelled general answer is missing")
+    if dev.find(GENERAL_ACTION, clickable=True) is not None:
+        dev.screenshot("reopen-offer-live")
+        raise Fail("after reopening, the used general-guidance offer is live again")
+    if not any(GENERAL_USED in t for t in texts):
+        dev.screenshot("reopen-offer-unmarked")
+        raise Fail(f"after reopening, the used offer does not say {GENERAL_USED!r}")
+    dev.screenshot("reopen-same-result")
+    log("reopen", "same result after relaunch")
 
 
 def nameplate(dev: Device, image: Path | None) -> None:
@@ -797,7 +828,8 @@ def main() -> int:
         if wanted("citation"):
             verify_citation(dev, args.expect_page)
             if args.limitation_question:
-                limitation(dev, args.limitation_question)
+                line = limitation(dev, args.limitation_question)
+                reopened(dev, name, line)
         if wanted("nameplate"):
             nameplate(dev, args.nameplate)
     except Fail as exc:
