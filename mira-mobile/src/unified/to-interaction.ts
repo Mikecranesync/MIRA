@@ -98,6 +98,21 @@ const BASIS_BY_VALUE: Readonly<Record<string, EvidenceBasisKind>> = {
   general_reasoning: "general_reasoning",
 };
 
+/** The chip's caption when the server sent no label — a reloaded turn, whose
+ *  persisted row carries the basis only. The same words as the /v3 web chip
+ *  (mira-hub/src/factorylm-ui/to-interaction.ts) so both surfaces describe a
+ *  saved answer alike. A documentation basis names no scope: the route sends
+ *  `oem_documentation` for a shared-library answer too, and nothing on this
+ *  path can tell the two apart (#4025). */
+const BASIS_CAPTION: Readonly<Record<EvidenceBasisKind, string>> = {
+  general_reasoning: "General guidance — not grounded in this machine's documents.",
+  identified_component: "Grounded in the identified component.",
+  oem_documentation: "Grounded in the cited documentation.",
+  workspace_evidence: "Grounded in workspace evidence.",
+  machine_history: "Grounded in recorded machine history — not live.",
+  live_machine_evidence: "Grounded in live machine evidence.",
+};
+
 /** Map a server basis value to a client kind. An UNKNOWN value must never
  *  become a STRONGER evidence claim: the old keyword heuristic mapped any
  *  string containing "knowledge" (e.g. a hypothetical `general_knowledge`)
@@ -190,8 +205,10 @@ export function toInteractionPart(part: MessagePart): InteractionPart {
       // `authorized` is server-owned truth. The mobile BasisPart carries only the
       // basis string and a caption, so it is never asserted here — the kind is a
       // display grouping from keywords and must not be read as authorization.
+      // A reloaded turn has no server label; it gets a caption, never the key (#4025).
       const kind = basisKind(part.basis);
-      return { type: "evidence_basis", basis: { kind, label: part.label ?? part.basis, authorized: false } };
+      const label = part.label?.trim() ? part.label : BASIS_CAPTION[kind];
+      return { type: "evidence_basis", basis: { kind, label, authorized: false } };
     }
     case "error":
       return {
