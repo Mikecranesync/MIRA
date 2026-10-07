@@ -45,6 +45,9 @@ HOOK="$REPO_ROOT/.githooks/pre-commit"
 FIXTURE_DIR="$REPO_ROOT/.precommit-hook-fixtures"
 GUARDED_FIXTURE="$REPO_ROOT/mira-mobile/src/screens/.precommit lifecycle guard fixture.tsx"
 CANONICAL_FIXTURE="$REPO_ROOT/mira-mobile/src/unified/.precommit-lifecycle-guard-fixture.ts"
+WORKFLOW_FIXTURE="$REPO_ROOT/.github/workflows/.precommit-approval-fixture.yml"
+APPROVAL_RECORDS=()
+TMP_APPROVAL_REPO=""
 SHIM_DIR=""
 PASS=0
 FAIL=0
@@ -71,12 +74,36 @@ fi
 cleanup() {
   cd "$REPO_ROOT" 2>/dev/null || return
   # Only ever touches its own fixture path.
-  git reset -q -- "$FIXTURE_DIR" "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE" 2>/dev/null || true
+  git reset -q -- "$FIXTURE_DIR" "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE" "$WORKFLOW_FIXTURE" 2>/dev/null || true
   rm -rf "$FIXTURE_DIR"
-  rm -f "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE"
+  rm -f "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE" "$WORKFLOW_FIXTURE"
+  # Only the approval records this run wrote; never the store or its audit log.
+  local rec
+  for rec in "${APPROVAL_RECORDS[@]+"${APPROVAL_RECORDS[@]}"}"; do rm -f "$rec"; done
+  APPROVAL_RECORDS=()
+  [ -n "$TMP_APPROVAL_REPO" ] && rm -rf "$TMP_APPROVAL_REPO"
+  TMP_APPROVAL_REPO=""
   [ -n "$SHIM_DIR" ] && rm -rf "$SHIM_DIR"
 }
-trap cleanup EXIT
+# Approvals bind to a named branch and refuse a detached HEAD by design. CI's
+# actions/checkout of a pull_request leaves HEAD detached, so move a detached
+# checkout onto a throwaway branch at the SAME commit (no file changes; the
+# index is already empty) and put it back, detached, on exit.
+HARNESS_BRANCH=""
+HARNESS_DETACHED_AT=""
+if ! git symbolic-ref -q HEAD >/dev/null 2>&1; then
+  HARNESS_DETACHED_AT=$(git rev-parse HEAD)
+  HARNESS_BRANCH="precommit-harness-$(git rev-parse --short=12 HEAD)"
+  git switch -q -c "$HARNESS_BRANCH" || { echo "FATAL: could not leave detached HEAD" >&2; exit 2; }
+fi
+restore_head() {
+  [ -n "$HARNESS_BRANCH" ] || return 0
+  cd "$REPO_ROOT" 2>/dev/null || return 0
+  git switch -q --detach "$HARNESS_DETACHED_AT" 2>/dev/null && git branch -q -D "$HARNESS_BRANCH" 2>/dev/null
+  HARNESS_BRANCH=""
+}
+on_exit() { cleanup; restore_head; }
+trap on_exit EXIT
 
 ok()   { PASS=$((PASS + 1)); printf '  \033[0;32mPASS\033[0m %s\n' "$1"; }
 bad()  { FAIL=$((FAIL + 1)); printf '  \033[0;31mFAIL\033[0m %s\n' "$1"; }
@@ -127,6 +154,45 @@ make_dead_tool_shims() {
 
 run_hook() { bash "$HOOK" 2>&1; }
 
+# Write an approval record for the CURRENT index through the tool's own library
+# function — a TEST-HARNESS approval, not a human one (the real `approve`
+# requires the owner at a terminal, which this harness deliberately never
+# fakes). Optional $1: a JSON object merged over the record to make it stale or
+# tampered, or the literal MALFORMED to write unparseable bytes.
+write_test_approval() {
+  local rec
+  rec=$(python3 - "${1:-}" <<'PY'
+import json
+import sys
+
+sys.path.insert(0, "tools")
+import guarded_commit_approval as g
+
+b = g.binding()
+path = g.write_record(
+    b,
+    g.guarded_paths([p for _, p in b["staged"]]),
+    approved_by="test-harness (not a human approval)",
+    confirmed_via="test-harness",
+)
+patch = sys.argv[1]
+if patch == "MALFORMED":
+    path.write_text("{not json", encoding="utf-8")
+elif patch:
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record.update(json.loads(patch))
+    path.write_text(json.dumps(record), encoding="utf-8")
+print(path)
+PY
+) || { bad "could not write a test approval record"; return 1; }
+  APPROVAL_RECORDS+=("$rec")
+}
+
+stage_guarded_fixture() {
+  printf 'export const precommitLifecycleGuardFixture = %s;\n' "${1:-true}" > "$GUARDED_FIXTURE"
+  git add -- "$GUARDED_FIXTURE"
+}
+
 echo "=== .githooks/pre-commit — executable coverage ==="
 echo
 
@@ -143,7 +209,7 @@ assert_contains     "$OUT" "alpha_undefined"          "reports the finding on th
 assert_contains     "$OUT" "beta_undefined_ascii"     "reports the LATER finding (the dropped one)"
 assert_not_contains "$OUT" "commitBuffer"             "no encoding abort"
 assert_contains     "$OUT" "bad.sh:2:"                "uses -f gcc file:line:col format"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -156,7 +222,7 @@ make_dead_tool_shims rg
 OUT=$(PATH="$SHIM_DIR:$PATH" run_hook)
 assert_contains     "$OUT" "SKIPPED, not passed"      "says SKIPPED"
 assert_not_contains "$OUT" "No debug artifacts found" "does NOT claim a clean scan"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -172,7 +238,7 @@ assert_eq "$RC" "1" "missing Python blocks when lifecycle policy cannot run"
 assert_contains "$OUT" "UI lifecycle policy could not run" "lifecycle check fails closed"
 assert_contains "$OUT" "symbol check SKIPPED, not passed" "says SKIPPED"
 assert_not_contains "$OUT" "verify_agent_symbols: no"     "does NOT report a successful run"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -187,7 +253,7 @@ git add -- "$FIXTURE_DIR/good.sh"
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "0"                        "hook exits 0 on a clean staged set"
 assert_not_contains "$OUT" "Failed:   1"   "reports no failures"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -205,7 +271,10 @@ assert_contains "$OUT" "mira-mobile/src/screens/.precommit lifecycle guard fixtu
   "lists the exact guarded path"
 assert_contains "$OUT" "mira-mobile/src/unified/**"      "points mobile work to the canonical adapter"
 assert_contains "$OUT" "Automation must not bypass"     "tells agents not to evade the blocker"
-cleanup; trap cleanup EXIT
+assert_contains "$OUT" "no owner approval for this exact staged tree" \
+  "unapproved: names the missing owner approval"
+assert_contains "$OUT" "guarded_commit_approval.py approve" "points the owner at the supported approval"
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -219,7 +288,267 @@ git add -- "$CANONICAL_FIXTURE"
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "0"                                  "hook allows the canonical unified adapter"
 assert_contains "$OUT" "No guarded legacy UI paths staged" "reports the lifecycle check passed"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
+echo
+
+# ---------------------------------------------------------------------------
+# 7–15. Owner approval for one exact guarded commit (tools/guarded_commit_approval.py).
+#    The approval must clear ONLY the lifecycle verdict, ONLY for the tree, path
+#    list, branch and HEAD it names, and never while another check fails. Each
+#    "blocked" case below differs from the approved case [7] in one respect.
+# ---------------------------------------------------------------------------
+echo "[7] approved: an exact approval clears the lifecycle check"
+stage_guarded_fixture
+write_test_approval
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "0"                                               "hook allows the approved guarded tree"
+assert_contains "$OUT" "owner approval bound to this exact tree"  "says the approval was used"
+assert_contains "$OUT" "test-harness (not a human approval)"      "names who approved"
+cleanup; trap on_exit EXIT
+echo
+
+echo "[8] changed content: re-staging after approval voids it"
+stage_guarded_fixture
+write_test_approval
+stage_guarded_fixture false
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                                  "hook blocks a re-staged edit"
+assert_contains "$OUT" "no owner approval for this exact staged tree" "the approval does not follow the edit"
+cleanup; trap on_exit EXIT
+echo
+
+echo "[9] extra staged file: an unapproved addition voids it"
+stage_guarded_fixture
+write_test_approval
+mkdir -p "$FIXTURE_DIR"
+printf 'extra\n' > "$FIXTURE_DIR/extra.txt"
+git add -- "$FIXTURE_DIR/extra.txt"
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                                  "hook blocks an extra staged file"
+assert_contains "$OUT" "no owner approval for this exact staged tree" "the approval covers only its tree"
+cleanup; trap on_exit EXIT
+echo
+
+echo "[10] stale binding: HEAD moved, branch differs, or approval expired"
+stage_guarded_fixture
+write_test_approval '{"base": "0000000000000000000000000000000000000000"}'
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks an approval for a different HEAD"
+assert_contains "$OUT" "approval is stale: base"     "names the moved HEAD"
+cleanup; trap on_exit EXIT
+stage_guarded_fixture
+write_test_approval '{"branch": "some-other-branch"}'
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks an approval for a different branch"
+assert_contains "$OUT" "approval is stale: branch"   "names the branch mismatch"
+cleanup; trap on_exit EXIT
+stage_guarded_fixture
+write_test_approval '{"expires_at": "2000-01-01T00:00:00+00:00"}'
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks an expired approval"
+assert_contains "$OUT" "approval expired"            "names the expiry"
+cleanup; trap on_exit EXIT
+echo
+
+echo "[11] tampered records fail closed"
+stage_guarded_fixture
+write_test_approval MALFORMED
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks an unparseable record"
+assert_contains "$OUT" "unreadable"                  "names the unreadable record"
+cleanup; trap on_exit EXIT
+stage_guarded_fixture
+write_test_approval '{"version": 99}'
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks an unknown record version"
+assert_contains "$OUT" "unknown version"             "names the version mismatch"
+cleanup; trap on_exit EXIT
+stage_guarded_fixture
+write_test_approval '{"allowed_paths": []}'
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                  "hook blocks a guarded path the owner did not see"
+assert_contains "$OUT" "not covered by the approval" "names the uncovered guarded path"
+cleanup; trap on_exit EXIT
+echo
+
+echo "[12] approved guarded change + shellcheck failure: still blocked"
+make_fixtures
+stage_guarded_fixture
+write_test_approval
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                               "an approval never clears shellcheck"
+assert_contains "$OUT" "owner approval bound to this exact tree"  "the lifecycle verdict alone was cleared"
+assert_contains "$OUT" "beta_undefined_ascii"                     "shellcheck still ran and reported"
+cleanup; trap on_exit EXIT
+echo
+
+echo "[13] approved guarded change + planted secret: still blocked"
+if command -v gitleaks >/dev/null 2>&1; then
+  # Assembled at runtime so this harness file itself never contains a token.
+  TOKEN="gh""p_$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 36)"
+  printf 'export const precommitLifecycleGuardFixture = "%s";\n' "$TOKEN" > "$GUARDED_FIXTURE"
+  git add -- "$GUARDED_FIXTURE"
+  write_test_approval
+  OUT=$(run_hook); RC=$?
+  assert_eq "$RC" "1"                                               "an approval never clears gitleaks"
+  assert_contains "$OUT" "owner approval bound to this exact tree"  "the lifecycle verdict alone was cleared"
+  assert_contains "$OUT" "gitleaks detected secrets"                "gitleaks still ran and blocked"
+else
+  echo "  SKIP gitleaks not installed here (CI image installs shellcheck + ripgrep only)"
+fi
+cleanup; trap on_exit EXIT
+echo
+
+echo "[14] approved invalid workflow: actionlint still blocks"
+if command -v actionlint >/dev/null 2>&1; then
+  printf 'name: approval fixture\non: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ${{ not.a.context }}\n' \
+    > "$WORKFLOW_FIXTURE"
+  git add -- "$WORKFLOW_FIXTURE"
+  write_test_approval
+  OUT=$(run_hook); RC=$?
+  assert_eq "$RC" "1"                                               "an approval never clears actionlint"
+  assert_contains "$OUT" "owner approval bound to this exact tree"  "the guarded workflow itself was approved"
+  assert_contains "$OUT" "actionlint failed"                        "actionlint still ran and blocked"
+else
+  echo "  SKIP actionlint not installed here (the CI gate is .github/workflows/actionlint.yml)"
+fi
+cleanup; trap on_exit EXIT
+echo
+
+echo "[15] approve refuses without a terminal (an agent cannot self-approve)"
+stage_guarded_fixture
+# approve reads /dev/tty, not stdin, so run it in a NEW session (setsid): that
+# has no controlling terminal, the same as an agent's shell. Without this, a
+# human running the harness from a real terminal sat at the prompt here
+# forever (Codex r2 F5). The timeout turns any future wait into a failure.
+OUT=$(python3 - <<'PY' 2>&1
+import subprocess
+import sys
+
+try:
+    r = subprocess.run(
+        [sys.executable, "tools/guarded_commit_approval.py", "approve"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        start_new_session=True,
+        timeout=60,
+    )
+except subprocess.TimeoutExpired:
+    print("TIMEOUT: approve waited for input with no controlling terminal")
+    sys.exit(124)
+sys.stdout.write(r.stdout + r.stderr)
+sys.exit(r.returncode)
+PY
+); RC=$?
+assert_eq "$RC" "1"                                  "approve exits 1 with no controlling terminal"
+assert_contains "$OUT" "needs the owner at a real terminal" "explains why it refused"
+cleanup; trap on_exit EXIT
+echo
+
+# ---------------------------------------------------------------------------
+# 16–17. The Claude-side PreToolUse layer (tools/hooks/guarded_approval_guard.py).
+#    Defence in depth only: it denies the obvious routes around the approval and
+#    turns a guarded commit into a visible prompt, but grants nothing.
+# ---------------------------------------------------------------------------
+claude_hook_decision() {
+  printf '%s' "$1" | python3 tools/hooks/guarded_approval_guard.py \
+    | python3 -c 'import json,sys; d=sys.stdin.read().strip(); print(json.loads(d)["hookSpecificOutput"]["permissionDecision"] if d else "allow")'
+}
+
+echo "[16] Claude hook: denies routes around the approval, allows ordinary work"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit --no-verify -m x"}}')" "deny" \
+  "denies git commit --no-verify"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit -nm x"}}')" "deny" \
+  "denies the short -n form inside a flag cluster"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit -m \"text mentions -n and --no-verify\""}}')" "allow" \
+  "control: the words inside a commit message are not flags"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"echo {} > .git/mira-guarded-approvals/x.json"}}')" "deny" \
+  "denies a Bash write into the approval store"
+assert_eq "$(claude_hook_decision '{"tool_name":"Write","tool_input":{"file_path":"/r/.git/mira-guarded-approvals/a.json"}}')" "deny" \
+  "denies a Write into the approval store"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"script -q /dev/null python3 tools/guarded_commit_approval.py approve"}}')" "deny" \
+  "denies faking a terminal around approve"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"python3 tools/guarded_commit_approval.py status"}}')" "allow" \
+  "control: reading approval status is allowed"
+echo
+
+echo "[17] Claude hook: a commit with guarded paths staged becomes a prompt, never a grant"
+stage_guarded_fixture
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}')" "ask" \
+  "asks before a commit that includes a guarded path"
+cleanup; trap on_exit EXIT
+mkdir -p "$FIXTURE_DIR"
+printf 'ok\n' > "$FIXTURE_DIR/plain.txt"
+git add -- "$FIXTURE_DIR/plain.txt"
+assert_eq "$(claude_hook_decision '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}')" "allow" \
+  "control: an ordinary commit is not prompted"
+cleanup; trap on_exit EXIT
+echo
+
+# ---------------------------------------------------------------------------
+# 18. The interactive approval path, end to end, on a real pseudo-terminal —
+#     in a THROWAWAY repository. The record it writes lives in that repo's own
+#     git dir, so it cannot authorize anything in this one. This proves the
+#     terminal I/O works (a single "r+" stream on /dev/tty does not: a tty is not
+#     seekable), which [7]-[15] cannot, because they write records directly.
+# ---------------------------------------------------------------------------
+drive_approve_on_pty() { # $1 = repo, $2 = "right" or "wrong" confirmation
+  python3 - "$REPO_ROOT/tools/guarded_commit_approval.py" "$1" "$2" <<'PY'
+import os, pty, re, select, sys, time
+
+tool, repo, answer = sys.argv[1:4]
+pid, fd = pty.fork()
+if pid == 0:
+    os.chdir(repo)
+    os.execvp(sys.executable, [sys.executable, tool, "approve"])
+buf, deadline = b"", time.time() + 60
+while b"to approve: " not in buf and time.time() < deadline:
+    if select.select([fd], [], [], 1)[0]:
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        buf += chunk
+m = re.search(rb"staged tree\s+([0-9a-f]{40})", buf)
+if m:
+    os.write(fd, (m.group(1)[:12] if answer == "right" else b"000000000000") + b"\n")
+rest = b""
+while True:
+    try:
+        chunk = os.read(fd, 4096)
+    except OSError:
+        break
+    if not chunk:
+        break
+    rest += chunk
+_, status = os.waitpid(pid, 0)
+print("PROMPT_SEEN" if m else "NO_PROMPT")
+print(f"EXIT={os.waitstatus_to_exitcode(status)}")
+PY
+}
+
+echo "[18] interactive approve on a real pseudo-terminal (throwaway repo)"
+TMP_APPROVAL_REPO=$(mktemp -d)
+git -C "$TMP_APPROVAL_REPO" init -q
+git -C "$TMP_APPROVAL_REPO" switch -q -c approval-pty-test 2>/dev/null || git -C "$TMP_APPROVAL_REPO" checkout -q -b approval-pty-test
+git -C "$TMP_APPROVAL_REPO" -c user.name=harness -c user.email=harness@example.invalid commit -q --allow-empty -m init
+mkdir -p "$TMP_APPROVAL_REPO/.github/workflows"
+printf 'name: pty fixture\non: workflow_dispatch\njobs: {}\n' > "$TMP_APPROVAL_REPO/.github/workflows/pty-fixture.yml"
+git -C "$TMP_APPROVAL_REPO" add .github/workflows/pty-fixture.yml
+OUT=$(drive_approve_on_pty "$TMP_APPROVAL_REPO" wrong)
+assert_contains "$OUT" "PROMPT_SEEN"  "the confirmation prompt renders on a real terminal"
+assert_contains "$OUT" "EXIT=1"       "a wrong confirmation approves nothing"
+VOUT=$(cd "$TMP_APPROVAL_REPO" && python3 "$REPO_ROOT/tools/guarded_commit_approval.py" verify --files .github/workflows/pty-fixture.yml 2>&1); VRC=$?
+assert_eq "$VRC" "1"                  "control: no record after a wrong confirmation"
+OUT=$(drive_approve_on_pty "$TMP_APPROVAL_REPO" right)
+assert_contains "$OUT" "EXIT=0"       "the right confirmation approves on a real terminal"
+VOUT=$(cd "$TMP_APPROVAL_REPO" && python3 "$REPO_ROOT/tools/guarded_commit_approval.py" verify --files .github/workflows/pty-fixture.yml 2>&1); VRC=$?
+assert_eq "$VRC" "0"                  "the record it wrote verifies for that exact tree"
+assert_contains "$VOUT" "via tty"     "the record says it came from a terminal"
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
