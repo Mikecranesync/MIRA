@@ -37,10 +37,15 @@ import {
 import { preferencesStore, withSessionLocalProducer } from "../lib/offline-queue";
 import { apiErrorCopy } from "../lib/api-error-copy";
 import { answerBody } from "../lib/chat-copy";
-import { autoGrow, composerKeyAction, type PendingSend } from "../lib/composer";
+import { autoGrow, composerKeyAction, type PendingSend as ComposerPendingSend } from "../lib/composer";
+
+/** F004 (#4303): an explicit general-guidance send links to the failed turn. */
+type PendingSend = ComposerPendingSend & { fallbackOf?: string };
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete";
 import { isTruncatedTurn, normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
+import { isGroundingStatusEntry } from "@factorylm/interaction";
+import { generalGuidanceTarget } from "../unified/general-guidance";
 import {
   photoCapturedLabel,
   visualCardTitle,
@@ -206,7 +211,9 @@ export function NotebookScreen({
   const [lastLook, setLastLook] = useState<RememberedLook | null>(null);
   // A linked photo opened for viewing (same FilePreview door as a source).
   const [openPhoto, setOpenPhoto] = useState<NotebookPhoto | null>(null);
-  const [liveTurns, setLiveTurns] = useState<{ q: string; a: ChatTurn }[]>([]);
+  // `requestId`: the request id the turn was sent with — a live answer's only
+  // server identity, used to link an explicit general-guidance request (F004).
+  const [liveTurns, setLiveTurns] = useState<{ q: string; a: ChatTurn; requestId?: string }[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -275,7 +282,8 @@ export function NotebookScreen({
   }, [initialSensorStart, onInitialSensorStartConsumed]);
 
   const refresh = () => {
-    void load(() => getNotebookDetail(id, { threadId })).then(setDetail);
+    // F004: only the unified shell renders the evidence-status entry.
+    void load(() => getNotebookDetail(id, { threadId, declareGroundingStatus: chatSurface === "unified" })).then(setDetail);
   };
   useEffect(() => {
     setDetail({ state: "loading" });
@@ -327,6 +335,8 @@ export function NotebookScreen({
     replay?: PendingSend,
     sensor?: SensorAskEvidence,
     scopeOverride?: readonly string[],
+    /** F004: the technician chose general guidance on this failed turn. */
+    generalFor?: { readonly fallbackOf: string },
   ) => {
     const question = replay?.question ?? raw.trim();
     if (!question || busy) return;
@@ -344,8 +354,9 @@ export function NotebookScreen({
     const effectiveMode = effectiveScope.length === 0 ? "general" : undefined;
     const body: PendingSend = replay ?? {
       question,
-      scope: effectiveScope,
-      mode: effectiveMode,
+      scope: generalFor ? [] : effectiveScope,
+      mode: generalFor ? "general" : effectiveMode,
+      ...(generalFor ? { fallbackOf: generalFor.fallbackOf } : {}),
       // A stopped turn is not an answer: it never enters the thread memory.
       history: buildChatHistory(
         turns,
@@ -384,6 +395,8 @@ export function NotebookScreen({
           clientRequestId: send.clientRequestId,
           machineEvidence: send.machineEvidence,
           visualEvidence: send.visualEvidence,
+          declareGroundingStatus: chatSurface === "unified",
+          ...(send.fallbackOf ? { fallbackOf: send.fallbackOf } : {}),
           signal: ctl.signal,
           onUpdate: (partial) => setPending({ q: question, a: partial }),
         });
@@ -396,8 +409,13 @@ export function NotebookScreen({
       // BOUND notebook keeps its abstention — an answer about that machine is
       // grounded or it is not. Never for a replay (Retry re-sends the identical
       // body) and never when the turn was already general.
+      // F004 M3 (#4303): never when the server sent its evidence status — the
+      // turn then carries an explicit "Get general guidance" action instead,
+      // and nothing switches modes without that tap. (An older server, or the
+      // flag off, sends no status, so this path is unchanged there.)
       if (
         !replay &&
+        !(a.unknownFrames ?? []).some(isGroundingStatusEntry) &&
         !notebook.asset &&
         body.mode === undefined &&
         !isTruncatedTurn(a) &&
@@ -416,13 +434,13 @@ export function NotebookScreen({
           ...(a.safetyTrigger !== undefined ? { safetyTrigger: a.safetyTrigger } : {}),
           ...(a.identityDisputed ? { identityDisputed: true as const } : {}),
         };
-        setLiveTurns((t) => [...t, { q: question, a: interrupted }]);
+        setLiveTurns((t) => [...t, { q: question, a: interrupted, requestId: body.clientRequestId }]);
         if (a.safetyTrigger === undefined) {
           setFailedSend(body);
           setChatError("The answer was interrupted — retry the same request.");
         }
       } else {
-        setLiveTurns((t) => [...t, { q: question, a }]);
+        setLiveTurns((t) => [...t, { q: question, a, requestId: body.clientRequestId }]);
       }
     } catch (e) {
       const partial = pendingRef.current?.a ?? EMPTY_TURN;
@@ -927,6 +945,12 @@ export function NotebookScreen({
             },
             onNewChat: () => onNewThread?.(id),
             ...(onCreateProject ? { onCreateProject } : {}),
+            // F004 M3 (#4303): general guidance only on the technician's tap,
+            // linked to the failed turn (row id, or a live turn's request id).
+            onRequestGeneralGuidance: (turnId: string) => {
+              const target = generalGuidanceTarget(turnId, turns, liveTurns);
+              if (target) void sendQuestion(target.question, undefined, undefined, undefined, { fallbackOf: target.fallbackOf });
+            },
           }}
           initialQuestion={initialQuestion}
           onInitialQuestionSent={onInitialQuestionSent}
