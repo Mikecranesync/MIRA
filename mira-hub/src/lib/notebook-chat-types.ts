@@ -30,6 +30,8 @@
  *   `answer_status==='error' && answer_text` null ⇒ the existing error copy.
  */
 
+import type { GroundingStatusEntry } from "@/capabilities/grounding-status";
+
 export type EvidenceCitation = {
   citationId: string; // "1", "2", ... matches [n] markers in the answer text
   docId: string;
@@ -343,7 +345,16 @@ export type NotebookChatFrame =
   | NotebookUsageFrame
   | NotebookEvidenceFrame
   | NotebookFollowupsFrame
-  | NotebookTraceFrame;
+  | NotebookTraceFrame
+  | NotebookGroundingStatusFrame;
+
+/** F004 contract v2 (PR #4303): the turn's retrieval and citation status, kept
+ *  separate. Byte-identical to the entry persisted in `evidence[]`, emitted
+ *  just before `status` (and re-emitted from storage on replay) ONLY when
+ *  `NOTEBOOK_GROUNDING_STATUS_ENABLED` is on AND the request declared
+ *  `clientCapabilities: ["grounding_status_v1"]`. Clients that did not
+ *  declare it never receive it. */
+export type NotebookGroundingStatusFrame = GroundingStatusEntry;
 
 /** Deterministic follow-up suggestions (notebook-followups.ts) — emitted after
  *  `status` on answered turns only; each string is a complete question the

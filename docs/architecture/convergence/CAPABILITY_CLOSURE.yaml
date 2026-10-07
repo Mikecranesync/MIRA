@@ -630,6 +630,53 @@ capabilities:
       an unrelated PDF (2026-09-29 probe: a bioRxiv paper for an MG17 gearbox);
       applicability keeps it disabled, but the judge keeps it off the screen.
 
+  # =========================================================================
+  - id: notebook_grounding_status
+    purpose: >-
+      Record each notebook turn's retrieval status and citation status as two
+      separate facts (F004 contract v2, PR #4303), and link an explicit
+      general-guidance request to the failed manual-based turn it came from.
+    customer_outcome: >-
+      A technician can tell "the manual was searched and this answer cites it"
+      apart from "passages were found but the answer doesn't cite them" and from
+      "nothing was found" - and general guidance is never a silent switch.
+    # The Hub reads NOTEBOOK_GROUNDING_STATUS_ENABLED (TypeScript). feature_flag is
+    # omitted because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/capabilities/grounding-status.ts"
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # persist + live frame + replay + fallbackOf check"
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/route.ts        # history shows it only to a declaring client"
+    consumers: []
+    schema: []
+    environments:
+      dev: unset
+      staging: unset
+      production: unset
+    state: implemented_unconnected
+    reason: >-
+      M1 is the server contract only. No client declares grounding_status_v1
+      yet, so even with the flag on nothing is shown anywhere; installed
+      clients that never declare it receive byte-identical output (tested).
+      The web and phone readers (M2) and the removal of the phone's silent
+      general re-ask (M3) each need separate approval.
+    owner: null
+    owner_missing: "Product owner to confirm when PR #4303 is reviewed; implemented under the owner's M1 approval of 2026-10-07."
+    ci_jobs:
+      - mira-hub-unit        # grounding-status + chat-grounding-status suites
+    required_checks: []
+    evidence: []
+    rollback: >-
+      Unset NOTEBOOK_GROUNDING_STATUS_ENABLED (or set it to 0) in Doppler and
+      redeploy mira-hub. Nothing new is written or shown; already-saved entries
+      stay in evidence[] and are stripped from every history response while the
+      flag is off. No schema change to undo.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "M2 merged: the web and phone readers declare grounding_status_v1 and render the status and the action."
+      - "Staging: flag on; a manual-selected uncited answer, a refusal and an abstain each show the right status on a phone and on web, and an older build shows no change."
+      - "Production: owner decision after the staging walk; M3 (no silent re-ask) before or with it."
+    review_by: "2026-11-07"
+
   - id: unified_ui_shell
     purpose: >-
       Shared FactoryLM presentation shell (design tokens, interaction
