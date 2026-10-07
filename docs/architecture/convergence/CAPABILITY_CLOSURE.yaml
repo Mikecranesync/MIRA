@@ -650,7 +650,11 @@ capabilities:
       - "mira-hub/src/capabilities/grounding-status.ts"
       - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # persist + live frame + replay + fallbackOf check"
       - "mira-hub/src/app/api/equipment-notebooks/[id]/route.ts        # history shows it only to a declaring client"
-    consumers: []
+      - "packages/factorylm-interaction/src/grounding-status.ts        # the one client-side reader (M2)"
+      - "packages/factorylm-ui/src/grounding-status.ts                 # status copy + general-guidance action (M2)"
+    consumers:
+      - "mira-hub      # /v3 declares grounding_status_v1 (hub-host-logic.ts) and renders it (to-interaction.ts)"
+      - "mira-mobile   # unified shell declares it (resources.ts via NotebookScreen) and renders it (unified/to-interaction.ts)"
     schema: []
     environments:
       dev: unset
@@ -658,15 +662,18 @@ capabilities:
       production: unset
     state: implemented_unconnected
     reason: >-
-      M1 is the server contract only. No client declares grounding_status_v1
-      yet, so even with the flag on nothing is shown anywhere; installed
-      clients that never declare it receive byte-identical output (tested).
-      The web and phone readers (M2) and the removal of the phone's silent
-      general re-ask (M3) each need separate approval.
+      Server contract (M1/C1) plus both readers (M2) and the phone's explicit
+      general-guidance choice (M3) are on PR #4303, not yet merged or deployed,
+      and the flag is not plumbed into Compose. With the flag off every client
+      is unchanged, including the phone's #3862 re-ask; older installed
+      clients never declare the capability and receive byte-identical output
+      (tested). Becomes deployed_disabled once merged and deployed with the
+      flag off.
     owner: null
     owner_missing: "Product owner to confirm when PR #4303 is reviewed; implemented under the owner's M1 approval of 2026-10-07."
     ci_jobs:
-      - mira-hub-unit        # grounding-status + chat-grounding-status suites
+      - mira-hub-unit        # grounding-status unit + route + client round-trip suites
+      - mobile-unit-tests    # unified mapping, explicit-choice and live/saved parity suites
     required_checks: []
     evidence: []
     rollback: >-
@@ -679,9 +686,9 @@ capabilities:
     acknowledged_rules: []
     promotion_criteria:
       - "Compose plumbing reviewed and merged: NOTEBOOK_GROUNDING_STATUS_ENABLED added to the mira-hub environment list in docker-compose.staging-vps.yml (and later docker-compose.saas.yml). Until then a Doppler value has no effect."
-      - "M2 merged: the web and phone readers declare grounding_status_v1 and render the status and the action."
+      - "PR #4303 merged (M2 readers and M3 explicit choice are on it): web and phone declare grounding_status_v1 and render the status and the action."
       - "Staging: flag on; a manual-selected uncited answer, a refusal and an abstain each show the right status on a phone and on web, and an older build shows no change."
-      - "Production: owner decision after the staging walk; M3 (no silent re-ask) before or with it."
+      - "Production: owner decision after the staging walk on a real phone build that includes PR #4303."
     review_by: "2026-11-07"
 
   - id: unified_ui_shell

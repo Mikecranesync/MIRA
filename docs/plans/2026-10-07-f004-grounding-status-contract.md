@@ -1,6 +1,6 @@
-# F004 grounding-status contract — document revision 3 (wire version 1)
+# F004 grounding-status contract — document revision 4 (wire version 1)
 
-**Status:** the server half (milestones M1 + correction C1) is **implemented on PR #4303 behind a flag that is off and cannot yet be turned on** (§7). Client display (M2) and the phone's explicit choice (M3) are **not built**. This document authorizes no merge, deploy, flag change or further implementation.
+**Status:** the server half (M1 + correction C1), both clients' display (M2) and the phone's explicit choice (M3) are **implemented on PR #4303**, not merged or deployed. The server flag is off and cannot yet be turned on (§7); with it off every client behaves exactly as before. This document authorizes no merge, deploy or flag change.
 **Risk class:** R2 — a shared server contract on the notebook chat route. No migration, tenant-filter, provider, prompt or safety-policy change.
 
 ## 0. Document revision vs wire version
@@ -16,7 +16,8 @@ Revision history:
 
 - **r1** (`92135941d`): first proposal. It used the terms `validated` / `grounded`, a single `docIds` list and a `retrievalFailed` field. **None of that shipped**; r1's field list is obsolete.
 - **r2**: delivered in the working session and approved by the owner as the basis for M1; never committed. Introduced capability negotiation, `outcome`, `manualCited`, "citation linked" and the fallback link.
-- **r3** (this file): r2 as actually implemented, plus correction C1 (shared-library references, reference-format validation, `droppedRefCount`).
+- **r3**: r2 as actually implemented, plus correction C1 (shared-library references, reference-format validation, `droppedRefCount`).
+- **r4** (this file): adds the client half (§8) and the request-id form of `fallbackOf` (§5). The wire shape is unchanged — still `v: 1`.
 
 Wire version 1 is defined by **this** revision. No deployed server has ever written an entry (the flag is not plumbed into any container — §7), so the r1 shape never existed on the wire. Any future change that an existing `grounding_status_v1` client could misread must bump **both** `v` and the capability name; adding a field a v1 reader can ignore does not.
 
@@ -142,28 +143,38 @@ The server flag `NOTEBOOK_GROUNDING_STATUS_ENABLED` is on only for `1` or `true`
 
 The flag is **not plumbed**. The `mira-hub` services in `docker-compose.saas.yml` and `docker-compose.staging-vps.yml` use explicit `environment:` lists that do not include `NOTEBOOK_GROUNDING_STATUS_ENABLED`, so a Doppler value alone never reaches the container. Enabling anywhere first needs a reviewed Compose change. The capability record `notebook_grounding_status` in `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml` is `implemented_unconnected` and says so.
 
-## 8. Not built yet
+## 8. Clients (implemented on PR #4303, not deployed)
 
-### M2 — display the honest evidence status (customer-visible)
+### M2 — the evidence status is shown
 
-Nothing reads the entry yet. M2 adds:
+- **One reader.** `packages/factorylm-interaction/src/grounding-status.ts` turns a v1 entry into the shared `grounding_status` part; anything malformed or of another version is ignored, never shown raw. The Hub and the phone both use it.
+- **One renderer.** `packages/factorylm-ui` renders one line about what the attempt did and never claims the manual lacks the answer:
 
-- the capability declaration on web (`chatBodyFor` / `detailQueryFor` in `mira-hub/src/factorylm-ui/hub-host-logic.ts`) and phone (`askNotebook` and the detail GET in `mira-mobile/src/api/resources.ts`);
-- a recognizer in `mira-mobile/src/unified/to-interaction.ts` and `mira-hub/src/factorylm-ui/to-interaction.ts`;
-- one shared `grounding_status` part in `packages/factorylm-interaction` + `packages/factorylm-ui`, including for refusals saved with `basis: null`;
-- status lines that describe the attempt, never the manual's content (e.g. "MIRA read passages from <manual> but couldn't answer from them. That doesn't mean the manual doesn't cover it.").
+  | outcome | line |
+  |---|---|
+  | `abstained_no_passages`, `refused_without_passages` (manual searched) | "The search didn't find a passage in the selected manual for this question. That doesn't mean the manual doesn't cover it." |
+  | `refused_with_passages` | "MIRA read passages from the selected manual but couldn't answer from them. That doesn't mean the manual doesn't cover it." |
+  | `abstained_retrieval_unavailable` | "The manual library couldn't be reached just now, so this wasn't checked against it. Try again in a moment." |
+  | `answered_uncited_with_passages` | "This answer doesn't point to a passage in the selected manual. Treat it as general guidance." |
+  | `answered_without_manual` with `fallback.of` | "General guidance — not from your manual." |
+  | linked, plain general, stop, safety stop, provider error | no line (existing presentation already says it) |
 
-Preconditions: a fresh `[WORK-CLAIM]` on #3626 for the shared packages lane; #4298 (which touches the same `hub-host*` files) merged or merged in.
+- **Refusals are not "general guidance".** For refused and abstained outcomes the client drops the legacy `general_reasoning` basis chip; the server's `basis` column is unchanged.
+- **Who declares it.** Hub `/v3`: every chat body and detail load. Phone: the unified shell only (the classic and ChatV2 surfaces would show the entry as a raw box, so they never declare it).
+- **When it appears.** The Hub reloads saved turns right after each answer, so it renders from the saved row. The phone renders the live frame immediately and the saved row after reload; both map to the same part (tested through the phone's unchanged stream parser).
 
 ### M3 — explicit choice before general guidance
 
-Today `mira-mobile/src/screens/NotebookScreen.tsx` silently re-asks in general mode after a manual-selected `insufficient_evidence` on an unbound notebook (#3862/#3742, pinned by `notebook-composer.test.tsx`). M3 removes that branch, keeps the failed turn, and sends `fallbackOf` only when the technician taps the offered action. `NotebookScreen.tsx` is a frozen legacy path: it needs a lifecycle guard rationale and an exact-head Codex GREEN. The re-ask test is intentionally reversed; its opposite-direction control stays.
+- The action "Get general guidance (not from the manual)" appears only where the server offered it (rule F, §3). It settles after one tap; after reload, an offer a later turn already used shows "General guidance was requested below."
+- The tap re-asks the failed turn's **own question** as a new general turn with no sources and its own request id, linked by `fallbackOf` (saved turn: row id; phone live turn: the request id it was sent with — §5).
+- The phone's #3862 silent re-ask no longer runs when the server sent its evidence status. **With the flag off it is unchanged** — the old behaviour is what "disabled" means here, and it stops only when the flag is turned on.
+- Guarded legacy files changed: `mira-mobile/src/api/resources.ts` and `mira-mobile/src/screens/NotebookScreen.tsx` (lifecycle rationale + exact-head Codex GREEN before merge).
 
 ## 9. Recovery gaps and residuals (unresolved)
 
 1. **Notebook-retrieval errors** and the **approved-context 412** save no turn, so there is no entry, nothing to replay and nothing to link a fallback to (T5 pins the retrieval-error behavior). A durable "attempt failed" row is a separate change.
-2. **Refusals keep `basis: general_reasoning`** and the label "General guidance…". The entry distinguishes them (`refused_with_passages`); the label itself is unchanged until M2 renders the entry.
-3. **Old phone builds keep the silent re-ask** until M3 reaches them. OTA availability is not adoption; measure general-mode turns without `fallbackOf` that immediately follow an `insufficient_evidence` turn in the same thread.
+2. **Refusals keep `basis: general_reasoning` in storage.** Clients that read the entry drop the misleading chip; any other reader of the column still sees `general_reasoning`.
+3. **Old phone builds keep the silent re-ask** until a build with PR #4303 reaches them; so do new builds while the flag is off. OTA availability is not adoption; measure general-mode turns without `fallbackOf` that immediately follow an `insufficient_evidence` turn in the same thread.
 4. **"Linked" is not "supports"** (T3b).
 5. **F004's cause remains unknown** (§1).
 
@@ -181,5 +192,11 @@ Today `mira-mobile/src/screens/NotebookScreen.tsx` silently re-asks in general m
 | References typed, bounded, content-free, no credentials/signed URLs | unit B5 + C1 block | C1-M1…C1-M11 |
 | Scope/retrieval ids are the server-validated list, not the request body | route T13 | P1–P3 |
 | Notebook-retrieval error saves nothing (the gap stays visible) | route T5 | M17 |
+| `fallbackOf` by request id resolves to the row id, owner/notebook/thread/complete only | real-Postgres integration (6); route T8c | owner, notebook, thread, pending, request-id |
+| Status copy never claims the manual lacks the answer; action only where offered, once | ui `grounding-status.test.tsx` (17) | 6 |
+| Hub declares + maps + links; refusal drops the general chip; used offer settles on reload | hub `to-interaction` / `hub-host-logic` tests | 6 |
+| Hub client ↔ real route round trip (refusal → reload → tap → linked general → reload) | route "round trip" (2) | 2 |
+| Phone: one ask then explicit tap; flag-off re-ask unchanged; bound notebook no action; reload links by row id | `mira-mobile/tests/unified-general-guidance.test.tsx` (6; 5 red on old code) | 5 |
+| Phone live frame and saved row map to the same part | `grounding-status-live-sse.test.ts` | — |
 
 Run: `cd mira-hub && ./node_modules/.bin/vitest run src/capabilities/__tests__/grounding-status.test.ts src/capabilities/__tests__/grounding-status-route.test.ts`
