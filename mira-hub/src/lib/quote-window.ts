@@ -30,13 +30,18 @@ export function relevantQuoteWindow(text: string, query: string, span = 240): st
   if (clean.length <= span) return clean;
 
   const terms = queryTerms(query);
+  // A digit-bearing term ("f004", "0.71", "p033") names the claim; plain words
+  // ("does", "drive") appear in many rows of a fault table. One identifier match
+  // must outweigh every plain-word match combined, or the quote lands on the row
+  // with the most common words (the 2026-10-07 F004→F007 miss).
+  const identifierWeight = terms.length + 1;
   let bestStart = 0;
   let bestScore = 0;
   if (terms.length > 0) {
     for (const m of clean.matchAll(SEGMENT_RE)) {
       const seg = m[0].toLowerCase();
       let score = 0;
-      for (const t of terms) if (seg.includes(t)) score++;
+      for (const t of terms) if (seg.includes(t)) score += /\d/.test(t) ? identifierWeight : 1;
       if (score > bestScore) {
         bestScore = score;
         bestStart = m.index ?? 0;
