@@ -1,7 +1,7 @@
 # F004 grounding-status contract — document revision 4 (wire version 1)
 
-**Status:** the server half (M1 + correction C1), both clients' display (M2) and the phone's explicit choice (M3) are **implemented on PR #4303**, not merged or deployed. The server flag is off and cannot yet be turned on (§7); with it off every client behaves exactly as before. This document authorizes no merge, deploy or flag change.
-**Risk class:** R2 — a shared server contract on the notebook chat route. No migration, tenant-filter, provider, prompt or safety-policy change.
+**Status:** the server half (M1 + correction C1), both clients' display (M2) and the phone's explicit choice (M3) are **implemented on PR #4303**, not merged or deployed. With the server flag off, the evidence-status behaviour does not run; §11 lists the PR's changes that are **not** behind the flag. This document authorizes no merge, deploy or flag change.
+**Risk class:** R3 (PR #4303 as a whole). It combines a shared server contract on the notebook chat route, guarded phone files, an ungated output change on the NodeChat route the beta gate drives, and a production-image dependency upgrade (§11). There is no migration, tenant-filter, provider, prompt or safety-policy change.
 
 ## 0. Document revision vs wire version
 
@@ -9,7 +9,7 @@ These are two different numbers. Don't confuse them.
 
 | | What it is | Value |
 |---|---|---|
-| **Document revision** | Which edition of this text you are reading | **r3** (this file) |
+| **Document revision** | Which edition of this text you are reading | **r4** (this file) |
 | **Wire version** | The `v` field inside every stored/streamed entry, and the capability name a client declares | **`v: 1`**, capability **`grounding_status_v1`** |
 
 Revision history:
@@ -19,7 +19,7 @@ Revision history:
 - **r3**: r2 as actually implemented, plus correction C1 (shared-library references, reference-format validation, `droppedRefCount`).
 - **r4** (this file): adds the client half (§8) and the request-id form of `fallbackOf` (§5). The wire shape is unchanged — still `v: 1`.
 
-Wire version 1 is defined by **this** revision. No deployed server has ever written an entry (the flag is not plumbed into any container — §7), so the r1 shape never existed on the wire. Any future change that an existing `grounding_status_v1` client could misread must bump **both** `v` and the capability name; adding a field a v1 reader can ignore does not.
+Wire version 1 is defined by **this** revision. No deployed server has ever written an entry (no container has had the flag on — §7), so the r1 shape never existed on the wire. Any future change that an existing `grounding_status_v1` client could misread must bump **both** `v` and the capability name; adding a field a v1 reader can ignore does not.
 
 ## 1. What F004 does and does not establish
 
@@ -141,7 +141,7 @@ The server flag `NOTEBOOK_GROUNDING_STATUS_ENABLED` is on only for `1` or `true`
 
 ## 7. Enablement status (implemented code, not enabled)
 
-The flag is **not plumbed**. The `mira-hub` services in `docker-compose.saas.yml` and `docker-compose.staging-vps.yml` use explicit `environment:` lists that do not include `NOTEBOOK_GROUNDING_STATUS_ENABLED`, so a Doppler value alone never reaches the container. Enabling anywhere first needs a reviewed Compose change. The capability record `notebook_grounding_status` in `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml` is `implemented_unconnected` and says so.
+**Staging only:** PR #4303 adds `NOTEBOOK_GROUNDING_STATUS_ENABLED=${NOTEBOOK_GROUNDING_STATUS_ENABLED:-0}` to the `mira-hub` environment list in `docker-compose.staging-vps.yml`, so it is off unless `factorylm/stg` sets it. **Production is still not plumbed:** the `mira-hub` service in `docker-compose.saas.yml` does not list the flag, so a Doppler `factorylm/prd` value never reaches the container. Enabling production needs a separately reviewed Compose change. The capability record `notebook_grounding_status` in `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml` is `implemented_unconnected` and says so.
 
 ## 8. Clients (implemented on PR #4303, not deployed)
 
@@ -200,3 +200,21 @@ The flag is **not plumbed**. The `mira-hub` services in `docker-compose.saas.yml
 | Phone live frame and saved row map to the same part | `grounding-status-live-sse.test.ts` | — |
 
 Run: `cd mira-hub && ./node_modules/.bin/vitest run src/capabilities/__tests__/grounding-status.test.ts src/capabilities/__tests__/grounding-status-route.test.ts`
+
+## 11. What is not behind the flag, and how to roll back
+
+The flag gates the evidence status: the saved entry, the live frame, history, replay, the `fallbackOf` check, the status line, the general-guidance action, and the stop of the phone's #3862 re-ask. The following changes in PR #4303 run **whatever the flag says**:
+
+| Change | Commit(s) | Effect with the flag off |
+|---|---|---|
+| NodeChat citation-marker normalization (`/api/namespace/node/[id]/chat`) | `0be3b7486` | Every NodeChat answer streams and saves `【n】` / `【n†Lx-Ly】` markers as `[n]`. Before this, they passed through verbatim. |
+| Notebook-route normalizer moved to `capabilities/answer-shape.ts` | `0be3b7486` | None intended. It is the same function, re-exported from the route, and the existing `answer-hygiene` tests still pass. |
+| `sharp` 0.35.4 → 0.35.5 (#4300, merged in unchanged) | `f88fa1a77` (#4300's `f24adcf38`, `9150b2c82`) | The image-processing library changes in every `mira-hub` image. |
+| `/v3` on a phone opens on the conversation, not the drawer (#4298, merged in unchanged) | `44652c0eb` (#4298's `6fb8869c8`) | A visible layout change on `/v3` at phone width. |
+| Clients declare `grounding_status_v1` (`/v3` chat body + detail query; unified phone shell only) | `59ef8d7b5`, `255ac7fbd` | An extra request field and query parameter. A flag-off server ignores them. |
+| Staging Compose line (default `0`) | the commit that adds this section | None until `factorylm/stg` sets the flag. |
+| `tools/mobile-e2e` optional limitation leg | `295c0332d` | None unless `LIMITATION_QUESTION` is passed. |
+
+**Feature disable (runtime, no code change):** set `NOTEBOOK_GROUNDING_STATUS_ENABLED=0` (or unset it) in `factorylm/stg` and redeploy `mira-hub` through `deploy-staging.yml`. The server stops writing, streaming and returning entries; saved entries stay in `evidence[]` and are stripped from history while the flag is off. **This does not undo any change in the table above.**
+
+**Code rollback (undoes everything, including the ungated changes):** revert PR #4303's merge commit on `main` through a normal PR, then redeploy, or redeploy the previous release, `v3.391.3` = `f83e9df255533e7c09d3f6b40e72e8aacfc91b44` (checkpoint `rollback/2026-10-07-v3.391.3`). There is no schema change, so no data rollback is needed. A narrower revert works per commit: `0be3b7486` for the NodeChat change, `255ac7fbd` for the phone, `59ef8d7b5` for `/v3`. The `sharp` and drawer changes revert with their own PRs if those land on `main` first.

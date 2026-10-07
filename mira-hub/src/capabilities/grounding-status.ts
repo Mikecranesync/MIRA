@@ -1,5 +1,5 @@
 /**
- * F004 grounding status (contract v2, PR #4303): what a notebook turn's
+ * F004 grounding status (contract document r4, wire v1, PR #4303): what a notebook turn's
  * evidence actually was, kept as two statuses that are never merged.
  *
  *   retrieval — did passages from the selected manual reach the prompt?
@@ -189,7 +189,7 @@ export function countUnresolvedMarkers(answer: string, citations: readonly { cit
   return n;
 }
 
-/** Deterministic precedence (contract v2 §3): the first matching row wins. */
+/** Deterministic precedence (contract §3): the first matching row wins. */
 export function buildGroundingStatus(i: GroundingStatusInputs): GroundingStatusEntry {
   const passageCount = i.passages.length;
   const scope = splitRefs(i.scopeDocIds.map((d) => (typeof d === "string" && UUID_RE.test(d) ? { docId: d } : null)));
@@ -276,6 +276,6 @@ export function withoutUndeclaredGroundingStatus(evidence: unknown[], show: bool
   return show ? evidence : evidence.filter((e) => !isGroundingStatusEntry(e));
 }
 
-/** Honest refusal wording (contract v2 §4) — about the attempt, never a claim
+/** Honest refusal wording (contract §4, refusal status text) — about the attempt, never a claim
  *  that the manual lacks the answer. Sent only where the entry is shown. */
 export const HONEST_REFUSAL_STATUS_MESSAGE = "I couldn't answer that from the selected sources.";

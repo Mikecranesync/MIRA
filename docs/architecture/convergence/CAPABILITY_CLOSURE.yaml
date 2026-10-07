@@ -634,7 +634,7 @@ capabilities:
   - id: notebook_grounding_status
     purpose: >-
       Record each notebook turn's retrieval status and citation status as two
-      separate facts (F004 contract v2, PR #4303), and link an explicit
+      separate facts (F004 contract r4, wire v1, PR #4303), and link an explicit
       general-guidance request to the failed manual-based turn it came from.
     customer_outcome: >-
       A technician can tell "the manual was searched and this answer cites it"
@@ -642,10 +642,11 @@ capabilities:
       "nothing was found" - and general guidance is never a silent switch.
     # The Hub reads NOTEBOOK_GROUNDING_STATUS_ENABLED (TypeScript). feature_flag is
     # omitted because tools/capability_closure.py discovers flags in Python only.
-    # NOT PLUMBED: the mira-hub service in docker-compose.saas.yml and
-    # docker-compose.staging-vps.yml takes an explicit `environment:` list with no
-    # env_file, and this flag is not on either list. A Doppler value alone never
-    # reaches the container; enabling it needs a reviewed Compose change first.
+    # Staging: PR #4303 lists the flag on mira-hub in docker-compose.staging-vps.yml,
+    # default 0. Production: NOT PLUMBED - the mira-hub service in
+    # docker-compose.saas.yml takes an explicit `environment:` list with no
+    # env_file and does not list it, so a factorylm/prd value never reaches the
+    # container; enabling production needs a separately reviewed Compose change.
     entrypoints:
       - "mira-hub/src/capabilities/grounding-status.ts"
       - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # persist + live frame + replay + fallbackOf check"
@@ -663,12 +664,16 @@ capabilities:
     state: implemented_unconnected
     reason: >-
       Server contract (M1/C1) plus both readers (M2) and the phone's explicit
-      general-guidance choice (M3) are on PR #4303, not yet merged or deployed,
-      and the flag is not plumbed into Compose. With the flag off every client
-      is unchanged, including the phone's #3862 re-ask; older installed
-      clients never declare the capability and receive byte-identical output
-      (tested). Becomes deployed_disabled once merged and deployed with the
-      flag off.
+      general-guidance choice (M3) are on PR #4303 (R3), not yet merged or
+      deployed. The flag is listed, default 0, for staging only; production
+      Compose does not list it. With the flag off the evidence status is not
+      written, streamed or shown and the phone's #3862 re-ask is unchanged;
+      older installed clients never declare the capability and receive
+      byte-identical output (tested). Not behind the flag: NodeChat citation
+      marker normalization, the sharp 0.35.5 upgrade (#4300) and the /v3
+      phone drawer default (#4298) - see contract section 11 for these and for
+      feature-disable versus code rollback. Becomes deployed_disabled once
+      merged and deployed with the flag off.
     owner: null
     owner_missing: "Product owner to confirm when PR #4303 is reviewed; implemented under the owner's M1 approval of 2026-10-07."
     ci_jobs:
