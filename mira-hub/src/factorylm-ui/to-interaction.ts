@@ -38,7 +38,7 @@ import { isMachineEvidenceEntry, isSafetyNoticeEntry, isVisualObservationEntry }
 import { API_BASE } from "@/lib/config";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
-import { splitEvidence } from "@/components/equipment/notebook-chat-utils";
+import { BASIS_LABEL, splitEvidence } from "@/components/equipment/notebook-chat-utils";
 
 type StatusAwareStreamResult = StreamResult & { statusMessage?: string | null };
 
@@ -67,6 +67,10 @@ export interface HubNotebookMeta {
    * omitted: not (yet) confirmed.
    */
   readonly confirmedIdentity?: { readonly manufacturer: string; readonly model: string } | null;
+  /** The docIds of the notebook's own sources (not rejected). The basis chip
+   *  names the notebook only for an answer whose citations are all among
+   *  these; omitted, it never does (#4025, Codex #4301 F1). */
+  readonly notebookDocIds?: readonly string[];
   /** One ISO timestamp per hydrate/turn; the caller passes it so tests stay deterministic. */
   readonly capturedAt: string;
 }
@@ -106,6 +110,38 @@ const BASIS_BY_VALUE: Readonly<Record<string, EvidenceBasisKind>> = {
 export function basisKind(basis: string): EvidenceBasisKind {
   const normalized = basis.trim().toLowerCase().replace(/\s+/g, "_");
   return BASIS_BY_VALUE[normalized] ?? "general_reasoning";
+}
+
+/** One caption per shell basis kind — the classic notebook's wording. Typed
+ *  against the SHELL's kind union, so a kind added there without a caption
+ *  here fails to compile instead of rendering an undefined label. */
+const BASIS_CAPTION: Readonly<Record<EvidenceBasisKind, string>> = BASIS_LABEL;
+
+/** A documentation basis whose sources this adapter cannot place. */
+const CITED_DOCUMENTATION_CAPTION = "Grounded in the cited documentation.";
+
+/** True only when every citation is one of the notebook's own sources. The
+ *  route sends `oem_documentation` for a shared-library answer as well
+ *  (chat/route.ts `oemRetrieval`); only its frame label told the two apart,
+ *  and that label never reaches this adapter. Library chunks carry no docId
+ *  (manual-rag.ts `ManualChunk.docId`), so they can never match. */
+function citesOnlyNotebookSources(citations: readonly EvidenceCitation[], notebookDocIds: readonly string[] | undefined): boolean {
+  if (!notebookDocIds || citations.length === 0) return false;
+  return citations.every((c) => c.docId !== "" && notebookDocIds.includes(c.docId));
+}
+
+/** The answer's basis chip. Its words are a caption for the kind (#4025: it
+ *  read "● oem_documentation" under a technician's own cited upload), so an
+ *  unknown value reads as general guidance, never as itself. A documentation
+ *  basis names the notebook only when that is provable from the citations
+ *  (Codex #4301 F1); otherwise it names no scope. `authorized` is
+ *  server-owned; nothing here carries it. */
+function basisPart(basis: string, citations: readonly EvidenceCitation[], notebookDocIds: readonly string[] | undefined): InteractionPart {
+  const kind = basisKind(basis);
+  const label = kind === "oem_documentation" && !citesOnlyNotebookSources(citations, notebookDocIds)
+    ? CITED_DOCUMENTATION_CAPTION
+    : BASIS_CAPTION[kind];
+  return { type: "evidence_basis", basis: { kind, label, authorized: false } };
 }
 
 /**
@@ -275,7 +311,7 @@ export function identityProposalOf(evidence: readonly unknown[]): IdentityPropos
  *  - `status === "error"` with text is a stop; without text a provider failure.
  *  - `status === "insufficient_evidence"` renders the abstention text only.
  */
-export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped?: boolean; turnId: string }): InteractionPart[] {
+export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped?: boolean; turnId: string; notebookDocIds?: readonly string[] }): InteractionPart[] {
   const parts: InteractionPart[] = [];
   const truncated = !result.sawStatus;
   const stopped = opts.stopped === true;
@@ -294,10 +330,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
 
   if (!nonAnswer) {
     for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId) });
-    if (result.basis) {
-      // `authorized` is server-owned; the stream carries no such signal, so it is never asserted.
-      parts.push({ type: "evidence_basis", basis: { kind: basisKind(result.basis), label: result.basis, authorized: false } });
-    }
+    if (result.basis) parts.push(basisPart(result.basis, result.citations, opts.notebookDocIds));
     if (result.machineEvidence) parts.push(machineEvidencePart(result.machineEvidence));
     if (result.visualEvidence) parts.push(visualObservationPart(result.visualEvidence));
     if (result.safetyNotice) parts.push(safetyNoticePart(result.safetyNotice));
@@ -414,9 +447,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
   }
   if (!stopped && row.answerStatus !== "error") {
     for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId) });
-    if (row.basis) {
-      parts.push({ type: "evidence_basis", basis: { kind: basisKind(row.basis), label: row.basis, authorized: false } });
-    }
+    if (row.basis) parts.push(basisPart(row.basis, citations, meta.notebookDocIds));
     for (const m of machineEvidence) parts.push(machineEvidencePart(m));
     for (const v of visualEvidence) parts.push(visualObservationPart(v));
     for (const n of notices) parts.push(safetyNoticePart(n));
