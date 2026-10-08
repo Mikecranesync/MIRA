@@ -123,15 +123,20 @@ describe("units", () => {
     expect(assigned("F004 (1) is UnderVoltage, see page 12 [1].")).toEqual({}));
 });
 
-describe("comma decimals (round-4 HIGH)", () => {
-  it("'1,76 N·m' in the answer is 1.76, not 76", () =>
-    expect(assigned("Tighten to 1,76 N·m [2].")).toEqual({ "2": ["1,76 N·m"] }));
-  it("a European-format source supports a dot-decimal answer", () => {
-    const r = supportingQuote(["Torque: 1,76 N·m per screw (European manual)."], "Tighten to 1.76 N·m [2].", "2", Q_TORQUE);
-    expect(r.support).toBe("claim");
+// Codex r6 (F10/F11) closed the number grammar: a comma inside a number is never parsed
+// (1,76 / 1,000 / 0,125 / 12,3456 are each locale-ambiguous or a fragment). Its pieces are
+// unusable — counted as claims, never matched — so these expectations changed deliberately.
+describe("comma decimals (round-4 HIGH; closed by Codex r6)", () => {
+  it("'1,76 N·m' in the answer is never read as 76 N·m — both pieces are unusable claims", () => {
+    expect(assigned("Tighten to 1,76 N·m [2].")).toEqual({ "2": ["1", "76 N·m"] });
+    expect(assignValues("Tighten to 1,76 N·m [2].", "").get("2")?.every((v) => !v.usable)).toBe(true);
   });
-  it("'1,000 V' is one thousand, and '10,20,30' is a list, not a decimal", () => {
-    expect(assignValues("Rated 1,000 V [1].", "").get("1")?.[0].nums).toEqual([1000]);
+  it("a European-format source no longer supports a dot-decimal answer (it falls back; it never mis-matches)", () => {
+    const r = supportingQuote(["Torque: 1,76 N·m per screw (European manual)."], "Tighten to 1.76 N·m [2].", "2", Q_TORQUE);
+    expect(r).toEqual({ quote: null, support: "question_fallback", unsupported: ["1.76 N·m"] });
+  });
+  it("'1,000 V' and '10,20,30' are never parsed as one number; every piece is unusable", () => {
+    expect(assignValues("Rated 1,000 V [1].", "").get("1")?.map((v) => [v.text, v.usable])).toEqual([["1", false], ["000 V", false]]);
     expect(assignValues("Setpoints 10,20,30 rpm [1].", "").get("1")?.map((v) => v.nums[0])).toEqual([10, 20, 30]);
   });
   it("comma decimal is never matched to a different number (1,76 vs 76)", () => {
@@ -375,11 +380,13 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
     expect(supportingQuote(["Supply 12 V nominal."], "Supply is 12 V ±5% [1].", "1", "").support).toBe("question_fallback");
     expect(supportingQuote(["Supply 12 V ± 5%."], "Supply is 12 V [1].", "1", "")).toEqual(fallback("12 V"));
   });
-  it("rev 5 (found pre-review): a single 3-digit group (1,000 / 1.000) is locale-ambiguous and matches only the same literal", () => {
+  // Since Codex r6 a comma group is never parsed at all, so even an identical "1,500 rpm" falls back.
+  it("rev 5 (found pre-review): a locale-ambiguous group (1,000 / 1.000) never matches — not even itself", () => {
     expect(supportingQuote(["Max 1.000 V."], "Max is 1 V [1].", "1", "")).toEqual(fallback("1 V"));
     expect(supportingQuote(["Max 1,000 V."], "Max is 1000 V [1].", "1", "")).toEqual(fallback("1000 V"));
-    expect(supportingQuote(["Speed 1,500 rpm."], "Speed is 1,500 rpm [1].", "1", "").support).toBe("claim");
-    expect(supportingQuote(["Speed 1,500,000 rpm."], "Speed is 1500000 rpm [1].", "1", "").support).toBe("claim"); // two groups: unambiguous
+    expect(supportingQuote(["Speed 1,500 rpm."], "Speed is 1,500 rpm [1].", "1", "").support).toBe("question_fallback");
+    expect(supportingQuote(["Speed 1.500 rpm."], "Speed is 1.500 rpm [1].", "1", "").support).toBe("question_fallback");
+    expect(supportingQuote(["Gap 0.125 mm."], "The gap is 0.125 mm [1].", "1", "").support).toBe("claim"); // a leading zero is a decimal
   });
   it("rev 5 (found pre-review): AC/DC marks written as symbols or with dots continue the quantity", () => {
     expect(supportingQuote(["Supply 230 V~."], "Supply is 230 VDC [1].", "1", "")).toEqual(fallback("230 VDC"));
@@ -441,6 +448,33 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
     // A capitalized word after the period starts a new sentence: an uncited sentence claims nothing (rev 4 §12).
     expect(assigned("Torque spec is 1.76 N·m max. Refer to table [2] for tolerances.")).toEqual({});
     expect(assigned("Use 1.76 N·m.  then retighten [2].")).toEqual({ "2": ["1.76 N·m"] }); // a run of spaces is no boundary either
+  });
+  it("Codex r6 F10: a zero-leading comma decimal never matches its digits as a whole number, in either direction", () => {
+    expect(supportingQuote(["Rated 0,125 V."], "Rated 125 V [1].", "1", "")).toEqual(fallback("125 V"));
+    expect(supportingQuote(["Rated 125 V."], "Rated 0,125 V [1].", "1", "")).toEqual(fallback("0", "125 V"));
+    expect(supportingQuote(["Rated 0,5 V."], "Rated 5 V [1].", "1", "")).toEqual(fallback("5 V"));
+  });
+  it("Codex r6 F11 + left boundary: a value glued to a preceding digit by punctuation is a fragment", () => {
+    expect(supportingQuote(["Rated 12,3456 V."], "Rated 3456 V [1].", "1", "")).toEqual(fallback("3456 V"));
+    expect(supportingQuote(["Run 1:30 h."], "Run time is 30 h [1].", "1", "")).toEqual(fallback("30 h"));
+    expect(supportingQuote(["Ratio 3'12 mm."], "The size is 12 mm [1].", "1", "")).toEqual(fallback("12 mm"));
+    expect(supportingQuote(["Duty 5%,12 V supply."], "The supply is 12 V [1].", "1", "").support).toBe("claim"); // not glued to a digit
+    expect(supportingQuote(["Supply (12 V) only."], "The supply is 12 V [1].", "1", "").support).toBe("claim");
+  });
+  it("closing what follows: any punctuation then a digit continues the quantity", () => {
+    expect(supportingQuote(["Rated 12 V,24 V."], "Rated 12 V [1].", "1", "")).toEqual(fallback("12 V"));
+    expect(supportingQuote(["Run 12 h:30."], "Run is 12 h [1].", "1", "")).toEqual(fallback("12 h"));
+    expect(supportingQuote(["Range 12 V…24."], "Range is 12 V [1].", "1", "")).toEqual(fallback("12 V"));
+  });
+  it("rev 4 endpoint semantics, stated: a single value is supported by a source range only at an endpoint", () => {
+    expect(supportingQuote(["Supply 12 V to 24 V."], "The supply is 12 V [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Supply 12-24 V."], "The supply is 12 V [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Supply 12-24 V."], "The supply is 18 V [1].", "1", "")).toEqual(fallback("18 V"));
+  });
+  it("Codex r6 F12: a window that covers no claimed value never replaces the quote", () => {
+    const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: `Rated 12${" ".repeat(250)}V.`, sourceUrl: "/m.pdf", sourcePage: 1 }], "Rated 12 V [1].", "");
+    expect(r.citations[0].quote).toBe("q");
+    expect([r.unsupportedValueCount, r.quoteFallbackCount]).toEqual([1, 1]);
   });
   it("the route seam counts every unusable piece of a space-grouped claim", () => {
     const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: "Output 0 V.", sourceUrl: "/m.pdf", sourcePage: 1 }], "Rated 1 000 V [1].", "");

@@ -56,9 +56,10 @@ const STOPWORDS =
 const UNKNOWN_UNIT = `(?!(?:${STOPWORDS})(?![\\p{L}\\d]))[\\p{L}°µ][\\p{L}\\d]*`;
 const UNIT_SRC =
   "n[ \\t]*[·\\-]?[ \\t]*m|lb[ \\t]*[·\\-]?[ \\t]*(?:in|ft)|v[ \\t]*(?:ac|dc)|v|ma|a|khz|hz|kw|hp|kva|°c|°f|℃|℉|%|mm2|mm|in|awg|ms|s|rpm|bar|psi|ohms?|ω";
-// Thousands separator (1,000) | decimal comma not part of a list on either side (1,76 —
-// but neither "10,20" nor "20,30" in 10,20,30) | plain.
-const NUM = "\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|(?<!\\d,)\\d+,\\d{1,2}(?![,\\d])|\\d+(?:\\.\\d+)?";
+// A number is digits with at most one dot decimal. A comma never joins a number: "1,000",
+// "1,76", "0,125" and "12,3456" each read as a thousands group in one locale and a decimal in
+// another, so their pieces are fragments — unusable (Codex r6 F10/F11).
+const NUM = "\\d+(?:\\.\\d+)?";
 // A letter, digit, dot, slash or exponent sign right before the number (F004, v1.2, 1/2, m^2,
 // ×10), a letter-hyphen code (A-20), or a letter/digit right after it (10x) means it is not a
 // value of its own. Each number may
@@ -72,14 +73,14 @@ const VALUE_RE = new RegExp(
 );
 // What follows a value must not continue the quantity. A "/" (A/mm², 12 V/24 V, 1/2 in), "^",
 // "×", "±" (12 V ±5%), an AC/DC mark ("~", "⎓", "="), a superscript or subscript, "·" (kW·h), a joined
-// "-word"/"-digit"/".digit"/",digit" (V-DC, 400 V-class, 1.2.3, 10,20), or a waveform qualifier
+// "-word" (V-DC, 400 V-class), any punctuation then a digit (1.2.3, 10,20, 12:30), or a waveform qualifier
 // (12 volts DC, 12 V rms, 12 V (AC)) makes the value unusable. The qualifier set is closed:
 // ac, dc, a.c., d.c., rms, r.m.s., peak, pk, pk-pk, p-p, pp, avg.
 const INCOMPLETE_TAIL =
-  /^(?:[ \t]*[/^×±~⎓=·⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻₀₁₂₃₄₅₆₇₈₉]|[-.,][\p{L}\d]|[ \t]*[-(]?[ \t]*(?:ac|dc|a\.c\.|d\.c\.|rms|r\.m\.s\.|peak|pk-pk|pk|p-p|pp|avg)(?![\p{L}\d]))/u;
-// "1,000" / "1.000" is a thousands group in one locale and three decimals in another, so a
-// single such group matches only the identical literal ("1,500 rpm" = "1,500 rpm").
-const AMBIGUOUS_GROUP = /^[1-9]\d{0,2}[.,]\d{3}$/;
+  /^(?:[ \t]*[/^×±~⎓=·⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻₀₁₂₃₄₅₆₇₈₉]|[-.,]\p{L}|[^\s\p{L}\d]\d|[ \t]*[-(]?[ \t]*(?:ac|dc|a\.c\.|d\.c\.|rms|r\.m\.s\.|peak|pk-pk|pk|p-p|pp|avg)(?![\p{L}\d]))/u;
+// "1.000" / "2.500" is a thousands group in one locale and three decimals in another: unusable.
+// A leading zero ("0.125") can only be a decimal.
+const AMBIGUOUS_GROUP = /^[1-9]\d{0,2}\.\d{3}$/;
 
 /** Does the text after a value continue its quantity? `tail` is lowercase-normalized,
  *  `tailKeep` the same text with case kept (unit symbols are case-sensitive). */
@@ -129,17 +130,15 @@ function canonUnit(u: string | undefined): string | null {
   return tableUnit(u) ?? `raw:${u}`;
 }
 
-/** "1,000" → 1000; "1,76" → 1.76; "1.76" → 1.76. */
+/** "1.76" → 1.76 (the grammar admits only digits and one dot). */
 function parseNum(raw: string): number {
-  return /^\d{1,3}(?:,\d{3})+/.test(raw) ? Number(raw.replace(/,/g, "")) : Number(raw.replace(",", "."));
+  return Number(raw);
 }
 
 /** `complete`: nothing before or after continues the quantity. `usable`: complete AND its
  *  unit is in the table — only usable values ever support, or are supported. */
 export type Value = {
   nums: number[];
-  /** Each number as written, digits only ("1,000"), parallel to `nums`. */
-  raws: string[];
   unit: string | null;
   start: number;
   end: number;
@@ -162,6 +161,8 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
     let k = start;
     while (k > 0 && (n[k - 1] === " " || n[k - 1] === "\t")) k--;
     let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !(k < start && /\d/.test(n[k - 1] ?? ""));
+    // Glued to a preceding digit by one punctuation character (1,000 / 12,3456 / 1:30): a fragment.
+    if (/[^\s\p{L}]/u.test(n[start - 1] ?? " ") && /\d/.test(n[start - 2] ?? "")) complete = false;
     // Decided on the ORIGINAL text: a sign, then real whitespace, with only indentation before
     // it on its line. U+2212 is always a minus. In the answer, an ASCII "- " there is Markdown
     // list syntax — rendered as a bullet, so the number is unsigned. Anywhere else (source text,
@@ -178,9 +179,9 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
       { sign, raw: m[3] },
       { sign: m[4], raw: m[5] },
     ].filter((x): x is { sign: string | undefined; raw: string } => Boolean(x.raw));
+    if (parts.some((x) => AMBIGUOUS_GROUP.test(x.raw))) complete = false;
     out.push({
       nums: parts.map((x) => (x.sign ? -1 : 1) * parseNum(x.raw)),
-      raws: parts.map((x) => x.raw),
       unit: prefix ? `${prefix}${unit ?? ""}` : unit,
       start,
       end,
@@ -288,8 +289,7 @@ function unitsAgree(claim: string | null, src: string | null): boolean {
 function satisfies(src: Value, claim: Value): boolean {
   if (!src.usable || !claim.usable) return false; // a partly recognized quantity never matches
   if (!unitsAgree(claim.unit, src.unit)) return false;
-  const same = (a: string, b: string) => a === b || !(AMBIGUOUS_GROUP.test(a) || AMBIGUOUS_GROUP.test(b));
-  return claim.nums.every((c, i) => src.nums.some((x, j) => x === c && same(claim.raws[i], src.raws[j])));
+  return claim.nums.every((c) => src.nums.some((x) => x === c));
 }
 
 export type SupportingQuote = {
@@ -327,6 +327,7 @@ export function supportingQuote(
       const end = Math.min(text.length, start + SPAN);
       const inWin = srcVals.filter((x) => x.start >= start && x.end <= end);
       const covered = claims.map((c, k) => (inWin.some((x) => satisfies(x, c)) ? k : -1)).filter((k) => k >= 0);
+      if (covered.length === 0) continue; // the window cannot hold the whole value (Codex r6 F12)
       covered.forEach((k) => everMatched.add(k));
       const win = normalize(text.slice(start, end));
       cands.push({
