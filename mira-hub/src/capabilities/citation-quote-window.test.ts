@@ -102,6 +102,22 @@ const LEFT_DOTTED_CODES = [
   "Fault 14: the DC bus voltage rose above the trip level. Extend the decel time.",
   "Fault 15: heatsink ambient temperature exceeds the rating. Check fan ventilation.",
 ].join(" ");
+// PDF text often drops the space after a sentence-ending dot ("Fault 15.Check").
+const NO_SPACE_SENTENCE_END = [
+  "Fault 15 history: see the event log for this unit.",
+  "Fault 12: output current exceeded the limit. Check the load and the motor cable.",
+  "Fault 13: a ground current was detected. Check the motor cable insulation and the output wiring.",
+  "Fault 14: the DC bus voltage rose above the trip level. Extend the decel time.",
+  "Heatsink overtemperature is Fault 15.Check the fan and the ambient temperature.",
+].join(" ");
+// A marked code that never occurs whole (only "F004A") keeps the substring match it had before.
+const NO_WHOLE_CODE = [
+  "Heatsink fan wiring diagram.",
+  "Fault 12: output current exceeded the limit. Check the load and the motor cable.",
+  "Fault 13: a ground current was detected. Check the motor cable insulation and the output wiring.",
+  "Fault 14: the DC bus voltage rose above the trip level. Extend the decel time.",
+  "F004A Heatsink fan stalled. Replace the fan.",
+].join(" ");
 const DOTTED_PARAMETERS = [
   "Drive parameter list.",
   "Parameter 1.01: the drive accel time in seconds. Set the drive accel time to suit the load.",
@@ -162,7 +178,17 @@ describe("citation quote window — an equipment number does not outrank the cla
     expect(q).toContain("Parameter 1.07: motor overload current");
   });
 
-  it("control: a code that ends a sentence still matches ('reported as Fault 15.')", () => {
+  it("a code before a sentence dot with no space still matches ('Fault 15.Check')", () => {
+    const q = relevantQuoteWindow(NO_SPACE_SENTENCE_END, "What does fault 15 mean, heatsink fan?");
+    expect(q).toContain("Heatsink overtemperature is Fault 15.");
+  });
+
+  it("a marked code that never occurs whole scores as a plain word, as before", () => {
+    const q = relevantQuoteWindow(NO_WHOLE_CODE, "What does F004 mean, heatsink fan?");
+    expect(q).toContain("F004A Heatsink fan stalled");
+  });
+
+  it("a code that ends a sentence still matches ('reported as Fault 15.')", () => {
     const q = relevantQuoteWindow(SENTENCE_END_CODE, "What does fault 15 mean on this drive");
     expect(q).toContain("reported as Fault 15.");
   });

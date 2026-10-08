@@ -75,12 +75,13 @@ export function relevantQuoteWindow(text: string, query: string, span = 240): st
   // matched against the whole chunk rather than per segment: "fault 15" must not land
   // on "Fault 150", and the segmenter splits "Fault 15.1" at its dot, so a per-segment
   // test would read the "Fault 15." fragment as Fault 15 (and never see "1.07" whole).
-  // A dot followed by a letter or digit continues a code; a sentence-ending dot does not.
+  // A dot with a digit beside it continues a code ("15.1", "1.07"); a sentence-ending
+  // dot does not, even with the space lost ("Fault 15.Check").
   // Each identifier maps to the offsets where it starts in `clean`.
   const hits = new Map(
     [...claimIdentifiers(query)].map((t) => {
       const re = new RegExp(
-        `(?<![a-z0-9]|[a-z0-9]\\.)${t.replace(/\./g, "\\.")}(?![a-z0-9]|\\.[a-z0-9])`,
+        `(?<![a-z0-9]|\\d\\.)${t.replace(/\./g, "\\.")}(?![a-z0-9]|\\.\\d)`,
         "gi",
       );
       return [t, [...clean.matchAll(re)].map((h) => h.index ?? 0)];
@@ -97,7 +98,8 @@ export function relevantQuoteWindow(text: string, query: string, span = 240): st
       let score = 0;
       for (const t of terms) {
         const at = hits.get(t);
-        if (at) score += at.some((i) => i >= segStart && i < segEnd) ? identifierWeight : 0;
+        // A marked code that never occurs whole scores as a plain word, as before.
+        if (at?.length) score += at.some((i) => i >= segStart && i < segEnd) ? identifierWeight : 0;
         else if (seg.includes(t)) score += 1;
       }
       if (score > bestScore) {
