@@ -274,6 +274,10 @@ export interface UnifiedShellHost {
   readonly onOpenItem: (item: ProjectItem) => void;
   readonly onSelectProject?: (projectId: string) => void;
   readonly navigationFooter?: ReactNode;
+  /** The notebook's sources may have changed (the chat opened, an attachment
+   *  was sent, a background manual search settled): the root re-reads the
+   *  drawer's "Sources (N)" counts, which it otherwise reads once at boot. */
+  readonly onSourcesMayHaveChanged?: () => void;
 }
 
 export interface UnifiedChatProps {
@@ -411,6 +415,10 @@ function UnifiedChatForNotebook({
       aliveRef.current = false;
     };
   }, []);
+  // The root rebuilds `host` whenever its notebook list changes, so the
+  // sources signal is read through a ref rather than captured by callbacks.
+  const hostRef = useRef(host);
+  hostRef.current = host;
   const fullMeta = useMemo<UnifiedNotebookMeta>(() => ({ ...meta, capturedAt: capturedAt.current }), [meta]);
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
@@ -568,6 +576,7 @@ function UnifiedChatForNotebook({
       const after = await getNotebookDetail(fetchedFor, { threadId: attachmentThreadId ?? undefined });
       if (!aliveRef.current || notebookIdRef.current !== fetchedFor) return null;
       confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
+      hostRef.current?.onSourcesMayHaveChanged?.();
       return true;
     } catch {
       if (aliveRef.current && notebookIdRef.current === fetchedFor) confirmedScopeRef.current = null;
@@ -666,6 +675,14 @@ function UnifiedChatForNotebook({
   // (see UnifiedChatHandlers) — they upload-and-ask immediately, which is the
   // behaviour the preview flow replaces.
   const attachTarget = attachmentNotebookId === undefined ? meta.notebookId : attachmentNotebookId;
+  // Opening a notebook's chat re-reads the drawer's source counts. The Sources
+  // panel, where uploads happen, replaces this chat while it is open, so
+  // coming back to the chat is when an upload made there becomes visible.
+  // HOME has no notebook and nothing to count.
+  const signalsSources = Boolean(attachTarget);
+  useEffect(() => {
+    if (signalsSources) hostRef.current?.onSourcesMayHaveChanged?.();
+  }, [signalsSources]);
   const attachments = useUnifiedAttachments(attachTarget, attachmentThreadId);
   const adapter = useMemo(() => createCapacitorAdapter({
     onAttachPhoto: attachments.attachPhoto,
@@ -804,6 +821,8 @@ function UnifiedChatForNotebook({
       const scope = composed.scope ?? confirmedScope;
       if (scope) handlers.onSend(composed.question, composed.rider, scope);
       else handlers.onSend(composed.question, composed.rider);
+      // The attachment is on the notebook now, so the drawer's count may move.
+      hostRef.current?.onSourcesMayHaveChanged?.();
       // Uploaded but not searchable stays visible rather than being swallowed.
       if (composed.warning) dispatch({ type: "set-send-error", error: composed.warning });
     }).catch((error: unknown) => {
