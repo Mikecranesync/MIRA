@@ -130,9 +130,11 @@ const ERROR = "Your question wasn't sent — try again.";
 
 /** The classic host's retry contract (NotebookScreen `sendQuestion`): the
  *  retry clears the host error synchronously, then reports the outcome. */
-function Host({ outcome, onRetried }: { outcome: () => "ok" | "fail" | "fail-batched"; onRetried: () => void }) {
+function Host({ outcome, onRetried, failedTurn = false }: { outcome: () => "ok" | "fail" | "fail-batched"; onRetried: () => void; failedTurn?: boolean }) {
   const [chatError, setChatError] = useState<string | null>(ERROR);
   const [failedQuestion, setFailedQuestion] = useState<string | null>("Why F004?");
+  // An interrupted answer stays in the thread as a failed turn with its own Retry.
+  const [liveTurns, setLiveTurns] = useState(failedTurn ? [{ q: "Why F004?", a: { answer: "", citations: [], status: "error" } }] : []);
   const retry = () => {
     onRetried();
     const result = outcome();
@@ -144,6 +146,7 @@ function Host({ outcome, onRetried }: { outcome: () => "ok" | "fail" | "fail-bat
     }
     setFailedQuestion(null);
     setChatError(null);
+    if (result === "ok") setLiveTurns([]);
     if (result === "fail") {
       setTimeout(() => {
         setFailedQuestion("Why F004?");
@@ -154,7 +157,7 @@ function Host({ outcome, onRetried }: { outcome: () => "ok" | "fail" | "fail-bat
   return (
     <UnifiedChat
       turns={[CITED]}
-      liveTurns={[]}
+      liveTurns={liveTurns}
       pending={null}
       busy={false}
       canStop={false}
@@ -197,6 +200,18 @@ describe("R7 — Try again sends the question, so it leaves the composer", () =>
     await act(async () => { await Promise.resolve(); });
     expect(composer().value).toBe("Why F004?");
     expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy();
+  });
+
+  it("clears the error banner too when the failed answer's own Retry succeeds", async () => {
+    render(<Host outcome={() => "ok"} onRetried={() => {}} failedTurn />);
+    await waitFor(() => expect(composer().value).toBe("Why F004?"));
+    expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy();
+    const inTurn = document.querySelector<HTMLButtonElement>('[data-part-type="error"] button');
+    expect(inTurn?.textContent).toBe("Retry");
+    fireEvent.click(inTurn!);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByRole("alert", { name: "Send error" })).toBeNull();
+    expect(composer().value).toBe("");
   });
 
   it("leaves a draft the technician has since edited alone", async () => {

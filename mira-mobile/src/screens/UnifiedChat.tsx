@@ -926,9 +926,12 @@ function UnifiedChatForNotebook({
           // A draft the technician has edited since the failure is theirs; it stays.
           if (failedQuestion && state.draft.trim() === failedQuestion.trim()) dispatch({ type: "set-draft", draft: "" });
           // The host clears its error as the retry starts (NotebookScreen
-          // `sendQuestion`). Forgetting the mirrored error lets the effect above
-          // show the next failure, and restore the question, even when it
-          // carries the identical message and lands before a render.
+          // `sendQuestion`), so the shell's copy goes now too: the failed
+          // answer's own Retry (parts.tsx) does not clear it the way the
+          // banner's Try again does. Forgetting the mirrored error then lets the
+          // effect above show the next failure, and restore the question, even
+          // when it carries the identical message and lands before a render.
+          dispatch({ type: "set-send-error", error: null });
           mirroredChatError.current = null;
           handlers.onRetry?.();
         } }
