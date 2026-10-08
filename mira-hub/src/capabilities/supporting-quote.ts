@@ -104,6 +104,26 @@ function tailAt(s: string, from: number, max = 64): string {
   return out;
 }
 
+/** Left boundary: is the value at `start` a later piece of one number? It is when a digit
+ *  precedes it across same-line spaces/tabs (1 000), a number-joining mark with or without
+ *  spaces around it (1,000 / 1 ,000 / 1,**234** / 1:30 / 12 / 24 / 12'6), or any other mark
+ *  glued with no space on either side. Brackets, table pipes and a sentence's ". " are not
+ *  joins, so "mm2 (10 AWG)", "| 5 | 3.09 N·m" and "Step 1. 12 V" stay separate values. The
+ *  leading piece is unitless or followed by a joint, so it is unusable too. */
+function laterPieceOfNumber(n: string, start: number): boolean {
+  const isWs = (i: number) => n[i] === " " || n[i] === "\t";
+  let k = start;
+  while (k > 0 && isWs(k - 1)) k--;
+  const spaced = k < start;
+  if (k > 0 && /[,:'’/×^]/.test(n[k - 1])) {
+    k--;
+    while (k > 0 && isWs(k - 1)) k--;
+  } else if (k > 0 && !spaced && /[^\s\p{L}\d]/u.test(n[k - 1]) && !isWs(k - 2)) {
+    k--;
+  }
+  return k < start && /\d/.test(n[k - 1] ?? "");
+}
+
 /** Same-length normalization: matching runs on this; quotes are cut from the original text.
  *  `keepCase` keeps letter case, for unit lookup. */
 export function normalize(s: string, keepCase = false): string {
@@ -156,13 +176,7 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     let sign: string | undefined = m[2];
-    // A digit, then a same-line run of spaces/tabs, before the value: it is a later group of one
-    // number (1 000 V, 1  000 V). The leading group is unitless, so it is unusable anyway.
-    let k = start;
-    while (k > 0 && (n[k - 1] === " " || n[k - 1] === "\t")) k--;
-    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !(k < start && /\d/.test(n[k - 1] ?? ""));
-    // Glued to a preceding digit by one punctuation character (1,000 / 12,3456 / 1:30): a fragment.
-    if (/[^\s\p{L}]/u.test(n[start - 1] ?? " ") && /\d/.test(n[start - 2] ?? "")) complete = false;
+    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !laterPieceOfNumber(n, start);
     // Decided on the ORIGINAL text: a sign, then real whitespace, with only indentation before
     // it on its line. U+2212 is always a minus. In the answer, an ASCII "- " there is Markdown
     // list syntax — rendered as a bullet, so the number is unsigned. Anywhere else (source text,

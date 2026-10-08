@@ -461,6 +461,21 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
     expect(supportingQuote(["Duty 5%,12 V supply."], "The supply is 12 V [1].", "1", "").support).toBe("claim"); // not glued to a digit
     expect(supportingQuote(["Supply (12 V) only."], "The supply is 12 V [1].", "1", "").support).toBe("claim");
   });
+  it("structural pre-review: a number-joining mark with spaces or markup around it still joins one number", () => {
+    const seam = (content: string, answer: string) =>
+      withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }], [{ content, sourceUrl: "/m.pdf", sourcePage: 1 }], answer, "");
+    const r1 = seam("Unrelated: fuse rated 234 V maximum.", "The maximum rating is 1,**234** V [1].");
+    expect([r1.citations[0].quote, r1.unsupportedValueCount, r1.quoteFallbackCount]).toEqual(["ORIGINAL", 2, 1]);
+    for (const glue of [" ,", "\t,", ", ", " , "])
+      expect(supportingQuote(["Output 0 V."], `Rated 1${glue}000 V [1].`, "1", "")).toEqual(fallback("1", "000 V"));
+    expect(supportingQuote(["Rated 1, 000 V."], "Output is 0 V [1].", "1", "")).toEqual(fallback("0 V"));
+    expect(supportingQuote(["Rated 1·000 V."], "Output is 0 V [1].", "1", "")).toEqual(fallback("0 V")); // any mark glued with no space
+    // Brackets, table pipes and a numbered step's ". " are boundaries, not joins.
+    expect(supportingQuote(["A 5.3 mm2 (10 AWG) wire."], "Use 10 AWG [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Step 1. 12 V supply."], "Use 12 V [1].", "1", "").support).toBe("claim");
+    const t = supportingQuote(["Frame E 3.09 N·m."], "| 5 | 3.09 N·m | [2] |", "2", "");
+    expect([t.support, t.quote?.includes("3.09 N·m")]).toEqual(["partial", true]);
+  });
   it("closing what follows: any punctuation then a digit continues the quantity", () => {
     expect(supportingQuote(["Rated 12 V,24 V."], "Rated 12 V [1].", "1", "")).toEqual(fallback("12 V"));
     expect(supportingQuote(["Run 12 h:30."], "Run is 12 h [1].", "1", "")).toEqual(fallback("12 h"));
