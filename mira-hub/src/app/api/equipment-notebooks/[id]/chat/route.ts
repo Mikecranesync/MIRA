@@ -45,6 +45,7 @@ import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observabili
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
+import { resolveDuplicateDocAliases } from "@/lib/uploads";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
   proposeIdentityFromText,
@@ -1887,6 +1888,11 @@ async function handleChatTurn(
   // Codex #4069 F4: a failed OEM query is not a completed zero-hit search —
   // the decline below must never say "I couldn't find it" when nothing ran.
   let oemRetrievalFailed = false;
+  // Review of #4091 (Codex @ 1082ad199/cb0741f6e, F6/F8): a "duplicate of"
+  // source owns no chunks; retrieval follows it to its original. Resolved
+  // before the tenant transaction takes a connection, never inside it.
+  const docAliases =
+    notebookRetrieval && docIds.length > 0 ? await resolveDuplicateDocAliases(ctx.tenantId, docIds) : undefined;
   const chunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
         // Raw pool on purpose (hybrid corpus law — see manual-rag.ts header):
@@ -1939,6 +1945,7 @@ async function handleChatTurn(
             // chunks of these docs are admitted without ever being marked globally
             // verified — confirmation is admission, not corpus promotion.
             approvedSourceDocIds: docIds,
+            docAliases,
           }),
         ),
       );

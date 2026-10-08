@@ -19,8 +19,9 @@
 
 import { randomUUID } from "crypto";
 import pool from "@/lib/db";
-import { withTenantContext } from "@/lib/tenant-context";
-import { createUpload, updateUploadStatus } from "@/lib/uploads";
+import { withTenantContext, withUploadRowTenantContext } from "@/lib/tenant-context";
+import { createUpload, updateUploadStatusForAttempt, UploadAttemptRevokedError } from "@/lib/uploads";
+import type { PoolClient } from "pg";
 import { proposeDocumentEdgesForNode } from "@/lib/node-document-proposals";
 import { extractText, getDocumentProxy } from "unpdf";
 
@@ -351,6 +352,13 @@ interface NodeChunkOpts {
   nodeId: string;
   unsPath: string | null;
   filename: string;
+  /** The upload's import attempt (migration 099). When present, chunks are
+   *  inserted only while the upload row still carries this attempt and is not
+   *  cancelled — with the row held FOR SHARE, so a cancel or delete waits for
+   *  this transaction and then removes what it wrote. Every door passes it;
+   *  the synchronous node-attach doors pass the attempt createUpload minted
+   *  (Codex review of #4091 at 2dfe80b81, F2). */
+  attemptId?: string | null;
 }
 
 /**
@@ -367,7 +375,7 @@ async function writeChunkRowsForNode(
   pages: string[],
   opts: NodeChunkOpts,
 ): Promise<number> {
-  const { tenantId, uploadId, nodeId, unsPath, filename } = opts;
+  const { tenantId, uploadId, nodeId, unsPath, filename, attemptId } = opts;
 
   // Unique per attachment so same-named files on different nodes never false-dedup
   // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
@@ -377,7 +385,14 @@ async function writeChunkRowsForNode(
   let idx = 0;
   let batch: ChunkRow[] = [];
 
-  await withTenantContext(tenantId, async (c) => {
+  const inTx = async <T,>(fn: (c: PoolClient) => Promise<T>): Promise<T> => {
+    if (attemptId === undefined) return withTenantContext(tenantId, fn);
+    const r = await withUploadRowTenantContext(tenantId, uploadId, attemptId, fn);
+    if (!r.held) throw new UploadAttemptRevokedError(uploadId);
+    return r.result;
+  };
+
+  await inTx(async (c) => {
     // Flush the buffered chunks as ONE multi-row INSERT, then drop them.
     // tenant_id / source_url / doc_id are constant across the whole file, so
     // they are fixed leading params ($1..$3) and only id/content/page/metadata
@@ -451,6 +466,36 @@ async function writeChunkRowsForNode(
 }
 
 /**
+ * Finish a synchronous node ingest for ITS attempt (Codex review of #4091 at
+ * 2dfe80b81, F2). The upload row is 'parsing' while this runs, so a cancel
+ * through DELETE /api/uploads/:id can revoke it; neither status write may then
+ * overwrite the cancel. A revoked attempt propagates as a failure, so the
+ * caller never links the file or reports it indexed.
+ */
+async function finishNodeIngest(
+  upload: { id: string; attemptId: string | null },
+  tenantId: string,
+  write: (attemptId: string | null) => Promise<number>,
+): Promise<number> {
+  try {
+    const chunkCount = await write(upload.attemptId);
+    await updateUploadStatusForAttempt(upload.id, tenantId, upload.attemptId, "parsed", null, {
+      kbChunkCount: chunkCount,
+    });
+    return chunkCount;
+  } catch (err) {
+    if (!(err instanceof UploadAttemptRevokedError)) {
+      await updateUploadStatusForAttempt(upload.id, tenantId, upload.attemptId, "failed", (err as Error).message).catch(
+        (markErr: unknown) => {
+          if (!(markErr instanceof UploadAttemptRevokedError)) throw markErr;
+        },
+      );
+    }
+    throw err;
+  }
+}
+
+/**
  * Extract + chunk a PDF buffer and write per-chunk knowledge_entries rows bound
  * to an EXISTING upload + node. Shared by `ingestPdfToNode` (node-attach door)
  * and the blind upload doors (#1806). Serializes the heavy unpdf parse behind the
@@ -464,6 +509,7 @@ export async function writePdfChunksForNode(opts: {
   unsPath: string | null;
   filename: string;
   buffer: Buffer | Uint8Array;
+  attemptId?: string | null;
 }): Promise<number> {
   const { buffer, ...rest } = opts;
 
@@ -494,6 +540,7 @@ export async function writeTextChunksForNode(opts: {
   unsPath: string | null;
   filename: string;
   buffer: Buffer | Uint8Array;
+  attemptId?: string | null;
 }): Promise<number> {
   const { buffer, ...rest } = opts;
   const text = new TextDecoder("utf-8", { fatal: false }).decode(
@@ -541,36 +588,26 @@ export async function ingestTextToNode(opts: {
     contentSha256: opts.contentSha256 ?? null,
   });
 
-  try {
-    const chunkCount = await writeTextChunksForNode({
+  const chunkCount = await finishNodeIngest(upload, tenantId, (attemptId) =>
+    writeTextChunksForNode({
       tenantId,
       uploadId: upload.id,
       nodeId,
       unsPath,
       filename,
       buffer,
-    });
-    await updateUploadStatus(upload.id, tenantId, "parsed", null, {
-      kbChunkCount: chunkCount,
-    });
-    void proposeDocumentEdgesForNode({
-      tenantId,
-      uploadId: upload.id,
-      nodeId,
-      unsPath,
-      filename,
-      chunkCount,
-    });
-    return { uploadId: upload.id, chunkCount };
-  } catch (err) {
-    await updateUploadStatus(
-      upload.id,
-      tenantId,
-      "failed",
-      (err as Error).message,
-    );
-    throw err;
-  }
+      attemptId,
+    }),
+  );
+  void proposeDocumentEdgesForNode({
+    tenantId,
+    uploadId: upload.id,
+    nodeId,
+    unsPath,
+    filename,
+    chunkCount,
+  });
+  return { uploadId: upload.id, chunkCount };
 }
 
 /**
@@ -634,40 +671,30 @@ export async function ingestPdfToNode(opts: {
     contentSha256: opts.contentSha256 ?? null,
   });
 
-  try {
-    const chunkCount = await writePdfChunksForNode({
+  const chunkCount = await finishNodeIngest(upload, tenantId, (attemptId) =>
+    writePdfChunksForNode({
       tenantId,
       uploadId: upload.id,
       nodeId,
       unsPath,
       filename,
       buffer,
-    });
-    await updateUploadStatus(upload.id, tenantId, "parsed", null, {
-      kbChunkCount: chunkCount,
-    });
+      attemptId,
+    }),
+  );
 
-    // Fire-and-forget: propose a grounded HAS_DOCUMENT edge node→manual on the
-    // graph (Phase 2 of the KG navigator). Decoupled + never-throws, exactly like
-    // the embed pass above — a proposal failure must NOT flip the upload to failed
-    // or surface to the caller. Promotion to a verified edge is a human action.
-    void proposeDocumentEdgesForNode({
-      tenantId,
-      uploadId: upload.id,
-      nodeId,
-      unsPath,
-      filename,
-      chunkCount,
-    });
+  // Fire-and-forget: propose a grounded HAS_DOCUMENT edge node→manual on the
+  // graph (Phase 2 of the KG navigator). Decoupled + never-throws, exactly like
+  // the embed pass above — a proposal failure must NOT flip the upload to failed
+  // or surface to the caller. Promotion to a verified edge is a human action.
+  void proposeDocumentEdgesForNode({
+    tenantId,
+    uploadId: upload.id,
+    nodeId,
+    unsPath,
+    filename,
+    chunkCount,
+  });
 
-    return { uploadId: upload.id, chunkCount };
-  } catch (err) {
-    await updateUploadStatus(
-      upload.id,
-      tenantId,
-      "failed",
-      (err as Error).message,
-    );
-    throw err;
-  }
+  return { uploadId: upload.id, chunkCount };
 }
