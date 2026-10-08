@@ -294,12 +294,17 @@ describe("Codex round 3 (PR #4319) — a value counts only when the parser consu
     expect(supportingQuote(["Supply 12 V-AC."], "Supply is 12 V-DC [1].", "1", "")).toEqual(fallback("12 V"));
     expect(supportingQuote(["Supply 12 V."], "Supply is 12 V (AC) [1].", "1", "")).toEqual(fallback("12 V"));
   });
+  // Each source holds exactly the prefix the parser would match without the rule, so only the
+  // completeness rule stands between the pair and a false 'claim'.
   it("completeness: a trailing /, ^, superscript, ·, joined word or .digit makes a value unusable", () => {
-    expect(supportingQuote(["Count is 12 only."], "Rated 12 V/24 V [1].", "1", "")).toEqual(fallback("12 V"));
+    expect(supportingQuote(["Supply 12 V only."], "Rated 12 V/24 V [1].", "1", "")).toEqual(fallback("12 V"));
     expect(supportingQuote(["Area 12 m."], "Area is 12 m^2 [1].", "1", "")).toEqual(fallback("12 m"));
     expect(supportingQuote(["Speed 102 rpm."], "Speed is 10² rpm [1].", "1", "")).toEqual(fallback("10"));
+    expect(supportingQuote(["Count is 10 only."], "Speed is 10² rpm [1].", "1", "")).toEqual(fallback("10"));
     expect(supportingQuote(["Volume 12 m nominal."], "Volume is 12 m³ [1].", "1", "")).toEqual(fallback("12 m"));
     expect(supportingQuote(["Power 12 kW."], "Energy is 12 kW·h [1].", "1", "")).toEqual(fallback("12 kW"));
+    expect(supportingQuote(["Supply 400 V."], "Use a 400 V-class drive [1].", "1", "")).toEqual(fallback("400 V"));
+    expect(supportingQuote(["Supply 10 V."], "The range is 10 V-20 V [1].", "1", "")).toEqual(fallback("10 V"));
     expect(supportingQuote(["Firmware 1.2.0 required."], "Firmware 1.2.3 is required [1].", "1", "")).toEqual(fallback("1.2"));
   });
   it("a comparator is part of the value, like ±", () => {
