@@ -113,18 +113,20 @@ function tailAt(s: string, from: number, max = 64): string {
 function laterPieceOfNumber(n: string, start: number): boolean {
   const isWs = (i: number) => n[i] === " " || n[i] === "\t";
   // #4320: screen the WHOLE match, not only its digits. ≈/~ remain the existing
-  // approximation decoration, including across inline-markup whitespace.
+  // approximation decoration; opening quotes wrap the value, including across markup.
   let boundary = start;
   while (boundary > 0) {
     let at = boundary - 1;
     while (at >= 0 && isWs(at)) at--;
-    if (at < 0 || !/[≈~]/u.test(n[at])) break;
+    if (at < 0 || !/[≈~"'“‘]/u.test(n[at])) break;
     boundary = at;
   }
   const left = n[boundary - 1] ?? "";
   if (left && !/[\s([{|,;:]/u.test(left)) return true;
   let before = boundary;
   while (before > 0 && isWs(before - 1)) before--;
+  // Formatting can separate an exponent marker from its signed exponent.
+  if (/\d[ \t]*e$/u.test(n.slice(0, before))) return true;
   // Markdown normalizes to spaces: ≠ **0** / 1e+**3** must not lose a mark.
   if (before < boundary && before > 0 && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
   let k = start;

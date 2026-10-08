@@ -502,9 +502,11 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
 describe("closed left boundary (#4320 F13/F14)", () => {
   const cases = [
     ["1e+3", "3"], ["1E+3", "3"], ["1.5E+03", "3"],
-    ["1e-3", "-3"], ["1e +3", "3"], ["1e+**3**", "3"],
+    ["1e-3", "-3"], ["1e**-3**", "-3"], ["1e -3", "-3"],
+    ["1**e** **-3**", "-3"], ["1.5E **-03**", "-3"], ["1e +3", "3"], ["1e+**3**", "3"],
     ["≠0", "0"], ["≠ 0", "0"], ["≠**0**", "0"], ["≠ **0**", "0"],
     ["≠~0", "0"], ["≠ **~0**", "0"], ["≠≈0", "0"],
+    ['≠"0', "0"], ['≠ "0', "0"], ["≠“0", "0"],
     ["≠-20", "-20"], ["≠ -20", "-20"], ["≠≤0", "≤0"],
     ["!0", "0"], ["! 0", "0"], ["=0", "0"], ["= 0", "0"],
   ] as const;
@@ -531,4 +533,24 @@ describe("closed left boundary (#4320 F13/F14)", () => {
     const v = findValues(source, "source");
     expect(v.some((x) => x.usable && x.nums.includes(source.includes("-12") ? -12 : 12))).toBe(true);
   });
+});
+
+describe("quoted quantities retain support (#4321 r1 F2)", () => {
+  for (const [open, close] of [['"', '"'], ["“", "”"], ["'", "'"], ["‘", "’"]] as const) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: ${open}12 V${close} supports plain 12 V`, () => {
+        const quoted = `${open}12 V${close}`;
+        const source = `Nameplate reads ${side === "source" ? quoted : "12 V"}.`;
+        const answer = `Rated ${side === "answer" ? quoted : "12 V"} [1].`;
+        const r = withSupportingQuotes(
+          [{ citationId: "1", quote: "original question quote" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }],
+          answer, "What is the rated voltage?",
+        );
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+    }
+  }
 });
