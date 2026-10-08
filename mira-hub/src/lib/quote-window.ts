@@ -70,7 +70,14 @@ export function relevantQuoteWindow(text: string, query: string, span = 240): st
   // outweigh every plain-word match combined, or the quote lands on the row with
   // the most common words (the 2026-10-07 F004→F007 miss). A model number is not
   // a claim identifier, or the quote lands on the heading that names the model.
-  const ids = claimIdentifiers(query);
+  // An identifier carries that much weight, so it matches whole codes only:
+  // "fault 15" must not land on the "Fault 150" row.
+  const exact = new Map(
+    [...claimIdentifiers(query)].map((t) => [
+      t,
+      new RegExp(`(?<![a-z0-9])${t.replace(/\./g, "\\.")}(?![a-z0-9])`),
+    ]),
+  );
   const identifierWeight = terms.length + 1;
   let bestStart = 0;
   let bestScore = 0;
@@ -78,7 +85,11 @@ export function relevantQuoteWindow(text: string, query: string, span = 240): st
     for (const m of clean.matchAll(SEGMENT_RE)) {
       const seg = m[0].toLowerCase();
       let score = 0;
-      for (const t of terms) if (seg.includes(t)) score += ids.has(t) ? identifierWeight : 1;
+      for (const t of terms) {
+        const id = exact.get(t);
+        if (id) score += id.test(seg) ? identifierWeight : 0;
+        else if (seg.includes(t)) score += 1;
+      }
       if (score > bestScore) {
         bestScore = score;
         bestStart = m.index ?? 0;

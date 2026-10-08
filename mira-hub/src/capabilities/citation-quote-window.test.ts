@@ -73,6 +73,15 @@ const NUMBERED_FAULTS = [
   "Fault 15: the drive heatsink is too hot. Check the drive fan and the ambient temperature.",
 ].join(" ");
 
+// Codes that contain the asked-for code as a prefix, listed before it.
+const OVERLAPPING_CODES = [
+  "Drive fault list.",
+  "Fault 150: the drive output phase is open. Check the drive output wiring and the motor leads.",
+  "Fault 151: the drive lost its encoder signal. Check the drive feedback cable and its shield.",
+  "Fault 152: the drive bus capacitor is worn. Replace the drive power board before restarting.",
+  "Fault 15: the drive heatsink is too hot. Check the drive fan and the ambient temperature.",
+].join(" ");
+
 describe("citation quote window — an equipment number does not outrank the claim", () => {
   it("a model-qualified torque question keeps the torque value, not the model heading", () => {
     const q = relevantQuoteWindow(MINI_REFERENCE, "What is the terminal block screw torque on PowerFlex 525?");
@@ -93,7 +102,13 @@ describe("citation quote window — an equipment number does not outrank the cla
     const q = relevantQuoteWindow(NUMBERED_FAULTS, "What does fault 15 mean on this drive");
     expect(q).toContain("Fault 15: the drive heatsink");
   });
+
+  it("a claim code matches whole codes only: fault 15 is not fault 150", () => {
+    const q = relevantQuoteWindow(OVERLAPPING_CODES, "What does fault 15 mean on this drive");
+    expect(q).toContain("Fault 15: the drive heatsink");
+  });
 });
+
 
 describe("claimIdentifiers — which numbers the question marks as the claim", () => {
   const ids = (q: string) => [...claimIdentifiers(q)].sort();
