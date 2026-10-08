@@ -235,17 +235,18 @@ describe("Codex round 2 (PR #4319) — a parse can never loosen a claim into a w
     expect(assignValues("- 20 V supply [1]", "").get("1")?.[0].nums).toEqual([20]);
     expect(assignValues("Use the A-20 model [1].", "").get("1")).toBeUndefined();
   });
-  it("F4: an explicit unit the parser does not know is kept literally, never dropped", () => {
+  it("F4: an explicit unit is never dropped — kV and cm are not V", () => {
     expect(supportingQuote(["Voltage 12 V only."], "Voltage is 12 kV [1].", "1", "")).toEqual(fallbackWith("12 kV"));
     expect(supportingQuote(["Width 12 V and 12 mm."], "The gap is 12 cm [1].", "1", "")).toEqual(fallbackWith("12 cm"));
     expect(supportingQuote(["Supply 12 kV three phase."], "Voltage is 12 kV [1].", "1", "").support).toBe("claim");
     expect(supportingQuote(["Gap 12 cm nominal."], "The gap is 12 cm [1].", "1", "").support).toBe("claim");
     expect(supportingQuote(["Ramp time 12 s."], "The ramp takes 12 seconds [1].", "1", "").support).toBe("claim");
   });
-  it("F4: a unitless claim matches only a unitless source value (no wildcard in either direction)", () => {
+  // Design rev 5 reverses the last line deliberately: a unitless value is never usable.
+  it("F4: a unitless claim is never a wildcard — and, since rev 5, never support at all", () => {
     expect(supportingQuote(["Supply 12 V only."], "The limit is 12 [1].", "1", "").support).toBe("question_fallback");
     expect(supportingQuote(["Limit 12 boxes per shift."], "The limit is 12 [1].", "1", "").support).toBe("question_fallback");
-    expect(supportingQuote(["Row count is 12."], "The limit is 12 [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Row count is 12."], "The limit is 12 [1].", "1", "").support).toBe("question_fallback");
   });
   it("F4: the machine's model number stays excluded even when a word follows it", () => {
     expect(assignValues("The PowerFlex 525 drive is rated 1.5 kW [1].", "Is the PowerFlex 525 rated 1.5 kW?").get("1")?.map((v) => v.text.trim())).toEqual(["1.5 kW"]);
@@ -324,5 +325,75 @@ describe("Codex round 3 (PR #4319) — a value counts only when the parser consu
     const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: "Current 12 A.", sourceUrl: "/m.pdf", sourcePage: 1 }], "Current density is 12 A/mm² [1].", "");
     expect(r.citations[0].quote).toBe("q");
     expect(r.unsupportedValueCount).toBe(1);
+  });
+});
+
+describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only when every part of it is recognized", () => {
+  const fallback = (...unsupported: string[]) => ({ quote: null, support: "question_fallback", unsupported });
+
+  it("F6: unit symbols keep their case — milli is never mega, in either direction", () => {
+    expect(supportingQuote(["Power 12 mW."], "Power is 12 MW [1].", "1", "")).toEqual(fallback("12 MW"));
+    expect(supportingQuote(["Power 12 MW."], "Power is 12 mW [1].", "1", "")).toEqual(fallback("12 mW"));
+    expect(supportingQuote(["Resistance 12 mΩ."], "Insulation resistance is 12 MΩ [1].", "1", "")).toEqual(fallback("12 MΩ"));
+    expect(supportingQuote(["Resistance 12 MΩ."], "Contact resistance is 12 mΩ [1].", "1", "")).toEqual(fallback("12 mΩ"));
+    expect(supportingQuote(["Rated 12 MW output."], "Power is 12 MW [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Insulation 12 MΩ minimum."], "Insulation resistance is 12 MΩ [1].", "1", "").support).toBe("claim");
+  });
+  it("F6: N·m is never nm, and a unit outside the table is unusable rather than matching itself", () => {
+    expect(supportingQuote(["Wavelength 12 nm."], "Tighten to 12 N·m [1].", "1", "")).toEqual(fallback("12 N·m"));
+    expect(supportingQuote(["Pitch 12 furlongs."], "Pitch is 12 furlongs [1].", "1", "")).toEqual(fallback("12 furlongs"));
+  });
+  it("F7: a space-grouped number is never read as its trailing group, in either direction", () => {
+    for (const sep of [" ", " ", " "]) {
+      expect(supportingQuote(["Output 0 V."], `Rated 1${sep}000 V [1].`, "1", "")).toEqual(fallback("1", "000 V"));
+      expect(supportingQuote([`Rated 1${sep}000 V.`], "Output is 0 V [1].", "1", "")).toEqual(fallback("0 V"));
+    }
+  });
+  it("F5: a second unit after a space continues the quantity, in either direction", () => {
+    expect(supportingQuote(["Power 12 kW."], "Energy is 12 kW h [1].", "1", "")).toEqual(fallback("12 kW"));
+    expect(supportingQuote(["Energy 12 kW h."], "Power is 12 kW [1].", "1", "")).toEqual(fallback("12 kW"));
+    expect(supportingQuote(["Length 12 m."], "Speed is 12 m s⁻¹ [1].", "1", "")).toEqual(fallback("12 m"));
+    expect(supportingQuote(["Speed 12 m s⁻¹."], "Length is 12 m [1].", "1", "")).toEqual(fallback("12 m"));
+  });
+  it("rev 5: a unitless value is never usable, so a shared trailing unit can't be read away", () => {
+    expect(supportingQuote(["Count is 12 only."], "Use 12 or 24 V [1].", "1", "")).toEqual(fallback("12", "24 V"));
+    const r = supportingQuote(["Supply 24 V only."], "Use between 12 and 24 V [1].", "1", "");
+    expect(r.support).toBe("partial");
+    expect(r.unsupported).toEqual(["12"]);
+    expect(r.quote).toContain("24 V");
+  });
+  it("rev 5 controls: prose after a unit, a line that ends on a unit, and case or character variants of one unit", () => {
+    expect(supportingQuote(["Torque 12 N·m\n3. Next step"], "Tighten to 12 N·m [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Supply 24 V in the cabinet."], "Supply is 24 V [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Output 2.2 KW continuous."], "Output is 2.2 kW [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Ripple at 50 hz."], "Ripple is at 50 Hz [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Pulse 12 μs wide."], "The pulse is 12 µs [1].", "1", "").support).toBe("claim"); // U+03BC vs U+00B5
+    expect(supportingQuote(["Max 40 ℃."], "The maximum is 40 °C [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Resistance 12 Ω."], "Resistance is 12 Ω [1].", "1", "").support).toBe("claim"); // OHM SIGN vs Greek Omega
+  });
+  it("rev 5 (found pre-review): a ± tolerance after a value continues the quantity, in either direction", () => {
+    expect(supportingQuote(["Supply 12 V nominal."], "Supply is 12 V ±5% [1].", "1", "").support).toBe("question_fallback");
+    expect(supportingQuote(["Supply 12 V ± 5%."], "Supply is 12 V [1].", "1", "")).toEqual(fallback("12 V"));
+  });
+  it("rev 5 (found pre-review): a single 3-digit group (1,000 / 1.000) is locale-ambiguous and matches only the same literal", () => {
+    expect(supportingQuote(["Max 1.000 V."], "Max is 1 V [1].", "1", "")).toEqual(fallback("1 V"));
+    expect(supportingQuote(["Max 1,000 V."], "Max is 1000 V [1].", "1", "")).toEqual(fallback("1000 V"));
+    expect(supportingQuote(["Speed 1,500 rpm."], "Speed is 1,500 rpm [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Speed 1,500,000 rpm."], "Speed is 1500000 rpm [1].", "1", "").support).toBe("claim"); // two groups: unambiguous
+  });
+  it("rev 5 (found pre-review): AC/DC marks written as symbols or with dots continue the quantity", () => {
+    expect(supportingQuote(["Supply 230 V~."], "Supply is 230 VDC [1].", "1", "")).toEqual(fallback("230 VDC"));
+    expect(supportingQuote(["Supply 24 V=."], "Supply is 24 VAC [1].", "1", "")).toEqual(fallback("24 VAC"));
+    expect(supportingQuote(["Supply 12 V d.c."], "Supply is 12 V a.c. [1].", "1", "")).toEqual(fallback("12 V"));
+    expect(supportingQuote(["Supply 12 V."], "Supply is 12 V₁ [1].", "1", "")).toEqual(fallback("12 V")); // a subscript extends the unit
+  });
+  it("rev 5 (found pre-review): every Unicode space separates digit groups, not only NBSP", () => {
+    for (const sep of [" ", "　", " "])
+      expect(supportingQuote(["Output 0 V."], `Rated 1${sep}000 V [1].`, "1", "")).toEqual(fallback("1", "000 V"));
+  });
+  it("the route seam counts every unusable piece of a space-grouped claim", () => {
+    const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: "Output 0 V.", sourceUrl: "/m.pdf", sourcePage: 1 }], "Rated 1 000 V [1].", "");
+    expect(r.citations[0].quote).toBe("q");
+    expect(r.unsupportedValueCount).toBe(2);
   });
 });
