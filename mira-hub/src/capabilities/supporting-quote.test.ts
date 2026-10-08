@@ -434,6 +434,14 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
       expect(supportingQuote([`Energy 12 kW${"\t".repeat(len)}h.`], "Power is 12 kW [1].", "1", "")).toEqual(fallback("12 kW"));
     }
   });
+  it("pre-review: an abbreviation period mid-sentence does not cut a value off from its marker", () => {
+    expect(assigned("Torque spec is 1.76 N·m max. per frame [2].")).toEqual({ "2": ["1.76 N·m"] });
+    expect(assigned("Set approx. 1.76 N·m, i.e. the rated torque [2].")).toEqual({ "2": ["1.76 N·m"] });
+    expect(supportingQuote([VALUE_CHUNK], "Torque spec is 1.76…2.16 N·m max. per frame [2].", "2", Q_TORQUE).quote).toContain("1.76…2.16 N•m");
+    // A capitalized word after the period starts a new sentence: an uncited sentence claims nothing (rev 4 §12).
+    expect(assigned("Torque spec is 1.76 N·m max. Refer to table [2] for tolerances.")).toEqual({});
+    expect(assigned("Use 1.76 N·m.  then retighten [2].")).toEqual({ "2": ["1.76 N·m"] }); // a run of spaces is no boundary either
+  });
   it("the route seam counts every unusable piece of a space-grouped claim", () => {
     const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: "Output 0 V.", sourceUrl: "/m.pdf", sourcePage: 1 }], "Rated 1 000 V [1].", "");
     expect(r.citations[0].quote).toBe("q");

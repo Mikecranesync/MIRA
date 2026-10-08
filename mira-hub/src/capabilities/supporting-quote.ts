@@ -195,7 +195,8 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
 const MARKER_RE = /\[(\d+)\]/g;
 
 /** Regions: a whole table row; else sentences/list items within a line. A sentence end
- *  followed by a citation marker is not a boundary, so `… N·m. [2]` binds backward. */
+ *  followed by a citation marker is not a boundary, so `… N·m. [2]` binds backward; nor is a
+ *  period followed by a lowercase word (an abbreviation mid-sentence). */
 function regions(answer: string): [number, number][] {
   const out: [number, number][] = [];
   let lineStart = 0;
@@ -208,7 +209,8 @@ function regions(answer: string): [number, number][] {
       continue;
     }
     let s = ls;
-    for (const m of line.matchAll(/[.!?](?!\s*\[\d+\])\s+/g)) {
+    // A lowercase word after the period continues the sentence ("max. per frame", "i.e. the").
+    for (const m of line.matchAll(/[.!?](?!\s*\[\d+\])\s+(?![\s\p{Ll}])/gu)) {
       const idx = m.index ?? 0;
       out.push([s, ls + idx + 1]);
       s = ls + idx + m[0].length;
