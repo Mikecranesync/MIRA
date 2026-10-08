@@ -194,72 +194,269 @@ def test_guarded_public_trees_are_critical():
 
 
 def test_content_based_tenant_detection_on_knowledge_entries(tmp_path):
-    """F1: a file outside any glob becomes critical if it contains knowledge_entries."""
-    (tmp_path / "random_service.py").write_text(
-        'def query_knowledge():\n    db.query("SELECT * FROM knowledge_entries WHERE tenant_id = ?", tid)\n'
+    """F1: a file outside any glob becomes critical if changed lines contain knowledge_entries."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    (repo / "random_service.py").write_text(
+        'def query_knowledge():\n    db.query("SELECT * FROM knowledge_entries WHERE id = ?", tid)\n'
     )
+    g("add", "random_service.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add tenant query")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
     import router as r
     orig_repo = r.REPO
     try:
-        r.REPO = tmp_path
-        assert r.classify(["random_service.py"]) == "critical"
+        r.REPO = repo
+        assert r.classify(["random_service.py"], base, head) == "critical"
     finally:
         r.REPO = orig_repo
 
 
 def test_content_based_tenant_detection_on_tenant_id_filter(tmp_path):
-    """F1: tenant_id filtering makes a file critical."""
-    (tmp_path / "some_handler.py").write_text(
+    """F1: tenant_id filtering in changed lines makes a file critical."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    (repo / "some_handler.py").write_text('rows = db.execute("SELECT * FROM assets")\n')
+    g("add", "some_handler.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    (repo / "some_handler.py").write_text(
         'rows = db.execute("SELECT * FROM assets WHERE tenant_id = %s", (current_tenant,))\n'
     )
+    g("add", "some_handler.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add tenant filter")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
     import router as r
     orig_repo = r.REPO
     try:
-        r.REPO = tmp_path
-        assert r.classify(["some_handler.py"]) == "critical"
+        r.REPO = repo
+        assert r.classify(["some_handler.py"], base, head) == "critical"
     finally:
         r.REPO = orig_repo
 
 
 def test_content_based_tenant_detection_on_tenant_scoped_session(tmp_path):
-    """F1: TenantScopedSession usage makes a file critical."""
-    (tmp_path / "session_factory.py").write_text(
+    """F1: TenantScopedSession usage in changed lines makes a file critical."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    (repo / "session_factory.py").write_text(
         'from mira.tenant import TenantScopedSession\n\ndef get_session():\n    return TenantScopedSession()\n'
     )
+    g("add", "session_factory.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add scoped session")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
     import router as r
     orig_repo = r.REPO
     try:
-        r.REPO = tmp_path
-        assert r.classify(["session_factory.py"]) == "critical"
+        r.REPO = repo
+        assert r.classify(["session_factory.py"], base, head) == "critical"
     finally:
         r.REPO = orig_repo
 
 
 def test_content_based_tenant_detection_on_rls(tmp_path):
-    """F1: RLS (Row-Level Security) makes a file critical."""
-    (tmp_path / "migration_042.sql").write_text(
-        'ALTER TABLE documents ENABLE ROW LEVEL SECURITY;\nCREATE POLICY tenant_isolation ON documents USING (tenant_id = current_setting(\'app.tenant_id\'));\n'
+    """F1: RLS (Row-Level Security) in changed lines makes a file critical."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    (repo / "migration_042.sql").write_text(
+        'ALTER TABLE documents ENABLE ROW LEVEL SECURITY;\nCREATE POLICY tenant_isolation ON documents;\n'
     )
+    g("add", "migration_042.sql")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add RLS")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
     import router as r
     orig_repo = r.REPO
     try:
-        r.REPO = tmp_path
-        assert r.classify(["migration_042.sql"]) == "critical"
+        r.REPO = repo
+        assert r.classify(["migration_042.sql"], base, head) == "critical"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_content_detection_case_insensitive_matching(tmp_path):
+    """F1: markers are case-insensitive and word-boundary matched."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    # TENANT_ID (uppercase) should match
+    (repo / "config.py").write_text('TENANT_ID_COLUMN = "tenant_id"\n')
+    g("add", "config.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add config")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        assert r.classify(["config.py"], base, head) == "critical"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_content_detection_word_boundary_prevents_false_positives(tmp_path):
+    """F1: word boundaries prevent RLS from matching URLS."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    (repo / "constants.py").write_text('API_URLS = ["https://api.example.com"]\n')
+    g("add", "constants.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add urls")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        # URLS contains RLS but shouldn't match due to word boundary
+        assert r.classify(["constants.py"], base, head) == "standard"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_content_detection_unrelated_edit_to_file_with_tenant_id_elsewhere(tmp_path):
+    """F1: an unrelated edit to a file that merely contains tenant_id elsewhere doesn't trigger."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    (repo / "service.py").write_text(
+        '# File header with tenant_id reference\ndef helper():\n    return 42\n'
+    )
+    g("add", "service.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    # Edit helper function, not touching the tenant_id comment
+    (repo / "service.py").write_text(
+        '# File header with tenant_id reference\ndef helper():\n    return 43\n'
+    )
+    g("add", "service.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "change helper")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        # tenant_id is in the file but not in the changed lines
+        assert r.classify(["service.py"], base, head) == "standard"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_content_detection_fails_closed_on_unreadable_file(tmp_path):
+    """F1: unreadable file routes critical."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    head = base  # nonexistent file
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        # Attempting to check a file that doesn't exist routes critical (fail closed)
+        assert r.classify(["nonexistent.py"], base, head) == "critical"
     finally:
         r.REPO = orig_repo
 
 
 def test_content_detection_does_not_false_positive_on_unrelated_content(tmp_path):
-    """F1: files without tenant markers stay at their glob tier."""
-    (tmp_path / "utils.py").write_text('def format_date(d):\n    return d.strftime("%Y-%m-%d")\n')
+    """F1: files without tenant markers in changed lines stay at their glob tier."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    (repo / "utils.py").write_text('def format_date(d):\n    return d.strftime("%Y-%m-%d")\n')
+    g("add", "utils.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add utils")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
     import router as r
     orig_repo = r.REPO
     try:
-        r.REPO = tmp_path
-        # utils.py matches no globs, so it's standard
-        assert r.classify(["utils.py"]) == "standard"
+        r.REPO = repo
+        assert r.classify(["utils.py"], base, head) == "standard"
     finally:
         r.REPO = orig_repo
+
+
+def test_top_level_guard_and_gate_tests_are_critical():
+    """F1: top-level tests/test_*guard*.py and tests/test_*gate*.py are critical."""
+    assert router.classify(["tests/test_capability_closure_guard.py"]) == "critical"
+    assert router.classify(["tests/test_hold_gate.py"]) == "critical"
+    assert router.classify(["tests/test_kg_write_guard.py"]) == "critical"
+    assert router.classify(["tests/test_rm_guard.py"]) == "critical"
+    assert router.classify(["tests/test_lifecycle_guard.py"]) == "critical"
+
+
+def test_review_producer_tests_are_critical():
+    """F1: tests of review producers are critical."""
+    assert router.classify(["tests/test_gate7_review.py"]) == "critical"
+    assert router.classify(["tests/review_router/test_router.py"]) == "critical"
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +713,25 @@ def test_ledger_with_all_finite_costs_sums_normally():
     """F3: when all costs are finite, spent_usd sums normally."""
     ledger = [{"cost_usd": 1.2}, {"cost_usd": 3.4}, {"cost_usd": 0.5}]
     assert router.spent_usd(ledger) == pytest.approx(5.1)
+
+
+def test_env_var_budget_defaults_are_validated(monkeypatch):
+    """F3: budget defaults from environment variables are validated."""
+    monkeypatch.setenv("REVIEW_BUDGET_USD", "nan")
+    with pytest.raises((SystemExit, ValueError)):
+        router.main(["1"])
+    
+    monkeypatch.setenv("REVIEW_BUDGET_USD", "20")
+    monkeypatch.setenv("REVIEW_ROUND_CEILING_USD", "-5")
+    with pytest.raises((SystemExit, ValueError)):
+        router.main(["1"])
+
+
+def test_env_var_inf_budget_is_rejected(monkeypatch):
+    """F3: infinite budget from env var is rejected."""
+    monkeypatch.setenv("REVIEW_BUDGET_USD", "inf")
+    with pytest.raises((SystemExit, ValueError)):
+        router.main(["1"])
 
 
 def test_ledger_round_trip(tmp_path):
