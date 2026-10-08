@@ -45,6 +45,7 @@ import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observabili
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
+import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
   proposeIdentityFromText,
@@ -3671,8 +3672,16 @@ async function handleChatTurn(
 
       // A rejected turn ships ZERO citations — the retrieved content that drove
       // the rejected draft must not be presented as the replacement's authority.
-      const emittedCitations =
-        !docGrounded || !served || refused || outputRejected ? [] : citationsUsedInAnswer(answerText, citations);
+      // #4315: each emitted citation's proof quote is re-derived from the ANSWER — the
+      // window, across every chunk of the cited page, holding the values that citation
+      // claims (number + unit). A citation with no matched value keeps its quote as is.
+      const quoted = withSupportingQuotes(
+        !docGrounded || !served || refused || outputRejected ? [] : citationsUsedInAnswer(answerText, citations),
+        chunks,
+        answerText,
+        message,
+      );
+      const emittedCitations = quoted.citations;
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
         ? "error"
         : refused
@@ -3741,6 +3750,8 @@ async function handleChatTurn(
           jev_latency_ms: jev.latency_ms,
           jev_input_tokens: jev.input_tokens,
           citations_shipped: emittedCitations.length,
+          cited_values_unsupported: quoted.unsupportedValueCount,
+          citation_quote_fallbacks: quoted.quoteFallbackCount,
           evidence_followed: evidenceFollowed,
           gate_match: gateMatch,
         });
@@ -3791,6 +3802,8 @@ async function handleChatTurn(
             "mira.safety.classification": electricalHazardDirective ? "hazard_directive" : "none",
             "mira.evidence.sufficient": evidenceSufficient,
             "mira.answer_gate.citations_shipped": emittedCitations.length,
+            "mira.citation.unsupported_values": quoted.unsupportedValueCount,
+            "mira.citation.quote_fallbacks": quoted.quoteFallbackCount,
             "mira.evidence.followed": evidenceFollowed?.verdict ?? "not_applicable",
           },
           finalAnswerGateSpan,
