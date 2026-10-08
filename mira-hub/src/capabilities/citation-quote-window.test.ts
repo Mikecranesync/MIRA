@@ -88,6 +88,35 @@ const OVERLAPPING_CODES = [
   "Fault 15: the drive heatsink is too hot. Check the drive fan and the ambient temperature.",
 ].join(" ");
 
+// Dotted codes (Codex round 2 on #4307). The segmenter splits "15.1" at its dot, so a
+// per-segment test read the "Fault 15." fragment as Fault 15 and could never see "1.07".
+const DOTTED_CODES =
+  "Drive fault list. Fault 15.1: the drive output current exceeded the limit. Check the drive load and the motor cable. " +
+  "Fault 13: the drive detected a ground current. Check the motor cable insulation and the drive output wiring. " +
+  "Fault 14: the DC bus voltage rose above the trip level. Extend the decel time. " +
+  "Fault 15: heatsink ambient temperature exceeds the rating. Check fan ventilation.";
+const LEFT_DOTTED_CODES = [
+  "Drive fault list.",
+  "Fault 1.15 (drive overcurrent): output current exceeded the limit. Check the load and the motor cable.",
+  "Fault 13: the drive detected a ground current. Check the motor cable insulation and the drive output wiring.",
+  "Fault 14: the DC bus voltage rose above the trip level. Extend the decel time.",
+  "Fault 15: heatsink ambient temperature exceeds the rating. Check fan ventilation.",
+].join(" ");
+const DOTTED_PARAMETERS = [
+  "Drive parameter list.",
+  "Parameter 1.01: the drive accel time in seconds. Set the drive accel time to suit the load.",
+  "Parameter 1.02: the drive decel time in seconds. Set the drive decel time to suit the load.",
+  "Parameter 1.03: the drive base speed in rpm. Match the drive base speed to the motor nameplate.",
+  "Parameter 1.07: motor overload current in amps. Set it to the motor full-load current.",
+].join(" ");
+const SENTENCE_END_CODE = [
+  "Drive fault list.",
+  "Fault 12: drive output current exceeded the limit. Check the drive load and the motor cable.",
+  "Fault 13: the drive detected a ground current. Check the motor cable insulation and the drive output wiring.",
+  "Fault 14: the DC bus voltage rose above the trip level. Extend the decel time.",
+  "An overheated heatsink is reported as Fault 15. Check the drive fan.",
+].join(" ");
+
 describe("citation quote window — an equipment number does not outrank the claim", () => {
   it("a model-qualified torque question keeps the torque value, not the model heading", () => {
     const q = relevantQuoteWindow(MINI_REFERENCE, "What is the terminal block screw torque on PowerFlex 525?");
@@ -116,6 +145,26 @@ describe("citation quote window — an equipment number does not outrank the cla
   it("a bare number the question labels as a fault is the claim", () => {
     const q = relevantQuoteWindow(NUMBERED_FAULTS, "What does fault 15 mean on this drive");
     expect(q).toContain("Fault 15: the drive heatsink");
+  });
+
+  it("a claim code is not the prefix of a dotted code: fault 15 is not fault 15.1", () => {
+    const q = relevantQuoteWindow(DOTTED_CODES, "What does fault 15 mean, heatsink ambient temperature?");
+    expect(q).toContain("Fault 15: heatsink ambient temperature");
+  });
+
+  it("a claim code is not the tail of a dotted code: fault 15 is not fault 1.15", () => {
+    const q = relevantQuoteWindow(LEFT_DOTTED_CODES, "What does fault 15 mean on this drive");
+    expect(q).toContain("Fault 15: heatsink ambient temperature");
+  });
+
+  it("a dotted claim code matches whole: parameter 1.07", () => {
+    const q = relevantQuoteWindow(DOTTED_PARAMETERS, "What does parameter 1.07 mean on this drive");
+    expect(q).toContain("Parameter 1.07: motor overload current");
+  });
+
+  it("control: a code that ends a sentence still matches ('reported as Fault 15.')", () => {
+    const q = relevantQuoteWindow(SENTENCE_END_CODE, "What does fault 15 mean on this drive");
+    expect(q).toContain("reported as Fault 15.");
   });
 
   it("a claim code matches whole codes only: fault 15 is not fault 150", () => {

@@ -71,13 +71,20 @@ export function relevantQuoteWindow(text: string, query: string, span = 240): st
   // "drive") appear in many rows of a fault table. One identifier match must
   // outweigh every plain-word match combined, or the quote lands on the row with
   // the most common words (the 2026-10-07 F004→F007 miss).
-  // An identifier carries that much weight, so it matches whole codes only:
-  // "fault 15" must not land on the "Fault 150" row.
-  const exact = new Map(
-    [...claimIdentifiers(query)].map((t) => [
-      t,
-      new RegExp(`(?<![a-z0-9])${t.replace(/\./g, "\\.")}(?![a-z0-9])`),
-    ]),
+  // An identifier carries that much weight, so it matches whole codes only, and it is
+  // matched against the whole chunk rather than per segment: "fault 15" must not land
+  // on "Fault 150", and the segmenter splits "Fault 15.1" at its dot, so a per-segment
+  // test would read the "Fault 15." fragment as Fault 15 (and never see "1.07" whole).
+  // A dot followed by a letter or digit continues a code; a sentence-ending dot does not.
+  // Each identifier maps to the offsets where it starts in `clean`.
+  const hits = new Map(
+    [...claimIdentifiers(query)].map((t) => {
+      const re = new RegExp(
+        `(?<![a-z0-9]|[a-z0-9]\\.)${t.replace(/\./g, "\\.")}(?![a-z0-9]|\\.[a-z0-9])`,
+        "gi",
+      );
+      return [t, [...clean.matchAll(re)].map((h) => h.index ?? 0)];
+    }),
   );
   const identifierWeight = terms.length + 1;
   let bestStart = 0;
@@ -85,10 +92,12 @@ export function relevantQuoteWindow(text: string, query: string, span = 240): st
   if (terms.length > 0) {
     for (const m of clean.matchAll(SEGMENT_RE)) {
       const seg = m[0].toLowerCase();
+      const segStart = m.index ?? 0;
+      const segEnd = segStart + m[0].length;
       let score = 0;
       for (const t of terms) {
-        const id = exact.get(t);
-        if (id) score += id.test(seg) ? identifierWeight : 0;
+        const at = hits.get(t);
+        if (at) score += at.some((i) => i >= segStart && i < segEnd) ? identifierWeight : 0;
         else if (seg.includes(t)) score += 1;
       }
       if (score > bestScore) {
