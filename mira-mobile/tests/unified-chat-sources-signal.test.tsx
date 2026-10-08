@@ -41,7 +41,6 @@ vi.mock("@capacitor/share", () => ({ Share: { share: vi.fn(async () => ({})) } }
 import { UnifiedChat } from "../src/screens/UnifiedChat";
 import { clearAttachments } from "../src/unified/attachment-handoff";
 import { _resetTransientLayersForTest } from "../src/lib/transient-layer";
-import type { NotebookServerTurn } from "../src/api/resources";
 
 const META = { notebookId: "nb-1", title: "PF525", asset: null, identityConfirmed: false };
 
@@ -122,28 +121,24 @@ describe("UnifiedChat tells the root when sources may have changed", () => {
     expect(h.onSourcesMayHaveChanged).not.toHaveBeenCalled();
   });
 
-  // The new-project case on the Pixel: the manual is acquired in the
-  // background, and the search settling is what makes it a source.
-  it("signals when a background manual search settles and the scope is re-read", async () => {
+  // The new-project case on the Pixel: a project with no turns yet, whose
+  // manual is acquired in the background. The chat's mount probe finds the
+  // running search; the search settling is what makes the manual a source.
+  it("signals when a new project's background manual search settles and the scope is re-read", async () => {
     vi.useFakeTimers();
-    const turn: NotebookServerTurn = {
-      id: "t1",
-      question: "is this a PowerFlex 525?",
-      answerStatus: "insufficient_evidence",
-      answerText: null,
-      evidence: [{ kind: "identity_proposal", manufacturer: "Allen-Bradley", model: "PowerFlex 525" }],
-      basis: null,
-    };
     fetchManualSearchStatus
       .mockResolvedValueOnce({ manufacturer: "Allen-Bradley", model: "PowerFlex 525", running: true, startedAt: "gen-1" } as never)
       .mockResolvedValue({ manufacturer: "Allen-Bradley", model: "PowerFlex 525", running: false, message: "Found it — check Sources.", startedAt: "gen-1" } as never);
     const h = host();
-    render(<UnifiedChat turns={[turn]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={handlers()} host={h} meta={META} />);
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={handlers()} host={h} meta={META} />);
     await act(async () => { await Promise.resolve(); });
+    expect(fetchManualSearchStatus).toHaveBeenCalledTimes(1);
     h.onSourcesMayHaveChanged.mockClear();
 
     await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
-    expect(screen.getByText("Found it — check Sources.")).toBeTruthy();
+    // A project with no turns has no answer to hang the status line on; the
+    // second status read is the follower settling the search.
+    expect(fetchManualSearchStatus).toHaveBeenCalledTimes(2);
     await act(async () => { await Promise.resolve(); });
 
     expect(resources.getNotebookDetail).toHaveBeenCalled();
