@@ -110,25 +110,32 @@ function tailAt(s: string, from: number, max = 64): string {
  *  glued with no space on either side. Brackets, table pipes and a sentence's ". " are not
  *  joins, so "mm2 (10 AWG)", "| 5 | 3.09 N·m" and "Step 1. 12 V" stay separate values. The
  *  leading piece is unitless or followed by a joint, so it is unusable too. */
-function laterPieceOfNumber(n: string, start: number): boolean {
+function laterPieceOfNumber(n: string, start: number, original: string): boolean {
   const isWs = (i: number) => n[i] === " " || n[i] === "\t";
   // #4320: screen the WHOLE match, not only its digits. ≈/~ remain the existing
-  // approximation decoration; opening quotes wrap the value, including across markup.
+  // approximation decoration; scan opening quotes/brackets too, across inline markup.
   let boundary = start;
+  let enclosed = false;
   while (boundary > 0) {
     let at = boundary - 1;
     while (at >= 0 && isWs(at)) at--;
-    if (at < 0 || !/[≈~"'“‘]/u.test(n[at])) break;
+    if (at < 0 || !/[≈~"'“‘([{]/u.test(n[at])) break;
+    enclosed ||= /[([{]/u.test(n[at]);
     boundary = at;
   }
   const left = n[boundary - 1] ?? "";
-  if (left && !/[\s([{|,;:]/u.test(left)) return true;
+  if (left && !/[\s([{|,;:]/u.test(left) && !(enclosed && /\p{L}/u.test(left))) return true;
   let before = boundary;
   while (before > 0 && isWs(before - 1)) before--;
   // Formatting can separate an exponent marker from its signed exponent.
   if (/\d[ \t]*e$/u.test(n.slice(0, before))) return true;
+  // Only an original bullet at an indented line start is layout. Normalization
+  // merges • with multiplication dots, so the normalized mark is insufficient.
+  const listMark = before > 0 && original[before - 1] === "•"
+    && /^[\t\p{Zs}]*$/u.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before - 1))
+    && /[\t\p{Zs}]/u.test(original[before] ?? "");
   // Markdown normalizes to spaces: ≠ **0** / 1e+**3** must not lose a mark.
-  if (before < boundary && before > 0 && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
+  if (before < boundary && before > 0 && !listMark && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
   let k = start;
   while (k > 0 && isWs(k - 1)) k--;
   const spaced = k < start;
@@ -193,7 +200,7 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     let sign: string | undefined = m[2];
-    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !laterPieceOfNumber(n, start);
+    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !laterPieceOfNumber(n, start, text);
     // Decided on the ORIGINAL text: a sign, then real whitespace, with only indentation before
     // it on its line. U+2212 is always a minus. In the answer, an ASCII "- " there is Markdown
     // list syntax — rendered as a bullet, so the number is unsigned. Anywhere else (source text,

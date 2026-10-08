@@ -554,3 +554,42 @@ describe("quoted quantities retain support (#4321 r1 F2)", () => {
     }
   }
 });
+
+// Trusted round 2: enclosing delimiters must not hide operators; bullets are layout.
+describe("enclosing operator and original list boundaries (#4320)", () => {
+  for (const marked of ["≠(0 V)", "≠ (0 V)", "≠ **(0 V)**", "≠[0 V]", "≠ {0 V}", "≠((0 V))", "≠ “(0 V)”", "≤(0 V)"]) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: enclosing ${marked} retains fallback`, () => {
+        const source = `Rated ${side === "source" ? marked : "0 V"}.`;
+        const answer = `Rated ${side === "answer" ? marked : "0 V"} [1].`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe("ORIGINAL");
+        expect(r.unsupportedValueCount).toBeGreaterThan(0);
+        expect(r.quoteFallbackCount).toBe(1);
+      });
+    }
+  }
+  for (const marked of ["• 12 V", "  • 12 V", "\u00a0•\u00a012 V", "\u2009•\u200912 V", "Header\n• 12 V", "• **12 V**", "• (12 V)", "• ≈12 V", "(12 V)", "[12 V]", "{12 V}", "value(12 V)"]) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: layout ${marked} supports the measurement`, () => {
+        const source = side === "source" ? `${marked} supply.` : "Rated 12 V.";
+        const answer = side === "answer" ? `${marked} [1].` : "Rated 12 V [1].";
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+    }
+  }
+  for (const source of ["Rated · 12 V.", "Rated • 12 V.", "2 • 12 V.", "• 2 • 12 V.", "2 · (12 V).", "≠ • 12 V."]) {
+    it(`joining mark is not list layout: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe("ORIGINAL");
+      expect(r.unsupportedValueCount).toBeGreaterThan(0);
+      expect(r.quoteFallbackCount).toBe(1);
+    });
+  }
+});
