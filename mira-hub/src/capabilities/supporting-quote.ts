@@ -116,15 +116,18 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
   // approximation decoration; scan opening quotes/brackets too, across inline markup.
   let boundary = start;
   let enclosed = false;
+  let cellBoundary = false;
   while (boundary > 0) {
     let at = boundary - 1;
     while (at >= 0 && isWs(at)) at--;
-    if (at < 0 || !/[≈~"'“‘([{]/u.test(n[at])) break;
-    enclosed ||= /[([{]/u.test(n[at]);
+    if (at < 0 || !/[≈~"'“‘([{|]/u.test(n[at])) break;
+    enclosed ||= /[([{|]/u.test(n[at]);
+    cellBoundary ||= n[at] === "|";
     boundary = at;
   }
+  const priorCellUnit = cellBoundary && /\d[ \t]*[%℃℉][ \t]*$/u.test(n.slice(0, boundary));
   const left = n[boundary - 1] ?? "";
-  if (left && !/[\s([{|,;:]/u.test(left) && !(enclosed && /\p{L}/u.test(left))) return true;
+  if (left && !priorCellUnit && !/[\s([{|,;:]/u.test(left) && !(enclosed && /\p{L}/u.test(left)) && !(cellBoundary && /\d/u.test(left))) return true;
   let before = boundary;
   while (before > 0 && isWs(before - 1)) before--;
   // Formatting can separate an exponent marker from its signed exponent.
@@ -135,7 +138,10 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
     && /^[\t\p{Zs}]*$/u.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before - 1))
     && /[\t\p{Zs}]/u.test(original[before] ?? "");
   // Markdown normalizes to spaces: ≠ **0** / 1e+**3** must not lose a mark.
-  if (before < boundary && before > 0 && !listMark && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
+  if (before < boundary && before > 0 && !listMark && !priorCellUnit && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
+  // A pipe separates cells, including compact rows; operators before an opening
+  // bar have already been screened above. Prior cell digits do not join this value.
+  if (cellBoundary) return false;
   let k = start;
   while (k > 0 && isWs(k - 1)) k--;
   const spaced = k < start;

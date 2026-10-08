@@ -593,3 +593,29 @@ describe("enclosing operator and original list boundaries (#4320)", () => {
     });
   }
 });
+
+describe("operator outside bars (#4320 final review)", () => {
+  for (const marked of ["≠|0 V|", "≠ |0 V|", "≠ **|0 V|**", "−|20 V|", "− |20 V|", "≠ ||0 V||", "≠ (|0 V|)"]) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: ${marked} cannot support its plain magnitude`, () => {
+        const plain = marked.includes("20") ? "20 V" : "0 V";
+        const source = `Rated ${side === "source" ? marked : plain}.`;
+        const answer = `Rated ${side === "answer" ? marked : plain} [1].`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe("ORIGINAL");
+        expect(r.unsupportedValueCount).toBeGreaterThan(0);
+        expect(r.quoteFallbackCount).toBe(1);
+      });
+    }
+  }
+  for (const source of ["|12 V|", "| Voltage | 12 V |", "| 5 | 12 V |", "|5|12 V|", "• |12 V|", "| 5% | 12 V |", "|5℃|12 V|", "| 5℉ |12 V|", "mm2 (12 V)"]) {
+    it(`ordinary cell supports measurement: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+  }
+});
