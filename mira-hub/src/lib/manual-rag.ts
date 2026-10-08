@@ -579,6 +579,35 @@ export function isRefusalAnswer(answer: string | null | undefined): boolean {
   return normalized.includes(QUICKSTART_REFUSAL_MARK.toLowerCase());
 }
 
+// #4224 (Defect B) — the grounding-honesty floor for an answer that cited NO
+// manual. The authenticated equipment-notebook already stamps an explicit
+// "General guidance - not grounded in this machine's documents." evidence
+// label when a turn rests on no source; /quickstart/ did not, so on
+// citations:[] it served a confident wall of text and broke the page's own
+// promise ("If we can't cite a source, we say so."). This mirrors the notebook
+// label for the anonymous OEM-corpus surface (no "this machine" - it is a
+// public demo over the shared library). Kept here so it is unit-testable.
+//
+// PLAIN TEXT, not markdown: the quickstart page renders `answer` with
+// whitespace-pre-wrap (quickstart/page.tsx), so a markdown bold would show
+// literal asterisks. The leading warning sign + phrase carry the emphasis.
+export const QUICKSTART_UNGROUNDED_NOTICE =
+  "⚠️ General guidance - not grounded in an OEM manual. No manual in the " +
+  "public library matched this question, so the guidance below is standard " +
+  "maintenance knowledge, not from your equipment's documentation.";
+
+/**
+ * Prepend the no-source notice to an answer that cited nothing. Idempotent -
+ * never double-stamps (a replay / re-wrap returns the answer unchanged). The
+ * route applies this ONLY when `citations.length === 0 && !isRefusalAnswer(..)`
+ * - the explicit refusal carries its own admission, so it is left alone.
+ */
+export function withUngroundedNotice(answer: string): string {
+  if (!answer) return answer;
+  if (answer.includes(QUICKSTART_UNGROUNDED_NOTICE)) return answer;
+  return `${QUICKSTART_UNGROUNDED_NOTICE}\n\n${answer}`;
+}
+
 /** #4068 — the same-family fallback ranks topK × this many vendor rows before filtering by family. */
 // Codex #4069 F3: wide enough that another family's higher-ranked pages cannot
 // plausibly exhaust it (120 rows per vendor name at topK 6). A matching page
