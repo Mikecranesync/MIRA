@@ -67,43 +67,70 @@ PRICES = json.loads((HERE / "prices.json").read_text())["usd_per_mtok"]
 
 TIERS = ("low", "standard", "critical")
 
-# Failure here can mean a safety, security, data-loss or gate-integrity defect:
-# always the strongest lane, never a cheaper one. Matches the R3 governance
-# floor and production-control paths from mira-sdlc-v1.md §2.1.
+# R3 paths from mira-sdlc-v1.md §2.1 (safety, security, auth, tenant, migration,
+# production-control, governance floor). Globs capture most but not content-based
+# tenant isolation rules; see _has_tenant_isolation_content() below.
 CRITICAL_GLOBS = (
     "mira-bots/shared/engine.py",
     "mira-bots/shared/guardrails.py",
     "mira-bots/shared/inference/*",
     "mira-bots/shared/citation_compliance.py",
     "mira-bots/shared/neon_recall.py",
+    "mira-bots/shared/tenant/*",
+    "mira-bots/shared/integrations/hub_neon.py",
+    "mira-sidecar/rag/neon_store.py",
+    "mira-core/mira-ingest/db/neon.py",
     "mira-hub/src/capabilities/answer-validation*",
     "mira-hub/src/capabilities/hazard-*",
     "mira-hub/src/capabilities/step-energy*",
     "mira-hub/src/lib/session*",
+    "mira-hub/src/lib/safety-classifier*",
     "mira-hub/src/middleware*",
+    "mira-hub/public/*",
+    "mira-web/public/*",
     "*migrations/*",
     "*auth*",
     "*security*",
     "*safety*",
     "*secret*",
     "scripts/adversarial-review*",
+    "scripts/kg_write_guard_allowlist.txt",
     "tools/review_router/*",
     "tools/hooks/*",
     "tools/ui_surface_lifecycle_guard.py",
     "tools/ci/*",
-    ".github/workflows/*",
+    "tools/staging_receipt.py",
+    "tools/migration_drift.py",
+    "tools/qa/retrieval_acceptance.py",
+    "tools/gate7_review.py",
+    "tools/capability_closure.py",
+    "tools/release_train.py",
+    ".github/*",
+    ".github/**/*",
+    ".githooks/*",
     "docker-compose*.yml",
+    "deployment/nginx*.conf",
     "mira-relay/*",
     "plc/*",
     "claude.md",
     "agents.md",
+    "*/claude.md",
+    "*/agents.md",
     ".claude/*",
     ".claude/**/*",
+    ".ast-grep-rules/*",
+    "sgconfig.yml",
     "docs/runbooks/*",
     "docs/adversarial-review-workflow.md",
     "docs/environments.md",
     "docs/versioning.md",
     "docs/architecture/mira-sdlc-v1.md",
+    "docs/contracts/contract-index.yaml",
+    "docs/architecture/convergence/*.yaml",
+    "pyproject.toml",
+    "tests/conftest.py",
+    "tests/*/test_*guard*.py",
+    "tests/*/test_*gate*.py",
 )
 # Only these may ride the cheapest lane: nothing here ships to a technician.
 LOW_GLOBS = (
@@ -143,10 +170,34 @@ def _match(path: str, globs: tuple[str, ...]) -> bool:
     return any(fnmatch.fnmatchcase(lowered, g.lower()) for g in globs)
 
 
+# Tenant isolation content markers (R3 per mira-sdlc-v1.md §2.1): files whose
+# content or diff touches these are critical regardless of path.
+_TENANT_MARKERS = (
+    b"knowledge_entries",
+    b"tenant_id",
+    b"TenantScopedSession",
+    b"RLS",  # Row-Level Security
+)
+
+
+def _has_tenant_isolation_content(path: str) -> bool:
+    """Content-based R3 tenant detection: returns True if the file at `path`
+    (relative to REPO) contains tenant isolation markers. Reads from the working
+    tree, so a candidate-local change is assessed by its working content."""
+    try:
+        content = (REPO / path).read_bytes()
+        return any(marker in content for marker in _TENANT_MARKERS)
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
 def classify(paths: list[str]) -> str:
     """Risk tier of a change set. Empty is treated as standard (fail closed)."""
     if not paths:
         return "standard"
+    # Content-based tenant check: any file with tenant isolation content is R3
+    if any(_has_tenant_isolation_content(p) for p in paths):
+        return "critical"
     if any(_match(p, CRITICAL_GLOBS) for p in paths):
         return "critical"
     if all(_match(p, LOW_GLOBS) for p in paths):
@@ -243,10 +294,17 @@ def _runs(ledger: list[dict]) -> list[dict]:
 
 def spent_usd(ledger: list[dict]) -> float:
     """Settled runs plus every reservation with no settling run: an interrupted
-    or concurrent run stays charged at its estimate (Codex #4202 F3/F4)."""
+    or concurrent run stays charged at its estimate (Codex #4202 F3/F4).
+    
+    Fails closed: if any row carries a non-finite cost, the total is treated
+    as infinite so the budget check refuses."""
+    import math
     settled = {r.get("reservation") for r in _runs(ledger)}
     open_res = [r for r in ledger if r.get("kind") == "reservation" and r.get("id") not in settled]
-    return sum(r.get("cost_usd", 0.0) for r in _runs(ledger)) + sum(r["cost_usd"] for r in open_res)
+    costs = [r.get("cost_usd", 0.0) for r in _runs(ledger)] + [r["cost_usd"] for r in open_res]
+    if any(not math.isfinite(c) for c in costs):
+        return float("inf")
+    return sum(costs)
 
 
 def check_budget(
@@ -641,14 +699,27 @@ def free_prefilter(pr: int, out_dir: Path, base_sha: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    def _positive_finite_float(val: str) -> float:
+        """Argparse type that validates budgets are finite and non-negative."""
+        import math
+        try:
+            f = float(val)
+        except ValueError as e:
+            raise argparse.ArgumentTypeError(f"invalid float: {val!r}") from e
+        if not math.isfinite(f):
+            raise argparse.ArgumentTypeError(f"budget must be finite, got {val}")
+        if f < 0:
+            raise argparse.ArgumentTypeError(f"budget cannot be negative, got {val}")
+        return f
+
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("pr", type=int)
     ap.add_argument(
         "--plan", action="store_true", help="print the route and estimate; spend nothing"
     )
-    ap.add_argument("--budget-usd", type=float, default=float(os.getenv("REVIEW_BUDGET_USD", "20")))
+    ap.add_argument("--budget-usd", type=_positive_finite_float, default=float(os.getenv("REVIEW_BUDGET_USD", "20")))
     ap.add_argument(
-        "--round-ceiling-usd", type=float, default=float(os.getenv("REVIEW_ROUND_CEILING_USD", "3"))
+        "--round-ceiling-usd", type=_positive_finite_float, default=float(os.getenv("REVIEW_ROUND_CEILING_USD", "3"))
     )
     ap.add_argument(
         "--ledger",

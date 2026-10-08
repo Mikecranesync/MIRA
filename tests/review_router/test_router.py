@@ -120,6 +120,148 @@ def test_a_critical_path_cannot_be_pulled_down_by_a_generic_rule():
     assert router.classify(["docs/promo-screenshots/README.md"]) == "low"
 
 
+def test_real_tenant_isolation_files_are_critical():
+    """F1: the actual tenant isolation code (neon.py tenant_id filters)."""
+    assert router.classify(["mira-core/mira-ingest/db/neon.py"]) == "critical"
+
+
+def test_tenant_scoped_session_paths_are_critical():
+    """F1: TenantScopedSession and related integration files."""
+    assert router.classify(["mira-bots/shared/tenant/session.py"]) == "critical"
+    assert router.classify(["mira-sidecar/rag/neon_store.py"]) == "critical"
+    assert router.classify(["mira-bots/shared/integrations/hub_neon.py"]) == "critical"
+
+
+def test_github_paths_outside_workflows_are_critical():
+    """F1: .github/** (not just workflows/) is governance floor."""
+    assert router.classify([".github/CODEOWNERS"]) == "critical"
+    assert router.classify([".github/pull_request_template.md"]) == "critical"
+    assert router.classify([".githooks/pre-commit"]) == "critical"
+
+
+def test_acceptance_and_receipt_scripts_are_critical():
+    """F1: staging receipt, migration drift, retrieval acceptance are R3."""
+    assert router.classify(["tools/staging_receipt.py"]) == "critical"
+    assert router.classify(["tools/migration_drift.py"]) == "critical"
+    assert router.classify(["tools/qa/retrieval_acceptance.py"]) == "critical"
+
+
+def test_review_and_guard_producers_are_critical():
+    """F1: review producers and guard tooling are governance floor."""
+    assert router.classify(["tools/gate7_review.py"]) == "critical"
+    assert router.classify(["tools/capability_closure.py"]) == "critical"
+    assert router.classify(["tools/release_train.py"]) == "critical"
+
+
+def test_nested_claude_md_files_are_critical():
+    """F1: nested */CLAUDE.md files are governance floor."""
+    assert router.classify(["mira-bots/CLAUDE.md"]) == "critical"
+    assert router.classify(["mira-hub/AGENTS.md"]) == "critical"
+
+
+def test_ast_grep_rules_and_allowlists_are_critical():
+    """F1: .ast-grep-rules, sgconfig, allowlists are governance floor."""
+    assert router.classify([".ast-grep-rules/hardcoded-secret.yml"]) == "critical"
+    assert router.classify(["sgconfig.yml"]) == "critical"
+    assert router.classify(["scripts/kg_write_guard_allowlist.txt"]) == "critical"
+
+
+def test_convergence_registry_and_contract_index_are_critical():
+    """F1: registries and contract index are governance floor."""
+    assert router.classify(["docs/contracts/contract-index.yaml"]) == "critical"
+    assert router.classify(["docs/architecture/convergence/REGISTRY.yaml"]) == "critical"
+    assert router.classify(["docs/architecture/convergence/CAPABILITY_CLOSURE.yaml"]) == "critical"
+
+
+def test_pyproject_and_test_config_are_critical():
+    """F1: pyproject.toml, conftest, guard tests are R3."""
+    assert router.classify(["pyproject.toml"]) == "critical"
+    assert router.classify(["tests/conftest.py"]) == "critical"
+    assert router.classify(["tests/review_router/test_guard.py"]) == "critical"
+    assert router.classify(["tests/ci/test_hold_gate.py"]) == "critical"
+
+
+def test_nginx_config_is_critical():
+    """F1: nginx configs are production control."""
+    assert router.classify(["deployment/nginx-saas.conf"]) == "critical"
+    assert router.classify(["deployment/nginx.conf"]) == "critical"
+
+
+def test_guarded_public_trees_are_critical():
+    """F1: mira-hub/public and mira-web/public are guarded legacy (R3)."""
+    assert router.classify(["mira-hub/public/favicon.ico"]) == "critical"
+    assert router.classify(["mira-web/public/logo.png"]) == "critical"
+
+
+def test_content_based_tenant_detection_on_knowledge_entries(tmp_path):
+    """F1: a file outside any glob becomes critical if it contains knowledge_entries."""
+    (tmp_path / "random_service.py").write_text(
+        'def query_knowledge():\n    db.query("SELECT * FROM knowledge_entries WHERE tenant_id = ?", tid)\n'
+    )
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = tmp_path
+        assert r.classify(["random_service.py"]) == "critical"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_content_based_tenant_detection_on_tenant_id_filter(tmp_path):
+    """F1: tenant_id filtering makes a file critical."""
+    (tmp_path / "some_handler.py").write_text(
+        'rows = db.execute("SELECT * FROM assets WHERE tenant_id = %s", (current_tenant,))\n'
+    )
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = tmp_path
+        assert r.classify(["some_handler.py"]) == "critical"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_content_based_tenant_detection_on_tenant_scoped_session(tmp_path):
+    """F1: TenantScopedSession usage makes a file critical."""
+    (tmp_path / "session_factory.py").write_text(
+        'from mira.tenant import TenantScopedSession\n\ndef get_session():\n    return TenantScopedSession()\n'
+    )
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = tmp_path
+        assert r.classify(["session_factory.py"]) == "critical"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_content_based_tenant_detection_on_rls(tmp_path):
+    """F1: RLS (Row-Level Security) makes a file critical."""
+    (tmp_path / "migration_042.sql").write_text(
+        'ALTER TABLE documents ENABLE ROW LEVEL SECURITY;\nCREATE POLICY tenant_isolation ON documents USING (tenant_id = current_setting(\'app.tenant_id\'));\n'
+    )
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = tmp_path
+        assert r.classify(["migration_042.sql"]) == "critical"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_content_detection_does_not_false_positive_on_unrelated_content(tmp_path):
+    """F1: files without tenant markers stay at their glob tier."""
+    (tmp_path / "utils.py").write_text('def format_date(d):\n    return d.strftime("%Y-%m-%d")\n')
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = tmp_path
+        # utils.py matches no globs, so it's standard
+        assert r.classify(["utils.py"]) == "standard"
+    finally:
+        r.REPO = orig_repo
+
+
 # ---------------------------------------------------------------------------
 # Escalation: one step up on evidence, never down
 
@@ -318,6 +460,62 @@ def test_reserve_rejects_negative_amount(tmp_path):
     led = tmp_path / "costs.jsonl"
     ok, why, rid = router.reserve(led, -0.5, budget_usd=20, round_ceiling_usd=3)
     assert not ok and rid is None and "estimate cannot be negative" in why
+
+
+# ---------------------------------------------------------------------------
+# F3 hardening: argparse validation and ledger spend with non-finite rows
+
+
+def test_argparse_rejects_nan_budget():
+    """F3: --budget-usd NaN is rejected at parse time."""
+    with pytest.raises(SystemExit):
+        router.main(["1", "--budget-usd", "nan"])
+
+
+def test_argparse_rejects_inf_budget():
+    """F3: --budget-usd inf is rejected at parse time."""
+    with pytest.raises(SystemExit):
+        router.main(["1", "--budget-usd", "inf"])
+
+
+def test_argparse_rejects_negative_budget():
+    """F3: --budget-usd -5 is rejected at parse time."""
+    with pytest.raises(SystemExit):
+        router.main(["1", "--budget-usd", "-5"])
+
+
+def test_argparse_rejects_nan_ceiling():
+    """F3: --round-ceiling-usd NaN is rejected at parse time."""
+    with pytest.raises(SystemExit):
+        router.main(["1", "--round-ceiling-usd", "nan"])
+
+
+def test_argparse_rejects_negative_ceiling():
+    """F3: --round-ceiling-usd -1 is rejected at parse time."""
+    with pytest.raises(SystemExit):
+        router.main(["1", "--round-ceiling-usd", "-1"])
+
+
+def test_ledger_with_non_finite_cost_fails_closed():
+    """F3: a ledger row with NaN or inf cost makes spent_usd return inf."""
+    ledger = [
+        {"cost_usd": 1.5},
+        {"cost_usd": float("nan")},
+        {"cost_usd": 0.8},
+    ]
+    assert router.spent_usd(ledger) == float("inf")
+
+
+def test_ledger_with_inf_cost_fails_closed():
+    """F3: a ledger row with inf cost makes spent_usd return inf."""
+    ledger = [{"cost_usd": 2.0}, {"cost_usd": float("inf")}]
+    assert router.spent_usd(ledger) == float("inf")
+
+
+def test_ledger_with_all_finite_costs_sums_normally():
+    """F3: when all costs are finite, spent_usd sums normally."""
+    ledger = [{"cost_usd": 1.2}, {"cost_usd": 3.4}, {"cost_usd": 0.5}]
+    assert router.spent_usd(ledger) == pytest.approx(5.1)
 
 
 def test_ledger_round_trip(tmp_path):
