@@ -139,9 +139,14 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
     && /[\t\p{Zs}]/u.test(original[before] ?? "");
   // Markdown normalizes to spaces: ≠ **0** / 1e+**3** must not lose a mark.
   if (before < boundary && before > 0 && !listMark && !priorCellUnit && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
-  // A pipe separates cells, including compact rows; operators before an opening
-  // bar have already been screened above. Prior cell digits do not join this value.
-  if (cellBoundary) return false;
+  // A preceding numeric coefficient is only a separate cell in a real row.
+  // Otherwise −2|20 V| is an expression, not a supported plain 20 V quantity.
+  // Retain compact rows such as |5|12 V| and the unscaled |12 V| control.
+  if (cellBoundary) {
+    const linePrefix = n.slice(n.lastIndexOf("\n", boundary - 1) + 1, boundary);
+    if (/\d[ \t]*$/u.test(linePrefix) && !/^[ \t]*\|/u.test(linePrefix)) return true;
+    return false;
+  }
   let k = start;
   while (k > 0 && isWs(k - 1)) k--;
   const spaced = k < start;

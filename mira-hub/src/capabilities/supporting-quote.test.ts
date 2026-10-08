@@ -619,3 +619,29 @@ describe("operator outside bars (#4320 final review)", () => {
     });
   }
 });
+
+
+describe("numeric coefficients outside bars (#4320 review round 4)", () => {
+  for (const expression of ["−2|20 V|", "-2 |20 V|", "−2**|20 V|**", "−2 **|20 V|**", "−2.5|20 V|", "2|20 V|", "1e+3|20 V|", "−2||20 V||"]) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: ${expression} is not the enclosed magnitude`, () => {
+        const source = `Rated ${side === "source" ? expression : "20 V"}.`;
+        const answer = `Rated ${side === "answer" ? expression : "20 V"} [1].`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe("ORIGINAL");
+        expect(r.unsupportedValueCount).toBeGreaterThan(0);
+        expect(r.quoteFallbackCount).toBe(1);
+      });
+    }
+  }
+  for (const source of ["|−2|20 V|", "| -2 | 20 V |", "Header\n|−2.5|20 V|", "| 1e+3 | 20 V |", "| Voltage | 20 V |", "|20 V|"]) {
+    it(`actual table row remains supported: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+  }
+});
