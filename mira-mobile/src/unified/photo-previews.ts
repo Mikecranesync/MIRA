@@ -9,7 +9,9 @@
  * WebView's, so that URL would not load here. The bytes come through the ONE
  * binary door (`requestBinary`) and are shown from a local `blob:` URL — the
  * pattern FilePreview's `useFileBytes` already uses for a single file. Every
- * URL is revoked on unmount; a photo that fails to load keeps the file row.
+ * URL is revoked on unmount; a photo that fails to load keeps the file row,
+ * and is fetched again when the thread refreshes or the device comes back
+ * online, up to MAX_PHOTO_ATTEMPTS times.
  */
 import { useEffect, useRef, useState } from "react";
 import type { InteractionPart, InteractionThread, InteractionTurn } from "@factorylm/interaction";
@@ -58,19 +60,31 @@ export function withPhotoPreviews(thread: InteractionThread, previews: ReadonlyM
   return { ...thread, turns };
 }
 
-/** Fetch each photo once and hold its `blob:` URL until unmount. */
+/** How many times one photo is fetched before the card settles for its file row. */
+export const MAX_PHOTO_ATTEMPTS = 3;
+
+/** Fetch each photo and hold its `blob:` URL until unmount. A failed fetch is
+ *  tried again on the next thread refresh or when the device comes back
+ *  online, so a network blip does not cost the picture for the whole session. */
 export function usePhotoPreviews(fileIds: readonly string[]): ReadonlyMap<string, string> {
   const [previews, setPreviews] = useState<ReadonlyMap<string, string>>(() => new Map());
+  // In flight, loaded, or settled (not an image): never asked for again.
   const requested = useRef(new Set<string>());
+  const attempts = useRef(new Map<string, number>());
   const urls = useRef<string[]>([]);
   const alive = useRef(true);
+  const [online, setOnline] = useState(0);
   useEffect(() => {
     alive.current = true;
+    const onOnline = () => setOnline((n) => n + 1);
+    window.addEventListener("online", onOnline);
     return () => {
       alive.current = false;
+      window.removeEventListener("online", onOnline);
       for (const url of urls.current) URL.revokeObjectURL(url);
       urls.current = [];
       requested.current.clear();
+      attempts.current.clear();
     };
   }, []);
   useEffect(() => {
@@ -78,7 +92,10 @@ export function usePhotoPreviews(fileIds: readonly string[]): ReadonlyMap<string
     if (typeof URL.createObjectURL !== "function") return;
     for (const id of fileIds) {
       if (requested.current.has(id)) continue;
+      const tried = attempts.current.get(id) ?? 0;
+      if (tried >= MAX_PHOTO_ATTEMPTS) continue;
       requested.current.add(id);
+      attempts.current.set(id, tried + 1);
       void requestBinary(fileBytesPath(id))
         .then((r) => {
           if (!alive.current || !r.contentType.startsWith("image/")) return;
@@ -87,9 +104,11 @@ export function usePhotoPreviews(fileIds: readonly string[]): ReadonlyMap<string
           setPreviews((prev) => new Map(prev).set(id, url));
         })
         .catch(() => {
-          // A photo that cannot be fetched stays a file row; nothing else depends on it.
+          // The card keeps its file row for now; the next refresh or
+          // reconnect may fetch the photo again.
+          if (alive.current) requested.current.delete(id);
         });
     }
-  }, [fileIds]);
+  }, [fileIds, online]);
   return previews;
 }

@@ -748,6 +748,10 @@ function UnifiedChatForNotebook({
   // just set locally. An upload that failed then looked like nothing happened:
   // the question reappeared in the composer with no explanation.
   const mirroredChatError = useRef<string | null>(null);
+  // Bumped by every host retry. A retry with an edited draft that fails again
+  // before a render changes nothing else this effect watches, and the banner
+  // the retry just cleared must still come back.
+  const [retryAttempt, setRetryAttempt] = useState(0);
   useEffect(() => {
     const next = chatError ?? null;
     if (mirroredChatError.current === next) return;
@@ -760,7 +764,7 @@ function UnifiedChatForNotebook({
       const q = failedQuestion ?? pending?.q ?? liveTurns.at(-1)?.q ?? "";
       if (q) dispatch({ type: "set-draft", draft: q });
     }
-  }, [chatError, failedQuestion, pending, liveTurns, state.draft]);
+  }, [chatError, failedQuestion, pending, liveTurns, state.draft, retryAttempt]);
 
   /**
    * One send, composed. On HOME there is no notebook yet, so the bytes are
@@ -933,6 +937,7 @@ function UnifiedChatForNotebook({
           // when it carries the identical message and lands before a render.
           dispatch({ type: "set-send-error", error: null });
           mirroredChatError.current = null;
+          setRetryAttempt((n) => n + 1);
           handlers.onRetry?.();
         } }
       : {}),

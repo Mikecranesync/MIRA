@@ -124,6 +124,75 @@ describe("row 4 — the sent photo shows as a picture", () => {
     expect(document.querySelector('[data-turn-id="row-2-a"] [data-part-type="visual_observation"] img')).toBeNull();
     expect(createObjectURL).not.toHaveBeenCalled();
   });
+
+  // Codex review of #4312 (F1): a photo whose fetch failed once (say, a
+  // network blip) was marked requested for the rest of the session, so it never
+  // loaded even after the thread refreshed with connectivity back.
+  const OK_IMAGE = { status: 200, bytes: new Uint8Array([1, 2, 3]), contentType: "image/jpeg" };
+  const cardImg = () => document.querySelector('[data-turn-id="row-2-a"] [data-part-type="visual_observation"] img');
+  const questionImg = () => document.querySelector('[data-turn-id="row-2-q"] [data-part-type="attachment"] img');
+  function chatWith(turns: NotebookServerTurn[]) {
+    return <UnifiedChat turns={turns} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={handlers()} meta={META} />;
+  }
+
+  it("fetches a photo again when the thread refreshes after a failed fetch", async () => {
+    client.requestBinary.mockRejectedValueOnce(new Error("Network request failed")).mockResolvedValue(OK_IMAGE);
+    const view = render(chatWith([PHOTO]));
+    await waitFor(() => expect(client.requestBinary).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(cardImg()).toBeNull();
+
+    // The thread refreshes (a new answer lands) with the network back.
+    view.rerender(chatWith([PHOTO, CITED]));
+
+    await waitFor(() => expect(cardImg()).not.toBeNull());
+    expect(client.requestBinary).toHaveBeenCalledTimes(2);
+    expect(questionImg()?.getAttribute("src")).toBe("blob:https://localhost/3");
+  });
+
+  it("fetches a failed photo again when the device comes back online", async () => {
+    client.requestBinary.mockRejectedValueOnce(new Error("Network request failed")).mockResolvedValue(OK_IMAGE);
+    render(chatWith([PHOTO]));
+    await waitFor(() => expect(client.requestBinary).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+
+    await waitFor(() => expect(cardImg()).not.toBeNull());
+    expect(client.requestBinary).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops asking for a photo after three failed fetches", async () => {
+    client.requestBinary.mockRejectedValue(new Error("Network request failed"));
+    render(chatWith([PHOTO]));
+    for (let i = 0; i < 5; i += 1) {
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { window.dispatchEvent(new Event("online")); });
+    }
+    await act(async () => { await Promise.resolve(); });
+    expect(client.requestBinary).toHaveBeenCalledTimes(3);
+  });
+
+  // Control: a photo that loaded, or that is not an image, is never asked for again.
+  it("does not fetch a loaded photo, or a non-image, again on refresh", async () => {
+    client.requestBinary.mockResolvedValue(OK_IMAGE);
+    const view = render(chatWith([PHOTO]));
+    await waitFor(() => expect(cardImg()).not.toBeNull());
+    view.rerender(chatWith([PHOTO, CITED]));
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    await act(async () => { await Promise.resolve(); });
+    expect(client.requestBinary).toHaveBeenCalledTimes(1);
+    view.unmount();
+
+    client.requestBinary.mockReset();
+    client.requestBinary.mockResolvedValue({ status: 200, bytes: new Uint8Array([1]), contentType: "text/html" });
+    const second = render(chatWith([PHOTO]));
+    await waitFor(() => expect(client.requestBinary).toHaveBeenCalledTimes(1));
+    second.rerender(chatWith([PHOTO, CITED]));
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    await act(async () => { await Promise.resolve(); });
+    expect(client.requestBinary).toHaveBeenCalledTimes(1);
+  });
 });
 
 const ERROR = "Your question wasn't sent — try again.";
@@ -221,5 +290,18 @@ describe("R7 — Try again sends the question, so it leaves the composer", () =>
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await act(async () => { await Promise.resolve(); });
     expect(composer().value).toBe("Something else");
+  });
+
+  // Codex review of #4312 (F2): with the draft edited, nothing the error
+  // effect watches changes when the retry fails again before a render, so the
+  // banner this retry cleared never came back.
+  it("shows the error again when a retry with an edited draft fails before a render", async () => {
+    render(<Host outcome={() => "fail-batched"} onRetried={() => {}} />);
+    await waitFor(() => expect(composer().value).toBe("Why F004?"));
+    fireEvent.input(composer(), { target: { value: "Something else" } });
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(composer().value).toBe("Something else");
+    expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy();
   });
 });
