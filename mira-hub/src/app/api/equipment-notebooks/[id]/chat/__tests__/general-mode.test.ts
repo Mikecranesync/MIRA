@@ -221,6 +221,81 @@ describe("basis persistence (084 / #3387) — the badge must survive reload", ()
     );
   });
 
+  // Golden Walk 2026-10-05 (staging a9795440): uncited fault-code definitions
+  // shipped as "answered" in the general lane. The technician gets the honest
+  // fallback instead. The grounded lane is unchanged (owner decision).
+  const UNCITED_DEFINITION =
+    "Fault F49123 on a Siemens drive generally indicates a **motor overload or over‑current condition** detected by the drive’s internal protection.";
+  const answerOf = async (res: Response) =>
+    (await frames(res)).filter((x) => x.kind === "content").map((x) => x.content).join("");
+
+  it("never ships an uncited fault-code meaning in the general lane", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(UNCITED_DEFINITION), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive", mode: "general" }), params));
+    expect(text).toContain("can't verify what F49123 means");
+    expect(text).not.toMatch(/overload/i);
+  });
+
+  it("a safety warning does not carry an uncited definition out (Codex #4238 r1 F2)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const hazardous = `Lockout is not required. ${UNCITED_DEFINITION}`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(hazardous), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive", mode: "general" }), params));
+    expect(text).toContain("can't verify what F49123 means");
+    expect(text).not.toMatch(/overload/i);
+  });
+
+  it("a refusal-classified draft cannot carry a definition out (Codex #4238 r2 F2)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const mixed = `I cannot find this code in the supplied manual. ${UNCITED_DEFINITION}`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(mixed), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean on this drive", mode: "general" }), params));
+    expect(text).not.toMatch(/overload/i);
+    const call = nbMock.recordTurn.mock.calls.at(-1) as unknown[] | undefined;
+    expect(JSON.stringify(call?.[2] ?? {})).not.toMatch(/overload/i);
+  });
+
+  it("keeps a cited fault-code meaning on a grounded turn", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      { docId: "d1", filename: "PF525.pdf", page: 87, content: "Fault F004 is DC bus undervoltage." },
+    ]);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("F004 is DC bus undervoltage [1]."), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F004 mean on this drive" }), params));
+    expect(text).toContain("DC bus undervoltage");
+  });
+
+  it("withholds a 'The code ...' definition with machine qualifier (Codex #4238 r8 F8)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const def = "The code F49123 on a Siemens drive generally indicates a motor overload condition.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(def), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean", mode: "general" }), params));
+    expect(text).toContain("can't verify");
+    expect(text).not.toMatch(/overload/i);
+    const call = nbMock.recordTurn.mock.calls.at(-1) as unknown[] | undefined;
+    expect(JSON.stringify(call?.[2] ?? {})).not.toMatch(/overload/i);
+  });
+
+  it("withholds a numbered-list definition (Codex #4238 r8 F8)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const def = "1) Fault F49123 on a Siemens drive generally indicates a motor overload condition.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(def), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "What does fault F49123 mean", mode: "general" }), params));
+    expect(text).toContain("can't verify");
+    expect(text).not.toMatch(/overload/i);
+  });
+
+  it("keeps procedural 'is the one to' text (Codex #4238 r8 F9)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const proc = "Fault F004 on the keypad is the one to select before pressing reset.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(proc), { status: 200 })));
+    const text = await answerOf(await POST(req({ message: "How do I clear fault F004", mode: "general" }), params));
+    expect(text).toContain("the one to select");
+    const call = nbMock.recordTurn.mock.calls.at(-1) as unknown[] | undefined;
+    expect(JSON.stringify(call?.[2] ?? {})).toContain("the one to select");
+  });
+
   it("a grounded refusal makes NO basis claim", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["d1"], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([]);
