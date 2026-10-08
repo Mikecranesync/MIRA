@@ -83,7 +83,6 @@ const AMBIGUOUS_GROUP = /^[1-9]\d{0,2}[.,]\d{3}$/;
  *  `tailKeep` the same text with case kept (unit symbols are case-sensitive). */
 function continues(tail: string, tailKeep: string): boolean {
   if (INCOMPLETE_TAIL.test(tail)) return true;
-  if (/^[ \t]+[-+]?\d/.test(tail)) return true; // a digit group or a second number, same line
   // A second table unit after a space (12 kW h, 12 m s⁻¹). "in" is the one table word that is
   // overwhelmingly the English preposition ("24 V in the cabinet"), so it never continues.
   const word = /^[ \t]+([\p{L}°µΩ%℃℉][\p{L}\d·]*)/u.exec(tailKeep)?.[1];
@@ -144,7 +143,8 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     let sign: string | undefined = m[2];
-    // A digit and a space before the value means it is a later group of one number (1 000 V).
+    // A digit and a space before the value means it is a later group of one number (1 000 V);
+    // the leading group (the 1) is unitless, so it is unusable anyway.
     let complete = !continues(n.slice(end), keep.slice(end)) && !/\d[ \t]$/.test(n.slice(Math.max(0, start - 2), start));
     // Decided on the ORIGINAL text: a sign, then real whitespace, with only indentation before
     // it on its line. U+2212 is always a minus. In the answer, an ASCII "- " there is Markdown
