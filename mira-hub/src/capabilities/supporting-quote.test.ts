@@ -406,6 +406,34 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
     findValues(`Rated 1 V${" ".repeat(40000)}`, "source");
     expect(performance.now() - t0).toBeLessThan(100); // unbounded: ~0.7 s on CHARLIE
   });
+  it("Codex r5 F8: an inherited property name is an unknown unit, never a crash, on either side", () => {
+    const names = ["constructor", "toString", "valueOf", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable", "toLocaleString", "__proto__", "__defineGetter__"];
+    for (const name of names) {
+      expect(supportingQuote([`Rated 12 ${name}.`], "Rated 12 V [1].", "1", "")).toEqual(fallback("12 V"));
+      const r = supportingQuote(["Rated 12 V."], `Rated 12 ${name} [1].`, "1", ""); // "_" is markup, so "__proto__" reads "__proto"
+      expect([r.quote, r.support, r.unsupported.length]).toEqual([null, "question_fallback", 1]);
+      expect(supportingQuote(["Rated 12 V."], `Rated 12 V ${name} [1].`, "1", "").support).toBe("claim"); // as prose after a unit
+    }
+  });
+  it("Codex r5 F7: a whitespace run between digit groups is still one number, in either direction", () => {
+    for (const run of ["  ", "\t\t", " \t ", "   ", "     "]) {
+      expect(supportingQuote([`Rated 1${run}000 V.`], "Rated 0 V [1].", "1", "")).toEqual(fallback("0 V"));
+      expect(supportingQuote(["Output 0 V."], `Rated 1${run}000 V [1].`, "1", "")).toEqual(fallback("1", "000 V"));
+    }
+    expect(supportingQuote(["Rated 1 **000** V."], "Rated 0 V [1].", "1", "")).toEqual(fallback("0 V")); // markup-made whitespace
+    expect(supportingQuote(["Step 1\n12 V supply."], "The supply is 12 V [1].", "1", "").support).toBe("claim"); // separate lines
+  });
+  it("Codex r5 F9: whitespace of any length cannot hide a continuation, on either side", () => {
+    for (const len of [63, 64, 65, 200]) {
+      const run = " ".repeat(len);
+      expect(supportingQuote([`Energy 12 kW${run}h.`], "Power is 12 kW [1].", "1", "")).toEqual(fallback("12 kW"));
+      expect(supportingQuote(["Power 12 kW."], `Energy is 12 kW${run}h [1].`, "1", "")).toEqual(fallback("12 kW"));
+      expect(supportingQuote([`Ripple 12 V${run}rms.`], "Ripple is 12 V [1].", "1", "")).toEqual(fallback("12 V"));
+      expect(supportingQuote([`Density 12 A${run}/mm².`], "Current is 12 A [1].", "1", "")).toEqual(fallback("12 A"));
+      expect(supportingQuote([`Supply 12 V (${run}AC).`], "Supply is 12 V [1].", "1", "")).toEqual(fallback("12 V"));
+      expect(supportingQuote([`Energy 12 kW${"\t".repeat(len)}h.`], "Power is 12 kW [1].", "1", "")).toEqual(fallback("12 kW"));
+    }
+  });
   it("the route seam counts every unusable piece of a space-grouped claim", () => {
     const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: "Output 0 V.", sourceUrl: "/m.pdf", sourcePage: 1 }], "Rated 1 000 V [1].", "");
     expect(r.citations[0].quote).toBe("q");

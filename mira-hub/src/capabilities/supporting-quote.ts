@@ -24,7 +24,8 @@ const MAX_MARKER_DISTANCE = 300;
 // unit must be in this closed table. Symbols are matched exactly as written — case carries
 // meaning (mW ≠ MW, mΩ ≠ MΩ, N·m ≠ nm) — and only unambiguous case variants are listed. A
 // spelled-out name matches in any case. An unknown unit, or no unit, makes a value unusable.
-const UNIT_SYMBOLS: Record<string, string> = {
+// Maps, not object literals: a lookup must never reach an inherited property ("constructor").
+const UNIT_SYMBOLS = new Map<string, string>(Object.entries({
   V: "V", v: "V", mV: "mV", kV: "kV", KV: "kV", MV: "MV", Vrms: "Vrms", VRMS: "Vrms",
   VAC: "VAC", Vac: "VAC", "V AC": "VAC", "V ac": "VAC", VDC: "VDC", Vdc: "VDC", "V DC": "VDC", "V dc": "VDC",
   A: "A", mA: "mA", kA: "kA", W: "W", mW: "mW", kW: "kW", KW: "kW", kw: "kW", MW: "MW",
@@ -35,17 +36,17 @@ const UNIT_SYMBOLS: Record<string, string> = {
   mm: "mm", cm: "cm", m: "m", km: "km", in: "in", ft: "ft", mm2: "mm²", m2: "m²", AWG: "AWG", awg: "AWG",
   s: "s", ms: "ms", "µs": "µs", min: "min", h: "h", Pa: "Pa", kPa: "kPa", MPa: "MPa", bar: "bar",
   psi: "psi", PSI: "psi", hp: "hp", HP: "hp",
-};
-const UNIT_NAMES: Record<string, string> = {
+}));
+const UNIT_NAMES = new Map<string, string>(Object.entries({
   volt: "V", volts: "V", amp: "A", amps: "A", ampere: "A", amperes: "A", watt: "W", watts: "W",
   kilowatt: "kW", kilowatts: "kW", hertz: "Hz", second: "s", seconds: "s", sec: "s", secs: "s",
   minute: "min", minutes: "min", mins: "min", hour: "h", hours: "h", hr: "h", hrs: "h", percent: "%",
   ohm: "Ω", ohms: "Ω", millimeter: "mm", millimeters: "mm", millimetre: "mm", millimetres: "mm", inch: "in", inches: "in",
-};
+}));
 /** The table unit a token names, or null. `N · m` and `lb - in` close up before lookup. */
 function tableUnit(token: string): string | null {
   const k = token.replace(/\s*([·-])\s*/g, "$1").replace(/\s+/g, " ");
-  return UNIT_SYMBOLS[k] ?? UNIT_NAMES[k.toLowerCase()] ?? null;
+  return UNIT_SYMBOLS.get(k) ?? UNIT_NAMES.get(k.toLowerCase()) ?? null;
 }
 // Words that follow a number without being its unit ("525 is", "12 and 13", "12 per shift").
 // Any OTHER word after a number is taken as its unit, so an explicit unit outside the table
@@ -88,6 +89,18 @@ function continues(tail: string, tailKeep: string): boolean {
   // overwhelmingly the English preposition ("24 V in the cabinet"), so it never continues.
   const word = /^[ \t]+([\p{L}°µΩ%℃℉][\p{L}\d·]*)/u.exec(tailKeep)?.[1];
   return word !== undefined && word !== "in" && tableUnit(word) !== null;
+}
+
+/** The next `max` characters from `from`, each run of spaces/tabs collapsed to one space: a run
+ *  of any length can neither hide what follows it nor cost backtracking. Linear in the run. */
+function tailAt(s: string, from: number, max = 64): string {
+  let out = "";
+  for (let i = from; i < s.length && out.length < max; i++) {
+    const ch = s[i] === "\t" ? " " : s[i];
+    if (ch === " " && out.endsWith(" ")) continue;
+    out += ch;
+  }
+  return out;
 }
 
 /** Same-length normalization: matching runs on this; quotes are cut from the original text.
@@ -144,11 +157,11 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     let sign: string | undefined = m[2];
-    // A digit and a space before the value means it is a later group of one number (1 000 V);
-    // the leading group (the 1) is unitless, so it is unusable anyway.
-    // The tail is read 64 chars at a time: nothing that continues a quantity is longer, and a
-    // long whitespace run then costs no backtracking.
-    let complete = !continues(n.slice(end, end + 64), keep.slice(end, end + 64)) && !/\d[ \t]$/.test(n.slice(Math.max(0, start - 2), start));
+    // A digit, then a same-line run of spaces/tabs, before the value: it is a later group of one
+    // number (1 000 V, 1  000 V). The leading group is unitless, so it is unusable anyway.
+    let k = start;
+    while (k > 0 && (n[k - 1] === " " || n[k - 1] === "\t")) k--;
+    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !(k < start && /\d/.test(n[k - 1] ?? ""));
     // Decided on the ORIGINAL text: a sign, then real whitespace, with only indentation before
     // it on its line. U+2212 is always a minus. In the answer, an ASCII "- " there is Markdown
     // list syntax — rendered as a bullet, so the number is unsigned. Anywhere else (source text,
