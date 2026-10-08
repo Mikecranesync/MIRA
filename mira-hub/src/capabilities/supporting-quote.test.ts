@@ -2,7 +2,7 @@
 // (Rockwell 520-PC001 p.1: 142ed933 holds the torque table, ae744613 the Fuses/Wiring text).
 import { describe, expect, it } from "vitest";
 import { relevantQuoteWindow } from "../lib/quote-window";
-import { assignValues, MODEL_VISIBLE_CHARS, supportingQuote, withSupportingQuotes } from "./supporting-quote";
+import { assignValues, findValues, MODEL_VISIBLE_CHARS, supportingQuote, withSupportingQuotes } from "./supporting-quote";
 
 const VALUE_CHUNK = "R+, BR- Dynamic Brake Resistor Connection\nSafety Ground – PE\nIMPORTANT Terminal screws may become loose during shipment. Verify that all\nterminal screws are tightened to the recommended torque before\nyou apply power to the drive.\nFrame Maximum Wire Size(1)\n(1) Maximum/minimum sizes that the terminal block accepts. These are not recommendations.\nMinimum Wire Size(1) Torque\nA 5.3 mm2 (10 AWG) 0.8 mm2 (18 AWG) 1.76…2.16 N•m (15.6…19.1 lb•in)\nB 8.4 mm2 (8 AWG) 2.1 mm2 (14 AWG) 1.76…2.16 N•m (15.6…19.1 lb•in)\nC 8.4 mm2 (8 AWG) 2.1 mm2 (14 AWG) 1.76…2.16 N•m (15.6…19.1 lb•in)\nD 13.3 mm2 (6 AWG) 5.3 mm2 (10 AWG) 1.76…2.16 N•m (15.6…19.1 lb•in)\nE 26.7 mm2 (3 AWG) 8.4 mm2 (8 AWG) 3.09…3.77 N•m (27.3…33.4 lb•in)\nFuses and Circuit Breakers – UL 61800-5-1 Applications (Continued)\nCatalog No.(1) Output Ratings Input Ratings Branch Circuit Protection\nIP20/Open Type\nWatts LossNormal\nDuty\nHeavy\nDuty\nAmps\nVoltage\nRange\nkVA\nMax Amps(2)\nFuse Ratings\nMin/Max\n140M/MT\nMotor\nProtectors\n(3) (4) (5)\nContactors";
 const FUSES_CHUNK = "owerFlex® 520-series Adjustable Frequency AC Drive User Manual for instructions on how\nto comply with the EMC Directive. Dimensions are in mm and (in.).\nFuses and Circuit Breakers\nSee the PowerFlex 520-series Adjustable Frequency AC Drive User Manual for fuses and circuit\nbreakers for non-UL applications.\nWiring\nSee the PowerFlex 520-series Adjustable Frequency AC Drive User Manual for instructions on how\nto wire the power terminals and control terminals.\nPower Wiring\nRecommended Shielded Wire\nPower Terminal Block\nPower Terminal Block Specifications\nATTENTION:\nBefore installing, configuring, operating, or maintaining this product,\nread this document and the documents that are listed in the Additional\nResources section for installing, configuring, or operating equipment.\nUsers should familiarize themselves with installation and wiring\ninstructions in addition to requirements of all applicable codes, laws,\nand standards.\nInstallation, adjustments, putting into service, use, assembly, dis";
@@ -390,6 +390,21 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
   it("rev 5 (found pre-review): every Unicode space separates digit groups, not only NBSP", () => {
     for (const sep of [" ", "　", " "])
       expect(supportingQuote(["Output 0 V."], `Rated 1${sep}000 V [1].`, "1", "")).toEqual(fallback("1", "000 V"));
+  });
+  it("rev 5 (found pre-review): a unit must be on the number's own line", () => {
+    expect(supportingQuote(["Step 12\nA. Remove the cover."], "The current is 12 A [1].", "1", "")).toEqual(fallback("12 A"));
+    expect(supportingQuote(["Range 12 -\n24 V."], "The range is 12-24 V [1].", "1", "").support).toBe("question_fallback");
+    expect(supportingQuote(["Supply 12 V\nDC motors are listed below."], "The supply is 12 VDC [1].", "1", "")).toEqual(fallback("12 VDC"));
+  });
+  it("rev 5 (found pre-review): a bare V never supports a claim that it is AC or DC; the reverse holds", () => {
+    expect(supportingQuote(["Supply 12 V."], "The supply is 12 VDC [1].", "1", "")).toEqual(fallback("12 VDC"));
+    expect(supportingQuote(["Supply 12 V."], "The supply is 12 VAC [1].", "1", "")).toEqual(fallback("12 VAC"));
+    expect(supportingQuote(["Supply 12 VDC."], "The supply is 12 V [1].", "1", "").support).toBe("claim");
+  });
+  it("rev 5 (found pre-review): the tail check is bounded, so a long whitespace run costs no backtracking", () => {
+    const t0 = performance.now();
+    findValues(`Rated 1 V${" ".repeat(40000)}`, "source");
+    expect(performance.now() - t0).toBeLessThan(100); // unbounded: ~0.7 s on CHARLIE
   });
   it("the route seam counts every unusable piece of a space-grouped claim", () => {
     const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: "Output 0 V.", sourceUrl: "/m.pdf", sourcePage: 1 }], "Rated 1 000 V [1].", "");

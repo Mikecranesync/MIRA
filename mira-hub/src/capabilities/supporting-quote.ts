@@ -54,7 +54,7 @@ const STOPWORDS =
   "and|or|nor|to|of|at|the|for|is|are|was|were|be|on|per|with|from|by|as|if|not|it|its|this|that|than|then|when|while|each|every|between|into|over|under|after|before|so|but|also|only|plus";
 const UNKNOWN_UNIT = `(?!(?:${STOPWORDS})(?![\\p{L}\\d]))[\\p{L}°µ][\\p{L}\\d]*`;
 const UNIT_SRC =
-  "n\\s*[·\\-]?\\s*m|lb\\s*[·\\-]?\\s*(?:in|ft)|v\\s*(?:ac|dc)|v|ma|a|khz|hz|kw|hp|kva|°c|°f|℃|℉|%|mm2|mm|in|awg|ms|s|rpm|bar|psi|ohms?|ω";
+  "n[ \\t]*[·\\-]?[ \\t]*m|lb[ \\t]*[·\\-]?[ \\t]*(?:in|ft)|v[ \\t]*(?:ac|dc)|v|ma|a|khz|hz|kw|hp|kva|°c|°f|℃|℉|%|mm2|mm|in|awg|ms|s|rpm|bar|psi|ohms?|ω";
 // Thousands separator (1,000) | decimal comma not part of a list on either side (1,76 —
 // but neither "10,20" nor "20,30" in 10,20,30) | plain.
 const NUM = "\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|(?<!\\d,)\\d+,\\d{1,2}(?![,\\d])|\\d+(?:\\.\\d+)?";
@@ -64,8 +64,9 @@ const NUM = "\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|(?<!\\d,)\\d+,\\d{1,2}(?![,\\d])|\
 // carry a minus sign, also across spacing or markup ("- 20", "-**20**"): -20 °C is not
 // 20 °C, and a range keeps both endpoint signs (-20 to -10). A ± tolerance or a comparator
 // is part of the unit, so "±0.5 mm" only ever matches "±0.5 mm" and "<40 °C" only "<40 °C".
+// A value, its range and its unit sit on ONE line: "Step 12" above "A. Remove…" is not 12 A.
 const VALUE_RE = new RegExp(
-  `(?<![\\p{L}\\d./^×])((?:[±≤≥]|[<>]=?)\\s*)?(-\\s*)?(?<!\\p{L}-)(${NUM})(?:\\s*(?:-|…|\\.\\.\\.|to)\\s*(-\\s*)?(${NUM}))?(?:\\s*(${UNIT_SRC}|${UNKNOWN_UNIT}))?(?![\\p{L}\\d])`,
+  `(?<![\\p{L}\\d./^×])((?:[±≤≥]|[<>]=?)[ \\t]*)?(-[ \\t]*)?(?<!\\p{L}-)(${NUM})(?:[ \\t]*(?:-|…|\\.\\.\\.|to)[ \\t]*(-[ \\t]*)?(${NUM}))?(?:[ \\t]*(${UNIT_SRC}|${UNKNOWN_UNIT}))?(?![\\p{L}\\d])`,
   "giu",
 );
 // What follows a value must not continue the quantity. A "/" (A/mm², 12 V/24 V, 1/2 in), "^",
@@ -145,7 +146,9 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
     let sign: string | undefined = m[2];
     // A digit and a space before the value means it is a later group of one number (1 000 V);
     // the leading group (the 1) is unitless, so it is unusable anyway.
-    let complete = !continues(n.slice(end), keep.slice(end)) && !/\d[ \t]$/.test(n.slice(Math.max(0, start - 2), start));
+    // The tail is read 64 chars at a time: nothing that continues a quantity is longer, and a
+    // long whitespace run then costs no backtracking.
+    let complete = !continues(n.slice(end, end + 64), keep.slice(end, end + 64)) && !/\d[ \t]$/.test(n.slice(Math.max(0, start - 2), start));
     // Decided on the ORIGINAL text: a sign, then real whitespace, with only indentation before
     // it on its line. U+2212 is always a minus. In the answer, an ASCII "- " there is Markdown
     // list syntax — rendered as a bullet, so the number is unsigned. Anywhere else (source text,
@@ -257,11 +260,11 @@ export function assignValues(answer: string, question: string): Map<string, Valu
   return res;
 }
 
-/** Units must agree exactly. The one compatibility: a bare V vs VAC/VDC. */
+/** Units must agree exactly. The one compatibility runs one way: a source "24 VAC"/"24 VDC"
+ *  supports a claim of "24 V", but a bare "24 V" never proves a claim that it is AC or DC. */
 function unitsAgree(claim: string | null, src: string | null): boolean {
   if (claim === src) return true;
-  // "24 V" is compatible with "24 VAC"/"24 VDC"; "24 VAC" never supports "24 VDC".
-  return (claim === "V" && (src === "VAC" || src === "VDC")) || (src === "V" && (claim === "VAC" || claim === "VDC"));
+  return claim === "V" && (src === "VAC" || src === "VDC");
 }
 
 /** A source value supports a claimed one: both usable, units agree, and every claimed number
