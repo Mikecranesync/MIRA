@@ -72,6 +72,55 @@ def test_a_single_critical_path_wins_over_any_number_of_low_paths():
 
 
 # ---------------------------------------------------------------------------
+# F1: R3 governance floor / production control paths from SDLC §2.1
+
+
+def test_tenant_isolation_path_is_critical():
+    """F1: neon_recall.py contains tenant isolation logic (R3)."""
+    assert router.classify(["mira-bots/shared/neon_recall.py"]) == "critical"
+
+
+def test_saas_compose_is_critical():
+    """F1: docker-compose.saas.yml is production control (R3)."""
+    assert router.classify(["docker-compose.saas.yml"]) == "critical"
+    assert router.classify(["docker-compose.staging.yml"]) == "critical"
+
+
+def test_claude_governance_files_are_critical():
+    """F1: .claude/** and root governance files are R3 governance floor."""
+    assert router.classify(["CLAUDE.md"]) == "critical"
+    assert router.classify(["AGENTS.md"]) == "critical"
+    assert router.classify([".claude/rules/security-boundaries.md"]) == "critical"
+    assert router.classify([".claude/skills/defect-workflow/SKILL.md"]) == "critical"
+
+
+def test_ci_hold_gate_is_critical():
+    """F1: tools/ci/hold_gate.py is production control (R3)."""
+    assert router.classify(["tools/ci/hold_gate.py"]) == "critical"
+
+
+def test_runbooks_are_critical():
+    """F1: runbooks are process documents (R3 governance floor)."""
+    assert router.classify(["docs/runbooks/kiosk-askmira-deploy-and-verify.md"]) == "critical"
+
+
+def test_sdlc_process_docs_are_critical():
+    """F1: SDLC, versioning, environments, and review workflow are R3."""
+    assert router.classify(["docs/architecture/mira-sdlc-v1.md"]) == "critical"
+    assert router.classify(["docs/adversarial-review-workflow.md"]) == "critical"
+    assert router.classify(["docs/environments.md"]) == "critical"
+    assert router.classify(["docs/versioning.md"]) == "critical"
+
+
+def test_a_critical_path_cannot_be_pulled_down_by_a_generic_rule():
+    """F1: AGENTS.md must not slide to 'low' via the generic *.md glob."""
+    assert router.classify(["AGENTS.md"]) == "critical"
+    assert router.classify(["CLAUDE.md"]) == "critical"
+    # But a non-governance markdown file should be low
+    assert router.classify(["docs/promo-screenshots/README.md"]) == "low"
+
+
+# ---------------------------------------------------------------------------
 # Escalation: one step up on evidence, never down
 
 
@@ -194,6 +243,81 @@ def test_budget_allows_inside_both_limits():
     assert (
         router.check_budget(0.5, [{"cost_usd": 2.8}], budget_usd=20, round_ceiling_usd=3)[0] is True
     )
+
+
+# ---------------------------------------------------------------------------
+# F3: NaN, inf, and negative budget validation
+
+
+def test_check_budget_rejects_nan_estimate():
+    """F3: NaN estimate must be rejected."""
+    ok, why = router.check_budget(float("nan"), [], budget_usd=20, round_ceiling_usd=3)
+    assert not ok and "estimate is not a finite number" in why
+
+
+def test_check_budget_rejects_inf_estimate():
+    """F3: infinite estimate must be rejected."""
+    ok, why = router.check_budget(float("inf"), [], budget_usd=20, round_ceiling_usd=3)
+    assert not ok and "estimate is not a finite number" in why
+    ok, why = router.check_budget(float("-inf"), [], budget_usd=20, round_ceiling_usd=3)
+    assert not ok and "estimate is not a finite number" in why
+
+
+def test_check_budget_rejects_negative_estimate():
+    """F3: negative estimate must be rejected."""
+    ok, why = router.check_budget(-0.5, [], budget_usd=20, round_ceiling_usd=3)
+    assert not ok and "estimate cannot be negative" in why
+
+
+def test_check_budget_rejects_nan_budget():
+    """F3: NaN budget must be rejected."""
+    ok, why = router.check_budget(0.5, [], budget_usd=float("nan"), round_ceiling_usd=3)
+    assert not ok and "budget is not a finite number" in why
+
+
+def test_check_budget_rejects_inf_budget():
+    """F3: infinite budget must be rejected."""
+    ok, why = router.check_budget(0.5, [], budget_usd=float("inf"), round_ceiling_usd=3)
+    assert not ok and "budget is not a finite number" in why
+
+
+def test_check_budget_rejects_negative_budget():
+    """F3: negative budget must be rejected."""
+    ok, why = router.check_budget(0.5, [], budget_usd=-20, round_ceiling_usd=3)
+    assert not ok and "budget cannot be negative" in why
+
+
+def test_check_budget_rejects_nan_ceiling():
+    """F3: NaN ceiling must be rejected."""
+    ok, why = router.check_budget(0.5, [], budget_usd=20, round_ceiling_usd=float("nan"))
+    assert not ok and "round ceiling is not a finite number" in why
+
+
+def test_check_budget_rejects_negative_ceiling():
+    """F3: negative ceiling must be rejected."""
+    ok, why = router.check_budget(0.5, [], budget_usd=20, round_ceiling_usd=-3)
+    assert not ok and "round ceiling cannot be negative" in why
+
+
+def test_reserve_rejects_nan_amount(tmp_path):
+    """F3: reserve() must reject NaN amounts."""
+    led = tmp_path / "costs.jsonl"
+    ok, why, rid = router.reserve(led, float("nan"), budget_usd=20, round_ceiling_usd=3)
+    assert not ok and rid is None and "estimate is not a finite number" in why
+
+
+def test_reserve_rejects_inf_amount(tmp_path):
+    """F3: reserve() must reject infinite amounts."""
+    led = tmp_path / "costs.jsonl"
+    ok, why, rid = router.reserve(led, float("inf"), budget_usd=20, round_ceiling_usd=3)
+    assert not ok and rid is None and "estimate is not a finite number" in why
+
+
+def test_reserve_rejects_negative_amount(tmp_path):
+    """F3: reserve() must reject negative amounts."""
+    led = tmp_path / "costs.jsonl"
+    ok, why, rid = router.reserve(led, -0.5, budget_usd=20, round_ceiling_usd=3)
+    assert not ok and rid is None and "estimate cannot be negative" in why
 
 
 def test_ledger_round_trip(tmp_path):
@@ -687,6 +811,60 @@ def test_router_strips_skip_snapshot_check_from_shim_environment(tmp_path, monke
     # But verify the router did set the variables it should set
     assert "CODEX_BIN" in env_captured
     assert "REVIEW_EXPECTED_HEAD" in env_captured
+
+
+# ---------------------------------------------------------------------------
+# F2: ADV_REVIEW_HUMAN_AUTHORIZED must not be inherited from parent env
+
+
+def test_router_strips_inherited_human_authorized_flag(tmp_path, monkeypatch):
+    """F2: ADV_REVIEW_HUMAN_AUTHORIZED must be removed from the environment
+    unless --authorized is explicitly passed."""
+    ledger = tmp_path / "costs.jsonl"
+    env_captured = {}
+
+    def fake_reserve(*args, **kwargs):
+        return True, "ok", "test-rid"
+
+    def fake_subprocess_run(cmd, **kwargs):
+        if cmd[0] == "bash" and cmd[1] == "-s":
+            env_captured.update(kwargs.get("env", {}))
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(router, "reserve", fake_reserve)
+    monkeypatch.setattr(subprocess, "run", fake_subprocess_run)
+    monkeypatch.setattr(
+        router,
+        "pr_facts",
+        lambda pr: {
+            "base_ref": "main",
+            "base_sha": BASE_SHA,
+            "head": HEAD_SHA,
+            "merge_base": BASE_SHA,
+            "paths": ["docs/x.md"],
+            "diff_chars": 100,
+        },
+    )
+    monkeypatch.setattr(router, "prior_round", lambda pr: {})
+    monkeypatch.setattr(router, "deterministic_stage", lambda head, base: ([], []))
+    monkeypatch.setattr(router, "untrusted_tooling", lambda ref: [])
+    monkeypatch.setattr(router, "router_on_base", lambda ref: True)
+
+    # Set the inherited flag in the parent environment
+    monkeypatch.setenv("ADV_REVIEW_HUMAN_AUTHORIZED", "1")
+
+    # Run WITHOUT --authorized
+    env_captured.clear()
+    router.main(["1", "--ledger", str(ledger), "--no-prefilter"])
+    assert "ADV_REVIEW_HUMAN_AUTHORIZED" not in env_captured, \
+        "inherited flag must be removed when --authorized is not passed"
+
+    # Run WITH --authorized
+    env_captured.clear()
+    router.main(["1", "--ledger", str(ledger), "--no-prefilter", "--authorized"])
+    assert env_captured.get("ADV_REVIEW_HUMAN_AUTHORIZED") == "1", \
+        "flag must be set when --authorized is passed"
 
 
 def test_killing_the_shim_kills_codex_itself(tmp_path):

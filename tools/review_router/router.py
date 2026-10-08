@@ -68,12 +68,14 @@ PRICES = json.loads((HERE / "prices.json").read_text())["usd_per_mtok"]
 TIERS = ("low", "standard", "critical")
 
 # Failure here can mean a safety, security, data-loss or gate-integrity defect:
-# always the strongest lane, never a cheaper one.
+# always the strongest lane, never a cheaper one. Matches the R3 governance
+# floor and production-control paths from mira-sdlc-v1.md §2.1.
 CRITICAL_GLOBS = (
     "mira-bots/shared/engine.py",
     "mira-bots/shared/guardrails.py",
     "mira-bots/shared/inference/*",
     "mira-bots/shared/citation_compliance.py",
+    "mira-bots/shared/neon_recall.py",
     "mira-hub/src/capabilities/answer-validation*",
     "mira-hub/src/capabilities/hazard-*",
     "mira-hub/src/capabilities/step-energy*",
@@ -88,9 +90,20 @@ CRITICAL_GLOBS = (
     "tools/review_router/*",
     "tools/hooks/*",
     "tools/ui_surface_lifecycle_guard.py",
+    "tools/ci/*",
     ".github/workflows/*",
+    "docker-compose*.yml",
     "mira-relay/*",
     "plc/*",
+    "claude.md",
+    "agents.md",
+    ".claude/*",
+    ".claude/**/*",
+    "docs/runbooks/*",
+    "docs/adversarial-review-workflow.md",
+    "docs/environments.md",
+    "docs/versioning.md",
+    "docs/architecture/mira-sdlc-v1.md",
 )
 # Only these may ride the cheapest lane: nothing here ships to a technician.
 LOW_GLOBS = (
@@ -239,6 +252,18 @@ def spent_usd(ledger: list[dict]) -> float:
 def check_budget(
     estimate: float, ledger: list[dict], budget_usd: float, round_ceiling_usd: float
 ) -> tuple[bool, str]:
+    # Reject non-finite or negative values
+    import math
+    for name, val in [
+        ("estimate", estimate),
+        ("budget", budget_usd),
+        ("round ceiling", round_ceiling_usd),
+    ]:
+        if not math.isfinite(val):
+            return False, f"{name} is not a finite number: {val}"
+        if val < 0:
+            return False, f"{name} cannot be negative: {val}"
+    
     spent = spent_usd(ledger)
     if estimate > round_ceiling_usd:
         return (
@@ -258,6 +283,13 @@ def reserve(
 ) -> tuple[bool, str, str | None]:
     """Atomically check the budget AND append a reservation, under an exclusive
     lock, so two concurrent reviews cannot both pass the same balance."""
+    import math
+    # Reject negative amount
+    if estimate < 0:
+        return False, f"estimate cannot be negative: {estimate}", None
+    if not math.isfinite(estimate):
+        return False, f"estimate is not a finite number: {estimate}", None
+    
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(str(path) + ".lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -717,6 +749,8 @@ def main(argv: list[str] | None = None) -> int:
     # Strip test-only escape hatches from the environment so only tests that
     # call the shim directly can set them, never via the operator's environment.
     env.pop("REVIEW_SKIP_SNAPSHOT_CHECK", None)
+    # Remove any inherited human authorization flag; set only when explicitly passed
+    env.pop("ADV_REVIEW_HUMAN_AUTHORIZED", None)
     if args.authorized:
         env["ADV_REVIEW_HUMAN_AUTHORIZED"] = "1"
     trusted = _run(
