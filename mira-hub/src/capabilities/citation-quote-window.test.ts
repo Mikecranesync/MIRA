@@ -42,7 +42,12 @@ describe("citation quote window — the named identifier wins", () => {
     expect(q).toContain("F004(1) UnderVoltage");
   });
 
-  it("a code the question calls 'the … fault' is still the claim", () => {
+  it("a code the question asks the meaning of is the claim, with no 'fault' in the question", () => {
+    const q = relevantQuoteWindow(PF525_FAULT_TABLE, "What does F004 mean on this drive");
+    expect(q).toContain("F004(1) UnderVoltage");
+  });
+
+  it("control: an unmarked code keeps the weighting it had before ('the F004 fault')", () => {
     const q = relevantQuoteWindow(PF525_FAULT_TABLE, "What does the F004 fault mean on this drive");
     expect(q).toContain("F004(1) UnderVoltage");
   });
@@ -63,6 +68,7 @@ const MINI_REFERENCE = [
 
 // The same text with a letter-bearing model in the heading (the GS10 is the bench drive).
 const GS10_REFERENCE = MINI_REFERENCE.replace("PowerFlex 525", "GS10");
+const PF525_REFERENCE = MINI_REFERENCE.replace("PowerFlex 525", "PF525");
 
 // Numbered (not letter-prefixed) fault codes, where every row shares "fault" and "drive".
 const NUMBERED_FAULTS = [
@@ -88,13 +94,22 @@ describe("citation quote window — an equipment number does not outrank the cla
     expect(q).toContain("0.71");
   });
 
-  it("a letter-bearing model after 'the' is the machine, not the claim", () => {
-    const q = relevantQuoteWindow(GS10_REFERENCE, "What is the terminal block screw torque on the GS10?");
-    expect(q).toContain("0.71");
+  it("a letter-bearing model is the machine, not the claim", () => {
+    for (const [chunk, question] of [
+      [GS10_REFERENCE, "What is the terminal block screw torque on the GS10?"],
+      [GS10_REFERENCE, "What is the terminal block screw torque on GS10?"],
+      [PF525_REFERENCE, "What is the terminal block screw torque on PF525?"],
+      [GS10_REFERENCE, "GS10 terminal block screw torque"],
+    ]) expect(relevantQuoteWindow(chunk, question), question).toContain("0.71");
   });
 
   it("a model-qualified fault question keeps the fault row, not the model heading", () => {
     const q = relevantQuoteWindow(MINI_REFERENCE, "What does fault F005 mean on PowerFlex 525?");
+    expect(q).toContain("F005 (OverVoltage)");
+  });
+
+  it("a claim noun alone marks the code: 'PowerFlex 525 fault F005'", () => {
+    const q = relevantQuoteWindow(MINI_REFERENCE, "PowerFlex 525 fault F005");
     expect(q).toContain("F005 (OverVoltage)");
   });
 
@@ -110,24 +125,25 @@ describe("citation quote window — an equipment number does not outrank the cla
 });
 
 
-describe("claimIdentifiers — which numbers the question marks as the claim", () => {
+describe("claimIdentifiers — only a code the question marks is the claim", () => {
   const ids = (q: string) => [...claimIdentifiers(q)].sort();
-  it("letter-and-digit codes are claims, wherever the question puts them", () => {
-    expect(ids("What does F004 mean")).toEqual(["f004"]);
-    expect(ids("My drive tripped on F004")).toEqual(["f004"]);
-    expect(ids("How do I set P041 on PowerFlex 525")).toEqual(["p041"]);
-  });
-  it("a bare integer is a model or quantity unless a claim noun labels it", () => {
-    expect(ids("torque on PowerFlex 525")).toEqual([]);
+  it("a claim noun, a following 'mean' or a trip marks the code", () => {
+    expect(ids("What does fault F004 mean")).toEqual(["f004"]);
     expect(ids("What does fault 2310 mean")).toEqual(["2310"]);
     expect(ids("What is parameter 41")).toEqual(["41"]);
+    expect(ids("What does F004 mean")).toEqual(["f004"]);
+    expect(ids("Why does the drive current trip with F005")).toEqual(["f005"]);
   });
-  it("a determiner marks an equipment phrase unless a claim noun follows", () => {
+  it("a model the question does not mark stays an ordinary term", () => {
+    expect(ids("torque on PowerFlex 525")).toEqual([]);
     expect(ids("torque on the GS10")).toEqual([]);
+    expect(ids("torque on GS10")).toEqual([]);
+    expect(ids("torque on PF525")).toEqual([]);
     expect(ids("What does CE10 mean on my GS10")).toEqual(["ce10"]);
-    expect(ids("What does the F004 fault mean")).toEqual(["f004"]);
   });
-  it("known limit: a letter-bearing model with no determiner still reads as a code", () => {
-    expect(ids("torque on PF525")).toEqual(["pf525"]);
+  it("an unmarked code also stays ordinary: the wording cannot tell it from a model", () => {
+    expect(ids("My drive tripped on F004")).toEqual([]);
+    expect(ids("What does the F004 fault mean")).toEqual([]);
+    expect(ids("How do I set P041 on PowerFlex 525")).toEqual([]);
   });
 });
