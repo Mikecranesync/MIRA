@@ -112,6 +112,21 @@ function tailAt(s: string, from: number, max = 64): string {
  *  leading piece is unitless or followed by a joint, so it is unusable too. */
 function laterPieceOfNumber(n: string, start: number): boolean {
   const isWs = (i: number) => n[i] === " " || n[i] === "\t";
+  // #4320: screen the WHOLE match, not only its digits. ≈/~ remain the existing
+  // approximation decoration, including across inline-markup whitespace.
+  let boundary = start;
+  while (boundary > 0) {
+    let at = boundary - 1;
+    while (at >= 0 && isWs(at)) at--;
+    if (at < 0 || !/[≈~]/u.test(n[at])) break;
+    boundary = at;
+  }
+  const left = n[boundary - 1] ?? "";
+  if (left && !/[\s([{|,;:]/u.test(left)) return true;
+  let before = boundary;
+  while (before > 0 && isWs(before - 1)) before--;
+  // Markdown normalizes to spaces: ≠ **0** / 1e+**3** must not lose a mark.
+  if (before < boundary && before > 0 && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
   let k = start;
   while (k > 0 && isWs(k - 1)) k--;
   const spaced = k < start;

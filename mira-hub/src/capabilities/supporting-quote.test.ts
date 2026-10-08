@@ -497,3 +497,38 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
     expect(r.unsupportedValueCount).toBe(2);
   });
 });
+
+// #4320: an exponent or unknown operator must never disappear into a false claim.
+describe("closed left boundary (#4320 F13/F14)", () => {
+  const cases = [
+    ["1e+3", "3"], ["1E+3", "3"], ["1.5E+03", "3"],
+    ["1e-3", "-3"], ["1e +3", "3"], ["1e+**3**", "3"],
+    ["≠0", "0"], ["≠ 0", "0"], ["≠**0**", "0"], ["≠ **0**", "0"],
+    ["≠~0", "0"], ["≠ **~0**", "0"], ["≠≈0", "0"],
+    ["≠-20", "-20"], ["≠ -20", "-20"], ["≠≤0", "≤0"],
+    ["!0", "0"], ["! 0", "0"], ["=0", "0"], ["= 0", "0"],
+  ] as const;
+  for (const [marked, plain] of cases) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: ${marked} V does not support ${plain} V`, () => {
+        const source = `Rated ${side === "source" ? marked : plain} V.`;
+        const answer = `Rated ${side === "answer" ? marked : plain} V [1].`;
+        const r = withSupportingQuotes(
+          [{ citationId: "1", quote: "original question quote" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }],
+          answer, "What is the rated voltage?",
+        );
+        expect(r.citations[0].quote).toBe("original question quote");
+        expect(r.unsupportedValueCount).toBeGreaterThan(0);
+        expect(r.quoteFallbackCount).toBe(1);
+      });
+    }
+  }
+  it.each([
+    "12 V", "(12 V)", "[12 V]", "| 12 V |", "|12 V|", "Step 1. 12 V",
+    "≤12 V", "≥12 V", "<12 V", ">12 V", "<=12 V", ">=12 V", "±12 V", "~12 V", "≈12 V", "-12 V",
+  ])("control: %s remains a usable quantity", (source) => {
+    const v = findValues(source, "source");
+    expect(v.some((x) => x.usable && x.nums.includes(source.includes("-12") ? -12 : 12))).toBe(true);
+  });
+});
