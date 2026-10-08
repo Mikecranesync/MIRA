@@ -22,7 +22,8 @@ export type AnomalyCode =
   | "STAGING_TO_PROD_ROUTE"
   | "GENERIC_ANSWER_UNGROUNDED_CLAIM"
   | "DOCUMENTS_IN_CONTEXT_UNCITED"
-  | "ANSWER_IGNORED_VISUAL_EVIDENCE";
+  | "ANSWER_IGNORED_VISUAL_EVIDENCE"
+  | "CITED_VALUE_NOT_IN_SOURCE";
 
 export type Anomaly = {
   code: AnomalyCode;
@@ -264,6 +265,22 @@ export function detectAnomalies(
         subject_identifiers: p.answer_gate.evidence_followed.subject_identifiers,
         observation_in_context: p.visual_evidence.observation_in_context,
         prior_turn_observation_count: p.visual_evidence.prior_turn_observation_count,
+      },
+    });
+  }
+
+  // #4315 — observe-only. The answer cited a number (with its unit) that appears nowhere
+  // in the cited page's model-visible text, so no proof quote can show it. Measured before
+  // any gating decision: rounding and unit conversion by the model also land here.
+  const unsupportedValues = p.answer_gate.cited_values_unsupported ?? 0;
+  if (unsupportedValues > 0) {
+    anomalies.push({
+      code: "CITED_VALUE_NOT_IN_SOURCE",
+      stage: "answer_gate",
+      detail: {
+        unsupported_value_count: unsupportedValues,
+        citations_shipped: p.answer_gate.citations_shipped,
+        citation_quote_fallbacks: p.answer_gate.citation_quote_fallbacks ?? 0,
       },
     });
   }
