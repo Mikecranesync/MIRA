@@ -16,7 +16,7 @@
  * product behaviour belongs to the shared shell, so the orchestration lives in
  * the canonical adapter tree and the screen keeps only its send path.
  */
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { Attachment } from "@factorylm/interaction";
 import {
   canBeChatSource,
@@ -81,7 +81,8 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
   // stay here, keyed by the id the chip shows.
   const held = useRef(new Map<string, File>());
   // The chip's `blob:` preview per held photo; revoked whenever its bytes are
-  // dropped (sent, superseded or handed off) so the picture is not leaked.
+  // dropped (sent, superseded, handed off, removed from the composer, or left
+  // behind when this chat goes away) so the picture is not leaked.
   const previews = useRef(new Map<string, string>());
   const drop = useCallback((id: string) => {
     held.current.delete(id);
@@ -90,6 +91,17 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     previews.current.delete(id);
     if (typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(url);
   }, []);
+  // Whatever is still held when the chat goes away can never be sent: a chip
+  // left in the composer, or a photo kept for a Try again that will not come.
+  // A pick that resolves after this point gets no preview to leak.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      for (const id of Array.from(previews.current.keys())) drop(id);
+    };
+  }, [drop]);
   const claimed = useRef(false);
 
   // Anything handed over from HOME has no chip in THIS composer — it was
@@ -118,6 +130,7 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
 
   const hold = useCallback((file: File | null): Attachment | null => {
     if (!file) return null; // backed out of the native picker
+    if (!alive.current) return null; // the chat closed while the picker was open
     const previewUrl = photoPreview(file);
     const attachment = describe(file, previewUrl);
     held.current.set(attachment.id, file);
@@ -229,5 +242,8 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     }
   }, [notebookId, threadId, drop]);
 
-  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained };
+  /** The technician removed a picked attachment before sending it. */
+  const release = drop;
+
+  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained, release };
 }
