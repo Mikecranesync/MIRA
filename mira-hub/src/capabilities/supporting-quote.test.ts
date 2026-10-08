@@ -220,3 +220,46 @@ describe("Codex round 1 (PR #4319) — a sign, an AC/DC qualifier or inline mark
     }
   });
 });
+
+describe("Codex round 2 (PR #4319) — a parse can never loosen a claim into a wildcard", () => {
+  const fallbackWith = (unsupported: string) => ({ quote: null, support: "question_fallback", unsupported: [expect.stringContaining(unsupported)] });
+  it("F1: a minus separated by markup or a space is still a minus — opposite signs never match, equal ones do", () => {
+    expect(supportingQuote(["Ambient allowed 20 °C."], "Minimum is -**20** °C [1].", "1", "")).toEqual(fallbackWith("20"));
+    expect(supportingQuote(["Minimum ambient -20 °C."], "Minimum is -**20** °C [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Ambient allowed 20 °C."], "Minimum is - 20 °C [1].", "1", "")).toEqual(fallbackWith("20"));
+    expect(supportingQuote(["Minimum ambient -20 °C."], "Minimum is - 20 °C [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Minimum ambient − 20 °C."], "The limit is 20 °C [1].", "1", "").support).toBe("question_fallback");
+    expect(supportingQuote(["Minimum ambient − 20 °C."], "The limit is -20 °C [1].", "1", "").support).toBe("claim");
+  });
+  it("F1: a list bullet is not a sign, and a letter-hyphen code (A-20) is not a value", () => {
+    expect(assignValues("- 20 V supply [1]", "").get("1")?.[0].nums).toEqual([20]);
+    expect(assignValues("Use the A-20 model [1].", "").get("1")).toBeUndefined();
+  });
+  it("F4: an explicit unit the parser does not know is kept literally, never dropped", () => {
+    expect(supportingQuote(["Voltage 12 V only."], "Voltage is 12 kV [1].", "1", "")).toEqual(fallbackWith("12 kV"));
+    expect(supportingQuote(["Width 12 V and 12 mm."], "The gap is 12 cm [1].", "1", "")).toEqual(fallbackWith("12 cm"));
+    expect(supportingQuote(["Supply 12 kV three phase."], "Voltage is 12 kV [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Gap 12 cm nominal."], "The gap is 12 cm [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Ramp time 12 s."], "The ramp takes 12 seconds [1].", "1", "").support).toBe("claim");
+  });
+  it("F4: a unitless claim matches only a unitless source value (no wildcard in either direction)", () => {
+    expect(supportingQuote(["Supply 12 V only."], "The limit is 12 [1].", "1", "").support).toBe("question_fallback");
+    expect(supportingQuote(["Limit 12 boxes per shift."], "The limit is 12 [1].", "1", "").support).toBe("question_fallback");
+    expect(supportingQuote(["Row count is 12."], "The limit is 12 [1].", "1", "").support).toBe("claim");
+  });
+  it("F4: the machine's model number stays excluded even when a word follows it", () => {
+    expect(assignValues("The PowerFlex 525 drive is rated 1.5 kW [1].", "Is the PowerFlex 525 rated 1.5 kW?").get("1")?.map((v) => v.text.trim())).toEqual(["1.5 kW"]);
+  });
+});
+
+describe("same class, found before round 3 — fractions and tolerances are never read as plain values", () => {
+  it("a fraction's parts are not values: '1/2 in' never matches '2 in'", () => {
+    expect(supportingQuote(["Use a 2 in pipe."], "Use a 1/2 in wrench [1].", "1", "")).toEqual({ quote: null, support: "question_fallback", unsupported: [] });
+    expect(assignValues("Rated 12/24 V dual [1].", "").get("1")).toBeUndefined();
+  });
+  it("a ± tolerance only matches a ± tolerance", () => {
+    expect(supportingQuote(["Shaft length 0.5 mm."], "Runout is ±0.5 mm [1].", "1", "").support).toBe("question_fallback");
+    expect(supportingQuote(["Runout ±0.5 mm max."], "Runout is ±0.5 mm [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Runout ±0.5 mm max."], "Length is 0.5 mm [1].", "1", "").support).toBe("question_fallback");
+  });
+});

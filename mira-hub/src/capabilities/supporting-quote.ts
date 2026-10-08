@@ -26,17 +26,30 @@ const UNIT_ALIASES: [RegExp, string][] = [
   [/^kw$/, "kw"], [/^hp$/, "hp"], [/^kva$/, "kva"], [/^°c$/, "c"], [/^°f$/, "f"], [/^%$/, "%"],
   [/^mm2$/, "mm2"], [/^mm$/, "mm"], [/^in$/, "in"], [/^awg$/, "awg"], [/^ms$/, "ms"], [/^s$/, "s"],
   [/^rpm$/, "rpm"], [/^bar$/, "bar"], [/^psi$/, "psi"], [/^(?:ohms?|ω)$/, "ohm"],
+  // Spelled-out forms of the same units.
+  [/^(?:seconds?|secs?)$/, "s"], [/^(?:minutes?|mins?)$/, "min"], [/^(?:hours?|hrs?|h)$/, "h"],
+  [/^volts?$/, "v"], [/^(?:amps?|amperes?)$/, "a"], [/^hertz$/, "hz"], [/^percent$/, "%"],
+  [/^(?:millimet(?:er|re)s?)$/, "mm"], [/^(?:inch|inches)$/, "in"],
 ];
+// Words that follow a number without being its unit ("525 is", "12 and 13", "12 per shift").
+// Any OTHER word after a number is its unit — a known alias above, or kept literally — so an
+// explicit unit the parser does not know ("12 kV", "12 cm") can never become a wildcard.
+const STOPWORDS =
+  "and|or|nor|to|of|at|the|for|is|are|was|were|be|on|per|with|from|by|as|if|not|it|its|this|that|than|then|when|while|each|every|between|into|over|under|after|before|so|but|also|only|plus";
+const UNKNOWN_UNIT = `(?!(?:${STOPWORDS})(?![\\p{L}\\d]))[\\p{L}°µ][\\p{L}\\d]*`;
 const UNIT_SRC =
   "n\\s*[·\\-]?\\s*m|lb\\s*[·\\-]?\\s*(?:in|ft)|v\\s*(?:ac|dc)|v|ma|a|khz|hz|kw|hp|kva|°c|°f|%|mm2|mm|in|awg|ms|s|rpm|bar|psi|ohms?|ω";
 // Thousands separator (1,000) | decimal comma not part of a list on either side (1,76 —
 // but neither "10,20" nor "20,30" in 10,20,30) | plain.
 const NUM = "\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|(?<!\\d,)\\d+,\\d{1,2}(?![,\\d])|\\d+(?:\\.\\d+)?";
-// A letter, digit or dot right before the number (F004, v1.2) or a letter/digit right
-// after it (10x) means it is not a value. Each number may carry a minus sign: -20 °C is
-// not 20 °C, and a range keeps both endpoint signs (-20 to -10).
+// A letter, digit or dot right before the number (F004, v1.2), a letter-hyphen code
+// (A-20), or a letter/digit right after it (10x) means it is not a value. Each number may
+// carry a minus sign, also across spacing or markup ("- 20", "-**20**"): -20 °C is not
+// 20 °C, and a range keeps both endpoint signs (-20 to -10). A line-leading "- " is a
+// list bullet, not a sign (findValues). A fraction's parts (1/2, 12/24) are not values, and
+// a ± tolerance is part of the unit, so "±0.5 mm" only ever matches "±0.5 mm".
 const VALUE_RE = new RegExp(
-  `(?<![\\p{L}\\d.])(-?)(${NUM})(?:\\s*(?:-|…|\\.\\.\\.|to)\\s*(-?)(${NUM}))?(?:\\s*(${UNIT_SRC}))?(?![\\p{L}\\d])`,
+  `(?<![\\p{L}\\d./])(±\\s*)?(-\\s*)?(?<!\\p{L}-)(${NUM})(?:\\s*(?:-|…|\\.\\.\\.|to)\\s*(-\\s*)?(${NUM}))?(?:\\s*(${UNIT_SRC}|${UNKNOWN_UNIT}))?(?![\\p{L}\\d]|\\/\\d)`,
   "giu",
 );
 
@@ -56,11 +69,12 @@ export function normalize(s: string): string {
     .join("");
 }
 
+/** A known unit's canonical form; any other unit word is kept literally ("raw:kv"). */
 function canonUnit(u: string | undefined): string | null {
   if (!u) return null;
   const k = u.toLowerCase().replace(/\s+/g, "");
   for (const [re, canonical] of UNIT_ALIASES) if (re.test(k)) return canonical;
-  return null;
+  return `raw:${k}`;
 }
 
 /** "1,000" → 1000; "1,76" → 1.76; "1.76" → 1.76. */
@@ -72,17 +86,21 @@ export type Value = { nums: number[]; unit: string | null; start: number; end: n
 
 export function findValues(text: string): Value[] {
   const out: Value[] = [];
-  for (const m of normalize(text).matchAll(VALUE_RE)) {
+  const n = normalize(text);
+  for (const m of n.matchAll(VALUE_RE)) {
     const start = m.index ?? 0;
     const end = start + m[0].length;
+    // "- 20 V" at the start of a line is a list bullet, not a negative number.
+    const bullet = Boolean(m[2]) && /\s/.test(m[2]) && n.slice(n.lastIndexOf("\n", start - 1) + 1, start).trim() === "";
+    const unit = canonUnit(m[6]);
     out.push({
       nums: [
-        { sign: m[1], raw: m[2] },
-        { sign: m[3], raw: m[4] },
+        { sign: bullet ? undefined : m[2], raw: m[3] },
+        { sign: m[4], raw: m[5] },
       ]
-        .filter((n): n is { sign: string; raw: string } => Boolean(n.raw))
-        .map((n) => (n.sign === "-" ? -1 : 1) * parseNum(n.raw)),
-      unit: canonUnit(m[5]),
+        .filter((x): x is { sign: string | undefined; raw: string } => Boolean(x.raw))
+        .map((x) => (x.sign ? -1 : 1) * parseNum(x.raw)),
+      unit: m[1] ? `±${unit ?? ""}` : unit,
       start,
       end,
       text: text.slice(start, end),
@@ -137,11 +155,15 @@ export function assignValues(answer: string, question: string): Map<string, Valu
     for (const v of findValues(masked.slice(rs, re))) {
       const vs = rs + v.start;
       const ve = rs + v.end;
+      const before = normalize(masked.slice(Math.max(rs, vs - 24), vs));
       if (v.unit === null) {
-        const before = normalize(masked.slice(Math.max(rs, vs - 24), vs));
         if (v.nums.length === 1 && Number.isInteger(v.nums[0]) && v.nums[0] < 10) continue; // "(1)", ordinals
         if (PAGE_RE.test(before)) continue;
         if (/^\s*(?:[-*•]\s+)?$/.test(masked.slice(rs, vs)) && /^[.)]\s/.test(masked.slice(ve, ve + 2))) continue; // "12. "
+      }
+      // The machine the QUESTION names ("PowerFlex 525", "525 drive", "525-series") is identity,
+      // unless the number carries a known unit ("525 V" is a rating).
+      if (v.unit === null || v.unit.startsWith("raw:")) {
         const word = before.match(/([\p{L}][\p{L}-]*)[\s-]?$/u)?.[1] ?? "";
         if (word && v.nums.length === 1 && identity.has(`${word}|${v.nums[0]}`)) continue;
         if (/^\s*-?series/i.test(masked.slice(ve, ve + 8))) continue;
@@ -165,8 +187,10 @@ export function assignValues(answer: string, question: string): Map<string, Valu
 
 /** A source value supports a claimed one: same unit when the claim states one, and every
  *  claimed number literally present (a range claim needs both endpoints). */
+/** Units must agree exactly — a unitless claim matches only a unitless source value, so
+ *  no parse can turn a claim into a wildcard. The one compatibility: a bare V vs VAC/VDC. */
 function unitsAgree(claim: string | null, src: string | null): boolean {
-  if (claim === null || claim === src) return true;
+  if (claim === src) return true;
   // "24 V" is compatible with "24 VAC"/"24 VDC"; "24 VAC" never supports "24 VDC".
   return (claim === "v" && (src === "vac" || src === "vdc")) || (src === "v" && (claim === "vac" || claim === "vdc"));
 }
