@@ -95,7 +95,25 @@ if [ -n "$STAGED_ALL" ]; then
   else
     GUARD_RC=$?
     printf '%s\n' "$GUARD_OUTPUT" | sed 's/^/    /' || true
+    # An owner approval bound to this exact staged tree turns ONLY this check's
+    # verdict into a pass. Every other check below still runs and can still
+    # block. tools/guarded_commit_approval.py documents the binding and the
+    # trust boundary; `approve` needs the owner at a real terminal.
+    APPROVAL_OUTPUT=""
+    APPROVAL_RC=1
     if [ "$GUARD_RC" -eq 1 ]; then
+      if APPROVAL_OUTPUT=$("${PY_CMD[@]}" tools/guarded_commit_approval.py verify --files "${STAGED_PATHS[@]}" 2>&1); then
+        APPROVAL_RC=0
+      else
+        APPROVAL_RC=$?
+      fi
+    fi
+    if [ "$GUARD_RC" -eq 1 ] && [ "$APPROVAL_RC" -eq 0 ]; then
+      printf '%s\n' "$APPROVAL_OUTPUT" | sed 's/^/    /' || true
+      green "  ✓ Guarded paths staged with an owner approval bound to this exact tree"
+      PASS=$((PASS + 1))
+    elif [ "$GUARD_RC" -eq 1 ]; then
+      printf '%s\n' "$APPROVAL_OUTPUT" | sed 's/^/    /' || true
       red "  🔴 Guarded legacy UI route staged. Stop before commit."
       red "  → Put presentation/capability work in the canonical shell or adapters:"
       red "    packages/factorylm-{theme,interaction,ui}/**"
@@ -104,11 +122,14 @@ if [ -n "$STAGED_ALL" ]; then
       red "    mira-mobile/src/unified/** (when extending the existing mobile adapter)"
       red "  → Automation must not bypass this check or apply legacy-ui-exception."
       red "    If this is truly P0/security/rollback/controlled-cutover work, stop and"
-      red "    ask a human maintainer to authorize the audited exception workflow."
+      red "    ask a human maintainer to authorize the audited exception workflow:"
+      red "    the owner runs 'python3 tools/guarded_commit_approval.py approve' in a"
+      red "    real terminal for this exact staged tree, then the commit is retried."
+      FAIL=$((FAIL + 1))
     else
       red "  🔴 UI lifecycle policy errored (exit $GUARD_RC); commit blocked fail-closed."
+      FAIL=$((FAIL + 1))
     fi
-    FAIL=$((FAIL + 1))
   fi
 fi
 

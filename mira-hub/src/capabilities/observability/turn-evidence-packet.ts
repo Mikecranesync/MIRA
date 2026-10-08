@@ -208,6 +208,14 @@ export type TurnEvidencePacketAnswerGate = {
    */
   citations_shipped: number;
   /**
+   * #4315 (observe-only): numeric values the answer cited that appear nowhere in the
+   * cited page's model-visible text (number + unit). A count — never the values or any
+   * answer text. Optional: absent on gate paths that ship no citations (read as 0).
+   */
+  cited_values_unsupported?: number;
+  /** #4315: emitted citations that kept the question-window quote (no claimed value matched). */
+  citation_quote_fallbacks?: number;
+  /**
    * Versioned assessment of whether the answer engaged with the VISUAL evidence
    * in context. An assessment, never a claim about the model's reasoning — see
    * evidence-consistency.ts. null when the turn had no observation in context.
