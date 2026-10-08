@@ -45,6 +45,7 @@ import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observabili
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
+import { ATTACHED_MISS_LEAD, answersOnAttachedMiss, attachedMissPrompt } from "@/capabilities/mira-contract";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
   proposeIdentityFromText,
@@ -477,7 +478,11 @@ export function isRefusal(answer: string): boolean {
   // references do not SPECIFY the supply voltage" is an honest refusal too,
   // and was persisted as `answered` with a general badge. The refusal regex
   // is the ONLY thing that turns a served refusal into insufficient_evidence.
-  const a = answer.toLowerCase();
+  // F1 (MEDIUM, Codex r1 on PR #4255): strip the attached-miss disclosure lead
+  // before checking, so that lead itself never trips refusal detection while
+  // genuine documentation refusals in the remaining answer still do.
+  const opened = answer.trimStart();
+  const a = (opened.startsWith(ATTACHED_MISS_LEAD) ? opened.slice(ATTACHED_MISS_LEAD.length) : answer).toLowerCase();
   return (
     /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
     /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a) &&
@@ -2593,10 +2598,32 @@ async function handleChatTurn(
       ? unidentifiedServiceDecline(message)
       : null;
 
+  // #3959 slice 1 (MIRA_PERSONA_CONTRACT, default off): attached sources whose
+  // scoped search matched nothing answer from general knowledge, saying so,
+  // instead of abstaining. Source-only keeps the abstain; so does a question
+  // about THIS machine in a machine-bound notebook (#4068), and every decline
+  // lane in the condition below. A null prompt (the general prompt drifted from
+  // the lines it rewrites) keeps the abstain too.
+  // Two more preconditions (Codex r1 on #4255): the notebook identity must have
+  // loaded — a failed or empty read is not "no bound machine" (F3) — and a
+  // notebook-document search must actually have run over a non-empty validated
+  // doc set; a zero-source turn let through by a safety trigger searched
+  // nothing, so there is no attached miss to disclose (F2).
+  const attachedMissBoundModel = nb?.model?.trim() || null;
+  const attachedMissSystemPrompt = nb !== null && notebookRetrieval && docIds.length > 0 && answersOnAttachedMiss({
+    general,
+    sourceOnly: body.mode === "source_only",
+    chunkCount: chunks.length,
+    machineSpecificQuestion:
+      attachedMissBoundModel !== null &&
+      (asksForDocumentedValue(message, attachedMissBoundModel) || asksAboutThisEquipment(message, attachedMissBoundModel)),
+  })
+    ? attachedMissPrompt(GENERAL_SYSTEM_PROMPT)
+    : null;
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
+  if (chunks.length === 0 && ((!general && attachedMissSystemPrompt === null) || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -2975,7 +3002,7 @@ async function handleChatTurn(
         `present a step-by-step procedure from them (reset, wiring, firmware, parameter steps) as the ${oemModel.value}'s procedure — ` +
         `describe it as how the related model does it and tell the technician to confirm the steps in the ${oemModel.value} manual.`
       : "";
-  const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
+  const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : (attachedMissSystemPrompt ?? GENERAL_SYSTEM_PROMPT);
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective
