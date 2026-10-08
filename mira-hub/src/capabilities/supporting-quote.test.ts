@@ -645,3 +645,35 @@ describe("numeric coefficients outside bars (#4320 review round 4)", () => {
     });
   }
 });
+
+
+describe("tables without outer pipes (#4320 review round 5)", () => {
+  for (const source of [
+    "Frame | Voltage\n--- | ---\n5 | 12 V",
+    "Frame | Voltage |\n--- | --- |\n5 | 12 V |",
+    "Frame | Voltage\n:--- | ---:\n4 | 10 V\n5 | 12 V",
+    "Intro\nFrame | Voltage\n--- | ---\n−2 | 12 V",
+  ]) {
+    it(`valid table supports its voltage: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+  }
+  for (const source of [
+    "Frame | Voltage\n--- | ---\n\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\nRated −2|20 V|.",
+    "Frame | Voltage\n--- | ---\n5 | −2|20 V|",
+    "Frame | Voltage\nnot a separator\n−2|20 V|",
+  ]) {
+    it(`table-like prose does not authorize an expression: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe("ORIGINAL");
+      expect(r.unsupportedValueCount).toBeGreaterThan(0);
+      expect(r.quoteFallbackCount).toBe(1);
+    });
+  }
+});

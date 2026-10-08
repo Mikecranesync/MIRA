@@ -143,8 +143,27 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
   // Otherwise −2|20 V| is an expression, not a supported plain 20 V quantity.
   // Retain compact rows such as |5|12 V| and the unscaled |12 V| control.
   if (cellBoundary) {
-    const linePrefix = n.slice(n.lastIndexOf("\n", boundary - 1) + 1, boundary);
-    if (/\d[ \t]*$/u.test(linePrefix) && !/^[ \t]*\|/u.test(linePrefix)) return true;
+    const lineStart = n.lastIndexOf("\n", boundary - 1) + 1;
+    const linePrefix = n.slice(lineStart, boundary);
+    if (/\d[ \t]*$/u.test(linePrefix) && !/^[ \t]*\|/u.test(linePrefix)) {
+      // GFM also permits tables without outer pipes. Require a contiguous
+      // same-width header/alignment block, not merely a bar in nearby prose.
+      const lineEnd = n.indexOf("\n", start);
+      const rowCells = n.slice(lineStart, lineEnd < 0 ? n.length : lineEnd)
+        .trim().replace(/^\||\|$/g, "").split("|");
+      const rows = n.slice(0, lineStart).split("\n").slice(0, -1);
+      let tableRow = false;
+      for (let row = rows.length - 1; row > 0; row--) {
+        const cells = rows[row].trim().replace(/^\||\|$/g, "").split("|");
+        if (!rows[row].trim() || cells.length !== rowCells.length) break;
+        if (cells.every((cell) => /^[ \t]*:?-{3,}:?[ \t]*$/.test(cell))) {
+          const header = rows[row - 1].trim().replace(/^\||\|$/g, "").split("|");
+          tableRow = rowCells.length > 1 && header.length === rowCells.length;
+          break;
+        }
+      }
+      if (!tableRow) return true;
+    }
     return false;
   }
   let k = start;
