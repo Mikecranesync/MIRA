@@ -22,20 +22,21 @@ const MAX_MARKER_DISTANCE = 300;
 
 const UNIT_ALIASES: [RegExp, string][] = [
   [/^n·?-?m$/, "nm"], [/^lb·?-?in$/, "lbin"], [/^lb·?-?ft$/, "lbft"],
-  [/^v(?:ac|dc)?$/, "v"], [/^ma$/, "ma"], [/^a$/, "a"], [/^hz$/, "hz"], [/^khz$/, "khz"],
+  [/^vac$/, "vac"], [/^vdc$/, "vdc"], [/^v$/, "v"], [/^ma$/, "ma"], [/^a$/, "a"], [/^hz$/, "hz"], [/^khz$/, "khz"],
   [/^kw$/, "kw"], [/^hp$/, "hp"], [/^kva$/, "kva"], [/^°c$/, "c"], [/^°f$/, "f"], [/^%$/, "%"],
   [/^mm2$/, "mm2"], [/^mm$/, "mm"], [/^in$/, "in"], [/^awg$/, "awg"], [/^ms$/, "ms"], [/^s$/, "s"],
   [/^rpm$/, "rpm"], [/^bar$/, "bar"], [/^psi$/, "psi"], [/^(?:ohms?|ω)$/, "ohm"],
 ];
 const UNIT_SRC =
-  "n\\s*[·\\-]?\\s*m|lb\\s*[·\\-]?\\s*(?:in|ft)|vac|vdc|v|ma|a|khz|hz|kw|hp|kva|°c|°f|%|mm2|mm|in|awg|ms|s|rpm|bar|psi|ohms?|ω";
+  "n\\s*[·\\-]?\\s*m|lb\\s*[·\\-]?\\s*(?:in|ft)|v\\s*(?:ac|dc)|v|ma|a|khz|hz|kw|hp|kva|°c|°f|%|mm2|mm|in|awg|ms|s|rpm|bar|psi|ohms?|ω";
 // Thousands separator (1,000) | decimal comma not part of a list on either side (1,76 —
 // but neither "10,20" nor "20,30" in 10,20,30) | plain.
 const NUM = "\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|(?<!\\d,)\\d+,\\d{1,2}(?![,\\d])|\\d+(?:\\.\\d+)?";
 // A letter, digit or dot right before the number (F004, v1.2) or a letter/digit right
-// after it (10x) means it is not a value.
+// after it (10x) means it is not a value. Each number may carry a minus sign: -20 °C is
+// not 20 °C, and a range keeps both endpoint signs (-20 to -10).
 const VALUE_RE = new RegExp(
-  `(?<![\\p{L}\\d.])(${NUM})(?:\\s*(?:-|…|\\.\\.\\.|to)\\s*(${NUM}))?(?:\\s*(${UNIT_SRC}))?(?![\\p{L}\\d])`,
+  `(?<![\\p{L}\\d.])(-?)(${NUM})(?:\\s*(?:-|…|\\.\\.\\.|to)\\s*(-?)(${NUM}))?(?:\\s*(${UNIT_SRC}))?(?![\\p{L}\\d])`,
   "giu",
 );
 
@@ -44,7 +45,8 @@ export function normalize(s: string): string {
   return [...s]
     .map((ch) => {
       if ("·•⋅∙・‧".includes(ch)) return "·";
-      if ("–—‑‒".includes(ch)) return "-";
+      if ("–—‑‒−".includes(ch)) return "-"; // incl. U+2212 MINUS SIGN
+      if ("*_`".includes(ch)) return " "; // inline markdown never separates a number from its unit
       if (ch === "²") return "2";
       if (ch === "Ω") return "ω";
       if (ch === " " || ch === " " || ch === " ") return " ";
@@ -74,8 +76,13 @@ export function findValues(text: string): Value[] {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     out.push({
-      nums: [m[1], m[2]].filter((x): x is string => Boolean(x)).map(parseNum),
-      unit: canonUnit(m[3]),
+      nums: [
+        { sign: m[1], raw: m[2] },
+        { sign: m[3], raw: m[4] },
+      ]
+        .filter((n): n is { sign: string; raw: string } => Boolean(n.raw))
+        .map((n) => (n.sign === "-" ? -1 : 1) * parseNum(n.raw)),
+      unit: canonUnit(m[5]),
       start,
       end,
       text: text.slice(start, end),
@@ -158,8 +165,14 @@ export function assignValues(answer: string, question: string): Map<string, Valu
 
 /** A source value supports a claimed one: same unit when the claim states one, and every
  *  claimed number literally present (a range claim needs both endpoints). */
+function unitsAgree(claim: string | null, src: string | null): boolean {
+  if (claim === null || claim === src) return true;
+  // "24 V" is compatible with "24 VAC"/"24 VDC"; "24 VAC" never supports "24 VDC".
+  return (claim === "v" && (src === "vac" || src === "vdc")) || (src === "v" && (claim === "vac" || claim === "vdc"));
+}
+
 function satisfies(src: Value, claim: Value): boolean {
-  if (claim.unit !== null && src.unit !== claim.unit) return false;
+  if (!unitsAgree(claim.unit, src.unit)) return false;
   return claim.nums.every((c) => src.nums.some((x) => x === c));
 }
 

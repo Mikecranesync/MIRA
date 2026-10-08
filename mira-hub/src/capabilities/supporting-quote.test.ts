@@ -193,3 +193,30 @@ describe("withSupportingQuotes (the route seam)", () => {
     expect(r.unsupportedValueCount).toBe(1);
   });
 });
+
+describe("Codex round 1 (PR #4319) — a sign, an AC/DC qualifier or inline markup never makes a false 'claim'", () => {
+  it("F1: -20 °C never matches +20 °C, in either direction", () => {
+    expect(supportingQuote(["Temperature allowed 20 °C."], "Minimum temperature is -20 °C [1].", "1", "")).toEqual({ quote: null, support: "question_fallback", unsupported: ["-20 °C"] });
+    expect(supportingQuote(["Minimum ambient -20 °C."], "The limit is 20 °C [1].", "1", "").support).toBe("question_fallback");
+    expect(supportingQuote(["Minimum ambient −20 °C."], "Minimum temperature is -20 °C [1].", "1", "").support).toBe("claim"); // U+2212 minus
+  });
+  it("F1: a signed range keeps both endpoint signs; an ordinary range is unaffected", () => {
+    expect(assignValues("Operating range -20 to -10 °C [1].", "").get("1")?.[0].nums).toEqual([-20, -10]);
+    expect(assignValues("Torque 1.76-2.16 N·m [1].", "").get("1")?.[0].nums).toEqual([1.76, 2.16]);
+    expect(supportingQuote(["Storage -20…-10 °C."], "Store at -20 to -10 °C [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Storage 20…10 °C."], "Store at -20 to -10 °C [1].", "1", "").support).toBe("question_fallback");
+  });
+  it("F2: VAC and VDC are contradictory; spaced and compact spellings agree; bare V is compatible", () => {
+    expect(supportingQuote(["Input rating 24 VAC."], "Input rating is 24 VDC [1].", "1", "")).toEqual({ quote: null, support: "question_fallback", unsupported: ["24 VDC"] });
+    expect(supportingQuote(["Input rating 24 V DC."], "Input rating is 24 VAC [1].", "1", "").support).toBe("question_fallback");
+    expect(supportingQuote(["Input rating 24 V DC."], "Input rating is 24 VDC [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Input rating 24 Vdc."], "Input rating is 24 V DC [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Input rating 24 VDC."], "Input rating is 24 V [1].", "1", "").support).toBe("claim");
+  });
+  it("F3: inline markup around the number never strips its unit", () => {
+    for (const a of ["Rated current is **12** A [1].", "Rated current is *12* A [1].", "Rated current is `12` A [1].", "Rated current is __12__ A [1]."]) {
+      expect(supportingQuote(["Leakage test 12 V only."], a, "1", "current")).toEqual({ quote: null, support: "question_fallback", unsupported: [expect.stringContaining("12")] });
+      expect(supportingQuote(["Rated current 12 A continuous."], a, "1", "current").support).toBe("claim");
+    }
+  });
+});
