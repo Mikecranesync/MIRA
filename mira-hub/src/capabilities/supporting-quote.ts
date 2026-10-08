@@ -45,22 +45,30 @@ const NUM = "\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|(?<!\\d,)\\d+,\\d{1,2}(?![,\\d])|\
 // A letter, digit or dot right before the number (F004, v1.2), a letter-hyphen code
 // (A-20), or a letter/digit right after it (10x) means it is not a value. Each number may
 // carry a minus sign, also across spacing or markup ("- 20", "-**20**"): -20 °C is not
-// 20 °C, and a range keeps both endpoint signs (-20 to -10). A line-leading "- " is a
-// list bullet, not a sign (findValues). A fraction's parts (1/2, 12/24) are not values, and
-// a ± tolerance is part of the unit, so "±0.5 mm" only ever matches "±0.5 mm".
+// 20 °C, and a range keeps both endpoint signs (-20 to -10). A ± tolerance or a comparator
+// is part of the unit, so "±0.5 mm" only ever matches "±0.5 mm" and "<40 °C" only "<40 °C".
 const VALUE_RE = new RegExp(
-  `(?<![\\p{L}\\d./])(±\\s*)?(-\\s*)?(?<!\\p{L}-)(${NUM})(?:\\s*(?:-|…|\\.\\.\\.|to)\\s*(-\\s*)?(${NUM}))?(?:\\s*(${UNIT_SRC}|${UNKNOWN_UNIT}))?(?![\\p{L}\\d]|\\/\\d)`,
+  `(?<![\\p{L}\\d./])((?:[±≤≥]|[<>]=?)\\s*)?(-\\s*)?(?<!\\p{L}-)(${NUM})(?:\\s*(?:-|…|\\.\\.\\.|to)\\s*(-\\s*)?(${NUM}))?(?:\\s*(${UNIT_SRC}|${UNKNOWN_UNIT}))?(?![\\p{L}\\d])`,
   "giu",
 );
+// Parse completeness: a value is usable only when the parser consumed the WHOLE quantity.
+// Anything right after it that extends the quantity — a "/" (A/mm², 12 V/24 V, 1/2 in), "^",
+// a superscript, "·" (kW·h), a joined "-word" or "-digit" (V-DC, 400 V-class), a ".digit"
+// (1.2.3), or a waveform qualifier after the unit (12 volts DC, 12 V rms, 12 V (AC)) — makes
+// the value unusable on both sides: it never supports a claim, and as a claim it is
+// counted unsupported. The qualifier set is closed: ac, dc, rms, peak, pk, pk-pk, p-p, pp, avg.
+const INCOMPLETE_TAIL =
+  /^(?:[ \t]*[/^·⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]|[-.][\p{L}\d]|[ \t]*[-(]?[ \t]*(?:ac|dc|rms|peak|pk-pk|pk|p-p|pp|avg)(?![\p{L}\d]))/u;
 
 /** Same-length normalization: matching runs on this; quotes are cut from the original text. */
 export function normalize(s: string): string {
-  return [...s]
-    .map((ch) => {
+  const chars = [...s];
+  return chars
+    .map((ch, i) => {
       if ("·•⋅∙・‧".includes(ch)) return "·";
       if ("–—‑‒−".includes(ch)) return "-"; // incl. U+2212 MINUS SIGN
       if ("*_`".includes(ch)) return " "; // inline markdown never separates a number from its unit
-      if (ch === "²") return "2";
+      if (ch === "²") return /\p{L}/u.test(chars[i - 1] ?? "") ? "2" : ch; // mm² is mm2; 10² stays a power
       if (ch === "Ω") return "ω";
       if (ch === " " || ch === " " || ch === " ") return " ";
       const lower = ch.toLowerCase();
@@ -82,28 +90,40 @@ function parseNum(raw: string): number {
   return /^\d{1,3}(?:,\d{3})+/.test(raw) ? Number(raw.replace(/,/g, "")) : Number(raw.replace(",", "."));
 }
 
-export type Value = { nums: number[]; unit: string | null; start: number; end: number; text: string };
+export type Value = { nums: number[]; unit: string | null; start: number; end: number; text: string; complete: boolean };
 
-export function findValues(text: string): Value[] {
+/** `side` matters for one case only: a sign spaced from its number at the start of a line. */
+export function findValues(text: string, side: "answer" | "source"): Value[] {
   const out: Value[] = [];
   const n = normalize(text);
   for (const m of n.matchAll(VALUE_RE)) {
     const start = m.index ?? 0;
     const end = start + m[0].length;
-    // "- 20 V" at the start of a line is a list bullet, not a negative number.
-    const bullet = Boolean(m[2]) && /\s/.test(m[2]) && n.slice(n.lastIndexOf("\n", start - 1) + 1, start).trim() === "";
+    let sign: string | undefined = m[2];
+    let complete = !INCOMPLETE_TAIL.test(n.slice(end));
+    // Decided on the ORIGINAL text: a sign, then real whitespace, with only indentation before
+    // it on its line. U+2212 is always a minus. In the answer, an ASCII "- " there is Markdown
+    // list syntax — rendered as a bullet, so the number is unsigned. Anywhere else (source text,
+    // or another dash in the answer) it is bullet-or-minus: ambiguous, so the value is unusable.
+    const at = start + (m[1]?.length ?? 0);
+    if (sign && /\s/.test(text[at + 1] ?? "") && text[at] !== "−" && /^[ \t]*$/.test(text.slice(text.lastIndexOf("\n", start - 1) + 1, start))) {
+      if (side === "answer" && text[at] === "-") sign = undefined;
+      else complete = false;
+    }
     const unit = canonUnit(m[6]);
+    const prefix = m[1]?.replace(/\s+/g, "").replace("<=", "≤").replace(">=", "≥");
     out.push({
       nums: [
-        { sign: bullet ? undefined : m[2], raw: m[3] },
+        { sign, raw: m[3] },
         { sign: m[4], raw: m[5] },
       ]
         .filter((x): x is { sign: string | undefined; raw: string } => Boolean(x.raw))
         .map((x) => (x.sign ? -1 : 1) * parseNum(x.raw)),
-      unit: m[1] ? `±${unit ?? ""}` : unit,
+      unit: prefix ? `${prefix}${unit ?? ""}` : unit,
       start,
       end,
       text: text.slice(start, end),
+      complete,
     });
   }
   return out;
@@ -145,6 +165,8 @@ export function assignValues(answer: string, question: string): Map<string, Valu
     [...normalize(question).matchAll(/([\p{L}][\p{L}-]*)[\s-]?(\d+)/gu)].map((m) => `${m[1]}|${m[2]}`),
   );
   const masked = answer.replace(MARKER_RE, (m) => " ".repeat(m.length)); // keep offsets
+  // Parsed once over the whole answer, so "start of a line" means the real line, not a region.
+  const values = findValues(masked, "answer");
   for (const [rs, re] of regions(answer)) {
     const groups: { ids: string[]; start: number; end: number }[] = [];
     for (const m of answer.slice(rs, re).matchAll(/(?:\[\d+\]\s*)+/g)) {
@@ -152,12 +174,14 @@ export function assignValues(answer: string, question: string): Map<string, Valu
       groups.push({ ids: [...m[0].matchAll(MARKER_RE)].map((x) => x[1]), start: at, end: at + m[0].trimEnd().length });
     }
     if (groups.length === 0) continue;
-    for (const v of findValues(masked.slice(rs, re))) {
-      const vs = rs + v.start;
-      const ve = rs + v.end;
+    for (const v of values) {
+      const vs = v.start;
+      const ve = v.end;
+      if (vs < rs || ve > re) continue;
       const before = normalize(masked.slice(Math.max(rs, vs - 24), vs));
       if (v.unit === null) {
-        if (v.nums.length === 1 && Number.isInteger(v.nums[0]) && v.nums[0] < 10) continue; // "(1)", ordinals
+        // "(1)", ordinals — but an incomplete value ("1/2 in") has quantity syntax after it, so it is a claim.
+        if (v.complete && v.nums.length === 1 && Number.isInteger(v.nums[0]) && v.nums[0] < 10) continue;
         if (PAGE_RE.test(before)) continue;
         if (/^\s*(?:[-*•]\s+)?$/.test(masked.slice(rs, vs)) && /^[.)]\s/.test(masked.slice(ve, ve + 2))) continue; // "12. "
       }
@@ -179,7 +203,7 @@ export function assignValues(answer: string, question: string): Map<string, Valu
         }
       }
       if (!best || bestD > MAX_MARKER_DISTANCE) continue;
-      for (const id of best.ids) res.set(id, [...(res.get(id) ?? []), { ...v, start: vs, end: ve }]);
+      for (const id of best.ids) res.set(id, [...(res.get(id) ?? []), v]);
     }
   }
   return res;
@@ -196,6 +220,7 @@ function unitsAgree(claim: string | null, src: string | null): boolean {
 }
 
 function satisfies(src: Value, claim: Value): boolean {
+  if (!src.complete || !claim.complete) return false; // a partly parsed quantity never matches
   if (!unitsAgree(claim.unit, src.unit)) return false;
   return claim.nums.every((c) => src.nums.some((x) => x === c));
 }
@@ -224,7 +249,7 @@ export function supportingQuote(
   const everMatched = new Set<number>();
   chunks.forEach((full, ci) => {
     const text = full.slice(0, MODEL_VISIBLE_CHARS);
-    const srcVals = findValues(text);
+    const srcVals = findValues(text, "source");
     for (const sv of srcVals) {
       if (!claims.some((c) => satisfies(sv, c))) continue;
       let start = Math.max(0, Math.min(sv.start - Math.floor(SPAN / 4), text.length - SPAN));

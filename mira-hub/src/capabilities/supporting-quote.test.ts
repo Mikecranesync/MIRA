@@ -253,13 +253,71 @@ describe("Codex round 2 (PR #4319) — a parse can never loosen a claim into a w
 });
 
 describe("same class, found before round 3 — fractions and tolerances are never read as plain values", () => {
-  it("a fraction's parts are not values: '1/2 in' never matches '2 in'", () => {
-    expect(supportingQuote(["Use a 2 in pipe."], "Use a 1/2 in wrench [1].", "1", "")).toEqual({ quote: null, support: "question_fallback", unsupported: [] });
-    expect(assignValues("Rated 12/24 V dual [1].", "").get("1")).toBeUndefined();
+  // Round 4 (option A): a fraction is a quantity the parser cannot consume, so it is a claim
+  // that can never be supported — counted unsupported, never matched, never silently dropped.
+  it("a fraction's parts are not values: '1/2 in' never matches '2 in', and the claim is counted", () => {
+    expect(supportingQuote(["Use a 2 in pipe."], "Use a 1/2 in wrench [1].", "1", "")).toEqual({ quote: null, support: "question_fallback", unsupported: ["1"] });
+    expect(assignValues("Rated 12/24 V dual [1].", "").get("1")?.map((v) => [v.text, v.complete])).toEqual([["12", false]]);
   });
   it("a ± tolerance only matches a ± tolerance", () => {
     expect(supportingQuote(["Shaft length 0.5 mm."], "Runout is ±0.5 mm [1].", "1", "").support).toBe("question_fallback");
     expect(supportingQuote(["Runout ±0.5 mm max."], "Runout is ±0.5 mm [1].", "1", "").support).toBe("claim");
     expect(supportingQuote(["Runout ±0.5 mm max."], "Length is 0.5 mm [1].", "1", "").support).toBe("question_fallback");
+  });
+});
+
+describe("Codex round 3 (PR #4319) — a value counts only when the parser consumes the whole quantity", () => {
+  const fallback = (...unsupported: string[]) => ({ quote: null, support: "question_fallback", unsupported });
+
+  it("F1: a line-leading Unicode minus (U+2212) is a sign, never a list bullet", () => {
+    expect(supportingQuote(["− 20 °C minimum."], "The limit is 20 °C [1].", "1", "")).toEqual(fallback("20 °C"));
+    expect(supportingQuote(["− 20 °C minimum."], "The limit is -20 °C [1].", "1", "").support).toBe("claim");
+  });
+  it("F1: a minus separated from its number by markup at the start of an answer line is a sign", () => {
+    expect(supportingQuote(["Allowed 20 °C."], "-**20** °C [1] is the minimum.", "1", "")).toEqual(fallback("-**20** °C"));
+    expect(supportingQuote(["Minimum -20 °C."], "-**20** °C [1] is the minimum.", "1", "").support).toBe("claim");
+  });
+  it("F1: only a Markdown list marker at the start of an answer line is a bullet; in source text a spaced line-leading sign is ambiguous", () => {
+    expect(supportingQuote(["Supply 20 V."], "- 20 V supply [1]", "1", "").support).toBe("claim"); // a real bullet
+    expect(supportingQuote(["Allowed 20 °C."], "The range is fine. - 20 °C is the minimum [1].", "1", "")).toEqual(fallback("- 20 °C"));
+    expect(supportingQuote(["- 20 °C minimum."], "The limit is 20 °C [1].", "1", "")).toEqual(fallback("20 °C"));
+    expect(supportingQuote(["- 20 °C minimum."], "The limit is -20 °C [1].", "1", "")).toEqual(fallback("-20 °C"));
+  });
+  it("F5: a compound unit is never truncated into a match, in either direction", () => {
+    expect(supportingQuote(["Current 12 A."], "Current density is 12 A/mm² [1].", "1", "")).toEqual(fallback("12 A"));
+    expect(supportingQuote(["Current density 12 A/mm²."], "Current is 12 A [1].", "1", "")).toEqual(fallback("12 A"));
+    expect(supportingQuote(["Speed 12 m/s."], "Acceleration is 12 m/s² [1].", "1", "")).toEqual(fallback("12 m"));
+  });
+  it("F5: an AC/DC/rms/peak qualifier after any unit spelling makes the value unusable", () => {
+    expect(supportingQuote(["Rating 12 volts AC."], "Rating is 12 volts DC [1].", "1", "")).toEqual(fallback("12 volts"));
+    expect(supportingQuote(["Ripple 12 V peak."], "Ripple is 12 V rms [1].", "1", "")).toEqual(fallback("12 V"));
+    expect(supportingQuote(["Supply 12 V-AC."], "Supply is 12 V-DC [1].", "1", "")).toEqual(fallback("12 V"));
+    expect(supportingQuote(["Supply 12 V."], "Supply is 12 V (AC) [1].", "1", "")).toEqual(fallback("12 V"));
+  });
+  it("completeness: a trailing /, ^, superscript, ·, joined word or .digit makes a value unusable", () => {
+    expect(supportingQuote(["Count is 12 only."], "Rated 12 V/24 V [1].", "1", "")).toEqual(fallback("12 V"));
+    expect(supportingQuote(["Area 12 m."], "Area is 12 m^2 [1].", "1", "")).toEqual(fallback("12 m"));
+    expect(supportingQuote(["Speed 102 rpm."], "Speed is 10² rpm [1].", "1", "")).toEqual(fallback("10"));
+    expect(supportingQuote(["Volume 12 m nominal."], "Volume is 12 m³ [1].", "1", "")).toEqual(fallback("12 m"));
+    expect(supportingQuote(["Power 12 kW."], "Energy is 12 kW·h [1].", "1", "")).toEqual(fallback("12 kW"));
+    expect(supportingQuote(["Firmware 1.2.0 required."], "Firmware 1.2.3 is required [1].", "1", "")).toEqual(fallback("1.2"));
+  });
+  it("a comparator is part of the value, like ±", () => {
+    expect(supportingQuote(["Ambient <40 °C."], "Ambient must be >40 °C [1].", "1", "")).toEqual(fallback(">40 °C"));
+    expect(supportingQuote(["Max ambient 40 °C."], "Ambient must be ≤40 °C [1].", "1", "")).toEqual(fallback("≤40 °C"));
+    expect(supportingQuote(["Ambient ≤ 40 °C."], "Ambient must be <= 40 °C [1].", "1", "").support).toBe("claim");
+  });
+  it("controls: fully consumed quantities still match", () => {
+    expect(supportingQuote(["Rated current 12 A continuous."], "Rated current is 12 A [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Wire 5.3 mm2 (10 AWG)."], "Use 5.3 mm² wire [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Input 24 V AC."], "Input is 24 VAC [1].", "1", "").support).toBe("claim");
+    expect(supportingQuote(["Ripple 12 Vrms."], "Ripple is 12 Vrms [1].", "1", "").support).toBe("claim");
+  });
+  it("the cost, stated: an identical but unconsumable quantity is not matched either", () =>
+    expect(supportingQuote(["Speed 12 m/s."], "Speed is 12 m/s [1].", "1", "")).toEqual(fallback("12 m")));
+  it("the route seam counts an unconsumable claim and keeps the existing quote", () => {
+    const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: "Current 12 A.", sourceUrl: "/m.pdf", sourcePage: 1 }], "Current density is 12 A/mm² [1].", "");
+    expect(r.citations[0].quote).toBe("q");
+    expect(r.unsupportedValueCount).toBe(1);
   });
 });
