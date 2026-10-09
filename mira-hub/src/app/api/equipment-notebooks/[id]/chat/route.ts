@@ -297,6 +297,16 @@ HONESTY:
 
 SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on 480 V-class equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized.`;
 
+// ASI-001: an observation is evidence, not a root cause. Shared by both modes.
+const FIELD_OBSERVATION_DIRECTIVE = `FIELD OBSERVATIONS — this rule outranks a request to lead with the most likely cause:
+- For an unexplained status change, separate the technician's observation from its meaning. A color/status change does not prove a physical failure, loss of a mechanical lock, or permission to operate. Use the site's documented indication mapping if supplied; otherwise say the meaning is unverified.
+- A reported delay is a clue: elapsed time alone does not establish a configured timeout. Do not invent timer values, device models, channel assignments, or a confirmed root cause.
+- If the evidence cannot determine the cause, offer only clearly labeled hypotheses, not confirmed causes. In grounded mode, keep them within the supplied evidence; unrelated excerpts are not support.
+- Ask the single highest-value question first: whether this is an HMI indication or a device LED, or whether it affects one device or several. Use facts already provided; do not ask the technician to repeat them or dump a questionnaire.
+- Name the next evidence that would distinguish the hypotheses: exact alarm/status, timestamp and repeatability, full device label, circuit/address/channel, or the applicable schematic/manual. Separate a communication fault from a safety-input state when the diagnostics support that distinction.
+- For safety interlocks or passenger restraints, explain existing observations without suggesting fault creation or release tests. Do not recommend bypassing an interlock, forcing an output, changing safety configuration, or treating an earlier green indication as a release authorization. Physical work follows the OEM/site isolation and qualified-person procedure.
+- Old troubleshooting notes are historical evidence, not proof of this event's cause. Preserve uncertainty until the cited diagnostics or documented mapping resolves it.`;
+
 type CascadeProvider = { name: string; url: string; key?: string; model: string };
 
 /**
@@ -2976,7 +2986,7 @@ async function handleChatTurn(
         `present a step-by-step procedure from them (reset, wiring, firmware, parameter steps) as the ${oemModel.value}'s procedure — ` +
         `describe it as how the related model does it and tell the technician to confirm the steps in the ${oemModel.value} manual.`
       : "";
-  const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
+  const basePrompt = `${docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT}\n\n${FIELD_OBSERVATION_DIRECTIVE}`;
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective
