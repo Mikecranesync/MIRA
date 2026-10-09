@@ -132,7 +132,7 @@ describe("field indication through the real notebook route", () => {
   const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { content: string }[];
   expect(messages.some((m) => m.content.includes(text))).toBe(true);
  });
- it.each(["Can I use my M12 instead of this S12? It is white instead of green.", "Is white wire OK instead of green wire?", "Can I use a sensor that is rated for 24 V instead of 12 V?", "Can I install an LED that is white instead of green?"])("still refuses unsupported substitution: %s", async (message) => {
+ it.each(["Can I use my M12 instead of this S12? It is white instead of green.", "Is white wire OK instead of green wire?", "Can I use a sensor that is rated for 24 V instead of 12 V?", "Can I install an LED that is white instead of green?", "Is a white LED safe instead of green?", "Is a white LED allowed instead of green?"])("still refuses unsupported substitution: %s", async (message) => {
   visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({ observationId: "obs", sessionId: "session", text: "Label appears to read Ni8U-S12-AP6", obsKind: "look", trust: "candidate", fileId: "44444444-4444-4444-8444-444444444444", hazards: [] });
   const res = await POST(req({ message, mode: "general", visualEvidence: { fileId: "44444444-4444-4444-8444-444444444444" } }), params);
   const output = await frames(res);

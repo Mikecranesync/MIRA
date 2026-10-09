@@ -148,7 +148,11 @@ export function asksPartCompatibility(question: string): boolean {
       const before = sentence.slice(0, comparison.index);
       const after = sentence.slice((comparison.index ?? 0) + comparison[0].length);
       const indication = /^\s+(?:being\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s*(?:[.,;:!?]|$)/i.test(after);
-      const observation = /\b(?:tablet|indicator|led|screen|display|shows?|reads?)\b/i.test(before)
+      // A component noun alone does not establish an observed state.
+      const observation = /\b(?:tablet|indicator|led|screen|display)\s+(?:is|was|shows?|reads?)\b/i.test(before)
+        || /\bit\s+(?:shows?|reads?)\b/i.test(before)
+        || /\bit(?:'s|’s|\s+(?:is|was))\s+(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\b/i.test(before)
+        || /^\s*why\s+(?:is|was)\s+(?:the\s+)?(?:tablet|indicator|led|screen|display)\s+(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\b/i.test(before)
         || /^\s*(?:(?:(?:the\s+)?(?:gateway|seat|it)\s+(?:is|was)|it's|it’s)\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s*$/i.test(before);
       // Voice input often omits sentence punctuation. A later state clause
       // ("use a handheld ... it is white") is not the object being substituted.
@@ -159,7 +163,7 @@ export function asksPartCompatibility(question: string): boolean {
       // alternatives where the component name is omitted after "instead of".
       const proposedSuitability = /\b(?:can|could|would|may|should)\b[^.!?]*\b(?:use|install|fit|work|swap|connect|put)\b/i.test(before)
         && !/\b(?:it(?:'s|’s|\s+(?:is|was))\s+[^.!?]*\bon\s+(?:the\s+)?(?:tablet|screen|display)|(?:the\s+)?(?:tablet|screen|display)\s+(?:shows?|reads?))\b/i.test(before);
-      const suitabilityAttribute = /\b(?:ok|acceptable|suitable|work|works)\b/i.test(before)
+      const suitabilityAttribute = /\b(?:ok|acceptable|suitable|safe|allowed|work|works)\b/i.test(before)
         || /\bif\s+it\s+(?:is|was)\b/i.test(before);
       const substitution = (useAt > stateAt && before.length - useAt <= 100)
         || proposedSuitability || suitabilityAttribute;

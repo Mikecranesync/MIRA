@@ -67,6 +67,9 @@ describe("photo part lookup", () => {
     "Can I install an LED that is white instead of green?",
     "Can I use an indicator which is white instead of green?",
     "Would a white LED work instead of green?",
+    "Is a white LED safe instead of green?",
+    "Is a white LED allowed instead of green?",
+    "Is a white LED legal instead of green?",
     "Is an indicator that is white OK instead of green?",
     "Can I use this LED if it is white instead of green?",
   ])("keeps the compatibility gate for real substitution: %s", (q) => {
