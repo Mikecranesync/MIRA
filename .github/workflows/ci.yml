@@ -459,6 +459,20 @@ jobs:
           pytest materialized_evidence/tests/ -q
           (cd mira-crawler && pytest tests/test_full_ingest_evidence_receipt.py tests/test_kb_growth_cron.py -q)
 
+      - name: Review cost router (routing, escalation, budget caps, codex shim)
+        # tools/review_router decides which model reviews a PR and refuses a paid
+        # review over the dollar ceiling. A routing bug quietly weakens review or
+        # overspends, so it is gated here. Hermetic: stdlib only, a fake codex
+        # binary, no network, no paid call. Root tests/ is not collected
+        # wholesale, so it is named explicitly. pipefail keeps a red pytest red
+        # through tee (the default step shell has no pipefail), and the count
+        # check fails the step if the suite is moved or collects nothing.
+        run: |
+          set -o pipefail
+          pytest tests/review_router/ -q -p no:cacheprovider | tee /tmp/review_router.txt
+          # Require at least 10 tests passed (2+ digits); catches zero-collection and suite moves
+          grep -Eq '^[0-9]{2,} passed' /tmp/review_router.txt
+
       - name: Manufacturer alias consistency + normalizer (#1596/#2263)
         # Locks the cross-service drift guard: the manufacturer alias map is
         # vendored in 3 places (crawler .py, mira-core .py, hub JSON) and must
