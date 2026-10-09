@@ -9,17 +9,22 @@
   expected:
     must_cite: true
     key_points:
-    - F2 = overcurrent fault
-    - Overcurrent indicates load exceeding drive's rated current capacity or phase
-      loss on input
-    - Must check for stalled motor, mechanical jam, or undersized drive
+    - F2 is Auxiliary Input; the auxiliary-input interlock is open
+    - The code alone does not identify which remote interlock or wiring caused it
+    - Identify the configured auxiliary interlock and its existing status; consider
+      remote wiring and intentional communications-triggered faulting
     wrong_if:
-    - Confuses F2 with overvoltage (that's F1)
-    - States F2 is a temperature fault
+    - Calls F2 overcurrent, overvoltage, or a temperature fault
+    - Infers a stalled motor, mechanical jam, or undersized drive from F2 alone
+    - Recommends bypassing or jumpering the auxiliary interlock to run
     - Recommends resetting without investigating cause
-  notes: Grounded to Allen-Bradley PowerFlex 40 manual fault code table (section 10.2
-    typical layout). F2 is industry-standard overcurrent; checking load and three-phase
-    input is immediate action.
+  notes: >-
+    Source: Rockwell Automation 22B-UM001J-EN-E, September 2025, Chapter 4,
+    Table 10, printed page 93 (PDF page 93).
+    https://literature.rockwellautomation.com/idc/groups/literature/documents/um/22b-um001_-en-e.pdf
+    Model-specific fault semantics; no industry-wide F-code mapping or confirmed
+    field root cause. Corrects the prior false F2-overcurrent/F1-overvoltage key;
+    archived result snapshots remain unchanged and require separate adjudication.
 - id: tech-17
   category: electrical_plc_vfd
   mode: grounded
