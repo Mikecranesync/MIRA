@@ -1,3 +1,17 @@
+# Field build slice — mobile photo evidence integrity
+
+Authorized continuation until2026-10-09 20:00UTC / 16:00Eastern. Branch codex/mobile-photo-integrity; base e12d4dfc3. Owned checkout only.
+
+Repair the existing canonical mobile adapter's silent batch/missing-file loss. Its chat contract carries one photo; reject unsupported multiple-photo sends before uploads instead of selecting one and dropping all bytes. Missing chip bytes must never become an apparently complete question. Retain failed attachments for explicit retry only; preserve plain-send supersession and HOME handoff. No new batch API, layout, native package, phone installation, merge or deployment.
+
+Reuse checked current main, merged attachment history and open#4306. #4306 owns previews/release; this slice owns fail-closed preflight and separate regression tests. Its compose diff does not implement this check. Qualify both patches together; do not modify its branch or reuse its review approval.
+
+Verification: real hook regressions RED then GREEN, mobile suite/build, fresh-context review, combined backend qualification, draft PR and honest receipts. Physical acceptance and actual multi-photo support remain separate outstanding gates.
+
+---
+
+## Archived predecessor plan from main
+
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
 **Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`
