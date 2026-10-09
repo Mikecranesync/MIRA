@@ -1,3 +1,12 @@
+# Positive-bootstrap fixture completion and teardown
+
+Spec: docs/specs/mira-answer-quality-standard.md — preserve measured result and independent infrastructure evidence.
+Authorized continuation until2026-10-09 20:00UTC. Own branch codex/bootstrap-cache-test-teardown from e12d4dfc3. Fetch/log/open-PR and merged-bootstrap audit complete; reuse existing test_embedder_bootstrap fixture and rendered compose command. #4324 is merged; its cp diagnostic fix remains untouched.
+
+CI at #4335 failed test_cached_offline_success_under_2s because the fixture unconditionally stops fake serve after1s, while bootstrap permits2s and may retry readiness. This source is byte-identical onmain; exact failed job logs retained. The full suite also reproduced the same ready-state race in unchanged cold/fast success fixtures. Reuse one private test helper for all three positive paths; no matching helper exists inrepo ororigin/main after explicit reuse audit. Qualify a deterministic already-ready service and wait for observed Bootstrapcomplete before teardown, bounded by a test harness deadline. Preserve2s operation/readiness caps and production compose/script bytes; assert no registry pull and no fake serve leak. No new generic helper, service, paid calls or threshold relaxation.
+
+Run the three exact positive-path tests and complete existing bootstrap/deadline/diagnostic suite. Review exact head/body; no merge/deploy or prior logical-source budget reset. This fixture repair is separate from the already reviewed evaluator and field code.
+
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
 **Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`
