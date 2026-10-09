@@ -147,9 +147,9 @@ export function asksPartCompatibility(question: string): boolean {
     [...sentence.matchAll(/\binstead\s+of\b/gi)].some((comparison) => {
       const before = sentence.slice(0, comparison.index);
       const after = sentence.slice((comparison.index ?? 0) + comparison[0].length);
-      const indication = /^\s+(?:being\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)(?:[\s,;:.!?]|$)/i.test(after);
-      const observation = /\b(?:tablet|indicator|led|screen|display|shows?|reads?|is|was|it's|it’s)\b/i.test(before)
-        || /\b(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s*$/i.test(before);
+      const indication = /^\s+(?:being\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s*(?:[.,;:!?]|$)/i.test(after);
+      const observation = /\b(?:tablet|indicator|led|screen|display|shows?|reads?)\b/i.test(before)
+        || /^\s*(?:(?:(?:the\s+)?(?:gateway|seat|it)\s+(?:is|was)|it's|it’s)\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s*$/i.test(before);
       // Voice input often omits sentence punctuation. A later state clause
       // ("use a handheld ... it is white") is not the object being substituted.
       const stateAt = [...before.matchAll(/\b(?:is|was|shows?|reads?|it's|it’s)\b/gi)].at(-1)?.index ?? -1;

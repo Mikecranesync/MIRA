@@ -59,6 +59,11 @@ describe("photo part lookup", () => {
     "Is this replacement compatible? The indicator is red instead of green.",
     "Can I install this module instead of that one?",
     "Can I use this green wire instead of that white wire?",
+    "Is white wire OK instead of green wire?",
+    "Can I use a sensor that is rated for 24 V instead of 12 V?",
+    "Is 24 V acceptable instead of 12 V?",
+    "Can I use a sensor that is rated for 24 instead of 12?",
+    "Can I use wire that is white instead of green?",
   ])("keeps the compatibility gate for real substitution: %s", (q) => {
     expect(asksPartCompatibility(q)).toBe(true);
   });
