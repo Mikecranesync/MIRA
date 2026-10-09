@@ -154,20 +154,23 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
       // ordinary text cells ending in a digit (for example Frame 5).
       if (/\p{L}[^|]*[+-][ \t]*\d+(?:\.\d*)?[ \t]*$/u.test(priorCells.at(-1) ?? "")) return true;
       const valueCell = priorCells.length;
-      const startsBlock = /^(?: {4}|\t)|^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|>|`{3,}|~{3,}|(?:[*+-]|\d+[.)])[ \t]+|<(?:!|\/?[A-Za-z]))|^[ \t]{0,3}(?:[-*_][ \t]*){3,}$/;
-      if (startsBlock.test(linePrefix)) return true;
+      const startsBlock = /^(?: {4}|\t)|^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|>|`{3,}|~{3,}|(?:[*+-]|\d+[.)])[ \t]+|<(?:!|\/?[A-Za-z])|\[[^\]]+\]:)|^[ \t]{0,3}(?:[-*_][ \t]*){3,}$/;
+      if (startsBlock.test(original.slice(lineStart, boundary))) return true;
       const rows = n.slice(0, lineStart).split("\n").slice(0, -1);
+      // Normalization blanks inline markers, including code-fence backticks.
+      // Block syntax must be checked against the same-length original text.
+      const originalRows = original.slice(0, lineStart).split("\n").slice(0, -1);
       let tableRow = false;
       for (let row = rows.length - 1; row > 0; row--) {
         const cells = rows[row].trim().replace(/^\||\|$/g, "").split("|");
         if (!rows[row].trim()) break;
         if (cells.every((cell) => /^[ \t]*:?-+:?[ \t]*$/.test(cell))) {
           const header = rows[row - 1].trim().replace(/^\||\|$/g, "").split("|");
-          tableRow = cells.length > 1 && header.length === cells.length && valueCell < header.length && !startsBlock.test(rows[row - 1]);
+          tableRow = cells.length > 1 && header.length === cells.length && valueCell < header.length && !startsBlock.test(originalRows[row - 1]);
           break;
         }
         // Alignment takes precedence over a one-hyphen list-looking prefix.
-        if (startsBlock.test(rows[row])) break;
+        if (startsBlock.test(originalRows[row])) break;
       }
       if (!tableRow) return true;
     }

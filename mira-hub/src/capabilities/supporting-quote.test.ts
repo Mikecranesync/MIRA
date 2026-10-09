@@ -677,6 +677,8 @@ describe("tables without outer pipes (#4320 review round 5)", () => {
     "Frame | Voltage\n--- | ---\n# Notes\n−2|20 V|",
     "Frame | Voltage\n--- | ---\n> Notes\n−2|20 V|",
     "Frame | Voltage\n--- | ---\n```\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n```text\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n[label]: https://example.test\n−2|20 V|",
     "Frame | Voltage\n--- | ---\n~~~\n−2|20 V|",
     "Frame | Voltage\n--- | ---\n- Notes\n−2|20 V|",
     "Frame | Voltage\n--- | ---\n1. Notes\n−2|20 V|",
