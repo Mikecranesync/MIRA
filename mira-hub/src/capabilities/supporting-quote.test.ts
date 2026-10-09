@@ -812,3 +812,29 @@ describe("raw current-cell position", () => {
       expect(r.quoteFallbackCount).toBe(0);
     });
 });
+
+
+describe("enclosing blocks cannot fabricate a table", () => {
+  const table = "Frame | Voltage\n--- | ---\n−2|20 V|";
+  for (const [open, close] of [
+    ["```text", "```"], ["~~~text", "~~~"], ["````text", "````"],
+    ["<!--", "-->"], ["<pre>", "</pre>"], ["<script>", "</script>"],
+    ["<?xml", "?>"], ["<![CDATA[", "]]>"], ["<div>", "</div>"],
+  ]) it(`literal enclosing ${open} is not table support`, () => {
+    const source = `${open}\n${table}\n${close}`;
+    const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+      [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+    expect(r.citations[0].quote).toBe("ORIGINAL");
+    expect(r.unsupportedValueCount).toBe(1);
+    expect(r.quoteFallbackCount).toBe(1);
+  });
+  for (const prefix of ["```text\nliteral\n```\n", "~~~text\nliteral\n~~~\n", "<!-- literal -->\n", "<pre>literal</pre>\n", "<div>literal</div>\n\n"])
+    it(`real table after a closed block remains supported: ${prefix}`, () => {
+      const source = prefix + table;
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+});

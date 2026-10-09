@@ -185,13 +185,62 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
       // Normalization blanks inline markers, including code-fence backticks.
       // Block syntax must be checked against the same-length original text.
       const originalRows = original.slice(0, lineStart).split("\n").slice(0, -1);
+      // A delimiter/header pair is only layout outside enclosing literal
+      // blocks. Scan original lines forward before the backward table search;
+      // otherwise a nearer delimiter hides its opening fence or HTML block.
+      const blockedRows: boolean[] = [];
+      let fence: { mark: string; width: number } | null = null;
+      let htmlEnd: RegExp | null = null;
+      let htmlUntilBlank = false;
+      for (const row of originalRows) {
+        if (fence) {
+          blockedRows.push(true);
+          const close = /^ {0,3}(`+|~+)[ \t]*$/.exec(row);
+          if (close && close[1][0] === fence.mark && close[1].length >= fence.width) fence = null;
+          continue;
+        }
+        if (htmlEnd) {
+          blockedRows.push(true);
+          if (htmlEnd.test(row)) htmlEnd = null;
+          continue;
+        }
+        if (htmlUntilBlank) {
+          blockedRows.push(true);
+          if (!row.trim()) htmlUntilBlank = false;
+          continue;
+        }
+        const open = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(row);
+        if (open && (open[1][0] !== "`" || !open[2].includes("`"))) {
+          fence = { mark: open[1][0], width: open[1].length };
+          blockedRows.push(true);
+          continue;
+        }
+        const html = /^ {0,3}</.test(row);
+        if (html) {
+          if (/^ {0,3}<!--/.test(row)) htmlEnd = /-->/;
+          else if (/^ {0,3}<\?/.test(row)) htmlEnd = /\?>/;
+          else if (/^ {0,3}<!\[CDATA\[/.test(row)) htmlEnd = /\]\]>/;
+          else if (/^ {0,3}<![A-Z]/.test(row)) htmlEnd = />/;
+          else {
+            const rawTag = /^ {0,3}<(pre|script|style|textarea)(?:[ \t>]|$)/i.exec(row);
+            if (rawTag) htmlEnd = new RegExp(`</${rawTag[1]}[ \\t]*>`, "i");
+            else if (/^ {0,3}<\/?[A-Za-z]/.test(row)) htmlUntilBlank = true;
+          }
+          if (htmlEnd || htmlUntilBlank) {
+            blockedRows.push(true);
+            if (htmlEnd?.test(row)) htmlEnd = null;
+            continue;
+          }
+        }
+        blockedRows.push(false);
+      }
       let tableRow = false;
       for (let row = originalRows.length - 1; row > 0; row--) {
         const cells = originalTableCells(originalRows[row]);
         if (!originalRows[row].trim()) break;
         if (cells.every((cell) => /^[ \t]*:?-+:?[ \t]*$/.test(cell))) {
           const header = originalTableCells(originalRows[row - 1]);
-          tableRow = cells.length > 1 && header.length === cells.length && valueCell < header.length && !startsBlock.test(originalRows[row - 1]);
+          tableRow = !blockedRows[row] && !blockedRows[row - 1] && cells.length > 1 && header.length === cells.length && valueCell < header.length && !startsBlock.test(originalRows[row - 1]);
           break;
         }
         // Alignment takes precedence over a one-hyphen list-looking prefix.
