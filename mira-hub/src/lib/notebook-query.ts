@@ -564,7 +564,11 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
   // previous turn discussed a different display. This is query vocabulary only:
   // LOOK remains an unconfirmed candidate, never an equipment identity or fact.
   // Keep explicit question subjects dominant and exclude background/button prose.
-  if (currentObservation && topicTerms(msg).length === 0) {
+  const explicit = expandIndustrialQuery(msg);
+  const historicalReference = /\b(?:go back|back to|talked about|discussed|earlier|previous|original)\b/i.test(msg);
+  if (currentObservation && topicTerms(msg).length === 0
+      && explicit.exactTokens.length === 0 && explicit.codeTokens.length === 0
+      && explicit.phrases.length === 0 && !historicalReference) {
     const displayText = currentObservation.slice(0, 4000)
       .split(/(?<=[.!?])\s+|\n+/)
       .filter((sentence) => /\b(?:lcd|display|screen|readout)\b/i.test(sentence))
@@ -597,8 +601,11 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
  *  thread answered P044 [Maximum Freq] instead of P042's maximum). Reuses ONLY
  *  tokens already present in the transcript — never a source of equipment facts.
  *  Returns "" for a self-contained question or an empty thread. */
-export function buildTopicHint(message: string, history: ChatHistoryTurn[]): string {
+export function buildTopicHint(message: string, history: ChatHistoryTurn[], currentObservation?: string | null): string {
   const msg = message.trim();
+  // Query focus and answer focus must agree. The full candidate observation
+  // already reaches the data channel; do not inject an old subject as a directive.
+  if (currentObservation && buildRetrievalQuery(msg, [], currentObservation) !== msg) return "";
   if (history.length === 0 || !isReferentialFollowup(msg)) return "";
   const tokens: string[] = [];
   const seen = new Set<string>();

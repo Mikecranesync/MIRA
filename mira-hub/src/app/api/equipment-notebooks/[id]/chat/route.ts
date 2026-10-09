@@ -3008,7 +3008,7 @@ async function handleChatTurn(
   // only) riding IN the user turn next to the question — an end-of-system-prompt
   // hint measurably failed to stop "what's the maximum?" in a decel thread from
   // resolving to the lexically similar P044 [Maximum Freq] row (battery defect D).
-  const topicHint = buildTopicHint(message, history);
+  const topicHint = buildTopicHint(message, history, lookRow?.text);
   const messages = buildProviderMessages(
     systemPrompt,
     history,

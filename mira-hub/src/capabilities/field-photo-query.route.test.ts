@@ -123,6 +123,7 @@ beforeEach(() => {
 describe("server photo context in selected-manual retrieval", () => {
   it("uses the current linked readout rather than a stale history subject", async () => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["55555555-5555-4555-8555-555555555555"], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ content: "Read Peripheral Fault mode: a peripheral fault is present if value 1 is displayed.", docId: "55555555-5555-4555-8555-555555555555", manufacturer: "Pepperl+Fuchs", modelNumber: "VBP-HH1-V3.0", sourceUrl: "https://files.pepperl-fuchs.com/manual.pdf", sourcePage: 18, title: "Family manual", rank: 1, verified: true }]);
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({ observationId: "obs", sessionId: "session", text: "LCD display shows PERI, RD and 1. Buttons read PRG.", obsKind: "look", trust: "candidate", fileId: "44444444-4444-4444-8444-444444444444", hazards: [] });
     const res = await POST(req({ message: "Does this help?", history: [{ role: "user", content: "What is Ethernet parameter P042?" }], sourceDocIds: ["55555555-5555-4555-8555-555555555555"], visualEvidence: { fileId: "44444444-4444-4444-8444-444444444444" } }), params);
     await frames(res);
@@ -132,5 +133,9 @@ describe("server photo context in selected-manual retrieval", () => {
     expect(query).toContain("RD");
     expect(query).not.toContain("P042");
     expect(query).not.toContain("PRG");
+    expect(seamMock.buildRequestBody).toHaveBeenCalled();
+    // History remains legitimate history, but must not be repeated as a directive
+    // in the current evidence-bearing user message.
+    expect(ragMock.buildManualUserContent.mock.calls.at(-1)?.[0]).toBe("Does this help?");
   });
 });
