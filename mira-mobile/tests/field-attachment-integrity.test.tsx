@@ -28,6 +28,18 @@ vi.mock("../src/lib/native-pick", async (importOriginal) => {
   return { ...real, ...pick };
 });
 
+const missingChip = vi.hoisted(() => ({ enabled: false }));
+vi.mock("../src/unified/attachments", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/unified/attachments")>();
+  return { ...real, useUnifiedAttachments: (...args: Parameters<typeof real.useUnifiedAttachments>) => {
+    const controller = real.useUnifiedAttachments(...args);
+    return { ...controller, attachPhoto: async () => {
+      const chip = await controller.attachPhoto();
+      return missingChip.enabled && chip ? { ...chip, id: "lost-byte-identity" } : chip;
+    } };
+  } };
+});
+
 import { useUnifiedAttachments } from "../src/unified/attachments";
 import { claimAttachments, clearAttachments } from "../src/unified/attachment-handoff";
 import type { Attachment } from "@factorylm/interaction";
@@ -50,6 +62,7 @@ afterEach(() => {
   _resetTransientLayersForTest();
   clearAttachments();
   vi.clearAllMocks();
+  missingChip.enabled = false;
 });
 
 describe("field photo batch evidence integrity", () => {
@@ -148,5 +161,29 @@ describe("mobile shell photo-batch failure", () => {
     expect(box.value).toBe("Does this help?");
     expect(onSend).not.toHaveBeenCalled();
     expect(api.lookAtPhoto).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Attach one photo per question."));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(api.lookAtPhoto).not.toHaveBeenCalled();
+    expect(box.value).toBe("Does this help?");
+  });
+  it("keeps unavailable bytes explicit when Try again has no prior turn or host retry", async () => {
+    missingChip.enabled = true;
+    const onSend = vi.fn();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null}
+      handlers={{ onSend, onStop: vi.fn(), onCitation: vi.fn() }}
+      meta={{ notebookId: "nb-1", title: "ASI replay", asset: null, identityConfirmed: false }} />);
+    pick.pickPhoto.mockResolvedValue(new File(["x"], "missing.jpg", { type: "image/jpeg" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "What does it show?" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("missing.jpg is no longer available"));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("missing.jpg is no longer available"));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(api.lookAtPhoto).not.toHaveBeenCalled();
+    expect(box.value).toBe("What does it show?");
   });
 });

@@ -68,6 +68,14 @@ describe("Try again is never a dead button", () => {
     expect(retried.length).toBe(1);
   });
 
+  it("marks draft fallback as an explicit retry, preserving host-owned retained evidence", () => {
+    const sent: unknown[][] = [];
+    const view = show({ onSend: (...args: unknown[]) => { sent.push(args); } });
+    view.dispatch({ type: "set-draft", draft: "Does this help?" });
+    view.click(view.buttonNamed("Try again")!);
+    expect(sent).toEqual([["Does this help?", [], { retry: true }]]);
+  });
+
   it("only promises the message is saved when a draft actually holds it", () => {
     const view = show({});
     const detail = view.container.querySelector('[aria-label="Send error"]')?.textContent ?? "";
