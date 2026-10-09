@@ -145,8 +145,23 @@ export function asksPartCompatibility(question: string): boolean {
   // Check the whole turn before evaluating individual observed comparisons;
   // component subjects and passive verbs carry the same intent as I/we/you.
   if (/\binstead\s+of\b/i.test(question)
-    && (/\b(?:can|could|would|will|may|should|does|do)\b[^.!?]{0,100}\b(?:use(?:d)?|install(?:ed)?|fit(?:ted)?|swap(?:ped)?|connect(?:ed)?|put|work|function|operate)\b/i.test(question)
-      || /\b(?:is|are|would|will)\b[^.!?]{0,100}\b(?:safe|allowed|ok|acceptable|suitable)\b/i.test(question))) return true;
+    && (/\b(?:can|could|would|will|may|should|does|do)\b[^.!?]{0,100}\b(?:use(?:d)?|install(?:ed)?|fit(?:ted)?|swap(?:ped)?|connect(?:ed)?|put|work|function|operate|run|recommend)\b/i.test(question)
+      || /\b(?:is|are|would|will)\b[^.!?]{0,100}\b(?:safe|allowed|ok|acceptable|suitable|legal|permitted)\b/i.test(question))) return true;
+  // A separate question requesting permission/suitability is not an observed
+  // indication, even when its verb is outside the known installation list.
+  // Keep explicit read-only diagnostic requests available; ambiguity fails closed.
+  if (/\binstead\s+of\b/i.test(question) && question.split(/(?<=[.!?;,])\s+|\n+/).some(clause => {
+    const text = clause.trim();
+    if (!/^(?:can|could|would|will|may|should|is|are|do|does|what|which|how)\b/i.test(text)) return false;
+    const diagnostic = /^(?:can|could|would|will|may|should)\s+(?:i|we|you)\s+(?:please\s+)?(?:check|inspect|read|measure|observe|diagnose|troubleshoot)\b/i.test(text)
+      || /^(?:do|does)\b[^.!?]*\b(?:mean|indicate|show|read)\b/i.test(text)
+      || /^what\s+(?:does|is|are)\b/i.test(text)
+      || /^what\s+(?:do|should|can|could)\s+(?:i|we|you)\s+(?:know|check|inspect|read|measure|observe|diagnose|troubleshoot)\b/i.test(text)
+      || /^how\s+(?:do|does|can|could|should)\b[^.!?]*\b(?:check|inspect|read|interpret|measure|observe|diagnose|troubleshoot)\b/i.test(text)
+      || /^which\b[^.!?]*\b(?:is|are|shows?|reads?)\b[^.!?]*\b(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline)\b/i.test(text)
+      || /^(?:is|are)\s+(?:it|they|the (?:led|indicator|display|screen))\s+(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline)\s*[?!.]*$/i.test(text);
+    return !diagnostic;
+  })) return true;
   // "Instead of" also describes an observed state. Evaluate each sentence so
   // an indication report cannot erase a separate genuine substitution request.
   return question.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
