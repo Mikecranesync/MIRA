@@ -1,3 +1,17 @@
+# Field build slice — technician evaluation source truth
+
+Authorized continuation until2026-10-09 20:00UTC / 16:00Eastern. Branch codex/technician-eval-source-truth; base e12d4dfc3. Owned checkout only.
+
+Correct existing tech-16 PowerFlex40 F2 fixture after primary OEM verification. No new harness, judge change, production behavior, recalculated historical scores, provider calls, merge or deployment. Preserve mandatory citation and prohibition on blind reset; reject old false mapping and bypass. Keep archived receipts immutable.
+
+Reuse verified: current main and merged#3760/#3769, actual run_technician.py and judge_baseline.py consumers, current open PRs. No other active claim on the case file. Primary source22B-UM001J-EN-E (September2025), Table10 printedpage93, official Rockwell PDF; F2 AuxiliaryInput, not overcurrent.
+
+Validation: YAML parses; all case identities and remaining cases unchanged; existing baseline runner/judge tests; fresh-context source review; standalone draft PR and source receipt. The rest of the bank is unaudited and no new live score is claimed.
+
+---
+
+## Archived predecessor plan from main
+
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
 **Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`
