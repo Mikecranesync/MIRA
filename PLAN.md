@@ -1,3 +1,11 @@
+# Trusted F2 repair — superseding text clears obsolete evidence
+
+Third total local/trusted review at aed56e873 found that normal synchronous text-send bypass left old retained photo descriptors/bytes armed. Dismissal followed by unrelated text failure and Try again could revive that photo (or reject the unrelated retry with an old batch). Two real empty-thread controls reproduce red2fail/6pass; existing compose zero-request cleanup is now invoked synchronously before plain host send. No new API or upload path.
+
+Green20focusedtests, full mobile905pass/74files, TypeScript/Vite build pass. Original shared-UI365tests and Hub build remain valid for unchanged shared code. All findings fixed in code; final head is UNREVIEWED because three total rounds are spent. No further review, merge or deploy without the required human authorization; this is not GREEN.
+
+---
+
 # Trusted F1 repair — empty-thread attachment retry
 
 #4330 trusted review at0bcacaa7e found that SendError draft fallback loses explicit retry intent when no turn id exists. Two real UnifiedChat regressions reproduce the bypass (batch refusal and unavailable chip bytes). Reuse the existing mobile onSend third-argument retry option; expose it as an optional HostHooks argument and pass it only from SendError's explicit fallback retry. Normal composer sends still omit retry and host turn-id retries are unchanged.
