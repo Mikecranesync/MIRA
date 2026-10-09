@@ -1,3 +1,18 @@
+# Hot Cache — 2026-10-09 — field-maintenance intelligence qualification
+
+**Release status: BLOCKED; no merge/deployment from this session.** Production and staging health last checked at18:53Z: v3.392.4 / `d3129e82739e4cb0afd2eb714a943fb5d3a1d618`. This is health identity, not a fresh image-running receipt.
+
+- CI-only draft #4332 at `960539bdc`: 34/34 checks pass, Hub5,877/53skip plus full Next16.3.8 standalone build, mobile916/build,45evaluation controls. CI merge `8fef6e01a` has the same tree. New test-only extension `b722871bc` adds trusted-GREEN #4336 bootstrap fixtures; fresh CI is pending. Runtime Hub/mobile source is unchanged after960.
+- Trusted GREEN source slices: #4325 security, #4326 evidence reasoning directive, #4331/#4333 four answer keys, #4334 archive provenance, #4335 infrastructure verdicts, #4336 positive bootstrap teardown. Exact source heads/bodies are retained outside repo; current CI may still be red on individual main-based sources due to independent gates. Combined CI does not substitute source review.
+- Final source review needs human post-cap authorization: #4321 (five rounds), #4327/#4328/#4329/#4330 (three each). No new branch/session/composition resets these budgets. #4306 preview retains its own owner; separate Sources repair remains outside this composition.
+- ASI-001 remains unresolved: each seat has its own rear slave; cable/slave changes and brief green after reteach do not prove a repair, onset/cause/model/address mapping remain unknown. No ride controls/configuration or return-to-service authority.
+- Curriculum: [eight lessons](../docs/plans/2026-10-09-field-maintenance-curriculum.md). Tonight: [progressive acceptance routine](../docs/plans/2026-10-09-field-maintenance-acceptance.md), including a correction beyond24messages. Exact ChatGPT baseline responses were absent; no invented paired score.
+- Durable handoff: `/Users/charlienode/Documents/Codex/foundations-acceptance-2026-10-07/HANDOFF-NEXT-SESSION.md`; refreshed state/receipts under `field-intelligence-build/`. This docs snapshot was prepared at19:30Z; refresh the latest final receipt before continuing.
+
+Next: finish final CI snapshot, then resolve review-extension authority before source integration; staging/model/device/rollback acceptance and production authorization remain separate. User's build window ends20:00Z /4p.m. Eastern. No further phone input/install, billing change or foreign worktree cleanup is authorized here.
+
+---
+
 # Hot Cache — 2026-10-06 — power-outage recovery
 
 A power outage at ~01:50–02:05Z dropped every local (Mac) session. Nothing committed was lost.
