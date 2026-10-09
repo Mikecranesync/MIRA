@@ -1,3 +1,33 @@
+# Trusted F2 repair — superseding text clears obsolete evidence
+
+Third total local/trusted review at aed56e873 found that normal synchronous text-send bypass left old retained photo descriptors/bytes armed. Dismissal followed by unrelated text failure and Try again could revive that photo (or reject the unrelated retry with an old batch). Two real empty-thread controls reproduce red2fail/6pass; existing compose zero-request cleanup is now invoked synchronously before plain host send. No new API or upload path.
+
+Green20focusedtests, full mobile905pass/74files, TypeScript/Vite build pass. Original shared-UI365tests and Hub build remain valid for unchanged shared code. All findings fixed in code; final head is UNREVIEWED because three total rounds are spent. No further review, merge or deploy without the required human authorization; this is not GREEN.
+
+---
+
+# Trusted F1 repair — empty-thread attachment retry
+
+#4330 trusted review at0bcacaa7e found that SendError draft fallback loses explicit retry intent when no turn id exists. Two real UnifiedChat regressions reproduce the bypass (batch refusal and unavailable chip bytes). Reuse the existing mobile onSend third-argument retry option; expose it as an optional HostHooks argument and pass it only from SendError's explicit fallback retry. Normal composer sends still omit retry and host turn-id retries are unchanged.
+
+Validation: red2fail/4pass, green18focusedpasses; full mobile903pass, typecheck/Vitepass; canonical UI/lab365pass and TypeScript/buildpass. Hub production build passed. Next trusted review is third total local/trusted round, not a fresh budget. No merge/deploy/native install or batch API.
+
+---
+
+# Field build slice — mobile photo evidence integrity
+
+Authorized continuation until2026-10-09 20:00UTC / 16:00Eastern. Branch codex/mobile-photo-integrity; base e12d4dfc3. Owned checkout only.
+
+Repair the existing canonical mobile adapter's silent batch/missing-file loss. Its chat contract carries one photo; reject unsupported multiple-photo sends before uploads instead of selecting one and dropping all bytes. Missing chip bytes must never become an apparently complete question. Retain failed attachments for explicit retry only; preserve plain-send supersession and HOME handoff. No new batch API, layout, native package, phone installation, merge or deployment.
+
+Reuse checked current main, merged attachment history and open#4306. #4306 owns previews/release; this slice owns fail-closed preflight and separate regression tests. Its compose diff does not implement this check. Qualify both patches together; do not modify its branch or reuse its review approval.
+
+Verification: real hook regressions RED then GREEN, mobile suite/build, fresh-context review, combined backend qualification, draft PR and honest receipts. Physical acceptance and actual multi-photo support remain separate outstanding gates.
+
+---
+
+## Archived predecessor plan from main
+
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
 **Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`
