@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRetrievalQuery, buildTopicHint } from "@/lib/notebook-query";
+import { buildRetrievalQuery, buildTopicHint, expandIndustrialQuery, rerankChunks } from "@/lib/notebook-query";
 
 const photo = "Teal handheld. LCD display shows 'PERI', 'RD', and '1'. Buttons read MODE and PRG. A brown surface is behind it.";
 describe("current photo retrieval focus", () => {
@@ -57,4 +57,33 @@ describe("current photo retrieval focus", () => {
     expect(q).not.toContain("ID1");
     expect(q).not.toContain("fault");
   });
+});
+
+// Review regressions: preserve multiline literals and exclude control-label ranking noise.
+describe("bounded readout continuations", () => {
+  it.each(["Does this help?", "What am I looking at, and what should I check?"])("keeps multiline literals for %s", (message) => {
+    const q = buildRetrievalQuery(message, [{ role: "user", content: "Ethernet P042" }], "LCD display shows:\nPERI\nRD\n1\nButtons read PRG.");
+    for (const term of ["PERI", "RD", "1"]) expect(q).toContain(term);
+    for (const term of ["PRG", "P042"]) expect(q).not.toContain(term);
+  });
+  it.each(["and has buttons", "with two buttons"])("excludes %s from search phrases", (clause) => {
+    const q = buildRetrievalQuery("Does this help?", [], `LCD display shows PERI, RD and 1, ${clause} labeled "MODE" and "PRG" beneath it.`);
+    expect(q).toContain("PERI");
+    expect(q).not.toContain("MODE");
+    expect(q).not.toContain("PRG");
+  });
+});
+
+it("keeps the readout page ahead of six quoted-control navigation passages", () => {
+  const q = buildRetrievalQuery("Does this help?", [], 'LCD display shows PERI, RD and 1, and has buttons labeled "MODE" and "PRG" beneath it.');
+  const rows = [{ content: "PERI Read Peripheral Fault: value 1 indicates a peripheral fault", sourcePage: 18, rank: 1 }, ...Array.from({ length: 6 }, (_, i) => ({ content: "MODE and PRG buttons navigate menus", sourcePage: 30 + i, rank: 0.1 }))];
+  expect(rerankChunks(expandIndustrialQuery(q), rows).slice(0, 6).some(row => row.sourcePage === 18)).toBe(true);
+});
+
+it("keeps quoted literals and placeholder dashes without reading uppercase button labels", () => {
+  const q = buildRetrievalQuery("Does this help?", [], 'LCD display shows:\n"PERI"\n"RD"\n--\nBUTTONS READ PRG.');
+  expect(q).toContain("PERI");
+  expect(q).toContain("RD");
+  expect(q).toContain("--");
+  expect(q).not.toContain("PRG");
 });

@@ -571,18 +571,35 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       && explicit.exactTokens.length === 0 && explicit.codeTokens.length === 0
       && explicit.phrases.length === 0 && !historicalReference) {
     const sentences = currentObservation.slice(0, 4000).split(/(?<=[.!?])\s+|\n+/);
-    const displayText = sentences
-      .filter((sentence, index) => {
-        const display = /\b(?:lcd|display|screen|readout)\b/i.test(sentence);
-        const connectedReadout = index > 0 && /\b(?:lcd|display|screen)\b/i.test(sentences[index - 1])
-          && /^\s*(?:it|this|the screen|the display)\s+(?:reads?|shows?|indicates?)\b/i.test(sentence);
-        const hasReading = /\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b/i.test(sentence);
-        return (display && hasReading || connectedReadout) && !/^\s*(?:below|under|beneath)\b/i.test(sentence);
-      })
-      .map(sentence => sentence.split(/\s+(?:with|and|above|below|beside)\s+(?:the\s+)?(?:buttons?|keys?|controls?|logo|panel)\b|[,;]\s*(?:buttons?|keys?|controls?|logo|panel)\b/i)[0])
-      .join(" ")
-      .slice(0, 320)
-      .trim();
+    const readoutParts: string[] = [];
+    let continuation = false;
+    let usableReading = false;
+    for (let index = 0; index < sentences.length; index++) {
+      const sentence = sentences[index];
+      const display = /\b(?:lcd|display|screen|readout)\b/i.test(sentence);
+      const connectedReadout = index > 0 && /\b(?:lcd|display|screen)\b/i.test(sentences[index - 1])
+        && /^\s*(?:it|this|the screen|the display)\s+(?:reads?|shows?|indicates?)\b/i.test(sentence);
+      const hasReading = /\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b/i.test(sentence);
+      const startsReading = (display && hasReading || connectedReadout)
+        && !/^\s*(?:below|under|beneath)\b/i.test(sentence);
+      // LOOK may put each literal on its own line. Only short literal lines
+      // continue a display block; buttons/background/prose end that block.
+      const literalLine = (/^[ \t]*(?:[-*][ \t]+)?["']?[A-Z0-9][A-Z0-9 _.:+−/='",()?-]{0,63}[ \t]*$/.test(sentence)
+        || /^[ \t]*[-–—]{1,2}[ \t]*$/.test(sentence))
+        && !/^[ \t]*(?:[-*][ \t]+)?(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|label)\b/i.test(sentence);
+      if (!startsReading && !(continuation && literalLine)) {
+        continuation = false;
+        continue;
+      }
+      const reading = sentence.split(/\s+(?:with|and|above|below|beside)\s+(?:(?:has|have)\s+)?(?:(?:the|a|an|two|three|four|\d+)\s+)?(?:buttons?|keys?|controls?|logo|panel)\b|[,;]\s*(?:buttons?|keys?|controls?|logo|panel)\b/i)[0].trim();
+      continuation = true;
+      if (reading) readoutParts.push(reading);
+      const payload = startsReading
+        ? reading.replace(/^.*\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b[: \t]*/i, "")
+        : reading;
+      usableReading ||= /[A-Za-z0-9]/.test(payload);
+    }
+    const displayText = usableReading ? readoutParts.join(" ").slice(0, 320).trim() : "";
     if (displayText) return `${msg} ${displayText}`;
   }
   if (history.length === 0) return msg;
