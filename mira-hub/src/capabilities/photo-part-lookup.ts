@@ -85,10 +85,12 @@ export function partCodes(photoText: string): string[] {
   // identifier label (asset tag, unit id, …) is the same signal (F14, ADR-0036).
   const serialLabelPresent =
     serials.size > 0 || new RegExp(SERIAL_LABEL.source, "i").test(text) || new RegExp(ASSET_LABEL.source, "i").test(text);
-  const unlabelled = serialLabelPresent ? [] : [...text.matchAll(PART_CODE)].map((m) => trimCode(m[0]));
+  // Vision descriptions such as "RJ45-style" are prose, not printed codes.
+  // An explicit P/N label remains a candidate, even with that suffix.
+  const unlabelled = serialLabelPresent ? [] : [...text.matchAll(PART_CODE)]
+    .map((m) => trimCode(m[0]))
+    .filter((code) => !/-(?:style|like|shaped)$/i.test(code));
   const found = [...unlabelled, ...labelled]
-    // Vision descriptions such as "RJ45-style" are prose, not printed codes.
-    .filter((code) => !/-(?:style|like|shaped)$/i.test(code))
     .filter((code) => !serials.has(code.toUpperCase()))
     .filter((code) => !/^X00[A-Z0-9]{7}$/i.test(code))
     .filter((code) => !/^\d+(?:\.\d+)?(?:\s*(?:-|to|\/)\s*\d+(?:\.\d+)?)?\s*(?:VAC|VDC|V|A|HZ|KHZ|W|KW|KVA|MA)$/i.test(code));
@@ -141,13 +143,21 @@ export function asksPartCompatibility(question: string): boolean {
   if (/\b(?:substitute|replacement|interchange(?:able)?|compatible|drop\s*in|replace)\b/i.test(question)) return true;
   // "Instead of" also describes an observed state. Evaluate each sentence so
   // an indication report cannot erase a separate genuine substitution request.
-  return question.split(/[.!?\n]+/).some((sentence) => {
-    if (!/\binstead\s+of\b/i.test(sentence)) return false;
-    const indication = /\binstead\s+of\s+(?:being\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)(?:[\s,;:]|$)/i.test(sentence);
-    const observation = /\b(?:tablet|indicator|led|screen|display|shows?|reads?|is|was|it's|it’s)\b/i.test(sentence);
-    const substitution = /\b(?:use|install|fit|swap|connect|put)\b[^;]{0,100}\binstead\s+of\b/i.test(sentence);
-    return !(indication && observation && !substitution);
-  });
+  return question.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
+    [...sentence.matchAll(/\binstead\s+of\b/gi)].some((comparison) => {
+      const before = sentence.slice(0, comparison.index);
+      const after = sentence.slice((comparison.index ?? 0) + comparison[0].length);
+      const indication = /^\s+(?:being\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)(?:[\s,;:.!?]|$)/i.test(after);
+      const observation = /\b(?:tablet|indicator|led|screen|display|shows?|reads?|is|was|it's|it’s)\b/i.test(before)
+        || /\b(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s*$/i.test(before);
+      // Voice input often omits sentence punctuation. A later state clause
+      // ("use a handheld ... it is white") is not the object being substituted.
+      const stateAt = [...before.matchAll(/\b(?:is|was|shows?|reads?|it's|it’s)\b/gi)].at(-1)?.index ?? -1;
+      const useAt = [...before.matchAll(/\b(?:use|install|fit|swap|connect|put)\b/gi)].at(-1)?.index ?? -1;
+      const substitution = useAt > stateAt && before.length - useAt <= 100;
+      return !(indication && observation && !substitution);
+    }),
+  );
 }
 
 // ── #4150 owner decision (2026-09-30): search only after an explicit, one-time,

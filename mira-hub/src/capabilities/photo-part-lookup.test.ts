@@ -44,6 +44,9 @@ describe("photo part lookup", () => {
   it.each([
     "I think this means I just need to use a handheld on that seat. It's white on the tablet instead of being green",
     "Why is the indicator red instead of green?",
+    "Red instead of green",
+    "I think I need to use a handheld on that seat it is white on the tablet instead of being green",
+    "I use the handheld and the display shows 1 instead of 0",
     "It shows 1 instead of 0. What does that mean?",
     "The gateway is offline instead of online",
   ])("does not treat a reported indication as a substitute-part request: %s", (q) => {
@@ -55,6 +58,7 @@ describe("photo part lookup", () => {
     "Can I use my M12 instead of this S12? It is red instead of green.",
     "Is this replacement compatible? The indicator is red instead of green.",
     "Can I install this module instead of that one?",
+    "Can I use this green wire instead of that white wire?",
   ])("keeps the compatibility gate for real substitution: %s", (q) => {
     expect(asksPartCompatibility(q)).toBe(true);
   });
@@ -64,6 +68,10 @@ describe("photo part lookup", () => {
       expect(unambiguousPartNumber(text)).toBeNull();
     },
   );
+
+  it("keeps explicitly labelled codes as candidates without decoding them", () => {
+    expect(unambiguousPartNumber("P/N RJ45-STYLE")).toBe("RJ45-STYLE");
+  });
 
   it("does not let a connector description hide a real part label", () => {
     expect(unambiguousPartNumber("RJ45-style port. P/N Ni8U-S12-AP6")).toBe("Ni8U-S12-AP6");
