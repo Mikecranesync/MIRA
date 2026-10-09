@@ -584,9 +584,9 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         && !/^\s*(?:below|under|beneath)\b/i.test(sentence);
       // LOOK may put each literal on its own line. Only short literal lines
       // continue a display block; buttons/background/prose end that block.
-      const literalLine = (/^[ \t]*(?:[-*][ \t]+)?["']?[A-Z0-9][A-Z0-9 _.:+−/='",()?-]{0,63}[ \t]*$/.test(sentence)
+      const literalLine = (/^[ \t]*(?:[-*][ \t]+)?["']?[A-Za-z0-9][A-Za-z0-9 _.:+−/='",()?-]{0,63}[ \t]*$/.test(sentence)
         || /^[ \t]*[-–—]{1,2}[ \t]*$/.test(sentence))
-        && !/^[ \t]*(?:[-*][ \t]+)?(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|label)\b/i.test(sentence);
+        && !/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|label)\b/i.test(sentence);
       if (!startsReading && !(continuation && literalLine)) {
         continuation = false;
         continue;

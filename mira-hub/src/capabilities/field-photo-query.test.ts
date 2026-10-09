@@ -87,3 +87,21 @@ it("keeps quoted literals and placeholder dashes without reading uppercase butto
   expect(q).toContain("--");
   expect(q).not.toContain("PRG");
 });
+
+describe("case-preserving literal readout continuations", () => {
+  it.each(["Does this help?", "What am I looking at, and what should I check?"].flatMap(message => ["ovA", "ObF", "PERI\nRd\n1"].map(readout => [message, readout])))("preserves %s with %s", (message, readout) => {
+    const history = [{ role: "user" as const, content: "Ethernet P042" }];
+    const observation = `LCD display shows:\n${readout}\nButtons read PRG.`;
+    const q = buildRetrievalQuery(message, history, observation);
+    for (const literal of readout.split("\n")) expect(q).toContain(literal);
+    for (const stale of ["P042", "Ethernet", "PRG"]) expect(q).not.toContain(stale);
+    expect(buildTopicHint(message, history, observation)).toBe("");
+  });
+});
+
+it("stops a mixed-case continuation before lowercase background prose", () => {
+  const q = buildRetrievalQuery("Does this help?", [], "LCD display shows:\novA\nA brown surface is behind it.\nPRG");
+  expect(q).toContain("ovA");
+  expect(q).not.toContain("brown");
+  expect(q).not.toContain("PRG");
+});
