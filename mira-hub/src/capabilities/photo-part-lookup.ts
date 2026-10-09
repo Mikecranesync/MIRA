@@ -152,7 +152,7 @@ export function asksPartCompatibility(question: string): boolean {
         || /^\s*(?:(?:(?:the\s+)?(?:gateway|seat|it)\s+(?:is|was)|it's|it’s)\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s*$/i.test(before);
       // Voice input often omits sentence punctuation. A later state clause
       // ("use a handheld ... it is white") is not the object being substituted.
-      const stateAt = [...before.matchAll(/\b(?:is|was|shows?|reads?|it's|it’s)\b/gi)].at(-1)?.index ?? -1;
+      const stateAt = [...before.matchAll(/\b(?:it\s+(?:is|was)|it's|it’s|(?:the\s+)?(?:tablet|indicator|led|screen|display)\s+(?:is|was|shows?|reads?))\b/gi)].at(-1)?.index ?? -1;
       const useAt = [...before.matchAll(/\b(?:use|install|fit|swap|connect|put)\b/gi)].at(-1)?.index ?? -1;
       const substitution = useAt > stateAt && before.length - useAt <= 100;
       return !(indication && observation && !substitution);
