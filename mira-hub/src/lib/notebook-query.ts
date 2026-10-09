@@ -592,8 +592,11 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         const beforeReading = readingAt >= 0 ? text.slice(0, readingAt) : text;
         const backgroundCarriesReading = readingAt >= 0 && /\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/i.test(beforeReading);
         const locative = /^\s*(?:near|beside|above|below|beneath|under|behind|next\s+to|adjacent\s+to)\b/i.test(text);
-        const subject = /^\s*(?:(?:the|a|an|its|(?:the\s+)?(?:device|handheld|module)['’]s)\s+)?(?:(?:small|large|bright|dark|lit|unlit|visible|backlit|digital|numeric|rectangular|square|round|teal|blue|green|black|white|gray|grey|yellow|orange|industrial|handheld|front|panel-mounted|liquid-crystal)\s+)*(?:lcd(?:\s+(?:display|screen))?|display|screen|readout)\b/i.test(text);
-        return subject && displayAt >= 0 && !locative && !backgroundCarriesReading
+        const subject = /^\s*(?:(?:the|a|an|its|(?:the\s+)?(?:device|handheld|module)['’]s)\s+)?(?:(?:small|large|bright|dark|lit|unlit|visible|backlit|digital|numeric|rectangular|square|round|teal|blue|green|black|white|gray|grey|yellow|orange|industrial|handheld|front|panel-mounted|liquid-crystal)\s+)*(?:lcd(?:\s+(?:display|screen))?|display|screen|readout)\b/i.exec(text);
+        const betweenSubjectAndReading = subject && readingAt >= 0
+          ? text.slice(subject[0].length, readingAt).trim() : "";
+        const directReading = !betweenSubjectAndReading || /^(?:currently|clearly|visibly|now)$/.test(betweenSubjectAndReading);
+        return Boolean(subject) && directReading && displayAt >= 0 && !locative && !backgroundCarriesReading
           && (backgroundAt < 0 || displayAt < backgroundAt);
       };
       const display = displaySubject(sentence);
@@ -612,8 +615,8 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       // not display literals. Classify token shape before giving continuation
       // text the display's retrieval priority; keep original spelling untouched.
       const isLiteralToken = (token: string) =>
-        /^(?:[-–—]{1,2}|[,;:]|[A-Z0-9][A-Z0-9_.:+−/=?,()-]*|[A-Za-z]{1,3}[.,:]?|[A-Za-z_.:+−/=?,()-]*\d[A-Za-z0-9_.:+−/=?,()-]*|[A-Za-z]*[a-z][A-Z][A-Za-z0-9_.:+−/=?,()-]*|[A-Z][a-z]{1,15}[.,:]?)$/.test(token)
-        || /^(?:list|of|config|errors?|flashing|blinking|messages?|readings?|symbols?|letters?|characters?|fault|values?|number|alarm|warning|status|condition|code|overcurrent|overvoltage|undervoltage|overload|communication|timeout)[.,:]?$/i.test(token)
+        /^(?:[-–—]{1,2}|[,;:]|[A-Z0-9][A-Z0-9_.:+−/=?,()-]*|[A-Za-z]{1,2}[.,:]?|[A-Za-z_.:+−/=?,()-]*\d[A-Za-z0-9_.:+−/=?,()-]*|[A-Za-z]*[a-z][A-Z][A-Za-z0-9_.:+−/=?,()-]*)$/.test(token)
+        || /^(?:list|of|and|or|a|an|the|with|read|config|errors?|flashing|blinking|messages?|readings?|symbols?|letters?|characters?|fault|values?|number|alarm|warning|status|condition|code|overcurrent|overvoltage|undervoltage|overload|communication|timeout)[.,:]?$/i.test(token)
         || /^(?:"[^"\n]+"|'[^'\n]+')$/.test(token);
       const literalTokens = sentence.trim().replace(/^[-*][ \t]+/, "").match(/"[^"\n]*"|'[^'\n]*'|[^\s]+/g) ?? [];
       const literalVocabulary = literalTokens.length <= 6 && literalTokens.every(isLiteralToken);
@@ -670,7 +673,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
           // LOOK is prose: up to six short descriptive words may introduce a
           // readout. They cannot cross a background noun or continue after the
           // first literal. Remove that uncertain prefix from query vocabulary.
-          if (!literalStarted && qualifierWords < 6 && /^[a-z]{4,16}[,:.]?$/.test(token[0])) {
+          if (!literalStarted && qualifierWords < 6 && /^[A-Za-z][a-z]{3,15}[,:.]?$/.test(token[0])) {
             qualifierWords++;
             continue;
           }
