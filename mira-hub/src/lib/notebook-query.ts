@@ -585,12 +585,16 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         const beforeReading = readingAt >= 0 ? text.slice(0, readingAt) : text;
         const backgroundCarriesReading = readingAt >= 0 && /\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/i.test(beforeReading);
         const locative = /^\s*(?:near|beside|above|below|beneath|under|behind|next\s+to|adjacent\s+to)\b/i.test(text);
-        return displayAt >= 0 && !locative && !backgroundCarriesReading
+        const subject = /^\s*(?:(?:the|a|an|its|(?:the\s+)?(?:device|handheld|module)['’]s)\s+)?(?:(?:small|large|bright|dark|lit|unlit|visible|backlit|digital|numeric|rectangular|square|round|teal|blue|green|black|white|gray|grey|yellow|orange|industrial|handheld|front|panel-mounted|liquid-crystal)\s+)*(?:lcd(?:\s+(?:display|screen))?|display|screen|readout)\b/i.test(text);
+        return subject && displayAt >= 0 && !locative && !backgroundCarriesReading
           && (backgroundAt < 0 || displayAt < backgroundAt);
       };
       const display = displaySubject(sentence);
-      const connectedReadout = index > 0 && displaySubject(sentences[index - 1])
-        && !/\b(?:stickers?|labels?|cables?|wires?|connectors?|plates?|markings?)\b/i.test(sentences[index - 1])
+      const codeWords = /\b(?:[A-Za-z][A-Za-z0-9_.-]*\d[A-Za-z0-9_.-]*|[A-Za-z]*[a-z][A-Z][A-Za-z0-9_.-]*|[A-Z]{2,})\b/g;
+      const previousCodes = index > 0 ? sentences[index - 1].match(codeWords) ?? [] : [];
+      const repeatsLabel = (sentence.match(codeWords) ?? []).some(code => previousCodes.some(previous => previous.toLowerCase() === code.toLowerCase()));
+      const connectedReadout = index > 0 && !repeatsLabel && displaySubject(sentences[index - 1])
+        && !/\b(?:stickers?|labels?|cables?|wires?|connectors?|plates?|markings?|panel|housing|case|surface|frames?|boxes?|pins?|bolts?|hands?|wiring|background|logo)\b/i.test(sentences[index - 1])
         && /^\s*(?:it|this|the screen|the display)\s+(?:reads?|shows?|indicates?)\b/i.test(sentence);
       const hasReading = /\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b/i.test(sentence);
       const startsReading = (display && hasReading || connectedReadout)
@@ -624,16 +628,19 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         // background clause, including its code, rather than only later prose.
         const plainPayload = payload.replace(/"[^"\n]*"|'[^'\n]*'/g, match => " ".repeat(match.length));
         const carrier = [...plainPayload.matchAll(/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/gi)].find(match => match.index > 0);
-        if (carrier && carrier.index > 0) {
-          const clauseAt = [...plainPayload.slice(0, carrier.index).matchAll(/[,;]\s*|\s+(?:and|with)\s+/gi)].at(-1)?.index;
+        const ownership = /\b(?:on|near|beside|above|below|beneath|under|behind|from|within|printed|engraved|marked|attached|mounted|located)\b/.exec(plainPayload);
+        const ownershipAt = Math.min(carrier?.index ?? Infinity, ownership?.index ?? Infinity);
+        if (Number.isFinite(ownershipAt) && ownershipAt > 0) {
+          const clauseAt = [...plainPayload.slice(0, ownershipAt).matchAll(/[,;]\s*|\s+(?:and|with)\s+/gi)].at(-1)?.index;
           if (clauseAt !== undefined) payload = payload.slice(0, clauseAt).trim();
-          else payload = ""; // Unknown ownership cannot grant a code priority.
+          else if (carrier) payload = ""; // Unknown ownership cannot grant a code priority.
         }
         // Apply the same literal boundary inside an initial reading sentence.
         // Background markings must not gain exact-token boosts merely because
         // LOOK joined a cable/sticker description to the display with a comma.
         let literalStarted = false;
         let firstLiteralAt = -1;
+        let literalClauseAt = 0;
         let qualifierWords = 0;
         for (const token of payload.matchAll(/"[^"\n]*"|'[^'\n]*'|[^\s]+/g)) {
           const strongLiteral = /^(?:[A-Z0-9][A-Z0-9_.:+−/=?,()-]*[.,:]?|[A-Za-z_.:+−/=?,()-]*\d[A-Za-z0-9_.:+−/=?,()-]*[.,:]?|[A-Za-z]*[a-z][A-Z][A-Za-z0-9_.:+−/=?,()-]*[.,:]?|"[^"\n]+"|'[^'\n]+')$/.test(token[0])
@@ -642,6 +649,10 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
           if (background && !(token.index === 0 && strongLiteral)) {
             payload = payload.slice(0, token.index).replace(/(?:[,;]\s*)?(?:(?:and|with|a|an|the)\s*)+$/i, "").trim();
             break;
+          }
+          if (strongLiteral && literalStarted) {
+            const prior = payload.slice(0, token.index).replace(/"[^"\n]*"|'[^'\n]*'/g, match => " ".repeat(match.length));
+            literalClauseAt = [...prior.matchAll(/[,;]\s*|\s+(?:and|with)\s+/gi)].at(-1)?.index ?? literalClauseAt;
           }
           if (strongLiteral && firstLiteralAt < 0) firstLiteralAt = token.index;
           literalStarted ||= strongLiteral;
@@ -653,7 +664,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
             qualifierWords++;
             continue;
           }
-          payload = payload.slice(0, token.index).replace(/(?:[,;]\s*)?(?:(?:and|with|a|an|the)\s*)+$/i, "").trim();
+          payload = payload.slice(0, literalClauseAt > 0 ? literalClauseAt : token.index).replace(/(?:[,;]\s*)?(?:(?:and|with|a|an|the)\s*)+$/i, "").trim();
           break;
         }
         if (qualifierWords > 0) payload = firstLiteralAt >= 0 ? payload.slice(firstLiteralAt) : "";
