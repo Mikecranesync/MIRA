@@ -69,7 +69,7 @@ describe("photo part lookup", () => {
     "Would a white LED work instead of green?",
     "Is a white LED safe instead of green?",
     "The LED is white instead of green; can I install it?",
-    "Can I install this LED? It is white instead of green.",
+    "Can I install this LED? It is white instead of green.", "Can this LED be installed? It is white instead of green.", "Would this LED work? It is white instead of green.", "The LED is white instead of green; would it work in this machine?", "Could this LED be used? It is white instead of green.", "It is white instead of green. Will this LED work?", "Does this LED work? It is white instead of green.", "It is white instead of green. Can this component be fitted?", "Will this component operate? It is white instead of green.",
     "The LED is white instead of green. Is it safe?",
     "Is a white LED allowed instead of green?",
     "Is a white LED legal instead of green?",
