@@ -146,13 +146,23 @@ export function asksPartCompatibility(question: string): boolean {
   // component subjects and passive verbs carry the same intent as I/we/you.
   if (/\binstead\s+of\b/i.test(question)
     && (/\b(?:can|could|would|will|may|should|does|do)\b[^.!?]{0,100}\b(?:use(?:d)?|install(?:ed)?|fit(?:ted)?|swap(?:ped)?|connect(?:ed)?|put|work|function|operate|run|recommend)\b/i.test(question)
-      || /\b(?:is|are|would|will)\b[^.!?]{0,100}\b(?:safe|allowed|ok|acceptable|suitable|legal|permitted)\b/i.test(question))) return true;
+      || /\b(?:am|is|are|would|will)\b[^.!?]{0,100}\b(?:safe|allowed|ok(?:ay)?|acceptable|suitable|legal|permitted)\b/i.test(question))) return true;
   // A separate question requesting permission/suitability is not an observed
   // indication, even when its verb is outside the known installation list.
   // Keep explicit read-only diagnostic requests available; ambiguity fails closed.
   if (/\binstead\s+of\b/i.test(question) && question.split(/(?<=[.!?;,])\s+|\n+/).some(clause => {
     const text = clause.trim();
-    if (!/^(?:can|could|would|will|may|should|is|are|do|does|what|which|how)\b/i.test(text)) return false;
+    // Any explicit question requires a recognized diagnostic interpretation;
+    // permission and elliptical action requests need not use a modal prefix.
+    const actionRequest = /^(?:ok(?:ay)?|safe|allowed|permitted|any\s+reason|mind\s+if|please|install|fit|swap|connect|put|run|proceed)\b/i.test(text)
+      || /\b(?:want|plan|intend|going)\b[^.!?]*\b(?:use|install|fit|swap|connect|put|run|proceed)\b/i.test(text)
+      || ((text.includes("?") || /^(?:am|can|could|would|will|may|should|is|are|do|does|what|which|how)\b/i.test(text))
+        && /\bto\s+(?:use|install|fit|swap|connect|put|run|proceed)\b/i.test(text));
+    if (actionRequest) return true;
+    if (!text.includes("?") && !/^(?:am|can|could|would|will|may|should|is|are|do|does|what|which|how)\b/i.test(text)) return false;
+    // Comparisons that themselves ask about an indication are checked below;
+    // a separate question never inherits that observation exemption.
+    if (/\binstead\s+of\b/i.test(text)) return false;
     const diagnostic = /^(?:can|could|would|will|may|should)\s+(?:i|we|you)\s+(?:please\s+)?(?:check|inspect|read|measure|observe|diagnose|troubleshoot)\b/i.test(text)
       || /^(?:do|does)\b[^.!?]*\b(?:mean|indicate|show|read)\b/i.test(text)
       || /^what\s+(?:does|is|are)\b/i.test(text)
