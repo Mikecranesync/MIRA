@@ -667,12 +667,19 @@ function UnifiedChatForNotebook({
   // behaviour the preview flow replaces.
   const attachTarget = attachmentNotebookId === undefined ? meta.notebookId : attachmentNotebookId;
   const attachments = useUnifiedAttachments(attachTarget, attachmentThreadId);
+  // The adapter must keep one identity for the life of the chat: the shared
+  // Composer releases every pending attachment whenever its adapter changes,
+  // and the hosts pass a fresh onScanMachine on every render. Read the scanner
+  // through a ref so a re-render never costs the technician a picked photo.
+  const scanMachineRef = useRef(handlers.onScanMachine);
+  scanMachineRef.current = handlers.onScanMachine;
   const adapter = useMemo(() => createCapacitorAdapter({
     onAttachPhoto: attachments.attachPhoto,
     onAttachFile: attachments.attachFile,
     onAttachCamera: attachments.attachCamera,
-    onScanMachine: handlers.onScanMachine,
-  }), [attachments.attachPhoto, attachments.attachFile, attachments.attachCamera, handlers.onScanMachine]);
+    onScanMachine: async () => (await scanMachineRef.current?.()) ?? null,
+    onRelease: attachments.release,
+  }), [attachments.attachPhoto, attachments.attachFile, attachments.attachCamera, attachments.release]);
 
   // The assistant surface renders text through the SAME markdown + inline
   // citation-mark pipeline ChatV2 uses (AnswerMarkdown), gated on the turn's

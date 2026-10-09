@@ -16,7 +16,7 @@
  * product behaviour belongs to the shared shell, so the orchestration lives in
  * the canonical adapter tree and the screen keeps only its send path.
  */
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { Attachment } from "@factorylm/interaction";
 import {
   canBeChatSource,
@@ -53,14 +53,23 @@ export interface ComposedSend {
   readonly failure?: string;
 }
 
-function describe(file: File): Attachment {
+function describe(file: File, previewUrl?: string): Attachment {
   return {
     id: crypto.randomUUID(),
     name: file.name,
     mediaType: file.type,
     kind: file.type.startsWith("image/") ? "photo" : file.type === PDF_MIME ? "pdf" : "file",
     status: "ready",
+    ...(previewUrl ? { previewUrl } : {}),
   };
+}
+
+/** A local `blob:` picture of a picked photo, so the chip shows it the way /v3
+ *  does (#4288). Absent where the platform has no object URLs — the chip then
+ *  falls back to its kind badge, never failing the pick. */
+function photoPreview(file: File): string | undefined {
+  if (!file.type.startsWith("image/") || typeof URL.createObjectURL !== "function") return undefined;
+  return URL.createObjectURL(file);
 }
 
 /**
@@ -71,6 +80,28 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
   // The shell only ever carries the small `Attachment` descriptor; the bytes
   // stay here, keyed by the id the chip shows.
   const held = useRef(new Map<string, File>());
+  // The chip's `blob:` preview per held photo; revoked whenever its bytes are
+  // dropped (sent, superseded, handed off, removed from the composer, or left
+  // behind when this chat goes away) so the picture is not leaked.
+  const previews = useRef(new Map<string, string>());
+  const drop = useCallback((id: string) => {
+    held.current.delete(id);
+    const url = previews.current.get(id);
+    if (url === undefined) return;
+    previews.current.delete(id);
+    if (typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(url);
+  }, []);
+  // Whatever is still held when the chat goes away can never be sent: a chip
+  // left in the composer, or a photo kept for a Try again that will not come.
+  // A pick that resolves after this point gets no preview to leak.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      for (const id of Array.from(previews.current.keys())) drop(id);
+    };
+  }, [drop]);
   const claimed = useRef(false);
 
   // Anything handed over from HOME has no chip in THIS composer — it was
@@ -99,8 +130,11 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
 
   const hold = useCallback((file: File | null): Attachment | null => {
     if (!file) return null; // backed out of the native picker
-    const attachment = describe(file);
+    if (!alive.current) return null; // the chat closed while the picker was open
+    const previewUrl = photoPreview(file);
+    const attachment = describe(file, previewUrl);
     held.current.set(attachment.id, file);
+    if (previewUrl) previews.current.set(attachment.id, previewUrl);
     return attachment;
   }, []);
 
@@ -114,10 +148,10 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     for (const attachment of attachments) {
       const file = held.current.get(attachment.id);
       if (file) items.push({ attachment, file });
-      held.current.delete(attachment.id);
+      drop(attachment.id);
     }
     stashAttachments(items);
-  }, []);
+  }, [drop]);
 
   /**
    * Upload what was held and compose the send. Returns the question plus the
@@ -141,7 +175,7 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     // A plain send supersedes the failed turn: drop its bytes rather than keep
     // a photo the technician has moved on from parked in memory.
     if (!opts.retry) for (const previous of retained.current) {
-      if (!requested.some(item => item.id === previous.id)) held.current.delete(previous.id);
+      if (!requested.some(item => item.id === previous.id)) drop(previous.id);
     }
     retained.current = [];
     const text = raw.trim();
@@ -216,13 +250,16 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
         };
       }
 
-      for (const item of items) held.current.delete(item.attachment.id);
+      for (const item of items) drop(item.attachment.id);
       return { question, rider, warning, ...(scope ? { scope } : {}) };
     } catch (error) {
       retain();
       throw error;
     }
-  }, [notebookId, threadId]);
+  }, [notebookId, threadId, drop]);
 
-  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained };
+  /** The technician removed a picked attachment before sending it. */
+  const release = drop;
+
+  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained, release };
 }

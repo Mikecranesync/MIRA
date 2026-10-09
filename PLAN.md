@@ -1,3 +1,13 @@
+# Mobile preview + field integrity — local composition qualification
+
+Source composition cbbfbebf8 plus exact #4306 cc08a6a4a951058d5c822c986ca86895d1e9f304 code diff. This is an integration test branch, not a new PR, trusted review, deployment or review-budget reset.
+
+The retained attachment representation changed in #4330. Resolve its overlapping cleanup with #4306 by calling drop(previous.id) only when that retained chip is not explicitly requested again. Preserve preview cleanup and all evidence-integrity preflight checks.
+
+Two integration regressions verify a refused five-photo batch preserves previews through retry, superseding plain send revokes all five exactly once, and explicit retained-chip resubmission keeps bytes until a successful upload. Full mobile suite: 913 passed across75files; TypeScript and production Vite build passed. Source PRs and owners unchanged; no native dependencies or physical installation.
+
+---
+
 # Field fixes — isolated combined qualification
 
 Authorized continuation until2026-10-09 20:00UTC / 16:00Eastern. Branch codex/field-integration-qualification; base e12d4dfc3. This branch is test composition only, not a new PR or review-budget reset.
