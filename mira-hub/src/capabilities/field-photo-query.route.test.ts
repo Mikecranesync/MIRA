@@ -121,11 +121,11 @@ beforeEach(() => {
 
 
 describe("server photo context in selected-manual retrieval", () => {
-  it("uses the current linked readout rather than a stale history subject", async () => {
+  it.each(["Does this help?", "What am I looking at, and what should I check?"])("uses the linked readout for %s rather than a stale history subject", async (message) => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["55555555-5555-4555-8555-555555555555"], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([{ content: "Read Peripheral Fault mode: a peripheral fault is present if value 1 is displayed.", docId: "55555555-5555-4555-8555-555555555555", manufacturer: "Pepperl+Fuchs", modelNumber: "VBP-HH1-V3.0", sourceUrl: "https://files.pepperl-fuchs.com/manual.pdf", sourcePage: 18, title: "Family manual", rank: 1, verified: true }]);
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({ observationId: "obs", sessionId: "session", text: "LCD display shows PERI, RD and 1. Buttons read PRG.", obsKind: "look", trust: "candidate", fileId: "44444444-4444-4444-8444-444444444444", hazards: [] });
-    const res = await POST(req({ message: "Does this help?", history: [{ role: "user", content: "What is Ethernet parameter P042?" }], sourceDocIds: ["55555555-5555-4555-8555-555555555555"], visualEvidence: { fileId: "44444444-4444-4444-8444-444444444444" } }), params);
+    const res = await POST(req({ message, history: [{ role: "user", content: "What is Ethernet parameter P042?" }], sourceDocIds: ["55555555-5555-4555-8555-555555555555"], visualEvidence: { fileId: "44444444-4444-4444-8444-444444444444" } }), params);
     await frames(res);
     expect(ragMock.retrieveNodeChunks).toHaveBeenCalled();
     const query = ragMock.retrieveNodeChunks.mock.calls.at(-1)?.[2];
@@ -137,6 +137,6 @@ describe("server photo context in selected-manual retrieval", () => {
     expect(seamMock.buildRequestBody).toHaveBeenCalled();
     // History remains legitimate history, but must not be repeated as a directive
     // in the current evidence-bearing user message.
-    expect(ragMock.buildManualUserContent.mock.calls.at(-1)?.[0]).toBe("Does this help?");
+    expect(ragMock.buildManualUserContent.mock.calls.at(-1)?.[0]).toBe(message);
   });
 });

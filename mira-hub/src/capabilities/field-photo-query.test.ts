@@ -38,6 +38,16 @@ describe("current photo retrieval focus", () => {
     expect(q).toContain("PERI");
     expect(q).not.toContain("PRG");
   });
+  it("supports the real host's default photo-only question", () => {
+    const question = "What am I looking at, and what should I check?";
+    expect(buildRetrievalQuery(question, [], photo)).toContain("PERI");
+  });
+  it("excludes inline button descriptions from display reading vocabulary", () => {
+    const q = buildRetrievalQuery("Does this help?", [], 'LCD display shows PERI, RD and 1, with buttons labeled "MODE" and "PRG" beneath it.');
+    expect(q).toContain("PERI");
+    expect(q).not.toContain("MODE");
+    expect(q).not.toContain("PRG");
+  });
   it("preserves no-photo history behavior", () => {
     expect(buildRetrievalQuery("Where is it?", [{ role: "user", content: "Ethernet P042" }])).toContain("P042");
   });

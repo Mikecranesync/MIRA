@@ -559,14 +559,14 @@ function topicPool(message: string, history: ChatHistoryTurn[]): ChatHistoryTurn
  *  the referent before history for unnamed questions. Deterministic + pure. */
 export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[], currentObservation?: string | null): string {
   const msg = message.trim();
-  if (!isReferentialFollowup(msg)) return msg;
+  const unnamedReference = /^(?:does (?:this|that) help|what does (?:this|that|it) mean|what is (?:this|that|it)|what are (?:these|those)|what am i looking at(?:,? and what should i check)?)[?!.]*$/i.test(msg);
+  if (!isReferentialFollowup(msg) && !(currentObservation && unnamedReference)) return msg;
   // A newly linked photo is the referent of "Does this help?", even when the
   // previous turn discussed a different display. This is query vocabulary only:
   // LOOK remains an unconfirmed candidate, never an equipment identity or fact.
   // Keep explicit question subjects dominant and exclude background/button prose.
   const explicit = expandIndustrialQuery(msg);
   const historicalReference = /\b(?:go back|back to|talked about|discussed|earlier|previous|original)\b/i.test(msg);
-  const unnamedReference = /^(?:does (?:this|that) help|what does (?:this|that|it) mean|what is (?:this|that|it)|what are (?:these|those)|what am i looking at(?:,? and what should i check)?)[?!.]*$/i.test(msg);
   if (currentObservation && unnamedReference && topicTerms(msg).length === 0
       && explicit.exactTokens.length === 0 && explicit.codeTokens.length === 0
       && explicit.phrases.length === 0 && !historicalReference) {
@@ -579,6 +579,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         const hasReading = /\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b/i.test(sentence);
         return (display && hasReading || connectedReadout) && !/^\s*(?:below|under|beneath)\b/i.test(sentence);
       })
+      .map(sentence => sentence.split(/\s+(?:with|and|above|below|beside)\s+(?:the\s+)?(?:buttons?|keys?|controls?|logo|panel)\b|[,;]\s*(?:buttons?|keys?|controls?|logo|panel)\b/i)[0])
       .join(" ")
       .slice(0, 320)
       .trim();
