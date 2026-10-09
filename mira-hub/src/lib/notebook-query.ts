@@ -590,6 +590,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       };
       const display = displaySubject(sentence);
       const connectedReadout = index > 0 && displaySubject(sentences[index - 1])
+        && !/\b(?:stickers?|labels?|cables?|wires?|connectors?|plates?|markings?)\b/i.test(sentences[index - 1])
         && /^\s*(?:it|this|the screen|the display)\s+(?:reads?|shows?|indicates?)\b/i.test(sentence);
       const hasReading = /\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b/i.test(sentence);
       const startsReading = (display && hasReading || connectedReadout)
@@ -618,10 +619,19 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         ? reading.replace(/^.*?\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b[: \t]*/i, "")
         : reading;
       if (startsReading && payload) {
+        const prefix = reading.slice(0, reading.length - payload.length);
+        // A code may precede its carrying-object description. Cut the whole
+        // background clause, including its code, rather than only later prose.
+        const plainPayload = payload.replace(/"[^"\n]*"|'[^'\n]*'/g, match => " ".repeat(match.length));
+        const carrier = [...plainPayload.matchAll(/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/gi)].find(match => match.index > 0);
+        if (carrier && carrier.index > 0) {
+          const clauseAt = [...plainPayload.slice(0, carrier.index).matchAll(/[,;]\s*|\s+(?:and|with)\s+/gi)].at(-1)?.index;
+          if (clauseAt !== undefined) payload = payload.slice(0, clauseAt).trim();
+          else payload = ""; // Unknown ownership cannot grant a code priority.
+        }
         // Apply the same literal boundary inside an initial reading sentence.
         // Background markings must not gain exact-token boosts merely because
         // LOOK joined a cable/sticker description to the display with a comma.
-        const prefix = reading.slice(0, reading.length - payload.length);
         let literalStarted = false;
         let firstLiteralAt = -1;
         let qualifierWords = 0;
