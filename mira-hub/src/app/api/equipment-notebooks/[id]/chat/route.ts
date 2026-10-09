@@ -556,8 +556,10 @@ export function buildProviderMessages(
 ): { role: string; content: string }[] {
   return [
     { role: "system", content: systemPrompt },
-    ...(priorReportContext ? [{ role: "user", content: priorReportContext }] : []),
     ...history.map((h) => ({ role: h.role, content: h.content })),
+    // Client history may be a stale snapshot from another device. Do not put
+    // its obsolete assistant theory after a newer server-recorded correction.
+    ...(priorReportContext ? [{ role: "user", content: priorReportContext }] : []),
     { role: "user", content: userContent },
   ];
 }
