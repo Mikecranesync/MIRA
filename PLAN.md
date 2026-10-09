@@ -21,6 +21,14 @@ and tenant/thread-scoped evidence loading remain authoritative boundaries.
 
 ---
 Archived predecessor plan follows (not this lane).
+# October 9 field-maintenance curriculum — owned documentation lane
+
+Owner: Codex; branch `codex/field-maintenance-curriculum`; base `e12d4dfc3`.
+Scope: preserve the eight-lesson agent-neutral curriculum, progressive field acceptance routine and current wiki/hot checkpoint. Existing canonical routes, #4182 benchmark design, TEP and release gates are reused. No new framework, runtime code, model calls, hardware operations, review-cap waiver, merge or deploy.
+Reuse/coordination: current main fetched; recent commits, open PR ledger and existing field/maintenance plans checked. Historical PLAN below remains preserved. Only this row/slice is claimed; other owners and source branches stay unchanged.
+Qualification: validate Markdown links/recording schema against retained artifacts; use exact source review/CI/runtime distinctions. Commit normal hooks, push a draft for review; preserve final CI/runtime receipts outside the repo at the authorized 4 p.m. stop.
+
+---
 
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
