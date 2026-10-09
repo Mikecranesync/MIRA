@@ -1,3 +1,17 @@
+# Field fixes — isolated combined qualification
+
+Authorized continuation until2026-10-09 20:00UTC / 16:00Eastern. Branch codex/field-integration-qualification; base e12d4dfc3. This branch is test composition only, not a new PR or review-budget reset.
+
+Compose exact code from#4321 citation repair, #4326 observation directive, #4327 indication/LOOK/OEM aliases, #4328 current-photo retrieval, #4329 scoped technician reports, #4330 mobile attachment integrity, #4331 evaluation truth. Composition receipt under the owned session evidence root records exact source heads and all files. Per-PR PLAN/in-flight rows excluded to avoid rewriting shared ownership.
+
+One route conflict resolved by retaining current-photo buildTopicHint(message, history, lookRow?.text) and the entire prior-report context block. Confirm both real route tests and field directive together; run full Hub/mobile suites and builds. Preserve every original PR review limit. No formal approval, merge, deployment, safety configuration, billing, native install or foreign-tree cleanup.
+
+The separately guarded Next security patch#4325 is not included in this initial main-based code composition; its image scan and release identity remain independent gates. #4306 preview integration is a separate follow-up qualification, never an edit of that branch.
+
+---
+
+## Archived predecessor plan from main
+
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
 **Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`

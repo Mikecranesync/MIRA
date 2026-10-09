@@ -497,3 +497,183 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
     expect(r.unsupportedValueCount).toBe(2);
   });
 });
+
+// #4320: an exponent or unknown operator must never disappear into a false claim.
+describe("closed left boundary (#4320 F13/F14)", () => {
+  const cases = [
+    ["1e+3", "3"], ["1E+3", "3"], ["1.5E+03", "3"],
+    ["1e-3", "-3"], ["1e**-3**", "-3"], ["1e -3", "-3"],
+    ["1**e** **-3**", "-3"], ["1.5E **-03**", "-3"], ["1e +3", "3"], ["1e+**3**", "3"],
+    ["≠0", "0"], ["≠ 0", "0"], ["≠**0**", "0"], ["≠ **0**", "0"],
+    ["≠~0", "0"], ["≠ **~0**", "0"], ["≠≈0", "0"],
+    ['≠"0', "0"], ['≠ "0', "0"], ["≠“0", "0"],
+    ["≠-20", "-20"], ["≠ -20", "-20"], ["≠≤0", "≤0"],
+    ["!0", "0"], ["! 0", "0"], ["=0", "0"], ["= 0", "0"],
+  ] as const;
+  for (const [marked, plain] of cases) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: ${marked} V does not support ${plain} V`, () => {
+        const source = `Rated ${side === "source" ? marked : plain} V.`;
+        const answer = `Rated ${side === "answer" ? marked : plain} V [1].`;
+        const r = withSupportingQuotes(
+          [{ citationId: "1", quote: "original question quote" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }],
+          answer, "What is the rated voltage?",
+        );
+        expect(r.citations[0].quote).toBe("original question quote");
+        expect(r.unsupportedValueCount).toBeGreaterThan(0);
+        expect(r.quoteFallbackCount).toBe(1);
+      });
+    }
+  }
+  it.each([
+    "12 V", "(12 V)", "[12 V]", "| 12 V |", "|12 V|", "Step 1. 12 V",
+    "≤12 V", "≥12 V", "<12 V", ">12 V", "<=12 V", ">=12 V", "±12 V", "~12 V", "≈12 V", "-12 V",
+  ])("control: %s remains a usable quantity", (source) => {
+    const v = findValues(source, "source");
+    expect(v.some((x) => x.usable && x.nums.includes(source.includes("-12") ? -12 : 12))).toBe(true);
+  });
+});
+
+describe("quoted quantities retain support (#4321 r1 F2)", () => {
+  for (const [open, close] of [['"', '"'], ["“", "”"], ["'", "'"], ["‘", "’"]] as const) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: ${open}12 V${close} supports plain 12 V`, () => {
+        const quoted = `${open}12 V${close}`;
+        const source = `Nameplate reads ${side === "source" ? quoted : "12 V"}.`;
+        const answer = `Rated ${side === "answer" ? quoted : "12 V"} [1].`;
+        const r = withSupportingQuotes(
+          [{ citationId: "1", quote: "original question quote" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }],
+          answer, "What is the rated voltage?",
+        );
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+    }
+  }
+});
+
+// Trusted round 2: enclosing delimiters must not hide operators; bullets are layout.
+describe("enclosing operator and original list boundaries (#4320)", () => {
+  for (const marked of ["≠(0 V)", "≠ (0 V)", "≠ **(0 V)**", "≠[0 V]", "≠ {0 V}", "≠((0 V))", "≠ “(0 V)”", "≤(0 V)"]) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: enclosing ${marked} retains fallback`, () => {
+        const source = `Rated ${side === "source" ? marked : "0 V"}.`;
+        const answer = `Rated ${side === "answer" ? marked : "0 V"} [1].`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe("ORIGINAL");
+        expect(r.unsupportedValueCount).toBeGreaterThan(0);
+        expect(r.quoteFallbackCount).toBe(1);
+      });
+    }
+  }
+  for (const marked of ["• 12 V", "  • 12 V", "\u00a0•\u00a012 V", "\u2009•\u200912 V", "Header\n• 12 V", "• **12 V**", "• (12 V)", "• ≈12 V", "(12 V)", "[12 V]", "{12 V}", "value(12 V)"]) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: layout ${marked} supports the measurement`, () => {
+        const source = side === "source" ? `${marked} supply.` : "Rated 12 V.";
+        const answer = side === "answer" ? `${marked} [1].` : "Rated 12 V [1].";
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+    }
+  }
+  for (const source of ["Rated · 12 V.", "Rated • 12 V.", "2 • 12 V.", "• 2 • 12 V.", "2 · (12 V).", "≠ • 12 V."]) {
+    it(`joining mark is not list layout: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe("ORIGINAL");
+      expect(r.unsupportedValueCount).toBeGreaterThan(0);
+      expect(r.quoteFallbackCount).toBe(1);
+    });
+  }
+});
+
+describe("operator outside bars (#4320 final review)", () => {
+  for (const marked of ["≠|0 V|", "≠ |0 V|", "≠ **|0 V|**", "−|20 V|", "− |20 V|", "≠ ||0 V||", "≠ (|0 V|)"]) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: ${marked} cannot support its plain magnitude`, () => {
+        const plain = marked.includes("20") ? "20 V" : "0 V";
+        const source = `Rated ${side === "source" ? marked : plain}.`;
+        const answer = `Rated ${side === "answer" ? marked : plain} [1].`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe("ORIGINAL");
+        expect(r.unsupportedValueCount).toBeGreaterThan(0);
+        expect(r.quoteFallbackCount).toBe(1);
+      });
+    }
+  }
+  for (const source of ["|12 V|", "| Voltage | 12 V |", "| 5 | 12 V |", "|5|12 V|", "• |12 V|", "| 5% | 12 V |", "|5℃|12 V|", "| 5℉ |12 V|", "mm2 (12 V)"]) {
+    it(`ordinary cell supports measurement: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+  }
+});
+
+
+describe("numeric coefficients outside bars (#4320 review round 4)", () => {
+  for (const expression of ["−2|20 V|", "-2 |20 V|", "−2**|20 V|**", "−2 **|20 V|**", "−2.5|20 V|", "2|20 V|", "1e+3|20 V|", "−2||20 V||"]) {
+    for (const side of ["source", "answer"] as const) {
+      it(`${side}: ${expression} is not the enclosed magnitude`, () => {
+        const source = `Rated ${side === "source" ? expression : "20 V"}.`;
+        const answer = `Rated ${side === "answer" ? expression : "20 V"} [1].`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe("ORIGINAL");
+        expect(r.unsupportedValueCount).toBeGreaterThan(0);
+        expect(r.quoteFallbackCount).toBe(1);
+      });
+    }
+  }
+  for (const source of ["|−2|20 V|", "| -2 | 20 V |", "Header\n|−2.5|20 V|", "| 1e+3 | 20 V |", "| Voltage | 20 V |", "|20 V|"]) {
+    it(`actual table row remains supported: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+  }
+});
+
+
+describe("tables without outer pipes (#4320 review round 5)", () => {
+  for (const source of [
+    "Frame | Voltage\n--- | ---\n5 | 12 V",
+    "Frame | Voltage |\n--- | --- |\n5 | 12 V |",
+    "Frame | Voltage\n:--- | ---:\n4 | 10 V\n5 | 12 V",
+    "Intro\nFrame | Voltage\n--- | ---\n−2 | 12 V",
+  ]) {
+    it(`valid table supports its voltage: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+  }
+  for (const source of [
+    "Frame | Voltage\n--- | ---\n\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\nRated −2|20 V|.",
+    "Frame | Voltage\n--- | ---\n5 | −2|20 V|",
+    "Frame | Voltage\nnot a separator\n−2|20 V|",
+  ]) {
+    it(`table-like prose does not authorize an expression: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe("ORIGINAL");
+      expect(r.unsupportedValueCount).toBeGreaterThan(0);
+      expect(r.quoteFallbackCount).toBe(1);
+    });
+  }
+});
