@@ -154,7 +154,8 @@ export function asksPartCompatibility(question: string): boolean {
     const text = clause.trim();
     // Any explicit question requires a recognized diagnostic interpretation;
     // permission and elliptical action requests need not use a modal prefix.
-    const actionRequest = /^(?:ok(?:ay)?|safe|allowed|permitted|any\s+reason|mind\s+if|please|install|fit|swap|connect|put|run|proceed)\b/i.test(text)
+    const actionRequest = /\b(?:want|need|request|looking\s+for)\s+(?:(?:a|an|the|some|another|different|new|alternative)\s+){0,4}(?:led|sensor|indicator|module|slave|cable|wire|connector|cylinder|valve|part|component)\b/i.test(text)
+      || /^(?:ok(?:ay)?|safe|allowed|permitted|any\s+reason|mind\s+if|please|install|fit|swap|connect|put|run|proceed)\b/i.test(text)
       || /\b(?:want|plan|intend|going)\b[^.!?]*\b(?:use|install|fit|swap|connect|put|run|proceed)\b/i.test(text)
       || ((text.includes("?") || /^(?:am|can|could|would|will|may|should|is|are|do|does|what|which|how)\b/i.test(text))
         && /\bto\s+(?:use|install|fit|swap|connect|put|run|proceed)\b/i.test(text));
