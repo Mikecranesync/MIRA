@@ -189,12 +189,13 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
       // blocks. Scan original lines forward before the backward table search;
       // otherwise a nearer delimiter hides its opening fence or HTML block.
       const blockedRows: boolean[] = [];
+      const containerIndents: number[] = [];
       let fence: { mark: string; width: number; indent: number } | null = null;
       let htmlEnd: RegExp | null = null;
       let htmlUntilBlank = false;
       const listIndents: number[] = [];
       let listParagraph = false;
-      for (const row of originalRows) {
+      for (const [rowIndex, row] of originalRows.entries()) {
         if (fence) {
           blockedRows.push(true);
           const close = /^([ \t]*)(`+|~+)[ \t]*$/.exec(row);
@@ -224,7 +225,9 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
         }
         const inheritedIndent = leadingIndent >= (listIndents.at(-1) ?? 0) ? listIndents.at(-1) ?? 0 : 0;
         const relativeRow = " ".repeat(leadingIndent - inheritedIndent) + row.slice(leading.length);
-        let container = /^(?: {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]+|$))+/.exec(relativeRow)?.[0] ?? "";
+        const alignmentCells = originalTableCells(relativeRow);
+        const alignmentRow = alignmentCells.length > 1 && alignmentCells.every(cell => /^[ \t]*:?-+:?[ \t]*$/.test(cell));
+        let container = alignmentRow ? "" : /^(?: {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]+|$))+/.exec(relativeRow)?.[0] ?? "";
         for (const marker of container.matchAll(/ {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]+|$)/g)) {
           const prefix = container.slice(0, marker.index + marker[0].length);
           const rawEnd = [...prefix].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent);
@@ -237,6 +240,7 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
           if (padding > 4) { container = prefix; break; }
         }
         const containerIndent = container ? listIndents.at(-1) ?? inheritedIndent : inheritedIndent;
+        containerIndents[rowIndex] = containerIndent;
         const rawContainerEnd = [...container].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent);
         const blockRow = " ".repeat(Math.max(0, rawContainerEnd - containerIndent)) + relativeRow.slice(container.length);
         const open = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(blockRow);
@@ -273,7 +277,17 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
         if (!originalRows[row].trim()) break;
         if (cells.every((cell) => /^[ \t]*:?-+:?[ \t]*$/.test(cell))) {
           const header = originalTableCells(originalRows[row - 1]);
-          tableRow = !blockedRows[row] && !blockedRows[row - 1] && cells.length > 1 && header.length === cells.length && valueCell < header.length && !startsBlock.test(originalRows[row - 1]);
+          // A list-contained table cannot authorize an outdented paragraph.
+          // Require every continuation, including the current value row, to
+          // retain the header's content indentation and container membership.
+          const requiredIndent = containerIndents[row - 1] ?? 0;
+          const sameContainer = containerIndents[row] === requiredIndent
+            && originalRows.slice(row + 1).concat(original.slice(lineStart, boundary)).every((bodyRow) => {
+              const leading = /^[ \t]*/.exec(bodyRow)?.[0] ?? "";
+              const indent = [...leading].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, 0);
+              return indent >= requiredIndent;
+            });
+          tableRow = sameContainer && !blockedRows[row] && !blockedRows[row - 1] && cells.length > 1 && header.length === cells.length && valueCell < header.length && !startsBlock.test(originalRows[row - 1]);
           break;
         }
         // Alignment takes precedence over a one-hyphen list-looking prefix.

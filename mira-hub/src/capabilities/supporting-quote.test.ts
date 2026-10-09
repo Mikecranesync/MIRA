@@ -897,3 +897,21 @@ describe("active list continuation blocks", () => {
     }
   }
 });
+
+
+describe("table support ends with its list container", () => {
+  for (const [item, indent] of [["- item", "  "], ["+ item", "  "], ["* item", "  "], ["1. item", "   "], ["2. item", "   "]])
+    for (const gap of ["", "\n"])
+      for (const eol of ["\n", "\r\n"])
+          for (const continuation of [false, true])
+            it(`list table ${item} ${JSON.stringify(gap)} ${JSON.stringify(eol)} continued=${continuation}`, () => {
+              const table = `${item}\n${gap}${indent}Frame | Voltage\n${indent}--- | ---\n${continuation ? indent : ""}−2|20 V|`.replace(/\n/g, eol);
+              const source = table;
+              const answer = "Rated 20 V [1].";
+              const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+                [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+              expect(r.citations[0].quote).toBe(continuation ? source : "ORIGINAL");
+              expect(r.unsupportedValueCount).toBe(continuation ? 0 : 1);
+              expect(r.quoteFallbackCount).toBe(continuation ? 0 : 1);
+            });
+});
