@@ -956,3 +956,39 @@ describe("indented code cannot be a table delimiter", () => {
           expect(r.quoteFallbackCount).toBe(1);
         });
 });
+
+
+describe("lazy blockquote paragraphs cannot introduce tables", () => {
+  for (const prefix of ["> note", ">> note", "> > note", "- > note", "1. > note", " - > note", "> - note", "> 1. note"])
+    for (const indent of ["", " "])
+      for (const extra of ["", "lazy prose\n"])
+        for (const eol of ["\n", "\r\n"])
+          it(`lazy quote ${prefix} ${indent.length} ${extra} ${JSON.stringify(eol)}`, () => {
+            const source = `${prefix}\n${extra}${indent}Frame | Voltage\n${indent}--- | ---\n${indent}−2|20 V|`.replace(/\n/g, eol);
+            const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+              [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+            expect(r.citations[0].quote).toBe("ORIGINAL");
+            expect(r.unsupportedValueCount).toBe(1);
+            expect(r.quoteFallbackCount).toBe(1);
+          });
+  for (const prefix of ["> note", ">> note", "> > note", "- > note", "1. > note", " - > note", "> - note", "> 1. note"])
+    for (const eol of ["\n", "\r\n"])
+      it(`top-level table after separated quote ${prefix} ${JSON.stringify(eol)}`, () => {
+        const source = `${prefix}\n\nFrame | Voltage\n--- | ---\n−2|20 V|`.replace(/\n/g, eol);
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+  for (const prefix of ["> ", ">> ", "> > "])
+    for (const eol of ["\n", "\r\n"])
+      it(`explicitly quoted ordinary table ${prefix} ${JSON.stringify(eol)}`, () => {
+        const source = "| Frame | Voltage |\n| --- | --- |\n| Rated | 20 V |".replace(/^/gm, prefix).replace(/\n/g, eol);
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+});

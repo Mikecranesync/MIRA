@@ -196,6 +196,7 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
       let htmlUntilBlank = false;
       const listIndents: number[] = [];
       let listParagraph = false;
+      let quoteParagraph = false;
       for (const [rowIndex, row] of originalRows.entries()) {
         if (fence) {
           blockedRows.push(true);
@@ -222,8 +223,9 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
         const leadingIndent = [...leading].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, 0);
         // Outdented lazy continuation text remains paragraph content; it
         // cannot introduce a table even though its physical indent is zero.
-        lazyRows[rowIndex] = listParagraph && listIndents.length > 0
-          && leadingIndent < (listIndents.at(-1) ?? 0) && Boolean(row.trim()) && !startsBlock.test(row);
+        const quoteLazy = quoteParagraph && Boolean(row.trim()) && !startsBlock.test(row);
+        lazyRows[rowIndex] = quoteLazy || (listParagraph && listIndents.length > 0
+          && leadingIndent < (listIndents.at(-1) ?? 0) && Boolean(row.trim()) && !startsBlock.test(row));
         if (!row.trim()) listParagraph = false;
         else if (!listParagraph || startsBlock.test(row)) {
           while (listIndents.length && (listIndents.at(-1) ?? 0) > leadingIndent) listIndents.pop();
@@ -248,6 +250,16 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
         containerIndents[rowIndex] = containerIndent;
         const rawContainerEnd = [...container].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent);
         const blockRow = " ".repeat(Math.max(0, rawContainerEnd - containerIndent)) + relativeRow.slice(container.length);
+        let quoteContent = blockRow;
+        let quoted = false;
+        for (;;) {
+          const prefix = /^ {0,3}(?:>[ \t]?|(?:[*+-]|\d{1,9}[.)])(?:[ \t]+|$))/.exec(quoteContent)?.[0];
+          if (!prefix) break;
+          quoted ||= prefix.includes(">");
+          quoteContent = quoteContent.slice(prefix.length);
+        }
+        if (quoted) quoteParagraph = Boolean(quoteContent.trim()) && !startsBlock.test(quoteContent);
+        else if (!quoteLazy) quoteParagraph = false;
         const open = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(blockRow);
         if (open && (open[1][0] !== "`" || !open[2].includes("`"))) {
           fence = { mark: open[1][0], width: open[1].length, indent: containerIndent };
