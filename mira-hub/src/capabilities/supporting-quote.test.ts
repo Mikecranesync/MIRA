@@ -875,9 +875,9 @@ describe("fence line endings and list containers", () => {
 
 describe("active list continuation blocks", () => {
   const table = "Frame | Voltage\n--- | ---\n−2|20 V|";
-  for (const [item, indent] of [["- item", "  "], ["1. item", "   "]]) {
+  for (const [item, indent] of [["- item", "  "], ["1. item", "   "], ["-", "  "], ["+", "  "], ["*", "  "], ["1.", "   "]]) {
     for (const [open, close] of [["```text", "```"], ["~~~text", "~~~"], ["<pre>", "</pre>"]]) {
-      for (const middle of ["", "\n", "lazy continuation\n"])
+      for (const middle of item.endsWith("item") ? ["", "\n", "lazy continuation\n"] : ["", "\n"])
         it(`literal continuation ${item} ${open} ${middle}`, () => {
           const source = `${item}\n${middle}${indent}  ${open}\n${table.replace(/^/gm, indent)}\n${indent}  ${close}`;
           const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],

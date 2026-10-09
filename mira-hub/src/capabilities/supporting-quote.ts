@@ -224,10 +224,13 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
         }
         const inheritedIndent = leadingIndent >= (listIndents.at(-1) ?? 0) ? listIndents.at(-1) ?? 0 : 0;
         const relativeRow = " ".repeat(leadingIndent - inheritedIndent) + row.slice(leading.length);
-        const container = /^(?: {0,3}(?:[*+-]|\d{1,9}[.)])[ \t]+)+/.exec(relativeRow)?.[0] ?? "";
-        for (const marker of container.matchAll(/ {0,3}(?:[*+-]|\d{1,9}[.)])[ \t]+/g)) {
+        const container = /^(?: {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]+|$))+/.exec(relativeRow)?.[0] ?? "";
+        for (const marker of container.matchAll(/ {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]+|$)/g)) {
           const prefix = container.slice(0, marker.index + marker[0].length);
-          listIndents.push([...prefix].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent));
+          // An empty item has the same one-space content padding as a marker
+          // followed by whitespace, even when the physical row ends at it.
+          const emptyPadding = /(?:[*+-]|\d{1,9}[.)])$/.test(marker[0]) ? 1 : 0;
+          listIndents.push([...prefix].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent) + emptyPadding);
         }
         const blockRow = relativeRow.slice(container.length);
         const containerIndent = [...container].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent);
