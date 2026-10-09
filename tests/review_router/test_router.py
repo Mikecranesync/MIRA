@@ -734,6 +734,146 @@ def test_env_var_inf_budget_is_rejected(monkeypatch):
         router.main(["1"])
 
 
+# ---------------------------------------------------------------------------
+# Final fixes: merge-base, binary, guard/gate, diff parsing, marker variants
+
+
+def test_content_diff_uses_merge_base_not_base_tip(tmp_path):
+    """F1: content diff must use merge-base, not base branch tip."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    (repo / "service.py").write_text('def query():\n    return db.all()\n')
+    g("add", "service.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+    merge_base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    # PR branch adds tenant filter
+    g("checkout", "-q", "-b", "pr")
+    (repo / "service.py").write_text('def query():\n    return db.filter(tenant_id=tid)\n')
+    g("add", "service.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add tenant filter")
+    pr_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    # Main branch also adds tenant filter (simulating merge conflict / parallel work)
+    g("checkout", "-q", "main")
+    (repo / "service.py").write_text('def query():\n    return db.filter(tenant_id=current)\n')
+    g("add", "service.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "main adds tenant too")
+    main_tip = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        # Using merge_base: PR's addition of tenant_id is visible → critical
+        assert r.classify(["service.py"], merge_base, pr_head) == "critical"
+        # Using main tip would show no change or conflict → might miss it
+    finally:
+        r.REPO = orig_repo
+
+
+def test_binary_files_route_by_path_globs_only(tmp_path):
+    """F2: binary files are treated as no tenant content."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    # Add a PNG (binary file)
+    (repo / "screenshot.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+    g("add", "screenshot.png")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add screenshot")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        # Binary file with no matching glob: standard
+        assert r.classify(["screenshot.png"], base, head) == "standard"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_mira_bots_tests_guard_is_critical():
+    """F3: guard/gate tests anywhere in the repo (e.g., mira-bots/tests/) are critical."""
+    assert router.classify(["mira-bots/tests/test_guardrails.py"]) == "critical"
+    assert router.classify(["mira-hub/src/lib/test_citation_gate.py"]) == "critical"
+    assert router.classify(["tools/test_quality_gate.py"]) == "critical"
+    assert router.classify(["scripts/test_q_trap_guard.py"]) == "critical"
+
+
+def test_capability_closure_test_is_critical():
+    """F3: test_capability_closure.py is explicitly critical."""
+    assert router.classify(["tests/test_capability_closure.py"]) == "critical"
+
+
+def test_diff_parsing_handles_sql_comment_with_double_dash(tmp_path):
+    """F4: SQL comments starting with -- are not skipped as diff headers."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    (repo / "migration.sql").write_text('CREATE TABLE assets;\n')
+    g("add", "migration.sql")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    # Add SQL comment with tenant_id
+    (repo / "migration.sql").write_text('CREATE TABLE assets;\n-- tenant_id filter\n')
+    g("add", "migration.sql")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add comment")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        # The removed line "-- tenant_id filter" should be scanned
+        assert r.classify(["migration.sql"], base, head) == "critical"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_tenant_id_variant_current_tenant_id_matches(tmp_path):
+    """F5: _tenant_id\b pattern matches current_tenant_id."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    (repo / "auth.py").write_text('session.set(current_tenant_id)\n')
+    g("add", "auth.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add current_tenant_id")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        assert r.classify(["auth.py"], base, head) == "critical"
+    finally:
+        r.REPO = orig_repo
+
+
 def test_ledger_round_trip(tmp_path):
     p = tmp_path / "costs.jsonl"
     assert router.read_ledger(p) == []

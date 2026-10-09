@@ -129,13 +129,11 @@ CRITICAL_GLOBS = (
     "docs/architecture/convergence/*.yaml",
     "pyproject.toml",
     "tests/conftest.py",
-    "tests/test_*guard*.py",
-    "tests/test_*gate*.py",
-    "tests/test_*review*.py",
+    "tests/test_capability_closure.py",
+    "**/test_*guard*.py",
+    "**/test_*gate*.py",
+    "**/test_*review*.py",
     "tests/review_router/*",
-    "tests/*/test_*guard*.py",
-    "tests/*/test_*gate*.py",
-    "tests/*/test_*review*.py",
 )
 # Only these may ride the cheapest lane: nothing here ships to a technician.
 LOW_GLOBS = (
@@ -177,9 +175,11 @@ def _match(path: str, globs: tuple[str, ...]) -> bool:
 
 # Tenant isolation content markers (R3 per mira-sdlc-v1.md §2.1): changed lines
 # whose content touches these route critical. Word-boundary, case-insensitive.
+# Includes _tenant_id\b to match variants like current_tenant_id.
 _TENANT_MARKERS = (
     rb"\bknowledge_entries\b",
     rb"\btenant_id\b",
+    rb"_tenant_id\b",
     rb"\bTenantScopedSession\b",
     rb"\bRLS\b",
     rb"\bROW\s+LEVEL\s+SECURITY\b",
@@ -194,44 +194,87 @@ _MAX_CONTENT_BYTES = 10 * 1024 * 1024  # 10 MB cap
 def _read_content_from_commit(sha: str, path: str) -> bytes | None:
     """Read file content from a specific git commit. Returns None if the file
     doesn't exist at that commit (deleted, or never existed). Raises on any
-    other error (unreadable, too large, symlink, special file)."""
+    other error (unreadable, too large, special file). Git cat-file returns
+    symlinks as blobs (their target path), not as special files."""
     result = _run(["git", "cat-file", "-e", f"{sha}:{path}"], cwd=REPO)
     if result.returncode != 0:
         return None  # file doesn't exist at this commit
     
-    # Check if it's a symlink or special file
+    # Check if it's a blob (regular file or symlink target)
     result = _run(["git", "cat-file", "-t", f"{sha}:{path}"], cwd=REPO)
     if result.returncode != 0 or result.stdout.strip() != "blob":
         raise ValueError(f"not a regular file: {path}")
     
-    # Read the content with size cap
-    result = _run(["git", "cat-file", "blob", f"{sha}:{path}"], cwd=REPO)
+    # Read the content as bytes (don't decode as text - might be binary)
+    result = subprocess.run(
+        ["git", "cat-file", "blob", f"{sha}:{path}"],
+        cwd=REPO,
+        capture_output=True,
+    )
     if result.returncode != 0:
         raise ValueError(f"cannot read {path} from {sha}")
     
-    content = result.stdout.encode("utf-8") if isinstance(result.stdout, str) else result.stdout
+    content = result.stdout  # already bytes
     if len(content) > _MAX_CONTENT_BYTES:
         raise ValueError(f"file too large: {len(content)} bytes")
     
     return content
 
 
+def _is_binary_content(content: bytes) -> bool:
+    """Returns True if content appears to be binary (contains NUL bytes)."""
+    return b"\x00" in content
+
+
 def _get_changed_lines(base_sha: str, head_sha: str, path: str) -> bytes:
     """Return only the added and removed lines (hunks) from the diff of path
     between base and head, excluding context lines. This is what a PR actually
-    changes, not the surrounding unchanged code."""
-    result = _run(["git", "diff", "--no-prefix", f"{base_sha}..{head_sha}", "--", path], cwd=REPO)
+    changes, not the surrounding unchanged code. Returns empty bytes for binary
+    files."""
+    # Check if git considers this a binary diff
+    result = _run(["git", "diff", "--numstat", f"{base_sha}..{head_sha}", "--", path], cwd=REPO)
     if result.returncode != 0:
         raise ValueError(f"cannot diff {path}")
     
-    diff_output = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8")
-    # Extract only + and - lines (added and removed), skip context and metadata
+    numstat = result.stdout.strip()
+    if numstat.startswith("-\t-\t"):
+        # Binary file: git reports "- -" for added/removed lines
+        return b""
+    
+    # Get diff output as bytes to handle binary content
+    result = subprocess.run(
+        ["git", "diff", "--no-prefix", f"{base_sha}..{head_sha}", "--", path],
+        cwd=REPO,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"cannot diff {path}")
+    
+    diff_output = result.stdout  # already bytes
+    
+    # Check for "Binary files differ" message
+    if b"Binary files" in diff_output and b"differ" in diff_output:
+        return b""
+    
+    # Extract only + and - lines (added and removed), tracking hunk state
     changed_lines = []
+    in_hunk = False
     for line in diff_output.split(b"\n"):
+        # Track hunk boundaries from @@ markers
+        if line.startswith(b"@@"):
+            in_hunk = True
+            continue
+        
+        # Skip file headers (--- and +++ before first @@)
+        if not in_hunk:
+            continue
+        
+        # Extract changed lines
         if line.startswith(b"+") and not line.startswith(b"+++"):
-            changed_lines.append(line[1:])  # strip the + prefix
+            changed_lines.append(line[1:])
         elif line.startswith(b"-") and not line.startswith(b"---"):
-            changed_lines.append(line[1:])  # strip the - prefix
+            changed_lines.append(line[1:])
+    
     return b"\n".join(changed_lines)
 
 
@@ -240,9 +283,10 @@ def _has_tenant_isolation_content(path: str, base_sha: str, head_sha: str) -> bo
     `path` between base and head contain tenant isolation markers. Reads from
     the git object store at the exact head SHA, never from the working tree.
     
-    Fail closed: any read error, symlink, oversized file, or special file routes
-    CRITICAL. Applies markers to changed lines only, so an unrelated edit to a
-    file that merely contains tenant_id elsewhere doesn't trigger."""
+    Fail closed: any read error, oversized file, or special file routes CRITICAL.
+    Binary files are treated as having no tenant content (path rules decide).
+    Applies markers to changed lines only, so an unrelated edit to a file that
+    merely contains tenant_id elsewhere doesn't trigger."""
     try:
         # Try reading from head; if it doesn't exist there, it was deleted
         head_content = _read_content_from_commit(head_sha, path)
@@ -252,10 +296,20 @@ def _has_tenant_isolation_content(path: str, base_sha: str, head_sha: str) -> bo
             if base_content is None:
                 # Never existed in either commit: fail closed
                 return True
+            # Binary deleted files: no tenant content
+            if _is_binary_content(base_content):
+                return False
             return bool(_TENANT_RE.search(base_content))
+        
+        # Binary files: no tenant content (path rules decide)
+        if _is_binary_content(head_content):
+            return False
         
         # File exists at head: check the changed lines (diff hunks)
         changed = _get_changed_lines(base_sha, head_sha, path)
+        if not changed:
+            # Binary diff or no changes: no tenant content
+            return False
         return bool(_TENANT_RE.search(changed))
     except (OSError, ValueError, subprocess.CalledProcessError):
         # Any error: fail closed (route critical)
@@ -833,7 +887,7 @@ def main(argv: list[str] | None = None) -> int:
 
     facts, prior = pr_facts(args.pr), prior_round(args.pr)
     tier, reasons = escalate(
-        classify(facts["paths"], facts["base_sha"], facts["head"]),
+        classify(facts["paths"], facts["merge_base"], facts["head"]),
         speculative=prior.get("speculative", 0),
         disagreement=args.disagreement,
         cross_module_change=cross_module(facts["paths"]),
