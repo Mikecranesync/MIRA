@@ -141,7 +141,13 @@ export function expandIndustrialQuery(query: string): ExpandedQuery {
     exact.add(m[0].toUpperCase());
   }
 
-  const phrases = [...q.matchAll(/"([^"]{2,})"/g)].map((m) => m[1]);
+  const quoted = [...q.matchAll(/"([^"]{2,})"/g)].map((m) => m[1]);
+  // Bounded photo literals and explicitly quoted codes share the existing
+  // whole-token recall/rank lane. They remain query candidates, not identity.
+  const quotedCodes = quoted.filter(token => /^[A-Za-z0-9_.-]+$/.test(token)
+    && (codeLike(token) || /^[A-Z]{2,}$/.test(token)));
+  const codeTokens = [...new Set([...extractCodeTokens(q), ...quotedCodes])].slice(0, 4);
+  const phrases = quoted.filter(phrase => !codeTokens.includes(phrase));
 
   // Build variants: original first (precision), then original + each synonym
   // group folded in (recall in manufacturer vocabulary). Cap to keep round-trips
@@ -154,7 +160,7 @@ export function expandIndustrialQuery(query: string): ExpandedQuery {
   return {
     variants: [...new Set(variants)].slice(0, 4),
     exactTokens: [...exact].slice(0, 8),
-    codeTokens: extractCodeTokens(q).slice(0, 4),
+    codeTokens,
     phrases: phrases.slice(0, 4),
   };
 }
@@ -572,6 +578,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       && explicit.phrases.length === 0 && !historicalReference) {
     const sentences = currentObservation.slice(0, 4000).split(/(?<=[.!?])\s+|\n+/);
     const readoutParts: string[] = [];
+    const readoutLiterals = new Set<string>();
     let continuation = false;
     let usableReading = false;
     for (let index = 0; index < sentences.length; index++) {
@@ -626,12 +633,13 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         const prefix = reading.slice(0, reading.length - payload.length);
         // A code may precede its carrying-object description. Cut the whole
         // background clause, including its code, rather than only later prose.
-        const plainPayload = payload.replace(/"[^"\n]*"|'[^'\n]*'/g, match => " ".repeat(match.length));
+        const plainPayload = payload.replace(/"[^"\n]*"|'[^'\n]*'/g, match => "#".repeat(match.length));
         const carrier = [...plainPayload.matchAll(/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/gi)].find(match => match.index > 0);
         const ownership = /\b(?:on|near|beside|above|below|beneath|under|behind|from|within|printed|engraved|marked|attached|mounted|located)\b/.exec(plainPayload);
         const ownershipAt = Math.min(carrier?.index ?? Infinity, ownership?.index ?? Infinity);
         if (Number.isFinite(ownershipAt) && ownershipAt > 0) {
-          const clauseAt = [...plainPayload.slice(0, ownershipAt).matchAll(/[,;]\s*|\s+(?:and|with)\s+/gi)].at(-1)?.index;
+          const clausePrefix = plainPayload.slice(0, ownershipAt).replace(/[,;]\s*$/, "");
+          const clauseAt = [...clausePrefix.matchAll(/[,;]\s*|\s+(?:and|with)\s+/gi)].at(-1)?.index;
           if (clauseAt !== undefined) payload = payload.slice(0, clauseAt).trim();
           else if (carrier) payload = ""; // Unknown ownership cannot grant a code priority.
         }
@@ -672,10 +680,17 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       }
       continuation = true;
       if (reading) readoutParts.push(reading);
+      for (const match of payload.matchAll(/[A-Za-z][A-Za-z0-9_.-]*/g)) {
+        const token = match[0].replace(/[.,:;]+$/, "");
+        if (codeLike(token) || /^[A-Z]{2,}$/.test(token)) readoutLiterals.add(token);
+      }
       usableReading ||= /[A-Za-z0-9]/.test(payload.replace(/\b(?:and|a|an|the|with)\b/g, ""));
     }
     const displayText = usableReading ? readoutParts.join(" ").slice(0, 320).trim() : "";
-    if (displayText) return `${msg} ${displayText}`;
+    if (displayText) {
+      const literals = [...readoutLiterals].slice(0, 4).map(token => `"${token}"`).join(" ");
+      return `${msg} ${displayText}${literals ? ` ${literals}` : ""}`;
+    }
     // The newly linked photo still owns this unnamed referent when its
     // display cannot be read. Parsing failure does not revive an old subject.
     return msg;
