@@ -576,8 +576,15 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
     let usableReading = false;
     for (let index = 0; index < sentences.length; index++) {
       const sentence = sentences[index];
-      const display = /\b(?:lcd|display|screen|readout)\b/i.test(sentence);
-      const connectedReadout = index > 0 && /\b(?:lcd|display|screen)\b/i.test(sentences[index - 1])
+      // A location mentioning the display does not make a sticker/cable the
+      // display's own reading. Resolve the subject before dropping its prefix.
+      const displaySubject = (text: string) => {
+        const displayAt = text.search(/\b(?:lcd|display|screen|readout)\b/i);
+        const backgroundAt = text.search(/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/i);
+        return displayAt >= 0 && (backgroundAt < 0 || displayAt < backgroundAt);
+      };
+      const display = displaySubject(sentence);
+      const connectedReadout = index > 0 && displaySubject(sentences[index - 1])
         && /^\s*(?:it|this|the screen|the display)\s+(?:reads?|shows?|indicates?)\b/i.test(sentence);
       const hasReading = /\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b/i.test(sentence);
       const startsReading = (display && hasReading || connectedReadout)

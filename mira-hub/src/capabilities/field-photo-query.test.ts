@@ -183,3 +183,10 @@ describe("display-description phrases preserve the subsequent literal", () => {
     expect(buildRetrievalQuery("Does this help?", [], observation)).toContain("ovA");
   });
 });
+
+
+it.each([["Does this help?", "LCD display shows ovA. A sticker below the LCD display reads A410."], ["Does this help?", "LCD display shows ovA. A cable beside the screen reads A410."], ["Does this help?", "LCD display shows ovA. The panel under the display shows A410."], ["Does this help?", "LCD display shows ovA. A button beside the screen reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. A sticker below the LCD display reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. A cable beside the screen reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The panel under the display shows A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. A button beside the screen reads A410."]])("background subjects located by the display do not become readouts: %s %s", (question, observation) => {
+  const q = buildRetrievalQuery(question, [], observation);
+  expect(q).toContain("ovA");
+  expect(q).not.toContain("A410");
+});

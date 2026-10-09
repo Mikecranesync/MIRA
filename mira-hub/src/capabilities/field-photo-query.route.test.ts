@@ -139,3 +139,13 @@ describe("server photo context in selected-manual retrieval", () => {
     expect(ragMock.buildManualUserContent.mock.calls.at(-1)?.[0]).toBe(message);
   });
 });
+
+
+it.each([["Does this help?", "LCD display shows ovA. A sticker below the LCD display reads A410."], ["Does this help?", "LCD display shows ovA. A cable beside the screen reads A410."], ["Does this help?", "LCD display shows ovA. The panel under the display shows A410."], ["Does this help?", "LCD display shows ovA. A button beside the screen reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. A sticker below the LCD display reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. A cable beside the screen reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The panel under the display shows A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. A button beside the screen reads A410."]])("route excludes labels on objects beside the display: %s %s", async (message, text) => {
+  nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["55555555-5555-4555-8555-555555555555"], nodeId: "n1" });
+  visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({ observationId: "obs", sessionId: "session", text, obsKind: "look", trust: "candidate", fileId: "44444444-4444-4444-8444-444444444444", hazards: [] });
+  await frames(await POST(req({ message, sourceDocIds: ["55555555-5555-4555-8555-555555555555"], visualEvidence: { fileId: "44444444-4444-4444-8444-444444444444" } }), params));
+  const query = ragMock.retrieveNodeChunks.mock.calls.at(-1)?.[2];
+  expect(query).toContain("ovA");
+  expect(query).not.toContain("A410");
+});
