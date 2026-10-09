@@ -582,19 +582,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       .join(" ")
       .slice(0, 320)
       .trim();
-    if (displayText) {
-      // Search literal readout vocabulary before ordinary caption prose. Quoted
-      // labels/values and bare uppercase codes stay verbatim; no mode decoding,
-      // identity binding or OCR correction happens here. A caption without such
-      // literals retains its bounded display sentence as the fallback.
-      const literals = [...displayText.matchAll(/["'“‘]([^"'”’]{1,40})["'”’]/g)].map(match => match[1]);
-      if (!literals.length) {
-        literals.push(...[...displayText.matchAll(/\b[A-Z][A-Z0-9-]{0,15}\b|\b\d+(?:\.\d+)?\b/g)]
-          .map(match => match[0]).filter(token => token !== "LCD"));
-      }
-      const terms = [...new Set(literals)].slice(0, 12);
-      return `${msg} ${terms.length ? terms.map(term => JSON.stringify(term)).join(" ") : displayText}`;
-    }
+    if (displayText) return `${msg} ${displayText}`;
   }
   if (history.length === 0) return msg;
   const lower = msg.toLowerCase();
