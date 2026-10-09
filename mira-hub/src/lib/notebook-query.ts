@@ -589,7 +589,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       // text the display's retrieval priority; keep original spelling untouched.
       const isLiteralToken = (token: string) =>
         /^(?:[-–—]{1,2}|[,;:]|[A-Z0-9][A-Z0-9_.:+−/=?,()-]*|[A-Za-z]{1,3}[.,:]?|[A-Za-z_.:+−/=?,()-]*\d[A-Za-z0-9_.:+−/=?,()-]*|[A-Za-z]*[a-z][A-Z][A-Za-z0-9_.:+−/=?,()-]*|[A-Z][a-z]{1,15}[.,:]?)$/.test(token)
-        || /^(?:list|of|config|errors|fault|values?|number|alarm|warning|status|condition|code|overcurrent|overvoltage|undervoltage|overload|communication|timeout)[.,:]?$/i.test(token)
+        || /^(?:list|of|config|errors?|flashing|blinking|fault|values?|number|alarm|warning|status|condition|code|overcurrent|overvoltage|undervoltage|overload|communication|timeout)[.,:]?$/i.test(token)
         || /^(?:"[^"\n]+"|'[^'\n]+')$/.test(token);
       const literalTokens = sentence.trim().replace(/^[-*][ \t]+/, "").match(/"[^"\n]*"|'[^'\n]*'|[^\s]+/g) ?? [];
       const literalVocabulary = literalTokens.length <= 6 && literalTokens.every(isLiteralToken);
@@ -623,6 +623,9 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
     }
     const displayText = usableReading ? readoutParts.join(" ").slice(0, 320).trim() : "";
     if (displayText) return `${msg} ${displayText}`;
+    // The newly linked photo still owns this unnamed referent when its
+    // display cannot be read. Parsing failure does not revive an old subject.
+    return msg;
   }
   if (history.length === 0) return msg;
   const lower = msg.toLowerCase();
@@ -652,7 +655,8 @@ export function buildTopicHint(message: string, history: ChatHistoryTurn[], curr
   const msg = message.trim();
   // Query focus and answer focus must agree. The full candidate observation
   // already reaches the data channel; do not inject an old subject as a directive.
-  if (currentObservation && buildRetrievalQuery(msg, [], currentObservation) !== msg) return "";
+  if (currentObservation && (buildRetrievalQuery(msg, [], currentObservation) !== msg
+    || buildRetrievalQuery(msg, history, currentObservation) === msg)) return "";
   if (history.length === 0 || !isReferentialFollowup(msg)) return "";
   const tokens: string[] = [];
   const seen = new Set<string>();

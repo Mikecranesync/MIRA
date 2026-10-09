@@ -141,3 +141,25 @@ it.each(["LCD display shows:\nUvLo", "LCD display shows Overcurrent Fault 1.", "
   expect(q).not.toContain("A410");
   expect(q).not.toContain("P042");
 });
+
+
+describe("qualified or unreadable new display never inherits stale focus", () => {
+  for (const message of ["Does this help?", "What am I looking at, and what should I check?"])
+    for (const qualifier of ["error", "flashing", "blinking"])
+      it(`retains ${qualifier} ovA for ${message}`, () => {
+        const history = [{ role: "user" as const, content: "Ethernet P042" }];
+        const observation = `LCD display shows ${qualifier} ovA.`;
+        const query = buildRetrievalQuery(message, history, observation);
+        expect(query).toContain("ovA");
+        expect(query).not.toContain("P042");
+        expect(query).not.toContain("Ethernet");
+        expect(buildTopicHint(message, history, observation)).toBe("");
+      });
+  for (const message of ["Does this help?", "What am I looking at, and what should I check?"])
+    it(`unreadable current display has unknown focus: ${message}`, () => {
+      const history = [{ role: "user" as const, content: "Ethernet P042" }];
+      const observation = "LCD display shows unreadable characters.";
+      expect(buildRetrievalQuery(message, history, observation)).toBe(message);
+      expect(buildTopicHint(message, history, observation)).toBe("");
+    });
+});
