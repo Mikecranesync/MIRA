@@ -871,3 +871,29 @@ describe("fence line endings and list containers", () => {
     });
   }
 });
+
+
+describe("active list continuation blocks", () => {
+  const table = "Frame | Voltage\n--- | ---\n−2|20 V|";
+  for (const [item, indent] of [["- item", "  "], ["1. item", "   "]]) {
+    for (const [open, close] of [["```text", "```"], ["~~~text", "~~~"], ["<pre>", "</pre>"]]) {
+      for (const middle of ["", "\n", "lazy continuation\n"])
+        it(`literal continuation ${item} ${open} ${middle}`, () => {
+          const source = `${item}\n${middle}${indent}  ${open}\n${table.replace(/^/gm, indent)}\n${indent}  ${close}`;
+          const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+            [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+          expect(r.citations[0].quote).toBe("ORIGINAL");
+          expect(r.unsupportedValueCount).toBe(1);
+          expect(r.quoteFallbackCount).toBe(1);
+        });
+      it(`real table after closed continuation ${item} ${open}`, () => {
+        const source = `${item}\n\n${indent}  ${open}\n${indent} literal\n${indent}  ${close}\n\n${table}`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+    }
+  }
+});

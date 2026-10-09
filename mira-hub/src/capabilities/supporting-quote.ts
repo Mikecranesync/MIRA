@@ -192,6 +192,8 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
       let fence: { mark: string; width: number; indent: number } | null = null;
       let htmlEnd: RegExp | null = null;
       let htmlUntilBlank = false;
+      const listIndents: number[] = [];
+      let listParagraph = false;
       for (const row of originalRows) {
         if (fence) {
           blockedRows.push(true);
@@ -211,14 +213,28 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
           if (!row.trim()) htmlUntilBlank = false;
           continue;
         }
-        // List markers form a container before the fence. Keep its content
-        // indentation so an outdented or over-indented marker cannot close it.
-        const container = /^(?: {0,3}(?:[*+-]|\d{1,9}[.)])[ \t]+)+/.exec(row)?.[0] ?? "";
-        const blockRow = row.slice(container.length);
-        const containerIndent = [...container].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, 0);
+        // List context survives indented continuation lines and blank lines.
+        // Lazy paragraph prose may be outdented, but cannot introduce a literal
+        // block; new block syntax or an outdent after a block ends its container.
+        const leading = /^[ \t]*/.exec(row)?.[0] ?? "";
+        const leadingIndent = [...leading].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, 0);
+        if (!row.trim()) listParagraph = false;
+        else if (!listParagraph || startsBlock.test(row)) {
+          while (listIndents.length && (listIndents.at(-1) ?? 0) > leadingIndent) listIndents.pop();
+        }
+        const inheritedIndent = leadingIndent >= (listIndents.at(-1) ?? 0) ? listIndents.at(-1) ?? 0 : 0;
+        const relativeRow = " ".repeat(leadingIndent - inheritedIndent) + row.slice(leading.length);
+        const container = /^(?: {0,3}(?:[*+-]|\d{1,9}[.)])[ \t]+)+/.exec(relativeRow)?.[0] ?? "";
+        for (const marker of container.matchAll(/ {0,3}(?:[*+-]|\d{1,9}[.)])[ \t]+/g)) {
+          const prefix = container.slice(0, marker.index + marker[0].length);
+          listIndents.push([...prefix].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent));
+        }
+        const blockRow = relativeRow.slice(container.length);
+        const containerIndent = [...container].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent);
         const open = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(blockRow);
         if (open && (open[1][0] !== "`" || !open[2].includes("`"))) {
           fence = { mark: open[1][0], width: open[1].length, indent: containerIndent };
+          listParagraph = false;
           blockedRows.push(true);
           continue;
         }
@@ -234,11 +250,13 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
             else if (/^ {0,3}<\/?[A-Za-z]/.test(blockRow)) htmlUntilBlank = true;
           }
           if (htmlEnd || htmlUntilBlank) {
+            listParagraph = false;
             blockedRows.push(true);
             if (htmlEnd?.test(row)) htmlEnd = null;
             continue;
           }
         }
+        listParagraph = listIndents.length > 0 && Boolean(blockRow.trim()) && !startsBlock.test(blockRow);
         blockedRows.push(false);
       }
       let tableRow = false;
