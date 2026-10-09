@@ -30,6 +30,14 @@ describe("current photo retrieval focus", () => {
   it("suppresses a stale provider topic hint when the current photo owns the referent", () => {
     expect(buildTopicHint("Does this help?", [{ role: "user", content: "Ethernet P042" }], photo)).toBe("");
   });
+  it.each(["What is torque?", "What does RD mean?", "How does this torque limit work?"])("does not replace a self-contained subject outside the token whitelist: %s", (question) => {
+    expect(buildRetrievalQuery(question, [], "LCD display shows F004.")).toBe(question);
+  });
+  it("keeps a readout in the sentence immediately following the display description", () => {
+    const q = buildRetrievalQuery("Does this help?", [], "The LCD display has buttons labeled PRG and MODE underneath it. It reads PERI, RD and 1.");
+    expect(q).toContain("PERI");
+    expect(q).not.toContain("PRG");
+  });
   it("preserves no-photo history behavior", () => {
     expect(buildRetrievalQuery("Where is it?", [{ role: "user", content: "Ethernet P042" }])).toContain("P042");
   });

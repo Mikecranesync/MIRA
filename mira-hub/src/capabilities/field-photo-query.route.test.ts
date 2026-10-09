@@ -129,6 +129,7 @@ describe("server photo context in selected-manual retrieval", () => {
     await frames(res);
     expect(ragMock.retrieveNodeChunks).toHaveBeenCalled();
     const query = ragMock.retrieveNodeChunks.mock.calls.at(-1)?.[2];
+    expect(ragMock.retrieveNodeChunks.mock.calls.at(-1)?.[3]).toMatchObject({ includeQueryRecall: true });
     expect(query).toContain("PERI");
     expect(query).toContain("RD");
     expect(query).not.toContain("P042");

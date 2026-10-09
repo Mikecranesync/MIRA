@@ -1928,6 +1928,7 @@ async function handleChatTurn(
             topK: 6,
             docIds,
             rawQuery: message,
+            includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
             // document linked from another notebook's node stays retrievable here.

@@ -566,16 +566,35 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
   // Keep explicit question subjects dominant and exclude background/button prose.
   const explicit = expandIndustrialQuery(msg);
   const historicalReference = /\b(?:go back|back to|talked about|discussed|earlier|previous|original)\b/i.test(msg);
-  if (currentObservation && topicTerms(msg).length === 0
+  const unnamedReference = /^(?:does (?:this|that) help|what does (?:this|that|it) mean|what is (?:this|that|it)|what are (?:these|those)|what am i looking at(?:,? and what should i check)?)[?!.]*$/i.test(msg);
+  if (currentObservation && unnamedReference && topicTerms(msg).length === 0
       && explicit.exactTokens.length === 0 && explicit.codeTokens.length === 0
       && explicit.phrases.length === 0 && !historicalReference) {
-    const displayText = currentObservation.slice(0, 4000)
-      .split(/(?<=[.!?])\s+|\n+/)
-      .filter((sentence) => /\b(?:lcd|display|screen|readout)\b/i.test(sentence))
+    const sentences = currentObservation.slice(0, 4000).split(/(?<=[.!?])\s+|\n+/);
+    const displayText = sentences
+      .filter((sentence, index) => {
+        const display = /\b(?:lcd|display|screen|readout)\b/i.test(sentence);
+        const connectedReadout = index > 0 && /\b(?:lcd|display|screen)\b/i.test(sentences[index - 1])
+          && /^\s*(?:it|this|the screen|the display)\s+(?:reads?|shows?|indicates?)\b/i.test(sentence);
+        const hasReading = /\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b/i.test(sentence);
+        return (display && hasReading || connectedReadout) && !/^\s*(?:below|under|beneath)\b/i.test(sentence);
+      })
       .join(" ")
       .slice(0, 320)
       .trim();
-    if (displayText) return `${msg} ${displayText}`;
+    if (displayText) {
+      // Search literal readout vocabulary before ordinary caption prose. Quoted
+      // labels/values and bare uppercase codes stay verbatim; no mode decoding,
+      // identity binding or OCR correction happens here. A caption without such
+      // literals retains its bounded display sentence as the fallback.
+      const literals = [...displayText.matchAll(/["'“‘]([^"'”’]{1,40})["'”’]/g)].map(match => match[1]);
+      if (!literals.length) {
+        literals.push(...[...displayText.matchAll(/\b[A-Z][A-Z0-9-]{0,15}\b|\b\d+(?:\.\d+)?\b/g)]
+          .map(match => match[0]).filter(token => token !== "LCD"));
+      }
+      const terms = [...new Set(literals)].slice(0, 12);
+      return `${msg} ${terms.length ? terms.map(term => JSON.stringify(term)).join(" ") : displayText}`;
+    }
   }
   if (history.length === 0) return msg;
   const lower = msg.toLowerCase();
