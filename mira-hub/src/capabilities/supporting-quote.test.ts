@@ -696,3 +696,55 @@ describe("tables without outer pipes (#4320 review round 5)", () => {
     });
   }
 });
+
+
+describe("trusted round 8 — block, model and bullet boundaries", () => {
+  for (const source of [
+    'Frame | Voltage\n--- | ---\n<?xml version="1.0"?>\n−2|20 V|',
+    'Frame | Voltage\n--- | ---\n<?xml version="1.0"?> −2|20 V|',
+  ]) it(`processing instruction cannot authorize a table: ${source}`, () => {
+    const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+      [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+    expect(r.citations[0].quote).toBe("ORIGINAL");
+    expect(r.unsupportedValueCount).toBe(1);
+    expect(r.quoteFallbackCount).toBe(1);
+  });
+  for (const label of ["Model A-20", "Frame-5"])
+    for (const direction of ["source", "answer"])
+      it(`hyphenated table model retains quantity: ${label} ${direction}`, () => {
+        const table = `Frame | Voltage\n--- | ---\n${label} | 12 V`;
+        const source = direction === "source" ? table : "Rated 12 V.";
+        const answer = direction === "source" ? "Rated 12 V [1]." : `${table} [1]`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+  for (const bullet of ["+ 12 V supply.", "  + **12 V** supply."])
+    for (const direction of ["source", "answer"])
+      it(`plus bullet is layout: ${bullet} ${direction}`, () => {
+        const source = direction === "source" ? bullet : "Rated 12 V.";
+        const answer = direction === "source" ? "Rated 12 V [1]." : `${bullet} [1]`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+});
+
+
+describe("plus operators remain conservative", () => {
+  for (const expression of ["Rated +12 V.", "Rated + 12 V.", "    + 12 V."])
+    for (const direction of ["source", "answer"])
+      it(`not a Markdown plus bullet: ${expression} ${direction}`, () => {
+        const source = direction === "source" ? expression : "Rated 12 V.";
+        const answer = direction === "source" ? "Rated 12 V [1]." : `${expression} [1]`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe("ORIGINAL");
+        expect(r.unsupportedValueCount).toBe(1);
+        expect(r.quoteFallbackCount).toBe(1);
+      });
+});

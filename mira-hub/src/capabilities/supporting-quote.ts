@@ -132,11 +132,13 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
   while (before > 0 && isWs(before - 1)) before--;
   // Formatting can separate an exponent marker from its signed exponent.
   if (/\d[ \t]*e$/u.test(n.slice(0, before))) return true;
-  // Only an original bullet at an indented line start is layout. Normalization
+  // Only an original bullet at an indented line start is layout. Markdown +
+  // allows at most three leading spaces; code-block indentation is not a list. Normalization
   // merges • with multiplication dots, so the normalized mark is insufficient.
-  const listMark = before > 0 && original[before - 1] === "•"
+  const listMark = before > 0 && /[•+]/u.test(original[before - 1])
     && /^[\t\p{Zs}]*$/u.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before - 1))
-    && /[\t\p{Zs}]/u.test(original[before] ?? "");
+    && /[\t\p{Zs}]/u.test(original[before] ?? "")
+    && (original[before - 1] !== "+" || /^ {0,3}$/u.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before - 1)));
   // Markdown normalizes to spaces: ≠ **0** / 1e+**3** must not lose a mark.
   if (before < boundary && before > 0 && !listMark && !priorCellUnit && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
   // A preceding numeric coefficient is only a separate cell in a real row.
@@ -151,10 +153,10 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
       // GFM body rows may have fewer or extra cells; extra cells are ignored.
       const priorCells = linePrefix.split("|");
       // Keep ambiguous signed prose coefficients conservative while allowing
-      // ordinary text cells ending in a digit (for example Frame 5).
-      if (/\p{L}[^|]*[+-][ \t]*\d+(?:\.\d*)?[ \t]*$/u.test(priorCells.at(-1) ?? "")) return true;
+      // ordinary text or hyphenated model cells (Frame 5, Model A-20).
+      if (/\p{L}[^|]*[ \t][+-][ \t]*\d+(?:\.\d*)?[ \t]*$/u.test(priorCells.at(-1) ?? "")) return true;
       const valueCell = priorCells.length;
-      const startsBlock = /^(?: {4}|\t)|^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|>|`{3,}|~{3,}|(?:[*+-]|\d+[.)])[ \t]+|<(?:!|\/?[A-Za-z])|\[[^\]]+\]:)|^[ \t]{0,3}(?:[-*_][ \t]*){3,}$/;
+      const startsBlock = /^(?: {4}|\t)|^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|>|`{3,}|~{3,}|(?:[*+-]|\d+[.)])[ \t]+|<(?:[!?]|\/?[A-Za-z])|\[[^\]]+\]:)|^[ \t]{0,3}(?:[-*_][ \t]*){3,}$/;
       if (startsBlock.test(original.slice(lineStart, boundary))) return true;
       const rows = n.slice(0, lineStart).split("\n").slice(0, -1);
       // Normalization blanks inline markers, including code-fence backticks.
