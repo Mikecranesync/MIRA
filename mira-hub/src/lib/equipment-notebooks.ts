@@ -1640,7 +1640,12 @@ export async function listTurns(
    *  legacy rows; another technician's owned turns are never returned. With
    *  no viewer only legacy rows are returned (fail closed), so a caller that
    *  forgets the session cannot leak a private conversation. */
-  opts: { viewerUserId?: string | null; threadId?: string | null } = {},
+  opts: { viewerUserId?: string | null; threadId?: string | null;
+    /** Report recall only: match the turn's existing equipment snapshot AND
+     * the current confirmed notebook binding atomically. Undefined keeps the
+     * ordinary history read unchanged; null recalls only unbound reports. */
+    expectedEquipmentEntityId?: string | null;
+  } = {},
 ): Promise<
   {
     id: string;
@@ -1673,6 +1678,13 @@ export async function listTurns(
       : threadId === null
         ? " AND thread_id IS NULL"
         : ` AND thread_id = $${values.push(threadId)}`;
+    const equipmentParam = opts.expectedEquipmentEntityId === undefined ? null : values.push(opts.expectedEquipmentEntityId);
+    const equipmentPredicate = equipmentParam === null ? "" : `
+      AND equipment_entity_id IS NOT DISTINCT FROM $${equipmentParam}::text
+      AND EXISTS (SELECT 1 FROM equipment_notebooks n
+        WHERE n.id = $2::uuid AND n.tenant_id = $1::uuid
+          AND n.equipment_entity_id IS NOT DISTINCT FROM $${equipmentParam}::text
+          AND (n.equipment_entity_id IS NULL OR n.asset_confirmed_at IS NOT NULL))`;
     const res = await c.query(
       `SELECT id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
          FROM (
@@ -1682,6 +1694,7 @@ export async function listTurns(
               AND client_request_state = 'complete'
               AND ${ownerPredicate}
               ${threadPredicate}
+              ${equipmentPredicate}
             ORDER BY created_at DESC
             LIMIT $3
          ) recent

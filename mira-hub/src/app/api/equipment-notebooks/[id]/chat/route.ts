@@ -155,6 +155,7 @@ import {
 import { inferEquipmentType } from "@/lib/equipment-type";
 import {
   sanitizeHistory,
+  buildPriorReportContext,
   buildRetrievalQuery,
   buildTopicHint,
   classifyBroad,
@@ -551,9 +552,11 @@ export function buildProviderMessages(
   systemPrompt: string,
   history: ChatHistoryTurn[],
   userContent: string,
+  priorReportContext = "",
 ): { role: string; content: string }[] {
   return [
     { role: "system", content: systemPrompt },
+    ...(priorReportContext ? [{ role: "user", content: priorReportContext }] : []),
     ...history.map((h) => ({ role: h.role, content: h.content })),
     { role: "user", content: userContent },
   ];
@@ -3009,10 +3012,27 @@ async function handleChatTurn(
   // hint measurably failed to stop "what's the maximum?" in a decel thread from
   // resolving to the lexically similar P044 [Maximum Freq] row (battery defect D).
   const topicHint = buildTopicHint(message, history);
+  // Restore literal older technician reports from this viewer/thread only.
+  // Existing per-turn machine snapshots prevent a notebook rebind from turning
+  // a different machine's conversation into this machine's prior reports.
+  let priorReportContext = buildPriorReportContext([], history, "not_requested");
+  // An explicit modern thread is the case boundary. Legacy/unscoped callers
+  // keep their existing client history; never guess a case from a notebook.
+  if (threadId && threadId !== "legacy") try {
+    const reports = await listTurns(ctx.tenantId, notebookId, 24, {
+      viewerUserId: ctx.userId, threadId, expectedEquipmentEntityId: nb?.asset?.entityId ?? null,
+    });
+    priorReportContext = buildPriorReportContext(reports.filter(report => report.ownerUserId === ctx.userId), history);
+  } catch (err) {
+    console.error("[notebook-chat] prior technician reports unavailable:", err instanceof Error ? err.message : err);
+    priorReportContext = buildPriorReportContext([], history, "unavailable");
+    rec.error("context", "prior_reports_unavailable");
+  }
   const messages = buildProviderMessages(
     systemPrompt,
     history,
     buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, lookContext),
+    priorReportContext.content,
   );
   {
     const contextSpan = startStage("context.assemble");
@@ -3036,6 +3056,9 @@ async function handleChatTurn(
       visual_evidence_count: visualEvidenceCount,
       identity_included: identityIncluded,
       history_turns: history.length,
+      prior_report_turn_ids: priorReportContext.turnIds,
+      prior_report_coverage: priorReportContext.coverage,
+      prior_report_truncated: priorReportContext.truncated,
       prompt_chars: promptChars,
       system_prompt_kind: !docGrounded ? "general" : groundedMachineEntry ? "machine" : "grounded",
     });
