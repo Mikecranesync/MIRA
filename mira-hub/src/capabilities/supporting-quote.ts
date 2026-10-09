@@ -150,10 +150,12 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
       // matching header/alignment block, not merely a bar in nearby prose.
       // GFM body rows may have fewer or extra cells; extra cells are ignored.
       const priorCells = linePrefix.split("|");
-      // A bare coefficient may be a preceding cell; prose such as Rated −2
-      // must not gain support merely because a table appears above it.
-      if (!/^[ \t]*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?[ \t]*$/iu.test(priorCells.at(-1) ?? "")) return true;
+      // Keep ambiguous signed prose coefficients conservative while allowing
+      // ordinary text cells ending in a digit (for example Frame 5).
+      if (/\p{L}[^|]*[+-][ \t]*\d+(?:\.\d*)?[ \t]*$/u.test(priorCells.at(-1) ?? "")) return true;
       const valueCell = priorCells.length;
+      const startsBlock = /^(?: {4}|\t)|^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|>|`{3,}|~{3,}|(?:[*+-]|\d+[.)])[ \t]+|<(?:!|\/?[A-Za-z]))|^[ \t]{0,3}(?:[-*_][ \t]*){3,}$/;
+      if (startsBlock.test(linePrefix)) return true;
       const rows = n.slice(0, lineStart).split("\n").slice(0, -1);
       let tableRow = false;
       for (let row = rows.length - 1; row > 0; row--) {
@@ -161,9 +163,11 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
         if (!rows[row].trim()) break;
         if (cells.every((cell) => /^[ \t]*:?-+:?[ \t]*$/.test(cell))) {
           const header = rows[row - 1].trim().replace(/^\||\|$/g, "").split("|");
-          tableRow = cells.length > 1 && header.length === cells.length && valueCell < header.length;
+          tableRow = cells.length > 1 && header.length === cells.length && valueCell < header.length && !startsBlock.test(rows[row - 1]);
           break;
         }
+        // Alignment takes precedence over a one-hyphen list-looking prefix.
+        if (startsBlock.test(rows[row])) break;
       }
       if (!tableRow) return true;
     }
