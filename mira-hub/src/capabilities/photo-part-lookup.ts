@@ -162,15 +162,26 @@ export function asksPartCompatibility(question: string): boolean {
     if (!text.includes("?") && !/^(?:am|can|could|would|will|may|should|is|are|do|does|what|which|how)\b/i.test(text)) return false;
     // Comparisons that themselves ask about an indication are checked below;
     // a separate question never inherits that observation exemption.
-    if (/\binstead\s+of\b/i.test(text)) return false;
-    const diagnostic = /^(?:can|could|would|will|may|should)\s+(?:i|we|you)\s+(?:please\s+)?(?:check|inspect|read|measure|observe|diagnose|troubleshoot)\b/i.test(text)
-      || /^(?:do|does)\b[^.!?]*\b(?:mean|indicate|show|read)\b/i.test(text)
-      || /^what\s+(?:does|is|are|happened|changed|caused)\b/i.test(text)
-      || /^why\s+(?:is|was|are|were|did|does|do|has|have)\b/i.test(text)
-      || /^what\s+(?:do|should|can|could)\s+(?:i|we|you)\s+(?:know|check|inspect|read|measure|observe|diagnose|troubleshoot)\b/i.test(text)
-      || /^how\s+(?:do|does|can|could|should)\b[^.!?]*\b(?:check|inspect|read|interpret|measure|observe|diagnose|troubleshoot)\b/i.test(text)
-      || /^which\b[^.!?]*\b(?:is|are|shows?|reads?)\b[^.!?]*\b(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline)\b/i.test(text)
-      || /^(?:is|are)\s+(?:it|they|the (?:led|indicator|display|screen))\s+(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline)\s*[?!.]*$/i.test(text);
+    if (/\binstead\s+of\b/i.test(text)) {
+      // An explicit question containing the comparison needs an observed-state
+      // form too; it cannot skip classification merely by mentioning a color.
+      return !/^why\s+(?:is|was)\s+(?:the\s+)?(?:tablet|indicator|led|screen|display)\s+(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s+instead\s+of\s+(?:being\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)[?!.]*$/i.test(text);
+    }
+    // Match the whole diagnostic clause, not a permissive question prefix.
+    // A trailing prospective action must not inherit "inspect"/"mean" status.
+    const subject = String.raw`(?:it|this|that|them|these|those|(?:the\s+)?(?:led|indicator|display|screen|readout|sensor|module|seat|input|wiring|cable|connector|voltage|current|code|address|error|fault)(?:\s+(?:state|status|reading|value))?)`;
+    const action = String.raw`(?:check|inspect|read|interpret|measure|observe|diagnose|troubleshoot)`;
+    const state = String.raw`(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline)`;
+    const objectTail = String.raw`(?:\s+${subject})?(?:\s+(?:first|next|now))?[?!.]*$`;
+    const diagnostic = new RegExp(String.raw`^(?:can|could|would|will|may|should)\s+(?:i|we|you)\s+(?:please\s+)?${action}${objectTail}`, "i").test(text)
+      || new RegExp(String.raw`^what\s+(?:do|should|can|could|would)\s+(?:i|we|you)\s+(?:know|${action})${objectTail}`, "i").test(text)
+      || new RegExp(String.raw`^how\s+(?:do|does|can|could|should)\s+(?:i|we|you)\s+${action}${objectTail}`, "i").test(text)
+      || new RegExp(String.raw`^(?:what\s+)?(?:do|does)\s+${subject}\s+(?:mean|indicate|show|read)(?:\s+(?:anything|something|a\s+fault|an\s+error|a\s+problem))?[?!.]*$`, "i").test(text)
+      || new RegExp(String.raw`^what\s+(?:is|are)\s+${subject}(?:\s+(?:showing|reading|indicating|doing))?[?!.]*$`, "i").test(text)
+      || new RegExp(String.raw`^what\s+(?:happened|changed|caused)(?:\s+(?:to\s+)?${subject})?[?!.]*$`, "i").test(text)
+      || new RegExp(String.raw`^why\s+(?:is|was|are|were|did|does|do|has|have)\s+${subject}\s+(?:${state}|(?:turn|turned|change|changed|go|went|show|shows|read|reads|stop|stopped|fail|failed|appear|appeared)(?:\s+(?:to\s+)?${state})?)[?!.]*$`, "i").test(text)
+      || new RegExp(String.raw`^which\s+${subject}\s+(?:is|are|shows?|reads?)\s+${state}[?!.]*$`, "i").test(text)
+      || new RegExp(String.raw`^(?:is|are)\s+${subject}\s+${state}[?!.]*$`, "i").test(text);
     return !diagnostic;
   })) return true;
   // "Instead of" also describes an observed state. Evaluate each sentence so
