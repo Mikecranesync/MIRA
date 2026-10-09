@@ -122,14 +122,26 @@ beforeEach(() => {
 
 
 describe("older technician reports through the real notebook provider seam", () => {
+ it("surfaces reports omitted by the database window instead of claiming complete history", async () => {
+   const all = Array.from({ length: 30 }, (_, i) => ({ id: `report-${i}`, question: `Earlier observation ${i}`, ownerUserId: "u1", createdAt: "2026-10-09T01:00:00Z" }));
+   nbMock.listTurns.mockImplementation(async (...args) => Number(args[2]) >= 24 ? all.slice(-Number(args[2])) : []);
+   const res = await POST(req({ message: "What do we know now?", mode: "general", threadId: "case-thread" }), params);
+   await frames(res);
+   const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { content: string }[];
+   const prior = messages.find(m => m.content.includes("EARLIER TECHNICIAN REPORTS"));
+   expect(prior?.content).toContain("some history is omitted or truncated");
+   expect(prior?.content).toContain("report-29");
+   expect(prior?.content).not.toContain('"report-5"');
+ });
+
  it("does not restore the notebook machine's reports when current identity is disputed", async () => {
    nbMock.resolveBoundAsset.mockResolvedValue({ state: "resolved", entityId: "machine-A", unsPath: "plant/line/A", name: "Machine A", confirmedAt: "2026-10-09T00:00:00Z" } as never);
    nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Machine A", asset: { entityId: "machine-A" } });
-   nbMock.listTurns.mockImplementation(async (...args) => args[2] === 24 ? [{ id: "prior-A", question: "Machine A has one slave per seat", ownerUserId: "u1", createdAt: "2026-10-09T01:00:00Z" }] : []);
+   nbMock.listTurns.mockImplementation(async (...args) => args[2] === 25 ? [{ id: "prior-A", question: "Machine A has one slave per seat", ownerUserId: "u1", createdAt: "2026-10-09T01:00:00Z" }] : []);
    const res = await POST(req({ message: "What do we know now?", mode: "general", threadId: "case-thread", machineEvidence: { assetId: "machine-B", anchorAt: "2026-10-09T01:00:00Z" } }), params);
    await frames(res);
    expect(seamMock.buildRequestBody).toHaveBeenCalled();
-   expect(nbMock.listTurns.mock.calls.some(args => args[2] === 24)).toBe(false);
+   expect(nbMock.listTurns.mock.calls.some(args => args[2] === 25)).toBe(false);
    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { content: string }[];
    expect(messages.some(m => m.content.includes("Machine A has one slave per seat"))).toBe(false);
  });
@@ -139,7 +151,7 @@ describe("older technician reports through the real notebook provider seam", () 
    const res = await POST(req({ message: "What do we know now?", mode: "general", threadId: "case-thread" }), params);
    await frames(res);
    expect(seamMock.buildRequestBody).toHaveBeenCalled();
-   expect(nbMock.listTurns).toHaveBeenCalledWith(TENANT, NB, 24, { viewerUserId: "u1", threadId: "case-thread", expectedEquipmentEntityId: "machine-A" });
+   expect(nbMock.listTurns).toHaveBeenCalledWith(TENANT, NB, 25, { viewerUserId: "u1", threadId: "case-thread", expectedEquipmentEntityId: "machine-A" });
  });
  it("retains a correction outside client history without replaying the old assistant theory", async () => {
    const prior = Array.from({ length: 24 }, (_, i) => ({ id: `turn-${i}`, question: i === 3 ? "No, each seat has its own AS-i slave in the back of it." : `Report ${i}: we observed the seat indication.`, answerStatus: "answered", answerText: "Both seats share one slave; replace it.", evidence: [], createdAt: "2026-10-09T01:00:00Z", ownerUserId: "u1", threadId: "case-thread" }));
@@ -155,11 +167,11 @@ describe("older technician reports through the real notebook provider seam", () 
    expect(reports?.content).toContain("each seat has its own AS-i slave");
    expect(reports?.content).not.toContain("Both seats share one slave");
    expect(reports?.content).not.toContain("Shared legacy report");
-   expect(nbMock.listTurns).toHaveBeenCalledWith(TENANT, NB, 24, { viewerUserId: "u1", threadId: "case-thread", expectedEquipmentEntityId: null });
+   expect(nbMock.listTurns).toHaveBeenCalledWith(TENANT, NB, 25, { viewerUserId: "u1", threadId: "case-thread", expectedEquipmentEntityId: null });
    expect(messages.at(-1)?.content).toContain("What do we know now?");
  });
  it("keeps unavailable prior-report coverage explicit in the provider input", async () => {
-   nbMock.listTurns.mockImplementation(async (...args) => { if (args[2] === 24) throw new Error("report store unavailable"); return []; });
+   nbMock.listTurns.mockImplementation(async (...args) => { if (args[2] === 25) throw new Error("report store unavailable"); return []; });
    visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({ observationId: "obs", sessionId: "session", text: "A teal handheld device.", obsKind: "look", trust: "candidate", fileId: "44444444-4444-4444-8444-444444444444", hazards: [] });
    const res = await POST(req({ message: "What do we know now?", mode: "general", threadId: "case-thread", visualEvidence: { fileId: "44444444-4444-4444-8444-444444444444" } }), params);
    await frames(res);

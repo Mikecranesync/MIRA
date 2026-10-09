@@ -1670,7 +1670,12 @@ export async function listTurns(
     // returns the OLDEST n — so past n turns the recent conversation vanishes
     // from the notebook on reload. Recent-window + chronological display fixes
     // that while keeping the render order the UI expects.
-    const ownerPredicate = viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`;
+    // Report recall never treats ownerless legacy rows as this technician's
+    // disclosures. Filter before LIMIT so they cannot crowd out owned reports.
+    const reportRecall = opts.expectedEquipmentEntityId !== undefined;
+    const ownerPredicate = reportRecall
+      ? (viewer ? `owner_user_id = $4` : "FALSE")
+      : (viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`);
     const values: unknown[] = [tenantId, notebookId, limit];
     if (viewer) values.push(viewer);
     const threadPredicate = opts.threadId === undefined
