@@ -101,25 +101,28 @@
 - id: tech-20
   category: electrical_plc_vfd
   mode: general
-  question: Siemens 3RU2 overload relay is set to 10A and motor nameplate is 8A FLA.
-    After a cold start, overload trips. Why?
+  question: Siemens 3RU2 overload relay is set to 10A and motor nameplate is 8A FLA. After a cold start,
+    overload trips. Why?
   turns: []
   equipment: Siemens 3RU2 overload relay, AC induction motor
   expected:
     must_cite: false
     key_points:
-    - Induction motor inrush current at cold start can be 5–7x FLA for 1–2 seconds
-      (soft-starters or VFDs not present)
-    - Overload relay calibrated to 10A may not have sufficient tolerance for inrush
-      if it's time-delayed improperly or if motor is starting under load
-    - If motor is cold and load is normal, increase overload trip point to ~12A or
-      verify that 3RU2 time-delay curve is appropriate for the motor
+    - The cold-start trip does not establish a root cause; obtain the actual start duration, trip indication/class,
+      load and phase condition
+    - Compare the installed relay connection and setting with rated motor current and applicable Siemens
+      instructions; the reported 10 A setting on an 8 A motor is not a reason to increase it
+    - Do not raise overload protection to silence the trip; starting duty and protection selection require
+      the applicable motor/relay design review
     wrong_if:
-    - Assumes the motor is overloaded without checking startup conditions
-    - Recommends replacing the motor before checking overload settings
-    - Ignores the difference between FLA and inrush current
-  notes: Tests knowledge of inrush vs running current and overload calibration. Technician
-    must distinguish cold-start transient from steady-state overload.
+    - Recommends increasing the overload setting to about 12 A without an approved protection design
+    - Treats normal inrush as the confirmed cause from this report alone
+    - Recommends bypassing the overload or replacing the motor without investigation
+  notes: 'Source: Siemens SIRIUS 3RU2/3RB3 manual, 09/2014, A5E03656507420A/RS-AA/002, sections 9.1 (printed
+    page 75) and 6.2.3 (page 52). https://cache.industry.siemens.com/dl/files/164/60298164/att_95533/v1/manual_overload_relay_3RU2_3RB3_en-US.pdf
+    Rated-current setting and start-duty selection are distinct; installed connection/application remains
+    unknown. Removes the unsafe 12 A recommendation; no protection-setting procedure or historical score
+    rewrite.'
 - id: tech-21
   category: mechanical
   mode: general
@@ -145,25 +148,28 @@
 - id: tech-22
   category: mechanical
   mode: general
-  question: Flexible coupling between motor and pump shows a 0.5 inch offset between
-    the two shafts. Motor and pump both running smoothly. Is this normal or a problem?
+  question: Flexible coupling between motor and pump shows a 0.5 inch offset between the two shafts. Motor
+    and pump both running smoothly. Is this normal or a problem?
   turns: []
   equipment: Flexible coupling, motor-pump shaft pair
   expected:
     must_cite: false
     key_points:
-    - Flexible couplings are designed to accommodate minor misalignment; 0.5 inch
-      is significant and suggests either parallel misalignment or axial offset
-    - Alignment should be checked and corrected to within manufacturer specs (typically
-      0.002-0.005 inch for modern systems)
-    - Alignment should be checked and corrected to within manufacturer specs (typically
-      0.05 inch for modern systems)
+    - Smooth running does not establish acceptable alignment; the reported 0.5 inch offset needs clarification
+      and investigation
+    - Clarify whether the measurement is parallel/angular misalignment, axial displacement or an intended
+      shaft-end gap
+    - Compare the applicable motor/pump alignment requirements and exact coupling installation limits;
+      no universal alignment tolerance is supplied
     wrong_if:
-    - Claims any flexible coupling can handle 0.5 inch without consequence
-    - Assumes smooth running means proper alignment
-    - Recommends replacement without re-alignment attempt
-  notes: Coupling tolerance and misalignment diagnosis. Flexibility absorbs some offset,
-    but 0.5 inch is excessive and will cause hidden wear.
+    - Claims every flexible coupling can safely accommodate 0.5 inch offset
+    - Treats a generic 0.002-0.005 inch or 0.05 inch tolerance as this unknown equipment specification
+    - Assumes smooth running proves alignment or confirms a failure mode without identifying the measured
+      dimension
+  notes: 'Source: Lovejoy Coupling Handbook, Coupling Alignment and Acceptable Misalignment. https://www.lovejoy-inc.com/resources/the-lovejoy-coupling-handbook/
+    Machinery requirements and actual coupling limits are application-specific; Lovejoy is a general reference,
+    not an identified installed vendor. Removes two contradictory generic tolerances; archived scores
+    unchanged.'
 - id: tech-23
   category: sensors_instrumentation
   mode: general
@@ -190,26 +196,30 @@
 - id: tech-24
   category: sensors_instrumentation
   mode: general
-  question: Transmitter outputting 4-20 mA for temperature is reading 8 mA but the
-    actual temperature is 75°F. Loop resistance is 500 ohms. What's the likely issue?
+  question: Transmitter outputting 4-20 mA for temperature is reading 8 mA but the actual temperature
+    is 75°F. Loop resistance is 500 ohms. What's the likely issue?
   turns: []
   equipment: 4-20 mA temperature transmitter, analog input, 500 ohm loop
   expected:
     must_cite: false
     key_points:
-    - 4 mA = 0°F (start), 20 mA = 100°F (end), linear; 8 mA should correspond to ~25°F,
-      not 75°F
-    - Discrepancy suggests transmitter calibration error, sensor failure, or PLC input
-      card not reading correctly
-    - Verify transmitter output with a calibrated loop meter (milliamp clamp meter),
-      then compare to PLC reading to isolate the fault
+    - Confirm configured lower/upper range values, units and transfer function before converting the current
+      to temperature
+    - 'For a linear 4-20 mA signal, 8 mA is 25 percent of configured span: temperature = LRV + 0.25 *
+      (URV - LRV); no absolute temperature follows without that range'
+    - Compare existing transmitter/PLC scaling and independent temperature reference; neither 8 mA nor
+      500 ohms alone proves calibration or hardware failure
+    - Check applicable supply/load compliance specifications; the load drop is 4 V at 8 mA and 10 V at
+      20 mA
     wrong_if:
-    - Assumes the transmitter is working and blames the PLC without testing
-    - Recommends replacing the transmitter without verification
-    - Fails to ask for or verify the transmitter's output range (assumed 0-100°F in
-      this case)
-  notes: Analog loop troubleshooting. The 8 mA reading suggests transmitter is working
-    (not an open), but calibration or sensor is off. Loop meter confirms the mA independently.
+    - Assumes a 0-100 Fahrenheit range or states that 8 mA must mean 25 Fahrenheit without supplied configuration
+    - Declares the transmitter or PLC faulty solely because 8 mA differs from 75 Fahrenheit under an invented
+      range
+    - Recommends replacing or recalibrating hardware before verifying configured scaling and loop specifications
+  notes: 'Source: Emerson Temperature Transmitters overview, configured measurement ranges. https://www.emerson.com/en/measurement-instrumentation/catalog/temperature-measurement/temperature-transmitters
+    Linear signal arithmetic is conditional: a 0-300 Fahrenheit range makes 8 mA equal 75 Fahrenheit.
+    No transmitter model/range or supply compliance is provided. Replaces invented 0-100 range and consequent
+    fault conclusion; archived results unchanged.'
 - id: tech-25
   category: missing_information
   mode: abstention

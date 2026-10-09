@@ -1,3 +1,13 @@
+# Technician evaluation truth — unsupported settings/ranges
+
+Authorized continuation until2026-10-09 20:00UTC /16:00Eastern. Own branchcodex/technician-eval-uncertainty-truth, origin/main e12d4dfc3. Reuse existing evals/technician/cases.yaml and run_technician TechnicianCase schema. Reuse/open-PR audit found #4331 owned tech-16 correction; that approved source remains separate and untouched. No new evaluation framework, judge/provider calls, archived-score edits or runtime controls.
+
+Repair three expected keys: tech-20 previously rewarded increasing an8A motor's overload setting to12A; tech-22 supplied conflicting universal alignment tolerances; tech-24 invented a0-100°F range and therefore a transmitter fault. Verify Siemens3RU2 manual09/2014 §9.1/6.2.3, Lovejoy Coupling Handbook alignment requirements, Emerson temperature-transmitter range overview. Preserve uncertainty and actual equipment/application limits. Existing three baseline truth checks fail red; corrected30-case data parses, other27cases and all three input/equipment/mode/citation requirements unchanged. Real runner dataclass schema and conditional4-20mA/Ohm arithmetic pass; no paid calls or scores.
+
+Write source/page provenance in each note; independent review and current CI remain separate before approval. No merge/deploy/device install/protection-setting authority. Prior source review caps cannot be reset by this separate three-case data repair.
+
+---
+
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
 **Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`
