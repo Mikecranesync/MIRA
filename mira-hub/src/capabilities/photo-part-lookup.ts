@@ -165,7 +165,8 @@ export function asksPartCompatibility(question: string): boolean {
     if (/\binstead\s+of\b/i.test(text)) return false;
     const diagnostic = /^(?:can|could|would|will|may|should)\s+(?:i|we|you)\s+(?:please\s+)?(?:check|inspect|read|measure|observe|diagnose|troubleshoot)\b/i.test(text)
       || /^(?:do|does)\b[^.!?]*\b(?:mean|indicate|show|read)\b/i.test(text)
-      || /^what\s+(?:does|is|are)\b/i.test(text)
+      || /^what\s+(?:does|is|are|happened|changed|caused)\b/i.test(text)
+      || /^why\s+(?:is|was|are|were|did|does|do|has|have)\b/i.test(text)
       || /^what\s+(?:do|should|can|could)\s+(?:i|we|you)\s+(?:know|check|inspect|read|measure|observe|diagnose|troubleshoot)\b/i.test(text)
       || /^how\s+(?:do|does|can|could|should)\b[^.!?]*\b(?:check|inspect|read|interpret|measure|observe|diagnose|troubleshoot)\b/i.test(text)
       || /^which\b[^.!?]*\b(?:is|are|shows?|reads?)\b[^.!?]*\b(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline)\b/i.test(text)

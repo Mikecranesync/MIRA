@@ -142,7 +142,7 @@ describe("field indication through the real notebook route", () => {
 });
 
 
-it.each(["The LED is white instead of green. What should I check?", "The LED is white instead of green. Can I inspect it?"])("keeps read-only diagnostic follow-up available: %s", async (message) => {
+it.each(["The LED is white instead of green. What should I check?", "The LED is white instead of green. Can I inspect it?", "The LED is white instead of green. What happened?", "The LED is white instead of green. Why did it turn red?"])("keeps read-only diagnostic follow-up available: %s", async (message) => {
   visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({ observationId: "obs", sessionId: "session", text: "Label appears to read Ni8U-S12-AP6", obsKind: "look", trust: "candidate", fileId: "44444444-4444-4444-8444-444444444444", hazards: [] });
   const res = await POST(req({ message, mode: "general", visualEvidence: { fileId: "44444444-4444-4444-8444-444444444444" } }), params);
   await frames(res);

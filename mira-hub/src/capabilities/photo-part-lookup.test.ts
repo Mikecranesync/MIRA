@@ -50,7 +50,7 @@ describe("photo part lookup", () => {
     "It shows 1 instead of 0. What does that mean?",
     "The gateway is offline instead of online",
     "The LED is white instead of green. What should I check?",
-    "The LED is white instead of green. Can I inspect it?",
+    "The LED is white instead of green. Can I inspect it?", "The LED is white instead of green. What happened?", "The LED is white instead of green. Why did it turn red?",
   ])("does not treat a reported indication as a substitute-part request: %s", (q) => {
     expect(asksPartCompatibility(q)).toBe(false);
   });
