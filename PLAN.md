@@ -1,3 +1,11 @@
+# Refreshed composition — #4330 trusted retry repair
+
+Apply exact aed56e873 code patch to preview composition4dbd78894. No source-branch mutation, new PR/review, merge/deploy or cap reset. Preserve the real picker callback identity in the missing-byte test wrapper; #4306 legitimately releases chips when its adapter changes. The first combined run failed only because that test wrapper created a new picker callback on each render; qualified wrapper uses React useCallback.
+
+Full mobile914passed/75files; TypeScript/Vite build passed. Prior Hub5877 and combined build receipts remain tied to cbbfbebf8; this new shared retry patch has its own standalone Hub-build and365shared-UI test/build receipt. Current composition Hub rerun remains pending until recorded separately.
+
+---
+
 # Mobile preview + field integrity — local composition qualification
 
 Source composition cbbfbebf8 plus exact #4306 cc08a6a4a951058d5c822c986ca86895d1e9f304 code diff. This is an integration test branch, not a new PR, trusted review, deployment or review-budget reset.
