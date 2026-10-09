@@ -51,12 +51,15 @@ import { AnswerMarkdown, copyText } from "./AnswerMarkdown";
 import { ApiError, request } from "../api/client";
 import { confirmIdentityProposal } from "../api/identity-confirm";
 import { fetchManualSearchStatus } from "../api/manual-search-status";
+import { fetchNotebookSources } from "../api/notebook-sources";
 import { canBeChatSource, enabledDocIds, getNotebookDetail, type NotebookServerTurn } from "../api/resources";
 import { threadMessages } from "../chat-adapter/turns-to-parts";
 import type { ChatCitation, ChatTurn } from "../lib/sse";
 import { registerTransientLayer } from "../lib/transient-layer";
 import { createCapacitorAdapter } from "../unified/capacitor-adapter";
 import { useUnifiedAttachments, type VisualEvidenceRider } from "../unified/attachments";
+import { observationFileIds, usePhotoPreviews, withPhotoPreviews } from "../unified/photo-previews";
+import { notebookSourceDocIds, withNotebookCaptions } from "../unified/reload-captions";
 import {
   citationIndex,
   contextFor,
@@ -411,11 +414,28 @@ function UnifiedChatForNotebook({
       aliveRef.current = false;
     };
   }, []);
+  // The notebook's own source docIds, which a reloaded answer's chip needs
+  // before it may say "this notebook's sources", as /v3's does (parity row 2,
+  // #4301). Unknown until read; a failed read leaves the chip neutral.
+  const [notebookDocIds, setNotebookDocIds] = useState<readonly string[] | undefined>(undefined);
+  useEffect(() => {
+    setNotebookDocIds(undefined);
+    const fetchedFor = meta.notebookId;
+    if (!fetchedFor) return;
+    let current = true;
+    void fetchNotebookSources(fetchedFor)
+      .then((sources) => { if (current && sources) setNotebookDocIds(notebookSourceDocIds(sources)); })
+      .catch(() => {});
+    return () => { current = false; };
+  }, [meta.notebookId]);
   const fullMeta = useMemo<UnifiedNotebookMeta>(() => ({ ...meta, capturedAt: capturedAt.current }), [meta]);
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
   const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
   const baseThread = useMemo(() => toThread(messages, fullMeta), [messages, fullMeta]);
+  // The technician's photos as pictures, as on /v3 (parity row 4).
+  const photoIds = useMemo(() => observationFileIds(baseThread), [baseThread]);
+  const photoPreviews = usePhotoPreviews(photoIds);
 
   // Codex round 2 (#4195 F4/F6/F8/F9): "Searching…" must resolve once the
   // background search settles, must NOT poll forever on a stuck/orphaned
@@ -535,8 +555,9 @@ function UnifiedChatForNotebook({
         orphaned.push({ manufacturer: part.manufacturer, model: part.model, running: false, startedAt: part.startedAt });
       }
     }
-    return withManualSearchOverrides(baseThread, [...historical, ...orphaned], follow?.status ?? null);
-  }, [baseThread, settledManualSearches, follow?.key, follow?.status]);
+    const resolved = withManualSearchOverrides(baseThread, [...historical, ...orphaned], follow?.status ?? null);
+    return withPhotoPreviews(withNotebookCaptions(resolved, messages, notebookDocIds), photoPreviews);
+  }, [baseThread, settledManualSearches, follow?.key, follow?.status, messages, notebookDocIds, photoPreviews]);
 
   useEffect(() => {
     dispatch({
@@ -568,6 +589,7 @@ function UnifiedChatForNotebook({
       const after = await getNotebookDetail(fetchedFor, { threadId: attachmentThreadId ?? undefined });
       if (!aliveRef.current || notebookIdRef.current !== fetchedFor) return null;
       confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
+      setNotebookDocIds(notebookSourceDocIds(after.sources));
       return true;
     } catch {
       if (aliveRef.current && notebookIdRef.current === fetchedFor) confirmedScopeRef.current = null;
@@ -726,6 +748,10 @@ function UnifiedChatForNotebook({
   // just set locally. An upload that failed then looked like nothing happened:
   // the question reappeared in the composer with no explanation.
   const mirroredChatError = useRef<string | null>(null);
+  // Bumped by every host retry. A retry with an edited draft that fails again
+  // before a render changes nothing else this effect watches, and the banner
+  // the retry just cleared must still come back.
+  const [retryAttempt, setRetryAttempt] = useState(0);
   useEffect(() => {
     const next = chatError ?? null;
     if (mirroredChatError.current === next) return;
@@ -738,7 +764,7 @@ function UnifiedChatForNotebook({
       const q = failedQuestion ?? pending?.q ?? liveTurns.at(-1)?.q ?? "";
       if (q) dispatch({ type: "set-draft", draft: q });
     }
-  }, [chatError, failedQuestion, pending, liveTurns, state.draft]);
+  }, [chatError, failedQuestion, pending, liveTurns, state.draft, retryAttempt]);
 
   /**
    * One send, composed. On HOME there is no notebook yet, so the bytes are
@@ -893,11 +919,25 @@ function UnifiedChatForNotebook({
     // the bytes, retry through the composed path so the photo rides the turn.
     ...(canRetry && handlers.onRetry
       ? { onRetry: () => {
+          // Try again IS the send, so the question the failure put back leaves
+          // the composer, as any send does (R7); a failed retry puts it back.
           if (attachments.hasRetained() || attachments.hasCarried()) {
             dispatch({ type: "set-send-error", error: null });
             onSend(state.draft, [], { retry: true });
+            dispatch({ type: "set-draft", draft: "" });
             return;
           }
+          // A draft the technician has edited since the failure is theirs; it stays.
+          if (failedQuestion && state.draft.trim() === failedQuestion.trim()) dispatch({ type: "set-draft", draft: "" });
+          // The host clears its error as the retry starts (NotebookScreen
+          // `sendQuestion`), so the shell's copy goes now too: the failed
+          // answer's own Retry (parts.tsx) does not clear it the way the
+          // banner's Try again does. Forgetting the mirrored error then lets the
+          // effect above show the next failure, and restore the question, even
+          // when it carries the identical message and lands before a render.
+          dispatch({ type: "set-send-error", error: null });
+          mirroredChatError.current = null;
+          setRetryAttempt((n) => n + 1);
           handlers.onRetry?.();
         } }
       : {}),
