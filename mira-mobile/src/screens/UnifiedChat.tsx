@@ -667,12 +667,19 @@ function UnifiedChatForNotebook({
   // behaviour the preview flow replaces.
   const attachTarget = attachmentNotebookId === undefined ? meta.notebookId : attachmentNotebookId;
   const attachments = useUnifiedAttachments(attachTarget, attachmentThreadId);
+  // The adapter must keep one identity for the life of the chat: the shared
+  // Composer releases every pending attachment whenever its adapter changes,
+  // and the hosts pass a fresh onScanMachine on every render. Read the scanner
+  // through a ref so a re-render never costs the technician a picked photo.
+  const scanMachineRef = useRef(handlers.onScanMachine);
+  scanMachineRef.current = handlers.onScanMachine;
   const adapter = useMemo(() => createCapacitorAdapter({
     onAttachPhoto: attachments.attachPhoto,
     onAttachFile: attachments.attachFile,
     onAttachCamera: attachments.attachCamera,
-    onScanMachine: handlers.onScanMachine,
-  }), [attachments.attachPhoto, attachments.attachFile, attachments.attachCamera, handlers.onScanMachine]);
+    onScanMachine: async () => (await scanMachineRef.current?.()) ?? null,
+    onRelease: attachments.release,
+  }), [attachments.attachPhoto, attachments.attachFile, attachments.attachCamera, attachments.release]);
 
   // The assistant surface renders text through the SAME markdown + inline
   // citation-mark pipeline ChatV2 uses (AnswerMarkdown), gated on the turn's
@@ -770,6 +777,11 @@ function UnifiedChatForNotebook({
     // retained bytes are deliberately NOT a reason to compose here (#3863):
     // they ride only the explicit Try again below.
     if (pending.length === 0 && !attachments.hasCarried() && !opts.retry) {
+      // A new plain question supersedes the failed attachment turn. Reuse
+      // compose's synchronous zero-request cleanup before forwarding text;
+      // with no pending/carried/retry descriptors this cannot upload anything.
+      // Otherwise a later text failure's Try again revives the old photo.
+      if (attachments.hasRetained()) void attachments.compose(text, []);
       if (confirmedScope) handlers.onSend(text, undefined, confirmedScope);
       else handlers.onSend(text);
       return;

@@ -85,7 +85,11 @@ export function partCodes(photoText: string): string[] {
   // identifier label (asset tag, unit id, …) is the same signal (F14, ADR-0036).
   const serialLabelPresent =
     serials.size > 0 || new RegExp(SERIAL_LABEL.source, "i").test(text) || new RegExp(ASSET_LABEL.source, "i").test(text);
-  const unlabelled = serialLabelPresent ? [] : [...text.matchAll(PART_CODE)].map((m) => trimCode(m[0]));
+  // Vision descriptions such as "RJ45-style" are prose, not printed codes.
+  // An explicit P/N label remains a candidate, even with that suffix.
+  const unlabelled = serialLabelPresent ? [] : [...text.matchAll(PART_CODE)]
+    .map((m) => trimCode(m[0]))
+    .filter((code) => !/-(?:style|like|shaped)$/i.test(code));
   const found = [...unlabelled, ...labelled]
     .filter((code) => !serials.has(code.toUpperCase()))
     .filter((code) => !/^X00[A-Z0-9]{7}$/i.test(code))
@@ -136,7 +140,32 @@ export function explicitManualLookupRequest(question: string): boolean {
 }
 
 export function asksPartCompatibility(question: string): boolean {
-  return /\b(?:substitute|replacement|interchange(?:able)?|compatible|drop\s*in|replace|instead\s+of)\b/i.test(question);
+  if (/\b(?:substitute|replacement|interchange(?:able)?|compatible|drop\s*in|replace)\b/i.test(question)) return true;
+  // "Instead of" also describes an observed state. Evaluate each sentence so
+  // an indication report cannot erase a separate genuine substitution request.
+  return question.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
+    [...sentence.matchAll(/\binstead\s+of\b/gi)].some((comparison) => {
+      const before = sentence.slice(0, comparison.index);
+      const after = sentence.slice((comparison.index ?? 0) + comparison[0].length);
+      const indication = /^\s+(?:being\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s*(?:[.,;:!?]|$)/i.test(after);
+      const observation = /\b(?:tablet|indicator|led|screen|display|shows?|reads?)\b/i.test(before)
+        || /^\s*(?:(?:(?:the\s+)?(?:gateway|seat|it)\s+(?:is|was)|it's|it’s)\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s*$/i.test(before);
+      // Voice input often omits sentence punctuation. A later state clause
+      // ("use a handheld ... it is white") is not the object being substituted.
+      const stateAt = [...before.matchAll(/\b(?:it\s+(?:is|was)|it's|it’s|(?:the\s+)?(?:tablet|indicator|led|screen|display)\s+(?:is|was|shows?|reads?))\b/gi)].at(-1)?.index ?? -1;
+      const useAt = [...before.matchAll(/\b(?:use|install|fit|swap|connect|put)\b/gi)].at(-1)?.index ?? -1;
+      // Proposed suitability and conditional attributes are not observed states.
+      // Fail closed for ambiguous substitution questions, including color-only
+      // alternatives where the component name is omitted after "instead of".
+      const proposedSuitability = /\b(?:can|could|would|may|should)\b[^.!?]*\b(?:use|install|fit|work|swap|connect|put)\b/i.test(before)
+        && !/\b(?:it(?:'s|’s|\s+(?:is|was))\s+[^.!?]*\bon\s+(?:the\s+)?(?:tablet|screen|display)|(?:the\s+)?(?:tablet|screen|display)\s+(?:shows?|reads?))\b/i.test(before);
+      const suitabilityAttribute = /\b(?:ok|acceptable|suitable|work|works)\b/i.test(before)
+        || /\bif\s+it\s+(?:is|was)\b/i.test(before);
+      const substitution = (useAt > stateAt && before.length - useAt <= 100)
+        || proposedSuitability || suitabilityAttribute;
+      return !(indication && observation && !substitution);
+    }),
+  );
 }
 
 // ── #4150 owner decision (2026-09-30): search only after an explicit, one-time,

@@ -110,8 +110,62 @@ function tailAt(s: string, from: number, max = 64): string {
  *  glued with no space on either side. Brackets, table pipes and a sentence's ". " are not
  *  joins, so "mm2 (10 AWG)", "| 5 | 3.09 N·m" and "Step 1. 12 V" stay separate values. The
  *  leading piece is unitless or followed by a joint, so it is unusable too. */
-function laterPieceOfNumber(n: string, start: number): boolean {
+function laterPieceOfNumber(n: string, start: number, original: string): boolean {
   const isWs = (i: number) => n[i] === " " || n[i] === "\t";
+  // #4320: screen the WHOLE match, not only its digits. ≈/~ remain the existing
+  // approximation decoration; scan opening quotes/brackets too, across inline markup.
+  let boundary = start;
+  let enclosed = false;
+  let cellBoundary = false;
+  while (boundary > 0) {
+    let at = boundary - 1;
+    while (at >= 0 && isWs(at)) at--;
+    if (at < 0 || !/[≈~"'“‘([{|]/u.test(n[at])) break;
+    enclosed ||= /[([{|]/u.test(n[at]);
+    cellBoundary ||= n[at] === "|";
+    boundary = at;
+  }
+  const priorCellUnit = cellBoundary && /\d[ \t]*[%℃℉][ \t]*$/u.test(n.slice(0, boundary));
+  const left = n[boundary - 1] ?? "";
+  if (left && !priorCellUnit && !/[\s([{|,;:]/u.test(left) && !(enclosed && /\p{L}/u.test(left)) && !(cellBoundary && /\d/u.test(left))) return true;
+  let before = boundary;
+  while (before > 0 && isWs(before - 1)) before--;
+  // Formatting can separate an exponent marker from its signed exponent.
+  if (/\d[ \t]*e$/u.test(n.slice(0, before))) return true;
+  // Only an original bullet at an indented line start is layout. Normalization
+  // merges • with multiplication dots, so the normalized mark is insufficient.
+  const listMark = before > 0 && original[before - 1] === "•"
+    && /^[\t\p{Zs}]*$/u.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before - 1))
+    && /[\t\p{Zs}]/u.test(original[before] ?? "");
+  // Markdown normalizes to spaces: ≠ **0** / 1e+**3** must not lose a mark.
+  if (before < boundary && before > 0 && !listMark && !priorCellUnit && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
+  // A preceding numeric coefficient is only a separate cell in a real row.
+  // Otherwise −2|20 V| is an expression, not a supported plain 20 V quantity.
+  // Retain compact rows such as |5|12 V| and the unscaled |12 V| control.
+  if (cellBoundary) {
+    const lineStart = n.lastIndexOf("\n", boundary - 1) + 1;
+    const linePrefix = n.slice(lineStart, boundary);
+    if (/\d[ \t]*$/u.test(linePrefix) && !/^[ \t]*\|/u.test(linePrefix)) {
+      // GFM also permits tables without outer pipes. Require a contiguous
+      // same-width header/alignment block, not merely a bar in nearby prose.
+      const lineEnd = n.indexOf("\n", start);
+      const rowCells = n.slice(lineStart, lineEnd < 0 ? n.length : lineEnd)
+        .trim().replace(/^\||\|$/g, "").split("|");
+      const rows = n.slice(0, lineStart).split("\n").slice(0, -1);
+      let tableRow = false;
+      for (let row = rows.length - 1; row > 0; row--) {
+        const cells = rows[row].trim().replace(/^\||\|$/g, "").split("|");
+        if (!rows[row].trim() || cells.length !== rowCells.length) break;
+        if (cells.every((cell) => /^[ \t]*:?-{3,}:?[ \t]*$/.test(cell))) {
+          const header = rows[row - 1].trim().replace(/^\||\|$/g, "").split("|");
+          tableRow = rowCells.length > 1 && header.length === rowCells.length;
+          break;
+        }
+      }
+      if (!tableRow) return true;
+    }
+    return false;
+  }
   let k = start;
   while (k > 0 && isWs(k - 1)) k--;
   const spaced = k < start;
@@ -176,7 +230,7 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     let sign: string | undefined = m[2];
-    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !laterPieceOfNumber(n, start);
+    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !laterPieceOfNumber(n, start, text);
     // Decided on the ORIGINAL text: a sign, then real whitespace, with only indentation before
     // it on its line. U+2212 is always a minus. In the answer, an ASCII "- " there is Markdown
     // list syntax — rendered as a bullet, so the number is unsigned. Anywhere else (source text,

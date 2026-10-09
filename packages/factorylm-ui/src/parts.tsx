@@ -28,7 +28,9 @@ export interface HostHooks {
    * optional so a host cannot silently drop a technician's evidence by writing
    * a one-argument handler and never noticing.
    */
-  readonly onSend?: (text: string, attachments: readonly Attachment[]) => void;
+  // Explicit retry intent lets attachment-owning hosts re-arm retained bytes
+  // even when the failed send never created a turn id. Ordinary sends omit it.
+  readonly onSend?: (text: string, attachments: readonly Attachment[], opts?: { retry?: boolean }) => void;
   /** Stop the in-flight answer; shown only while `busy`. */
   readonly onStop?: () => void;
   /**

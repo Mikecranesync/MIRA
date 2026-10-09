@@ -40,6 +40,52 @@ describe("photo part lookup", () => {
     expect(asksPartCompatibility("Can I use my M12 instead of this S12?")).toBe(true);
     expect(asksPartCompatibility("What does S12 mean?")).toBe(false);
   });
+
+  it.each([
+    "I think this means I just need to use a handheld on that seat. It's white on the tablet instead of being green",
+    "Why is the indicator red instead of green?",
+    "Red instead of green",
+    "I think I need to use a handheld on that seat it is white on the tablet instead of being green",
+    "I use the handheld and the display shows 1 instead of 0",
+    "It shows 1 instead of 0. What does that mean?",
+    "The gateway is offline instead of online",
+  ])("does not treat a reported indication as a substitute-part request: %s", (q) => {
+    expect(asksPartCompatibility(q)).toBe(false);
+  });
+
+  it.each([
+    "Can I use this sensor instead of the original?",
+    "Can I use my M12 instead of this S12? It is red instead of green.",
+    "Is this replacement compatible? The indicator is red instead of green.",
+    "Can I install this module instead of that one?",
+    "Can I use this green wire instead of that white wire?",
+    "Is white wire OK instead of green wire?",
+    "Can I use a sensor that is rated for 24 V instead of 12 V?",
+    "Is 24 V acceptable instead of 12 V?",
+    "Can I use a sensor that is rated for 24 instead of 12?",
+    "Can I use wire that is white instead of green?",
+    "Can I install an LED that is white instead of green?",
+    "Can I use an indicator which is white instead of green?",
+    "Would a white LED work instead of green?",
+    "Is an indicator that is white OK instead of green?",
+    "Can I use this LED if it is white instead of green?",
+  ])("keeps the compatibility gate for real substitution: %s", (q) => {
+    expect(asksPartCompatibility(q)).toBe(true);
+  });
+
+  it.each(["RJ45-style port", "M12-like connector", "USB3-shaped socket"])(
+    "does not mint a part label from descriptive vision prose: %s", (text) => {
+      expect(unambiguousPartNumber(text)).toBeNull();
+    },
+  );
+
+  it("keeps explicitly labelled codes as candidates without decoding them", () => {
+    expect(unambiguousPartNumber("P/N RJ45-STYLE")).toBe("RJ45-STYLE");
+  });
+
+  it("does not let a connector description hide a real part label", () => {
+    expect(unambiguousPartNumber("RJ45-style port. P/N Ni8U-S12-AP6")).toBe("Ni8U-S12-AP6");
+  });
 });
 
 describe("#4150 Codex r1 — egress and parsing defects", () => {
