@@ -414,3 +414,73 @@ describe("withManualSearchOverride / withManualSearchOverrides — generation-aw
     });
   });
 });
+
+// F004 M2 (#4303): the server's grounding_status entry arrives as an unknown
+// frame (live) or unknown evidence entry (saved) through the guarded adapter;
+// it is recognized HERE into the shared part.
+describe("grounding_status — evidence status on the phone (F004 M2)", () => {
+  const gs = (outcome: string, fallback: Record<string, unknown> = { offered: false }, retrieval = "passages_found") => ({
+    kind: "grounding_status",
+    v: 1,
+    outcome,
+    retrieval: { status: retrieval, scopeDocIds: ["d"], passageCount: 1, returnedDocIds: ["d"], returnedSourceRefs: [] },
+    citation: { status: "refused", linkedDocIds: [], linkedSourceRefs: [], unresolvedMarkerCount: 0 },
+    manualCited: false,
+    droppedRefCount: 0,
+    fallback,
+  });
+  const msg = (id: string, parts: MessagePart[]): AdapterMessage =>
+    ({ id, role: "assistant", parts, lifecycle: "completed" }) as AdapterMessage;
+  const statusOf = (t: { parts: readonly { type: string }[] }) => t.parts.find((p) => p.type === "grounding_status");
+
+  it("recognizes the entry instead of an 'Unrecognized part'", () => {
+    expect(toInteractionPart({ type: "unknown", raw: gs("refused_with_passages", { offered: true }) })).toEqual({
+      type: "grounding_status",
+      outcome: "refused_with_passages",
+      manualSearched: true,
+      searchScope: "selected_manual",
+      passagesFrom: "selected_manual",
+      fallbackOffered: true,
+      isGeneralFallback: false,
+    });
+  });
+
+  it("control: a malformed or future-version entry stays an inspectable unknown", () => {
+    expect(toInteractionPart({ type: "unknown", raw: { ...gs("refused_with_passages"), v: 2 } }).type).toBe("unknown");
+  });
+
+  it("a refusal or abstention never carries the legacy 'General guidance' basis chip", () => {
+    const t = toTurn(msg("live-0-a", [
+      { type: "basis", basis: "general_reasoning", label: "General guidance — not grounded in your documents" },
+      { type: "text", text: "I can't answer that from the manual.", knownCitationIds: [] },
+      { type: "unknown", raw: gs("refused_with_passages", { offered: true }) },
+    ]), META);
+    expect(t.parts.some((p) => p.type === "evidence_basis")).toBe(false);
+    expect(statusOf(t)).toMatchObject({ outcome: "refused_with_passages" });
+  });
+
+  it("control: an uncited answer keeps its basis chip", () => {
+    const t = toTurn(msg("live-0-a", [
+      { type: "basis", basis: "general_reasoning", label: "General guidance" },
+      { type: "text", text: "Check the supply.", knownCitationIds: [] },
+      { type: "unknown", raw: gs("answered_uncited_with_passages", { offered: true }) },
+    ]), META);
+    expect(t.parts.some((p) => p.type === "evidence_basis")).toBe(true);
+  });
+
+  it("a saved offer used by a later turn's link shows no live action after reload", () => {
+    const ROW = "11111111-1111-4111-8111-111111111111";
+    const failedSaved = msg(`${ROW}-a`, [{ type: "unknown", raw: gs("refused_with_passages", { offered: true }) }]);
+    const failedLive = msg("live-0-a", [{ type: "unknown", raw: gs("abstained_no_passages", { offered: true }, "no_passages") }]);
+    const general = msg("live-1-a", [{ type: "unknown", raw: gs("answered_without_manual", { offered: false, of: ROW }, "not_attempted") }]);
+    const thread = toThread([failedSaved, failedLive, general], META);
+    expect(statusOf(thread.turns[0]!)).toMatchObject({ fallbackUsed: true });
+    // A live answer has no row id to match; its button settles itself on tap.
+    expect(statusOf(thread.turns[1]!)).not.toHaveProperty("fallbackUsed");
+    expect(statusOf(thread.turns[2]!)).toMatchObject({ isGeneralFallback: true });
+    // Control: nothing used → the offers stay live.
+    const fresh = toThread([failedSaved, failedLive], META);
+    expect(statusOf(fresh.turns[0]!)).not.toHaveProperty("fallbackUsed");
+    expect(statusOf(fresh.turns[1]!)).not.toHaveProperty("fallbackUsed");
+  });
+});

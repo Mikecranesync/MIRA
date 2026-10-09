@@ -11,6 +11,33 @@ import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { shouldRedirectToOnboarding } from "@/lib/onboarding-flow";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
+import { GROUNDING_STATUS_CAPABILITY } from "@/capabilities/grounding-status";
+
+/** The shell's fixture before any notebook loads: an empty, untitled thread. */
+export const EMPTY_FIXTURE = {
+  id: "hub-empty",
+  title: "FactoryLM",
+  review: { themes: ["light", "dark"] as const, viewports: ["desktop"] as const, surfaces: ["hub"] as const },
+  thread: {
+    id: "hub-empty:thread", tenantId: "tenant", notebookId: "", title: "FactoryLM", mode: "ask" as const,
+    visibility: "workspace" as const, turns: [], createdAt: "1970-01-01T00:00:00.000Z", updatedAt: "1970-01-01T00:00:00.000Z",
+  },
+  projects: [],
+  machines: [],
+  activeContext: { tenantId: "tenant", machineIdentity: "not_applicable" as const, evidenceAuthorization: "not_applicable" as const, capturedAt: "1970-01-01T00:00:00.000Z" },
+  offline: { state: "online" as const, pendingChanges: 0 },
+};
+
+/**
+ * The state `/v3` opens with. Navigation starts CLOSED (#4290): at phone width
+ * the sidebar is a modal drawer, so opening it on every load put a menu over
+ * the conversation and the technician had to dismiss it before typing. On a
+ * desktop the sidebar is static and this flag has no effect (the drawer CSS,
+ * `inert` and `topLayer` all key on the narrow-viewport query).
+ */
+export function initialHubShellState(): ShellState {
+  return shellReducer(createShellState(EMPTY_FIXTURE, PROFILES.hub), { type: "set-navigation-visible", visible: false });
+}
 
 /** The shell's fixture before any notebook loads: an empty, untitled thread. */
 export const EMPTY_FIXTURE = {
@@ -186,7 +213,9 @@ export function shellThreadId(sel: HubSelection): string {
  * legacy conversation and then forwarded that mixed history on the next send.
  */
 export function detailQueryFor(sel: HubSelection): string {
-  return `?threadId=${encodeURIComponent(sel.threadId)}`;
+  // F004 (#4303): ask for each turn's grounding_status entry. The server
+  // strips it unless the flag is on, so this is inert until then.
+  return `?threadId=${encodeURIComponent(sel.threadId)}&caps=${GROUNDING_STATUS_CAPABILITY}`;
 }
 
 /** Server-owned identity → shell meta. `identityConfirmed` is true only when the
@@ -274,18 +303,59 @@ export const NO_PROJECT_ERROR = "Still loading your projects — try again in a 
  * zero-source question (PRD law 6: general help is always available; Codex
  * #3839 Spec P1). With sources it is the ordinary cited turn.
  */
+/**
+ * F004 M2 (#4303): the technician chose "Get general guidance (not from the
+ * manual)" on a failed turn. A NEW general-mode turn with no sources, its own
+ * request id, linked to that turn (`fallbackOf`, ownership-checked by the
+ * server). Nothing ever switches to general mode without this explicit tap.
+ */
+export function generalGuidanceBodyFor(
+  question: string,
+  failedTurnId: string,
+  history: ReturnType<typeof historyRows>,
+  sel: HubSelection,
+): ReturnType<typeof chatBodyFor> & { fallbackOf: string } {
+  return { ...chatBodyFor(question, [], history, sel), fallbackOf: failedTurnId };
+}
+
+/**
+ * F004 M2: resolve a "Get general guidance" tap on a shell answer turn
+ * (`<row uuid>-a`) to the request that answers it — the ORIGINAL question,
+ * asked again in general mode and linked to that row. Null for a live turn
+ * (no server row yet; the Hub reloads saved turns right after each answer)
+ * or a row that is not in this thread.
+ */
+export function generalGuidanceRequest(
+  shellTurnId: string,
+  turns: readonly PersistedTurn[],
+  sel: HubSelection,
+): { question: string; body: ReturnType<typeof generalGuidanceBodyFor> } | null {
+  const rowId = /^(.+)-a$/.exec(shellTurnId)?.[1];
+  const row = rowId ? turns.find((t) => t.id === rowId) : undefined;
+  if (!row || !row.question.trim()) return null;
+  return { question: row.question, body: generalGuidanceBodyFor(row.question, row.id, historyRows(turns), sel) };
+}
+
 export function chatBodyFor(
   question: string,
   docIds: readonly string[],
   history: ReturnType<typeof historyRows>,
   sel: HubSelection,
   rider?: { visualEvidence?: { fileId: string; capturedAt: string } },
-): ChatBody & { threadId: string | null; mode?: "general"; visualEvidence?: { fileId: string; capturedAt: string } } {
+): ChatBody & {
+  threadId: string | null;
+  mode?: "general";
+  visualEvidence?: { fileId: string; capturedAt: string };
+  clientCapabilities: string[];
+} {
   const base = buildChatBody(question, [...docIds], history);
   const visual = rider?.visualEvidence;
   return {
     ...base,
     threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId,
+    // F004 (#4303): this client renders the grounding_status entry. With the
+    // server flag off the declaration is ignored and the reply is unchanged.
+    clientCapabilities: [GROUNDING_STATUS_CAPABILITY],
     // A zero-source turn is served ONLY in general mode — including a photo
     // turn: the chat route lets a visual claim past the early no-sources check
     // just to verify it, then refuses a non-general zero-source turn (422

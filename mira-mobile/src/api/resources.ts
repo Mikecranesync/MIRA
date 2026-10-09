@@ -561,8 +561,20 @@ export interface NotebookDetail {
   photos: NotebookPhoto[];
 }
 
-export async function getNotebookDetail(id: string, opts: { threadId?: string | null } = {}): Promise<NotebookDetail> {
-  const query = opts.threadId ? `?threadId=${encodeURIComponent(opts.threadId)}` : "";
+/** F004 (#4303): the server's per-turn evidence-status capability. Declared
+ *  only by a surface that renders it (the unified shell) — the classic and
+ *  ChatV2 surfaces would show an unknown entry as a raw box. */
+export const GROUNDING_STATUS_CAPABILITY = "grounding_status_v1";
+
+export async function getNotebookDetail(
+  id: string,
+  opts: { threadId?: string | null; declareGroundingStatus?: boolean } = {},
+): Promise<NotebookDetail> {
+  const params = [
+    ...(opts.threadId ? [`threadId=${encodeURIComponent(opts.threadId)}`] : []),
+    ...(opts.declareGroundingStatus ? [`caps=${GROUNDING_STATUS_CAPABILITY}`] : []),
+  ];
+  const query = params.length > 0 ? `?${params.join("&")}` : "";
   const r = await request(`/api/equipment-notebooks/${encodeURIComponent(id)}/${query}`);
   const d = r.data as {
     notebook: Record<string, unknown>;
@@ -1418,6 +1430,11 @@ export async function askNotebook(
      *  ignores it otherwise) and re-derives the evidence entry — the client
      *  never sends evidence rows. Absent = unchanged path. */
     visualEvidence?: VisualEvidence;
+    /** F004 (#4303): this surface renders the grounding_status entry. */
+    declareGroundingStatus?: boolean;
+    /** F004: this general turn answers the technician's explicit choice on
+     *  that failed turn (its row id or the request id it was sent with). */
+    fallbackOf?: string;
   } = {},
 ): Promise<ChatTurn> {
   const parser = createChatSseParser();
@@ -1433,6 +1450,8 @@ export async function askNotebook(
         ...(opts.clientRequestId ? { clientRequestId: opts.clientRequestId } : {}),
         ...(opts.machineEvidence ? { machineEvidence: opts.machineEvidence } : {}),
         ...(opts.visualEvidence ? { visualEvidence: opts.visualEvidence } : {}),
+        ...(opts.declareGroundingStatus ? { clientCapabilities: [GROUNDING_STATUS_CAPABILITY] } : {}),
+        ...(opts.fallbackOf ? { fallbackOf: opts.fallbackOf } : {}),
       },
       onResponseHeaders: (headers) => {
         const safetyTrigger = headers.get("X-Safety-Stop");

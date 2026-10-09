@@ -18,6 +18,7 @@ import {
 } from "@/lib/equipment-notebooks";
 import { listFilesForTarget } from "@/lib/workspace-files";
 import { currentManualSearchStatus, type ManualSearchStatus } from "@/capabilities/notebook-manual-acquisition";
+import { showGroundingStatus, withoutUndeclaredGroundingStatus } from "@/capabilities/grounding-status";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   const { id } = await params;
-  const rawThreadId = requestSearchParams(req).get("threadId");
+  const search = requestSearchParams(req);
+  const rawThreadId = search.get("threadId");
   const threadId = rawThreadId === null ? undefined : normalizeNotebookThreadId(rawThreadId);
   if (rawThreadId !== null && !threadId) {
     return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
@@ -120,7 +122,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   } catch (err) {
     console.error("[equipment-notebooks] manual search status read failed (continuing without it):", err);
   }
-  return NextResponse.json({ notebook, sources, turns, threads, photos, manualSearch });
+  // F004 contract v2: a turn's grounding status reaches only a client that
+  // declared it understands it (`?caps=grounding_status_v1`) while the flag is
+  // on. Every other reader gets exactly the evidence it got before.
+  const showGrounding = showGroundingStatus(search.get("caps"));
+  const visibleTurns = turns.map((t) => {
+    if (!Array.isArray(t.evidence)) return t;
+    const evidence = withoutUndeclaredGroundingStatus(t.evidence, showGrounding);
+    return evidence === t.evidence ? t : { ...t, evidence };
+  });
+  return NextResponse.json({ notebook, sources, turns: visibleTurns, threads, photos, manualSearch });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

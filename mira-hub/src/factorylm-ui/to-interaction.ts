@@ -27,7 +27,12 @@ import type {
   ManualSearchStatus,
   SourceReference,
 } from "../../../packages/factorylm-interaction/src";
-import { sameManufacturerModel } from "../../../packages/factorylm-interaction/src";
+import {
+  fallbackSourceOf,
+  groundingStatusOf,
+  sameManufacturerModel,
+  suppressesBasisLabel,
+} from "../../../packages/factorylm-interaction/src";
 import type {
   EvidenceCitation,
   MachineEvidenceEntry,
@@ -396,7 +401,12 @@ export function persistedMeta(
 /** A persisted GET row → its two turns (question, answer). STOPPED-TURN CONTRACT
  *  (STRM-2): `answerStatus==="error"` with text is a stopped turn (partial shown,
  *  no citations/basis/evidence); with null text it is the provider-failure copy. */
-export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, meta: HubNotebookMeta): InteractionTurn[] {
+export function turnsFromPersisted(
+  row: PersistedTurn & { createdAt?: string },
+  meta: HubNotebookMeta,
+  /** F004: row ids whose general-guidance offer a later turn already used. */
+  usedFallbacks: ReadonlySet<string> = new Set(),
+): InteractionTurn[] {
   const at = row.createdAt ?? meta.capturedAt;
   const stopped = row.answerStatus === "error" && !!row.answerText;
   const disputed = hasIdentityDispute(row.evidence);
@@ -422,6 +432,9 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
 
   const answerId = answerTurnId(row.id);
   const parts: InteractionPart[] = [];
+  // F004 (#4303): the server's own record of what this turn's evidence was —
+  // only present when the flag is on AND this client declared the capability.
+  const grounding = groundingStatusOf(row.evidence);
   const text =
     row.answerText ??
     (row.answerStatus === "error"
@@ -447,7 +460,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
   }
   if (!stopped && row.answerStatus !== "error") {
     for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId) });
-    if (row.basis) parts.push(basisPart(row.basis, citations, meta.notebookDocIds));
+    if (row.basis && !suppressesBasisLabel(grounding)) parts.push(basisPart(row.basis, citations, meta.notebookDocIds));
     for (const m of machineEvidence) parts.push(machineEvidencePart(m));
     for (const v of visualEvidence) parts.push(visualObservationPart(v));
     for (const n of notices) parts.push(safetyNoticePart(n));
@@ -455,6 +468,10 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } });
   } else {
     parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: false } });
+  }
+
+  if (grounding) {
+    parts.push({ type: "grounding_status", ...grounding, ...(usedFallbacks.has(row.id) ? { fallbackUsed: true } : {}) });
   }
 
   // Same precedence as `lifecycleFromStream`: a persisted TERMINAL refusal stays a
@@ -516,7 +533,8 @@ export function threadFromPersisted(
   rows: readonly (PersistedTurn & { createdAt?: string })[],
   meta: HubNotebookMeta,
 ): InteractionThread {
-  const turns = rows.flatMap((row) => turnsFromPersisted(row, meta));
+  const usedFallbacks = new Set(rows.map((r) => fallbackSourceOf(r.evidence)).filter((id): id is string => id !== null));
+  const turns = rows.flatMap((row) => turnsFromPersisted(row, meta, usedFallbacks));
   return {
     id: threadIdFor(meta),
     tenantId: meta.tenantId ?? "tenant",

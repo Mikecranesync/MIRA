@@ -15,6 +15,7 @@ import type {
 } from "@factorylm/interaction";
 import { IdentityAlreadyConfirmedError } from "@factorylm/interaction";
 import { useEffect, useState, type Dispatch, type ReactNode } from "react";
+import { GENERAL_GUIDANCE_ACTION, groundingStatusLine } from "./grounding-status";
 import { openableUrl } from "./links";
 import { PhotoThumb } from "./PhotoViewer";
 
@@ -132,6 +133,16 @@ export interface HostHooks {
    * always works, even without a host.
    */
   readonly onRejectIdentity?: (proposal: IdentityProposal) => void;
+  /**
+   * F004 (#4303): the technician chose "Get general guidance (not from the
+   * manual)" on a turn whose server status offered it. The host sends a NEW
+   * general-mode turn linked to this one (`fallbackOf`); nothing switches
+   * modes on its own. Rendered only on a server-offered turn; without a host
+   * the button is honestly disabled. A host that resolves `true` once the
+   * general answer arrived (or `false` / rejects when it did not) lets the
+   * part settle instead of saying "Asking…" forever (Codex #4303 r1 F2).
+   */
+  readonly onRequestGeneralGuidance?: (turnId: string) => void | Promise<boolean>;
   readonly busy?: boolean;
 }
 
@@ -403,6 +414,48 @@ function ManualSearchStatusPart({ part }: { readonly part: Extract<InteractionPa
   </p>;
 }
 
+function GroundingStatusPart({ part, turn, hooks }: {
+  readonly part: Extract<InteractionPart, { type: "grounding_status" }>;
+  readonly turn: InteractionTurn;
+  readonly hooks?: HostHooks;
+}) {
+  // "asking" is the one-tap latch (no second send while in flight); it always
+  // settles: "requested" when the host reports the general answer arrived,
+  // "failed" (action offered again) when it did not.
+  const [request, setRequest] = useState<"idle" | "asking" | "requested" | "failed">("idle");
+  const statusLine = groundingStatusLine(part);
+  const onAsk = hooks?.onRequestGeneralGuidance;
+  const used = part.fallbackUsed === true || request === "requested";
+  const live = part.fallbackOffered && !used && request !== "asking";
+  const ask = () => {
+    if (!onAsk || hooks?.busy || request === "asking") return;
+    setRequest("asking");
+    let pending: void | Promise<boolean>;
+    try {
+      pending = onAsk(turn.id);
+    } catch {
+      setRequest("failed");
+      return;
+    }
+    // A host that reports nothing keeps the one-tap latch (it cannot say whether the answer came).
+    if (!pending) return;
+    pending.then((ok) => setRequest(ok ? "requested" : "failed"), () => setRequest("failed"));
+  };
+  if (!statusLine && !part.fallbackOffered) return null;
+  return <div className="fl-part fl-grounding" role="status" data-part-type="grounding_status" data-outcome={part.outcome}>
+    {statusLine ? <p>{statusLine}</p> : null}
+    {part.fallbackOffered && request === "failed" && !used ? <p role="alert" className="fl-card__meta">Couldn't get general guidance. Try again.</p> : null}
+    {live ? <div className="fl-card__actions">
+      <button type="button"
+        disabled={!onAsk || Boolean(hooks?.busy)}
+        title={onAsk ? undefined : "General guidance isn't available on this surface yet"}
+        onClick={ask}>{GENERAL_GUIDANCE_ACTION}</button>
+    </div> : null}
+    {part.fallbackOffered && request === "asking" ? <p className="fl-card__meta">Asking for general guidance…</p> : null}
+    {part.fallbackOffered && used ? <p className="fl-card__meta">General guidance was requested below.</p> : null}
+  </div>;
+}
+
 export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: PartRendererProps) {
   switch (part.type) {
     case "text":
@@ -617,6 +670,9 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
 
     case "manual_search_status":
       return <ManualSearchStatusPart part={part} />;
+
+    case "grounding_status":
+      return <GroundingStatusPart part={part} turn={turn} hooks={hooks} />;
 
     case "unknown": {
       // NotebookTraceFrame is transport metadata, preserved on the part for

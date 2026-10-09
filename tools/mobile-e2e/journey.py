@@ -637,6 +637,90 @@ def verify_citation(dev: Device, expect_page: int | None) -> str:
     return passage
 
 
+# F004 (#4303): the honest-limitation leg. Copy lives in
+# packages/factorylm-ui/src/grounding-status.ts — keep these substrings in sync.
+HONEST_STATUS_LINES = (
+    "didn't find a passage in the selected manual",
+    "couldn't answer from them",
+    "manual library couldn't be reached",
+    "doesn't point to a passage in the selected manual",
+    # Codex #4303 r1 F1: a search with no selected manual names the shared library.
+    "shared manual library didn't find a passage",
+    "read passages from the shared manual library",
+    "doesn't point to a passage in the shared manual library",
+)
+GENERAL_ACTION = "Get general guidance (not from the manual)"
+GENERAL_LABEL = "General guidance — not from your manual."
+
+
+def limitation(dev: Device, question: str) -> str:
+    """A question the selected manual cannot answer: the turn must say so honestly,
+    must NOT silently become a general answer, and must offer the explicit action;
+    one tap then yields a labelled general answer while the failed turn stays.
+    Needs the staging hub with NOTEBOOK_GROUNDING_STATUS_ENABLED=1 and a build
+    with PR #4303 (the unified shell declares grounding_status_v1)."""
+    log("limitation", question)
+    dev.wait_for("Send", timeout=90, keep_foreground=True)
+    box = dev.bottom_edit_text()
+    dev.tap(*box.center)
+    dev.type_text(question)
+    dev.tap_button("Send", timeout=30)
+
+    deadline = time.time() + 180
+    line = ""
+    while time.time() < deadline and not line:
+        texts = dev.texts()
+        line = next((t for t in texts for s in HONEST_STATUS_LINES if s.lower() in t.lower()), "")
+        if not line:
+            time.sleep(5)
+    if not line:
+        dev.screenshot("limitation-no-status")
+        raise Fail("no honest evidence-status line within 180s (flag off, old build, or an uncaught answer)")
+    dev.screenshot("limitation-status")
+    log("limitation", f"status: {line[:120]}")
+    if dev.find(GENERAL_LABEL) is not None:
+        raise Fail("a general answer appeared before any tap -- silent mode switch")
+    if dev.find(GENERAL_ACTION, clickable=True) is None:
+        raise Fail(f"no {GENERAL_ACTION!r} action offered on an unbound notebook")
+
+    dev.tap_button(GENERAL_ACTION, timeout=30)
+    dev.wait_for(GENERAL_LABEL, timeout=180, keep_foreground=True)
+    if not any(s.lower() in t.lower() for t in dev.texts() for s in HONEST_STATUS_LINES):
+        raise Fail("the failed turn's status disappeared after the general answer arrived")
+    if dev.find(GENERAL_ACTION, clickable=True) is not None:
+        raise Fail("the general-guidance action is still live after it was used")
+    dev.screenshot("limitation-general")
+    log("limitation", "explicit general guidance verified")
+    return line
+
+
+GENERAL_USED = "General guidance was requested below."
+
+
+def reopened(dev: Device, notebook_name: str, status_line: str) -> None:
+    """F004 outcome, last clause: after the app is killed and reopened, the same
+    notebook shows the same result -- the failed turn's honest status, the labelled
+    general answer, and the offer marked as used (not live again)."""
+    log("reopen", notebook_name)
+    launch(dev)
+    if dev.find(status_line[:60]) is None:
+        # Cold launch may land on the notebook list rather than the last thread.
+        dev.tap_text(notebook_name, timeout=90)
+    dev.wait_for(status_line[:60], timeout=120, keep_foreground=True)
+    texts = dev.texts()
+    if not any(GENERAL_LABEL in t for t in texts):
+        dev.screenshot("reopen-no-general")
+        raise Fail("after reopening, the labelled general answer is missing")
+    if dev.find(GENERAL_ACTION, clickable=True) is not None:
+        dev.screenshot("reopen-offer-live")
+        raise Fail("after reopening, the used general-guidance offer is live again")
+    if not any(GENERAL_USED in t for t in texts):
+        dev.screenshot("reopen-offer-unmarked")
+        raise Fail(f"after reopening, the used offer does not say {GENERAL_USED!r}")
+    dev.screenshot("reopen-same-result")
+    log("reopen", "same result after relaunch")
+
+
 def nameplate(dev: Device, image: Path | None) -> None:
     if image is None:
         log("nameplate", "SKIP -- no --nameplate given. A synthetic image would not "
@@ -691,6 +775,9 @@ def main() -> int:
                     help="Page the answer must cite. Read it out of the PDF FIRST so "
                          "you are checking the answer, not trusting it.")
     ap.add_argument("--nameplate", type=native_path, default=None)
+    ap.add_argument("--limitation-question", default=None,
+                    help="F004: a question the uploaded manual cannot answer (no '?'). "
+                         "Runs after the citation check; needs the grounding-status flag on.")
     ap.add_argument("--notebook-name", default=None)
     ap.add_argument("--manufacturer", default="Danfoss")
     ap.add_argument("--model", default="FC 202")
@@ -740,6 +827,9 @@ def main() -> int:
             ask(dev, args.question, args.expect_page)
         if wanted("citation"):
             verify_citation(dev, args.expect_page)
+            if args.limitation_question:
+                line = limitation(dev, args.limitation_question)
+                reopened(dev, name, line)
         if wanted("nameplate"):
             nameplate(dev, args.nameplate)
     except Fail as exc:

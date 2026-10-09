@@ -21,7 +21,12 @@ import type {
   ShellFixture,
   SourceReference,
 } from "@factorylm/interaction";
-import { sameManufacturerModel } from "@factorylm/interaction";
+import {
+  fallbackSourceOf,
+  groundingStatusFromEntry,
+  sameManufacturerModel,
+  suppressesBasisLabel,
+} from "@factorylm/interaction";
 import type { AdapterMessage, MessagePart } from "../chat-adapter/contract";
 import type { ChatCitation } from "../lib/sse";
 
@@ -245,6 +250,10 @@ function rawString(raw: Record<string, unknown>, key: string): string | null {
  * never a crash, never a guess (PRD §9.2).
  */
 function unknownInteractionPart(raw: unknown): InteractionPart {
+  // F004 M2 (#4303): the server's grounding_status entry — the shared reader
+  // fails closed, so a malformed/future entry stays an inspectable unknown.
+  const grounding = groundingStatusFromEntry(raw);
+  if (grounding) return { type: "grounding_status", ...grounding };
   if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
     const r = raw as Record<string, unknown>;
     if (r.kind === "identity_proposal") {
@@ -303,13 +312,27 @@ function settleIdentityProposal(part: InteractionPart, meta: UnifiedNotebookMeta
   return { ...part, priorOutcome: sameManufacturerModel(part, current) ? "confirmed" : "superseded" };
 }
 
-export function toTurn(msg: AdapterMessage, meta: UnifiedNotebookMeta): InteractionTurn {
+export function toTurn(
+  msg: AdapterMessage,
+  meta: UnifiedNotebookMeta,
+  /** F004: shell turn ids whose general-guidance offer was already used. */
+  usedFallbacks: ReadonlySet<string> = new Set(),
+): InteractionTurn {
   const disputed = msg.parts.some((part) => part.type === "identity_dispute");
+  let parts = msg.parts.map(toInteractionPart).map((part) => settleIdentityProposal(part, meta));
+  const grounding = parts.find((p) => p.type === "grounding_status");
+  if (grounding?.type === "grounding_status") {
+    // A refusal or abstention is not general guidance, whatever the legacy basis label says.
+    if (suppressesBasisLabel(grounding)) parts = parts.filter((p) => p.type !== "evidence_basis");
+    if (usedFallbacks.has(msg.id)) {
+      parts = parts.map((p) => (p.type === "grounding_status" ? { ...p, fallbackUsed: true } : p));
+    }
+  }
   return {
     id: msg.id,
     threadId: threadIdFor(meta),
     role: msg.role,
-    parts: msg.parts.map(toInteractionPart).map((part) => settleIdentityProposal(part, meta)),
+    parts,
     lifecycle: lifecycleOf(msg),
     context: contextFor(meta, disputed),
     createdAt: meta.capturedAt,
@@ -317,7 +340,14 @@ export function toTurn(msg: AdapterMessage, meta: UnifiedNotebookMeta): Interact
   };
 }
 
+/** Shell ids (`<row id>-a`) of saved turns a later answer's `fallback.of` names. */
+function usedFallbackTurnIds(messages: readonly AdapterMessage[]): string[] {
+  const raws = messages.flatMap((m) => m.parts.flatMap((p) => (p.type === "unknown" ? [p.raw] : [])));
+  return raws.map((raw) => fallbackSourceOf([raw])).filter((id): id is string => id !== null).map((id) => `${id}-a`);
+}
+
 export function toThread(messages: readonly AdapterMessage[], meta: UnifiedNotebookMeta): InteractionThread {
+  const usedFallbacks = new Set(usedFallbackTurnIds(messages));
   return {
     id: threadIdFor(meta),
     tenantId: meta.tenantId ?? "tenant",
@@ -327,7 +357,7 @@ export function toThread(messages: readonly AdapterMessage[], meta: UnifiedNoteb
     title: meta.title,
     mode: "ask",
     visibility: "workspace",
-    turns: messages.map((msg) => toTurn(msg, meta)),
+    turns: messages.map((msg) => toTurn(msg, meta, usedFallbacks)),
     createdAt: meta.capturedAt,
     updatedAt: meta.capturedAt,
   };

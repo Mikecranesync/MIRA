@@ -588,3 +588,83 @@ describe("evidence basis chip — a caption, never the server key (#4025)", () =
     }
   });
 });
+
+describe("grounding_status — the turn's evidence status on reload (F004 M2, #4303)", () => {
+  // The server writes this entry into evidence[]; the Hub's PersistedTurn type
+  // predates it, so fixtures cast the way untyped JSON arrives.
+  type Entry = PersistedTurn["evidence"][number];
+  const gs = (outcome: string, fallback: Record<string, unknown> = { offered: false }, retrieval = "passages_found"): Entry => ({
+    kind: "grounding_status",
+    v: 1,
+    outcome,
+    retrieval: { status: retrieval, scopeDocIds: ["doc-1"], passageCount: 1, returnedDocIds: ["doc-1"], returnedSourceRefs: [] },
+    citation: { status: "refused", linkedDocIds: [], linkedSourceRefs: [], unresolvedMarkerCount: 0 },
+    manualCited: false,
+    droppedRefCount: 0,
+    fallback,
+  }) as unknown as Entry;
+  const statusPart = (parts: readonly { type: string }[]) => parts.find((p) => p.type === "grounding_status");
+
+  it("an abstained turn carries the server's status and its offer", () => {
+    const [, a] = turnsFromPersisted(
+      row({ answerStatus: "insufficient_evidence", answerText: null, basis: null, evidence: [gs("abstained_no_passages", { offered: true }, "no_passages")] }),
+      meta,
+    );
+    expect(statusPart(a.parts)).toEqual({
+      type: "grounding_status",
+      outcome: "abstained_no_passages",
+      manualSearched: true,
+      searchScope: "selected_manual",
+      passagesFrom: null,
+      fallbackOffered: true,
+      isGeneralFallback: false,
+    });
+  });
+
+  it("a refusal never reads as 'General guidance': the legacy general_reasoning chip is dropped when the status says refused", () => {
+    const [, a] = turnsFromPersisted(
+      row({ answerStatus: "insufficient_evidence", answerText: "I can't answer that from the manual.", basis: "general_reasoning", evidence: [gs("refused_with_passages", { offered: true })] }),
+      meta,
+    );
+    expect(a.parts.some((p) => p.type === "evidence_basis")).toBe(false);
+    expect(statusPart(a.parts)).toMatchObject({ outcome: "refused_with_passages" });
+  });
+
+  it("control: an uncited answer keeps its basis chip AND gains the status line", () => {
+    const [, a] = turnsFromPersisted(
+      row({ answerText: "Check the supply.", basis: "general_reasoning", evidence: [gs("answered_uncited_with_passages", { offered: true })] }),
+      meta,
+    );
+    expect(a.parts.some((p) => p.type === "evidence_basis")).toBe(true);
+    expect(statusPart(a.parts)).toMatchObject({ outcome: "answered_uncited_with_passages" });
+  });
+
+  it("control: a legacy turn without the entry renders exactly as before", () => {
+    const legacy = row({ answerStatus: "insufficient_evidence", answerText: null, evidence: [], basis: null });
+    const [, a] = turnsFromPersisted(legacy, meta);
+    expect(a.parts).toEqual([{ type: "text", text: "I couldn't find that in the selected sources." }]);
+  });
+
+  it("a malformed or future-version entry is ignored, never shown raw", () => {
+    const [, a] = turnsFromPersisted(row({ evidence: [citation, { ...(gs("answered_citation_linked") as object), v: 2 } as unknown as Entry] }), meta);
+    expect(statusPart(a.parts)).toBeUndefined();
+    expect(a.parts.some((p) => p.type === "unknown")).toBe(false);
+  });
+
+  it("after reload, an offer a later turn already used shows no live action; the general answer is labelled", () => {
+    const failed = row({ id: "11111111-1111-4111-8111-111111111111", answerStatus: "insufficient_evidence", answerText: null, basis: null, evidence: [gs("refused_with_passages", { offered: true })] });
+    const general = row({
+      id: "22222222-2222-4222-8222-222222222222",
+      answerText: "Measure the incoming supply.",
+      basis: "general_reasoning",
+      evidence: [gs("answered_without_manual", { offered: false, of: "11111111-1111-4111-8111-111111111111" }, "not_attempted")],
+    });
+    const thread = threadFromPersisted([failed, general], meta);
+    const parts = thread.turns.filter((t) => t.role === "assistant").map((t) => statusPart(t.parts));
+    expect(parts[0]).toMatchObject({ fallbackOffered: true, fallbackUsed: true });
+    expect(parts[1]).toMatchObject({ outcome: "answered_without_manual", isGeneralFallback: true, manualSearched: false });
+    // Control: without the later turn the offer is still live.
+    const alone = threadFromPersisted([failed], meta).turns.find((t) => t.role === "assistant")!;
+    expect(statusPart(alone.parts)).not.toHaveProperty("fallbackUsed");
+  });
+});

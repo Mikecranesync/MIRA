@@ -34,3 +34,33 @@ export function withStepSafety(systemPrompt: string): string {
 export function normalizeCitationMarkers(text: string): string {
   return text.replace(/【\s*(\d{1,2})\s*(?:†[^】]*)?】/g, "[$1]");
 }
+
+/** gpt-oss models emit OpenAI-style citation markers (`【3】`, `【4†L1-L7】`)
+ *  instead of `[3]`. Normalize to `[n]` so the UI renders clickable chips and
+ *  citation-entailment can match. Streaming-safe: a delta that ends mid-marker
+ *  (an open `【` with no closing `】`) is held back until the marker completes.
+ *  Shared by the notebook chat route and NodeChat (the beta-gate door). */
+export function makeCitationNormalizer(): { push: (delta: string) => string; flush: () => string } {
+  let pending = "";
+  return {
+    push(delta: string): string {
+      let buf = pending + delta;
+      // Replace any COMPLETE fancy-bracket citation with [n].
+      buf = buf.replace(/【\s*(\d+)(?:\s*†[^】]*)?】/g, "[$1]");
+      // If an unclosed `【` remains, hold from it back (marker split across deltas).
+      const open = buf.lastIndexOf("【");
+      if (open !== -1) {
+        pending = buf.slice(open);
+        return buf.slice(0, open);
+      }
+      pending = "";
+      return buf;
+    },
+    // Emit any held text at stream end (a malformed/unclosed marker), normalized.
+    flush(): string {
+      const out = pending.replace(/【\s*(\d+)(?:\s*†[^】]*)?】/g, "[$1]");
+      pending = "";
+      return out;
+    },
+  };
+}

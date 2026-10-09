@@ -81,6 +81,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import {
   abandonNotebookTurnRequest,
   claimNotebookTurnRequest,
+  getFallbackSourceTurn,
   getNotebook,
   listSources,
   listTurns,
@@ -103,7 +104,7 @@ import {
   withSafetyFlag,
 } from "@/lib/safety-classifier";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
-import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
+import { makeCitationNormalizer, normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
 import { withPhotoProvenance } from "@/capabilities/photo-provenance";
 import { withRetailCodeNote } from "@/capabilities/retail-codes";
@@ -121,6 +122,15 @@ import {
 import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
 import { citationTitle } from "@/capabilities/citation-title";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
+import {
+  HONEST_REFUSAL_STATUS_MESSAGE,
+  buildGroundingStatus,
+  countUnresolvedMarkers,
+  groundingStatusEnabled,
+  isGroundingStatusEntry,
+  showGroundingStatus,
+  type GroundingStatusInputs,
+} from "@/capabilities/grounding-status";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
   buildRequestBody,
@@ -422,30 +432,8 @@ export function makeGeneralBracketStripper(): { push: (delta: string) => string;
   };
 }
 
-export function makeCitationNormalizer(): { push: (delta: string) => string; flush: () => string } {
-  let pending = "";
-  return {
-    push(delta: string): string {
-      let buf = pending + delta;
-      // Replace any COMPLETE fancy-bracket citation with [n].
-      buf = buf.replace(/【\s*(\d+)(?:\s*†[^】]*)?】/g, "[$1]");
-      // If an unclosed `【` remains, hold from it back (marker split across deltas).
-      const open = buf.lastIndexOf("【");
-      if (open !== -1) {
-        pending = buf.slice(open);
-        return buf.slice(0, open);
-      }
-      pending = "";
-      return buf;
-    },
-    // Emit any held text at stream end (a malformed/unclosed marker), normalized.
-    flush(): string {
-      const out = pending.replace(/【\s*(\d+)(?:\s*†[^】]*)?】/g, "[$1]");
-      pending = "";
-      return out;
-    },
-  };
-}
+// Moved to capabilities/answer-shape.ts so NodeChat shares it; re-exported for existing importers.
+export { makeCitationNormalizer };
 
 /** A prose refusal ("I could not find that in the selected sources") must NOT
  *  ship citations — otherwise unrelated retrieved pages render as false proof
@@ -717,7 +705,7 @@ function manualSearchStatusFrame(
   };
 }
 
-function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
+function replayNotebookTurnResponse(turn: StoredNotebookTurn, showGrounding = false): Response {
   const enc = new TextEncoder();
   const citations = turn.evidence.filter(
     (entry): entry is EvidenceCitation =>
@@ -792,6 +780,10 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
         : turn.answerStatus === "error"
           ? { kind: "status", status: "error", message: "No answer provider available." }
           : { kind: "status", status: "answered" };
+      // F004 contract v2: the STORED status, never recomputed, so live and
+      // replay can't disagree. Shown only to a declaring client, flag on.
+      const storedGrounding = showGrounding ? turn.evidence.find(isGroundingStatusEntry) : undefined;
+      if (storedGrounding) emit(storedGrounding);
       emit(status);
       // Codex #4120 F4 — the stored proposal replays exactly as it was delivered.
       if (storedProposal) controller.enqueue(enc.encode(sse(storedProposal)));
@@ -873,6 +865,10 @@ async function handleChatTurn(
      *  ignored. `capturedAt` is still accepted for client compatibility and is
      *  never read. */
     visualEvidence?: { fileId?: unknown; capturedAt?: unknown };
+    /** F004 contract v2: what this client understands (`grounding_status_v1`). */
+    clientCapabilities?: unknown;
+    /** F004 contract v2 §5: the failed turn this general request was asked from. */
+    fallbackOf?: unknown;
   };
   try {
     body = await req.json();
@@ -939,6 +935,45 @@ async function handleChatTurn(
   // query so a referential follow-up ("what about Ethernet?", "the other one")
   // retrieves on the thread's subject instead of its own thin words.
   const history = sanitizeHistory(body.history);
+
+  // F004 contract v2 (PR #4303). With the flag on, every saved turn records its
+  // retrieval and citation status; only a request that declared
+  // `grounding_status_v1` is SHOWN it (live frame, replay, honest refusal
+  // wording) — every other client's output is unchanged. Flag off: inert.
+  const groundingOn = groundingStatusEnabled();
+  const showGrounding = showGroundingStatus(body.clientCapabilities);
+  // §5: a general answer requested from a failed manual-based turn links back
+  // to it — only to this technician's own completed turn in the same tenant,
+  // notebook and thread, and only one whose stored status offered the action.
+  // Checked before the claim, retrieval or any provider call.
+  let fallbackOf: string | null = null;
+  if (groundingOn && body.fallbackOf != null) {
+    const raw = typeof body.fallbackOf === "string" ? body.fallbackOf.trim() : "";
+    let source: { id: string; evidence: unknown[] } | null = null;
+    if (general && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) {
+      try {
+        source = await getFallbackSourceTurn(ctx.tenantId, notebookId, {
+          ownerUserId: ctx.userId,
+          threadId,
+          turnId: raw,
+        });
+      } catch (err) {
+        console.error("[notebook-chat] fallbackOf check failed:", err instanceof Error ? err.message : err);
+        return NextResponse.json(
+          { error: "fallback_check_failed", message: "Couldn't check the earlier answer just now. Try again in a moment." },
+          { status: 503 },
+        );
+      }
+    }
+    const offered = source?.evidence.find(isGroundingStatusEntry)?.fallback.offered === true;
+    if (!source || !offered) {
+      return NextResponse.json(
+        { error: "fallback_of_invalid", message: "That earlier answer can't be used for general guidance." },
+        { status: 400 },
+      );
+    }
+    fallbackOf = source.id;
+  }
 
   // ── Turn Flight Recorder (design §1–2) ──────────────────────────────────
   // Root span for the whole turn, created HERE ("request.receive", right
@@ -1232,7 +1267,7 @@ async function handleChatTurn(
         // Idempotent replay of an already-terminal turn — no new work, no new
         // packet. `finish` was never reached; note it on the span and close.
         endRoot({ "mira.turn.replay": true });
-        return replayNotebookTurnResponse(claim.turn);
+        return replayNotebookTurnResponse(claim.turn, showGrounding);
       }
       if (claim.status === "in_progress") {
         endRoot();
@@ -2594,6 +2629,21 @@ async function handleChatTurn(
       ? unidentifiedServiceDecline(message)
       : null;
 
+  // F004 contract v2: the inputs every grounding-status build shares. Read at
+  // call time (oemRetrievalFailed is settled by then); ids and counts only.
+  const groundingBase = (): Pick<
+    GroundingStatusInputs,
+    "general" | "retrievalAttempted" | "retrievalUnavailable" | "scopeDocIds" | "passages" | "notebookBound" | "fallbackOf"
+  > => ({
+    general,
+    retrievalAttempted: notebookRetrieval || oemRetrieval,
+    retrievalUnavailable: oemRetrievalFailed,
+    scopeDocIds: docIds,
+    passages: chunks,
+    notebookBound: boundAsset.state === "resolved",
+    fallbackOf,
+  });
+
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
@@ -2649,6 +2699,20 @@ async function handleChatTurn(
       gateAnswerGateSpan,
     );
     gateAnswerGateSpan.end();
+    // F004 contract v2: no provider was called; record why (retrieval status
+    // kept separate from citation status, which is not applicable here).
+    const gateGrounding = groundingOn
+      ? buildGroundingStatus({
+          ...groundingBase(),
+          modelCalled: false,
+          served: false,
+          refused: false,
+          stopped: false,
+          terminalSafetyStop: false,
+          emittedCitations: [],
+          unresolvedMarkerCount: 0,
+        })
+      : null;
     const gatePersistSpan = startStage("turn.persist");
     const gateTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
       // 086: the owner is the authenticated technician (session), never the body.
@@ -2673,6 +2737,7 @@ async function handleChatTurn(
         // carried (once a client renders it — #4095). Persisted on EVERY reply
         // path, abstention included.
         ...proposalEntries,
+        ...(gateGrounding ? [gateGrounding] : []),
       ],
       model: null,
       // An abstain about a specific machine is still a record about that
@@ -2725,6 +2790,7 @@ async function handleChatTurn(
         if (visualEntry) {
           controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
         }
+        if (showGrounding && gateGrounding) controller.enqueue(enc.encode(sse(gateGrounding)));
         controller.enqueue(enc.encode(sse(status)));
         // Codex r1 F1 (#4172, HIGH) — emitted whatever the answer status
         // (mirrors the answered path below): the client offers "Use its
@@ -3436,6 +3502,20 @@ async function handleChatTurn(
           stoppedAnswerGateSpan,
         );
         stoppedAnswerGateSpan.end();
+        // F004 contract v2: a stop is not an answer — saved, never offered a
+        // general-guidance action (Retry is). No frame: the client is gone.
+        const stoppedGrounding = groundingOn
+          ? buildGroundingStatus({
+              ...groundingBase(),
+              modelCalled: true,
+              served,
+              refused: false,
+              stopped: true,
+              terminalSafetyStop: false,
+              emittedCitations: [],
+              unresolvedMarkerCount: 0,
+            })
+          : null;
         const stoppedPersistSpan = startStage("turn.persist");
         let stoppedTurnRowId: string | null = null;
         try {
@@ -3453,7 +3533,12 @@ async function handleChatTurn(
             // F3); a stop is still not an answer — hydration shows no
             // observation, citation or basis on a stopped answer, and prior-look
             // grounding reads answered turns only.
-            evidence: [...hazardEntries, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
+            evidence: [
+              ...hazardEntries,
+              ...disputeEntries,
+              ...(visualEntry ? [visualEntry] : []),
+              ...(stoppedGrounding ? [stoppedGrounding] : []),
+            ],
             model: stoppedModel,
             basis: null,
             ...assetSnapshot,
@@ -3870,6 +3955,20 @@ async function handleChatTurn(
       // Complete the durable turn before touching the response controller.
       // Cancellation during the semantic judge closes that controller; a
       // later enqueue may throw, but terminal truth must already be replayable.
+      // F004 contract v2: built once from the final, shipped answer; persisted,
+      // streamed and replayed as this same object.
+      const finalGrounding = groundingOn
+        ? buildGroundingStatus({
+            ...groundingBase(),
+            modelCalled: true,
+            served,
+            refused: refused || (outputRejected !== null && outputRejected.kind !== "unsafe_answer"),
+            stopped: false,
+            terminalSafetyStop: outputRejected?.kind === "unsafe_answer",
+            emittedCitations,
+            unresolvedMarkerCount: served && docGrounded ? countUnresolvedMarkers(answerText, citations) : 0,
+          })
+        : null;
       const finalPersistSpan = startStage("turn.persist");
       let finalTurnRowId: string | null = null;
       try {
@@ -3891,11 +3990,27 @@ async function handleChatTurn(
                   ...disputeEntries,
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
+                  ...(finalGrounding ? [finalGrounding] : []),
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries]
+              : [
+                  ...hazardEntries,
+                  ...emittedCitations,
+                  ...(machineEntry ? [machineEntry] : []),
+                  ...(visualEntry ? [visualEntry] : []),
+                  ...disputeEntries,
+                  ...proposalEntries,
+                  ...(finalGrounding ? [finalGrounding] : []),
+                ]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : [])],
+            : [
+                ...hazardEntries,
+                ...emittedCitations,
+                ...disputeEntries,
+                ...proposalEntries,
+                ...(visualEntry ? [visualEntry] : []),
+                ...(finalGrounding ? [finalGrounding] : []),
+              ],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
@@ -3981,7 +4096,14 @@ async function handleChatTurn(
         answerStatus === "answered"
           ? { kind: "status", status: "answered" }
           : answerStatus === "insufficient_evidence"
-            ? { kind: "status", status: "insufficient_evidence", message: "Not found in the selected sources." }
+            ? {
+                kind: "status",
+                status: "insufficient_evidence",
+                // F004 v2 §4: about the attempt, never "the manual lacks it" —
+                // only where the grounding status is shown, so every other
+                // client's output stays byte-identical.
+                message: showGrounding ? HONEST_REFUSAL_STATUS_MESSAGE : "Not found in the selected sources.",
+              }
             : internalError
               ? { kind: "status", status: "error", message: "Internal chat error — see server logs." }
               : { kind: "status", status: "error", message: "No answer provider available." };
@@ -3997,6 +4119,9 @@ async function handleChatTurn(
         pendingUsage = finalUsage;
       }
 
+      // F004 contract v2: before `status`, so a client that stops reading at
+      // `status` still has it. Declaring clients only.
+      if (showGrounding && finalGrounding) controller.enqueue(enc.encode(sse(finalGrounding)));
       controller.enqueue(enc.encode(sse(statusFrame)));
 
       // Deterministic follow-up chips (CONV-4, answered turns only) — derived

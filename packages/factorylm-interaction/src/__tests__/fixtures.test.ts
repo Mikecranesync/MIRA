@@ -14,6 +14,7 @@ const REQUIRED_FIXTURE_IDS = [
   "work-run",
   "error-retry",
   "identity-proposal",
+  "manual-limitation",
   "offline-sync",
   "enterprise-inspector",
   "long-history",
@@ -43,6 +44,7 @@ const REQUIRED_PART_TYPES = [
   "followups",
   "identity_proposal",
   "manual_search_status",
+  "grounding_status",
   "unknown",
 ] as const;
 
