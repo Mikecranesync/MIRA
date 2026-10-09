@@ -104,6 +104,26 @@ function tailAt(s: string, from: number, max = 64): string {
   return out;
 }
 
+/** Split original GFM cells: an odd backslash run escapes a pipe, an even
+ * run does not. Inline normalization must never invent delimiters. */
+function originalTableCells(row: string, trimOuter = true): string[] {
+  const text = trimOuter ? row.trim() : row;
+  const cells: string[] = [];
+  let cell = "";
+  let slashes = 0;
+  for (const char of text) {
+    if (char === "|" && slashes % 2 === 0) {
+      cells.push(cell);
+      cell = "";
+    } else cell += char;
+    slashes = char === "\\" ? slashes + 1 : 0;
+  }
+  cells.push(cell);
+  if (trimOuter && cells[0] === "") cells.shift();
+  if (trimOuter && cells.at(-1) === "") cells.pop();
+  return cells;
+}
+
 /** Left boundary: is the value at `start` a later piece of one number? It is when a digit
  *  precedes it across same-line spaces/tabs (1 000), a number-joining mark with or without
  *  spaces around it (1,000 / 1 ,000 / 1,**234** / 1:30 / 12 / 24 / 12'6), or any other mark
@@ -139,8 +159,11 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
     && /^[\t\p{Zs}]*$/u.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before - 1))
     && /[\t\p{Zs}]/u.test(original[before] ?? "")
     && (original[before - 1] !== "+" || /^ {0,3}$/u.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before - 1)));
+  const headingMark = before > 0 && original[before - 1] === "#"
+    && /^ {0,3}#{1,6}$/.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before))
+    && /[ \t]/.test(original[before] ?? "");
   // Markdown normalizes to spaces: ≠ **0** / 1e+**3** must not lose a mark.
-  if (before < boundary && before > 0 && !listMark && !priorCellUnit && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
+  if (before < boundary && before > 0 && !listMark && !headingMark && !priorCellUnit && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
   // A preceding numeric coefficient is only a separate cell in a real row.
   // Otherwise −2|20 V| is an expression, not a supported plain 20 V quantity.
   // Retain compact rows such as |5|12 V| and the unscaled |12 V| control.
@@ -151,23 +174,23 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
       // GFM also permits tables without outer pipes. Require a contiguous
       // matching header/alignment block, not merely a bar in nearby prose.
       // GFM body rows may have fewer or extra cells; extra cells are ignored.
-      const priorCells = linePrefix.split("|");
+      const priorCells = originalTableCells(original.slice(lineStart, boundary), false).map(normalize);
       // Keep ambiguous signed prose coefficients conservative while allowing
       // ordinary text or hyphenated model cells (Frame 5, Model A-20).
       if (/\p{L}[^|]*[ \t][+-][ \t]*\d+(?:\.\d*)?[ \t]*$/u.test(priorCells.at(-1) ?? "")) return true;
-      const valueCell = priorCells.length;
+      const valueCell = originalTableCells(original.slice(lineStart, start), false).length - 1;
+      if (valueCell < 1) return true;
       const startsBlock = /^(?: {4}|\t)|^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|>|`{3,}|~{3,}|(?:[*+-]|\d+[.)])[ \t]+|<(?:[!?]|\/?[A-Za-z])|\[[^\]]+\]:)|^[ \t]{0,3}(?:[-*_][ \t]*){3,}$/;
       if (startsBlock.test(original.slice(lineStart, boundary))) return true;
-      const rows = n.slice(0, lineStart).split("\n").slice(0, -1);
       // Normalization blanks inline markers, including code-fence backticks.
       // Block syntax must be checked against the same-length original text.
       const originalRows = original.slice(0, lineStart).split("\n").slice(0, -1);
       let tableRow = false;
-      for (let row = rows.length - 1; row > 0; row--) {
-        const cells = rows[row].trim().replace(/^\||\|$/g, "").split("|");
-        if (!rows[row].trim()) break;
+      for (let row = originalRows.length - 1; row > 0; row--) {
+        const cells = originalTableCells(originalRows[row]);
+        if (!originalRows[row].trim()) break;
         if (cells.every((cell) => /^[ \t]*:?-+:?[ \t]*$/.test(cell))) {
-          const header = rows[row - 1].trim().replace(/^\||\|$/g, "").split("|");
+          const header = originalTableCells(originalRows[row - 1]);
           tableRow = cells.length > 1 && header.length === cells.length && valueCell < header.length && !startsBlock.test(originalRows[row - 1]);
           break;
         }

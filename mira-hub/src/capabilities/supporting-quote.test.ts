@@ -748,3 +748,67 @@ describe("plus operators remain conservative", () => {
         expect(r.quoteFallbackCount).toBe(1);
       });
 });
+
+
+describe("original Markdown syntax controls membership", () => {
+  for (const source of [
+    "Frame | Voltage\n**---** | **---**\n−2|20 V|",
+    "Frame | Voltage\n`---` | `---`\n−2|20 V|",
+    "Frame\\| Voltage\n--- | ---\n−2|20 V|",
+  ]) it(`normalization cannot fabricate a delimiter: ${source}`, () => {
+    const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+      [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+    expect(r.citations[0].quote).toBe("ORIGINAL");
+    expect(r.unsupportedValueCount).toBe(1);
+    expect(r.quoteFallbackCount).toBe(1);
+  });
+  for (const source of [
+    "Frame\\| Model | Voltage\n--- | ---\n5 | 12 V",
+    "Frame\\\\| Model | Voltage\n--- | --- | ---\n5 | 12 V",
+  ]) it(`real escaped separators retain cell counts: ${source}`, () => {
+    const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+      [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+    expect(r.citations[0].quote).toBe(source);
+    expect(r.unsupportedValueCount).toBe(0);
+    expect(r.quoteFallbackCount).toBe(0);
+  });
+  for (const heading of ["# 12 V supply", "  ## **12 V** supply"])
+    for (const direction of ["source", "answer"])
+      it(`numeric heading is layout: ${heading} ${direction}`, () => {
+        const source = direction === "source" ? heading : "Rated 12 V.";
+        const answer = direction === "source" ? "Rated 12 V [1]." : `${heading} [1]`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+  for (const text of ["Rated # 12 V", "#**12 V**", "####### 12 V", "    # 12 V", "**#** 12 V"])
+    it(`non-heading prefix cannot authorize a quantity: ${text}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: text, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe("ORIGINAL");
+      expect(r.unsupportedValueCount).toBe(1);
+      expect(r.quoteFallbackCount).toBe(1);
+    });
+});
+
+
+describe("raw current-cell position", () => {
+  for (const source of ["Frame | Voltage\n--- | ---\n−2||20 V|", "Frame | Voltage\n--- | ---\n5\\|20 V"])
+    it(`no support from ignored or escaped cells: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe("ORIGINAL");
+      expect(r.unsupportedValueCount).toBe(1);
+      expect(r.quoteFallbackCount).toBe(1);
+    });
+  for (const source of ["Frame | Voltage\n--- | ---\n5 | **12 V**", "Frame | Voltage\n--- | ---\nModel\\|A-20 | 12 V"])
+    it(`literal markup does not shift a real quantity cell: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+});
