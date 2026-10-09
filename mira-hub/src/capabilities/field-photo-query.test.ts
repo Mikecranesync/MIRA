@@ -163,3 +163,23 @@ describe("qualified or unreadable new display never inherits stale focus", () =>
       expect(buildTopicHint(message, history, observation)).toBe("");
     });
 });
+
+
+describe("display-description phrases preserve the subsequent literal", () => {
+  for (const message of ["Does this help?", "What am I looking at, and what should I check?"])
+    for (const observation of [
+      "LCD display shows an error message ovA.",
+      'LCD display shows the error message "ovA".',
+      "LCD display shows the alarm reading ovA, with a sticker marked A410 above it.",
+      "LCD display shows an unexpected diagnostic message ovA, and a cable marked A410 is connected.",
+    ]) it(`retains ovA from ${observation} for ${message}`, () => {
+      const history = [{ role: "user" as const, content: "Ethernet P042" }];
+      const q = buildRetrievalQuery(message, history, observation);
+      expect(q).toContain("ovA");
+      for (const word of ["P042", "Ethernet", "A410", "cable", "sticker"]) expect(q).not.toContain(word);
+      expect(buildTopicHint(message, history, observation)).toBe("");
+    });
+  it.each(["LCD display shows unexpectedly an error message ovA.", "LCD display shows Unexpected diagnostic message ovA.", "LCD display shows:\nerror message ovA"])("bounded qualifiers do not discard literal: %s", (observation) => {
+    expect(buildRetrievalQuery("Does this help?", [], observation)).toContain("ovA");
+  });
+});

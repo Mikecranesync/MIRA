@@ -121,10 +121,10 @@ beforeEach(() => {
 
 
 describe("server photo context in selected-manual retrieval", () => {
-  it.each(["Does this help?", "What am I looking at, and what should I check?"].flatMap(message => ["PERI\nRD\n1", "ovA", "ObF", "error ovA", "flashing ovA", "blinking ovA"].map(readout => [message, readout])))("uses the linked readout for %s with %s rather than a stale history subject", async (message, readout) => {
+  it.each(["Does this help?", "What am I looking at, and what should I check?"].flatMap(message => ["PERI\nRD\n1", "ovA", "ObF", "error ovA", "flashing ovA", "blinking ovA", "an error message ovA", 'the error message "ovA"'].map(readout => [message, readout])))("uses the linked readout for %s with %s rather than a stale history subject", async (message, readout) => {
     nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["55555555-5555-4555-8555-555555555555"], nodeId: "n1" });
     ragMock.retrieveNodeChunks.mockResolvedValue([{ content: "Read Peripheral Fault mode: a peripheral fault is present if value 1 is displayed.", docId: "55555555-5555-4555-8555-555555555555", manufacturer: "Pepperl+Fuchs", modelNumber: "VBP-HH1-V3.0", sourceUrl: "https://files.pepperl-fuchs.com/manual.pdf", sourcePage: 18, title: "Family manual", rank: 1, verified: true }]);
-    visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({ observationId: "obs", sessionId: "session", text: /^(?:error|flashing|blinking)\b/.test(readout) ? `LCD display shows ${readout}. Buttons read PRG.` : `LCD display shows:\n${readout}\nButtons read PRG.`, obsKind: "look", trust: "candidate", fileId: "44444444-4444-4444-8444-444444444444", hazards: [] });
+    visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({ observationId: "obs", sessionId: "session", text: /^(?:error|flashing|blinking|an|the)\b/.test(readout) ? `LCD display shows ${readout}. Buttons read PRG.` : `LCD display shows:\n${readout}\nButtons read PRG.`, obsKind: "look", trust: "candidate", fileId: "44444444-4444-4444-8444-444444444444", hazards: [] });
     const res = await POST(req({ message, history: [{ role: "user", content: "What is Ethernet parameter P042?" }], sourceDocIds: ["55555555-5555-4555-8555-555555555555"], visualEvidence: { fileId: "44444444-4444-4444-8444-444444444444" } }), params);
     await frames(res);
     expect(ragMock.retrieveNodeChunks).toHaveBeenCalled();

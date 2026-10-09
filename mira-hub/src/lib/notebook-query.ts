@@ -589,7 +589,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       // text the display's retrieval priority; keep original spelling untouched.
       const isLiteralToken = (token: string) =>
         /^(?:[-–—]{1,2}|[,;:]|[A-Z0-9][A-Z0-9_.:+−/=?,()-]*|[A-Za-z]{1,3}[.,:]?|[A-Za-z_.:+−/=?,()-]*\d[A-Za-z0-9_.:+−/=?,()-]*|[A-Za-z]*[a-z][A-Z][A-Za-z0-9_.:+−/=?,()-]*|[A-Z][a-z]{1,15}[.,:]?)$/.test(token)
-        || /^(?:list|of|config|errors?|flashing|blinking|fault|values?|number|alarm|warning|status|condition|code|overcurrent|overvoltage|undervoltage|overload|communication|timeout)[.,:]?$/i.test(token)
+        || /^(?:list|of|config|errors?|flashing|blinking|messages?|readings?|symbols?|letters?|characters?|fault|values?|number|alarm|warning|status|condition|code|overcurrent|overvoltage|undervoltage|overload|communication|timeout)[.,:]?$/i.test(token)
         || /^(?:"[^"\n]+"|'[^'\n]+')$/.test(token);
       const literalTokens = sentence.trim().replace(/^[-*][ \t]+/, "").match(/"[^"\n]*"|'[^'\n]*'|[^\s]+/g) ?? [];
       const literalVocabulary = literalTokens.length <= 6 && literalTokens.every(isLiteralToken);
@@ -610,11 +610,31 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         // Background markings must not gain exact-token boosts merely because
         // LOOK joined a cable/sticker description to the display with a comma.
         const prefix = reading.slice(0, reading.length - payload.length);
+        let literalStarted = false;
+        let firstLiteralAt = -1;
+        let qualifierWords = 0;
         for (const token of payload.matchAll(/"[^"\n]*"|'[^'\n]*'|[^\s]+/g)) {
-          if (isLiteralToken(token[0]) && (token.index === 0 || !/^(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)[.,:]?$/i.test(token[0]))) continue;
+          const strongLiteral = /^(?:[A-Z0-9][A-Z0-9_.:+−/=?,()-]*[.,:]?|[A-Za-z_.:+−/=?,()-]*\d[A-Za-z0-9_.:+−/=?,()-]*[.,:]?|[A-Za-z]*[a-z][A-Z][A-Za-z0-9_.:+−/=?,()-]*[.,:]?|"[^"\n]+"|'[^'\n]+')$/.test(token[0])
+            || /^(?:overcurrent|overvoltage|undervoltage|overload|communication|timeout|list|config)[.,:]?$/i.test(token[0]);
+          const background = /^(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)[.,:]?$/i.test(token[0]);
+          if (background && !(token.index === 0 && strongLiteral)) {
+            payload = payload.slice(0, token.index).replace(/(?:[,;]\s*)?(?:(?:and|with|a|an|the)\s*)+$/i, "").trim();
+            break;
+          }
+          if (strongLiteral && firstLiteralAt < 0) firstLiteralAt = token.index;
+          literalStarted ||= strongLiteral;
+          if (isLiteralToken(token[0])) continue;
+          // LOOK is prose: up to six short descriptive words may introduce a
+          // readout. They cannot cross a background noun or continue after the
+          // first literal. Remove that uncertain prefix from query vocabulary.
+          if (!literalStarted && qualifierWords < 6 && /^[a-z]{4,16}[,:.]?$/.test(token[0])) {
+            qualifierWords++;
+            continue;
+          }
           payload = payload.slice(0, token.index).replace(/(?:[,;]\s*)?(?:(?:and|with|a|an|the)\s*)+$/i, "").trim();
           break;
         }
+        if (qualifierWords > 0) payload = firstLiteralAt >= 0 ? payload.slice(firstLiteralAt) : "";
         reading = prefix + payload;
       }
       continuation = true;
