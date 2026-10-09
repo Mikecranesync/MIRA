@@ -160,7 +160,19 @@ export function asksPartCompatibility(question: string): boolean {
       || ((text.includes("?") || /^(?:am|can|could|would|will|may|should|is|are|do|does|what|which|how)\b/i.test(text))
         && /\bto\s+(?:use|install|fit|swap|connect|put|run|proceed)\b/i.test(text));
     if (actionRequest) return true;
-    if (!text.includes("?") && !/^(?:am|can|could|would|will|may|should|is|are|do|does|what|which|how)\b/i.test(text)) return false;
+    if (!text.includes("?") && !/^(?:am|can|could|would|will|may|should|is|are|do|does|what|which|how)\b/i.test(text)) {
+      if (!text) return false;
+      // Non-questions do not automatically inherit the indication exemption.
+      // Grant it only to a complete observed comparison or bounded read-only
+      // statement. Unknown recommendations, purchases and modifiers abstain.
+      const value = String.raw`(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)`;
+      const observed = String.raw`(?:(?:(?:the\s+)?(?:gateway|seat|tablet|indicator|led|screen|display)\s+(?:is|was|shows?|reads?)|it(?:['’]s|\s+(?:is|was|shows?|reads?)))\s+)?${value}(?:\s+on\s+(?:the\s+)?(?:tablet|screen|display))?`;
+      const hypothesis = String.raw`i\s+think\s+(?:this\s+means\s+)?i\s+(?:just\s+)?need\s+to\s+use\s+(?:a|the)\s+handheld\s+on\s+(?:that|this|the)\s+seat`;
+      if (/\binstead\s+of\b/i.test(text)) {
+        return !new RegExp(String.raw`^(?:(?:${hypothesis}\s+)|(?:i\s+use\s+(?:the|a)\s+handheld\s+and\s+))?${observed}\s+instead\s+of\s+(?:being\s+)?${value}[.!;,]*$`, "i").test(text);
+      }
+      return !new RegExp(String.raw`^(?:${hypothesis}|${observed}|(?:i\s+need\s+to\s+)?(?:check|inspect|read|interpret|measure|observe|diagnose|troubleshoot)(?:\s+(?:it|this|that|(?:the\s+)?(?:led|indicator|display|screen|readout|sensor|module|seat|input|wiring|cable|connector|voltage|current|code|address|error|fault)))?(?:\s+(?:first|next|now))?)[.!;,]*$`, "i").test(text);
+    }
     // Comparisons that themselves ask about an indication are checked below;
     // a separate question never inherits that observation exemption.
     if (/\binstead\s+of\b/i.test(text)) {
