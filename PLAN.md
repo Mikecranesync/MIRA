@@ -1,3 +1,36 @@
+# Field maintenance intelligence — implementation session
+
+Authorized by the owner on 2026-10-09: implement until 16:00 America/New_York.
+Base: origin/main e12d4dfc3. Branch: codex/field-intelligence-fixes.
+
+1. Reproduce and fix the gateway's false compatibility gate in the existing
+   photo-part capability. Verify the real notebook route with a provider stub;
+   preserve genuine compatibility refusals and explicit search consent.
+2. Qualify photo identifiers: prose connector descriptions are not model labels.
+3. Implement further evidence/correction improvements only after locating the
+   canonical existing mechanisms and checking adjacent ownership.
+4. Add progressive case acceptance evidence and run affected tests, full Hub
+   tests and build. Record actual provider and UI limits separately.
+5. Prepare reviewable commits/PR and durable handoff before the deadline.
+
+Success: real route reaches generation for the gateway diagnostic question,
+keeps the linked observation, and still gates genuine unsupported substitution.
+No new framework, database migration, provider billing changes, hardware
+configuration, mobile installation, merge, deployment, or foreign-tree edits.
+
+Ownership: photo-part-lookup capability and its regressions. #4303 owns the
+notebook route/status clients; #4326 owns its field-observation directive. This
+lane does not edit those production files. Escalate overlapping needs in handoff.
+Hooks: .claude/settings.json has prod-guard, guarded approval and stop-gate.
+Neither MIRA_ALLOW_PROD nor MIRA_SKIP_STOP_GATE is set. CodeGraph was unavailable
+on the field-case checkout; native literal/source reads provide the fallback.
+Reuse check: existing photo-part-lookup implementation on local and origin/main;
+merged PR search completed; current coordination log and open PR list inspected.
+
+---
+
+## Archived predecessor plan (completed; not this session)
+
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
 **Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`

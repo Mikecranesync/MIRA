@@ -40,6 +40,34 @@ describe("photo part lookup", () => {
     expect(asksPartCompatibility("Can I use my M12 instead of this S12?")).toBe(true);
     expect(asksPartCompatibility("What does S12 mean?")).toBe(false);
   });
+
+  it.each([
+    "I think this means I just need to use a handheld on that seat. It's white on the tablet instead of being green",
+    "Why is the indicator red instead of green?",
+    "It shows 1 instead of 0. What does that mean?",
+    "The gateway is offline instead of online",
+  ])("does not treat a reported indication as a substitute-part request: %s", (q) => {
+    expect(asksPartCompatibility(q)).toBe(false);
+  });
+
+  it.each([
+    "Can I use this sensor instead of the original?",
+    "Can I use my M12 instead of this S12? It is red instead of green.",
+    "Is this replacement compatible? The indicator is red instead of green.",
+    "Can I install this module instead of that one?",
+  ])("keeps the compatibility gate for real substitution: %s", (q) => {
+    expect(asksPartCompatibility(q)).toBe(true);
+  });
+
+  it.each(["RJ45-style port", "M12-like connector", "USB3-shaped socket"])(
+    "does not mint a part label from descriptive vision prose: %s", (text) => {
+      expect(unambiguousPartNumber(text)).toBeNull();
+    },
+  );
+
+  it("does not let a connector description hide a real part label", () => {
+    expect(unambiguousPartNumber("RJ45-style port. P/N Ni8U-S12-AP6")).toBe("Ni8U-S12-AP6");
+  });
 });
 
 describe("#4150 Codex r1 — egress and parsing defects", () => {

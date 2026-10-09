@@ -102,6 +102,9 @@ Rules:
 - NEVER diagnose, NEVER name a root cause, NEVER recommend a repair.
 - NEVER guess anything hidden, internal, or out of frame. If something cannot be determined from the photo, say so.
 - Do not invent labels, part numbers, or indicator states that are not clearly visible.
+- For diagnostic displays, copy mode labels, read/write markers, selected address, and displayed value separately when readable; do not collapse them into one number or interpret an ID/configuration value as live input data.
+- Do not infer flashing or a transition from a still photograph. Describe only the captured state; a reported flash or change requires separate technician evidence.
+- A blank or "--" is not a measured zero or proof a fault cleared. An obscured indicator is unknown, not unlit. Keep unreadable characters unknown instead of filling them in.
 - Do not infer a device or component type from its shape, color, wiring, or part-number characters. Do not call an object a connector, sensor, relay, or other device unless that type is explicitly printed on the label. Otherwise describe its visible shape and quote the label exactly.
 - Treat every label reading as an unconfirmed transcription. Do not explain what a model or suffix means.
 - Keep it concise (short sentences or a short list). Plain text, no markdown headings.
