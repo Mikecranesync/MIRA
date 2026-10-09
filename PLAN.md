@@ -1,3 +1,12 @@
+# Offline evaluation provenance truth
+
+Spec: docs/specs/mira-answer-quality-standard.md — evidence must state its basis.
+Authorized continuation until 2026-10-09 20:00 UTC. Own branch codex/eval-archive-provenance from e12d4dfc3. Coordination fetch/log/open-PR audit complete; existing release_gate/report reused. No overlapping active PR found for these scripts.
+
+Repair misleading offline readiness reports: preserve requested candidate and scored-answer identities separately, label archived and legacy unverified scores, retain source digest/path and use the existing run-stamp option to avoid overwriting the historical report, and avoid describing an offline archive as fresh candidate acceptance. Preserve exit-code and scoring policy; no judge/provider/budget, archived-data, safety-policy, runtime or deployment changes. Existing #4331/#4333 expected-key reviews remain untouched.
+
+Red tests must reproduce the archived report mislabel before implementation. Validate offline/live-attempt/legacy/mismatched identities and orchestrator manifest delivery without any API calls. Review exact head/body and CI before calling approved. No merge/deploy/device install or capped-source review extension.
+
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
 **Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`
