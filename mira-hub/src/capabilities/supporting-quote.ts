@@ -190,6 +190,7 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
       // otherwise a nearer delimiter hides its opening fence or HTML block.
       const blockedRows: boolean[] = [];
       const containerIndents: number[] = [];
+      const lazyRows: boolean[] = [];
       let fence: { mark: string; width: number; indent: number } | null = null;
       let htmlEnd: RegExp | null = null;
       let htmlUntilBlank = false;
@@ -219,6 +220,10 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
         // block; new block syntax or an outdent after a block ends its container.
         const leading = /^[ \t]*/.exec(row)?.[0] ?? "";
         const leadingIndent = [...leading].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, 0);
+        // Outdented lazy continuation text remains paragraph content; it
+        // cannot introduce a table even though its physical indent is zero.
+        lazyRows[rowIndex] = listParagraph && listIndents.length > 0
+          && leadingIndent < (listIndents.at(-1) ?? 0) && Boolean(row.trim()) && !startsBlock.test(row);
         if (!row.trim()) listParagraph = false;
         else if (!listParagraph || startsBlock.test(row)) {
           while (listIndents.length && (listIndents.at(-1) ?? 0) > leadingIndent) listIndents.pop();
@@ -269,7 +274,7 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
           }
         }
         listParagraph = listIndents.length > 0 && Boolean(blockRow.trim()) && !startsBlock.test(blockRow);
-        blockedRows.push(false);
+        blockedRows.push(/^(?: {4}|\t)/.test(blockRow));
       }
       let tableRow = false;
       for (let row = originalRows.length - 1; row > 0; row--) {
@@ -287,7 +292,7 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
               const indent = [...leading].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, 0);
               return indent >= requiredIndent;
             });
-          tableRow = sameContainer && !blockedRows[row] && !blockedRows[row - 1] && cells.length > 1 && header.length === cells.length && valueCell < header.length && !startsBlock.test(originalRows[row - 1]);
+          tableRow = sameContainer && !lazyRows[row - 1] && !lazyRows[row] && !blockedRows[row] && !blockedRows[row - 1] && cells.length > 1 && header.length === cells.length && valueCell < header.length && !startsBlock.test(originalRows[row - 1]);
           break;
         }
         // Alignment takes precedence over a one-hyphen list-looking prefix.
