@@ -141,6 +141,11 @@ export function explicitManualLookupRequest(question: string): boolean {
 
 export function asksPartCompatibility(question: string): boolean {
   if (/\b(?:substitute|replacement|interchange(?:able)?|compatible|drop\s*in|replace)\b/i.test(question)) return true;
+  // A state report cannot erase a suitability request elsewhere in the turn.
+  // Check the whole turn before evaluating individual observed comparisons.
+  if (/\binstead\s+of\b/i.test(question)
+    && (/\b(?:can|could|would|may|should)\s+(?:i|we|you)\s+(?:\w+\s+)?(?:use|install|fit|swap|connect|put)\b/i.test(question)
+      || /\b(?:is|are|would|will)\b[^.!?]{0,100}\b(?:safe|allowed|ok|acceptable|suitable)\b/i.test(question))) return true;
   // "Instead of" also describes an observed state. Evaluate each sentence so
   // an indication report cannot erase a separate genuine substitution request.
   return question.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
