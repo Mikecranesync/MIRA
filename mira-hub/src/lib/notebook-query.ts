@@ -555,10 +555,25 @@ function topicPool(message: string, history: ChatHistoryTurn[]): ChatHistoryTurn
  *  questions are returned unchanged; a referential follow-up is augmented with the
  *  salient tokens from its topic pool (see topicPool) that it does not already
  *  mention, so BM25 has the thread's subject to match. Current message stays FIRST
- *  so it dominates ranking. Deterministic + pure. */
-export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[]): string {
+ *  so it dominates ranking. Current server-loaded photo display text can supply
+ *  the referent before history for unnamed questions. Deterministic + pure. */
+export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[], currentObservation?: string | null): string {
   const msg = message.trim();
-  if (history.length === 0 || !isReferentialFollowup(msg)) return msg;
+  if (!isReferentialFollowup(msg)) return msg;
+  // A newly linked photo is the referent of "Does this help?", even when the
+  // previous turn discussed a different display. This is query vocabulary only:
+  // LOOK remains an unconfirmed candidate, never an equipment identity or fact.
+  // Keep explicit question subjects dominant and exclude background/button prose.
+  if (currentObservation && topicTerms(msg).length === 0) {
+    const displayText = currentObservation.slice(0, 4000)
+      .split(/(?<=[.!?])\s+|\n+/)
+      .filter((sentence) => /\b(?:lcd|display|screen|readout)\b/i.test(sentence))
+      .join(" ")
+      .slice(0, 320)
+      .trim();
+    if (displayText) return `${msg} ${displayText}`;
+  }
+  if (history.length === 0) return msg;
   const lower = msg.toLowerCase();
   const added: string[] = [];
   const seen = new Set<string>();

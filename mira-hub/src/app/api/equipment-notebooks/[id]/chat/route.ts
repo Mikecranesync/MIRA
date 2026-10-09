@@ -1750,7 +1750,7 @@ async function handleChatTurn(
   ]);
 
   // Non-English questions search the English corpus in English (answered in their own language).
-  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history), translateForSearch);
+  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history, lookRow?.text), translateForSearch);
   const retrievalSpan = startStage("retrieval.execute");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
