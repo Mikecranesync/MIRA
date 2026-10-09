@@ -875,19 +875,19 @@ describe("fence line endings and list containers", () => {
 
 describe("active list continuation blocks", () => {
   const table = "Frame | Voltage\n--- | ---\n−2|20 V|";
-  for (const [item, indent] of [["- item", "  "], ["1. item", "   "], ["-", "  "], ["+", "  "], ["*", "  "], ["1.", "   "], ["-     item", "  "], ["+     item", "  "], ["*     item", "  "], ["1.     item", "   "], ["-\t\titem", "  "], ["1.\t\titem", "   "]]) {
+  for (const [item, indent, eol = "\n"] of [["- item", "  "], ["1. item", "   "], ["-", "  "], ["+", "  "], ["*", "  "], ["1.", "   "], ["-     item", "  "], ["+     item", "  "], ["*     item", "  "], ["1.     item", "   "], ["-\t\titem", "  "], ["1.\t\titem", "   "], ["1.   ", "   ", "\n"], ["1.    ", "   ", "\n"], ["1.\t", "   ", "\n"], ["1.   ", "   ", "\r\n"], ["1.    ", "   ", "\r\n"], ["1.\t", "   ", "\r\n"]]) {
     for (const [open, close] of [["```text", "```"], ["~~~text", "~~~"], ["<pre>", "</pre>"]]) {
       for (const middle of (item === "- item" || item === "1. item") ? ["", "\n", "lazy continuation\n"] : ["", "\n"])
-        it(`literal continuation ${item} ${open} ${middle}`, () => {
-          const source = `${item}\n${middle}${indent}  ${open}\n${table.replace(/^/gm, indent)}\n${indent}  ${close}`;
+        it(`literal continuation ${item} ${open} ${middle} ${JSON.stringify(eol)}`, () => {
+          const source = `${item}\n${middle}${indent}${item.trim() === item ? "  " : " "}${open}\n${table.replace(/^/gm, indent)}\n${indent}${item.trim() === item ? "  " : " "}${close}`.replace(/\n/g, eol);
           const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
             [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
           expect(r.citations[0].quote).toBe("ORIGINAL");
           expect(r.unsupportedValueCount).toBe(1);
           expect(r.quoteFallbackCount).toBe(1);
         });
-      it(`real table after closed continuation ${item} ${open}`, () => {
-        const source = `${item}\n\n${indent}  ${open}\n${indent} literal\n${indent}  ${close}\n\n${table}`;
+      it(`real table after closed continuation ${item} ${open} ${JSON.stringify(eol)}`, () => {
+        const source = `${item}\n\n${indent}${item.trim() === item ? "  " : " "}${open}\n${indent} literal\n${indent}${item.trim() === item ? "  " : " "}${close}\n\n${table}`.replace(/\n/g, eol);
         const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
           [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
         expect(r.citations[0].quote).toBe(source);

@@ -232,7 +232,8 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
           const padding = rawEnd - markerEnd;
           // CommonMark: empty items and padding over four columns use one
           // content column. Excess padding remains content, not a nested list.
-          listIndents.push(markerEnd + (padding === 0 || padding > 4 ? 1 : padding));
+          const emptyItem = !relativeRow.slice(prefix.length).trim();
+          listIndents.push(markerEnd + (emptyItem || padding === 0 || padding > 4 ? 1 : padding));
           if (padding > 4) { container = prefix; break; }
         }
         const containerIndent = container ? listIndents.at(-1) ?? inheritedIndent : inheritedIndent;
