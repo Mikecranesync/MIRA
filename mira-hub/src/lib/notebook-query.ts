@@ -587,24 +587,39 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       // Codes may use mixed case, but arbitrary short English sentences are
       // not display literals. Classify token shape before giving continuation
       // text the display's retrieval priority; keep original spelling untouched.
-      const literalTokens = sentence.trim().replace(/^[-*][ \t]+/, "").replace(/["']/g, "").split(/\s+/);
-      const literalVocabulary = literalTokens.length <= 6 && literalTokens.every(token =>
-        /^(?:[-–—]{1,2}|[A-Z0-9][A-Z0-9_.:+−/=?,()-]*|[A-Za-z]{1,3}[.,:]?|[A-Za-z_.:+−/=?,()-]*\d[A-Za-z0-9_.:+−/=?,()-]*|[a-z]+[A-Z][A-Za-z0-9_.:+−/=?,()-]*|[A-Z][a-z]{1,3}[.,:]?)$/.test(token)
-        || /^(?:list|of|config|errors|fault|values?|number)[.,:]?$/i.test(token));
+      const isLiteralToken = (token: string) =>
+        /^(?:[-–—]{1,2}|[,;:]|[A-Z0-9][A-Z0-9_.:+−/=?,()-]*|[A-Za-z]{1,3}[.,:]?|[A-Za-z_.:+−/=?,()-]*\d[A-Za-z0-9_.:+−/=?,()-]*|[A-Za-z]*[a-z][A-Z][A-Za-z0-9_.:+−/=?,()-]*|[A-Z][a-z]{1,15}[.,:]?)$/.test(token)
+        || /^(?:list|of|config|errors|fault|values?|number|alarm|warning|status|condition|code|overcurrent|overvoltage|undervoltage|overload|communication|timeout)[.,:]?$/i.test(token)
+        || /^(?:"[^"\n]+"|'[^'\n]+')$/.test(token);
+      const literalTokens = sentence.trim().replace(/^[-*][ \t]+/, "").match(/"[^"\n]*"|'[^'\n]*'|[^\s]+/g) ?? [];
+      const literalVocabulary = literalTokens.length <= 6 && literalTokens.every(isLiteralToken);
+      const unquoted = sentence.replace(/"[^"\n]*"|'[^'\n]*'/g, "");
       const literalLine = literalVocabulary && (/^[ \t]*(?:[-*][ \t]+)?["']?[A-Za-z0-9][A-Za-z0-9 _.:+−/='",()?-]{0,63}[ \t]*$/.test(sentence)
         || /^[ \t]*[-–—]{1,2}[ \t]*$/.test(sentence))
-        && !/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|label)\b/i.test(sentence);
+        && !/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/i.test(unquoted);
       if (!startsReading && !(continuation && literalLine)) {
         continuation = false;
         continue;
       }
-      const reading = sentence.split(/\s+(?:with|and|above|below|beside)\s+(?:(?:has|have)\s+)?(?:(?:the|a|an|two|three|four|\d+)\s+)?(?:buttons?|keys?|controls?|logo|panel)\b|[,;]\s*(?:buttons?|keys?|controls?|logo|panel)\b/i)[0].trim();
+      let reading = sentence.split(/\s+(?:with|and|above|below|beside)\s+(?:(?:has|have)\s+)?(?:(?:the|a|an|two|three|four|\d+)\s+)?(?:buttons?|keys?|controls?|logo|panel)\b|[,;]\s*(?:buttons?|keys?|controls?|logo|panel)\b/i)[0].trim();
+      let payload = startsReading
+        ? reading.replace(/^.*?\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b[: \t]*/i, "")
+        : reading;
+      if (startsReading && payload) {
+        // Apply the same literal boundary inside an initial reading sentence.
+        // Background markings must not gain exact-token boosts merely because
+        // LOOK joined a cable/sticker description to the display with a comma.
+        const prefix = reading.slice(0, reading.length - payload.length);
+        for (const token of payload.matchAll(/"[^"\n]*"|'[^'\n]*'|[^\s]+/g)) {
+          if (isLiteralToken(token[0]) && (token.index === 0 || !/^(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)[.,:]?$/i.test(token[0]))) continue;
+          payload = payload.slice(0, token.index).replace(/(?:[,;]\s*)?(?:(?:and|with|a|an|the)\s*)+$/i, "").trim();
+          break;
+        }
+        reading = prefix + payload;
+      }
       continuation = true;
       if (reading) readoutParts.push(reading);
-      const payload = startsReading
-        ? reading.replace(/^.*\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b[: \t]*/i, "")
-        : reading;
-      usableReading ||= /[A-Za-z0-9]/.test(payload);
+      usableReading ||= /[A-Za-z0-9]/.test(payload.replace(/\b(?:and|a|an|the|with)\b/g, ""));
     }
     const displayText = usableReading ? readoutParts.join(" ").slice(0, 320).trim() : "";
     if (displayText) return `${msg} ${displayText}`;

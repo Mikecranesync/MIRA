@@ -116,3 +116,28 @@ describe("descriptions end a literal display block", () => {
     }
   });
 });
+
+
+it.each(["Does this help?", "What am I looking at, and what should I check?"])("inline background descriptions do not become display terms for %s", (message) => {
+  for (const observation of ["LCD display shows ovA, and a cable marked A410 is connected.", "LCD display shows ovA, with a STICKER marked A410 above it."]) {
+    const q = buildRetrievalQuery(message, [], observation);
+    expect(q).toContain("ovA");
+    for (const term of ["A410", "cable", "STICKER"]) expect(q).not.toContain(term);
+  }
+});
+
+it.each(['LCD display shows "CABLE MISSING", and a sticker marked A410 is beside it.', 'LCD display shows:\n"CABLE MISSING"\nSticker marked A410.'])("preserves an explicitly quoted readout even when its words describe a cable: %s", (observation) => {
+  const q = buildRetrievalQuery("Does this help?", [], observation);
+  expect(q).toContain("CABLE MISSING");
+  expect(q).not.toContain("A410");
+});
+
+
+it.each(["LCD display shows:\nUvLo", "LCD display shows Overcurrent Fault 1.", "LCD display shows:\nOvercurrent\nFault 1", "LCD display shows CABLE MISSING."])("preserves real literal shapes while excluding appended background: %s", (reading) => {
+  const q = buildRetrievalQuery("Does this help?", [{ role: "user", content: "Ethernet P042" }], `${reading}\nA cable marked A410 is connected.`);
+  if (reading.includes("UvLo")) expect(q).toContain("UvLo");
+  if (reading.includes("Overcurrent")) { expect(q).toContain("Overcurrent"); expect(q).toContain("Fault 1"); }
+  if (reading.includes("CABLE")) expect(q).toContain("CABLE MISSING");
+  expect(q).not.toContain("A410");
+  expect(q).not.toContain("P042");
+});
