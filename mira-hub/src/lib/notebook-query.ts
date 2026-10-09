@@ -581,7 +581,12 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       const displaySubject = (text: string) => {
         const displayAt = text.search(/\b(?:lcd|display|screen|readout)\b/i);
         const backgroundAt = text.search(/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/i);
-        return displayAt >= 0 && (backgroundAt < 0 || displayAt < backgroundAt);
+        const readingAt = text.search(/\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b/i);
+        const beforeReading = readingAt >= 0 ? text.slice(0, readingAt) : text;
+        const backgroundCarriesReading = readingAt >= 0 && /\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/i.test(beforeReading);
+        const locative = /^\s*(?:near|beside|above|below|beneath|under|behind|next\s+to|adjacent\s+to)\b/i.test(text);
+        return displayAt >= 0 && !locative && !backgroundCarriesReading
+          && (backgroundAt < 0 || displayAt < backgroundAt);
       };
       const display = displaySubject(sentence);
       const connectedReadout = index > 0 && displaySubject(sentences[index - 1])
