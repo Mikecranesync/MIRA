@@ -147,18 +147,21 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
     const linePrefix = n.slice(lineStart, boundary);
     if (/\d[ \t]*$/u.test(linePrefix) && !/^[ \t]*\|/u.test(linePrefix)) {
       // GFM also permits tables without outer pipes. Require a contiguous
-      // same-width header/alignment block, not merely a bar in nearby prose.
-      const lineEnd = n.indexOf("\n", start);
-      const rowCells = n.slice(lineStart, lineEnd < 0 ? n.length : lineEnd)
-        .trim().replace(/^\||\|$/g, "").split("|");
+      // matching header/alignment block, not merely a bar in nearby prose.
+      // GFM body rows may have fewer or extra cells; extra cells are ignored.
+      const priorCells = linePrefix.split("|");
+      // A bare coefficient may be a preceding cell; prose such as Rated −2
+      // must not gain support merely because a table appears above it.
+      if (!/^[ \t]*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?[ \t]*$/iu.test(priorCells.at(-1) ?? "")) return true;
+      const valueCell = priorCells.length;
       const rows = n.slice(0, lineStart).split("\n").slice(0, -1);
       let tableRow = false;
       for (let row = rows.length - 1; row > 0; row--) {
         const cells = rows[row].trim().replace(/^\||\|$/g, "").split("|");
-        if (!rows[row].trim() || cells.length !== rowCells.length) break;
-        if (cells.every((cell) => /^[ \t]*:?-{3,}:?[ \t]*$/.test(cell))) {
+        if (!rows[row].trim()) break;
+        if (cells.every((cell) => /^[ \t]*:?-+:?[ \t]*$/.test(cell))) {
           const header = rows[row - 1].trim().replace(/^\||\|$/g, "").split("|");
-          tableRow = rowCells.length > 1 && header.length === rowCells.length;
+          tableRow = cells.length > 1 && header.length === cells.length && valueCell < header.length;
           break;
         }
       }

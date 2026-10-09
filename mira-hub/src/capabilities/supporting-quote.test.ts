@@ -649,6 +649,10 @@ describe("numeric coefficients outside bars (#4320 review round 4)", () => {
 
 describe("tables without outer pipes (#4320 review round 5)", () => {
   for (const source of [
+    "Frame | Voltage\n--- | ---\n4\n5 | 12 V",
+    "Frame | Voltage\n--- | ---\n4 | 10 V | note\n5 | 12 V",
+    "Frame | Voltage\n- | -\n5 | 12 V",
+    "Frame | Voltage\n- | -\n5 | 12 V | ignored",
     "Frame | Voltage\n--- | ---\n5 | 12 V",
     "Frame | Voltage |\n--- | --- |\n5 | 12 V |",
     "Frame | Voltage\n:--- | ---:\n4 | 10 V\n5 | 12 V",
@@ -667,6 +671,8 @@ describe("tables without outer pipes (#4320 review round 5)", () => {
     "Frame | Voltage\n--- | ---\nRated −2|20 V|.",
     "Frame | Voltage\n--- | ---\n5 | −2|20 V|",
     "Frame | Voltage\nnot a separator\n−2|20 V|",
+    "Frame | Voltage\n- | -\n5 | −2|20 V|",
+    "Frame | Voltage\n- | - | -\n5 | 20 V",
   ]) {
     it(`table-like prose does not authorize an expression: ${source}`, () => {
       const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
