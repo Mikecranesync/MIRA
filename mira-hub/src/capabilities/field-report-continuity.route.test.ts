@@ -199,3 +199,23 @@ describe("older technician reports through the real notebook provider seam", () 
  });
 
 });
+
+
+it("retains the latest reaffirmed correction when stale client text matches the first occurrence", async () => {
+  const same = "No, each seat has its own slave";
+  nbMock.listTurns.mockResolvedValue([
+    { id: "original", question: same, ownerUserId: "u1", evidence: [], answerStatus: "answered", createdAt: "2026-10-09T01:00:00Z" },
+    { id: "intervening", question: "Correction: both seats actually share one slave", ownerUserId: "u1", evidence: [], answerStatus: "answered", createdAt: "2026-10-09T02:00:00Z" },
+    { id: "latest", question: same, ownerUserId: "u1", evidence: [], answerStatus: "answered", createdAt: "2026-10-09T03:00:00Z" },
+  ]);
+  const res = await POST(req({ message: "What do we know now?", mode: "general", threadId: "case-thread", history: [
+    { role: "user", content: same }, { role: "assistant", content: "The seats have individual slaves" },
+  ] }), params);
+  await frames(res);
+  const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
+  const prior = messages.find(m => m.content.includes("PERSISTED TECHNICIAN REPORTS"));
+  expect(prior?.content).toContain('"turnId":"latest"');
+  expect(prior?.content).toContain("2026-10-09T03:00:00Z");
+  expect(prior!.content.indexOf('"turnId":"latest"')).toBeGreaterThan(prior!.content.indexOf('"turnId":"intervening"'));
+  expect(prior?.content).toContain("may be stale");
+});

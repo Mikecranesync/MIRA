@@ -496,7 +496,7 @@ function salientTokens(text: string): string[] {
  * theories as facts. The caller supplies server-scoped persisted turns only. */
 export function buildPriorReportContext(
   reports: { id: string; question: string; createdAt: string }[],
-  history: ChatHistoryTurn[],
+  _history: ChatHistoryTurn[],
   coverage: "available" | "unavailable" | "not_requested" = "available",
 ): { content: string; turnIds: string[]; truncated: boolean; coverage: "available" | "unavailable" | "not_requested" } {
   if (coverage === "not_requested") return { content: "", turnIds: [], truncated: false, coverage };
@@ -504,21 +504,28 @@ export function buildPriorReportContext(
     content: "PERSISTED TECHNICIAN REPORTS: unavailable for this turn. Do not assume the recent client history contains all earlier disclosures.",
     turnIds: [], truncated: false, coverage,
   };
-  const recentCounts = new Map<string, number>();
-  for (const turn of sanitizeHistory(history)) if (turn.role === "user") {
-    const text = turn.content.trim();
-    recentCounts.set(text, (recentCounts.get(text) ?? 0) + 1);
-  }
+  // Client text does not identify a persisted occurrence: another device can
+  // send an old A exchange after reports A -> B -> A. Keep all scoped server
+  // occurrences and their timestamps; only authenticated IDs could deduplicate.
+  const window = reports.slice(-24);
+  const recordBudget = Math.floor(8000 / Math.max(1, window.length));
   const selected: { turnId: string; recordedAt: string; report: string; truncated: boolean }[] = [];
   let chars = 0;
   let truncated = reports.length > 24;
-  for (const report of reports.slice(-24).reverse()) {
+  for (const report of [...window].reverse()) {
     const text = report.question.trim();
     if (!text) continue;
-    const comparable = sanitizeHistory([{ role: "user", content: text }])[0]?.content ?? "";
-    const count = recentCounts.get(comparable) ?? 0;
-    if (count) { recentCounts.set(comparable, count - 1); continue; }
-    const record = { turnId: report.id, recordedAt: report.createdAt, report: text.slice(0, 1000), truncated: text.length > 1000 };
+    // Share the serialized budget across reports so repeated recent text does
+    // not crowd older corrections out. Bound escaped JSON, not raw characters.
+    let low = 0;
+    let high = Math.min(text.length, 1000);
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      const probe = { turnId: report.id, recordedAt: report.createdAt, report: text.slice(0, mid), truncated: mid < text.length };
+      if (JSON.stringify(probe).length <= recordBudget) low = mid;
+      else high = mid - 1;
+    }
+    const record = { turnId: report.id, recordedAt: report.createdAt, report: text.slice(0, low), truncated: low < text.length };
     const size = JSON.stringify(record).length;
     if (chars + size > 8000) { truncated = true; break; }
     chars += size;
