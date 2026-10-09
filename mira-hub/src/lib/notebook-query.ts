@@ -639,7 +639,9 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         const ownershipAt = Math.min(carrier?.index ?? Infinity, ownership?.index ?? Infinity);
         if (Number.isFinite(ownershipAt) && ownershipAt > 0) {
           const clausePrefix = plainPayload.slice(0, ownershipAt).replace(/[,;]\s*$/, "");
-          const clauseAt = [...clausePrefix.matchAll(/[,;]\s*|\s+(?:and|with)\s+/gi)].at(-1)?.index;
+          // Ownership after a coordinated list is ambiguous. Keep the primary
+          // reading; secondary literals cannot borrow display priority.
+          const clauseAt = [...clausePrefix.matchAll(/[,;]\s*|\s+(?:and|with)\s+/gi)][0]?.index;
           if (clauseAt !== undefined) payload = payload.slice(0, clauseAt).trim();
           else if (carrier) payload = ""; // Unknown ownership cannot grant a code priority.
         }
@@ -680,7 +682,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       }
       continuation = true;
       if (reading) readoutParts.push(reading);
-      for (const match of payload.matchAll(/[A-Za-z][A-Za-z0-9_.-]*/g)) {
+      for (const match of payload.matchAll(/\b[A-Za-z0-9][A-Za-z0-9_.-]*/g)) {
         const token = match[0].replace(/[.,:;]+$/, "");
         if (codeLike(token) || /^[A-Z]{2,}$/.test(token)) readoutLiterals.add(token);
       }
