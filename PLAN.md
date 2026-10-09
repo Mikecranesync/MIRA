@@ -1,3 +1,12 @@
+# DeepEval infrastructure truth
+
+Spec: docs/specs/mira-answer-quality-standard.md — distinguish failure to measure from answer quality.
+Authorized continuation until 2026-10-09 20:00 UTC. Own branch codex/deepeval-infrastructure-truth from e12d4dfc3. Fetch/log/open-PR coordination and merged/reuse audit complete. Reuse mira-bots/benchmarks/deepeval_suite.py; no new framework, provider, judge or case-bank change. #4334 report provenance remains separate and frozen during review.
+
+Existing CI shows21 judgeHTTP400 errors labeled19 regressions and2known failures. A single infrastructure error can also fit under the85percent aggregate threshold and produce exit0. Make any errored measurement anINFRA_FAILURE with distinct report/JSON/exit4. Live API failures also propagate to the existing case error capture instead of becoming synthetic assistant answers or subsequent-turn context. Preserve fully scored threshold and metric/case definitions. No provider/billing changes or paid runs.
+
+Prove red with mostly passing simulated cases plus one judge error; error on a known-failure case must remain infrastructure. Verify exception capture, clean pass/fail semantics, CLI/machine-readable verdicts and offline reference identity without model calls. Ordinary hooks and exact-head review/CI; no merge, deployment or source-cap extension.
+
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
 **Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`
