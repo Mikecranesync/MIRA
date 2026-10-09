@@ -154,7 +154,15 @@ export function asksPartCompatibility(question: string): boolean {
       // ("use a handheld ... it is white") is not the object being substituted.
       const stateAt = [...before.matchAll(/\b(?:it\s+(?:is|was)|it's|it’s|(?:the\s+)?(?:tablet|indicator|led|screen|display)\s+(?:is|was|shows?|reads?))\b/gi)].at(-1)?.index ?? -1;
       const useAt = [...before.matchAll(/\b(?:use|install|fit|swap|connect|put)\b/gi)].at(-1)?.index ?? -1;
-      const substitution = useAt > stateAt && before.length - useAt <= 100;
+      // Proposed suitability and conditional attributes are not observed states.
+      // Fail closed for ambiguous substitution questions, including color-only
+      // alternatives where the component name is omitted after "instead of".
+      const proposedSuitability = /\b(?:can|could|would|may|should)\b[^.!?]*\b(?:use|install|fit|work|swap|connect|put)\b/i.test(before)
+        && !/\b(?:it(?:'s|’s|\s+(?:is|was))\s+[^.!?]*\bon\s+(?:the\s+)?(?:tablet|screen|display)|(?:the\s+)?(?:tablet|screen|display)\s+(?:shows?|reads?))\b/i.test(before);
+      const suitabilityAttribute = /\b(?:ok|acceptable|suitable|work|works)\b/i.test(before)
+        || /\bif\s+it\s+(?:is|was)\b/i.test(before);
+      const substitution = (useAt > stateAt && before.length - useAt <= 100)
+        || proposedSuitability || suitabilityAttribute;
       return !(indication && observation && !substitution);
     }),
   );
