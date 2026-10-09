@@ -3018,9 +3018,9 @@ async function handleChatTurn(
   let priorReportContext = buildPriorReportContext([], history, "not_requested");
   // An explicit modern thread is the case boundary. Legacy/unscoped callers
   // keep their existing client history; never guess a case from a notebook.
-  if (threadId && threadId !== "legacy") try {
+  if (threadId && threadId !== "legacy" && !identityDisputed) try {
     const reports = await listTurns(ctx.tenantId, notebookId, 24, {
-      viewerUserId: ctx.userId, threadId, expectedEquipmentEntityId: nb?.asset?.entityId ?? null,
+      viewerUserId: ctx.userId, threadId, expectedEquipmentEntityId: assetSnapshot.equipmentEntityId,
     });
     priorReportContext = buildPriorReportContext(reports.filter(report => report.ownerUserId === ctx.userId), history);
   } catch (err) {

@@ -108,6 +108,7 @@ beforeEach(() => {
   // disable the layer here rather than stub a judge in every test.
   process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   vi.clearAllMocks();
+  nbMock.listTurns.mockImplementation(async () => []);
   process.env.NEON_DATABASE_URL = "postgres://test";
   nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unknown machine" });
@@ -121,6 +122,25 @@ beforeEach(() => {
 
 
 describe("older technician reports through the real notebook provider seam", () => {
+ it("does not restore the notebook machine's reports when current identity is disputed", async () => {
+   nbMock.resolveBoundAsset.mockResolvedValue({ state: "resolved", entityId: "machine-A", unsPath: "plant/line/A", name: "Machine A", confirmedAt: "2026-10-09T00:00:00Z" } as never);
+   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Machine A", asset: { entityId: "machine-A" } });
+   nbMock.listTurns.mockImplementation(async (...args) => args[2] === 24 ? [{ id: "prior-A", question: "Machine A has one slave per seat", ownerUserId: "u1", createdAt: "2026-10-09T01:00:00Z" }] : []);
+   const res = await POST(req({ message: "What do we know now?", mode: "general", threadId: "case-thread", machineEvidence: { assetId: "machine-B", anchorAt: "2026-10-09T01:00:00Z" } }), params);
+   await frames(res);
+   expect(seamMock.buildRequestBody).toHaveBeenCalled();
+   expect(nbMock.listTurns.mock.calls.some(args => args[2] === 24)).toBe(false);
+   const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { content: string }[];
+   expect(messages.some(m => m.content.includes("Machine A has one slave per seat"))).toBe(false);
+ });
+ it("uses the turn snapshot rather than a notebook binding refreshed after resolution", async () => {
+   nbMock.resolveBoundAsset.mockResolvedValue({ state: "resolved", entityId: "machine-A", unsPath: "plant/line/A", name: "Machine A", confirmedAt: "2026-10-09T00:00:00Z" } as never);
+   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Machine B", asset: { entityId: "machine-B" } });
+   const res = await POST(req({ message: "What do we know now?", mode: "general", threadId: "case-thread" }), params);
+   await frames(res);
+   expect(seamMock.buildRequestBody).toHaveBeenCalled();
+   expect(nbMock.listTurns).toHaveBeenCalledWith(TENANT, NB, 24, { viewerUserId: "u1", threadId: "case-thread", expectedEquipmentEntityId: "machine-A" });
+ });
  it("retains a correction outside client history without replaying the old assistant theory", async () => {
    const prior = Array.from({ length: 24 }, (_, i) => ({ id: `turn-${i}`, question: i === 3 ? "No, each seat has its own AS-i slave in the back of it." : `Report ${i}: we observed the seat indication.`, answerStatus: "answered", answerText: "Both seats share one slave; replace it.", evidence: [], createdAt: "2026-10-09T01:00:00Z", ownerUserId: "u1", threadId: "case-thread" }));
    nbMock.listTurns.mockResolvedValue([...prior, { ...prior[0], id: "legacy", ownerUserId: null, question: "Shared legacy report about a different technician" }]);

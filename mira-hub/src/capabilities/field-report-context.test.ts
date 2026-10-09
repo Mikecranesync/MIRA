@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { buildPriorReportContext } from "@/lib/notebook-query";
+import { buildPriorReportContext, sanitizeHistory } from "@/lib/notebook-query";
 
 const row = (id: string, question: string) => ({ id, question, createdAt: "2026-10-09T01:00:00Z" });
 describe("bounded literal report context", () => {
+ it("does not let truncated recent questions crowd an older correction out of recall", () => {
+   const reports = [row("correction", "Each seat has its own slave"),
+     ...Array.from({ length: 2 }, (_, i) => row(`older-${i}`, `Report ${i}: ${"y".repeat(980)}`)),
+     ...Array.from({ length: 6 }, (_, i) => row(`recent-${i}`, `Observation ${i}: ${"x".repeat(3000)}`))];
+   const history = sanitizeHistory(reports.slice(-6).flatMap(r => [
+     { role: "user", content: r.question }, { role: "assistant", content: "Understood" },
+   ]));
+   const ctx = buildPriorReportContext(reports, history);
+   expect(ctx.turnIds).toEqual(["correction", "older-0", "older-1"]);
+   expect(ctx.content).toContain("Each seat has its own slave");
+ });
  it("keeps old repeated observations and excludes only the recent repeated occurrence", () => {
    const reports = [row("old", "Seat 1 is red"), row("correction", "Each seat has its own slave"), row("recent", "Seat 1 is red")];
    const ctx = buildPriorReportContext(reports, [{ role: "user", content: "Seat 1 is red" }]);

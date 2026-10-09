@@ -505,7 +505,7 @@ export function buildPriorReportContext(
     turnIds: [], truncated: false, coverage,
   };
   const recentCounts = new Map<string, number>();
-  for (const turn of history) if (turn.role === "user") {
+  for (const turn of sanitizeHistory(history)) if (turn.role === "user") {
     const text = turn.content.trim();
     recentCounts.set(text, (recentCounts.get(text) ?? 0) + 1);
   }
@@ -515,8 +515,9 @@ export function buildPriorReportContext(
   for (const report of reports.slice(-24).reverse()) {
     const text = report.question.trim();
     if (!text) continue;
-    const count = recentCounts.get(text) ?? 0;
-    if (count) { recentCounts.set(text, count - 1); continue; }
+    const comparable = sanitizeHistory([{ role: "user", content: text }])[0]?.content ?? "";
+    const count = recentCounts.get(comparable) ?? 0;
+    if (count) { recentCounts.set(comparable, count - 1); continue; }
     const record = { turnId: report.id, recordedAt: report.createdAt, report: text.slice(0, 1000), truncated: text.length > 1000 };
     const size = JSON.stringify(record).length;
     if (chars + size > 8000) { truncated = true; break; }
