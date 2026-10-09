@@ -838,3 +838,36 @@ describe("enclosing blocks cannot fabricate a table", () => {
       expect(r.quoteFallbackCount).toBe(0);
     });
 });
+
+
+describe("fence line endings and list containers", () => {
+  const table = "Frame | Voltage\n--- | ---\n−2|20 V|";
+  for (const mark of ["```", "~~~"]) {
+    for (const source of [
+      `${mark}text\r\n${table.replace(/\n/g, "\r\n")}\r\n${mark}`,
+      `- ${mark}text\n${table.replace(/^/gm, "  ")}\n  ${mark}`,
+      `1. ${mark}text\n${table.replace(/^/gm, "   ")}\n   ${mark}`,
+      `- - ${mark}text\n${table.replace(/^/gm, "    ")}\n    ${mark}`,
+      `${mark}text\n    ${mark}\n${table}`,
+      `- ${mark}text\n${mark}\n${table}`,
+    ]) it(`literal container cannot authorize table cells: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe("ORIGINAL");
+      expect(r.unsupportedValueCount).toBe(1);
+      expect(r.quoteFallbackCount).toBe(1);
+    });
+    for (const prefix of [
+      `${mark}text\r\nliteral\r\n${mark}\r\n`,
+      `- ${mark}text\n  literal\n  ${mark}\n\n`,
+      `1. ${mark}text\n   literal\n   ${mark}\n\n`,
+    ]) it(`real table after properly closed container survives: ${prefix}`, () => {
+      const source = prefix + table;
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+  }
+});
