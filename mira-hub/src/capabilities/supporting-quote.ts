@@ -174,7 +174,7 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
       // GFM also permits tables without outer pipes. Require a contiguous
       // matching header/alignment block, not merely a bar in nearby prose.
       // GFM body rows may have fewer or extra cells; extra cells are ignored.
-      const priorCells = originalTableCells(original.slice(lineStart, boundary), false).map(normalize);
+      const priorCells = originalTableCells(original.slice(lineStart, boundary), false).map(cell => normalize(cell));
       // Keep ambiguous signed prose coefficients conservative while allowing
       // ordinary text or hyphenated model cells (Frame 5, Model A-20).
       if (/\p{L}[^|]*[ \t][+-][ \t]*\d+(?:\.\d*)?[ \t]*$/u.test(priorCells.at(-1) ?? "")) return true;
