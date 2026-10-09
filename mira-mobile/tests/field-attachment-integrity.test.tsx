@@ -191,4 +191,40 @@ describe("mobile shell photo-batch failure", () => {
     expect(api.lookAtPhoto).not.toHaveBeenCalled();
     expect(box.value).toBe("What does it show?");
   });
+  it.each([1, 2])("never revives %i dismissed photo(s) when an unrelated text failure is retried", async (count) => {
+    const onSend = vi.fn();
+    const handlers = { onSend, onStop: vi.fn(), onCitation: vi.fn() };
+    const meta = { notebookId: "nb-1", title: "ASI replay", asset: null, identityConfirmed: false };
+    const view = (chatError: string | null) => <UnifiedChat turns={[]} liveTurns={[]} pending={null}
+      busy={false} canStop={false} canRetry={false} chatError={chatError} failedQuestion="What is P06.01?"
+      handlers={handlers} meta={meta} />;
+    const { rerender } = render(view(null));
+    api.lookAtPhoto.mockReset();
+    api.lookAtPhoto.mockRejectedValueOnce(new Error("offline"));
+    for (let i = 0; i < count; i++) {
+      pick.pickPhoto.mockResolvedValue(new File(["x"], `old-${i}.jpg`, { type: "image/jpeg" }));
+      fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    }
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "What does this show?" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    const uploads = api.lookAtPhoto.mock.calls.length;
+    expect(uploads).toBe(count === 1 ? 1 : 0);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    fireEvent.change(box, { target: { value: "What is P06.01?" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    rerender(view("Text request failed"));
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    api.lookAtPhoto.mockResolvedValue({ fileId: "stale-photo", observation: { capturedAt: "now" }, attachment: { linkId: "link" }, observationPersisted: true });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
+    expect(onSend.mock.calls[1]?.[0]).toBe("What is P06.01?");
+    expect(onSend.mock.calls[1]?.[1]).toBeUndefined();
+    expect(api.lookAtPhoto).toHaveBeenCalledTimes(uploads);
+    expect(screen.queryByRole("alert", { name: "Send error" })).toBeNull();
+  });
+
 });

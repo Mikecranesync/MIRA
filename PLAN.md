@@ -1,3 +1,9 @@
+# Final preview/retry composition
+
+Include #4330 post-cap0a82f1301 superseding-text cleanup in f5279d4bc composition. Full mobile916passed/75files and TypeScript/Vite build passed. Source #4330 final head is unreviewed; this branch is test-only composition, not an approval, PR or review-budget reset.
+
+---
+
 # Refreshed composition — #4330 trusted retry repair
 
 Apply exact aed56e873 code patch to preview composition4dbd78894. No source-branch mutation, new PR/review, merge/deploy or cap reset. Preserve the real picker callback identity in the missing-byte test wrapper; #4306 legitimately releases chips when its adapter changes. The first combined run failed only because that test wrapper created a new picker callback on each render; qualified wrapper uses React useCallback.

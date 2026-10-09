@@ -777,6 +777,11 @@ function UnifiedChatForNotebook({
     // retained bytes are deliberately NOT a reason to compose here (#3863):
     // they ride only the explicit Try again below.
     if (pending.length === 0 && !attachments.hasCarried() && !opts.retry) {
+      // A new plain question supersedes the failed attachment turn. Reuse
+      // compose's synchronous zero-request cleanup before forwarding text;
+      // with no pending/carried/retry descriptors this cannot upload anything.
+      // Otherwise a later text failure's Try again revives the old photo.
+      if (attachments.hasRetained()) void attachments.compose(text, []);
       if (confirmedScope) handlers.onSend(text, undefined, confirmedScope);
       else handlers.onSend(text);
       return;
