@@ -31,3 +31,16 @@ describe("photo vocabulary reaches the real selected-manual recall lane", () => 
     expect(recall?.[1]?.[4]).toEqual([docId]);
   });
 });
+
+
+it.each(["Does this help?", "What am I looking at, and what should I check?"])("background markings cannot displace the readout for %s", async (question) => {
+  const docId = "55555555-5555-4555-8555-555555555555";
+  const readout = { content: "Fault ovA indicates an overvoltage condition.", doc_id: docId, source_page: 18, rank: 1 };
+  const competitors = Array.from({ length: 6 }, (_, i) => ({ content: "Parameter A410 controls unrelated configuration.", doc_id: docId, source_page: 30 + i, rank: 0.1 }));
+  const query = vi.fn(async (sql: string) => ({ rows: sql.includes("replace(plainto_tsquery") ? [readout, ...competitors] : [] }));
+  const q = buildRetrievalQuery(question, [], "LCD display shows:\novA\nA cable marked A410 is connected.");
+  const chunks = await retrieveNodeChunks({ query } as unknown as PoolClient, "tenant-1", q, {
+    nodeId: "node-1", docIds: [docId], rawQuery: question, validatedDocScope: true, includeQueryRecall: true,
+  });
+  expect(chunks.some(c => c.sourcePage === 18)).toBe(true);
+});

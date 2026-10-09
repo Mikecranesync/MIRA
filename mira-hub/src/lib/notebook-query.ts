@@ -584,7 +584,14 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         && !/^\s*(?:below|under|beneath)\b/i.test(sentence);
       // LOOK may put each literal on its own line. Only short literal lines
       // continue a display block; buttons/background/prose end that block.
-      const literalLine = (/^[ \t]*(?:[-*][ \t]+)?["']?[A-Za-z0-9][A-Za-z0-9 _.:+−/='",()?-]{0,63}[ \t]*$/.test(sentence)
+      // Codes may use mixed case, but arbitrary short English sentences are
+      // not display literals. Classify token shape before giving continuation
+      // text the display's retrieval priority; keep original spelling untouched.
+      const literalTokens = sentence.trim().replace(/^[-*][ \t]+/, "").replace(/["']/g, "").split(/\s+/);
+      const literalVocabulary = literalTokens.length <= 6 && literalTokens.every(token =>
+        /^(?:[-–—]{1,2}|[A-Z0-9][A-Z0-9_.:+−/=?,()-]*|[A-Za-z]{1,3}[.,:]?|[A-Za-z_.:+−/=?,()-]*\d[A-Za-z0-9_.:+−/=?,()-]*|[a-z]+[A-Z][A-Za-z0-9_.:+−/=?,()-]*|[A-Z][a-z]{1,3}[.,:]?)$/.test(token)
+        || /^(?:list|of|config|errors|fault|values?|number)[.,:]?$/i.test(token));
+      const literalLine = literalVocabulary && (/^[ \t]*(?:[-*][ \t]+)?["']?[A-Za-z0-9][A-Za-z0-9 _.:+−/='",()?-]{0,63}[ \t]*$/.test(sentence)
         || /^[ \t]*[-–—]{1,2}[ \t]*$/.test(sentence))
         && !/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|label)\b/i.test(sentence);
       if (!startsReading && !(continuation && literalLine)) {

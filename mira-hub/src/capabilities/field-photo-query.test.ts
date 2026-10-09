@@ -105,3 +105,14 @@ it("stops a mixed-case continuation before lowercase background prose", () => {
   expect(q).not.toContain("brown");
   expect(q).not.toContain("PRG");
 });
+
+
+describe("descriptions end a literal display block", () => {
+  it.each(["Does this help?", "What am I looking at, and what should I check?"])("excludes cable/sticker prose for %s", (message) => {
+    for (const background of ["A cable marked A410 is connected.", "Sticker marked A410.", "A wire is red."]) {
+      const q = buildRetrievalQuery(message, [{ role: "user", content: "Ethernet P042" }], `LCD display shows:\novA\n${background}\nPRG`);
+      expect(q).toContain("ovA");
+      for (const term of ["A410", "cable", "Sticker", "wire", "PRG", "P042"]) expect(q).not.toContain(term);
+    }
+  });
+});
