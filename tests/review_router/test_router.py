@@ -874,6 +874,131 @@ def test_tenant_id_variant_current_tenant_id_matches(tmp_path):
         r.REPO = orig_repo
 
 
+# ---------------------------------------------------------------------------
+# Final three fixes: binary bypass, removed SQL lines, specific TS tests
+
+
+def test_text_file_with_nul_byte_still_scanned(tmp_path):
+    """F1a: Text file (.py) with NUL byte and tenant_id still routes critical."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    # Text file with tenant_id and one NUL byte (git will call it binary)
+    (repo / "service.py").write_bytes(b'def query():\n    return filter(tenant_id == tid)\n\x00\n')
+    g("add", "service.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add with nul")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        # .py extension: force text diff, scan anyway → critical
+        assert r.classify(["service.py"], base, head) == "critical"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_binary_comment_in_code_does_not_disable_scan(tmp_path):
+    """F1b: Comment '# Binary files a and b differ' doesn't disable scanning."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    (repo / "trick.py").write_text(
+        '# Binary files a and b differ\ndef query():\n    return filter(tenant_id == tid)\n'
+    )
+    g("add", "trick.py")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add trick")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        # The comment is inside a hunk, not git's own binary marker
+        assert r.classify(["trick.py"], base, head) == "critical"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_real_png_image_routes_standard(tmp_path):
+    """F1: Real image (PNG without text extension) routes by path only."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    (repo / "chart.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 200)
+    g("add", "chart.png")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add png")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        # No text extension, git binary, no matching glob: standard
+        assert r.classify(["chart.png"], base, head) == "standard"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_removed_sql_comment_with_tenant_id_scanned(tmp_path):
+    """F2: Removed SQL line '-- tenant_id' (appears as '---tenant_id') is scanned."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    
+    def g(*a):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    
+    g("init", "-q", "-b", "main")
+    (repo / "schema.sql").write_text('CREATE TABLE assets;\n-- tenant_id filter here\n')
+    g("add", "schema.sql")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    # Remove the SQL comment
+    (repo / "schema.sql").write_text('CREATE TABLE assets;\n')
+    g("add", "schema.sql")
+    g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "remove comment")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    
+    import router as r
+    orig_repo = r.REPO
+    try:
+        r.REPO = repo
+        # Removed line '-- tenant_id' appears as '---tenant_id' in diff
+        # First byte is '-', so it's scanned
+        assert r.classify(["schema.sql"], base, head) == "critical"
+    finally:
+        r.REPO = orig_repo
+
+
+def test_ts_auth_gate_tests_are_critical():
+    """F3: Specific TS auth tests are critical."""
+    assert router.classify(["mira-hub/src/app/api/__tests__/rbac-route-gates.test.ts"]) == "critical"
+    assert router.classify(["mira-hub/tests/e2e/proof-pr-749-login-gate.spec.ts"]) == "critical"
+
+
 def test_ledger_round_trip(tmp_path):
     p = tmp_path / "costs.jsonl"
     assert router.read_ledger(p) == []

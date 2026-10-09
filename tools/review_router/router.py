@@ -130,6 +130,8 @@ CRITICAL_GLOBS = (
     "pyproject.toml",
     "tests/conftest.py",
     "tests/test_capability_closure.py",
+    "mira-hub/src/app/api/__tests__/rbac-route-gates.test.ts",
+    "mira-hub/tests/e2e/proof-pr-749-login-gate.spec.ts",
     "**/test_*guard*.py",
     "**/test_*gate*.py",
     "**/test_*review*.py",
@@ -226,54 +228,82 @@ def _is_binary_content(content: bytes) -> bool:
     return b"\x00" in content
 
 
+# Text file extensions that should never route critical if git calls them binary
+_TEXT_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".sql", ".sh", ".bash", ".yml", 
+                     ".yaml", ".json", ".md", ".txt", ".rs", ".go", ".java", ".c", ".cpp", 
+                     ".h", ".hpp", ".rb", ".php", ".cs", ".xml", ".html", ".css", ".scss"}
+
+
+def _has_text_extension(path: str) -> bool:
+    """Returns True if path has a known text file extension."""
+    from pathlib import Path
+    return Path(path).suffix.lower() in _TEXT_EXTENSIONS
+
+
 def _get_changed_lines(base_sha: str, head_sha: str, path: str) -> bytes:
     """Return only the added and removed lines (hunks) from the diff of path
-    between base and head, excluding context lines. This is what a PR actually
-    changes, not the surrounding unchanged code. Returns empty bytes for binary
-    files."""
-    # Check if git considers this a binary diff
-    result = _run(["git", "diff", "--numstat", f"{base_sha}..{head_sha}", "--", path], cwd=REPO)
+    between base and head, excluding context lines. For files git considers binary,
+    forces text diff and scans anyway (fail closed). Real binary files (images)
+    with no text extension are treated as no tenant content."""
+    # For files with text extensions, force text diff even if git sees binary markers
+    # For real binary files (PNG, etc.), detect via git's binary report
+    force_text = _has_text_extension(path)
+    
+    if not force_text:
+        # Check if git considers this a binary diff
+        result = _run(["git", "diff", "--numstat", f"{base_sha}..{head_sha}", "--", path], cwd=REPO)
+        if result.returncode != 0:
+            raise ValueError(f"cannot diff {path}")
+        
+        numstat = result.stdout.strip()
+        if numstat.startswith("-\t-\t"):
+            # Binary file without text extension: no tenant content (e.g., PNG)
+            return b""
+    
+    # Get diff output, forcing text mode for text extensions
+    diff_cmd = ["git", "diff", "--no-prefix", f"{base_sha}..{head_sha}", "--", path]
+    if force_text:
+        diff_cmd.insert(2, "--text")
+    
+    result = subprocess.run(diff_cmd, cwd=REPO, capture_output=True)
     if result.returncode != 0:
         raise ValueError(f"cannot diff {path}")
     
-    numstat = result.stdout.strip()
-    if numstat.startswith("-\t-\t"):
-        # Binary file: git reports "- -" for added/removed lines
-        return b""
+    diff_output = result.stdout
     
-    # Get diff output as bytes to handle binary content
-    result = subprocess.run(
-        ["git", "diff", "--no-prefix", f"{base_sha}..{head_sha}", "--", path],
-        cwd=REPO,
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        raise ValueError(f"cannot diff {path}")
+    # For real binaries (no text extension), check git's own binary header
+    # Ignore "Binary files differ" that appears as content inside hunks
+    if not force_text:
+        # Look for git's binary marker before any @@ (in the header section)
+        lines = diff_output.split(b"\n")
+        for i, line in enumerate(lines):
+            if line.startswith(b"@@"):
+                break
+            if b"Binary files" in line and b"differ" in line:
+                return b""
     
-    diff_output = result.stdout  # already bytes
-    
-    # Check for "Binary files differ" message
-    if b"Binary files" in diff_output and b"differ" in diff_output:
-        return b""
-    
-    # Extract only + and - lines (added and removed), tracking hunk state
+    # Extract only + and - lines, treating ---/+++ as headers only before first @@
     changed_lines = []
-    in_hunk = False
+    seen_hunk = False
+    
     for line in diff_output.split(b"\n"):
-        # Track hunk boundaries from @@ markers
+        # Once we see @@, we're in hunk content
         if line.startswith(b"@@"):
-            in_hunk = True
+            seen_hunk = True
             continue
         
-        # Skip file headers (--- and +++ before first @@)
-        if not in_hunk:
+        # Before first @@: skip ---, +++, and other headers
+        if not seen_hunk:
             continue
         
-        # Extract changed lines
-        if line.startswith(b"+") and not line.startswith(b"+++"):
-            changed_lines.append(line[1:])
-        elif line.startswith(b"-") and not line.startswith(b"---"):
-            changed_lines.append(line[1:])
+        # Inside hunks: classify by first byte only
+        if line:
+            first_byte = line[0:1]
+            if first_byte == b"+":
+                changed_lines.append(line[1:])
+            elif first_byte == b"-":
+                changed_lines.append(line[1:])
+            # Space, \, or other: context/no-newline marker, skip
     
     return b"\n".join(changed_lines)
 
@@ -284,9 +314,9 @@ def _has_tenant_isolation_content(path: str, base_sha: str, head_sha: str) -> bo
     the git object store at the exact head SHA, never from the working tree.
     
     Fail closed: any read error, oversized file, or special file routes CRITICAL.
-    Binary files are treated as having no tenant content (path rules decide).
-    Applies markers to changed lines only, so an unrelated edit to a file that
-    merely contains tenant_id elsewhere doesn't trigger."""
+    Binary files without text extensions are treated as having no tenant content
+    (path rules decide). Files with text extensions are scanned even if they
+    contain binary markers. Applies markers to changed lines only."""
     try:
         # Try reading from head; if it doesn't exist there, it was deleted
         head_content = _read_content_from_commit(head_sha, path)
@@ -296,19 +326,21 @@ def _has_tenant_isolation_content(path: str, base_sha: str, head_sha: str) -> bo
             if base_content is None:
                 # Never existed in either commit: fail closed
                 return True
-            # Binary deleted files: no tenant content
-            if _is_binary_content(base_content):
+            # Binary deleted files without text extension: no tenant content
+            if not _has_text_extension(path) and _is_binary_content(base_content):
                 return False
             return bool(_TENANT_RE.search(base_content))
         
-        # Binary files: no tenant content (path rules decide)
-        if _is_binary_content(head_content):
+        # Binary files without text extensions: no tenant content (path rules decide)
+        # Files with text extensions are scanned regardless of binary markers
+        if not _has_text_extension(path) and _is_binary_content(head_content):
             return False
         
         # File exists at head: check the changed lines (diff hunks)
+        # _get_changed_lines will force text diff for text extensions
         changed = _get_changed_lines(base_sha, head_sha, path)
         if not changed:
-            # Binary diff or no changes: no tenant content
+            # No changes detected: no tenant content
             return False
         return bool(_TENANT_RE.search(changed))
     except (OSError, ValueError, subprocess.CalledProcessError):
