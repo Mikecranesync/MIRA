@@ -224,16 +224,20 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
         }
         const inheritedIndent = leadingIndent >= (listIndents.at(-1) ?? 0) ? listIndents.at(-1) ?? 0 : 0;
         const relativeRow = " ".repeat(leadingIndent - inheritedIndent) + row.slice(leading.length);
-        const container = /^(?: {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]+|$))+/.exec(relativeRow)?.[0] ?? "";
+        let container = /^(?: {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]+|$))+/.exec(relativeRow)?.[0] ?? "";
         for (const marker of container.matchAll(/ {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]+|$)/g)) {
           const prefix = container.slice(0, marker.index + marker[0].length);
-          // An empty item has the same one-space content padding as a marker
-          // followed by whitespace, even when the physical row ends at it.
-          const emptyPadding = /(?:[*+-]|\d{1,9}[.)])$/.test(marker[0]) ? 1 : 0;
-          listIndents.push([...prefix].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent) + emptyPadding);
+          const rawEnd = [...prefix].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent);
+          const markerEnd = [...prefix.replace(/[ \t]+$/, "")].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent);
+          const padding = rawEnd - markerEnd;
+          // CommonMark: empty items and padding over four columns use one
+          // content column. Excess padding remains content, not a nested list.
+          listIndents.push(markerEnd + (padding === 0 || padding > 4 ? 1 : padding));
+          if (padding > 4) { container = prefix; break; }
         }
-        const blockRow = relativeRow.slice(container.length);
-        const containerIndent = [...container].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent);
+        const containerIndent = container ? listIndents.at(-1) ?? inheritedIndent : inheritedIndent;
+        const rawContainerEnd = [...container].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent);
+        const blockRow = " ".repeat(Math.max(0, rawContainerEnd - containerIndent)) + relativeRow.slice(container.length);
         const open = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(blockRow);
         if (open && (open[1][0] !== "`" || !open[2].includes("`"))) {
           fence = { mark: open[1][0], width: open[1].length, indent: containerIndent };
