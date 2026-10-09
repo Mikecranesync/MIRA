@@ -1,3 +1,36 @@
+# Field report continuity — bounded approved-plan slice
+
+Owner authorized field-intelligence implementation until 2026-10-09 16:00 Eastern.
+Branch codex/field-report-continuity; base origin/main e12d4dfc3.
+
+1. Reproduce loss of an earlier technician correction outside the twelve-message
+   client history through the real notebook provider seam.
+2. Reuse listTurns with owner/thread filters and the EXISTING per-turn equipment
+   snapshot (migration081). Add optional expected-equipment scope that checks
+   the notebook's current confirmed binding in the same read; default history
+   API behavior stays unchanged.
+3. Carry only bounded older technician questions/reports as explicitly historical,
+   unverified data before recent history. Never recover old assistant theories as
+   facts, promote KG/fix records, invent a summary, or treat recording time as
+   event time. Latest explicit corrections supersede older contradictory reports;
+   unresolved voice wording remains unresolved. Surface unavailable/truncated
+   coverage in the provider contract and additive recorder fields.
+4. Verify scope/race, unavailable, truncation and real provider-message regressions;
+   full Hub tests/build; fresh-context review; draft PR and durable receipts.
+
+Reuse checks: local+origin/main listTurns/recordTurn equipment snapshots;
+merged notebook-history PRs inspected, including canonical fix-records #4057.
+Confirmed fix records and bot asset-session memory are separate existing
+mechanisms; this unresolved case creates neither, and no new table/framework.
+Adjacent #4303 history/status clients and #4326 field directive remain separate;
+this lane owns only the optional history-read scope, report data provider assembly
+and additive recorder metadata. No UI, billing, hardware, merge or deployment.
+Normal hooks; no prod/stop-gate overrides. Native source fallback: worktree has
+no initialized CodeGraph. Coordination main log/open PRs refreshed before claim.
+
+---
+Archived predecessor plan (not this lane):
+
 # Autonomous Run Plan — Complete interaction capture (#3939)
 
 **Date:** 2026-09-23 · **Branch:** `feat/turn-capture-lifecycle`
