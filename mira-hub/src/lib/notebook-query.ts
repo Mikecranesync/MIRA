@@ -587,10 +587,10 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       // display's own reading. Resolve the subject before dropping its prefix.
       const displaySubject = (text: string) => {
         const displayAt = text.search(/\b(?:lcd|display|screen|readout)\b/i);
-        const backgroundAt = text.search(/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/i);
+        const backgroundAt = text.search(/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?|barcodes?|tags?|decals?|badges?|placards?|nameplates?)\b/i);
         const readingAt = text.search(/\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b/i);
         const beforeReading = readingAt >= 0 ? text.slice(0, readingAt) : text;
-        const backgroundCarriesReading = readingAt >= 0 && /\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/i.test(beforeReading);
+        const backgroundCarriesReading = readingAt >= 0 && /\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?|barcodes?|tags?|decals?|badges?|placards?|nameplates?)\b/i.test(beforeReading);
         const locative = /^\s*(?:near|beside|above|below|beneath|under|behind|next\s+to|adjacent\s+to)\b/i.test(text);
         const subject = /^\s*(?:(?:the|a|an|its|(?:the\s+)?(?:device|handheld|module)['’]s)\s+)?(?:(?:small|large|bright|dark|lit|unlit|visible|backlit|digital|numeric|rectangular|square|round|teal|blue|green|black|white|gray|grey|yellow|orange|industrial|handheld|front|panel-mounted|liquid-crystal)\s+)*(?:lcd(?:\s+(?:display|screen))?|display|screen|readout)\b/i.exec(text);
         const betweenSubjectAndReading = subject && readingAt >= 0
@@ -604,7 +604,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       const previousCodes = index > 0 ? sentences[index - 1].match(codeWords) ?? [] : [];
       const repeatsLabel = (sentence.match(codeWords) ?? []).some(code => previousCodes.some(previous => previous.toLowerCase() === code.toLowerCase()));
       const connectedReadout = index > 0 && !repeatsLabel && displaySubject(sentences[index - 1])
-        && !/\b(?:stickers?|labels?|cables?|wires?|connectors?|plates?|markings?|panel|housing|case|surface|frames?|boxes?|pins?|bolts?|hands?|wiring|background|logo)\b/i.test(sentences[index - 1])
+        && !/\b(?:stickers?|labels?|cables?|wires?|connectors?|plates?|markings?|barcodes?|tags?|decals?|badges?|placards?|nameplates?|panel|housing|case|surface|frames?|boxes?|pins?|bolts?|hands?|wiring|background|logo)\b/i.test(sentences[index - 1])
         && /^\s*(?:it|this|the screen|the display)\s+(?:reads?|shows?|indicates?)\b/i.test(sentence);
       const hasReading = /\b(?:shows?|showing|reads?|readout|indicates?|text|digits?|number|value)\b/i.test(sentence);
       const startsReading = (display && hasReading || connectedReadout)
@@ -619,11 +619,16 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         || /^(?:list|of|and|or|a|an|the|with|read|config|errors?|flashing|blinking|messages?|readings?|symbols?|letters?|characters?|fault|values?|number|alarm|warning|status|condition|code|overcurrent|overvoltage|undervoltage|overload|communication|timeout)[.,:]?$/i.test(token)
         || /^(?:"[^"\n]+"|'[^'\n]+')$/.test(token);
       const literalTokens = sentence.trim().replace(/^[-*][ \t]+/, "").match(/"[^"\n]*"|'[^'\n]*'|[^\s]+/g) ?? [];
-      const literalVocabulary = literalTokens.length <= 6 && literalTokens.every(isLiteralToken);
+      // An unquoted alphabetic heading plus an identifier is ambiguous label
+      // prose, not enough evidence of a continuing display field. Explicit
+      // quoted text and pure/mixed-case code lines keep their existing path.
+      const headingWithIdentifier = !startsReading && /^[A-Z]{3,}[.,:]?$/.test(literalTokens[0] ?? "")
+        && literalTokens.slice(1).some(token => codeLike(token.replace(/[.,:;]+$/, "")));
+      const literalVocabulary = !headingWithIdentifier && literalTokens.length <= 6 && literalTokens.every(isLiteralToken);
       const unquoted = sentence.replace(/"[^"\n]*"|'[^'\n]*'/g, "");
       const literalLine = literalVocabulary && (/^[ \t]*(?:[-*][ \t]+)?["']?[A-Za-z0-9][A-Za-z0-9 _.:+−/='",()?-]{0,63}[ \t]*$/.test(sentence)
         || /^[ \t]*[-–—]{1,2}[ \t]*$/.test(sentence))
-        && !/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/i.test(unquoted);
+        && !/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?|barcodes?|tags?|decals?|badges?|placards?|nameplates?)\b/i.test(unquoted);
       if (!startsReading && !(continuation && literalLine)) {
         continuation = false;
         continue;
@@ -637,7 +642,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         // A code may precede its carrying-object description. Cut the whole
         // background clause, including its code, rather than only later prose.
         const plainPayload = payload.replace(/"[^"\n]*"|'[^'\n]*'/g, match => "#".repeat(match.length));
-        const carrier = [...plainPayload.matchAll(/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)\b/gi)].find(match => match.index > 0);
+        const carrier = [...plainPayload.matchAll(/\b(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?|barcodes?|tags?|decals?|badges?|placards?|nameplates?)\b/gi)].find(match => match.index > 0);
         const ownership = /\b(?:on|near|beside|above|below|beneath|under|behind|from|within|printed|engraved|marked|attached|mounted|located)\b/.exec(plainPayload);
         const ownershipAt = Math.min(carrier?.index ?? Infinity, ownership?.index ?? Infinity);
         if (Number.isFinite(ownershipAt) && ownershipAt > 0) {
@@ -658,7 +663,7 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
         for (const token of payload.matchAll(/"[^"\n]*"|'[^'\n]*'|[^\s]+/g)) {
           const strongLiteral = /^(?:[A-Z0-9][A-Z0-9_.:+−/=?,()-]*[.,:]?|[A-Za-z_.:+−/=?,()-]*\d[A-Za-z0-9_.:+−/=?,()-]*[.,:]?|[A-Za-z]*[a-z][A-Z][A-Za-z0-9_.:+−/=?,()-]*[.,:]?|"[^"\n]+"|'[^'\n]+')$/.test(token[0])
             || /^(?:overcurrent|overvoltage|undervoltage|overload|communication|timeout|list|config)[.,:]?$/i.test(token[0]);
-          const background = /^(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?)[.,:]?$/i.test(token[0]);
+          const background = /^(?:buttons?|keys?|controls?|logo|panel|background|housing|case|surface|labels?|cables?|stickers?|wires?|connectors?|plates?|frames?|boxes?|pins?|bolts?|hands?|wiring|markings?|barcodes?|tags?|decals?|badges?|placards?|nameplates?)[.,:]?$/i.test(token[0]);
           if (background && !(token.index === 0 && strongLiteral)) {
             payload = payload.slice(0, token.index).replace(/(?:[,;]\s*)?(?:(?:and|with|a|an|the)\s*)+$/i, "").trim();
             break;
