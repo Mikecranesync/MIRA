@@ -263,3 +263,26 @@ it("ambiguous unquoted heading and code across lines are conservatively omitted"
   expect(q).toContain("ovA");
   expect(q).not.toContain("F004");
 });
+
+
+it.each(["Does this help?", "What am I looking at, and what should I check?"].flatMap(question =>
+  ["STENCIL", "ENGRAVING", "MARKER"].flatMap(heading => ["", ":"].flatMap(colon => ["--", "ID"].map(separator =>
+    [question, `LCD display shows ovA.\n${heading}${colon}\n${separator}\nA410`] as const)))))("separate carrier heading ends display ownership through intervening fields: %s %s", (question, observation) => {
+  const q = buildRetrievalQuery(question, [], observation);
+  const expanded = expandIndustrialQuery(q);
+  expect(expanded.codeTokens).toContain("ovA");
+  expect(expanded.codeTokens).not.toContain("A410");
+  expect(expanded.exactTokens).not.toContain("A410");
+});
+
+
+it("unquoted unknown all-alphabetic code is an explicit conservative omission", () => {
+  const q = buildRetrievalQuery("Does this help?", [], "LCD display shows ovA.\nOLF");
+  expect(q).toContain("ovA");
+  expect(q).not.toContain("OLF");
+});
+it("quoted all-alphabetic display code retains vocabulary", () => {
+  const q = buildRetrievalQuery("Does this help?", [], 'LCD display shows ovA.\n"OLF"');
+  expect(q).toContain("ovA");
+  expect(q).toContain("OLF");
+});

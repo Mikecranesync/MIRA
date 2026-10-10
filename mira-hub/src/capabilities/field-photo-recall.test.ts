@@ -120,3 +120,22 @@ it.each(["Does this help?", "What am I looking at, and what should I check?"].fl
   });
   expect(chunks.some(c => c.sourcePage === 18)).toBe(true);
 });
+
+
+it.each(["Does this help?", "What am I looking at, and what should I check?"].flatMap(question =>
+  ["STENCIL", "ENGRAVING", "MARKER"].flatMap(heading => ["", ":"].flatMap(colon => ["--", "ID"].map(separator =>
+    [question, `LCD display shows ovA.\n${heading}${colon}\n${separator}\nA410`] as const)))))("multiline background code cannot evict fault page through intervening fields: %s %s", async (question, observation) => {
+  const docId = "55555555-5555-4555-8555-555555555555";
+  const readout = { content: "Fault ovA indicates an overvoltage condition.", doc_id: docId, source_page: 18, rank: 0.1 };
+  const competitors = Array.from({ length: 6 }, (_, i) => ({ content: "Parameter A410 controls unrelated configuration.", doc_id: docId, source_page: 30 + i, rank: 100 }));
+  const query = vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("replace(plainto_tsquery")) return { rows: String(params?.[1]).includes("ovA") ? [readout, ...competitors] : competitors };
+    if (sql.includes("content ~* ANY")) return { rows: String(params?.[2]).includes("A410") ? competitors : String(params?.[2]).includes("ovA") ? [readout] : [] };
+    return { rows: [] };
+  });
+  const q = buildRetrievalQuery(question, [], observation);
+  const chunks = await retrieveNodeChunks({ query } as unknown as PoolClient, "tenant-1", q, {
+    nodeId: "node-1", docIds: [docId], rawQuery: question, validatedDocScope: true, includeQueryRecall: true,
+  });
+  expect(chunks.some(c => c.sourcePage === 18)).toBe(true);
+});
