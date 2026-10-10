@@ -14,6 +14,8 @@
  * Deterministic and zero-token: no model call.
  */
 import { claimIdentifiers } from "@/lib/quote-window";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 /** manual-rag.ts MAX_CONTENT_CHARS: the prefix of each chunk the model actually sees. */
 export const MODEL_VISIBLE_CHARS = 1200;
@@ -130,7 +132,7 @@ function originalTableCells(row: string, trimOuter = true): string[] {
  *  glued with no space on either side. Brackets, table pipes and a sentence's ". " are not
  *  joins, so "mm2 (10 AWG)", "| 5 | 3.09 N·m" and "Step 1. 12 V" stay separate values. The
  *  leading piece is unitless or followed by a joint, so it is unusable too. */
-function laterPieceOfNumber(n: string, start: number, original: string): boolean {
+function laterPieceOfNumber(n: string, start: number, original: string, tableCells: ReadonlyArray<readonly [number, number]>, tables: ReadonlyArray<readonly [number, number]>): boolean {
   const isWs = (i: number) => n[i] === " " || n[i] === "\t";
   // #4320: screen the WHOLE match, not only its digits. ≈/~ remain the existing
   // approximation decoration; scan opening quotes/brackets too, across inline markup.
@@ -189,15 +191,13 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
       // blocks. Scan original lines forward before the backward table search;
       // otherwise a nearer delimiter hides its opening fence or HTML block.
       const blockedRows: boolean[] = [];
-      const containerIndents: number[] = [];
-      const lazyRows: boolean[] = [];
+      const lazyListRows: boolean[] = [];
       let fence: { mark: string; width: number; indent: number } | null = null;
       let htmlEnd: RegExp | null = null;
       let htmlUntilBlank = false;
       const listIndents: number[] = [];
       let listParagraph = false;
-      let quoteParagraph = false;
-      for (const [rowIndex, row] of originalRows.entries()) {
+      for (const row of originalRows) {
         if (fence) {
           blockedRows.push(true);
           const close = /^([ \t]*)(`+|~+)[ \t]*$/.exec(row);
@@ -221,11 +221,8 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
         // block; new block syntax or an outdent after a block ends its container.
         const leading = /^[ \t]*/.exec(row)?.[0] ?? "";
         const leadingIndent = [...leading].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, 0);
-        // Outdented lazy continuation text remains paragraph content; it
-        // cannot introduce a table even though its physical indent is zero.
-        const quoteLazy = quoteParagraph && Boolean(row.trim()) && !startsBlock.test(row);
-        lazyRows[rowIndex] = quoteLazy || (listParagraph && listIndents.length > 0
-          && leadingIndent < (listIndents.at(-1) ?? 0) && Boolean(row.trim()) && !startsBlock.test(row));
+        lazyListRows[blockedRows.length] = listParagraph && listIndents.length > 0
+          && leadingIndent < (listIndents.at(-1) ?? 0);
         if (!row.trim()) listParagraph = false;
         else if (!listParagraph || startsBlock.test(row)) {
           while (listIndents.length && (listIndents.at(-1) ?? 0) > leadingIndent) listIndents.pop();
@@ -247,19 +244,8 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
           if (padding > 4) { container = prefix; break; }
         }
         const containerIndent = container ? listIndents.at(-1) ?? inheritedIndent : inheritedIndent;
-        containerIndents[rowIndex] = containerIndent;
         const rawContainerEnd = [...container].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, inheritedIndent);
         const blockRow = " ".repeat(Math.max(0, rawContainerEnd - containerIndent)) + relativeRow.slice(container.length);
-        let quoteContent = blockRow;
-        let quoted = false;
-        for (;;) {
-          const prefix = /^ {0,3}(?:>[ \t]?|(?:[*+-]|\d{1,9}[.)])(?:[ \t]+|$))/.exec(quoteContent)?.[0];
-          if (!prefix) break;
-          quoted ||= prefix.includes(">");
-          quoteContent = quoteContent.slice(prefix.length);
-        }
-        if (quoted) quoteParagraph = Boolean(quoteContent.trim()) && !startsBlock.test(quoteContent);
-        else if (!quoteLazy) quoteParagraph = false;
         const open = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(blockRow);
         if (open && (open[1][0] !== "`" || !open[2].includes("`"))) {
           fence = { mark: open[1][0], width: open[1].length, indent: containerIndent };
@@ -288,29 +274,22 @@ function laterPieceOfNumber(n: string, start: number, original: string): boolean
         listParagraph = listIndents.length > 0 && Boolean(blockRow.trim()) && !startsBlock.test(blockRow);
         blockedRows.push(/^(?: {4}|\t)/.test(blockRow));
       }
-      let tableRow = false;
-      for (let row = originalRows.length - 1; row > 0; row--) {
-        const cells = originalTableCells(originalRows[row]);
-        if (!originalRows[row].trim()) break;
-        if (cells.every((cell) => /^[ \t]*:?-+:?[ \t]*$/.test(cell))) {
-          const header = originalTableCells(originalRows[row - 1]);
-          // A list-contained table cannot authorize an outdented paragraph.
-          // Require every continuation, including the current value row, to
-          // retain the header's content indentation and container membership.
-          const requiredIndent = containerIndents[row - 1] ?? 0;
-          const sameContainer = containerIndents[row] === requiredIndent
-            && originalRows.slice(row + 1).concat(original.slice(lineStart, boundary)).every((bodyRow) => {
-              const leading = /^[ \t]*/.exec(bodyRow)?.[0] ?? "";
-              const indent = [...leading].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, 0);
-              return indent >= requiredIndent;
-            });
-          tableRow = sameContainer && !lazyRows[row - 1] && !lazyRows[row] && !blockedRows[row] && !blockedRows[row - 1] && cells.length > 1 && header.length === cells.length && valueCell < header.length && !startsBlock.test(originalRows[row - 1]);
-          break;
-        }
-        // Alignment takes precedence over a one-hyphen list-looking prefix.
-        if (startsBlock.test(originalRows[row])) break;
-      }
-      if (!tableRow) return true;
+      // Table membership comes from the SAME GFM parser as the notebook UI,
+      // with ORIGINAL offsets. Keep conservative source-literal exclusions:
+      // empty-list padding differs between parser implementations, so renderer
+      // membership alone must not loosen an existing literal-block refusal.
+      const table = tables.find(([from, to]) => start >= from && start < to);
+      const inCell = tableCells.some(([from, to]) => start >= from && start < to);
+      if (!table || !inCell) return true;
+      const headerRow = original.slice(0, table[0]).split("\n").length - 1;
+      if (blockedRows[headerRow] || blockedRows[headerRow + 1] || lazyListRows[headerRow]) return true;
+      // An over-indented delimiter must not complete a lazy header. The
+      // renderer admits this in some list contexts; retain the source refusal.
+      const columns = (row: string) => [...(/^[ \t]*/.exec(row)?.[0] ?? "")]
+        .reduce((n, ch) => ch === "\t" ? n + 4 - n % 4 : n + 1, 0);
+      if (columns(originalRows[headerRow + 1] ?? "") - columns(originalRows[headerRow] ?? "") >= 4) return true;
+      // Preserve conservative interruption handling inside table bodies.
+      if (originalRows.slice(headerRow + 2).some(row => startsBlock.test(row))) return true;
     }
     return false;
   }
@@ -372,13 +351,41 @@ export type Value = {
 /** `side` matters for one case only: a sign spaced from its number at the start of a line. */
 export function findValues(text: string, side: "answer" | "source"): Value[] {
   const out: Value[] = [];
+  const tableCells: Array<readonly [number, number]> = [];
+  const tables: Array<readonly [number, number]> = [];
+  // Preserve supported short alignment cells without moving original quotes.
+  // Only alignment rows expand; source line/column positions map back below.
+  const sourceRows = text.split("\n");
+  const sourceOffsets: number[] = [];
+  let offset = 0;
+  for (const row of sourceRows) { sourceOffsets.push(offset); offset += row.length + 1; }
+  const parserText = sourceRows.map(row => {
+    const cells = originalTableCells(row.replace(/\r$/, ""));
+    return cells.length > 1 && cells.every(cell => /^[ \t]*:?-+:?[ \t]*$/.test(cell))
+      ? row.replace(/-+/g, run => run.padEnd(3, "-")) : row;
+  }).join("\n");
+  if (text.includes("|")) ReactMarkdown({
+    children: parserText,
+    remarkPlugins: [remarkGfm],
+    allowElement(node) {
+      const start = node.position?.start;
+      const end = node.position?.end;
+      if (start && end) {
+        const from = sourceOffsets[start.line - 1] + start.column - 1;
+        const to = sourceOffsets[end.line - 1] + end.column - 1;
+        if (node.tagName === "td") tableCells.push([from, to]);
+        if (node.tagName === "table") tables.push([from, to]);
+      }
+      return true;
+    },
+  });
   const n = normalize(text);
   const keep = normalize(text, true);
   for (const m of n.matchAll(VALUE_RE)) {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     let sign: string | undefined = m[2];
-    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !laterPieceOfNumber(n, start, text);
+    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !laterPieceOfNumber(n, start, text, tableCells, tables);
     // Decided on the ORIGINAL text: a sign, then real whitespace, with only indentation before
     // it on its line. U+2212 is always a minus. In the answer, an ASCII "- " there is Markdown
     // list syntax — rendered as a bullet, so the number is unsigned. Anywhere else (source text,
