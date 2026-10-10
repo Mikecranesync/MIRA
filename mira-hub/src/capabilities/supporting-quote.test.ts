@@ -1024,3 +1024,22 @@ it.each([
   expect(r.unsupportedValueCount).toBe(0);
   expect(r.quoteFallbackCount).toBe(0);
 });
+
+
+it.each(["\n", "\r\n"].flatMap(eol => ["12 V", "**12 V**"].flatMap(value => ["source", "answer"].map(side => [eol, value, side] as const))))("indented quantity after line boundary %s %s %s", (eol, value, side) => {
+  const source = side === "source" ? `Rated${eol} ${value}` : "Rated 12 V";
+  const answer = side === "answer" ? `Rated${eol} ${value} [1].` : "Rated 12 V [1].";
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});
+it.each(["5", "Frame 5"].flatMap(label => [false, true].map(outer =>
+  `${outer ? "| " : ""}${label} | 12 V${outer ? " |" : ""}\n${outer ? "| " : ""}--- | ---${outer ? " |" : ""}`)))("numeric table headers remain evidence: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});

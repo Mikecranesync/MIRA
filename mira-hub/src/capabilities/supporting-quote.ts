@@ -165,7 +165,7 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
     && /^ {0,3}#{1,6}$/.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before))
     && /[ \t]/.test(original[before] ?? "");
   // Markdown normalizes to spaces: ≠ **0** / 1e+**3** must not lose a mark.
-  if (before < boundary && before > 0 && !listMark && !headingMark && !priorCellUnit && /[^\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
+  if (before < boundary && before > 0 && !listMark && !headingMark && !priorCellUnit && /[^\s\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
   // A preceding numeric coefficient is only a separate cell in a real row.
   // Otherwise −2|20 V| is an expression, not a supported plain 20 V quantity.
   // Retain compact rows such as |5|12 V| and the unscaled |12 V| control.
@@ -382,7 +382,7 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
       if (start && end) {
         const from = sourceOffsets[start.line - 1] + start.column - 1;
         const to = sourceOffsets[end.line - 1] + end.column - 1;
-        if (node.tagName === "td") tableCells.push([from, to]);
+        if (node.tagName === "td" || node.tagName === "th") tableCells.push([from, to]);
         if (node.tagName === "table") tables.push([from, to]);
       }
       return true;
