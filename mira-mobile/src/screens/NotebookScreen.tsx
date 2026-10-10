@@ -262,8 +262,14 @@ export function NotebookScreen({
   const initialSensorConsumed = useRef(false);
   const initialAddSourcesConsumed = useRef(false);
   useEffect(() => {
-    if (!openAddSources || initialAddSourcesConsumed.current) return;
+    if (!openAddSources) {
+      initialAddSourcesConsumed.current = false;
+      return;
+    }
+    if (initialAddSourcesConsumed.current) return;
     initialAddSourcesConsumed.current = true;
+    setPanel("sources");
+    setSheetOpen(true);
     onInitialAddSourcesConsumed?.();
   }, [openAddSources, onInitialAddSourcesConsumed]);
 
