@@ -656,12 +656,12 @@ async def _call_mira(turns: list[dict], api_url: str, session_id: str = "") -> l
                 "stream": False,
                 "user": session_id or "deepeval_bench",
             }
-            try:
-                resp = await client.post(chat_url, json=payload, headers=headers)
-                resp.raise_for_status()
-                content = resp.json()["choices"][0]["message"]["content"]
-            except Exception as exc:
-                content = f"[API ERROR: {exc}]"
+            # Let the case runner record transport/protocol failure as unscored.
+            # A synthetic error string is not an assistant answer, and continuing
+            # the conversation would contaminate later turns and judge inputs.
+            resp = await client.post(chat_url, json=payload, headers=headers)
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
             history.append({"role": "assistant", "content": content})
             responses.append(content)
 
@@ -837,14 +837,26 @@ def _print_report(result: SuiteResult) -> None:
     print(f"  Judge: {result.judge_model}")
     print(f"  Run:   {result.timestamp[:19]}")
     print("=" * 60)
-    print(f"\nOverall: {result.passed}/{result.total} passed ({overall_pct:.1f}%) {grade_char}")
+    infrastructure = [cr for cr in result.case_results if cr.error is not None]
+    if result.mode == "offline":
+        print("Evidence: REFERENCE RESPONSES (not current MIRA answers)")
+    if infrastructure:
+        print("\nOverall quality: NOT QUALIFIED (INFRA_FAILURE)")
+        print(f"Measured cases: {result.total - len(infrastructure)}/{result.total}; "
+              f"{len(infrastructure)} unscored")
+    else:
+        print(f"\nOverall: {result.passed}/{result.total} passed ({overall_pct:.1f}%) {grade_char}")
 
     print("\nCategory Results:")
     for cat, stats in sorted(result.category_results.items()):
         icon = "✓" if stats["passed"] == stats["total"] else ("~" if stats["passed"] > 0 else "✗")
-        print(
-            f"  {cat:<22} {stats['passed']}/{stats['total']}  ({pct(stats['passed'], stats['total'])}) {icon}"
-        )
+        cat_errors = sum(cr.category == cat for cr in infrastructure)
+        if cat_errors:
+            print(f"  {cat:<22} INCOMPLETE: {cat_errors} unscored / {stats['total']} cases")
+        else:
+            print(
+                f"  {cat:<22} {stats['passed']}/{stats['total']}  ({pct(stats['passed'], stats['total'])}) {icon}"
+            )
 
     if result.metric_averages:
         print("\nMetric Averages:")
@@ -852,12 +864,18 @@ def _print_report(result: SuiteResult) -> None:
             bar = "▓" * int(avg * 10) + "░" * (10 - int(avg * 10))
             print(f"  {metric:<28} {bar}  {avg:.3f}")
 
-    failures = [cr for cr in result.case_results if not cr.passed]
+    if infrastructure:
+        print(f"\nInfrastructure failures ({len(infrastructure)}) — measurement incomplete:")
+        for cr in infrastructure:
+            print(f"  {cr.case_id:<12} [{cr.category}]  {cr.error or 'Unspecified exception'}")
+
+    failures = [cr for cr in result.case_results if not cr.passed and cr.error is None]
     unexpected = [cr for cr in failures if not cr.expected_fail]
     expected = [cr for cr in failures if cr.expected_fail]
 
     if unexpected:
-        print(f"\nUnexpected failures ({len(unexpected)}) — regression signal:")
+        label = "measured cases only; run incomplete" if infrastructure else "regression signal"
+        print(f"\nUnexpected quality failures ({len(unexpected)}) — {label}:")
         for cr in unexpected:
             reason = cr.error or ", ".join(
                 f"{k}={v:.2f}" for k, v in cr.metric_scores.items() if v < 0.7
@@ -865,7 +883,7 @@ def _print_report(result: SuiteResult) -> None:
             print(f"  {cr.case_id:<12} [{cr.category}]  {reason}")
 
     if expected:
-        print(f"\nKnown failures ({len(expected)}) — gate ignores; rewrite to clear:")
+        print(f"\nKnown quality gaps ({len(expected)}) — included in aggregate threshold:")
         for cr in expected:
             reason = cr.error or ", ".join(
                 f"{k}={v:.2f}" for k, v in cr.metric_scores.items() if v < 0.7
@@ -907,12 +925,12 @@ def main() -> int:
     args = parser.parse_args()
 
     if not _DEEPEVAL_AVAILABLE:
-        print("ERROR: deepeval is not installed. Run: pip install deepeval>=1.0.0")
-        return 1
+        print("INFRA_FAILURE: deepeval is not installed. Run: pip install deepeval>=1.0.0")
+        return 4
 
     if not os.environ.get("GROQ_API_KEY"):
-        print("ERROR: GROQ_API_KEY is not set — required for judge LLM")
-        return 1
+        print("INFRA_FAILURE: GROQ_API_KEY is not set — required for judge LLM")
+        return 4
 
     runner = DeepEvalRunner(mode=args.mode, api_url=args.api_url)
     result = asyncio.run(runner.run())
@@ -923,7 +941,17 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     out_path = out_dir / f"deepeval_{args.mode}_{ts}.json"
-    out_path.write_text(json.dumps(asdict(result), indent=2))
+    infra_failures = sum(cr.error is not None for cr in result.case_results)
+    pass_rate = result.passed / max(result.total, 1)
+    verdict = "INFRA_FAILURE" if infra_failures else ("PASS" if pass_rate >= 0.85 else "FAIL")
+    payload = asdict(result)
+    payload.update(
+        verdict=verdict,
+        infra_failures=infra_failures,
+        scored=result.total - infra_failures,
+        evidence_basis="reference_responses" if result.mode == "offline" else "live_api_responses",
+    )
+    out_path.write_text(json.dumps(payload, indent=2))
     print(f"\nSaved: {out_path}")
 
     # CI gate: aggregate pass-rate threshold. Per-case gating was tried in an
@@ -938,7 +966,9 @@ def main() -> int:
     # 2 of those; that leaves headroom for one stochastic miss before the
     # gate fires. A real regression — multiple new cases dropping in the
     # same run — still trips it red.
-    pass_rate = result.passed / max(result.total, 1)
+    # Partial measurement cannot qualify, even if enough other cases passed.
+    if infra_failures:
+        return 4
     return 0 if pass_rate >= 0.85 else 1
 
 

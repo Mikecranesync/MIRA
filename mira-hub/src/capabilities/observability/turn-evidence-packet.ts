@@ -164,6 +164,10 @@ export type TurnEvidencePacketContext = {
   visual_evidence_count: number;
   identity_included: boolean;
   history_turns: number;
+  /** Additive report recall metadata; absent on pre-continuity packets. */
+  prior_report_turn_ids?: string[];
+  prior_report_coverage?: "available" | "unavailable" | "not_requested";
+  prior_report_truncated?: boolean;
   prompt_chars: number;
   /** Which system prompt the model received: general (no documents), grounded (documents), machine (machine packet). */
   system_prompt_kind: "general" | "grounded" | "machine" | null;

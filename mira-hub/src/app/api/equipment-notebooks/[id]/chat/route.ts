@@ -155,6 +155,7 @@ import {
 import { inferEquipmentType } from "@/lib/equipment-type";
 import {
   sanitizeHistory,
+  buildPriorReportContext,
   buildRetrievalQuery,
   buildTopicHint,
   classifyBroad,
@@ -296,6 +297,16 @@ HONESTY:
 - NEVER write bracketed numeric markers like [1] or [2]. You have no sources to cite. There is nothing for a bracket to point at.
 
 SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on 480 V-class equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized.`;
+
+// ASI-001: an observation is evidence, not a root cause. Shared by both modes.
+const FIELD_OBSERVATION_DIRECTIVE = `FIELD OBSERVATIONS — this rule outranks a request to lead with the most likely cause:
+- For an unexplained status change, separate the technician's observation from its meaning. A color/status change does not prove a physical failure, loss of a mechanical lock, or permission to operate. Use the site's documented indication mapping if supplied; otherwise say the meaning is unverified.
+- A reported delay is a clue: elapsed time alone does not establish a configured timeout. Do not invent timer values, device models, channel assignments, or a confirmed root cause.
+- If the evidence cannot determine the cause, offer only clearly labeled hypotheses, not confirmed causes. In grounded mode, keep them within the supplied evidence; unrelated excerpts are not support.
+- Ask the single highest-value question first: whether this is an HMI indication or a device LED, or whether it affects one device or several. Use facts already provided; do not ask the technician to repeat them or dump a questionnaire.
+- Name the next evidence that would distinguish the hypotheses: exact alarm/status, timestamp and repeatability, full device label, circuit/address/channel, or the applicable schematic/manual. Separate a communication fault from a safety-input state when the diagnostics support that distinction.
+- For safety interlocks or passenger restraints, explain existing observations without suggesting fault creation or release tests. Do not recommend bypassing an interlock, forcing an output, changing safety configuration, or treating an earlier green indication as a release authorization. Physical work follows the OEM/site isolation and qualified-person procedure.
+- Old troubleshooting notes are historical evidence, not proof of this event's cause. Preserve uncertainty until the cited diagnostics or documented mapping resolves it.`;
 
 type CascadeProvider = { name: string; url: string; key?: string; model: string };
 
@@ -551,10 +562,14 @@ export function buildProviderMessages(
   systemPrompt: string,
   history: ChatHistoryTurn[],
   userContent: string,
+  priorReportContext = "",
 ): { role: string; content: string }[] {
   return [
     { role: "system", content: systemPrompt },
     ...history.map((h) => ({ role: h.role, content: h.content })),
+    // Client history may be a stale snapshot from another device. Do not put
+    // its obsolete assistant theory after a newer server-recorded correction.
+    ...(priorReportContext ? [{ role: "user", content: priorReportContext }] : []),
     { role: "user", content: userContent },
   ];
 }
@@ -1750,7 +1765,7 @@ async function handleChatTurn(
   ]);
 
   // Non-English questions search the English corpus in English (answered in their own language).
-  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history), translateForSearch);
+  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history, lookRow?.text), translateForSearch);
   const retrievalSpan = startStage("retrieval.execute");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
@@ -1928,6 +1943,7 @@ async function handleChatTurn(
             topK: 6,
             docIds,
             rawQuery: message,
+            includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
             // document linked from another notebook's node stays retrievable here.
@@ -2976,7 +2992,7 @@ async function handleChatTurn(
         `present a step-by-step procedure from them (reset, wiring, firmware, parameter steps) as the ${oemModel.value}'s procedure — ` +
         `describe it as how the related model does it and tell the technician to confirm the steps in the ${oemModel.value} manual.`
       : "";
-  const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
+  const basePrompt = `${docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT}\n\n${FIELD_OBSERVATION_DIRECTIVE}`;
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective
@@ -3008,11 +3024,29 @@ async function handleChatTurn(
   // only) riding IN the user turn next to the question — an end-of-system-prompt
   // hint measurably failed to stop "what's the maximum?" in a decel thread from
   // resolving to the lexically similar P044 [Maximum Freq] row (battery defect D).
-  const topicHint = buildTopicHint(message, history);
+  const topicHint = buildTopicHint(message, history, lookRow?.text);
+  // Restore literal older technician reports from this viewer/thread only.
+  // Existing per-turn machine snapshots prevent a notebook rebind from turning
+  // a different machine's conversation into this machine's prior reports.
+  let priorReportContext = buildPriorReportContext([], history, "not_requested");
+  // An explicit modern thread is the case boundary. Legacy/unscoped callers
+  // keep their existing client history; never guess a case from a notebook.
+  if (threadId && threadId !== "legacy" && !identityDisputed) try {
+    // One lookahead row exposes omission at the 24-report window boundary.
+    const reports = await listTurns(ctx.tenantId, notebookId, 25, {
+      viewerUserId: ctx.userId, threadId, expectedEquipmentEntityId: assetSnapshot.equipmentEntityId,
+    });
+    priorReportContext = buildPriorReportContext(reports.filter(report => report.ownerUserId === ctx.userId), history);
+  } catch (err) {
+    console.error("[notebook-chat] prior technician reports unavailable:", err instanceof Error ? err.message : err);
+    priorReportContext = buildPriorReportContext([], history, "unavailable");
+    rec.error("context", "prior_reports_unavailable");
+  }
   const messages = buildProviderMessages(
     systemPrompt,
     history,
     buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, lookContext),
+    priorReportContext.content,
   );
   {
     const contextSpan = startStage("context.assemble");
@@ -3036,6 +3070,9 @@ async function handleChatTurn(
       visual_evidence_count: visualEvidenceCount,
       identity_included: identityIncluded,
       history_turns: history.length,
+      prior_report_turn_ids: priorReportContext.turnIds,
+      prior_report_coverage: priorReportContext.coverage,
+      prior_report_truncated: priorReportContext.truncated,
       prompt_chars: promptChars,
       system_prompt_kind: !docGrounded ? "general" : groundedMachineEntry ? "machine" : "grounded",
     });

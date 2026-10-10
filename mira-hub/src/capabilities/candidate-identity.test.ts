@@ -257,3 +257,20 @@ describe("#4160 gate — typed dictionary-word makers next to a part code", () =
     expect(makerFromText("Banner Q4XTBLAF300-Q8")).toBeNull();
   });
 });
+
+
+describe("AS-i makers use the canonical OEM table", () => {
+  it.each(["Bihl+Wiedemann", "Bihl + Wiedemann", "Bihl-Wiedemann"])("recognizes %s without relying on corpus membership", (maker) => {
+    expect(makerFromText(maker)).not.toBeNull();
+  });
+  it("recognizes the handheld maker while leaving its exact revision unknown", () => {
+    expect(makerFromText("PEPPERL+FUCHS")).not.toBeNull();
+    expect(extractCandidateIdentity("PEPPERL+FUCHS ADDR RD 2")).toBeNull();
+  });
+  it("does not turn a gateway site tag or port description into a model", () => {
+    expect(extractCandidateIdentity("Bihl+Wiedemann RJ45-style port. Site tag =EQU+96 -A57")).toBeNull();
+  });
+  it("does not choose a maker across two different devices", () => {
+    expect(makerFromText("Bihl+Wiedemann gateway and Pepperl+Fuchs handheld")).toBeNull();
+  });
+});

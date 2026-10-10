@@ -93,6 +93,60 @@ afterEach(() => {
 });
 
 describe("UnifiedChat", () => {
+  it.each([
+    ["edited", "Observe the seat-one red-state diagnostic.", false],
+    ["unchanged", TURN.question, true],
+  ])("retries the %s restored text without leaving an unsent duplicate draft", async (_label, draft, exactReplay) => {
+    const h = handlers();
+    render(<UnifiedChat turns={[TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={true}
+      chatError="Network problem" failedQuestion={TURN.question} handlers={h} meta={META} />);
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: draft } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    if (exactReplay) {
+      expect(h.onRetry).toHaveBeenCalledTimes(1);
+      expect(h.onSend).not.toHaveBeenCalled();
+    } else {
+      expect(h.onRetry).not.toHaveBeenCalled();
+      expect(h.onSend).toHaveBeenCalledWith(draft, undefined);
+    }
+    expect(box.value).toBe("");
+  });
+
+  it.each([[[]], [[TURN]]])("replays an unchanged failed question with prior turns %j", async (turns) => {
+    const h = handlers();
+    const failedQuestion = "A new question that failed before persistence";
+    render(<UnifiedChat turns={turns} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={true}
+      chatError="Network problem" failedQuestion={failedQuestion} handlers={h} meta={META} />);
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    expect(box.value).toBe(failedQuestion);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    expect(h.onRetry).toHaveBeenCalledTimes(1);
+    expect(h.onSend).not.toHaveBeenCalled();
+    expect(box.value).toBe("");
+  });
+
+  it("replays the host's uploaded-photo request after chat fails before persistence", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["photo"], "seat.jpg", { type: "image/jpeg" }));
+    resources.lookAtPhoto.mockResolvedValue({ fileId: "seat-photo", observation: { capturedAt: "2026-10-09T00:00:00Z" }, attachment: { linkId: "seat-link" }, observationPersisted: true });
+    const h = handlers();
+    const props = { turns: [TURN], liveTurns: [], pending: null, busy: false, canStop: false, handlers: h, meta: META };
+    const { rerender } = render(<UnifiedChat {...props} canRetry={false} chatError={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    const question = "Does this seat photo help?";
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask MIRA" }), { target: { value: question } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledWith(question,
+      expect.objectContaining({ visualEvidence: expect.objectContaining({ fileId: "seat-photo" }) })));
+    rerender(<UnifiedChat {...props} canRetry={true} chatError="Network problem" failedQuestion={question} />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    expect(h.onRetry).toHaveBeenCalledTimes(1);
+    expect(h.onSend).toHaveBeenCalledTimes(1);
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("");
+  });
+
   it("renders the persisted turn through the shared shell with citation, basis, and safety parts", () => {
     const h = handlers();
     render(<UnifiedChat turns={[TURN, SAFETY_TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />);

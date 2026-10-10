@@ -466,6 +466,14 @@ const OEM_HOSTS: Record<string, string[]> = {
   wago: ["wago.com"],
   phoenix: ["phoenixcontact.com"],
   "phoenix contact": ["phoenixcontact.com"],
+  // First-party manuals verified 2026-10-09: BWU4402 datasheet on
+  // www.bihl-wiedemann.de and VBP-HH1-V3.0 on files.pepperl-fuchs.com.
+  "bihl+wiedemann": ["bihl-wiedemann.de"],
+  "bihl + wiedemann": ["bihl-wiedemann.de"],
+  "bihl-wiedemann": ["bihl-wiedemann.de"],
+  "pepperl+fuchs": ["pepperl-fuchs.com"],
+  "pepperl + fuchs": ["pepperl-fuchs.com"],
+  "pepperl-fuchs": ["pepperl-fuchs.com"],
 };
 
 /**

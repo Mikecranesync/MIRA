@@ -667,12 +667,19 @@ function UnifiedChatForNotebook({
   // behaviour the preview flow replaces.
   const attachTarget = attachmentNotebookId === undefined ? meta.notebookId : attachmentNotebookId;
   const attachments = useUnifiedAttachments(attachTarget, attachmentThreadId);
+  // The adapter must keep one identity for the life of the chat: the shared
+  // Composer releases every pending attachment whenever its adapter changes,
+  // and the hosts pass a fresh onScanMachine on every render. Read the scanner
+  // through a ref so a re-render never costs the technician a picked photo.
+  const scanMachineRef = useRef(handlers.onScanMachine);
+  scanMachineRef.current = handlers.onScanMachine;
   const adapter = useMemo(() => createCapacitorAdapter({
     onAttachPhoto: attachments.attachPhoto,
     onAttachFile: attachments.attachFile,
     onAttachCamera: attachments.attachCamera,
-    onScanMachine: handlers.onScanMachine,
-  }), [attachments.attachPhoto, attachments.attachFile, attachments.attachCamera, handlers.onScanMachine]);
+    onScanMachine: async () => (await scanMachineRef.current?.()) ?? null,
+    onRelease: attachments.release,
+  }), [attachments.attachPhoto, attachments.attachFile, attachments.attachCamera, attachments.release]);
 
   // The assistant surface renders text through the SAME markdown + inline
   // citation-mark pipeline ChatV2 uses (AnswerMarkdown), gated on the turn's
@@ -747,6 +754,14 @@ function UnifiedChatForNotebook({
    * question on the host's existing send path.
    */
   const onSend = useCallback((text: string, pending: readonly Attachment[], opts: { retry?: boolean } = {}) => {
+    // Before the first persisted turn, SendError invokes onSend with retry
+    // intent. Replay the host's saved body for unchanged text, preserving its
+    // request id and scope without consuming a newly confirmed manual scope.
+    if (opts.retry && canRetry && handlers.onRetry && failedQuestion?.trim() === text.trim()
+      && pending.length === 0 && !attachments.hasRetained() && !attachments.hasCarried()) {
+      handlers.onRetry();
+      return;
+    }
     // Codex F1 (HIGH, #4175/#4189): a confirmed identity may have just
     // promoted a candidate manual into an enabled source (migration 104) —
     // `onConfirmIdentity` below re-reads detail and stashes the refreshed
@@ -770,6 +785,11 @@ function UnifiedChatForNotebook({
     // retained bytes are deliberately NOT a reason to compose here (#3863):
     // they ride only the explicit Try again below.
     if (pending.length === 0 && !attachments.hasCarried() && !opts.retry) {
+      // A new plain question supersedes the failed attachment turn. Reuse
+      // compose's synchronous zero-request cleanup before forwarding text;
+      // with no pending/carried/retry descriptors this cannot upload anything.
+      // Otherwise a later text failure's Try again revives the old photo.
+      if (attachments.hasRetained()) void attachments.compose(text, []);
       if (confirmedScope) handlers.onSend(text, undefined, confirmedScope);
       else handlers.onSend(text);
       return;
@@ -816,7 +836,7 @@ function UnifiedChatForNotebook({
       dispatch({ type: "set-send-error", error: message || "The attachment didn't upload — try again." });
       dispatch({ type: "set-draft", draft: text });
     });
-  }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope]);
+  }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope, canRetry, failedQuestion]);
 
   // The question HOME queued for the thread it just created. It goes through
   // `onSend` (not straight to the host) so the attachments HOME stashed are
@@ -893,8 +913,16 @@ function UnifiedChatForNotebook({
     // the bytes, retry through the composed path so the photo rides the turn.
     ...(canRetry && handlers.onRetry
       ? { onRetry: () => {
-          if (attachments.hasRetained() || attachments.hasCarried()) {
-            dispatch({ type: "set-send-error", error: null });
+          const draft = state.draft.trim();
+          const priorQuestion = (failedQuestion ?? pending?.q ?? liveTurns.at(-1)?.q
+            ?? state.thread.turns.filter((turn) => turn.role === "user").at(-1)
+              ?.parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n"))?.trim();
+          // A changed question is a new send. An unchanged question must keep
+          // the host's original request id and source scope for deduplication.
+          const edited = Boolean(draft && draft !== priorQuestion);
+          dispatch({ type: "set-draft", draft: "" });
+          dispatch({ type: "set-send-error", error: null });
+          if (attachments.hasRetained() || attachments.hasCarried() || edited) {
             onSend(state.draft, [], { retry: true });
             return;
           }

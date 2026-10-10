@@ -53,8 +53,9 @@ export function SendError({ error, dispatch, draft, turnId, hooks }: SendErrorPr
     const text = draft.trim();
     if (text && hooks?.onSend) {
       try {
-        // Text-only: a retry/resend of a body the composer already released.
-        hooks.onSend(text, []);
+        // The composer released its chips; the host may still retain bytes.
+        // Keep explicit retry intent distinct from a new plain-text send.
+        hooks.onSend(text, [], { retry: true });
         dispatch({ type: "set-draft", draft: "" });
         dispatch({ type: "set-send-error", error: null });
       } catch (err) {
