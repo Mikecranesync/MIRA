@@ -40,18 +40,18 @@ def _has_docker_compose() -> bool:
 
 def _render_ollama_command(compose_files: list[Path]) -> str:
     """Extract mira-ollama startup command from rendered config.
-    
+
     Decodes Docker Compose's $$ escaping to $ (the way compose does when
     running the container), but preserves legitimate shell $$VAR constructs.
     """
     if not _has_docker_compose():
         pytest.skip("docker compose not available")
-    
+
     cmd = ["docker", "compose"]
     for f in compose_files:
         cmd.extend(["-f", str(f)])
     cmd.extend(["--env-file", "/dev/null", "config", "--format", "json"])
-    
+
     env = {
         "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
         "NEON_DATABASE_URL": "postgresql://dummy:dummy@localhost/dummy",
@@ -65,7 +65,7 @@ def _render_ollama_command(compose_files: list[Path]) -> str:
         "AUTH_SECRET": "dummy",
         "PLG_JWT_SECRET": "dummy",
     }
-    
+
     result = subprocess.run(
         cmd,
         env=env,
@@ -75,20 +75,20 @@ def _render_ollama_command(compose_files: list[Path]) -> str:
         check=True,
         cwd=str(ROOT),
     )
-    
+
     config = json.loads(result.stdout)
     ollama_service = config["services"]["mira-ollama"]
-    
+
     # Compose renders command as a list
     if isinstance(ollama_service["command"], list):
         rendered = " ".join(ollama_service["command"])
     else:
         rendered = ollama_service["command"]
-    
+
     # Decode Docker Compose's $$ escaping to $
     # In compose YAML, $$ becomes $ in the container
     decoded = rendered.replace("$$", "$")
-    
+
     return decoded
 
 
@@ -102,7 +102,7 @@ def _create_fake_ollama(
     hang_operation: str | None = None,
 ) -> Path:
     """Create a fake ollama executable for testing.
-    
+
     Args:
         serve_behavior: "success", "die_immediately"
         list_output: What `ollama list` should output
@@ -113,11 +113,11 @@ def _create_fake_ollama(
     ollama_script = tmpdir / "ollama"
     state_dir = tmpdir / ".ollama_state"
     state_dir.mkdir(exist_ok=True)
-    
+
     # Portable counter increment (no $RANDOM, works in dash)
     script_content = textwrap.dedent(f'''#!/bin/sh
         STATE_DIR="{state_dir}"
-        
+
         get_next_id() {{
             counter_file="$STATE_DIR/counter"
             if [ -f "$counter_file" ]; then
@@ -129,7 +129,7 @@ def _create_fake_ollama(
             echo "$count" > "$counter_file"
             echo "$count"
         }}
-        
+
         if [ "$1" = "serve" ]; then
             echo $$ > "$STATE_DIR/serve_pid"
             touch "$STATE_DIR/serving"
@@ -179,10 +179,10 @@ EOF
             fi
         fi
     ''')
-    
+
     ollama_script.write_text(script_content)
     ollama_script.chmod(0o755)
-    
+
     return ollama_script
 
 
@@ -227,12 +227,12 @@ def test_staging_command_extracts_and_decodes():
 def test_cold_start_success_under_2s():
     """Cold start succeeds with 2s caps, waits for bootstrap-complete."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         state_dir = tmp_path / ".ollama_state"
         state_dir.mkdir()
-        
+
         ollama_script = tmp_path / "ollama"
         script_content = textwrap.dedent(f'''#!/bin/sh
             STATE_DIR="{state_dir}"
@@ -256,7 +256,7 @@ def test_cold_start_success_under_2s():
         ''')
         ollama_script.write_text(script_content)
         ollama_script.chmod(0o755)
-        
+
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "2",
@@ -264,7 +264,7 @@ def test_cold_start_success_under_2s():
             "OLLAMA_PULL_TIMEOUT": "2",
             "OLLAMA_READY_CAP": "2",
         }
-        
+
         proc = subprocess.Popen(
             ["dash", "-c", command],
             env=env,
@@ -273,7 +273,7 @@ def test_cold_start_success_under_2s():
             text=True,
             cwd=str(tmp_path),
         )
-        
+
         # Wait for bootstrap complete message
         max_wait = 10
         for _ in range(max_wait * 10):
@@ -286,14 +286,14 @@ def test_cold_start_success_under_2s():
                     time.sleep(0.1)
                 else:
                     break
-            except:
+            except Exception:
                 time.sleep(0.1)
-        
+
         # Now stop serve
         (state_dir / "stop").touch()
-        
+
         stdout, stderr = proc.communicate(timeout=5)
-        
+
         assert proc.returncode == 0, f"stderr: {stderr}"
         assert "Bootstrap complete" in stderr
 
@@ -302,12 +302,12 @@ def test_cold_start_success_under_2s():
 def test_cached_offline_success_under_2s():
     """Cached offline startup succeeds with 2s caps."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         state_dir = tmp_path / ".ollama_state"
         state_dir.mkdir()
-        
+
         ollama_script = tmp_path / "ollama"
         script_content = textwrap.dedent(f'''#!/bin/sh
             STATE_DIR="{state_dir}"
@@ -326,13 +326,13 @@ def test_cached_offline_success_under_2s():
         ''')
         ollama_script.write_text(script_content)
         ollama_script.chmod(0o755)
-        
+
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "2",
             "OLLAMA_READY_CAP": "2",
         }
-        
+
         proc = subprocess.Popen(
             ["dash", "-c", command],
             env=env,
@@ -341,12 +341,12 @@ def test_cached_offline_success_under_2s():
             text=True,
             cwd=str(tmp_path),
         )
-        
+
         time.sleep(1)
         (state_dir / "stop").touch()
-        
+
         stdout, stderr = proc.communicate(timeout=10)
-        
+
         assert proc.returncode == 0, f"stderr: {stderr}"
         assert "cached with digest" in stderr
 
@@ -355,16 +355,16 @@ def test_cached_offline_success_under_2s():
 def test_cp_exit_9_accurate_diagnostic():
     """cp exiting 9 reports accurate exit code."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        
-        fake_ollama = _create_fake_ollama(
+
+        _create_fake_ollama(
             tmp_path,
             list_output="nomic-embed-text:v1.5    0a109f422b47    128 MB",
             cp_behavior="fail",
         )
-        
+
         # This test measures cp's diagnostic, not readiness scheduling. Model an
         # already-ready service so the first probe cannot lose the 2s budget to
         # the fake serve's startup sleep. Deadline tests keep their own fixtures.
@@ -378,7 +378,7 @@ def test_cp_exit_9_accurate_diagnostic():
             "OLLAMA_CP_TIMEOUT": "2",
             "OLLAMA_READY_CAP": "2",
         }
-        
+
         result = subprocess.run(
             ["dash", "-c", command],
             env=env,
@@ -387,7 +387,7 @@ def test_cp_exit_9_accurate_diagnostic():
             timeout=10,
             cwd=str(tmp_path),
         )
-        
+
         assert (state_dir / "cp_pid").is_file(), f"cp branch not reached: {result.stderr}"
         assert result.returncode != 0
         assert "ollama cp exited 9" in result.stderr
@@ -397,21 +397,21 @@ def test_cp_exit_9_accurate_diagnostic():
 def test_readiness_deadline_clamped():
     """Readiness with 3s cap / 5s list timeout exits within 4s."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        
-        fake_ollama = _create_fake_ollama(
+
+        _create_fake_ollama(
             tmp_path,
             hang_operation="list",
         )
-        
+
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "5",
             "OLLAMA_READY_CAP": "3",
         }
-        
+
         start = time.time()
         result = subprocess.run(
             ["dash", "-c", command],
@@ -422,7 +422,7 @@ def test_readiness_deadline_clamped():
             cwd=str(tmp_path),
         )
         elapsed = time.time() - start
-        
+
         assert result.returncode != 0
         assert "never became ready" in result.stderr
         assert elapsed <= 4.5, f"3s cap overran to {elapsed:.2f}s"
@@ -432,17 +432,17 @@ def test_readiness_deadline_clamped():
 def test_hung_list_no_process_leak():
     """Hung list post-ready terminates cleanly, no process leaks."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         state_dir = tmp_path / ".ollama_state"
         state_dir.mkdir()
-        
+
         # Portable counter (no $RANDOM)
         ollama_script = tmp_path / "ollama"
         script_content = textwrap.dedent(f'''#!/bin/sh
             STATE_DIR="{state_dir}"
-            
+
             get_next_id() {{
                 counter_file="$STATE_DIR/counter"
                 if [ -f "$counter_file" ]; then
@@ -454,7 +454,7 @@ def test_hung_list_no_process_leak():
                 echo "$count" > "$counter_file"
                 echo "$count"
             }}
-            
+
             if [ "$1" = "serve" ]; then
                 echo $$ > "$STATE_DIR/serve_pid"
                 touch "$STATE_DIR/serving" "$STATE_DIR/ready"
@@ -476,13 +476,13 @@ def test_hung_list_no_process_leak():
         ''')
         ollama_script.write_text(script_content)
         ollama_script.chmod(0o755)
-        
+
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "2",
             "OLLAMA_READY_CAP": "5",
         }
-        
+
         result = subprocess.run(
             ["dash", "-c", command],
             env=env,
@@ -491,15 +491,15 @@ def test_hung_list_no_process_leak():
             timeout=15,
             cwd=str(tmp_path),
         )
-        
+
         time.sleep(0.5)
-        
+
         # Assert hang was injected
         assert (state_dir / "hung").exists(), "Test bug: hang never injected"
-        
+
         # Check no processes alive
         alive = _check_processes_alive(state_dir, ["serve", "list"])
-        
+
         assert result.returncode != 0, f"Should fail, stderr: {result.stderr}"
         assert len(alive) == 0, f"leaked {len(alive)} processes: {alive}"
 
@@ -508,12 +508,12 @@ def test_hung_list_no_process_leak():
 def test_fast_success_not_misreported_as_timeout():
     """Fast successful query with 1s cap reports success, not timeout."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         state_dir = tmp_path / ".ollama_state"
         state_dir.mkdir()
-        
+
         ollama_script = tmp_path / "ollama"
         script_content = textwrap.dedent(f'''#!/bin/sh
             STATE_DIR="{state_dir}"
@@ -530,13 +530,13 @@ def test_fast_success_not_misreported_as_timeout():
         ''')
         ollama_script.write_text(script_content)
         ollama_script.chmod(0o755)
-        
+
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "1",
             "OLLAMA_READY_CAP": "1",
         }
-        
+
         proc = subprocess.Popen(
             ["dash", "-c", command],
             env=env,
@@ -545,12 +545,12 @@ def test_fast_success_not_misreported_as_timeout():
             text=True,
             cwd=str(tmp_path),
         )
-        
+
         time.sleep(0.5)
         (state_dir / "stop").touch()
-        
+
         stdout, stderr = proc.communicate(timeout=10)
-        
+
         assert proc.returncode == 0, f"stderr: {stderr}"
         assert "timed out" not in stderr
         assert "Bootstrap complete" in stderr
@@ -560,18 +560,18 @@ def test_fast_success_not_misreported_as_timeout():
 def test_hung_pull_no_leak():
     """Hung pull terminates cleanly with no process leaks."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         state_dir = tmp_path / ".ollama_state"
         state_dir.mkdir()
-        
-        fake_ollama = _create_fake_ollama(
+
+        _create_fake_ollama(
             tmp_path,
             list_output="",  # Need pull
             hang_operation="pull",
         )
-        
+
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "2",
@@ -579,7 +579,7 @@ def test_hung_pull_no_leak():
             "OLLAMA_READY_CAP": "5",
             "OLLAMA_PULL_RETRIES": "2",
         }
-        
+
         result = subprocess.run(
             ["dash", "-c", command],
             env=env,
@@ -588,10 +588,10 @@ def test_hung_pull_no_leak():
             timeout=20,
             cwd=str(tmp_path),
         )
-        
+
         time.sleep(0.5)
         alive = _check_processes_alive(state_dir, ["serve", "pull"])
-        
+
         assert result.returncode != 0
         assert len(alive) == 0, f"leaked {len(alive)} processes: {alive}"
 
@@ -600,25 +600,25 @@ def test_hung_pull_no_leak():
 def test_hung_cp_no_leak():
     """Hung cp terminates cleanly with no process leaks."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         state_dir = tmp_path / ".ollama_state"
         state_dir.mkdir()
-        
-        fake_ollama = _create_fake_ollama(
+
+        _create_fake_ollama(
             tmp_path,
             list_output="nomic-embed-text:v1.5    0a109f422b47    128 MB",
             hang_operation="cp",
         )
-        
+
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "2",
             "OLLAMA_CP_TIMEOUT": "3",
             "OLLAMA_READY_CAP": "5",
         }
-        
+
         result = subprocess.run(
             ["dash", "-c", command],
             env=env,
@@ -627,10 +627,10 @@ def test_hung_cp_no_leak():
             timeout=15,
             cwd=str(tmp_path),
         )
-        
+
         time.sleep(0.5)
         alive = _check_processes_alive(state_dir, ["serve", "cp"])
-        
+
         assert result.returncode != 0
         assert len(alive) == 0, f"leaked {len(alive)} processes: {alive}"
 
@@ -639,17 +639,17 @@ def test_hung_cp_no_leak():
 def test_final_list_timeout_no_leak():
     """Final list timeout terminates serve cleanly via trap, no leaks."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         state_dir = tmp_path / ".ollama_state"
         state_dir.mkdir()
-        
+
         # Portable counter (no $RANDOM, works in dash)
         ollama_script = tmp_path / "ollama"
         script_content = textwrap.dedent(f'''#!/bin/sh
             STATE_DIR="{state_dir}"
-            
+
             get_next_id() {{
                 counter_file="$STATE_DIR/counter"
                 if [ -f "$counter_file" ]; then
@@ -661,7 +661,7 @@ def test_final_list_timeout_no_leak():
                 echo "$count" > "$counter_file"
                 echo "$count"
             }}
-            
+
             if [ "$1" = "serve" ]; then
                 echo $$ > "$STATE_DIR/serve_pid"
                 touch "$STATE_DIR/serving" "$STATE_DIR/ready"
@@ -686,13 +686,13 @@ def test_final_list_timeout_no_leak():
         ''')
         ollama_script.write_text(script_content)
         ollama_script.chmod(0o755)
-        
+
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "2",
             "OLLAMA_READY_CAP": "5",
         }
-        
+
         result = subprocess.run(
             ["dash", "-c", command],
             env=env,
@@ -701,17 +701,24 @@ def test_final_list_timeout_no_leak():
             timeout=20,
             cwd=str(tmp_path),
         )
-        
+
         time.sleep(0.5)
-        
+
         # Assert hang was injected (at 5th call or later)
         hung_files = list(state_dir.glob("hung_at_*"))
-        assert len(hung_files) > 0, f"Test bug: final-list hang never injected (counter files: {list(state_dir.glob('list_pid_*'))})"
-        
+        assert len(hung_files) > 0, (
+            f"Test bug: final-list hang never injected (counter files: {list(state_dir.glob('list_pid_*'))})"
+        )
+
         # Check no processes alive
         alive = _check_processes_alive(state_dir, ["serve", "list"])
-        
-        assert result.returncode != 0, f"Should fail with final-list timeout, stderr: {result.stderr}"
-        assert "Final verification" in result.stderr or "ollama list (final verify)" in result.stderr, \
-            f"Missing expected diagnostic, stderr: {result.stderr}"
-        assert len(alive) == 0, f"leaked {len(alive)} processes (serve must be cleaned up via trap): {alive}"
+
+        assert result.returncode != 0, (
+            f"Should fail with final-list timeout, stderr: {result.stderr}"
+        )
+        assert (
+            "Final verification" in result.stderr or "ollama list (final verify)" in result.stderr
+        ), f"Missing expected diagnostic, stderr: {result.stderr}"
+        assert len(alive) == 0, (
+            f"leaked {len(alive)} processes (serve must be cleaned up via trap): {alive}"
+        )
