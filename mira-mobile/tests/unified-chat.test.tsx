@@ -93,6 +93,26 @@ afterEach(() => {
 });
 
 describe("UnifiedChat", () => {
+  it.each([
+    ["edited", "Observe the seat-one red-state diagnostic.", false],
+    ["unchanged", TURN.question, true],
+  ])("retries the %s restored text without leaving an unsent duplicate draft", async (_label, draft, exactReplay) => {
+    const h = handlers();
+    render(<UnifiedChat turns={[TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={true}
+      chatError="Network problem" handlers={h} meta={META} />);
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: draft } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    if (exactReplay) {
+      expect(h.onRetry).toHaveBeenCalledTimes(1);
+      expect(h.onSend).not.toHaveBeenCalled();
+    } else {
+      expect(h.onRetry).not.toHaveBeenCalled();
+      expect(h.onSend).toHaveBeenCalledWith(draft, undefined);
+    }
+    expect(box.value).toBe("");
+  });
+
   it("renders the persisted turn through the shared shell with citation, basis, and safety parts", () => {
     const h = handlers();
     render(<UnifiedChat turns={[TURN, SAFETY_TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />);

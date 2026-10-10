@@ -905,8 +905,15 @@ function UnifiedChatForNotebook({
     // the bytes, retry through the composed path so the photo rides the turn.
     ...(canRetry && handlers.onRetry
       ? { onRetry: () => {
-          if (attachments.hasRetained() || attachments.hasCarried()) {
-            dispatch({ type: "set-send-error", error: null });
+          const draft = state.draft.trim();
+          const priorQuestion = state.thread.turns.filter((turn) => turn.role === "user").at(-1)
+            ?.parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n").trim();
+          // A changed question is a new send. An unchanged question must keep
+          // the host's original request id and source scope for deduplication.
+          const edited = Boolean(draft && draft !== priorQuestion);
+          dispatch({ type: "set-draft", draft: "" });
+          dispatch({ type: "set-send-error", error: null });
+          if (attachments.hasRetained() || attachments.hasCarried() || edited) {
             onSend(state.draft, [], { retry: true });
             return;
           }
