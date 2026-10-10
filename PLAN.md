@@ -1,3 +1,26 @@
+# Field photo retrieval — bounded implementation
+
+Owner authorized implementation until 2026-10-09 16:00 America/New_York.
+Base origin/main e12d4dfc3; branch codex/field-photo-retrieval.
+
+1. Reproduce selected-manual PERI/RD1 failure with the canonical query helper
+   and real notebook route. Live staging receipt: manual-selected-ab-retry.json.
+2. Extend existing buildRetrievalQuery with bounded server-loaded current LOOK
+   display text for unnamed referential questions. Current photo supersedes stale
+   history for query focus only. Preserve explicit question subjects and no-photo
+   behavior. No device identity promotion, egress authorization, or new parser service.
+3. Wire only the existing retrieval call. #4303 diff inspected: it changes neither
+   this call nor notebook-query helper; #4326 prompt directive remains separate.
+4. Run focused regressions, full Hub tests/build, fresh-context review, prepare
+   draft PR and retain actual receipts. No merge or deployment authorized.
+
+Reuse: helper present on origin/main; merged photo-retrieval PR search inspected.
+Coordination: fetched main, inspected recent commits/open PRs and in-flight plan.
+Normal hooks apply; no MIRA_ALLOW_PROD / MIRA_SKIP_STOP_GATE. Server verification
+and tenant/thread-scoped evidence loading remain authoritative boundaries.
+
+---
+Archived predecessor plan follows (not this lane).
 # October 9 field-maintenance curriculum — owned documentation lane
 
 Owner: Codex; branch `codex/field-maintenance-curriculum`; base `e12d4dfc3`.

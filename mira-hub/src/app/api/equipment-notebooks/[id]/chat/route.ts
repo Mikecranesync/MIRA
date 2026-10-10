@@ -1750,7 +1750,7 @@ async function handleChatTurn(
   ]);
 
   // Non-English questions search the English corpus in English (answered in their own language).
-  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history), translateForSearch);
+  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history, lookRow?.text), translateForSearch);
   const retrievalSpan = startStage("retrieval.execute");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
@@ -1928,6 +1928,7 @@ async function handleChatTurn(
             topK: 6,
             docIds,
             rawQuery: message,
+            includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
             // document linked from another notebook's node stays retrievable here.
@@ -3008,7 +3009,7 @@ async function handleChatTurn(
   // only) riding IN the user turn next to the question — an end-of-system-prompt
   // hint measurably failed to stop "what's the maximum?" in a decel thread from
   // resolving to the lexically similar P044 [Maximum Freq] row (battery defect D).
-  const topicHint = buildTopicHint(message, history);
+  const topicHint = buildTopicHint(message, history, lookRow?.text);
   const messages = buildProviderMessages(
     systemPrompt,
     history,
