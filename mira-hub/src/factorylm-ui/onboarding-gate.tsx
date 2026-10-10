@@ -11,14 +11,15 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE } from "@/lib/config";
-import { onboardingRedirect } from "./hub-host-logic";
+import { shellOnboardingRedirect } from "./onboarding-skip";
 
 export function OnboardingGate({ children }: { readonly children: ReactNode }) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    void onboardingRedirect((path) => fetch(`${API_BASE}${path}`, { cache: "no-store" })).then((to) => {
+    // A tenant that already has notebooks keeps its conversation (PRD §19.11).
+    void shellOnboardingRedirect((path) => fetch(`${API_BASE}${path}`, { cache: "no-store" })).then((to) => {
       if (cancelled) return;
       if (to) router.replace(to); // stays withheld while navigating away
       else setReady(true);

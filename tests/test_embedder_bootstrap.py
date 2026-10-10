@@ -365,6 +365,13 @@ def test_cp_exit_9_accurate_diagnostic():
             cp_behavior="fail",
         )
         
+        # This test measures cp's diagnostic, not readiness scheduling. Model an
+        # already-ready service so the first probe cannot lose the 2s budget to
+        # the fake serve's startup sleep. Deadline tests keep their own fixtures.
+        state_dir = tmp_path / ".ollama_state"
+        (state_dir / "serving").touch()
+        (state_dir / "ready").touch()
+
         env = {
             "PATH": f"{tmp_path}:/usr/bin:/bin",
             "OLLAMA_LIST_TIMEOUT": "2",
@@ -381,6 +388,7 @@ def test_cp_exit_9_accurate_diagnostic():
             cwd=str(tmp_path),
         )
         
+        assert (state_dir / "cp_pid").is_file(), f"cp branch not reached: {result.stderr}"
         assert result.returncode != 0
         assert "ollama cp exited 9" in result.stderr
 
