@@ -159,11 +159,11 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
   // allows at most three leading spaces; code-block indentation is not a list. Normalization
   // merges • with multiplication dots, so the normalized mark is insufficient.
   const listMark = before > 0 && /[•+]/u.test(original[before - 1])
-    && /^[\t\p{Zs}]*$/u.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before - 1))
+    && /^[\t\p{Zs}]*$/u.test(original.slice(Math.max(original.lastIndexOf("\n", before - 1), original.lastIndexOf("\r", before - 1)) + 1, before - 1))
     && /[\t\p{Zs}]/u.test(original[before] ?? "")
-    && (original[before - 1] !== "+" || /^ {0,3}$/u.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before - 1)));
+    && (original[before - 1] !== "+" || /^ {0,3}$/u.test(original.slice(Math.max(original.lastIndexOf("\n", before - 1), original.lastIndexOf("\r", before - 1)) + 1, before - 1)));
   const headingMark = before > 0 && original[before - 1] === "#"
-    && /^ {0,3}#{1,6}$/.test(original.slice(original.lastIndexOf("\n", before - 1) + 1, before))
+    && /^ {0,3}#{1,6}$/.test(original.slice(Math.max(original.lastIndexOf("\n", before - 1), original.lastIndexOf("\r", before - 1)) + 1, before))
     && /[ \t]/.test(original[before] ?? "");
   // Markdown normalizes to spaces: ≠ **0** / 1e+**3** must not lose a mark.
   if (before < boundary && before > 0 && !listMark && !headingMark && !priorCellUnit && /[^\s\p{L}\d()[\]{}|.,;:]/u.test(n[before - 1])) return true;
@@ -171,7 +171,7 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
   // Otherwise −2|20 V| is an expression, not a supported plain 20 V quantity.
   // Retain compact rows such as |5|12 V| and the unscaled |12 V| control.
   if (cellBoundary) {
-    const lineStart = n.lastIndexOf("\n", boundary - 1) + 1;
+    const lineStart = Math.max(n.lastIndexOf("\n", boundary - 1), n.lastIndexOf("\r", boundary - 1)) + 1;
     const linePrefix = n.slice(lineStart, boundary);
     if (/\d[ \t]*$/u.test(linePrefix) && !/^[ \t]*\|/u.test(linePrefix)) {
       // GFM also permits tables without outer pipes. Require a contiguous
@@ -450,7 +450,7 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
     // list syntax — rendered as a bullet, so the number is unsigned. Anywhere else (source text,
     // or another dash in the answer) it is bullet-or-minus: ambiguous, so the value is unusable.
     const at = start + (m[1]?.length ?? 0);
-    if (sign && /\s/.test(text[at + 1] ?? "") && text[at] !== "−" && /^[ \t]*$/.test(text.slice(text.lastIndexOf("\n", start - 1) + 1, start))) {
+    if (sign && /\s/.test(text[at + 1] ?? "") && text[at] !== "−" && /^[ \t]*$/.test(text.slice(Math.max(text.lastIndexOf("\n", start - 1), text.lastIndexOf("\r", start - 1)) + 1, start))) {
       if (side === "answer" && text[at] === "-") sign = undefined;
       else complete = false;
     }
@@ -482,10 +482,9 @@ const MARKER_RE = /\[(\d+)\]/g;
  *  period followed by a lowercase word (an abbreviation mid-sentence). */
 function regions(answer: string): [number, number][] {
   const out: [number, number][] = [];
-  let lineStart = 0;
-  for (const line of answer.split("\n")) {
-    const ls = lineStart;
-    lineStart += line.length + 1;
+  for (const match of answer.matchAll(/([^\r\n]*)(?:\r\n|\r|\n|$)/g)) {
+    const line = match[1];
+    const ls = match.index ?? 0;
     if (/^\s*\|?\s*:?-{3,}/.test(line)) continue; // table alignment row
     if (/^\s*\|.*\|\s*$/.test(line)) {
       out.push([ls, ls + line.length]); // the complete row is one region

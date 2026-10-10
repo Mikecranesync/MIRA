@@ -1109,3 +1109,38 @@ it.each(["\r", "\n", "\r\n"].flatMap(eol => ["--- | ---", "- | -"].flatMap(align
   expect(r.unsupportedValueCount).toBe(0);
   expect(r.quoteFallbackCount).toBe(0);
 });
+
+it.each([["\r", "\r"], ["\n", "\n"], ["\r\n", "\r\n"], ["\r\n", "\r"]].flatMap(([eol, gap]) => ["−2|12 V|", "−2|**12 V**|"].map(expression =>
+  `| Frame | Voltage |${eol}| --- | --- |${gap}| 5 | 10 V |${eol}${gap}${expression}`)))("prior outer-pipe table cannot authorize later expression: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe("ORIGINAL");
+  expect(r.unsupportedValueCount).toBe(1);
+  expect(r.quoteFallbackCount).toBe(1);
+});
+it.each(["\r", "\n", "\r\n"].flatMap(eol => ["+", "#", "•"].flatMap(mark => ["source", "answer"].map(side => [eol, mark, side] as const))))("physical line boundaries preserve layout quantity %s %s %s", (eol, mark, side) => {
+  const source = side === "source" ? `note${eol}${mark} 12 V` : "Rated 12 V";
+  const answer = side === "answer" ? `note${eol}${mark} 12 V [1].` : "Rated 12 V [1].";
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});
+
+it.each(["\r", "\n", "\r\n"])("citation markers cannot borrow quantities across physical lines: %s", eol => {
+  expect(assigned(`Rated 12 V${eol}Reference [1].`)).toEqual({});
+  expect(assigned(`Reference [1].${eol}Rated 12 V`)).toEqual({});
+});
+it.each(["\r", "\n", "\r\n"])("ASCII minus layout remains answer-only at physical line start: %s", eol => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: "Rated 12 V", sourceUrl: "manual", sourcePage: 1 }], `note${eol}- 12 V [1].`, "Rated voltage?");
+  expect(r.citations[0].quote).toBe("Rated 12 V");
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+  const ambiguous = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: `note${eol}- 12 V`, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(ambiguous.citations[0].quote).toBe("ORIGINAL");
+  expect(ambiguous.unsupportedValueCount).toBe(1);
+  expect(ambiguous.quoteFallbackCount).toBe(1);
+});
