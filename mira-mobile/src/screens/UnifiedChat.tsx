@@ -754,6 +754,14 @@ function UnifiedChatForNotebook({
    * question on the host's existing send path.
    */
   const onSend = useCallback((text: string, pending: readonly Attachment[], opts: { retry?: boolean } = {}) => {
+    // Before the first persisted turn, SendError invokes onSend with retry
+    // intent. Replay the host's saved body for unchanged text, preserving its
+    // request id and scope without consuming a newly confirmed manual scope.
+    if (opts.retry && canRetry && handlers.onRetry && failedQuestion?.trim() === text.trim()
+      && pending.length === 0 && !attachments.hasRetained() && !attachments.hasCarried()) {
+      handlers.onRetry();
+      return;
+    }
     // Codex F1 (HIGH, #4175/#4189): a confirmed identity may have just
     // promoted a candidate manual into an enabled source (migration 104) —
     // `onConfirmIdentity` below re-reads detail and stashes the refreshed
@@ -828,7 +836,7 @@ function UnifiedChatForNotebook({
       dispatch({ type: "set-send-error", error: message || "The attachment didn't upload — try again." });
       dispatch({ type: "set-draft", draft: text });
     });
-  }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope]);
+  }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope, canRetry, failedQuestion]);
 
   // The question HOME queued for the thread it just created. It goes through
   // `onSend` (not straight to the host) so the attachments HOME stashed are
@@ -906,8 +914,9 @@ function UnifiedChatForNotebook({
     ...(canRetry && handlers.onRetry
       ? { onRetry: () => {
           const draft = state.draft.trim();
-          const priorQuestion = state.thread.turns.filter((turn) => turn.role === "user").at(-1)
-            ?.parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n").trim();
+          const priorQuestion = (failedQuestion ?? pending?.q ?? liveTurns.at(-1)?.q
+            ?? state.thread.turns.filter((turn) => turn.role === "user").at(-1)
+              ?.parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n"))?.trim();
           // A changed question is a new send. An unchanged question must keep
           // the host's original request id and source scope for deduplication.
           const edited = Boolean(draft && draft !== priorQuestion);
