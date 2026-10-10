@@ -1,9 +1,9 @@
 # FactoryLM positioning and first campaign: CMO decisions
 *Oct 10, 2026. These are decisions, not options. Built on `competitor-teardown.md` and `/workspace/factorylm-market-entry-analysis.md`. Every customer-facing claim below is limited to what MIRA has proven: cited answers from a plant's own uploaded OEM manuals, with the page shown (Oct 4 audit: Rockwell Micro810 manual cited p.57; Sept 5 Festo test: declined an uncovered question, then cited SPC200 p.7), in the mobile app and the Hub notebook at app.factorylm.com.*
 
-> **Launch gate (non-negotiable):** no outbound email, no pilot sale and no "Manual Check" offer until the three P0 fixes pass the 30-question check: short fault codes (F0004, oC) hit the fault table, a New chat control exists, and answers not drawn from the plant's manuals are labeled "general, not from your manuals." Content and the website rewrite can start now. One wrong answer in a breakdown costs us the plant.
+> **Launch gate (non-negotiable):** no outbound email, no pilot sale and no Stump MIRA challenge until the three P0 fixes pass the 30-question check: short fault codes (F0004, oC) hit the fault table, a New chat control exists, and answers not drawn from the plant's manuals are labeled "general, not from your manuals." Content and the website rewrite can start now. One wrong answer in a breakdown costs us the plant.
 
-> **STATUS UPDATE (Oct 10, 2026, later):** Mike said "do not activate email campaign yet." **Cold email is ON HOLD until Mike lifts it.** The first campaign now leads with the guerrilla plan in `guerrilla-playbook.md` (Free Manual Check, "Show me the page" clips, QR manual stickers, no-link forum help, repair-shop/integrator partners, the local circuit incl. SMRP Florida Nov 6, and Stump MIRA after the P0 gate). Section 4 below has been rewritten to match.
+> **STATUS UPDATE (Oct 10, 2026, later):** Mike said "do not activate email campaign yet." **Cold email is ON HOLD until Mike lifts it.** The first campaign now leads with the guerrilla plan in `guerrilla-playbook.md` ("Show me the page" clips, Breakdown Stories interviews, no-link forum help, repair-shop/integrator partners, the local circuit incl. SMRP Florida Nov 6, a bylined trade-press article, and Stump MIRA after the P0 gate). **Revised 5:50 PM:** Mike dropped the Free Manual Check and the QR stickers. No free-service giveaways, no print or swag. Section 4 below has been rewritten to match.
 
 ---
 
@@ -29,7 +29,7 @@
 **Subhead (final):**
 > FactoryLM loads the OEM manuals for one production line, any brand, and your maintenance crew asks questions in plain English. Every answer from your manuals shows the manual and page, so your techs can check it before they touch the machine. Start with a 30-day pilot for $500.
 
-**Primary CTA:** "Start a $500 pilot" → short form. **Secondary CTA:** "Send us one manual and 3 questions" (free Manual Check; launches after the P0 gate).
+**Primary CTA:** "Start a $500 pilot" → short form. **Secondary CTA:** "See it live on your manual: book 15 minutes with Mike." (Mike runs MIRA on screen during the call; nothing is delivered afterward.)
 
 **3 proof bullets (all proven today):**
 1. **The page, every time it's from your manual.** In our Oct 4 test on a Rockwell Micro810 manual, MIRA answered and pointed to page 57. *(Show the real screenshot, not a mockup.)*
@@ -70,7 +70,7 @@
 |---|---|---|---|
 | **1. Show me the page.** | "Every answer from your manuals shows the manual and page. Your tech checks it in ten seconds." | Micro810 p.57; Festo SPC200 p.7 | **ChatGPT/Gemini** answer whether or not your manual covers it, and don't separate manual from general knowledge. **YAFEX/Tractian/Dozuki** lead with stat walls ("35% less downtime", "401% ROI") and no visible proof of a single answer. |
 | **2. Keep your CMMS. Skip the enterprise tier.** | "Works beside MaintainX, Fiix, Limble, UpKeep, or a spreadsheet. One flat price per site." | Published price: $500 pilot, $399/mo per site, up to 15 users | **MaintainX** Assist is Enterprise-only (custom pricing). **Fiix MAX** needs the $75/user Professional tier plus separate licenses, and can't read diagrams. **UpKeep** Nova runs on credits. A 10-tech crew on MaintainX Premium is ~$650/mo *before* the manual AI they can't get. |
-| **3. Proof on your own manual before you pay.** | "Send one manual and three real questions. We send back cited answers. Then decide." A US founder who comes to your floor (Central Florida in person; remote anywhere). | The free Manual Check (after the P0 gate) | **YAFEX, Quintess, Satori, Siemens, Augmentir, Aquant** are demo-gated with no published price. **Rheba** and **Satori** are EU-focused; **Machine Pilot** is Australia-only and priced per machine ($890/mo for one machine). |
+| **3. See it live on your manual, then prove it in a paid pilot.** | "Name a machine. I'll open its manual and ask your question live, on screen, in our first call. Then a $500 pilot proves it on one line, with a right-page scorecard we keep together." A US founder who comes to your floor (Central Florida in person; remote anywhere). | Live look in the first meeting (any time; full-sentence questions until the P0 gate passes); the paid pilot's shared right-page scorecard | **YAFEX, Quintess, Satori, Siemens, Augmentir, Aquant** are demo-gated with no published price. **Rheba** and **Satori** are EU-focused; **Machine Pilot** is Australia-only and priced per machine ($890/mo for one machine). |
 
 **Words we use:** manual, page, crew, line, breakdown, check it, any brand.
 **Words we don't use:** namespace, agentic, transform, hallucination-free, guaranteed, % downtime reduction (until a pilot gives us a real number).
@@ -82,9 +82,9 @@
 **Active plan:** `guerrilla-playbook.md` (6 weeks, Oct 12 – Nov 20). It runs entirely without cold email:
 | Channel | Role | Mike's weekly time |
 |---|---|---|
-| **Free Manual Check** (one manual + 3 questions → cited answers in 1 business day, checked by Mike) | The CTA everywhere; the proof engine | up to ~1.5 h (5 requests) |
+| **"Breakdown Stories" interviews** (20-min recorded calls with maintenance managers about their worst breakdown; published with permission) | List-building + content; every guest is a buyer | ~1.3 h |
 | **"Show me the page" clips + posts on Mike's LinkedIn** | Audience building with real recordings | ~1.5 h |
-| **QR "manual on the machine" sticker kit** (free, links to OEM-hosted manuals) | Physical, useful lead magnet that works today | ~0.5 h |
+| **Bylined trade-press article** (Plant Engineering, else Reliable Plant; noncommercial) | Credibility with plant managers | ~1 h in weeks 2–4 |
 | **No-link forum help** on PLCTalk, r/PLC, r/IndustrialMaintenance (real name, disclosed) | Trust with techs; Answer Radar supplies questions | ~1 h |
 | **Repair-shop + integrator referral partners** (Central Florida) | Warm intros into target plants | ~1.5 h |
 | **Local circuit** (SMRP Florida, Nov 6, Jacksonville; chapter meetings; plant front-office stops) | Face-to-face with the exact buyer | event weeks |
@@ -93,7 +93,9 @@
 
 **Cold email: ON HOLD.** The asset `assets/cold-email-pilot.md` stays drafted, unsent. Nothing is sent until Mike explicitly lifts the hold. When he does, email is used first as a *follow-up* to people met through the channels above, not as a cold blast. Marketing Lead brings a lift/no-lift recommendation at the week-6 review (Nov 20), and Mike decides.
 
-**Goal by week 6:** ≥15 Manual Check requests (≥5 from beachhead plants) and ≥3 pilot conversations started, with zero cold email.
+**Proof mechanism:** a 15-minute live look on the prospect's named machine/manual during a meeting, then the paid pilot. No free checks, reports or setups.
+
+**Goal by week 6:** ≥8 Breakdown Stories interviews with beachhead managers, ≥8 live looks, ≥3 pilot conversations started, and the article accepted or in edit, with zero cold email and zero free deliverables.
 
 **Not now:** paid ads, booths, webinars, G2, any forum promotion, cold email.
 
@@ -114,7 +116,7 @@
 | Setup | We load your line's manuals for you | Each tech uploads their own | You attach manuals per asset | You upload per asset (PDF/DOCX/TXT) | "Live in one hour" (self-upload) | Self-upload |
 | US small-plant focus | Yes; founder can come on site (Central Florida) | n/a | Mid-market to enterprise | SMB to enterprise | US plants (borrowed logo wall) | No (EU residency) |
 | **Their best line against us** | | "It's free and I already use it." | "We're your whole CMMS, with AI." | "It's Rockwell." | "35% less downtime, 4-minute answers." | "Shows the page and the diagram." |
-| **Our answer** | | "Use it for general questions. When the line is down, you need the page from *your* manual, and you need to know when the manual doesn't say." | "Keep MaintainX. Their manual AI needs Enterprise. We're $399 flat beside it." | "MAX needs Professional plus licenses and can't read diagrams. We take any brand's manual without a CMMS change." | "Ask them for one cited answer on your manual before you buy. We'll do ours free." | "Same idea, but they're EU-hosted and EU-focused. We're US, on your floor, priced up front." |
+| **Our answer** | | "Use it for general questions. When the line is down, you need the page from *your* manual, and you need to know when the manual doesn't say." | "Keep MaintainX. Their manual AI needs Enterprise. We're $399 flat beside it." | "MAX needs Professional plus licenses and can't read diagrams. We take any brand's manual without a CMMS change." | "Ask them to show one cited answer on your manual, live, before you buy. We will, in the first call." | "Same idea, but they're EU-hosted and EU-focused. We're US, on your floor, priced up front." |
 | **Landmine to plant** | | "Ask ChatGPT a fault code from your drive. Then ask it what page that's on." | "Ask what tier includes manual answers, and the price for 10 users." | "Ask if MAX can read the wiring diagram." | "Ask which customers on the logo wall use YAFEX itself." | (rarely in US deals) |
 
 **Where we lose today, honestly:** voice at the machine (Quintess), work-order history in answers (Quintess, YAFEX, MaintainX), SOC 2 (MaintainX, Fiix, Quintess, Tractian have it; we're "not yet audited" per our own Security page), native app in stores. Don't fight on these. Steer back to page-level proof, no CMMS switch, and price.

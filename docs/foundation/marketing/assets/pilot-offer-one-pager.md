@@ -33,8 +33,8 @@ You get a short written summary at day 30: questions asked, which machines, cite
 - It doesn't give step-by-step answers for lockout, arc flash or confined-space work. Follow your site's procedures.
 - It's not SOC 2 audited yet. Your data is kept separate from other customers' and isn't used to train outside AI models. See factorylm.com/security.
 
-## Try it before you buy
-Send one manual and three questions your techs actually ask. We'll send back cited answers within one business day, free.
+## See it before you buy
+Book 15 minutes with Mike. Name one of your machines, and he'll open its manual and ask your question live, on screen. Then the pilot proves it across one line.
 
 **Mike Harper, Founder · mike@factorylm.com · factorylm.com**
 

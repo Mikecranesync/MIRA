@@ -179,7 +179,7 @@
 - **Claims and proof (theirs):** "60%+ of a technician's day is spent searching" (credited to Reliabilityweb); "<24hrs Upload to searchable." No named customers found.
 - **Channels:** free "Test Your Manuals" (upload one manual, ask three questions).
 - **CTAs:** "Test Your Manuals →", "Book a Demo".
-- **Weakness and our gap:** Same promise as ours, EU only. **Steal:** "Upload one manual. Ask three questions."
+- **Weakness and our gap:** Same promise as ours, EU only. Their free take-home test is noted for reference; we deliberately don't copy it (no free-service giveaways). We show it live in the first meeting instead.
 
 ## 14. Machine Pilot (new look-alike)
 - **Product:** A cited plant knowledge terminal over manuals, SOPs, drawings and PLC (L5X) exports; browser, tablet or HMI. https://machinepilot.app/
@@ -207,7 +207,7 @@
 - **Spogen Smart Assistant**: OEM documentation add-on for Business/Enterprise tiers. https://spogen.ai/platform/smart-assistant
 
 ## What works for them that we can copy at $0
-1. **Prove it on the buyer's own manual.** Quintess ("Bring a real fault to the demo"), Rheba ("Upload one manual. Ask three questions"), Satori ("see Satori answer questions from your actual manufacturing documentation").
+1. **Prove it on the buyer's own manual** (we do this live in a meeting, not as a free take-home test). Quintess ("Bring a real fault to the demo"), Rheba ("Upload one manual. Ask three questions"), Satori ("see Satori answer questions from your actual manufacturing documentation").
 2. **Founder LinkedIn.** Quintess's CEO posts about customer calls; that is how its rail deal story spread.
 3. **Comparison and alternative pages.** MaintainX, YAFEX and Tractian all rank on "X vs Y" and "X alternative."
 4. **Free tools.** UpKeep (calculators, checklist generator) and YAFEX (ROI calculator). Our free tool is the cited Drive Commander fault pages.

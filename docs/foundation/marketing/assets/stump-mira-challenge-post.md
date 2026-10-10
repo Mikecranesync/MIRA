@@ -1,5 +1,5 @@
 # Stump MIRA challenge: launch post (Mike's LinkedIn)
-*Post only after the P0 gate passes (target Mon Nov 9). Mike posts it himself. Record the session unedited.*
+*Post only after the P0 gate passes (target Mon Nov 9). Mike posts it himself. Record the session unedited. One recorded session, capped at 10 questions; no per-person follow-up work or free deliverables.*
 
 ---
 
@@ -13,8 +13,6 @@ On Thursday I'll run every question live, on screen, unedited. For each one we'l
 ❌ misses
 
 I'll post the recording and the full scorecard Friday, misses included. If it misses, you'll see it miss.
-
-Everyone who sends a question gets a free check of their full manual afterward.
 
 Two rules: nothing about lockout, arc flash or confined space (follow your site procedure for those), and I won't name you or your plant unless you say so.
 

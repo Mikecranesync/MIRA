@@ -19,7 +19,7 @@ It works beside whatever you use today. It's not a CMMS, and there's nothing to 
 
 The offer is a 30-day pilot for $500. We load manuals for up to 25 machines on one line, your crew uses it, and at the end we review together how many answers cited the right page. If you keep it, it's $399 a month for the site, and the $500 counts toward it.
 
-Want to see it on your own equipment first? Reply with one manual (PDF) and three questions your techs actually ask. I'll send back the answers with page citations within one business day, free.
+Want to see it on your own equipment first? Give me 15 minutes on a call, name one of your machines, and I'll open its manual and ask your question live, on screen.
 
 Mike Harper
 Founder, FactoryLM
@@ -33,14 +33,14 @@ If you'd rather not hear from me again, just reply "no thanks" and I won't follo
 ## Follow-up #1 (5 business days later, same thread)
 **Subject:** Re: [Plant name]'s manuals, with the page on every answer
 
-Hi [First name], one quick example of what I meant. We asked a Rockwell Micro810 manual a question in testing, and the answer pointed to page 57. That's the whole idea: an answer your tech can check. The free test still stands. One manual, three questions, answers back in a day.
+Hi [First name], one quick example of what I meant. We asked a Rockwell Micro810 manual a question in testing, and the answer pointed to page 57. That's the whole idea: an answer your tech can check. Happy to show you live on one of your machines in 15 minutes.
 
 Mike
 
 ## Follow-up #2 (7 business days later, last one)
 **Subject:** Re: [Plant name]'s manuals, with the page on every answer
 
-Hi [First name], I'll stop here. If manual lookups during breakdowns ever become a headache worth fixing, my offer to run your manual for free stands. Just reply to this email.
+Hi [First name], I'll stop here. If manual lookups during breakdowns ever become a headache worth fixing, I'm happy to show it live on one of your machines in 15 minutes. Just reply to this email.
 
 Mike
 
