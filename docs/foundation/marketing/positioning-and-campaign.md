@@ -3,6 +3,8 @@
 
 > **Launch gate (non-negotiable):** no outbound email, no pilot sale and no "Manual Check" offer until the three P0 fixes pass the 30-question check: short fault codes (F0004, oC) hit the fault table, a New chat control exists, and answers not drawn from the plant's manuals are labeled "general, not from your manuals." Content and the website rewrite can start now. One wrong answer in a breakdown costs us the plant.
 
+> **STATUS UPDATE (Oct 10, 2026, later):** Mike said "do not activate email campaign yet." **Cold email is ON HOLD until Mike lifts it.** The first campaign now leads with the guerrilla plan in `guerrilla-playbook.md` (Free Manual Check, "Show me the page" clips, QR manual stickers, no-link forum help, repair-shop/integrator partners, the local circuit incl. SMRP Florida Nov 6, and Stump MIRA after the P0 gate). Section 4 below has been rewritten to match.
+
 ---
 
 ## 1. Positioning
@@ -75,32 +77,25 @@
 
 ---
 
-## 4. First campaign: "Show me the page"
+## 4. First campaign: "Show me the page" (guerrilla-led; cold email ON HOLD)
 
-**Goal (4 weeks):** 100 named target plants contacted, 10 real conversations, 3 paid $500 pilots started. These are the analysis's continue/kill numbers.
+**Active plan:** `guerrilla-playbook.md` (6 weeks, Oct 12 – Nov 20). It runs entirely without cold email:
+| Channel | Role | Mike's weekly time |
+|---|---|---|
+| **Free Manual Check** (one manual + 3 questions → cited answers in 1 business day, checked by Mike) | The CTA everywhere; the proof engine | up to ~1.5 h (5 requests) |
+| **"Show me the page" clips + posts on Mike's LinkedIn** | Audience building with real recordings | ~1.5 h |
+| **QR "manual on the machine" sticker kit** (free, links to OEM-hosted manuals) | Physical, useful lead magnet that works today | ~0.5 h |
+| **No-link forum help** on PLCTalk, r/PLC, r/IndustrialMaintenance (real name, disclosed) | Trust with techs; Answer Radar supplies questions | ~1 h |
+| **Repair-shop + integrator referral partners** (Central Florida) | Warm intros into target plants | ~1.5 h |
+| **Local circuit** (SMRP Florida, Nov 6, Jacksonville; chapter meetings; plant front-office stops) | Face-to-face with the exact buyer | event weeks |
+| **Stump MIRA challenge** (after the P0 gate, target week of Nov 9) | Public, honest proof stunt | ~2 h that week |
+| SEO pages (comparison page + cited fault pages) | Background compounding | bots draft; Mike approves PRs |
 
-**Channel mix (near-$0, founder-led):**
-| Channel | Why | Share of effort | Copied from |
-|---|---|---|---|
-| **Personal cold email from Mike** to maintenance managers (25/week, each personalized) | Fastest path to a pilot; buyer is reachable; CAN-SPAM compliant | 40% | Standard founder-led B2B; YAFEX/Quintess are demo-gated, we lead with proof |
-| **Mike's LinkedIn** (3 posts/week + 10 thoughtful comments/week on maintenance posts) | Builds trust before the email lands; costs only time | 25% | Quintess CEO's founder posts |
-| **Free "Manual Check"** (one manual + 3 questions → cited answers in 1 business day, run by hand in the Hub) | The CTA in every email and post; converts curiosity into proof | 15% | Rheba "Test Your Manuals", Quintess "Bring a real fault" |
-| **Warm intros + in-person** (Mike's network, Central Florida plants, local distributor reps and integrators, one local ISA/SMRP chapter meeting) | Highest close rate for a no-name vendor | 15% | Siemens/Fiix lean on partners; ours is the free version |
-| **SEO pages** (1 comparison page + 2 cited fault pages/week via the Fault Page Writer) | Compounds after the campaign | 5% | MaintainX/YAFEX comparison pages; UpKeep free tools |
+**Cold email: ON HOLD.** The asset `assets/cold-email-pilot.md` stays drafted, unsent. Nothing is sent until Mike explicitly lifts the hold. When he does, email is used first as a *follow-up* to people met through the channels above, not as a cold blast. Marketing Lead brings a lift/no-lift recommendation at the week-6 review (Nov 20), and Mike decides.
 
-**Not now:** paid ads, trade-show booths, webinars, G2 (no customers to review yet), Reddit/PLCTalk promotion (PLCTalk bans commercial posts; forum replies stay pure help, no links).
+**Goal by week 6:** ≥15 Manual Check requests (≥5 from beachhead plants) and ≥3 pilot conversations started, with zero cold email.
 
-**Tools:** HubSpot free CRM (pipeline), Mike's mailbox (sends), Buffer free (optional scheduling). Bots draft and Mike sends. No auto-posting, no auto-sending.
-
-### 4-week calendar (starts Mon Oct 12, 2026)
-| Week | Mon | Tue | Wed | Thu | Fri |
-|---|---|---|---|---|---|
-| **1 (Oct 12–16): Fix and build** | P0 fixes in progress (product). Marketing: approve this doc; open the website PR (claims removed, new hero) | Build the list: 100 plants (50–500 employees, single site, mixed AB/Siemens/Mitsubishi; Florida/Southeast first). Load to HubSpot | **LinkedIn post 1** (asset `linkedin-post-1.md`). Screenshot the real Micro810 p.57 answer for the site and posts | Draft comparison page "MaintainX Assist alternative for small plants" (facts only from the teardown) | **P0 gate: run the 30-question check.** Pass → week 2 sends. Fail → content only; outbound slips a week |
-| **2 (Oct 19–23): First touch** | Send 13 personalized emails (asset `cold-email-pilot.md`) | **LinkedIn post 2**: "The answer was on page __" (a real Manual Check result with permission, or our own test) | Send 12 emails. Ask 5 people in Mike's network for one intro each | **LinkedIn post 3**: why we publish our price | Friday scorecard; run any Manual Checks that came in (1-day turnaround) |
-| **3 (Oct 26–30): Follow up + new list** | Follow-up #1 to week-2 non-replies (short, adds one cited example). 13 new emails | **LinkedIn post 4**: "What FactoryLM doesn't do yet" (honesty post) | 12 new emails. Visit 2 local plants in person (Central Florida) | **LinkedIn post 5**: a tech-level tip from a manual with the page cited | Demos on prospects' own manuals; close pilots ($500, card or invoice) |
-| **4 (Nov 2–6): Close + start pilots** | Follow-up #2 (breakup email). 25 final new emails across the week | **LinkedIn post 6**: the pilot offer, plainly | Pilot kickoffs: load up to 25 machines' manuals per pilot by hand | Publish comparison page + 2 fault pages (PR, Mike approves) | **Campaign review** against the targets: ≥3 pilots → keep going; <2 pilots after 25 conversations → pivot test to integrators |
-
-**Friday scorecard (5 numbers):** emails sent / replies / Manual Checks requested / demos held / pilots paid.
+**Not now:** paid ads, booths, webinars, G2, any forum promotion, cold email.
 
 ---
 

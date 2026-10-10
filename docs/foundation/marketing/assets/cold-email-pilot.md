@@ -1,3 +1,5 @@
+> **ON HOLD:** Mike said "do not activate email campaign yet" (Oct 10, 2026). Do not send until he lifts the hold. See `../guerrilla-playbook.md`.
+
 # Cold email: pilot offer to a plant maintenance manager
 *Sent by Mike from his own mailbox, one at a time, personalized. Max 25/week. **Don't send before the P0 gate passes.** Bracketed fields are filled per prospect from public info (plant website, job posts, LinkedIn). If you can't fill [specific detail] with something true, skip that prospect.*
 
