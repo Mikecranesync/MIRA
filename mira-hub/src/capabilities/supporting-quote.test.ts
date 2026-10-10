@@ -1170,3 +1170,20 @@ it.each(["| 5% | 12 V |", "|5℃|12 V|", "| 5℉ |12 V|"])("unconfirmed unit row
   expect(r.unsupportedValueCount).toBe(1);
   expect(r.quoteFallbackCount).toBe(1);
 });
+
+it.each(["\r", "\n", "\r\n"].flatMap(eol => ["12 V", "**12 V**"].flatMap(value => ["−2", "label", ""].map(prior =>
+  `| Frame | Voltage |${eol}| --- | --- |${eol}| 5 | ${prior}|${value}|`))))("ignored outer-pipe cells cannot support a quantity: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe("ORIGINAL");
+  expect(r.unsupportedValueCount).toBe(1);
+  expect(r.quoteFallbackCount).toBe(1);
+});
+it.each(["\r", "\n", "\r\n"].flatMap(eol => ["12 V", "**12 V**"].flatMap(value => [false, true].map(outer =>
+  outer ? `| Frame | Coefficient | Voltage |${eol}| --- | --- | --- |${eol}| 5 | −2|${value}|` : `Frame | Coefficient | Voltage${eol}--- | --- | ---${eol}5 | −2|${value}`))))("genuine third parsed cells remain supported: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});
