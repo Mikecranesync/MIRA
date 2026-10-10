@@ -134,8 +134,15 @@ export function estimateCostUsd(
 ): number | null {
   const price = PRICE_PER_MTOK[provider];
   // Unpriced provider → null, never 0. See PRICE_PER_MTOK.
-  if (!price) return null;
-  const fresh = Math.max(0, (inputTokens ?? 0) - (cachedInputTokens ?? 0));
+  if (!price || inputTokens === null || outputTokens === null) return null;
+  const cached = cachedInputTokens ?? 0;
+  // #4343: absent/malformed usage is unknown spend, never a free completion.
+  // Keep real zero-token usage distinct from a missing usage block.
+  if (
+    ![inputTokens, outputTokens, cached].every((n) => Number.isSafeInteger(n) && n >= 0) ||
+    cached > inputTokens
+  ) return null;
+  const fresh = inputTokens - cached;
   const cost =
     (fresh / 1_000_000) * price.input +
     ((cachedInputTokens ?? 0) / 1_000_000) * price.input * CACHED_INPUT_DISCOUNT +
