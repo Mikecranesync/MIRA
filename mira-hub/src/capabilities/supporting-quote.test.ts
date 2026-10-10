@@ -609,7 +609,7 @@ describe("operator outside bars (#4320 final review)", () => {
       });
     }
   }
-  for (const source of ["|12 V|", "| Voltage | 12 V |", "| 5 | 12 V |", "|5|12 V|", "• |12 V|", "| 5% | 12 V |", "|5℃|12 V|", "| 5℉ |12 V|", "mm2 (12 V)"]) {
+  for (const source of ["|12 V|", "| Voltage | 12 V |", "| 5 | 12 V |", "|5|12 V|", "• |12 V|", "| Load | Voltage |\n| --- | --- |\n| 5% | 12 V |", "| Load | Voltage |\n| --- | --- |\n|5℃|12 V|", "| Load | Voltage |\n| --- | --- |\n| 5℉ |12 V|", "mm2 (12 V)"]) {
     it(`ordinary cell supports measurement: ${source}`, () => {
       const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
         [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
@@ -1143,4 +1143,30 @@ it.each(["\r", "\n", "\r\n"])("ASCII minus layout remains answer-only at physica
   expect(ambiguous.citations[0].quote).toBe("ORIGINAL");
   expect(ambiguous.unsupportedValueCount).toBe(1);
   expect(ambiguous.quoteFallbackCount).toBe(1);
+});
+
+it.each(["50%|12 V|", "50% |12 V|", "−50%|12 V|", "+50% |12 V|", "**50%**|12 V|", "50**%**|12 V|", "50%|**12 V**|", "50℃|12 V|", "50℉ |12 V|"])("unit coefficients cannot authorize barred magnitudes in prose: %s", expression => {
+  const source = `Rated ${expression}.`;
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe("ORIGINAL");
+  expect(r.unsupportedValueCount).toBe(1);
+  expect(r.quoteFallbackCount).toBe(1);
+});
+it.each(["\r", "\n", "\r\n"].flatMap(eol => [false, true].flatMap(outer => ["50%", "**50%**", "50℃", "50℉"].map(coefficient =>
+  outer ? `| Load | Voltage |${eol}| --- | --- |${eol}| ${coefficient} | 12 V |` : `Load | Voltage${eol}--- | ---${eol}${coefficient} | 12 V`))))("parser-confirmed unit cells remain separate: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});
+
+// A bare percentage/temperature row is not parser-confirmed table separation.
+it.each(["| 5% | 12 V |", "|5℃|12 V|", "| 5℉ |12 V|"])("unconfirmed unit row cannot exempt the preceding coefficient: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe("ORIGINAL");
+  expect(r.unsupportedValueCount).toBe(1);
+  expect(r.quoteFallbackCount).toBe(1);
 });

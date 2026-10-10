@@ -148,7 +148,9 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
     cellBoundary ||= n[at] === "|";
     boundary = at;
   }
-  const priorCellUnit = cellBoundary && /\d[ \t]*[%℃℉][ \t]*$/u.test(n.slice(0, boundary));
+  const priorCellUnit = cellBoundary && /\d[ \t]*[%℃℉][ \t]*$/u.test(n.slice(0, boundary))
+    && tables.some(([from, to]) => start >= from && start < to)
+    && tableCells.some(([from, to]) => start >= from && start < to);
   const left = n[boundary - 1] ?? "";
   if (left && !priorCellUnit && !/[\s([{|,;:]/u.test(left) && !(enclosed && /\p{L}/u.test(left)) && !(cellBoundary && /\d/u.test(left))) return true;
   let before = boundary;
