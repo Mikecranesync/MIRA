@@ -16,6 +16,7 @@
 import { claimIdentifiers } from "@/lib/quote-window";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { Root } from "mdast";
 
 /** manual-rag.ts MAX_CONTENT_CHARS: the prefix of each chunk the model actually sees. */
 export const MODEL_VISIBLE_CHARS = 1200;
@@ -132,7 +133,7 @@ function originalTableCells(row: string, trimOuter = true): string[] {
  *  glued with no space on either side. Brackets, table pipes and a sentence's ". " are not
  *  joins, so "mm2 (10 AWG)", "| 5 | 3.09 N·m" and "Step 1. 12 V" stay separate values. The
  *  leading piece is unitless or followed by a joint, so it is unusable too. */
-function laterPieceOfNumber(n: string, start: number, original: string, tableCells: ReadonlyArray<readonly [number, number]>, tables: ReadonlyArray<readonly [number, number]>): boolean {
+function laterPieceOfNumber(n: string, start: number, original: string, tableCells: ReadonlyArray<readonly [number, number]>, tables: ReadonlyArray<readonly [number, number]>, htmlBlockRows: ReadonlySet<number>): boolean {
   const isWs = (i: number) => n[i] === " " || n[i] === "\t";
   // #4320: screen the WHOLE match, not only its digits. ≈/~ remain the existing
   // approximation decoration; scan opening quotes/brackets too, across inline markup.
@@ -202,9 +203,21 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
       let fence: { mark: string; width: number; indent: number } | null = null;
       let htmlEnd: RegExp | null = null;
       let htmlUntilBlank = false;
+      let htmlIndent = 0;
       const listIndents: number[] = [];
       let listParagraph = false;
-      for (const row of originalRows) {
+      for (const [rowIndex, row] of originalRows.entries()) {
+        const leading = /^[ \t]*/.exec(row)?.[0] ?? "";
+        const leadingIndent = [...leading].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, 0);
+        // A literal block cannot outlive its list container. Blank lines may
+        // remain inside it; a nonblank outdent is reprocessed in its new scope.
+        if (row.trim() && (fence && leadingIndent < fence.indent
+          || (htmlEnd || htmlUntilBlank) && leadingIndent < htmlIndent)) {
+          fence = null;
+          htmlEnd = null;
+          htmlUntilBlank = false;
+          listParagraph = false;
+        }
         if (fence) {
           blockedRows.push(true);
           const close = /^([ \t]*)(`+|~+)[ \t]*$/.exec(row);
@@ -226,8 +239,6 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
         // List context survives indented continuation lines and blank lines.
         // Lazy paragraph prose may be outdented, but cannot introduce a literal
         // block; new block syntax or an outdent after a block ends its container.
-        const leading = /^[ \t]*/.exec(row)?.[0] ?? "";
-        const leadingIndent = [...leading].reduce((column, char) => char === "\t" ? column + 4 - column % 4 : column + 1, 0);
         lazyListRows[blockedRows.length] = listParagraph && listIndents.length > 0
           && leadingIndent < (listIndents.at(-1) ?? 0);
         if (!row.trim()) listParagraph = false;
@@ -265,13 +276,18 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
           if (/^ {0,3}<!--/.test(blockRow)) htmlEnd = /-->/;
           else if (/^ {0,3}<\?/.test(blockRow)) htmlEnd = /\?>/;
           else if (/^ {0,3}<!\[CDATA\[/.test(blockRow)) htmlEnd = /\]\]>/;
-          else if (/^ {0,3}<![A-Z]/.test(blockRow)) htmlEnd = />/;
+          else if (/^ {0,3}<![A-Za-z]/.test(blockRow)) htmlEnd = />/;
           else {
             const rawTag = /^ {0,3}<(pre|script|style|textarea)(?:[ \t>]|$)/i.exec(blockRow);
-            if (rawTag) htmlEnd = new RegExp(`</${rawTag[1]}[ \\t]*>`, "i");
-            else if (/^ {0,3}<\/?[A-Za-z]/.test(blockRow)) htmlUntilBlank = true;
+            if (rawTag) htmlEnd = /<\/(?:pre|script|style|textarea)[ \t]*>/i;
+            // CommonMark HTML block types 6/7. A URI autolink or inline tag
+            // followed by text is not a block extending to the next blank.
+            else if (/^ {0,3}<\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:[ \t>]|\/>|$)/i.test(blockRow)
+              || (htmlBlockRows.has(rowIndex) || listIndents.length > 0 && !listParagraph)
+                && /^ {0,3}(?:<\/[A-Za-z][A-Za-z0-9-]*[ \t]*>|<[A-Za-z][A-Za-z0-9-]*(?:[ \t]+[A-Za-z_:][A-Za-z0-9_.:-]*(?:[ \t]*=[ \t]*(?:[^ \t\n"'=<>`]+|'[^']*'|"[^"]*"))?)*[ \t]*\/?>)[ \t]*$/.test(blockRow)) htmlUntilBlank = true;
           }
           if (htmlEnd || htmlUntilBlank) {
+            htmlIndent = containerIndent;
             listParagraph = false;
             blockedRows.push(true);
             if (htmlEnd?.test(row)) htmlEnd = null;
@@ -362,6 +378,7 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
   const out: Value[] = [];
   const tableCells: Array<readonly [number, number]> = [];
   const tables: Array<readonly [number, number]> = [];
+  const htmlBlockRows = new Set<number>();
   // Preserve supported short alignment cells without moving original quotes.
   // Only alignment rows expand; source line/column positions map back below.
   const sourceRows = text.split("\n");
@@ -375,7 +392,18 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
   }).join("\n");
   if (text.includes("|")) ReactMarkdown({
     children: parserText,
-    remarkPlugins: [remarkGfm],
+    remarkPlugins: [remarkGfm, () => (tree: Root) => {
+      // HTML nodes inside paragraphs are inline; type-7 block tags cannot
+      // interrupt them. Reuse parser structure instead of guessing prose state.
+      type MarkdownNode = { type: string; position?: Root["position"]; children?: MarkdownNode[] };
+      const stack: Array<{ node: MarkdownNode; parent: string }> = [{ node: tree, parent: "" }];
+      while (stack.length) {
+        const { node, parent } = stack.pop()!;
+        if (node.type === "html" && parent !== "paragraph" && node.position)
+          htmlBlockRows.add(node.position.start.line - 1);
+        for (const child of node.children ?? []) stack.push({ node: child, parent: node.type });
+      }
+    }],
     allowElement(node) {
       const start = node.position?.start;
       const end = node.position?.end;
@@ -394,7 +422,7 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     let sign: string | undefined = m[2];
-    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !laterPieceOfNumber(n, start, text, tableCells, tables);
+    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !laterPieceOfNumber(n, start, text, tableCells, tables, htmlBlockRows);
     // Decided on the ORIGINAL text: a sign, then real whitespace, with only indentation before
     // it on its line. U+2212 is always a minus. In the answer, an ASCII "- " there is Markdown
     // list syntax — rendered as a bullet, so the number is unsigned. Anywhere else (source text,
