@@ -122,13 +122,31 @@ beforeEach(() => {
 
 
 describe("older technician reports through the real notebook provider seam", () => {
+ it("puts the newer persisted correction after a stale client exchange without calling it earlier", async () => {
+   nbMock.listTurns.mockResolvedValue([
+     { id: "original", question: "Both seats share one slave", ownerUserId: "u1", evidence: [], answerStatus: "answered", createdAt: "2026-10-09T01:00:00Z" },
+     { id: "correction", question: "No, each seat has its own slave", ownerUserId: "u1", evidence: [], answerStatus: "answered", createdAt: "2026-10-09T02:00:00Z" },
+   ]);
+   const res = await POST(req({ message: "What do we know now?", mode: "general", threadId: "case-thread", history: [
+     { role: "user", content: "Both seats share one slave" },
+     { role: "assistant", content: "Replace the shared slave" },
+   ] }), params);
+   await frames(res);
+   const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
+   const correction = messages.findIndex(m => m.content.includes("each seat has its own slave"));
+   const obsolete = messages.findIndex(m => m.content.includes("Replace the shared slave"));
+   expect(correction).toBeGreaterThan(obsolete);
+   expect(messages[correction].content).not.toContain("EARLIER TECHNICIAN REPORTS");
+   expect(messages[correction].content).toContain("may be stale");
+   expect(messages[correction].content).toContain("2026-10-09T02:00:00Z");
+ });
  it("surfaces reports omitted by the database window instead of claiming complete history", async () => {
    const all = Array.from({ length: 30 }, (_, i) => ({ id: `report-${i}`, question: `Earlier observation ${i}`, ownerUserId: "u1", createdAt: "2026-10-09T01:00:00Z" }));
    nbMock.listTurns.mockImplementation(async (...args) => Number(args[2]) >= 24 ? all.slice(-Number(args[2])) : []);
    const res = await POST(req({ message: "What do we know now?", mode: "general", threadId: "case-thread" }), params);
    await frames(res);
    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { content: string }[];
-   const prior = messages.find(m => m.content.includes("EARLIER TECHNICIAN REPORTS"));
+   const prior = messages.find(m => m.content.includes("PERSISTED TECHNICIAN REPORTS"));
    expect(prior?.content).toContain("some history is omitted or truncated");
    expect(prior?.content).toContain("report-29");
    expect(prior?.content).not.toContain('"report-5"');
@@ -162,7 +180,7 @@ describe("older technician reports through the real notebook provider seam", () 
    await frames(res);
    expect(seamMock.buildRequestBody).toHaveBeenCalled();
    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
-   const reports = messages.find(m => m.content.includes("EARLIER TECHNICIAN REPORTS"));
+   const reports = messages.find(m => m.content.includes("PERSISTED TECHNICIAN REPORTS"));
    expect(reports?.role).toBe("user");
    expect(reports?.content).toContain("each seat has its own AS-i slave");
    expect(reports?.content).not.toContain("Both seats share one slave");
@@ -177,7 +195,27 @@ describe("older technician reports through the real notebook provider seam", () 
    await frames(res);
    expect(seamMock.buildRequestBody).toHaveBeenCalled();
    const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
-   expect(messages.some(m => m.role === "user" && m.content.includes("EARLIER TECHNICIAN REPORTS: unavailable"))).toBe(true);
+   expect(messages.some(m => m.role === "user" && m.content.includes("PERSISTED TECHNICIAN REPORTS: unavailable"))).toBe(true);
  });
 
+});
+
+
+it("retains the latest reaffirmed correction when stale client text matches the first occurrence", async () => {
+  const same = "No, each seat has its own slave";
+  nbMock.listTurns.mockResolvedValue([
+    { id: "original", question: same, ownerUserId: "u1", evidence: [], answerStatus: "answered", createdAt: "2026-10-09T01:00:00Z" },
+    { id: "intervening", question: "Correction: both seats actually share one slave", ownerUserId: "u1", evidence: [], answerStatus: "answered", createdAt: "2026-10-09T02:00:00Z" },
+    { id: "latest", question: same, ownerUserId: "u1", evidence: [], answerStatus: "answered", createdAt: "2026-10-09T03:00:00Z" },
+  ]);
+  const res = await POST(req({ message: "What do we know now?", mode: "general", threadId: "case-thread", history: [
+    { role: "user", content: same }, { role: "assistant", content: "The seats have individual slaves" },
+  ] }), params);
+  await frames(res);
+  const messages = seamMock.buildRequestBody.mock.calls.at(-1)?.[1] as { role: string; content: string }[];
+  const prior = messages.find(m => m.content.includes("PERSISTED TECHNICIAN REPORTS"));
+  expect(prior?.content).toContain('"turnId":"latest"');
+  expect(prior?.content).toContain("2026-10-09T03:00:00Z");
+  expect(prior!.content.indexOf('"turnId":"latest"')).toBeGreaterThan(prior!.content.indexOf('"turnId":"intervening"'));
+  expect(prior?.content).toContain("may be stale");
 });

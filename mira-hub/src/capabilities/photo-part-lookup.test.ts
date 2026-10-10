@@ -49,6 +49,8 @@ describe("photo part lookup", () => {
     "I use the handheld and the display shows 1 instead of 0",
     "It shows 1 instead of 0. What does that mean?",
     "The gateway is offline instead of online",
+    "The LED is white instead of green; What should I check?", "The LED is white instead of green, What should I check?", "The LED is white instead of green. I need to inspect it.", "The LED is white instead of green. What should I check?",
+    "The LED is white instead of green. Can I inspect it?", "The LED is white instead of green. What happened?", "The LED is white instead of green. Why did it turn red?",
   ])("does not treat a reported indication as a substitute-part request: %s", (q) => {
     expect(asksPartCompatibility(q)).toBe(false);
   });
@@ -67,6 +69,12 @@ describe("photo part lookup", () => {
     "Can I install an LED that is white instead of green?",
     "Can I use an indicator which is white instead of green?",
     "Would a white LED work instead of green?",
+    "Is a white LED safe instead of green?",
+    "The LED is white instead of green; can I install it?",
+    "Can I install this LED? It is white instead of green.", "It is white instead of green. What about installing this LED?", "It is white instead of green. Which LED should I choose?", "The LED is white instead of green. Is it legal?", "Is this LED legal? It is white instead of green.", "It is white instead of green. Can I run this LED?", "It is white instead of green. Would you recommend this LED?", "The LED is white instead of green; should I proceed?", "The LED is white instead of green. Is it permitted?", "Can this LED be installed? It is white instead of green.", "Would this LED work? It is white instead of green.", "The LED is white instead of green; would it work in this machine?", "Could this LED be used? It is white instead of green.", "It is white instead of green. Will this LED work?", "Does this LED work? It is white instead of green.", "It is white instead of green. Can this component be fitted?", "Will this component operate? It is white instead of green.",
+    "The LED is white instead of green. Is it safe?", "What is the best LED to buy if the LED is white instead of green?", "What are my options if the LED is white instead of green?", "The LED is white instead of green. Recommend an alternative sensor.", "The LED is white instead of green. Tell me which sensor to buy.", "The LED is white instead of green. I need a new proximity sensor.", "The LED is white instead of green. I need to buy another sensor.", "Recommend a proximity sensor because the LED is white instead of green.", "Suggest a different module since the LED is white instead of green.", "The LED is white instead of green. I want a new sensor.", "The LED is white instead of green. I need an alternative LED.", "The LED is white instead of green. I want another cable.", "The LED is white instead of green. We are looking for a different module.", "The LED is white instead of green. What is the best alternative to this sensor?", "The LED is white instead of green. What is the best LED to buy for this machine?", "The LED is white instead of green. What are my options for a new sensor?", "The LED is white instead of green. Can I inspect it and then choose a new sensor?", "The LED is white instead of green. Does that mean I should buy a new sensor?", "The LED is white instead of green. Am I allowed to install this LED?", "The LED is white instead of green. Am I permitted to use it?", "The LED is white instead of green. OK to install it?", "The LED is white instead of green. Any reason not to use it?", "The LED is white instead of green. Mind if I install it?", "The LED is white instead of green. Install this LED.", "The LED is white instead of green. I want to install this LED.", "The LED is white instead of green. What is the safest LED to install?",
+    "Is a white LED allowed instead of green?",
+    "Is a white LED legal instead of green?",
     "Is an indicator that is white OK instead of green?",
     "Can I use this LED if it is white instead of green?",
   ])("keeps the compatibility gate for real substitution: %s", (q) => {

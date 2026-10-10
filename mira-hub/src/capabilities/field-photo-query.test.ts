@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRetrievalQuery, buildTopicHint } from "@/lib/notebook-query";
+import { buildRetrievalQuery, buildTopicHint, expandIndustrialQuery, rerankChunks } from "@/lib/notebook-query";
 
 const photo = "Teal handheld. LCD display shows 'PERI', 'RD', and '1'. Buttons read MODE and PRG. A brown surface is behind it.";
 describe("current photo retrieval focus", () => {
@@ -57,4 +57,232 @@ describe("current photo retrieval focus", () => {
     expect(q).not.toContain("ID1");
     expect(q).not.toContain("fault");
   });
+});
+
+// Review regressions: preserve multiline literals and exclude control-label ranking noise.
+describe("bounded readout continuations", () => {
+  it.each(["Does this help?", "What am I looking at, and what should I check?"])("keeps multiline literals for %s", (message) => {
+    const q = buildRetrievalQuery(message, [{ role: "user", content: "Ethernet P042" }], "LCD display shows:\nPERI\nRD\n1\nButtons read PRG.");
+    for (const term of ["PERI", "RD", "1"]) expect(q).toContain(term);
+    for (const term of ["PRG", "P042"]) expect(q).not.toContain(term);
+  });
+  it.each(["and has buttons", "with two buttons"])("excludes %s from search phrases", (clause) => {
+    const q = buildRetrievalQuery("Does this help?", [], `LCD display shows PERI, RD and 1, ${clause} labeled "MODE" and "PRG" beneath it.`);
+    expect(q).toContain("PERI");
+    expect(q).not.toContain("MODE");
+    expect(q).not.toContain("PRG");
+  });
+});
+
+it("keeps the readout page ahead of six quoted-control navigation passages", () => {
+  const q = buildRetrievalQuery("Does this help?", [], 'LCD display shows PERI, RD and 1, and has buttons labeled "MODE" and "PRG" beneath it.');
+  const rows = [{ content: "PERI Read Peripheral Fault: value 1 indicates a peripheral fault", sourcePage: 18, rank: 1 }, ...Array.from({ length: 6 }, (_, i) => ({ content: "MODE and PRG buttons navigate menus", sourcePage: 30 + i, rank: 0.1 }))];
+  expect(rerankChunks(expandIndustrialQuery(q), rows).slice(0, 6).some(row => row.sourcePage === 18)).toBe(true);
+});
+
+it("keeps quoted literals and placeholder dashes without reading uppercase button labels", () => {
+  const q = buildRetrievalQuery("Does this help?", [], 'LCD display shows:\n"PERI"\n"RD"\n--\nBUTTONS READ PRG.');
+  expect(q).toContain("PERI");
+  expect(q).toContain("RD");
+  expect(q).toContain("--");
+  expect(q).not.toContain("PRG");
+});
+
+describe("case-preserving literal readout continuations", () => {
+  it.each(["Does this help?", "What am I looking at, and what should I check?"].flatMap(message => ["ovA", "ObF", "PERI\nRd\n1"].map(readout => [message, readout])))("preserves %s with %s", (message, readout) => {
+    const history = [{ role: "user" as const, content: "Ethernet P042" }];
+    const observation = `LCD display shows:\n${readout}\nButtons read PRG.`;
+    const q = buildRetrievalQuery(message, history, observation);
+    for (const literal of readout.split("\n")) expect(q).toContain(literal);
+    for (const stale of ["P042", "Ethernet", "PRG"]) expect(q).not.toContain(stale);
+    expect(buildTopicHint(message, history, observation)).toBe("");
+  });
+});
+
+it("stops a mixed-case continuation before lowercase background prose", () => {
+  const q = buildRetrievalQuery("Does this help?", [], "LCD display shows:\novA\nA brown surface is behind it.\nPRG");
+  expect(q).toContain("ovA");
+  expect(q).not.toContain("brown");
+  expect(q).not.toContain("PRG");
+});
+
+
+describe("descriptions end a literal display block", () => {
+  it.each(["Does this help?", "What am I looking at, and what should I check?"])("excludes cable/sticker prose for %s", (message) => {
+    for (const background of ["A cable marked A410 is connected.", "Sticker marked A410.", "A wire is red."]) {
+      const q = buildRetrievalQuery(message, [{ role: "user", content: "Ethernet P042" }], `LCD display shows:\novA\n${background}\nPRG`);
+      expect(q).toContain("ovA");
+      for (const term of ["A410", "cable", "Sticker", "wire", "PRG", "P042"]) expect(q).not.toContain(term);
+    }
+  });
+});
+
+
+it.each(["Does this help?", "What am I looking at, and what should I check?"])("inline background descriptions do not become display terms for %s", (message) => {
+  for (const observation of ["LCD display shows ovA, and a cable marked A410 is connected.", "LCD display shows ovA, with a STICKER marked A410 above it."]) {
+    const q = buildRetrievalQuery(message, [], observation);
+    expect(q).toContain("ovA");
+    for (const term of ["A410", "cable", "STICKER"]) expect(q).not.toContain(term);
+  }
+});
+
+it.each(['LCD display shows "CABLE MISSING", and a sticker marked A410 is beside it.', 'LCD display shows:\n"CABLE MISSING"\nSticker marked A410.'])("preserves an explicitly quoted readout even when its words describe a cable: %s", (observation) => {
+  const q = buildRetrievalQuery("Does this help?", [], observation);
+  expect(q).toContain("CABLE MISSING");
+  expect(q).not.toContain("A410");
+});
+
+
+it.each(["LCD display shows:\nUvLo", "LCD display shows Overcurrent Fault 1.", "LCD display shows:\nOvercurrent\nFault 1", "LCD display shows CABLE MISSING."])("preserves real literal shapes while excluding appended background: %s", (reading) => {
+  const q = buildRetrievalQuery("Does this help?", [{ role: "user", content: "Ethernet P042" }], `${reading}\nA cable marked A410 is connected.`);
+  if (reading.includes("UvLo")) expect(q).toContain("UvLo");
+  if (reading.includes("Overcurrent")) { expect(q).toContain("Overcurrent"); expect(q).toContain("Fault 1"); }
+  if (reading.includes("CABLE")) expect(q).toContain("CABLE MISSING");
+  expect(q).not.toContain("A410");
+  expect(q).not.toContain("P042");
+});
+
+
+describe("qualified or unreadable new display never inherits stale focus", () => {
+  for (const message of ["Does this help?", "What am I looking at, and what should I check?"])
+    for (const qualifier of ["error", "flashing", "blinking"])
+      it(`retains ${qualifier} ovA for ${message}`, () => {
+        const history = [{ role: "user" as const, content: "Ethernet P042" }];
+        const observation = `LCD display shows ${qualifier} ovA.`;
+        const query = buildRetrievalQuery(message, history, observation);
+        expect(query).toContain("ovA");
+        expect(query).not.toContain("P042");
+        expect(query).not.toContain("Ethernet");
+        expect(buildTopicHint(message, history, observation)).toBe("");
+      });
+  for (const message of ["Does this help?", "What am I looking at, and what should I check?"])
+    it(`unreadable current display has unknown focus: ${message}`, () => {
+      const history = [{ role: "user" as const, content: "Ethernet P042" }];
+      const observation = "LCD display shows unreadable characters.";
+      expect(buildRetrievalQuery(message, history, observation)).toBe(message);
+      expect(buildTopicHint(message, history, observation)).toBe("");
+    });
+});
+
+
+describe("display-description phrases preserve the subsequent literal", () => {
+  for (const message of ["Does this help?", "What am I looking at, and what should I check?"])
+    for (const observation of [
+      "LCD display shows an error message ovA.",
+      'LCD display shows the error message "ovA".',
+      "LCD display shows the alarm reading ovA, with a sticker marked A410 above it.",
+      "LCD display shows an unexpected diagnostic message ovA, and a cable marked A410 is connected.",
+    ]) it(`retains ovA from ${observation} for ${message}`, () => {
+      const history = [{ role: "user" as const, content: "Ethernet P042" }];
+      const q = buildRetrievalQuery(message, history, observation);
+      expect(q).toContain("ovA");
+      for (const word of ["P042", "Ethernet", "A410", "cable", "sticker"]) expect(q).not.toContain(word);
+      expect(buildTopicHint(message, history, observation)).toBe("");
+    });
+  it.each(["LCD display shows unexpectedly an error message ovA.", "LCD display shows Unexpected diagnostic message ovA.", "LCD display shows:\nerror message ovA"])("bounded qualifiers do not discard literal: %s", (observation) => {
+    expect(buildRetrievalQuery("Does this help?", [], observation)).toContain("ovA");
+  });
+});
+
+
+it.each([["Does this help?", "LCD display shows ovA. A sticker below the LCD display reads A410."], ["Does this help?", "LCD display shows ovA. A cable beside the screen reads A410."], ["Does this help?", "LCD display shows ovA. The panel under the display shows A410."], ["Does this help?", "LCD display shows ovA. A button beside the screen reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. A sticker below the LCD display reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. A cable beside the screen reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The panel under the display shows A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. A button beside the screen reads A410."], ["Does this help?", "LCD display shows ovA. Near the LCD display, a sticker reads A410."], ["Does this help?", "LCD display shows ovA. Beside the screen, a cable reads A410."], ["Does this help?", "LCD display shows ovA. The LCD display has a sticker that reads A410."], ["Does this help?", "LCD display shows ovA. The LCD display has a cable label that reads A410."], ["Does this help?", "LCD display shows ovA. Above the screen, a panel shows A410."], ["Does this help?", "LCD display shows ovA. Next to the display, a button reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. Near the LCD display, a sticker reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. Beside the screen, a cable reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The LCD display has a sticker that reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The LCD display has a cable label that reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. Above the screen, a panel shows A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. Next to the display, a button reads A410."], ["Does this help?", "LCD display shows ovA, A410 on a nearby sticker."], ["Does this help?", "LCD display shows ovA, \"A410\" on a nearby sticker."], ["Does this help?", "LCD display shows ovA and A410 is printed on a sticker."], ["Does this help?", "LCD display shows ovA and \"A410\" is printed on a cable label."], ["Does this help?", "LCD display shows ovA. The LCD display has a sticker marked A410. It reads A410."], ["Does this help?", "LCD display shows ovA. The LCD display has a cable label marked \"A410\". It reads \"A410\"."], ["What am I looking at, and what should I check?", "LCD display shows ovA, A410 on a nearby sticker."], ["What am I looking at, and what should I check?", "LCD display shows ovA, \"A410\" on a nearby sticker."], ["What am I looking at, and what should I check?", "LCD display shows ovA and A410 is printed on a sticker."], ["What am I looking at, and what should I check?", "LCD display shows ovA and \"A410\" is printed on a cable label."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The LCD display has a sticker marked A410. It reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The LCD display has a cable label marked \"A410\". It reads \"A410\"."], ["Does this help?", "LCD display shows ovA, A410 on a red and white sticker."], ["Does this help?", "LCD display shows ovA, A410 printed in black and white on a sticker."], ["Does this help?", "LCD display shows ovA. The LCD display has a panel marked A410. It reads A410."], ["Does this help?", "LCD display shows ovA. A barcode above the LCD display reads A410."], ["Does this help?", "LCD display shows ovA, A410 on an adjacent placard."], ["Does this help?", "LCD display shows ovA and A410 is printed on a decal."], ["Does this help?", "LCD display shows ovA. The LCD display has a badge marked A410. It reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA, A410 on a red and white sticker."], ["What am I looking at, and what should I check?", "LCD display shows ovA, A410 printed in black and white on a sticker."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The LCD display has a panel marked A410. It reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. A barcode above the LCD display reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA, A410 on an adjacent placard."], ["What am I looking at, and what should I check?", "LCD display shows ovA and A410 is printed on a decal."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The LCD display has a badge marked A410. It reads A410."], ["Does this help?", "LCD display shows ovA, A410, printed in black and white on a sticker."], ["Does this help?", "LCD display shows ovA, A410, on a red and white sticker."], ["What am I looking at, and what should I check?", "LCD display shows ovA, A410, printed in black and white on a sticker."], ["What am I looking at, and what should I check?", "LCD display shows ovA, A410, on a red and white sticker."], ["Does this help?", "LCD display shows ovA, A410 and B012 printed on a sticker."], ["Does this help?", "LCD display shows ovA, A410, B012 on a sticker."], ["Does this help?", "LCD display shows ovA and A410 and B012 printed on a sticker."], ["What am I looking at, and what should I check?", "LCD display shows ovA, A410 and B012 printed on a sticker."], ["What am I looking at, and what should I check?", "LCD display shows ovA, A410, B012 on a sticker."], ["What am I looking at, and what should I check?", "LCD display shows ovA and A410 and B012 printed on a sticker."], ["Does this help?", "LCD display shows ovA.\nBarcode A410"], ["Does this help?", "LCD display shows ovA.\nPlacard A410"], ["Does this help?", "LCD display shows ovA.\nTag A410"], ["Does this help?", "LCD display shows ovA.\ntag A410"], ["What am I looking at, and what should I check?", "LCD display shows ovA.\nBarcode A410"], ["What am I looking at, and what should I check?", "LCD display shows ovA.\nPlacard A410"], ["What am I looking at, and what should I check?", "LCD display shows ovA.\nTag A410"], ["What am I looking at, and what should I check?", "LCD display shows ovA.\ntag A410"], ["Does this help?", "LCD display shows ovA. The LCD display has a barcode that reads A410."], ["Does this help?", "LCD display shows ovA. The LCD display has a placard that shows A410."], ["Does this help?", "LCD display shows ovA. The LCD display with a badge that reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The LCD display has a barcode that reads A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The LCD display has a placard that shows A410."], ["What am I looking at, and what should I check?", "LCD display shows ovA. The LCD display with a badge that reads A410."], ["Does this help?", "LCD display shows ovA.\nBARCODE A410"], ["Does this help?", "LCD display shows ovA.\nTAG A410"], ["Does this help?", "LCD display shows ovA.\nDECAL A410"], ["Does this help?", "LCD display shows ovA.\nBADGE A410"], ["Does this help?", "LCD display shows ovA.\nSTENCIL A410"], ["Does this help?", "LCD display shows ovA.\nMARKER A410"], ["Does this help?", "LCD display shows ovA.\nENGRAVING A410"], ["What am I looking at, and what should I check?", "LCD display shows ovA.\nBARCODE A410"], ["What am I looking at, and what should I check?", "LCD display shows ovA.\nTAG A410"], ["What am I looking at, and what should I check?", "LCD display shows ovA.\nDECAL A410"], ["What am I looking at, and what should I check?", "LCD display shows ovA.\nBADGE A410"], ["What am I looking at, and what should I check?", "LCD display shows ovA.\nSTENCIL A410"], ["What am I looking at, and what should I check?", "LCD display shows ovA.\nMARKER A410"], ["What am I looking at, and what should I check?", "LCD display shows ovA.\nENGRAVING A410"]])("background subjects located by the display do not become readouts: %s %s", (question, observation) => {
+  const q = buildRetrievalQuery(question, [], observation);
+  expect(q).toContain("ovA");
+  expect(q).not.toContain("A410");
+});
+
+
+it.each(["A bright backlit LCD display shows ovA.", "The device's LCD display reads ovA.", "LCD display shows ovA and ObF."])("keeps genuinely display-owned readings: %s", observation => {
+  const q = buildRetrievalQuery("Does this help?", [], observation);
+  expect(q).toContain("ovA");
+  if (observation.includes("ObF")) expect(q).toContain("ObF");
+});
+it("omits ambiguous secondary literals before an inline carrier clause", () => {
+  const q = buildRetrievalQuery("Does this help?", [], "LCD display shows PERI, RD and 1, and A410 on a sticker.");
+  expect(q).toContain("PERI");
+  expect(q).not.toContain("RD");
+  expect(q).not.toContain("A410");
+});
+
+
+it("preserves mode and value when carrier ownership is separately stated", () => {
+  const q = buildRetrievalQuery("Does this help?", [], "LCD display shows PERI, RD and 1. A sticker reads A410.");
+  for (const token of ["PERI", "RD", "1"]) expect(q).toContain(token);
+  expect(q).not.toContain("A410");
+});
+it.each(["Does this help?", "What am I looking at, and what should I check?"].flatMap(question =>
+  ["LCD display shows 3210.", "LCD display shows:\n3210"].map(observation => [question, observation])))(
+  "numeric code reaches whole-token ranking: %s %s", (question, observation) => {
+    expect(expandIndustrialQuery(buildRetrievalQuery(question, [], observation)).codeTokens).toContain("3210");
+  });
+it.each(["1", "12", "7", "42"])("small numbers do not become standalone code priority: %s", value => {
+  expect(expandIndustrialQuery(buildRetrievalQuery("Does this help?", [], `LCD display shows ${value}.`)).codeTokens).toEqual([]);
+});
+it.each(["Does this help?", "What am I looking at, and what should I check?"])(
+  "background numeric code does not become ranking metadata: %s", question => {
+    const q = buildRetrievalQuery(question, [], "LCD display shows ovA, 3210 printed on a sticker.");
+    expect(expandIndustrialQuery(q).codeTokens).toContain("ovA");
+    expect(expandIndustrialQuery(q).codeTokens).not.toContain("3210");
+  });
+
+
+it.each(['"BARCODE A410"', "'BARCODE A410'"])("explicitly quoted display literals remain candidates: %s", literal => {
+  const q = buildRetrievalQuery("Does this help?", [], `LCD display shows ovA.\n${literal}`);
+  expect(q).toContain("ovA");
+  expect(q).toContain("A410");
+});
+it("unquoted heading/identifier continuation conservatively omits an ambiguous mode/code field", () => {
+  const q = buildRetrievalQuery("Does this help?", [], "LCD display shows ovA.\nERR F004");
+  expect(q).toContain("ovA");
+  expect(q).not.toContain("F004");
+});
+
+
+it.each(["Does this help?", "What am I looking at, and what should I check?"].flatMap(question =>
+  ["STENCIL", "ENGRAVING", "MARKER"].flatMap(heading => ["", ":"].map(colon =>
+    [question, `LCD display shows ovA.\n${heading}${colon}\nA410`] as const))))("separate carrier heading ends display ownership: %s %s", (question, observation) => {
+  const q = buildRetrievalQuery(question, [], observation);
+  const expanded = expandIndustrialQuery(q);
+  expect(expanded.codeTokens).toContain("ovA");
+  expect(expanded.codeTokens).not.toContain("A410");
+  expect(expanded.exactTokens).not.toContain("A410");
+});
+
+
+it.each(["STENCIL", "ENGRAVING", "MARKER"])("quoted heading is explicit display text: %s", heading => {
+  const q = buildRetrievalQuery("Does this help?", [], `LCD display shows ovA.\n"${heading}"\nA410`);
+  expect(q).toContain("ovA");
+  expect(q).toContain("A410");
+});
+it("genuine multiline modes and values retain candidates", () => {
+  const q = buildRetrievalQuery("Does this help?", [], "LCD display shows:\nPERI\nRD\n1");
+  for (const value of ["PERI", "RD", "1"]) expect(q).toContain(value);
+});
+it("ambiguous unquoted heading and code across lines are conservatively omitted", () => {
+  const q = buildRetrievalQuery("Does this help?", [], "LCD display shows ovA.\nERR\nF004");
+  expect(q).toContain("ovA");
+  expect(q).not.toContain("F004");
+});
+
+
+it.each(["Does this help?", "What am I looking at, and what should I check?"].flatMap(question =>
+  ["STENCIL", "ENGRAVING", "MARKER"].flatMap(heading => ["", ":"].flatMap(colon => ["--", "ID"].map(separator =>
+    [question, `LCD display shows ovA.\n${heading}${colon}\n${separator}\nA410`] as const)))))("separate carrier heading ends display ownership through intervening fields: %s %s", (question, observation) => {
+  const q = buildRetrievalQuery(question, [], observation);
+  const expanded = expandIndustrialQuery(q);
+  expect(expanded.codeTokens).toContain("ovA");
+  expect(expanded.codeTokens).not.toContain("A410");
+  expect(expanded.exactTokens).not.toContain("A410");
+});
+
+
+it("unquoted unknown all-alphabetic code is an explicit conservative omission", () => {
+  const q = buildRetrievalQuery("Does this help?", [], "LCD display shows ovA.\nOLF");
+  expect(q).toContain("ovA");
+  expect(q).not.toContain("OLF");
+});
+it("quoted all-alphabetic display code retains vocabulary", () => {
+  const q = buildRetrievalQuery("Does this help?", [], 'LCD display shows ovA.\n"OLF"');
+  expect(q).toContain("ovA");
+  expect(q).toContain("OLF");
 });

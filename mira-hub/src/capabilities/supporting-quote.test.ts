@@ -649,6 +649,11 @@ describe("numeric coefficients outside bars (#4320 review round 4)", () => {
 
 describe("tables without outer pipes (#4320 review round 5)", () => {
   for (const source of [
+    "Frame | Voltage\n--- | ---\n4\n5 | 12 V",
+    "Frame | Voltage\n--- | ---\n4 | 10 V | note\n5 | 12 V",
+    "Frame | Voltage\n- | -\n5 | 12 V",
+    "Frame | Voltage\n- | -\n5 | 12 V | ignored",
+    "Frame | Voltage\n--- | ---\nFrame 5 | 12 V",
     "Frame | Voltage\n--- | ---\n5 | 12 V",
     "Frame | Voltage |\n--- | --- |\n5 | 12 V |",
     "Frame | Voltage\n:--- | ---:\n4 | 10 V\n5 | 12 V",
@@ -667,6 +672,20 @@ describe("tables without outer pipes (#4320 review round 5)", () => {
     "Frame | Voltage\n--- | ---\nRated −2|20 V|.",
     "Frame | Voltage\n--- | ---\n5 | −2|20 V|",
     "Frame | Voltage\nnot a separator\n−2|20 V|",
+    "Frame | Voltage\n- | -\n5 | −2|20 V|",
+    "Frame | Voltage\n- | - | -\n5 | 20 V",
+    "Frame | Voltage\n--- | ---\n# Notes\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n> Notes\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n```\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n```text\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n[label]: https://example.test\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n~~~\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n- Notes\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n1. Notes\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n<div>\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n<!-- note -->\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n    Notes\n−2|20 V|",
+    "Frame | Voltage\n--- | ---\n***\n−2|20 V|",
   ]) {
     it(`table-like prose does not authorize an expression: ${source}`, () => {
       const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
@@ -676,4 +695,351 @@ describe("tables without outer pipes (#4320 review round 5)", () => {
       expect(r.quoteFallbackCount).toBe(1);
     });
   }
+});
+
+
+describe("trusted round 8 — block, model and bullet boundaries", () => {
+  for (const source of [
+    'Frame | Voltage\n--- | ---\n<?xml version="1.0"?>\n−2|20 V|',
+    'Frame | Voltage\n--- | ---\n<?xml version="1.0"?> −2|20 V|',
+  ]) it(`processing instruction cannot authorize a table: ${source}`, () => {
+    const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+      [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+    expect(r.citations[0].quote).toBe("ORIGINAL");
+    expect(r.unsupportedValueCount).toBe(1);
+    expect(r.quoteFallbackCount).toBe(1);
+  });
+  for (const label of ["Model A-20", "Frame-5"])
+    for (const direction of ["source", "answer"])
+      it(`hyphenated table model retains quantity: ${label} ${direction}`, () => {
+        const table = `Frame | Voltage\n--- | ---\n${label} | 12 V`;
+        const source = direction === "source" ? table : "Rated 12 V.";
+        const answer = direction === "source" ? "Rated 12 V [1]." : `${table} [1]`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+  for (const bullet of ["+ 12 V supply.", "  + **12 V** supply."])
+    for (const direction of ["source", "answer"])
+      it(`plus bullet is layout: ${bullet} ${direction}`, () => {
+        const source = direction === "source" ? bullet : "Rated 12 V.";
+        const answer = direction === "source" ? "Rated 12 V [1]." : `${bullet} [1]`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+});
+
+
+describe("plus operators remain conservative", () => {
+  for (const expression of ["Rated +12 V.", "Rated + 12 V.", "    + 12 V."])
+    for (const direction of ["source", "answer"])
+      it(`not a Markdown plus bullet: ${expression} ${direction}`, () => {
+        const source = direction === "source" ? expression : "Rated 12 V.";
+        const answer = direction === "source" ? "Rated 12 V [1]." : `${expression} [1]`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe("ORIGINAL");
+        expect(r.unsupportedValueCount).toBe(1);
+        expect(r.quoteFallbackCount).toBe(1);
+      });
+});
+
+
+describe("original Markdown syntax controls membership", () => {
+  for (const source of [
+    "Frame | Voltage\n**---** | **---**\n−2|20 V|",
+    "Frame | Voltage\n`---` | `---`\n−2|20 V|",
+    "Frame\\| Voltage\n--- | ---\n−2|20 V|",
+  ]) it(`normalization cannot fabricate a delimiter: ${source}`, () => {
+    const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+      [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+    expect(r.citations[0].quote).toBe("ORIGINAL");
+    expect(r.unsupportedValueCount).toBe(1);
+    expect(r.quoteFallbackCount).toBe(1);
+  });
+  for (const source of [
+    "Frame\\| Model | Voltage\n--- | ---\n5 | 12 V",
+    "Frame\\\\| Model | Voltage\n--- | --- | ---\n5 | 12 V",
+  ]) it(`real escaped separators retain cell counts: ${source}`, () => {
+    const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+      [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+    expect(r.citations[0].quote).toBe(source);
+    expect(r.unsupportedValueCount).toBe(0);
+    expect(r.quoteFallbackCount).toBe(0);
+  });
+  for (const heading of ["# 12 V supply", "  ## **12 V** supply"])
+    for (const direction of ["source", "answer"])
+      it(`numeric heading is layout: ${heading} ${direction}`, () => {
+        const source = direction === "source" ? heading : "Rated 12 V.";
+        const answer = direction === "source" ? "Rated 12 V [1]." : `${heading} [1]`;
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+  for (const text of ["Rated # 12 V", "#**12 V**", "####### 12 V", "    # 12 V", "**#** 12 V"])
+    it(`non-heading prefix cannot authorize a quantity: ${text}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: text, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe("ORIGINAL");
+      expect(r.unsupportedValueCount).toBe(1);
+      expect(r.quoteFallbackCount).toBe(1);
+    });
+});
+
+
+describe("raw current-cell position", () => {
+  for (const source of ["Frame | Voltage\n--- | ---\n−2||20 V|", "Frame | Voltage\n--- | ---\n5\\|20 V"])
+    it(`no support from ignored or escaped cells: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe("ORIGINAL");
+      expect(r.unsupportedValueCount).toBe(1);
+      expect(r.quoteFallbackCount).toBe(1);
+    });
+  for (const source of ["Frame | Voltage\n--- | ---\n5 | **12 V**", "Frame | Voltage\n--- | ---\nModel\\|A-20 | 12 V"])
+    it(`literal markup does not shift a real quantity cell: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+});
+
+
+describe("enclosing blocks cannot fabricate a table", () => {
+  const table = "Frame | Voltage\n--- | ---\n−2|20 V|";
+  for (const [open, close] of [
+    ["```text", "```"], ["~~~text", "~~~"], ["````text", "````"],
+    ["<!--", "-->"], ["<pre>", "</pre>"], ["<script>", "</script>"],
+    ["<?xml", "?>"], ["<![CDATA[", "]]>"], ["<div>", "</div>"],
+  ]) it(`literal enclosing ${open} is not table support`, () => {
+    const source = `${open}\n${table}\n${close}`;
+    const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+      [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+    expect(r.citations[0].quote).toBe("ORIGINAL");
+    expect(r.unsupportedValueCount).toBe(1);
+    expect(r.quoteFallbackCount).toBe(1);
+  });
+  for (const prefix of ["```text\nliteral\n```\n", "~~~text\nliteral\n~~~\n", "<!-- literal -->\n", "<pre>literal</pre>\n", "<div>literal</div>\n\n"])
+    it(`real table after a closed block remains supported: ${prefix}`, () => {
+      const source = prefix + table;
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+});
+
+
+describe("fence line endings and list containers", () => {
+  const table = "Frame | Voltage\n--- | ---\n−2|20 V|";
+  for (const mark of ["```", "~~~"]) {
+    for (const source of [
+      `${mark}text\r\n${table.replace(/\n/g, "\r\n")}\r\n${mark}`,
+      `- ${mark}text\n${table.replace(/^/gm, "  ")}\n  ${mark}`,
+      `1. ${mark}text\n${table.replace(/^/gm, "   ")}\n   ${mark}`,
+      `- - ${mark}text\n${table.replace(/^/gm, "    ")}\n    ${mark}`,
+      `${mark}text\n    ${mark}\n${table}`,
+      `- ${mark}text\n${mark}\n${table}`,
+    ]) it(`literal container cannot authorize table cells: ${source}`, () => {
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe("ORIGINAL");
+      expect(r.unsupportedValueCount).toBe(1);
+      expect(r.quoteFallbackCount).toBe(1);
+    });
+    for (const prefix of [
+      `${mark}text\r\nliteral\r\n${mark}\r\n`,
+      `- ${mark}text\n  literal\n  ${mark}\n\n`,
+      `1. ${mark}text\n   literal\n   ${mark}\n\n`,
+    ]) it(`real table after properly closed container survives: ${prefix}`, () => {
+      const source = prefix + table;
+      const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+        [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+      expect(r.citations[0].quote).toBe(source);
+      expect(r.unsupportedValueCount).toBe(0);
+      expect(r.quoteFallbackCount).toBe(0);
+    });
+  }
+});
+
+
+describe("active list continuation blocks", () => {
+  const table = "Frame | Voltage\n--- | ---\n−2|20 V|";
+  for (const [item, indent, eol = "\n"] of [["- item", "  "], ["1. item", "   "], ["-", "  "], ["+", "  "], ["*", "  "], ["1.", "   "], ["-     item", "  "], ["+     item", "  "], ["*     item", "  "], ["1.     item", "   "], ["-\t\titem", "  "], ["1.\t\titem", "   "], ["1.   ", "   ", "\n"], ["1.    ", "   ", "\n"], ["1.\t", "   ", "\n"], ["1.   ", "   ", "\r\n"], ["1.    ", "   ", "\r\n"], ["1.\t", "   ", "\r\n"]]) {
+    for (const [open, close] of [["```text", "```"], ["~~~text", "~~~"], ["<pre>", "</pre>"]]) {
+      for (const middle of (item === "- item" || item === "1. item") ? ["", "\n", "lazy continuation\n"] : ["", "\n"])
+        it(`literal continuation ${item} ${open} ${middle} ${JSON.stringify(eol)}`, () => {
+          const source = `${item}\n${middle}${indent}${item.trim() === item ? "  " : " "}${open}\n${table.replace(/^/gm, indent)}\n${indent}${item.trim() === item ? "  " : " "}${close}`.replace(/\n/g, eol);
+          const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+            [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+          expect(r.citations[0].quote).toBe("ORIGINAL");
+          expect(r.unsupportedValueCount).toBe(1);
+          expect(r.quoteFallbackCount).toBe(1);
+        });
+      it(`real table after closed continuation ${item} ${open} ${JSON.stringify(eol)}`, () => {
+        const source = `${item}\n\n${indent}${item.trim() === item ? "  " : " "}${open}\n${indent} literal\n${indent}${item.trim() === item ? "  " : " "}${close}\n\n${table}`.replace(/\n/g, eol);
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+    }
+  }
+});
+
+
+describe("table support ends with its list container", () => {
+  for (const [item, indent] of [["- item", "  "], ["+ item", "  "], ["* item", "  "], ["1. item", "   "], ["2. item", "   "]])
+    for (const gap of ["", "\n"])
+      for (const eol of ["\n", "\r\n"])
+          for (const continuation of [false, true])
+            it(`list table ${item} ${JSON.stringify(gap)} ${JSON.stringify(eol)} continued=${continuation}`, () => {
+              const table = `${item}\n${gap}${indent}Frame | Voltage\n${indent}--- | ---\n${continuation ? indent : ""}−2|20 V|`.replace(/\n/g, eol);
+              const source = table;
+              const answer = "Rated 20 V [1].";
+              const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+                [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+              expect(r.citations[0].quote).toBe(continuation ? source : "ORIGINAL");
+              expect(r.unsupportedValueCount).toBe(continuation ? 0 : 1);
+              expect(r.quoteFallbackCount).toBe(continuation ? 0 : 1);
+            });
+});
+
+
+describe("lazy list paragraphs are not table blocks", () => {
+  for (const item of ["- item", "+ item", "* item", "1. item", "2. item"])
+    for (const indent of ["", " "])
+      for (const extra of ["", "lazy continuation\n"])
+        for (const eol of ["\n", "\r\n"])
+          it(`lazy table-like prose ${item} ${indent.length} ${extra} ${JSON.stringify(eol)}`, () => {
+            const source = `${item}\n${extra}${indent}Frame | Voltage\n${indent}--- | ---\n${indent}−2|20 V|`.replace(/\n/g, eol);
+            const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+              [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+            expect(r.citations[0].quote).toBe("ORIGINAL");
+            expect(r.unsupportedValueCount).toBe(1);
+            expect(r.quoteFallbackCount).toBe(1);
+          });
+  for (const item of ["- item", "+ item", "* item", "1. item", "2. item"])
+    for (const eol of ["\n", "\r\n"])
+      it(`blank-separated top-level table after ${item} ${JSON.stringify(eol)}`, () => {
+        const source = `${item}\n\nFrame | Voltage\n--- | ---\n−2|20 V|`.replace(/\n/g, eol);
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+});
+
+
+describe("indented code cannot be a table delimiter", () => {
+  for (const [prefix, indent] of [["", ""], ["- item\n\n", "  "], ["1. item\n\n", "   "]])
+    for (const extra of ["    ", "     "])
+      for (const eol of ["\n", "\r\n"])
+        it(`code delimiter ${prefix} ${extra.length} ${JSON.stringify(eol)}`, () => {
+          const source = `${prefix}${indent}Frame | Voltage\n${indent}${extra}--- | ---\n${indent}−2|20 V|`.replace(/\n/g, eol);
+          const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+            [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+          expect(r.citations[0].quote).toBe("ORIGINAL");
+          expect(r.unsupportedValueCount).toBe(1);
+          expect(r.quoteFallbackCount).toBe(1);
+        });
+});
+
+
+describe("lazy blockquote paragraphs cannot introduce tables", () => {
+  for (const prefix of ["> note", ">> note", "> > note", "- > note", "1. > note", " - > note", "> - note", "> 1. note"])
+    for (const indent of ["", " "])
+      for (const extra of ["", "lazy prose\n"])
+        for (const eol of ["\n", "\r\n"])
+          it(`lazy quote ${prefix} ${indent.length} ${extra} ${JSON.stringify(eol)}`, () => {
+            const source = `${prefix}\n${extra}${indent}Frame | Voltage\n${indent}--- | ---\n${indent}−2|20 V|`.replace(/\n/g, eol);
+            const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+              [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+            expect(r.citations[0].quote).toBe("ORIGINAL");
+            expect(r.unsupportedValueCount).toBe(1);
+            expect(r.quoteFallbackCount).toBe(1);
+          });
+  for (const prefix of ["> note", ">> note", "> > note", "- > note", "1. > note", " - > note", "> - note", "> 1. note"])
+    for (const eol of ["\n", "\r\n"])
+      it(`top-level table after separated quote ${prefix} ${JSON.stringify(eol)}`, () => {
+        const source = `${prefix}\n\nFrame | Voltage\n--- | ---\n−2|20 V|`.replace(/\n/g, eol);
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+  for (const prefix of ["> ", ">> ", "> > "])
+    for (const eol of ["\n", "\r\n"])
+      it(`explicitly quoted ordinary table ${prefix} ${JSON.stringify(eol)}`, () => {
+        const source = "| Frame | Voltage |\n| --- | --- |\n| Rated | 20 V |".replace(/^/gm, prefix).replace(/\n/g, eol);
+        const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+          [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+        expect(r.citations[0].quote).toBe(source);
+        expect(r.unsupportedValueCount).toBe(0);
+        expect(r.quoteFallbackCount).toBe(0);
+      });
+});
+
+
+it.each(["> note\n    lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> note\r\n    lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> note\n[label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> note\r\n[label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> note\n1234567890. lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> note\r\n1234567890. lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> note\n    [label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> note\r\n    [label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> note\n lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> note\r\n lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", ">> note\n    lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", ">> note\r\n    lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", ">> note\n[label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", ">> note\r\n[label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", ">> note\n1234567890. lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", ">> note\r\n1234567890. lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", ">> note\n    [label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", ">> note\r\n    [label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", ">> note\n lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", ">> note\r\n lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> > note\n    lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> > note\r\n    lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> > note\n[label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> > note\r\n[label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> > note\n1234567890. lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> > note\r\n1234567890. lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> > note\n    [label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> > note\r\n    [label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> > note\n lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> > note\r\n lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "- > note\n    lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "- > note\r\n    lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "- > note\n[label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "- > note\r\n[label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "- > note\n1234567890. lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "- > note\r\n1234567890. lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "- > note\n    [label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "- > note\r\n    [label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "- > note\n lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "- > note\r\n lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "1. > note\n    lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "1. > note\r\n    lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "1. > note\n[label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "1. > note\r\n[label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "1. > note\n1234567890. lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "1. > note\r\n1234567890. lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "1. > note\n    [label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "1. > note\r\n    [label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "1. > note\n lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "1. > note\r\n lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> - note\n    lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> - note\r\n    lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> - note\n[label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> - note\r\n[label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> - note\n1234567890. lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> - note\r\n1234567890. lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> - note\n    [label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> - note\r\n    [label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> - note\n lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> - note\r\n lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> 1. note\n    lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> 1. note\r\n    lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> 1. note\n[label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> 1. note\r\n[label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> 1. note\n1234567890. lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> 1. note\r\n1234567890. lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> 1. note\n    [label]: https://example.test\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> 1. note\r\n    [label]: https://example.test\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|", "> 1. note\n lazy\nFrame | Voltage\n--- | ---\n\u22122|20 V|", "> 1. note\r\n lazy\r\nFrame | Voltage\r\n--- | ---\r\n\u22122|20 V|"])("block-looking lazy paragraph cannot authorize a table: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe("ORIGINAL");
+  expect(r.unsupportedValueCount).toBe(1);
+  expect(r.quoteFallbackCount).toBe(1);
+});
+
+
+it.each(["- item\nFrame | Voltage\n    --- | ---\n  \u22122|20 V|", "- item\r\nFrame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "- item\nFrame | Voltage\n    --- | ---\n   \u22122|20 V|", "- item\r\nFrame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "- item\nFrame | Voltage\n     --- | ---\n  \u22122|20 V|", "- item\r\nFrame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "- item\nFrame | Voltage\n     --- | ---\n   \u22122|20 V|", "- item\r\nFrame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "- item\n Frame | Voltage\n    --- | ---\n  \u22122|20 V|", "- item\r\n Frame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "- item\n Frame | Voltage\n    --- | ---\n   \u22122|20 V|", "- item\r\n Frame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "- item\n Frame | Voltage\n     --- | ---\n  \u22122|20 V|", "- item\r\n Frame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "- item\n Frame | Voltage\n     --- | ---\n   \u22122|20 V|", "- item\r\n Frame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "- item\nlazy text\nFrame | Voltage\n    --- | ---\n  \u22122|20 V|", "- item\r\nlazy text\r\nFrame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "- item\nlazy text\nFrame | Voltage\n    --- | ---\n   \u22122|20 V|", "- item\r\nlazy text\r\nFrame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "- item\nlazy text\nFrame | Voltage\n     --- | ---\n  \u22122|20 V|", "- item\r\nlazy text\r\nFrame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "- item\nlazy text\nFrame | Voltage\n     --- | ---\n   \u22122|20 V|", "- item\r\nlazy text\r\nFrame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "- item\nlazy text\n Frame | Voltage\n    --- | ---\n  \u22122|20 V|", "- item\r\nlazy text\r\n Frame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "- item\nlazy text\n Frame | Voltage\n    --- | ---\n   \u22122|20 V|", "- item\r\nlazy text\r\n Frame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "- item\nlazy text\n Frame | Voltage\n     --- | ---\n  \u22122|20 V|", "- item\r\nlazy text\r\n Frame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "- item\nlazy text\n Frame | Voltage\n     --- | ---\n   \u22122|20 V|", "- item\r\nlazy text\r\n Frame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "+ item\nFrame | Voltage\n    --- | ---\n  \u22122|20 V|", "+ item\r\nFrame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "+ item\nFrame | Voltage\n    --- | ---\n   \u22122|20 V|", "+ item\r\nFrame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "+ item\nFrame | Voltage\n     --- | ---\n  \u22122|20 V|", "+ item\r\nFrame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "+ item\nFrame | Voltage\n     --- | ---\n   \u22122|20 V|", "+ item\r\nFrame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "+ item\n Frame | Voltage\n    --- | ---\n  \u22122|20 V|", "+ item\r\n Frame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "+ item\n Frame | Voltage\n    --- | ---\n   \u22122|20 V|", "+ item\r\n Frame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "+ item\n Frame | Voltage\n     --- | ---\n  \u22122|20 V|", "+ item\r\n Frame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "+ item\n Frame | Voltage\n     --- | ---\n   \u22122|20 V|", "+ item\r\n Frame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "+ item\nlazy text\nFrame | Voltage\n    --- | ---\n  \u22122|20 V|", "+ item\r\nlazy text\r\nFrame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "+ item\nlazy text\nFrame | Voltage\n    --- | ---\n   \u22122|20 V|", "+ item\r\nlazy text\r\nFrame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "+ item\nlazy text\nFrame | Voltage\n     --- | ---\n  \u22122|20 V|", "+ item\r\nlazy text\r\nFrame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "+ item\nlazy text\nFrame | Voltage\n     --- | ---\n   \u22122|20 V|", "+ item\r\nlazy text\r\nFrame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "+ item\nlazy text\n Frame | Voltage\n    --- | ---\n  \u22122|20 V|", "+ item\r\nlazy text\r\n Frame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "+ item\nlazy text\n Frame | Voltage\n    --- | ---\n   \u22122|20 V|", "+ item\r\nlazy text\r\n Frame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "+ item\nlazy text\n Frame | Voltage\n     --- | ---\n  \u22122|20 V|", "+ item\r\nlazy text\r\n Frame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "+ item\nlazy text\n Frame | Voltage\n     --- | ---\n   \u22122|20 V|", "+ item\r\nlazy text\r\n Frame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "* item\nFrame | Voltage\n    --- | ---\n  \u22122|20 V|", "* item\r\nFrame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "* item\nFrame | Voltage\n    --- | ---\n   \u22122|20 V|", "* item\r\nFrame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "* item\nFrame | Voltage\n     --- | ---\n  \u22122|20 V|", "* item\r\nFrame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "* item\nFrame | Voltage\n     --- | ---\n   \u22122|20 V|", "* item\r\nFrame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "* item\n Frame | Voltage\n    --- | ---\n  \u22122|20 V|", "* item\r\n Frame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "* item\n Frame | Voltage\n    --- | ---\n   \u22122|20 V|", "* item\r\n Frame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "* item\n Frame | Voltage\n     --- | ---\n  \u22122|20 V|", "* item\r\n Frame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "* item\n Frame | Voltage\n     --- | ---\n   \u22122|20 V|", "* item\r\n Frame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "* item\nlazy text\nFrame | Voltage\n    --- | ---\n  \u22122|20 V|", "* item\r\nlazy text\r\nFrame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "* item\nlazy text\nFrame | Voltage\n    --- | ---\n   \u22122|20 V|", "* item\r\nlazy text\r\nFrame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "* item\nlazy text\nFrame | Voltage\n     --- | ---\n  \u22122|20 V|", "* item\r\nlazy text\r\nFrame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "* item\nlazy text\nFrame | Voltage\n     --- | ---\n   \u22122|20 V|", "* item\r\nlazy text\r\nFrame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "* item\nlazy text\n Frame | Voltage\n    --- | ---\n  \u22122|20 V|", "* item\r\nlazy text\r\n Frame | Voltage\r\n    --- | ---\r\n  \u22122|20 V|", "* item\nlazy text\n Frame | Voltage\n    --- | ---\n   \u22122|20 V|", "* item\r\nlazy text\r\n Frame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "* item\nlazy text\n Frame | Voltage\n     --- | ---\n  \u22122|20 V|", "* item\r\nlazy text\r\n Frame | Voltage\r\n     --- | ---\r\n  \u22122|20 V|", "* item\nlazy text\n Frame | Voltage\n     --- | ---\n   \u22122|20 V|", "* item\r\nlazy text\r\n Frame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "1. item\nFrame | Voltage\n    --- | ---\n   \u22122|20 V|", "1. item\r\nFrame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "1. item\nFrame | Voltage\n     --- | ---\n   \u22122|20 V|", "1. item\r\nFrame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "1. item\n Frame | Voltage\n    --- | ---\n   \u22122|20 V|", "1. item\r\n Frame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "1. item\n Frame | Voltage\n     --- | ---\n   \u22122|20 V|", "1. item\r\n Frame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "1. item\n  Frame | Voltage\n    --- | ---\n   \u22122|20 V|", "1. item\r\n  Frame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "1. item\n  Frame | Voltage\n     --- | ---\n   \u22122|20 V|", "1. item\r\n  Frame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "1. item\nlazy text\nFrame | Voltage\n    --- | ---\n   \u22122|20 V|", "1. item\r\nlazy text\r\nFrame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "1. item\nlazy text\nFrame | Voltage\n     --- | ---\n   \u22122|20 V|", "1. item\r\nlazy text\r\nFrame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "1. item\nlazy text\n Frame | Voltage\n    --- | ---\n   \u22122|20 V|", "1. item\r\nlazy text\r\n Frame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "1. item\nlazy text\n Frame | Voltage\n     --- | ---\n   \u22122|20 V|", "1. item\r\nlazy text\r\n Frame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|", "1. item\nlazy text\n  Frame | Voltage\n    --- | ---\n   \u22122|20 V|", "1. item\r\nlazy text\r\n  Frame | Voltage\r\n    --- | ---\r\n   \u22122|20 V|", "1. item\nlazy text\n  Frame | Voltage\n     --- | ---\n   \u22122|20 V|", "1. item\r\nlazy text\r\n  Frame | Voltage\r\n     --- | ---\r\n   \u22122|20 V|"])('over-indented parser delimiter remains unsupported: %s', source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 20 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe("ORIGINAL");
+  expect(r.unsupportedValueCount).toBe(1);
+  expect(r.quoteFallbackCount).toBe(1);
+});
+
+
+it.each([
+  "> Frame | Voltage\n> --- | ---\n> 5 | 12 V",
+  "> | Frame | Voltage |\n> | --- | --- |\n> | 5 | 12 V |",
+  "- outer\n  - inner\n    Frame | Voltage\n    --- | ---\n    5 | 12 V",
+  "- outer\n  - inner\n    | Frame | Voltage |\n    | --- | --- |\n    | 5 | 12 V |",
+].flatMap(source => [source, source.replace(/\n/g, "\r\n")]))("numeric first columns in parsed containers remain supported: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});
+
+
+it.each(["\n", "\r\n"].flatMap(eol => ["12 V", "**12 V**"].flatMap(value => ["source", "answer"].map(side => [eol, value, side] as const))))("indented quantity after line boundary %s %s %s", (eol, value, side) => {
+  const source = side === "source" ? `Rated${eol} ${value}` : "Rated 12 V";
+  const answer = side === "answer" ? `Rated${eol} ${value} [1].` : "Rated 12 V [1].";
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], answer, "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});
+it.each(["5", "Frame 5"].flatMap(label => [false, true].map(outer =>
+  `${outer ? "| " : ""}${label} | 12 V${outer ? " |" : ""}\n${outer ? "| " : ""}--- | ---${outer ? " |" : ""}`)))("numeric table headers remain evidence: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
 });

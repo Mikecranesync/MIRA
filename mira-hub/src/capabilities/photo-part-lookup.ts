@@ -141,6 +141,62 @@ export function explicitManualLookupRequest(question: string): boolean {
 
 export function asksPartCompatibility(question: string): boolean {
   if (/\b(?:substitute|replacement|interchange(?:able)?|compatible|drop\s*in|replace)\b/i.test(question)) return true;
+  // A state report cannot erase a suitability request elsewhere in the turn.
+  // Check the whole turn before evaluating individual observed comparisons;
+  // component subjects and passive verbs carry the same intent as I/we/you.
+  if (/\binstead\s+of\b/i.test(question)
+    && (/\b(?:can|could|would|will|may|should|does|do)\b[^.!?]{0,100}\b(?:use(?:d)?|install(?:ed)?|fit(?:ted)?|swap(?:ped)?|connect(?:ed)?|put|work|function|operate|run|recommend)\b/i.test(question)
+      || /\b(?:am|is|are|would|will)\b[^.!?]{0,100}\b(?:safe|allowed|ok(?:ay)?|acceptable|suitable|legal|permitted)\b/i.test(question))) return true;
+  // A separate question requesting permission/suitability is not an observed
+  // indication, even when its verb is outside the known installation list.
+  // Keep explicit read-only diagnostic requests available; ambiguity fails closed.
+  if (/\binstead\s+of\b/i.test(question) && question.split(/(?<=[.!?;,])\s+|\n+/).some(clause => {
+    const text = clause.trim();
+    // Any explicit question requires a recognized diagnostic interpretation;
+    // permission and elliptical action requests need not use a modal prefix.
+    const actionRequest = /\b(?:want|need|request|looking\s+for)\s+(?:(?:a|an|the|some|another|different|new|alternative)\s+){0,4}(?:led|sensor|indicator|module|slave|cable|wire|connector|cylinder|valve|part|component)\b/i.test(text)
+      || /^(?:ok(?:ay)?|safe|allowed|permitted|any\s+reason|mind\s+if|please|install|fit|swap|connect|put|run|proceed)\b/i.test(text)
+      || /\b(?:want|plan|intend|going)\b[^.!?]*\b(?:use|install|fit|swap|connect|put|run|proceed)\b/i.test(text)
+      || ((text.includes("?") || /^(?:am|can|could|would|will|may|should|is|are|do|does|what|which|how)\b/i.test(text))
+        && /\bto\s+(?:use|install|fit|swap|connect|put|run|proceed)\b/i.test(text));
+    if (actionRequest) return true;
+    if (!text.includes("?") && !/^(?:am|can|could|would|will|may|should|is|are|do|does|what|which|how)\b/i.test(text)) {
+      if (!text) return false;
+      // Non-questions do not automatically inherit the indication exemption.
+      // Grant it only to a complete observed comparison or bounded read-only
+      // statement. Unknown recommendations, purchases and modifiers abstain.
+      const value = String.raw`(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)`;
+      const observed = String.raw`(?:(?:(?:the\s+)?(?:gateway|seat|tablet|indicator|led|screen|display)\s+(?:is|was|shows?|reads?)|it(?:['’]s|\s+(?:is|was|shows?|reads?)))\s+)?${value}(?:\s+on\s+(?:the\s+)?(?:tablet|screen|display))?`;
+      const hypothesis = String.raw`i\s+think\s+(?:this\s+means\s+)?i\s+(?:just\s+)?need\s+to\s+use\s+(?:a|the)\s+handheld\s+on\s+(?:that|this|the)\s+seat`;
+      if (/\binstead\s+of\b/i.test(text)) {
+        return !new RegExp(String.raw`^(?:(?:${hypothesis}\s+)|(?:i\s+use\s+(?:the|a)\s+handheld\s+and\s+))?${observed}\s+instead\s+of\s+(?:being\s+)?${value}[.!;,]*$`, "i").test(text);
+      }
+      return !new RegExp(String.raw`^(?:${hypothesis}|${observed}|(?:i\s+need\s+to\s+)?(?:check|inspect|read|interpret|measure|observe|diagnose|troubleshoot)(?:\s+(?:it|this|that|(?:the\s+)?(?:led|indicator|display|screen|readout|sensor|module|seat|input|wiring|cable|connector|voltage|current|code|address|error|fault)))?(?:\s+(?:first|next|now))?)[.!;,]*$`, "i").test(text);
+    }
+    // Comparisons that themselves ask about an indication are checked below;
+    // a separate question never inherits that observation exemption.
+    if (/\binstead\s+of\b/i.test(text)) {
+      // An explicit question containing the comparison needs an observed-state
+      // form too; it cannot skip classification merely by mentioning a color.
+      return !/^why\s+(?:is|was)\s+(?:the\s+)?(?:tablet|indicator|led|screen|display)\s+(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s+instead\s+of\s+(?:being\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)[?!.]*$/i.test(text);
+    }
+    // Match the whole diagnostic clause, not a permissive question prefix.
+    // A trailing prospective action must not inherit "inspect"/"mean" status.
+    const subject = String.raw`(?:it|this|that|them|these|those|(?:the\s+)?(?:led|indicator|display|screen|readout|sensor|module|seat|input|wiring|cable|connector|voltage|current|code|address|error|fault)(?:\s+(?:state|status|reading|value))?)`;
+    const action = String.raw`(?:check|inspect|read|interpret|measure|observe|diagnose|troubleshoot)`;
+    const state = String.raw`(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline)`;
+    const objectTail = String.raw`(?:\s+${subject})?(?:\s+(?:first|next|now))?[?!.]*$`;
+    const diagnostic = new RegExp(String.raw`^(?:can|could|would|will|may|should)\s+(?:i|we|you)\s+(?:please\s+)?${action}${objectTail}`, "i").test(text)
+      || new RegExp(String.raw`^what\s+(?:do|should|can|could|would)\s+(?:i|we|you)\s+(?:know|${action})${objectTail}`, "i").test(text)
+      || new RegExp(String.raw`^how\s+(?:do|does|can|could|should)\s+(?:i|we|you)\s+${action}${objectTail}`, "i").test(text)
+      || new RegExp(String.raw`^(?:what\s+)?(?:do|does)\s+${subject}\s+(?:mean|indicate|show|read)(?:\s+(?:anything|something|a\s+fault|an\s+error|a\s+problem))?[?!.]*$`, "i").test(text)
+      || new RegExp(String.raw`^what\s+(?:is|are)\s+${subject}(?:\s+(?:showing|reading|indicating|doing))?[?!.]*$`, "i").test(text)
+      || new RegExp(String.raw`^what\s+(?:happened|changed|caused)(?:\s+(?:to\s+)?${subject})?[?!.]*$`, "i").test(text)
+      || new RegExp(String.raw`^why\s+(?:is|was|are|were|did|does|do|has|have)\s+${subject}\s+(?:${state}|(?:turn|turned|change|changed|go|went|show|shows|read|reads|stop|stopped|fail|failed|appear|appeared)(?:\s+(?:to\s+)?${state})?)[?!.]*$`, "i").test(text)
+      || new RegExp(String.raw`^which\s+${subject}\s+(?:is|are|shows?|reads?)\s+${state}[?!.]*$`, "i").test(text)
+      || new RegExp(String.raw`^(?:is|are)\s+${subject}\s+${state}[?!.]*$`, "i").test(text);
+    return !diagnostic;
+  })) return true;
   // "Instead of" also describes an observed state. Evaluate each sentence so
   // an indication report cannot erase a separate genuine substitution request.
   return question.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
@@ -148,7 +204,11 @@ export function asksPartCompatibility(question: string): boolean {
       const before = sentence.slice(0, comparison.index);
       const after = sentence.slice((comparison.index ?? 0) + comparison[0].length);
       const indication = /^\s+(?:being\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s*(?:[.,;:!?]|$)/i.test(after);
-      const observation = /\b(?:tablet|indicator|led|screen|display|shows?|reads?)\b/i.test(before)
+      // A component noun alone does not establish an observed state.
+      const observation = /\b(?:tablet|indicator|led|screen|display)\s+(?:is|was|shows?|reads?)\b/i.test(before)
+        || /\bit\s+(?:shows?|reads?)\b/i.test(before)
+        || /\bit(?:'s|’s|\s+(?:is|was))\s+(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\b/i.test(before)
+        || /^\s*why\s+(?:is|was)\s+(?:the\s+)?(?:tablet|indicator|led|screen|display)\s+(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\b/i.test(before)
         || /^\s*(?:(?:(?:the\s+)?(?:gateway|seat|it)\s+(?:is|was)|it's|it’s)\s+)?(?:red|green|white|amber|yellow|blue|black|orange|on|off|online|offline|\d+(?:\.\d+)?)\s*$/i.test(before);
       // Voice input often omits sentence punctuation. A later state clause
       // ("use a handheld ... it is white") is not the object being substituted.
@@ -159,7 +219,7 @@ export function asksPartCompatibility(question: string): boolean {
       // alternatives where the component name is omitted after "instead of".
       const proposedSuitability = /\b(?:can|could|would|may|should)\b[^.!?]*\b(?:use|install|fit|work|swap|connect|put)\b/i.test(before)
         && !/\b(?:it(?:'s|’s|\s+(?:is|was))\s+[^.!?]*\bon\s+(?:the\s+)?(?:tablet|screen|display)|(?:the\s+)?(?:tablet|screen|display)\s+(?:shows?|reads?))\b/i.test(before);
-      const suitabilityAttribute = /\b(?:ok|acceptable|suitable|work|works)\b/i.test(before)
+      const suitabilityAttribute = /\b(?:ok|acceptable|suitable|safe|allowed|work|works)\b/i.test(before)
         || /\bif\s+it\s+(?:is|was)\b/i.test(before);
       const substitution = (useAt > stateAt && before.length - useAt <= 100)
         || proposedSuitability || suitabilityAttribute;
