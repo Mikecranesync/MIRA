@@ -134,6 +134,10 @@ function originalTableCells(row: string, trimOuter = true): string[] {
  *  joins, so "mm2 (10 AWG)", "| 5 | 3.09 N·m" and "Step 1. 12 V" stay separate values. The
  *  leading piece is unitless or followed by a joint, so it is unusable too. */
 function laterPieceOfNumber(n: string, start: number, original: string, tableCells: ReadonlyArray<readonly [number, number]>, tables: ReadonlyArray<readonly [number, number]>, htmlBlockRows: ReadonlySet<number>, sourceRows: readonly string[], sourceOffsets: readonly number[]): boolean {
+  // A GFM row may have ignored extra cells, regardless of its leading pipe.
+  // Quantities inside the table must belong to a cell the parser actually kept.
+  if (tables.some(([from, to]) => start >= from && start < to)
+    && !tableCells.some(([from, to]) => start >= from && start < to)) return true;
   const isWs = (i: number) => n[i] === " " || n[i] === "\t";
   // #4320: screen the WHOLE match, not only its digits. ≈/~ remain the existing
   // approximation decoration; scan opening quotes/brackets too, across inline markup.
@@ -148,7 +152,9 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
     cellBoundary ||= n[at] === "|";
     boundary = at;
   }
-  const priorCellUnit = cellBoundary && /\d[ \t]*[%℃℉][ \t]*$/u.test(n.slice(0, boundary));
+  const priorCellUnit = cellBoundary && /\d[ \t]*[%℃℉][ \t]*$/u.test(n.slice(0, boundary))
+    && tables.some(([from, to]) => start >= from && start < to)
+    && tableCells.some(([from, to]) => start >= from && start < to);
   const left = n[boundary - 1] ?? "";
   if (left && !priorCellUnit && !/[\s([{|,;:]/u.test(left) && !(enclosed && /\p{L}/u.test(left)) && !(cellBoundary && /\d/u.test(left))) return true;
   let before = boundary;
