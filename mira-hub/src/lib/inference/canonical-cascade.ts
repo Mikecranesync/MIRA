@@ -100,7 +100,19 @@ export function canonicalSeamEnabled(): boolean {
  * `mira-bots/shared/inference/router.py` so the two runtimes cannot silently
  * serve different models for the same question.
  */
-export function canonicalProviders(): CanonicalProvider[] {
+const OPENAI_SOL_MODEL = "gpt-6.1-sol";
+
+export function canonicalProviders(scope?: "notebook"): CanonicalProvider[] {
+  // Reuse #3999's notebook-only opt-in. Unscoped safety judges keep their
+  // established registry; a missing candidate key never selects an incumbent.
+  if (scope === "notebook" && process.env.MIRA_NOTEBOOK_PROVIDER === "openai") {
+    return [{
+      name: "OpenAI",
+      url: "https://api.openai.com/v1/chat/completions",
+      key: process.env.OPENAI_API_KEY,
+      model: OPENAI_SOL_MODEL,
+    }];
+  }
   return [
     {
       name: "Groq",
@@ -155,8 +167,29 @@ export function estimateCostUsd(
 type RawUsage = {
   prompt_tokens?: number;
   completion_tokens?: number;
-  prompt_tokens_details?: { cached_tokens?: number };
+  prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+  completion_tokens_details?: { reasoning_tokens?: number };
 };
+
+/** Sol global-endpoint pricing verified against official docs on 2026-10-10. */
+function estimateSolCostUsd(raw: RawUsage | null | undefined): number | null {
+  const input = raw?.prompt_tokens;
+  const output = raw?.completion_tokens;
+  const cached = raw?.prompt_tokens_details?.cached_tokens;
+  const writes = raw?.prompt_tokens_details?.cache_write_tokens;
+  // Sol bills cache writes separately. An omitted breakdown is unknown cost,
+  // even when the old compatible API omits that optional field.
+  if (input === undefined || output === undefined || cached === undefined || writes === undefined) return null;
+  if (![input, output, cached, writes].every(n => Number.isSafeInteger(n) && n >= 0) || cached + writes > input) return null;
+  const reasoning = raw?.completion_tokens_details?.reasoning_tokens;
+  if (reasoning !== undefined && (!Number.isSafeInteger(reasoning) || reasoning < 0 || reasoning > output)) return null;
+  const longContext = input > 272_000;
+  const inputMultiplier = longContext ? 2 : 1;
+  // completion_tokens already includes reasoning: do not bill it twice.
+  const cost = ((input - cached - writes) * 2 + cached * 0.10 + writes * 2.50) * inputMultiplier / 1_000_000
+    + output * (longContext ? 15 : 10) / 1_000_000;
+  return Number(cost.toFixed(6));
+}
 
 export function usageFromRaw(
   provider: string,
@@ -165,6 +198,8 @@ export function usageFromRaw(
   routeReason: string,
   attempted: string[],
   status: TurnUsage["status"] = "ok",
+  /** Actual response identity/tier, not the requested configuration. */
+  response?: { model?: unknown; service_tier?: unknown },
 ): TurnUsage {
   const inputTokens = raw?.prompt_tokens ?? null;
   const cachedInputTokens = raw?.prompt_tokens_details?.cached_tokens ?? null;
@@ -176,7 +211,10 @@ export function usageFromRaw(
     inputTokens,
     cachedInputTokens,
     outputTokens,
-    costUsdEstimate: estimateCostUsd(provider, inputTokens, cachedInputTokens, outputTokens),
+    costUsdEstimate: provider === "OpenAI"
+      ? model === OPENAI_SOL_MODEL && response?.model === OPENAI_SOL_MODEL && response?.service_tier === "default"
+        ? estimateSolCostUsd(raw) : null
+      : estimateCostUsd(provider, inputTokens, cachedInputTokens, outputTokens),
     status,
     attempted,
   };
@@ -215,6 +253,22 @@ export function buildRequestBody(
   messages: unknown[],
   maxTokens: number,
 ): Record<string, unknown> {
+  if (provider.name === "OpenAI") {
+    if (provider.model !== OPENAI_SOL_MODEL) throw new Error("Unsupported OpenAI candidate model");
+    if (!Number.isSafeInteger(maxTokens) || maxTokens <= 0) throw new Error("Invalid OpenAI completion bound");
+    // Sol model tools require Responses. This reuses Chat Completions without
+    // tools, preserving product messages and ignoring arbitrary body extras.
+    return {
+      model: OPENAI_SOL_MODEL,
+      messages,
+      stream: true,
+      stream_options: { include_usage: true },
+      max_completion_tokens: Math.min(maxTokens, 128_000),
+      reasoning_effort: "medium",
+      store: false,
+      service_tier: "default",
+    };
+  }
   return {
     model: provider.model,
     messages,
