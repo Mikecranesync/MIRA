@@ -1043,3 +1043,51 @@ it.each(["5", "Frame 5"].flatMap(label => [false, true].map(outer =>
   expect(r.unsupportedValueCount).toBe(0);
   expect(r.quoteFallbackCount).toBe(0);
 });
+
+
+it.each([
+  "<https://example.com>\n",
+  "<span>label</span>\n",
+  "- ```\n  code\n\n",
+  "1. ~~~\n   code\n\n",
+  "- <pre>\n  code\n\n",
+].flatMap(prefix => ["\n", "\r\n"].map(eol => (prefix + "Frame | Voltage\n--- | ---\n5 | 12 V").replace(/\n/g, eol))))("inline HTML and ended containers do not hide real tables: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});
+
+
+it.each([
+  "<foo@bar.example.com>\n", '<span title="<">label</span>\n', '<span title="<">\n\n',
+  "<pre>\nliteral\n</script>\n", "- ```\n  code\n", "1. ~~~\n   code\n",
+  "- <pre>\n  code\n", "- <div>\n  code\n\n", "- <!--\n  code\n\n",
+].flatMap(prefix => ["\n", "\r\n"].map(eol => (prefix + "Frame | Voltage\n--- | ---\n5 | 12 V").replace(/\n/g, eol))))("HTML grammar and unclosed container outdents preserve tables: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});
+it.each(['<span title="<">', '<custom data-value="a > b">', '<div class="layout">'])("actual HTML blocks do not authorize table-like numeric expressions: %s", open => {
+  const source = `${open}\nFrame | Voltage\n--- | ---\n5 | 12 V`;
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe("ORIGINAL");
+  expect(r.unsupportedValueCount).toBe(1);
+  expect(r.quoteFallbackCount).toBe(1);
+});
+
+
+it.each(["paragraph\n<span>\n", "- item\n  <span>\n", "paragraph\n<custom data-value='x'>\n", "- item\n  <custom data-value='x'>\n"].map(prefix => {
+  const indent = prefix.startsWith("- ") ? "  " : "";
+  return prefix + `${indent}Frame | Voltage\n${indent}--- | ---\n${indent}5 | 12 V`;
+}))("type-7 tags inside paragraphs cannot hide parsed tables: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});
