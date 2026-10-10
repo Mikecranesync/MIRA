@@ -424,15 +424,15 @@
     "domain": "Motor Theory & Troubleshooting",
     "difficulty": "hard",
     "type": "calculation",
-    "stem": "A 50 HP NEMA Premium motor (\u03b7 = 92.4%) replaces a Standard motor (\u03b7 = 90%). At 50% load running 8,760 hours/year, the Premium motor saves approximately how many kWh/year?",
+    "stem": "A 50 HP NEMA Premium motor (\u03b7 = 92.4%) replaces a Standard motor (\u03b7 = 90%). At 50% load running 8,760 hours/year, the Premium motor saves approximately how many kWh/year? Assume both efficiencies apply at 50% load, with the same mechanical output and operating hours.",
     "options": {
       "A": "There is no measurable difference at this scale",
       "B": "~1,100 kWh/year",
       "C": "~400 kWh/year",
       "D": "~4,500 kWh/year"
     },
-    "key": "B",
-    "explanation": "At 50% load (25 HP output = 18.65 kW), losses: Standard = 18.65 \u00d7 (1/0.90 \u2212 1) = 2.07 kW; Premium = 18.65 \u00d7 (1/0.924 \u2212 1) = 1.60 kW. Saved = 0.47 kW \u00d7 8,760 hr \u2248 4,117 kWh/year at full year. At realistic average loading closer to 40\u201350%, savings are approximately 1,000\u20131,200 kWh/year, making B the correct order-of-magnitude answer."
+    "key": "D",
+    "explanation": "At 50% load, mechanical output is 50 \u00d7 0.746 \u00d7 0.50 = 18.65 kW. Input power saved is 18.65 \u00d7 (1/0.90 \u2212 1/0.924) = 0.53824 kW. Annual savings are 0.53824 \u00d7 8,760 = 4,714.98 kWh/year, closest to D (~4,500 kWh/year). The efficiencies are assumed to apply at the stated operating load; no additional duty-cycle factor is introduced. See U.S. DOE, Continuous Energy Improvement in Motor Driven Systems, Chapter 6, equations 6-1 and 6-2."
   },
   {
     "id": 30,
