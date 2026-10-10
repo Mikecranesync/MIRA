@@ -133,7 +133,7 @@ function originalTableCells(row: string, trimOuter = true): string[] {
  *  glued with no space on either side. Brackets, table pipes and a sentence's ". " are not
  *  joins, so "mm2 (10 AWG)", "| 5 | 3.09 N·m" and "Step 1. 12 V" stay separate values. The
  *  leading piece is unitless or followed by a joint, so it is unusable too. */
-function laterPieceOfNumber(n: string, start: number, original: string, tableCells: ReadonlyArray<readonly [number, number]>, tables: ReadonlyArray<readonly [number, number]>, htmlBlockRows: ReadonlySet<number>): boolean {
+function laterPieceOfNumber(n: string, start: number, original: string, tableCells: ReadonlyArray<readonly [number, number]>, tables: ReadonlyArray<readonly [number, number]>, htmlBlockRows: ReadonlySet<number>, sourceRows: readonly string[], sourceOffsets: readonly number[]): boolean {
   const isWs = (i: number) => n[i] === " " || n[i] === "\t";
   // #4320: screen the WHOLE match, not only its digits. ≈/~ remain the existing
   // approximation decoration; scan opening quotes/brackets too, across inline markup.
@@ -193,8 +193,12 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
       if (startsBlock.test(original.slice(contentStart(lineStart, start), boundary))) return true;
       // Normalization blanks inline markers, including code-fence backticks.
       // Block syntax must be checked against the same-length original text.
-      const rawRows = original.slice(0, lineStart).split("\n").slice(0, -1);
-      const originalRows = rawRows.map(row => row.replace(/\r$/, ""));
+      const currentRow = sourceOffsets.indexOf(lineStart);
+      const headerRow = sourceOffsets.findIndex((from, index) => table[0] >= from
+        && (index + 1 === sourceOffsets.length || table[0] < sourceOffsets[index + 1]));
+      if (currentRow < 0 || headerRow < 0) return true;
+      // Include the header/delimiter even when the quantity is in a header.
+      const originalRows = sourceRows.slice(0, Math.max(currentRow, headerRow + 2));
       // A delimiter/header pair is only layout outside enclosing literal
       // blocks. Scan original lines forward before the backward table search;
       // otherwise a nearer delimiter hides its opening fence or HTML block.
@@ -301,7 +305,6 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
       // with ORIGINAL offsets. Keep conservative source-literal exclusions:
       // empty-list padding differs between parser implementations, so renderer
       // membership alone must not loosen an existing literal-block refusal.
-      const headerRow = original.slice(0, table[0]).split("\n").length - 1;
       if (blockedRows[headerRow] || blockedRows[headerRow + 1] || lazyListRows[headerRow]) return true;
       // An over-indented delimiter must not complete a lazy header. The
       // renderer admits this in some list contexts; retain the source refusal.
@@ -309,11 +312,10 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
         .reduce((n, ch) => ch === "\t" ? n + 4 - n % 4 : n + 1, 0);
       if (columns(originalRows[headerRow + 1] ?? "") - columns(originalRows[headerRow] ?? "") >= 4) return true;
       // Preserve conservative interruption handling inside table bodies.
-      let bodyOffset = rawRows.slice(0, headerRow + 2).reduce((n, row) => n + row.length + 1, 0);
-      for (let index = headerRow + 2; index < originalRows.length; index++) {
+      for (let index = headerRow + 2; index < currentRow; index++) {
         const row = originalRows[index];
+        const bodyOffset = sourceOffsets[index];
         if (startsBlock.test(row.slice(contentStart(bodyOffset, bodyOffset + row.length) - bodyOffset))) return true;
-        bodyOffset += rawRows[index].length + 1;
       }
     }
     return false;
@@ -381,15 +383,34 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
   const htmlBlockRows = new Set<number>();
   // Preserve supported short alignment cells without moving original quotes.
   // Only alignment rows expand; source line/column positions map back below.
-  const sourceRows = text.split("\n");
-  const sourceOffsets: number[] = [];
-  let offset = 0;
-  for (const row of sourceRows) { sourceOffsets.push(offset); offset += row.length + 1; }
-  const parserText = sourceRows.map(row => {
-    const cells = originalTableCells(row.replace(/\r$/, ""));
-    return cells.length > 1 && cells.every(cell => /^[ \t]*:?-+:?[ \t]*$/.test(cell))
-      ? row.replace(/-+/g, run => run.padEnd(3, "-")) : row;
-  }).join("\n");
+  const breaks = [...text.matchAll(/\r\n|\r|\n/g)];
+  const sourceOffsets = [0, ...breaks.map(match => match.index! + match[0].length)];
+  const sourceRows = sourceOffsets.map((from, index) => text.slice(from, breaks[index]?.index ?? text.length));
+  const projectedRows = sourceRows.map(row => {
+    const cells = originalTableCells(row);
+    const alignment = cells.length > 1 && cells.every(cell => /^[ \t]*:?-+:?[ \t]*$/.test(cell));
+    let projected = "";
+    const offsets = [0];
+    for (let index = 0; index < row.length;) {
+      const run = alignment && row[index] === "-" ? /^-+/.exec(row.slice(index))?.[0] : undefined;
+      if (run) {
+        for (let char = 0; char < Math.max(3, run.length); char++) {
+          projected += "-";
+          offsets.push(index + Math.min(char + 1, run.length));
+        }
+        index += run.length;
+      } else {
+        projected += row[index++];
+        offsets.push(index);
+      }
+    }
+    return { text: projected, offsets };
+  });
+  const parserText = projectedRows.map(row => row.text).join("\n");
+  const mapPoint = (point: NonNullable<Root["position"]>["start"]) => {
+    const relative = projectedRows[point.line - 1]?.offsets[point.column - 1];
+    return typeof relative === "number" ? sourceOffsets[point.line - 1] + relative : undefined;
+  };
   if (text.includes("|")) ReactMarkdown({
     children: parserText,
     remarkPlugins: [remarkGfm, () => (tree: Root) => {
@@ -408,8 +429,9 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
       const start = node.position?.start;
       const end = node.position?.end;
       if (start && end) {
-        const from = sourceOffsets[start.line - 1] + start.column - 1;
-        const to = sourceOffsets[end.line - 1] + end.column - 1;
+        const from = mapPoint(start);
+        const to = mapPoint(end);
+        if (from === undefined || to === undefined || from > to) return true;
         if (node.tagName === "td" || node.tagName === "th") tableCells.push([from, to]);
         if (node.tagName === "table") tables.push([from, to]);
       }
@@ -422,7 +444,7 @@ export function findValues(text: string, side: "answer" | "source"): Value[] {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     let sign: string | undefined = m[2];
-    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !laterPieceOfNumber(n, start, text, tableCells, tables, htmlBlockRows);
+    let complete = !continues(tailAt(n, end), tailAt(keep, end)) && !laterPieceOfNumber(n, start, text, tableCells, tables, htmlBlockRows, sourceRows, sourceOffsets);
     // Decided on the ORIGINAL text: a sign, then real whitespace, with only indentation before
     // it on its line. U+2212 is always a minus. In the answer, an ASCII "- " there is Markdown
     // list syntax — rendered as a bullet, so the number is unsigned. Anywhere else (source text,

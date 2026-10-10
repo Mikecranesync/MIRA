@@ -1091,3 +1091,21 @@ it.each(["paragraph\n<span>\n", "- item\n  <span>\n", "paragraph\n<custom data-v
   expect(r.unsupportedValueCount).toBe(0);
   expect(r.quoteFallbackCount).toBe(0);
 });
+
+
+it.each(["\r", "\n", "\r\n"])("mixed ending cannot move a table onto an expression: %s", eol => {
+  const source = `note${eol}Frame | Voltage\n--- | ---\n5 | 10 V\n\n−2|12 V|`;
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe("ORIGINAL");
+  expect(r.unsupportedValueCount).toBe(1);
+  expect(r.quoteFallbackCount).toBe(1);
+});
+it.each(["\r", "\n", "\r\n"].flatMap(eol => ["--- | ---", "- | -"].flatMap(alignment => [false, true].map(header =>
+  header ? `Frame 5 | 12 V${eol}${alignment}` : `Frame | Voltage${eol}${alignment}${eol}5 | 12 V`))))("all newline kinds preserve real table positions: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});
