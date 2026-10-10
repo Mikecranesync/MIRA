@@ -183,10 +183,17 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
       const valueCell = originalTableCells(original.slice(lineStart, start), false).length - 1;
       if (valueCell < 1) return true;
       const startsBlock = /^(?: {4}|\t)|^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|>|`{3,}|~{3,}|(?:[*+-]|\d+[.)])[ \t]+|<(?:[!?]|\/?[A-Za-z])|\[[^\]]+\]:)|^[ \t]{0,3}(?:[-*_][ \t]*){3,}$/;
-      if (startsBlock.test(original.slice(lineStart, boundary))) return true;
+      const table = tables.find(([from, to]) => start >= from && start < to);
+      const inCell = tableCells.some(([from, to]) => start >= from && start < to);
+      if (!table || !inCell) return true;
+      // Data-cell positions begin after the parsed quote/list prefix. Inspect
+      // block syntax relative to that container, not physical indentation.
+      const contentStart = (from: number, to: number) => tableCells.find(([cellFrom]) => cellFrom >= from && cellFrom < to)?.[0] ?? from;
+      if (startsBlock.test(original.slice(contentStart(lineStart, start), boundary))) return true;
       // Normalization blanks inline markers, including code-fence backticks.
       // Block syntax must be checked against the same-length original text.
-      const originalRows = original.slice(0, lineStart).split("\n").slice(0, -1).map(row => row.replace(/\r$/, ""));
+      const rawRows = original.slice(0, lineStart).split("\n").slice(0, -1);
+      const originalRows = rawRows.map(row => row.replace(/\r$/, ""));
       // A delimiter/header pair is only layout outside enclosing literal
       // blocks. Scan original lines forward before the backward table search;
       // otherwise a nearer delimiter hides its opening fence or HTML block.
@@ -278,9 +285,6 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
       // with ORIGINAL offsets. Keep conservative source-literal exclusions:
       // empty-list padding differs between parser implementations, so renderer
       // membership alone must not loosen an existing literal-block refusal.
-      const table = tables.find(([from, to]) => start >= from && start < to);
-      const inCell = tableCells.some(([from, to]) => start >= from && start < to);
-      if (!table || !inCell) return true;
       const headerRow = original.slice(0, table[0]).split("\n").length - 1;
       if (blockedRows[headerRow] || blockedRows[headerRow + 1] || lazyListRows[headerRow]) return true;
       // An over-indented delimiter must not complete a lazy header. The
@@ -289,7 +293,12 @@ function laterPieceOfNumber(n: string, start: number, original: string, tableCel
         .reduce((n, ch) => ch === "\t" ? n + 4 - n % 4 : n + 1, 0);
       if (columns(originalRows[headerRow + 1] ?? "") - columns(originalRows[headerRow] ?? "") >= 4) return true;
       // Preserve conservative interruption handling inside table bodies.
-      if (originalRows.slice(headerRow + 2).some(row => startsBlock.test(row))) return true;
+      let bodyOffset = rawRows.slice(0, headerRow + 2).reduce((n, row) => n + row.length + 1, 0);
+      for (let index = headerRow + 2; index < originalRows.length; index++) {
+        const row = originalRows[index];
+        if (startsBlock.test(row.slice(contentStart(bodyOffset, bodyOffset + row.length) - bodyOffset))) return true;
+        bodyOffset += rawRows[index].length + 1;
+      }
     }
     return false;
   }

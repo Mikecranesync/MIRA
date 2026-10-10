@@ -1010,3 +1010,17 @@ it.each(["- item\nFrame | Voltage\n    --- | ---\n  \u22122|20 V|", "- item\r\nF
   expect(r.unsupportedValueCount).toBe(1);
   expect(r.quoteFallbackCount).toBe(1);
 });
+
+
+it.each([
+  "> Frame | Voltage\n> --- | ---\n> 5 | 12 V",
+  "> | Frame | Voltage |\n> | --- | --- |\n> | 5 | 12 V |",
+  "- outer\n  - inner\n    Frame | Voltage\n    --- | ---\n    5 | 12 V",
+  "- outer\n  - inner\n    | Frame | Voltage |\n    | --- | --- |\n    | 5 | 12 V |",
+].flatMap(source => [source, source.replace(/\n/g, "\r\n")]))("numeric first columns in parsed containers remain supported: %s", source => {
+  const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+    [{ content: source, sourceUrl: "manual", sourcePage: 1 }], "Rated 12 V [1].", "Rated voltage?");
+  expect(r.citations[0].quote).toBe(source);
+  expect(r.unsupportedValueCount).toBe(0);
+  expect(r.quoteFallbackCount).toBe(0);
+});
