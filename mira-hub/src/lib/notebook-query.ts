@@ -622,8 +622,10 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
       // An unquoted alphabetic heading plus an identifier is ambiguous label
       // prose, not enough evidence of a continuing display field. Explicit
       // quoted text and pure/mixed-case code lines keep their existing path.
+      const nextLineTokens = sentences[index + 1]?.trim().match(/"[^"\n]*"|'[^'\n]*'|[^\s]+/g) ?? [];
       const headingWithIdentifier = !startsReading && /^[A-Z]{3,}[.,:]?$/.test(literalTokens[0] ?? "")
-        && literalTokens.slice(1).some(token => codeLike(token.replace(/[.,:;]+$/, "")));
+        && (literalTokens.slice(1).some(token => codeLike(token.replace(/[.,:;]+$/, "")))
+          || literalTokens.length === 1 && nextLineTokens.some(token => codeLike(token.replace(/[.,:;]+$/, ""))));
       const literalVocabulary = !headingWithIdentifier && literalTokens.length <= 6 && literalTokens.every(isLiteralToken);
       const unquoted = sentence.replace(/"[^"\n]*"|'[^'\n]*'/g, "");
       const literalLine = literalVocabulary && (/^[ \t]*(?:[-*][ \t]+)?["']?[A-Za-z0-9][A-Za-z0-9 _.:+−/='",()?-]{0,63}[ \t]*$/.test(sentence)

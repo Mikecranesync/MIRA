@@ -236,3 +236,30 @@ it("unquoted heading/identifier continuation conservatively omits an ambiguous m
   expect(q).toContain("ovA");
   expect(q).not.toContain("F004");
 });
+
+
+it.each(["Does this help?", "What am I looking at, and what should I check?"].flatMap(question =>
+  ["STENCIL", "ENGRAVING", "MARKER"].flatMap(heading => ["", ":"].map(colon =>
+    [question, `LCD display shows ovA.\n${heading}${colon}\nA410`] as const))))("separate carrier heading ends display ownership: %s %s", (question, observation) => {
+  const q = buildRetrievalQuery(question, [], observation);
+  const expanded = expandIndustrialQuery(q);
+  expect(expanded.codeTokens).toContain("ovA");
+  expect(expanded.codeTokens).not.toContain("A410");
+  expect(expanded.exactTokens).not.toContain("A410");
+});
+
+
+it.each(["STENCIL", "ENGRAVING", "MARKER"])("quoted heading is explicit display text: %s", heading => {
+  const q = buildRetrievalQuery("Does this help?", [], `LCD display shows ovA.\n"${heading}"\nA410`);
+  expect(q).toContain("ovA");
+  expect(q).toContain("A410");
+});
+it("genuine multiline modes and values retain candidates", () => {
+  const q = buildRetrievalQuery("Does this help?", [], "LCD display shows:\nPERI\nRD\n1");
+  for (const value of ["PERI", "RD", "1"]) expect(q).toContain(value);
+});
+it("ambiguous unquoted heading and code across lines are conservatively omitted", () => {
+  const q = buildRetrievalQuery("Does this help?", [], "LCD display shows ovA.\nERR\nF004");
+  expect(q).toContain("ovA");
+  expect(q).not.toContain("F004");
+});

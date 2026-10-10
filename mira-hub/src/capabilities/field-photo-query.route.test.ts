@@ -149,3 +149,15 @@ it.each([["Does this help?", "LCD display shows ovA. A sticker below the LCD dis
   expect(query).toContain("ovA");
   expect(query).not.toContain("A410");
 });
+
+
+it.each(["Does this help?", "What am I looking at, and what should I check?"].flatMap(question =>
+  ["STENCIL", "ENGRAVING", "MARKER"].flatMap(heading => ["", ":"].map(colon =>
+    [question, `LCD display shows ovA.\n${heading}${colon}\nA410`] as const))))("route ends ownership at multiline carrier heading: %s %s", async (message, text) => {
+  nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["55555555-5555-4555-8555-555555555555"], nodeId: "n1" });
+  visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({ observationId: "obs", sessionId: "session", text, obsKind: "look", trust: "candidate", fileId: "44444444-4444-4444-8444-444444444444", hazards: [] });
+  await frames(await POST(req({ message, sourceDocIds: ["55555555-5555-4555-8555-555555555555"], visualEvidence: { fileId: "44444444-4444-4444-8444-444444444444" } }), params));
+  const query = ragMock.retrieveNodeChunks.mock.calls.at(-1)?.[2];
+  expect(query).toContain("ovA");
+  expect(query).not.toContain("A410");
+});
