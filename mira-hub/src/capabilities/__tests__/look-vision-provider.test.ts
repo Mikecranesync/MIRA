@@ -55,6 +55,13 @@ import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { isRecognizerConfigured, fixtureSelected } from "@/lib/nameplate";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 import { togetherVisionCall, openAiVisionCall } from "@/lib/nameplate/passes";
+import { persistTurnUsage } from "@/lib/inference/persist-usage";
+
+/** The provider the route persisted for the LOOK turn (usage is the 2nd arg). */
+function persistedProvider(): string | null | undefined {
+  const call = vi.mocked(persistTurnUsage).mock.calls.at(-1);
+  return (call?.[1] as { provider?: string | null } | undefined)?.provider;
+}
 
 const NOTEBOOK_ID = "11111111-2222-3333-4444-555555555555";
 const FILE_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -117,6 +124,21 @@ describe("look route vision provider pick", () => {
     expect(openAiVisionCall).toHaveBeenCalledTimes(1);
     expect(togetherVisionCall).not.toHaveBeenCalled();
     expect((await res.json()).observation.text).toContain("One enclosure");
+    // Codex F1 on #4353: the turn served by OpenAI must be RECORDED as OpenAI.
+    expect(persistTurnUsage).toHaveBeenCalledTimes(1);
+    expect(persistedProvider()).toBe("openai");
+  });
+
+  it("records OpenAI as the provider on the FAILURE path too (Codex F1)", async () => {
+    process.env.OPENAI_API_KEY = "sk-test";
+    vi.mocked(openAiVisionCall).mockRejectedValue(new Error("recognizer_provider_error_500"));
+
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toBe("recognizer_provider_error_500");
+    expect(persistTurnUsage).toHaveBeenCalledTimes(1);
+    expect(persistedProvider()).toBe("openai");
   });
 
   it("control: without OPENAI_API_KEY the Together call serves, exactly as before", async () => {
@@ -131,5 +153,6 @@ describe("look route vision provider pick", () => {
     expect(res.status).toBe(200);
     expect(togetherVisionCall).toHaveBeenCalledTimes(1);
     expect(openAiVisionCall).not.toHaveBeenCalled();
+    expect(persistedProvider()).toBe("together");
   });
 });

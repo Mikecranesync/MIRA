@@ -622,20 +622,48 @@ export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature
       image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
     });
   }
-  const resp = await fetch(provider.url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model: provider.model,
-      ...requestDialectFields(provider, maxTokens, temperature),
-      response_format: { type: "json_object" },
-      messages: [{ role: "user", content }],
-    }),
-  });
+  // Bounded like `openAiCompatVision`: a stalled request must reach the LOOK
+  // error path and must not hold `runMultiPass`'s Promise.all hostage (Codex F2
+  // on #4353). The signal covers the request AND the body read.
+  const signal = AbortSignal.timeout(visionTimeoutMs());
+  let resp: Response;
+  try {
+    resp = await fetch(provider.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      signal,
+      body: JSON.stringify({
+        model: provider.model,
+        ...requestDialectFields(provider, maxTokens, temperature),
+        response_format: { type: "json_object" },
+        messages: [{ role: "user", content }],
+      }),
+    });
+  } catch (err) {
+    throw new Error(signal.aborted ? "recognizer_provider_timeout" : "recognizer_provider_unreachable", {
+      cause: err,
+    });
+  }
   if (!resp.ok) throw new Error(`recognizer_provider_error_${resp.status}`);
-  const body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
+  let body: { choices?: { message?: { content?: string } }[] };
+  try {
+    body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
+  } catch (err) {
+    if (signal.aborted) throw new Error("recognizer_provider_timeout", { cause: err });
+    throw err;
+  }
   return { text: body.choices?.[0]?.message?.content ?? "{}", model: provider.model };
 };
+
+/**
+ * Validated finite deadline for one vision request, in ms. Same env var
+ * `openAiCompatVision` honours; a missing, empty, non-numeric or non-positive
+ * value falls back to 30 s rather than to "no deadline".
+ */
+export function visionTimeoutMs(): number {
+  const raw = Number(process.env.NAMEPLATE_VISION_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 30_000;
+}
 
 /** OpenAI leads when its key is set; otherwise the Together call, exactly as before. */
 export function defaultVisionCall(): VisionCall {

@@ -26,7 +26,7 @@ import {
   defaultRecognizer,
   isRecognizerConfigured,
 } from "@/lib/nameplate";
-import { openAiVisionCall, togetherVisionCall, defaultVisionCall } from "@/lib/nameplate/passes";
+import { openAiVisionCall, togetherVisionCall, defaultVisionCall, visionTimeoutMs } from "@/lib/nameplate/passes";
 
 const ok = (content: string) =>
   new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
@@ -166,6 +166,39 @@ describe("openAiVisionCall (multi-pass + look seam)", () => {
     expect(body).not.toHaveProperty("max_tokens");
     expect(body).not.toHaveProperty("temperature");
     expect(body.response_format).toEqual({ type: "json_object" });
+  });
+
+  it("is bounded: a stalled request rejects with recognizer_provider_timeout (Codex F2)", async () => {
+    process.env.OPENAI_API_KEY = "sk-test";
+    process.env.NAMEPLATE_VISION_TIMEOUT_MS = "10";
+    // An abort-aware stall: never resolves on its own, rejects only when the
+    // caller's signal fires — exactly what a hung provider socket looks like.
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) return; // no deadline wired → this promise hangs and the test times out
+          signal.addEventListener("abort", () => reject(signal.reason));
+        }),
+    );
+
+    await expect(
+      openAiVisionCall({ prompt: "p", images: [], temperature: 0.1, maxTokens: 10 }),
+    ).rejects.toThrow(/^recognizer_provider_timeout$/);
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    delete process.env.NAMEPLATE_VISION_TIMEOUT_MS;
+  });
+
+  it("visionTimeoutMs: validated finite deadline, 30 s when unset/empty/junk/non-positive", () => {
+    delete process.env.NAMEPLATE_VISION_TIMEOUT_MS;
+    expect(visionTimeoutMs()).toBe(30_000);
+    for (const bad of ["", "abc", "0", "-5", "Infinity"]) {
+      process.env.NAMEPLATE_VISION_TIMEOUT_MS = bad;
+      expect(visionTimeoutMs()).toBe(30_000);
+    }
+    process.env.NAMEPLATE_VISION_TIMEOUT_MS = "250";
+    expect(visionTimeoutMs()).toBe(250);
+    delete process.env.NAMEPLATE_VISION_TIMEOUT_MS;
   });
 
   it("surfaces the provider status on failure and refuses without a key", async () => {

@@ -401,11 +401,16 @@ async function handleLookTurn(
   // Provider pick (D8, 2026-10-11): OpenAI leads when its key is set, else Together
   // — the same order as `defaultRecognizer`. Picked inline (not via
   // `defaultVisionCall`) so each call stays an importable, mockable seam.
-  const vision: VisionCall = fixtureSelected()
-    ? fixtureVisionCall
-    : process.env.OPENAI_API_KEY
-      ? openAiVisionCall
-      : togetherVisionCall;
+  // The provider NAME is picked here too, once, and every telemetry site below
+  // reads it — a call served by OpenAI must never be recorded as Together
+  // (Codex F1 on #4353: health and audit queries would name the wrong provider).
+  const visionProvider = fixtureSelected() ? "fixture" : process.env.OPENAI_API_KEY ? "openai" : "together";
+  const vision: VisionCall =
+    visionProvider === "fixture"
+      ? fixtureVisionCall
+      : visionProvider === "openai"
+        ? openAiVisionCall
+        : togetherVisionCall;
   const visionStartedAt = Date.now();
   const visionSpan = tracer.startSpan("chat (vision)", undefined, rootCtx);
   try {
@@ -453,7 +458,7 @@ async function handleLookTurn(
     setSpanAttrs(
       {
         "gen_ai.operation.name": "chat",
-        "gen_ai.provider.name": fixtureSelected() ? "fixture" : "together",
+        "gen_ai.provider.name": visionProvider,
         "gen_ai.response.model": reply.model,
         "mira.vision.observation_chars": inspection.text.length,
         "mira.vision.hazard_count": inspection.hazards.length,
@@ -464,7 +469,7 @@ async function handleLookTurn(
     visionSpan.end();
     rec.stage("vision", {
       ran: true,
-      provider: fixtureSelected() ? "fixture" : "together",
+      provider: visionProvider,
       model: reply.model,
       latency_ms: Date.now() - visionStartedAt,
       observation_chars: inspection.text.length,
@@ -472,7 +477,7 @@ async function handleLookTurn(
       ok: true,
     });
     await finishLook({
-      provider: fixtureSelected() ? "fixture" : "together",
+      provider: visionProvider,
       model: reply.model,
       ok: true,
     });
@@ -488,7 +493,7 @@ async function handleLookTurn(
     setSpanAttrs(
       {
         "gen_ai.operation.name": "chat",
-        "gen_ai.provider.name": fixtureSelected() ? "fixture" : "together",
+        "gen_ai.provider.name": visionProvider,
         "mira.vision.ok": false,
       },
       visionSpan,
@@ -496,12 +501,12 @@ async function handleLookTurn(
     visionSpan.end();
     rec.stage("vision", {
       ran: true,
-      provider: fixtureSelected() ? "fixture" : "together",
+      provider: visionProvider,
       latency_ms: Date.now() - visionStartedAt,
       ok: false,
     });
     rec.error("vision", "provider_error");
-    await finishLook({ provider: fixtureSelected() ? "fixture" : "together", model: null, ok: false });
+    await finishLook({ provider: visionProvider, model: null, ok: false });
     endRoot();
     return NextResponse.json(
       {
