@@ -12,6 +12,7 @@ import type { ProjectItem } from "@factorylm/interaction";
 import { createNotebook, listNotebooks, type Me, type Notebook } from "../api/resources";
 import { homeSendPlan } from "../unified/home-send";
 import { claimAttachments, stashAttachments, type HeldAttachment } from "../unified/attachment-handoff";
+import { defaultQuestionFor } from "../unified/attachments";
 import { hasActiveApiMutations } from "../api/client";
 import {
   hasActiveWorkOrderQueueProducers,
@@ -235,37 +236,28 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     return id;
   }, [preferredNotebookId]);
 
-  /**
-   * The thread a HOME question or a HOME "New chat" opens (#3877): an UNBOUND
-   * notebook — General first — never `preferredNotebookId()`, which is the
-   * last-opened notebook, i.e. the machine the technician was just at; its
-   * identity would ride the turn as machine context. With no unbound notebook
-   * it creates General so a stranger with no project can still ask. Async only
-   * on that create path; the caller sequences the question after it.
-   */
-  const startHomeThread = useCallback(async (): Promise<{ id: string } | { failure: string } | null> => {
-    const plan = homeSendPlan(notebooks);
-    if (plan.kind === "loading") return null;
-    if (plan.kind === "existing") {
-      const id = startNewThread(plan.notebookId);
-      return id ? { id } : null;
-    }
-    try {
-      const created = await createNotebook(plan.body);
-      setNotebooks((current) => (current?.some((nb) => nb.id === created.id) ? current : [created, ...(current ?? [])]));
-      const id = startNewThread(created.id);
-      return id ? { id } : null;
-    } catch (e) {
-      // Never the root's fatal error: that unmounts the composer with the
-      // question in it and leaves nothing on screen that can recover.
-      return { failure: apiErrorCopy(e, "Could not create a project for your question.") };
-    }
-  }, [notebooks, startNewThread]);
+  // One HOME send at a time (Codex #4350 r3 F5). While General is being
+  // created the shell's Send is disabled through `busy`, and a submit that
+  // still slips through is dropped rather than starting a second create.
+  const homeSendInFlight = useRef(false);
+  const [homeSending, setHomeSending] = useState(false);
+  const homeVisibleRef = useRef(homeVisible);
+  homeVisibleRef.current = homeVisible;
 
-  /** A HOME send (`text`, possibly empty for an attachment-only send) or New
-   *  chat (`null`). On a failed create, the error and the question land in one
-   *  render so the shell restores the draft under the banner. */
+  /**
+   * A HOME send (`text`, possibly empty for an attachment-only send) or New
+   * chat (`null`) (#3877): it goes to an UNBOUND notebook — General first —
+   * never the last-opened machine notebook, and creates General when there is
+   * none, so a stranger with no project can still ask.
+   *
+   * The send's evidence is held HERE until the thread that claims it is the
+   * very next thing to mount; it reaches the single handoff slot only at that
+   * moment, so no other thread opened meanwhile can claim it. On a failed
+   * create the error and the question land in one render, so the shell
+   * restores the draft under its banner.
+   */
   const sendFromHome = useCallback((text: string | null) => {
+    if (homeSendInFlight.current) return;
     setHomeSendError(null);
     setHomeFailedQuestion(null);
     // The shell stashed THIS send's attachments just before calling here.
@@ -275,22 +267,51 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     // Only a retry of the failed submission — same text, nothing attached
     // anew — carries what it had; a replaced question or New chat drops it.
     const retrying = fresh.length === 0 && text !== null && text === homeFailedQuestionRef.current;
-    stashAttachments(retrying ? kept : fresh);
-    void startHomeThread().then((result) => {
-      if (!result) return; // the list is still loading
-      if ("id" in result) {
-        // An empty text is still a submission when evidence was attached: the
-        // thread's composition path asks its default question (r2 F3).
-        if (text !== null) setQueuedQuestion(text);
-        return;
-      }
-      failedHomeAttachments.current = claimAttachments();
-      setHomeFailedQuestion(text);
-      setHomeSendError(
-        result.failure + (failedHomeAttachments.current.length > 0 ? " Your attachment is kept for Try again." : ""),
-      );
-    });
-  }, [startHomeThread]);
+    const carry = retrying ? kept : fresh;
+    const handoff = (id: string) => {
+      stashAttachments(carry);
+      startNewThread(id);
+      // An empty text is still a submission when evidence was attached: the
+      // thread's composition path asks its default question (r2 F3).
+      if (text !== null) setQueuedQuestion(text);
+    };
+    const plan = homeSendPlan(notebooks);
+    if (plan.kind === "loading") return;
+    if (plan.kind === "existing") {
+      handoff(plan.notebookId);
+      return;
+    }
+    homeSendInFlight.current = true;
+    setHomeSending(true);
+    void createNotebook(plan.body)
+      .then(
+        (created) => {
+          setNotebooks((current) => (current?.some((nb) => nb.id === created.id) ? current : [created, ...(current ?? [])]));
+          // The technician opened something else while this was in flight:
+          // the send is abandoned, never a hijack of where they went.
+          if (!homeVisibleRef.current) return;
+          handoff(created.id);
+        },
+        (e: unknown) => {
+          if (!homeVisibleRef.current) return;
+          // Never the root's fatal error: that unmounts the composer with the
+          // question in it and leaves nothing on screen that can recover.
+          failedHomeAttachments.current = carry;
+          // An attachment-only send has no text to put back; restore the
+          // question the thread would have asked, so Try again can (r3 F4).
+          const restored = text === "" && carry.length > 0 ? defaultQuestionFor(carry) : text;
+          setHomeFailedQuestion(restored);
+          setHomeSendError(
+            apiErrorCopy(e, "Could not create a project for your question.") +
+              (carry.length > 0 ? " Your attachment is kept for Try again; changing the question drops it." : ""),
+          );
+        },
+      )
+      .finally(() => {
+        homeSendInFlight.current = false;
+        setHomeSending(false);
+      });
+  }, [notebooks, startNewThread]);
 
   const openPreferredNotebook = useCallback((): string | null => {
     const id = preferredNotebookId();
@@ -497,7 +518,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           turns={[]}
           liveTurns={[]}
           pending={null}
-          busy={false}
+          busy={homeSending}
           canStop={false}
           canRetry={false}
           chatError={homeSendError}

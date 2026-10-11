@@ -63,6 +63,15 @@ function describe(file: File): Attachment {
   };
 }
 
+/** The question an attachment-only send asks. `compose` uses it; the unified
+ *  root restores it as the draft when such a send failed before any thread
+ *  existed, so the banner's Try again has something to resend. */
+export function defaultQuestionFor(items: readonly { attachment: Pick<Attachment, "kind"> }[]): string {
+  return items.some((x) => x.attachment.kind === "photo")
+    ? "What am I looking at, and what should I check?"
+    : "What is in this document?";
+}
+
 /**
  * `notebookId` is null on HOME, where no notebook exists yet. Picking still
  * works there; the bytes are stashed for the thread the send creates.
@@ -144,9 +153,7 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     const photo = items.find((x) => x.attachment.kind === "photo");
     const documents = items.filter((x) => x.attachment.kind !== "photo");
     // An attachment with no typed question still deserves a question.
-    const question = text || (photo
-      ? "What am I looking at, and what should I check?"
-      : "What is in this document?");
+    const question = text || defaultQuestionFor(items);
 
     // A failure must leave the bytes armed for Try again. `held` still has
     // them (they are dropped only on success, below), but the composer has

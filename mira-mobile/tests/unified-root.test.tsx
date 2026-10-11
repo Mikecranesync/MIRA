@@ -734,7 +734,7 @@ describe("UnifiedRoot", () => {
     const alert = await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
     // Nothing else may claim it while the send is failed.
     expect(claimAttachments()).toEqual([]);
-    expect(alert.textContent).toContain("Your attachment is kept for Try again.");
+    expect(alert.textContent).toContain("Your attachment is kept for Try again; changing the question drops it.");
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     const nb = await waitFor(() => screen.getByTestId("nb"));
@@ -806,6 +806,86 @@ describe("UnifiedRoot", () => {
 
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-initial-question-set")).toBe("false");
+  });
+
+  // Codex #4350 round 3, F5: nothing serialized HOME sends. A second question
+  // while General was still being created started a second create, and the
+  // single handoff slot let whichever thread mounted first claim the other
+  // send's photo. HOME is busy while a create is in flight, a second send is
+  // not accepted, and the evidence reaches the slot only at handoff.
+  it("row 8 / F5: a second send while General is being created is not accepted, and the first keeps its photo", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("A.jpg");
+    askFromHome("question A");
+
+    await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true));
+    // The evidence is NOT sitting in the slot where any mounting thread could claim it.
+    expect(claimAttachments()).toEqual([]);
+    askFromHome("unrelated question B");
+    expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("question A");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["A.jpg"]);
+  });
+
+  it("row 8 / F5: a create that resolves after the technician opened another project does not take over", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([
+      { id: "nb-a", displayName: "Drive A", manufacturer: "Siemens", model: "G120", equipmentType: null, identityStatus: "user_confirmed", nodeId: "n", sourceCount: 0, createdAt: null, asset: { entityId: "asset-1", selectedVia: null, confirmedBy: null, confirmedAt: null },
+        threads: [{ id: "thrd-a1", notebookId: "nb-a", title: "Intermittent fault", createdAt: "", updatedAt: "", turnCount: 2, sharedLegacy: false }] },
+    ]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("A.jpg");
+    askFromHome("question A"); // every notebook is a machine, so General is created
+    await waitFor(() => expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Intermittent fault" }));
+    await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-id")).toBe("nb-a"));
+
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId("nb").getAttribute("data-id")).toBe("nb-a");
+    expect(screen.getByTestId("nb").getAttribute("data-initial-question-set")).toBe("false");
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  // Codex #4350 round 3, F4: an attachment-only send that failed had no way
+  // back — the banner's Try again needs a draft, Send needs text or a chip,
+  // and typing anything dropped the kept photo. The restored draft is now the
+  // question the thread would have asked for it, so Try again works.
+  it("row 8 / F4: an attachment-only send that failed restores the default question, and Try again carries the photo", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("nameplate.jpg");
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("What am I looking at, and what should I check?"));
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("What am I looking at, and what should I check?");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["nameplate.jpg"]);
   });
 
   it("row 8: Scan machine with no projects opens the New-project form instead of doing nothing", async () => {
