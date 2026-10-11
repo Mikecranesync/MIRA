@@ -769,12 +769,19 @@ function UnifiedChatForNotebook({
     // question and left the photo behind for the NEXT send. A failed send's
     // retained bytes are deliberately NOT a reason to compose here (#3863):
     // they ride only the explicit Try again below.
-    if (pending.length === 0 && !attachments.hasCarried() && !opts.retry) {
+    // Resending exactly the question a failed upload was asked with (the
+    // banner's Try again puts it back as the draft) is that turn's retry, and
+    // carries its bytes — the only retry path before a server turn exists
+    // (Codex #4350 r4 F6). Any other text is a different question (#3863).
+    // Optional calls: the guarded `src/screens/__tests__` doubles of this hook
+    // predate these two methods, and the frozen tree cannot be edited to add them.
+    const retry = opts.retry === true || (attachments.isRetryOf?.(text) ?? false);
+    if (pending.length === 0 && !attachments.hasCarried() && !retry) {
       if (confirmedScope) handlers.onSend(text, undefined, confirmedScope);
       else handlers.onSend(text);
       return;
     }
-    void attachments.compose(text, pending, opts).then((composed) => {
+    void attachments.compose(text, pending, { ...opts, retry }).then((composed) => {
       // Light review (#4195, HIGH, notebook-switch class): `confirmedScope`
       // was captured BEFORE this await, on THIS notebook. If the technician
       // switched notebooks while compose was pending, this instance is now
@@ -814,7 +821,9 @@ function UnifiedChatForNotebook({
       restoreConfirmedScope(confirmedScope);
       const message = error instanceof Error ? error.message : String(error);
       dispatch({ type: "set-send-error", error: message || "The attachment didn't upload — try again." });
-      dispatch({ type: "set-draft", draft: text });
+      // An attachment-only send has no text to put back; restore the question
+      // it was asked with, so the banner has a Try again that carries it.
+      dispatch({ type: "set-draft", draft: text || attachments.retainedQuestion?.() || text });
     });
   }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope]);
 

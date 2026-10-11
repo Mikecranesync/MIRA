@@ -105,6 +105,16 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
   // answered with an invisible photo attached — no chip, no way to remove it.
   const retained = useRef<readonly HeldAttachment[]>([]);
   const hasRetained = useCallback(() => retained.current.length > 0, []);
+  // The question the retained bytes were asked with. Resending exactly that
+  // question is a retry of the failed turn and carries them; any other text
+  // is a different question and does not (#3863). Before a server turn exists
+  // this is the only retry path there is (Codex #4350 r4 F6).
+  const retainedQuestionRef = useRef<string | null>(null);
+  const retainedQuestion = useCallback(() => (retained.current.length > 0 ? retainedQuestionRef.current : null), []);
+  const isRetryOf = useCallback((text: string) => {
+    const q = retained.current.length > 0 ? retainedQuestionRef.current : null;
+    return q !== null && text.trim() === q;
+  }, []);
 
   const hold = useCallback((file: File | null): Attachment | null => {
     if (!file) return null; // backed out of the native picker
@@ -160,7 +170,7 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     // already released its chip — so a retry would compose NOTHING and send the
     // photo question with no photo, the one outcome this module refuses. Put
     // the items into `retained` (never `carried`) on every failure path.
-    const retain = () => { retained.current = items; };
+    const retain = () => { retained.current = items; retainedQuestionRef.current = question; };
 
     let warning: string | undefined;
     let scope: readonly string[] | undefined;
@@ -215,5 +225,5 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     }
   }, [notebookId, threadId]);
 
-  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained };
+  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained, retainedQuestion, isRetryOf };
 }

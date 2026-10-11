@@ -257,11 +257,14 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
    * restores the draft under its banner.
    */
   const sendFromHome = useCallback((text: string | null) => {
+    // The shell stashed THIS send's attachments just before calling here.
+    // Claim them before anything else: a send that slips past the disabled
+    // button while a create is in flight is dropped WITH its bytes, so they
+    // never sit in the slot for an unrelated thread to claim (r4 F5).
+    const fresh = claimAttachments();
     if (homeSendInFlight.current) return;
     setHomeSendError(null);
     setHomeFailedQuestion(null);
-    // The shell stashed THIS send's attachments just before calling here.
-    const fresh = claimAttachments();
     const kept = failedHomeAttachments.current;
     failedHomeAttachments.current = [];
     // Only a retry of the failed submission — same text, nothing attached

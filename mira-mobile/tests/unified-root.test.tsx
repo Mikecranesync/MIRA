@@ -838,6 +838,34 @@ describe("UnifiedRoot", () => {
     expect(claimAttachments().map((h) => h.file.name)).toEqual(["A.jpg"]);
   });
 
+  // Codex #4350 round 4, F5: the shell's Enter/submit still reaches the root
+  // while it is busy; the root dropped that send AFTER the shell had stashed
+  // its photo, so the photo stayed parked for the next thread to claim.
+  it("row 8 / F5 (r4): a send that slips through while busy is dropped with its photo, which never reaches another thread", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("A.jpg");
+    askFromHome("question A");
+    await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true));
+
+    await attachHomePhoto("B.jpg");
+    askFromHome("question B");
+
+    expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1);
+    expect(claimAttachments()).toEqual([]);
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("question A");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["A.jpg"]);
+  });
+
   it("row 8 / F5: a create that resolves after the technician opened another project does not take over", async () => {
     const { listNotebooks } = await import("../src/api/resources");
     vi.mocked(listNotebooks).mockResolvedValueOnce([
