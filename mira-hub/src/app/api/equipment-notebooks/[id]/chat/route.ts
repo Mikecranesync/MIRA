@@ -3237,7 +3237,29 @@ async function handleChatTurn(
             // Race the upstream read against the client-stop signal: a stop
             // must interrupt a read that is waiting on a slow provider, not
             // wait for the next delta to notice it.
-            const { done, value } = await Promise.race([reader.read(), abortedRead]);
+            let next: ReadableStreamReadResult<Uint8Array>;
+            try {
+              next = await Promise.race([reader.read(), abortedRead]);
+            } catch (err) {
+              // Post-stop drain failure (Codex F1 on #4354): the answer is
+              // already complete. A dropped connection or the composed timeout
+              // while waiting for the usage block must NOT read as a provider
+              // failure — that would open a fallback and APPEND a second answer
+              // to responseBuffer. Finalize with usage unknown. A client stop
+              // keeps its own path (the catch below checks clientAbort first).
+              if (sawStop && !clientAbort.signal.aborted) {
+                console.warn(
+                  JSON.stringify({
+                    event: "stream.usage_drain_failed",
+                    provider: provider.name,
+                    message: err instanceof Error ? err.message : String(err),
+                  }),
+                );
+                break;
+              }
+              throw err;
+            }
+            const { done, value } = next;
             if (done) break;
             buffer += dec.decode(value, { stream: true });
             const lines = buffer.split("\n");
