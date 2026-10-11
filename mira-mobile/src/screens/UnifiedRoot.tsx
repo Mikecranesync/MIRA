@@ -7,10 +7,11 @@
  * classic switch. NotebookScreen keeps owning the send path, scope, riders,
  * uploads, and the citation viewer — it just renders chromeless.
  */
-import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import type { ProjectItem } from "@factorylm/interaction";
 import { createNotebook, listNotebooks, type Me, type Notebook } from "../api/resources";
 import { homeSendPlan } from "../unified/home-send";
+import { claimAttachments, stashAttachments, type HeldAttachment } from "../unified/attachment-handoff";
 import { hasActiveApiMutations } from "../api/client";
 import {
   hasActiveWorkOrderQueueProducers,
@@ -89,6 +90,12 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   // recoverable shell send error.
   const [homeSendError, setHomeSendError] = useState<string | null>(null);
   const [homeFailedQuestion, setHomeFailedQuestion] = useState<string | null>(null);
+  const homeFailedQuestionRef = useRef<string | null>(null);
+  homeFailedQuestionRef.current = homeFailedQuestion;
+  // What a failed HOME send had attached. Taken OUT of the handoff slot on
+  // failure so no later thread can claim it unseen; it rides only a retry of
+  // that same submission, and anything else discards it (Codex #4350 r2 F1).
+  const failedHomeAttachments = useRef<readonly HeldAttachment[]>([]);
   const [queuedOpenAddSources, setQueuedOpenAddSources] = useState(false);
   const [queuedSensorStart, setQueuedSensorStart] = useState<"read-scan" | null>(null);
   const [showAbout, setShowAbout] = useState(false);
@@ -255,19 +262,33 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     }
   }, [notebooks, startNewThread]);
 
-  /** A HOME send or New chat. On a failed create, the error and the question
-   *  land in one render so the shell restores the draft under the banner. */
+  /** A HOME send (`text`, possibly empty for an attachment-only send) or New
+   *  chat (`null`). On a failed create, the error and the question land in one
+   *  render so the shell restores the draft under the banner. */
   const sendFromHome = useCallback((text: string | null) => {
     setHomeSendError(null);
     setHomeFailedQuestion(null);
+    // The shell stashed THIS send's attachments just before calling here.
+    const fresh = claimAttachments();
+    const kept = failedHomeAttachments.current;
+    failedHomeAttachments.current = [];
+    // Only a retry of the failed submission — same text, nothing attached
+    // anew — carries what it had; a replaced question or New chat drops it.
+    const retrying = fresh.length === 0 && text !== null && text === homeFailedQuestionRef.current;
+    stashAttachments(retrying ? kept : fresh);
     void startHomeThread().then((result) => {
       if (!result) return; // the list is still loading
       if ("id" in result) {
-        if (text) setQueuedQuestion(text);
+        // An empty text is still a submission when evidence was attached: the
+        // thread's composition path asks its default question (r2 F3).
+        if (text !== null) setQueuedQuestion(text);
         return;
       }
+      failedHomeAttachments.current = claimAttachments();
       setHomeFailedQuestion(text);
-      setHomeSendError(result.failure);
+      setHomeSendError(
+        result.failure + (failedHomeAttachments.current.length > 0 ? " Your attachment is kept for Try again." : ""),
+      );
     });
   }, [startHomeThread]);
 

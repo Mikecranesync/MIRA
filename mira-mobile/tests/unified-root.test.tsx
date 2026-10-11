@@ -91,6 +91,7 @@ vi.mock("../src/screens/NotebookScreen", () => ({
         data-open-add-sources={String(Boolean(props.openAddSources))}
         data-chromeless={String(props.chromeless)}
         data-initial-question={props.initialQuestion ?? ""}
+        data-initial-question-set={String(props.initialQuestion !== null && props.initialQuestion !== undefined)}
         data-initial-sensor={props.initialSensorStart ?? ""}
         data-project-names={JSON.stringify((props.unifiedShell?.projects as { name: string }[] | undefined)?.map((p) => p.name) ?? [])}
       >
@@ -703,6 +704,108 @@ describe("UnifiedRoot", () => {
     await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
     expect(screen.getByTestId("unified-home")).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Ask MIRA" })).toBeTruthy();
+  });
+
+  // Codex #4350 round 2, F1: a photo stashed for a HOME send that then failed
+  // to create General stayed parked in the handoff slot, and rode the NEXT
+  // question — unrelated, invisible, with no chip to remove. It now rides
+  // only a retry of that same submission; anything else discards it.
+  async function attachHomePhoto(name: string) {
+    nativePick.pickPhoto.mockResolvedValueOnce(new File(["x"], name, { type: "image/jpeg" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Photo" }));
+    await screen.findByText(new RegExp(name.replace(".", "\\.")));
+  }
+  function askFromHome(text: string) {
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" });
+    fireEvent.change(box, { target: { value: text } });
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+  }
+
+  it("row 8 / F1: a photo on a failed first send leaves the handoff slot, and rides only the retry of that question", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("bearing.jpg");
+    askFromHome("what is leaking here");
+
+    const alert = await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    // Nothing else may claim it while the send is failed.
+    expect(claimAttachments()).toEqual([]);
+    expect(alert.textContent).toContain("Your attachment is kept for Try again.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("what is leaking here");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["bearing.jpg"]);
+  });
+
+  it("row 8 / F1: the photo is discarded when the failed question is replaced by another", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("bearing.jpg");
+    askFromHome("what is leaking here");
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    askFromHome("What is a VFD?");
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("What is a VFD?");
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  it("row 8 / F1: a photo attached again after the failure replaces the kept one", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("first.jpg");
+    askFromHome("what is leaking here");
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+
+    await attachHomePhoto("second.jpg");
+    askFromHome("what is leaking here");
+
+    await waitFor(() => screen.getByTestId("nb"));
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["second.jpg"]);
+  });
+
+  // Codex #4350 round 2, F3: an attachment with no text is a send the shell
+  // allows; it opened a blank thread and left the photo parked. The root now
+  // queues the submission even when its text is empty, so the thread's
+  // composition path asks its default photo question with the evidence.
+  it("row 8 / F3: an attachment-only first send queues a submission for the thread it creates", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("nameplate.jpg");
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-general");
+    expect(nb.getAttribute("data-initial-question-set")).toBe("true");
+    expect(nb.getAttribute("data-initial-question")).toBe("");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["nameplate.jpg"]);
+  });
+
+  it("row 8 / F3 control: New chat from the empty home queues no submission", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question-set")).toBe("false");
   });
 
   it("row 8: Scan machine with no projects opens the New-project form instead of doing nothing", async () => {

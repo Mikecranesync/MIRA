@@ -18,7 +18,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { renderHook } from "@testing-library/react";
 import { UnifiedChat } from "../src/screens/UnifiedChat";
 import { useUnifiedAttachments } from "../src/unified/attachments";
-import { clearAttachments } from "../src/unified/attachment-handoff";
+import { clearAttachments, stashAttachments } from "../src/unified/attachment-handoff";
 import type { Attachment } from "@factorylm/interaction";
 import type { NotebookServerTurn } from "../src/api/resources";
 import { _resetTransientLayersForTest, closeTopTransientLayer } from "../src/lib/transient-layer";
@@ -277,6 +277,44 @@ describe("UnifiedChat", () => {
 
     await waitFor(() => expect(resources.uploadSourceToNotebook).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(h.onSend).toHaveBeenCalledWith("what is the carrier limit", undefined, ["doc-carried"]));
+  });
+
+  // Codex #4350 round 2, F3: a HOME send of a photo with no text reaches the
+  // thread as an EMPTY initial question. That is still a submission when the
+  // handoff carried bytes: the composition path asks its default photo question
+  // with the evidence. Without carried bytes, or for New chat (null), nothing is sent.
+  it("sends an empty initial question when HOME handed over an attachment, with the default photo question", async () => {
+    stashAttachments([{
+      attachment: { id: "att-1", name: "nameplate.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "nameplate.jpg", { type: "image/jpeg" }),
+    }]);
+    resources.lookAtPhoto.mockResolvedValue({ fileId: "file-np", observation: { capturedAt: "2026-10-11T00:00:00Z" }, attachment: { linkId: "link-1", notebookId: "nb-1" }, observationPersisted: true });
+    const h = handlers();
+    const sent = vi.fn();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} initialQuestion="" onInitialQuestionSent={sent} />);
+
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledTimes(1));
+    expect(h.onSend.mock.calls[0]?.[0]).toBe("What am I looking at, and what should I check?");
+    expect(h.onSend.mock.calls[0]?.[1]).toMatchObject({ visualEvidence: { fileId: "file-np" } });
+    expect(sent).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends nothing for an empty initial question with no carried attachment, nor for a null one with a carried attachment", async () => {
+    const h1 = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h1} meta={META} initialQuestion="" />);
+    await act(async () => { await Promise.resolve(); });
+    expect(h1.onSend).not.toHaveBeenCalled();
+    cleanup();
+
+    stashAttachments([{
+      attachment: { id: "att-2", name: "nameplate.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "nameplate.jpg", { type: "image/jpeg" }),
+    }]);
+    const h2 = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h2} meta={META} initialQuestion={null} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(h2.onSend).not.toHaveBeenCalled();
+    expect(resources.lookAtPhoto).not.toHaveBeenCalled();
   });
 
   it("routes the shared shell Scan machine action to the host scanner", async () => {

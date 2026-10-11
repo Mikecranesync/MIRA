@@ -823,12 +823,17 @@ function UnifiedChatForNotebook({
   // composed and uploaded for THIS turn.
   const initialSentRef = useRef<string | null>(null);
   useEffect(() => {
-    const text = initialQuestion?.trim();
-    if (!text || busy || initialSentRef.current === text) return;
-    initialSentRef.current = text;
+    if (initialQuestion === null || initialQuestion === undefined || busy) return;
+    const text = initialQuestion.trim();
+    // An empty question is still a submission when HOME handed over an
+    // attachment: `compose` asks its default photo/document question with
+    // the evidence (Codex #4350 r2 F3). Empty with nothing carried is not.
+    if (!text && !attachments.hasCarried()) return;
+    if (initialSentRef.current === initialQuestion) return;
+    initialSentRef.current = initialQuestion;
     onSend(text, []);
     onInitialQuestionSent?.();
-  }, [busy, onSend, initialQuestion, onInitialQuestionSent]);
+  }, [busy, onSend, initialQuestion, onInitialQuestionSent, attachments.hasCarried]);
 
   // Read-aloud for gloved / hands-in-the-panel use. Null where the WebView has
   // no Web Speech, in which case no button renders. Stopped on unmount.
