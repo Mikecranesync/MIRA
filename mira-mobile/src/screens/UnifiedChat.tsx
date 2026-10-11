@@ -775,7 +775,10 @@ function UnifiedChatForNotebook({
     // (Codex #4350 r4 F6). Any other text is a different question (#3863).
     // Optional calls: the guarded `src/screens/__tests__` doubles of this hook
     // predate these two methods, and the frozen tree cannot be edited to add them.
-    const retry = opts.retry === true || (attachments.isRetryOf?.(text) ?? false);
+    // A freshly attached replacement is a NEW submission, never a retry of the
+    // failed one: it is what gets uploaded, and the failed bytes are dropped
+    // (r5 F7) — the same rule the home screen applies.
+    const retry = opts.retry === true || (pending.length === 0 && (attachments.isRetryOf?.(text) ?? false));
     if (pending.length === 0 && !attachments.hasCarried() && !retry) {
       if (confirmedScope) handlers.onSend(text, undefined, confirmedScope);
       else handlers.onSend(text);

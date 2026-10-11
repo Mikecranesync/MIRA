@@ -328,6 +328,36 @@ describe("UnifiedChat", () => {
     expect(h.onSend.mock.calls[0]?.[1]).toMatchObject({ visualEvidence: { fileId: "file-np" } });
   });
 
+  // Codex #4350 round 5, F7: the same question with a freshly attached
+  // replacement is NOT a retry of the failed photo. The replacement is what
+  // gets uploaded; the failed photo is dropped — as the home screen already
+  // does when a new attachment arrives after a failed send.
+  it("a replacement photo attached after a rejected upload is what gets sent, not the old photo", async () => {
+    stashAttachments([{
+      attachment: { id: "att-5", name: "old.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "old.jpg", { type: "image/jpeg" }),
+    }]);
+    resources.lookAtPhoto
+      .mockRejectedValueOnce(new Error("Network request failed"))
+      .mockResolvedValue({ fileId: "file-new", observation: { capturedAt: "2026-10-11T00:00:00Z" }, attachment: { linkId: "link-2", notebookId: "nb-1" }, observationPersisted: true });
+    const h = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} initialQuestion="" />);
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    expect(box.value).toBe("What am I looking at, and what should I check?");
+
+    nativePick.pickPhoto.mockResolvedValueOnce(new File(["y"], "replacement.jpg", { type: "image/jpeg" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    await screen.findByText(/replacement\.jpg/);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledTimes(1));
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(2);
+    expect((resources.lookAtPhoto.mock.calls[1]?.[1] as File).name).toBe("replacement.jpg");
+    expect(h.onSend.mock.calls[0]?.[1]).toMatchObject({ visualEvidence: { fileId: "file-new" } });
+  });
+
   it("a DIFFERENT question after a rejected photo upload goes out plain, without the photo (#3863 rule)", async () => {
     stashAttachments([{
       attachment: { id: "att-4", name: "nameplate.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
