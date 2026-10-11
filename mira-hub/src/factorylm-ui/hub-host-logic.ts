@@ -91,6 +91,21 @@ export function initialSelection(notebooks: readonly HubNotebook[]): HubSelectio
 }
 
 /**
+ * The entry for a route whose PATH already names the notebook
+ * (`(hub)/equipment/[id]`): that notebook's most recent thread, exactly as a
+ * `?notebook=` deep link without a thread would open it. An id the list does
+ * not carry (stale link, another tenant's notebook) resolves to null so the
+ * host lands on HOME — never on whichever machine was opened last, whose
+ * identity would otherwise ride the next turn.
+ */
+export function selectionForNotebook(notebookId: string, notebooks: readonly HubNotebook[]): HubSelection | null {
+  const id = notebookId.trim();
+  if (!id) return null;
+  const nb = notebooks.find((n) => n.id === id);
+  return nb ? initialSelection([nb]) : null;
+}
+
+/**
  * Where a fresh mount lands: HOME — no notebook, composer enabled. The 2026-09-07
  * stranger walk recorded "cold launch drops into the last thread" as a failure;
  * the ChatGPT-first lock's L0 is a composer home that answers immediately.

@@ -26,6 +26,7 @@ import {
   notebookSourceDocIds,
   retainedStreamInterruption,
   searchForSelection,
+  selectionForNotebook,
   selectionFromSearch,
   shellThreadId,
   stoppedStreamResult,
@@ -653,5 +654,36 @@ describe("createLatestLoadTracker — a superseded load reports the load that re
   it("control: a load nothing superseded keeps its own result", async () => {
     const tracker = createLatestLoadTracker();
     await expect(tracker.start(async () => true)).resolves.toBe(true);
+  });
+});
+
+describe("selectionForNotebook — a route whose path names the notebook (D4, equipment page on the shell)", () => {
+  const machine = nb({
+    id: "nb-machine",
+    displayName: "CV-101",
+    asset: { entityId: "asset-cv101", name: null, assetTag: null, selectedVia: null, confirmedBy: "u", confirmedAt: "2026-09-01T00:00:00Z" },
+    threads: [
+      { id: "t-old", notebookId: "nb-machine", title: "ports", createdAt: "", updatedAt: "2026-09-20T22:00:00Z", turnCount: 2, sharedLegacy: false },
+      { id: "t-new", notebookId: "nb-machine", title: "temperature", createdAt: "", updatedAt: "2026-09-21T01:00:00Z", turnCount: 3, sharedLegacy: false },
+    ],
+  });
+  const lastOpened = nb({ id: "nb-last", displayName: "GS10", threads: [] });
+  // Ordered by last opened, so a fallback to notebooks[0] would be GS10 — the wrong machine.
+  const list = [lastOpened, machine];
+
+  it("opens the named notebook's most recent thread, as a ?notebook= link without a thread would", () => {
+    expect(selectionForNotebook("nb-machine", list)).toEqual({ notebookId: "nb-machine", threadId: "t-new" });
+    expect(selectionForNotebook("nb-machine", list)).toEqual(selectionFromSearch("?notebook=nb-machine", list));
+  });
+  it("a notebook with no threads opens its legacy conversation", () => {
+    expect(selectionForNotebook("nb-last", list)).toEqual({ notebookId: "nb-last", threadId: "legacy" });
+  });
+  it("an id the list does not carry resolves to HOME (null), never to the last-opened notebook", () => {
+    expect(selectionForNotebook("nb-stale", list)).toBeNull();
+    expect(selectionForNotebook("", list)).toBeNull();
+    expect(selectionForNotebook("   ", list)).toBeNull();
+  });
+  it("control: the explicit deep link still wins over the route's notebook (precedence lives in the host)", () => {
+    expect(selectionFromSearch("?notebook=nb-last", list)).toEqual({ notebookId: "nb-last", threadId: "legacy" });
   });
 });
