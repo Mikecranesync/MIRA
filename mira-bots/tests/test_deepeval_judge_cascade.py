@@ -915,3 +915,112 @@ def test_judge_available_with_a_provider_or_a_warm_store_only(
     # A provider (control) → allowed, no note.
     monkeypatch.setenv("GROQ_API_KEY", "k1")
     assert suite.judge_available() == (True, "")
+
+
+# ---------------------------------------------------------------------------
+# Codex r3 — first-use budget initialization is serialized and every hold
+# settles on the instance it was taken on; evidence writers merge, never clobber
+# ---------------------------------------------------------------------------
+
+
+def test_two_threads_first_use_share_one_budget_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+    import time
+
+    constructed: list[int] = []
+    real_init = suite.JudgeBudget.__init__
+
+    def slow_init(self: Any) -> None:  # widen the window in which both threads see "uninitialized"
+        constructed.append(1)
+        time.sleep(0.05)
+        real_init(self)
+
+    monkeypatch.setattr(suite.JudgeBudget, "__init__", slow_init)
+    got: list[Any] = []
+    threads = [threading.Thread(target=lambda: got.append(suite.judge_budget())) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(got) == 2 and got[0] is got[1]
+    assert constructed == [1]  # exactly one pool was ever built
+
+
+def test_two_sync_threads_under_a_one_call_cap_dispatch_exactly_one_metered_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import threading
+    import time
+
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.005")  # room for exactly one worst case
+    hosts: list[str] = []
+    lock = threading.Lock()
+
+    def fake_post(url: str, **kw: Any) -> httpx.Response:
+        with lock:
+            hosts.append(url.split("/")[2])
+        if "api.openai.com" in url:
+            time.sleep(0.05)  # in flight while the other thread reserves
+            return _ok("from openai", usage={"prompt_tokens": 5, "completion_tokens": 5})
+        return _ok("from groq")
+
+    monkeypatch.setattr(suite.httpx, "post", fake_post)
+    judge = suite.CascadeJudge()
+    results: list[str] = []
+    threads = [
+        threading.Thread(target=lambda: results.append(str(judge.generate(PROMPT))))
+        for _ in range(2)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(results) == ["from groq", "from openai"]
+    assert hosts.count("api.openai.com") == 1 and hosts.count("api.groq.com") == 1
+    b = suite.judge_budget()
+    assert b.calls == 1 and b.refusals == 1
+    assert b.held_usd == pytest.approx(0.0) and b.spent_usd >= 0.0
+
+
+def test_two_stores_on_one_file_keep_each_others_verdicts(evidence_path: Path) -> None:
+    s1 = suite.JudgeEvidenceStore(evidence_path)
+    s2 = suite.JudgeEvidenceStore(evidence_path)  # both loaded the (empty) file before either wrote
+    s1.put("A", "verdict-a", "openai/x")
+    s2.put("B", "verdict-b", "openai/x")
+    fresh = suite.JudgeEvidenceStore(evidence_path)
+    assert fresh.get("A") == "verdict-a" and fresh.get("B") == "verdict-b"
+    # The second writer's own view absorbed the first writer's verdict too.
+    assert s2.get("A") == "verdict-a"
+    assert json.loads(evidence_path.read_text())["contract"] == suite.JUDGE_EVIDENCE_CONTRACT
+    assert (
+        list(evidence_path.parent.glob(".judge_evidence.*.tmp")) == []
+    )  # no temp file left behind
+
+
+def test_concurrent_writers_lose_nothing_and_recall_costs_zero(
+    monkeypatch: pytest.MonkeyPatch, evidence_path: Path
+) -> None:
+    import threading
+
+    def writer(n: int) -> None:
+        store = suite.JudgeEvidenceStore(evidence_path)
+        for i in range(10):
+            store.put(f"w{n}-{i}", f"v{n}-{i}", "openai/x")
+
+    threads = [threading.Thread(target=writer, args=(n,)) for n in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    durable = json.loads(evidence_path.read_text())["entries"]
+    assert len(durable) == 40
+    assert all(durable[f"w{n}-{i}"]["content"] == f"v{n}-{i}" for n in range(4) for i in range(10))
+    # Every verdict is recalled with no provider configured and no request.
+    monkeypatch.setattr(
+        suite.httpx, "post", lambda url, **kw: (_ for _ in ()).throw(AssertionError("no requests"))
+    )
+    fresh = suite.JudgeEvidenceStore(evidence_path)
+    assert all(fresh.get(f"w{n}-{i}") == f"v{n}-{i}" for n in range(4) for i in range(10))
+    assert fresh.hits == 40 and fresh.misses == 0

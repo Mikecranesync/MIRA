@@ -32,6 +32,7 @@ import logging
 import os
 import re
 import sys
+import tempfile
 import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -41,6 +42,11 @@ from pathlib import Path
 from typing import Optional, Union
 
 import httpx
+
+try:  # POSIX advisory file locks serialize evidence writers across processes.
+    import fcntl
+except ImportError:  # pragma: no cover — Windows has no fcntl; the thread lock still holds
+    fcntl = None  # type: ignore[assignment]
 
 # ---------------------------------------------------------------------------
 # DeepEval imports — v3.x compatible (v3+ renamed several metrics)
@@ -291,19 +297,29 @@ class JudgeBudget:
 
 
 _JUDGE_BUDGET: Optional[JudgeBudget] = None
+_JUDGE_BUDGET_INIT = threading.Lock()
 
 
 def judge_budget() -> JudgeBudget:
-    """The one budget this process judges under."""
+    """The one budget this process judges under.
+
+    Initialization is serialized (Codex r3 F3 on #4358): two synchronous
+    threads making their first judge call together must not each construct a
+    pool and both dispatch under a one-call cap. Callers bind the instance they
+    reserved on and settle/release/charge THAT instance, never a fresh lookup.
+    """
     global _JUDGE_BUDGET
     if _JUDGE_BUDGET is None:
-        _JUDGE_BUDGET = JudgeBudget()
+        with _JUDGE_BUDGET_INIT:
+            if _JUDGE_BUDGET is None:
+                _JUDGE_BUDGET = JudgeBudget()
     return _JUDGE_BUDGET
 
 
 def reset_judge_budget_for_tests() -> None:
     global _JUDGE_BUDGET
-    _JUDGE_BUDGET = None
+    with _JUDGE_BUDGET_INIT:
+        _JUDGE_BUDGET = None
     declared_price_table.cache_clear()
 
 
@@ -327,6 +343,15 @@ def reset_judge_budget_for_tests() -> None:
 
 JUDGE_EVIDENCE_CONTRACT = "1"  # bump to invalidate every stored verdict
 _DEFAULT_EVIDENCE_PATH = _HERE / "judge_evidence" / "judge_evidence.json"
+# Writers serialize in-process on this lock and across processes on a POSIX
+# advisory lock (a file in the system temp dir keyed by the store's absolute
+# path, so the committed evidence directory never gains an untracked lock file).
+_EVIDENCE_WRITE = threading.Lock()
+
+
+def _evidence_lock_path(path: Path) -> Path:
+    digest = hashlib.sha1(str(path.resolve()).encode("utf-8")).hexdigest()[:16]
+    return Path(tempfile.gettempdir()) / f"mira-judge-evidence-{digest}.lock"
 
 
 def _deepeval_version() -> str:
@@ -400,6 +425,17 @@ class JudgeEvidenceStore:
         return None
 
     def put(self, key: str, content: str, served_by: str) -> None:
+        """Record one verdict durably — merged into whatever the file holds NOW.
+
+        Two judges (threads or processes) that loaded the same file before
+        either wrote must not overwrite each other's verdicts (Codex r3 F6 on
+        #4358): the write runs under an in-process lock and a cross-process
+        advisory lock, re-reads the durable entries inside that critical
+        section, overlays this instance's entries (keys are content-addressed
+        and immutable, so the union is the truth), and replaces the file
+        atomically from a uniquely named temp file. The merged set becomes this
+        instance's view, so a later recall sees the other writer's verdicts too.
+        """
         if not self.enabled or self.path is None:
             return
         self._entries[key] = {
@@ -408,19 +444,42 @@ class JudgeEvidenceStore:
             "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
         self.writes += 1
-        payload = json.dumps(
-            {"contract": JUDGE_EVIDENCE_CONTRACT, "entries": self._entries},
-            indent=1,
-            sort_keys=True,
-            ensure_ascii=False,
-        )
-        try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-            tmp.write_text(payload + "\n")
-            os.replace(tmp, self.path)
-        except OSError as exc:
-            logger.warning("DEEPEVAL_JUDGE_EVIDENCE_WRITE_FAILED path=%s err=%s", self.path, exc)
+        with _EVIDENCE_WRITE:
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                with open(_evidence_lock_path(self.path), "a+") as lock_file:
+                    if fcntl is not None:
+                        fcntl.flock(lock_file, fcntl.LOCK_EX)
+                    try:
+                        merged = self._load(self.path)
+                        merged.update(self._entries)
+                        self._entries = merged
+                        payload = json.dumps(
+                            {"contract": JUDGE_EVIDENCE_CONTRACT, "entries": merged},
+                            indent=1,
+                            sort_keys=True,
+                            ensure_ascii=False,
+                        )
+                        fd, tmp_name = tempfile.mkstemp(
+                            dir=str(self.path.parent), prefix=".judge_evidence.", suffix=".tmp"
+                        )
+                        try:
+                            with os.fdopen(fd, "w") as tmp:
+                                tmp.write(payload + "\n")
+                            os.replace(tmp_name, self.path)
+                        except BaseException:
+                            try:
+                                os.unlink(tmp_name)
+                            except OSError:
+                                pass
+                            raise
+                    finally:
+                        if fcntl is not None:
+                            fcntl.flock(lock_file, fcntl.LOCK_UN)
+            except OSError as exc:
+                logger.warning(
+                    "DEEPEVAL_JUDGE_EVIDENCE_WRITE_FAILED path=%s err=%s", self.path, exc
+                )
 
     def summary(self) -> dict[str, object]:
         return {
@@ -541,16 +600,17 @@ class CascadeJudge(DeepEvalBaseLLM):
         return value
 
     def _reserve(
-        self, provider: JudgeProvider, prompt: str
+        self, provider: JudgeProvider, prompt: str, budget: JudgeBudget
     ) -> tuple[Optional[float], Optional[str]]:
-        """Hold the worst case for a metered provider before dispatch.
+        """Hold the worst case for a metered provider before dispatch, on the
+        ONE budget instance the caller bound for this call (settle/release/
+        uncertain-charge go to the same instance — never a fresh lookup).
 
         (estimate, None) when dispatch may proceed; (None, reason) when the
         provider is refused — unknown price (fail closed) or the cap.
         """
         if not provider.metered:
             return 0.0, None
-        budget = judge_budget()
         estimate = budget.estimate_usd(prompt, provider.model)
         if estimate is None:
             logger.warning(
@@ -562,7 +622,9 @@ class CascadeJudge(DeepEvalBaseLLM):
         return estimate, None
 
     @staticmethod
-    def _settle(provider: JudgeProvider, resp: httpx.Response, estimate: float) -> None:
+    def _settle(
+        provider: JudgeProvider, resp: httpx.Response, estimate: float, budget: JudgeBudget
+    ) -> None:
         """A served metered call is charged its actual usage whatever its content turns out to be."""
         if not provider.metered:
             return
@@ -570,17 +632,17 @@ class CascadeJudge(DeepEvalBaseLLM):
             usage = resp.json().get("usage")
         except (ValueError, AttributeError):
             usage = None
-        judge_budget().settle(estimate, usage, provider.model)
+        budget.settle(estimate, usage, provider.model)
 
     @staticmethod
-    def _release(provider: JudgeProvider, estimate: float) -> None:
+    def _release(provider: JudgeProvider, estimate: float, budget: JudgeBudget) -> None:
         if provider.metered:
-            judge_budget().release(estimate)
+            budget.release(estimate)
 
     @staticmethod
-    def _charge_uncertain(provider: JudgeProvider, estimate: float) -> None:
+    def _charge_uncertain(provider: JudgeProvider, estimate: float, budget: JudgeBudget) -> None:
         if provider.metered:
-            judge_budget().charge_uncertain(estimate)
+            budget.charge_uncertain(estimate)
 
     def _finish(self, key: str, provider: JudgeProvider, content: str) -> None:
         self._record_served(f"{provider.name}/{provider.model}")
@@ -594,8 +656,9 @@ class CascadeJudge(DeepEvalBaseLLM):
         if recalled is not None:
             return recalled
         attempts: list[str] = []
+        budget = judge_budget()  # bound once: every hold on this call settles here
         for provider in self._require_providers():
-            estimate, refused = self._reserve(provider, prompt)
+            estimate, refused = self._reserve(provider, prompt, budget)
             if estimate is None:
                 attempts.append(refused or f"{provider.name}=refused")
                 continue
@@ -608,17 +671,17 @@ class CascadeJudge(DeepEvalBaseLLM):
                 )
             except httpx.HTTPError as exc:
                 # The request may have reached the provider: keep the hold as spend.
-                self._charge_uncertain(provider, estimate)
+                self._charge_uncertain(provider, estimate, budget)
                 attempts.append(f"{provider.name}={type(exc).__name__}")
                 continue
             if resp.status_code != 200:
                 # Any non-2xx moves on: a judge is a pure read, and a Groq
                 # billing restriction arrives as HTTP 400, not 5xx. Rejected
                 # requests are not billed, so the hold is released.
-                self._release(provider, estimate)
+                self._release(provider, estimate, budget)
                 attempts.append(f"{provider.name}=HTTP{resp.status_code}")
                 continue
-            self._settle(provider, resp, estimate)
+            self._settle(provider, resp, estimate, budget)
             value, reason, content = self._accept(provider, resp, schema)
             if reason is not None or content is None:
                 attempts.append(reason or f"{provider.name}=unusable")
@@ -635,11 +698,12 @@ class CascadeJudge(DeepEvalBaseLLM):
         if recalled is not None:
             return recalled
         attempts: list[str] = []
+        budget = judge_budget()  # bound once: every hold on this call settles here
         async with httpx.AsyncClient(timeout=JUDGE_TIMEOUT) as client:
             for provider in self._require_providers():
                 # The hold is taken synchronously, before the first await, so
                 # concurrent callers see each other's reservations.
-                estimate, refused = self._reserve(provider, prompt)
+                estimate, refused = self._reserve(provider, prompt, budget)
                 if estimate is None:
                     attempts.append(refused or f"{provider.name}=refused")
                     continue
@@ -650,14 +714,14 @@ class CascadeJudge(DeepEvalBaseLLM):
                         json=judge_request_body(provider, prompt),
                     )
                 except httpx.HTTPError as exc:
-                    self._charge_uncertain(provider, estimate)
+                    self._charge_uncertain(provider, estimate, budget)
                     attempts.append(f"{provider.name}={type(exc).__name__}")
                     continue
                 if resp.status_code != 200:
-                    self._release(provider, estimate)
+                    self._release(provider, estimate, budget)
                     attempts.append(f"{provider.name}=HTTP{resp.status_code}")
                     continue
-                self._settle(provider, resp, estimate)
+                self._settle(provider, resp, estimate, budget)
                 value, reason, content = self._accept(provider, resp, schema)
                 if reason is not None or content is None:
                     attempts.append(reason or f"{provider.name}=unusable")
