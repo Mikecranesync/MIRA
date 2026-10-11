@@ -263,6 +263,18 @@ describe("D6 — honest exhaustion frame", () => {
     expect(String(statusFrame(text)?.message)).toContain("No AI answer provider is configured");
   });
 
+  it("control: with the canonical seam OFF the legacy frame is byte-identical (bare message, no reason, no log)", async () => {
+    // The legacy inline cascade is the rollback path; D6 must not change a
+    // single frame of it (the pre-existing chat-stop-persist contract pins the
+    // bare message there).
+    process.env.MIRA_CANONICAL_SEAM = "0";
+    stubFetch({ openai: [{ status: 402 }], groq: [{ status: 401 }] });
+    const { text, turn } = await run();
+    expect(turn).toMatchObject({ answerStatus: "error" });
+    expect(statusFrame(text)).toEqual({ kind: "status", status: "error", message: "No answer provider available." });
+    expect(exhaustedLogs()).toHaveLength(0);
+  });
+
   it("control: a served turn carries NO exhaustion fields and logs nothing", async () => {
     stubFetch({ openai: ["serve"] });
     const { text, turn } = await run();

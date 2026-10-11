@@ -3188,9 +3188,11 @@ async function handleChatTurn(
         // D6 — a provider that answered 401/402/403 within the last
         // MIRA_PROVIDER_UNHEALTHY_S seconds is skipped, not re-tried: that
         // answer cannot change until a human fixes the key or the balance.
-        if (health.isUnhealthy(provider.name)) {
+        // Canonical seam only, like every other D6 behaviour: the legacy
+        // inline cascade stays byte-identical.
+        if (seam && health.isUnhealthy(provider.name)) {
           providerFailures.push({ provider: provider.name, httpStatus: null, reason: "quarantined" });
-          if (seam) attempted.push(provider.name);
+          attempted.push(provider.name);
           continue;
         }
         genSpan = startStage(`chat ${provider.model}`);
@@ -4052,10 +4054,14 @@ async function handleChatTurn(
             ? { kind: "status", status: "insufficient_evidence", message: "Not found in the selected sources." }
             : internalError
               ? { kind: "status", status: "error", message: "Internal chat error — see server logs." }
-              : // D6 — say WHY, in the technician's words and in the machine's:
-                // friendly copy + `reason` + the per-provider attempt record.
-                { kind: "status", status: "error", ...providerExhaustionStatus(providerFailures) };
-      if (statusFrame.status === "error" && !internalError) {
+              : seam
+                ? // D6 — say WHY, in the technician's words and in the machine's:
+                  // friendly copy + `reason` + the per-provider attempt record.
+                  // Seam-flagged like the usage frame below; the legacy path's
+                  // frame sequence stays byte-for-byte unchanged.
+                  { kind: "status", status: "error", ...providerExhaustionStatus(providerFailures) }
+                : { kind: "status", status: "error", message: "No answer provider available." };
+      if (seam && statusFrame.status === "error" && !internalError) {
         logProvidersExhausted({ tenantId: ctx.tenantId, notebookId }, providerFailures);
       }
       // Canonical per-turn spend, emitted BEFORE status so a client that stops
