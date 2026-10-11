@@ -14,6 +14,7 @@
  */
 
 import { requestDialectFields, type CanonicalProvider } from "@/lib/inference/canonical-cascade";
+import { estimateInputTokens, logBudgetExhausted, openAiRunBudget, type BudgetReservation } from "@/capabilities/openai-run-budget";
 
 interface CascadeProvider {
   name: string;
@@ -113,6 +114,24 @@ async function callOne(
   // models never receive an unsupported param.
   if (provider.model.includes("gpt-oss")) body.reasoning_effort = "low";
 
+  // Per-run OpenAI spend hard stop (owner directive 2026-10-11; ZTA Hard Rule 1:
+  // every paid lane declares a dollar budget and stops at it). OpenAI is the
+  // only METERED provider in this list. The worst case is HELD for the life
+  // of the request so concurrent quickstart callers cannot each pass against
+  // the same balance; at the cap the call is refused BEFORE the fetch and the
+  // cascade falls through exactly as for a provider that is down.
+  const outputCap = opts.maxTokens ?? 600;
+  const inputEstimate = estimateInputTokens(messages);
+  let reservation: BudgetReservation | null = null;
+  if (provider.name === "OpenAI") {
+    const verdict = openAiRunBudget().reserve(inputEstimate, outputCap);
+    if (!verdict.ok) {
+      logBudgetExhausted("llm-cascade", verdict);
+      return null;
+    }
+    reservation = verdict.reservation;
+  }
+
   let res: Response;
   try {
     res = await fetch(provider.url, {
@@ -125,15 +144,26 @@ async function callOne(
       signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000),
     });
   } catch {
+    reservation?.release();
     return null;
   }
-  if (!res.ok) return null;
-  let parsed: { choices?: { message?: { content?: string } }[] };
+  if (!res.ok) {
+    reservation?.release();
+    return null;
+  }
+  let parsed: {
+    choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
   try {
-    parsed = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    parsed = (await res.json()) as typeof parsed;
   } catch {
+    // A 200 whose body could not be read was still served and billed: book the worst case.
+    reservation?.settle(inputEstimate, outputCap);
     return null;
   }
+  // Served: book the ACTUAL usage (fall back to the estimate when the provider omits it).
+  reservation?.settle(parsed.usage?.prompt_tokens ?? inputEstimate, parsed.usage?.completion_tokens ?? outputCap);
   return parsed.choices?.[0]?.message?.content ?? null;
 }
 

@@ -1,0 +1,129 @@
+/**
+ * The non-streaming cascade's OpenAI leg is spend-capped (Codex F1 on #4357).
+ *
+ * Contract: with OPENAI_API_KEY set, every OpenAI call reserves its worst case
+ * against the process budget BEFORE the fetch; a served response settles the
+ * reservation with the provider's actual usage; a failed request releases it;
+ * once the cap would be crossed, OpenAI is skipped (no fetch) and the cascade
+ * falls through to the next provider, which still answers. Concurrent callers
+ * are bounded by the hold, not just by the balance at the moment they check.
+ *
+ * Run: npx vitest run src/capabilities/__tests__/llm-cascade-budget.test.ts
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cascadeComplete } from "@/lib/llm/cascade";
+import { openAiRunBudget, resetOpenAiRunBudgetForTests } from "@/capabilities/openai-run-budget";
+
+const ENV = { ...process.env };
+beforeEach(() => {
+  process.env.OPENAI_API_KEY = "k0";
+  process.env.GROQ_API_KEY = "k1";
+  delete process.env.CEREBRAS_API_KEY;
+  delete process.env.TOGETHERAI_API_KEY;
+  // Input priced at zero so the arithmetic is only the 600-token output cap:
+  // worst case per call = 600 / 1e6 * 4.5 = $0.0027.
+  process.env.OPENAI_PRICE_PER_MTOK_IN = "0";
+  process.env.OPENAI_PRICE_PER_MTOK_OUT = "4.5";
+  resetOpenAiRunBudgetForTests();
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+});
+afterEach(() => {
+  process.env = { ...ENV };
+  resetOpenAiRunBudgetForTests();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+type Call = { host: string };
+
+/** fetch stub: OpenAI answers per `openai`; Groq always answers. `gate` lets a test hold OpenAI in flight. */
+function stubFetch(
+  openai: { status: number } | { content: string; usage?: { prompt_tokens: number; completion_tokens: number } } | { throws: true },
+  gate?: Promise<void>,
+) {
+  const calls: Call[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string | URL | Request) => {
+      const u = String(url);
+      calls.push({ host: new URL(u).host });
+      if (u.includes("api.openai.com")) {
+        if (gate) await gate;
+        if ("throws" in openai) throw new TypeError("network down");
+        if ("status" in openai) return new Response("nope", { status: openai.status });
+        return Response.json({ choices: [{ message: { content: openai.content } }], usage: openai.usage });
+      }
+      return Response.json({ choices: [{ message: { content: "from groq" } }] });
+    }),
+  );
+  return calls;
+}
+
+const MESSAGES = [{ role: "user" as const, content: "PowerFlex 525 fault F0004 on power-up" }];
+const hosts = (calls: Call[]) => calls.map((c) => c.host);
+
+describe("lib/llm/cascade — the OpenAI leg is spend-capped", () => {
+  it("a served OpenAI call books the provider's ACTUAL usage, not the worst case", async () => {
+    process.env.OPENAI_RUN_BUDGET_USD = "1";
+    stubFetch({ content: "from openai", usage: { prompt_tokens: 50, completion_tokens: 100 } });
+    const r = await cascadeComplete(MESSAGES);
+    expect(r?.provider).toBe("OpenAI");
+    expect(openAiRunBudget().spentUsd).toBeCloseTo(0.00045, 6); // 100 / 1e6 * 4.5
+    expect(openAiRunBudget().calls).toBe(1);
+  });
+
+  it("at the cap, OpenAI is skipped WITHOUT a fetch and Groq answers (the cascade falls through)", async () => {
+    // Cap fits one worst case ($0.0027) but not a second after a $0.00225 real spend.
+    process.env.OPENAI_RUN_BUDGET_USD = "0.004";
+    const calls = stubFetch({ content: "from openai", usage: { prompt_tokens: 0, completion_tokens: 500 } });
+    expect((await cascadeComplete(MESSAGES))?.provider).toBe("OpenAI");
+    const second = await cascadeComplete(MESSAGES);
+    expect(second).toMatchObject({ provider: "Groq", content: "from groq" });
+    expect(hosts(calls)).toEqual(["api.openai.com", "api.groq.com"]);
+    expect(openAiRunBudget().calls).toBe(1);
+  });
+
+  it("a failed OpenAI request (non-OK status) releases its hold: the next call may still use OpenAI", async () => {
+    process.env.OPENAI_RUN_BUDGET_USD = "0.004";
+    const calls = stubFetch({ status: 500 });
+    expect((await cascadeComplete(MESSAGES))?.provider).toBe("Groq");
+    expect(openAiRunBudget().spentUsd).toBe(0);
+    expect(openAiRunBudget().calls).toBe(0);
+    await cascadeComplete(MESSAGES);
+    expect(hosts(calls)).toEqual(["api.openai.com", "api.groq.com", "api.openai.com", "api.groq.com"]);
+  });
+
+  it("a transport failure releases its hold too", async () => {
+    process.env.OPENAI_RUN_BUDGET_USD = "0.004";
+    stubFetch({ throws: true });
+    expect((await cascadeComplete(MESSAGES))?.provider).toBe("Groq");
+    expect(openAiRunBudget().spentUsd).toBe(0);
+  });
+
+  it("concurrent callers are bounded by the HOLD: with room for one worst case, the second skips OpenAI while the first is still in flight", async () => {
+    process.env.OPENAI_RUN_BUDGET_USD = "0.004";
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const calls = stubFetch({ content: "from openai", usage: { prompt_tokens: 0, completion_tokens: 10 } }, gate);
+    const first = cascadeComplete(MESSAGES);
+    const second = cascadeComplete(MESSAGES);
+    // Let the second caller reach its provider decision before the first response lands.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hosts(calls)).toEqual(["api.openai.com", "api.groq.com"]);
+    open();
+    expect((await first)?.provider).toBe("OpenAI");
+    expect((await second)?.provider).toBe("Groq");
+    // The first call's hold was replaced by its tiny actual usage.
+    expect(openAiRunBudget().spentUsd).toBeCloseTo(0.000045, 7);
+  });
+
+  it("control: the budget never touches a free-tier provider (no key → Groq only, nothing recorded)", async () => {
+    delete process.env.OPENAI_API_KEY;
+    process.env.OPENAI_RUN_BUDGET_USD = "0";
+    const calls = stubFetch({ content: "unused" });
+    expect((await cascadeComplete(MESSAGES))?.provider).toBe("Groq");
+    expect(hosts(calls)).toEqual(["api.groq.com"]);
+    expect(openAiRunBudget().calls).toBe(0);
+  });
+});
