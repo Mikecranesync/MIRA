@@ -25,7 +25,8 @@
  * throws only if EVERY pass fails.
  */
 
-import { togetherVisionModel } from "./index";
+import { requestDialectFields } from "../inference/canonical-cascade";
+import { openAiVisionProvider, togetherVisionModel } from "./index";
 
 // ── Field vocabulary ─────────────────────────────────────────────────────────
 
@@ -604,6 +605,71 @@ export const togetherVisionCall: VisionCall = async ({ prompt, images, temperatu
   return { text: body.choices?.[0]?.message?.content ?? "{}", model };
 };
 
+/**
+ * OpenAI vision call (2026-10-11, D8) — the same per-pass contract as
+ * `togetherVisionCall`, in the gpt-5 dialect: the cap rides as
+ * `max_completion_tokens`, `temperature` is not sent (only the default is
+ * accepted), `reasoning_effort` rides from the provider descriptor.
+ */
+export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature, maxTokens }) => {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("recognizer_not_configured");
+  const provider = openAiVisionProvider(key);
+  const content: unknown[] = [{ type: "text", text: prompt }];
+  for (const img of images) {
+    content.push({
+      type: "image_url",
+      image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+    });
+  }
+  // Bounded like `openAiCompatVision`: a stalled request must reach the LOOK
+  // error path and must not hold `runMultiPass`'s Promise.all hostage (Codex F2
+  // on #4353). The signal covers the request AND the body read.
+  const signal = AbortSignal.timeout(visionTimeoutMs());
+  let resp: Response;
+  try {
+    resp = await fetch(provider.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      signal,
+      body: JSON.stringify({
+        model: provider.model,
+        ...requestDialectFields(provider, maxTokens, temperature),
+        response_format: { type: "json_object" },
+        messages: [{ role: "user", content }],
+      }),
+    });
+  } catch (err) {
+    throw new Error(signal.aborted ? "recognizer_provider_timeout" : "recognizer_provider_unreachable", {
+      cause: err,
+    });
+  }
+  if (!resp.ok) throw new Error(`recognizer_provider_error_${resp.status}`);
+  let body: { choices?: { message?: { content?: string } }[] };
+  try {
+    body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
+  } catch (err) {
+    if (signal.aborted) throw new Error("recognizer_provider_timeout", { cause: err });
+    throw err;
+  }
+  return { text: body.choices?.[0]?.message?.content ?? "{}", model: provider.model };
+};
+
+/**
+ * Validated finite deadline for one vision request, in ms. Same env var
+ * `openAiCompatVision` honours; a missing, empty, non-numeric or non-positive
+ * value falls back to 30 s rather than to "no deadline".
+ */
+export function visionTimeoutMs(): number {
+  const raw = Number(process.env.NAMEPLATE_VISION_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 30_000;
+}
+
+/** OpenAI leads when its key is set; otherwise the Together call, exactly as before. */
+export function defaultVisionCall(): VisionCall {
+  return process.env.OPENAI_API_KEY ? openAiVisionCall : togetherVisionCall;
+}
+
 export function safeJson(text: string): Record<string, unknown> | null {
   try {
     const v = JSON.parse(text);
@@ -749,7 +815,7 @@ export async function runMultiPass(
   image: VisionImage,
   opts: MultiPassOptions = {},
 ): Promise<MultiPassResult> {
-  const call = opts.call ?? togetherVisionCall;
+  const call = opts.call ?? defaultVisionCall();
   const wanted: PassName[] = opts.passes ?? ["semantic", "ocr", "identifier"];
   const temperature = opts.temperature ?? 0.1;
   const hint = opts.hint ? `${opts.hint}\n\n` : "";

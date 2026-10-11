@@ -7,8 +7,9 @@
  *
  * Mirrors `nameplate/recognize` — same session, ownership, multipart, MIME
  * sniff, cap, park-then-link discipline — and differs in exactly one thing:
- * the vision pass is a fixed INSPECTION prompt over `togetherVisionCall`
- * (`@/lib/nameplate/passes`) instead of a nameplate recognizer.
+ * the vision pass is a fixed INSPECTION prompt over `openAiVisionCall` (when
+ * OPENAI_API_KEY is set) or `togetherVisionCall` (`@/lib/nameplate/passes`)
+ * instead of a nameplate recognizer.
  *
  * Laws honored here:
  * 1. PARK BEFORE VISION. The photo survives a 502/503; the response always
@@ -73,7 +74,7 @@ import {
 import { isRecognizerConfigured, fixtureSelected } from "@/lib/nameplate";
 import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
-import { togetherVisionCall, safeJson, type VisionCall } from "@/lib/nameplate/passes";
+import { openAiVisionCall, togetherVisionCall, safeJson, type VisionCall } from "@/lib/nameplate/passes";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +89,7 @@ const MAX_CLIENT_KEY_CHARS = 128;
 /**
  * The one prompt this route owns. Observations only: the four-bucket
  * observed/documentation/historical/inference reasoning belongs to the chat
- * route's existing instruction, not here. `togetherVisionCall` runs in JSON
+ * route's existing instruction, not here. Both vision calls run in JSON
  * mode, so the answer is wrapped in one string field and unwrapped below.
  */
 export const INSPECTION_PROMPT = `You are looking at a photograph a maintenance technician just took of industrial equipment.
@@ -397,7 +398,19 @@ async function handleLookTurn(
     );
   }
 
-  const vision: VisionCall = fixtureSelected() ? fixtureVisionCall : togetherVisionCall;
+  // Provider pick (D8, 2026-10-11): OpenAI leads when its key is set, else Together
+  // — the same order as `defaultRecognizer`. Picked inline (not via
+  // `defaultVisionCall`) so each call stays an importable, mockable seam.
+  // The provider NAME is picked here too, once, and every telemetry site below
+  // reads it — a call served by OpenAI must never be recorded as Together
+  // (Codex F1 on #4353: health and audit queries would name the wrong provider).
+  const visionProvider = fixtureSelected() ? "fixture" : process.env.OPENAI_API_KEY ? "openai" : "together";
+  const vision: VisionCall =
+    visionProvider === "fixture"
+      ? fixtureVisionCall
+      : visionProvider === "openai"
+        ? openAiVisionCall
+        : togetherVisionCall;
   const visionStartedAt = Date.now();
   const visionSpan = tracer.startSpan("chat (vision)", undefined, rootCtx);
   try {
@@ -445,7 +458,7 @@ async function handleLookTurn(
     setSpanAttrs(
       {
         "gen_ai.operation.name": "chat",
-        "gen_ai.provider.name": fixtureSelected() ? "fixture" : "together",
+        "gen_ai.provider.name": visionProvider,
         "gen_ai.response.model": reply.model,
         "mira.vision.observation_chars": inspection.text.length,
         "mira.vision.hazard_count": inspection.hazards.length,
@@ -456,7 +469,7 @@ async function handleLookTurn(
     visionSpan.end();
     rec.stage("vision", {
       ran: true,
-      provider: fixtureSelected() ? "fixture" : "together",
+      provider: visionProvider,
       model: reply.model,
       latency_ms: Date.now() - visionStartedAt,
       observation_chars: inspection.text.length,
@@ -464,7 +477,7 @@ async function handleLookTurn(
       ok: true,
     });
     await finishLook({
-      provider: fixtureSelected() ? "fixture" : "together",
+      provider: visionProvider,
       model: reply.model,
       ok: true,
     });
@@ -480,7 +493,7 @@ async function handleLookTurn(
     setSpanAttrs(
       {
         "gen_ai.operation.name": "chat",
-        "gen_ai.provider.name": fixtureSelected() ? "fixture" : "together",
+        "gen_ai.provider.name": visionProvider,
         "mira.vision.ok": false,
       },
       visionSpan,
@@ -488,12 +501,12 @@ async function handleLookTurn(
     visionSpan.end();
     rec.stage("vision", {
       ran: true,
-      provider: fixtureSelected() ? "fixture" : "together",
+      provider: visionProvider,
       latency_ms: Date.now() - visionStartedAt,
       ok: false,
     });
     rec.error("vision", "provider_error");
-    await finishLook({ provider: fixtureSelected() ? "fixture" : "together", model: null, ok: false });
+    await finishLook({ provider: visionProvider, model: null, ok: false });
     endRoot();
     return NextResponse.json(
       {
