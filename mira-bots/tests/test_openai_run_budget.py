@@ -1,0 +1,248 @@
+"""Per-run OpenAI spend hard stop — offline contract.
+
+Pins: the cap/window/price env contract (incl. the compose empty-string case),
+precheck-before / record-after arithmetic, the rolling window, the default
+price equals the repo's declared gpt-5.4-mini rate, and the router skipping
+OpenAI (falling through) once the window is exhausted while still recording
+real usage after a served call.
+
+Run: cd mira-bots && python -m pytest tests/test_openai_run_budget.py -q
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from shared.inference import run_budget as rb
+from shared.inference.router import InferenceRouter, _build_providers
+
+ENV = (
+    "OPENAI_RUN_BUDGET_USD",
+    "OPENAI_RUN_BUDGET_WINDOW_S",
+    "OPENAI_PRICE_PER_MTOK_IN",
+    "OPENAI_PRICE_PER_MTOK_OUT",
+    "OPENAI_API_KEY",
+    "GROQ_API_KEY",
+    "CEREBRAS_API_KEY",
+    "TOGETHERAI_API_KEY",
+    "OPENAI_MODEL",
+    "INFERENCE_BACKEND",
+)
+
+
+@pytest.fixture(autouse=True)
+def _clean(monkeypatch):
+    for var in ENV:
+        monkeypatch.delenv(var, raising=False)
+    rb.reset_openai_run_budget()
+    yield
+    rb.reset_openai_run_budget()
+
+
+class FakeClock:
+    def __init__(self, t: float = 0.0) -> None:
+        self.t = t
+
+    def __call__(self) -> float:
+        return self.t
+
+
+# ── env contract ──────────────────────────────────────────────────────────────
+
+
+def test_defaults_when_env_is_unset():
+    b = rb.OpenAIRunBudget(clock=FakeClock())
+    assert b.cap_usd == 10.0
+    assert b.window_s == 86_400.0
+    assert b.estimate_usd(1_000_000, 0) == pytest.approx(0.75)
+    assert b.estimate_usd(0, 1_000_000) == pytest.approx(4.5)
+
+
+def test_env_overrides_and_compose_empty_string_does_not_win(monkeypatch):
+    monkeypatch.setenv("OPENAI_RUN_BUDGET_USD", "2.5")
+    monkeypatch.setenv("OPENAI_RUN_BUDGET_WINDOW_S", "3600")
+    monkeypatch.setenv("OPENAI_PRICE_PER_MTOK_IN", "1.0")
+    monkeypatch.setenv("OPENAI_PRICE_PER_MTOK_OUT", "")  # compose ${VAR:-} → ""
+    b = rb.OpenAIRunBudget(clock=FakeClock())
+    assert b.cap_usd == 2.5
+    assert b.window_s == 3600.0
+    assert b.estimate_usd(1_000_000, 1_000_000) == pytest.approx(1.0 + 4.5)
+
+
+@pytest.mark.parametrize("bad", ["abc", "-1", "nan", "inf"])
+def test_junk_cap_falls_back_to_the_default(monkeypatch, bad):
+    monkeypatch.setenv("OPENAI_RUN_BUDGET_USD", bad)
+    assert rb.OpenAIRunBudget(clock=FakeClock()).cap_usd == 10.0
+
+
+def test_window_below_one_second_falls_back(monkeypatch):
+    monkeypatch.setenv("OPENAI_RUN_BUDGET_WINDOW_S", "0")
+    assert rb.OpenAIRunBudget(clock=FakeClock()).window_s == 86_400.0
+
+
+def test_default_prices_equal_the_repo_declared_gpt54mini_rate():
+    prices = json.loads(
+        (
+            Path(__file__).resolve().parents[2] / "tools" / "review_router" / "prices.json"
+        ).read_text()
+    )["usd_per_mtok"]["gpt-5.4-mini"]
+    assert rb.DEFAULT_PRICE_PER_MTOK_IN == prices["input"]
+    assert rb.DEFAULT_PRICE_PER_MTOK_OUT == prices["output"]
+
+
+# ── precheck / record / window ────────────────────────────────────────────────
+
+
+def test_precheck_passes_under_the_cap_and_records_actual_spend():
+    b = rb.OpenAIRunBudget(cap_usd=1.0, clock=FakeClock())
+    b.precheck(100_000, 10_000)  # worst case 0.075 + 0.045 = 0.12
+    cost = b.record(100_000, 10_000)
+    assert cost == pytest.approx(0.12)
+    assert b.spent_usd == pytest.approx(0.12)
+    assert b.calls == 1
+
+
+def test_precheck_hard_stops_when_the_worst_case_would_cross_the_cap():
+    b = rb.OpenAIRunBudget(cap_usd=0.10, clock=FakeClock())
+    b.record(100_000, 0)  # 0.075 spent
+    with pytest.raises(rb.BudgetExceeded) as exc:
+        b.precheck(100_000, 0)  # +0.075 → 0.15 > 0.10
+    assert "cap=$0.10" in str(exc.value)
+    # Control: a call that fits still passes.
+    b.precheck(10_000, 0)  # +0.0075 → 0.0825 ≤ 0.10
+
+
+def test_the_window_rolls_and_spend_resets():
+    clock = FakeClock(0.0)
+    b = rb.OpenAIRunBudget(cap_usd=0.10, window_s=100.0, clock=clock)
+    b.record(100_000, 0)
+    with pytest.raises(rb.BudgetExceeded):
+        b.precheck(100_000, 0)
+    clock.t = 99.0
+    with pytest.raises(rb.BudgetExceeded):
+        b.precheck(100_000, 0)  # still inside the window
+    clock.t = 100.0
+    b.precheck(100_000, 0)  # new window → allowed
+    assert b.spent_usd == 0.0
+    assert b.calls == 0
+
+
+def test_estimate_input_tokens_counts_text_and_images():
+    msgs = [
+        {"role": "system", "content": "x" * 400},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "y" * 40},
+                {"type": "image_url", "image_url": {"url": "data:"}},
+            ],
+        },
+    ]
+    assert rb.estimate_input_tokens(msgs) == 100 + 10 + 1500
+
+
+def test_shared_budget_is_one_per_process_and_rebuilds_from_env_after_reset(monkeypatch):
+    monkeypatch.setenv("OPENAI_RUN_BUDGET_USD", "3")
+    a = rb.get_openai_run_budget()
+    assert a is rb.get_openai_run_budget()
+    assert a.cap_usd == 3.0
+    rb.reset_openai_run_budget()
+    monkeypatch.setenv("OPENAI_RUN_BUDGET_USD", "4")
+    assert rb.get_openai_run_budget().cap_usd == 4.0
+
+
+# ── router wiring ─────────────────────────────────────────────────────────────
+
+
+def _fake_client(responses: dict[str, dict]):
+    """httpx.AsyncClient stand-in: answers by URL host, records calls."""
+    calls: list[str] = []
+
+    class _Resp:
+        def __init__(self, data):
+            self._data = data
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._data
+
+    async def post(url, headers=None, json=None):
+        calls.append(url)
+        for host, data in responses.items():
+            if host in url:
+                return _Resp(data)
+        raise AssertionError(f"unexpected url {url}")
+
+    client = MagicMock()
+    client.post = AsyncMock(side_effect=post)
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=client)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    return cm, calls
+
+
+def _chat_response(text: str, inp: int, out: int) -> dict:
+    return {
+        "choices": [{"message": {"content": text}}],
+        "usage": {"prompt_tokens": inp, "completion_tokens": out},
+    }
+
+
+async def test_router_records_openai_usage_after_a_served_call(monkeypatch):
+    monkeypatch.setenv("INFERENCE_BACKEND", "cloud")
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    assert [p.name for p in _build_providers()][:2] == ["openai", "groq"]
+    cm, calls = _fake_client({"api.openai.com": _chat_response("answer", 1000, 200)})
+    with patch("shared.inference.router.httpx.AsyncClient", return_value=cm):
+        r = InferenceRouter()
+        r.write_api_usage = MagicMock()
+        content, usage = await r.complete([{"role": "user", "content": "hi"}], max_tokens=50)
+    assert content == "answer"
+    assert usage["provider"] == "openai"
+    assert calls == ["https://api.openai.com/v1/chat/completions"]
+    b = rb.get_openai_run_budget()
+    assert b.calls == 1
+    assert b.spent_usd == pytest.approx(b.estimate_usd(1000, 200))
+
+
+async def test_router_skips_openai_once_the_window_is_exhausted_and_falls_through(
+    monkeypatch, caplog
+):
+    monkeypatch.setenv("INFERENCE_BACKEND", "cloud")
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    monkeypatch.setenv("OPENAI_RUN_BUDGET_USD", "0.001")  # tiny cap
+    rb.get_openai_run_budget().record(2_000, 0)  # 0.0015 > cap → exhausted
+    cm, calls = _fake_client({"api.groq.com": _chat_response("from groq", 10, 5)})
+    with (
+        patch("shared.inference.router.httpx.AsyncClient", return_value=cm),
+        caplog.at_level("WARNING"),
+    ):
+        r = InferenceRouter()
+        r.write_api_usage = MagicMock()
+        content, usage = await r.complete([{"role": "user", "content": "hi"}], max_tokens=50)
+    assert content == "from groq"
+    assert usage["provider"] == "groq"
+    # OpenAI was never called — the hard stop fired BEFORE the request.
+    assert calls == ["https://api.groq.com/openai/v1/chat/completions"]
+    assert any("OPENAI_BUDGET_EXHAUSTED" in rec.message for rec in caplog.records)
+
+
+async def test_control_groq_is_never_budgeted(monkeypatch):
+    monkeypatch.setenv("INFERENCE_BACKEND", "cloud")
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    monkeypatch.setenv("OPENAI_RUN_BUDGET_USD", "0")  # would stop OpenAI; Groq is free-tier
+    cm, calls = _fake_client({"api.groq.com": _chat_response("from groq", 10, 5)})
+    with patch("shared.inference.router.httpx.AsyncClient", return_value=cm):
+        r = InferenceRouter()
+        r.write_api_usage = MagicMock()
+        content, _ = await r.complete([{"role": "user", "content": "hi"}], max_tokens=50)
+    assert content == "from groq"
+    assert rb.get_openai_run_budget().calls == 0

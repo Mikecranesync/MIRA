@@ -70,6 +70,7 @@ export function normalizeCandidate(raw: unknown): EquipmentIdentityCandidate {
 //   NAMEPLATE_RECOGNIZER=fixture — deterministic test switch (no module mocking)
 
 import { requestDialectFields, type CanonicalProvider } from "../inference/canonical-cascade";
+import { estimateVisionInputTokens, logBudgetExhausted, openAiRunBudget } from "../../capabilities/openai-run-budget";
 
 // 2026-08-25: google/gemma-3n-E4B-it stopped being served serverless on Together
 // (400 model_not_available) and every prod nameplate read 502'd. MiniMax-M3 is the
@@ -236,7 +237,17 @@ async function openAiCompatVision(
       }
       throw new Error(`recognizer_provider_error_${resp.status}${code}`);
     }
-    const body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
+    const body = (await resp.json()) as {
+      choices?: { message?: { content?: string } }[];
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+    if (provider) {
+      // Metered call served: record ACTUAL usage against the per-run budget.
+      openAiRunBudget().record(
+        body.usage?.prompt_tokens ?? estimateVisionInputTokens(VISION_PROMPT.length, 1),
+        body.usage?.completion_tokens ?? 0,
+      );
+    }
     const text = body.choices?.[0]?.message?.content ?? "{}";
     return normalizeCandidate(JSON.parse(text));
   };
@@ -324,6 +335,14 @@ export class OpenAIVisionRecognizer implements NameplateRecognizer {
     const key = process.env.OPENAI_API_KEY;
     if (!key) throw new Error("recognizer_not_configured");
     const provider = openAiVisionProvider(key);
+    // Per-run spend hard stop (owner directive 2026-10-11): refuse BEFORE the
+    // request once the window's cap would be crossed. The route maps the throw
+    // to its honest provider_error path; the photo stays parked.
+    const verdict = openAiRunBudget().precheck(estimateVisionInputTokens(VISION_PROMPT.length, 1), 1200);
+    if (!verdict.ok) {
+      logBudgetExhausted("nameplate-recognize", verdict);
+      throw new Error("recognizer_budget_exhausted");
+    }
     return openAiCompatVision(provider.url, key, provider.model, imageBase64, mimeType, provider);
   }
 }

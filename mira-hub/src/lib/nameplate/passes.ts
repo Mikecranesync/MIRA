@@ -26,6 +26,7 @@
  */
 
 import { requestDialectFields } from "../inference/canonical-cascade";
+import { estimateVisionInputTokens, logBudgetExhausted, openAiRunBudget } from "../../capabilities/openai-run-budget";
 import { openAiVisionProvider, togetherVisionModel } from "./index";
 
 // ── Field vocabulary ─────────────────────────────────────────────────────────
@@ -615,6 +616,14 @@ export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("recognizer_not_configured");
   const provider = openAiVisionProvider(key);
+  // Per-run spend hard stop (owner directive 2026-10-11): refuse BEFORE the
+  // request once the window's cap would be crossed; callers map the throw to
+  // their honest provider_error path and the photo stays parked.
+  const verdict = openAiRunBudget().precheck(estimateVisionInputTokens(prompt.length, images.length), maxTokens);
+  if (!verdict.ok) {
+    logBudgetExhausted("vision-call", verdict);
+    throw new Error("recognizer_budget_exhausted");
+  }
   const content: unknown[] = [{ type: "text", text: prompt }];
   for (const img of images) {
     content.push({
@@ -645,13 +654,21 @@ export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature
     });
   }
   if (!resp.ok) throw new Error(`recognizer_provider_error_${resp.status}`);
-  let body: { choices?: { message?: { content?: string } }[] };
+  let body: {
+    choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
   try {
-    body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
+    body = (await resp.json()) as typeof body;
   } catch (err) {
     if (signal.aborted) throw new Error("recognizer_provider_timeout", { cause: err });
     throw err;
   }
+  // Metered call served: record ACTUAL usage against the per-run budget.
+  openAiRunBudget().record(
+    body.usage?.prompt_tokens ?? estimateVisionInputTokens(prompt.length, images.length),
+    body.usage?.completion_tokens ?? 0,
+  );
   return { text: body.choices?.[0]?.message?.content ?? "{}", model: provider.model };
 };
 

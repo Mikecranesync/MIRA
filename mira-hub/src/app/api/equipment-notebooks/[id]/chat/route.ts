@@ -45,6 +45,7 @@ import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observabili
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
+import { estimateInputTokens, logBudgetExhausted, openAiRunBudget } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
@@ -3168,6 +3169,18 @@ async function handleChatTurn(
 
       cascade: for (const provider of cascadeProviders) {
         if (!provider.key) continue;
+        // Per-run OpenAI spend hard stop (owner directive 2026-10-11): the only
+        // metered provider is refused BEFORE the request once this window's cap
+        // would be crossed; the cascade falls through as for a provider that is
+        // down. See capabilities/openai-run-budget.ts.
+        if (provider.name === "OpenAI") {
+          const verdict = openAiRunBudget().precheck(estimateInputTokens(messages), outputCap);
+          if (!verdict.ok) {
+            logBudgetExhausted("notebook-chat", verdict);
+            if (seam) attempted.push(provider.name);
+            continue;
+          }
+        }
         // STRM-2: a stopped turn must never open a second provider stream.
         // The catch block below breaks on abort, but the two NON-throwing
         // `continue` paths (non-OK / empty-body response, empty responseBuffer)
@@ -3309,6 +3322,14 @@ async function handleChatTurn(
                 routeReasonFor(attempted),
                 attempted,
                 capped ? "capped" : "ok",
+              );
+            }
+            if (provider.name === "OpenAI") {
+              // Record ACTUAL usage (or the chars/4 estimate when the provider
+              // sent no usage block) so the next precheck sees real spend.
+              openAiRunBudget().record(
+                turnUsage?.inputTokens ?? estimateInputTokens(messages),
+                turnUsage?.outputTokens ?? Math.ceil(responseBuffer.join("").length / 4),
               );
             }
             break;

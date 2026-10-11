@@ -35,6 +35,8 @@ from pathlib import Path
 import httpx
 import yaml
 
+from .run_budget import BudgetExceeded, estimate_input_tokens, get_openai_run_budget
+
 logger = logging.getLogger("mira-gsd")
 
 # Providers billed per token. Their LLM_USAGE line must never read as free
@@ -561,6 +563,18 @@ class InferenceRouter:
             if has_image and not provider.vision_model:
                 continue
 
+            # Per-run OpenAI spend hard stop (owner directive 2026-10-11): the
+            # only metered provider is refused BEFORE the request once this
+            # window's cap would be crossed; the cascade falls through exactly
+            # as it does for a provider that is down.
+            if provider.name == "openai":
+                try:
+                    get_openai_run_budget().precheck(estimate_input_tokens(messages), max_tokens)
+                except BudgetExceeded as exc:
+                    logger.warning("OPENAI_BUDGET_EXHAUSTED %s — skipping openai", exc)
+                    last_error = {"provider": "openai", "error": "budget_exhausted"}
+                    continue
+
             try:
                 content, usage = await self._call_openai_compat(
                     provider,
@@ -649,6 +663,10 @@ class InferenceRouter:
                     "provider": provider.name,
                     "model": f"{provider.name}/{model}",
                 }
+                if provider.name == "openai":
+                    get_openai_run_budget().record(
+                        usage_dict["input_tokens"], usage_dict["output_tokens"]
+                    )
 
                 logger.info(
                     "LLM_CALL provider=%s model=%s latency_ms=%d input=%d output=%d",
