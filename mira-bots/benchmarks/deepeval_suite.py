@@ -68,6 +68,7 @@ except ImportError:
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 for _noisy in ("httpx", "httpcore", "asyncio"):
     logging.getLogger(_noisy).setLevel(logging.ERROR)
+logger = logging.getLogger("mira-deepeval")
 
 _HERE = Path(__file__).parent.resolve()
 _RESULTS_DIR = _HERE / "deepeval_results"
@@ -99,6 +100,9 @@ class JudgeProvider:
     # "openai_reasoning" (gpt-5 family: max_completion_tokens, no temperature —
     # it answers HTTP 400 to either compat field, which reads as an outage).
     request_style: str = "openai_compat"
+    # Dollar-metered providers are bounded by the judge budget below; free-tier
+    # providers are not. Groq is never budgeted (the pre-existing behaviour).
+    metered: bool = False
 
 
 def judge_providers() -> list[JudgeProvider]:
@@ -109,10 +113,124 @@ def judge_providers() -> list[JudgeProvider]:
         os.getenv("DEEPEVAL_JUDGE_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
     )
     candidates = [
-        JudgeProvider("openai", OPENAI_API_URL, openai_model, "OPENAI_API_KEY", "openai_reasoning"),
+        JudgeProvider(
+            "openai",
+            OPENAI_API_URL,
+            openai_model,
+            "OPENAI_API_KEY",
+            "openai_reasoning",
+            metered=True,
+        ),
         JudgeProvider("groq", GROQ_API_URL, JUDGE_MODEL, "GROQ_API_KEY"),
     ]
     return [p for p in candidates if os.environ.get(p.api_key_env, "").strip()]
+
+
+JUDGE_MAX_TOKENS = 1024
+
+
+# ---------------------------------------------------------------------------
+# Judge spend bound — the paid judge lane declares a dollar budget and hard-stops
+# at it (.claude/rules/zero-token-architecture.md Hard Rule 1; Codex F3 on #4358).
+#
+# One budget per process: a CI job is bounded for its lifetime. The worst case of
+# every metered call is reserved BEFORE the request (input bounded by UTF-8 bytes,
+# since tokens never exceed bytes; output by the completion cap) and the actual
+# usage block is charged AFTER. At the cap the metered provider is refused before
+# the request and the cascade falls through exactly as for a provider that is
+# down. Prices default to gpt-5.4-mini's declared rate (tools/review_router/
+# prices.json) and are pinned to that file by test so they cannot drift apart.
+# ---------------------------------------------------------------------------
+
+DEFAULT_JUDGE_BUDGET_USD = 2.0
+DEFAULT_PRICE_PER_MTOK_IN = 0.75
+DEFAULT_PRICE_PER_MTOK_OUT = 4.5
+
+
+def _env_float(name: str, default: float) -> float:
+    """`or`-form env parse: the compose empty string, junk, negative and
+    non-finite values all fall back to the default."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    if value < 0 or value != value or value in (float("inf"), float("-inf")):
+        return default
+    return value
+
+
+class JudgeBudget:
+    """Per-process dollar hard stop for the metered judge provider."""
+
+    def __init__(self) -> None:
+        self.cap_usd = _env_float("DEEPEVAL_JUDGE_BUDGET_USD", DEFAULT_JUDGE_BUDGET_USD)
+        self.price_in = _env_float("OPENAI_PRICE_PER_MTOK_IN", DEFAULT_PRICE_PER_MTOK_IN)
+        self.price_out = _env_float("OPENAI_PRICE_PER_MTOK_OUT", DEFAULT_PRICE_PER_MTOK_OUT)
+        self.spent_usd = 0.0
+        self.calls = 0
+        self.refusals = 0
+
+    def estimate_usd(self, prompt: str, max_tokens: int = JUDGE_MAX_TOKENS) -> float:
+        """Worst case for one call: input tokens ≤ UTF-8 bytes; output ≤ the cap."""
+        input_bound = len(prompt.encode("utf-8")) + 8
+        return (input_bound * self.price_in + max_tokens * self.price_out) / 1_000_000
+
+    def precheck(self, estimated_usd: float) -> bool:
+        """True when the call fits under the cap. Records nothing."""
+        if self.spent_usd + estimated_usd <= self.cap_usd:
+            return True
+        self.refusals += 1
+        logger.warning(
+            "DEEPEVAL_JUDGE_BUDGET_EXHAUSTED spent_usd=%.4f estimated_usd=%.4f cap_usd=%.4f",
+            self.spent_usd,
+            estimated_usd,
+            self.cap_usd,
+        )
+        return False
+
+    def record(self, usage: object, estimated_usd: float) -> float:
+        """Charge the provider's actual usage block; the estimate when it is missing."""
+        actual = estimated_usd
+        if isinstance(usage, dict):
+            try:
+                prompt_tokens = int(usage.get("prompt_tokens") or 0)
+                completion_tokens = int(usage.get("completion_tokens") or 0)
+            except (TypeError, ValueError):
+                prompt_tokens = completion_tokens = 0
+            if prompt_tokens or completion_tokens:
+                actual = (
+                    prompt_tokens * self.price_in + completion_tokens * self.price_out
+                ) / 1_000_000
+        self.spent_usd += actual
+        self.calls += 1
+        return actual
+
+    def summary(self) -> dict[str, float | int]:
+        return {
+            "cap_usd": self.cap_usd,
+            "spent_usd": round(self.spent_usd, 6),
+            "metered_calls": self.calls,
+            "refusals": self.refusals,
+        }
+
+
+_JUDGE_BUDGET: Optional[JudgeBudget] = None
+
+
+def judge_budget() -> JudgeBudget:
+    """The one budget this process judges under."""
+    global _JUDGE_BUDGET
+    if _JUDGE_BUDGET is None:
+        _JUDGE_BUDGET = JudgeBudget()
+    return _JUDGE_BUDGET
+
+
+def reset_judge_budget_for_tests() -> None:
+    global _JUDGE_BUDGET
+    _JUDGE_BUDGET = None
 
 
 def judge_request_body(provider: JudgeProvider, prompt: str) -> dict[str, object]:
@@ -121,7 +239,7 @@ def judge_request_body(provider: JudgeProvider, prompt: str) -> dict[str, object
         "model": provider.model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.0,
-        "max_tokens": 1024,
+        "max_tokens": JUDGE_MAX_TOKENS,
     }
     if provider.request_style == "openai_reasoning":
         body.pop("temperature")
@@ -142,6 +260,11 @@ class CascadeJudge(DeepEvalBaseLLM):
 
     def __init__(self) -> None:
         self._providers = judge_providers()
+        # Which provider/model actually served each judge call (Codex F2 on
+        # #4358): the report attributes scoring to what graded, not to the
+        # configured primary, so a fallback day cannot pass for a calibration
+        # change.
+        self._served: dict[str, int] = {}
         super().__init__()
 
     def load_model(self) -> str:
@@ -157,12 +280,68 @@ class CascadeJudge(DeepEvalBaseLLM):
         return {"Authorization": f"Bearer {os.environ[provider.api_key_env]}"}
 
     @staticmethod
-    def _content(resp: httpx.Response) -> str:
-        return resp.json()["choices"][0]["message"]["content"]
+    def _strip_fences(text: str) -> str:
+        """Strip markdown code fences that some LLMs wrap JSON in."""
+        return re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip()).strip()
 
-    def _call(self, prompt: str) -> str:
+    def _accept(
+        self, provider: JudgeProvider, resp: httpx.Response, schema
+    ) -> tuple[Optional[object], Optional[str]]:
+        """Validate one HTTP 200 inside the provider loop (Codex F1 on #4358).
+
+        Returns (value, None) when the response is usable — the content string,
+        or the parsed schema object when a schema was requested — and
+        (None, reason) when it is not, so the cascade moves to the next
+        provider instead of failing the case on a reply that only looked like
+        an answer: an empty/null content, a truncated completion, a malformed
+        envelope, or JSON that does not satisfy the requested schema.
+        """
+        try:
+            choice = resp.json()["choices"][0]
+            content = choice["message"]["content"]
+        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            return None, f"{provider.name}=malformed_response:{type(exc).__name__}"
+        if not isinstance(content, str) or not content.strip():
+            return None, f"{provider.name}=empty_content"
+        if isinstance(choice, dict) and choice.get("finish_reason") == "length":
+            return None, f"{provider.name}=truncated"
+        if schema is None:
+            return content, None
+        try:
+            return schema.model_validate_json(self._strip_fences(content)), None
+        except (ValueError, TypeError) as exc:
+            return None, f"{provider.name}=schema_invalid:{type(exc).__name__}"
+
+    def _record_served(self, provider: JudgeProvider) -> None:
+        key = f"{provider.name}/{provider.model}"
+        self._served[key] = self._served.get(key, 0) + 1
+
+    def _budget_refuses(self, provider: JudgeProvider, prompt: str) -> Optional[float]:
+        """Reserve the worst case for a metered provider; None when it is refused."""
+        if not provider.metered:
+            return 0.0
+        budget = judge_budget()
+        estimate = budget.estimate_usd(prompt)
+        return estimate if budget.precheck(estimate) else None
+
+    @staticmethod
+    def _charge(provider: JudgeProvider, resp: httpx.Response, estimate: float) -> None:
+        """A served metered call is charged whatever its content turns out to be."""
+        if not provider.metered:
+            return
+        try:
+            usage = resp.json().get("usage")
+        except (ValueError, AttributeError):
+            usage = None
+        judge_budget().record(usage, estimate)
+
+    def _call(self, prompt: str, schema=None) -> object:
         attempts: list[str] = []
         for provider in self._require_providers():
+            estimate = self._budget_refuses(provider, prompt)
+            if estimate is None:
+                attempts.append(f"{provider.name}=budget_exhausted")
+                continue
             try:
                 resp = httpx.post(
                     provider.url,
@@ -178,13 +357,23 @@ class CascadeJudge(DeepEvalBaseLLM):
                 # billing restriction arrives as HTTP 400, not 5xx.
                 attempts.append(f"{provider.name}=HTTP{resp.status_code}")
                 continue
-            return self._content(resp)
+            self._charge(provider, resp, estimate)
+            value, reason = self._accept(provider, resp, schema)
+            if reason is not None:
+                attempts.append(reason)
+                continue
+            self._record_served(provider)
+            return value
         raise RuntimeError(f"every judge provider failed: {', '.join(attempts)}")
 
-    async def _acall(self, prompt: str) -> str:
+    async def _acall(self, prompt: str, schema=None) -> object:
         attempts: list[str] = []
         async with httpx.AsyncClient(timeout=JUDGE_TIMEOUT) as client:
             for provider in self._require_providers():
+                estimate = self._budget_refuses(provider, prompt)
+                if estimate is None:
+                    attempts.append(f"{provider.name}=budget_exhausted")
+                    continue
                 try:
                     resp = await client.post(
                         provider.url,
@@ -197,31 +386,30 @@ class CascadeJudge(DeepEvalBaseLLM):
                 if resp.status_code != 200:
                     attempts.append(f"{provider.name}=HTTP{resp.status_code}")
                     continue
-                return self._content(resp)
+                self._charge(provider, resp, estimate)
+                value, reason = self._accept(provider, resp, schema)
+                if reason is not None:
+                    attempts.append(reason)
+                    continue
+                self._record_served(provider)
+                return value
         raise RuntimeError(f"every judge provider failed: {', '.join(attempts)}")
 
-    @staticmethod
-    def _strip_fences(text: str) -> str:
-        """Strip markdown code fences that some LLMs wrap JSON in."""
-        return re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip()).strip()
-
     def generate(self, prompt: str, schema=None) -> Union[str, object]:
-        content = self._call(prompt)
-        if schema is not None:
-            return schema.model_validate_json(self._strip_fences(content))
-        return content
+        return self._call(prompt, schema)
 
     async def a_generate(self, prompt: str, schema=None) -> Union[str, object]:
-        content = await self._acall(prompt)
-        if schema is not None:
-            return schema.model_validate_json(self._strip_fences(content))
-        return content
+        return await self._acall(prompt, schema)
 
     def get_model_name(self) -> str:
-        """`<primary provider>/<model>` — the judge the report is attributed to."""
+        """`<primary provider>/<model>` — the judge the run was CONFIGURED with."""
         if not self._providers:
             return f"groq/{JUDGE_MODEL}"
         return f"{self._providers[0].name}/{self._providers[0].model}"
+
+    def served_counts(self) -> dict[str, int]:
+        """`{"<provider>/<model>": calls}` for what ACTUALLY graded, in order served."""
+        return dict(self._served)
 
 
 # Pre-rename import name; the cascade judge IS the Groq judge when only Groq is keyed.
@@ -760,12 +948,17 @@ class CaseResult:
 class SuiteResult:
     mode: str
     timestamp: str
-    judge_model: str
+    judge_model: str  # the CONFIGURED primary judge (provider/model)
     total: int = 0
     passed: int = 0
     category_results: dict[str, dict] = field(default_factory=dict)
     metric_averages: dict[str, float] = field(default_factory=dict)
     case_results: list[CaseResult] = field(default_factory=list)
+    # What ACTUALLY graded: `{"provider/model": calls}`. A fallback run shows
+    # groq here even though judge_model names openai (Codex F2 on #4358).
+    judge_models_used: dict[str, int] = field(default_factory=dict)
+    # The metered judge's spend ledger for this process (Codex F3 on #4358).
+    judge_spend: dict[str, float | int] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -806,6 +999,10 @@ class DeepEvalRunner:
             for metric, score in cr.metric_scores.items():
                 metric_sums.setdefault(metric, []).append(score)
         result.metric_averages = {k: round(sum(v) / len(v), 3) for k, v in metric_sums.items()}
+
+        # Attribute the scores to what actually graded, and show the spend.
+        result.judge_models_used = self.judge.served_counts()
+        result.judge_spend = judge_budget().summary()
 
         return result
 
@@ -908,6 +1105,15 @@ def _print_report(result: SuiteResult) -> None:
     print("\n" + "=" * 60)
     print(f"  MIRA DeepEval Report  [{result.mode} mode]")
     print(f"  Judge: {result.judge_model}")
+    served = ", ".join(f"{k} ×{n}" for k, n in result.judge_models_used.items()) or "none"
+    print(f"  Graded by: {served}")
+    if result.judge_spend:
+        print(
+            f"  Judge spend: ${result.judge_spend.get('spent_usd', 0):.4f}"
+            f" of ${result.judge_spend.get('cap_usd', 0):.2f} cap"
+            f" ({result.judge_spend.get('metered_calls', 0)} metered calls,"
+            f" {result.judge_spend.get('refusals', 0)} refused)"
+        )
     print(f"  Run:   {result.timestamp[:19]}")
     print("=" * 60)
     print(f"\nOverall: {result.passed}/{result.total} passed ({overall_pct:.1f}%) {grade_char}")
