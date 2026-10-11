@@ -45,6 +45,7 @@ import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observabili
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
+import { finishedAfterChunk } from "@/capabilities/stream-stop";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
@@ -3228,6 +3229,10 @@ async function handleChatTurn(
           const dec = new TextDecoder();
           let buffer = "";
           let finished = false;
+          // include_usage providers (OpenAI) send the usage block on a chunk
+          // AFTER finish_reason "stop" — remember the stop and keep draining
+          // until usage (or [DONE]) lands. See capabilities/stream-stop.ts.
+          let sawStop = false;
           while (!finished) {
             // Race the upstream read against the client-stop signal: a stop
             // must interrupt a read that is waiting on a slow provider, not
@@ -3282,7 +3287,14 @@ async function handleChatTurn(
                     break;
                   }
                 }
-                if (parsed.choices?.[0]?.finish_reason === "stop") finished = true;
+                const stopState = finishedAfterChunk({
+                  seam,
+                  finishReason: parsed.choices?.[0]?.finish_reason,
+                  sawStop,
+                  usageSeen: rawUsage !== null,
+                });
+                sawStop = stopState.sawStop;
+                if (stopState.finished) finished = true;
               } catch {
                 // partial frame — keep buffering
               }
