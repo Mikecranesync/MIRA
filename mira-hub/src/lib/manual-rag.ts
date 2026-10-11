@@ -5,6 +5,7 @@ import {
   codeTokenMatcher,
   expandIndustrialQuery,
   withRawCodeTokens,
+  prioritizeCurrentCodeEvidence,
   rerankChunks,
   classifyBroad,
   classifyIntent,
@@ -1114,16 +1115,22 @@ export async function retrieveNodeChunks(
   // (no single page may fill the context); otherwise the tight topK.
   const trace: RerankTraceRow[] | undefined =
     process.env.NOTEBOOK_RETRIEVAL_DEBUG === "1" ? [] : undefined;
-  const rerankedAll = rerankChunks(
-    expanded,
-    pool.map((r) => ({
-      content: String(r.content ?? ""),
-      rank: Number(r.rank ?? 0),
-      sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
-      docId: r.doc_id == null ? null : String(r.doc_id),
-      _row: r,
-    })),
-    { intent, trace },
+  // The code the technician JUST named leads the final cut; a code carried in
+  // from the thread stays context and cannot exhaust the slots (Codex r2 on
+  // #4360). No-op when the message named no code.
+  const rerankedAll = prioritizeCurrentCodeEvidence(
+    rerankChunks(
+      expanded,
+      pool.map((r) => ({
+        content: String(r.content ?? ""),
+        rank: Number(r.rank ?? 0),
+        sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
+        docId: r.doc_id == null ? null : String(r.doc_id),
+        _row: r,
+      })),
+      { intent, trace },
+    ),
+    expanded.currentCodeTokens,
   );
   // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
   // overall, so one family (e.g. overload) can fill every slot while a planned

@@ -28,6 +28,7 @@ import {
   buildRetrievalQuery,
   codeTokenMatcher,
   expandIndustrialQuery,
+  prioritizeCurrentCodeEvidence,
   rerankChunks,
   withRawCodeTokens,
   type ChatHistoryTurn,
@@ -202,6 +203,88 @@ describe("a real thread: the terse follow-up arrives conversation-augmented", ()
     await retrieveNodeChunks(node.client, "tenant-1", augmented, { nodeId: "node-1", unsPath: null, topK: 6, docIds: [DOC] });
     expect(boundPatterns(node.calls)).not.toContain(codeTokenMatcher("oC").sql);
     expect(boundPatterns(node.calls)).toContain(codeTokenMatcher("F0004").sql);
+  });
+
+  it("the current message's code tokens are marked, so final selection can tell subject from context", () => {
+    const merged = withRawCodeTokens(expandIndustrialQuery(buildRetrievalQuery("oC", THREAD)), "oC");
+    expect(merged.currentCodeTokens).toEqual(["oC"]);
+    expect(expandIndustrialQuery("fault F0004").currentCodeTokens).toBeUndefined();
+    expect(withRawCodeTokens(expandIndustrialQuery("what does it mean"), "what does it mean").currentCodeTokens).toBeUndefined();
+  });
+
+  it("prioritizeCurrentCodeEvidence: current-code chunks lead, rerank order kept inside each group, no-op without tokens", () => {
+    const ranked = [
+      { content: "F0004 a", id: 1 },
+      { content: "F0004 b", id: 2 },
+      { content: "oC overcurrent", id: 3 },
+      { content: "F0004 c", id: 4 },
+      { content: "OC on the display", id: 5 },
+    ];
+    expect(prioritizeCurrentCodeEvidence(ranked, ["oC"]).map((c) => c.id)).toEqual([3, 5, 1, 2, 4]); // whole token, case-insensitive
+    expect(prioritizeCurrentCodeEvidence(ranked, undefined)).toBe(ranked);
+    expect(prioritizeCurrentCodeEvidence(ranked, [])).toBe(ranked);
+    expect(prioritizeCurrentCodeEvidence(ranked, ["ovA"])).toBe(ranked); // nothing matches → unchanged
+  });
+
+  // Codex r2 on #4360 — a POPULATED attached-document retrieval: six chunks that
+  // name the thread's F0004 (each earns the exact-ID AND the code boost) and ONE
+  // chunk documenting the fault the technician just typed. topK is six.
+  function populatedClient(currentCode: string) {
+    const row = (page: number, content: string) => ({
+      content,
+      doc_id: DOC,
+      source_url: "manual.pdf",
+      source_page: page,
+      page_start: page,
+      section_path: null,
+      filename: "manual.pdf",
+      verified: true,
+      rank: 0.5,
+    });
+    const history = [1, 2, 3, 4, 5, 6].map((p) => row(p, `Fault F0004 undervoltage note ${p}: DC bus below limit, see parameter P0${p}.`));
+    const current = row(100, `${currentCode} — overcurrent: output current exceeded 200% of the drive rating.`);
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.includes("content ~* ANY(")) {
+        // The bound regex array is the string[] whose entries are whole-token
+        // SQL patterns (the node-id list is a string[] too, bound earlier).
+        const patterns =
+          params.find(
+            (p): p is string[] => Array.isArray(p) && p.every((x) => typeof x === "string" && x.startsWith("(^|")),
+          ) ?? [];
+        const hit = patterns.includes(codeTokenMatcher(currentCode).sql);
+        return { rows: hit ? [current] : patterns.includes(codeTokenMatcher("F0004").sql) ? history : [] };
+      }
+      if (sql.includes("content_tsv @@")) return { rows: history }; // BM25 passes: the thread's code dominates
+      return { rows: [] };
+    });
+    return { client: { query } as unknown as PoolClient, calls };
+  }
+
+  it.each(["F4", "oC", "OC"])("%s after F0004: the current fault's chunk survives the top six (and leads)", async (msg) => {
+    const augmented = buildRetrievalQuery(msg, THREAD);
+    const { client } = populatedClient(msg);
+    const out = await retrieveNodeChunks(client, "tenant-1", augmented, {
+      nodeId: "node-1",
+      unsPath: null,
+      topK: 6,
+      docIds: [DOC],
+      rawQuery: msg,
+      validatedDocScope: true,
+    });
+    expect(out).toHaveLength(6);
+    expect(out[0].sourcePage).toBe(100);
+    expect(out.map((c) => c.sourcePage)).toContain(100);
+    // History still fills the remaining slots as context — not discarded.
+    expect(out.filter((c) => c.sourcePage !== 100)).toHaveLength(5);
+  });
+
+  it("control: without the raw message the six F0004 chunks exhaust the slots (the defect, pinned)", async () => {
+    const augmented = buildRetrievalQuery("oC", THREAD);
+    const { client } = populatedClient("oC");
+    const out = await retrieveNodeChunks(client, "tenant-1", augmented, { nodeId: "node-1", unsPath: null, topK: 6, docIds: [DOC], validatedDocScope: true });
+    expect(out.map((c) => c.sourcePage)).not.toContain(100);
   });
 
   it("source contract: the notebook route hands the raw message to BOTH retrieval strategies", () => {

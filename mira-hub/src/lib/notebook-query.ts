@@ -62,6 +62,11 @@ export type ExpandedQuery = {
   codeTokens: string[];
   /** Quoted phrases the user asked to match verbatim. */
   phrases: string[];
+  /** The subset of codeTokens the CURRENT message named (set by
+   *  withRawCodeTokens when the query was conversation-augmented). A code
+   *  carried in from history is context; a code the technician just typed is
+   *  the subject, and its evidence must survive final selection. */
+  currentCodeTokens?: string[];
 };
 
 // A code is picked up only next to a fault keyword (or, for dotted codes like
@@ -131,8 +136,30 @@ function extractCodeTokens(q: string): string[] {
 export function withRawCodeTokens(expanded: ExpandedQuery, rawQuery?: string | null): ExpandedQuery {
   const raw = (rawQuery ?? "").trim();
   if (!raw) return expanded;
-  const extra = extractCodeTokens(raw).filter((t) => !expanded.codeTokens.includes(t));
-  return extra.length === 0 ? expanded : { ...expanded, codeTokens: [...expanded.codeTokens, ...extra] };
+  const current = extractCodeTokens(raw);
+  if (current.length === 0) return expanded;
+  const extra = current.filter((t) => !expanded.codeTokens.includes(t));
+  return { ...expanded, codeTokens: [...expanded.codeTokens, ...extra], currentCodeTokens: current };
+}
+
+/** Codex r2 on #4360 — the thread's earlier code (F0004) earns BOTH the exact-ID
+ *  and the whole-code boost in rerankChunks, the current terse code (oC) only the
+ *  latter, so six F0004 chunks could fill every slot and the one chunk documenting
+ *  the fault the technician just named fell off the end. Final selection puts
+ *  every pool chunk that names a CURRENT-message code (whole token) ahead of the
+ *  rest — rerank order preserved inside each group — so the subject's evidence
+ *  survives and history still fills the remaining slots as context. A query with
+ *  no current-message code is returned unchanged. */
+export function prioritizeCurrentCodeEvidence<T extends { content: string }>(
+  ranked: T[],
+  currentCodeTokens: readonly string[] | undefined,
+): T[] {
+  if (!currentCodeTokens || currentCodeTokens.length === 0) return ranked;
+  const res = currentCodeTokens.map((t) => codeTokenMatcher(t).re);
+  const current: T[] = [];
+  const rest: T[] = [];
+  for (const c of ranked) (res.some((re) => re.test(c.content)) ? current : rest).push(c);
+  return current.length === 0 ? ranked : [...current, ...rest];
 }
 
 /** One source for both match sites: the SQL exact lane (`content ~* sql`) and
