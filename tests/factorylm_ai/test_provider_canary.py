@@ -143,17 +143,26 @@ def test_vision_probe_retries_once(monkeypatch) -> None:
 
 
 class _FakeProv:
-    def __init__(self, name, vision_model=""):
+    def __init__(self, name, vision_model="", cap_key="max_tokens"):
         self.name = name
         self.api_url = "https://u"
         self.api_key = "k"
         self.model = "text-model"
         self.vision_model = vision_model
+        # Mirrors _Provider.cap_key: the request field carrying the output-token
+        # cap ("max_tokens" for OpenAI-compat providers, "max_completion_tokens"
+        # for the OpenAI gpt-5 dialect). main() passes it through to _probe.
+        self.cap_key = cap_key
 
 
 def _cascade():
-    # Cerebras archived 2026-09-29 — the live cascade is Groq → Together.
-    return [_FakeProv("groq"), _FakeProv("together", vision_model="MiniMaxAI/MiniMax-M3")]
+    # Cerebras archived 2026-09-29. Since 2026-10-11 OpenAI LEADS the cascade
+    # (gpt-5 dialect: max_completion_tokens), then Groq → Together.
+    return [
+        _FakeProv("openai", cap_key="max_completion_tokens"),
+        _FakeProv("groq"),
+        _FakeProv("together", vision_model="MiniMaxAI/MiniMax-M3"),
+    ]
 
 
 def _run_main(monkeypatch, *, vision_ok: bool, tmp_path: Path, providers=None):
@@ -186,7 +195,7 @@ def test_main_text_up_vision_down_exits_one(monkeypatch, tmp_path, capsys) -> No
     code, gh = _run_main(monkeypatch, vision_ok=False, tmp_path=tmp_path)
     assert code == 1
     assert "vision_down_count=1" in gh and "vision_down_providers=together" in gh
-    assert "up_count=2" in gh  # text coverage was fine — the page is vision-specific
+    assert "up_count=3" in gh  # text coverage was fine — the page is vision-specific
     assert "NOT fully up for PrintSense" not in capsys.readouterr().out or True
 
 
@@ -195,10 +204,10 @@ def test_archived_cerebras_absent_is_healthy(monkeypatch, tmp_path) -> None:
     code, gh = _run_main(monkeypatch, vision_ok=True, tmp_path=tmp_path)
     assert "cerebras" not in phc.EXPECTED
     assert code == 0
-    assert "up_count=2" in gh
+    assert "up_count=3" in gh
 
 
-@pytest.mark.parametrize("missing", ["groq", "together"])
+@pytest.mark.parametrize("missing", ["openai", "groq", "together"])
 def test_missing_expected_provider_still_pages(monkeypatch, tmp_path, missing) -> None:
     """Control: a provider that IS expected and has no key is still DOWN (exit 1)."""
     providers = [p for p in _cascade() if p.name != missing]
