@@ -37,6 +37,11 @@ import yaml
 
 logger = logging.getLogger("mira-gsd")
 
+# Providers billed per token. Their LLM_USAGE line must never read as free
+# (est_cost=$0.00000) — see InferenceRouter.log_usage. Groq / Cerebras /
+# Together are free-tier and stay out of this set.
+_METERED_PROVIDERS = frozenset({"openai"})
+
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
 _PROMPT_CACHE_TTL = float(os.getenv("MIRA_PROMPT_CACHE_TTL", "60"))
 _prompt_cache: tuple[str, float] | None = None  # (content, monotonic_time)
@@ -735,10 +740,25 @@ class InferenceRouter:
 
     @staticmethod
     def log_usage(usage: dict) -> None:
-        """Log token usage. All current providers (Groq/Cerebras/Together) are free-tier."""
+        """Log token usage.
+
+        Groq/Cerebras/Together are free-tier and keep the historical
+        ``est_cost=$0.00000`` line. OpenAI is METERED: there is no price table
+        here yet (the gpt-5.4-mini rate is confirmed from the invoice, not
+        guessed), so its line says ``est_cost=unpriced metered=1`` rather than
+        labelling paid spend as free (ZTA anti-pattern "cost-invisible spend").
+        """
         inp = usage.get("input_tokens", 0)
         out = usage.get("output_tokens", 0)
         provider = usage.get("provider", "unknown")
+        if provider in _METERED_PROVIDERS:
+            logger.info(
+                "LLM_USAGE provider=%s input=%d output=%d est_cost=unpriced metered=1",
+                provider,
+                inp,
+                out,
+            )
+            return
         logger.info(
             "LLM_USAGE provider=%s input=%d output=%d est_cost=$0.00000",
             provider,

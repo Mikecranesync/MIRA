@@ -83,3 +83,29 @@ def test_request_payload_is_unchanged_for_the_compat_trio():
         "temperature": 0.1,
     }
     assert groq.cap_key == "max_tokens"
+
+
+def test_usage_log_never_labels_a_metered_openai_call_as_free(caplog):
+    """Codex F2 on #4349 (telemetry half): `LLM_USAGE ... est_cost=$0.00000` was
+    hardcoded for every provider. OpenAI is metered; logging it as free is
+    cost-invisible spend (.claude/rules/zero-token-architecture.md anti-pattern)."""
+    from shared.inference.router import InferenceRouter
+
+    with caplog.at_level("INFO", logger="mira-gsd"):
+        InferenceRouter.log_usage(
+            {"provider": "openai", "input_tokens": 6097, "output_tokens": 137}
+        )
+    line = next(r.getMessage() for r in caplog.records if "LLM_USAGE" in r.getMessage())
+    assert "provider=openai" in line
+    assert "$0.00000" not in line
+    assert "metered=1" in line
+
+
+def test_usage_log_still_reports_free_tier_providers_as_zero(caplog):
+    """Control: the free-tier trio keep the exact pre-existing line."""
+    from shared.inference.router import InferenceRouter
+
+    with caplog.at_level("INFO", logger="mira-gsd"):
+        InferenceRouter.log_usage({"provider": "groq", "input_tokens": 10, "output_tokens": 5})
+    line = next(r.getMessage() for r in caplog.records if "LLM_USAGE" in r.getMessage())
+    assert line == "LLM_USAGE provider=groq input=10 output=5 est_cost=$0.00000"
