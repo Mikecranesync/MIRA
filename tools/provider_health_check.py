@@ -124,13 +124,20 @@ def _probe(
     return _probe_once(api_url, api_key, model, cap_key)
 
 
-def _vision_probe_once(api_url: str, api_key: str, model: str) -> tuple[bool, int, str]:
+def _vision_probe_once(
+    api_url: str, api_key: str, model: str, cap_key: str = "max_tokens"
+) -> tuple[bool, int, str]:
     """One vision attempt on the CONFIGURED vision model. Never logs the key.
 
     Pass requires ALL of: HTTP 200, parseable body, non-empty visible content,
     every known token read back, and (when the body names a model) the response
     model matching the requested one — a silent server-side model swap is a
     failure, not a pass (FR-4 "model identity in the response path").
+
+    `cap_key` is the provider's output-cap field (`_Provider.cap_key`), exactly
+    as the text probe takes it: OpenAI's gpt-5 family rejects `max_tokens` with
+    HTTP 400, which would page vision DOWN for a provider whose runtime vision
+    works (Codex F3 on #4349).
     """
     import base64  # noqa: PLC0415
 
@@ -142,7 +149,7 @@ def _vision_probe_once(api_url: str, api_key: str, model: str) -> tuple[bool, in
         return False, 0, f"fixture unreadable: {type(e).__name__}"
     payload = {
         "model": model,
-        "max_tokens": VISION_PROBE_MAX_TOKENS,
+        cap_key: VISION_PROBE_MAX_TOKENS,
         "messages": [
             {
                 "role": "user",
@@ -187,13 +194,15 @@ def _vision_probe_once(api_url: str, api_key: str, model: str) -> tuple[bool, in
     return True, latency_ms, ""
 
 
-def _vision_probe(api_url: str, api_key: str, model: str) -> tuple[bool, int, str]:
+def _vision_probe(
+    api_url: str, api_key: str, model: str, cap_key: str = "max_tokens"
+) -> tuple[bool, int, str]:
     """Vision probe with one retry — a single blip should not page."""
-    ok, latency_ms, reason = _vision_probe_once(api_url, api_key, model)
+    ok, latency_ms, reason = _vision_probe_once(api_url, api_key, model, cap_key)
     if ok:
         return ok, latency_ms, reason
     time.sleep(2)
-    return _vision_probe_once(api_url, api_key, model)
+    return _vision_probe_once(api_url, api_key, model, cap_key)
 
 
 def main() -> int:
@@ -240,7 +249,9 @@ def main() -> int:
         print(f"\nVision probes ({len(vision_targets)} provider(s) with a vision model)\n")
     for name in vision_targets:
         prov = built[name]
-        ok, latency_ms, reason = _vision_probe(prov.api_url, prov.api_key, prov.vision_model)
+        ok, latency_ms, reason = _vision_probe(
+            prov.api_url, prov.api_key, prov.vision_model, prov.cap_key
+        )
         if ok:
             vision_up.append(name)
             print(f"  {name + '-vision':16s} UP    ({prov.vision_model}, {latency_ms}ms)")

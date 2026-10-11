@@ -75,6 +75,43 @@ def test_vision_success_reads_known_token(monkeypatch) -> None:
     assert isinstance(ms, int)
 
 
+def test_vision_probe_sends_the_providers_cap_field(monkeypatch) -> None:
+    """Codex F3 on #4349: the vision probe must use the provider's cap field.
+
+    OpenAI's gpt-5 family rejects `max_tokens` (wants `max_completion_tokens`)
+    with HTTP 400, so a probe that hardcodes `max_tokens` reports vision DOWN
+    for a provider whose runtime vision works. Both retry attempts carry it.
+    """
+    sent: list[dict] = []
+
+    def fake_post(url, **kw):
+        sent.append(kw["json"])
+        return _Resp(content="MIRA CANARY 7", model="gpt-5-vision")
+
+    _patch_post(monkeypatch, fake_post)
+    ok, _, reason = phc._vision_probe(
+        "https://u", "k", "gpt-5-vision", cap_key="max_completion_tokens"
+    )
+    assert ok and reason == ""
+    assert sent and all("max_completion_tokens" in b and "max_tokens" not in b for b in sent)
+    assert sent[0]["max_completion_tokens"] == phc.VISION_PROBE_MAX_TOKENS
+
+
+def test_vision_probe_default_cap_field_is_max_tokens(monkeypatch) -> None:
+    """Control: the compat providers (Together today) keep the exact old body."""
+    sent: list[dict] = []
+
+    def fake_post(url, **kw):
+        sent.append(kw["json"])
+        return _Resp(content="MIRA CANARY 7")
+
+    _patch_post(monkeypatch, fake_post)
+    ok, _, _ = phc._vision_probe_once("https://u", "k", "MiniMaxAI/MiniMax-M3")
+    assert ok
+    assert sent[0]["max_tokens"] == phc.VISION_PROBE_MAX_TOKENS
+    assert "max_completion_tokens" not in sent[0]
+
+
 def test_wrong_image_token_fails(monkeypatch) -> None:
     _patch_post(monkeypatch, lambda *a, **k: _Resp(content="MIRA CANARY 9"))
     ok, _, reason = phc._vision_probe_once("https://u", "k", "m")
