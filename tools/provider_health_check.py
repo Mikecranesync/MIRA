@@ -47,7 +47,10 @@ import httpx
 # Cerebras was ARCHIVED 2026-09-29 (HTTP 402 quota since 2026-09-07; its key now
 # lives in Doppler as CEREBRAS_API_KEY_ARCHIVED). Restoring it = rename the key
 # back AND add "cerebras" here.
-EXPECTED = ("groq", "together")
+# OpenAI LEADS since 2026-10-11 (owner directive; Groq billing-restricted) —
+# it is the provider that must be UP for the product to answer at all. Groq
+# stays expected as the first fallback so its billing state is still paged.
+EXPECTED = ("openai", "groq", "together")
 
 PROBE_PROMPT = [{"role": "user", "content": "Reply with the single word: OK"}]
 # Generous budget so a reasoning model (gpt-oss-120b) emits real content rather
@@ -78,14 +81,20 @@ def _gh_annotate(level: str, msg: str) -> None:
         print(f"::{level}::{msg}")
 
 
-def _probe_once(api_url: str, api_key: str, model: str) -> tuple[bool, int, str]:
-    """One completion attempt. Returns (ok, latency_ms, reason). Never logs the key."""
+def _probe_once(
+    api_url: str, api_key: str, model: str, cap_key: str = "max_tokens"
+) -> tuple[bool, int, str]:
+    """One completion attempt. Returns (ok, latency_ms, reason). Never logs the key.
+
+    `cap_key` is the provider's output-cap field (`_Provider.cap_key`): OpenAI's
+    gpt-5 family rejects `max_tokens` with HTTP 400, which would page as DOWN.
+    """
     t0 = time.monotonic()
     try:
         resp = httpx.post(
             api_url,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": model, "messages": PROBE_PROMPT, "max_tokens": PROBE_MAX_TOKENS},
+            json={"model": model, "messages": PROBE_PROMPT, cap_key: PROBE_MAX_TOKENS},
             timeout=PROBE_TIMEOUT,
         )
         latency_ms = int((time.monotonic() - t0) * 1000)
@@ -104,22 +113,31 @@ def _probe_once(api_url: str, api_key: str, model: str) -> tuple[bool, int, str]
     return True, latency_ms, ""
 
 
-def _probe(api_url: str, api_key: str, model: str) -> tuple[bool, int, str]:
+def _probe(
+    api_url: str, api_key: str, model: str, cap_key: str = "max_tokens"
+) -> tuple[bool, int, str]:
     """Probe with one retry — a single blip should not page."""
-    ok, latency_ms, reason = _probe_once(api_url, api_key, model)
+    ok, latency_ms, reason = _probe_once(api_url, api_key, model, cap_key)
     if ok:
         return ok, latency_ms, reason
     time.sleep(2)
-    return _probe_once(api_url, api_key, model)
+    return _probe_once(api_url, api_key, model, cap_key)
 
 
-def _vision_probe_once(api_url: str, api_key: str, model: str) -> tuple[bool, int, str]:
+def _vision_probe_once(
+    api_url: str, api_key: str, model: str, cap_key: str = "max_tokens"
+) -> tuple[bool, int, str]:
     """One vision attempt on the CONFIGURED vision model. Never logs the key.
 
     Pass requires ALL of: HTTP 200, parseable body, non-empty visible content,
     every known token read back, and (when the body names a model) the response
     model matching the requested one — a silent server-side model swap is a
     failure, not a pass (FR-4 "model identity in the response path").
+
+    `cap_key` is the provider's output-cap field (`_Provider.cap_key`), exactly
+    as the text probe takes it: OpenAI's gpt-5 family rejects `max_tokens` with
+    HTTP 400, which would page vision DOWN for a provider whose runtime vision
+    works (Codex F3 on #4349).
     """
     import base64  # noqa: PLC0415
 
@@ -131,7 +149,7 @@ def _vision_probe_once(api_url: str, api_key: str, model: str) -> tuple[bool, in
         return False, 0, f"fixture unreadable: {type(e).__name__}"
     payload = {
         "model": model,
-        "max_tokens": VISION_PROBE_MAX_TOKENS,
+        cap_key: VISION_PROBE_MAX_TOKENS,
         "messages": [
             {
                 "role": "user",
@@ -176,13 +194,15 @@ def _vision_probe_once(api_url: str, api_key: str, model: str) -> tuple[bool, in
     return True, latency_ms, ""
 
 
-def _vision_probe(api_url: str, api_key: str, model: str) -> tuple[bool, int, str]:
+def _vision_probe(
+    api_url: str, api_key: str, model: str, cap_key: str = "max_tokens"
+) -> tuple[bool, int, str]:
     """Vision probe with one retry — a single blip should not page."""
-    ok, latency_ms, reason = _vision_probe_once(api_url, api_key, model)
+    ok, latency_ms, reason = _vision_probe_once(api_url, api_key, model, cap_key)
     if ok:
         return ok, latency_ms, reason
     time.sleep(2)
-    return _vision_probe_once(api_url, api_key, model)
+    return _vision_probe_once(api_url, api_key, model, cap_key)
 
 
 def main() -> int:
@@ -209,7 +229,7 @@ def main() -> int:
             print(f"  {name:9s} DOWN  — missing API key (not in cascade)")
             _gh_annotate("error", f"LLM provider DOWN: {name} (missing API key)")
             continue
-        ok, latency_ms, reason = _probe(prov.api_url, prov.api_key, prov.model)
+        ok, latency_ms, reason = _probe(prov.api_url, prov.api_key, prov.model, prov.cap_key)
         if ok:
             up.append(name)
             print(f"  {name:9s} UP    ({prov.model}, {latency_ms}ms)")
@@ -229,7 +249,9 @@ def main() -> int:
         print(f"\nVision probes ({len(vision_targets)} provider(s) with a vision model)\n")
     for name in vision_targets:
         prov = built[name]
-        ok, latency_ms, reason = _vision_probe(prov.api_url, prov.api_key, prov.vision_model)
+        ok, latency_ms, reason = _vision_probe(
+            prov.api_url, prov.api_key, prov.vision_model, prov.cap_key
+        )
         if ok:
             vision_up.append(name)
             print(f"  {name + '-vision':16s} UP    ({prov.vision_model}, {latency_ms}ms)")

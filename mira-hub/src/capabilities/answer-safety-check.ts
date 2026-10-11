@@ -31,7 +31,7 @@
  *    / uncertain, triage reports would_proceed.
  */
 
-import { canonicalProviders } from "@/lib/inference/canonical-cascade";
+import { canonicalProviders, requestDialectFields } from "@/lib/inference/canonical-cascade";
 import type { JevShadowResult } from "@/capabilities/observability/jev-shadow";
 
 /** `NOTEBOOK_SEMANTIC_CHECK=0` is the kill switch for this layer only; the
@@ -304,8 +304,12 @@ export async function semanticSafetyCheck(opts: {
             },
           ],
           stream: false,
-          max_tokens: 200,
-          temperature: 0,
+          // Provider dialect (Codex F1 on #4349): compat → max_tokens 200 +
+          // temperature 0; OpenAI gpt-5 → max_completion_tokens 200, no
+          // temperature — the judge would otherwise 400 on the one funded
+          // provider and this route would serve the answer with an `unknown`
+          // hazard verdict.
+          ...requestDialectFields(p, 200, 0),
           // #4130: the provider's own body extras (Groq gpt-oss reasoning_effort),
           // as every other canonical-cascade call sends them. Without it the
           // hidden reasoning ate the 200-token budget: 8/10 valid verdicts at a
