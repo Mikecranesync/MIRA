@@ -434,24 +434,14 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
 
   if (error) return <div className="unified-root"><p className="unified-root__empty" role="alert">{error}</p></div>;
   if (!notebooks || !host) return <div className="unified-root"><p className="unified-root__empty">FactoryLM…</p></div>;
-  if (!selected) {
-    return (
-      <div className="unified-root">
-        {notice}
-        <p className="unified-root__empty">No projects yet. Create one to start a conversation.</p>
-        <button
-          type="button"
-          className="unified-root__create"
-          onClick={() => setShowCreateProject(true)}
-        >
-          New project
-        </button>
-        <div className="fl-shell__nav-footer">{host.navigationFooter}</div>
-      </div>
-    );
-  }
 
-  if (homeVisible) {
+  // Row 8: an account with no projects gets the SAME home composer, not a
+  // dead end — /v3 answers a brand-new account's general question, and so
+  // does the phone. The send path below already creates General for it
+  // (homeSendPlan on an empty list), so the only thing the old
+  // "No projects yet" screen guarded was a composer that would have worked.
+  // `!selected` implies zero notebooks (a non-empty list always selects).
+  if (homeVisible || !selected) {
     return (
       <div className="unified-root" data-testid="unified-home">
         {notice}
@@ -477,10 +467,19 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
             onScanMachine: async () => {
               const id = openPreferredNotebook();
               if (id) setQueuedSensorStart("read-scan");
+              // No project yet, so no notebook can host the scanner; the
+              // form that creates one is the honest next step, never a
+              // silently dead button.
+              else setShowCreateProject(true);
               return null;
             },
           }}
           host={host}
+          // The exact line /v3 renders for "no project picked"
+          // (mira-hub/src/factorylm-ui/hub-host-logic.ts groundingLineFor):
+          // identical surfaces, identical words (row 8).
+          groundingLine={() =>
+            "General question — answered from general knowledge, nothing cited. Pick a project to ask about its manuals."}
           // No notebook exists yet, so nothing can upload here; the shell holds
           // the bytes and hands them to the thread this send creates.
           attachmentNotebookId={null}

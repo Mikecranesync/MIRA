@@ -613,17 +613,63 @@ describe("UnifiedRoot", () => {
     expect(root.querySelector('[data-item-id="notebook-nb-new:thread-thrd-n1"]')?.textContent).toContain("Belt slipping");
   });
 
-  it("#4188 control: a cold start with no notebooks is unchanged — the empty-workspace create prompt, not a project root or home composer", async () => {
+  // Row 8 (parity, 2026-10-07 Pixel acceptance): /v3 gives a brand-new account
+  // a composer and answers general questions; the phone showed a dead end with
+  // only "New project". A cold start with no notebooks now lands on the SAME
+  // home composer, and the first send creates General, exactly as a HOME send
+  // does when every notebook is a machine (#3877). This replaces the earlier
+  // #4188 control that pinned the dead-end screen.
+  it("row 8: a cold start with no notebooks lands on the home composer, not a dead end", async () => {
     const { listNotebooks } = await import("../src/api/resources");
     vi.mocked(listNotebooks).mockResolvedValueOnce([]);
     render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
 
-    await waitFor(() =>
-      expect(screen.getByText("No projects yet. Create one to start a conversation.")).toBeTruthy(),
-    );
-    expect(screen.queryByTestId("unified-home")).toBeNull();
+    expect(await waitFor(() => screen.getByTestId("unified-home"))).toBeTruthy();
+    expect(screen.queryByText("No projects yet. Create one to start a conversation.")).toBeNull();
     expect(screen.queryByTestId("unified-project-root")).toBeNull();
     expect(screen.queryByTestId("nb")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Ask MIRA" })).toBeTruthy();
+  });
+
+  it("row 8: the first question from the empty home creates General and is asked there", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.input(box, { target: { value: "What does F004 mean?" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(notebookApi.createNotebook).toHaveBeenCalledWith({ displayName: "General", identitySourceType: "user" });
+    expect(nb.getAttribute("data-id")).toBe("nb-general");
+    expect(nb.getAttribute("data-initial-question")).toBe("What does F004 mean?");
+  });
+
+  it("row 8: the home greeting carries /v3's general-question line", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    // The exact string /v3 renders (mira-hub/src/factorylm-ui/hub-host-logic.ts
+    // groundingLineFor(null, …)) — identical surfaces, identical words.
+    expect(screen.getByText(
+      "General question — answered from general knowledge, nothing cited. Pick a project to ask about its manuals.",
+    )).toBeTruthy();
+  });
+
+  it("row 8: Scan machine with no projects opens the New-project form instead of doing nothing", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Scan machine" }));
+
+    expect(await waitFor(() => screen.getByTestId("unified-create-project"))).toBeTruthy();
   });
 
   it("hardware Back on the composer home stays inside the unified root", async () => {
