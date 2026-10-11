@@ -94,11 +94,17 @@ describe("lib/llm/cascade — the OpenAI leg is spend-capped", () => {
     expect(hosts(calls)).toEqual(["api.openai.com", "api.groq.com", "api.openai.com", "api.groq.com"]);
   });
 
-  it("a transport failure releases its hold too", async () => {
+  it("a transport failure (timeout after the request was accepted) books the WORST CASE: repeated timeouts cannot spend past the cap", async () => {
+    // Cap fits one worst case ($0.0027), not two. Every attempt throws before headers arrive.
     process.env.OPENAI_RUN_BUDGET_USD = "0.004";
-    stubFetch({ throws: true });
+    const calls = stubFetch({ throws: true });
     expect((await cascadeComplete(MESSAGES))?.provider).toBe("Groq");
-    expect(openAiRunBudget().spentUsd).toBe(0);
+    expect(openAiRunBudget().spentUsd).toBeCloseTo(0.0027, 6);
+    expect(openAiRunBudget().heldUsd).toBe(0);
+    // Second and third attempts: OpenAI is no longer fetched at all; Groq still answers.
+    expect((await cascadeComplete(MESSAGES))?.provider).toBe("Groq");
+    expect((await cascadeComplete(MESSAGES))?.provider).toBe("Groq");
+    expect(hosts(calls)).toEqual(["api.openai.com", "api.groq.com", "api.groq.com", "api.groq.com"]);
   });
 
   it("concurrent callers are bounded by the HOLD: with room for one worst case, the second skips OpenAI while the first is still in flight", async () => {

@@ -144,10 +144,14 @@ async function callOne(
       signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000),
     });
   } catch {
-    reservation?.release();
+    // Ambiguous: a timeout or a dropped connection after the request was
+    // accepted may still have been billed. Book the worst case; never free
+    // budget on an outcome we cannot see.
+    reservation?.settle(inputEstimate, outputCap);
     return null;
   }
   if (!res.ok) {
+    // The provider answered with a rejection: nothing billable ran.
     reservation?.release();
     return null;
   }

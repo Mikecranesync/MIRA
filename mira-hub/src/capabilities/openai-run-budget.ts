@@ -55,6 +55,10 @@ export class OpenAiRunBudget {
   private readonly now: () => number;
   private windowStarted: number;
   private spent = 0;
+  /** Worst-case cost of requests reserved and still in flight. NOT reset by the
+   *  window roll: a hold is a live request, and it is booked (as actual usage)
+   *  in whichever window its response lands in. */
+  private held = 0;
   private callCount = 0;
 
   constructor(opts: {
@@ -83,6 +87,10 @@ export class OpenAiRunBudget {
     this.roll();
     return this.spent;
   }
+  /** Worst-case cost currently held by in-flight reservations. */
+  get heldUsd(): number {
+    return this.held;
+  }
   get calls(): number {
     return this.callCount;
   }
@@ -109,11 +117,11 @@ export class OpenAiRunBudget {
   precheck(inputTokens: number, outputTokens: number): BudgetVerdict {
     this.roll();
     const worst = this.estimateUsd(inputTokens, outputTokens);
-    const projected = this.spent + worst;
+    const projected = this.spent + this.held + worst;
     if (projected > this.cap) {
       return {
         ok: false,
-        reason: `openai run budget: spent=$${this.spent.toFixed(4)} + worst_case=$${worst.toFixed(4)} = $${projected.toFixed(4)} > cap=$${this.cap.toFixed(2)} (window ${this.window}s)`,
+        reason: `openai run budget: spent=$${this.spent.toFixed(4)} + held=$${this.held.toFixed(4)} + worst_case=$${worst.toFixed(4)} = $${projected.toFixed(4)} > cap=$${this.cap.toFixed(2)} (window ${this.window}s)`,
         spentUsd: this.spent,
         worstCaseUsd: worst,
         capUsd: this.cap,
@@ -137,17 +145,25 @@ export class OpenAiRunBudget {
   /**
    * Hard stop that also HOLDS the worst case while the request is in flight,
    * so N concurrent callers cannot each pass `precheck` against the same
-   * unspent balance and together overshoot the cap. The caller `settle`s with
-   * actual usage when the response lands (the hold is replaced by the real
-   * cost) or `release`s it when the request failed and nothing was billed.
-   * `precheck`/`record` stay for callers that serialize their own requests.
+   * unspent balance and together overshoot the cap. Holds are kept apart from
+   * the window's settled spend and are NOT cleared by the window roll: a
+   * request that straddles the boundary keeps counting against the cap until
+   * it resolves, and its actual usage is booked in the window its response
+   * lands in. The caller `settle`s with actual usage when the response lands
+   * (or with the worst case when the outcome is unknown, e.g. a timeout after
+   * the request was accepted) and `release`s only when the provider rejected
+   * the request without billable work (a non-OK status). `precheck`/`record`
+   * stay for callers that serialize their own requests.
    */
   reserve(inputTokens: number, outputTokens: number): ReserveVerdict {
     const verdict = this.precheck(inputTokens, outputTokens);
     if (!verdict.ok) return verdict;
     const worst = this.estimateUsd(inputTokens, outputTokens);
-    this.spent += worst;
+    this.held += worst;
     let open = true;
+    const drop = (): void => {
+      this.held = Math.max(0, this.held - worst);
+    };
     return {
       ok: true,
       reservation: {
@@ -155,13 +171,13 @@ export class OpenAiRunBudget {
           if (!open) return 0;
           open = false;
           // Drop the hold, then book the actual usage through the one accounting path.
-          this.spent = Math.max(0, this.spent - worst);
+          drop();
           return this.record(actualIn, actualOut);
         },
         release: (): void => {
           if (!open) return;
           open = false;
-          this.spent = Math.max(0, this.spent - worst);
+          drop();
         },
       },
     };
@@ -169,9 +185,9 @@ export class OpenAiRunBudget {
 }
 
 export type BudgetReservation = {
-  /** The response landed: replace the hold with the actual usage. Returns this call's cost. */
+  /** The response landed (or the outcome is unknown): replace the hold with the usage to book. Returns this call's cost. */
   settle(inputTokens: number, outputTokens: number): number;
-  /** Nothing was billed (transport error, non-OK status): drop the hold. */
+  /** The provider rejected the request without billable work (non-OK status): drop the hold. */
   release(): void;
 };
 

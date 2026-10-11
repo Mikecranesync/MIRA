@@ -122,15 +122,42 @@ describe("reserve / settle / release — the hold that stops concurrent overshoo
     const second = b.reserve(10, 600);
     expect(second.ok).toBe(false);
     if (second.ok) throw new Error("unreachable");
-    expect(second.spentUsd).toBeCloseTo(0.0027, 6);
+    // The refusal is driven by the HOLD, not by settled spend.
+    expect(second.spentUsd).toBe(0);
+    expect(b.heldUsd).toBeCloseTo(0.0027, 6);
+  });
+
+  it("a hold survives the window roll and is booked where its response lands (Codex r2 F3)", () => {
+    // Cap $1, output priced so 800 tokens = $0.80.
+    const c = clock(0);
+    const b = new OpenAiRunBudget({ capUsd: 1, windowS: 100, priceInPerMtok: 0, priceOutPerMtok: 1000, now: c.now });
+    const old = b.reserve(0, 800);
+    if (!old.ok) throw new Error("expected ok");
+    c.t = 150; // the window rolled while `old` is still in flight
+    expect(b.spentUsd).toBe(0); // settled spend reset…
+    expect(b.heldUsd).toBeCloseTo(0.8, 6); // …but the live hold still counts
+    expect(b.reserve(0, 800).ok).toBe(false); // 0.8 held + 0.8 > cap
+    // Settle the old request in the new window: its actual usage lands here, the hold is gone.
+    old.reservation.settle(0, 100);
+    expect(b.heldUsd).toBe(0);
+    expect(b.spentUsd).toBeCloseTo(0.1, 6);
+    const fresh = b.reserve(0, 800);
+    expect(fresh.ok).toBe(true); // 0.1 + 0.8 fits
+    expect(b.reserve(0, 800).ok).toBe(false); // 0.1 + 0.8 held + 0.8 does not
+    // Releasing the fresh hold never touches another reservation's accounting.
+    if (fresh.ok) fresh.reservation.release();
+    expect(b.heldUsd).toBe(0);
+    expect(b.spentUsd).toBeCloseTo(0.1, 6);
   });
 
   it("settle replaces the hold with the actual usage and counts the call", () => {
     const b = new OpenAiRunBudget({ capUsd: 1, priceInPerMtok: 0, priceOutPerMtok: 4.5, now: clock().now });
     const r = b.reserve(10, 600);
     if (!r.ok) throw new Error("expected ok");
-    expect(b.spentUsd).toBeCloseTo(0.0027, 6);
+    expect(b.heldUsd).toBeCloseTo(0.0027, 6);
+    expect(b.spentUsd).toBe(0);
     expect(r.reservation.settle(10, 100)).toBeCloseTo(0.00045, 6);
+    expect(b.heldUsd).toBe(0);
     expect(b.spentUsd).toBeCloseTo(0.00045, 6);
     expect(b.calls).toBe(1);
     // Settling twice books nothing more.
@@ -143,6 +170,7 @@ describe("reserve / settle / release — the hold that stops concurrent overshoo
     const r = b.reserve(10, 600);
     if (!r.ok) throw new Error("expected ok");
     r.reservation.release();
+    expect(b.heldUsd).toBe(0);
     expect(b.spentUsd).toBe(0);
     expect(b.calls).toBe(0);
     expect(b.reserve(10, 600).ok).toBe(true);
@@ -160,7 +188,7 @@ describe("reserve / settle / release — the hold that stops concurrent overshoo
 
 describe("source contract — the Hub OpenAI spend path in this branch goes through the budget", () => {
   const read = (p: string) => readFileSync(resolve(__dirname, p), "utf8");
-  it("non-streaming cascade (quickstart, hub ask, translate, extractor): reserve before the OpenAI fetch, settle after usage, release on failure", () => {
+  it("non-streaming cascade (quickstart, hub ask, translate, extractor): reserve before the OpenAI fetch, settle after usage or an unknown outcome, release only on a rejection", () => {
     const cascade = read("../../lib/llm/cascade.ts");
     expect(cascade).toMatch(/const inputEstimate = estimateInputTokens\(messages\)/);
     expect(cascade).toMatch(/openAiRunBudget\(\)\.reserve\(inputEstimate, outputCap\)/);
