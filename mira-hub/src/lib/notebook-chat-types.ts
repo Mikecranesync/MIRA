@@ -66,6 +66,14 @@ export type NotebookStatusFrame = {
   kind: "status";
   status: "answered" | "insufficient_evidence" | "error";
   message?: string;
+  /**
+   * Provider exhaustion (D6) — set only on `status: "error"` when no provider
+   * served. Additive: clients that only read `status`/`message` are unchanged.
+   * `providers` is every attempt in cascade order with its HTTP status and a
+   * short reason, so "why" is visible without server logs.
+   */
+  reason?: "all_providers_failed" | "no_provider_configured";
+  providers?: { provider: string; httpStatus: number | null; reason: string }[];
 };
 
 /**
