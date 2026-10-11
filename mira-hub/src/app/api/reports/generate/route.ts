@@ -3,31 +3,18 @@ import pool from "@/lib/db";
 import { sessionOr401 } from "@/lib/session";
 import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
-import { canonicalProviders } from "@/lib/inference/canonical-cascade";
+import { canonicalProviders, requestDialectFields } from "@/lib/inference/canonical-cascade";
 
 export const dynamic = "force-dynamic";
 
-interface CascadeProvider {
-  name: string;
-  url: string;
-  key: string | undefined;
-  model: string;
-}
-
 async function callLLM(prompt: string): Promise<string> {
-  // Groq → Cerebras → Together, sourced from the ONE canonical definition
-  // (@/lib/inference/canonical-cascade) so this route cannot drift from root
-  // CLAUDE.md Hard Constraint #2. Gemini was removed 2026-09-08 (#3688) — it is
-  // a PRD §4 violation, never reintroduce. The loop below re-adds gpt-oss
-  // reasoning_effort inline, so only the provider LIST is borrowed here.
-  const providers: CascadeProvider[] = canonicalProviders().map((p) => ({
-    name: p.name,
-    url: p.url,
-    key: p.key,
-    model: p.model,
-  }));
-
-  for (const p of providers) {
+  // The canonical cascade (OpenAI → Groq → Cerebras → Together), sourced from
+  // the ONE canonical definition (@/lib/inference/canonical-cascade) so this
+  // route cannot drift from root CLAUDE.md Hard Constraint #2. Gemini was
+  // removed 2026-09-08 (#3688) — it is a PRD §4 violation, never reintroduce.
+  // The provider's request dialect comes from requestDialectFields (Codex F1
+  // on #4349); the loop re-adds gpt-oss reasoning_effort inline.
+  for (const p of canonicalProviders()) {
     if (!p.key) continue;
     try {
       const res = await fetch(p.url, {
@@ -36,8 +23,9 @@ async function callLLM(prompt: string): Promise<string> {
         body: JSON.stringify({
           model: p.model,
           messages: [{ role: "user", content: prompt }],
-          max_tokens: 500,
-          temperature: 0.4,
+          // compat → max_tokens 500 + temperature 0.4; OpenAI gpt-5 →
+          // max_completion_tokens 500, no temperature (HTTP 400 otherwise).
+          ...requestDialectFields(p, 500, 0.4),
           // gpt-oss spends completion tokens on reasoning; low effort keeps
           // the report inside the 500-token cap.
           ...(p.model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
