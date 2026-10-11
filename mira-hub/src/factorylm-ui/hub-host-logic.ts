@@ -324,6 +324,31 @@ export function errorMessageFor(code: string, status: number): string {
   }
 }
 
+/**
+ * #4311 — a send that never reached the route surfaces as the browser's own
+ * TypeError text ("Failed to fetch" in Chromium, "Load failed" in WebKit,
+ * "NetworkError when attempting to fetch resource." in Gecko). None of that is
+ * written for a technician on a phone. Everything else that reaches the send
+ * error is already plain language (`errorMessageFor`), so it passes through.
+ */
+const NETWORK_FAILURE_RE = /^(failed to fetch|load failed|networkerror when attempting to fetch resource\.?|network request failed)$/i;
+export const NETWORK_FAILURE_MESSAGE = "The request didn't go through. Check the connection, then try again.";
+
+export function sendFailureMessage(err: unknown): string {
+  const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
+  if (NETWORK_FAILURE_RE.test(raw)) return NETWORK_FAILURE_MESSAGE;
+  return raw || "MIRA couldn't answer that just now.";
+}
+
+/**
+ * #4311 — a failed send hands the question back to the composer; a successful
+ * host retry must take it away again, but never clobber something new the
+ * technician typed meanwhile. Returns the draft to set, or null to leave it.
+ */
+export function draftAfterSendSucceeded(draft: string, question: string): string | null {
+  return draft !== "" && draft.trim() === question.trim() ? "" : null;
+}
+
 /** The initial shell fixture for a hydrated notebook. */
 export function fixtureFor(
   nb: EquipmentNotebook,
