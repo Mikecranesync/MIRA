@@ -65,6 +65,7 @@ import {
   chatBodyFor,
   createLatestLoadTracker,
   detailQueryFor,
+  draftAfterSendSucceeded,
   enabledDocIds,
   errorMessageFor,
   fixtureFor,
@@ -80,6 +81,7 @@ import {
   retainedStreamInterruption,
   searchForSelection,
   selectionFromSearch,
+  sendFailureMessage,
   shellThreadId,
   type CompatibleStreamResult,
   type HubSelection,
@@ -158,6 +160,11 @@ export function HubShellHost() {
   const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 
   const [state, dispatch] = useReducer(shellReducer, undefined, initialHubShellState);
+  // #4311: the send path finishes long after the render that started it; a
+  // successful retry needs the composer's CURRENT draft to decide whether the
+  // question it put back is still sitting there.
+  const draftRef = useRef(state.draft);
+  useEffect(() => { draftRef.current = state.draft; }, [state.draft]);
 
   /**
    * Tell the reducer WHICH thread is open, from event handlers (never effects).
@@ -407,6 +414,10 @@ export function HubShellHost() {
       await loadNotebooks();
       setLive((cur) => (cur && cur.id === id ? null : cur));
       dropOutgoing(outgoingId);
+      // #4311: a failed send put the question back in the composer; a
+      // successful retry takes it away again (never a newer draft).
+      const draft = draftAfterSendSucceeded(draftRef.current, question);
+      if (draft !== null) dispatch({ type: "set-draft", draft });
     } catch (err) {
       const retained = retainedStreamInterruption(err);
       if (retained) {
@@ -416,13 +427,13 @@ export function HubShellHost() {
             : cur,
         );
         if (!retained.stopped) {
-          const message = err instanceof Error ? err.message : String(err);
+          const message = sendFailureMessage(err);
           setFailedBody({ body, question });
           dispatch({ type: "set-send-error", error: message });
         }
         return;
       }
-      const message = err instanceof Error ? err.message : String(err);
+      const message = sendFailureMessage(err);
       setLive((cur) => (cur && cur.id === id ? null : cur));
       dropOutgoing(outgoingId);
       setFailedBody({ body, question });
@@ -525,7 +536,7 @@ export function HubShellHost() {
     if (plan.kind === "create") {
       setBusy(true);
       try { notebookId = await createNotebook(plan.body); }
-      catch (err) { dropOutgoing(); dispatch({ type: "set-send-error", error: err instanceof Error ? err.message : String(err) }); dispatch({ type: "set-draft", draft: q }); return; }
+      catch (err) { dropOutgoing(); dispatch({ type: "set-send-error", error: sendFailureMessage(err) }); dispatch({ type: "set-draft", draft: q }); return; }
       finally { setBusy(false); }
     }
     // No id means the create was refused (401 → signed-out screen) — hand the
