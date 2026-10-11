@@ -232,31 +232,48 @@ export function routeReasonFor(attempted: string[]): string {
  * is precisely why the technician path had no cost telemetry. Cerebras and
  * Together honour it; Groq honours it on the OpenAI-compatible route.
  */
+/**
+ * The output-cap / temperature fields for ONE provider, in its request dialect.
+ *
+ * This is the single place those two fields are shaped. Every registry consumer
+ * that builds its own body (asset chat, namespace chat, reports, the semantic
+ * safety judge) spreads this instead of writing `max_tokens` inline — with
+ * OpenAI first and the free providers down, an inline `max_tokens` /
+ * `temperature` is an HTTP 400 on the only funded provider, which the cascade
+ * misreads as an outage (Codex F1 on #4349).
+ *
+ * gpt-5 family: `max_completion_tokens`, no `temperature` (only the default is
+ * accepted), and the provider's `extra` (`reasoning_effort`) — the dialect
+ * needs it, so it rides here. Compat providers: `max_tokens` + the caller's
+ * `temperature`, nothing else (callers add their own gpt-oss extras).
+ */
+export function requestDialectFields(
+  provider: CanonicalProvider,
+  maxTokens: number,
+  temperature: number,
+): Record<string, unknown> {
+  if (provider.requestStyle === "openai-reasoning") {
+    return { max_completion_tokens: maxTokens, ...(provider.extra ?? {}) };
+  }
+  return { max_tokens: maxTokens, temperature };
+}
+
 export function buildRequestBody(
   provider: CanonicalProvider,
   messages: unknown[],
   maxTokens: number,
 ): Record<string, unknown> {
-  if (provider.requestStyle === "openai-reasoning") {
-    // gpt-5 family: `max_completion_tokens`, no `temperature` (only the
-    // default is accepted), `reasoning_effort` rides in `extra`.
-    return {
-      model: provider.model,
-      messages,
-      stream: true,
-      stream_options: { include_usage: true },
-      max_completion_tokens: maxTokens,
-      ...(provider.extra ?? {}),
-    };
-  }
+  // Field order is preserved from before requestDialectFields existed (the
+  // contract test pins the exact object) — the dialect fields come after the
+  // stream block, and compat providers still spread their `extra` here.
+  const dialect = requestDialectFields(provider, maxTokens, 0.3);
   return {
     model: provider.model,
     messages,
     stream: true,
     stream_options: { include_usage: true },
-    max_tokens: maxTokens,
-    temperature: 0.3,
-    ...(provider.extra ?? {}),
+    ...dialect,
+    ...(provider.requestStyle === "openai-reasoning" ? {} : (provider.extra ?? {})),
   };
 }
 

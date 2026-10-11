@@ -34,7 +34,8 @@ import {
   KB_GAP_SYSTEM_INSTRUCTION,
   hasCitationOrGapAdmission,
 } from "@/lib/kb-gap";
-import { canonicalProviders } from "@/lib/inference/canonical-cascade";
+import { canonicalProviders, requestDialectFields } from "@/lib/inference/canonical-cascade";
+import type { CanonicalProvider } from "@/lib/inference/canonical-cascade";
 
 export const dynamic = "force-dynamic";
 
@@ -52,17 +53,22 @@ interface CascadeProvider {
   url: string;
   key: string | undefined;
   model: string;
+  /** Request dialect + body extras — see requestDialectFields (Codex F1 on #4349). */
+  requestStyle?: CanonicalProvider["requestStyle"];
+  extra?: CanonicalProvider["extra"];
 }
 
 function getProviders(): CascadeProvider[] {
-  // Borrow only the provider LIST from the canonical seam; this route keeps its
-  // own SSE/H4 streaming machinery (streamFromProvider re-adds gpt-oss
-  // reasoning_effort inline). Not the full usage-telemetry seam.
+  // Borrow the provider LIST + request dialect from the canonical seam; this
+  // route keeps its own SSE/H4 streaming machinery (streamFromProvider re-adds
+  // gpt-oss reasoning_effort inline). Not the full usage-telemetry seam.
   return canonicalProviders().map((p) => ({
     name: p.name,
     url: p.url,
     key: p.key,
     model: p.model,
+    requestStyle: p.requestStyle,
+    extra: p.extra,
   }));
 }
 
@@ -152,8 +158,9 @@ async function streamFromProvider(
         model: provider.model,
         messages,
         stream: true,
-        max_tokens: 800,
-        temperature: 0.3,
+        // Provider dialect: compat → max_tokens 800 + temperature 0.3; OpenAI
+        // gpt-5 → max_completion_tokens 800, no temperature (HTTP 400 otherwise).
+        ...requestDialectFields(provider, 800, 0.3),
         // gpt-oss spends completion tokens on reasoning; low effort preserves
         // the 800-token budget for the streamed answer.
         ...(provider.model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
