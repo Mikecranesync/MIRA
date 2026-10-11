@@ -660,6 +660,51 @@ describe("UnifiedRoot", () => {
     )).toBeTruthy();
   });
 
+  // Codex #4350 F1: a failed General create on the first send used to set the
+  // root's FATAL error — the composer vanished with the question and nothing
+  // on the screen could recover it. It is a failed send: the composer stays,
+  // the banner says why, the question comes back, and Try again re-attempts.
+  it("row 8: a failed first send keeps the composer and the question, and Try again asks it in General", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    // Call counts are not cleared between tests in this file; count from here.
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    fireEvent.input(screen.getByRole("textbox", { name: "Ask MIRA" }), { target: { value: "What does F004 mean?" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    expect(screen.getByTestId("unified-home")).toBeTruthy();
+    expect(screen.queryByTestId("nb")).toBeNull();
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("What does F004 mean?"));
+
+    // Connectivity is back: the next create succeeds (the mock's default).
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(notebookApi.createNotebook).toHaveBeenCalledTimes(2);
+    expect(nb.getAttribute("data-id")).toBe("nb-general");
+    expect(nb.getAttribute("data-initial-question")).toBe("What does F004 mean?");
+  });
+
+  it("row 8: a failed New chat from the empty home shows the error and keeps the home", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
+
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    expect(screen.getByTestId("unified-home")).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Ask MIRA" })).toBeTruthy();
+  });
+
   it("row 8: Scan machine with no projects opens the New-project form instead of doing nothing", async () => {
     const { listNotebooks } = await import("../src/api/resources");
     vi.mocked(listNotebooks).mockResolvedValueOnce([]);

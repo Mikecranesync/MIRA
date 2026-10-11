@@ -83,6 +83,12 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   // clears this the same way it already clears `homeVisible`.
   const [projectRootVisible, setProjectRootVisible] = useState(false);
   const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
+  // A HOME send that could not create General is a failed SEND, not a dead
+  // app (Codex #4350 F1): the composer stays, the banner says why, the
+  // question comes back, and Try again re-attempts. Mirrors the Hub host's
+  // recoverable shell send error.
+  const [homeSendError, setHomeSendError] = useState<string | null>(null);
+  const [homeFailedQuestion, setHomeFailedQuestion] = useState<string | null>(null);
   const [queuedOpenAddSources, setQueuedOpenAddSources] = useState(false);
   const [queuedSensorStart, setQueuedSensorStart] = useState<"read-scan" | null>(null);
   const [showAbout, setShowAbout] = useState(false);
@@ -230,19 +236,40 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
    * it creates General so a stranger with no project can still ask. Async only
    * on that create path; the caller sequences the question after it.
    */
-  const startHomeThread = useCallback(async (): Promise<string | null> => {
+  const startHomeThread = useCallback(async (): Promise<{ id: string } | { failure: string } | null> => {
     const plan = homeSendPlan(notebooks);
     if (plan.kind === "loading") return null;
-    if (plan.kind === "existing") return startNewThread(plan.notebookId);
+    if (plan.kind === "existing") {
+      const id = startNewThread(plan.notebookId);
+      return id ? { id } : null;
+    }
     try {
       const created = await createNotebook(plan.body);
       setNotebooks((current) => (current?.some((nb) => nb.id === created.id) ? current : [created, ...(current ?? [])]));
-      return startNewThread(created.id);
+      const id = startNewThread(created.id);
+      return id ? { id } : null;
     } catch (e) {
-      setError(apiErrorCopy(e, "Could not create a project for your question."));
-      return null;
+      // Never the root's fatal error: that unmounts the composer with the
+      // question in it and leaves nothing on screen that can recover.
+      return { failure: apiErrorCopy(e, "Could not create a project for your question.") };
     }
   }, [notebooks, startNewThread]);
+
+  /** A HOME send or New chat. On a failed create, the error and the question
+   *  land in one render so the shell restores the draft under the banner. */
+  const sendFromHome = useCallback((text: string | null) => {
+    setHomeSendError(null);
+    setHomeFailedQuestion(null);
+    void startHomeThread().then((result) => {
+      if (!result) return; // the list is still loading
+      if ("id" in result) {
+        if (text) setQueuedQuestion(text);
+        return;
+      }
+      setHomeFailedQuestion(text);
+      setHomeSendError(result.failure);
+    });
+  }, [startHomeThread]);
 
   const openPreferredNotebook = useCallback((): string | null => {
     const id = preferredNotebookId();
@@ -452,17 +479,19 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           busy={false}
           canStop={false}
           canRetry={false}
-          chatError={null}
+          chatError={homeSendError}
+          // The shell puts this back in the composer under the banner, and its
+          // Try again re-sends the draft through onSend (SendError.tsx): with
+          // no failed turn on HOME there is no host retry to wire.
+          failedQuestion={homeFailedQuestion}
           handlers={{
             // HOME has no notebook yet: the shell stashes whatever the composer
             // is holding and this send creates the thread that claims it.
-            onSend: (text) => {
-              void startHomeThread().then((id) => { if (id) setQueuedQuestion(text); });
-            },
+            onSend: (text) => sendFromHome(text),
             onStop: () => {},
             onCitation: () => {},
             onRetry: undefined,
-            onNewChat: () => { void startHomeThread(); },
+            onNewChat: () => sendFromHome(null),
             onCreateProject: () => { onCreateProject(); },
             onScanMachine: async () => {
               const id = openPreferredNotebook();
