@@ -7,8 +7,9 @@
  *
  * Mirrors `nameplate/recognize` — same session, ownership, multipart, MIME
  * sniff, cap, park-then-link discipline — and differs in exactly one thing:
- * the vision pass is a fixed INSPECTION prompt over `togetherVisionCall`
- * (`@/lib/nameplate/passes`) instead of a nameplate recognizer.
+ * the vision pass is a fixed INSPECTION prompt over `openAiVisionCall` (when
+ * OPENAI_API_KEY is set) or `togetherVisionCall` (`@/lib/nameplate/passes`)
+ * instead of a nameplate recognizer.
  *
  * Laws honored here:
  * 1. PARK BEFORE VISION. The photo survives a 502/503; the response always
@@ -73,7 +74,7 @@ import {
 import { isRecognizerConfigured, fixtureSelected } from "@/lib/nameplate";
 import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
-import { togetherVisionCall, safeJson, type VisionCall } from "@/lib/nameplate/passes";
+import { openAiVisionCall, togetherVisionCall, safeJson, type VisionCall } from "@/lib/nameplate/passes";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +89,7 @@ const MAX_CLIENT_KEY_CHARS = 128;
 /**
  * The one prompt this route owns. Observations only: the four-bucket
  * observed/documentation/historical/inference reasoning belongs to the chat
- * route's existing instruction, not here. `togetherVisionCall` runs in JSON
+ * route's existing instruction, not here. Both vision calls run in JSON
  * mode, so the answer is wrapped in one string field and unwrapped below.
  */
 export const INSPECTION_PROMPT = `You are looking at a photograph a maintenance technician just took of industrial equipment.
@@ -397,7 +398,14 @@ async function handleLookTurn(
     );
   }
 
-  const vision: VisionCall = fixtureSelected() ? fixtureVisionCall : togetherVisionCall;
+  // Provider pick (D8, 2026-10-11): OpenAI leads when its key is set, else Together
+  // — the same order as `defaultRecognizer`. Picked inline (not via
+  // `defaultVisionCall`) so each call stays an importable, mockable seam.
+  const vision: VisionCall = fixtureSelected()
+    ? fixtureVisionCall
+    : process.env.OPENAI_API_KEY
+      ? openAiVisionCall
+      : togetherVisionCall;
   const visionStartedAt = Date.now();
   const visionSpan = tracer.startSpan("chat (vision)", undefined, rootCtx);
   try {

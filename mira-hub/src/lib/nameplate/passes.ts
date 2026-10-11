@@ -25,7 +25,8 @@
  * throws only if EVERY pass fails.
  */
 
-import { togetherVisionModel } from "./index";
+import { requestDialectFields } from "../inference/canonical-cascade";
+import { openAiVisionProvider, togetherVisionModel } from "./index";
 
 // ── Field vocabulary ─────────────────────────────────────────────────────────
 
@@ -604,6 +605,43 @@ export const togetherVisionCall: VisionCall = async ({ prompt, images, temperatu
   return { text: body.choices?.[0]?.message?.content ?? "{}", model };
 };
 
+/**
+ * OpenAI vision call (2026-10-11, D8) — the same per-pass contract as
+ * `togetherVisionCall`, in the gpt-5 dialect: the cap rides as
+ * `max_completion_tokens`, `temperature` is not sent (only the default is
+ * accepted), `reasoning_effort` rides from the provider descriptor.
+ */
+export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature, maxTokens }) => {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("recognizer_not_configured");
+  const provider = openAiVisionProvider(key);
+  const content: unknown[] = [{ type: "text", text: prompt }];
+  for (const img of images) {
+    content.push({
+      type: "image_url",
+      image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+    });
+  }
+  const resp = await fetch(provider.url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model: provider.model,
+      ...requestDialectFields(provider, maxTokens, temperature),
+      response_format: { type: "json_object" },
+      messages: [{ role: "user", content }],
+    }),
+  });
+  if (!resp.ok) throw new Error(`recognizer_provider_error_${resp.status}`);
+  const body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
+  return { text: body.choices?.[0]?.message?.content ?? "{}", model: provider.model };
+};
+
+/** OpenAI leads when its key is set; otherwise the Together call, exactly as before. */
+export function defaultVisionCall(): VisionCall {
+  return process.env.OPENAI_API_KEY ? openAiVisionCall : togetherVisionCall;
+}
+
 export function safeJson(text: string): Record<string, unknown> | null {
   try {
     const v = JSON.parse(text);
@@ -749,7 +787,7 @@ export async function runMultiPass(
   image: VisionImage,
   opts: MultiPassOptions = {},
 ): Promise<MultiPassResult> {
-  const call = opts.call ?? togetherVisionCall;
+  const call = opts.call ?? defaultVisionCall();
   const wanted: PassName[] = opts.passes ?? ["semantic", "ocr", "identifier"];
   const temperature = opts.temperature ?? 0.1;
   const hint = opts.hint ? `${opts.hint}\n\n` : "";
