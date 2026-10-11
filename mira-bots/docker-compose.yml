@@ -14,6 +14,8 @@ x-bot-common-env: &bot-common-env
   OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
   OPENROUTER_VISION_MODEL: ${OPENROUTER_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct:free}
   GROQ_API_KEY: ${GROQ_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
   GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
   GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
   CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}

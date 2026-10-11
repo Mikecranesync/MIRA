@@ -118,6 +118,7 @@ jobs:
           FLM_SESSION_COOKIE: ${{ secrets.FLM_SESSION_COOKIE || 'offline' }}
           FLM_EVAL_NOTEBOOK_ID: ${{ secrets.FLM_EVAL_NOTEBOOK_ID || 'offline' }}
           GROQ_API_KEY: ${{ secrets.STAGING_GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.STAGING_OPENAI_API_KEY }}
           JUDGE_MODEL: groq
         id: gate
         run: |
