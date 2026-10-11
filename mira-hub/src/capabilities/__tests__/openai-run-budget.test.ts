@@ -3,7 +3,8 @@
 // Pins: env contract incl. the compose empty-string case, precheck-before /
 // record-after arithmetic, the rolling window, the default price equal to the
 // repo's declared gpt-5.4-mini rate, and that the three Hub spend paths
-// (notebook chat loop, nameplate recognizer, LOOK vision call) go through it.
+// (notebook chat loop, nameplate recognizer, LOOK vision call) and the
+// non-streaming cascade go through it.
 //
 // Run: cd mira-hub && npx vitest run src/capabilities/__tests__/openai-run-budget
 
@@ -14,8 +15,10 @@ import {
   OpenAiRunBudget,
   DEFAULT_PRICE_PER_MTOK_IN,
   DEFAULT_PRICE_PER_MTOK_OUT,
+  boundInputTokens,
   estimateInputTokens,
   estimateVisionInputTokens,
+  MESSAGE_FRAMING_TOKENS,
   IMAGE_PART_TOKENS,
   openAiRunBudget,
   resetOpenAiRunBudgetForTests,
@@ -113,6 +116,98 @@ describe("precheck / record / window", () => {
   });
 });
 
+describe("boundInputTokens — an UPPER bound for the hold (Codex r3 F4)", () => {
+  const ascii = [{ role: "user", content: "PowerFlex 525 fault F0004 on power-up" }];
+  // Token-dense text: each CJK character is 3 UTF-8 bytes and roughly one token, so chars/4
+  // under-counts it about twelve-fold.
+  const dense = [{ role: "user", content: "故障代码".repeat(100) }];
+
+  it("is never below the chars/4 average, for plain and token-dense text", () => {
+    expect(boundInputTokens(ascii)).toBeGreaterThanOrEqual(estimateInputTokens(ascii));
+    expect(boundInputTokens(dense)).toBeGreaterThan(estimateInputTokens(dense) * 10);
+  });
+
+  it("is the UTF-8 byte length plus a framing allowance per message (tokens cannot exceed bytes)", () => {
+    const json = JSON.stringify(dense);
+    expect(Buffer.byteLength(json, "utf8")).toBeGreaterThan(json.length); // multibyte text really is counted in bytes
+    expect(boundInputTokens(dense)).toBe(Buffer.byteLength(json, "utf8") + 2 * MESSAGE_FRAMING_TOKENS);
+    expect(boundInputTokens([])).toBe(Buffer.byteLength("[]", "utf8") + MESSAGE_FRAMING_TOKENS);
+  });
+});
+
+describe("reserve / settle / release — the hold that stops concurrent overshoot", () => {
+  it("holds the worst case while in flight, so a second caller is refused against the same balance", () => {
+    const b = new OpenAiRunBudget({ capUsd: 0.005, priceInPerMtok: 0, priceOutPerMtok: 4.5, now: clock().now });
+    // 600 output tokens worst case = $0.0027; two of them = $0.0054 > cap.
+    const first = b.reserve(10, 600);
+    expect(first.ok).toBe(true);
+    const second = b.reserve(10, 600);
+    expect(second.ok).toBe(false);
+    if (second.ok) throw new Error("unreachable");
+    // The refusal is driven by the HOLD, not by settled spend.
+    expect(second.spentUsd).toBe(0);
+    expect(b.heldUsd).toBeCloseTo(0.0027, 6);
+  });
+
+  it("a hold survives the window roll and is booked where its response lands (Codex r2 F3)", () => {
+    // Cap $1, output priced so 800 tokens = $0.80.
+    const c = clock(0);
+    const b = new OpenAiRunBudget({ capUsd: 1, windowS: 100, priceInPerMtok: 0, priceOutPerMtok: 1000, now: c.now });
+    const old = b.reserve(0, 800);
+    if (!old.ok) throw new Error("expected ok");
+    c.t = 150; // the window rolled while `old` is still in flight
+    expect(b.spentUsd).toBe(0); // settled spend reset…
+    expect(b.heldUsd).toBeCloseTo(0.8, 6); // …but the live hold still counts
+    expect(b.reserve(0, 800).ok).toBe(false); // 0.8 held + 0.8 > cap
+    // Settle the old request in the new window: its actual usage lands here, the hold is gone.
+    old.reservation.settle(0, 100);
+    expect(b.heldUsd).toBe(0);
+    expect(b.spentUsd).toBeCloseTo(0.1, 6);
+    const fresh = b.reserve(0, 800);
+    expect(fresh.ok).toBe(true); // 0.1 + 0.8 fits
+    expect(b.reserve(0, 800).ok).toBe(false); // 0.1 + 0.8 held + 0.8 does not
+    // Releasing the fresh hold never touches another reservation's accounting.
+    if (fresh.ok) fresh.reservation.release();
+    expect(b.heldUsd).toBe(0);
+    expect(b.spentUsd).toBeCloseTo(0.1, 6);
+  });
+
+  it("settle replaces the hold with the actual usage and counts the call", () => {
+    const b = new OpenAiRunBudget({ capUsd: 1, priceInPerMtok: 0, priceOutPerMtok: 4.5, now: clock().now });
+    const r = b.reserve(10, 600);
+    if (!r.ok) throw new Error("expected ok");
+    expect(b.heldUsd).toBeCloseTo(0.0027, 6);
+    expect(b.spentUsd).toBe(0);
+    expect(r.reservation.settle(10, 100)).toBeCloseTo(0.00045, 6);
+    expect(b.heldUsd).toBe(0);
+    expect(b.spentUsd).toBeCloseTo(0.00045, 6);
+    expect(b.calls).toBe(1);
+    // Settling twice books nothing more.
+    expect(r.reservation.settle(10, 100)).toBe(0);
+    expect(b.spentUsd).toBeCloseTo(0.00045, 6);
+  });
+
+  it("release drops the hold without counting a call (control: the next caller then fits)", () => {
+    const b = new OpenAiRunBudget({ capUsd: 0.005, priceInPerMtok: 0, priceOutPerMtok: 4.5, now: clock().now });
+    const r = b.reserve(10, 600);
+    if (!r.ok) throw new Error("expected ok");
+    r.reservation.release();
+    expect(b.heldUsd).toBe(0);
+    expect(b.spentUsd).toBe(0);
+    expect(b.calls).toBe(0);
+    expect(b.reserve(10, 600).ok).toBe(true);
+  });
+
+  it("refuses at the cap exactly like precheck (same verdict shape)", () => {
+    const b = new OpenAiRunBudget({ capUsd: 0.001, priceInPerMtok: 0, priceOutPerMtok: 4.5, now: clock().now });
+    const r = b.reserve(10, 600);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    expect(r.capUsd).toBe(0.001);
+    expect(r.worstCaseUsd).toBeCloseTo(0.0027, 6);
+  });
+});
+
 describe("source contract — every Hub OpenAI spend path goes through the budget", () => {
   const read = (p: string) => readFileSync(resolve(__dirname, p), "utf8");
   it("notebook chat route: precheck before the OpenAI fetch, record after usage", () => {
@@ -128,5 +223,15 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
     expect(index).toMatch(/openAiRunBudget\(\)\.record\(/);
     expect(passes).toMatch(/openAiRunBudget\(\)\.precheck\(/);
     expect(passes).toMatch(/openAiRunBudget\(\)\.record\(/);
+  });
+  it("non-streaming cascade (quickstart, hub ask, translate, extractor): reserve before the OpenAI fetch, settle after usage or an unknown outcome, release only on a rejection", () => {
+    const cascade = read("../../lib/llm/cascade.ts");
+    expect(cascade).toMatch(/const inputBound = boundInputTokens\(messages\)/);
+    expect(cascade).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, outputCap\)/);
+    expect(cascade).not.toMatch(/estimateInputTokens/); // the average never sizes a hold here
+    expect(cascade.indexOf(".reserve(")).toBeLessThan(cascade.indexOf("await fetch("));
+    expect(cascade).toMatch(/reservation\?\.settle\(/);
+    expect(cascade).toMatch(/reservation\?\.release\(\)/);
+    expect(cascade).toMatch(/logBudgetExhausted\("llm-cascade"/);
   });
 });

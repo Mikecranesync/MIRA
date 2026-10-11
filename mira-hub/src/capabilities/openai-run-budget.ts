@@ -55,6 +55,10 @@ export class OpenAiRunBudget {
   private readonly now: () => number;
   private windowStarted: number;
   private spent = 0;
+  /** Worst-case cost of requests reserved and still in flight. NOT reset by the
+   *  window roll: a hold is a live request, and it is booked (as actual usage)
+   *  in whichever window its response lands in. */
+  private held = 0;
   private callCount = 0;
 
   constructor(opts: {
@@ -83,6 +87,10 @@ export class OpenAiRunBudget {
     this.roll();
     return this.spent;
   }
+  /** Worst-case cost currently held by in-flight reservations. */
+  get heldUsd(): number {
+    return this.held;
+  }
   get calls(): number {
     return this.callCount;
   }
@@ -109,11 +117,11 @@ export class OpenAiRunBudget {
   precheck(inputTokens: number, outputTokens: number): BudgetVerdict {
     this.roll();
     const worst = this.estimateUsd(inputTokens, outputTokens);
-    const projected = this.spent + worst;
+    const projected = this.spent + this.held + worst;
     if (projected > this.cap) {
       return {
         ok: false,
-        reason: `openai run budget: spent=$${this.spent.toFixed(4)} + worst_case=$${worst.toFixed(4)} = $${projected.toFixed(4)} > cap=$${this.cap.toFixed(2)} (window ${this.window}s)`,
+        reason: `openai run budget: spent=$${this.spent.toFixed(4)} + held=$${this.held.toFixed(4)} + worst_case=$${worst.toFixed(4)} = $${projected.toFixed(4)} > cap=$${this.cap.toFixed(2)} (window ${this.window}s)`,
         spentUsd: this.spent,
         worstCaseUsd: worst,
         capUsd: this.cap,
@@ -133,7 +141,57 @@ export class OpenAiRunBudget {
     );
     return cost;
   }
+
+  /**
+   * Hard stop that also HOLDS the worst case while the request is in flight,
+   * so N concurrent callers cannot each pass `precheck` against the same
+   * unspent balance and together overshoot the cap. Holds are kept apart from
+   * the window's settled spend and are NOT cleared by the window roll: a
+   * request that straddles the boundary keeps counting against the cap until
+   * it resolves, and its actual usage is booked in the window its response
+   * lands in. The caller `settle`s with actual usage when the response lands
+   * (or with the worst case when the outcome is unknown, e.g. a timeout after
+   * the request was accepted) and `release`s only when the provider rejected
+   * the request without billable work (a non-OK status). `precheck`/`record`
+   * stay for callers that serialize their own requests.
+   */
+  reserve(inputTokens: number, outputTokens: number): ReserveVerdict {
+    const verdict = this.precheck(inputTokens, outputTokens);
+    if (!verdict.ok) return verdict;
+    const worst = this.estimateUsd(inputTokens, outputTokens);
+    this.held += worst;
+    let open = true;
+    const drop = (): void => {
+      this.held = Math.max(0, this.held - worst);
+    };
+    return {
+      ok: true,
+      reservation: {
+        settle: (actualIn: number, actualOut: number): number => {
+          if (!open) return 0;
+          open = false;
+          // Drop the hold, then book the actual usage through the one accounting path.
+          drop();
+          return this.record(actualIn, actualOut);
+        },
+        release: (): void => {
+          if (!open) return;
+          open = false;
+          drop();
+        },
+      },
+    };
+  }
 }
+
+export type BudgetReservation = {
+  /** The response landed (or the outcome is unknown): replace the hold with the usage to book. Returns this call's cost. */
+  settle(inputTokens: number, outputTokens: number): number;
+  /** The provider rejected the request without billable work (non-OK status): drop the hold. */
+  release(): void;
+};
+
+export type ReserveVerdict = { ok: true; reservation: BudgetReservation } | Exclude<BudgetVerdict, { ok: true }>;
 
 /** Cheap pre-call input estimate for a chat messages array (chars/4). */
 export function estimateInputTokens(messages: unknown): number {
@@ -144,6 +202,31 @@ export function estimateInputTokens(messages: unknown): number {
     s = "";
   }
   return Math.ceil(s.length / CHARS_PER_TOKEN);
+}
+
+/** Per-message framing allowance (role and separator tokens) on top of the byte bound. */
+export const MESSAGE_FRAMING_TOKENS = 8;
+
+/**
+ * Conservative UPPER BOUND on input tokens, for the pre-call HOLD and for
+ * charging an outcome the caller could not observe (Codex r3 F4 on #4357).
+ * `estimateInputTokens` is an average (chars/4) and under-counts token-dense
+ * text (CJK, numerics, code), so a hold sized by it can admit spend past the
+ * cap. Every BPE token encodes at least one byte, so the UTF-8 byte length of
+ * the serialized messages cannot be exceeded by the token count; a framing
+ * allowance per message covers role and separator tokens. Over-reserving only
+ * tightens concurrent admission; a served response still settles at actual
+ * usage.
+ */
+export function boundInputTokens(messages: unknown): number {
+  let s = "";
+  try {
+    s = JSON.stringify(messages) ?? "";
+  } catch {
+    s = "";
+  }
+  const count = Array.isArray(messages) ? messages.length : 1;
+  return Buffer.byteLength(s, "utf8") + (count + 1) * MESSAGE_FRAMING_TOKENS;
 }
 
 /** Pre-call input estimate for one vision call: the prompt text plus a fixed image block per image. */
