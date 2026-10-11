@@ -136,6 +136,12 @@ import {
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
+import {
+  logProvidersExhausted,
+  providerExhaustionStatus,
+  providerHealth,
+  type ProviderAttemptFailure,
+} from "@/capabilities/provider-health";
 import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
 import { assessEvidenceFollowed } from "@/capabilities/observability/evidence-consistency";
 import {
@@ -3145,6 +3151,10 @@ async function handleChatTurn(
       const cascadeProviders = seam ? canonicalProviders() : providers();
       const outputCap = maxOutputTokens();
       const attempted: string[] = [];
+      // D6 — every failed attempt, in order, with the HTTP status when there
+      // was one. Feeds the honest exhaustion frame + log; never answer text.
+      const providerFailures: ProviderAttemptFailure[] = [];
+      const health = providerHealth();
       let turnUsage: TurnUsage | null = null;
       // Held so persistence runs AFTER the stream is closed — the ledger
       // write must never delay a byte of the technician's answer.
@@ -3175,6 +3185,16 @@ async function handleChatTurn(
         // also land here — checking once at the top of the loop covers all of
         // them (e.g. Groq 429 arriving after the technician tapped Stop).
         if (clientAbort.signal.aborted) break cascade;
+        // D6 — a provider that answered 401/402/403 within the last
+        // MIRA_PROVIDER_UNHEALTHY_S seconds is skipped, not re-tried: that
+        // answer cannot change until a human fixes the key or the balance.
+        // Canonical seam only, like every other D6 behaviour: the legacy
+        // inline cascade stays byte-identical.
+        if (seam && health.isUnhealthy(provider.name)) {
+          providerFailures.push({ provider: provider.name, httpStatus: null, reason: "quarantined" });
+          attempted.push(provider.name);
+          continue;
+        }
         genSpan = startStage(`chat ${provider.model}`);
         genOutcome = "exception";
         genResponseId = null;
@@ -3220,6 +3240,8 @@ async function handleChatTurn(
             // a fallback just as much as a thrown error, and skipping it here
             // made a Cerebras-served turn report routeReason 'primary'.
             if (seam) attempted.push(provider.name);
+            providerFailures.push({ provider: provider.name, httpStatus: res.status, reason: "http_error" });
+            health.markFailed(provider.name, res.status);
             genOutcome = "http_error";
             continue;
           }
@@ -3335,6 +3357,7 @@ async function handleChatTurn(
             served = true;
             servedModel = `${provider.name}:${provider.model}`;
             genOutcome = "served";
+            health.markHealthy(provider.name);
             if (seam) {
               turnUsage = usageFromRaw(
                 provider.name,
@@ -3348,6 +3371,7 @@ async function handleChatTurn(
             break;
           }
           if (seam) attempted.push(provider.name);
+          providerFailures.push({ provider: provider.name, httpStatus: res.status, reason: "empty_stream" });
           genOutcome = "http_error";
         } catch (err) {
           // Client stopped generation (STRM-2). Checked BEFORE the cascade
@@ -3372,6 +3396,11 @@ async function handleChatTurn(
             err instanceof Error ? err.message : err,
           );
           if (seam) attempted.push(provider.name);
+          providerFailures.push({
+            provider: provider.name,
+            httpStatus: null,
+            reason: err instanceof Error && err.name ? err.name : "exception",
+          });
           genOutcome = "exception";
           continue; // cascade to next provider
         } finally {
@@ -4025,7 +4054,16 @@ async function handleChatTurn(
             ? { kind: "status", status: "insufficient_evidence", message: "Not found in the selected sources." }
             : internalError
               ? { kind: "status", status: "error", message: "Internal chat error — see server logs." }
-              : { kind: "status", status: "error", message: "No answer provider available." };
+              : seam
+                ? // D6 — say WHY, in the technician's words and in the machine's:
+                  // friendly copy + `reason` + the per-provider attempt record.
+                  // Seam-flagged like the usage frame below; the legacy path's
+                  // frame sequence stays byte-for-byte unchanged.
+                  { kind: "status", status: "error", ...providerExhaustionStatus(providerFailures) }
+                : { kind: "status", status: "error", message: "No answer provider available." };
+      if (seam && statusFrame.status === "error" && !internalError) {
+        logProvidersExhausted({ tenantId: ctx.tenantId, notebookId }, providerFailures);
+      }
       // Canonical per-turn spend, emitted BEFORE status so a client that stops
       // reading at `status` has still received it. Seam-flagged only; the
       // legacy path's frame sequence is byte-for-byte unchanged.
