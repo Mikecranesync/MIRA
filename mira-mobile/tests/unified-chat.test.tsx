@@ -358,6 +358,37 @@ describe("UnifiedChat", () => {
     expect(h.onSend.mock.calls[0]?.[1]).toMatchObject({ visualEvidence: { fileId: "file-new" } });
   });
 
+  // Codex #4350 round 6, F8: a plain-text send took the short-circuit that
+  // never reaches compose, so it never cleared the failed photo; asking the
+  // original question again later re-uploaded it with no chip in sight. An
+  // unrelated send supersedes the failed turn and discards its evidence.
+  it("an unrelated send after a rejected photo upload disarms it: the original question later goes out without the photo", async () => {
+    stashAttachments([{
+      attachment: { id: "att-6", name: "old.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "old.jpg", { type: "image/jpeg" }),
+    }]);
+    resources.lookAtPhoto.mockRejectedValueOnce(new Error("Network request failed"));
+    const h = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} initialQuestion="" />);
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    const original = box.value;
+    expect(original).toBe("What am I looking at, and what should I check?");
+
+    fireEvent.change(box, { target: { value: "What is a VFD?" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    expect(h.onSend).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(box, { target: { value: original } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(h.onSend).toHaveBeenCalledTimes(2);
+    expect(h.onSend.mock.calls[1]?.[0]).toBe(original);
+    expect(h.onSend.mock.calls[1]?.[1]).toBeUndefined();
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+  });
+
   it("a DIFFERENT question after a rejected photo upload goes out plain, without the photo (#3863 rule)", async () => {
     stashAttachments([{
       attachment: { id: "att-4", name: "nameplate.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },

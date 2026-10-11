@@ -780,6 +780,9 @@ function UnifiedChatForNotebook({
     // (r5 F7) — the same rule the home screen applies.
     const retry = opts.retry === true || (pending.length === 0 && (attachments.isRetryOf?.(text) ?? false));
     if (pending.length === 0 && !attachments.hasCarried() && !retry) {
+      // A different question supersedes a failed photo turn: drop its bytes
+      // here too, since this path never reaches compose (r6 F8).
+      attachments.discardRetained?.();
       if (confirmedScope) handlers.onSend(text, undefined, confirmedScope);
       else handlers.onSend(text);
       return;

@@ -115,6 +115,15 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     const q = retained.current.length > 0 ? retainedQuestionRef.current : null;
     return q !== null && text.trim() === q;
   }, []);
+  /** A different question supersedes the failed turn: its bytes and its
+   *  question are dropped, so the original wording can never re-arm them
+   *  later (Codex #4350 r6 F8). `compose` does this itself; the plain-text
+   *  send path, which never reaches `compose`, calls this. */
+  const discardRetained = useCallback(() => {
+    for (const r of retained.current) held.current.delete(r.attachment.id);
+    retained.current = [];
+    retainedQuestionRef.current = null;
+  }, []);
 
   const hold = useCallback((file: File | null): Attachment | null => {
     if (!file) return null; // backed out of the native picker
@@ -225,5 +234,5 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     }
   }, [notebookId, threadId]);
 
-  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained, retainedQuestion, isRetryOf };
+  return { attachPhoto, attachCamera, attachFile, compose, stashForHandoff, hasCarried, hasRetained, retainedQuestion, isRetryOf, discardRetained };
 }
