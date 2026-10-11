@@ -26,13 +26,17 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import re
 import sys
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
+from importlib import metadata as _importlib_metadata
 from pathlib import Path
 from typing import Optional, Union
 
@@ -131,20 +135,30 @@ JUDGE_MAX_TOKENS = 1024
 
 # ---------------------------------------------------------------------------
 # Judge spend bound — the paid judge lane declares a dollar budget and hard-stops
-# at it (.claude/rules/zero-token-architecture.md Hard Rule 1; Codex F3 on #4358).
+# at it (.claude/rules/zero-token-architecture.md Hard Rule 1; Codex F3/F4 on
+# #4358).
 #
-# One budget per process: a CI job is bounded for its lifetime. The worst case of
-# every metered call is reserved BEFORE the request (input bounded by UTF-8 bytes,
-# since tokens never exceed bytes; output by the completion cap) and the actual
-# usage block is charged AFTER. At the cap the metered provider is refused before
-# the request and the cascade falls through exactly as for a provider that is
-# down. Prices default to gpt-5.4-mini's declared rate (tools/review_router/
-# prices.json) and are pinned to that file by test so they cannot drift apart.
+# One budget per process: a CI job is bounded for its lifetime. The worst case
+# of every metered call is RESERVED (held) atomically before the request — input
+# bounded by UTF-8 bytes, since tokens never exceed bytes; output by the
+# completion cap — so N concurrent callers cannot each pass the same balance.
+# On a 200 the hold is settled against the provider's actual usage block (the
+# estimate when it is missing); on a non-2xx the provider rejected the request
+# and the hold is released; on a transport failure after dispatch (read timeout,
+# connection drop) the outcome is uncertain and the hold is KEPT as spend. At the
+# cap the metered provider is refused before the request and the cascade falls
+# through exactly as for a provider that is down.
+#
+# Prices are resolved for the SELECTED model from the repo's declared table
+# (tools/review_router/prices.json); OPENAI_PRICE_PER_MTOK_IN/OUT override it. A
+# model with no declared price and no override fails closed: it is never
+# dispatched (a cost-invisible metered call is the anti-pattern the rule names).
 # ---------------------------------------------------------------------------
 
 DEFAULT_JUDGE_BUDGET_USD = 2.0
-DEFAULT_PRICE_PER_MTOK_IN = 0.75
+DEFAULT_PRICE_PER_MTOK_IN = 0.75  # gpt-5.4-mini, pinned to prices.json by test
 DEFAULT_PRICE_PER_MTOK_OUT = 4.5
+_PRICE_TABLE_PATH = _HERE.parent.parent / "tools" / "review_router" / "prices.json"
 
 
 def _env_float(name: str, default: float) -> float:
@@ -162,59 +176,116 @@ def _env_float(name: str, default: float) -> float:
     return value
 
 
+@lru_cache(maxsize=1)
+def declared_price_table() -> dict[str, tuple[float, float]]:
+    """`{model: (usd_per_mtok_in, usd_per_mtok_out)}` from tools/review_router/prices.json."""
+    try:
+        raw = json.loads(_PRICE_TABLE_PATH.read_text())
+    except (OSError, ValueError):
+        return {}
+    table: dict[str, tuple[float, float]] = {}
+    for model, rate in (raw.get("usd_per_mtok") or {}).items():
+        try:
+            table[str(model)] = (float(rate["input"]), float(rate["output"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return table
+
+
+def resolve_judge_prices(model: str) -> Optional[tuple[float, float]]:
+    """Prices for one metered model, or None when they cannot be known.
+
+    An explicit env override (both rates, each > 0) wins; otherwise the repo's
+    declared table. Zero or missing rates are not a price — None fails closed.
+    """
+    env_in = _env_float("OPENAI_PRICE_PER_MTOK_IN", 0.0)
+    env_out = _env_float("OPENAI_PRICE_PER_MTOK_OUT", 0.0)
+    if env_in > 0 and env_out > 0:
+        return (env_in, env_out)
+    rate = declared_price_table().get(model)
+    if rate and rate[0] > 0 and rate[1] > 0:
+        return rate
+    return None
+
+
 class JudgeBudget:
-    """Per-process dollar hard stop for the metered judge provider."""
+    """Per-process dollar hard stop for the metered judge provider (reserve/settle)."""
 
     def __init__(self) -> None:
         self.cap_usd = _env_float("DEEPEVAL_JUDGE_BUDGET_USD", DEFAULT_JUDGE_BUDGET_USD)
-        self.price_in = _env_float("OPENAI_PRICE_PER_MTOK_IN", DEFAULT_PRICE_PER_MTOK_IN)
-        self.price_out = _env_float("OPENAI_PRICE_PER_MTOK_OUT", DEFAULT_PRICE_PER_MTOK_OUT)
         self.spent_usd = 0.0
+        self.held_usd = 0.0
         self.calls = 0
         self.refusals = 0
+        self._lock = threading.Lock()
 
-    def estimate_usd(self, prompt: str, max_tokens: int = JUDGE_MAX_TOKENS) -> float:
-        """Worst case for one call: input tokens ≤ UTF-8 bytes; output ≤ the cap."""
+    @staticmethod
+    def estimate_usd(
+        prompt: str, model: str, max_tokens: int = JUDGE_MAX_TOKENS
+    ) -> Optional[float]:
+        """Worst case for one call at the model's price: input ≤ UTF-8 bytes, output ≤ cap."""
+        prices = resolve_judge_prices(model)
+        if prices is None:
+            return None
         input_bound = len(prompt.encode("utf-8")) + 8
-        return (input_bound * self.price_in + max_tokens * self.price_out) / 1_000_000
+        return (input_bound * prices[0] + max_tokens * prices[1]) / 1_000_000
 
-    def precheck(self, estimated_usd: float) -> bool:
-        """True when the call fits under the cap. Records nothing."""
-        if self.spent_usd + estimated_usd <= self.cap_usd:
-            return True
-        self.refusals += 1
+    def reserve(self, estimated_usd: float) -> bool:
+        """Atomically hold the worst case; False (and a refusal) when it would cross the cap."""
+        with self._lock:
+            if self.spent_usd + self.held_usd + estimated_usd <= self.cap_usd:
+                self.held_usd += estimated_usd
+                return True
+            self.refusals += 1
+            spent, held = self.spent_usd, self.held_usd
         logger.warning(
-            "DEEPEVAL_JUDGE_BUDGET_EXHAUSTED spent_usd=%.4f estimated_usd=%.4f cap_usd=%.4f",
-            self.spent_usd,
+            "DEEPEVAL_JUDGE_BUDGET_EXHAUSTED spent_usd=%.4f held_usd=%.4f estimated_usd=%.4f cap_usd=%.4f",
+            spent,
+            held,
             estimated_usd,
             self.cap_usd,
         )
         return False
 
-    def record(self, usage: object, estimated_usd: float) -> float:
-        """Charge the provider's actual usage block; the estimate when it is missing."""
+    def settle(self, estimated_usd: float, usage: object, model: str) -> float:
+        """A served call: replace the hold with the actual usage (the estimate when missing)."""
         actual = estimated_usd
-        if isinstance(usage, dict):
+        prices = resolve_judge_prices(model)
+        if isinstance(usage, dict) and prices is not None:
             try:
                 prompt_tokens = int(usage.get("prompt_tokens") or 0)
                 completion_tokens = int(usage.get("completion_tokens") or 0)
             except (TypeError, ValueError):
                 prompt_tokens = completion_tokens = 0
             if prompt_tokens or completion_tokens:
-                actual = (
-                    prompt_tokens * self.price_in + completion_tokens * self.price_out
-                ) / 1_000_000
-        self.spent_usd += actual
-        self.calls += 1
+                actual = (prompt_tokens * prices[0] + completion_tokens * prices[1]) / 1_000_000
+        with self._lock:
+            self.held_usd -= estimated_usd
+            self.spent_usd += actual
+            self.calls += 1
         return actual
 
+    def release(self, estimated_usd: float) -> None:
+        """The provider rejected the request (non-2xx) — nothing was billed."""
+        with self._lock:
+            self.held_usd -= estimated_usd
+
+    def charge_uncertain(self, estimated_usd: float) -> None:
+        """Transport failure after dispatch — the bill is unknown, so the hold is kept as spend."""
+        with self._lock:
+            self.held_usd -= estimated_usd
+            self.spent_usd += estimated_usd
+            self.calls += 1
+
     def summary(self) -> dict[str, float | int]:
-        return {
-            "cap_usd": self.cap_usd,
-            "spent_usd": round(self.spent_usd, 6),
-            "metered_calls": self.calls,
-            "refusals": self.refusals,
-        }
+        with self._lock:
+            return {
+                "cap_usd": self.cap_usd,
+                "spent_usd": round(self.spent_usd, 6),
+                "held_usd": round(self.held_usd, 6),
+                "metered_calls": self.calls,
+                "refusals": self.refusals,
+            }
 
 
 _JUDGE_BUDGET: Optional[JudgeBudget] = None
@@ -231,6 +302,128 @@ def judge_budget() -> JudgeBudget:
 def reset_judge_budget_for_tests() -> None:
     global _JUDGE_BUDGET
     _JUDGE_BUDGET = None
+    declared_price_table.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# Judge evidence store — recall before recompute (Codex F5 on #4358;
+# .claude/rules/materialized-evidence.md rules 1, 5–7; ZTA Hard Rule 1).
+#
+# Offline mode judges FIXED reference responses, so every CI run used to re-buy
+# the same verdicts. A verdict is now keyed on everything that can change it —
+# the evidence contract version, the deepeval version (its metric prompts and
+# schemas), the configured judge (provider/model), the schema name and the full
+# prompt (which embeds the case, the response under test and the metric
+# template) — and recalled with zero tokens when the key is present. Any change
+# to one of those produces a different key and re-judges only that verdict.
+# Thresholds are applied to scores after the judge and are not part of a key.
+#
+# The store is a committed JSON file so CI recalls it from the checkout (a CI
+# job cannot write back; seed or refresh it with one authorized local run and
+# commit). `DEEPEVAL_JUDGE_EVIDENCE=<path>` points elsewhere; `=off` disables.
+# ---------------------------------------------------------------------------
+
+JUDGE_EVIDENCE_CONTRACT = "1"  # bump to invalidate every stored verdict
+_DEFAULT_EVIDENCE_PATH = _HERE / "judge_evidence" / "judge_evidence.json"
+
+
+def _deepeval_version() -> str:
+    try:
+        return _importlib_metadata.version("deepeval")
+    except _importlib_metadata.PackageNotFoundError:
+        return "none"
+
+
+class JudgeEvidenceStore:
+    """Content-addressed judge verdicts; `path=None` means disabled."""
+
+    def __init__(self, path: Optional[Path]) -> None:
+        self.path = path
+        self._entries: dict[str, dict[str, str]] = {}
+        self.hits = 0
+        self.misses = 0
+        self.writes = 0
+        if path is not None:
+            self._entries = self._load(path)
+
+    @classmethod
+    def from_env(cls) -> JudgeEvidenceStore:
+        raw = (os.getenv("DEEPEVAL_JUDGE_EVIDENCE") or "").strip()
+        if raw.lower() == "off":
+            return cls(None)
+        return cls(Path(raw) if raw else _DEFAULT_EVIDENCE_PATH)
+
+    @property
+    def enabled(self) -> bool:
+        return self.path is not None
+
+    @staticmethod
+    def _load(path: Path) -> dict[str, dict[str, str]]:
+        try:
+            raw = json.loads(path.read_text())
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(raw, dict) or raw.get("contract") != JUDGE_EVIDENCE_CONTRACT:
+            return {}  # a contract bump invalidates every stored verdict
+        entries = raw.get("entries")
+        return entries if isinstance(entries, dict) else {}
+
+    @staticmethod
+    def key(judge_model: str, schema_name: str, prompt: str) -> str:
+        material = json.dumps(
+            {
+                "contract": JUDGE_EVIDENCE_CONTRACT,
+                "deepeval": _deepeval_version(),
+                "judge": judge_model,
+                "schema": schema_name,
+                "prompt": prompt,
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+    def get(self, key: str) -> Optional[str]:
+        if not self.enabled:
+            return None
+        entry = self._entries.get(key)
+        if isinstance(entry, dict) and isinstance(entry.get("content"), str):
+            self.hits += 1
+            return entry["content"]
+        self.misses += 1
+        return None
+
+    def put(self, key: str, content: str, served_by: str) -> None:
+        if not self.enabled or self.path is None:
+            return
+        self._entries[key] = {
+            "content": content,
+            "served_by": served_by,
+            "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        self.writes += 1
+        payload = json.dumps(
+            {"contract": JUDGE_EVIDENCE_CONTRACT, "entries": self._entries},
+            indent=1,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+            tmp.write_text(payload + "\n")
+            os.replace(tmp, self.path)
+        except OSError as exc:
+            logger.warning("DEEPEVAL_JUDGE_EVIDENCE_WRITE_FAILED path=%s err=%s", self.path, exc)
+
+    def summary(self) -> dict[str, object]:
+        return {
+            "path": str(self.path) if self.path else "off",
+            "entries": len(self._entries),
+            "hits": self.hits,
+            "misses": self.misses,
+            "writes": self.writes,
+        }
 
 
 def judge_request_body(provider: JudgeProvider, prompt: str) -> dict[str, object]:
@@ -263,8 +456,9 @@ class CascadeJudge(DeepEvalBaseLLM):
         # Which provider/model actually served each judge call (Codex F2 on
         # #4358): the report attributes scoring to what graded, not to the
         # configured primary, so a fallback day cannot pass for a calibration
-        # change.
+        # change. A recalled verdict counts under `recall:<who served it>`.
         self._served: dict[str, int] = {}
+        self._store = JudgeEvidenceStore.from_env()
         super().__init__()
 
     def load_model(self) -> str:
@@ -284,63 +478,120 @@ class CascadeJudge(DeepEvalBaseLLM):
         """Strip markdown code fences that some LLMs wrap JSON in."""
         return re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip()).strip()
 
-    def _accept(
-        self, provider: JudgeProvider, resp: httpx.Response, schema
+    def _validate(
+        self, who: str, content: object, finish: object, schema
     ) -> tuple[Optional[object], Optional[str]]:
-        """Validate one HTTP 200 inside the provider loop (Codex F1 on #4358).
-
-        Returns (value, None) when the response is usable — the content string,
-        or the parsed schema object when a schema was requested — and
-        (None, reason) when it is not, so the cascade moves to the next
-        provider instead of failing the case on a reply that only looked like
-        an answer: an empty/null content, a truncated completion, a malformed
-        envelope, or JSON that does not satisfy the requested schema.
-        """
-        try:
-            choice = resp.json()["choices"][0]
-            content = choice["message"]["content"]
-        except (ValueError, KeyError, IndexError, TypeError) as exc:
-            return None, f"{provider.name}=malformed_response:{type(exc).__name__}"
+        """Usable content → (value, None); otherwise (None, "<who>=<reason>")."""
         if not isinstance(content, str) or not content.strip():
-            return None, f"{provider.name}=empty_content"
-        if isinstance(choice, dict) and choice.get("finish_reason") == "length":
-            return None, f"{provider.name}=truncated"
+            return None, f"{who}=empty_content"
+        if finish == "length":
+            return None, f"{who}=truncated"
         if schema is None:
             return content, None
         try:
             return schema.model_validate_json(self._strip_fences(content)), None
         except (ValueError, TypeError) as exc:
-            return None, f"{provider.name}=schema_invalid:{type(exc).__name__}"
+            return None, f"{who}=schema_invalid:{type(exc).__name__}"
 
-    def _record_served(self, provider: JudgeProvider) -> None:
-        key = f"{provider.name}/{provider.model}"
-        self._served[key] = self._served.get(key, 0) + 1
+    def _accept(
+        self, provider: JudgeProvider, resp: httpx.Response, schema
+    ) -> tuple[Optional[object], Optional[str], Optional[str]]:
+        """Validate one HTTP 200 inside the provider loop (Codex F1 on #4358).
 
-    def _budget_refuses(self, provider: JudgeProvider, prompt: str) -> Optional[float]:
-        """Reserve the worst case for a metered provider; None when it is refused."""
+        Returns (value, None, content) when the response is usable — the
+        content string, or the parsed schema object when a schema was
+        requested — and (None, reason, None) when it is not, so the cascade
+        moves to the next provider instead of failing the case on a reply that
+        only looked like an answer: an empty/null content, a truncated
+        completion, a malformed envelope, or JSON that does not satisfy the
+        requested schema.
+        """
+        try:
+            choice = resp.json()["choices"][0]
+            content = choice["message"]["content"]
+        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            return None, f"{provider.name}=malformed_response:{type(exc).__name__}", None
+        finish = choice.get("finish_reason") if isinstance(choice, dict) else None
+        value, reason = self._validate(provider.name, content, finish, schema)
+        if reason is not None:
+            return None, reason, None
+        return value, None, content
+
+    def _record_served(self, who: str) -> None:
+        self._served[who] = self._served.get(who, 0) + 1
+
+    def _recall(self, key: str, schema) -> Optional[object]:
+        """A stored verdict for this exact key, re-validated; None on a miss."""
+        content = self._store.get(key)
+        if content is None:
+            return None
+        value, reason = self._validate("recall", content, None, schema)
+        if reason is not None:
+            logger.warning("DEEPEVAL_JUDGE_EVIDENCE_UNUSABLE key=%s %s", key[:12], reason)
+            self._store.misses += 1
+            return None
+        served_by = (self._store._entries.get(key) or {}).get("served_by", "unknown")
+        self._record_served(f"recall:{served_by}")
+        return value
+
+    def _reserve(
+        self, provider: JudgeProvider, prompt: str
+    ) -> tuple[Optional[float], Optional[str]]:
+        """Hold the worst case for a metered provider before dispatch.
+
+        (estimate, None) when dispatch may proceed; (None, reason) when the
+        provider is refused — unknown price (fail closed) or the cap.
+        """
         if not provider.metered:
-            return 0.0
+            return 0.0, None
         budget = judge_budget()
-        estimate = budget.estimate_usd(prompt)
-        return estimate if budget.precheck(estimate) else None
+        estimate = budget.estimate_usd(prompt, provider.model)
+        if estimate is None:
+            logger.warning(
+                "DEEPEVAL_JUDGE_PRICE_UNKNOWN model=%s — metered provider refused", provider.model
+            )
+            return None, f"{provider.name}=price_unknown"
+        if not budget.reserve(estimate):
+            return None, f"{provider.name}=budget_exhausted"
+        return estimate, None
 
     @staticmethod
-    def _charge(provider: JudgeProvider, resp: httpx.Response, estimate: float) -> None:
-        """A served metered call is charged whatever its content turns out to be."""
+    def _settle(provider: JudgeProvider, resp: httpx.Response, estimate: float) -> None:
+        """A served metered call is charged its actual usage whatever its content turns out to be."""
         if not provider.metered:
             return
         try:
             usage = resp.json().get("usage")
         except (ValueError, AttributeError):
             usage = None
-        judge_budget().record(usage, estimate)
+        judge_budget().settle(estimate, usage, provider.model)
+
+    @staticmethod
+    def _release(provider: JudgeProvider, estimate: float) -> None:
+        if provider.metered:
+            judge_budget().release(estimate)
+
+    @staticmethod
+    def _charge_uncertain(provider: JudgeProvider, estimate: float) -> None:
+        if provider.metered:
+            judge_budget().charge_uncertain(estimate)
+
+    def _finish(self, key: str, provider: JudgeProvider, content: str) -> None:
+        self._record_served(f"{provider.name}/{provider.model}")
+        self._store.put(key, content, f"{provider.name}/{provider.model}")
 
     def _call(self, prompt: str, schema=None) -> object:
+        key = self._store.key(
+            self.get_model_name(), getattr(schema, "__name__", "") if schema else "", prompt
+        )
+        recalled = self._recall(key, schema)
+        if recalled is not None:
+            return recalled
         attempts: list[str] = []
         for provider in self._require_providers():
-            estimate = self._budget_refuses(provider, prompt)
+            estimate, refused = self._reserve(provider, prompt)
             if estimate is None:
-                attempts.append(f"{provider.name}=budget_exhausted")
+                attempts.append(refused or f"{provider.name}=refused")
                 continue
             try:
                 resp = httpx.post(
@@ -350,29 +601,41 @@ class CascadeJudge(DeepEvalBaseLLM):
                     timeout=JUDGE_TIMEOUT,
                 )
             except httpx.HTTPError as exc:
+                # The request may have reached the provider: keep the hold as spend.
+                self._charge_uncertain(provider, estimate)
                 attempts.append(f"{provider.name}={type(exc).__name__}")
                 continue
             if resp.status_code != 200:
                 # Any non-2xx moves on: a judge is a pure read, and a Groq
-                # billing restriction arrives as HTTP 400, not 5xx.
+                # billing restriction arrives as HTTP 400, not 5xx. Rejected
+                # requests are not billed, so the hold is released.
+                self._release(provider, estimate)
                 attempts.append(f"{provider.name}=HTTP{resp.status_code}")
                 continue
-            self._charge(provider, resp, estimate)
-            value, reason = self._accept(provider, resp, schema)
-            if reason is not None:
-                attempts.append(reason)
+            self._settle(provider, resp, estimate)
+            value, reason, content = self._accept(provider, resp, schema)
+            if reason is not None or content is None:
+                attempts.append(reason or f"{provider.name}=unusable")
                 continue
-            self._record_served(provider)
+            self._finish(key, provider, content)
             return value
         raise RuntimeError(f"every judge provider failed: {', '.join(attempts)}")
 
     async def _acall(self, prompt: str, schema=None) -> object:
+        key = self._store.key(
+            self.get_model_name(), getattr(schema, "__name__", "") if schema else "", prompt
+        )
+        recalled = self._recall(key, schema)
+        if recalled is not None:
+            return recalled
         attempts: list[str] = []
         async with httpx.AsyncClient(timeout=JUDGE_TIMEOUT) as client:
             for provider in self._require_providers():
-                estimate = self._budget_refuses(provider, prompt)
+                # The hold is taken synchronously, before the first await, so
+                # concurrent callers see each other's reservations.
+                estimate, refused = self._reserve(provider, prompt)
                 if estimate is None:
-                    attempts.append(f"{provider.name}=budget_exhausted")
+                    attempts.append(refused or f"{provider.name}=refused")
                     continue
                 try:
                     resp = await client.post(
@@ -381,17 +644,19 @@ class CascadeJudge(DeepEvalBaseLLM):
                         json=judge_request_body(provider, prompt),
                     )
                 except httpx.HTTPError as exc:
+                    self._charge_uncertain(provider, estimate)
                     attempts.append(f"{provider.name}={type(exc).__name__}")
                     continue
                 if resp.status_code != 200:
+                    self._release(provider, estimate)
                     attempts.append(f"{provider.name}=HTTP{resp.status_code}")
                     continue
-                self._charge(provider, resp, estimate)
-                value, reason = self._accept(provider, resp, schema)
-                if reason is not None:
-                    attempts.append(reason)
+                self._settle(provider, resp, estimate)
+                value, reason, content = self._accept(provider, resp, schema)
+                if reason is not None or content is None:
+                    attempts.append(reason or f"{provider.name}=unusable")
                     continue
-                self._record_served(provider)
+                self._finish(key, provider, content)
                 return value
         raise RuntimeError(f"every judge provider failed: {', '.join(attempts)}")
 
@@ -408,8 +673,11 @@ class CascadeJudge(DeepEvalBaseLLM):
         return f"{self._providers[0].name}/{self._providers[0].model}"
 
     def served_counts(self) -> dict[str, int]:
-        """`{"<provider>/<model>": calls}` for what ACTUALLY graded, in order served."""
+        """`{"<provider>/<model>" | "recall:<provider>/<model>": calls}` — what ACTUALLY graded."""
         return dict(self._served)
+
+    def evidence_summary(self) -> dict[str, object]:
+        return self._store.summary()
 
 
 # Pre-rename import name; the cascade judge IS the Groq judge when only Groq is keyed.
@@ -959,6 +1227,8 @@ class SuiteResult:
     judge_models_used: dict[str, int] = field(default_factory=dict)
     # The metered judge's spend ledger for this process (Codex F3 on #4358).
     judge_spend: dict[str, float | int] = field(default_factory=dict)
+    # The judge evidence store's recall ledger (Codex F5 on #4358).
+    judge_recall: dict[str, object] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -1003,6 +1273,7 @@ class DeepEvalRunner:
         # Attribute the scores to what actually graded, and show the spend.
         result.judge_models_used = self.judge.served_counts()
         result.judge_spend = judge_budget().summary()
+        result.judge_recall = self.judge.evidence_summary()
 
         return result
 
@@ -1113,6 +1384,13 @@ def _print_report(result: SuiteResult) -> None:
             f" of ${result.judge_spend.get('cap_usd', 0):.2f} cap"
             f" ({result.judge_spend.get('metered_calls', 0)} metered calls,"
             f" {result.judge_spend.get('refusals', 0)} refused)"
+        )
+    if result.judge_recall:
+        print(
+            f"  Judge recall: {result.judge_recall.get('hits', 0)} hits,"
+            f" {result.judge_recall.get('misses', 0)} misses,"
+            f" {result.judge_recall.get('writes', 0)} written"
+            f" ({result.judge_recall.get('path', 'off')})"
         )
     print(f"  Run:   {result.timestamp[:19]}")
     print("=" * 60)

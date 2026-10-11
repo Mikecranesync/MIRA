@@ -27,6 +27,7 @@ Run: cd mira-bots && python3 -m pytest tests/test_deepeval_judge_cascade.py -q
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -72,6 +73,9 @@ def _pin_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         "OPENAI_PRICE_PER_MTOK_OUT",
     ):
         monkeypatch.delenv(var, raising=False)
+    # The committed evidence store must never be read or written by a test;
+    # the recall tests point DEEPEVAL_JUDGE_EVIDENCE at a tmp file explicitly.
+    monkeypatch.setenv("DEEPEVAL_JUDGE_EVIDENCE", "off")
     suite.reset_judge_budget_for_tests()
     yield
     suite.reset_judge_budget_for_tests()
@@ -437,42 +441,373 @@ def test_print_report_shows_who_graded_and_the_spend(capsys: pytest.CaptureFixtu
 # ---------------------------------------------------------------------------
 
 
-def test_budget_defaults_and_env_contract(monkeypatch: pytest.MonkeyPatch) -> None:
-    b = suite.JudgeBudget()
-    assert (b.cap_usd, b.price_in, b.price_out) == (2.0, 0.75, 4.5)
+MINI = "gpt-5.4-mini"
+
+
+def test_budget_cap_defaults_and_env_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert suite.JudgeBudget().cap_usd == 2.0
     for junk in ("", "abc", "-1", "nan", "inf"):
         monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", junk)
         assert suite.JudgeBudget().cap_usd == 2.0, junk
     monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.5")
-    monkeypatch.setenv("OPENAI_PRICE_PER_MTOK_IN", "1")
-    monkeypatch.setenv("OPENAI_PRICE_PER_MTOK_OUT", "2")
-    b = suite.JudgeBudget()
-    assert (b.cap_usd, b.price_in, b.price_out) == (0.5, 1.0, 2.0)
+    assert suite.JudgeBudget().cap_usd == 0.5
 
 
 def test_budget_default_prices_equal_the_repo_declared_gpt54_mini_rate() -> None:
     prices = json.loads(
         (Path(suite.__file__).parents[2] / "tools/review_router/prices.json").read_text()
     )
-    rate = prices["usd_per_mtok"]["gpt-5.4-mini"]
+    rate = prices["usd_per_mtok"][MINI]
     assert (suite.DEFAULT_PRICE_PER_MTOK_IN, suite.DEFAULT_PRICE_PER_MTOK_OUT) == (
         rate["input"],
         rate["output"],
     )
+    assert suite.resolve_judge_prices(MINI) == (rate["input"], rate["output"])
 
 
-def test_budget_estimate_is_a_worst_case_and_record_charges_actual_usage() -> None:
+def test_budget_estimate_is_a_worst_case_and_settle_charges_actual_usage() -> None:
     b = suite.JudgeBudget()
-    est = b.estimate_usd("x" * 1000)
+    est = b.estimate_usd("x" * 1000, MINI)
     # input bounded by bytes (+8 framing), output by the 1024-token cap, at 0.75/4.5 per Mtok
     assert est == pytest.approx((1008 * 0.75 + 1024 * 4.5) / 1e6)
-    charged = b.record({"prompt_tokens": 100, "completion_tokens": 10}, est)
+    assert b.reserve(est) and b.held_usd == pytest.approx(est) and b.spent_usd == 0.0
+    charged = b.settle(est, {"prompt_tokens": 100, "completion_tokens": 10}, MINI)
     assert charged == pytest.approx((100 * 0.75 + 10 * 4.5) / 1e6)
-    assert b.spent_usd == pytest.approx(charged) and b.calls == 1
+    assert b.spent_usd == pytest.approx(charged) and b.held_usd == pytest.approx(0.0)
+    assert b.calls == 1
     # No usage block → the estimate is charged, never zero.
-    assert b.record(None, est) == pytest.approx(est)
-    assert b.record({"prompt_tokens": "junk"}, est) == pytest.approx(est)
-    assert b.calls == 3
+    assert b.reserve(est) and b.settle(est, None, MINI) == pytest.approx(est)
+    assert b.reserve(est) and b.settle(est, {"prompt_tokens": "junk"}, MINI) == pytest.approx(est)
+    assert b.calls == 3 and b.held_usd == pytest.approx(0.0)
+
+
+def test_budget_reserve_is_atomic_release_and_uncertain_charge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.01")
+    b = suite.JudgeBudget()
+    est = b.estimate_usd(PROMPT, MINI)
+    assert est is not None and est == pytest.approx((len(PROMPT) + 8) * 0.75e-6 + 1024 * 4.5e-6)
+    # Two holds fit under $0.01 (≈ $0.0046 each); a third does not — refused with nothing served.
+    assert b.reserve(est) and b.reserve(est)
+    assert not b.reserve(est) and b.refusals == 1 and b.calls == 0
+    # A rejected request (non-2xx) releases its hold; the third caller now fits.
+    b.release(est)
+    assert b.held_usd == pytest.approx(est) and b.reserve(est)
+    # A transport failure after dispatch keeps the hold as spend: counted, not refundable.
+    b.charge_uncertain(est)
+    assert b.spent_usd == pytest.approx(est) and b.held_usd == pytest.approx(est) and b.calls == 1
+    assert b.summary()["held_usd"] == pytest.approx(est, abs=1e-6)
+
+
+def test_sync_read_timeouts_after_dispatch_are_charged_until_the_cap_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.01")  # room for two worst cases
+    urls: list[str] = []
+
+    def fake_post(url: str, **kw: Any) -> httpx.Response:
+        urls.append(url.split("/")[2])
+        if "api.openai.com" in url:
+            raise httpx.ReadTimeout("slow")
+        return _ok("from groq")
+
+    monkeypatch.setattr(suite.httpx, "post", fake_post)
+    judge = suite.CascadeJudge()
+    for _ in range(4):
+        assert judge.generate(PROMPT) == "from groq"
+    b = suite.judge_budget()
+    # Two timeouts were dispatched and charged at their worst case; the next two
+    # were refused BEFORE the request because the uncertain spend stands.
+    assert urls.count("api.openai.com") == 2 and urls.count("api.groq.com") == 4
+    assert b.calls == 2 and b.refusals == 2 and b.held_usd == pytest.approx(0.0)
+    assert b.spent_usd == pytest.approx(2 * (b.estimate_usd(PROMPT, MINI) or 0))
+
+
+async def test_async_read_timeouts_after_dispatch_are_charged_until_the_cap_refuses(
+    monkeypatch: pytest.MonkeyPatch, fake_async: type[_FakeAsyncClient]
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.01")
+    fake_async.script = {"api.openai.com": httpx.ReadTimeout("slow"), "api.groq.com": _ok("g")}
+    judge = suite.CascadeJudge()
+    for _ in range(4):
+        assert await judge.a_generate(PROMPT) == "g"
+    hosts = [u.split("/")[2] for u in fake_async.seen]
+    assert hosts.count("api.openai.com") == 2 and hosts.count("api.groq.com") == 4
+    assert suite.judge_budget().calls == 2 and suite.judge_budget().refusals == 2
+
+
+def test_sync_rejected_request_releases_the_hold(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.005")  # room for exactly one worst case
+    monkeypatch.setattr(
+        suite.httpx,
+        "post",
+        lambda url, **kw: (
+            httpx.Response(429, text="slow down") if "api.openai.com" in url else _ok("from groq")
+        ),
+    )
+    judge = suite.CascadeJudge()
+    for _ in range(3):
+        assert judge.generate(PROMPT) == "from groq"
+    b = suite.judge_budget()
+    # Every attempt was dispatched (the hold came back each time) and nothing was charged.
+    assert (b.calls, b.refusals, b.spent_usd, b.held_usd) == (0, 0, 0.0, 0.0)
+
+
+class _SlowAsyncClient(_FakeAsyncClient):
+    """OpenAI answers only after yielding to the loop, so concurrent callers overlap in flight."""
+
+    async def post(self, url: str, **kw: Any) -> httpx.Response:
+        if "api.openai.com" in url:
+            await asyncio.sleep(0.01)
+        return await super().post(url, **kw)
+
+
+async def test_concurrent_async_callers_share_one_reservation_pool(
+    monkeypatch: pytest.MonkeyPatch, fake_async: type[_FakeAsyncClient]
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.005")  # room for exactly one worst case
+    fake_async.script = {
+        "api.openai.com": _ok("from openai", usage={"prompt_tokens": 5, "completion_tokens": 5}),
+        "api.groq.com": _ok("from groq"),
+    }
+    monkeypatch.setattr(
+        suite.httpx, "AsyncClient", _SlowAsyncClient
+    )  # same script/seen, slow OpenAI
+    judge = suite.CascadeJudge()
+    results = await asyncio.gather(*(judge.a_generate(PROMPT) for _ in range(3)))
+    hosts = [u.split("/")[2] for u in fake_async.seen]
+    # Only ONE metered request was dispatched; the other two were refused by the
+    # hold while the first was still in flight, and Groq served them.
+    assert hosts.count("api.openai.com") == 1 and hosts.count("api.groq.com") == 2
+    assert sorted(results) == ["from groq", "from groq", "from openai"]
+    b = suite.judge_budget()
+    assert b.calls == 1 and b.refusals == 2 and b.held_usd == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Codex F4 — prices follow the SELECTED model; unknown prices fail closed
+# ---------------------------------------------------------------------------
+
+
+def test_prices_resolve_from_the_repo_table_for_the_selected_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table = suite.declared_price_table()
+    assert table[MINI] == (0.75, 4.5) and table["gpt-5.4"] == (2.5, 15.0)
+    assert suite.resolve_judge_prices("gpt-5.4") == (2.5, 15.0)
+    assert suite.resolve_judge_prices("gpt-nope") is None
+    # An explicit override (both rates > 0) wins and makes an unknown model priceable.
+    monkeypatch.setenv("OPENAI_PRICE_PER_MTOK_IN", "1")
+    monkeypatch.setenv("OPENAI_PRICE_PER_MTOK_OUT", "2")
+    assert suite.resolve_judge_prices("gpt-nope") == (1.0, 2.0)
+    assert suite.resolve_judge_prices(MINI) == (1.0, 2.0)
+    # A zero rate is not a price: the override is ignored and the table decides.
+    monkeypatch.setenv("OPENAI_PRICE_PER_MTOK_OUT", "0")
+    assert suite.resolve_judge_prices("gpt-nope") is None
+    assert suite.resolve_judge_prices(MINI) == (0.75, 4.5)
+
+
+def test_model_override_is_estimated_and_settled_at_its_own_rate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_OPENAI_MODEL", "gpt-5.4")
+    b = suite.JudgeBudget()
+    est_mini = b.estimate_usd(PROMPT, MINI)
+    est_big = b.estimate_usd(PROMPT, "gpt-5.4")
+    assert est_big == pytest.approx(((len(PROMPT) + 8) * 2.5 + 1024 * 15.0) / 1e6)
+    assert est_mini is not None and est_big is not None and est_big > est_mini * 3
+    monkeypatch.setattr(
+        suite.httpx,
+        "post",
+        lambda url, **kw: _ok("from openai", usage={"prompt_tokens": 100, "completion_tokens": 10}),
+    )
+    assert suite.CascadeJudge().generate(PROMPT) == "from openai"
+    assert suite.judge_budget().spent_usd == pytest.approx((100 * 2.5 + 10 * 15.0) / 1e6)
+
+
+def test_a_cap_between_the_mini_and_the_selected_model_cost_blocks_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_OPENAI_MODEL", "gpt-5.4")
+    monkeypatch.setenv(
+        "DEEPEVAL_JUDGE_BUDGET_USD", "0.01"
+    )  # mini worst case ≈ $0.0046 fits; gpt-5.4 ≈ $0.0154 does not
+    urls: list[str] = []
+    monkeypatch.setattr(
+        suite.httpx, "post", lambda url, **kw: urls.append(url.split("/")[2]) or _ok("x")
+    )
+    assert suite.CascadeJudge().generate(PROMPT) == "x"
+    assert urls == ["api.groq.com"] and suite.judge_budget().refusals == 1
+
+
+def test_unknown_model_price_fails_closed_before_any_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_OPENAI_MODEL", "gpt-nope")
+    urls: list[str] = []
+    monkeypatch.setattr(
+        suite.httpx, "post", lambda url, **kw: urls.append(url.split("/")[2]) or _ok("x")
+    )
+    assert suite.CascadeJudge().generate(PROMPT) == "x"
+    assert urls == ["api.groq.com"]
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    with pytest.raises(RuntimeError, match="openai=price_unknown"):
+        suite.CascadeJudge().generate(PROMPT)
+    assert urls == ["api.groq.com"]  # still no metered request
+    # Declaring the price (control) lets the override model through.
+    monkeypatch.setenv("OPENAI_PRICE_PER_MTOK_IN", "1")
+    monkeypatch.setenv("OPENAI_PRICE_PER_MTOK_OUT", "2")
+    assert suite.CascadeJudge().generate(PROMPT) == "x"
+    assert urls == ["api.groq.com", "api.openai.com"]
+
+
+# ---------------------------------------------------------------------------
+# Codex F5 — recall before recompute: unchanged inputs cost zero tokens
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def evidence_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    p = tmp_path / "judge_evidence.json"
+    monkeypatch.setenv("DEEPEVAL_JUDGE_EVIDENCE", str(p))
+    return p
+
+
+def test_second_identical_judge_call_makes_zero_requests(
+    monkeypatch: pytest.MonkeyPatch, evidence_path: Path
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    urls: list[str] = []
+    monkeypatch.setattr(
+        suite.httpx, "post", lambda url, **kw: urls.append(url) or _ok(json.dumps({"score": 4}))
+    )
+    judge = suite.CascadeJudge()
+    assert judge.generate(PROMPT, schema=Schema) == {"score": 4}
+    assert len(urls) == 1 and evidence_path.exists()
+    stored = json.loads(evidence_path.read_text())
+    assert stored["contract"] == suite.JUDGE_EVIDENCE_CONTRACT and len(stored["entries"]) == 1
+    (entry,) = stored["entries"].values()
+    assert entry["served_by"] == f"openai/{MINI}" and json.loads(entry["content"]) == {"score": 4}
+    # Same inputs, a fresh judge in a fresh process: recalled, no HTTP, attributed as recall.
+    judge2 = suite.CascadeJudge()
+    assert judge2.generate(PROMPT, schema=Schema) == {"score": 4}
+    assert len(urls) == 1  # recalled: no request
+    assert judge2.served_counts().get(f"recall:openai/{MINI}") == 1
+    assert judge2.evidence_summary()["hits"] == 1
+    # The schema is part of the key: the same prompt WITHOUT a schema is a different verdict.
+    assert judge2.generate(PROMPT) == json.dumps({"score": 4})
+    assert len(urls) == 2
+    assert suite.judge_budget().calls == 2  # every request, and only requests, was metered
+
+
+def test_model_off_recall_answers_with_no_provider_configured(
+    monkeypatch: pytest.MonkeyPatch, evidence_path: Path
+) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setattr(suite.httpx, "post", lambda url, **kw: _ok("verdict"))
+    assert suite.CascadeJudge().generate(PROMPT) == "verdict"
+    # Keys gone: the configured judge is the same (groq default), the verdict is recalled.
+    monkeypatch.delenv("GROQ_API_KEY")
+    calls: list[str] = []
+    monkeypatch.setattr(suite.httpx, "post", lambda url, **kw: calls.append(url) or _ok("x"))
+    judge = suite.CascadeJudge()
+    assert judge.get_model_name() == "groq/openai/gpt-oss-120b"
+    assert judge.generate(PROMPT) == "verdict" and calls == []
+    # A prompt the store has not seen still refuses before any request (control).
+    with pytest.raises(RuntimeError, match="no judge provider"):
+        judge.generate(PROMPT + " changed")
+    assert calls == []
+
+
+def test_changing_one_declared_dependency_regenerates_only_that_verdict(
+    monkeypatch: pytest.MonkeyPatch, evidence_path: Path
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    served: list[str] = []
+    monkeypatch.setattr(suite.httpx, "post", lambda url, **kw: served.append(url) or _ok("v1"))
+    judge = suite.CascadeJudge()
+    assert judge.generate("A") == "v1" and judge.generate("B") == "v1"
+    assert len(served) == 2
+    # Judge model changes → both keys miss; the old verdicts stay in the file for the old config.
+    monkeypatch.setenv("DEEPEVAL_JUDGE_OPENAI_MODEL", "gpt-5.4")
+    assert suite.CascadeJudge().generate("A") == "v1" and len(served) == 3
+    assert len(json.loads(evidence_path.read_text())["entries"]) == 3
+    # Back on the original model: A and B are recalled, only a NEW prompt C is judged.
+    monkeypatch.delenv("DEEPEVAL_JUDGE_OPENAI_MODEL")
+    judge3 = suite.CascadeJudge()
+    assert judge3.generate("A") == "v1" and judge3.generate("B") == "v1" and len(served) == 3
+    assert judge3.generate("C") == "v1" and len(served) == 4
+    assert judge3.evidence_summary()["hits"] == 2 and judge3.evidence_summary()["misses"] == 1
+    # A contract bump invalidates everything stored.
+    monkeypatch.setattr(suite, "JUDGE_EVIDENCE_CONTRACT", "2")
+    assert suite.CascadeJudge().generate("A") == "v1" and len(served) == 5
+
+
+def test_unusable_stored_verdict_is_a_miss_not_an_answer(
+    monkeypatch: pytest.MonkeyPatch, evidence_path: Path
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    key = suite.JudgeEvidenceStore.key(f"openai/{MINI}", "Schema", PROMPT)
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "contract": suite.JUDGE_EVIDENCE_CONTRACT,
+                "entries": {key: {"content": "not json", "served_by": "x"}},
+            }
+        )
+    )
+    served: list[str] = []
+    monkeypatch.setattr(
+        suite.httpx, "post", lambda url, **kw: served.append(url) or _ok(json.dumps({"score": 1}))
+    )
+    assert suite.CascadeJudge().generate(PROMPT, schema=Schema) == {"score": 1}
+    assert len(served) == 1
+    # And the bad entry was replaced by the served one.
+    assert json.loads(json.loads(evidence_path.read_text())["entries"][key]["content"]) == {
+        "score": 1
+    }
+
+
+def test_evidence_store_off_never_reads_or_writes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_EVIDENCE", "off")
+    urls: list[str] = []
+    monkeypatch.setattr(suite.httpx, "post", lambda url, **kw: urls.append(url) or _ok("x"))
+    judge = suite.CascadeJudge()
+    assert judge.generate(PROMPT) == "x" and judge.generate(PROMPT) == "x"
+    assert len(urls) == 2 and judge.evidence_summary()["path"] == "off"
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_committed_store_is_the_default_and_starts_at_the_current_contract() -> None:
+    assert suite._DEFAULT_EVIDENCE_PATH.exists()
+    raw = json.loads(suite._DEFAULT_EVIDENCE_PATH.read_text())
+    assert raw["contract"] == suite.JUDGE_EVIDENCE_CONTRACT and isinstance(raw["entries"], dict)
+
+
+def test_print_report_shows_the_recall_ledger(capsys: pytest.CaptureFixture[str]) -> None:
+    r = suite.SuiteResult(
+        mode="offline", timestamp="2026-10-11T22:00:00", judge_model=f"openai/{MINI}"
+    )
+    r.judge_recall = {"path": "x.json", "entries": 116, "hits": 116, "misses": 0, "writes": 0}
+    suite._print_report(r)
+    assert "Judge recall: 116 hits, 0 misses, 0 written (x.json)" in capsys.readouterr().out
 
 
 def test_sync_budget_refuses_openai_before_the_request_and_falls_through(
