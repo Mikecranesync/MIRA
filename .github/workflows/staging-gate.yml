@@ -208,6 +208,7 @@ jobs:
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
           GROQ_API_KEY: ${{ secrets.STAGING_GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.STAGING_OPENAI_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.STAGING_CEREBRAS_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.STAGING_GEMINI_API_KEY }}
           INFERENCE_BACKEND: cloud
