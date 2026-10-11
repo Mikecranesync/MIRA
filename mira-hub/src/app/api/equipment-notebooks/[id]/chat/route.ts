@@ -45,6 +45,7 @@ import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observabili
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
+import { finishedAfterChunk } from "@/capabilities/stream-stop";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
@@ -3228,11 +3229,37 @@ async function handleChatTurn(
           const dec = new TextDecoder();
           let buffer = "";
           let finished = false;
+          // include_usage providers (OpenAI) send the usage block on a chunk
+          // AFTER finish_reason "stop" — remember the stop and keep draining
+          // until usage (or [DONE]) lands. See capabilities/stream-stop.ts.
+          let sawStop = false;
           while (!finished) {
             // Race the upstream read against the client-stop signal: a stop
             // must interrupt a read that is waiting on a slow provider, not
             // wait for the next delta to notice it.
-            const { done, value } = await Promise.race([reader.read(), abortedRead]);
+            let next: ReadableStreamReadResult<Uint8Array>;
+            try {
+              next = await Promise.race([reader.read(), abortedRead]);
+            } catch (err) {
+              // Post-stop drain failure (Codex F1 on #4354): the answer is
+              // already complete. A dropped connection or the composed timeout
+              // while waiting for the usage block must NOT read as a provider
+              // failure — that would open a fallback and APPEND a second answer
+              // to responseBuffer. Finalize with usage unknown. A client stop
+              // keeps its own path (the catch below checks clientAbort first).
+              if (sawStop && !clientAbort.signal.aborted) {
+                console.warn(
+                  JSON.stringify({
+                    event: "stream.usage_drain_failed",
+                    provider: provider.name,
+                    message: err instanceof Error ? err.message : String(err),
+                  }),
+                );
+                break;
+              }
+              throw err;
+            }
+            const { done, value } = next;
             if (done) break;
             buffer += dec.decode(value, { stream: true });
             const lines = buffer.split("\n");
@@ -3282,7 +3309,14 @@ async function handleChatTurn(
                     break;
                   }
                 }
-                if (parsed.choices?.[0]?.finish_reason === "stop") finished = true;
+                const stopState = finishedAfterChunk({
+                  seam,
+                  finishReason: parsed.choices?.[0]?.finish_reason,
+                  sawStop,
+                  usageSeen: rawUsage !== null,
+                });
+                sawStop = stopState.sawStop;
+                if (stopState.finished) finished = true;
               } catch {
                 // partial frame — keep buffering
               }
