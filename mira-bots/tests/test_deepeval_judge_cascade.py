@@ -717,16 +717,18 @@ def test_second_identical_judge_call_makes_zero_requests(
 def test_model_off_recall_answers_with_no_provider_configured(
     monkeypatch: pytest.MonkeyPatch, evidence_path: Path
 ) -> None:
-    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
     monkeypatch.setattr(suite.httpx, "post", lambda url, **kw: _ok("verdict"))
     assert suite.CascadeJudge().generate(PROMPT) == "verdict"
-    # Keys gone: the configured judge is the same (groq default), the verdict is recalled.
-    monkeypatch.delenv("GROQ_API_KEY")
+    # Key gone: the CONFIGURATION is unchanged (primary OpenAI judge, default
+    # model), so the verdict is recalled — a credential is not a key input.
+    monkeypatch.delenv("OPENAI_API_KEY")
     calls: list[str] = []
     monkeypatch.setattr(suite.httpx, "post", lambda url, **kw: calls.append(url) or _ok("x"))
     judge = suite.CascadeJudge()
-    assert judge.get_model_name() == "groq/openai/gpt-oss-120b"
+    assert judge.get_model_name() == f"openai/{MINI}"
     assert judge.generate(PROMPT) == "verdict" and calls == []
+    assert judge.served_counts() == {f"recall:openai/{MINI}": 1}
     # A prompt the store has not seen still refuses before any request (control).
     with pytest.raises(RuntimeError, match="no judge provider"):
         judge.generate(PROMPT + " changed")
@@ -883,3 +885,33 @@ def test_a_served_metered_call_is_charged_even_when_its_content_is_unusable(
 
 def test_groq_judge_alias_is_the_cascade_judge() -> None:
     assert suite.GroqJudge is suite.CascadeJudge
+
+
+# ---------------------------------------------------------------------------
+# The CLI gate: a warm store lets a model-off run start; nothing else does
+# ---------------------------------------------------------------------------
+
+
+def test_judge_available_with_a_provider_or_a_warm_store_only(
+    monkeypatch: pytest.MonkeyPatch, evidence_path: Path
+) -> None:
+    # No provider, empty (nonexistent) store → refused.
+    ok, note = suite.judge_available()
+    assert not ok and "no judge provider configured" in note
+    # No provider, warm store → allowed with a loud warning naming the store.
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "contract": suite.JUDGE_EVIDENCE_CONTRACT,
+                "entries": {"k": {"content": "v", "served_by": "x"}},
+            }
+        )
+    )
+    ok, note = suite.judge_available()
+    assert ok and note.startswith("WARNING") and "1 stored verdicts" in note
+    # Store off, no provider → refused even though the file exists.
+    monkeypatch.setenv("DEEPEVAL_JUDGE_EVIDENCE", "off")
+    assert suite.judge_available()[0] is False
+    # A provider (control) → allowed, no note.
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    assert suite.judge_available() == (True, "")

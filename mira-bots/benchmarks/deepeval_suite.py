@@ -109,18 +109,20 @@ class JudgeProvider:
     metered: bool = False
 
 
+def openai_judge_model() -> str:
+    """The OpenAI judge model this process is CONFIGURED for (a key is a credential, not config)."""
+    # `or`, not `??`-style getenv defaults: compose maps ${OPENAI_MODEL:-}
+    # to an EMPTY STRING in-container, which must not win over the default.
+    return os.getenv("DEEPEVAL_JUDGE_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
+
+
 def judge_providers() -> list[JudgeProvider]:
     """Providers whose API keys are set, in cascade order (OpenAI first)."""
-    openai_model = (
-        # `or`, not `??`-style getenv defaults: compose maps ${OPENAI_MODEL:-}
-        # to an EMPTY STRING in-container, which must not win over the default.
-        os.getenv("DEEPEVAL_JUDGE_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
-    )
     candidates = [
         JudgeProvider(
             "openai",
             OPENAI_API_URL,
-            openai_model,
+            openai_judge_model(),
             "OPENAI_API_KEY",
             "openai_reasoning",
             metered=True,
@@ -356,6 +358,10 @@ class JudgeEvidenceStore:
     @property
     def enabled(self) -> bool:
         return self.path is not None
+
+    @property
+    def entry_count(self) -> int:
+        return len(self._entries)
 
     @staticmethod
     def _load(path: Path) -> dict[str, dict[str, str]]:
@@ -667,9 +673,15 @@ class CascadeJudge(DeepEvalBaseLLM):
         return await self._acall(prompt, schema)
 
     def get_model_name(self) -> str:
-        """`<primary provider>/<model>` — the judge the run was CONFIGURED with."""
+        """`<primary provider>/<model>` — the judge the run was CONFIGURED with.
+
+        Configuration is the model choice, not the credential: with no key at
+        all this is still the primary OpenAI judge, so a model-off run recalls
+        the verdicts a keyed run of the same configuration stored. Only a
+        Groq-only keyset names Groq (the pre-existing judge).
+        """
         if not self._providers:
-            return f"groq/{JUDGE_MODEL}"
+            return f"openai/{openai_judge_model()}"
         return f"{self._providers[0].name}/{self._providers[0].model}"
 
     def served_counts(self) -> dict[str, int]:
@@ -682,6 +694,21 @@ class CascadeJudge(DeepEvalBaseLLM):
 
 # Pre-rename import name; the cascade judge IS the Groq judge when only Groq is keyed.
 GroqJudge = CascadeJudge
+
+
+def judge_available() -> tuple[bool, str]:
+    """Can this process judge at all? (True, "") with a provider; (True, warning)
+    model-off from a warm evidence store — every verdict must then be recalled,
+    a miss fails its case; (False, error) otherwise."""
+    if judge_providers():
+        return True, ""
+    store = JudgeEvidenceStore.from_env()
+    if store.enabled and store.entry_count > 0:
+        return True, (
+            "WARNING: no judge provider configured — judging from recalled evidence only "
+            f"({store.entry_count} stored verdicts in {store.path}); a verdict not in the store fails its case"
+        )
+    return False, "no judge provider configured — set OPENAI_API_KEY (preferred) or GROQ_API_KEY"
 
 
 # ---------------------------------------------------------------------------
@@ -1467,11 +1494,12 @@ def main() -> int:
         print("ERROR: deepeval is not installed. Run: pip install deepeval>=1.0.0")
         return 1
 
-    if not judge_providers():
-        print(
-            "ERROR: no judge provider configured — set OPENAI_API_KEY (preferred) or GROQ_API_KEY"
-        )
+    available, note = judge_available()
+    if not available:
+        print(f"ERROR: {note}")
         return 1
+    if note:
+        print(note)
 
     runner = DeepEvalRunner(mode=args.mode, api_url=args.api_url)
     result = asyncio.run(runner.run())
