@@ -47,9 +47,7 @@ sys.path.insert(0, str(REPO_ROOT / "mira-bots"))
 # host that path is not writable and every tenant resolution logs an error.
 # Pin the default to a temp file BEFORE importing the engine so even ad-hoc
 # local invocations work. The workflow sets a runner-temp path explicitly.
-os.environ.setdefault(
-    "MIRA_DB_PATH", str(Path(tempfile.gettempdir()) / "mira-staging.db")
-)
+os.environ.setdefault("MIRA_DB_PATH", str(Path(tempfile.gettempdir()) / "mira-staging.db"))
 
 # Imported after sys.path + env patch; ruff will flag E402, which is expected.
 from shared.engine import Supervisor  # noqa: E402
@@ -83,7 +81,19 @@ GROQ_BASE = os.getenv("GROQ_API_BASE", "https://api.groq.com/openai/v1")
 CEREBRAS_JUDGE_MODEL = os.getenv("STAGING_JUDGE_CEREBRAS_MODEL", "gpt-oss-120b")
 CEREBRAS_BASE = os.getenv("CEREBRAS_API_BASE", "https://api.cerebras.ai/v1")
 GEMINI_JUDGE_MODEL = os.getenv("STAGING_JUDGE_GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_BASE = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai")
+GEMINI_BASE = os.getenv(
+    "GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai"
+)
+# OpenAI leads the judge cascade since 2026-10-11 — the same owner directive
+# that put it first in the answering cascade (#4349): Groq is billing-
+# restricted (400), Cerebras 402, Gemini 429, so a judge list without the one
+# funded provider fails closed on a run whose every answer came back 200.
+# The gpt-5 family speaks a different request dialect (max_completion_tokens,
+# no temperature) — see _judge_request_body.
+OPENAI_JUDGE_MODEL = (
+    os.getenv("STAGING_JUDGE_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
+)
+OPENAI_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +250,9 @@ class JudgeProvider:
     api_base: str
     model: str
     api_key_env: str
+    # "openai_compat" (max_tokens + temperature, the Groq/Cerebras/Gemini shape)
+    # or "openai_reasoning" (gpt-5 family: max_completion_tokens, no temperature).
+    request_style: str = "openai_compat"
 
 
 JUDGE_SYSTEM = (
@@ -318,11 +331,48 @@ def _parse_judge(raw: str) -> Score:
 def _judge_providers() -> list[JudgeProvider]:
     """Return providers whose API keys are set, in cascade order."""
     candidates = [
+        JudgeProvider(
+            "openai", OPENAI_BASE, OPENAI_JUDGE_MODEL, "OPENAI_API_KEY", "openai_reasoning"
+        ),
         JudgeProvider("groq", GROQ_BASE, GROQ_JUDGE_MODEL, "GROQ_API_KEY"),
         JudgeProvider("cerebras", CEREBRAS_BASE, CEREBRAS_JUDGE_MODEL, "CEREBRAS_API_KEY"),
         JudgeProvider("gemini", GEMINI_BASE, GEMINI_JUDGE_MODEL, "GEMINI_API_KEY"),
     ]
     return [p for p in candidates if os.environ.get(p.api_key_env, "").strip()]
+
+
+def _judge_request_body(provider: JudgeProvider, base_body: dict[str, object]) -> dict[str, object]:
+    """Shape ONE provider's chat-completions body from the shared base body.
+
+    Pure (never mutates `base_body`, which the caller reuses for the next
+    provider). The compat providers keep the exact pre-existing shape; the
+    gpt-5 dialect would answer HTTP 400 to `max_tokens` / `temperature`, which
+    the cascade would misread as yet another provider outage.
+    """
+    body: dict[str, object] = dict(base_body, model=provider.model)
+    if provider.request_style == "openai_reasoning":
+        body.pop("temperature", None)
+        body["max_completion_tokens"] = body.pop("max_tokens", 1024)
+        # Same calibration as the gpt-oss judges below: at low effort the
+        # judge intermittently ignores the ACTIONABILITY OVERRIDE (#3195).
+        body["reasoning_effort"] = "medium"
+        return body
+    # Groq strictly supports response_format=json_object; Cerebras + Gemini
+    # accept it on recent models but a stricter validator may reject it.
+    # _parse_judge() regex-extracts JSON from any wrapper, so we send the
+    # hint only to Groq and rely on parsing for the others.
+    if provider.name == "groq":
+        body["response_format"] = {"type": "json_object"}
+    # gpt-oss spends completion tokens on reasoning; at default effort the
+    # tight json_object call fails closed (json_validate_failed, empty
+    # generation). Gated so a non-reasoning override never sees the param.
+    # "medium", not "low": at low effort the judge intermittently ignores
+    # the ACTIONABILITY OVERRIDE and scores clarifying-question replies 1,
+    # flapping the required check on unchanged engine code (#3195). Same
+    # calibration fix as the DeepEval judge in #3190.
+    if "gpt-oss" in provider.model:
+        body["reasoning_effort"] = "medium"
+    return body
 
 
 # Status codes that mean "try next provider" — transient or capacity issues.
@@ -360,22 +410,7 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
 
     attempts: list[str] = []
     for provider in providers:
-        body: dict[str, object] = dict(base_body, model=provider.model)
-        # Groq strictly supports response_format=json_object; Cerebras + Gemini
-        # accept it on recent models but a stricter validator may reject it.
-        # _parse_judge() regex-extracts JSON from any wrapper, so we send the
-        # hint only to Groq and rely on parsing for the others.
-        if provider.name == "groq":
-            body["response_format"] = {"type": "json_object"}
-        # gpt-oss spends completion tokens on reasoning; at default effort the
-        # tight json_object call fails closed (json_validate_failed, empty
-        # generation). Gated so a non-reasoning override never sees the param.
-        # "medium", not "low": at low effort the judge intermittently ignores
-        # the ACTIONABILITY OVERRIDE and scores clarifying-question replies 1,
-        # flapping the required check on unchanged engine code (#3195). Same
-        # calibration fix as the DeepEval judge in #3190.
-        if "gpt-oss" in provider.model:
-            body["reasoning_effort"] = "medium"
+        body = _judge_request_body(provider, base_body)
         headers = {
             "Authorization": f"Bearer {os.environ[provider.api_key_env]}",
             "Content-Type": "application/json",
@@ -392,9 +427,7 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
             continue
         if resp.status_code in _RETRYABLE_STATUSES:
             attempts.append(f"{provider.name}=HTTP{resp.status_code}")
-            logger.warning(
-                "judge %s HTTP %s — trying next", provider.name, resp.status_code
-            )
+            logger.warning("judge %s HTTP %s — trying next", provider.name, resp.status_code)
             continue
         try:
             resp.raise_for_status()
@@ -407,14 +440,10 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
             continue
         # Tag the winning provider on the score so the PR comment can show it.
         tag = f"[{provider.name}]"
-        score.judge_reason = (
-            f"{tag} {score.judge_reason}".strip() if score.judge_reason else tag
-        )
+        score.judge_reason = f"{tag} {score.judge_reason}".strip() if score.judge_reason else tag
         return score
 
-    raise RuntimeError(
-        f"all judge providers failed: tried={attempts or 'none'}"
-    )
+    raise RuntimeError(f"all judge providers failed: tried={attempts or 'none'}")
 
 
 def _hard_fail_reasons(score: Score) -> list[str]:
@@ -482,20 +511,18 @@ async def judge_with_confirmation(
     if not reasons:
         return first, []
     dims = {d: getattr(first, d) for d in RUBRIC_DIMS}
-    logger.warning(
-        "%s: hard-fail draw %s (%s) — drawing confirmation", question_id, dims, reasons
-    )
+    logger.warning("%s: hard-fail draw %s (%s) — drawing confirmation", question_id, dims, reasons)
     second = await draw()
     agreed = [r for r in _hard_fail_reasons(second) if r in reasons]
     if not agreed:
         second_dims = {d: getattr(second, d) for d in RUBRIC_DIMS}
-        second.judge_reason = (
-            f"[redraw-cleared {dims} vs {second_dims}] {second.judge_reason}"
-        )
+        second.judge_reason = f"[redraw-cleared {dims} vs {second_dims}] {second.judge_reason}"
         logger.warning(
             "%s: confirmation draw did not agree on any deficient dimension "
             "(draw1=%s draw2=%s) — hard fail cleared",
-            question_id, reasons, _hard_fail_reasons(second),
+            question_id,
+            reasons,
+            _hard_fail_reasons(second),
         )
         return second, []
     # Marker token kept EXACTLY "[redraw-confirmed]" — tests/test_staging_judge_confirmation.py
@@ -616,9 +643,7 @@ def summarize(results: list[QuestionResult]) -> RunSummary:
     # If too many questions were skipped (embed sidecar dead, etc.), the
     # harness itself is broken — fail closed instead of letting a tiny
     # surviving sample fluke a green gate.
-    harness_degraded = (
-        len(results) > 0 and skipped / len(results) > MAX_SKIP_FRACTION
-    )
+    harness_degraded = len(results) > 0 and skipped / len(results) > MAX_SKIP_FRACTION
     overall_pass = (
         not harness_degraded
         and len(scored) > 0
