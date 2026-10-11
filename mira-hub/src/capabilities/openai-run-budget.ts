@@ -204,6 +204,31 @@ export function estimateInputTokens(messages: unknown): number {
   return Math.ceil(s.length / CHARS_PER_TOKEN);
 }
 
+/** Per-message framing allowance (role and separator tokens) on top of the byte bound. */
+export const MESSAGE_FRAMING_TOKENS = 8;
+
+/**
+ * Conservative UPPER BOUND on input tokens, for the pre-call HOLD and for
+ * charging an outcome the caller could not observe (Codex r3 F4 on #4357).
+ * `estimateInputTokens` is an average (chars/4) and under-counts token-dense
+ * text (CJK, numerics, code), so a hold sized by it can admit spend past the
+ * cap. Every BPE token encodes at least one byte, so the UTF-8 byte length of
+ * the serialized messages cannot be exceeded by the token count; a framing
+ * allowance per message covers role and separator tokens. Over-reserving only
+ * tightens concurrent admission; a served response still settles at actual
+ * usage.
+ */
+export function boundInputTokens(messages: unknown): number {
+  let s = "";
+  try {
+    s = JSON.stringify(messages) ?? "";
+  } catch {
+    s = "";
+  }
+  const count = Array.isArray(messages) ? messages.length : 1;
+  return Buffer.byteLength(s, "utf8") + (count + 1) * MESSAGE_FRAMING_TOKENS;
+}
+
 /** Pre-call input estimate for one vision call: the prompt text plus a fixed image block per image. */
 export function estimateVisionInputTokens(promptChars: number, images: number): number {
   return Math.ceil(promptChars / CHARS_PER_TOKEN) + images * IMAGE_PART_TOKENS;

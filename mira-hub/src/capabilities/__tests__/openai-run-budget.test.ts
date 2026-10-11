@@ -14,8 +14,10 @@ import {
   OpenAiRunBudget,
   DEFAULT_PRICE_PER_MTOK_IN,
   DEFAULT_PRICE_PER_MTOK_OUT,
+  boundInputTokens,
   estimateInputTokens,
   estimateVisionInputTokens,
+  MESSAGE_FRAMING_TOKENS,
   IMAGE_PART_TOKENS,
   openAiRunBudget,
   resetOpenAiRunBudgetForTests,
@@ -113,6 +115,25 @@ describe("precheck / record / window", () => {
   });
 });
 
+describe("boundInputTokens — an UPPER bound for the hold (Codex r3 F4)", () => {
+  const ascii = [{ role: "user", content: "PowerFlex 525 fault F0004 on power-up" }];
+  // Token-dense text: each CJK character is 3 UTF-8 bytes and roughly one token, so chars/4
+  // under-counts it about twelve-fold.
+  const dense = [{ role: "user", content: "故障代码".repeat(100) }];
+
+  it("is never below the chars/4 average, for plain and token-dense text", () => {
+    expect(boundInputTokens(ascii)).toBeGreaterThanOrEqual(estimateInputTokens(ascii));
+    expect(boundInputTokens(dense)).toBeGreaterThan(estimateInputTokens(dense) * 10);
+  });
+
+  it("is the UTF-8 byte length plus a framing allowance per message (tokens cannot exceed bytes)", () => {
+    const json = JSON.stringify(dense);
+    expect(Buffer.byteLength(json, "utf8")).toBeGreaterThan(json.length); // multibyte text really is counted in bytes
+    expect(boundInputTokens(dense)).toBe(Buffer.byteLength(json, "utf8") + 2 * MESSAGE_FRAMING_TOKENS);
+    expect(boundInputTokens([])).toBe(Buffer.byteLength("[]", "utf8") + MESSAGE_FRAMING_TOKENS);
+  });
+});
+
 describe("reserve / settle / release — the hold that stops concurrent overshoot", () => {
   it("holds the worst case while in flight, so a second caller is refused against the same balance", () => {
     const b = new OpenAiRunBudget({ capUsd: 0.005, priceInPerMtok: 0, priceOutPerMtok: 4.5, now: clock().now });
@@ -190,8 +211,9 @@ describe("source contract — the Hub OpenAI spend path in this branch goes thro
   const read = (p: string) => readFileSync(resolve(__dirname, p), "utf8");
   it("non-streaming cascade (quickstart, hub ask, translate, extractor): reserve before the OpenAI fetch, settle after usage or an unknown outcome, release only on a rejection", () => {
     const cascade = read("../../lib/llm/cascade.ts");
-    expect(cascade).toMatch(/const inputEstimate = estimateInputTokens\(messages\)/);
-    expect(cascade).toMatch(/openAiRunBudget\(\)\.reserve\(inputEstimate, outputCap\)/);
+    expect(cascade).toMatch(/const inputBound = boundInputTokens\(messages\)/);
+    expect(cascade).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, outputCap\)/);
+    expect(cascade).not.toMatch(/estimateInputTokens/); // the average never sizes a hold here
     expect(cascade.indexOf(".reserve(")).toBeLessThan(cascade.indexOf("await fetch("));
     expect(cascade).toMatch(/reservation\?\.settle\(/);
     expect(cascade).toMatch(/reservation\?\.release\(\)/);

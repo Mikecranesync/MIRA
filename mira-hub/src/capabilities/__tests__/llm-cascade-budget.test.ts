@@ -124,6 +124,34 @@ describe("lib/llm/cascade — the OpenAI leg is spend-capped", () => {
     expect(openAiRunBudget().spentUsd).toBeCloseTo(0.000045, 7);
   });
 
+  it("token-dense input is held at its UPPER bound: a cap the chars/4 average would have passed refuses BEFORE the fetch (Codex r3 F4)", async () => {
+    // Input priced, output free, so only the input hold decides. 100 × "故障代码" = 400 CJK
+    // chars ≈ 1,200 UTF-8 bytes: the byte bound is about 1,230 tokens, chars/4 about 110.
+    process.env.OPENAI_PRICE_PER_MTOK_IN = "1000";
+    process.env.OPENAI_PRICE_PER_MTOK_OUT = "0";
+    process.env.OPENAI_RUN_BUDGET_USD = "0.5"; // 500 tokens' worth: above the average, below the bound
+    resetOpenAiRunBudgetForTests();
+    const dense = [{ role: "user" as const, content: "故障代码".repeat(100) }];
+    const calls = stubFetch({ content: "from openai", usage: { prompt_tokens: 1200, completion_tokens: 10 } });
+    expect((await cascadeComplete(dense))?.provider).toBe("Groq");
+    expect(hosts(calls)).toEqual(["api.groq.com"]); // OpenAI never fetched
+    expect(openAiRunBudget().calls).toBe(0);
+    // Control: a plain ASCII question of the same shape fits under the same cap and is served.
+    expect((await cascadeComplete(MESSAGES))?.provider).toBe("OpenAI");
+  });
+
+  it("an unknown outcome on token-dense input is charged at the UPPER bound, not the average", async () => {
+    process.env.OPENAI_PRICE_PER_MTOK_IN = "1000";
+    process.env.OPENAI_PRICE_PER_MTOK_OUT = "0";
+    process.env.OPENAI_RUN_BUDGET_USD = "10";
+    resetOpenAiRunBudgetForTests();
+    const dense = [{ role: "user" as const, content: "故障代码".repeat(100) }];
+    stubFetch({ throws: true });
+    expect((await cascadeComplete(dense))?.provider).toBe("Groq");
+    const bytes = Buffer.byteLength(JSON.stringify(dense), "utf8");
+    expect(openAiRunBudget().spentUsd).toBeGreaterThanOrEqual(bytes / 1e6 * 1000);
+  });
+
   it("control: the budget never touches a free-tier provider (no key → Groq only, nothing recorded)", async () => {
     delete process.env.OPENAI_API_KEY;
     process.env.OPENAI_RUN_BUDGET_USD = "0";

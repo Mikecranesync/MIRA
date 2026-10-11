@@ -14,7 +14,7 @@
  */
 
 import { requestDialectFields, type CanonicalProvider } from "@/lib/inference/canonical-cascade";
-import { estimateInputTokens, logBudgetExhausted, openAiRunBudget, type BudgetReservation } from "@/capabilities/openai-run-budget";
+import { boundInputTokens, logBudgetExhausted, openAiRunBudget, type BudgetReservation } from "@/capabilities/openai-run-budget";
 
 interface CascadeProvider {
   name: string;
@@ -121,10 +121,12 @@ async function callOne(
   // the same balance; at the cap the call is refused BEFORE the fetch and the
   // cascade falls through exactly as for a provider that is down.
   const outputCap = opts.maxTokens ?? 600;
-  const inputEstimate = estimateInputTokens(messages);
+  // An UPPER bound (bytes + framing), not the chars/4 average: the hold and any
+  // unobserved outcome must never be sized by a figure the real count can beat.
+  const inputBound = boundInputTokens(messages);
   let reservation: BudgetReservation | null = null;
   if (provider.name === "OpenAI") {
-    const verdict = openAiRunBudget().reserve(inputEstimate, outputCap);
+    const verdict = openAiRunBudget().reserve(inputBound, outputCap);
     if (!verdict.ok) {
       logBudgetExhausted("llm-cascade", verdict);
       return null;
@@ -147,7 +149,7 @@ async function callOne(
     // Ambiguous: a timeout or a dropped connection after the request was
     // accepted may still have been billed. Book the worst case; never free
     // budget on an outcome we cannot see.
-    reservation?.settle(inputEstimate, outputCap);
+    reservation?.settle(inputBound, outputCap);
     return null;
   }
   if (!res.ok) {
@@ -163,11 +165,11 @@ async function callOne(
     parsed = (await res.json()) as typeof parsed;
   } catch {
     // A 200 whose body could not be read was still served and billed: book the worst case.
-    reservation?.settle(inputEstimate, outputCap);
+    reservation?.settle(inputBound, outputCap);
     return null;
   }
   // Served: book the ACTUAL usage (fall back to the estimate when the provider omits it).
-  reservation?.settle(parsed.usage?.prompt_tokens ?? inputEstimate, parsed.usage?.completion_tokens ?? outputCap);
+  reservation?.settle(parsed.usage?.prompt_tokens ?? inputBound, parsed.usage?.completion_tokens ?? outputCap);
   return parsed.choices?.[0]?.message?.content ?? null;
 }
 
