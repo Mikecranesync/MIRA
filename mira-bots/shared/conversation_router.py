@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
-import httpx
+from .inference.router import InferenceRouter
 
 logger = logging.getLogger("mira-gsd")
 
@@ -118,45 +117,59 @@ def _format_history(history: list[dict]) -> str:
     return "\n".join(lines) if lines else "(no prior history)"
 
 
+# One shared cascade for the whole process, built on first use so a test can
+# install its own and so import never touches the environment.
+_router: InferenceRouter | None = None
+
+
+def _get_router() -> InferenceRouter:
+    global _router
+    if _router is None:
+        _router = InferenceRouter()
+    return _router
+
+
+def reset_router_for_tests() -> None:
+    global _router
+    _router = None
+
+
+# 300, not 150: gpt-oss reasoning length scales with input length, and this
+# call carries conversation history — 150 produced truncated-JSON parse
+# failures in the staging gate.
+ROUTER_MAX_TOKENS = 300
+
+
 async def _call_router_llm(messages: list[dict]) -> str:
-    """Call Groq openai/gpt-oss-20b for routing — fast and cheap (~200ms)."""
-    groq_key = os.getenv("GROQ_API_KEY", "")
-    if not groq_key:
+    """Classify intent through the shared InferenceRouter cascade (OpenAI first).
+
+    This used to POST straight to Groq with its own key check. With Groq
+    billing-restricted that meant ROUTER_LLM_FAILURE on every turn and intent
+    silently falling back to continue_current while the one provider that
+    works was never tried — and the shared router's budget guard never saw
+    the call. Now the cascade, its key gating, the gpt-5 request dialect and
+    the spend guard are all the router's; this module only shapes the prompt.
+    """
+    router = _get_router()
+    if not router.enabled:
         return json.dumps(
             {
                 "intent": "continue_current",
                 "confidence": 0.5,
-                "reasoning": "No router LLM available — GROQ_API_KEY not set",
+                "reasoning": "No router LLM available — no cloud provider configured",
             }
         )
 
-    # PII scrub before the message ever leaves the process (#1528 adversarial
-    # triage). This path POSTs straight to Groq and bypasses
-    # InferenceRouter.complete()'s default-on sanitize, so the raw user message
-    # (IPs, MACs, serials) would otherwise leak. sanitize_context is a pure
-    # staticmethod — reuse it rather than re-implementing the regexes.
-    from .inference.router import InferenceRouter
-
+    # PII scrub before the message leaves this module (#1528 adversarial
+    # triage). InferenceRouter.complete() sanitizes by default too; scrubbing
+    # here as well keeps the guarantee local instead of resting on a default
+    # argument elsewhere. sanitize_context is a pure, idempotent staticmethod.
     messages = InferenceRouter.sanitize_context(messages)
 
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {groq_key}"},
-                json={
-                    "model": "openai/gpt-oss-20b",
-                    "messages": messages,
-                    "temperature": 0.1,
-                    # 300, not 150: gpt-oss reasoning length scales with input
-                    # length, and this call carries conversation history — 150
-                    # produced truncated-JSON parse failures in the staging gate.
-                    "max_tokens": 300,
-                    "reasoning_effort": "low",
-                },
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+        content, _usage = await router.complete(
+            messages, max_tokens=ROUTER_MAX_TOKENS, session_id="conversation_router"
+        )
     except Exception as exc:
         logger.warning("ROUTER_LLM_FAILURE error=%s", str(exc)[:200])
         return json.dumps(
@@ -166,3 +179,15 @@ async def _call_router_llm(messages: list[dict]) -> str:
                 "reasoning": f"Router LLM error — {str(exc)[:80]}",
             }
         )
+    if not content:
+        # complete() returns "" when every provider failed; it already logged
+        # each provider's failure, this line names the consequence.
+        logger.warning("ROUTER_LLM_FAILURE error=every provider failed")
+        return json.dumps(
+            {
+                "intent": "continue_current",
+                "confidence": 0.4,
+                "reasoning": "Router LLM error — every provider failed",
+            }
+        )
+    return content
