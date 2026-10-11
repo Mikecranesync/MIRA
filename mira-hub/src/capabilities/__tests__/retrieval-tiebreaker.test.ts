@@ -10,7 +10,7 @@ async function rankedSql(query: string, opts: Parameters<typeof retrieveManualCh
   await retrieveManualChunks({ query: q } as never, TENANT, query, opts);
   return (q.mock.calls as unknown as Array<[string]>)
     .map(([sql]) => sql)
-    .filter((sql) => /FROM knowledge_entries/.test(sql) && /LIMIT/.test(sql));
+    .filter((sql) => /FROM\s+knowledge_entries\b/.test(sql) && /LIMIT/.test(sql));
 }
 
 function orderBy(sql: string): string {
