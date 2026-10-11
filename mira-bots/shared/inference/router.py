@@ -1,14 +1,17 @@
 """MIRA Inference Router — Multi-provider LLM cascade.
 
-Cascade order: Groq → Cerebras → Together → (caller falls back to Open WebUI).
+Cascade order: OpenAI → Groq → Cerebras → Together → (caller falls back to Open WebUI).
 
 Each provider is tried in sequence. On any failure (rate limit, billing,
 timeout, service error), the next provider is attempted. The caller
 (rag_worker._call_llm) treats an empty-string return as "all cloud
 providers failed" and falls through to the local Open WebUI/Ollama path.
 
-Provider enablement is key-based: if GROQ_API_KEY is set, Groq is in the
-cascade. Same for CEREBRAS_API_KEY and TOGETHERAI_API_KEY. Order is fixed.
+Provider enablement is key-based: if OPENAI_API_KEY is set, OpenAI leads the
+cascade; same for GROQ_API_KEY, CEREBRAS_API_KEY and TOGETHERAI_API_KEY. Order
+is fixed. OpenAI's gpt-5 family speaks a slightly different dialect
+(`max_completion_tokens`, no `temperature`, `reasoning_effort`) — see
+`_Provider.request_style` / `_request_payload()`.
 
 INFERENCE_BACKEND controls the master switch:
   "cloud" → run the cascade (default when any cloud key is set)
@@ -244,21 +247,87 @@ class _Provider:
     model: str
     timeout: float = 60.0
     vision_model: str = ""  # If set, use this model for image requests
+    # "openai_compat" (Groq/Cerebras/Together): max_tokens + temperature.
+    # "openai_reasoning" (OpenAI gpt-5 family): the API rejects `max_tokens`
+    # (wants `max_completion_tokens`) and any non-default `temperature`; it
+    # takes `reasoning_effort` instead. See _request_payload().
+    request_style: str = "openai_compat"
 
     @property
     def enabled(self) -> bool:
         return bool(self.api_key)
 
+    @property
+    def cap_key(self) -> str:
+        """The request field that carries the output-token cap for this provider."""
+        return _cap_key(self)
+
+
+def _cap_key(provider: _Provider) -> str:
+    """`max_completion_tokens` for the OpenAI gpt-5 dialect, `max_tokens` otherwise.
+
+    Derived from `request_style` by string compare rather than read as an
+    attribute, so a test double that is not a real _Provider still resolves to
+    the compat field instead of a stray attribute object.
+    """
+    return "max_completion_tokens" if provider.request_style == "openai_reasoning" else "max_tokens"
+
+
+def _request_payload(
+    provider: _Provider, model: str, messages: list[dict], max_tokens: int
+) -> dict:
+    """The chat-completions body for ONE provider, shaped for its API family.
+
+    Pure, so the shape is unit-testable without a network: the OpenAI gpt-5
+    family returns HTTP 400 on `max_tokens` and on `temperature` != 1, which
+    would otherwise read as a provider outage and fall through the cascade.
+    """
+    if provider.request_style == "openai_reasoning":
+        return {
+            "model": model,
+            "max_completion_tokens": max_tokens,
+            "messages": messages,
+            "reasoning_effort": os.getenv("OPENAI_REASONING_EFFORT") or "low",
+        }
+    return {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": messages,
+        "temperature": 0.1,
+    }
+
 
 def _build_providers() -> list[_Provider]:
     """Build the ordered provider list from environment variables.
 
-    Cascade order: Groq → Cerebras → Together.
-    Groq leads because it's fastest and most reliable. Together AI is the
-    third provider (replaced Gemini, which was 403-blocked in Doppler) via
+    Cascade order: OpenAI → Groq → Cerebras → Together.
+    OpenAI leads (owner directive 2026-10-11: Groq is billing-restricted and
+    Cerebras archived), key-gated like every other member so an unset
+    OPENAI_API_KEY leaves the cascade exactly as before. Together AI is the
+    last provider (replaced Gemini, which was 403-blocked in Doppler) via
     its OpenAI-compatible serverless endpoint.
     """
     providers: list[_Provider] = []
+
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    if openai_key:
+        providers.append(
+            _Provider(
+                name="openai",
+                api_url="https://api.openai.com/v1/chat/completions",
+                api_key=openai_key,
+                # gpt-5.4-mini: the model the paid review lane already proves
+                # against this key, and the cheapest tier that answers well.
+                # The `or` form is load-bearing (compose maps ${OPENAI_MODEL:-},
+                # which delivers an EMPTY STRING in-container).
+                model=os.getenv("OPENAI_MODEL") or "gpt-5.4-mini",
+                timeout=float(os.getenv("OPENAI_TIMEOUT") or "60"),
+                # Text cascade only by default: vision stays on Together until
+                # an operator opts OpenAI in with OPENAI_VISION_MODEL.
+                vision_model=os.getenv("OPENAI_VISION_MODEL") or "",
+                request_style="openai_reasoning",
+            )
+        )
 
     groq_key = os.getenv("GROQ_API_KEY", "")
     if groq_key:
@@ -536,15 +605,10 @@ class InferenceRouter:
         session_id: str,
         has_image: bool,
     ) -> tuple[str, dict]:
-        """Call an OpenAI-compatible provider (Groq, Cerebras, Together)."""
+        """Call an OpenAI-compatible provider (OpenAI, Groq, Cerebras, Together)."""
         # Use vision model for image requests if available
         model = provider.vision_model if (has_image and provider.vision_model) else provider.model
-        payload: dict = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": messages,
-            "temperature": 0.1,
-        }
+        payload: dict = _request_payload(provider, model, messages, max_tokens)
         # Note: response_format=json_object omitted — Groq requires "json" in system prompt
         # to use that mode, and Cerebras occasionally rejects it. The system prompt already
         # instructs JSON output; _parse_response has 3 extraction strategies as fallback.
@@ -562,7 +626,7 @@ class InferenceRouter:
             content = ""
             usage_dict: dict = {}
             for attempt_idx, attempt_cap in enumerate(attempt_caps):
-                payload["max_tokens"] = attempt_cap
+                payload[_cap_key(provider)] = attempt_cap
                 t0 = time.monotonic()
                 async with httpx.AsyncClient(timeout=provider.timeout) as client:
                     resp = await client.post(provider.api_url, headers=headers, json=payload)
