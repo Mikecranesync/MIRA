@@ -731,7 +731,7 @@ async function runBm25Query(
           ${modelClause}
           ${familyClause}
           AND content_tsv @@ ${tsquery}
-        ORDER BY rank DESC
+        ORDER BY rank DESC, source_url, source_page NULLS LAST, id
         LIMIT ${limitParam}`,
       params,
     );
@@ -794,7 +794,7 @@ async function runBm25Query(
           ${codeScope.modelClause}
           ${codeScope.familyClause}
           AND content ~* ANY(${codePatterns}::text[])
-        ORDER BY source_page NULLS LAST
+        ORDER BY source_page NULLS LAST, source_url, id
         LIMIT ${codeLimit}`,
       codeParams,
     );
