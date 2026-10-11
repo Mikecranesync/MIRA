@@ -83,6 +83,17 @@ function codeLike(tok: string): boolean {
   return /[a-z][A-Za-z]*[A-Z]/.test(tok);
 }
 
+// #4224 follow-up — the keyword can come AFTER the code ("overcurrent oC fault",
+// "F4 trips"). Same shape test as the forward rule, except a bare number never
+// qualifies here: "PowerFlex 753 fault" names a model, not a code.
+const CODE_BEFORE_KEYWORD = /\b([A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)\s+(fault|alarm|warning|error|trip)s?\b/gi;
+
+// Two-letter all-caps drive mnemonics (OC, OV, UV, GF, OL, OH). Not code-like
+// on their own, so they count only in a bare terse message where there is
+// nothing else the technician could mean. Exactly two letters: three-letter
+// caps are ordinary words here ("PLC", "VFD", "HMI").
+const CAPS_MNEMONIC = /^[A-Z]{2}$/;
+
 function extractCodeTokens(q: string): string[] {
   const out = new Set<string>();
   for (const m of q.matchAll(CODE_AFTER_KEYWORD)) {
@@ -90,9 +101,21 @@ function extractCodeTokens(q: string): string[] {
     if (/^\d{1,2}$/.test(tok)) out.add(`${m[1]} ${tok}`);
     else if (codeLike(tok)) out.add(tok);
   }
+  for (const m of q.matchAll(CODE_BEFORE_KEYWORD)) {
+    const tok = m[1];
+    if (!/^\d+$/.test(tok) && codeLike(tok)) out.add(tok);
+  }
   for (const m of q.matchAll(DOTTED_CODE)) {
     const after = m[0].split(".")[1];
     if (after.length >= 2 && /[A-Z0-9]/.test(after)) out.add(m[0]);
+  }
+  // A bare terse follow-up in a thread — "F4", "oC", "OC" — has no keyword at
+  // all. When the whole message is one or two words and EVERY word is shaped
+  // like a code, the words are the code. "GS10 oC overcurrent" and "hello
+  // there" are not terse in this sense and keep the ordinary path.
+  const words = q.match(/[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*/g) ?? [];
+  if (words.length > 0 && words.length <= 2 && words.every((w) => codeLike(w) || CAPS_MNEMONIC.test(w))) {
+    for (const w of words) out.add(w);
   }
   return [...out];
 }
