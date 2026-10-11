@@ -1,6 +1,7 @@
 """MIRA DeepEval benchmark suite.
 
-Evaluates MIRA bot responses with a Groq LLM judge (openai/gpt-oss-120b)
+Evaluates MIRA bot responses with an LLM judge — OpenAI gpt-5.4-mini when
+OPENAI_API_KEY is set (leads since 2026-10-11), else Groq openai/gpt-oss-120b —
 across 4 categories and 5 metrics. Complements benchmark_suite.py — same 20
 representative cases, scored with semantic quality instead of keyword checks.
 
@@ -10,10 +11,10 @@ Modes:
 
 Usage:
   # Offline (CI / local):
-  GROQ_API_KEY=xxx python3 benchmarks/deepeval_suite.py
+  OPENAI_API_KEY=xxx python3 benchmarks/deepeval_suite.py
 
   # Live (VPS):
-  GROQ_API_KEY=xxx MIRA_API_URL=http://localhost:9099 \\
+  OPENAI_API_KEY=xxx MIRA_API_URL=http://localhost:9099 \\
       python3 benchmarks/deepeval_suite.py --mode live
 
   # Save results:
@@ -74,65 +75,130 @@ _RESULTS_DIR = _HERE / "deepeval_results"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 JUDGE_MODEL = "openai/gpt-oss-120b"
 JUDGE_TIMEOUT = 30
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
 
 # ---------------------------------------------------------------------------
-# Groq judge — DeepEvalBaseLLM subclass
+# Judge cascade — OpenAI first (key-gated), then Groq. DeepEvalBaseLLM subclass.
+#
+# D7b. This judge was hardcoded to Groq, and with Groq billing-restricted every
+# case 400'd and the benchmark was red on unchanged engine code. Same shape as
+# the staging gate's judge cascade (tools/staging_test.py, #4349) — kept
+# self-contained here because that module imports the Supervisor at load.
+# With no OPENAI_API_KEY the list and the Groq body are exactly what they were.
 # ---------------------------------------------------------------------------
 
 
-class GroqJudge(DeepEvalBaseLLM):
-    """Lightweight Groq-backed judge for DeepEval metrics."""
+@dataclass(frozen=True)
+class JudgeProvider:
+    name: str
+    url: str
+    model: str
+    api_key_env: str
+    # "openai_compat" (max_tokens + temperature, the Groq shape) or
+    # "openai_reasoning" (gpt-5 family: max_completion_tokens, no temperature —
+    # it answers HTTP 400 to either compat field, which reads as an outage).
+    request_style: str = "openai_compat"
 
-    def __init__(self, model: str = JUDGE_MODEL) -> None:
-        self._model = model
-        self._groq_key = os.environ.get("GROQ_API_KEY", "")
+
+def judge_providers() -> list[JudgeProvider]:
+    """Providers whose API keys are set, in cascade order (OpenAI first)."""
+    openai_model = (
+        # `or`, not `??`-style getenv defaults: compose maps ${OPENAI_MODEL:-}
+        # to an EMPTY STRING in-container, which must not win over the default.
+        os.getenv("DEEPEVAL_JUDGE_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
+    )
+    candidates = [
+        JudgeProvider("openai", OPENAI_API_URL, openai_model, "OPENAI_API_KEY", "openai_reasoning"),
+        JudgeProvider("groq", GROQ_API_URL, JUDGE_MODEL, "GROQ_API_KEY"),
+    ]
+    return [p for p in candidates if os.environ.get(p.api_key_env, "").strip()]
+
+
+def judge_request_body(provider: JudgeProvider, prompt: str) -> dict[str, object]:
+    """One provider's chat-completions body for the judge prompt (pure)."""
+    body: dict[str, object] = {
+        "model": provider.model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.0,
+        "max_tokens": 1024,
+    }
+    if provider.request_style == "openai_reasoning":
+        body.pop("temperature")
+        body["max_completion_tokens"] = body.pop("max_tokens")
+        # Same calibration as gpt-oss below (#3190): medium effort with
+        # 1024-token headroom keeps schema JSON complete AND judges well.
+        body["reasoning_effort"] = "medium"
+        return body
+    # gpt-oss spends completion tokens on reasoning; medium effort with
+    # 1024-token headroom keeps schema JSON complete AND judges well.
+    if "gpt-oss" in provider.model:
+        body["reasoning_effort"] = "medium"
+    return body
+
+
+class CascadeJudge(DeepEvalBaseLLM):
+    """DeepEval judge over the OpenAI → Groq cascade; falls through on any failure."""
+
+    def __init__(self) -> None:
+        self._providers = judge_providers()
         super().__init__()
 
     def load_model(self) -> str:
-        return self._model
+        return self._providers[0].model if self._providers else JUDGE_MODEL
 
-    def _call_groq(self, prompt: str) -> str:
-        if not self._groq_key:
-            raise RuntimeError("GROQ_API_KEY is not set — cannot run judge")
-        payload = {
-            "model": self._model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.0,
-            "max_tokens": 1024,
-            # gpt-oss spends completion tokens on reasoning; medium effort with
-            # 1024-token headroom keeps schema JSON complete AND judges well.
-            **({"reasoning_effort": "medium"} if "gpt-oss" in self._model else {}),
-        }
-        resp = httpx.post(
-            GROQ_API_URL,
-            headers={"Authorization": f"Bearer {self._groq_key}"},
-            json=payload,
-            timeout=JUDGE_TIMEOUT,
-        )
-        resp.raise_for_status()
+    def _require_providers(self) -> list[JudgeProvider]:
+        if not self._providers:
+            raise RuntimeError("no judge provider configured — set OPENAI_API_KEY or GROQ_API_KEY")
+        return self._providers
+
+    @staticmethod
+    def _headers(provider: JudgeProvider) -> dict[str, str]:
+        return {"Authorization": f"Bearer {os.environ[provider.api_key_env]}"}
+
+    @staticmethod
+    def _content(resp: httpx.Response) -> str:
         return resp.json()["choices"][0]["message"]["content"]
 
-    async def _acall_groq(self, prompt: str) -> str:
-        if not self._groq_key:
-            raise RuntimeError("GROQ_API_KEY is not set — cannot run judge")
-        payload = {
-            "model": self._model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.0,
-            "max_tokens": 1024,
-            # gpt-oss spends completion tokens on reasoning; medium effort with
-            # 1024-token headroom keeps schema JSON complete AND judges well.
-            **({"reasoning_effort": "medium"} if "gpt-oss" in self._model else {}),
-        }
+    def _call(self, prompt: str) -> str:
+        attempts: list[str] = []
+        for provider in self._require_providers():
+            try:
+                resp = httpx.post(
+                    provider.url,
+                    headers=self._headers(provider),
+                    json=judge_request_body(provider, prompt),
+                    timeout=JUDGE_TIMEOUT,
+                )
+            except httpx.HTTPError as exc:
+                attempts.append(f"{provider.name}={type(exc).__name__}")
+                continue
+            if resp.status_code != 200:
+                # Any non-2xx moves on: a judge is a pure read, and a Groq
+                # billing restriction arrives as HTTP 400, not 5xx.
+                attempts.append(f"{provider.name}=HTTP{resp.status_code}")
+                continue
+            return self._content(resp)
+        raise RuntimeError(f"every judge provider failed: {', '.join(attempts)}")
+
+    async def _acall(self, prompt: str) -> str:
+        attempts: list[str] = []
         async with httpx.AsyncClient(timeout=JUDGE_TIMEOUT) as client:
-            resp = await client.post(
-                GROQ_API_URL,
-                headers={"Authorization": f"Bearer {self._groq_key}"},
-                json=payload,
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+            for provider in self._require_providers():
+                try:
+                    resp = await client.post(
+                        provider.url,
+                        headers=self._headers(provider),
+                        json=judge_request_body(provider, prompt),
+                    )
+                except httpx.HTTPError as exc:
+                    attempts.append(f"{provider.name}={type(exc).__name__}")
+                    continue
+                if resp.status_code != 200:
+                    attempts.append(f"{provider.name}=HTTP{resp.status_code}")
+                    continue
+                return self._content(resp)
+        raise RuntimeError(f"every judge provider failed: {', '.join(attempts)}")
 
     @staticmethod
     def _strip_fences(text: str) -> str:
@@ -140,19 +206,26 @@ class GroqJudge(DeepEvalBaseLLM):
         return re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip()).strip()
 
     def generate(self, prompt: str, schema=None) -> Union[str, object]:
-        content = self._call_groq(prompt)
+        content = self._call(prompt)
         if schema is not None:
             return schema.model_validate_json(self._strip_fences(content))
         return content
 
     async def a_generate(self, prompt: str, schema=None) -> Union[str, object]:
-        content = await self._acall_groq(prompt)
+        content = await self._acall(prompt)
         if schema is not None:
             return schema.model_validate_json(self._strip_fences(content))
         return content
 
     def get_model_name(self) -> str:
-        return f"groq/{self._model}"
+        """`<primary provider>/<model>` — the judge the report is attributed to."""
+        if not self._providers:
+            return f"groq/{JUDGE_MODEL}"
+        return f"{self._providers[0].name}/{self._providers[0].model}"
+
+
+# Pre-rename import name; the cascade judge IS the Groq judge when only Groq is keyed.
+GroqJudge = CascadeJudge
 
 
 # ---------------------------------------------------------------------------
@@ -706,7 +779,7 @@ class DeepEvalRunner:
             raise RuntimeError("deepeval is not installed. Run: pip install deepeval>=1.0.0")
         self.mode = mode
         self.api_url = api_url
-        self.judge = GroqJudge()
+        self.judge = CascadeJudge()
 
     async def run(self) -> SuiteResult:
         result = SuiteResult(
@@ -910,8 +983,10 @@ def main() -> int:
         print("ERROR: deepeval is not installed. Run: pip install deepeval>=1.0.0")
         return 1
 
-    if not os.environ.get("GROQ_API_KEY"):
-        print("ERROR: GROQ_API_KEY is not set — required for judge LLM")
+    if not judge_providers():
+        print(
+            "ERROR: no judge provider configured — set OPENAI_API_KEY (preferred) or GROQ_API_KEY"
+        )
         return 1
 
     runner = DeepEvalRunner(mode=args.mode, api_url=args.api_url)
