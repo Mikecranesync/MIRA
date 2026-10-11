@@ -3087,7 +3087,14 @@ async function handleChatTurn(
     lifecycleOutcome = "cancelled";
     clientAbort.abort();
   };
-  req.signal?.addEventListener("abort", onClientGone, { once: true });
+  // #4310: the technician can stop during the pre-stream phase (claim,
+  // validate, retrieval, LOOK — everything above this line). A signal that
+  // aborted before this point never dispatches "abort" to a listener added
+  // afterwards, so the stop was silently lost: the cascade still opened a
+  // provider and the turn persisted as a full `answered` row. Fold an
+  // already-aborted request into the same path a live abort takes.
+  if (req.signal?.aborted) onClientGone();
+  else req.signal?.addEventListener("abort", onClientGone, { once: true });
   const abortedRead = new Promise<never>((_, reject) =>
     clientAbort.signal.addEventListener(
       "abort",

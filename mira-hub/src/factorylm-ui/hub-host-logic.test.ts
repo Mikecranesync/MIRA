@@ -11,9 +11,12 @@ import {
   NO_PROJECT_ERROR,
   chatBodyFor,
   detailQueryFor,
+  draftAfterSendSucceeded,
   enabledDocIds,
   errorMessageFor,
   fixtureFor,
+  NETWORK_FAILURE_MESSAGE,
+  sendFailureMessage,
   groundingLineFor,
   historyRows,
   initialSelection,
@@ -28,6 +31,42 @@ import {
   stoppedStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
+
+describe("sendFailureMessage — #4311 the browser's network wording never reaches the banner", () => {
+  it.each(["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."])(
+    "maps the engine text %j to plain language",
+    (text) => {
+      expect(sendFailureMessage(new TypeError(text))).toBe(NETWORK_FAILURE_MESSAGE);
+    },
+  );
+  it("still maps an engine phrase that a runtime decorated with a suffix (cheap-lane finding on #4348)", () => {
+    expect(sendFailureMessage(new TypeError("Failed to fetch (while sending)"))).toBe(NETWORK_FAILURE_MESSAGE);
+    expect(sendFailureMessage(new TypeError("Load failed: connection reset"))).toBe(NETWORK_FAILURE_MESSAGE);
+  });
+  it("does not map a plain message that merely mentions fetching later in the sentence", () => {
+    expect(sendFailureMessage(new Error("MIRA couldn't fetch that manual just now."))).toBe("MIRA couldn't fetch that manual just now.");
+  });
+  it("passes a route message through unchanged", () => {
+    const plain = errorMessageFor("message_too_long", 400);
+    expect(sendFailureMessage(new Error(plain))).toBe(plain);
+  });
+  it("never yields an empty banner", () => {
+    expect(sendFailureMessage(new Error(""))).toMatch(/couldn't answer/);
+    expect(sendFailureMessage(undefined)).toMatch(/couldn't answer/);
+  });
+});
+
+describe("draftAfterSendSucceeded — #4311 the composer lets go of a retried question", () => {
+  it("clears the draft when it still holds the question that was retried", () => {
+    expect(draftAfterSendSucceeded("why F004 on PF525", "why F004 on PF525")).toBe("");
+  });
+  it("leaves a different draft alone (the technician typed something new)", () => {
+    expect(draftAfterSendSucceeded("and what about F005", "why F004 on PF525")).toBeNull();
+  });
+  it("is a no-op when the composer is already empty (a normal send)", () => {
+    expect(draftAfterSendSucceeded("", "why F004 on PF525")).toBeNull();
+  });
+});
 
 describe("stoppedStreamResult", () => {
   it("keeps only partial text and an authoritative safety notice from an abort", () => {
