@@ -39,6 +39,13 @@ describe("sendFailureMessage — #4311 the browser's network wording never reach
       expect(sendFailureMessage(new TypeError(text))).toBe(NETWORK_FAILURE_MESSAGE);
     },
   );
+  it("still maps an engine phrase that a runtime decorated with a suffix (cheap-lane finding on #4348)", () => {
+    expect(sendFailureMessage(new TypeError("Failed to fetch (while sending)"))).toBe(NETWORK_FAILURE_MESSAGE);
+    expect(sendFailureMessage(new TypeError("Load failed: connection reset"))).toBe(NETWORK_FAILURE_MESSAGE);
+  });
+  it("does not map a plain message that merely mentions fetching later in the sentence", () => {
+    expect(sendFailureMessage(new Error("MIRA couldn't fetch that manual just now."))).toBe("MIRA couldn't fetch that manual just now.");
+  });
   it("passes a route message through unchanged", () => {
     const plain = errorMessageFor("message_too_long", 400);
     expect(sendFailureMessage(new Error(plain))).toBe(plain);

@@ -330,8 +330,10 @@ export function errorMessageFor(code: string, status: number): string {
  * "NetworkError when attempting to fetch resource." in Gecko). None of that is
  * written for a technician on a phone. Everything else that reaches the send
  * error is already plain language (`errorMessageFor`), so it passes through.
+ * Anchored at the start only: a runtime that decorates the phrase with a
+ * suffix is still reporting a network failure.
  */
-const NETWORK_FAILURE_RE = /^(failed to fetch|load failed|networkerror when attempting to fetch resource\.?|network request failed)$/i;
+const NETWORK_FAILURE_RE = /^(failed to fetch|load failed|networkerror when attempting to fetch resource|network request failed)\b/i;
 export const NETWORK_FAILURE_MESSAGE = "The request didn't go through. Check the connection, then try again.";
 
 export function sendFailureMessage(err: unknown): string {
