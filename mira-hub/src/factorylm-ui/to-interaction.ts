@@ -37,6 +37,7 @@ import type {
 import { isMachineEvidenceEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
+import { ALL_PROVIDERS_FAILED_MESSAGE, NO_PROVIDER_CONFIGURED_MESSAGE } from "@/capabilities/provider-health";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { BASIS_LABEL, splitEvidence } from "@/components/equipment/notebook-chat-utils";
 
@@ -350,7 +351,17 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
       error: { code: "provider_failure", message: "The answer ended before it completed.", retryable: true },
     });
   } else {
-    parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
+    // Only the server's technician copy for provider exhaustion (#4356) is shown
+    // verbatim; other status messages ("see server logs") are operator text.
+    const serverMessage = result.statusMessage?.trim();
+    if (serverMessage === ALL_PROVIDERS_FAILED_MESSAGE || serverMessage === NO_PROVIDER_CONFIGURED_MESSAGE) {
+      parts.push({
+        type: "error",
+        error: { code: "provider_failure", message: serverMessage, retryable: serverMessage === ALL_PROVIDERS_FAILED_MESSAGE },
+      });
+    } else {
+      parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
+    }
   }
   return parts;
 }
