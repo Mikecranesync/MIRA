@@ -120,6 +120,21 @@ function extractCodeTokens(q: string): string[] {
   return [...out];
 }
 
+/** #4224 follow-up (Codex r1 on #4360) — in a real thread the follow-up reaches
+ *  retrieval conversation-augmented: buildRetrievalQuery turns "oC" into
+ *  "oC F0004 fault", which is no longer a bare terse message (so that rule is
+ *  silent) and whose only keyword-adjacent code is the PREVIOUS turn's F0004.
+ *  The current message's own codes are read from the raw message and unioned
+ *  in, so both the whole-token lane and the rerank boost see them. Pure; a
+ *  missing or identical rawQuery is a no-op, and nothing already present is
+ *  duplicated. */
+export function withRawCodeTokens(expanded: ExpandedQuery, rawQuery?: string | null): ExpandedQuery {
+  const raw = (rawQuery ?? "").trim();
+  if (!raw) return expanded;
+  const extra = extractCodeTokens(raw).filter((t) => !expanded.codeTokens.includes(t));
+  return extra.length === 0 ? expanded : { ...expanded, codeTokens: [...expanded.codeTokens, ...extra] };
+}
+
 /** One source for both match sites: the SQL exact lane (`content ~* sql`) and
  *  the rerank boost (`re.test`). Whole token, case-insensitive, any whitespace
  *  between words, regex metacharacters (the dot in E.OV1) taken literally. */

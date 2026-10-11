@@ -4,6 +4,7 @@ import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } f
 import {
   codeTokenMatcher,
   expandIndustrialQuery,
+  withRawCodeTokens,
   rerankChunks,
   classifyBroad,
   classifyIntent,
@@ -410,6 +411,11 @@ export async function retrieveManualChunks(
     equipmentType?: string | null;
     topK?: number;
     allowTenantFallback?: boolean;
+    /** The technician's raw message when `query` was conversation-augmented
+     *  (buildRetrievalQuery). Its own fault-code tokens are unioned into the
+     *  whole-token lane so a terse follow-up ("oC" after an F0004 turn) binds
+     *  ITS code, not only the thread's (Codex r1 on #4360). */
+    rawQuery?: string;
   } = {},
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -473,14 +479,26 @@ export async function retrieveManualChunks(
   // are unchanged; other scopes keep their single-name query.
   const scopeQuery = async (text: string, s: { mfr: string | null; model: string | null }) => {
     const names = identityBound && s.model && s.mfr ? manufacturerSearchNames(s.mfr) : [];
-    if (names.length === 0) return runBm25Query(client, tenantId, text, topK, s.mfr, s.model);
+    if (names.length === 0)
+      return runBm25Query(client, tenantId, text, topK, s.mfr, s.model, false, null, false, opts.rawQuery ?? null);
     // Pass 25 F1: every identity-bound hit — one needle or several — must come
     // from the bound vendor group ("%sew%" also matches "Sewon"). Fetch a wider
     // window so wrong-maker rows cannot fill the LIMIT ahead of valid ones.
     const merged: ManualChunk[] = [];
     for (const name of names) {
       merged.push(
-        ...(await runBm25Query(client, tenantId, text, topK * FAMILY_FALLBACK_WINDOW, name, s.model, false, null, true)),
+        ...(await runBm25Query(
+          client,
+          tenantId,
+          text,
+          topK * FAMILY_FALLBACK_WINDOW,
+          name,
+          s.model,
+          false,
+          null,
+          true,
+          opts.rawQuery ?? null,
+        )),
       );
     }
     // Pass 24 F2: a substring needle only narrows the search; admission needs
@@ -523,7 +541,9 @@ export async function retrieveManualChunks(
     const names = manufacturerSearchNames(mfr);
     const vendorHits: ManualChunk[] = [];
     for (const name of names.length ? names : [mfr]) {
-      vendorHits.push(...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms, true)));
+      vendorHits.push(
+        ...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms, true, opts.rawQuery ?? null)),
+      );
     }
     return dedupeChunks(vendorHits.sort((a, b) => b.rank - a.rank))
       .filter((c) => manufacturerInGroup(c.manufacturer, mfr))
@@ -692,6 +712,9 @@ async function runBm25Query(
    *  sees only the bound vendor group — a post-filter cannot restore an OR
    *  pass a wrong maker's strong AND hit suppressed. */
   makerWholeWord = false,
+  /** The technician's raw message when `query` was conversation-augmented —
+   *  its own fault codes join the whole-token lane (Codex r1 on #4360). */
+  rawQuery: string | null = null,
 ): Promise<ManualChunk[]> {
   const params: unknown[] = [tenantId, boundBm25Query(query)];
   const { mfrClause, modelClause, familyClause } = buildScopeClauses(params, {
@@ -766,7 +789,9 @@ async function runBm25Query(
   // both passes — this lane covers ONLY the whole-token class #1875 cannot
   // reach (two-letter/dotted/bare-digit/mixed-case: ovA, E.OV1, Alarm 7, 3210).
   const ownedByFaultCodePass = new Set(extractFaultCodes(query).map((c) => c.toUpperCase()));
-  const codeTokens = expandIndustrialQuery(query).codeTokens.filter(
+  // The raw message's own codes ride along when the query was augmented with the
+  // thread's tokens — otherwise "oC F0004 fault" yields only the previous F0004.
+  const codeTokens = withRawCodeTokens(expandIndustrialQuery(query), rawQuery).codeTokens.filter(
     (t) => !ownedByFaultCodePass.has(t.toUpperCase()),
   );
   if (codeTokens.length > 0) {
@@ -996,7 +1021,10 @@ export async function retrieveNodeChunks(
   // of ts_rank. Unstemmed by construction (ILIKE on raw content) — closes the
   // stemming/exact-token loss the bakeoff flagged, with no schema migration
   // (doc-scoped candidate set is small, so the scan is cheap).
-  const expanded = expandIndustrialQuery(q);
+  // The raw message's own fault codes join the augmented query's, so the exact
+  // lane AND the rerank boost below bind the follow-up's code ("oC"), not only
+  // the thread's F0004 that augmentation carried in (Codex r1 on #4360).
+  const expanded = withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery);
   // `match` picks the predicate: ILIKE substring for the legacy exact tokens,
   // or a whole-token regex for fault codes (codeTokenMatcher) — "%ova%" would
   // also hit "removal", and "%alarm 7%" every "ALARM 70".

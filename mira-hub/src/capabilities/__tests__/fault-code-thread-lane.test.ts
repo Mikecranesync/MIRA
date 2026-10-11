@@ -19,10 +19,19 @@
  *
  * Run: npx vitest run src/capabilities/__tests__/fault-code-thread-lane.test.ts
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { PoolClient } from "pg";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { extractFaultCodes, retrieveManualChunks } from "@/lib/manual-rag";
-import { codeTokenMatcher, expandIndustrialQuery } from "@/lib/notebook-query";
+import { extractFaultCodes, retrieveManualChunks, retrieveNodeChunks } from "@/lib/manual-rag";
+import {
+  buildRetrievalQuery,
+  codeTokenMatcher,
+  expandIndustrialQuery,
+  rerankChunks,
+  withRawCodeTokens,
+  type ChatHistoryTurn,
+} from "@/lib/notebook-query";
 
 afterEach(() => {
   delete process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL;
@@ -113,5 +122,96 @@ describe("retrieveManualChunks — one thread, six phrasings, each reaches a lan
     await retrieveManualChunks(client, "tenant-1", "GS10 oC overcurrent", { topK: 6 });
     expect(wholeTokenCalls(calls)).toHaveLength(0);
     expect(calls.every((c) => !["oC", "OC"].includes(String(c.params[1])))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Codex r1 on #4360 — in a REAL thread the follow-up is conversation-augmented.
+// buildRetrievalQuery("oC", history) is "oC F0004 fault": three words (the bare
+// terse rule is silent) whose only keyword-adjacent code is the previous turn's
+// F0004. Without the raw message the lane bound F0004 and the current oC stayed
+// on BM25 — the exact failure this PR claims to fix.
+// ---------------------------------------------------------------------------
+
+const THREAD: ChatHistoryTurn[] = [
+  { role: "user", content: "PowerFlex 525 fault F0004 on startup" },
+  { role: "assistant", content: "F0004 on the PowerFlex 525 is an undervoltage fault; check the DC bus." },
+];
+
+const DOC = "11111111-1111-4111-8111-111111111111";
+
+describe("a real thread: the terse follow-up arrives conversation-augmented", () => {
+  it.each(["F4", "oC", "OC"])("%s: augmentation alone drops it; the raw message restores it (pure)", (msg) => {
+    const augmented = buildRetrievalQuery(msg, THREAD);
+    // Preconditions — the defect's exact input shape, not assumed.
+    expect(augmented).not.toBe(msg);
+    expect(augmented).toMatch(/F0004/);
+    expect(expandIndustrialQuery(augmented).codeTokens).not.toContain(msg);
+    const merged = withRawCodeTokens(expandIndustrialQuery(augmented), msg);
+    expect(merged.codeTokens).toContain(msg);
+    // Idempotent and non-duplicating: same raw twice, or raw equal to the query.
+    expect(withRawCodeTokens(merged, msg).codeTokens).toEqual(merged.codeTokens);
+    expect(withRawCodeTokens(expandIndustrialQuery(msg), msg).codeTokens).toEqual([msg]);
+    expect(withRawCodeTokens(merged, undefined)).toBe(merged);
+  });
+
+  it.each(["F4", "oC", "OC"])("%s → OEM lane (retrieveManualChunks) binds the current code's pattern", async (msg) => {
+    const augmented = buildRetrievalQuery(msg, THREAD);
+    const { client, calls } = makeClient();
+    await retrieveManualChunks(client, "tenant-1", augmented, { topK: 6, rawQuery: msg });
+    expect(boundPatterns(calls)).toContain(codeTokenMatcher(msg).sql);
+    // The thread's F0004 still belongs to the #1875 F-code pass, never this lane.
+    expect(boundPatterns(calls)).not.toContain(codeTokenMatcher("F0004").sql);
+    expect(fCodeCalls(calls, "F0004").length).toBeGreaterThan(0);
+  });
+
+  it.each(["F4", "oC", "OC"])("%s → attached-document lane (retrieveNodeChunks) binds the current code's pattern", async (msg) => {
+    const augmented = buildRetrievalQuery(msg, THREAD);
+    const { client, calls } = makeClient();
+    await retrieveNodeChunks(client, "tenant-1", augmented, {
+      nodeId: "node-1",
+      unsPath: null,
+      topK: 6,
+      docIds: [DOC],
+      rawQuery: msg,
+      validatedDocScope: true,
+    });
+    expect(boundPatterns(calls)).toContain(codeTokenMatcher(msg).sql);
+  });
+
+  it("the rerank boost sees the current code too: the chunk naming oC outranks a higher-BM25 chunk that does not", () => {
+    const augmented = buildRetrievalQuery("oC", THREAD);
+    // Neither chunk names the thread's F0004, so the ONLY code boost in play is the
+    // current message's oC; BM25 rank alone puts the generic chunk first.
+    const chunks = [
+      { content: "Output current limit: set P033 [Motor OL Current] to the motor nameplate FLA.", rank: 1.0, sourcePage: 1, docId: DOC },
+      { content: "oC — overcurrent. Output current exceeded 200% of drive rating.", rank: 0.2, sourcePage: 2, docId: DOC },
+    ];
+    const before = rerankChunks(expandIndustrialQuery(augmented), chunks);
+    expect(before[0].sourcePage).toBe(1); // without the raw message the oC chunk gets no boost
+    const after = rerankChunks(withRawCodeTokens(expandIndustrialQuery(augmented), "oC"), chunks);
+    expect(after[0].sourcePage).toBe(2);
+  });
+
+  it("control: without the raw message the augmented query binds only the thread's code (the defect, pinned)", async () => {
+    const augmented = buildRetrievalQuery("oC", THREAD);
+    const { client, calls } = makeClient();
+    await retrieveManualChunks(client, "tenant-1", augmented, { topK: 6 });
+    expect(boundPatterns(calls)).not.toContain(codeTokenMatcher("oC").sql);
+    const node = makeClient();
+    await retrieveNodeChunks(node.client, "tenant-1", augmented, { nodeId: "node-1", unsPath: null, topK: 6, docIds: [DOC] });
+    expect(boundPatterns(node.calls)).not.toContain(codeTokenMatcher("oC").sql);
+    expect(boundPatterns(node.calls)).toContain(codeTokenMatcher("F0004").sql);
+  });
+
+  it("source contract: the notebook route hands the raw message to BOTH retrieval strategies", () => {
+    const route = readFileSync(
+      resolve(__dirname, "../../app/api/equipment-notebooks/[id]/chat/route.ts"),
+      "utf8",
+    );
+    const oem = route.slice(route.indexOf("retrieveManualChunks(client, ctx.tenantId, retrievalQuery"));
+    expect(oem.slice(0, oem.indexOf("});"))).toMatch(/rawQuery: message/);
+    const attached = route.slice(route.indexOf("retrieveNodeChunks(client, ctx.tenantId, retrievalQuery"));
+    expect(attached.slice(0, attached.indexOf("})"))).toMatch(/rawQuery: message/);
   });
 });
