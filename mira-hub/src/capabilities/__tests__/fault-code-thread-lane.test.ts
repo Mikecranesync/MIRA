@@ -99,6 +99,19 @@ describe("extractCodeTokens — the thread's six phrasings", () => {
     expect(codes("OK OC")).toEqual([]); // not every word is a code, so the terse rule stays silent (same as "GS10 oC")
   });
 
+  // Codex r5 on #4360 — a product family name before the keyword ("PowerFlex
+  // fault F0004") is camel case, which the mixed-case shape accepted as a code.
+  // Real mixed-case mnemonics are short (oC, ovA, ObF, bUS); a camel-case WORD
+  // is a name. Letters-only mixed case qualifies at four characters or fewer.
+  it("controls: a camel-case product name before the keyword is not a code; short mixed-case mnemonics still are", () => {
+    expect(codes("PowerFlex fault F0004")).toEqual(["F0004"]);
+    expect(codes("MicroLogix fault")).toEqual([]);
+    expect(codes("PanelView error")).toEqual([]);
+    expect(codes("PowerFlex")).toEqual([]); // a bare terse product name is not a code either
+    for (const code of ["ovA", "ObF", "oC", "bUS", "ocA"]) expect(codes(`${code} fault`)).toEqual([code]);
+    expect(withRawCodeTokens(expandIndustrialQuery("PowerFlex fault F0004"), "PowerFlex fault F0004").currentCodeTokens).toEqual(["F0004"]);
+  });
+
   it("F0004 is a code token too, but the F-code pass owns it (checked at the lane below)", () => {
     expect(extractFaultCodes("F0004")).toEqual(["F0004"]);
     expect(extractFaultCodes("fault F0004")).toEqual(["F0004"]);
@@ -353,6 +366,58 @@ describe("a real thread: the terse follow-up arrives conversation-augmented", ()
       allowTenantFallback: false,
     });
     expect(out.map((c) => c.sourcePage)).not.toContain(100);
+  });
+
+  // Codex r5 on #4360 — "PowerFlex fault F0004" in a PowerFlex 525 notebook:
+  // the family name classified as a code bound a PowerFlex whole-token pattern,
+  // six generic installation passages entered the exact lane with current-code
+  // priority, and the one F0004 passage was cut from the top six.
+  function populatedFamilyNameClient() {
+    const row = (page: number, content: string, rank: number) => ({
+      content,
+      manufacturer: "Allen-Bradley",
+      model_number: "PowerFlex 525",
+      source_url: "pf525.pdf",
+      source_page: page,
+      chunk_index: page,
+      title: "PowerFlex 525 User Manual",
+      verified: true,
+      rank,
+    });
+    const generic = [1, 2, 3, 4, 5, 6].map((p) =>
+      row(p, `PowerFlex 525 installation note ${p}: mount the PowerFlex drive vertically with clearance above and below.`, 0.5),
+    );
+    const fault = row(100, "F0004 UnderVoltage: the DC bus voltage fell below the limit; check the incoming line.", 0.3);
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.includes("content ~* ANY(")) {
+        const patterns =
+          params.find(
+            (p): p is string[] => Array.isArray(p) && p.every((x) => typeof x === "string" && x.startsWith("(^|")),
+          ) ?? [];
+        if (patterns.includes(codeTokenMatcher("PowerFlex").sql)) return { rows: generic };
+        return { rows: patterns.includes(codeTokenMatcher("F0004").sql) ? [fault] : [] };
+      }
+      if (sql.includes("content_tsv @@")) return { rows: [fault] };
+      return { rows: [] };
+    });
+    return { client: { query } as unknown as PoolClient, calls };
+  }
+
+  it("PowerFlex fault F0004 (OEM, identity-bound PowerFlex 525): the family name binds no pattern and the F0004 passage survives the top six", async () => {
+    const msg = "PowerFlex fault F0004";
+    const { client, calls } = populatedFamilyNameClient();
+    const out = await retrieveManualChunks(client, "tenant-1", msg, {
+      manufacturer: "Allen-Bradley",
+      model: "PowerFlex 525",
+      topK: 6,
+      allowTenantFallback: false,
+      rawQuery: msg,
+    });
+    expect(boundPatterns(calls)).not.toContain(codeTokenMatcher("PowerFlex").sql);
+    expect(out.map((c) => c.sourcePage)).toContain(100);
+    expect(out.length).toBeLessThanOrEqual(6);
   });
 
   it("control: without the raw message the six F0004 chunks exhaust the slots (the defect, pinned)", async () => {

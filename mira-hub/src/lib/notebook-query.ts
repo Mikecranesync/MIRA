@@ -85,7 +85,12 @@ function codeLike(tok: string): boolean {
   if (/\d/.test(tok) && /[A-Za-z]/.test(tok)) return true;
   // Mixed case means a lowercase letter BEFORE an uppercase one (ovA, ObF, oC).
   // Title case alone ("History", "Reset") is ordinary capitalization, not a code.
-  return /[a-z][A-Za-z]*[A-Z]/.test(tok);
+  // Letters-only mixed case must also be SHORT (Codex r5 on #4360): a drive
+  // mnemonic is at most four letters (oC, ovA, ObF, bUS, ocA), while a camel-case
+  // WORD — "PowerFlex", "MicroLogix", "PanelView" — is a product name. Without the
+  // cap, "PowerFlex fault F0004" made the family name a code, bound its whole-token
+  // pattern, and six generic PowerFlex passages displaced the F0004 evidence.
+  return tok.length <= 4 && /[a-z][A-Za-z]*[A-Z]/.test(tok);
 }
 
 // #4224 follow-up — the keyword can come AFTER the code ("overcurrent oC fault",
