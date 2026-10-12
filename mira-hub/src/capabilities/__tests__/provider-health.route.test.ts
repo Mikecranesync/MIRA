@@ -339,3 +339,42 @@ describe("D6 — provider quarantine on 401/402/403", () => {
     expect(calls).toEqual({ openai: 2, groq: 1 });
   });
 });
+
+// #4374 Codex R1 F1: the durable turn carries the exhaustion REASON, so a
+// reload renders the same technician copy the live frame did.
+describe("#4374 — the persisted turn carries the provider-failure reason", () => {
+  const markers = (turn: Record<string, unknown>) =>
+    ((turn.evidence as unknown[]) ?? []).filter((e) => (e as { kind?: unknown }).kind === "provider_failure");
+
+  it("every provider failing persists { kind: provider_failure, reason: all_providers_failed } and nothing operator-facing", async () => {
+    stubFetch({ openai: [{ status: 402 }], groq: [{ status: 401 }] });
+    const { text, turn } = await run();
+    expect(turn).toMatchObject({ answerStatus: "error", answerText: null });
+    expect(markers(turn)).toEqual([{ kind: "provider_failure", reason: "all_providers_failed" }]);
+    // Live and durable agree on the reason.
+    expect(statusFrame(text)).toMatchObject({ reason: "all_providers_failed" });
+  });
+
+  it("no provider configured persists reason no_provider_configured", async () => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GROQ_API_KEY;
+    stubFetch({});
+    const { turn } = await run();
+    expect(markers(turn)).toEqual([{ kind: "provider_failure", reason: "no_provider_configured" }]);
+  });
+
+  it("control: a served turn persists no provider-failure marker", async () => {
+    stubFetch({ openai: ["serve"] });
+    const { turn } = await run();
+    expect(turn).toMatchObject({ answerStatus: "answered" });
+    expect(markers(turn)).toEqual([]);
+  });
+
+  it("control: with the canonical seam OFF nothing new is persisted (legacy path unchanged)", async () => {
+    process.env.MIRA_CANONICAL_SEAM = "0";
+    stubFetch({ openai: [{ status: 402 }], groq: [{ status: 401 }] });
+    const { turn } = await run();
+    expect(turn).toMatchObject({ answerStatus: "error" });
+    expect(markers(turn)).toEqual([]);
+  });
+});

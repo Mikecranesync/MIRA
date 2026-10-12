@@ -216,6 +216,7 @@ import type {
   NotebookChatFrame,
   SafetyNoticeEntry,
   SafetyStopEntry,
+  ProviderFailureEntry,
   VisualObservationEntry,
   IdentityDisputeEntry,
   EvidenceBasis,
@@ -4095,6 +4096,14 @@ async function handleChatTurn(
       // Complete the durable turn before touching the response controller.
       // Cancellation during the semantic judge closes that controller; a
       // later enqueue may throw, but terminal truth must already be replayable.
+      // #4374: ONE exhaustion decision feeds both the durable marker below and
+      // the live status frame, so a reload can never say something different
+      // from what the technician saw live. Seam-only, like the frame's reason.
+      const exhaustion =
+        seam && answerStatus === "error" && !internalError ? providerExhaustionStatus(providerFailures) : null;
+      const providerFailureEntries: ProviderFailureEntry[] = exhaustion
+        ? [{ kind: "provider_failure", reason: exhaustion.reason }]
+        : [];
       const finalPersistSpan = startStage("turn.persist");
       let finalTurnRowId: string | null = null;
       try {
@@ -4120,7 +4129,7 @@ async function handleChatTurn(
               : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : [])],
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
@@ -4214,7 +4223,7 @@ async function handleChatTurn(
                   // friendly copy + `reason` + the per-provider attempt record.
                   // Seam-flagged like the usage frame below; the legacy path's
                   // frame sequence stays byte-for-byte unchanged.
-                  { kind: "status", status: "error", ...providerExhaustionStatus(providerFailures) }
+                  { kind: "status", status: "error", ...(exhaustion ?? providerExhaustionStatus(providerFailures)) }
                 : { kind: "status", status: "error", message: "No answer provider available." };
       if (seam && statusFrame.status === "error" && !internalError) {
         logProvidersExhausted({ tenantId: ctx.tenantId, notebookId }, providerFailures);

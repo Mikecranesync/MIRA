@@ -34,7 +34,7 @@ import type {
   SafetyNoticeEntry,
   VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
-import { isMachineEvidenceEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
+import { isMachineEvidenceEntry, isProviderFailureEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { ALL_PROVIDERS_FAILED_MESSAGE, NO_PROVIDER_CONFIGURED_MESSAGE } from "@/capabilities/provider-health";
@@ -42,6 +42,19 @@ import type { PersistedTurn, StreamResult } from "@/components/equipment/noteboo
 import { BASIS_LABEL, splitEvidence } from "@/components/equipment/notebook-chat-utils";
 
 type StatusAwareStreamResult = StreamResult & { statusMessage?: string | null };
+
+/** The terminal frame said every configured provider failed — the one provider
+ *  error a re-send can fix (#4374). Shared by the live mapper and the host's
+ *  retry decision so the two cannot disagree. No-provider-configured is not
+ *  retryable: nothing changes until an admin adds a key. */
+export function isRetryableProviderExhaustion(result: Pick<StatusAwareStreamResult, "status" | "statusMessage">): boolean {
+  return result.status === "error" && result.statusMessage?.trim() === ALL_PROVIDERS_FAILED_MESSAGE;
+}
+
+const PROVIDER_FAILURE_COPY = {
+  all_providers_failed: ALL_PROVIDERS_FAILED_MESSAGE,
+  no_provider_configured: NO_PROVIDER_CONFIGURED_MESSAGE,
+} as const;
 
 const GENERIC_ABSTENTION_COPY = "I couldn't find that in the selected sources.";
 const PHOTO_ABSTENTION_COPY =
@@ -357,7 +370,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
     if (serverMessage === ALL_PROVIDERS_FAILED_MESSAGE || serverMessage === NO_PROVIDER_CONFIGURED_MESSAGE) {
       parts.push({
         type: "error",
-        error: { code: "provider_failure", message: serverMessage, retryable: serverMessage === ALL_PROVIDERS_FAILED_MESSAGE },
+        error: { code: "provider_failure", message: serverMessage, retryable: isRetryableProviderExhaustion(result) },
       });
     } else {
       parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
@@ -465,7 +478,13 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
   } else if (stopped) {
     parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } });
   } else {
-    parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: false } });
+    // #4374: the persisted provider-exhaustion reason shows the same copy the
+    // live turn did. Never retryable here — Retry re-sends the host's ONE held
+    // request, so only `withRetryableLatestFailure` may arm the newest turn.
+    // `PersistedTurn.evidence` (guarded legacy type) predates this marker; read it as unknown.
+    const failure = (row.evidence as readonly unknown[]).find(isProviderFailureEntry);
+    const message = failure ? PROVIDER_FAILURE_COPY[failure.reason] : "The answer could not be completed.";
+    parts.push({ type: "error", error: { code: "provider_failure", message, retryable: false } });
   }
 
   // Same precedence as `lifecycleFromStream`: a persisted TERMINAL refusal stays a
@@ -521,6 +540,25 @@ export function withManualSearchStatus(
     ...(status.message ? { message: status.message } : {}),
   };
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
+}
+
+/** Arm Retry on the newest assistant turn only, and only when it is a retryable
+ *  provider exhaustion (#4374 R1 F2). The host calls this while it still holds
+ *  that turn's request; older failed turns stay inert so one held request can
+ *  never be re-sent from a different question. */
+export function withRetryableLatestFailure(turns: readonly InteractionTurn[]): InteractionTurn[] {
+  const last = turns.length - 1;
+  const turn = turns[last];
+  if (!turn || turn.role !== "assistant") return [...turns];
+  let armed = false;
+  const parts = turn.parts.map((p) => {
+    if (p.type === "error" && p.error.code === "provider_failure" && p.error.message === ALL_PROVIDERS_FAILED_MESSAGE && !p.error.retryable) {
+      armed = true;
+      return { ...p, error: { ...p.error, retryable: true } };
+    }
+    return p;
+  });
+  return armed ? [...turns.slice(0, last), { ...turn, parts }] : [...turns];
 }
 
 export function threadFromPersisted(

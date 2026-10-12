@@ -343,6 +343,21 @@ export function isSafetyNoticeEntry(e: unknown): e is SafetyNoticeEntry {
   );
 }
 
+/** Durable reason a turn ended with no provider able to answer (#4374). The
+ * live `status` frame carries the same `reason`; persisting it lets a reload
+ * show the technician copy instead of the generic failure. Like the safety
+ * markers it rides `evidence[]`, has no `docId`, and older clients skip it. */
+export type ProviderFailureEntry = {
+  kind: "provider_failure";
+  reason: "all_providers_failed" | "no_provider_configured";
+};
+
+export function isProviderFailureEntry(e: unknown): e is ProviderFailureEntry {
+  if (typeof e !== "object" || e === null) return false;
+  const { kind, reason } = e as { kind?: unknown; reason?: unknown };
+  return kind === "provider_failure" && (reason === "all_providers_failed" || reason === "no_provider_configured");
+}
+
 export function isSafetyStopEntry(e: unknown): e is SafetyStopEntry {
   return (
     typeof e === "object" &&
