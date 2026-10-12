@@ -767,6 +767,36 @@ describe("UnifiedRoot", () => {
     expect(claimAttachments()).toEqual([]);
   });
 
+  // Codex #4350 round 9, F12: only the shell forgot the dismissed error; the
+  // root still owned it, so leaving HOME (About) and coming back remounted
+  // the shell, re-showed the banner and the question, and re-armed the photo.
+  // The shell now tells the HOME owner about Dismiss, and the owner forgets
+  // the error, the question and the kept photo.
+  it("row 8 / F12: after Dismiss, leaving HOME and coming back shows no banner, and the identical question carries no photo", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("old.jpg");
+    askFromHome("what is this");
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByText("About & updates")[0]);
+    await waitFor(() => screen.getByTestId("about"));
+    fireEvent.click(screen.getByText("back"));
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    expect(screen.queryByRole("alert", { name: "Send error" })).toBeNull();
+    expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("");
+    askFromHome("what is this");
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("what is this");
+    expect(claimAttachments()).toEqual([]);
+  });
+
   it("row 8 / F1: the photo is discarded when the failed question is replaced by another", async () => {
     const { listNotebooks } = await import("../src/api/resources");
     vi.mocked(listNotebooks).mockResolvedValueOnce([]);

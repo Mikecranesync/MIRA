@@ -334,6 +334,10 @@ export interface UnifiedChatHandlers
   readonly onAttachCamera?: () => void;
   readonly onAttachFile?: () => void;
   readonly onScanMachine?: () => Promise<string | null> | string | null;
+  /** The technician dismissed the shell's send-error banner. The host that
+   *  owns the failed send forgets it (its error, restored question and any
+   *  kept evidence), so nothing can re-arm from a remount (Codex #4350 r9 F12). */
+  readonly onSendErrorDismissed?: () => void;
   readonly onNewChat?: () => void;
   readonly onCreateProject?: () => void;
 }
@@ -426,6 +430,29 @@ function UnifiedChatForNotebook({
   // a failed photo without the shell telling us (Codex #4350 r7 F9).
   const sendErrorRef = useRef(state.sendError);
   sendErrorRef.current = state.sendError;
+  // Dismiss detection (r9 F12): the shell's SendError.dismiss clears only
+  // shell state. Every clear THIS component makes is flagged first, and so is
+  // a send made while the banner was up (the shell's Try again clears, then
+  // sends, in one handler). Any other non-null → null transition is Dismiss.
+  const ownClearRef = useRef(false);
+  const flagOwnClear = useCallback(() => {
+    if (sendErrorRef.current !== null) ownClearRef.current = true;
+  }, []);
+  const prevSendErrorRef = useRef(state.sendError);
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+  useEffect(() => {
+    const prev = prevSendErrorRef.current;
+    prevSendErrorRef.current = state.sendError;
+    if (prev === null || state.sendError !== null) return;
+    if (ownClearRef.current) {
+      ownClearRef.current = false;
+      return;
+    }
+    attachments.discardRetained?.();
+    handlersRef.current.onSendErrorDismissed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sendError]);
   const baseThread = useMemo(() => toThread(messages, fullMeta), [messages, fullMeta]);
 
   // Codex round 2 (#4195 F4/F6/F8/F9): "Searching…" must resolve once the
@@ -741,6 +768,7 @@ function UnifiedChatForNotebook({
     const next = chatError ?? null;
     if (mirroredChatError.current === next) return;
     mirroredChatError.current = next;
+    if (next === null) flagOwnClear();
     dispatch({ type: "set-send-error", error: next });
     // The composer clears the draft at send time, so by the time a failure
     // arrives the question is gone. Put it back — host-owned, because only the
@@ -758,6 +786,9 @@ function UnifiedChatForNotebook({
    * question on the host's existing send path.
    */
   const onSend = useCallback((text: string, pending: readonly Attachment[], opts: { retry?: boolean } = {}) => {
+    // A send made while the banner was up is the shell's Try again (or Send
+    // with the restored draft): its banner clear is not a dismissal.
+    flagOwnClear();
     // Codex F1 (HIGH, #4175/#4189): a confirmed identity may have just
     // promoted a candidate manual into an enabled source (migration 104) —
     // `onConfirmIdentity` below re-reads detail and stashes the refreshed
@@ -930,6 +961,7 @@ function UnifiedChatForNotebook({
     ...(canRetry && handlers.onRetry
       ? { onRetry: () => {
           if (attachments.hasRetained() || attachments.hasCarried()) {
+            flagOwnClear();
             dispatch({ type: "set-send-error", error: null });
             onSend(state.draft, [], { retry: true });
             return;

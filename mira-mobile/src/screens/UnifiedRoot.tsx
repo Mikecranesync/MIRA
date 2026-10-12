@@ -541,6 +541,13 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
             // HOME has no notebook yet: the shell stashes whatever the composer
             // is holding and this send creates the thread that claims it.
             onSend: (text, _evidence, _scope, opts) => sendFromHome(text, opts),
+            // Dismissed: the failed send is over. Nothing of it may survive a
+            // remount of the shell (About and back), least of all its photo.
+            onSendErrorDismissed: () => {
+              setHomeSendError(null);
+              setHomeFailedQuestion(null);
+              failedHomeAttachments.current = [];
+            },
             onStop: () => {},
             onCitation: () => {},
             onRetry: undefined,

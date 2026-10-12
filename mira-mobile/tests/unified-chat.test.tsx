@@ -418,6 +418,35 @@ describe("UnifiedChat", () => {
     expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
   });
 
+  // Codex #4350 round 9, F12: the shell's Dismiss clears only shell state. The
+  // host that owns a failed send needs to hear about it, so UnifiedChat
+  // reports a banner clear that neither its own mirroring nor a send caused.
+  it("reports Dismiss to the host once, and not for Try again or a host-driven clear", async () => {
+    const dismissed = vi.fn();
+    const h = { ...handlers(), onSendErrorDismissed: dismissed };
+    const view = render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError="Your question wasn't sent — try again." failedQuestion="Why F004?" handlers={h} meta={META} />);
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("Why F004?"));
+
+    // Try again is a send, not a dismissal.
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(h.onSend).toHaveBeenCalledTimes(1);
+    expect(dismissed).not.toHaveBeenCalled();
+
+    // The host clearing its own error is not a dismissal either.
+    view.rerender(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} failedQuestion={null} handlers={h} meta={META} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(dismissed).not.toHaveBeenCalled();
+
+    // A fresh failure, then Dismiss: exactly one report.
+    view.rerender(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError="Your question wasn't sent — try again." failedQuestion="Why F004?" handlers={h} meta={META} />);
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(dismissed).toHaveBeenCalledTimes(1);
+  });
+
   it("a DIFFERENT question after a rejected photo upload goes out plain, without the photo (#3863 rule)", async () => {
     stashAttachments([{
       attachment: { id: "att-4", name: "nameplate.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
