@@ -1024,3 +1024,67 @@ def test_concurrent_writers_lose_nothing_and_recall_costs_zero(
     fresh = suite.JudgeEvidenceStore(evidence_path)
     assert all(fresh.get(f"w{n}-{i}") == f"v{n}-{i}" for n in range(4) for i in range(10))
     assert fresh.hits == 40 and fresh.misses == 0
+
+
+def test_one_shared_store_two_writers_keeps_both_verdicts(
+    monkeypatch: pytest.MonkeyPatch, evidence_path: Path
+) -> None:
+    """Codex r4 F6 on #4358: two threads sharing ONE store (one CascadeJudge).
+
+    Before the fix, `put` inserted into the shared `_entries` dict BEFORE taking
+    the write lock. Writer A, inside the lock, copied `_entries` into `merged`;
+    writer B then inserted B into `_entries`; A assigned the stale `merged` back,
+    deleting B — and B's own write, now merging from A's stale view, never saw
+    its verdict again. Both `put` calls returned; only A survived.
+
+    The interleaving is forced deterministically: the durable read A performs
+    inside the critical section returns a dict whose `update` (the copy step)
+    pauses until B's verdict appears in the shared dict — which it can only do
+    if B inserted OUTSIDE the lock. With the fix B is blocked on the lock, the
+    pause times out, and both verdicts are durable.
+    """
+    import threading
+    import time
+
+    store = suite.JudgeEvidenceStore(evidence_path)
+    real_load = suite.JudgeEvidenceStore._load
+    a_copied = threading.Event()
+    paused = {"done": False}
+
+    class PausingDict(dict):
+        def update(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[override]
+            super().update(*args, **kwargs)
+            if paused["done"]:
+                return
+            paused["done"] = True
+            a_copied.set()
+            deadline = time.monotonic() + 1.5
+            while "B" not in store._entries and time.monotonic() < deadline:
+                time.sleep(0.005)
+
+    def pausing_load(path: Path) -> dict[str, dict[str, str]]:
+        return PausingDict(real_load(path))
+
+    monkeypatch.setattr(suite.JudgeEvidenceStore, "_load", staticmethod(pausing_load))
+
+    a = threading.Thread(target=store.put, args=("A", "verdict-a", "openai/x"))
+    a.start()
+    assert a_copied.wait(5.0), "writer A never reached its copy step"
+    b = threading.Thread(target=store.put, args=("B", "verdict-b", "openai/x"))
+    b.start()
+    a.join(10.0)
+    b.join(10.0)
+    assert not a.is_alive() and not b.is_alive()
+
+    durable = json.loads(evidence_path.read_text())["entries"]
+    assert sorted(durable) == ["A", "B"], f"a shared-store writer lost a verdict: {sorted(durable)}"
+    assert store.get("A") == "verdict-a" and store.get("B") == "verdict-b"
+    assert store.writes == 2
+    # A fresh judge recalls both with no provider configured and no request.
+    monkeypatch.setattr(
+        suite.httpx, "post", lambda url, **kw: (_ for _ in ()).throw(AssertionError("no requests"))
+    )
+    monkeypatch.setattr(suite.JudgeEvidenceStore, "_load", staticmethod(real_load))
+    fresh = suite.JudgeEvidenceStore(evidence_path)
+    assert fresh.get("A") == "verdict-a" and fresh.get("B") == "verdict-b"
+    assert fresh.hits == 2 and fresh.misses == 0

@@ -435,15 +435,20 @@ class JudgeEvidenceStore:
         and immutable, so the union is the truth), and replaces the file
         atomically from a uniquely named temp file. The merged set becomes this
         instance's view, so a later recall sees the other writer's verdicts too.
+
+        The new verdict is inserted INSIDE that critical section (Codex r4 F6):
+        two threads sharing one store must not touch `_entries` outside the
+        lock, or writer A's copy-then-assign deletes the entry writer B just
+        inserted, and B's own write — merging from A's stale view — never sees
+        it again.
         """
         if not self.enabled or self.path is None:
             return
-        self._entries[key] = {
+        entry = {
             "content": content,
             "served_by": served_by,
             "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
-        self.writes += 1
         with _EVIDENCE_WRITE:
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -453,7 +458,9 @@ class JudgeEvidenceStore:
                     try:
                         merged = self._load(self.path)
                         merged.update(self._entries)
+                        merged[key] = entry
                         self._entries = merged
+                        self.writes += 1
                         payload = json.dumps(
                             {"contract": JUDGE_EVIDENCE_CONTRACT, "entries": merged},
                             indent=1,
