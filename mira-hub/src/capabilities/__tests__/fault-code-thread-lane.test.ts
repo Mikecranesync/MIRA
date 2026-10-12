@@ -286,6 +286,86 @@ describe("a real thread: the terse follow-up arrives conversation-augmented", ()
     return { client: { query } as unknown as PoolClient, calls };
   }
 
+  // Codex r8 on #4360 — candidate ADMISSION, not final selection: the whole-token
+  // lane bound history AND current patterns in ONE query, ordered by page, LIMIT
+  // POOL (24 at topK=6). With 24+ earlier-page F0004 passages the later oC passage
+  // never enters the pool, and prioritizeCurrentCodeEvidence has nothing to lead
+  // with. This client enforces the SQL contract the earlier fixture bypassed:
+  // regex match per bound pattern, page order, and the bound LIMIT.
+  function sqlFaithfulClient(currentCode: string, historyPages = 24) {
+    const row = (page: number, content: string, rank: number) => ({
+      content,
+      doc_id: DOC,
+      source_url: "manual.pdf",
+      source_page: page,
+      page_start: page,
+      section_path: null,
+      filename: "manual.pdf",
+      verified: true,
+      rank,
+    });
+    const history = Array.from({ length: historyPages }, (_, i) =>
+      row(i + 1, `Fault F0004 undervoltage note ${i + 1}: DC bus below limit, see parameter P0${i + 1}.`, 0.9),
+    );
+    const current = row(100, `${currentCode} — overcurrent: output current exceeded 200% of the drive rating.`, 0.2);
+    const all = [...history, current];
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.includes("content ~* ANY(")) {
+        const patterns =
+          params.find(
+            (p): p is string[] => Array.isArray(p) && p.every((x) => typeof x === "string" && x.startsWith("(^|")),
+          ) ?? [];
+        const limit = Number(params[3]);
+        const regexes = patterns.map((pat) => new RegExp(pat.replace(/\[:alnum:\]/g, "A-Za-z0-9"), "i"));
+        const matched = all.filter((r) => regexes.some((re) => re.test(r.content))).sort((a, b) => a.page_start - b.page_start);
+        return { rows: matched.slice(0, limit) }; // ORDER BY page, LIMIT $4 — exactly what the SQL does
+      }
+      if (sql.includes("content_tsv @@")) return { rows: history.slice(0, Number(params[3]) || 24) }; // BM25: history outranks
+      return { rows: [] };
+    });
+    return { client: { query } as unknown as PoolClient, calls };
+  }
+
+  it("overcurrent oC fault after F0004, 24 history passages before the oC page: the current passage still ENTERS the pool and survives the top six", async () => {
+    const msg = "overcurrent oC fault";
+    const augmented = buildRetrievalQuery(msg, THREAD);
+    expect(augmented).toContain("F0004"); // precondition: both codes are bound together
+    const { client, calls } = sqlFaithfulClient("oC");
+    const out = await retrieveNodeChunks(client, "tenant-1", augmented, {
+      nodeId: "node-1",
+      unsPath: null,
+      topK: 6,
+      docIds: [DOC],
+      rawQuery: msg,
+      validatedDocScope: true,
+    });
+    // A regex pass bound ONLY the current code (its own window), before/besides the combined one.
+    const currentOnly = wholeTokenCalls(calls).filter((c) => {
+      const pats = c.params.find((p): p is string[] => Array.isArray(p) && p.every((x) => typeof x === "string" && x.startsWith("(^|")));
+      return pats?.length === 1 && pats[0] === codeTokenMatcher("oC").sql;
+    });
+    expect(currentOnly).toHaveLength(1);
+    expect(out.length).toBeLessThanOrEqual(6);
+    expect(out.map((c) => c.sourcePage)).toContain(100);
+    expect(out[0].sourcePage).toBe(100); // and it leads
+  });
+
+  it("control (pinned): with fewer history passages than the window, the combined pass alone already admits the current passage", async () => {
+    const msg = "overcurrent oC fault";
+    const { client } = sqlFaithfulClient("oC", 6);
+    const out = await retrieveNodeChunks(client, "tenant-1", buildRetrievalQuery(msg, THREAD), {
+      nodeId: "node-1",
+      unsPath: null,
+      topK: 6,
+      docIds: [DOC],
+      rawQuery: msg,
+      validatedDocScope: true,
+    });
+    expect(out.map((c) => c.sourcePage)).toContain(100);
+  });
+
   it.each(["F4", "oC", "OC"])("%s after F0004: the current fault's chunk survives the top six (and leads)", async (msg) => {
     const augmented = buildRetrievalQuery(msg, THREAD);
     const { client } = populatedClient(msg);

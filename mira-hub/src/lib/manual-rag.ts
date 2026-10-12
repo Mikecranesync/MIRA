@@ -1111,6 +1111,18 @@ export async function retrieveNodeChunks(
   add(await runRetrieval(AND_TSQUERY, expanded.variants[0]));
   for (const v of expanded.variants.slice(1)) add(await runRetrieval(OR_TSQUERY, v));
   add(await runExactLane(expanded.exactTokens.map((t) => `%${t}%`)));
+  // The code the technician JUST named gets its own whole-token pass with its
+  // own window BEFORE the combined pass (Codex r8 on #4360): the combined query
+  // binds history and current patterns together, orders by page and LIMITs to
+  // POOL, so 24+ earlier-page F0004 passages can fill every slot and the later
+  // oC passage never becomes a candidate — final-cut prioritization cannot lead
+  // with evidence that was never admitted. Same predicates, same lane; `add`
+  // de-duplicates against the combined pass. No-op when the message named no
+  // code or every code is current.
+  const currentCodes = (expanded.currentCodeTokens ?? []).filter((t) => expanded.codeTokens.includes(t));
+  if (currentCodes.length > 0 && currentCodes.length < expanded.codeTokens.length) {
+    add(await runExactLane(currentCodes.map((t) => codeTokenMatcher(t).sql), "regex"));
+  }
   add(await runExactLane(expanded.codeTokens.map((t) => codeTokenMatcher(t).sql), "regex"));
   // Message-native pass: when the query was conversation-augmented, the raw
   // words get their own OR pass — otherwise the thread's exact IDs dominate
