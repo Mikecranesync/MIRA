@@ -48,6 +48,7 @@ import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { finishedAfterChunk } from "@/capabilities/stream-stop";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
+import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
   proposeIdentityFromText,
   unconfirmedMachineDirective,
@@ -72,6 +73,7 @@ import {
   serviceVersion,
   productionRouteDetected,
   anomalyChecksEnabled,
+  jevWeakEvidenceBadgeEnabled,
 } from "@/capabilities/observability/config";
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
@@ -210,12 +212,14 @@ import type {
   VisualObservationEntry,
   IdentityDisputeEntry,
   EvidenceBasis,
+  WeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
 import {
   isMachineEvidenceEntry,
   isSafetyNoticeEntry,
   isSafetyStopEntry,
   isVisualObservationEntry,
+  isWeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
@@ -748,6 +752,9 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   );
   const storedProposal = turn.evidence.find(isIdentityProposalEntry) ?? null;
   const basis = REPLAY_BASES.has(turn.basis as EvidenceBasis) ? turn.basis as EvidenceBasis : null;
+  // The weak-evidence badge replays exactly as it was delivered: the persisted
+  // marker (not a re-run of the rule) decides, and only on the basis it fired for.
+  const weakEvidence = basis === "oem_documentation" && turn.evidence.some(isWeakEvidenceEntry);
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -778,7 +785,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
           emit({
             kind: "evidence",
             basis,
-            label: replayBasisLabel(basis),
+            label: weakEvidence ? WEAK_EVIDENCE_LABEL : replayBasisLabel(basis),
             ...(machineEvidence ? { machineEvidence } : {}),
             ...(visualEvidence ? { visualEvidence } : {}),
             ...(identityDisputed ? { identityDisputed: true } : {}),
@@ -798,7 +805,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
           }
         : turn.answerStatus === "error"
           ? { kind: "status", status: "error", message: "No answer provider available." }
-          : { kind: "status", status: "answered" };
+          : { kind: "status", status: "answered", ...(weakEvidence ? { evidence: "weak" as const } : {}) };
       emit(status);
       // Codex #4120 F4 — the stored proposal replays exactly as it was delivered.
       if (storedProposal) controller.enqueue(enc.encode(sse(storedProposal)));
@@ -3775,6 +3782,10 @@ async function handleChatTurn(
           ? "insufficient_evidence"
           : "answered";
 
+      // Hoisted out of the answer-gate block below for the weak-evidence badge,
+      // which is decided after the basis is known. Same value as the packet's
+      // `answer_gate.ungrounded_unit_claim`; computed once.
+      let ungroundedClaimForBadge = false;
       {
         const finalAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
         const answerLower = answerText.toLowerCase();
@@ -3800,6 +3811,7 @@ async function handleChatTurn(
           ? "blocked"
           : answerStatus;
         const ungroundedClaim = served && !refused ? ungroundedUnitClaim(answerText) : false;
+        ungroundedClaimForBadge = ungroundedClaim;
         // #3962 — run on the RAW strings here, like ungroundedUnitClaim, because
         // the packet deliberately carries no answer text and so this can never
         // be recomputed later from stored packets. Only the verdict, its version
@@ -3956,6 +3968,38 @@ async function handleChatTurn(
       if (hazardEntries.length > 0) evidenceFrame.hazardEntries = hazardEntries;
       if (identityDisputed) evidenceFrame.identityDisputed = true;
 
+      // Weak-evidence badge (jev-weak-evidence.ts; `MIRA_JEV_WEAK_EVIDENCE_BADGE`).
+      // The ONLY consulted use of the sufficiency shadow. Decided here — after
+      // the shadow was awaited above and after the basis is known — and it
+      // changes exactly two things: the evidence frame's caption and a marker
+      // on the status frame. `answerStatus`, the answer text and its citations
+      // are untouched, and no clarifying question is asked (the adjudication's
+      // reasoning: a low score cannot tell an ambiguous question from a manual
+      // that does not cover it). The packet records that it fired so the badge
+      // RATE can be measured before the rule touches anything else.
+      const weakEvidence =
+        jevWeakEvidenceBadgeEnabled() &&
+        served &&
+        !refused &&
+        !outputRejected &&
+        isWeakEvidence({
+          jevSufficient: jev.noul,
+          basis: evidenceFrame.basis,
+          ungroundedUnitClaim: ungroundedClaimForBadge,
+          citationsShipped: emittedCitations.length,
+        });
+      const weakEntry: WeakEvidenceEntry | null =
+        weakEvidence && typeof jev.noul === "number"
+          ? { kind: "weak_evidence", rule: WEAK_EVIDENCE_RULE, jev_sufficient: jev.noul }
+          : null;
+      if (weakEvidence) {
+        evidenceFrame.label = WEAK_EVIDENCE_LABEL;
+        rec.stage("answer_gate", { weak_evidence_badge: true });
+        console.log(
+          `[notebook-chat] weak-evidence badge: jev=${jev.noul} citations=${emittedCitations.length} unit_claim=${ungroundedClaimForBadge}`,
+        );
+      }
+
       // Complete the durable turn before touching the response controller.
       // Cancellation during the semantic judge closes that controller; a
       // later enqueue may throw, but terminal truth must already be replayable.
@@ -3981,7 +4025,7 @@ async function handleChatTurn(
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries]
+              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
             : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : [])],
@@ -4068,7 +4112,7 @@ async function handleChatTurn(
 
       const statusFrame: NotebookStatusFrame =
         answerStatus === "answered"
-          ? { kind: "status", status: "answered" }
+          ? { kind: "status", status: "answered", ...(weakEvidence ? { evidence: "weak" as const } : {}) }
           : answerStatus === "insufficient_evidence"
             ? { kind: "status", status: "insufficient_evidence", message: "Not found in the selected sources." }
             : internalError
