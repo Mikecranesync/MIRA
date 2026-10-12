@@ -11,6 +11,10 @@
 //     must go through the gate or `reserve`. Review rounds kept finding "one more
 //     call site"; this makes the class mechanically closed. The scanner is
 //     unit-tested against fixtures so a green run means something.
+//     Known blind spots (it reports what it can see): the check is per FILE,
+//     so a second, ungated fetch added to an already-gated file passes; and a
+//     fetch made inside a helper defined in another file, fed a provider URL,
+//     is invisible to it. Review still owns those two cases.
 //
 // Run: cd mira-hub && npx vitest run src/capabilities/__tests__/openai-attempt-gate
 

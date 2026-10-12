@@ -3728,9 +3728,11 @@ async function handleChatTurn(
       }
 
       // #3793 semantic layer (2026-09-14 coverage audit): meaning-aware check
-      // on the ACCEPTED candidate. Fail-closed: a flagged candidate that cannot
-      // be judged (timeout, provider failure, malformed verdict) is withheld
-      // behind the controlled unverified fallback — never silently released.
+      // on the ACCEPTED candidate. It FLAGS, never withholds (owner decision
+      // 2026-09-27, #4022): "unsafe" adds a hazard banner; a candidate that
+      // cannot be judged (timeout, provider failure, malformed verdict, or the
+      // OpenAI run budget refusing with no other provider — reason
+      // "openai_budget_exhausted") is logged UNVERIFIED and served as written.
       // Lives inside the gate: gate-off stays byte-identical legacy with zero
       // inference spend. Class/verdict/latency are logged so the real
       // invocation rate is measured, not assumed.
