@@ -67,6 +67,7 @@ def _pin_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         "GROQ_API_KEY",
         "OPENAI_MODEL",
         "DEEPEVAL_JUDGE_OPENAI_MODEL",
+        "DEEPEVAL_JUDGE_PRIMARY",
         "OPENAI_REASONING_EFFORT",
         "DEEPEVAL_JUDGE_BUDGET_USD",
         "OPENAI_PRICE_PER_MTOK_IN",
@@ -1088,3 +1089,68 @@ def test_one_shared_store_two_writers_keeps_both_verdicts(
     fresh = suite.JudgeEvidenceStore(evidence_path)
     assert fresh.get("A") == "verdict-a" and fresh.get("B") == "verdict-b"
     assert fresh.hits == 2 and fresh.misses == 0
+
+
+# ---------------------------------------------------------------------------
+# Codex r5 F7 on #4358 — the recall identity is DECLARED, not inferred from keys
+# ---------------------------------------------------------------------------
+
+
+def test_groq_only_seed_is_recalled_model_off_when_groq_stays_declared(
+    monkeypatch: pytest.MonkeyPatch, evidence_path: Path
+) -> None:
+    """Seed through a Groq-only judge, remove every credential, keep the declared
+    Groq configuration: identical sync and async calls recall with zero HTTP;
+    an unseen prompt still refuses. Before the fix the identity flipped to the
+    OpenAI default the moment the Groq key went away, so every key missed and
+    the warm-store CLI gate admitted a run that then failed every case."""
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setattr(suite.httpx, "post", lambda url, **kw: _ok("groq-verdict"))
+    seeded = suite.CascadeJudge()
+    assert seeded.get_model_name() == "groq/openai/gpt-oss-120b"
+    assert seeded.generate(PROMPT) == "groq-verdict"
+    assert json.loads(evidence_path.read_text())["entries"]
+    # Credentials gone; the DECLARED configuration is unchanged.
+    monkeypatch.delenv("GROQ_API_KEY")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_PRIMARY", "groq")
+    calls: list[str] = []
+    monkeypatch.setattr(suite.httpx, "post", lambda url, **kw: calls.append(url) or _ok("x"))
+    ok, warning = suite.judge_available()
+    assert ok and "recalled evidence only" in warning
+    judge = suite.CascadeJudge()
+    assert judge.get_model_name() == "groq/openai/gpt-oss-120b"
+    assert judge.generate(PROMPT) == "groq-verdict"
+    assert asyncio.run(judge.a_generate(PROMPT)) == "groq-verdict"
+    assert calls == []
+    assert judge.served_counts() == {"recall:groq/openai/gpt-oss-120b": 2}
+    with pytest.raises(RuntimeError, match="no judge provider"):
+        judge.generate(PROMPT + " unseen")
+    assert calls == []
+
+
+def test_declared_primary_leads_the_cascade_and_names_the_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_PRIMARY", "groq")
+    urls: list[str] = []
+    monkeypatch.setattr(suite.httpx, "post", lambda url, **kw: urls.append(url) or _ok("v"))
+    judge = suite.CascadeJudge()
+    assert judge.get_model_name() == "groq/openai/gpt-oss-120b"
+    assert [p.name for p in suite.judge_providers()] == ["groq", "openai"]
+    assert judge.generate(PROMPT) == "v"
+    assert urls == [suite.GROQ_API_URL]  # Groq led; OpenAI untouched, nothing metered
+    assert suite.judge_budget().calls == 0
+    # The explicit declaration also wins over a key-inferred identity.
+    monkeypatch.setenv("DEEPEVAL_JUDGE_PRIMARY", "openai")
+    monkeypatch.delenv("OPENAI_API_KEY")
+    assert suite.CascadeJudge().get_model_name() == f"openai/{MINI}"
+    assert [p.name for p in suite.judge_providers()] == ["groq"]  # fallback still serves
+
+
+def test_unknown_declared_primary_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_PRIMARY", "gemini")
+    with pytest.raises(ValueError, match="DEEPEVAL_JUDGE_PRIMARY"):
+        suite.CascadeJudge()

@@ -122,10 +122,9 @@ def openai_judge_model() -> str:
     return os.getenv("DEEPEVAL_JUDGE_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
 
 
-def judge_providers() -> list[JudgeProvider]:
-    """Providers whose API keys are set, in cascade order (OpenAI first)."""
-    candidates = [
-        JudgeProvider(
+def _judge_candidates() -> dict[str, JudgeProvider]:
+    return {
+        "openai": JudgeProvider(
             "openai",
             OPENAI_API_URL,
             openai_judge_model(),
@@ -133,9 +132,49 @@ def judge_providers() -> list[JudgeProvider]:
             "openai_reasoning",
             metered=True,
         ),
-        JudgeProvider("groq", GROQ_API_URL, JUDGE_MODEL, "GROQ_API_KEY"),
-    ]
-    return [p for p in candidates if os.environ.get(p.api_key_env, "").strip()]
+        "groq": JudgeProvider("groq", GROQ_API_URL, JUDGE_MODEL, "GROQ_API_KEY"),
+    }
+
+
+def judge_primary() -> str:
+    """The DECLARED primary judge provider — the recall identity's first half.
+
+    `DEEPEVAL_JUDGE_PRIMARY=openai|groq` declares it outright, independent of
+    which credentials happen to be present (Codex r5 F7 on #4358: a store
+    seeded by a Groq-only judge must still be recalled model-off, so removing
+    the Groq key must not silently rename the configuration to OpenAI). Absent
+    a declaration the pre-existing inference holds: a Groq-only keyset names
+    Groq, anything else — including no key at all — names OpenAI. An unknown
+    value fails closed rather than judging under a mislabelled identity.
+    """
+    declared = (os.getenv("DEEPEVAL_JUDGE_PRIMARY") or "").strip().lower()
+    if declared:
+        if declared not in _judge_candidates():
+            raise ValueError(
+                f"DEEPEVAL_JUDGE_PRIMARY={declared!r} is not a judge provider "
+                f"(one of: {', '.join(sorted(_judge_candidates()))})"
+            )
+        return declared
+    keyed = [n for n, p in _judge_candidates().items() if os.environ.get(p.api_key_env, "").strip()]
+    return "groq" if keyed == ["groq"] else "openai"
+
+
+def configured_judge_identity() -> str:
+    """`<primary provider>/<model>` the run is CONFIGURED for — the recall key input.
+
+    A credential is not configuration: the identity is the same with the keys
+    present, absent, or partially present.
+    """
+    provider = _judge_candidates()[judge_primary()]
+    return f"{provider.name}/{provider.model}"
+
+
+def judge_providers() -> list[JudgeProvider]:
+    """Providers whose API keys are set, in cascade order: the declared primary first."""
+    candidates = _judge_candidates()
+    primary = judge_primary()
+    ordered = [candidates[primary]] + [p for n, p in candidates.items() if n != primary]
+    return [p for p in ordered if os.environ.get(p.api_key_env, "").strip()]
 
 
 JUDGE_MAX_TOKENS = 1024
@@ -524,6 +563,9 @@ class CascadeJudge(DeepEvalBaseLLM):
     """DeepEval judge over the OpenAI → Groq cascade; falls through on any failure."""
 
     def __init__(self) -> None:
+        # Resolved once, before the key-filtered provider list: the identity is
+        # the declared configuration, not whichever credentials survived.
+        self._identity = configured_judge_identity()
         self._providers = judge_providers()
         # Which provider/model actually served each judge call (Codex F2 on
         # #4358): the report attributes scoring to what graded, not to the
@@ -746,14 +788,13 @@ class CascadeJudge(DeepEvalBaseLLM):
     def get_model_name(self) -> str:
         """`<primary provider>/<model>` — the judge the run was CONFIGURED with.
 
-        Configuration is the model choice, not the credential: with no key at
-        all this is still the primary OpenAI judge, so a model-off run recalls
-        the verdicts a keyed run of the same configuration stored. Only a
-        Groq-only keyset names Groq (the pre-existing judge).
+        Configuration is the model choice, not the credential: the identity is
+        resolved by `configured_judge_identity()` from the declaration (or the
+        pre-existing key inference) and bound at construction, so a model-off
+        run recalls the verdicts a keyed run of the same configuration stored
+        — for a Groq-only seed as much as an OpenAI one (Codex r5 F7).
         """
-        if not self._providers:
-            return f"openai/{openai_judge_model()}"
-        return f"{self._providers[0].name}/{self._providers[0].model}"
+        return self._identity
 
     def served_counts(self) -> dict[str, int]:
         """`{"<provider>/<model>" | "recall:<provider>/<model>": calls}` — what ACTUALLY graded."""
@@ -777,7 +818,8 @@ def judge_available() -> tuple[bool, str]:
     if store.enabled and store.entry_count > 0:
         return True, (
             "WARNING: no judge provider configured — judging from recalled evidence only "
-            f"({store.entry_count} stored verdicts in {store.path}); a verdict not in the store fails its case"
+            f"under identity {configured_judge_identity()} ({store.entry_count} stored verdicts "
+            f"in {store.path}); a verdict not in the store fails its case"
         )
     return False, "no judge provider configured — set OPENAI_API_KEY (preferred) or GROQ_API_KEY"
 
