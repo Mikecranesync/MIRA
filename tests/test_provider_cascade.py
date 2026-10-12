@@ -12,12 +12,13 @@ import sys
 sys.path.insert(0, "mira-bots")
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from shared.inference.router import InferenceRouter, _build_providers, _Provider, _ProviderSkip
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _make_provider(name: str) -> _Provider:
     return _Provider(
@@ -29,16 +30,20 @@ def _make_provider(name: str) -> _Provider:
 
 
 def _make_router() -> InferenceRouter:
-    with patch.dict("os.environ", {
-        "INFERENCE_BACKEND": "cloud",
-        "GROQ_API_KEY": "gk-test",
-        "CEREBRAS_API_KEY": "cb-test",
-        "TOGETHERAI_API_KEY": "tog-test",
-    }):
+    with patch.dict(
+        "os.environ",
+        {
+            "INFERENCE_BACKEND": "cloud",
+            "GROQ_API_KEY": "gk-test",
+            "CEREBRAS_API_KEY": "cb-test",
+            "TOGETHERAI_API_KEY": "tog-test",
+        },
+    ):
         return InferenceRouter()
 
 
 # ── Cascade: first provider _ProviderSkip falls through to next ───────────────
+
 
 @pytest.mark.asyncio
 async def test_cascade_skips_failed_provider():
@@ -49,7 +54,9 @@ async def test_cascade_skips_failed_provider():
 
     call_order = []
 
-    async def mock_call_provider(provider, messages, max_tokens, session_id, has_image):
+    async def mock_call_provider(
+        provider, messages, max_tokens, session_id, has_image, reasoning_retry=True
+    ):
         call_order.append(provider.name)
         if len(call_order) == 1:
             raise _ProviderSkip(provider.name, "simulated failure")
@@ -57,9 +64,7 @@ async def test_cascade_skips_failed_provider():
 
     router.enabled = True
     with patch.object(router, "_call_openai_compat", side_effect=mock_call_provider):
-        reply, meta = await router.complete(
-            [{"role": "user", "content": "VFD shows E.OC.3"}]
-        )
+        reply, meta = await router.complete([{"role": "user", "content": "VFD shows E.OC.3"}])
 
     assert len(call_order) >= 2
     assert reply == "Good diagnostic reply"
@@ -78,9 +83,7 @@ async def test_all_providers_fail_returns_empty():
     router.enabled = True
     with patch.object(router, "_call_openai_compat", side_effect=always_skip):
         try:
-            reply, meta = await router.complete(
-                [{"role": "user", "content": "Test message"}]
-            )
+            reply, meta = await router.complete([{"role": "user", "content": "Test message"}])
             assert reply == ""
         except Exception as exc:
             pytest.fail(f"complete() raised instead of returning ('', {{}}): {exc!r}")
@@ -95,7 +98,9 @@ async def test_cascade_stops_at_first_success():
 
     call_count = 0
 
-    async def first_wins(provider, messages, max_tokens, session_id, has_image):
+    async def first_wins(
+        provider, messages, max_tokens, session_id, has_image, reasoning_retry=True
+    ):
         nonlocal call_count
         call_count += 1
         return ("Winner reply", {"provider": provider.name})
@@ -120,6 +125,7 @@ async def test_disabled_router_returns_empty():
 
 
 # ── PII sanitization before external calls ───────────────────────────────────
+
 
 def test_sanitize_context_strips_ipv4():
     msgs = [{"role": "user", "content": "The PLC at 192.168.1.100 is faulting"}]
@@ -171,14 +177,18 @@ def test_sanitize_context_handles_multipart_content():
 
 # ── Provider ordering: Groq should be first ───────────────────────────────────
 
+
 def test_groq_is_first_provider():
     """After cascade reorder fix, Groq must be the first provider."""
-    with patch.dict("os.environ", {
-        "INFERENCE_BACKEND": "cloud",
-        "GROQ_API_KEY": "gk-test",
-        "CEREBRAS_API_KEY": "cb-test",
-        "ANTHROPIC_API_KEY": "ant-test",
-    }):
+    with patch.dict(
+        "os.environ",
+        {
+            "INFERENCE_BACKEND": "cloud",
+            "GROQ_API_KEY": "gk-test",
+            "CEREBRAS_API_KEY": "cb-test",
+            "ANTHROPIC_API_KEY": "ant-test",
+        },
+    ):
         providers = _build_providers()
 
     if not providers:
@@ -190,8 +200,10 @@ def test_groq_is_first_provider():
 
 # ── System prompt TTL cache ────────────────────────────────────────────────────
 
+
 def test_system_prompt_returns_string():
     from shared.inference.router import get_system_prompt
+
     prompt = get_system_prompt()
     assert isinstance(prompt, str)
     assert len(prompt) > 0
@@ -200,6 +212,7 @@ def test_system_prompt_returns_string():
 def test_system_prompt_cached():
     """Two calls in quick succession should return the same cached string."""
     from shared.inference.router import get_system_prompt
+
     first = get_system_prompt()
     second = get_system_prompt()
     assert first == second
