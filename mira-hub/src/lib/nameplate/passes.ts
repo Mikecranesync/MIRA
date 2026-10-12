@@ -29,12 +29,12 @@ import { requestDialectFields } from "../inference/canonical-cascade";
 import {
   billableTokens,
   boundVisionInputTokens,
-  imagePartMaxTokens,
   logBudgetExhausted,
   logVisionModelUnverified,
   openAiRunBudget,
+  openAiVisionSelectable,
 } from "../../capabilities/openai-run-budget";
-import { openAiVisionModel, openAiVisionProvider, togetherVisionModel } from "./index";
+import { openAiVisionProvider, togetherVisionModel } from "./index";
 
 // ── Field vocabulary ─────────────────────────────────────────────────────────
 
@@ -724,9 +724,7 @@ export function visionTimeoutMs(): number {
 export function defaultVisionCall(): VisionCall {
   // OpenAI leads only on a model whose image cost is verified (Codex r2 F4 on
   // #4355); otherwise the free Together call runs, exactly as without a key.
-  return process.env.OPENAI_API_KEY && imagePartMaxTokens(openAiVisionModel()) !== null
-    ? openAiVisionCall
-    : togetherVisionCall;
+  return openAiVisionSelectable() ? openAiVisionCall : togetherVisionCall;
 }
 
 export function safeJson(text: string): Record<string, unknown> | null {

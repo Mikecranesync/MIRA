@@ -72,6 +72,7 @@ import {
   type LookHazardDescriptor,
 } from "@/lib/visual-evidence-context";
 import { isRecognizerConfigured, fixtureSelected } from "@/lib/nameplate";
+import { openAiVisionSelectable } from "@/capabilities/openai-run-budget";
 import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 import { openAiVisionCall, togetherVisionCall, safeJson, type VisionCall } from "@/lib/nameplate/passes";
@@ -398,13 +399,14 @@ async function handleLookTurn(
     );
   }
 
-  // Provider pick (D8, 2026-10-11): OpenAI leads when its key is set, else Together
-  // — the same order as `defaultRecognizer`. Picked inline (not via
+  // Provider pick (D8, 2026-10-11): OpenAI leads when its key is set AND its model
+  // has a verified image bound (`openAiVisionSelectable`, Codex r4 F10 on #4355 —
+  // the ONE policy `defaultRecognizer` uses), else Together. Picked inline (not via
   // `defaultVisionCall`) so each call stays an importable, mockable seam.
   // The provider NAME is picked here too, once, and every telemetry site below
   // reads it — a call served by OpenAI must never be recorded as Together
   // (Codex F1 on #4353: health and audit queries would name the wrong provider).
-  const visionProvider = fixtureSelected() ? "fixture" : process.env.OPENAI_API_KEY ? "openai" : "together";
+  const visionProvider = fixtureSelected() ? "fixture" : openAiVisionSelectable() ? "openai" : "together";
   const vision: VisionCall =
     visionProvider === "fixture"
       ? fixtureVisionCall

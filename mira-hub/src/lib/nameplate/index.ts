@@ -73,10 +73,11 @@ import { requestDialectFields, type CanonicalProvider } from "../inference/canon
 import {
   billableTokens,
   boundVisionInputTokens,
-  imagePartMaxTokens,
   logBudgetExhausted,
   logVisionModelUnverified,
   openAiRunBudget,
+  openAiVisionModelId,
+  openAiVisionSelectable,
   type BudgetReservation,
 } from "../../capabilities/openai-run-budget";
 
@@ -90,8 +91,9 @@ const TOGETHER_VISION_DEFAULT = "MiniMaxAI/MiniMax-M3";
 // organization_delinquent on every photo, so the staging acceptance audit's photo
 // scenario 502'd and production could not be authorized. #4349 put OpenAI first in
 // every TEXT cascade; this is the same move for VISION. gpt-5.4-mini reads images
-// and is the model the paid lane already proves against this key.
-const OPENAI_VISION_DEFAULT = "gpt-5.4-mini";
+// and is the model the paid lane already proves against this key. The default id
+// lives in capabilities/openai-run-budget.ts (OPENAI_VISION_DEFAULT_MODEL), next to
+// the verified image-bound table that decides whether OpenAI may serve vision.
 const OPENAI_VISION_URL = "https://api.openai.com/v1/chat/completions";
 
 /**
@@ -131,8 +133,9 @@ export function groqVisionModel(): string {
  * NAMEPLATE_VISION_MODEL on purpose — that holds a Together/Groq id.
  */
 export function openAiVisionModel(): string {
-  return process.env.OPENAI_MODEL || OPENAI_VISION_DEFAULT;
+  return openAiVisionModelId();
 }
+
 
 /**
  * The OpenAI vision provider in the canonical-cascade shape, so its request
@@ -433,7 +436,7 @@ export function defaultRecognizer(): NameplateRecognizer {
   if (fixtureSelected()) return new FixtureRecognizer(fixtureCandidate());
   // OpenAI leads only on a model whose image cost is verified (Codex r2 F4 on
   // #4355); otherwise the free recognizers are picked, exactly as without a key.
-  if (process.env.OPENAI_API_KEY && imagePartMaxTokens(openAiVisionModel()) !== null) return new OpenAIVisionRecognizer();
+  if (openAiVisionSelectable()) return new OpenAIVisionRecognizer();
   if (process.env.TOGETHERAI_API_KEY) return new TogetherVisionRecognizer();
   return new GroqVisionRecognizer();
 }

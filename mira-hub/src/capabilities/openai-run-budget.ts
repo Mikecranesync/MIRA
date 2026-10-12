@@ -279,6 +279,25 @@ export function boundVisionInputTokens(prompt: string, images: number, model: st
   return Buffer.byteLength(prompt, "utf8") + 2 * MESSAGE_FRAMING_TOKENS + images * (perImage ?? 0);
 }
 
+/** The default OpenAI model the Hub's vision calls name — the SAME variable the
+ *  text cascade reads (`||` because compose maps an unset var to ""). */
+export const OPENAI_VISION_DEFAULT_MODEL = "gpt-5.4-mini";
+
+export function openAiVisionModelId(): string {
+  return process.env.OPENAI_MODEL || OPENAI_VISION_DEFAULT_MODEL;
+}
+
+/**
+ * THE vision pick policy (Codex r2 F4 / r4 F10 on #4355): OpenAI serves vision
+ * only when its key is set AND the configured model has a VERIFIED worst-case
+ * image cost; otherwise the free Together path serves. `defaultRecognizer`,
+ * `defaultVisionCall` and the LOOK route all read this one function, so no
+ * surface can pick an OpenAI vision call that would only be refused.
+ */
+export function openAiVisionSelectable(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY) && imagePartMaxTokens(openAiVisionModelId()) !== null;
+}
+
 /** One structured line an operator can grep when OpenAI vision is refused for an unverified model. */
 export function logVisionModelUnverified(scope: string, model: string): void {
   console.warn(

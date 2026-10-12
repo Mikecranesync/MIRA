@@ -292,10 +292,23 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
       expect(src, file).toMatch(/throw new Error\("recognizer_model_unverified"\)/);
       expect(src.indexOf("recognizer_model_unverified"), file).toBeLessThan(src.indexOf(".reserve(inputBound, "));
       // A non-object body is malformed, and an idempotent finally books the hold on every exit (Codex r3 F9).
+      // (The vision PICK is pinned below: one policy, no key-only selector anywhere.)
       expect(src, file).toMatch(/throw new Error\("recognizer_provider_malformed"\)/);
       expect(src, file).toMatch(/\} finally \{\s*reservation\??\.settle\(inputBound, (maxTokens|1200)\);\s*\}/);
       expect(src, file).toMatch(/reservation\??\.release\(\)/);
     }
+  });
+  it("every vision pick reads ONE policy, openAiVisionSelectable — no surface picks OpenAI by key alone (Codex r4 F10)", () => {
+    const look = read("../../app/api/equipment-notebooks/[id]/look/route.ts");
+    const index = read("../../lib/nameplate/index.ts");
+    const passes = read("../../lib/nameplate/passes.ts");
+    expect(look).toMatch(/openAiVisionSelectable\(\) \? "openai" : "together"/);
+    expect(look).not.toMatch(/process\.env\.OPENAI_API_KEY \? "openai"/);
+    expect(index).toMatch(/if \(openAiVisionSelectable\(\)\) return new OpenAIVisionRecognizer\(\);/);
+    expect(passes).toMatch(/return openAiVisionSelectable\(\) \? openAiVisionCall : togetherVisionCall;/);
+    const capability = read("../openai-run-budget.ts");
+    expect(capability).toMatch(/Boolean\(process\.env\.OPENAI_API_KEY\) && imagePartMaxTokens\(openAiVisionModelId\(\)\) !== null/);
+    expect(index).toMatch(/return openAiVisionModelId\(\);/); // one model default, shared with the policy
   });
   it("non-streaming cascade (quickstart, hub ask, translate, extractor): reserve before the OpenAI fetch, settle after usage or an unknown outcome, release only on a rejection", () => {
     const cascade = read("../../lib/llm/cascade.ts");
