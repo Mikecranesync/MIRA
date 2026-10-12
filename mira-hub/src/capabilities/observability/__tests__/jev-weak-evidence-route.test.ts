@@ -52,6 +52,18 @@ describe("weak-evidence badge — placement in the chat route", () => {
     expect(window).toMatch(/jevWeakEvidenceBadgeEnabled\(\)\s*&&/);
   });
 
+  it("is gated on a served, non-refused, non-replaced answer in the same expression — not only by the citation coupling", () => {
+    // Today `basis === "oem_documentation"` already implies citations shipped,
+    // and citations are emptied on refused / replaced turns, so this gate is
+    // belt-and-braces. It must stay explicit: if citations ever ride along on
+    // a refusal ("here is what was considered"), these three terms are what
+    // keep the badge off a safety stop. Gate 7 review of #4381.
+    const window = lines.slice(decision - 1, decision + 6).join("\n");
+    expect(window).toMatch(/\bserved\s*&&/);
+    expect(window).toMatch(/!refused\s*&&/);
+    expect(window).toMatch(/!outputRejected\s*&&/);
+  });
+
   it("never reassigns answerStatus after the decision (the answer is delivered as it was)", () => {
     const after = lines.slice(decision).join("\n");
     expect(after).not.toMatch(/^\s*answerStatus\s*=[^=]/m);

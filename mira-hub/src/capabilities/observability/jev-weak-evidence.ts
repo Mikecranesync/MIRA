@@ -53,6 +53,18 @@ export type WeakEvidenceSignals = {
  * `jev_sufficient < 0.30 AND basis = oem_documentation AND
  * (ungrounded_unit_claim OR citations_shipped > 0)`.
  *
+ * Stated exactly as the adjudication proposed it, and that is deliberate even
+ * though the notebook chat route cannot exercise the last term on its own: the
+ * route assigns `basis = "oem_documentation"` only when it shipped at least one
+ * citation (chat/route.ts, the evidence-frame ladder), so on THAT caller the
+ * disjunct is already true whenever the basis matches, and the production rule
+ * reduces to `score < 0.30 AND basis = oem_documentation`. The unit-claim term
+ * is kept because it is part of the owner-accepted rule, because a future
+ * caller (the hub ask route, replay from stored packets) may hold a basis
+ * without shipped citations, and because the D2 bucket — a unit claim with no
+ * citation — is the shape the adjudication most wanted caught. Gate 7 review
+ * of #4381 named this; it is a documented reduction, not a hidden one.
+ *
  * A missing, non-finite or out-of-range score is "not consulted", never
  * "weak": the shadow is fail-open and a skipped call must not badge anything.
  */
