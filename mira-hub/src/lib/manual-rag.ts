@@ -1039,7 +1039,7 @@ export async function retrieveNodeChunks(
           ${nodeClauseMain}
           ${docClause}
           AND content_tsv @@ ${tsquery}
-        ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST
+        ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
         LIMIT $4`,
       [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...docParams, ...approvedParams],
     );
@@ -1087,7 +1087,7 @@ export async function retrieveNodeChunks(
           ${nodeClauseExact}
           ${exactDocClause}
           AND content ${match === "regex" ? "~*" : "ILIKE"} ANY($3::text[])
-        ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST
+        ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
         LIMIT $4`,
       exactParams,
     );

@@ -286,3 +286,39 @@ describe("tied rows resolve by primary key (#4373 R1 F1)", () => {
     expect([...runs]).toEqual(["TIE-LOW"]);
   });
 });
+
+// #4373 Codex R3 F1: the notebook lane (retrieveNodeChunks) had the same gap —
+// two same-page chunks of one document tie on doc_id/page_start/source_page and
+// rank, so database order picked the cited excerpt. Ends on `id` too.
+describe("notebook lane: tied same-page chunks resolve by primary key (#4373 R3 F1)", () => {
+  const NB = "39700000-0000-4000-8000-0000000000cc";
+  const DOC_T = "39700000-0000-4000-8000-0000000000d9";
+  const LOW = "00000000-0000-4000-8000-0000000000e1";
+  const HIGH = "00000000-0000-4000-8000-0000000000e2";
+
+  beforeAll(async () => {
+    // HIGH id first, so physical order alone would return it.
+    for (const [id, file] of [[HIGH, "HIGH.pdf"], [LOW, "LOW.pdf"]]) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+           (id, tenant_id, content, manufacturer, model_number, source_url, source_page, page_start,
+            doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, 'gearbox oil level sight glass', '', '', 'https://test.invalid/t.pdf', 4, 4, $3, 'v2', $4::jsonb, true, true)`,
+        [id, NB, DOC_T, JSON.stringify({ node_id: "n9", filename: file })],
+      );
+    }
+  });
+
+  async function topFile(): Promise<string> {
+    const hits = await retrieveNodeChunks(client, NB, "gearbox oil level", {
+      nodeId: "n9", unsPath: null, topK: 1, docIds: [DOC_T], rawQuery: "gearbox oil level",
+      validatedDocScope: true, approvedSourceDocIds: [DOC_T],
+    });
+    expect(hits).toHaveLength(1);
+    return JSON.stringify(hits[0]);
+  }
+
+  it("the lower id wins, every time", async () => {
+    for (let i = 0; i < 5; i++) expect(await topFile()).toContain("LOW.pdf");
+  });
+});
