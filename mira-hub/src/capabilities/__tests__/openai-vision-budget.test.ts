@@ -225,3 +225,65 @@ describe("a malformed usage block cannot poison the shared total (Codex r2 F8 on
     expect(Number.isFinite(b.spentUsd)).toBe(true);
   });
 });
+
+describe("a 200 whose JSON is null never leaks its hold (Codex r3 F9 on #4355)", () => {
+  function stubNullFetch() {
+    const fetchMock = vi.fn(async () => new Response("null", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+  /** Drive the budget's clock (it reads Date.now) so a window can be rolled. */
+  function clockAt(startS: number) {
+    const c = { t: startS };
+    vi.spyOn(Date, "now").mockImplementation(() => c.t * 1000);
+    return c;
+  }
+
+  it("LOOK vision call: books the reserved worst case, holds nothing, and the next window admits again", async () => {
+    const clock = clockAt(1_000_000);
+    const maxTokens = 100;
+    const worst = usd(boundVisionInputTokens(PROMPT, 1, MODEL)!, maxTokens);
+    process.env.OPENAI_RUN_BUDGET_WINDOW_S = "60";
+    process.env.OPENAI_RUN_BUDGET_USD = String(worst * 1.5);
+    resetOpenAiRunBudgetForTests();
+    stubNullFetch();
+    await expect(openAiVisionCall({ prompt: PROMPT, images: [IMG], temperature: 0, maxTokens })).rejects.toThrow(
+      "recognizer_provider_malformed",
+    );
+    expect(openAiRunBudget().heldUsd).toBe(0);
+    expect(openAiRunBudget().spentUsd).toBeCloseTo(worst, 9);
+    // The booked worst case counts in this window...
+    await expect(openAiVisionCall({ prompt: PROMPT, images: [IMG], temperature: 0, maxTokens })).rejects.toThrow(
+      "recognizer_budget_exhausted",
+    );
+    // ...and nothing is left held, so the next window admits a valid call.
+    clock.t += 61;
+    const ok = stubOkFetch();
+    await openAiVisionCall({ prompt: PROMPT, images: [IMG], temperature: 0, maxTokens });
+    expect(ok).toHaveBeenCalledTimes(1);
+    expect(openAiRunBudget().heldUsd).toBe(0);
+  });
+
+  it("nameplate recognizer: the same — no leaked hold, and the next window admits again", async () => {
+    const clock = clockAt(2_000_000);
+    process.env.OPENAI_RUN_BUDGET_WINDOW_S = "60";
+    resetOpenAiRunBudgetForTests();
+    stubNullFetch();
+    await expect(new OpenAIVisionRecognizer().recognize("QUJD", "image/jpeg")).rejects.toThrow("recognizer_provider_malformed");
+    expect(openAiRunBudget().heldUsd).toBe(0);
+    expect(openAiRunBudget().spentUsd).toBeGreaterThan(usd(3_000, 1_200)); // the reserved image bound and cap
+    const booked = openAiRunBudget().spentUsd;
+    // Pin the cap just under two worst cases: a second call now would not fit.
+    process.env.OPENAI_RUN_BUDGET_USD = String(booked * 1.5);
+    resetOpenAiRunBudgetForTests();
+    clock.t += 1;
+    stubNullFetch();
+    await expect(new OpenAIVisionRecognizer().recognize("QUJD", "image/jpeg")).rejects.toThrow("recognizer_provider_malformed");
+    await expect(new OpenAIVisionRecognizer().recognize("QUJD", "image/jpeg")).rejects.toThrow("recognizer_budget_exhausted");
+    expect(openAiRunBudget().heldUsd).toBe(0);
+    clock.t += 61;
+    const ok = stubOkFetch();
+    await new OpenAIVisionRecognizer().recognize("QUJD", "image/jpeg");
+    expect(ok).toHaveBeenCalledTimes(1);
+  });
+});

@@ -65,6 +65,21 @@ const MESSAGES = [{ role: "user" as const, content: "PowerFlex 525 fault F0004 o
 const hosts = (calls: Call[]) => calls.map((c) => c.host);
 
 describe("lib/llm/cascade — the OpenAI leg is spend-capped", () => {
+  it("a 200 whose JSON is null books the worst case, leaks no hold, and falls through (Codex r3 F9 on #4355)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) =>
+        String(url).includes("api.openai.com")
+          ? new Response("null", { status: 200 })
+          : Response.json({ choices: [{ message: { content: "from groq" } }] }),
+      ),
+    );
+    const r = await cascadeComplete(MESSAGES);
+    expect(r?.provider).toBe("Groq");
+    expect(openAiRunBudget().heldUsd).toBe(0);
+    expect(openAiRunBudget().spentUsd).toBeGreaterThanOrEqual(0.0027 - 1e-9); // the 600-token output cap at 4.5 / Mtok
+  });
+
   it("control (Codex r2 F4 on #4355): a TEXT call on a model with no verified image bound still goes to OpenAI", async () => {
     process.env.OPENAI_MODEL = "gpt-5.6-sol";
     stubFetch({ content: "from openai", usage: { prompt_tokens: 50, completion_tokens: 100 } });

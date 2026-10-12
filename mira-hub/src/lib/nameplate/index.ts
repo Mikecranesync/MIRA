@@ -224,70 +224,82 @@ async function openAiCompatVision(
       }
       reservation = verdict.reservation;
     }
-    let resp: Response;
+    // Every exit after the reservation decides it (see passes.ts openAiVisionCall):
+    // the finally books the worst case for a malformed body or any unexpected
+    // throw, and is a no-op once a path above settled or released.
     try {
-      resp = await fetch(apiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        signal: AbortSignal.timeout(timeoutMs),
-        body: JSON.stringify({
-          model,
-          ...dialect,
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: VISION_PROMPT },
-                {
-                  type: "image_url",
-                  image_url: { url: `data:${mimeType};base64,${imageBase64}` },
-                },
-              ],
-            },
-          ],
-        }),
-      });
-    } catch (err) {
-      // Ambiguous outcome (the request may have been accepted and billed): book the worst case.
-      reservation?.settle(inputBound, 1200);
-      // TimeoutError / network error — surface a stable, credential-free code.
-      if (err instanceof DOMException && err.name === "TimeoutError") {
-        throw new Error("recognizer_provider_timeout");
-      }
-      throw new Error("recognizer_provider_unreachable");
-    }
-    if (!resp.ok) {
-      // The provider rejected the request: nothing billable ran.
-      reservation?.release();
-      // Scrub any credential-bearing detail from provider errors (PRD §20):
-      // keep only the status and the provider's short error CODE (e.g.
-      // `model_not_available`), never the free-text message.
-      let code = "";
+      let resp: Response;
       try {
-        const body = (await resp.json()) as { error?: { code?: unknown } };
-        const c = body?.error?.code;
-        if (typeof c === "string" && /^[a-z0-9_]{1,40}$/i.test(c)) code = `_${c}`;
-      } catch {
-        // non-JSON error body — status alone is the signal
+        resp = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(timeoutMs),
+          body: JSON.stringify({
+            model,
+            ...dialect,
+            response_format: { type: "json_object" },
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: VISION_PROMPT },
+                  {
+                    type: "image_url",
+                    image_url: { url: `data:${mimeType};base64,${imageBase64}` },
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+      } catch (err) {
+        // Ambiguous outcome (the request may have been accepted and billed): book the worst case.
+        reservation?.settle(inputBound, 1200);
+        // TimeoutError / network error — surface a stable, credential-free code.
+        if (err instanceof DOMException && err.name === "TimeoutError") {
+          throw new Error("recognizer_provider_timeout");
+        }
+        throw new Error("recognizer_provider_unreachable");
       }
-      throw new Error(`recognizer_provider_error_${resp.status}${code}`);
-    }
-    let body: {
-      choices?: { message?: { content?: string } }[];
-      usage?: { prompt_tokens?: number; completion_tokens?: number };
-    };
-    try {
-      body = (await resp.json()) as typeof body;
-    } catch (err) {
-      // A 200 whose body could not be read was still served and billed.
+      if (!resp.ok) {
+        // The provider rejected the request: nothing billable ran.
+        reservation?.release();
+        // Scrub any credential-bearing detail from provider errors (PRD §20):
+        // keep only the status and the provider's short error CODE (e.g.
+        // `model_not_available`), never the free-text message.
+        let code = "";
+        try {
+          const body = (await resp.json()) as { error?: { code?: unknown } };
+          const c = body?.error?.code;
+          if (typeof c === "string" && /^[a-z0-9_]{1,40}$/i.test(c)) code = `_${c}`;
+        } catch {
+          // non-JSON error body — status alone is the signal
+        }
+        throw new Error(`recognizer_provider_error_${resp.status}${code}`);
+      }
+      let body: {
+        choices?: { message?: { content?: string } }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
+      try {
+        body = (await resp.json()) as typeof body;
+      } catch (err) {
+        // A 200 whose body could not be read was still served and billed.
+        reservation?.settle(inputBound, 1200);
+        throw err;
+      }
+      if (!body || typeof body !== "object") {
+        // A 200 whose JSON is not an object (`null`, a number) was served and may
+        // be billed; the finally books the worst case (Codex r3 F9 on #4355).
+        throw new Error("recognizer_provider_malformed");
+      }
+      // Served: replace the hold with ACTUAL usage (the bound when the provider omits it).
+      reservation?.settle(...billableTokens(body.usage, inputBound, 1200));
+      const text = body.choices?.[0]?.message?.content ?? "{}";
+      return normalizeCandidate(JSON.parse(text));
+    } finally {
       reservation?.settle(inputBound, 1200);
-      throw err;
     }
-    // Served: replace the hold with ACTUAL usage (the bound when the provider omits it).
-    reservation?.settle(...billableTokens(body.usage, inputBound, 1200));
-    const text = body.choices?.[0]?.message?.content ?? "{}";
-    return normalizeCandidate(JSON.parse(text));
   };
   try {
     return await callOnce();

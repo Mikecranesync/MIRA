@@ -266,6 +266,9 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
     const catchSettleAt = route.indexOf("reservation?.settle(inputBound, requestCap);", catchAt);
     expect(catchSettleAt).toBeGreaterThan(catchAt);
     expect(catchSettleAt).toBeLessThan(clientStopBreak);
+    // Backstop: the per-attempt finally books any hold no path decided (Codex r3 F9, the class).
+    const finallyAt = route.indexOf("} finally {", clientStopBreak);
+    expect(route.indexOf("reservation?.settle(inputBound, requestCap);", finallyAt)).toBeLessThan(route.indexOf("if (genSpan) {", finallyAt));
   });
   it("nameplate recognizer + LOOK vision call: reserve before the fetch, settle on serve or an unknown outcome, release only on a rejection", () => {
     for (const file of ["../../lib/nameplate/index.ts", "../../lib/nameplate/passes.ts"]) {
@@ -285,6 +288,9 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
       // An unverified model is refused before the reserve, never sized by a guess (Codex r2 F4).
       expect(src, file).toMatch(/throw new Error\("recognizer_model_unverified"\)/);
       expect(src.indexOf("recognizer_model_unverified"), file).toBeLessThan(src.indexOf(".reserve(inputBound, "));
+      // A non-object body is malformed, and an idempotent finally books the hold on every exit (Codex r3 F9).
+      expect(src, file).toMatch(/throw new Error\("recognizer_provider_malformed"\)/);
+      expect(src, file).toMatch(/\} finally \{\s*reservation\??\.settle\(inputBound, (maxTokens|1200)\);\s*\}/);
       expect(src, file).toMatch(/reservation\??\.release\(\)/);
     }
   });

@@ -3477,6 +3477,10 @@ async function handleChatTurn(
           genOutcome = "exception";
           continue; // cascade to next provider
         } finally {
+          // Backstop for any exit after the reservation that no path above decided
+          // (Codex r3 F9 on #4355, the class): book the worst case. Idempotent — a
+          // no-op once served-settle, release, or the catch's settle ran.
+          reservation?.settle(inputBound, requestCap);
           if (genSpan) {
             const rawUsageObj = rawUsage as { prompt_tokens?: number; completion_tokens?: number } | null | undefined;
             setSpanAttrs(
