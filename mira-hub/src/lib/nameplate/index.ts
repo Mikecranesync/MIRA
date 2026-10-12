@@ -71,7 +71,7 @@ export function normalizeCandidate(raw: unknown): EquipmentIdentityCandidate {
 
 import { requestDialectFields, type CanonicalProvider } from "../inference/canonical-cascade";
 import {
-  estimateVisionInputTokens,
+  boundVisionInputTokens,
   logBudgetExhausted,
   openAiRunBudget,
   type BudgetReservation,
@@ -200,7 +200,9 @@ async function openAiCompatVision(
   // worst case is HELD for the life of the request so concurrent recognitions
   // cannot each pass against the same balance (Gate 7 on #4355). Reserved
   // inside callOnce so the SyntaxError retry below takes its own hold.
-  const inputBound = estimateVisionInputTokens(VISION_PROMPT.length, 1);
+  // Sized by an UPPER bound: prompt bytes plus the model's worst-case image
+  // cost (Codex r1 F4 on #4355), never the chars/4 + 1,500 average.
+  const inputBound = boundVisionInputTokens(VISION_PROMPT, 1, model);
   const callOnce = async (): Promise<EquipmentIdentityCandidate> => {
     let reservation: BudgetReservation | null = null;
     if (provider) {

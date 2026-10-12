@@ -239,6 +239,45 @@ export function estimateVisionInputTokens(promptChars: number, images: number): 
   return Math.ceil(promptChars / CHARS_PER_TOKEN) + images * IMAGE_PART_TOKENS;
 }
 
+/**
+ * WORST-CASE billable input tokens for ONE image, for sizing a vision hold
+ * (Codex r1 F4 on #4355). OpenAI's vision tokenization table: at detail "auto"
+ * (the default — no request here sets `detail`), which sizes like "high",
+ * gpt-5.4-mini allows up to 2,500 patches at a 1.2 multiplier = 3,000 tokens.
+ * A model not in this table fails CLOSED to a deliberately large ceiling (above
+ * the 12,000-token "original"-detail case). Invalidation trigger: a new OpenAI
+ * vision model, or any request that sets an explicit `detail`. Mirrors
+ * mira-bots/shared/inference/run_budget.py.
+ */
+export const IMAGE_PART_MAX_TOKENS_BY_MODEL: Readonly<Record<string, number>> = { "gpt-5.4-mini": 3_000 };
+export const IMAGE_PART_MAX_TOKENS_UNKNOWN_MODEL = 20_000;
+
+export function imagePartMaxTokens(model: string): number {
+  return IMAGE_PART_MAX_TOKENS_BY_MODEL[model.trim()] ?? IMAGE_PART_MAX_TOKENS_UNKNOWN_MODEL;
+}
+
+/**
+ * UPPER BOUND on one vision call's input tokens, for the hold: the prompt's
+ * UTF-8 bytes (a token-dense hint cannot beat its byte length) plus framing,
+ * plus the worst-case image cost for `model` per image.
+ */
+export function boundVisionInputTokens(prompt: string, images: number, model: string): number {
+  return Buffer.byteLength(prompt, "utf8") + 2 * MESSAGE_FRAMING_TOKENS + images * imagePartMaxTokens(model);
+}
+
+/**
+ * The tokens to BOOK for a served response (Codex r1 F2/F3 on #4355). A
+ * missing, null, negative or non-numeric count is UNKNOWN, not zero: the
+ * provider billed it whether or not it reported it. Unknown input books the
+ * hold's input bound; unknown output books the request's completion cap —
+ * a reasoning model's hidden tokens never show up in the visible answer.
+ */
+export function billableTokens(usage: unknown, inputBound: number, outputCap: number): [number, number] {
+  const u = (usage && typeof usage === "object" ? usage : {}) as { prompt_tokens?: unknown; completion_tokens?: unknown };
+  const known = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
+  return [known(u.prompt_tokens) ? u.prompt_tokens : inputBound, known(u.completion_tokens) ? u.completion_tokens : outputCap];
+}
+
 let shared: OpenAiRunBudget | null = null;
 
 /** The one budget for this process (built lazily from env on first use). */

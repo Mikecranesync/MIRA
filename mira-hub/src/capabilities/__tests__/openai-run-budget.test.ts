@@ -15,6 +15,7 @@ import {
   OpenAiRunBudget,
   DEFAULT_PRICE_PER_MTOK_IN,
   DEFAULT_PRICE_PER_MTOK_OUT,
+  billableTokens,
   boundInputTokens,
   estimateInputTokens,
   estimateVisionInputTokens,
@@ -74,6 +75,20 @@ describe("env contract", () => {
       .usd_per_mtok["gpt-5.4-mini"];
     expect(DEFAULT_PRICE_PER_MTOK_IN).toBe(prices.input);
     expect(DEFAULT_PRICE_PER_MTOK_OUT).toBe(prices.output);
+  });
+});
+
+describe("billableTokens — unknown usage is not free (Codex r1 F2/F3 on #4355)", () => {
+  it("books reported counts, including an honest zero", () => {
+    expect(billableTokens({ prompt_tokens: 3, completion_tokens: 4 }, 100, 50)).toEqual([3, 4]);
+    expect(billableTokens({ prompt_tokens: 0, completion_tokens: 0 }, 100, 50)).toEqual([0, 0]);
+  });
+  it("books the input bound / output cap for missing, null, negative or non-numeric counts", () => {
+    expect(billableTokens(null, 100, 50)).toEqual([100, 50]);
+    expect(billableTokens({}, 100, 50)).toEqual([100, 50]);
+    expect(billableTokens({ prompt_tokens: 7 }, 100, 50)).toEqual([7, 50]);
+    expect(billableTokens({ prompt_tokens: null, completion_tokens: "12" }, 100, 50)).toEqual([100, 50]);
+    expect(billableTokens({ prompt_tokens: -1, completion_tokens: Number.NaN }, 100, 50)).toEqual([100, 50]);
   });
 });
 
@@ -221,12 +236,17 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
   // network await, so every concurrent-capable Hub spend path HOLDS the worst
   // case (reserve) and decides it (settle/release) on every exit — including
   // the client-stop path, which used to leave billed tokens unrecorded.
-  it("notebook chat route: reserve (sized by the input bound) after every skip, before the fetch; settle on serve, release on a rejection, settle in the catch before the stop/internal-error breaks", () => {
+  it("notebook chat route: reserve (sized by the input bound and the cap the request sends) after every skip, before the fetch; settle billable usage on serve, release on a rejection, settle in the catch before the stop/internal-error breaks", () => {
     const route = read("../../app/api/equipment-notebooks/[id]/chat/route.ts");
     expect(route).not.toMatch(/openAiRunBudget\(\)\.(precheck|record)\(/);
     expect(route).toMatch(/const inputBound = boundInputTokens\(messages\);/);
-    expect(route).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, outputCap\)/);
-    const reserveAt = route.indexOf("openAiRunBudget().reserve(inputBound, outputCap)");
+    // Codex r1 F3 on #4355: the hold and every worst-case settle use the cap the
+    // request SENDS; the legacy body ignores outputCap.
+    expect(route).toMatch(/const requestCap = seam \? Math\.min\(coverageDirective \? 1400 : 800, outputCap\) : coverageDirective \? 1400 : 800;/);
+    expect(route).toMatch(/max_tokens: requestCap,/);
+    expect(route).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, requestCap\)/);
+    expect(route).not.toMatch(/reservation\?\.settle\(inputBound, outputCap\)/);
+    const reserveAt = route.indexOf("openAiRunBudget().reserve(inputBound, requestCap)");
     // After the STRM-2 and D6 skips (a skipped provider must not take a hold)…
     expect(reserveAt).toBeGreaterThan(route.indexOf("if (clientAbort.signal.aborted) break cascade;"));
     expect(reserveAt).toBeGreaterThan(route.indexOf('reason: "quarantined"'));
@@ -234,14 +254,16 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
     const fetchAt = route.indexOf("const res = await fetch(provider.url", reserveAt);
     expect(fetchAt).toBeGreaterThan(reserveAt);
     expect(route).toMatch(/if \(!res\.ok\) reservation\?\.release\(\);/);
-    expect(route).toMatch(/reservation\?\.settle\(\s*turnUsage\?\.inputTokens \?\? inputBound,/);
+    // Served: billable usage from THIS attempt's usage block; unknown counts book the bound / cap.
+    expect(route).toMatch(/reservation\?\.settle\(\.\.\.billableTokens\(attemptUsage, inputBound, requestCap\)\);/);
+    expect(route).not.toMatch(/responseBuffer\.join\(""\)\.length \/ 4\),?\s*\);/);
     // The OUTER cascade catch (the one that owns the client-stop break — the
     // read loop has an inner catch of its own) settles FIRST, before the
     // client-stop and internal-error breaks.
     const clientStopBreak = route.indexOf('genOutcome = "client_stop";', fetchAt);
     const catchAt = route.lastIndexOf("} catch (err) {", clientStopBreak);
     expect(catchAt).toBeGreaterThan(fetchAt);
-    const catchSettleAt = route.indexOf("reservation?.settle(inputBound, outputCap);", catchAt);
+    const catchSettleAt = route.indexOf("reservation?.settle(inputBound, requestCap);", catchAt);
     expect(catchSettleAt).toBeGreaterThan(catchAt);
     expect(catchSettleAt).toBeLessThan(clientStopBreak);
   });

@@ -26,7 +26,7 @@
  */
 
 import { requestDialectFields } from "../inference/canonical-cascade";
-import { estimateVisionInputTokens, logBudgetExhausted, openAiRunBudget } from "../../capabilities/openai-run-budget";
+import { boundVisionInputTokens, logBudgetExhausted, openAiRunBudget } from "../../capabilities/openai-run-budget";
 import { openAiVisionProvider, togetherVisionModel } from "./index";
 
 // ── Field vocabulary ─────────────────────────────────────────────────────────
@@ -622,7 +622,9 @@ export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature
   // case is HELD for the life of the request: `runMultiPass` fires several of
   // these concurrently from one photo, and a plain precheck let every one of
   // them pass against the same balance (Gate 7 on #4355).
-  const inputBound = estimateVisionInputTokens(prompt.length, images.length);
+  // Sized by an UPPER bound: prompt bytes plus the model's worst-case image
+  // cost (Codex r1 F4 on #4355), never the chars/4 + 1,500 average.
+  const inputBound = boundVisionInputTokens(prompt, images.length, provider.model);
   const verdict = openAiRunBudget().reserve(inputBound, maxTokens);
   if (!verdict.ok) {
     logBudgetExhausted("vision-call", verdict);

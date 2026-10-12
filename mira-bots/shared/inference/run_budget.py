@@ -61,6 +61,38 @@ _IMAGE_PART_TOKENS = 1500
 # sizes a hold. Mirrors mira-hub/src/capabilities/openai-run-budget.ts.
 _MESSAGE_FRAMING_TOKENS = 8
 
+# WORST-CASE billable input tokens for ONE image part, for sizing a hold (Codex
+# r1 F4 on #4355). OpenAI's vision tokenization table: at detail "auto" (the
+# default, which sizes like "high") gpt-5.4-mini allows up to 2,500 patches at
+# a 1.2 multiplier = 3,000 tokens. A model not in this table fails CLOSED to a
+# deliberately large ceiling (above the 12,000-token "original"-detail case).
+# Invalidation trigger: a new OpenAI vision model, or any request that sets an
+# explicit `detail`. Mirrors mira-hub/src/capabilities/openai-run-budget.ts.
+_IMAGE_MAX_TOKENS_BY_MODEL: dict[str, int] = {"gpt-5.4-mini": 3_000}
+_IMAGE_MAX_TOKENS_UNKNOWN_MODEL = 20_000
+
+
+def image_part_max_tokens(model: str | None) -> int:
+    """Worst-case input tokens for one image on ``model`` (fail-closed when unknown)."""
+    return _IMAGE_MAX_TOKENS_BY_MODEL.get((model or "").strip(), _IMAGE_MAX_TOKENS_UNKNOWN_MODEL)
+
+
+def billable_tokens(usage: object, input_bound: int, output_cap: int) -> tuple[int, int]:
+    """The tokens to BOOK for a served response (Codex r1 F2 on #4355).
+
+    A missing, null, negative or non-integer count is UNKNOWN, not zero: the
+    provider billed it whether or not it reported it. Unknown input books the
+    hold's input bound; unknown output books the attempt's completion cap.
+    Telemetry keeps whatever the provider reported; only the charge is
+    conservative."""
+
+    def _known(v: object) -> int | None:
+        return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
+
+    u = usage if isinstance(usage, dict) else {}
+    pt, ct = _known(u.get("prompt_tokens")), _known(u.get("completion_tokens"))
+    return (input_bound if pt is None else pt, output_cap if ct is None else ct)
+
 
 class BudgetExceeded(Exception):
     """Raised by :meth:`OpenAIRunBudget.precheck` when a call would cross the cap."""
@@ -108,6 +140,17 @@ class BudgetReservation:
             self._open = False
             self._budget._drop_hold(self._worst)
             return self._budget._record_locked(input_tokens, output_tokens)
+
+    def settle_worst_case(self) -> float:
+        """The outcome is unknown (timeout after acceptance, dropped connection,
+        cancellation): book exactly the worst case this hold was sized for.
+        Returns this call's cost (0.0 when the hold was already decided)."""
+        with self._budget._lock:
+            if not self._open:
+                return 0.0
+            self._open = False
+            self._budget._drop_hold(self._worst)
+            return self._budget._book_locked(self._worst)
 
     def release(self) -> None:
         """The provider rejected the request without billable work: drop the hold."""
@@ -225,8 +268,10 @@ class OpenAIRunBudget:
             self._precheck_locked(self.estimate_usd(input_tokens, output_tokens))
 
     def _record_locked(self, input_tokens: int, output_tokens: int) -> float:
+        return self._book_locked(self.estimate_usd(input_tokens, output_tokens))
+
+    def _book_locked(self, cost: float) -> float:
         self._roll()
-        cost = self.estimate_usd(input_tokens, output_tokens)
         self._spent_usd += cost
         self._calls += 1
         logger.info(
@@ -282,31 +327,39 @@ def estimate_input_tokens(messages: list[dict]) -> int:
     return total_chars // _CHARS_PER_TOKEN + images * _IMAGE_PART_TOKENS
 
 
-def bound_input_tokens(messages: list[dict]) -> int:
+def _is_image_part(part: object) -> bool:
+    return isinstance(part, dict) and part.get("type") == "image_url"
+
+
+def bound_input_tokens(messages: list[dict], model: str | None = None) -> int:
     """An UPPER bound on the input tokens, for sizing a hold.
 
     ``estimate_input_tokens`` is a chars/4 average that dense text (numerics,
     code, CJK) beats, so a hold sized by it can admit spend past the cap. Every
     BPE token encodes at least one byte, so the UTF-8 byte length of the
-    serialized messages cannot be exceeded by the token count; a framing
-    allowance per message covers role and separator tokens, and each image part
-    adds its fixed block. Over-reserving only tightens concurrent admission; a
-    served response still settles at actual usage."""
-    try:
-        serialized = json.dumps(messages, ensure_ascii=False, default=str)
-    except (TypeError, ValueError):
-        serialized = ""
+    serialized TEXT cannot be exceeded by its token count; a framing allowance
+    per message covers role and separator tokens. Image parts are NOT counted
+    by their base64 bytes (a photo would read as ~600k tokens and a timed-out
+    vision call would book half a dollar); each one adds the worst-case image
+    cost for ``model`` instead (:func:`image_part_max_tokens`). Over-reserving
+    only tightens concurrent admission; a served response settles at actual
+    usage."""
     images = 0
+    text_only: list[object] = []
     for msg in messages:
         content = msg.get("content") if isinstance(msg, dict) else None
         if isinstance(content, list):
-            images += sum(
-                1 for p in content if isinstance(p, dict) and p.get("type") == "image_url"
-            )
+            images += sum(1 for p in content if _is_image_part(p))
+            msg = {**msg, "content": [p for p in content if not _is_image_part(p)]}
+        text_only.append(msg)
+    try:
+        serialized = json.dumps(text_only, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        serialized = ""
     return (
         len(serialized.encode("utf-8"))
         + (len(messages) + 1) * _MESSAGE_FRAMING_TOKENS
-        + images * _IMAGE_PART_TOKENS
+        + images * image_part_max_tokens(model)
     )
 
 

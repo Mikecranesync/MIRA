@@ -397,3 +397,240 @@ async def test_control_groq_is_never_budgeted(monkeypatch):
         content, _ = await r.complete([{"role": "user", "content": "hi"}], max_tokens=50)
     assert content == "from groq"
     assert rb.get_openai_run_budget().calls == 0
+
+
+# ── Codex r1 on #4355: every metered attempt holds; unknown usage is not free ──
+
+MSGS = [{"role": "user", "content": "hi"}]
+OPENAI_MODEL = "gpt-5.4-mini"
+
+
+def _served(content: str, usage: dict | None) -> dict:
+    data: dict = {"choices": [{"message": {"content": content}}]}
+    if usage is not None:
+        data["usage"] = usage
+    return data
+
+
+def _scripted_client(script: list):
+    """httpx.AsyncClient stand-in. Each OpenAI post consumes the next scripted
+    step — a dict (a 200 JSON body), an int (that HTTP status), or an exception
+    (raised). Groq always answers. Records (host, completion cap) per post."""
+    sent: list[tuple[str, object]] = []
+
+    class _Resp:
+        def __init__(self, url: str, data: dict, status: int = 200):
+            self._url, self._data, self._status = url, data, status
+
+        def raise_for_status(self):
+            if self._status >= 400:
+                req = httpx.Request("POST", self._url)
+                raise httpx.HTTPStatusError(
+                    str(self._status),
+                    request=req,
+                    response=httpx.Response(
+                        self._status, request=req, text="x", headers={"retry-after": "0"}
+                    ),
+                )
+
+        def json(self):
+            return self._data
+
+    async def post(url, headers=None, json=None):
+        body = json or {}
+        cap = body.get("max_completion_tokens", body.get("max_tokens"))
+        host = "openai" if "api.openai.com" in url else "groq"
+        sent.append((host, cap))
+        if host == "openai":
+            step = script.pop(0)
+            if isinstance(step, BaseException):
+                raise step
+            if isinstance(step, int):
+                return _Resp(url, {}, status=step)
+            return _Resp(url, step)
+        return _Resp(url, _chat_response("from groq", 10, 5))
+
+    client = MagicMock()
+    client.post = AsyncMock(side_effect=post)
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=client)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    return cm, sent
+
+
+def _cloud(monkeypatch, cap: str | None = None):
+    monkeypatch.setenv("INFERENCE_BACKEND", "cloud")
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    monkeypatch.setenv("LLM_REASONING_RETRY_MAX_TOKENS", "8192")
+    if cap is not None:
+        monkeypatch.setenv("OPENAI_RUN_BUDGET_USD", cap)
+
+
+async def _complete(cm, max_tokens: int):
+    with patch("shared.inference.router.httpx.AsyncClient", return_value=cm):
+        r = InferenceRouter()
+        r.write_api_usage = MagicMock()
+        return await r.complete(MSGS, max_tokens=max_tokens)
+
+
+def _openai_caps(sent) -> list:
+    return [cap for host, cap in sent if host == "openai"]
+
+
+async def test_reasoning_burn_retry_is_never_sent_when_it_no_longer_fits_the_cap(
+    monkeypatch, caplog
+):
+    # First attempt fits (200-token cap); it burns its whole allowance with no
+    # visible content, so the router wants an 8192-token retry worth ~USD 0.037
+    # against a USD 0.005 cap. That retry must not leave the building.
+    _cloud(monkeypatch, cap="0.005")
+    cm, sent = _scripted_client([_served("", {"prompt_tokens": 10, "completion_tokens": 200})])
+    with caplog.at_level("WARNING"):
+        content, usage = await _complete(cm, max_tokens=200)
+    assert _openai_caps(sent) == [200]
+    assert content == "from groq"
+    b = rb.get_openai_run_budget()
+    assert b.spent_usd <= b.cap_usd
+    assert b.held_usd == 0.0
+    assert any("not sending the retry" in rec.message for rec in caplog.records)
+
+
+async def test_control_reasoning_burn_retry_is_sent_and_booked_when_it_fits(monkeypatch):
+    _cloud(monkeypatch)  # default USD 10 cap
+    cm, sent = _scripted_client(
+        [
+            _served("", {"prompt_tokens": 10, "completion_tokens": 200}),
+            _served("answer", {"prompt_tokens": 10, "completion_tokens": 300}),
+        ]
+    )
+    content, _ = await _complete(cm, max_tokens=200)
+    assert _openai_caps(sent) == [200, 8192]
+    assert content == "answer"
+    b = rb.get_openai_run_budget()
+    assert b.calls == 2
+    assert b.spent_usd == pytest.approx(b.estimate_usd(10, 200) + b.estimate_usd(10, 300))
+    assert b.held_usd == 0.0
+
+
+async def test_a_served_response_with_no_usage_books_the_bound_and_the_cap(monkeypatch):
+    _cloud(monkeypatch)
+    cm, _ = _scripted_client([_served("answer", None)])
+    content, _ = await _complete(cm, max_tokens=50)
+    assert content == "answer"
+    b = rb.get_openai_run_budget()
+    assert b.spent_usd == pytest.approx(
+        b.estimate_usd(rb.bound_input_tokens(MSGS, model=OPENAI_MODEL), 50)
+    )
+    assert b.spent_usd > 0
+
+
+async def test_a_missing_completion_count_books_the_cap_and_keeps_the_known_input(monkeypatch):
+    _cloud(monkeypatch)
+    cm, _ = _scripted_client([_served("answer", {"prompt_tokens": 7})])
+    await _complete(cm, max_tokens=50)
+    b = rb.get_openai_run_budget()
+    assert b.spent_usd == pytest.approx(b.estimate_usd(7, 50))
+
+
+async def test_usage_less_responses_exhaust_the_cap_instead_of_running_free(monkeypatch):
+    # Room for two worst cases, not three: the third OpenAI call must be refused.
+    worst = rb.OpenAIRunBudget(clock=FakeClock()).estimate_usd(
+        rb.bound_input_tokens(MSGS, model=OPENAI_MODEL), 50
+    )
+    _cloud(monkeypatch, cap=repr(worst * 2.5))
+    cm, sent = _scripted_client([_served("a", None), _served("b", None), _served("c", None)])
+    replies = [(await _complete(cm, max_tokens=50))[0] for _ in range(3)]
+    assert replies == ["a", "b", "from groq"]
+    assert len(_openai_caps(sent)) == 2
+
+
+async def test_rate_limit_retry_reserves_after_the_wait_and_is_not_sent_once_the_balance_is_gone(
+    monkeypatch,
+):
+    # The 429 releases the first hold (nothing billable ran). While the router
+    # waits, another caller spends the balance; the retry must re-check and stay home.
+    _cloud(monkeypatch, cap="0.01")
+    cm, sent = _scripted_client(
+        [429, _served("answer", {"prompt_tokens": 10, "completion_tokens": 5})]
+    )
+
+    async def other_caller_spends(_seconds):
+        rb.get_openai_run_budget().record(13_000, 0)  # ~USD 0.00975 of the USD 0.01
+
+    with patch("shared.inference.router.asyncio.sleep", other_caller_spends):
+        content, _ = await _complete(cm, max_tokens=50)
+    assert _openai_caps(sent) == [50]
+    assert content == "from groq"
+    assert rb.get_openai_run_budget().held_usd == 0.0
+
+
+async def test_control_rate_limit_retry_is_sent_and_booked_when_it_fits(monkeypatch):
+    _cloud(monkeypatch)
+    cm, sent = _scripted_client(
+        [429, _served("answer", {"prompt_tokens": 10, "completion_tokens": 5})]
+    )
+
+    async def no_wait(_seconds):
+        return None
+
+    with patch("shared.inference.router.asyncio.sleep", no_wait):
+        content, _ = await _complete(cm, max_tokens=50)
+    assert _openai_caps(sent) == [50, 50]
+    assert content == "answer"
+    b = rb.get_openai_run_budget()
+    assert b.calls == 1  # the 429 booked nothing; only the served retry did
+    assert b.spent_usd == pytest.approx(b.estimate_usd(10, 5))
+
+
+async def test_a_rate_limit_retry_that_times_out_books_its_own_worst_case(monkeypatch):
+    _cloud(monkeypatch)
+    cm, sent = _scripted_client([429, httpx.ReadTimeout("slow")])
+
+    async def no_wait(_seconds):
+        return None
+
+    with patch("shared.inference.router.asyncio.sleep", no_wait):
+        content, _ = await _complete(cm, max_tokens=50)
+    assert _openai_caps(sent) == [50, 50]
+    assert content == "from groq"
+    b = rb.get_openai_run_budget()
+    assert b.held_usd == 0.0
+    assert b.calls == 1
+    assert b.spent_usd == pytest.approx(
+        b.estimate_usd(rb.bound_input_tokens(MSGS, model=OPENAI_MODEL), 50)
+    )
+
+
+def test_images_are_bounded_by_the_model_table_not_by_their_base64_bytes():
+    photo = "data:image/jpeg;base64," + "A" * 400_000
+    with_image = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "read this nameplate"},
+                {"type": "image_url", "image_url": {"url": photo}},
+            ],
+        }
+    ]
+    text_only = [{"role": "user", "content": [{"type": "text", "text": "read this nameplate"}]}]
+    base = rb.bound_input_tokens(text_only)
+    assert rb.bound_input_tokens(with_image, model="gpt-5.4-mini") == base + 3_000
+    # A model not in the table fails closed to the large ceiling.
+    assert rb.bound_input_tokens(with_image, model="some-new-vision-model") == base + 20_000
+    assert rb.bound_input_tokens(with_image, model=None) == base + 20_000
+    # The 400 KB data URL is not counted as text.
+    assert rb.bound_input_tokens(with_image, model="gpt-5.4-mini") < 10_000
+
+
+def test_billable_tokens_treats_missing_and_malformed_counts_as_unknown_not_zero():
+    assert rb.billable_tokens({"prompt_tokens": 3, "completion_tokens": 4}, 100, 50) == (3, 4)
+    assert rb.billable_tokens({"prompt_tokens": 0, "completion_tokens": 0}, 100, 50) == (0, 0)
+    assert rb.billable_tokens({}, 100, 50) == (100, 50)
+    assert rb.billable_tokens(None, 100, 50) == (100, 50)
+    bad = {"prompt_tokens": None, "completion_tokens": "12"}
+    assert rb.billable_tokens(bad, 100, 50) == (100, 50)
+    assert rb.billable_tokens({"prompt_tokens": -1, "completion_tokens": True}, 100, 50) == (
+        100,
+        50,
+    )

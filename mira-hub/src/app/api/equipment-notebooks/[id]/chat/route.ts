@@ -46,7 +46,13 @@ import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evide
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { finishedAfterChunk } from "@/capabilities/stream-stop";
-import { boundInputTokens, logBudgetExhausted, openAiRunBudget, type BudgetReservation } from "@/capabilities/openai-run-budget";
+import {
+  billableTokens,
+  boundInputTokens,
+  logBudgetExhausted,
+  openAiRunBudget,
+  type BudgetReservation,
+} from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
@@ -3201,6 +3207,9 @@ async function handleChatTurn(
       // (Gate 7 on #4355; the same discipline as lib/llm/cascade.ts). The hold
       // is sized by an UPPER bound on the input, never the chars/4 average.
       const inputBound = boundInputTokens(messages);
+      // The completion cap the request ACTUALLY sends (the legacy body ignores
+      // outputCap), so the hold is sized by what the provider may bill.
+      const requestCap = seam ? Math.min(coverageDirective ? 1400 : 800, outputCap) : coverageDirective ? 1400 : 800;
       cascade: for (const provider of cascadeProviders) {
         if (!provider.key) continue;
         // STRM-2: a stopped turn must never open a second provider stream.
@@ -3224,8 +3233,11 @@ async function handleChatTurn(
         // provider that is down. Reserved here — after every `continue`/`break`
         // above — so a hold is never taken on a provider this turn skips.
         let reservation: BudgetReservation | null = null;
+        // This attempt's own usage block. `rawUsage` lives across the whole
+        // cascade, so a block from an earlier provider must never price this one.
+        let attemptUsage: unknown = null;
         if (provider.name === "OpenAI") {
-          const verdict = openAiRunBudget().reserve(inputBound, outputCap);
+          const verdict = openAiRunBudget().reserve(inputBound, requestCap);
           if (!verdict.ok) {
             logBudgetExhausted("notebook-chat", verdict);
             if (seam) attempted.push(provider.name);
@@ -3255,13 +3267,13 @@ async function handleChatTurn(
                 ? buildRequestBody(
                     provider as never,
                     messages,
-                    Math.min(coverageDirective ? 1400 : 800, outputCap),
+                    requestCap,
                   )
                 : {
                     model: provider.model,
                     messages,
                     stream: true,
-                    max_tokens: coverageDirective ? 1400 : 800,
+                    max_tokens: requestCap,
                     temperature: 0.3,
                     ...(provider.name === "Groq"
                       ? { reasoning_effort: process.env.GROQ_REASONING_EFFORT ?? "low" }
@@ -3284,7 +3296,7 @@ async function handleChatTurn(
             // A rejection ran nothing billable: drop the hold. A 200 with no
             // body was still served: book the worst case.
             if (!res.ok) reservation?.release();
-            else reservation?.settle(inputBound, outputCap);
+            else reservation?.settle(inputBound, requestCap);
             continue;
           }
           const reader = res.body.getReader();
@@ -3345,7 +3357,10 @@ async function handleChatTurn(
                 // include_usage delivers the usage block on a FINAL chunk that
                 // carries no choices — capture it whenever present rather than
                 // only at finish_reason, or it is missed on some providers.
-                if (parsed.usage) rawUsage = parsed.usage;
+                if (parsed.usage) {
+                  rawUsage = parsed.usage;
+                  attemptUsage = parsed.usage;
+                }
                 if (parsed.id && !genResponseId) genResponseId = parsed.id;
                 const delta = parsed.choices?.[0]?.delta?.content;
                 if (delta) {
@@ -3410,20 +3425,20 @@ async function handleChatTurn(
                 capped ? "capped" : "ok",
               );
             }
-            // Served: replace the hold with ACTUAL usage (the input bound and
-            // the chars/4 output when the provider sent no usage block) so the
-            // next reservation sees real spend.
-            reservation?.settle(
-              turnUsage?.inputTokens ?? inputBound,
-              turnUsage?.outputTokens ?? Math.ceil(responseBuffer.join("").length / 4),
-            );
+            // Served: replace the hold with the provider's ACTUAL usage, read
+            // from the raw usage block (captured seam on or off). A count the
+            // provider did not report is unknown, not small: it books the input
+            // bound / the request cap — the visible answer says nothing about a
+            // reasoning model's hidden tokens, and a post-stop drain failure
+            // loses the usage block entirely (Codex r1 F3 on #4355).
+            reservation?.settle(...billableTokens(attemptUsage, inputBound, requestCap));
             break;
           }
           if (seam) attempted.push(provider.name);
           providerFailures.push({ provider: provider.name, httpStatus: res.status, reason: "empty_stream" });
           genOutcome = "http_error";
           // A 200 that streamed nothing was still accepted and may be billed.
-          reservation?.settle(inputBound, outputCap);
+          reservation?.settle(inputBound, requestCap);
         } catch (err) {
           // Whatever threw — a client stop part-way through a stream, a
           // timeout, a dropped connection, a route bug — the provider may
@@ -3431,7 +3446,7 @@ async function handleChatTurn(
           // never receives the usage block. Book the worst case; never free
           // budget on an outcome we cannot see (Gate 7 on #4355: a Stop used
           // to leave the spend unrecorded). Idempotent after a settle above.
-          reservation?.settle(inputBound, outputCap);
+          reservation?.settle(inputBound, requestCap);
           // Client stopped generation (STRM-2). Checked BEFORE the cascade
           // classifier: the race rejects with an AbortError, and a cancelled
           // controller makes enqueue throw a TypeError — neither is a

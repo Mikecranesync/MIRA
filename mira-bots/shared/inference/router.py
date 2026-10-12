@@ -38,6 +38,7 @@ import yaml
 from .run_budget import (
     BudgetExceeded,
     BudgetReservation,
+    billable_tokens,
     bound_input_tokens,
     get_openai_run_budget,
 )
@@ -273,6 +274,11 @@ class _Provider:
     def cap_key(self) -> str:
         """The request field that carries the output-token cap for this provider."""
         return _cap_key(self)
+
+
+def _model_for(provider: _Provider, has_image: bool) -> str:
+    """The model a request to ``provider`` actually names (vision model for image requests)."""
+    return provider.vision_model if (has_image and provider.vision_model) else provider.model
 
 
 def _cap_key(provider: _Provider) -> str:
@@ -580,7 +586,8 @@ class InferenceRouter:
             if provider.name == "openai":
                 try:
                     reservation = get_openai_run_budget().reserve(
-                        bound_input_tokens(messages), max_tokens
+                        bound_input_tokens(messages, model=_model_for(provider, has_image)),
+                        max_tokens,
                     )
                 except BudgetExceeded as exc:
                     logger.warning("OPENAI_BUDGET_EXHAUSTED %s — skipping openai", exc)
@@ -647,19 +654,59 @@ class InferenceRouter:
         exception — booked at the worst case in the ``finally`` below: never
         free budget on an outcome we cannot see. Settle/release are idempotent,
         so the ``finally`` is a no-op on paths that already decided."""
-        # Use vision model for image requests if available
-        model = provider.vision_model if (has_image and provider.vision_model) else provider.model
-        input_bound = bound_input_tokens(messages)
-        payload: dict = _request_payload(provider, model, messages, max_tokens)
-        # Note: response_format=json_object omitted — Groq requires "json" in system prompt
-        # to use that mode, and Cerebras occasionally rejects it. The system prompt already
-        # instructs JSON output; _parse_response has 3 extraction strategies as fallback.
-        headers = {
-            "Authorization": f"Bearer {provider.api_key}",
-            "Content-Type": "application/json",
-        }
+        metered = provider.name == "openai"
+        # The hold for the metered HTTP attempt currently in flight, and the
+        # completion cap it was sized for. EVERY OpenAI request this method sends
+        # holds its own worst case (Codex r1 F1 on #4355): the first attempt uses
+        # the hold `complete()` took; the reasoning-burn retry and the 429 retry
+        # each reserve again before they are sent and are not sent if they no
+        # longer fit. Each hold is settled at billable usage when a response
+        # lands, released on a provider rejection, and otherwise — timeout,
+        # dropped connection, cancellation, any exception — booked at its worst
+        # case in the ``finally``. Settle/release are idempotent.
+        current = reservation
+        current_cap = max_tokens
+        input_bound = 0
+
+        def _hold(cap: int, what: str) -> bool:
+            """Reserve a metered attempt; False when it no longer fits the cap."""
+            nonlocal current, current_cap
+            if not metered:
+                return True
+            if current is None:
+                try:
+                    current = get_openai_run_budget().reserve(input_bound, cap)
+                except BudgetExceeded as exc:
+                    logger.warning("OPENAI_BUDGET_EXHAUSTED %s — not sending the %s", exc, what)
+                    return False
+            current_cap = cap
+            return True
+
+        def _settle(usage: object, cap: int) -> None:
+            nonlocal current
+            if current is not None:
+                current.settle(*billable_tokens(usage, input_bound, cap))
+                current = None
+
+        def _release() -> None:
+            nonlocal current
+            if current is not None:
+                current.release()
+                current = None
 
         try:
+            # Use vision model for image requests if available
+            model = _model_for(provider, has_image)
+            input_bound = bound_input_tokens(messages, model=model)
+            payload: dict = _request_payload(provider, model, messages, max_tokens)
+            # Note: response_format=json_object omitted — Groq requires "json" in system prompt
+            # to use that mode, and Cerebras occasionally rejects it. The system prompt already
+            # instructs JSON output; _parse_response has 3 extraction strategies as fallback.
+            headers = {
+                "Authorization": f"Bearer {provider.api_key}",
+                "Content-Type": "application/json",
+            }
+
             # Up to two attempts: the requested cap, then — only when the first
             # attempt was a reasoning burn (tokens consumed, no visible content)
             # — one retry with headroom so the model can finish thinking AND
@@ -668,6 +715,8 @@ class InferenceRouter:
             content = ""
             usage_dict: dict = {}
             for attempt_idx, attempt_cap in enumerate(attempt_caps):
+                if not _hold(attempt_cap, "retry" if attempt_idx else "request"):
+                    break
                 payload[_cap_key(provider)] = attempt_cap
                 t0 = time.monotonic()
                 async with httpx.AsyncClient(timeout=provider.timeout) as client:
@@ -676,26 +725,19 @@ class InferenceRouter:
                     data = resp.json()
                 elapsed_ms = int((time.monotonic() - t0) * 1000)
 
+                usage = data.get("usage") or {}
+                # Book the attempt BEFORE anything else can throw: a served
+                # response is billed whether or not it parses.
+                _settle(usage, attempt_cap)
                 message = data["choices"][0]["message"]
                 raw_content = message.get("content") or ""
                 content = _strip_reasoning(raw_content)
-                usage = data.get("usage", {})
                 usage_dict = {
                     "input_tokens": usage.get("prompt_tokens", 0),
                     "output_tokens": usage.get("completion_tokens", 0),
                     "provider": provider.name,
                     "model": f"{provider.name}/{model}",
                 }
-                if provider.name == "openai":
-                    # The first attempt settles its hold at actual usage; the
-                    # reasoning-burn retry below is a second, sequential request
-                    # with no hold of its own, so it is recorded directly.
-                    if reservation is not None and attempt_idx == 0:
-                        reservation.settle(usage_dict["input_tokens"], usage_dict["output_tokens"])
-                    else:
-                        get_openai_run_budget().record(
-                            usage_dict["input_tokens"], usage_dict["output_tokens"]
-                        )
 
                 logger.info(
                     "LLM_CALL provider=%s model=%s latency_ms=%d input=%d output=%d",
@@ -747,8 +789,7 @@ class InferenceRouter:
 
         except httpx.HTTPStatusError as e:
             # The provider answered with a rejection: nothing billable ran.
-            if reservation is not None:
-                reservation.release()
+            _release()
             status = e.response.status_code
             error_type = _classify_http_error(status)
             body = e.response.text[:300]
@@ -764,27 +805,30 @@ class InferenceRouter:
                 wait = _parse_retry_after(e.response)
                 logger.info("%s rate limited — waiting %.1fs", provider.name, wait)
                 await asyncio.sleep(min(wait, 30.0))
-                # Single inline retry — no recursion
-                try:
-                    async with httpx.AsyncClient(timeout=provider.timeout) as rc:
-                        r2 = await rc.post(provider.api_url, headers=headers, json=payload)
-                        r2.raise_for_status()
-                        d2 = r2.json()
-                    retry_usage = {
-                        "input_tokens": d2.get("usage", {}).get("prompt_tokens", 0),
-                        "output_tokens": d2.get("usage", {}).get("completion_tokens", 0),
-                        "provider": provider.name,
-                    }
-                    if provider.name == "openai":
-                        # A served retry is metered spend like any other call.
-                        get_openai_run_budget().record(
-                            retry_usage["input_tokens"], retry_usage["output_tokens"]
-                        )
-                    return _strip_reasoning(
-                        d2["choices"][0]["message"]["content"] or ""
-                    ), retry_usage
-                except Exception:
-                    pass
+                # Single inline retry — no recursion. Metered: it holds its own
+                # worst case, reserved AFTER the wait so concurrent callers that
+                # spent the balance meanwhile are seen; not sent if it no longer fits.
+                retry_cap = current_cap
+                if _hold(retry_cap, "rate-limit retry"):
+                    try:
+                        async with httpx.AsyncClient(timeout=provider.timeout) as rc:
+                            r2 = await rc.post(provider.api_url, headers=headers, json=payload)
+                            r2.raise_for_status()
+                            d2 = r2.json()
+                        u2 = d2.get("usage") or {}
+                        _settle(u2, retry_cap)
+                        retry_usage = {
+                            "input_tokens": u2.get("prompt_tokens", 0),
+                            "output_tokens": u2.get("completion_tokens", 0),
+                            "provider": provider.name,
+                        }
+                        return _strip_reasoning(
+                            d2["choices"][0]["message"]["content"] or ""
+                        ), retry_usage
+                    except httpx.HTTPStatusError:
+                        _release()  # rejected again: nothing billable ran
+                    except Exception:
+                        pass  # unknown outcome: the finally books the worst case
 
             raise _ProviderSkip(provider.name, error_type)
 
@@ -798,10 +842,11 @@ class InferenceRouter:
 
         finally:
             # Unknown outcome (timeout after acceptance, dropped connection,
-            # any exception after the request left): book the worst case.
-            # No-op when a path above already settled or released.
-            if reservation is not None:
-                reservation.settle(input_bound, max_tokens)
+            # cancellation, any exception after the request left): book the
+            # open hold at exactly the worst case it was sized for. No-op when a
+            # path above already settled or released.
+            if current is not None:
+                current.settle_worst_case()
 
     @staticmethod
     def log_usage(usage: dict) -> None:
