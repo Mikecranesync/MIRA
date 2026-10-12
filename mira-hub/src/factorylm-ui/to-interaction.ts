@@ -43,14 +43,6 @@ import { BASIS_LABEL, splitEvidence } from "@/components/equipment/notebook-chat
 
 type StatusAwareStreamResult = StreamResult & { statusMessage?: string | null };
 
-/** The terminal frame said every configured provider failed — the one provider
- *  error a re-send can fix (#4374). Shared by the live mapper and the host's
- *  retry decision so the two cannot disagree. No-provider-configured is not
- *  retryable: nothing changes until an admin adds a key. */
-export function isRetryableProviderExhaustion(result: Pick<StatusAwareStreamResult, "status" | "statusMessage">): boolean {
-  return result.status === "error" && result.statusMessage?.trim() === ALL_PROVIDERS_FAILED_MESSAGE;
-}
-
 const PROVIDER_FAILURE_COPY = {
   all_providers_failed: ALL_PROVIDERS_FAILED_MESSAGE,
   no_provider_configured: NO_PROVIDER_CONFIGURED_MESSAGE,
@@ -370,7 +362,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
     if (serverMessage === ALL_PROVIDERS_FAILED_MESSAGE || serverMessage === NO_PROVIDER_CONFIGURED_MESSAGE) {
       parts.push({
         type: "error",
-        error: { code: "provider_failure", message: serverMessage, retryable: isRetryableProviderExhaustion(result) },
+        error: { code: "provider_failure", message: serverMessage, retryable: false },
       });
     } else {
       parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
@@ -479,8 +471,8 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } });
   } else {
     // #4374: the persisted provider-exhaustion reason shows the same copy the
-    // live turn did. Never retryable here — Retry re-sends the host's ONE held
-    // request, so only `withRetryableLatestFailure` may arm the newest turn.
+    // live turn did. Never retryable: the host's Retry replays the same
+    // idempotent request (#4374 Codex R2); a scoped Retry is tracked on #4366.
     // `PersistedTurn.evidence` (guarded legacy type) predates this marker; read it as unknown.
     const failure = (row.evidence as readonly unknown[]).find(isProviderFailureEntry);
     const message = failure ? PROVIDER_FAILURE_COPY[failure.reason] : "The answer could not be completed.";
@@ -540,25 +532,6 @@ export function withManualSearchStatus(
     ...(status.message ? { message: status.message } : {}),
   };
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
-}
-
-/** Arm Retry on the newest assistant turn only, and only when it is a retryable
- *  provider exhaustion (#4374 R1 F2). The host calls this while it still holds
- *  that turn's request; older failed turns stay inert so one held request can
- *  never be re-sent from a different question. */
-export function withRetryableLatestFailure(turns: readonly InteractionTurn[]): InteractionTurn[] {
-  const last = turns.length - 1;
-  const turn = turns[last];
-  if (!turn || turn.role !== "assistant") return [...turns];
-  let armed = false;
-  const parts = turn.parts.map((p) => {
-    if (p.type === "error" && p.error.code === "provider_failure" && p.error.message === ALL_PROVIDERS_FAILED_MESSAGE && !p.error.retryable) {
-      armed = true;
-      return { ...p, error: { ...p.error, retryable: true } };
-    }
-    return p;
-  });
-  return armed ? [...turns.slice(0, last), { ...turn, parts }] : [...turns];
 }
 
 export function threadFromPersisted(

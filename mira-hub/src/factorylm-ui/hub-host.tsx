@@ -57,7 +57,7 @@ import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, ty
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { OnboardingGate } from "./onboarding-gate";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { citationIndex, contextFor, isRetryableProviderExhaustion, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withRetryableLatestFailure } from "./to-interaction";
+import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus } from "./to-interaction";
 import {
   EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
@@ -144,9 +144,7 @@ export function HubShellHost() {
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
-  // `exhausted`: the send completed but every provider failed (#4374 R1 F2) —
-  // the newest turn is armed for Retry; a transport failure uses the banner.
-  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string; exhausted?: true } | null>(null);
+  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // The upload half of an attached send (#4019 round 2 F2): Stop and thread
   // changes abort it too, so a slow upload can never post afterwards.
@@ -364,18 +362,16 @@ export function HubShellHost() {
     // in-flight gap (a turn still streaming) is the documented BLOCKED note:
     // `notebook-chat-utils.ts` (guarded legacy presentation) carries no such
     // frame, so this appears only once `loadDetail` has re-fetched.
-    const persistedTurns = withManualSearchStatus(
+    const turns = withManualSearchStatus(
       withOutgoing(threadFromPersisted(detail.turns, meta).turns, { turns: liveTurns, outgoingId: live?.outgoingId ?? null }, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta)),
       // Codex #4195 round 2 F6: the FOLLOWED status (hydration/confirm-seeded,
       // ticking toward resolution) takes precedence over the raw per-render
       // read, so an idle Hub still updates once a backgrounded search settles.
       follow?.status ?? detail.manualSearch ?? null,
     );
-    // Only while the host still holds the exhausted turn's request (#4374 R1 F2).
-    const turns = failedBody?.exhausted ? withRetryableLatestFailure(persistedTurns) : persistedTurns;
     const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing, failedBody]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing]);
 
   // The outgoing message owns its photo previews until it is dropped; leaving
   // the hub releases whatever it still holds (Codex #4289 F2).
@@ -412,16 +408,12 @@ export function HubShellHost() {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
       });
       setLive((cur) => (cur && cur.id === id ? { ...cur, result } : cur));
-      // A terminal "every provider failed" frame resolves the stream normally,
-      // so the catch paths below never hold the request for Retry (#4374 R1 F2).
-      const exhaustedRetry = isRetryableProviderExhaustion(result);
       // The server row is the source of truth; refresh it (also picks up a
       // thread created by this first turn) and let the live turn go.
       await loadDetail(sel);
       await loadNotebooks();
       setLive((cur) => (cur && cur.id === id ? null : cur));
       dropOutgoing(outgoingId);
-      if (exhaustedRetry) setFailedBody({ body, question, exhausted: true });
       // #4311: a failed send put the question back in the composer; a
       // successful retry takes it away again (never a newer draft).
       const draft = draftAfterSendSucceeded(draftRef.current, question);
