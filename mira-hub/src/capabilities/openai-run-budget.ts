@@ -337,6 +337,35 @@ export function resetOpenAiRunBudgetForTests(): void {
 }
 
 /** One structured line when a call is refused; greppable next to turn.usage. */
+/**
+ * The ONE gate for a provider attempt that may hit OpenAI (the canonical cascade
+ * names OpenAI "OpenAI"). Every Hub call site that fetches a canonical provider
+ * calls this before the fetch:
+ *  - a free provider: `{ ok: true, reservation: null }` — nothing to hold;
+ *  - OpenAI within the cap: the worst case is HELD for the life of the request;
+ *    the caller settles billable usage when a response lands, releases on a
+ *    rejection (non-2xx), and settles the worst case in a `finally` for any
+ *    other exit (settle/release are idempotent);
+ *  - OpenAI past the cap: logged and refused — the caller falls through to the
+ *    next provider, exactly as for a provider that is down.
+ * A default-deny contract test (openai-attempt-gate.test.ts) fails if a Hub file
+ * fetches a canonical provider without going through this or `reserve`.
+ */
+export function reserveOpenAiAttempt(
+  providerName: string,
+  scope: string,
+  inputBound: number,
+  outputCap: number,
+): { ok: true; reservation: BudgetReservation | null } | { ok: false } {
+  if (providerName !== "OpenAI") return { ok: true, reservation: null };
+  const verdict = openAiRunBudget().reserve(inputBound, outputCap);
+  if (!verdict.ok) {
+    logBudgetExhausted(scope, verdict);
+    return { ok: false };
+  }
+  return { ok: true, reservation: verdict.reservation };
+}
+
 export function logBudgetExhausted(scope: string, verdict: Exclude<BudgetVerdict, { ok: true }>): void {
   console.warn(
     JSON.stringify({

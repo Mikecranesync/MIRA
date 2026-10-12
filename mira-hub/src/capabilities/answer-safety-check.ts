@@ -14,9 +14,13 @@
  *    inference call.
  *  - Providers are the canonical cascade registry (`canonicalProviders()`),
  *    never a second provider list (Hard Constraint #2 — no Anthropic here).
- *  - Fail-closed: a flagged candidate whose check times out, errors, or
- *    returns a malformed verdict is NEVER silently released — the route
- *    replaces it with `SEMANTIC_UNVERIFIED_FALLBACK`.
+ *  - Flags, never withholds (owner decision 2026-09-27, settles #4022): the
+ *    notebook chat route puts a hazard banner above an "unsafe" answer, and a
+ *    check that could not decide ("unknown" — timeout, error, malformed
+ *    verdict, or the OpenAI run budget refusing with no other provider) is
+ *    logged and the answer is served WITHOUT a banner (fail-open). This module
+ *    returns the verdict; the route owns that policy.
+ *    `SEMANTIC_UNVERIFIED_FALLBACK` below is no longer used by the route.
  *  - Every decision is logged with class + verdict + latency so the real
  *    invocation rate and cost are MEASURED, not assumed (#3793 estimates are
  *    unadopted until staging measurements exist).
@@ -32,6 +36,7 @@
  */
 
 import { canonicalProviders, requestDialectFields } from "@/lib/inference/canonical-cascade";
+import { billableTokens, boundInputTokens, reserveOpenAiAttempt } from "./openai-run-budget";
 import type { JevShadowResult } from "@/capabilities/observability/jev-shadow";
 
 /** `NOTEBOOK_SEMANTIC_CHECK=0` is the kill switch for this layer only; the
@@ -281,8 +286,32 @@ export async function semanticSafetyCheck(opts: {
   timeoutMs?: number;
 }): Promise<SemanticVerdict> {
   const timeoutMs = opts.timeoutMs ?? Number(process.env.NOTEBOOK_SEMANTIC_TIMEOUT_MS ?? 4000);
+  const judgeMessages = [
+    { role: "system", content: JUDGE_SYSTEM },
+    {
+      role: "user",
+      content: JSON.stringify({
+        question: opts.question,
+        candidate_answer: opts.answerText,
+        lane: opts.general ? "general" : "grounded",
+        flagged_hazard_class: opts.selectedClass,
+      }),
+    },
+  ];
+  const inputBound = boundInputTokens(judgeMessages);
+  let budgetRefused = false;
   for (const p of canonicalProviders()) {
     if (!p.key) continue;
+    // Per-run OpenAI spend hard stop (#4355). Refused at the cap → next provider.
+    // With none left the verdict is "unknown" and the route serves the answer
+    // with NO hazard banner (fail-open, #4022) — so the reason names the budget,
+    // making a cap-caused skip visible in the route's UNVERIFIED log line.
+    const gate = reserveOpenAiAttempt(p.name, "safety-judge", inputBound, 200);
+    if (!gate.ok) {
+      budgetRefused = true;
+      continue;
+    }
+    const reservation = gate.reservation;
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), timeoutMs);
     try {
@@ -291,18 +320,7 @@ export async function semanticSafetyCheck(opts: {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.key}` },
         body: JSON.stringify({
           model: p.model,
-          messages: [
-            { role: "system", content: JUDGE_SYSTEM },
-            {
-              role: "user",
-              content: JSON.stringify({
-                question: opts.question,
-                candidate_answer: opts.answerText,
-                lane: opts.general ? "general" : "grounded",
-                flagged_hazard_class: opts.selectedClass,
-              }),
-            },
-          ],
+          messages: judgeMessages,
           stream: false,
           // Provider dialect (Codex F1 on #4349): compat → max_tokens 200 +
           // temperature 0; OpenAI gpt-5 → max_completion_tokens 200, no
@@ -319,8 +337,13 @@ export async function semanticSafetyCheck(opts: {
         }),
         signal: ac.signal,
       });
-      if (!res.ok) continue;
-      const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
+      if (!res.ok) {
+        reservation?.release(); // a rejection ran nothing billable
+        continue;
+      }
+      const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[]; usage?: unknown } | null;
+      // Served: book billable usage (unknown counts book the bound / cap).
+      if (data && typeof data === "object") reservation?.settle(...billableTokens(data.usage, inputBound, 200));
       const parsed = parseVerdict(data?.choices?.[0]?.message?.content);
       if (parsed) return parsed;
       // Malformed verdict from this provider — try the next one.
@@ -328,7 +351,12 @@ export async function semanticSafetyCheck(opts: {
       // Timeout / network / non-JSON body — try the next provider.
     } finally {
       clearTimeout(timer);
+      reservation?.settle(inputBound, 200); // any undecided exit books the worst case (idempotent)
     }
   }
-  return { verdict: "unknown", hazardClass: opts.selectedClass, reason: "no_provider_verdict" };
+  return {
+    verdict: "unknown",
+    hazardClass: opts.selectedClass,
+    reason: budgetRefused ? "openai_budget_exhausted" : "no_provider_verdict",
+  };
 }
