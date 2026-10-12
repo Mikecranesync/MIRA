@@ -3343,6 +3343,7 @@ class Supervisor:
                     conversation_history=(state.get("context") or {}).get("history", []),
                     current_fsm_state=state.get("state", "IDLE"),
                     asset_identified=state.get("asset_identified", ""),
+                    session_id=str(chat_id),
                 )
                 _router_intent = _routing["intent"]
                 _router_conf = float(_routing.get("confidence", 0) or 0)

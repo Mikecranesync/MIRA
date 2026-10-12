@@ -68,8 +68,16 @@ async def route_intent(
     current_fsm_state: str = "IDLE",
     asset_identified: str = "",
     llm_client=None,
+    session_id: str | None = None,
 ) -> dict:
     """Route the user's intent using a lightweight LLM call.
+
+    `session_id` is the caller's own session identity (the engine's
+    `str(chat_id)`, i.e. tenant_platform_chat), so the classification's token
+    usage is attributed to the tenant and platform it served — not to a
+    constant that the usage writer would read as a fictitious tenant
+    (Codex r1 on #4359). The classification PURPOSE is the log line, not the
+    session id.
 
     Returns: {"intent": str, "confidence": float, "reasoning": str}
     """
@@ -93,7 +101,7 @@ async def route_intent(
         },
     ]
 
-    response = await _call_router_llm(messages)
+    response = await _call_router_llm(messages, session_id=session_id)
 
     try:
         result = json.loads(response)
@@ -140,7 +148,7 @@ def reset_router_for_tests() -> None:
 ROUTER_MAX_TOKENS = 300
 
 
-async def _call_router_llm(messages: list[dict]) -> str:
+async def _call_router_llm(messages: list[dict], session_id: str | None = None) -> str:
     """Classify intent through the shared InferenceRouter cascade (OpenAI first).
 
     This used to POST straight to Groq with its own key check. With Groq
@@ -166,9 +174,16 @@ async def _call_router_llm(messages: list[dict]) -> str:
     # argument elsewhere. sanitize_context is a pure, idempotent staticmethod.
     messages = InferenceRouter.sanitize_context(messages)
 
+    # Bounded lane (Codex r1 on #4359): ROUTER_MAX_TOKENS is a HARD per-attempt
+    # cap — no reasoning-burn retry at the router's 8,192-token headroom — and
+    # the usage row carries the caller's session (tenant_platform_chat), not a
+    # constant the writer would split into a fictitious tenant/platform.
     try:
         content, _usage = await router.complete(
-            messages, max_tokens=ROUTER_MAX_TOKENS, session_id="conversation_router"
+            messages,
+            max_tokens=ROUTER_MAX_TOKENS,
+            session_id=session_id or "unknown_unknown_unknown",
+            reasoning_retry=False,
         )
     except Exception as exc:
         logger.warning("ROUTER_LLM_FAILURE error=%s", str(exc)[:200])
