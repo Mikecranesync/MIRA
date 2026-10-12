@@ -7,6 +7,20 @@
 // used (withWorkOrderQueueProducer + enqueueCreate + drainQueue) is unchanged
 // and still guards sign-out, so these tests drive that seam directly and reach
 // Sign out through the unified shell's footer.
+
+// Row 8: zero notebooks now renders the real home composer (assistant-ui
+// thread), which needs ResizeObserver and Element.scrollTo — jsdom has
+// neither; the Android WebView has had both since Chrome 64.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
+if (!("scrollTo" in Element.prototype)) {
+  Object.defineProperty(Element.prototype, "scrollTo", { value: () => {}, writable: true });
+}
+
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
