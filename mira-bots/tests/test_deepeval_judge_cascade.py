@@ -1154,3 +1154,51 @@ def test_unknown_declared_primary_fails_closed(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("DEEPEVAL_JUDGE_PRIMARY", "gemini")
     with pytest.raises(ValueError, match="DEEPEVAL_JUDGE_PRIMARY"):
         suite.CascadeJudge()
+
+
+# ---------------------------------------------------------------------------
+# Codex r6 F8 on #4358 — a recalled verdict must have been served by a model
+# that is STILL configured; changing the fallback model invalidates its verdicts
+# ---------------------------------------------------------------------------
+
+
+def test_changing_the_fallback_model_regenerates_verdicts_it_served(
+    monkeypatch: pytest.MonkeyPatch, evidence_path: Path
+) -> None:
+    """Groq declared primary, both keys present, Groq billing-restricted (HTTP 400):
+    the OpenAI mini fallback serves and stores the verdict. Change ONLY the
+    OpenAI model: a fresh judge must regenerate (sync and async) with the new
+    model rather than recall the mini's verdict — the recall key names the
+    primary, so the serving model is checked at recall time instead."""
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_PRIMARY", "groq")
+    sent: list[tuple[str, str]] = []
+
+    def post(url: str, **kw: Any) -> httpx.Response:
+        if "api.groq.com" in url:
+            return httpx.Response(400, json={"error": {"message": "billing"}})
+        sent.append((url, kw["json"]["model"]))
+        return _ok(f"verdict from {kw['json']['model']}")
+
+    monkeypatch.setattr(suite.httpx, "post", post)
+    seeded = suite.CascadeJudge()
+    assert seeded.get_model_name() == "groq/openai/gpt-oss-120b"
+    assert seeded.generate(PROMPT) == f"verdict from {MINI}"
+    assert [m for _, m in sent] == [MINI]
+    # Unchanged configuration, credentials removed: still recalled, zero HTTP (control).
+    monkeypatch.delenv("OPENAI_API_KEY")
+    monkeypatch.delenv("GROQ_API_KEY")
+    assert suite.CascadeJudge().generate(PROMPT) == f"verdict from {MINI}" and len(sent) == 1
+    # The fallback model changes; the primary identity does not.
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_OPENAI_MODEL", "gpt-5.4")
+    judge = suite.CascadeJudge()
+    assert judge.get_model_name() == "groq/openai/gpt-oss-120b"
+    assert judge.generate(PROMPT) == "verdict from gpt-5.4"
+    assert asyncio.run(judge.a_generate(PROMPT)) == "verdict from gpt-5.4"
+    assert [m for _, m in sent] == [MINI, "gpt-5.4"]  # regenerated once, then recalled
+    assert judge.served_counts() == {"openai/gpt-5.4": 1, "recall:openai/gpt-5.4": 1}
+    # A stale-model entry counts as a miss in the store's own ledger.
+    assert judge.evidence_summary()["misses"] >= 1

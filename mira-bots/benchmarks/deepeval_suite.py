@@ -566,6 +566,11 @@ class CascadeJudge(DeepEvalBaseLLM):
         # Resolved once, before the key-filtered provider list: the identity is
         # the declared configuration, not whichever credentials survived.
         self._identity = configured_judge_identity()
+        # Every model the declared cascade may serve with — the recall gate
+        # (Codex r6 F8): a stored verdict served by a model no longer here is stale.
+        self._configured_models = frozenset(
+            f"{p.name}/{p.model}" for p in _judge_candidates().values()
+        )
         self._providers = judge_providers()
         # Which provider/model actually served each judge call (Codex F2 on
         # #4358): the report attributes scoring to what graded, not to the
@@ -645,6 +650,22 @@ class CascadeJudge(DeepEvalBaseLLM):
             self._store.misses += 1
             return None
         served_by = (self._store._entries.get(key) or {}).get("served_by", "unknown")
+        # The key names the CONFIGURED primary; the verdict may have been served
+        # by a fallback. A verdict is recalled only while the model that served
+        # it is still part of the declared cascade (Codex r6 F8 on #4358):
+        # changing the fallback model is a model-dependency change and must
+        # regenerate, not recall (materialized-evidence rules 5–8). Configured,
+        # not keyed — credentials play no part, so model-off replay still recalls.
+        if served_by not in self._configured_models:
+            logger.warning(
+                "DEEPEVAL_JUDGE_EVIDENCE_STALE_MODEL key=%s served_by=%s configured=%s "
+                "— recomputed_model_changed",
+                key[:12],
+                served_by,
+                ",".join(sorted(self._configured_models)),
+            )
+            self._store.misses += 1
+            return None
         self._record_served(f"recall:{served_by}")
         return value
 
