@@ -95,9 +95,35 @@ const CODE_BEFORE_KEYWORD = /\b([A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)\s+(fault|alar
 
 // Two-letter all-caps drive mnemonics (OC, OV, UV, GF, OL, OH). Not code-like
 // on their own, so they count only in a bare terse message where there is
-// nothing else the technician could mean. Exactly two letters: three-letter
+// nothing else the technician could mean — and only when the word IS a drive
+// mnemonic (Codex r4 on #4360): "OK" and "NO" after a fault discussion are an
+// acknowledgement, and treating them as codes made the whole-token lane fetch
+// every passage containing ordinary status text ("OK indicates …"), which then
+// led the cut and displaced the fault evidence. An allowlist fails safe: an
+// unknown two-letter caps word takes the ordinary follow-up path. Three-letter
 // caps are ordinary words here ("PLC", "VFD", "HMI").
-const CAPS_MNEMONIC = /^[A-Z]{2}$/;
+const DRIVE_MNEMONICS = new Set([
+  "OC", // overcurrent
+  "OV", // overvoltage
+  "UV", // undervoltage
+  "LV", // low voltage
+  "GF", // ground fault
+  "OL", // overload
+  "OH", // overheat
+  "OT", // overtemperature
+  "PF", // phase failure / power fault
+  "EF", // external fault
+  "CE", // communication error
+  "CF", // control fault
+  "SC", // short circuit
+  "BB", // base block
+  "OS", // overspeed
+  "UF", // underfrequency
+  "OF", // overfrequency
+]);
+const CAPS_MNEMONIC = {
+  test: (w: string): boolean => DRIVE_MNEMONICS.has(w),
+};
 
 function extractCodeTokens(q: string): string[] {
   const out = new Set<string>();

@@ -91,6 +91,14 @@ describe("extractCodeTokens — the thread's six phrasings", () => {
     expect(codes("Fault Code List please")).toEqual([]);
   });
 
+  // Codex r4 on #4360 — a bare two-letter caps word is a drive mnemonic only if
+  // it is one. "OK" / "NO" after a fault discussion are acknowledgements.
+  it("controls: bare uppercase acknowledgements are not mnemonics; real mnemonics still are", () => {
+    for (const ack of ["OK", "NO", "OK.", "ok", "No", "HI", "AM"]) expect(codes(ack)).toEqual([]);
+    for (const code of ["OC", "OV", "UV", "GF", "OL", "OH"]) expect(codes(code)).toEqual([code]);
+    expect(codes("OK OC")).toEqual([]); // not every word is a code, so the terse rule stays silent (same as "GS10 oC")
+  });
+
   it("F0004 is a code token too, but the F-code pass owns it (checked at the lane below)", () => {
     expect(extractFaultCodes("F0004")).toEqual(["F0004"]);
     expect(extractFaultCodes("fault F0004")).toEqual(["F0004"]);
@@ -363,5 +371,78 @@ describe("a real thread: the terse follow-up arrives conversation-augmented", ()
     expect(oem.slice(0, oem.indexOf("});"))).toMatch(/rawQuery: message/);
     const attached = route.slice(route.indexOf("retrieveNodeChunks(client, ctx.tenantId, retrievalQuery"));
     expect(attached.slice(0, attached.indexOf("})"))).toMatch(/rawQuery: message/);
+  });
+});
+
+// Codex r4 on #4360 — after F0004, the technician replies "OK". The bare caps
+// rule read it as a fault code and the whole-token lane fetched every manual
+// passage containing ordinary status text ("OK indicates the connection is
+// operating normally"), which then LED the cut and displaced the fault evidence.
+describe("an uppercase acknowledgement after a fault is not a code (Codex r4 on #4360)", () => {
+  const THREAD_F0004: ChatHistoryTurn[] = [
+    { role: "user", content: "PowerFlex 525 fault F0004 what does it mean" },
+    { role: "assistant", content: "F0004 is UnderVoltage: the DC bus voltage fell below the limit." },
+  ];
+
+  function statusHeavyOemClient() {
+    const row = (page: number, content: string, rank: number) => ({
+      content,
+      manufacturer: "Allen-Bradley",
+      model_number: "PowerFlex 525",
+      source_url: "pf525.pdf",
+      source_page: page,
+      chunk_index: page,
+      title: "PowerFlex 525 User Manual",
+      verified: true,
+      rank,
+    });
+    const fault = row(4, "Fault F0004 UnderVoltage: DC bus voltage fell below the limit. Check input power and P031.", 0.4);
+    const status = [11, 12, 13, 14, 15, 16].map((p) =>
+      row(p, `Network status LED ${p}: OK indicates that the connection is operating normally.`, 0.1),
+    );
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.includes("content ~* ANY(")) {
+        const patterns =
+          params.find(
+            (p): p is string[] => Array.isArray(p) && p.every((x) => typeof x === "string" && x.startsWith("(^|")),
+          ) ?? [];
+        return { rows: patterns.includes(codeTokenMatcher("OK").sql) ? status : [] };
+      }
+      if (sql.includes("content_tsv @@")) return { rows: [fault, ...status] };
+      return { rows: [] };
+    });
+    return { client: { query } as unknown as PoolClient, calls };
+  }
+
+  it("OK after F0004 (OEM, PowerFlex 525): no OK whole-token lane runs and the fault passage survives", async () => {
+    const augmented = buildRetrievalQuery("OK", THREAD_F0004);
+    expect(augmented).toMatch(/F0004/);
+    const { client, calls } = statusHeavyOemClient();
+    const out = await retrieveManualChunks(client, "tenant-1", augmented, {
+      manufacturer: "Allen-Bradley",
+      model: "PowerFlex 525",
+      topK: 6,
+      allowTenantFallback: false,
+      rawQuery: "OK",
+    });
+    expect(boundPatterns(calls)).not.toContain(codeTokenMatcher("OK").sql);
+    expect(withRawCodeTokens(expandIndustrialQuery(augmented), "OK").currentCodeTokens ?? []).toEqual([]);
+    expect(out.map((c) => c.sourcePage)).toContain(4);
+    expect(out.length).toBeLessThanOrEqual(6);
+  });
+
+  it("control: a real mnemonic in the same shape still takes the lane", async () => {
+    const augmented = buildRetrievalQuery("OC", THREAD_F0004);
+    const { client, calls } = statusHeavyOemClient();
+    await retrieveManualChunks(client, "tenant-1", augmented, {
+      manufacturer: "Allen-Bradley",
+      model: "PowerFlex 525",
+      topK: 6,
+      allowTenantFallback: false,
+      rawQuery: "OC",
+    });
+    expect(boundPatterns(calls)).toContain(codeTokenMatcher("OC").sql);
   });
 });
