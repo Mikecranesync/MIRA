@@ -268,7 +268,10 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
     expect(catchSettleAt).toBeLessThan(clientStopBreak);
     // Backstop: the per-attempt finally books any hold no path decided (Codex r3 F9, the class).
     const finallyAt = route.indexOf("} finally {", clientStopBreak);
-    expect(route.indexOf("reservation?.settle(inputBound, requestCap);", finallyAt)).toBeLessThan(route.indexOf("if (genSpan) {", finallyAt));
+    const backstopAt = route.indexOf("reservation?.settle(inputBound, requestCap);", finallyAt);
+    expect(finallyAt).toBeGreaterThan(clientStopBreak);
+    expect(backstopAt).toBeGreaterThan(finallyAt); // present INSIDE the finally (indexOf -1 must not pass)
+    expect(backstopAt).toBeLessThan(route.indexOf("if (genSpan) {", finallyAt));
   });
   it("nameplate recognizer + LOOK vision call: reserve before the fetch, settle on serve or an unknown outcome, release only on a rejection", () => {
     for (const file of ["../../lib/nameplate/index.ts", "../../lib/nameplate/passes.ts"]) {
