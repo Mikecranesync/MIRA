@@ -70,7 +70,12 @@ export function normalizeCandidate(raw: unknown): EquipmentIdentityCandidate {
 //   NAMEPLATE_RECOGNIZER=fixture — deterministic test switch (no module mocking)
 
 import { requestDialectFields, type CanonicalProvider } from "../inference/canonical-cascade";
-import { estimateVisionInputTokens, logBudgetExhausted, openAiRunBudget } from "../../capabilities/openai-run-budget";
+import {
+  estimateVisionInputTokens,
+  logBudgetExhausted,
+  openAiRunBudget,
+  type BudgetReservation,
+} from "../../capabilities/openai-run-budget";
 
 // 2026-08-25: google/gemma-3n-E4B-it stopped being served serverless on Together
 // (400 model_not_available) and every prod nameplate read 502'd. MiniMax-M3 is the
@@ -191,7 +196,21 @@ async function openAiCompatVision(
   // caps the whole round-trip; the caller's route already maps a throw to its
   // fallback path.
   const timeoutMs = Number(process.env.NAMEPLATE_VISION_TIMEOUT_MS ?? 30_000);
+  // Per-run spend hard stop (owner directive 2026-10-11), OpenAI only: the
+  // worst case is HELD for the life of the request so concurrent recognitions
+  // cannot each pass against the same balance (Gate 7 on #4355). Reserved
+  // inside callOnce so the SyntaxError retry below takes its own hold.
+  const inputBound = estimateVisionInputTokens(VISION_PROMPT.length, 1);
   const callOnce = async (): Promise<EquipmentIdentityCandidate> => {
+    let reservation: BudgetReservation | null = null;
+    if (provider) {
+      const verdict = openAiRunBudget().reserve(inputBound, 1200);
+      if (!verdict.ok) {
+        logBudgetExhausted("nameplate-recognize", verdict);
+        throw new Error("recognizer_budget_exhausted");
+      }
+      reservation = verdict.reservation;
+    }
     let resp: Response;
     try {
       resp = await fetch(apiUrl, {
@@ -217,6 +236,8 @@ async function openAiCompatVision(
         }),
       });
     } catch (err) {
+      // Ambiguous outcome (the request may have been accepted and billed): book the worst case.
+      reservation?.settle(inputBound, 1200);
       // TimeoutError / network error — surface a stable, credential-free code.
       if (err instanceof DOMException && err.name === "TimeoutError") {
         throw new Error("recognizer_provider_timeout");
@@ -224,6 +245,8 @@ async function openAiCompatVision(
       throw new Error("recognizer_provider_unreachable");
     }
     if (!resp.ok) {
+      // The provider rejected the request: nothing billable ran.
+      reservation?.release();
       // Scrub any credential-bearing detail from provider errors (PRD §20):
       // keep only the status and the provider's short error CODE (e.g.
       // `model_not_available`), never the free-text message.
@@ -237,17 +260,19 @@ async function openAiCompatVision(
       }
       throw new Error(`recognizer_provider_error_${resp.status}${code}`);
     }
-    const body = (await resp.json()) as {
+    let body: {
       choices?: { message?: { content?: string } }[];
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
-    if (provider) {
-      // Metered call served: record ACTUAL usage against the per-run budget.
-      openAiRunBudget().record(
-        body.usage?.prompt_tokens ?? estimateVisionInputTokens(VISION_PROMPT.length, 1),
-        body.usage?.completion_tokens ?? 0,
-      );
+    try {
+      body = (await resp.json()) as typeof body;
+    } catch (err) {
+      // A 200 whose body could not be read was still served and billed.
+      reservation?.settle(inputBound, 1200);
+      throw err;
     }
+    // Served: replace the hold with ACTUAL usage (the bound when the provider omits it).
+    reservation?.settle(body.usage?.prompt_tokens ?? inputBound, body.usage?.completion_tokens ?? 1200);
     const text = body.choices?.[0]?.message?.content ?? "{}";
     return normalizeCandidate(JSON.parse(text));
   };
@@ -335,14 +360,9 @@ export class OpenAIVisionRecognizer implements NameplateRecognizer {
     const key = process.env.OPENAI_API_KEY;
     if (!key) throw new Error("recognizer_not_configured");
     const provider = openAiVisionProvider(key);
-    // Per-run spend hard stop (owner directive 2026-10-11): refuse BEFORE the
-    // request once the window's cap would be crossed. The route maps the throw
-    // to its honest provider_error path; the photo stays parked.
-    const verdict = openAiRunBudget().precheck(estimateVisionInputTokens(VISION_PROMPT.length, 1), 1200);
-    if (!verdict.ok) {
-      logBudgetExhausted("nameplate-recognize", verdict);
-      throw new Error("recognizer_budget_exhausted");
-    }
+    // The per-run spend hard stop lives inside `openAiCompatVision` (it reserves
+    // the worst case right before the fetch); a `recognizer_budget_exhausted`
+    // throw maps to the route's honest provider_error path and the photo stays parked.
     return openAiCompatVision(provider.url, key, provider.model, imageBase64, mimeType, provider);
   }
 }

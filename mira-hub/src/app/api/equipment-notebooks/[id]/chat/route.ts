@@ -46,7 +46,7 @@ import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evide
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { finishedAfterChunk } from "@/capabilities/stream-stop";
-import { estimateInputTokens, logBudgetExhausted, openAiRunBudget } from "@/capabilities/openai-run-budget";
+import { boundInputTokens, logBudgetExhausted, openAiRunBudget, type BudgetReservation } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import {
@@ -3195,20 +3195,14 @@ async function handleChatTurn(
       let genResponseId: string | null = null;
       let genAttemptIndex = 0;
 
+      // Per-run OpenAI spend hard stop (owner directive 2026-10-11): the worst
+      // case of a request is HELD for its whole life, not merely pre-checked,
+      // so concurrent turns cannot each pass against the same unspent balance
+      // (Gate 7 on #4355; the same discipline as lib/llm/cascade.ts). The hold
+      // is sized by an UPPER bound on the input, never the chars/4 average.
+      const inputBound = boundInputTokens(messages);
       cascade: for (const provider of cascadeProviders) {
         if (!provider.key) continue;
-        // Per-run OpenAI spend hard stop (owner directive 2026-10-11): the only
-        // metered provider is refused BEFORE the request once this window's cap
-        // would be crossed; the cascade falls through as for a provider that is
-        // down. See capabilities/openai-run-budget.ts.
-        if (provider.name === "OpenAI") {
-          const verdict = openAiRunBudget().precheck(estimateInputTokens(messages), outputCap);
-          if (!verdict.ok) {
-            logBudgetExhausted("notebook-chat", verdict);
-            if (seam) attempted.push(provider.name);
-            continue;
-          }
-        }
         // STRM-2: a stopped turn must never open a second provider stream.
         // The catch block below breaks on abort, but the two NON-throwing
         // `continue` paths (non-OK / empty-body response, empty responseBuffer)
@@ -3224,6 +3218,20 @@ async function handleChatTurn(
           providerFailures.push({ provider: provider.name, httpStatus: null, reason: "quarantined" });
           attempted.push(provider.name);
           continue;
+        }
+        // The only metered provider is refused BEFORE the request once this
+        // window's cap would be crossed; the cascade falls through as for a
+        // provider that is down. Reserved here — after every `continue`/`break`
+        // above — so a hold is never taken on a provider this turn skips.
+        let reservation: BudgetReservation | null = null;
+        if (provider.name === "OpenAI") {
+          const verdict = openAiRunBudget().reserve(inputBound, outputCap);
+          if (!verdict.ok) {
+            logBudgetExhausted("notebook-chat", verdict);
+            if (seam) attempted.push(provider.name);
+            continue;
+          }
+          reservation = verdict.reservation;
         }
         genSpan = startStage(`chat ${provider.model}`);
         genOutcome = "exception";
@@ -3273,6 +3281,10 @@ async function handleChatTurn(
             providerFailures.push({ provider: provider.name, httpStatus: res.status, reason: "http_error" });
             health.markFailed(provider.name, res.status);
             genOutcome = "http_error";
+            // A rejection ran nothing billable: drop the hold. A 200 with no
+            // body was still served: book the worst case.
+            if (!res.ok) reservation?.release();
+            else reservation?.settle(inputBound, outputCap);
             continue;
           }
           const reader = res.body.getReader();
@@ -3398,20 +3410,28 @@ async function handleChatTurn(
                 capped ? "capped" : "ok",
               );
             }
-            if (provider.name === "OpenAI") {
-              // Record ACTUAL usage (or the chars/4 estimate when the provider
-              // sent no usage block) so the next precheck sees real spend.
-              openAiRunBudget().record(
-                turnUsage?.inputTokens ?? estimateInputTokens(messages),
-                turnUsage?.outputTokens ?? Math.ceil(responseBuffer.join("").length / 4),
-              );
-            }
+            // Served: replace the hold with ACTUAL usage (the input bound and
+            // the chars/4 output when the provider sent no usage block) so the
+            // next reservation sees real spend.
+            reservation?.settle(
+              turnUsage?.inputTokens ?? inputBound,
+              turnUsage?.outputTokens ?? Math.ceil(responseBuffer.join("").length / 4),
+            );
             break;
           }
           if (seam) attempted.push(provider.name);
           providerFailures.push({ provider: provider.name, httpStatus: res.status, reason: "empty_stream" });
           genOutcome = "http_error";
+          // A 200 that streamed nothing was still accepted and may be billed.
+          reservation?.settle(inputBound, outputCap);
         } catch (err) {
+          // Whatever threw — a client stop part-way through a stream, a
+          // timeout, a dropped connection, a route bug — the provider may
+          // already have generated and billed tokens, and a stopped turn
+          // never receives the usage block. Book the worst case; never free
+          // budget on an outcome we cannot see (Gate 7 on #4355: a Stop used
+          // to leave the spend unrecorded). Idempotent after a settle above.
+          reservation?.settle(inputBound, outputCap);
           // Client stopped generation (STRM-2). Checked BEFORE the cascade
           // classifier: the race rejects with an AbortError, and a cancelled
           // controller makes enqueue throw a TypeError — neither is a

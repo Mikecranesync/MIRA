@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from shared.inference import run_budget as rb
@@ -116,6 +117,90 @@ def test_precheck_hard_stops_when_the_worst_case_would_cross_the_cap():
     b.precheck(10_000, 0)  # +0.0075 → 0.0825 ≤ 0.10
 
 
+def test_a_price_of_zero_is_junk_not_free_and_falls_back(monkeypatch):
+    # Gate 7 on #4355: 0 would price every call at $0 and silently remove the cap.
+    monkeypatch.setenv("OPENAI_PRICE_PER_MTOK_IN", "0")
+    monkeypatch.setenv("OPENAI_PRICE_PER_MTOK_OUT", "0.0")
+    b = rb.OpenAIRunBudget(clock=FakeClock())
+    assert b.estimate_usd(1_000_000, 1_000_000) == pytest.approx(
+        rb.DEFAULT_PRICE_PER_MTOK_IN + rb.DEFAULT_PRICE_PER_MTOK_OUT
+    )
+    # Control: the cap keeps 0 as a legal "spend nothing" instruction.
+    monkeypatch.setenv("OPENAI_RUN_BUDGET_USD", "0")
+    assert rb.OpenAIRunBudget(clock=FakeClock()).cap_usd == 0.0
+
+
+# ── reserve / settle / release — the hold that stops concurrent overshoot ────
+
+
+def test_reserve_holds_the_worst_case_so_a_second_caller_is_refused():
+    b = rb.OpenAIRunBudget(cap_usd=0.10, clock=FakeClock())
+    first = b.reserve(100_000, 0)  # holds 0.075; nothing spent yet
+    assert b.spent_usd == 0.0
+    assert b.held_usd == pytest.approx(0.075)
+    with pytest.raises(rb.BudgetExceeded) as exc:
+        b.reserve(100_000, 0)  # 0 spent + 0.075 held + 0.075 = 0.15 > 0.10
+    assert "held=$0.0750" in str(exc.value)
+    # precheck sees the hold too (the serialized callers share the same cap).
+    with pytest.raises(rb.BudgetExceeded):
+        b.precheck(100_000, 0)
+    first.settle(10_000, 0)  # actual 0.0075 replaces the 0.075 hold
+    assert b.held_usd == 0.0
+    assert b.spent_usd == pytest.approx(0.0075)
+    assert b.calls == 1
+    b.reserve(100_000, 0)  # control: fits again once the hold is settled
+
+
+def test_release_drops_the_hold_without_counting_a_call_and_both_are_idempotent():
+    b = rb.OpenAIRunBudget(cap_usd=0.10, clock=FakeClock())
+    r = b.reserve(100_000, 0)
+    r.release()
+    assert b.held_usd == 0.0 and b.spent_usd == 0.0 and b.calls == 0
+    assert r.settle(100_000, 0) == 0.0  # already decided: a later settle books nothing
+    assert b.spent_usd == 0.0 and b.calls == 0
+    r2 = b.reserve(100_000, 0)
+    assert r2.settle(50_000, 0) == pytest.approx(0.0375)
+    r2.release()  # no-op after settle
+    r2.settle(100_000, 0)
+    assert b.spent_usd == pytest.approx(0.0375) and b.calls == 1 and b.held_usd == 0.0
+
+
+async def test_concurrent_callers_cannot_overshoot_the_cap():
+    # The exact race Gate 7 reproduced against precheck/record: three callers
+    # each checking the same unspent balance across an await. With the hold
+    # exactly one of three $0.075 requests fits a $0.10 cap.
+    import asyncio
+
+    b = rb.OpenAIRunBudget(cap_usd=0.10, clock=FakeClock())
+    outcomes: list[str] = []
+
+    async def caller():
+        try:
+            r = b.reserve(100_000, 0)
+        except rb.BudgetExceeded:
+            outcomes.append("refused")
+            return
+        await asyncio.sleep(0)  # the network round-trip
+        r.settle(100_000, 0)
+        outcomes.append("served")
+
+    await asyncio.gather(caller(), caller(), caller())
+    assert sorted(outcomes) == ["refused", "refused", "served"]
+    assert b.spent_usd == pytest.approx(0.075)
+    assert b.spent_usd <= b.cap_usd
+    assert b.held_usd == 0.0
+
+
+def test_bound_input_tokens_is_never_below_the_average_estimate():
+    dense = [{"role": "user", "content": "0.1 0.2 0.3 " * 200}]
+    cjk = [{"role": "user", "content": "电机过载跳闸" * 50}]
+    photo = [{"role": "user", "content": [{"type": "text", "text": "x"}, {"type": "image_url"}]}]
+    for msgs in (dense, cjk, photo, [{"role": "user", "content": "hi"}]):
+        assert rb.bound_input_tokens(msgs) >= rb.estimate_input_tokens(msgs)
+    # Tokens cannot exceed bytes: the bound is at least the UTF-8 length.
+    assert rb.bound_input_tokens(cjk) >= len(("电机过载跳闸" * 50).encode("utf-8"))
+
+
 def test_the_window_rolls_and_spend_resets():
     clock = FakeClock(0.0)
     b = rb.OpenAIRunBudget(cap_usd=0.10, window_s=100.0, clock=clock)
@@ -210,6 +295,72 @@ async def test_router_records_openai_usage_after_a_served_call(monkeypatch):
     b = rb.get_openai_run_budget()
     assert b.calls == 1
     assert b.spent_usd == pytest.approx(b.estimate_usd(1000, 200))
+    assert b.held_usd == 0.0  # the hold was replaced by the actual usage
+
+
+async def test_router_books_the_worst_case_when_the_openai_call_times_out(monkeypatch):
+    # A timeout after the request left may still have been billed: the hold is
+    # settled at the worst case (the finally path), never freed.
+    monkeypatch.setenv("INFERENCE_BACKEND", "cloud")
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+
+    groq_cm, _ = _fake_client({"api.groq.com": _chat_response("from groq", 10, 5)})
+
+    async def post(url, headers=None, json=None):
+        if "api.openai.com" in url:
+            raise httpx.ReadTimeout("slow")
+        return await groq_cm.__aenter__.return_value.post(url, headers=headers, json=json)
+
+    client = MagicMock()
+    client.post = AsyncMock(side_effect=post)
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=client)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    messages = [{"role": "user", "content": "hi"}]
+    with patch("shared.inference.router.httpx.AsyncClient", return_value=cm):
+        r = InferenceRouter()
+        r.write_api_usage = MagicMock()
+        content, usage = await r.complete(messages, max_tokens=50)
+    assert content == "from groq"
+    b = rb.get_openai_run_budget()
+    assert b.held_usd == 0.0
+    assert b.calls == 1
+    assert b.spent_usd == pytest.approx(b.estimate_usd(rb.bound_input_tokens(messages), 50))
+
+
+async def test_router_releases_the_hold_when_openai_rejects_the_request(monkeypatch):
+    # A non-2xx answer ran nothing billable: the hold is dropped, nothing is booked.
+    monkeypatch.setenv("INFERENCE_BACKEND", "cloud")
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+
+    class _Rejected:
+        def raise_for_status(self):
+            req = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+            raise httpx.HTTPStatusError(
+                "500", request=req, response=httpx.Response(500, request=req, text="boom")
+            )
+
+    groq_cm, _ = _fake_client({"api.groq.com": _chat_response("from groq", 10, 5)})
+
+    async def post(url, headers=None, json=None):
+        if "api.openai.com" in url:
+            return _Rejected()
+        return await groq_cm.__aenter__.return_value.post(url, headers=headers, json=json)
+
+    client = MagicMock()
+    client.post = AsyncMock(side_effect=post)
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=client)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    with patch("shared.inference.router.httpx.AsyncClient", return_value=cm):
+        r = InferenceRouter()
+        r.write_api_usage = MagicMock()
+        content, _ = await r.complete([{"role": "user", "content": "hi"}], max_tokens=50)
+    assert content == "from groq"
+    b = rb.get_openai_run_budget()
+    assert b.held_usd == 0.0 and b.spent_usd == 0.0 and b.calls == 0
 
 
 async def test_router_skips_openai_once_the_window_is_exhausted_and_falls_through(

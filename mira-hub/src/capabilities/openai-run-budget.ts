@@ -36,11 +36,16 @@ const CHARS_PER_TOKEN = 4;
 /** Conservative fixed block an image part costs on input, for the pre-check only. */
 export const IMAGE_PART_TOKENS = 1500;
 
-function envNumber(name: string, fallback: number, minimum = 0): number {
+/** `exclusive` makes the floor strict: a price of exactly 0 has no real-world
+ *  meaning and would silently turn the cap into a no-op (Gate 7 on #4355), so
+ *  it falls back to the default like junk does. The cap itself keeps 0 as a
+ *  legal value: "spend nothing on OpenAI" is a real instruction. */
+function envNumber(name: string, fallback: number, minimum = 0, exclusive = false): number {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === "") return fallback;
   const n = Number(raw);
-  return Number.isFinite(n) && n >= minimum ? n : fallback;
+  if (!Number.isFinite(n)) return fallback;
+  return (exclusive ? n > minimum : n >= minimum) ? n : fallback;
 }
 
 export type BudgetVerdict =
@@ -71,8 +76,8 @@ export class OpenAiRunBudget {
   } = {}) {
     this.cap = opts.capUsd ?? envNumber("OPENAI_RUN_BUDGET_USD", DEFAULT_CAP_USD);
     this.window = opts.windowS ?? envNumber("OPENAI_RUN_BUDGET_WINDOW_S", DEFAULT_WINDOW_S, 1);
-    this.priceIn = opts.priceInPerMtok ?? envNumber("OPENAI_PRICE_PER_MTOK_IN", DEFAULT_PRICE_PER_MTOK_IN);
-    this.priceOut = opts.priceOutPerMtok ?? envNumber("OPENAI_PRICE_PER_MTOK_OUT", DEFAULT_PRICE_PER_MTOK_OUT);
+    this.priceIn = opts.priceInPerMtok ?? envNumber("OPENAI_PRICE_PER_MTOK_IN", DEFAULT_PRICE_PER_MTOK_IN, 0, true);
+    this.priceOut = opts.priceOutPerMtok ?? envNumber("OPENAI_PRICE_PER_MTOK_OUT", DEFAULT_PRICE_PER_MTOK_OUT, 0, true);
     this.now = opts.now ?? (() => Date.now() / 1000);
     this.windowStarted = this.now();
   }

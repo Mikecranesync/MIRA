@@ -618,12 +618,17 @@ export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature
   const provider = openAiVisionProvider(key);
   // Per-run spend hard stop (owner directive 2026-10-11): refuse BEFORE the
   // request once the window's cap would be crossed; callers map the throw to
-  // their honest provider_error path and the photo stays parked.
-  const verdict = openAiRunBudget().precheck(estimateVisionInputTokens(prompt.length, images.length), maxTokens);
+  // their honest provider_error path and the photo stays parked. The worst
+  // case is HELD for the life of the request: `runMultiPass` fires several of
+  // these concurrently from one photo, and a plain precheck let every one of
+  // them pass against the same balance (Gate 7 on #4355).
+  const inputBound = estimateVisionInputTokens(prompt.length, images.length);
+  const verdict = openAiRunBudget().reserve(inputBound, maxTokens);
   if (!verdict.ok) {
     logBudgetExhausted("vision-call", verdict);
     throw new Error("recognizer_budget_exhausted");
   }
+  const reservation = verdict.reservation;
   const content: unknown[] = [{ type: "text", text: prompt }];
   for (const img of images) {
     content.push({
@@ -649,11 +654,18 @@ export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature
       }),
     });
   } catch (err) {
+    // Ambiguous: a timeout or a dropped connection after the request was
+    // accepted may still have been billed. Book the worst case.
+    reservation.settle(inputBound, maxTokens);
     throw new Error(signal.aborted ? "recognizer_provider_timeout" : "recognizer_provider_unreachable", {
       cause: err,
     });
   }
-  if (!resp.ok) throw new Error(`recognizer_provider_error_${resp.status}`);
+  if (!resp.ok) {
+    // The provider rejected the request: nothing billable ran.
+    reservation.release();
+    throw new Error(`recognizer_provider_error_${resp.status}`);
+  }
   let body: {
     choices?: { message?: { content?: string } }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number };
@@ -661,14 +673,13 @@ export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature
   try {
     body = (await resp.json()) as typeof body;
   } catch (err) {
+    // A 200 whose body could not be read was still served and billed.
+    reservation.settle(inputBound, maxTokens);
     if (signal.aborted) throw new Error("recognizer_provider_timeout", { cause: err });
     throw err;
   }
-  // Metered call served: record ACTUAL usage against the per-run budget.
-  openAiRunBudget().record(
-    body.usage?.prompt_tokens ?? estimateVisionInputTokens(prompt.length, images.length),
-    body.usage?.completion_tokens ?? 0,
-  );
+  // Served: replace the hold with ACTUAL usage (the bound when the provider omits it).
+  reservation.settle(body.usage?.prompt_tokens ?? inputBound, body.usage?.completion_tokens ?? maxTokens);
   return { text: body.choices?.[0]?.message?.content ?? "{}", model: provider.model };
 };
 

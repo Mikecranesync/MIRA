@@ -35,9 +35,11 @@ them equal to that file so the two cannot drift apart silently.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
+import threading
 import time
 from collections.abc import Callable
 
@@ -55,13 +57,22 @@ _CHARS_PER_TOKEN = 4
 # A vision image part is billed as a fixed block of input tokens; this is a
 # conservative stand-in for the pre-check only.
 _IMAGE_PART_TOKENS = 1500
+# Framing allowance per message (role + separators) for the UPPER bound that
+# sizes a hold. Mirrors mira-hub/src/capabilities/openai-run-budget.ts.
+_MESSAGE_FRAMING_TOKENS = 8
 
 
 class BudgetExceeded(Exception):
     """Raised by :meth:`OpenAIRunBudget.precheck` when a call would cross the cap."""
 
 
-def _env_float(name: str, default: float, *, minimum: float = 0.0) -> float:
+def _env_float(
+    name: str, default: float, *, minimum: float = 0.0, exclusive: bool = False
+) -> float:
+    """``exclusive`` makes the floor strict: a price of exactly 0 has no
+    real-world meaning and would silently turn the cap into a no-op (Gate 7 on
+    #4355), so it falls back to the default like junk does. The cap itself
+    keeps 0 as a legal value — "spend nothing on OpenAI" is a real instruction."""
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
         return default
@@ -69,9 +80,42 @@ def _env_float(name: str, default: float, *, minimum: float = 0.0) -> float:
         value = float(raw)
     except ValueError:
         return default
-    if not math.isfinite(value) or value < minimum:
+    if not math.isfinite(value) or value < minimum or (exclusive and value <= minimum):
         return default
     return value
+
+
+class BudgetReservation:
+    """The hold :meth:`OpenAIRunBudget.reserve` returns for one in-flight request.
+
+    Exactly one of :meth:`settle` / :meth:`release` takes effect; later calls are
+    no-ops, so a ``finally`` can book the worst case without double-charging a
+    path that already settled."""
+
+    __slots__ = ("_budget", "_worst", "_open")
+
+    def __init__(self, budget: OpenAIRunBudget, worst: float) -> None:
+        self._budget = budget
+        self._worst = worst
+        self._open = True
+
+    def settle(self, input_tokens: int, output_tokens: int) -> float:
+        """The response landed (or the outcome is unknown): replace the hold with
+        the usage to book. Returns this call's cost."""
+        with self._budget._lock:
+            if not self._open:
+                return 0.0
+            self._open = False
+            self._budget._drop_hold(self._worst)
+            return self._budget._record_locked(input_tokens, output_tokens)
+
+    def release(self) -> None:
+        """The provider rejected the request without billable work: drop the hold."""
+        with self._budget._lock:
+            if not self._open:
+                return
+            self._open = False
+            self._budget._drop_hold(self._worst)
 
 
 class OpenAIRunBudget:
@@ -96,17 +140,26 @@ class OpenAIRunBudget:
         self._price_in = (
             price_in_per_mtok
             if price_in_per_mtok is not None
-            else _env_float("OPENAI_PRICE_PER_MTOK_IN", DEFAULT_PRICE_PER_MTOK_IN)
+            else _env_float("OPENAI_PRICE_PER_MTOK_IN", DEFAULT_PRICE_PER_MTOK_IN, exclusive=True)
         )
         self._price_out = (
             price_out_per_mtok
             if price_out_per_mtok is not None
-            else _env_float("OPENAI_PRICE_PER_MTOK_OUT", DEFAULT_PRICE_PER_MTOK_OUT)
+            else _env_float("OPENAI_PRICE_PER_MTOK_OUT", DEFAULT_PRICE_PER_MTOK_OUT, exclusive=True)
         )
         self._clock = clock
         self._window_started = clock()
         self._spent_usd = 0.0
+        # Worst-case cost of requests reserved and still in flight. NOT reset by
+        # the window roll: a hold is a live request, booked (as actual usage) in
+        # whichever window its response lands in.
+        self._held_usd = 0.0
         self._calls = 0
+        # One process, many concurrent turns (uvicorn/FastAPI in mira-pipeline,
+        # the bot adapters' task groups): every read-modify-write below runs
+        # under this lock, and `reserve` is what makes the hard stop hold across
+        # an `await` — a plain precheck let N callers pass against one balance.
+        self._lock = threading.Lock()
 
     # ── read-only state ───────────────────────────────────────────────────────
     @property
@@ -119,8 +172,14 @@ class OpenAIRunBudget:
 
     @property
     def spent_usd(self) -> float:
-        self._roll()
-        return self._spent_usd
+        with self._lock:
+            self._roll()
+            return self._spent_usd
+
+    @property
+    def held_usd(self) -> float:
+        """Worst-case cost currently held by in-flight reservations."""
+        return self._held_usd
 
     @property
     def calls(self) -> int:
@@ -146,32 +205,62 @@ class OpenAIRunBudget:
             self._spent_usd = 0.0
             self._calls = 0
 
-    def precheck(self, input_tokens: int, output_tokens: int) -> None:
-        """Hard stop: raise :class:`BudgetExceeded` if this call's worst case
-        would take the window past the cap. Call BEFORE the request."""
+    def _precheck_locked(self, worst: float) -> None:
         self._roll()
-        worst = self.estimate_usd(input_tokens, output_tokens)
-        projected = self._spent_usd + worst
+        projected = self._spent_usd + self._held_usd + worst
         if projected > self._cap_usd:
             raise BudgetExceeded(
-                f"openai run budget: spent=${self._spent_usd:.4f} + worst_case=${worst:.4f} "
-                f"= ${projected:.4f} > cap=${self._cap_usd:.2f} (window {int(self._window_s)}s)"
+                f"openai run budget: spent=${self._spent_usd:.4f} + held=${self._held_usd:.4f} "
+                f"+ worst_case=${worst:.4f} = ${projected:.4f} > cap=${self._cap_usd:.2f} "
+                f"(window {int(self._window_s)}s)"
             )
 
-    def record(self, input_tokens: int, output_tokens: int) -> float:
-        """Accumulate the ACTUAL usage after the request. Returns the call's cost."""
+    def precheck(self, input_tokens: int, output_tokens: int) -> None:
+        """Hard stop: raise :class:`BudgetExceeded` if this call's worst case
+        would take the window past the cap (settled spend PLUS in-flight holds).
+        Call BEFORE the request. Callers that serialize their own requests may
+        pair this with :meth:`record`; anything that can run concurrently must
+        use :meth:`reserve` instead."""
+        with self._lock:
+            self._precheck_locked(self.estimate_usd(input_tokens, output_tokens))
+
+    def _record_locked(self, input_tokens: int, output_tokens: int) -> float:
         self._roll()
         cost = self.estimate_usd(input_tokens, output_tokens)
         self._spent_usd += cost
         self._calls += 1
         logger.info(
-            "OPENAI_BUDGET_RECORD call_usd=%.5f spent_usd=%.4f cap_usd=%.2f calls=%d",
+            "OPENAI_BUDGET_RECORD call_usd=%.5f spent_usd=%.4f held_usd=%.4f cap_usd=%.2f calls=%d",
             cost,
             self._spent_usd,
+            self._held_usd,
             self._cap_usd,
             self._calls,
         )
         return cost
+
+    def record(self, input_tokens: int, output_tokens: int) -> float:
+        """Accumulate the ACTUAL usage after the request. Returns the call's cost."""
+        with self._lock:
+            return self._record_locked(input_tokens, output_tokens)
+
+    def _drop_hold(self, worst: float) -> None:
+        self._held_usd = max(0.0, self._held_usd - worst)
+
+    def reserve(self, input_tokens: int, output_tokens: int) -> BudgetReservation:
+        """Hard stop that also HOLDS the worst case while the request is in
+        flight, so N concurrent callers cannot each pass the check against the
+        same unspent balance and together overshoot the cap. Raises
+        :class:`BudgetExceeded` exactly like :meth:`precheck`. The caller
+        ``settle``s with actual usage when the response lands (or with the worst
+        case when the outcome is unknown — a timeout after the request was
+        accepted, a client stop part-way through a stream) and ``release``s only
+        when the provider rejected the request without billable work."""
+        worst = self.estimate_usd(input_tokens, output_tokens)
+        with self._lock:
+            self._precheck_locked(worst)
+            self._held_usd += worst
+        return BudgetReservation(self, worst)
 
 
 def estimate_input_tokens(messages: list[dict]) -> int:
@@ -191,6 +280,34 @@ def estimate_input_tokens(messages: list[dict]) -> int:
                 elif part.get("type") == "image_url":
                     images += 1
     return total_chars // _CHARS_PER_TOKEN + images * _IMAGE_PART_TOKENS
+
+
+def bound_input_tokens(messages: list[dict]) -> int:
+    """An UPPER bound on the input tokens, for sizing a hold.
+
+    ``estimate_input_tokens`` is a chars/4 average that dense text (numerics,
+    code, CJK) beats, so a hold sized by it can admit spend past the cap. Every
+    BPE token encodes at least one byte, so the UTF-8 byte length of the
+    serialized messages cannot be exceeded by the token count; a framing
+    allowance per message covers role and separator tokens, and each image part
+    adds its fixed block. Over-reserving only tightens concurrent admission; a
+    served response still settles at actual usage."""
+    try:
+        serialized = json.dumps(messages, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        serialized = ""
+    images = 0
+    for msg in messages:
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if isinstance(content, list):
+            images += sum(
+                1 for p in content if isinstance(p, dict) and p.get("type") == "image_url"
+            )
+    return (
+        len(serialized.encode("utf-8"))
+        + (len(messages) + 1) * _MESSAGE_FRAMING_TOKENS
+        + images * _IMAGE_PART_TOKENS
+    )
 
 
 _shared: OpenAIRunBudget | None = None
