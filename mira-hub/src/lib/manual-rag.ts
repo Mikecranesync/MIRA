@@ -1,9 +1,14 @@
 import type { PoolClient } from "pg";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
+import { MODEL_PATTERNS, resolveModelFromObservationText } from "@/capabilities/model-token";
 import {
   codeTokenMatcher,
   expandIndustrialQuery,
+  withRawCodeTokens,
+  withoutIdentityCodes,
+  type EquipmentIdentity,
+  prioritizeCurrentCodeEvidence,
   rerankChunks,
   classifyBroad,
   classifyIntent,
@@ -12,6 +17,8 @@ import {
   COMM_FACETS,
   type RerankTraceRow,
 } from "@/lib/notebook-query";
+
+export { resolveModelFromObservationText } from "@/capabilities/model-token";
 
 /**
  * Manufacturer-scoped BM25 retrieval from `knowledge_entries`.
@@ -206,32 +213,11 @@ export function extractFaultCodes(query: string): string[] {
   return out;
 }
 
-// #2178 — model-number detector. Extracts the drive/controller model the user is
-// asking about so retrieval can scope to THAT model's manuals, not every chunk
-// from the same vendor (a "PowerFlex 753 F005" question was citing PowerFlex 525
-// pages because the vendor-wide pass surfaced the nearest sibling). Mirrors the
-// families in mira-bots/shared/neon_recall._PRODUCT_NAME_RE. The captured token is
-// the discriminating substring (the number for PowerFlex/PF/Micro/ACS, the full
-// alphanumeric for GS/x1000) so `model_number ILIKE '%<token>%'` matches whether
-// the column stores "753" or "PowerFlex 753". Returns null when no model is named
-// — in which case retrieval behaves exactly as before (vendor/tenant scope only).
-const MODEL_PATTERNS: RegExp[] = [
-  /\bpowerflex\s*(\d{2,4}[a-z]?)\b/i, // PowerFlex 753 → 753
-  /\bpf\s*(\d{2,4}[a-z]?)\b/i, //         PF525 → 525
-  /\bmicro\s*(8\d{2})\b/i, //             Micro820 → 820
-  /\bacs\s*(\d{3,4})\b/i, //              ACS355 → 355
-  /\b(gs\d{1,2}[a-z]?)\b/i, //            GS10 → GS10
-  /\b([auvj]1000)\b/i, //                 A1000/V1000/U1000/J1000
-  // #3966 — HMI / Comfort / Siemens catalog + SINAMICS V20 family tokens.
-  // Capture the discriminating token (TP700, 6AV…, COMFORT, V20) so identity-
-  // bound OEM retrieval can scope (or refuse) instead of manufacturer-only BM25.
-  /\b(tp\s*\d{3,4})\b/i, //              TP700 / TP 1200
-  /\b(ktp\s*\d{2,4})\b/i, //             KTP700
-  /\b(6av[0-9a-z.-]+)\b/i, //             6AV2124-0GC01-0AX0
-  /\b(sinamics\s*v\s*20)\b/i, //        SINAMICS V20
-  /\b(v20)\b/i, //                        V20 (drive family)
-  /\b(comfort)\b/i, //                    Comfort panel family
-];
+
+// #2178 — the model-number detector (MODEL_PATTERNS, resolveModelFromObservationText)
+// lives in @/capabilities/model-token since Codex r7 on #4360, so the query
+// expander can use it without importing this module back. Re-exported above
+// for the existing callers.
 
 /**
  * Extract the model the query is about, as a token to match against
@@ -253,32 +239,6 @@ export function extractModelNumber(query: string): string | null {
  */
 export function modelFromObservationText(text: string): string | null {
   return resolveModelFromObservationText(text).model;
-}
-
-/** Resolve model tokens within ONE observation, refusing to pick between
- * different specific models. Comfort is a family hint; a TP/KTP panel and its
- * 6AV order number can describe the same nameplate. */
-export function resolveModelFromObservationText(text: string): { model: string | null; ambiguous: boolean } {
-  const found = new Set<string>();
-  for (const pattern of MODEL_PATTERNS) {
-    for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
-      let token = (match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase();
-      if (token === "SINAMICSV20") token = "V20";
-      found.add(token);
-    }
-  }
-  if (found.size > 1 && [...found].some((token) => /^(?:K?TP\d|6AV)/.test(token))) {
-    found.delete("COMFORT");
-  }
-  const tokens = [...found];
-  if (tokens.length === 0) return { model: null, ambiguous: false };
-  if (tokens.length === 1) return { model: tokens[0], ambiguous: false };
-  const panel = tokens.filter((token) => /^K?TP\d/.test(token));
-  const catalog = tokens.filter((token) => /^6AV/.test(token));
-  if (tokens.length === 2 && panel.length === 1 && catalog.length === 1) {
-    return { model: panel[0], ambiguous: false };
-  }
-  return { model: null, ambiguous: true };
 }
 
 // #2178 — ordered retrieval scopes, most-specific first. When a model is named we
@@ -324,6 +284,26 @@ function dedupeChunks(chunks: ManualChunk[]): ManualChunk[] {
     out.push(c);
   }
   return out;
+}
+
+// Codex r3 on #4360 — the fault the technician JUST named must lead every cut
+// in the OEM lane. The whole-token hit for the current code is deduplicated
+// against its own lower-ranked BM25 copy, and the manufacturer merges sort by
+// rank before slicing, so position alone is lost. Rows naming a current-message
+// code (whole token) are moved to the front AND carry the code lane's rank, so
+// every later rank-sort and topK cut keeps them in front; history rows keep the
+// remaining slots. A no-op when the message named no code.
+const CODE_LANE_RANK = 2;
+function leadWithCurrentCode<T extends { content: string; rank: number }>(
+  rows: T[],
+  currentCodes: readonly string[] | undefined,
+): T[] {
+  if (!currentCodes || currentCodes.length === 0) return rows;
+  const res = currentCodes.map((t) => codeTokenMatcher(t).re);
+  const lifted = rows.map((r) =>
+    res.some((re) => re.test(r.content)) ? { ...r, rank: Math.max(r.rank, CODE_LANE_RANK) } : r,
+  );
+  return prioritizeCurrentCodeEvidence(lifted, currentCodes);
 }
 
 /**
@@ -410,11 +390,25 @@ export async function retrieveManualChunks(
     equipmentType?: string | null;
     topK?: number;
     allowTenantFallback?: boolean;
+    /** The technician's raw message when `query` was conversation-augmented
+     *  (buildRetrievalQuery). Its own fault-code tokens are unioned into the
+     *  whole-token lane so a terse follow-up ("oC" after an F0004 turn) binds
+     *  ITS code, not only the thread's (Codex r1 on #4360). */
+    rawQuery?: string;
   } = {},
 ): Promise<ManualChunk[]> {
   const q = query.trim();
   if (!q) return [];
   const topK = opts.topK ?? 6;
+  // The code the technician JUST named (undefined when the message named none):
+  // it leads every merge and cut below (Codex r3 on #4360).
+  // The machine's own name is never a code here (Codex r6 on #4360): "PF525
+  // fault F0004" in a PowerFlex 525 notebook binds F0004, not PF525.
+  const identity: EquipmentIdentity = { manufacturer: opts.manufacturer, model: opts.model };
+  const currentCodes = withoutIdentityCodes(
+    withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery),
+    identity,
+  ).currentCodeTokens;
   const mfr = (opts.manufacturer ?? "").trim();
   const allowTenantFallback = opts.allowTenantFallback ?? true;
   const callerModel = (opts.model ?? "").trim() || null;
@@ -473,21 +467,37 @@ export async function retrieveManualChunks(
   // are unchanged; other scopes keep their single-name query.
   const scopeQuery = async (text: string, s: { mfr: string | null; model: string | null }) => {
     const names = identityBound && s.model && s.mfr ? manufacturerSearchNames(s.mfr) : [];
-    if (names.length === 0) return runBm25Query(client, tenantId, text, topK, s.mfr, s.model);
+    if (names.length === 0)
+      return runBm25Query(client, tenantId, text, topK, s.mfr, s.model, false, null, false, opts.rawQuery ?? null, identity);
     // Pass 25 F1: every identity-bound hit — one needle or several — must come
     // from the bound vendor group ("%sew%" also matches "Sewon"). Fetch a wider
     // window so wrong-maker rows cannot fill the LIMIT ahead of valid ones.
     const merged: ManualChunk[] = [];
     for (const name of names) {
       merged.push(
-        ...(await runBm25Query(client, tenantId, text, topK * FAMILY_FALLBACK_WINDOW, name, s.model, false, null, true)),
+        ...(await runBm25Query(
+          client,
+          tenantId,
+          text,
+          topK * FAMILY_FALLBACK_WINDOW,
+          name,
+          s.model,
+          false,
+          null,
+          true,
+          opts.rawQuery ?? null,
+          identity,
+        )),
       );
     }
     // Pass 24 F2: a substring needle only narrows the search; admission needs
     // the stored maker to be in the vendor group as a whole word.
-    return dedupeChunks(merged.sort((a, b) => b.rank - a.rank))
-      .filter((c) => manufacturerInGroup(c.manufacturer, s.mfr))
-      .slice(0, topK);
+    return leadWithCurrentCode(
+      dedupeChunks(merged.sort((a, b) => b.rank - a.rank)).filter((c) =>
+        manufacturerInGroup(c.manufacturer, s.mfr),
+      ),
+      currentCodes,
+    ).slice(0, topK);
   };
   const firstNonEmpty = async (text: string): Promise<ManualChunk[]> => {
     for (const s of scopes) {
@@ -523,15 +533,20 @@ export async function retrieveManualChunks(
     const names = manufacturerSearchNames(mfr);
     const vendorHits: ManualChunk[] = [];
     for (const name of names.length ? names : [mfr]) {
-      vendorHits.push(...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms, true)));
+      vendorHits.push(
+        ...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms, true, opts.rawQuery ?? null, identity)),
+      );
     }
-    return dedupeChunks(vendorHits.sort((a, b) => b.rank - a.rank))
-      .filter((c) => manufacturerInGroup(c.manufacturer, mfr))
-      .filter(
-        (c) =>
-          inferEquipmentType({ modelNumber: c.modelNumber, title: c.title, sourceUrl: c.sourceUrl }) ===
-          assetType,
-      )
+    return leadWithCurrentCode(
+      dedupeChunks(vendorHits.sort((a, b) => b.rank - a.rank))
+        .filter((c) => manufacturerInGroup(c.manufacturer, mfr))
+        .filter(
+          (c) =>
+            inferEquipmentType({ modelNumber: c.modelNumber, title: c.title, sourceUrl: c.sourceUrl }) ===
+            assetType,
+        ),
+      currentCodes,
+    )
       .slice(0, topK)
       .map((c) => ({ ...c, retrievalScope: "vendor_fallback" as const }));
   };
@@ -555,11 +570,14 @@ export async function retrieveManualChunks(
   // Pass 6 F2: the bound model's own fault-code page beats sibling pages from
   // the verbose fallback — return own-model evidence alone, so the answer's
   // sources, warning and prompt describe each page accurately.
-  if (codeHits.length > 0 && main.length > 0 && !mainIsOwnModel) return codeHits.slice(0, topK);
+  if (codeHits.length > 0 && main.length > 0 && !mainIsOwnModel)
+    return leadWithCurrentCode(codeHits, currentCodes).slice(0, topK);
   if (codeHits.length === 0 && !mainIsOwnModel) codeHits = await familyFallback(codes.join(" "));
   if (codeHits.length === 0) return main;
 
-  return dedupeChunks([...codeHits, ...main]).slice(0, topK);
+  // The #1875 pass answers the THREAD's F-code; the message's own code (if any)
+  // still leads the final cut so six F0004 pages cannot exhaust the slots.
+  return leadWithCurrentCode(dedupeChunks([...codeHits, ...main]), currentCodes).slice(0, topK);
 }
 
 // #1875 — the exact cite-or-refuse sentence the quickstart system prompt tells
@@ -692,6 +710,13 @@ async function runBm25Query(
    *  sees only the bound vendor group — a post-filter cannot restore an OR
    *  pass a wrong maker's strong AND hit suppressed. */
   makerWholeWord = false,
+  /** The technician's raw message when `query` was conversation-augmented —
+   *  its own fault codes join the whole-token lane (Codex r1 on #4360). */
+  rawQuery: string | null = null,
+  /** The CALLER's bound machine (Codex r6 on #4360): a scope pass may run with
+   *  model=null (manufacturer-only, family fallback) and must still exclude the
+   *  notebook's model spellings from the code lane. */
+  identity: EquipmentIdentity | null = null,
 ): Promise<ManualChunk[]> {
   const params: unknown[] = [tenantId, boundBm25Query(query)];
   const { mfrClause, modelClause, familyClause } = buildScopeClauses(params, {
@@ -738,6 +763,28 @@ async function runBm25Query(
     return res.rows;
   };
 
+  // The current message's own code tokens, when the query was augmented with the
+  // thread's (Codex r1/r3 on #4360): they join the whole-token lane below, and a
+  // BM25 row naming one is moved to the front with the code lane's rank BEFORE
+  // any cut here, so neither this slice nor a caller's rank-sort drops it.
+  // The bound maker/model's own spellings never bind a code pattern (Codex r6 on #4360).
+  const rawExpanded = withoutIdentityCodes(
+    withRawCodeTokens(expandIndustrialQuery(query), rawQuery),
+    identity ?? { manufacturer, model },
+  );
+  const currentRes = (rawExpanded.currentCodeTokens ?? []).map((t) => codeTokenMatcher(t).re);
+  const leadCurrent = (rs: Record<string, unknown>[]): Record<string, unknown>[] => {
+    if (currentRes.length === 0) return rs;
+    const current: Record<string, unknown>[] = [];
+    const rest: Record<string, unknown>[] = [];
+    for (const r of rs) {
+      if (currentRes.some((re) => re.test(String(r.content ?? "")))) {
+        current.push({ ...r, rank: Math.max(Number(r.rank ?? 0), CODE_LANE_RANK) });
+      } else rest.push(r);
+    }
+    return current.length === 0 ? rs : [...current, ...rest];
+  };
+
   let rows = await run(AND_TSQUERY);
   if (alwaysOr || isWeakAndResult(rows)) {
     // #4035 — an AND match can be technically non-empty but useless: one chunk at
@@ -746,10 +793,12 @@ async function runBm25Query(
     // so the answer refused. Union with OR in the SAME scope; strongest first.
     const seen = new Set(rows.map(rowKey));
     const extra = (await run(OR_TSQUERY)).filter((r: Record<string, unknown>) => !seen.has(rowKey(r)));
-    rows = [...rows, ...extra].sort((a, b) => Number(b.rank ?? 0) - Number(a.rank ?? 0));
+    rows = leadCurrent([...rows, ...extra].sort((a, b) => Number(b.rank ?? 0) - Number(a.rank ?? 0)));
     // Post-cap F2: a post-filtering caller (alwaysOr) filters BEFORE limiting,
     // so strong AND rows it will discard cannot crowd its OR rows out here.
     if (!alwaysOr) rows = rows.slice(0, topK);
+  } else {
+    rows = leadCurrent(rows);
   }
 
   // #4224 Defect A — whole-token code lane for the quickstart surface. A chunk
@@ -766,9 +815,9 @@ async function runBm25Query(
   // both passes — this lane covers ONLY the whole-token class #1875 cannot
   // reach (two-letter/dotted/bare-digit/mixed-case: ovA, E.OV1, Alarm 7, 3210).
   const ownedByFaultCodePass = new Set(extractFaultCodes(query).map((c) => c.toUpperCase()));
-  const codeTokens = expandIndustrialQuery(query).codeTokens.filter(
-    (t) => !ownedByFaultCodePass.has(t.toUpperCase()),
-  );
+  // The raw message's own codes ride along when the query was augmented with the
+  // thread's tokens — otherwise "oC F0004 fault" yields only the previous F0004.
+  const codeTokens = rawExpanded.codeTokens.filter((t) => !ownedByFaultCodePass.has(t.toUpperCase()));
   if (codeTokens.length > 0) {
     const codeParams: unknown[] = [tenantId];
     const codeScope = buildScopeClauses(codeParams, { manufacturer, model, familyTerms, makerWholeWord });
@@ -801,7 +850,10 @@ async function runBm25Query(
     const seen = new Set(rows.map(rowKey));
     const codeFresh = codeRes.rows.filter((r: Record<string, unknown>) => !seen.has(rowKey(r)));
     if (codeFresh.length > 0) {
-      rows = [...codeFresh, ...rows];
+      // A whole-token hit already present as a BM25 row was lifted by
+      // leadCurrent above; a fresh one is prepended here. Either way the
+      // current message's code leads.
+      rows = leadCurrent([...codeFresh, ...rows]);
       // A post-filtering caller (alwaysOr) caps downstream; others cap here so
       // the prepended code hits displace the weakest BM25 rows, not add beyond topK.
       if (!alwaysOr) rows = rows.slice(0, topK);
@@ -860,6 +912,9 @@ export async function retrieveNodeChunks(
      *  (e.g. a thread's P042) can only ADD candidates — never crowd the
      *  message's own keywords ("keypad") out of the pool. */
     rawQuery?: string;
+    /** The notebook's machine (manufacturer/model), so its own name is never
+     *  read as a fault code by the whole-token lane (Codex r6 on #4360). */
+    identity?: EquipmentIdentity | null;
     /** Canonical-files retrieval mode (workspace_file_links): scope by the
      *  validated docIds ALONE, without requiring the chunks' original
      *  metadata.node_id to equal this caller's node. A document ingested once
@@ -996,7 +1051,12 @@ export async function retrieveNodeChunks(
   // of ts_rank. Unstemmed by construction (ILIKE on raw content) — closes the
   // stemming/exact-token loss the bakeoff flagged, with no schema migration
   // (doc-scoped candidate set is small, so the scan is cheap).
-  const expanded = expandIndustrialQuery(q);
+  // The raw message's own fault codes join the augmented query's, so the exact
+  // lane AND the rerank boost below bind the follow-up's code ("oC"), not only
+  // the thread's F0004 that augmentation carried in (Codex r1 on #4360).
+  // The notebook's own machine name is never a code (Codex r6 on #4360): "GS10 oC"
+  // in a GS10 notebook binds oC, not GS10.
+  const expanded = withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery), opts.identity);
   // `match` picks the predicate: ILIKE substring for the legacy exact tokens,
   // or a whole-token regex for fault codes (codeTokenMatcher) — "%ova%" would
   // also hit "removal", and "%alarm 7%" every "ALARM 70".
@@ -1051,6 +1111,18 @@ export async function retrieveNodeChunks(
   add(await runRetrieval(AND_TSQUERY, expanded.variants[0]));
   for (const v of expanded.variants.slice(1)) add(await runRetrieval(OR_TSQUERY, v));
   add(await runExactLane(expanded.exactTokens.map((t) => `%${t}%`)));
+  // The code the technician JUST named gets its own whole-token pass with its
+  // own window BEFORE the combined pass (Codex r8 on #4360): the combined query
+  // binds history and current patterns together, orders by page and LIMITs to
+  // POOL, so 24+ earlier-page F0004 passages can fill every slot and the later
+  // oC passage never becomes a candidate — final-cut prioritization cannot lead
+  // with evidence that was never admitted. Same predicates, same lane; `add`
+  // de-duplicates against the combined pass. No-op when the message named no
+  // code or every code is current.
+  const currentCodes = (expanded.currentCodeTokens ?? []).filter((t) => expanded.codeTokens.includes(t));
+  if (currentCodes.length > 0 && currentCodes.length < expanded.codeTokens.length) {
+    add(await runExactLane(currentCodes.map((t) => codeTokenMatcher(t).sql), "regex"));
+  }
   add(await runExactLane(expanded.codeTokens.map((t) => codeTokenMatcher(t).sql), "regex"));
   // Message-native pass: when the query was conversation-augmented, the raw
   // words get their own OR pass — otherwise the thread's exact IDs dominate
@@ -1086,16 +1158,22 @@ export async function retrieveNodeChunks(
   // (no single page may fill the context); otherwise the tight topK.
   const trace: RerankTraceRow[] | undefined =
     process.env.NOTEBOOK_RETRIEVAL_DEBUG === "1" ? [] : undefined;
-  const rerankedAll = rerankChunks(
-    expanded,
-    pool.map((r) => ({
-      content: String(r.content ?? ""),
-      rank: Number(r.rank ?? 0),
-      sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
-      docId: r.doc_id == null ? null : String(r.doc_id),
-      _row: r,
-    })),
-    { intent, trace },
+  // The code the technician JUST named leads the final cut; a code carried in
+  // from the thread stays context and cannot exhaust the slots (Codex r2 on
+  // #4360). No-op when the message named no code.
+  const rerankedAll = prioritizeCurrentCodeEvidence(
+    rerankChunks(
+      expanded,
+      pool.map((r) => ({
+        content: String(r.content ?? ""),
+        rank: Number(r.rank ?? 0),
+        sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
+        docId: r.doc_id == null ? null : String(r.doc_id),
+        _row: r,
+      })),
+      { intent, trace },
+    ),
+    expanded.currentCodeTokens,
   );
   // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
   // overall, so one family (e.g. overload) can fill every slot while a planned
