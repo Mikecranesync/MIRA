@@ -20,6 +20,7 @@ Run: cd mira-bots && python3 -m pytest tests/test_conversation_router_bounded.py
 from __future__ import annotations
 
 import re
+import sqlite3
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -162,12 +163,89 @@ async def test_usage_row_without_a_session_falls_back_to_the_routers_unknown_tri
     assert call.kwargs["session_id"] == "unknown_unknown_unknown"
 
 
-def test_engine_hands_its_session_id_to_route_intent() -> None:
-    # Source contract: the one production caller passes the chat's own identity.
+def test_engine_hands_an_accounting_identity_to_route_intent() -> None:
+    # Source contract: the one production caller builds tenant_platform_chat
+    # from the authenticated tenant and the surface — never the bare chat key.
     src = Path(cr.__file__).with_name("engine.py").read_text(encoding="utf-8")
-    m = re.search(r"await route_intent\((.*?)\)\n", src, re.S)
-    assert m, "route_intent call not found"
-    assert "session_id=str(chat_id)" in m.group(1), m.group(1)
+    idx = src.find("await route_intent(")
+    assert idx > 0, "route_intent call not found"
+    call = re.sub(r"\s+", " ", src[idx : idx + 1200])
+    assert re.search(
+        r"session_id=accounting_session_id\( ?tenant_id or self\.tenant_id, platform, chat_id,? ?\)",
+        call,
+    ), call
+    assert "session_id=str(chat_id)" not in call
+    # And the surface actually reaches that call: process → process_full → _process_full_impl.
+    assert re.search(r"self\.process_full\([^)]*platform=platform", src, re.S), (
+        "process() drops platform"
+    )
+    assert re.search(r"self\._process_full_impl\([^)]*platform=platform", src, re.S), (
+        "process_full() drops platform"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Codex r2 F2 — production session identities: Ignition's chat key is
+# "ignition:acme:press7" (colons), the usage writer splits on underscores, and
+# the Ignition preflight classifier passed no session at all.
+# ---------------------------------------------------------------------------
+
+
+def test_accounting_session_id_is_tenant_platform_chat() -> None:
+    assert (
+        cr.accounting_session_id("acme", "ignition", "ignition:acme:press7")
+        == "acme_ignition_ignition:acme:press7"
+    )
+    assert cr.accounting_session_id("acme", "telegram", 1001) == "acme_telegram_1001"
+    assert cr.accounting_session_id("", None, None) == "unknown_unknown_unknown"
+    assert cr.accounting_session_id("  acme ", " slack ", "C42") == "acme_slack_C42"
+
+
+async def test_ignition_turn_is_attributed_to_its_tenant_on_the_ignition_platform(
+    real_router, tmp_path
+) -> None:
+    # The REAL usage writer (sqlite row), fed the identity the engine now builds
+    # for an authenticated Ignition turn — the exact production chat key shape.
+    db = tmp_path / "mira.db"
+    db.touch()
+    real_router.write_api_usage = (
+        InferenceRouter.write_api_usage
+    )  # un-mock: capture the actual insert
+    _queue(_response(CLASSIFY, completion_tokens=40))
+    with patch.dict("os.environ", {"MIRA_DB_PATH": str(db)}):
+        with patch("shared.inference.router.httpx.AsyncClient", _FakeAsyncClient):
+            await cr.route_intent(
+                "drive faulted",
+                [],
+                "IDLE",
+                "",
+                session_id=cr.accounting_session_id("acme", "ignition", "ignition:acme:press7"),
+            )
+    rows = (
+        sqlite3.connect(str(db))
+        .execute("SELECT tenant_id, platform, session_id FROM api_usage")
+        .fetchall()
+    )
+    assert rows == [("acme", "ignition", "acme_ignition_ignition:acme:press7")]
+
+
+async def test_control_the_bare_ignition_chat_key_is_the_defect(real_router, tmp_path) -> None:
+    # Pinned: the writer READS the bare chat key as tenant "ignition:acme:press7".
+    db = tmp_path / "mira.db"
+    db.touch()
+    real_router.write_api_usage = InferenceRouter.write_api_usage
+    _queue(_response(CLASSIFY, completion_tokens=40))
+    with patch.dict("os.environ", {"MIRA_DB_PATH": str(db)}):
+        with patch("shared.inference.router.httpx.AsyncClient", _FakeAsyncClient):
+            await cr.route_intent(
+                "drive faulted", [], "IDLE", "", session_id="ignition:acme:press7"
+            )
+    rows = sqlite3.connect(str(db)).execute("SELECT tenant_id, platform FROM api_usage").fetchall()
+    assert rows == [("ignition:acme:press7", "unknown")]
+
+
+# The Ignition missing-asset preflight (mira-pipeline/ignition_chat.py::_is_asset_specific)
+# is covered where that module is importable: tests/pipeline/test_ignition_chat_uns.py.
 
 
 def test_classifier_source_declares_the_bounded_lane() -> None:

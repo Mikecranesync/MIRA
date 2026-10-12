@@ -50,7 +50,7 @@ def _post(client, payload: dict):
 
 
 def _classifier(intent: str):
-    async def _route(question, history):
+    async def _route(question, history, **kw):
         return {"intent": intent}
 
     return _route
@@ -82,7 +82,7 @@ def test_turn_with_asset_id_is_uns_certified_direct_connection(
     """An asset identifier certifies the UNS path — engine skips the chat-gate."""
 
     # Classifier must NOT be consulted when an identifier is present.
-    async def _explodes(question, history):
+    async def _explodes(question, history, **kw):
         raise AssertionError("classifier must not run for identified turns")
 
     monkeypatch.setattr(ignition_chat, "_route_intent", _explodes)
@@ -122,7 +122,7 @@ def test_classifier_failure_fails_open_to_plain_chat(
 ):
     """A classifier blip must never brick the HMI — turn passes as general chat."""
 
-    async def _blip(question, history):
+    async def _blip(question, history, **kw):
         raise RuntimeError("neon down")
 
     monkeypatch.setattr(ignition_chat, "_route_intent", _blip)
@@ -135,3 +135,46 @@ def test_missing_question_is_400(ignition_client, recording_engine):
     resp = _post(ignition_client, {"asset_id": "cv_101"})
     assert resp.status_code == 400
     recording_engine.process.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Codex r2 on #4359 — the preflight classifier used to run with NO session id,
+# so its usage row was tenant "unknown" / platform "unknown". It now carries the
+# authenticated tenant on the ignition platform, through the ONE accounting-id
+# builder the engine uses (not a local copy).
+# ---------------------------------------------------------------------------
+
+
+async def test_preflight_classifies_under_the_tenants_ignition_identity(monkeypatch):
+    from shared.conversation_router import accounting_session_id
+
+    seen: list[dict] = []
+
+    async def capture(question, history, **kw):
+        seen.append(kw)
+        return {"intent": "diagnose_equipment"}
+
+    monkeypatch.setattr(ignition_chat, "_route_intent", capture)
+    assert await ignition_chat._is_asset_specific("why is the drive faulting", "acme") is True
+    assert seen == [{"session_id": "acme_ignition_preflight"}]
+    assert ignition_chat._accounting_session_id is accounting_session_id
+
+
+async def test_preflight_without_a_tenant_records_unknown_not_a_fake_tenant(monkeypatch):
+    seen: list[dict] = []
+
+    async def capture(question, history, **kw):
+        seen.append(kw)
+        return {"intent": "greeting"}
+
+    monkeypatch.setattr(ignition_chat, "_route_intent", capture)
+    assert await ignition_chat._is_asset_specific("hello", None) is False
+    assert seen == [{"session_id": "unknown_ignition_preflight"}]
+
+
+def test_route_hands_the_authenticated_tenant_to_the_preflight():
+    import inspect
+
+    src = inspect.getsource(ignition_chat)
+    assert "await _is_asset_specific(question, tenant_id)" in src
+    assert "await _is_asset_specific(question)" not in src

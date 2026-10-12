@@ -148,6 +148,26 @@ def reset_router_for_tests() -> None:
 ROUTER_MAX_TOKENS = 300
 
 
+def accounting_session_id(
+    tenant_id: str | None, platform: str | None, chat_id: str | int | None
+) -> str:
+    """The usage-accounting identity for a classification: ``tenant_platform_chat``.
+
+    `InferenceRouter.write_api_usage` splits its session id on the first two
+    underscores into tenant, platform and the rest, so the id must be BUILT in
+    that shape from the authenticated tenant and the surface — never taken
+    from an FSM chat key, whose spelling is the surface's own (Ignition's is
+    ``ignition:acme:press7``, which the writer would read as tenant
+    ``ignition:acme:press7`` / platform ``unknown``; Codex r2 on #4359).
+    A missing part is recorded as ``unknown``, never as a word that reads like
+    a tenant. Pure.
+    """
+    tenant = (tenant_id or "").strip() or "unknown"
+    surface = (platform or "").strip() or "unknown"
+    chat = (str(chat_id) if chat_id is not None else "").strip() or "unknown"
+    return f"{tenant}_{surface}_{chat}"
+
+
 async def _call_router_llm(messages: list[dict], session_id: str | None = None) -> str:
     """Classify intent through the shared InferenceRouter cascade (OpenAI first).
 
