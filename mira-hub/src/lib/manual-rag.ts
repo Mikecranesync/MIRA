@@ -5,6 +5,8 @@ import {
   codeTokenMatcher,
   expandIndustrialQuery,
   withRawCodeTokens,
+  withoutIdentityCodes,
+  type EquipmentIdentity,
   prioritizeCurrentCodeEvidence,
   rerankChunks,
   classifyBroad,
@@ -444,7 +446,13 @@ export async function retrieveManualChunks(
   const topK = opts.topK ?? 6;
   // The code the technician JUST named (undefined when the message named none):
   // it leads every merge and cut below (Codex r3 on #4360).
-  const currentCodes = withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery).currentCodeTokens;
+  // The machine's own name is never a code here (Codex r6 on #4360): "PF525
+  // fault F0004" in a PowerFlex 525 notebook binds F0004, not PF525.
+  const identity: EquipmentIdentity = { manufacturer: opts.manufacturer, model: opts.model };
+  const currentCodes = withoutIdentityCodes(
+    withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery),
+    identity,
+  ).currentCodeTokens;
   const mfr = (opts.manufacturer ?? "").trim();
   const allowTenantFallback = opts.allowTenantFallback ?? true;
   const callerModel = (opts.model ?? "").trim() || null;
@@ -504,7 +512,7 @@ export async function retrieveManualChunks(
   const scopeQuery = async (text: string, s: { mfr: string | null; model: string | null }) => {
     const names = identityBound && s.model && s.mfr ? manufacturerSearchNames(s.mfr) : [];
     if (names.length === 0)
-      return runBm25Query(client, tenantId, text, topK, s.mfr, s.model, false, null, false, opts.rawQuery ?? null);
+      return runBm25Query(client, tenantId, text, topK, s.mfr, s.model, false, null, false, opts.rawQuery ?? null, identity);
     // Pass 25 F1: every identity-bound hit — one needle or several — must come
     // from the bound vendor group ("%sew%" also matches "Sewon"). Fetch a wider
     // window so wrong-maker rows cannot fill the LIMIT ahead of valid ones.
@@ -522,6 +530,7 @@ export async function retrieveManualChunks(
           null,
           true,
           opts.rawQuery ?? null,
+          identity,
         )),
       );
     }
@@ -569,7 +578,7 @@ export async function retrieveManualChunks(
     const vendorHits: ManualChunk[] = [];
     for (const name of names.length ? names : [mfr]) {
       vendorHits.push(
-        ...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms, true, opts.rawQuery ?? null)),
+        ...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms, true, opts.rawQuery ?? null, identity)),
       );
     }
     return leadWithCurrentCode(
@@ -748,6 +757,10 @@ async function runBm25Query(
   /** The technician's raw message when `query` was conversation-augmented —
    *  its own fault codes join the whole-token lane (Codex r1 on #4360). */
   rawQuery: string | null = null,
+  /** The CALLER's bound machine (Codex r6 on #4360): a scope pass may run with
+   *  model=null (manufacturer-only, family fallback) and must still exclude the
+   *  notebook's model spellings from the code lane. */
+  identity: EquipmentIdentity | null = null,
 ): Promise<ManualChunk[]> {
   const params: unknown[] = [tenantId, boundBm25Query(query)];
   const { mfrClause, modelClause, familyClause } = buildScopeClauses(params, {
@@ -798,7 +811,11 @@ async function runBm25Query(
   // thread's (Codex r1/r3 on #4360): they join the whole-token lane below, and a
   // BM25 row naming one is moved to the front with the code lane's rank BEFORE
   // any cut here, so neither this slice nor a caller's rank-sort drops it.
-  const rawExpanded = withRawCodeTokens(expandIndustrialQuery(query), rawQuery);
+  // The bound maker/model's own spellings never bind a code pattern (Codex r6 on #4360).
+  const rawExpanded = withoutIdentityCodes(
+    withRawCodeTokens(expandIndustrialQuery(query), rawQuery),
+    identity ?? { manufacturer, model },
+  );
   const currentRes = (rawExpanded.currentCodeTokens ?? []).map((t) => codeTokenMatcher(t).re);
   const leadCurrent = (rs: Record<string, unknown>[]): Record<string, unknown>[] => {
     if (currentRes.length === 0) return rs;
@@ -939,6 +956,9 @@ export async function retrieveNodeChunks(
      *  (e.g. a thread's P042) can only ADD candidates — never crowd the
      *  message's own keywords ("keypad") out of the pool. */
     rawQuery?: string;
+    /** The notebook's machine (manufacturer/model), so its own name is never
+     *  read as a fault code by the whole-token lane (Codex r6 on #4360). */
+    identity?: EquipmentIdentity | null;
     /** Canonical-files retrieval mode (workspace_file_links): scope by the
      *  validated docIds ALONE, without requiring the chunks' original
      *  metadata.node_id to equal this caller's node. A document ingested once
@@ -1078,7 +1098,9 @@ export async function retrieveNodeChunks(
   // The raw message's own fault codes join the augmented query's, so the exact
   // lane AND the rerank boost below bind the follow-up's code ("oC"), not only
   // the thread's F0004 that augmentation carried in (Codex r1 on #4360).
-  const expanded = withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery);
+  // The notebook's own machine name is never a code (Codex r6 on #4360): "GS10 oC"
+  // in a GS10 notebook binds oC, not GS10.
+  const expanded = withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery), opts.identity);
   // `match` picks the predicate: ILIKE substring for the legacy exact tokens,
   // or a whole-token regex for fault codes (codeTokenMatcher) — "%ova%" would
   // also hit "removal", and "%alarm 7%" every "ALARM 70".

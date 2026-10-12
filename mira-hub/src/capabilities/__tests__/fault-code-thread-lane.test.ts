@@ -28,9 +28,11 @@ import {
   buildRetrievalQuery,
   codeTokenMatcher,
   expandIndustrialQuery,
+  identityTokens,
   prioritizeCurrentCodeEvidence,
   rerankChunks,
   withRawCodeTokens,
+  withoutIdentityCodes,
   type ChatHistoryTurn,
 } from "@/lib/notebook-query";
 
@@ -436,6 +438,126 @@ describe("a real thread: the terse follow-up arrives conversation-augmented", ()
     expect(oem.slice(0, oem.indexOf("});"))).toMatch(/rawQuery: message/);
     const attached = route.slice(route.indexOf("retrieveNodeChunks(client, ctx.tenantId, retrievalQuery"));
     expect(attached.slice(0, attached.indexOf("})"))).toMatch(/rawQuery: message/);
+  });
+
+  // Codex r6 on #4360 — letters plus digits IS the fault-code shape, so "PF525"
+  // and "GS10" cannot be told from "OC1" or "F30002" by shape. An identity-bound
+  // lane knows its machine: its own name is excluded before any pattern binds.
+  describe("the machine's own name is never a fault code (Codex r6 on #4360)", () => {
+    const PF525 = { manufacturer: "Allen-Bradley", model: "PowerFlex 525" };
+
+    it("identityTokens: words, the joined model, and the initials+number alias; never bare initials", () => {
+      const t = identityTokens(PF525);
+      for (const w of ["allen", "bradley", "powerflex", "525", "powerflex525", "pf525"]) expect(t.has(w)).toBe(true);
+      expect(t.has("pf")).toBe(false); // PF is also a drive mnemonic (phase failure)
+      expect(identityTokens({ model: "GS10" }).has("gs10")).toBe(true);
+      expect(identityTokens(null).size).toBe(0);
+      expect(identityTokens({ manufacturer: "  ", model: null }).size).toBe(0);
+    });
+
+    it("withoutIdentityCodes: the model alias and the bare model drop out of codeTokens and currentCodeTokens; real codes stay", () => {
+      const pf = withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery("PF525 fault F0004"), "PF525 fault F0004"), PF525);
+      expect(pf.codeTokens).toEqual(["F0004"]);
+      expect(pf.currentCodeTokens).toEqual(["F0004"]);
+      const gs = withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery("GS10 oC"), "GS10 oC"), { model: "GS10" });
+      expect(gs.codeTokens).toEqual(["oC"]);
+      expect(gs.currentCodeTokens).toEqual(["oC"]);
+      // Pure: no identity, or no overlap, returns the input object itself.
+      const plain = withRawCodeTokens(expandIndustrialQuery("oC"), "oC");
+      expect(withoutIdentityCodes(plain, null)).toBe(plain);
+      expect(withoutIdentityCodes(plain, PF525)).toBe(plain);
+    });
+
+    it("control (pinned limit): with NO identity the shape rules cannot tell PF525 or GS10 from a code", () => {
+      expect(codes("PF525 fault F0004")).toEqual(["F0004", "PF525"]);
+      expect(codes("GS10 oC")).toEqual(["GS10", "oC"]);
+    });
+
+    function populatedModelNameClient(nameToken: string) {
+      const row = (page: number, content: string, rank: number) => ({
+        content,
+        manufacturer: "Allen-Bradley",
+        model_number: "PowerFlex 525",
+        source_url: "pf525.pdf",
+        source_page: page,
+        chunk_index: page,
+        title: "PowerFlex 525 User Manual",
+        verified: true,
+        rank,
+      });
+      const generic = [1, 2, 3, 4, 5, 6].map((p) =>
+        row(p, `${nameToken} installation note ${p}: mount the ${nameToken} drive vertically with clearance above and below.`, 0.5),
+      );
+      const fault = row(100, "F0004 UnderVoltage: the DC bus voltage fell below the limit; check the incoming line.", 0.3);
+      const calls: Array<{ sql: string; params: unknown[] }> = [];
+      const query = vi.fn(async (sql: string, params: unknown[]) => {
+        calls.push({ sql, params });
+        if (sql.includes("content ~* ANY(")) {
+          const patterns =
+            params.find(
+              (p): p is string[] => Array.isArray(p) && p.every((x) => typeof x === "string" && x.startsWith("(^|")),
+            ) ?? [];
+          if (patterns.includes(codeTokenMatcher(nameToken).sql)) return { rows: generic };
+          return { rows: patterns.includes(codeTokenMatcher("F0004").sql) ? [fault] : [] };
+        }
+        if (sql.includes("content_tsv @@")) return { rows: [fault] };
+        return { rows: [] };
+      });
+      return { client: { query } as unknown as PoolClient, calls };
+    }
+
+    it("PF525 fault F0004 (OEM, identity-bound PowerFlex 525): the model alias binds no pattern and the F0004 passage survives the top six", async () => {
+      const msg = "PF525 fault F0004";
+      const { client, calls } = populatedModelNameClient("PF525");
+      const out = await retrieveManualChunks(client, "tenant-1", msg, {
+        manufacturer: "Allen-Bradley",
+        model: "PowerFlex 525",
+        topK: 6,
+        allowTenantFallback: false,
+        rawQuery: msg,
+      });
+      expect(boundPatterns(calls)).not.toContain(codeTokenMatcher("PF525").sql);
+      expect(out.map((c) => c.sourcePage)).toContain(100);
+      expect(out.length).toBeLessThanOrEqual(6);
+    });
+
+    it("GS10 oC (attached-document lane, notebook identity GS10): the model binds no pattern, oC does", async () => {
+      const { client, calls } = makeClient();
+      await retrieveNodeChunks(client, "tenant-1", "GS10 oC", {
+        nodeId: "node-1",
+        unsPath: null,
+        topK: 6,
+        docIds: [DOC],
+        rawQuery: "GS10 oC",
+        validatedDocScope: true,
+        identity: { manufacturer: "Automation Direct", model: "GS10" },
+      });
+      const bound = boundPatterns(calls);
+      expect(bound).not.toContain(codeTokenMatcher("GS10").sql);
+      expect(bound).toContain(codeTokenMatcher("oC").sql);
+    });
+
+    it("control: the same terse message in a notebook with NO identity still binds both (the pinned limit)", async () => {
+      const { client, calls } = makeClient();
+      await retrieveNodeChunks(client, "tenant-1", "GS10 oC", {
+        nodeId: "node-1",
+        unsPath: null,
+        topK: 6,
+        docIds: [DOC],
+        rawQuery: "GS10 oC",
+        validatedDocScope: true,
+      });
+      expect(boundPatterns(calls)).toContain(codeTokenMatcher("GS10").sql);
+    });
+
+    it("source contract: the notebook route hands its machine identity to the attached-document lane", () => {
+      const route = readFileSync(
+        resolve(__dirname, "../../app/api/equipment-notebooks/[id]/chat/route.ts"),
+        "utf8",
+      );
+      const attached = route.slice(route.indexOf("retrieveNodeChunks(client, ctx.tenantId, retrievalQuery"));
+      expect(attached.slice(0, attached.indexOf("validatedDocScope"))).toMatch(/identity: \{ manufacturer: nb\?\.manufacturer/);
+    });
   });
 });
 

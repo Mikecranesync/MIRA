@@ -156,6 +156,52 @@ function extractCodeTokens(q: string): string[] {
   return [...out];
 }
 
+/** The machine a retrieval lane is bound to (the notebook's or LOOK's identity). */
+export type EquipmentIdentity = { manufacturer?: string | null; model?: string | null };
+
+/** Lowercased spellings of the machine's own name (Codex r6 on #4360): each
+ *  word of the manufacturer and model ("powerflex", "525", "gs10"), the model's
+ *  words run together ("powerflex525"), and the initials-plus-number alias a
+ *  technician types ("PowerFlex 525" → "pf525"). A bare initials-only alias is
+ *  NOT included: "PF" is also a drive mnemonic (phase failure). */
+export function identityTokens(identity?: EquipmentIdentity | null): Set<string> {
+  const out = new Set<string>();
+  if (!identity) return out;
+  for (const raw of [identity.manufacturer, identity.model]) {
+    const s = (raw ?? "").trim();
+    if (!s) continue;
+    const words = s.match(/[A-Za-z0-9]+/g) ?? [];
+    for (const w of words) out.add(w.toLowerCase());
+    if (words.length > 1) out.add(words.join("").toLowerCase());
+    const letterWords = words.filter((w) => /^[A-Za-z]+$/.test(w));
+    const numberWords = words.filter((w) => /\d/.test(w));
+    if (letterWords.length > 0 && numberWords.length > 0) {
+      // "PowerFlex" → "PF" (its capitals), "Kinetix" → "K"; joined with the number.
+      const initials = letterWords.map((w) => (w.match(/[A-Z]/g) ?? [w[0]]).join("")).join("");
+      for (const n of numberWords) out.add(`${initials}${n}`.toLowerCase());
+    }
+  }
+  return out;
+}
+
+/** Drop the machine's own name from the code tokens (Codex r6 on #4360). The
+ *  shape rules cannot tell "PF525" or "GS10" from a fault code — letters plus
+ *  digits IS the fault-code shape — so an identity-bound lane excludes the
+ *  tokens that name its machine before they bind a whole-token pattern or earn
+ *  current-code priority. Pure; no identity, or no overlap, returns the input. */
+export function withoutIdentityCodes(expanded: ExpandedQuery, identity?: EquipmentIdentity | null): ExpandedQuery {
+  const names = identityTokens(identity);
+  if (names.size === 0) return expanded;
+  const keep = (t: string) => !names.has(t.toLowerCase());
+  const codeTokens = expanded.codeTokens.filter(keep);
+  const current = expanded.currentCodeTokens?.filter(keep);
+  const unchanged =
+    codeTokens.length === expanded.codeTokens.length &&
+    (current?.length ?? 0) === (expanded.currentCodeTokens?.length ?? 0);
+  if (unchanged) return expanded;
+  return { ...expanded, codeTokens, ...(current ? { currentCodeTokens: current } : {}) };
+}
+
 /** #4224 follow-up (Codex r1 on #4360) — in a real thread the follow-up reaches
  *  retrieval conversation-augmented: buildRetrievalQuery turns "oC" into
  *  "oC F0004 fault", which is no longer a bare terse message (so that rule is
