@@ -245,7 +245,15 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   // opening the New-project form or About, which do not clear `homeVisible`
   // (Codex #4350 r7 F10).
   const onHomeRef = useRef(true);
-  onHomeRef.current = homeVisible && !showCreateProject && !showAbout;
+  // Leaving HOME retires every send made there (r10 F13): a send carries the
+  // generation it was made in, and a continuation from an older generation
+  // is dropped even if HOME is showing again by the time it lands.
+  const homeGenRef = useRef(0);
+  {
+    const onHome = homeVisible && !showCreateProject && !showAbout;
+    if (onHomeRef.current && !onHome) homeGenRef.current += 1;
+    onHomeRef.current = onHome;
+  }
 
   /**
    * A HOME send (`text`, possibly empty for an attachment-only send) or New
@@ -290,17 +298,20 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     }
     homeSendInFlight.current = true;
     setHomeSending(true);
+    const gen = homeGenRef.current;
+    const stillThisSend = () => onHomeRef.current && homeGenRef.current === gen;
     void createNotebook(plan.body)
       .then(
         (created) => {
           setNotebooks((current) => (current?.some((nb) => nb.id === created.id) ? current : [created, ...(current ?? [])]));
           // The technician opened something else while this was in flight:
-          // the send is abandoned, never a hijack of where they went.
-          if (!onHomeRef.current) return;
+          // the send is abandoned, never a hijack of where they went — even
+          // if they are back on HOME by now.
+          if (!stillThisSend()) return;
           handoff(created.id);
         },
         (e: unknown) => {
-          if (!onHomeRef.current) return;
+          if (!stillThisSend()) return;
           // Never the root's fatal error: that unmounts the composer with the
           // question in it and leaves nothing on screen that can recover.
           failedHomeAttachments.current = carry;

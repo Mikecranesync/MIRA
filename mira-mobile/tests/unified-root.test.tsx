@@ -982,6 +982,41 @@ describe("UnifiedRoot", () => {
     expect(screen.queryByTestId("nb")).toBeNull();
   });
 
+  // Codex #4350 round 10, F13: the fence only asked "is HOME showing now?",
+  // so a send abandoned by navigating away revived when HOME was re-entered
+  // before its create settled, opening its thread and wiping a draft the
+  // technician had started. Every HOME send now carries the navigation
+  // generation it was made in; leaving HOME retires that generation for good.
+  it("row 8 / F13: a send abandoned by navigation stays abandoned after returning HOME; a new draft is untouched", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("A.jpg");
+    askFromHome("question A");
+    await waitFor(() => expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New project" })[0]);
+    await waitFor(() => screen.getByTestId("unified-create-project"));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.input(screen.getByRole("textbox", { name: "Ask MIRA" }), { target: { value: "question B" } });
+
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.getByTestId("unified-home")).toBeTruthy();
+    expect(screen.queryByTestId("nb")).toBeNull();
+    expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("question B");
+    expect(claimAttachments()).toEqual([]);
+  });
+
   it("row 8 / F5: a create that resolves after the technician opened another project does not take over", async () => {
     const { listNotebooks } = await import("../src/api/resources");
     vi.mocked(listNotebooks).mockResolvedValueOnce([
