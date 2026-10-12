@@ -78,7 +78,7 @@ vi.mock("@/lib/visual-evidence-context", async (importOriginal) => ({
 }));
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
-import { resetProviderHealthForTests } from "@/capabilities/provider-health";
+import { ALL_PROVIDERS_FAILED_MESSAGE, NO_PROVIDER_CONFIGURED_MESSAGE, resetProviderHealthForTests } from "@/capabilities/provider-health";
 
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC_A = "33333333-3333-4333-8333-333333333333";
@@ -376,5 +376,40 @@ describe("#4374 — the persisted turn carries the provider-failure reason", () 
     const { turn } = await run();
     expect(turn).toMatchObject({ answerStatus: "error" });
     expect(markers(turn)).toEqual([]);
+  });
+});
+
+// #4374 Codex R3 F1: an idempotent replay of a saved exhaustion turn (the
+// stream broke before the status frame, the client retried with the same
+// clientRequestId) must say what the live frame said — not the legacy copy.
+describe("#4374 — replaying a saved exhaustion turn keeps its technician copy", () => {
+  async function replay(evidence: unknown[]) {
+    domainMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: {
+        id: "turn-r", question: "what is F004", answerStatus: "error", answerText: null,
+        enabledSourceDocIds: [DOC_A], evidence, model: null, basis: null,
+      },
+    } as never);
+    const res = await POST(
+      chatReq({ message: "what is F004", sourceDocIds: [DOC_A], clientRequestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }),
+      params,
+    );
+    expect(res.status).toBe(200);
+    return statusFrame(await res.text());
+  }
+
+  it("all_providers_failed marker → the technician message and reason", async () => {
+    const status = await replay([{ kind: "provider_failure", reason: "all_providers_failed" }]);
+    expect(status).toMatchObject({ kind: "status", status: "error", message: ALL_PROVIDERS_FAILED_MESSAGE, reason: "all_providers_failed" });
+  });
+
+  it("no_provider_configured marker → the admin message and reason", async () => {
+    const status = await replay([{ kind: "provider_failure", reason: "no_provider_configured" }]);
+    expect(status).toMatchObject({ status: "error", message: NO_PROVIDER_CONFIGURED_MESSAGE, reason: "no_provider_configured" });
+  });
+
+  it("control: a historical error row with no marker keeps the legacy frame byte-for-byte", async () => {
+    expect(await replay([])).toEqual({ kind: "status", status: "error", message: "No answer provider available." });
   });
 });

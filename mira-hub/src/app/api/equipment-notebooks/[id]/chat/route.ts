@@ -148,6 +148,8 @@ import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   logProvidersExhausted,
   providerExhaustionStatus,
+  ALL_PROVIDERS_FAILED_MESSAGE,
+  NO_PROVIDER_CONFIGURED_MESSAGE,
   providerHealth,
   type ProviderAttemptFailure,
 } from "@/capabilities/provider-health";
@@ -226,6 +228,7 @@ import {
   isMachineEvidenceEntry,
   isSafetyNoticeEntry,
   isSafetyStopEntry,
+  isProviderFailureEntry,
   isVisualObservationEntry,
   isWeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
@@ -739,6 +742,19 @@ function manualSearchStatusFrame(
   };
 }
 
+/** #4374 Codex R3 F1: a replayed exhaustion turn says what its live frame said.
+ *  Rows saved before the `provider_failure` marker keep the legacy frame. */
+function replayedErrorStatus(evidence: readonly unknown[]): NotebookStatusFrame {
+  const failure = evidence.find(isProviderFailureEntry);
+  if (!failure) return { kind: "status", status: "error", message: "No answer provider available." };
+  return {
+    kind: "status",
+    status: "error",
+    message: failure.reason === "all_providers_failed" ? ALL_PROVIDERS_FAILED_MESSAGE : NO_PROVIDER_CONFIGURED_MESSAGE,
+    reason: failure.reason,
+  };
+}
+
 function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   const enc = new TextEncoder();
   const citations = turn.evidence.filter(
@@ -815,7 +831,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
               : "I couldn't find that in the selected sources."),
           }
         : turn.answerStatus === "error"
-          ? { kind: "status", status: "error", message: "No answer provider available." }
+          ? replayedErrorStatus(turn.evidence)
           : { kind: "status", status: "answered", ...(weakEvidence ? { evidence: "weak" as const } : {}) };
       emit(status);
       // Codex #4120 F4 — the stored proposal replays exactly as it was delivered.
