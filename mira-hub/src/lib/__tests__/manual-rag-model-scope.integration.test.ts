@@ -236,3 +236,53 @@ describe("quickstart retrieval surfaces the fault code the question names", () =
     expect(danfoss).not.toContain(88);
   });
 });
+
+// #3331 / #4373 Codex R1 F1: rows tied on rank, source_url, source_page and
+// chunk_index must still resolve in one fixed order, so the same question cites
+// the same chunk every time. chunk_index is not unique (public rows span tenants;
+// it may be null), so the primary key is the final discriminator. Each case uses
+// its own vocabulary so it cannot match this file's other rows.
+describe("tied rows resolve by primary key (#4373 R1 F1)", () => {
+  const OTHER_TENANT = "39700000-0000-4000-8000-0000000000bb";
+  const LOW_ID = "00000000-0000-4000-8000-0000000000a1";
+  const HIGH_ID = "00000000-0000-4000-8000-0000000000a2";
+  let n = 0;
+
+  /** Insert the HIGH id first, so physical order alone would return it. */
+  async function seedTie(term: string, metadata: object, tenants: [string, string]) {
+    n += 1;
+    for (const [id, tenant, model] of [
+      [HIGH_ID.replace(/a2$/, `${n}2`), tenants[1], "TIE-HIGH"],
+      [LOW_ID.replace(/a1$/, `${n}1`), tenants[0], "TIE-LOW"],
+    ]) {
+      await client.query(
+        `INSERT INTO knowledge_entries (id, tenant_id, content, manufacturer, model_number, source_url, source_page, metadata, is_private)
+         VALUES ($1, $2, $3, 'Tiebreak Co', $4, $5, 7, $6::jsonb, false)`,
+        [id, tenant, `${term} specification`, model, `https://test.invalid/tie-${n}.pdf`, JSON.stringify(metadata)],
+      );
+    }
+  }
+
+  async function topOne(term: string): Promise<string | undefined> {
+    const hits = await retrieveManualChunks(client, TENANT, term, { topK: 1 });
+    expect(hits).toHaveLength(1);
+    return hits[0]?.modelNumber;
+  }
+
+  it("same chunk_index under two public tenants: the lower id wins", async () => {
+    await seedTie("gearbox lubricant", { chunk_index: 3 }, [TENANT, OTHER_TENANT]);
+    expect(await topOne("gearbox lubricant")).toBe("TIE-LOW");
+  });
+
+  it("no chunk_index at all: the lower id wins", async () => {
+    await seedTie("bearing grease", {}, [TENANT, TENANT]);
+    expect(await topOne("bearing grease")).toBe("TIE-LOW");
+  });
+
+  it("the answer is identical across repeated runs", async () => {
+    await seedTie("coupling alignment", {}, [TENANT, OTHER_TENANT]);
+    const runs = new Set<string | undefined>();
+    for (let i = 0; i < 5; i++) runs.add(await topOne("coupling alignment"));
+    expect([...runs]).toEqual(["TIE-LOW"]);
+  });
+});
