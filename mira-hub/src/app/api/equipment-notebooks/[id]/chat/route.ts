@@ -1911,6 +1911,11 @@ async function handleChatTurn(
               oemEquipmentType && oemEquipmentType !== "Other" ? oemEquipmentType : null,
             topK: 6,
             allowTenantFallback: false,
+            // The un-augmented message, as the attached-document lane already
+            // receives: a terse follow-up's own fault code must reach the
+            // whole-token lane even when buildRetrievalQuery carried the
+            // thread's earlier code in (#4224, Codex r1 on #4360).
+            rawQuery: message,
           });
         } catch (err) {
           console.error("[notebook-chat] OEM corpus retrieval failed (continuing general):", err instanceof Error ? err.message : err);
@@ -1935,6 +1940,9 @@ async function handleChatTurn(
             topK: 6,
             docIds,
             rawQuery: message,
+            // The notebook's own machine name is never a fault code in the
+            // whole-token lane ("GS10 oC" binds oC, not GS10 — Codex r6 on #4360).
+            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
             // document linked from another notebook's node stays retrievable here.
