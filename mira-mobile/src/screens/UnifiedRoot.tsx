@@ -254,6 +254,15 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     if (onHomeRef.current && !onHome) homeGenRef.current += 1;
     onHomeRef.current = onHome;
   }
+  // The signed-in root going away (sign-out) retires every pending HOME send
+  // and empties the handoff slot: a create that completes afterwards must
+  // never park this account's photo where the next account's first question
+  // would claim it (Codex #4350 r11 F14, BLOCKER).
+  useEffect(() => () => {
+    onHomeRef.current = false;
+    homeGenRef.current += 1;
+    clearAttachments();
+  }, []);
 
   /**
    * A HOME send (`text`, possibly empty for an attachment-only send) or New

@@ -129,7 +129,7 @@ vi.mock("../src/unified/UnifiedAboutUpdates", () => ({
 }));
 
 import { UnifiedRoot } from "../src/screens/UnifiedRoot";
-import { claimAttachments, clearAttachments } from "../src/unified/attachment-handoff";
+import { claimAttachments, clearAttachments, stashAttachments } from "../src/unified/attachment-handoff";
 
 const ME = { id: "u", email: "mike@example.com", name: null, role: "tech", tenantId: "t", capabilities: [] };
 
@@ -1014,6 +1014,47 @@ describe("UnifiedRoot", () => {
     expect(screen.getByTestId("unified-home")).toBeTruthy();
     expect(screen.queryByTestId("nb")).toBeNull();
     expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("question B");
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  // Codex #4350 round 11, F14 (BLOCKER): nothing retired a pending HOME send
+  // when the signed-in root went away (sign-out). A create that completed
+  // afterwards wrote account A's photo into the module-level handoff slot,
+  // and the next account's first HOME question claimed it. The root now
+  // retires every pending send and empties the slot when it unmounts.
+  it("row 8 / F14: a create that completes after the signed-in root is gone leaves nothing for the next account", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    const view = render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("tenant-A-private.jpg");
+    askFromHome("question A");
+    await waitFor(() => expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1));
+
+    view.unmount(); // sign-out unmounts the authenticated root
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  it("row 8 / F14: anything parked in the handoff when the signed-in root goes away is dropped with it", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    const view = render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    stashAttachments([{
+      attachment: { id: "att-x", name: "tenant-A-private.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "tenant-A-private.jpg", { type: "image/jpeg" }),
+    }]);
+
+    view.unmount();
+
     expect(claimAttachments()).toEqual([]);
   });
 
