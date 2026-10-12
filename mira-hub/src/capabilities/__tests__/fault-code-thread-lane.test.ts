@@ -23,6 +23,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { PoolClient } from "pg";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { proposeIdentityFromText } from "@/capabilities/identity-proposal";
 import { extractFaultCodes, retrieveManualChunks, retrieveNodeChunks } from "@/lib/manual-rag";
 import {
   buildRetrievalQuery,
@@ -557,6 +558,84 @@ describe("a real thread: the terse follow-up arrives conversation-augmented", ()
       );
       const attached = route.slice(route.indexOf("retrieveNodeChunks(client, ctx.tenantId, retrievalQuery"));
       expect(attached.slice(0, attached.indexOf("validatedDocScope"))).toMatch(/identity: \{ manufacturer: nb\?\.manufacturer/);
+    });
+
+    // Codex r7 on #4360 — the stored model is not always spelled "PowerFlex 525".
+    // The identity-proposal parser confirms the bare number "525" (its own
+    // tests pin that), and a technician's label may be "POWERFLEX 525" or
+    // "powerflex 525". The r6 alias set was derived from the label's literal
+    // capitals and only when it held a word AND a number, so none of those
+    // three spellings excluded PF525, and six generic PF525 passages displaced
+    // the F0004 evidence. Equivalence now goes through the repository's one
+    // model normalizer (resolveModelFromObservationText): PF525 and every
+    // spelling of PowerFlex 525 canonicalize to "525".
+    describe("every spelling of the machine's name is the machine (Codex r7 on #4360)", () => {
+      const PROPOSED = proposeIdentityFromText("Allen-Bradley PF525 trips on startup", ["Rockwell Automation"]);
+      const SPELLINGS: Array<[string, string]> = [
+        ["the identity-proposal flow", PROPOSED?.model ?? "<no proposal>"],
+        ["bare number", "525"],
+        ["title case", "PowerFlex 525"],
+        ["upper case", "POWERFLEX 525"],
+        ["lower case", "powerflex 525"],
+      ];
+
+      it("precondition: the identity-proposal parser confirms the bare number for PF525", () => {
+        expect(PROPOSED).toEqual({ manufacturer: "Allen-Bradley", model: "525" });
+      });
+
+      it.each(SPELLINGS)("withoutIdentityCodes (%s, model %j): PF525 leaves codeTokens and currentCodeTokens; F0004 stays", (_label, model) => {
+        const out = withoutIdentityCodes(
+          withRawCodeTokens(expandIndustrialQuery("PF525 fault F0004"), "PF525 fault F0004"),
+          { manufacturer: "Allen-Bradley", model },
+        );
+        expect(out.codeTokens).toEqual(["F0004"]);
+        expect(out.currentCodeTokens).toEqual(["F0004"]);
+      });
+
+      it.each(SPELLINGS)(
+        "PF525 fault F0004 (OEM, identity-bound %s, model %j): PF525 binds no pattern and the F0004 passage survives the top six",
+        async (_label, model) => {
+          const msg = "PF525 fault F0004";
+          const { client, calls } = populatedModelNameClient("PF525");
+          const out = await retrieveManualChunks(client, "tenant-1", msg, {
+            manufacturer: "Allen-Bradley",
+            model,
+            topK: 6,
+            allowTenantFallback: false,
+            rawQuery: msg,
+          });
+          expect(boundPatterns(calls)).not.toContain(codeTokenMatcher("PF525").sql);
+          expect(out.map((c) => c.sourcePage)).toContain(100);
+          expect(out.length).toBeLessThanOrEqual(6);
+        },
+      );
+
+      it("a lower-case identity label still names the machine on the attached-document lane", async () => {
+        const { client, calls } = makeClient();
+        await retrieveNodeChunks(client, "tenant-1", "GS10 oC", {
+          nodeId: "node-1",
+          unsPath: null,
+          topK: 6,
+          docIds: [DOC],
+          rawQuery: "GS10 oC",
+          validatedDocScope: true,
+          identity: { manufacturer: "Automation Direct", model: "gs10" },
+        });
+        const bound = boundPatterns(calls);
+        expect(bound).not.toContain(codeTokenMatcher("GS10").sql);
+        expect(bound).toContain(codeTokenMatcher("oC").sql);
+      });
+
+      it("control: a code that merely shares the model's digits is still a code", () => {
+        // F525 is not an alias of 525 under the normalizer; a sibling model is not this machine either.
+        const f525 = withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery("fault F525"), "fault F525"), { model: "525" });
+        expect(f525.codeTokens).toEqual(["F525"]);
+        const sibling = withoutIdentityCodes(
+          withRawCodeTokens(expandIndustrialQuery("PF525 fault F0004"), "PF525 fault F0004"),
+          { manufacturer: "Allen-Bradley", model: "PowerFlex 753" },
+        );
+        expect(sibling.codeTokens).toEqual(["F0004", "PF525"]); // pinned: the sibling's name is unknown to this notebook
+      });
     });
   });
 });

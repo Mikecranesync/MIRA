@@ -1,3 +1,5 @@
+import { canonicalModelKey } from "@/capabilities/model-token";
+
 /**
  * Industrial query normalization + multi-query expansion + deterministic rerank
  * for Equipment Notebook retrieval. Pure functions (unit-tested) — no I/O.
@@ -188,11 +190,18 @@ export function identityTokens(identity?: EquipmentIdentity | null): Set<string>
  *  shape rules cannot tell "PF525" or "GS10" from a fault code — letters plus
  *  digits IS the fault-code shape — so an identity-bound lane excludes the
  *  tokens that name its machine before they bind a whole-token pattern or earn
- *  current-code priority. Pure; no identity, or no overlap, returns the input. */
+ *  current-code priority. A token names the machine when it is one of the
+ *  identity's spellings OR canonicalizes to the same model under the
+ *  repository's one model normalizer (Codex r7 on #4360): the stored model is
+ *  "525" when the identity-proposal parser confirmed it, or "POWERFLEX 525" /
+ *  "powerflex 525" when a technician typed it, and the spelling-derived alias
+ *  set alone covered none of those. Pure; no identity, or no overlap, returns
+ *  the input. */
 export function withoutIdentityCodes(expanded: ExpandedQuery, identity?: EquipmentIdentity | null): ExpandedQuery {
   const names = identityTokens(identity);
   if (names.size === 0) return expanded;
-  const keep = (t: string) => !names.has(t.toLowerCase());
+  const modelKey = canonicalModelKey(identity?.model);
+  const keep = (t: string) => !names.has(t.toLowerCase()) && !(modelKey !== "" && canonicalModelKey(t) === modelKey);
   const codeTokens = expanded.codeTokens.filter(keep);
   const current = expanded.currentCodeTokens?.filter(keep);
   const unchanged =
