@@ -3062,16 +3062,21 @@ async function handleChatTurn(
   }
 
   // SHADOW (MIRA_JEV_SHADOW=1, off by default): a calibrated relevance
-  // judgment over (question, retrieved chunks), started here so it overlaps
-  // generation and adds no first-token latency; awaited only when the packet's
-  // answer_gate stage is written, after the stream. Fail-open, bounded by its
-  // own timeout, and NEVER consulted by the gate — it is recorded beside
-  // `evidence_sufficient` so the two can be compared on staging traffic.
+  // judgment over (question, photo observation, retrieved chunks), started here
+  // so it overlaps generation and adds no first-token latency; awaited only when
+  // the packet's answer_gate stage is written, after the stream. Fail-open,
+  // bounded by its own timeout, and NEVER consulted by the gate — it is recorded
+  // beside `evidence_sufficient` so the two can be compared on staging traffic.
+  // The observation is the SAME text the decision lane sends (sufficiency-v2):
+  // a photo turn is answered from it, and judging the chunks alone scored every
+  // photo turn low whatever the answer did (97 of the first 131 judged turns).
   const jevShadow: Promise<JevShadowResult> = judgeEvidenceSufficiencyShadow(
     message,
     chunks.map((c) => ({ content: c.content, title: c.title })),
+    { observations: [lookContext] },
   ).catch(() => ({
     noul: null,
+    observation_count: null,
     skipped_reason: "error",
     latency_ms: null,
     model: null,
@@ -3819,6 +3824,8 @@ async function handleChatTurn(
           jev_skipped_reason: jev.skipped_reason,
           jev_latency_ms: jev.latency_ms,
           jev_input_tokens: jev.input_tokens,
+          jev_observation_count: jev.observation_count,
+          jev_instructions_version: jev.instructions_version,
           citations_shipped: emittedCitations.length,
           cited_values_unsupported: quoted.unsupportedValueCount,
           citation_quote_fallbacks: quoted.quoteFallbackCount,

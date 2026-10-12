@@ -33,6 +33,16 @@ possible disagreement is "MIRA says sufficient, Jev says low". Categories:
   A  agree                  answered AND jev ≥ HIGH.
   U  uncertain              LOW ≤ jev < HIGH.
 
+Segments (2026-10-12 adjudication, docs/proofs/2026-10-12-jev-shadow-adjudication.md):
+  photo / text              a photo turn (request.has_visual_evidence or a visual
+                            evidence count > 0) is answered from the vision observation.
+                            Under `sufficiency-v1` the shadow never saw that
+                            observation, so its low score is a BLIND SPOT, not a
+                            verdict: those turns are listed but EXCLUDED from the
+                            disagreement rate and the window count. `sufficiency-v2`
+                            sends the observation (jev_observation_count > 0) and
+                            its photo turns count.
+
 Never prints question or answer text; the packet holds none and the DB text
 columns are never selected. Cost uses the vendor's published $/M input rate;
 output tokens are free.
@@ -198,11 +208,31 @@ def flatten(p: dict[str, Any], **extra: Any) -> dict[str, Any]:
         "jev_skipped_reason": ag.get("jev_skipped_reason"),
         "jev_latency_ms": ag.get("jev_latency_ms"),
         "jev_input_tokens": ag.get("jev_input_tokens"),
+        "jev_observation_count": ag.get("jev_observation_count"),
+        "jev_instructions_version": ag.get("jev_instructions_version"),
+        "has_visual_evidence": bool((p.get("request") or {}).get("has_visual_evidence"))
+        or (cx.get("visual_evidence_count") or 0) > 0,
         "served_provider": gen.get("served_provider"),
         "generation_ms": tm.get("generation"),
         "total_ms": tm.get("total"),
         **extra,
     }
+
+
+def blind_spot(r: dict[str, Any]) -> bool:
+    """A photo turn judged without its observation: sufficiency-v1 (or a packet
+    from before the version rode on it) on a turn that carried visual evidence.
+    The score says the CHUNKS cannot describe a photo — true, and uninformative."""
+    if r.get("jev_sufficient") is None or not r.get("has_visual_evidence"):
+        return False
+    sent = r.get("jev_observation_count")
+    if isinstance(sent, (int, float)):
+        return sent == 0
+    return (r.get("jev_instructions_version") or "sufficiency-v1") == "sufficiency-v1"
+
+
+def segment(r: dict[str, Any]) -> str:
+    return "photo" if r.get("has_visual_evidence") else "text"
 
 
 def categorize(r: dict[str, Any]) -> str:
@@ -244,10 +274,22 @@ def report(
     pre_shadow = [r for r in uniq if not r.get("jev_aware")]
     config_defects = [r for r in uniq if r["jev_skipped_reason"] in ("disabled", "no_key")]
     eligible = [r for r in uniq if r.get("jev_aware") and r not in config_defects]
-    judged = [r for r in eligible if r["jev_sufficient"] is not None]
+    judged_all = [r for r in eligible if r["jev_sufficient"] is not None]
+    blind = [r for r in judged_all if blind_spot(r)]
+    # Everything below — window progress, categories, disagreement rate — is
+    # computed on INTERPRETABLE judged turns. Blind-spot turns are reported on
+    # their own line and in the CSV (`blind_spot` column).
+    judged = [r for r in judged_all if not blind_spot(r)]
+    for r in judged_all:
+        r["blind_spot"] = blind_spot(r)
+        r["segment"] = segment(r)
     zero_chunk = [r for r in eligible if r["jev_skipped_reason"] == "no_evidence"]
     zero_chunk_bad = [r for r in zero_chunk if (r.get("chunk_count") or 0) > 0]
-    judged_bad = [r for r in judged if not (r.get("chunk_count") or 0)]
+    judged_bad = [
+        r
+        for r in judged_all
+        if not (r.get("chunk_count") or 0) and not (r.get("jev_observation_count") or 0)
+    ]
 
     with out_csv.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=sorted({k for r in uniq for k in r}))
@@ -266,11 +308,22 @@ def report(
     L.append("# Jev shadow vs `evidence_sufficient` — staging evidence report\n")
     red_runs = sorted({r["source"] for r in uniq if r.get("run_conclusion") == "failure"})
     L.append(
-        f"Packets: {len(uniq)} · pre-shadow builds: {len(pre_shadow)} · eligible: {len(eligible)} · judged: {len(judged)} · zero-chunk skips: {len(zero_chunk)} · config defects (`disabled`/`no_key`): {len(config_defects)}"
+        f"Packets: {len(uniq)} · pre-shadow builds: {len(pre_shadow)} · eligible: {len(eligible)} · judged: {len(judged_all)} (interpretable: {len(judged)}, blind-spot: {len(blind)}) · zero-chunk skips: {len(zero_chunk)} · config defects (`disabled`/`no_key`): {len(config_defects)}"
     )
     lo, hi = TARGET_JUDGED
     L.append(
-        f"\nProgress toward the {lo}–{hi} judged-turn window: **{len(judged)}/{lo}**. Real staging usage preferred; do not fabricate traffic.\n"
+        f"\nProgress toward the {lo}–{hi} judged-turn window: **{len(judged)}/{lo}** interpretable. Real staging usage preferred; do not fabricate traffic.\n"
+    )
+    if blind:
+        L.append(
+            f"**BLIND SPOT:** {len(blind)} photo turn(s) were judged under `sufficiency-v1`, which sent the retrieved chunks but not the "
+            "photo observation the answer was grounded in. Their low scores say the chunks cannot describe a photo — true and "
+            "uninformative — so they are excluded from the window and the disagreement rate (CSV `blind_spot=True`). "
+            "`sufficiency-v2` sends the observation; its photo turns count.\n"
+        )
+    seg_counts = {sg: sum(1 for r in judged if r["segment"] == sg) for sg in ("text", "photo")}
+    L.append(
+        f"Interpretable judged turns by segment: text {seg_counts['text']} · photo {seg_counts['photo']}\n"
     )
     if config_defects:
         L.append(
@@ -288,7 +341,7 @@ def report(
         f"- Zero-chunk turns never call Jev: {'OK' if not zero_chunk_bad else 'VIOLATED'} ({len(zero_chunk)} skipped with chunk_count=0{'' if not zero_chunk_bad else '; ' + str(len(zero_chunk_bad)) + ' had chunks'})"
     )
     L.append(
-        f"- Every judged turn had chunks: {'OK' if not judged_bad else 'VIOLATED (' + str(len(judged_bad)) + ')'}"
+        f"- Every judged turn had chunks or an observation: {'OK' if not judged_bad else 'VIOLATED (' + str(len(judged_bad)) + ')'}"
     )
     L.append(
         f"- Every judged turn has `evidence_sufficient=true` (presence law): {'OK' if all(r['evidence_sufficient'] for r in judged) else 'VIOLATED'}"
@@ -334,15 +387,22 @@ def report(
         "A agree": "answered AND jev≥0.70",
         "U uncertain": "0.30 ≤ jev < 0.70",
     }
-    for c in [
+    order = [
         "D1 refused_jev_low",
         "D2 answered_claim_jev_low",
         "D3 answered_jev_low",
         "D4 refused_jev_high",
         "A agree",
         "U uncertain",
-    ]:
+    ]
+    for c in order:
         L.append(f"| {c} | {len(cats.get(c, []))} | {meaning[c]} |")
+    L.append("\n| category | text | photo (v2, observation sent) |\n|---|---|---|")
+    for c in order:
+        rs = cats.get(c, [])
+        L.append(
+            f"| {c} | {sum(1 for r in rs if r['segment'] == 'text')} | {sum(1 for r in rs if r['segment'] == 'photo')} |"
+        )
     dis = sum(
         len(cats.get(c, []))
         for c in (
@@ -353,7 +413,8 @@ def report(
         )
     )
     L.append(
-        f"\nDisagreements: {dis}/{len(judged)} judged turns."
+        f"\nDisagreements: {dis}/{len(judged)} interpretable judged turns"
+        + (f" ({len(blind)} blind-spot photo turns excluded)." if blind else ".")
         + (" Too few judged turns to conclude; keep collecting." if len(judged) < lo else "")
     )
     L.append(

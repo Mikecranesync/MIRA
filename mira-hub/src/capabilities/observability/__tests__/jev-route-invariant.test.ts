@@ -54,4 +54,27 @@ describe("the Jev shadow cannot reach the delivery path", () => {
     expect(linesOf(/evaluateTurnDecision\(/)).toHaveLength(1);
     expect(src).toContain("if (decisionState) {");
   });
+
+  // sufficiency-v2 (2026-10-12): the shadow is handed the SAME observation text
+  // the decision lane sends — no second renderer, no second privacy surface.
+  it("the sufficiency shadow receives the turn's photo observation, the same `lookContext` the decision lane sends", () => {
+    const call = src.indexOf("judgeEvidenceSufficiencyShadow(");
+    expect(call).toBeGreaterThan(-1);
+    const window = src.slice(call, src.indexOf(").catch(", call));
+    expect(window).toMatch(/\{ observations: \[lookContext\] \}/);
+    const decision = src.slice(src.indexOf("buildTurnDecisionState({"));
+    expect(decision.slice(0, decision.indexOf("evidence:"))).toMatch(/observations: \[lookContext\]/);
+  });
+
+  // The two v2 fields ride on the packet from the SAME awaited result as the
+  // score, so a v1 photo blind spot and a v2 judgment are distinguishable in the
+  // ledger. (This file is where the route's Jev contract is pinned: the
+  // flight-recorder test under src/app/** is a lifecycle-guarded path.)
+  it("the packet records jev_observation_count and jev_instructions_version beside jev_sufficient", () => {
+    const gate = src.indexOf("jev_sufficient: jev.noul,");
+    expect(gate).toBeGreaterThan(-1);
+    const block = src.slice(gate, gate + 400);
+    expect(block).toMatch(/jev_observation_count: jev\.observation_count,/);
+    expect(block).toMatch(/jev_instructions_version: jev\.instructions_version,/);
+  });
 });

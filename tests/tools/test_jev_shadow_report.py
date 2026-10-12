@@ -15,7 +15,19 @@ assert spec.loader is not None
 spec.loader.exec_module(mod)
 
 
-def packet(*, chunks: int, decision: str, jev, reason=None, claim=False, tokens=None, total=1000):
+def packet(
+    *,
+    chunks: int,
+    decision: str,
+    jev,
+    reason=None,
+    claim=False,
+    tokens=None,
+    total=1000,
+    visual: bool = False,
+    version=None,
+    obs=None,
+):
     ag = {
         "decision": decision,
         "reason": "served" if decision == "answered" else "refusal_regex",
@@ -26,9 +38,14 @@ def packet(*, chunks: int, decision: str, jev, reason=None, claim=False, tokens=
         "jev_latency_ms": 120 if jev is not None else None,
         "jev_input_tokens": tokens,
     }
+    if version is not None:
+        ag["jev_instructions_version"] = version
+    if obs is not None:
+        ag["jev_observation_count"] = obs
     return {
         "ids": {"turn_id": "t"},
         "environment": "staging",
+        "request": {"has_visual_evidence": visual},
         "answer_gate": ag,
         "retrieval": {
             "strategy": "oem_corpus_bm25" if chunks else "skipped_general_mode",
@@ -38,7 +55,7 @@ def packet(*, chunks: int, decision: str, jev, reason=None, claim=False, tokens=
         },
         "context": {
             "chunk_count": chunks,
-            "visual_evidence_count": 0,
+            "visual_evidence_count": 1 if visual else 0,
             "system_prompt_kind": "grounded" if chunks else "general",
         },
         "generation": {"served_provider": "Groq"},
@@ -116,7 +133,10 @@ def test_zero_chunk_call_is_a_violation(tmp_path: Path):
     )
     rc = mod.report([bad], tmp_path / "r.md", tmp_path / "r.csv", baseline=[])
     assert rc == 1
-    assert "Every judged turn had chunks: VIOLATED" in (tmp_path / "r.md").read_text()
+    assert (
+        "Every judged turn had chunks or an observation: VIOLATED"
+        in (tmp_path / "r.md").read_text()
+    )
 
 
 def test_artifact_rows_carry_trace_and_scenario(tmp_path: Path):
@@ -248,3 +268,101 @@ def test_unsampled_db_turns_are_not_collapsed(tmp_path: Path):
     mod.report(rows, tmp_path / "r.md", tmp_path / "r.csv", baseline=[])
     assert (tmp_path / "r.csv").read_text().count("\n") == 6  # header + 5 distinct turns
     assert "judged: 4" in (tmp_path / "r.md").read_text()
+
+
+def test_photo_turns_judged_without_their_observation_are_a_blind_spot_not_a_disagreement(
+    tmp_path: Path,
+):
+    """2026-10-12 adjudication: 97 of the first 131 judged turns were photo turns scored
+    on chunks alone. Those rows are listed, segmented and EXCLUDED from the window and
+    the disagreement rate; a v2 photo turn (observation sent) counts."""
+    rows = [
+        # v1 photo turn (no version field, no observation count) — blind spot
+        mod.flatten(
+            packet(chunks=6, decision="answered", jev=0.05, claim=True, visual=True),
+            source="x",
+            trace_id="p1" + "0" * 30,
+        ),
+        # explicit v1 on a photo turn — blind spot
+        mod.flatten(
+            packet(chunks=6, decision="answered", jev=0.10, visual=True, version="sufficiency-v1"),
+            source="x",
+            trace_id="p2" + "0" * 30,
+        ),
+        # v2 photo turn: observation sent → interpretable, photo segment, agrees
+        mod.flatten(
+            packet(
+                chunks=6,
+                decision="answered",
+                jev=0.85,
+                visual=True,
+                version="sufficiency-v2",
+                obs=1,
+            ),
+            source="x",
+            trace_id="p3" + "0" * 30,
+        ),
+        # v2 photo turn judged on the observation ALONE (zero chunks) — allowed, not a violation
+        mod.flatten(
+            packet(
+                chunks=0,
+                decision="answered",
+                jev=0.80,
+                visual=True,
+                version="sufficiency-v2",
+                obs=1,
+            ),
+            source="x",
+            trace_id="p4" + "0" * 30,
+        ),
+        # text turns, unchanged semantics
+        mod.flatten(
+            packet(chunks=6, decision="answered", jev=0.05, version="sufficiency-v2", obs=0),
+            source="x",
+            trace_id="t1" + "0" * 30,
+        ),
+        mod.flatten(
+            packet(
+                chunks=6,
+                decision="insufficient_evidence",
+                jev=0.04,
+                version="sufficiency-v2",
+                obs=0,
+            ),
+            source="x",
+            trace_id="t2" + "0" * 30,
+        ),
+    ]
+    assert [mod.blind_spot(r) for r in rows] == [True, True, False, False, False, False]
+    assert [mod.segment(r) for r in rows] == ["photo", "photo", "photo", "photo", "text", "text"]
+    rc = mod.report(rows, tmp_path / "r.md", tmp_path / "r.csv", [])
+    md = (tmp_path / "r.md").read_text()
+    assert rc == 0, md  # an observation-only v2 judgment is not the zero-chunk violation
+    assert "judged: 6 (interpretable: 4, blind-spot: 2)" in md
+    assert "**BLIND SPOT:** 2 photo turn(s) were judged under `sufficiency-v1`" in md
+    assert "Interpretable judged turns by segment: text 2 · photo 2" in md
+    assert "window: **4/50** interpretable" in md
+    # D3 (text) + D1 (text) = 2 disagreements over the 4 interpretable turns; the two A rows are photo
+    assert (
+        "Disagreements: 2/4 interpretable judged turns (2 blind-spot photo turns excluded)." in md
+    )
+    assert "| A agree | 0 | 2 |" in md
+    assert "Every judged turn had chunks or an observation: OK" in md
+    csv_text = (tmp_path / "r.csv").read_text()
+    assert "blind_spot" in csv_text.splitlines()[0] and "segment" in csv_text.splitlines()[0]
+
+
+def test_a_v2_judgment_with_neither_chunks_nor_observation_is_still_a_violation(tmp_path: Path):
+    rows = [
+        mod.flatten(
+            packet(chunks=0, decision="answered", jev=0.5, version="sufficiency-v2", obs=0),
+            source="x",
+            trace_id="z" + "0" * 31,
+        )
+    ]
+    rc = mod.report(rows, tmp_path / "r.md", tmp_path / "r.csv", [])
+    assert rc == 1
+    assert (
+        "Every judged turn had chunks or an observation: VIOLATED (1)"
+        in (tmp_path / "r.md").read_text()
+    )
