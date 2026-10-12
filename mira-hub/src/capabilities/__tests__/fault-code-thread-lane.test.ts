@@ -280,6 +280,73 @@ describe("a real thread: the terse follow-up arrives conversation-augmented", ()
     expect(out.filter((c) => c.sourcePage !== 100)).toHaveLength(5);
   });
 
+  // Codex r3 on #4360 — the same crowd-out in the identity-bound OEM lane: the
+  // widened BM25 OR pass returns six F0004 rows ranked above a current-code row
+  // that the whole-token lane ALSO returns; dedup kept the low-ranked copy and
+  // the manufacturer merge sorted by rank and cut it. Allen-Bradley PowerFlex 525.
+  function populatedOemClient(currentCode: string) {
+    const row = (page: number, content: string, rank: number) => ({
+      content,
+      manufacturer: "Allen-Bradley",
+      model_number: "PowerFlex 525",
+      source_url: "pf525.pdf",
+      source_page: page,
+      chunk_index: page,
+      title: "PowerFlex 525 User Manual",
+      verified: true,
+      rank,
+    });
+    const history = [1, 2, 3, 4, 5, 6].map((p) =>
+      row(p, `Fault F0004 UnderVoltage note ${p}: DC bus voltage fell below the limit, see parameter P0${p}.`, 0.5),
+    );
+    const current = row(100, `${currentCode} — Overcurrent: output current exceeded 200% of the drive rating.`, 0.1);
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.includes("content ~* ANY(")) {
+        const patterns =
+          params.find(
+            (p): p is string[] => Array.isArray(p) && p.every((x) => typeof x === "string" && x.startsWith("(^|")),
+          ) ?? [];
+        return { rows: patterns.includes(codeTokenMatcher(currentCode).sql) ? [current] : [] };
+      }
+      // Every BM25 pass (AND, OR, the #1875 terse F-code re-query): the thread's
+      // code dominates the ranking and the current code sits at the bottom.
+      if (sql.includes("content_tsv @@")) return { rows: [...history, current] };
+      return { rows: [] };
+    });
+    return { client: { query } as unknown as PoolClient, calls };
+  }
+
+  it.each(["F4", "oC", "OC"])("%s after F0004 (OEM, identity-bound PowerFlex 525): the current fault's chunk survives the top six (and leads)", async (msg) => {
+    const augmented = buildRetrievalQuery(msg, THREAD);
+    const { client } = populatedOemClient(msg);
+    const out = await retrieveManualChunks(client, "tenant-1", augmented, {
+      manufacturer: "Allen-Bradley",
+      model: "PowerFlex 525",
+      topK: 6,
+      allowTenantFallback: false,
+      rawQuery: msg,
+    });
+    expect(out.length).toBeGreaterThan(0);
+    expect(out[0].sourcePage).toBe(100);
+    expect(out.map((c) => c.sourcePage)).toContain(100);
+    expect(out.filter((c) => c.sourcePage !== 100).length).toBeGreaterThan(0); // history still present as context
+    expect(out.length).toBeLessThanOrEqual(6);
+  });
+
+  it("control (OEM): without the raw message the six F0004 rows exhaust the slots (the defect, pinned)", async () => {
+    const augmented = buildRetrievalQuery("oC", THREAD);
+    const { client } = populatedOemClient("oC");
+    const out = await retrieveManualChunks(client, "tenant-1", augmented, {
+      manufacturer: "Allen-Bradley",
+      model: "PowerFlex 525",
+      topK: 6,
+      allowTenantFallback: false,
+    });
+    expect(out.map((c) => c.sourcePage)).not.toContain(100);
+  });
+
   it("control: without the raw message the six F0004 chunks exhaust the slots (the defect, pinned)", async () => {
     const augmented = buildRetrievalQuery("oC", THREAD);
     const { client } = populatedClient("oC");

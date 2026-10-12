@@ -328,6 +328,26 @@ function dedupeChunks(chunks: ManualChunk[]): ManualChunk[] {
   return out;
 }
 
+// Codex r3 on #4360 — the fault the technician JUST named must lead every cut
+// in the OEM lane. The whole-token hit for the current code is deduplicated
+// against its own lower-ranked BM25 copy, and the manufacturer merges sort by
+// rank before slicing, so position alone is lost. Rows naming a current-message
+// code (whole token) are moved to the front AND carry the code lane's rank, so
+// every later rank-sort and topK cut keeps them in front; history rows keep the
+// remaining slots. A no-op when the message named no code.
+const CODE_LANE_RANK = 2;
+function leadWithCurrentCode<T extends { content: string; rank: number }>(
+  rows: T[],
+  currentCodes: readonly string[] | undefined,
+): T[] {
+  if (!currentCodes || currentCodes.length === 0) return rows;
+  const res = currentCodes.map((t) => codeTokenMatcher(t).re);
+  const lifted = rows.map((r) =>
+    res.some((re) => re.test(r.content)) ? { ...r, rank: Math.max(r.rank, CODE_LANE_RANK) } : r,
+  );
+  return prioritizeCurrentCodeEvidence(lifted, currentCodes);
+}
+
 /**
  * Run BM25 retrieval. Tries a manufacturer-scoped query first; falls
  * back to a tenant-only query if zero hits or no manufacturer.
@@ -422,6 +442,9 @@ export async function retrieveManualChunks(
   const q = query.trim();
   if (!q) return [];
   const topK = opts.topK ?? 6;
+  // The code the technician JUST named (undefined when the message named none):
+  // it leads every merge and cut below (Codex r3 on #4360).
+  const currentCodes = withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery).currentCodeTokens;
   const mfr = (opts.manufacturer ?? "").trim();
   const allowTenantFallback = opts.allowTenantFallback ?? true;
   const callerModel = (opts.model ?? "").trim() || null;
@@ -504,9 +527,12 @@ export async function retrieveManualChunks(
     }
     // Pass 24 F2: a substring needle only narrows the search; admission needs
     // the stored maker to be in the vendor group as a whole word.
-    return dedupeChunks(merged.sort((a, b) => b.rank - a.rank))
-      .filter((c) => manufacturerInGroup(c.manufacturer, s.mfr))
-      .slice(0, topK);
+    return leadWithCurrentCode(
+      dedupeChunks(merged.sort((a, b) => b.rank - a.rank)).filter((c) =>
+        manufacturerInGroup(c.manufacturer, s.mfr),
+      ),
+      currentCodes,
+    ).slice(0, topK);
   };
   const firstNonEmpty = async (text: string): Promise<ManualChunk[]> => {
     for (const s of scopes) {
@@ -546,13 +572,16 @@ export async function retrieveManualChunks(
         ...(await runBm25Query(client, tenantId, text, window, name, null, true, familyTerms, true, opts.rawQuery ?? null)),
       );
     }
-    return dedupeChunks(vendorHits.sort((a, b) => b.rank - a.rank))
-      .filter((c) => manufacturerInGroup(c.manufacturer, mfr))
-      .filter(
-        (c) =>
-          inferEquipmentType({ modelNumber: c.modelNumber, title: c.title, sourceUrl: c.sourceUrl }) ===
-          assetType,
-      )
+    return leadWithCurrentCode(
+      dedupeChunks(vendorHits.sort((a, b) => b.rank - a.rank))
+        .filter((c) => manufacturerInGroup(c.manufacturer, mfr))
+        .filter(
+          (c) =>
+            inferEquipmentType({ modelNumber: c.modelNumber, title: c.title, sourceUrl: c.sourceUrl }) ===
+            assetType,
+        ),
+      currentCodes,
+    )
       .slice(0, topK)
       .map((c) => ({ ...c, retrievalScope: "vendor_fallback" as const }));
   };
@@ -576,11 +605,14 @@ export async function retrieveManualChunks(
   // Pass 6 F2: the bound model's own fault-code page beats sibling pages from
   // the verbose fallback — return own-model evidence alone, so the answer's
   // sources, warning and prompt describe each page accurately.
-  if (codeHits.length > 0 && main.length > 0 && !mainIsOwnModel) return codeHits.slice(0, topK);
+  if (codeHits.length > 0 && main.length > 0 && !mainIsOwnModel)
+    return leadWithCurrentCode(codeHits, currentCodes).slice(0, topK);
   if (codeHits.length === 0 && !mainIsOwnModel) codeHits = await familyFallback(codes.join(" "));
   if (codeHits.length === 0) return main;
 
-  return dedupeChunks([...codeHits, ...main]).slice(0, topK);
+  // The #1875 pass answers the THREAD's F-code; the message's own code (if any)
+  // still leads the final cut so six F0004 pages cannot exhaust the slots.
+  return leadWithCurrentCode(dedupeChunks([...codeHits, ...main]), currentCodes).slice(0, topK);
 }
 
 // #1875 — the exact cite-or-refuse sentence the quickstart system prompt tells
@@ -762,6 +794,24 @@ async function runBm25Query(
     return res.rows;
   };
 
+  // The current message's own code tokens, when the query was augmented with the
+  // thread's (Codex r1/r3 on #4360): they join the whole-token lane below, and a
+  // BM25 row naming one is moved to the front with the code lane's rank BEFORE
+  // any cut here, so neither this slice nor a caller's rank-sort drops it.
+  const rawExpanded = withRawCodeTokens(expandIndustrialQuery(query), rawQuery);
+  const currentRes = (rawExpanded.currentCodeTokens ?? []).map((t) => codeTokenMatcher(t).re);
+  const leadCurrent = (rs: Record<string, unknown>[]): Record<string, unknown>[] => {
+    if (currentRes.length === 0) return rs;
+    const current: Record<string, unknown>[] = [];
+    const rest: Record<string, unknown>[] = [];
+    for (const r of rs) {
+      if (currentRes.some((re) => re.test(String(r.content ?? "")))) {
+        current.push({ ...r, rank: Math.max(Number(r.rank ?? 0), CODE_LANE_RANK) });
+      } else rest.push(r);
+    }
+    return current.length === 0 ? rs : [...current, ...rest];
+  };
+
   let rows = await run(AND_TSQUERY);
   if (alwaysOr || isWeakAndResult(rows)) {
     // #4035 — an AND match can be technically non-empty but useless: one chunk at
@@ -770,10 +820,12 @@ async function runBm25Query(
     // so the answer refused. Union with OR in the SAME scope; strongest first.
     const seen = new Set(rows.map(rowKey));
     const extra = (await run(OR_TSQUERY)).filter((r: Record<string, unknown>) => !seen.has(rowKey(r)));
-    rows = [...rows, ...extra].sort((a, b) => Number(b.rank ?? 0) - Number(a.rank ?? 0));
+    rows = leadCurrent([...rows, ...extra].sort((a, b) => Number(b.rank ?? 0) - Number(a.rank ?? 0)));
     // Post-cap F2: a post-filtering caller (alwaysOr) filters BEFORE limiting,
     // so strong AND rows it will discard cannot crowd its OR rows out here.
     if (!alwaysOr) rows = rows.slice(0, topK);
+  } else {
+    rows = leadCurrent(rows);
   }
 
   // #4224 Defect A — whole-token code lane for the quickstart surface. A chunk
@@ -792,9 +844,7 @@ async function runBm25Query(
   const ownedByFaultCodePass = new Set(extractFaultCodes(query).map((c) => c.toUpperCase()));
   // The raw message's own codes ride along when the query was augmented with the
   // thread's tokens — otherwise "oC F0004 fault" yields only the previous F0004.
-  const codeTokens = withRawCodeTokens(expandIndustrialQuery(query), rawQuery).codeTokens.filter(
-    (t) => !ownedByFaultCodePass.has(t.toUpperCase()),
-  );
+  const codeTokens = rawExpanded.codeTokens.filter((t) => !ownedByFaultCodePass.has(t.toUpperCase()));
   if (codeTokens.length > 0) {
     const codeParams: unknown[] = [tenantId];
     const codeScope = buildScopeClauses(codeParams, { manufacturer, model, familyTerms, makerWholeWord });
@@ -827,7 +877,10 @@ async function runBm25Query(
     const seen = new Set(rows.map(rowKey));
     const codeFresh = codeRes.rows.filter((r: Record<string, unknown>) => !seen.has(rowKey(r)));
     if (codeFresh.length > 0) {
-      rows = [...codeFresh, ...rows];
+      // A whole-token hit already present as a BM25 row was lifted by
+      // leadCurrent above; a fresh one is prepended here. Either way the
+      // current message's code leads.
+      rows = leadCurrent([...codeFresh, ...rows]);
       // A post-filtering caller (alwaysOr) caps downstream; others cap here so
       // the prepended code hits displace the weakest BM25 rows, not add beyond topK.
       if (!alwaysOr) rows = rows.slice(0, topK);
