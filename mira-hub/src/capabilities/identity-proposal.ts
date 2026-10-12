@@ -24,6 +24,7 @@
  *    A fault-code-shaped token (F004) is never a model, and an ambiguous model
  *    (two different ones named) yields no proposal.
  */
+import { canonicalModelKey } from "@/capabilities/model-token";
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
 import { inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerSearchNames } from "@/lib/manufacturerNormalize";
@@ -401,9 +402,11 @@ function splitJoinedModels(t: string): string[] {
   return parts.length > 1 && parts.every((p) => p.length >= 2 && isModel(p)) ? parts : [t];
 }
 
-/** One identity per model, however it was written ("PF525" and "PowerFlex 525" are both 525). */
+/** One identity per model, however it was written ("PF525" and "PowerFlex 525" are both 525).
+ *  The shared key (Codex r7 on #4360) — the query expander excludes a notebook's own model
+ *  from the fault-code tokens with the same computation. */
 function canonicalModel(span: string): string {
-  return norm(resolveModelFromObservationText(span).model ?? span);
+  return canonicalModelKey(span);
 }
 
 /**

@@ -199,6 +199,12 @@ export type TurnEvidencePacketAnswerGate = {
   jev_latency_ms: number | null;
   /** Jev `usage.input_tokens` for the shadow call — the cost basis ($/M input; output is free). */
   jev_input_tokens: number | null;
+  /** sufficiency-v2 (2026-10-12): how many photo observations the shadow state
+   *  carried (0 = judged on chunks alone; null = not run), and the rubric/state
+   *  version that produced `jev_sufficient`. Scores from different versions are
+   *  not poolable, and a photo turn judged under v1 never saw its observation. */
+  jev_observation_count?: number | null;
+  jev_instructions_version?: string | null;
   /**
    * How many citations the answer actually SHIPPED (#3962). Distinct from
    * `context.chunk_count`, which is what was put in front of the model: chunks
@@ -410,6 +416,8 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       jev_skipped_reason: null,
       jev_latency_ms: null,
       jev_input_tokens: null,
+      jev_observation_count: null,
+      jev_instructions_version: null,
       citations_shipped: 0,
       evidence_followed: null,
       gate_match: null,

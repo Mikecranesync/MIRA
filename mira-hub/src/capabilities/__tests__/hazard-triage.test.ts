@@ -5,6 +5,8 @@ import { triageSemanticSafetyCheck } from "../answer-safety-check";
 
 const jev = (noul: number | null, skipped_reason: string | null = null): JevShadowResult => ({
   noul,
+  // sufficiency-v2: what was sent — a scored fixture judged chunks alone, a skipped one never ran.
+  observation_count: noul === null ? null : 0,
   skipped_reason,
   latency_ms: null,
   model: null,

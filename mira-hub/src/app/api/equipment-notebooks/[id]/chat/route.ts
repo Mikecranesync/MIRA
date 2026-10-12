@@ -1912,6 +1912,11 @@ async function handleChatTurn(
               oemEquipmentType && oemEquipmentType !== "Other" ? oemEquipmentType : null,
             topK: 6,
             allowTenantFallback: false,
+            // The un-augmented message, as the attached-document lane already
+            // receives: a terse follow-up's own fault code must reach the
+            // whole-token lane even when buildRetrievalQuery carried the
+            // thread's earlier code in (#4224, Codex r1 on #4360).
+            rawQuery: message,
           });
         } catch (err) {
           console.error("[notebook-chat] OEM corpus retrieval failed (continuing general):", err instanceof Error ? err.message : err);
@@ -1936,6 +1941,9 @@ async function handleChatTurn(
             topK: 6,
             docIds,
             rawQuery: message,
+            // The notebook's own machine name is never a fault code in the
+            // whole-token lane ("GS10 oC" binds oC, not GS10 — Codex r6 on #4360).
+            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
             // document linked from another notebook's node stays retrievable here.
@@ -3063,16 +3071,25 @@ async function handleChatTurn(
   }
 
   // SHADOW (MIRA_JEV_SHADOW=1, off by default): a calibrated relevance
-  // judgment over (question, retrieved chunks), started here so it overlaps
-  // generation and adds no first-token latency; awaited only when the packet's
-  // answer_gate stage is written, after the stream. Fail-open, bounded by its
-  // own timeout, and NEVER consulted by the gate — it is recorded beside
-  // `evidence_sufficient` so the two can be compared on staging traffic.
+  // judgment over (question, photo observation, retrieved chunks), started here
+  // so it overlaps generation and adds no first-token latency; awaited only when
+  // the packet's answer_gate stage is written, after the stream. Fail-open,
+  // bounded by its own timeout, and NEVER consulted by the gate — it is recorded
+  // beside `evidence_sufficient` so the two can be compared on staging traffic.
+  // The observations are the vision model's RAW readings (this turn's photo
+  // first, then the prior turns' already in context) — the same readings the
+  // decision lane sends, but not wrapped in the prompt sections `lookContext`
+  // renders for the model: those headers alone exceed the judge's 900-char cap
+  // (Gate 7 substitute review of #4380). A photo turn is answered from these
+  // readings, and judging the chunks alone scored every photo turn low whatever
+  // the answer did (97 of the first 131 judged turns) — sufficiency-v2.
   const jevShadow: Promise<JevShadowResult> = judgeEvidenceSufficiencyShadow(
     message,
     chunks.map((c) => ({ content: c.content, title: c.title })),
+    { observations: [lookRow?.text, ...priorLookRows.map((r) => r.text)] },
   ).catch(() => ({
     noul: null,
+    observation_count: null,
     skipped_reason: "error",
     latency_ms: null,
     model: null,
@@ -3840,6 +3857,8 @@ async function handleChatTurn(
           jev_skipped_reason: jev.skipped_reason,
           jev_latency_ms: jev.latency_ms,
           jev_input_tokens: jev.input_tokens,
+          jev_observation_count: jev.observation_count,
+          jev_instructions_version: jev.instructions_version,
           citations_shipped: emittedCitations.length,
           cited_values_unsupported: quoted.unsupportedValueCount,
           citation_quote_fallbacks: quoted.quoteFallbackCount,
