@@ -235,10 +235,13 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
     expect(fetchAt).toBeGreaterThan(reserveAt);
     expect(route).toMatch(/if \(!res\.ok\) reservation\?\.release\(\);/);
     expect(route).toMatch(/reservation\?\.settle\(\s*turnUsage\?\.inputTokens \?\? inputBound,/);
-    // The catch settles FIRST, before the client-stop and internal-error breaks.
-    const catchAt = route.indexOf("} catch (err) {", fetchAt);
+    // The OUTER cascade catch (the one that owns the client-stop break — the
+    // read loop has an inner catch of its own) settles FIRST, before the
+    // client-stop and internal-error breaks.
+    const clientStopBreak = route.indexOf('genOutcome = "client_stop";', fetchAt);
+    const catchAt = route.lastIndexOf("} catch (err) {", clientStopBreak);
+    expect(catchAt).toBeGreaterThan(fetchAt);
     const catchSettleAt = route.indexOf("reservation?.settle(inputBound, outputCap);", catchAt);
-    const clientStopBreak = route.indexOf('genOutcome = "client_stop";', catchAt);
     expect(catchSettleAt).toBeGreaterThan(catchAt);
     expect(catchSettleAt).toBeLessThan(clientStopBreak);
   });
