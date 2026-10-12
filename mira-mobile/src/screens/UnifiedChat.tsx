@@ -323,6 +323,10 @@ export interface UnifiedChatHandlers
     evidence?: VisualEvidenceRider,
     /** Chat scope re-read after an attachment upload; overrides the host's. */
     scope?: readonly string[],
+    /** HOME only: whether the shell's send-error banner was still showing
+     *  when this send was made. The HOME owner carries a failed send's kept
+     *  evidence only on such a send (Codex #4350 r8 F11). */
+    opts?: { readonly retry: boolean },
   ) => void;
   /** Inherited from ChatV2 and UNUSED here — optional so neither host has to
    *  pass a handler the unified composer never calls. */
@@ -765,8 +769,11 @@ function UnifiedChatForNotebook({
     confirmedScopeRef.current = null;
     if (!attachTarget) {
       if (pending.length > 0) attachments.stashForHandoff(pending);
-      if (confirmedScope) handlers.onSend(text, undefined, confirmedScope);
-      else handlers.onSend(text);
+      // Same signal as the thread's inferred retry below: the banner is still
+      // up for the shell's Try again, gone for any send after Dismiss.
+      const homeRetry = { retry: sendErrorRef.current !== null };
+      if (confirmedScope) handlers.onSend(text, undefined, confirmedScope, homeRetry);
+      else handlers.onSend(text, undefined, undefined, homeRetry);
       return;
     }
     // Nothing held here, nothing carried from HOME, and not a retry: the plain,

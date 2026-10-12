@@ -259,7 +259,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
    * create the error and the question land in one render, so the shell
    * restores the draft under its banner.
    */
-  const sendFromHome = useCallback((text: string | null) => {
+  const sendFromHome = useCallback((text: string | null, opts: { readonly retry: boolean } = { retry: false }) => {
     // The shell stashed THIS send's attachments just before calling here.
     // Claim them before anything else: a send that slips past the disabled
     // button while a create is in flight is dropped WITH its bytes, so they
@@ -270,9 +270,10 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     setHomeFailedQuestion(null);
     const kept = failedHomeAttachments.current;
     failedHomeAttachments.current = [];
-    // Only a retry of the failed submission — same text, nothing attached
-    // anew — carries what it had; a replaced question or New chat drops it.
-    const retrying = fresh.length === 0 && text !== null && text === homeFailedQuestionRef.current;
+    // Only a retry of the failed submission — the banner still showing, same
+    // text, nothing attached anew — carries what it had; a replaced question,
+    // a send after Dismiss, or New chat drops it (r8 F11).
+    const retrying = opts.retry && fresh.length === 0 && text !== null && text === homeFailedQuestionRef.current;
     const carry = retrying ? kept : fresh;
     const handoff = (id: string) => {
       stashAttachments(carry);
@@ -539,7 +540,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           handlers={{
             // HOME has no notebook yet: the shell stashes whatever the composer
             // is holding and this send creates the thread that claims it.
-            onSend: (text) => sendFromHome(text),
+            onSend: (text, _evidence, _scope, opts) => sendFromHome(text, opts),
             onStop: () => {},
             onCitation: () => {},
             onRetry: undefined,

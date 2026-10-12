@@ -742,6 +742,31 @@ describe("UnifiedRoot", () => {
     expect(claimAttachments().map((h) => h.file.name)).toEqual(["bearing.jpg"]);
   });
 
+  // Codex #4350 round 8, F11: the HOME mirror of the thread's Dismiss rule.
+  // Dismissing the banner and sending the identical wording with nothing
+  // attached is not a retry: the kept photo is discarded, and the thread the
+  // send creates gets the question alone. The shell's Try again (banner still
+  // showing) is the retry, as the first F1 test proves.
+  it("row 8 / F11: after Dismiss on HOME, the identical question creates the thread WITHOUT the kept photo", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("old.jpg");
+    askFromHome("what is this");
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("what is this"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("alert", { name: "Send error" })).toBeNull();
+    askFromHome("what is this");
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("what is this");
+    expect(claimAttachments()).toEqual([]);
+  });
+
   it("row 8 / F1: the photo is discarded when the failed question is replaced by another", async () => {
     const { listNotebooks } = await import("../src/api/resources");
     vi.mocked(listNotebooks).mockResolvedValueOnce([]);
