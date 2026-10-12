@@ -21,6 +21,7 @@ beforeAll(async () => {
   await client.query("BEGIN");
   await client.query(`
     CREATE TEMP TABLE knowledge_entries (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       tenant_id text NOT NULL,
       content text NOT NULL,
       content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
