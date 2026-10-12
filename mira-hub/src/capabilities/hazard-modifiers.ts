@@ -10,7 +10,10 @@
  * Scope is deliberately ADJACENT ONLY: a negation cancels a match only when
  * nothing but horizontal whitespace separates it from the match's first word
  * ("never keep…", "not safe to…", "No energized work…") — the exact binding
- * the removed lookbehinds had. Caution / myth / "not true that" FRAMES
+ * the removed lookbehinds had — AND the negation opens its sentence (bare,
+ * or after an allowlisted subject/auxiliary lead-in): "It is a myth that you
+ * cannot skip X" denies the prohibition, so it stays flagged (Codex R5 F7).
+ * Caution / myth / "not true that" FRAMES
  * ("never assume X", "it is a myth that X") are NOT modifiers: four Codex
  * rounds on #4201 showed that deciding whether a frame negates its claim is a
  * meaning question no enumerated grammar converges on. Framed hazards stay
@@ -68,6 +71,24 @@ const NEGATION_WORD = /\b(?:no|not|never|cannot|\w+n't)\b/gi;
 // lookbehinds gave "no" (energized-work-approved only).
 const DETERMINER_NEGATION = /^(?:no|not\s+all)$/i;
 const NP_HEAD = /^(?:energi[sz]ed|live|hot|power(?:ed)?)\b/i;
+// The negation must OPEN its sentence: everything before it in the sentence is
+// empty or one of these lead-ins. An outer frame ("It is a myth that you
+// cannot…", "Myth: you cannot…", "It is false that it is not…") reverses the
+// negation, so the sentence denies the prohibition (#4201 Codex R5 F7). The
+// lead-ins are an allowlist, not a frame list: an unlisted frame fails closed.
+// Subject = a pronoun/role or "the" + up to three words that are not pronouns
+// or complementizers ("The rumor that you cannot…" fails closed); then an
+// optional auxiliary ("It is not…", "The E-12 fault should not…").
+const SENTENCE_LEAD_IN = new RegExp(
+  "^(?:[-*•>]\\s*)?(?:please|do|does|it's|(?:you|we|they|technicians?|operators?|workers?|it|this|" +
+    "the(?:\\s+(?!(?:you|we|they|it|i|he|she|that|whether|if)\\b)[\\w-]+){1,3})" +
+    "(?:\\s+(?:is|are|must|should|will|can|may|might|could|would|do|does))?)?$",
+  "i",
+);
+// A comma clause may restart the lead-in ("…only after de-energizing, never
+// while energized") only when the sentence before it carries no frame that
+// could reverse it.
+const FRAME_BEFORE_COMMA = /\b(?:that|whether|myths?|false|true|untrue|lies?|wrong|incorrect|misconceptions?|rumou?rs?|claims?)\b|:/i;
 const PSEUDO_SRC = `(?:${PSEUDO_TRIGGERS.join("|")})`;
 const PSEUDO_BEFORE_MATCH = new RegExp(`\\b${PSEUDO_SRC}[ \\t]+$`, "i");
 
@@ -97,9 +118,18 @@ export function governingModifier(text: string, matchStart: number, matchEnd?: n
     if (!hit || PSEUDO_BEFORE_MATCH.test(before)) continue;
     if (CLAUSE_SUBJECT_START.test(text.slice(start))) continue;
     if (DETERMINER_NEGATION.test(hit[1].trim()) && !NP_HEAD.test(text.slice(start))) continue;
+    if (!opensItsSentence(before.slice(0, hit.index + hit[0].indexOf(hit[1])))) continue;
     return { type: m.type, trigger: hit[1] };
   }
   return null;
+}
+
+/** Is the text before a negation trigger only an allowed sentence lead-in? */
+function opensItsSentence(beforeTrigger: string): boolean {
+  const sentence = beforeTrigger.split(/[.!?\n]/).pop() ?? "";
+  if (SENTENCE_LEAD_IN.test(sentence.trim())) return true;
+  const comma = sentence.lastIndexOf(",");
+  return comma >= 0 && !FRAME_BEFORE_COMMA.test(sentence.slice(0, comma)) && SENTENCE_LEAD_IN.test(sentence.slice(comma + 1).trim());
 }
 
 /**

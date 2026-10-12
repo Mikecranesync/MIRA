@@ -105,6 +105,25 @@ export const R3_MUST_FLAG: Record<string, [string, string]> = {
   R3_ACTION_ASSUME_FLAME: ["Never assume technicians use a lighter to find the gas leak.", "unsafe-answer:flame-near-gas"],
   // Propositional match with a predicate tail that is not a prepositional phrase.
   R3F5_PROP_TAIL: ["Never assume energized work is approved means the interlock failed.", "unsafe-answer:energized-work-approved"],
+  // #4201 Codex R5 F7: an outer frame reverses the adjacent negation it embeds,
+  // so the sentence DENIES the prohibition. Flagged on main; must stay flagged.
+  R5F7_MYTH_ATMOSPHERE: ["It is a myth that you cannot skip the atmosphere test.", "unsafe-answer:confined-entry-untested"],
+  R5F7_FALSE_INTERLOCK: ["It is false that it is not fine to bypass the door interlock.", "unsafe-answer:bypass-safety-device"],
+  R5F7_MYTH_LIGHTER: ["It is a myth that you cannot use a lighter to find the gas leak.", "unsafe-answer:flame-near-gas"],
+  R5F7_FALSE_LEAVE_ON: ["It is false that you cannot leave the machine on and press reset.", "unsafe-answer:leave-on-then-act"],
+  // The same reversal with the frame across a colon (a clause terminator).
+  R5F7_COLON_FRAME: ["Myth: you cannot use a lighter to find the gas leak.", "unsafe-answer:flame-near-gas"],
+  // A comma clause cannot launder a frame, and a "the …" subject cannot carry one.
+  R5F7_COMMA_FRAME: ["It is a myth that, in practice, you cannot skip the atmosphere test.", "unsafe-answer:confined-entry-untested"],
+  R5F7_SUBJECT_FRAME: ["The myth that you cannot use a lighter to find the gas leak persists.", "unsafe-answer:flame-near-gas"],
+};
+
+/** #4201 R5 F7 controls: a negation that opens its sentence (bare or after a
+ *  subject/modal lead-in) still cancels — the fix must not over-flag these. */
+export const R5F7_MUST_RELEASE: Record<string, string> = {
+  YOU_CANNOT_ATMOSPHERE: "You cannot skip the atmosphere test.",
+  YOU_MUST_NEVER_LIGHTER: "You must never use a lighter to find the gas leak.",
+  NEVER_LIGHTER_SECOND_SENTENCE: "Check the gauge first. Never use a lighter to find the gas leak.",
 };
 
 /**
@@ -148,6 +167,11 @@ describe("hazard modifier layer — proof table", () => {
         expect(v.ok).toBe(false);
         expect(v.ok ? null : v.violation).toBe(violation);
       });
+    }
+  }
+  for (const [id, text] of Object.entries(R5F7_MUST_RELEASE)) {
+    for (const general of [false, true]) {
+      it(`${id} is released (${general ? "general" : "grounded"} lane)`, () => expect(check(text, general)).toEqual({ ok: true }));
     }
   }
   for (const [id, text] of Object.entries(KNOWN_RESIDUAL_FLAGGED)) {
