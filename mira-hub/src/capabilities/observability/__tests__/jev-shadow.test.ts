@@ -68,6 +68,73 @@ describe("buildJevSufficiencyRequest", () => {
     expect(req.state).not.toContain("10.0.0.7");
     expect(req.state).not.toContain("5551234567");
   });
+
+  // sufficiency-v2 (2026-10-12): a photo turn is answered from the observation,
+  // not the chunks. v1 never sent it, so 97 of the first 131 judged staging turns
+  // scored low for a reason that said nothing about the answer.
+  it("v2: a photo observation is an Observations section between the question and the evidence, byte-exact", () => {
+    const req = buildJevSufficiencyRequest(
+      "What can you tell from this photo?",
+      [{ content: "Generic mounting instructions.", title: "PowerFlex 525 manual" }],
+      ["Nameplate reads PowerFlex 525, Cat No 25B-D010N104, Output 10.5 A."],
+    );
+    expect(req.state).toBe(
+      "Question: What can you tell from this photo?\n" +
+        "Observations:\n" +
+        "[observation 1] Nameplate reads PowerFlex 525, Cat No 25B-D010N104, Output 10.5 A.\n" +
+        "Evidence:\n" +
+        "[1 PowerFlex 525 manual] Generic mounting instructions.",
+    );
+    expect(JEV_INSTRUCTIONS_VERSION).toBe("sufficiency-v2");
+    expect(JEV_INSTRUCTIONS).toContain("Observations");
+  });
+
+  it("v2: without an observation the state is byte-identical to v1 (no empty Observations section)", () => {
+    const a = buildJevSufficiencyRequest("q", [{ content: "c" }]);
+    const b = buildJevSufficiencyRequest("q", [{ content: "c" }], []);
+    expect(a.state).toBe("Question: q\nEvidence:\n[1] c");
+    expect(b.state).toBe(a.state);
+  });
+
+  it("v2: an observation with no retrieved chunks names the empty evidence instead of sending a dangling header", () => {
+    const req = buildJevSufficiencyRequest("what is this", [], ["A green terminal block with four wires."]);
+    expect(req.state).toBe(
+      "Question: what is this\nObservations:\n[observation 1] A green terminal block with four wires.\nEvidence:\n[none retrieved]",
+    );
+  });
+
+  // Gate 7 substitute review of #4380, finding 1: the cap applies to each RAW
+  // reading. The rendered prompt sections the model gets (`lookContext`) carry
+  // 571 / 646 chars of anti-injection header, which alone would consume it.
+  it("v2: a real nameplate reading survives the cap intact when passed raw; the rendered prompt section would not", () => {
+    const thisTurn = "Allen-Bradley PowerFlex 525, Cat No 25B-D010N104, Input 380-480 V 3-Phase, Output 10.5 A.";
+    const prior = "AutomationDirect GS10 AC DRIVE, model GS1-45P0, 460 V 3-Phase, 5 HP.";
+    // Raw readings, one element each: both survive, this turn's first.
+    const raw = buildJevSufficiencyRequest("what is this", [], [thisTurn, prior]);
+    expect(raw.state).toContain(`[observation 1] ${thisTurn}`);
+    expect(raw.state).toContain(`[observation 2] ${prior}`);
+    // The rendered `lookContext` the model gets is ONE blob: this-turn header (571
+    // chars of instructions) + reading + prior header (646 chars) + prior items.
+    const lookContext =
+      "## Photo the technician attached this turn (visual observation)\n" + "x".repeat(571) + "\n\n- " + thisTurn +
+      "\n\n## Photos the technician attached EARLIER in this conversation (visual observations)\n" + "y".repeat(646) +
+      "\n\n- Earlier photo 1: " + prior;
+    const wrapped = buildJevSufficiencyRequest("what is this", [], [lookContext]);
+    expect(wrapped.state).not.toContain("GS1-45P0"); // the headers ate the cap before the prior reading — why the route passes raw rows
+  });
+
+  it("v2: at most four observations are sent (this turn's reading plus the prior ones in context), like MAX_CHUNKS", () => {
+    const req = buildJevSufficiencyRequest("q", [{ content: "c" }], ["a", "b", "c", "d", "e", "f"]);
+    expect(req.state.split("\n").filter((l) => l.startsWith("[observation")).map((l) => l.slice(-1))).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("v2: observations are capped at 900 chars (the decision lane's cap) and scrubbed", () => {
+    const req = buildJevSufficiencyRequest("q", [{ content: "c" }], ["o".repeat(2000) + " S/N 5551234567", "x"]);
+    const obsLines = req.state.split("\n").filter((l) => l.startsWith("[observation"));
+    expect(obsLines).toHaveLength(2);
+    expect(obsLines[0]).toBe("[observation 1] " + "o".repeat(900));
+    expect(req.state).not.toContain("5551234567");
+  });
 });
 
 describe("judgeEvidenceSufficiencyShadow — fail-open branches", () => {
@@ -78,6 +145,7 @@ describe("judgeEvidenceSufficiencyShadow — fail-open branches", () => {
     const r = await judgeEvidenceSufficiencyShadow("q", [{ content: "c" }], { fetchImpl: fetchImpl as never });
     expect(r).toEqual({
       noul: null,
+      observation_count: null,
       skipped_reason: "disabled",
       latency_ms: null,
       model: null,
@@ -91,8 +159,37 @@ describe("judgeEvidenceSufficiencyShadow — fail-open branches", () => {
     enable();
     const fetchImpl = vi.fn();
     const r = await judgeEvidenceSufficiencyShadow("what is a VFD", [], { fetchImpl: fetchImpl as never });
-    expect(r).toMatchObject({ noul: null, skipped_reason: "no_evidence", latency_ms: null });
+    expect(r).toMatchObject({ noul: null, observation_count: null, skipped_reason: "no_evidence", latency_ms: null });
     expect(fetchImpl).not.toHaveBeenCalled();
+    // Blank observations are not observations.
+    const r2 = await judgeEvidenceSufficiencyShadow("what is a VFD", [], { fetchImpl: fetchImpl as never, observations: ["", "  ", null] });
+    expect(r2.skipped_reason).toBe("no_evidence");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("v2: a photo observation with zero chunks IS judged, and the count of observations sent is recorded", async () => {
+    enable();
+    const fetchImpl = vi.fn(async () => jsonResponse({ model: "jev-1.13.0", answers: { sufficient: { noul: 0.88 } }, usage: { input_tokens: 400 } }));
+    const r = await judgeEvidenceSufficiencyShadow("what can you tell from this photo", [], {
+      fetchImpl: fetchImpl as never,
+      observations: ["Nameplate reads GS10, 460 V, 5 HP.", ""],
+    });
+    expect(r.noul).toBe(0.88);
+    expect(r.observation_count).toBe(1);
+    // observation_count reports what was SENT, never more than the cap
+    const many = await judgeEvidenceSufficiencyShadow("q", [], { fetchImpl: fetchImpl as never, observations: ["1", "2", "3", "4", "5", "6"] });
+    expect(many.observation_count).toBe(4);
+    expect(r.instructions_version).toBe("sufficiency-v2");
+    const body = JSON.parse((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(body.state).toContain("Observations:\n[observation 1] Nameplate reads GS10, 460 V, 5 HP.");
+    expect(body.state).toContain("Evidence:\n[none retrieved]");
+  });
+
+  it("v2: a chunks-only call records observation_count 0, not null, so the report can tell 'judged with no photo' from 'not run'", async () => {
+    enable();
+    const fetchImpl = vi.fn(async () => jsonResponse({ model: "jev-1.13.0", answers: { sufficient: { noul: 0.5 } } }));
+    const r = await judgeEvidenceSufficiencyShadow("q", [{ content: "c" }], { fetchImpl: fetchImpl as never });
+    expect(r.observation_count).toBe(0);
   });
 
   it("skips with no_key when enabled but the key is absent", async () => {
