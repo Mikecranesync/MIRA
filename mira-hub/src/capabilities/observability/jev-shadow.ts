@@ -57,8 +57,15 @@ const MAX_QUESTION_CHARS = 600;
 const MAX_CHUNK_CHARS = 700;
 const MAX_CHUNKS = 6;
 /** Mirrors MAX_OBSERVATION in turn-decision-state.ts (which imports from this
- *  module, so the constant cannot be shared without a cycle). */
+ *  module, so the constant cannot be shared without a cycle). Applied to EACH
+ *  observation's RAW text — the route passes the vision model's readings, not
+ *  the rendered prompt sections (whose anti-injection headers alone run 571 and
+ *  646 chars and would consume the cap before any nameplate text — Gate 7
+ *  substitute review of #4380, finding 1). */
 const MAX_OBSERVATION_CHARS = 900;
+/** This turn's photo plus the most recent prior ones; a request is bounded by
+ *  construction, like MAX_CHUNKS. */
+const MAX_OBSERVATIONS = 4;
 const DEFAULT_TIMEOUT_MS = 1500;
 
 export type JevShadowResult = {
@@ -98,7 +105,9 @@ export function buildJevSufficiencyRequest(
   });
   // The Observations section appears only when there is one, so a chunks-only
   // state is byte-identical to v1 and the two can be diffed on the wire.
-  const obs = observations.map((o, i) => `[observation ${i + 1}] ${scrubForVendor(o.trim()).slice(0, MAX_OBSERVATION_CHARS)}`);
+  const obs = observations
+    .slice(0, MAX_OBSERVATIONS)
+    .map((o, i) => `[observation ${i + 1}] ${scrubForVendor(o.trim()).slice(0, MAX_OBSERVATION_CHARS)}`);
   const state =
     `Question: ${q}\n` +
     (obs.length ? `Observations:\n${obs.join("\n")}\n` : "") +
@@ -117,7 +126,9 @@ export async function judgeEvidenceSufficiencyShadow(
     timeoutMs?: number;
     fetchImpl?: typeof fetch;
     apiKey?: string;
-    /** Photo observation text in context for THIS turn (sufficiency-v2). Empty strings are dropped. */
+    /** Photo observation RAW texts in context for THIS turn (sufficiency-v2):
+     *  this turn's reading first, then prior turns' — never the rendered prompt
+     *  sections. Empty strings are dropped; at most MAX_OBSERVATIONS are sent. */
     observations?: readonly (string | null | undefined)[];
   } = {},
 ): Promise<JevShadowResult> {
@@ -161,7 +172,7 @@ export async function judgeEvidenceSufficiencyShadow(
     return record({
       ...base,
       noul,
-      observation_count: observations.length,
+      observation_count: Math.min(observations.length, MAX_OBSERVATIONS),
       latency_ms: latency,
       model: json.model ?? null,
       input_tokens: typeof json.usage?.input_tokens === "number" ? json.usage.input_tokens : null,

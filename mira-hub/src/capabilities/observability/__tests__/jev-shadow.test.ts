@@ -103,6 +103,31 @@ describe("buildJevSufficiencyRequest", () => {
     );
   });
 
+  // Gate 7 substitute review of #4380, finding 1: the cap applies to each RAW
+  // reading. The rendered prompt sections the model gets (`lookContext`) carry
+  // 571 / 646 chars of anti-injection header, which alone would consume it.
+  it("v2: a real nameplate reading survives the cap intact when passed raw; the rendered prompt section would not", () => {
+    const thisTurn = "Allen-Bradley PowerFlex 525, Cat No 25B-D010N104, Input 380-480 V 3-Phase, Output 10.5 A.";
+    const prior = "AutomationDirect GS10 AC DRIVE, model GS1-45P0, 460 V 3-Phase, 5 HP.";
+    // Raw readings, one element each: both survive, this turn's first.
+    const raw = buildJevSufficiencyRequest("what is this", [], [thisTurn, prior]);
+    expect(raw.state).toContain(`[observation 1] ${thisTurn}`);
+    expect(raw.state).toContain(`[observation 2] ${prior}`);
+    // The rendered `lookContext` the model gets is ONE blob: this-turn header (571
+    // chars of instructions) + reading + prior header (646 chars) + prior items.
+    const lookContext =
+      "## Photo the technician attached this turn (visual observation)\n" + "x".repeat(571) + "\n\n- " + thisTurn +
+      "\n\n## Photos the technician attached EARLIER in this conversation (visual observations)\n" + "y".repeat(646) +
+      "\n\n- Earlier photo 1: " + prior;
+    const wrapped = buildJevSufficiencyRequest("what is this", [], [lookContext]);
+    expect(wrapped.state).not.toContain("GS1-45P0"); // the headers ate the cap before the prior reading — why the route passes raw rows
+  });
+
+  it("v2: at most four observations are sent (this turn's reading plus the prior ones in context), like MAX_CHUNKS", () => {
+    const req = buildJevSufficiencyRequest("q", [{ content: "c" }], ["a", "b", "c", "d", "e", "f"]);
+    expect(req.state.split("\n").filter((l) => l.startsWith("[observation")).map((l) => l.slice(-1))).toEqual(["a", "b", "c", "d"]);
+  });
+
   it("v2: observations are capped at 900 chars (the decision lane's cap) and scrubbed", () => {
     const req = buildJevSufficiencyRequest("q", [{ content: "c" }], ["o".repeat(2000) + " S/N 5551234567", "x"]);
     const obsLines = req.state.split("\n").filter((l) => l.startsWith("[observation"));
@@ -151,6 +176,9 @@ describe("judgeEvidenceSufficiencyShadow — fail-open branches", () => {
     });
     expect(r.noul).toBe(0.88);
     expect(r.observation_count).toBe(1);
+    // observation_count reports what was SENT, never more than the cap
+    const many = await judgeEvidenceSufficiencyShadow("q", [], { fetchImpl: fetchImpl as never, observations: ["1", "2", "3", "4", "5", "6"] });
+    expect(many.observation_count).toBe(4);
     expect(r.instructions_version).toBe("sufficiency-v2");
     const body = JSON.parse((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
     expect(body.state).toContain("Observations:\n[observation 1] Nameplate reads GS10, 460 V, 5 HP.");

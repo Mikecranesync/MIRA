@@ -27,6 +27,7 @@ def packet(
     visual: bool = False,
     version=None,
     obs=None,
+    ledger: bool = False,
 ):
     ag = {
         "decision": decision,
@@ -46,6 +47,14 @@ def packet(
         "ids": {"turn_id": "t"},
         "environment": "staging",
         "request": {"has_visual_evidence": visual},
+        # `visual_evidence` is the per-turn truth; `context.visual_evidence_count`
+        # ALSO counts the asset ledger (`ledger`), which is why the report must
+        # not read it (Gate 7 substitute review of #4380, finding 2).
+        "visual_evidence": {
+            "observation_in_context": visual,
+            "observation_available": visual,
+            "prior_turn_observation_count": 0,
+        },
         "answer_gate": ag,
         "retrieval": {
             "strategy": "oem_corpus_bm25" if chunks else "skipped_general_mode",
@@ -55,7 +64,7 @@ def packet(
         },
         "context": {
             "chunk_count": chunks,
-            "visual_evidence_count": 1 if visual else 0,
+            "visual_evidence_count": (1 if visual else 0) + (1 if ledger else 0),
             "system_prompt_kind": "grounded" if chunks else "general",
         },
         "generation": {"served_provider": "Groq"},
@@ -366,3 +375,55 @@ def test_a_v2_judgment_with_neither_chunks_nor_observation_is_still_a_violation(
         "Every judged turn had chunks or an observation: VIOLATED (1)"
         in (tmp_path / "r.md").read_text()
     )
+
+
+def test_asset_ledger_visual_evidence_is_not_a_photo_turn(tmp_path: Path):
+    """Finding 2 of the Gate 7 substitute review of #4380: `context.visual_evidence_count`
+    also counts the asset's visual-evidence LEDGER, so it is >0 on every later TEXT turn
+    for that asset. A chunks-only v2 judgment on such a turn is a text disagreement,
+    never a blind spot, never the photo segment."""
+    text_turn_with_ledger_v2 = mod.flatten(
+        packet(
+            chunks=6, decision="answered", jev=0.05, version="sufficiency-v2", obs=0, ledger=True
+        ),
+        source="x",
+        trace_id="l1" + "0" * 30,
+    )
+    text_turn_with_ledger_v1 = mod.flatten(
+        packet(chunks=6, decision="answered", jev=0.05, ledger=True),
+        source="x",
+        trace_id="l2" + "0" * 30,
+    )
+    assert mod.blind_spot(text_turn_with_ledger_v2) is False
+    assert mod.segment(text_turn_with_ledger_v2) == "text"
+    assert mod.blind_spot(text_turn_with_ledger_v1) is False, (
+        "v1 + ledger only: no observation was in context"
+    )
+    assert mod.segment(text_turn_with_ledger_v1) == "text"
+    # And a v2 photo turn whose observation count is 0 (observation never reached the
+    # judge) is a text judgment too — the count, not the flag, says what Jev saw.
+    odd = mod.flatten(
+        packet(
+            chunks=6, decision="answered", jev=0.1, visual=True, version="sufficiency-v2", obs=0
+        ),
+        source="x",
+        trace_id="l3" + "0" * 30,
+    )
+    assert mod.blind_spot(odd) is False and mod.segment(odd) == "text"
+    rc = mod.report(
+        [text_turn_with_ledger_v2, text_turn_with_ledger_v1, odd],
+        tmp_path / "r.md",
+        tmp_path / "r.csv",
+        [],
+    )
+    md = (tmp_path / "r.md").read_text()
+    assert rc == 0
+    assert "judged: 3 (interpretable: 3, blind-spot: 0)" in md
+    assert "Disagreements: 3/3 interpretable judged turns." in md
+
+
+def test_old_packets_without_visual_evidence_block_fall_back_to_the_request_flag():
+    p = packet(chunks=6, decision="answered", jev=0.05, visual=True)
+    del p["visual_evidence"]
+    r = mod.flatten(p, source="x", trace_id="o1" + "0" * 30)
+    assert r["observation_in_context"] is True and mod.blind_spot(r) is True

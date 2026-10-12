@@ -55,13 +55,19 @@ describe("the Jev shadow cannot reach the delivery path", () => {
     expect(src).toContain("if (decisionState) {");
   });
 
-  // sufficiency-v2 (2026-10-12): the shadow is handed the SAME observation text
-  // the decision lane sends — no second renderer, no second privacy surface.
-  it("the sufficiency shadow receives the turn's photo observation, the same `lookContext` the decision lane sends", () => {
+  // sufficiency-v2 (2026-10-12): the shadow is handed the vision model's RAW
+  // readings (this turn's row, then the prior rows already in context) — a
+  // subset of what the decision lane sends, never the rendered `lookContext`
+  // prompt sections, whose anti-injection headers alone (571 + 646 chars) would
+  // consume the judge's 900-char cap before any nameplate text (Gate 7
+  // substitute review of #4380, finding 1).
+  it("the sufficiency shadow receives the raw observation readings, this turn's first, never the rendered lookContext", () => {
     const call = src.indexOf("judgeEvidenceSufficiencyShadow(");
     expect(call).toBeGreaterThan(-1);
     const window = src.slice(call, src.indexOf(").catch(", call));
-    expect(window).toMatch(/\{ observations: \[lookContext\] \}/);
+    expect(window).toMatch(/\{ observations: \[lookRow\?\.text, \.\.\.priorLookRows\.map\(\(r\) => r\.text\)\] \}/);
+    expect(window).not.toContain("lookContext");
+    // The decision lane's shape is its own versioned state (decision-fabric-v1); unchanged here.
     const decision = src.slice(src.indexOf("buildTurnDecisionState({"));
     expect(decision.slice(0, decision.indexOf("evidence:"))).toMatch(/observations: \[lookContext\]/);
   });

@@ -19,9 +19,10 @@ Eligible turn = the shadow ran or was skipped for a reason other than
 `disabled`/`no_key` (those mean config never reached the container and are
 reported as a defect, not as data). Judged turn = `jev_sufficient` non-null.
 
-Because `evidence_sufficient` is true whenever chunks exist and Jev only runs
-when chunks exist, every judged turn has `evidence_sufficient=true`; the only
-possible disagreement is "MIRA says sufficient, Jev says low". Categories:
+Because `evidence_sufficient` is true whenever chunks exist OR an observation is
+in context, and Jev runs only when chunks or an observation exist, every judged
+turn has `evidence_sufficient=true`; the only possible disagreement is "MIRA says
+sufficient, Jev says low". Categories:
 
   D1 refused_jev_low        gate refused (insufficient_evidence) AND jev < LOW
                             → Jev agrees with the honest refusal; the presence flag was wrong.
@@ -34,14 +35,18 @@ possible disagreement is "MIRA says sufficient, Jev says low". Categories:
   U  uncertain              LOW ≤ jev < HIGH.
 
 Segments (2026-10-12 adjudication, docs/proofs/2026-10-12-jev-shadow-adjudication.md):
-  photo / text              a photo turn (request.has_visual_evidence or a visual
-                            evidence count > 0) is answered from the vision observation.
-                            Under `sufficiency-v1` the shadow never saw that
-                            observation, so its low score is a BLIND SPOT, not a
-                            verdict: those turns are listed but EXCLUDED from the
-                            disagreement rate and the window count. `sufficiency-v2`
-                            sends the observation (jev_observation_count > 0) and
-                            its photo turns count.
+  photo / text              a PHOTO turn had a vision observation in context for
+                            THIS turn — `answer_gate.jev_observation_count > 0`
+                            (v2) or `visual_evidence.observation_in_context` (v1).
+                            NOT `context.visual_evidence_count`: that also counts
+                            the asset's visual-evidence LEDGER, which is present on
+                            every later text turn for that asset (Gate 7 substitute
+                            review of #4380, finding 2). Under `sufficiency-v1` the
+                            shadow never saw the observation, so a v1 photo turn's
+                            low score is a BLIND SPOT, not a verdict: listed, CSV-
+                            flagged, EXCLUDED from the disagreement rate and the
+                            window count. A v2 judgment is never a blind spot: its
+                            count says exactly what Jev saw.
 
 Never prints question or answer text; the packet holds none and the DB text
 columns are never selected. Cost uses the vendor's published $/M input rate;
@@ -71,6 +76,11 @@ USD_PER_M_INPUT = 0.042  # api.typesafe.ai published rate (probe report, 2026-09
 MAX_QUESTION_CHARS = 600
 MAX_CHUNK_CHARS = 700
 MAX_CHUNKS = 6
+# sufficiency-v2 (2026-10-12): up to four RAW observation readings, 900 chars each
+# (jev-shadow.ts MAX_OBSERVATIONS / MAX_OBSERVATION_CHARS). The measured ceiling
+# below is a six-chunk v1 call; a v2 call adds at most 3,600 chars (~1,240 tokens).
+MAX_OBSERVATIONS = 4
+MAX_OBSERVATION_CHARS = 900
 OBSERVED_MAX_INPUT_TOKENS = 1681
 LATENCY_CAP_MS = 1500  # DEFAULT_TIMEOUT_MS in jev-shadow.ts
 TARGET_JUDGED = (50, 100)
@@ -210,8 +220,14 @@ def flatten(p: dict[str, Any], **extra: Any) -> dict[str, Any]:
         "jev_input_tokens": ag.get("jev_input_tokens"),
         "jev_observation_count": ag.get("jev_observation_count"),
         "jev_instructions_version": ag.get("jev_instructions_version"),
-        "has_visual_evidence": bool((p.get("request") or {}).get("has_visual_evidence"))
-        or (cx.get("visual_evidence_count") or 0) > 0,
+        # THIS turn's observation reached the model (not the asset ledger — see
+        # the module docstring). Older packets lack `visual_evidence`; fall back
+        # to the request flag for them.
+        "observation_in_context": (
+            bool((p.get("visual_evidence") or {}).get("observation_in_context"))
+            if "visual_evidence" in p
+            else bool((p.get("request") or {}).get("has_visual_evidence"))
+        ),
         "served_provider": gen.get("served_provider"),
         "generation_ms": tm.get("generation"),
         "total_ms": tm.get("total"),
@@ -220,19 +236,26 @@ def flatten(p: dict[str, Any], **extra: Any) -> dict[str, Any]:
 
 
 def blind_spot(r: dict[str, Any]) -> bool:
-    """A photo turn judged without its observation: sufficiency-v1 (or a packet
-    from before the version rode on it) on a turn that carried visual evidence.
-    The score says the CHUNKS cannot describe a photo — true, and uninformative."""
-    if r.get("jev_sufficient") is None or not r.get("has_visual_evidence"):
+    """A photo turn judged without its observation: a sufficiency-v1 packet (or
+    one from before the version rode on it) on a turn whose observation was in
+    the model's context. The score says the CHUNKS cannot describe a photo —
+    true, and uninformative. A v2 packet carries `jev_observation_count`, which
+    says exactly what Jev saw, so it is never a blind spot: 0 there means a
+    chunks-only judgment of a turn that had no observation, which is a text turn."""
+    if r.get("jev_sufficient") is None:
         return False
-    sent = r.get("jev_observation_count")
-    if isinstance(sent, (int, float)):
-        return sent == 0
-    return (r.get("jev_instructions_version") or "sufficiency-v1") == "sufficiency-v1"
+    if isinstance(r.get("jev_observation_count"), (int, float)):
+        return False
+    if (r.get("jev_instructions_version") or "sufficiency-v1") != "sufficiency-v1":
+        return False
+    return bool(r.get("observation_in_context"))
 
 
 def segment(r: dict[str, Any]) -> str:
-    return "photo" if r.get("has_visual_evidence") else "text"
+    sent = r.get("jev_observation_count")
+    if isinstance(sent, (int, float)):
+        return "photo" if sent > 0 else "text"
+    return "photo" if r.get("observation_in_context") else "text"
 
 
 def categorize(r: dict[str, Any]) -> str:
@@ -358,8 +381,10 @@ def report(
     else:
         L.append(
             "- Cost: no judged turn in this set carries `jev_input_tokens` (packets from builds before the field shipped). "
-            f"Bound: the request is capped at {MAX_QUESTION_CHARS} question chars + {MAX_CHUNKS}\u00d7{MAX_CHUNK_CHARS} chunk chars, "
-            f"measured at up to {OBSERVED_MAX_INPUT_TOKENS:,} input tokens/call (\u2248 ${OBSERVED_MAX_INPUT_TOKENS * USD_PER_M_INPUT / 1e6:.5f}/call)"
+            f"Bound: the request is capped at {MAX_QUESTION_CHARS} question chars + {MAX_CHUNKS}\u00d7{MAX_CHUNK_CHARS} chunk chars "
+            f"+ (v2) {MAX_OBSERVATIONS}\u00d7{MAX_OBSERVATION_CHARS} observation chars; a six-chunk v1 call measured up to "
+            f"{OBSERVED_MAX_INPUT_TOKENS:,} input tokens (\u2248 ${OBSERVED_MAX_INPUT_TOKENS * USD_PER_M_INPUT / 1e6:.5f}/call), "
+            f"so a full v2 call is bounded near {OBSERVED_MAX_INPUT_TOKENS + MAX_OBSERVATIONS * MAX_OBSERVATION_CHARS // 3:,} tokens"
         )
     if baseline:
         by = {}

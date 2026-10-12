@@ -114,20 +114,38 @@ the turn's visual-evidence rows) beside each answer.
 ## Corrections shipped with this document
 
 1. **Jev sees the observation** (`sufficiency-v2`). The route hands the sufficiency shadow the
-   same `lookContext` the decision lane already sends, rendered as an `Observations:` section
-   between the question and the evidence, capped at 900 characters (the decision lane's cap) and
-   vendor-scrubbed. A chunks-only state is byte-identical to v1. The rubric gains one sentence:
-   "A photo observation listed under Observations is evidence about THIS equipment."
+   vision model's **raw readings** — this turn's row first, then the prior rows already in
+   context (at most four) — rendered as an `Observations:` section between the question and the
+   evidence, each capped at 900 characters (the decision lane's cap) and vendor-scrubbed. Not the
+   rendered `lookContext` prompt sections: their anti-injection headers alone run 571 and 646
+   characters and would consume the cap before any nameplate text (Gate 7 substitute review of
+   #4380, finding 1 — the first draft of this PR passed `lookContext` and a test now pins why it
+   must not). The readings are a strict subset of what the decision lane sends. A chunks-only
+   *state* is byte-identical to v1 (the rubric string itself gains one sentence on every call:
+   "A photo observation listed under Observations is evidence about THIS equipment.").
    `JEV_INSTRUCTIONS_VERSION` and `jev_observation_count` ride on the packet, because v1 and v2
    scores must never be pooled.
-2. **The report stops pooling the blind spot.** `tools/qa/jev_shadow_report.py` marks a photo
-   turn judged without its observation as `blind_spot`, lists it, and excludes it from the window
-   count and the disagreement rate; every table is split text / photo. The "every judged turn had
-   chunks" invariant becomes "chunks or an observation", since v2 may judge an observation-only
-   photo turn.
-3. **Egress statement amended** in the decision log: the sufficiency lane now sends the photo
-   observation text in staging, the same text and cap the decision lane's privacy note already
-   covers. Still staging only; production remains the owner's data-sharing decision.
+2. **The report stops pooling the blind spot.** `tools/qa/jev_shadow_report.py` decides "photo
+   turn" from what reached the judge (`jev_observation_count > 0`) or, for v1 packets, from
+   `visual_evidence.observation_in_context` — **not** from `context.visual_evidence_count`, which
+   also counts the asset's visual-evidence *ledger* and is therefore non-zero on every later text
+   turn for that asset (finding 2 of the same review; the first draft read it and would have
+   dropped real text disagreements). A v1 photo turn is `blind_spot`: listed, CSV-flagged,
+   excluded from the window count and the disagreement rate; a v2 judgment never is. Every table
+   is split text / photo. The "every judged turn had chunks" invariant becomes "chunks or an
+   observation", since v2 may judge an observation-only photo turn.
+3. **Egress statement amended** in the decision log: the sufficiency lane now sends the raw photo
+   observation readings in staging — a subset of the text the decision lane's privacy note already
+   covers, same cap, same scrub. Still staging only; production remains the owner's data-sharing
+   decision. Noted for the owner: the two flags were kept separate so the smaller export could
+   never silently become the larger one; this moves the observation half across, deliberately and
+   documented, and leaves the delivered answer on the decision lane only.
+
+Review record: the free Gate 7 cascade produced no review (Groq and Together both 400 on the dev
+keys), so the skill's substitute panel ran — a read-only Claude reviewer briefed to disprove the
+change (PARTIAL lane, not Codex). It found the two defects above in the first draft, both fixed
+before the PR left draft; its remaining notes (observation-count cap, rubric sentence sent on
+text turns, the two-flag rationale) are disposed in the PR.
 
 ## What this window says about MIRA (not shipped here — the owner's call)
 

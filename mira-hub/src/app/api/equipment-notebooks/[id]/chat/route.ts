@@ -3067,13 +3067,17 @@ async function handleChatTurn(
   // the packet's answer_gate stage is written, after the stream. Fail-open,
   // bounded by its own timeout, and NEVER consulted by the gate — it is recorded
   // beside `evidence_sufficient` so the two can be compared on staging traffic.
-  // The observation is the SAME text the decision lane sends (sufficiency-v2):
-  // a photo turn is answered from it, and judging the chunks alone scored every
-  // photo turn low whatever the answer did (97 of the first 131 judged turns).
+  // The observations are the vision model's RAW readings (this turn's photo
+  // first, then the prior turns' already in context) — the same readings the
+  // decision lane sends, but not wrapped in the prompt sections `lookContext`
+  // renders for the model: those headers alone exceed the judge's 900-char cap
+  // (Gate 7 substitute review of #4380). A photo turn is answered from these
+  // readings, and judging the chunks alone scored every photo turn low whatever
+  // the answer did (97 of the first 131 judged turns) — sufficiency-v2.
   const jevShadow: Promise<JevShadowResult> = judgeEvidenceSufficiencyShadow(
     message,
     chunks.map((c) => ({ content: c.content, title: c.title })),
-    { observations: [lookContext] },
+    { observations: [lookRow?.text, ...priorLookRows.map((r) => r.text)] },
   ).catch(() => ({
     noul: null,
     observation_count: null,
