@@ -470,10 +470,11 @@ class JudgeEvidenceStore:
         either wrote must not overwrite each other's verdicts (Codex r3 F6 on
         #4358): the write runs under an in-process lock and a cross-process
         advisory lock, re-reads the durable entries inside that critical
-        section, overlays this instance's entries (keys are content-addressed
-        and immutable, so the union is the truth), and replaces the file
-        atomically from a uniquely named temp file. The merged set becomes this
-        instance's view, so a later recall sees the other writer's verdicts too.
+        section, applies THIS verdict on top (and nothing else from memory —
+        Codex r7 F9: an instance's older in-memory copies may be stale against
+        a key another writer refreshed since), and replaces the file atomically
+        from a uniquely named temp file. The merged set becomes this instance's
+        view, so a later recall sees the other writer's verdicts too.
 
         The new verdict is inserted INSIDE that critical section (Codex r4 F6):
         two threads sharing one store must not touch `_entries` outside the
@@ -495,8 +496,13 @@ class JudgeEvidenceStore:
                     if fcntl is not None:
                         fcntl.flock(lock_file, fcntl.LOCK_EX)
                     try:
+                        # Only THIS verdict is applied over the freshly loaded
+                        # durable state (Codex r7 F9 on #4358). Every earlier
+                        # verdict this instance holds was persisted by its own
+                        # put, so overlaying the whole in-memory snapshot added
+                        # nothing — except restoring a STALE copy of a key that
+                        # another writer refreshed since this instance loaded.
                         merged = self._load(self.path)
-                        merged.update(self._entries)
                         merged[key] = entry
                         self._entries = merged
                         self.writes += 1

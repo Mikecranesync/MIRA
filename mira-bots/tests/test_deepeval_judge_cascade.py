@@ -1039,10 +1039,11 @@ def test_one_shared_store_two_writers_keeps_both_verdicts(
     its verdict again. Both `put` calls returned; only A survived.
 
     The interleaving is forced deterministically: the durable read A performs
-    inside the critical section returns a dict whose `update` (the copy step)
-    pauses until B's verdict appears in the shared dict — which it can only do
-    if B inserted OUTSIDE the lock. With the fix B is blocked on the lock, the
-    pause times out, and both verdicts are durable.
+    inside the critical section returns a dict whose insert step pauses until
+    B's verdict appears in the shared dict — which it can only do if B inserted
+    OUTSIDE the lock. With the fix B is blocked on the lock, the pause times
+    out, and both verdicts are durable. (r7 F9 removed the snapshot overlay, so
+    the pause point is the insert, the one step left inside the section.)
     """
     import threading
     import time
@@ -1053,8 +1054,8 @@ def test_one_shared_store_two_writers_keeps_both_verdicts(
     paused = {"done": False}
 
     class PausingDict(dict):
-        def update(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[override]
-            super().update(*args, **kwargs)
+        def __setitem__(self, k: Any, v: Any) -> None:
+            super().__setitem__(k, v)
             if paused["done"]:
                 return
             paused["done"] = True
@@ -1202,3 +1203,50 @@ def test_changing_the_fallback_model_regenerates_verdicts_it_served(
     assert judge.served_counts() == {"openai/gpt-5.4": 1, "recall:openai/gpt-5.4": 1}
     # A stale-model entry counts as a miss in the store's own ledger.
     assert judge.evidence_summary()["misses"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# Codex r7 F9 on #4358 — an unrelated write must not restore a stale verdict
+# over a refreshed one
+# ---------------------------------------------------------------------------
+
+
+def test_unrelated_write_does_not_restore_a_stale_verdict(
+    monkeypatch: pytest.MonkeyPatch, evidence_path: Path
+) -> None:
+    """Seed A with the old fallback model. Change the model; construct two
+    judges before either writes. Judge 1 refreshes A. Judge 2 writes unrelated
+    B — its in-memory snapshot still holds the OLD A, and `put` used to overlay
+    that whole snapshot onto the durable file, restoring the stale A. Durable A
+    must keep the refreshed verdict and a fresh model-off judge must recall it."""
+    monkeypatch.setenv("OPENAI_API_KEY", "k0")
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_PRIMARY", "groq")
+    dispatched: list[str] = []
+
+    def post(url: str, **kw: Any) -> httpx.Response:
+        if "api.groq.com" in url:
+            return httpx.Response(400, json={"error": {"message": "billing"}})
+        prompt = kw["json"]["messages"][-1]["content"]
+        dispatched.append(prompt)
+        return _ok(f"{prompt} from {kw['json']['model']}")
+
+    monkeypatch.setattr(suite.httpx, "post", post)
+    assert suite.CascadeJudge().generate("A") == f"A from {MINI}"
+    monkeypatch.setenv("DEEPEVAL_JUDGE_OPENAI_MODEL", "gpt-5.4")
+    judge1 = suite.CascadeJudge()
+    judge2 = suite.CascadeJudge()  # both loaded the file while A was the mini verdict
+    assert judge1.generate("A") == "A from gpt-5.4"  # refreshed and persisted
+    assert judge2.generate("B") == "B from gpt-5.4"  # unrelated write from a stale snapshot
+    durable = json.loads(evidence_path.read_text())["entries"]
+    a_entries = [e for e in durable.values() if e["content"] == "A from gpt-5.4"]
+    stale_a = [e for e in durable.values() if e["content"] == f"A from {MINI}"]
+    assert len(a_entries) == 1 and stale_a == [], "the unrelated write restored the stale A"
+    assert dispatched == ["A", "A", "B"]
+    # Fresh judge, same configuration, no credentials: A recalls with zero HTTP.
+    monkeypatch.delenv("OPENAI_API_KEY")
+    monkeypatch.delenv("GROQ_API_KEY")
+    fresh = suite.CascadeJudge()
+    assert fresh.generate("A") == "A from gpt-5.4"
+    assert dispatched == ["A", "A", "B"]
+    assert fresh.served_counts() == {"recall:openai/gpt-5.4": 1}
