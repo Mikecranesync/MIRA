@@ -139,6 +139,9 @@ export class OpenAiRunBudget {
   record(inputTokens: number, outputTokens: number): number {
     this.roll();
     const cost = this.estimateUsd(inputTokens, outputTokens);
+    // A non-finite cost would make the shared total NaN, and every later
+    // `projected > cap` comparison false — an open gate. Refuse it loudly.
+    if (!Number.isFinite(cost)) throw new RangeError(`openai run budget: refusing a non-finite cost (${inputTokens}, ${outputTokens})`);
     this.spent += cost;
     this.callCount += 1;
     console.log(
@@ -175,9 +178,13 @@ export class OpenAiRunBudget {
         settle: (actualIn: number, actualOut: number): number => {
           if (!open) return 0;
           open = false;
-          // Drop the hold, then book the actual usage through the one accounting path.
+          // Drop the hold, then book the actual usage through the one accounting
+          // path. A count that is not a finite, non-negative number is UNKNOWN and
+          // books what this hold reserved for it — a malformed provider usage block
+          // can neither poison the shared total with NaN nor read as free (Codex r2
+          // F8 on #4355). Every caller is covered, the cascade included.
           drop();
-          return this.record(actualIn, actualOut);
+          return this.record(...billableTokens({ prompt_tokens: actualIn, completion_tokens: actualOut }, inputTokens, outputTokens));
         },
         release: (): void => {
           if (!open) return;
@@ -242,27 +249,46 @@ export function estimateVisionInputTokens(promptChars: number, images: number): 
 /**
  * WORST-CASE billable input tokens for ONE image, for sizing a vision hold
  * (Codex r1 F4 on #4355). OpenAI's vision tokenization table: at detail "auto"
- * (the default — no request here sets `detail`), which sizes like "high",
+ * (the default; no request here sets `detail`), which sizes like "high",
  * gpt-5.4-mini allows up to 2,500 patches at a 1.2 multiplier = 3,000 tokens.
- * A model not in this table fails CLOSED to a deliberately large ceiling (above
- * the 12,000-token "original"-detail case). Invalidation trigger: a new OpenAI
- * vision model, or any request that sets an explicit `detail`. Mirrors
+ *
+ * Only VERIFIED models are listed. A model that is not here has no known bound
+ * — some size "auto" like "original", far above any guess (Codex r2 F4) — so a
+ * metered vision call on it is REFUSED before the fetch, and the provider pick
+ * falls back to the free Together recognizer. Adding a model means reading its
+ * row in OpenAI's table. Invalidation trigger: a new OpenAI vision model, or
+ * any request that sets an explicit `detail`. Mirrors
  * mira-bots/shared/inference/run_budget.py.
  */
 export const IMAGE_PART_MAX_TOKENS_BY_MODEL: Readonly<Record<string, number>> = { "gpt-5.4-mini": 3_000 };
-export const IMAGE_PART_MAX_TOKENS_UNKNOWN_MODEL = 20_000;
 
-export function imagePartMaxTokens(model: string): number {
-  return IMAGE_PART_MAX_TOKENS_BY_MODEL[model.trim()] ?? IMAGE_PART_MAX_TOKENS_UNKNOWN_MODEL;
+/** The verified worst case for one image on `model`, or null when the model is not verified. */
+export function imagePartMaxTokens(model: string): number | null {
+  return IMAGE_PART_MAX_TOKENS_BY_MODEL[model.trim()] ?? null;
 }
 
 /**
  * UPPER BOUND on one vision call's input tokens, for the hold: the prompt's
  * UTF-8 bytes (a token-dense hint cannot beat its byte length) plus framing,
- * plus the worst-case image cost for `model` per image.
+ * plus the verified worst-case image cost for `model` per image. Null when the
+ * call carries images and `model` has no verified bound: the caller must refuse.
  */
-export function boundVisionInputTokens(prompt: string, images: number, model: string): number {
-  return Buffer.byteLength(prompt, "utf8") + 2 * MESSAGE_FRAMING_TOKENS + images * imagePartMaxTokens(model);
+export function boundVisionInputTokens(prompt: string, images: number, model: string): number | null {
+  const perImage = imagePartMaxTokens(model);
+  if (images > 0 && perImage === null) return null;
+  return Buffer.byteLength(prompt, "utf8") + 2 * MESSAGE_FRAMING_TOKENS + images * (perImage ?? 0);
+}
+
+/** One structured line an operator can grep when OpenAI vision is refused for an unverified model. */
+export function logVisionModelUnverified(scope: string, model: string): void {
+  console.warn(
+    JSON.stringify({
+      event: "openai.vision_model_unverified",
+      scope,
+      model,
+      verified: Object.keys(IMAGE_PART_MAX_TOKENS_BY_MODEL),
+    }),
+  );
 }
 
 /**

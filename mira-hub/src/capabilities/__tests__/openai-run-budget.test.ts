@@ -279,7 +279,12 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
       expect(fetchAt, file).toBeGreaterThan(reserveAt);
       expect(src.slice(reserveAt, fetchAt), file).not.toMatch(/\.(settle|release)\(/);
       expect(src, file).toMatch(/reservation\??\.settle\(inputBound, /);
-      expect(src, file).toMatch(/reservation\??\.settle\(body\.usage\?\.prompt_tokens \?\? inputBound,/);
+      // Served: billable usage (a malformed count books the bound / cap), never the raw counts.
+      expect(src, file).toMatch(/reservation\??\.settle\(\.\.\.billableTokens\(body\.usage, inputBound, /);
+      expect(src, file).not.toMatch(/settle\(body\.usage\?\.prompt_tokens/);
+      // An unverified model is refused before the reserve, never sized by a guess (Codex r2 F4).
+      expect(src, file).toMatch(/throw new Error\("recognizer_model_unverified"\)/);
+      expect(src.indexOf("recognizer_model_unverified"), file).toBeLessThan(src.indexOf(".reserve(inputBound, "));
       expect(src, file).toMatch(/reservation\??\.release\(\)/);
     }
   });

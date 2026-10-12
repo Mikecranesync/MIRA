@@ -38,6 +38,7 @@ import yaml
 from .run_budget import (
     BudgetExceeded,
     BudgetReservation,
+    UnverifiedVisionModel,
     billable_tokens,
     bound_input_tokens,
     get_openai_run_budget,
@@ -589,6 +590,12 @@ class InferenceRouter:
                         bound_input_tokens(messages, model=_model_for(provider, has_image)),
                         max_tokens,
                     )
+                except UnverifiedVisionModel as exc:
+                    # No verified worst case for this model's images: refuse
+                    # rather than guess; the free vision provider takes it.
+                    logger.warning("OPENAI_VISION_MODEL_UNVERIFIED %s — skipping openai", exc)
+                    last_error = {"provider": "openai", "error": "vision_model_unverified"}
+                    continue
                 except BudgetExceeded as exc:
                     logger.warning("OPENAI_BUDGET_EXHAUSTED %s — skipping openai", exc)
                     last_error = {"provider": "openai", "error": "budget_exhausted"}
@@ -697,7 +704,9 @@ class InferenceRouter:
         try:
             # Use vision model for image requests if available
             model = _model_for(provider, has_image)
-            input_bound = bound_input_tokens(messages, model=model)
+            # The bound sizes OpenAI holds only; a free provider (Together
+            # vision) needs none and must not be refused for its model id.
+            input_bound = bound_input_tokens(messages, model=model) if metered else 0
             payload: dict = _request_payload(provider, model, messages, max_tokens)
             # Note: response_format=json_object omitted — Groq requires "json" in system prompt
             # to use that mode, and Cerebras occasionally rejects it. The system prompt already

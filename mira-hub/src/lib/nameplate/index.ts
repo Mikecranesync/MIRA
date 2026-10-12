@@ -71,8 +71,11 @@ export function normalizeCandidate(raw: unknown): EquipmentIdentityCandidate {
 
 import { requestDialectFields, type CanonicalProvider } from "../inference/canonical-cascade";
 import {
+  billableTokens,
   boundVisionInputTokens,
+  imagePartMaxTokens,
   logBudgetExhausted,
+  logVisionModelUnverified,
   openAiRunBudget,
   type BudgetReservation,
 } from "../../capabilities/openai-run-budget";
@@ -200,12 +203,20 @@ async function openAiCompatVision(
   // worst case is HELD for the life of the request so concurrent recognitions
   // cannot each pass against the same balance (Gate 7 on #4355). Reserved
   // inside callOnce so the SyntaxError retry below takes its own hold.
-  // Sized by an UPPER bound: prompt bytes plus the model's worst-case image
-  // cost (Codex r1 F4 on #4355), never the chars/4 + 1,500 average.
-  const inputBound = boundVisionInputTokens(VISION_PROMPT, 1, model);
+  // Sized by an UPPER bound: prompt bytes plus the model's VERIFIED worst-case
+  // image cost (Codex r1/r2 F4 on #4355), never the chars/4 + 1,500 average.
+  // OpenAI only: Together/Groq are free and need no bound.
+  const visionBound = provider ? boundVisionInputTokens(VISION_PROMPT, 1, model) : 0;
   const callOnce = async (): Promise<EquipmentIdentityCandidate> => {
     let reservation: BudgetReservation | null = null;
+    let inputBound = 0;
     if (provider) {
+      if (visionBound === null) {
+        // No verified worst case for this model's images: refuse rather than guess.
+        logVisionModelUnverified("nameplate-recognize", model);
+        throw new Error("recognizer_model_unverified");
+      }
+      inputBound = visionBound;
       const verdict = openAiRunBudget().reserve(inputBound, 1200);
       if (!verdict.ok) {
         logBudgetExhausted("nameplate-recognize", verdict);
@@ -274,7 +285,7 @@ async function openAiCompatVision(
       throw err;
     }
     // Served: replace the hold with ACTUAL usage (the bound when the provider omits it).
-    reservation?.settle(body.usage?.prompt_tokens ?? inputBound, body.usage?.completion_tokens ?? 1200);
+    reservation?.settle(...billableTokens(body.usage, inputBound, 1200));
     const text = body.choices?.[0]?.message?.content ?? "{}";
     return normalizeCandidate(JSON.parse(text));
   };
@@ -408,7 +419,9 @@ function fixtureCandidate(): EquipmentIdentityCandidate {
  */
 export function defaultRecognizer(): NameplateRecognizer {
   if (fixtureSelected()) return new FixtureRecognizer(fixtureCandidate());
-  if (process.env.OPENAI_API_KEY) return new OpenAIVisionRecognizer();
+  // OpenAI leads only on a model whose image cost is verified (Codex r2 F4 on
+  // #4355); otherwise the free recognizers are picked, exactly as without a key.
+  if (process.env.OPENAI_API_KEY && imagePartMaxTokens(openAiVisionModel()) !== null) return new OpenAIVisionRecognizer();
   if (process.env.TOGETHERAI_API_KEY) return new TogetherVisionRecognizer();
   return new GroqVisionRecognizer();
 }

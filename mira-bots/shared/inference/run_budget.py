@@ -64,17 +64,21 @@ _MESSAGE_FRAMING_TOKENS = 8
 # WORST-CASE billable input tokens for ONE image part, for sizing a hold (Codex
 # r1 F4 on #4355). OpenAI's vision tokenization table: at detail "auto" (the
 # default, which sizes like "high") gpt-5.4-mini allows up to 2,500 patches at
-# a 1.2 multiplier = 3,000 tokens. A model not in this table fails CLOSED to a
-# deliberately large ceiling (above the 12,000-token "original"-detail case).
-# Invalidation trigger: a new OpenAI vision model, or any request that sets an
-# explicit `detail`. Mirrors mira-hub/src/capabilities/openai-run-budget.ts.
+# a 1.2 multiplier = 3,000 tokens.
+#
+# Only VERIFIED models are listed. A model that is not here has no known bound
+# (some size "auto" like "original", far above any guess — Codex r2 F4), so an
+# image request to it is REFUSED for OpenAI before anything is sent and the
+# cascade falls through to the free vision provider. Adding a model means
+# reading its row in OpenAI's table. Invalidation trigger: a new OpenAI vision
+# model, or any request that sets an explicit `detail`. Mirrors
+# mira-hub/src/capabilities/openai-run-budget.ts.
 _IMAGE_MAX_TOKENS_BY_MODEL: dict[str, int] = {"gpt-5.4-mini": 3_000}
-_IMAGE_MAX_TOKENS_UNKNOWN_MODEL = 20_000
 
 
-def image_part_max_tokens(model: str | None) -> int:
-    """Worst-case input tokens for one image on ``model`` (fail-closed when unknown)."""
-    return _IMAGE_MAX_TOKENS_BY_MODEL.get((model or "").strip(), _IMAGE_MAX_TOKENS_UNKNOWN_MODEL)
+def image_part_max_tokens(model: str | None) -> int | None:
+    """The verified worst case for one image on ``model``, or None when unverified."""
+    return _IMAGE_MAX_TOKENS_BY_MODEL.get((model or "").strip())
 
 
 def billable_tokens(usage: object, input_bound: int, output_cap: int) -> tuple[int, int]:
@@ -96,6 +100,13 @@ def billable_tokens(usage: object, input_bound: int, output_cap: int) -> tuple[i
 
 class BudgetExceeded(Exception):
     """Raised by :meth:`OpenAIRunBudget.precheck` when a call would cross the cap."""
+
+
+class UnverifiedVisionModel(BudgetExceeded):
+    """An image request names a model with no verified worst-case image cost.
+
+    A :class:`BudgetExceeded` so every caller that already treats the budget
+    refusal as "skip OpenAI" refuses this one too, before anything is sent."""
 
 
 def _env_float(
@@ -124,22 +135,33 @@ class BudgetReservation:
     no-ops, so a ``finally`` can book the worst case without double-charging a
     path that already settled."""
 
-    __slots__ = ("_budget", "_worst", "_open")
+    __slots__ = ("_budget", "_worst", "_in", "_out", "_open")
 
-    def __init__(self, budget: OpenAIRunBudget, worst: float) -> None:
+    def __init__(
+        self, budget: OpenAIRunBudget, worst: float, input_tokens: int, output_tokens: int
+    ) -> None:
         self._budget = budget
         self._worst = worst
+        self._in = input_tokens
+        self._out = output_tokens
         self._open = True
 
     def settle(self, input_tokens: int, output_tokens: int) -> float:
         """The response landed (or the outcome is unknown): replace the hold with
-        the usage to book. Returns this call's cost."""
+        the usage to book. Returns this call's cost.
+
+        A count that is not a non-negative integer is UNKNOWN and books what
+        this hold reserved for it: a malformed usage block can neither poison
+        the shared total (``max(0, nan)`` is 0 in Python, so NaN would read as
+        free) nor slip through as zero (Codex r2 F8 on #4355)."""
+        usage = {"prompt_tokens": input_tokens, "completion_tokens": output_tokens}
+        tokens_in, tokens_out = billable_tokens(usage, self._in, self._out)
         with self._budget._lock:
             if not self._open:
                 return 0.0
             self._open = False
             self._budget._drop_hold(self._worst)
-            return self._budget._record_locked(input_tokens, output_tokens)
+            return self._budget._record_locked(tokens_in, tokens_out)
 
     def settle_worst_case(self) -> float:
         """The outcome is unknown (timeout after acceptance, dropped connection,
@@ -285,7 +307,13 @@ class OpenAIRunBudget:
         return cost
 
     def record(self, input_tokens: int, output_tokens: int) -> float:
-        """Accumulate the ACTUAL usage after the request. Returns the call's cost."""
+        """Accumulate the ACTUAL usage after the request. Returns the call's cost.
+
+        Refuses a count that is not a non-negative integer: a NaN would read as
+        free here, and a reservation's ``settle`` already sanitizes its own."""
+        for n in (input_tokens, output_tokens):
+            if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+                raise ValueError(f"openai run budget: refusing a non-integer token count {n!r}")
         with self._lock:
             return self._record_locked(input_tokens, output_tokens)
 
@@ -305,7 +333,7 @@ class OpenAIRunBudget:
         with self._lock:
             self._precheck_locked(worst)
             self._held_usd += worst
-        return BudgetReservation(self, worst)
+        return BudgetReservation(self, worst, input_tokens, output_tokens)
 
 
 def estimate_input_tokens(messages: list[dict]) -> int:
@@ -340,10 +368,12 @@ def bound_input_tokens(messages: list[dict], model: str | None = None) -> int:
     serialized TEXT cannot be exceeded by its token count; a framing allowance
     per message covers role and separator tokens. Image parts are NOT counted
     by their base64 bytes (a photo would read as ~600k tokens and a timed-out
-    vision call would book half a dollar); each one adds the worst-case image
-    cost for ``model`` instead (:func:`image_part_max_tokens`). Over-reserving
-    only tightens concurrent admission; a served response settles at actual
-    usage."""
+    vision call would book half a dollar); each one adds the VERIFIED worst-case
+    image cost for ``model`` instead (:func:`image_part_max_tokens`), and an
+    image request to an unverified model raises :class:`UnverifiedVisionModel`.
+    Over-reserving only tightens concurrent admission; a served response
+    settles at actual usage."""
+    per_image = image_part_max_tokens(model)
     images = 0
     text_only: list[object] = []
     for msg in messages:
@@ -352,6 +382,11 @@ def bound_input_tokens(messages: list[dict], model: str | None = None) -> int:
             images += sum(1 for p in content if _is_image_part(p))
             msg = {**msg, "content": [p for p in content if not _is_image_part(p)]}
         text_only.append(msg)
+    if images and per_image is None:
+        raise UnverifiedVisionModel(
+            f"vision model {model!r} has no verified image-token bound "
+            f"(verified: {sorted(_IMAGE_MAX_TOKENS_BY_MODEL)})"
+        )
     try:
         serialized = json.dumps(text_only, ensure_ascii=False, default=str)
     except (TypeError, ValueError):
@@ -359,7 +394,7 @@ def bound_input_tokens(messages: list[dict], model: str | None = None) -> int:
     return (
         len(serialized.encode("utf-8"))
         + (len(messages) + 1) * _MESSAGE_FRAMING_TOKENS
-        + images * image_part_max_tokens(model)
+        + images * (per_image or 0)
     )
 
 

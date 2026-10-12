@@ -12,6 +12,7 @@ Run: cd mira-bots && python -m pytest tests/test_openai_run_budget.py -q
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -31,6 +32,7 @@ ENV = (
     "CEREBRAS_API_KEY",
     "TOGETHERAI_API_KEY",
     "OPENAI_MODEL",
+    "OPENAI_VISION_MODEL",
     "INFERENCE_BACKEND",
 )
 
@@ -196,7 +198,8 @@ def test_bound_input_tokens_is_never_below_the_average_estimate():
     cjk = [{"role": "user", "content": "电机过载跳闸" * 50}]
     photo = [{"role": "user", "content": [{"type": "text", "text": "x"}, {"type": "image_url"}]}]
     for msgs in (dense, cjk, photo, [{"role": "user", "content": "hi"}]):
-        assert rb.bound_input_tokens(msgs) >= rb.estimate_input_tokens(msgs)
+        bound = rb.bound_input_tokens(msgs, model="gpt-5.4-mini")
+        assert bound >= rb.estimate_input_tokens(msgs)
     # Tokens cannot exceed bytes: the bound is at least the UTF-8 length.
     assert rb.bound_input_tokens(cjk) >= len(("电机过载跳闸" * 50).encode("utf-8"))
 
@@ -439,7 +442,7 @@ def _scripted_client(script: list):
     async def post(url, headers=None, json=None):
         body = json or {}
         cap = body.get("max_completion_tokens", body.get("max_tokens"))
-        host = "openai" if "api.openai.com" in url else "groq"
+        host = "openai" if "api.openai.com" in url else "together" if "together" in url else "groq"
         sent.append((host, cap))
         if host == "openai":
             step = script.pop(0)
@@ -448,7 +451,7 @@ def _scripted_client(script: list):
             if isinstance(step, int):
                 return _Resp(url, {}, status=step)
             return _Resp(url, step)
-        return _Resp(url, _chat_response("from groq", 10, 5))
+        return _Resp(url, _chat_response(f"from {host}", 10, 5))
 
     client = MagicMock()
     client.post = AsyncMock(side_effect=post)
@@ -616,9 +619,14 @@ def test_images_are_bounded_by_the_model_table_not_by_their_base64_bytes():
     text_only = [{"role": "user", "content": [{"type": "text", "text": "read this nameplate"}]}]
     base = rb.bound_input_tokens(text_only)
     assert rb.bound_input_tokens(with_image, model="gpt-5.4-mini") == base + 3_000
-    # A model not in the table fails closed to the large ceiling.
-    assert rb.bound_input_tokens(with_image, model="some-new-vision-model") == base + 20_000
-    assert rb.bound_input_tokens(with_image, model=None) == base + 20_000
+    # A model not in the verified table has no bound: the image request is
+    # refused, never sized by a guess (Codex r2 F4 on #4355).
+    with pytest.raises(rb.UnverifiedVisionModel):
+        rb.bound_input_tokens(with_image, model="gpt-5.6-sol")
+    with pytest.raises(rb.UnverifiedVisionModel):
+        rb.bound_input_tokens(with_image, model=None)
+    # Control: a text-only request needs no image table, whatever the model.
+    assert rb.bound_input_tokens(text_only, model="gpt-5.6-sol") == base
     # The 400 KB data URL is not counted as text.
     assert rb.bound_input_tokens(with_image, model="gpt-5.4-mini") < 10_000
 
@@ -634,3 +642,82 @@ def test_billable_tokens_treats_missing_and_malformed_counts_as_unknown_not_zero
         100,
         50,
     )
+
+
+# ── Codex r2 on #4355: refuse unverified vision models; settle sanitizes itself ──
+
+PHOTO_MSGS = [
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "read this nameplate"},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,QUJD"}},
+        ],
+    }
+]
+
+
+async def _complete_msgs(cm, messages, max_tokens: int):
+    with patch("shared.inference.router.httpx.AsyncClient", return_value=cm):
+        r = InferenceRouter()
+        r.write_api_usage = MagicMock()
+        return await r.complete(messages, max_tokens=max_tokens)
+
+
+async def test_an_image_request_to_an_unverified_openai_vision_model_never_reaches_openai(
+    monkeypatch, caplog
+):
+    _cloud(monkeypatch)
+    monkeypatch.setenv("OPENAI_VISION_MODEL", "gpt-5.6-sol")
+    monkeypatch.setenv("TOGETHERAI_API_KEY", "k")
+    cm, sent = _scripted_client([])
+    with caplog.at_level("WARNING"):
+        content, usage = await _complete_msgs(cm, PHOTO_MSGS, 100)
+    assert _openai_caps(sent) == []
+    assert content == "from together"  # the free vision provider took it
+    assert any("OPENAI_VISION_MODEL_UNVERIFIED" in rec.message for rec in caplog.records)
+    b = rb.get_openai_run_budget()
+    assert b.held_usd == 0.0 and b.spent_usd == 0.0
+
+
+async def test_control_an_image_request_to_the_verified_model_goes_to_openai(monkeypatch):
+    _cloud(monkeypatch)
+    monkeypatch.setenv("OPENAI_VISION_MODEL", "gpt-5.4-mini")
+    monkeypatch.setenv("TOGETHERAI_API_KEY", "k")
+    cm, sent = _scripted_client(
+        [_served("a nameplate", {"prompt_tokens": 1500, "completion_tokens": 20})]
+    )
+    content, _ = await _complete_msgs(cm, PHOTO_MSGS, 100)
+    assert _openai_caps(sent) == [100]
+    assert content == "a nameplate"
+
+
+async def test_control_a_text_request_on_an_unverified_model_still_goes_to_openai(monkeypatch):
+    _cloud(monkeypatch)
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-sol")
+    cm, sent = _scripted_client([_served("answer", {"prompt_tokens": 10, "completion_tokens": 5})])
+    content, _ = await _complete(cm, max_tokens=50)
+    assert _openai_caps(sent) == [50]
+    assert content == "answer"
+
+
+def test_settle_books_what_the_hold_reserved_for_a_malformed_count_and_stays_finite():
+    b = rb.OpenAIRunBudget(cap_usd=0.10, clock=FakeClock())
+    r = b.reserve(100_000, 10)
+    r.settle(float("nan"), "x")  # a malformed usage block, both counts
+    assert math.isfinite(b.spent_usd)
+    assert b.spent_usd == pytest.approx(b.estimate_usd(100_000, 10))
+    r2 = b.reserve(1_000, 10)
+    r2.settle(-5, 3)  # negative input is unknown; a valid output is kept
+    assert b.spent_usd == pytest.approx(b.estimate_usd(100_000, 10) + b.estimate_usd(1_000, 3))
+    # The cap still bites afterwards: 0.075 + ~0.0008 spent, another 0.075 does not fit.
+    with pytest.raises(rb.BudgetExceeded):
+        b.reserve(100_000, 0)
+
+
+def test_record_refuses_a_non_integer_count_instead_of_reading_it_as_free():
+    b = rb.OpenAIRunBudget(cap_usd=1.0, clock=FakeClock())
+    for bad in (float("nan"), -1, 1.5, "12", None):
+        with pytest.raises(ValueError):
+            b.record(bad, 0)
+    assert b.spent_usd == 0.0 and b.calls == 0

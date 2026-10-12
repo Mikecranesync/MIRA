@@ -16,8 +16,8 @@ import {
   openAiRunBudget,
   resetOpenAiRunBudgetForTests,
 } from "../openai-run-budget";
-import { openAiVisionCall } from "@/lib/nameplate/passes";
-import { OpenAIVisionRecognizer } from "@/lib/nameplate/index";
+import { defaultVisionCall, openAiVisionCall, togetherVisionCall } from "@/lib/nameplate/passes";
+import { OpenAIVisionRecognizer, TogetherVisionRecognizer, defaultRecognizer } from "@/lib/nameplate/index";
 
 const MODEL = "gpt-5.4-mini";
 const PROMPT = "Read every field on this nameplate.";
@@ -57,24 +57,27 @@ afterEach(() => {
 });
 
 describe("the vision bound", () => {
-  it("is keyed to the model: 3,000 tokens per image for gpt-5.4-mini, fail-closed for an unknown model", () => {
+  it("is keyed to VERIFIED models: 3,000 tokens per image for gpt-5.4-mini, no bound (null) for any other", () => {
     expect(imagePartMaxTokens(MODEL)).toBe(3_000);
-    expect(imagePartMaxTokens("some-new-vision-model")).toBe(20_000);
+    expect(imagePartMaxTokens("gpt-5.6-sol")).toBeNull();
     expect(boundVisionInputTokens(PROMPT, 1, MODEL)).toBe(Buffer.byteLength(PROMPT, "utf8") + 16 + 3_000);
+    expect(boundVisionInputTokens(PROMPT, 1, "gpt-5.6-sol")).toBeNull();
+    // Control: with no images the model does not matter.
+    expect(boundVisionInputTokens(PROMPT, 0, "gpt-5.6-sol")).toBe(Buffer.byteLength(PROMPT, "utf8") + 16);
   });
   it("is never below the old average, and a token-dense hint is bounded by its bytes", () => {
     const dense = "故障代码".repeat(200);
     for (const p of [PROMPT, dense]) {
-      expect(boundVisionInputTokens(p, 2, MODEL)).toBeGreaterThan(estimateVisionInputTokens(p.length, 2));
+      expect(boundVisionInputTokens(p, 2, MODEL)!).toBeGreaterThan(estimateVisionInputTokens(p.length, 2));
     }
-    expect(boundVisionInputTokens(dense, 0, MODEL)).toBeGreaterThanOrEqual(Buffer.byteLength(dense, "utf8"));
+    expect(boundVisionInputTokens(dense, 0, MODEL)!).toBeGreaterThanOrEqual(Buffer.byteLength(dense, "utf8"));
   });
 });
 
 describe("LOOK vision call (passes.ts) — refuses before the fetch at a cap the average would pass", () => {
   const maxTokens = 100;
   const oldWorst = usd(estimateVisionInputTokens(PROMPT.length, 1), maxTokens);
-  const newWorst = usd(boundVisionInputTokens(PROMPT, 1, MODEL), maxTokens);
+  const newWorst = usd(boundVisionInputTokens(PROMPT, 1, MODEL)!, maxTokens);
 
   it("a cap between the old estimate and the new bound is refused, and nothing is sent", async () => {
     expect(newWorst).toBeGreaterThan(oldWorst); // precondition: the gap this test lives in
@@ -137,5 +140,88 @@ describe("nameplate recognizer (index.ts) — refuses before the fetch at a cap 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(openAiRunBudget().heldUsd).toBe(0);
     expect(openAiRunBudget().calls).toBe(1);
+  });
+});
+
+describe("an unverified OpenAI vision model is refused, never sized by a guess (Codex r2 F4 on #4355)", () => {
+  beforeEach(() => {
+    process.env.OPENAI_MODEL = "gpt-5.6-sol";
+    process.env.TOGETHERAI_API_KEY = "kt";
+    resetOpenAiRunBudgetForTests();
+  });
+
+  it("the LOOK vision call refuses before any fetch and logs why", async () => {
+    const fetchMock = stubOkFetch();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(openAiVisionCall({ prompt: PROMPT, images: [IMG], temperature: 0, maxTokens: 100 })).rejects.toThrow(
+      "recognizer_model_unverified",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(warn.mock.calls.flat().join(" ")).toContain("openai.vision_model_unverified");
+  });
+
+  it("the nameplate recognizer refuses before any fetch", async () => {
+    const fetchMock = stubOkFetch();
+    await expect(new OpenAIVisionRecognizer().recognize("QUJD", "image/jpeg")).rejects.toThrow("recognizer_model_unverified");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("the provider pick falls back to the free Together path for both", () => {
+    expect(defaultVisionCall()).toBe(togetherVisionCall);
+    expect(defaultRecognizer()).toBeInstanceOf(TogetherVisionRecognizer);
+  });
+
+  it("control: on the verified model the pick stays OpenAI", () => {
+    delete process.env.OPENAI_MODEL;
+    expect(defaultVisionCall()).toBe(openAiVisionCall);
+    expect(defaultRecognizer()).toBeInstanceOf(OpenAIVisionRecognizer);
+  });
+});
+
+describe("a malformed usage block cannot poison the shared total (Codex r2 F8 on #4355)", () => {
+  function stubGarbageUsageFetch() {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }], usage: { prompt_tokens: "invalid", completion_tokens: -3 } }), {
+        status: 200,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("the LOOK vision call books the hold's own bound and cap, stays finite, and the cap still bites", async () => {
+    const maxTokens = 100;
+    const worst = usd(boundVisionInputTokens(PROMPT, 1, MODEL)!, maxTokens);
+    process.env.OPENAI_RUN_BUDGET_USD = String(worst * 1.5);
+    resetOpenAiRunBudgetForTests();
+    const fetchMock = stubGarbageUsageFetch();
+    await openAiVisionCall({ prompt: PROMPT, images: [IMG], temperature: 0, maxTokens });
+    expect(Number.isFinite(openAiRunBudget().spentUsd)).toBe(true);
+    expect(openAiRunBudget().spentUsd).toBeCloseTo(worst, 9);
+    await expect(openAiVisionCall({ prompt: PROMPT, images: [IMG], temperature: 0, maxTokens })).rejects.toThrow(
+      "recognizer_budget_exhausted",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("the nameplate recognizer does the same", async () => {
+    stubGarbageUsageFetch();
+    await new OpenAIVisionRecognizer().recognize("QUJD", "image/jpeg").catch(() => undefined);
+    expect(Number.isFinite(openAiRunBudget().spentUsd)).toBe(true);
+    expect(openAiRunBudget().spentUsd).toBeGreaterThan(usd(3_000, 1_200)); // the reserved image bound and cap
+  });
+
+  it("settle sanitizes its own inputs for every caller; record refuses a non-finite cost", () => {
+    const b = new OpenAiRunBudget({ capUsd: 1, now: () => 0 });
+    const v = b.reserve(10_000, 100);
+    if (!v.ok) throw new Error("precondition: the reservation fits");
+    v.reservation.settle(Number.NaN, Number.POSITIVE_INFINITY);
+    expect(b.spentUsd).toBeCloseTo(b.estimateUsd(10_000, 100), 12);
+    const w = b.reserve(10_000, 100);
+    if (!w.ok) throw new Error("precondition: the reservation fits");
+    w.reservation.settle(-5, 7); // negative input is unknown; a valid output is kept
+    expect(b.spentUsd).toBeCloseTo(b.estimateUsd(10_000, 100) + b.estimateUsd(10_000, 7), 12);
+    expect(() => b.record(Number.NaN, 0)).toThrow(RangeError);
+    expect(Number.isFinite(b.spentUsd)).toBe(true);
   });
 });

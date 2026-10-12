@@ -26,8 +26,15 @@
  */
 
 import { requestDialectFields } from "../inference/canonical-cascade";
-import { boundVisionInputTokens, logBudgetExhausted, openAiRunBudget } from "../../capabilities/openai-run-budget";
-import { openAiVisionProvider, togetherVisionModel } from "./index";
+import {
+  billableTokens,
+  boundVisionInputTokens,
+  imagePartMaxTokens,
+  logBudgetExhausted,
+  logVisionModelUnverified,
+  openAiRunBudget,
+} from "../../capabilities/openai-run-budget";
+import { openAiVisionModel, openAiVisionProvider, togetherVisionModel } from "./index";
 
 // ── Field vocabulary ─────────────────────────────────────────────────────────
 
@@ -625,6 +632,11 @@ export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature
   // Sized by an UPPER bound: prompt bytes plus the model's worst-case image
   // cost (Codex r1 F4 on #4355), never the chars/4 + 1,500 average.
   const inputBound = boundVisionInputTokens(prompt, images.length, provider.model);
+  if (inputBound === null) {
+    // No verified worst case for this model's images: refuse rather than guess (Codex r2 F4).
+    logVisionModelUnverified("vision-call", provider.model);
+    throw new Error("recognizer_model_unverified");
+  }
   const verdict = openAiRunBudget().reserve(inputBound, maxTokens);
   if (!verdict.ok) {
     logBudgetExhausted("vision-call", verdict);
@@ -681,7 +693,7 @@ export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature
     throw err;
   }
   // Served: replace the hold with ACTUAL usage (the bound when the provider omits it).
-  reservation.settle(body.usage?.prompt_tokens ?? inputBound, body.usage?.completion_tokens ?? maxTokens);
+  reservation.settle(...billableTokens(body.usage, inputBound, maxTokens));
   return { text: body.choices?.[0]?.message?.content ?? "{}", model: provider.model };
 };
 
@@ -697,7 +709,11 @@ export function visionTimeoutMs(): number {
 
 /** OpenAI leads when its key is set; otherwise the Together call, exactly as before. */
 export function defaultVisionCall(): VisionCall {
-  return process.env.OPENAI_API_KEY ? openAiVisionCall : togetherVisionCall;
+  // OpenAI leads only on a model whose image cost is verified (Codex r2 F4 on
+  // #4355); otherwise the free Together call runs, exactly as without a key.
+  return process.env.OPENAI_API_KEY && imagePartMaxTokens(openAiVisionModel()) !== null
+    ? openAiVisionCall
+    : togetherVisionCall;
 }
 
 export function safeJson(text: string): Record<string, unknown> | null {
