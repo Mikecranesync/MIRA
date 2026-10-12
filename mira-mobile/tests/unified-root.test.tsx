@@ -866,6 +866,67 @@ describe("UnifiedRoot", () => {
     expect(claimAttachments().map((h) => h.file.name)).toEqual(["A.jpg"]);
   });
 
+  // Codex #4350 round 7, F10: opening the New-project form does not leave
+  // HOME, so the fence missed it. A create that resolved while the form was
+  // up queued the question and parked the photo, and the project the form
+  // then created claimed both. The form is a root destination too; a send
+  // still pending when it opens is abandoned, and the form never inherits a queue.
+  it("row 8 / F10: a create that resolves while the New-project form is open does not route into the project the form creates", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }))
+      .mockImplementationOnce(async (input: { displayName: string }) => ({
+        id: "nb-new", displayName: input.displayName, manufacturer: null, model: null, equipmentType: null,
+        identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [],
+      }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("A.jpg");
+    askFromHome("question A");
+    await waitFor(() => expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New project" })[0]);
+    await waitFor(() => screen.getByTestId("unified-create-project"));
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    expect(screen.getByTestId("unified-create-project")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Line 1 drive" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Name the machine" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-new");
+    expect(nb.getAttribute("data-initial-question-set")).toBe("false");
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  it("row 8 / F10: backing out of the New-project form after such a create lands on HOME, not in the abandoned send's thread", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    askFromHome("question A");
+    await waitFor(() => expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New project" })[0]);
+    await waitFor(() => screen.getByTestId("unified-create-project"));
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(await waitFor(() => screen.getByTestId("unified-home"))).toBeTruthy();
+    expect(screen.queryByTestId("nb")).toBeNull();
+  });
+
   it("row 8 / F5: a create that resolves after the technician opened another project does not take over", async () => {
     const { listNotebooks } = await import("../src/api/resources");
     vi.mocked(listNotebooks).mockResolvedValueOnce([

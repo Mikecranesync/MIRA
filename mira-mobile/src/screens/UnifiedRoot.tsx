@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import type { ProjectItem } from "@factorylm/interaction";
 import { createNotebook, listNotebooks, type Me, type Notebook } from "../api/resources";
 import { homeSendPlan } from "../unified/home-send";
-import { claimAttachments, stashAttachments, type HeldAttachment } from "../unified/attachment-handoff";
+import { claimAttachments, clearAttachments, stashAttachments, type HeldAttachment } from "../unified/attachment-handoff";
 import { defaultQuestionFor } from "../unified/attachments";
 import { hasActiveApiMutations } from "../api/client";
 import {
@@ -241,8 +241,11 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   // still slips through is dropped rather than starting a second create.
   const homeSendInFlight = useRef(false);
   const [homeSending, setHomeSending] = useState(false);
-  const homeVisibleRef = useRef(homeVisible);
-  homeVisibleRef.current = homeVisible;
+  // "Still on the home composer" for the fences below: HOME is also left by
+  // opening the New-project form or About, which do not clear `homeVisible`
+  // (Codex #4350 r7 F10).
+  const onHomeRef = useRef(true);
+  onHomeRef.current = homeVisible && !showCreateProject && !showAbout;
 
   /**
    * A HOME send (`text`, possibly empty for an attachment-only send) or New
@@ -292,11 +295,11 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           setNotebooks((current) => (current?.some((nb) => nb.id === created.id) ? current : [created, ...(current ?? [])]));
           // The technician opened something else while this was in flight:
           // the send is abandoned, never a hijack of where they went.
-          if (!homeVisibleRef.current) return;
+          if (!onHomeRef.current) return;
           handoff(created.id);
         },
         (e: unknown) => {
-          if (!homeVisibleRef.current) return;
+          if (!onHomeRef.current) return;
           // Never the root's fatal error: that unmounts the composer with the
           // question in it and leaves nothing on screen that can recover.
           failedHomeAttachments.current = carry;
@@ -470,6 +473,10 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         onCancel={() => setShowCreateProject(false)}
         onCreated={(nb) => {
           setShowCreateProject(false);
+          // A project made here starts clean: nothing a HOME send left behind
+          // may ride into it (r7 F10).
+          setQueuedQuestion(null);
+          clearAttachments();
           // #3895: the list is fetched once at boot, so a project created here
           // has to be added to it or the drawer never shows it (no thread row,
           // no Sources to upload into) until the app is relaunched. Same idiom

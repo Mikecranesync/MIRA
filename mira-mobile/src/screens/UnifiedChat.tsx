@@ -415,6 +415,13 @@ function UnifiedChatForNotebook({
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
   const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
+  // Whether the shell's send-error banner is still up, as of the last render.
+  // The shell's Try again dispatches the banner away and calls onSend in the
+  // SAME handler, so this still reads non-null for a retry; a send after
+  // Dismiss arrives with the banner already gone. That is how Dismiss disarms
+  // a failed photo without the shell telling us (Codex #4350 r7 F9).
+  const sendErrorRef = useRef(state.sendError);
+  sendErrorRef.current = state.sendError;
   const baseThread = useMemo(() => toThread(messages, fullMeta), [messages, fullMeta]);
 
   // Codex round 2 (#4195 F4/F6/F8/F9): "Searching…" must resolve once the
@@ -778,7 +785,9 @@ function UnifiedChatForNotebook({
     // A freshly attached replacement is a NEW submission, never a retry of the
     // failed one: it is what gets uploaded, and the failed bytes are dropped
     // (r5 F7) — the same rule the home screen applies.
-    const retry = opts.retry === true || (pending.length === 0 && (attachments.isRetryOf?.(text) ?? false));
+    const retry =
+      opts.retry === true ||
+      (pending.length === 0 && sendErrorRef.current !== null && (attachments.isRetryOf?.(text) ?? false));
     if (pending.length === 0 && !attachments.hasCarried() && !retry) {
       // A different question supersedes a failed photo turn: drop its bytes
       // here too, since this path never reaches compose (r6 F8).

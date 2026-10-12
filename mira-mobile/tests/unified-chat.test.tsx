@@ -389,6 +389,35 @@ describe("UnifiedChat", () => {
     expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
   });
 
+  // Codex #4350 round 7, F9: Dismiss must disarm the failed photo. The shell's
+  // Try again fires onSend before its banner-clear has rendered; a send after
+  // Dismiss arrives with the banner already gone. So "banner still showing"
+  // is the retry signal, and the same wording sent after Dismiss goes plain.
+  it("after Dismiss, the same question sent again goes out WITHOUT the failed photo", async () => {
+    stashAttachments([{
+      attachment: { id: "att-7", name: "old.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "old.jpg", { type: "image/jpeg" }),
+    }]);
+    resources.lookAtPhoto.mockRejectedValueOnce(new Error("Network request failed"));
+    const h = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} initialQuestion="" />);
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    const original = box.value;
+    expect(original).toBe("What am I looking at, and what should I check?");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("alert", { name: "Send error" })).toBeNull();
+    fireEvent.change(box, { target: { value: original } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(h.onSend).toHaveBeenCalledTimes(1);
+    expect(h.onSend.mock.calls[0]?.[0]).toBe(original);
+    expect(h.onSend.mock.calls[0]?.[1]).toBeUndefined();
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+  });
+
   it("a DIFFERENT question after a rejected photo upload goes out plain, without the photo (#3863 rule)", async () => {
     stashAttachments([{
       attachment: { id: "att-4", name: "nameplate.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
