@@ -81,6 +81,12 @@ MAX_CHUNKS = 6
 # below is a six-chunk v1 call; a v2 call adds at most 3,600 chars (~1,240 tokens).
 MAX_OBSERVATIONS = 4
 MAX_OBSERVATION_CHARS = 900
+# The rubric/state version the shipping code produces (JEV_INSTRUCTIONS_VERSION in
+# jev-shadow.ts). Scores from different versions are NOT poolable (Codex r1 on
+# #4380, F1): the window, the category tables and the disagreement rate are
+# computed PER VERSION, with this one as the headline. A packet without the
+# field predates the field and is v1.
+CURRENT_INSTRUCTIONS_VERSION = "sufficiency-v2"
 OBSERVED_MAX_INPUT_TOKENS = 1681
 LATENCY_CAP_MS = 1500  # DEFAULT_TIMEOUT_MS in jev-shadow.ts
 TARGET_JUDGED = (50, 100)
@@ -251,6 +257,10 @@ def blind_spot(r: dict[str, Any]) -> bool:
     return bool(r.get("observation_in_context"))
 
 
+def version_of(r: dict[str, Any]) -> str:
+    return r.get("jev_instructions_version") or "sufficiency-v1"
+
+
 def segment(r: dict[str, Any]) -> str:
     sent = r.get("jev_observation_count")
     if isinstance(sent, (int, float)):
@@ -319,13 +329,26 @@ def report(
         w.writeheader()
         w.writerows(uniq)
 
-    lat = [r["jev_latency_ms"] for r in judged if isinstance(r.get("jev_latency_ms"), (int, float))]
-    toks = [
-        r["jev_input_tokens"] for r in judged if isinstance(r.get("jev_input_tokens"), (int, float))
+    # Spend and latency are OPERATIONAL: every judged call was paid and timed,
+    # blind-spot photo calls included (Codex r1 on #4380, F2). Only the
+    # evaluation statistics below exclude them.
+    lat = [
+        r["jev_latency_ms"] for r in judged_all if isinstance(r.get("jev_latency_ms"), (int, float))
     ]
-    cats: dict[str, list[dict[str, Any]]] = {}
+    toks = [
+        r["jev_input_tokens"]
+        for r in judged_all
+        if isinstance(r.get("jev_input_tokens"), (int, float))
+    ]
+    # Evaluation is partitioned by rubric version: the current one is the
+    # headline; historical versions are reported separately and never pooled.
+    by_version: dict[str, list[dict[str, Any]]] = {}
     for r in judged:
-        cats.setdefault(r["category"], []).append(r)
+        by_version.setdefault(version_of(r), []).append(r)
+    versions = [CURRENT_INSTRUCTIONS_VERSION] + sorted(
+        (v for v in by_version if v != CURRENT_INSTRUCTIONS_VERSION), reverse=True
+    )
+    current = by_version.get(CURRENT_INSTRUCTIONS_VERSION, [])
 
     L = []
     L.append("# Jev shadow vs `evidence_sufficient` — staging evidence report\n")
@@ -335,7 +358,8 @@ def report(
     )
     lo, hi = TARGET_JUDGED
     L.append(
-        f"\nProgress toward the {lo}–{hi} judged-turn window: **{len(judged)}/{lo}** interpretable. Real staging usage preferred; do not fabricate traffic.\n"
+        f"\nProgress toward the {lo}–{hi} judged-turn window for the current rubric `{CURRENT_INSTRUCTIONS_VERSION}`: **{len(current)}/{lo}** interpretable. "
+        "Historical rubric versions are reported below and never pooled. Real staging usage preferred; do not fabricate traffic.\n"
     )
     if blind:
         L.append(
@@ -344,9 +368,10 @@ def report(
             "uninformative — so they are excluded from the window and the disagreement rate (CSV `blind_spot=True`). "
             "`sufficiency-v2` sends the observation; its photo turns count.\n"
         )
-    seg_counts = {sg: sum(1 for r in judged if r["segment"] == sg) for sg in ("text", "photo")}
     L.append(
-        f"Interpretable judged turns by segment: text {seg_counts['text']} · photo {seg_counts['photo']}\n"
+        "Interpretable judged turns by rubric version: "
+        + " · ".join(f"`{v}` {len(by_version.get(v, []))}" for v in versions)
+        + "\n"
     )
     if config_defects:
         L.append(
@@ -376,7 +401,7 @@ def report(
     if toks:
         usd = sum(toks) * USD_PER_M_INPUT / 1e6
         L.append(
-            f"- Cost (actual, from `jev_input_tokens`): {sum(toks)} input tokens over {len(toks)} calls = ${usd:.6f} (${usd / len(toks):.6f}/call at ${USD_PER_M_INPUT}/M input; output free)"
+            f"- Cost (actual, from `jev_input_tokens`, every judged call incl. blind-spot photo calls): {sum(toks)} input tokens over {len(toks)} calls = ${usd:.6f} (${usd / len(toks):.6f}/call at ${USD_PER_M_INPUT}/M input; output free)"
         )
     else:
         L.append(
@@ -402,8 +427,6 @@ def report(
                 if s in cur
             )
         )
-    L.append("\n## Disagreement categories (judged turns)\n")
-    L.append("| category | n | meaning |\n|---|---|---|")
     meaning = {
         "D1 refused_jev_low": "gate refused AND jev<0.30 — Jev agrees with the honest refusal; presence flag wrong",
         "D2 answered_claim_jev_low": "answered AND jev<0.30 AND ungrounded_unit_claim — likely ungrounded cited claim; adjudicate",
@@ -420,37 +443,57 @@ def report(
         "A agree",
         "U uncertain",
     ]
-    for c in order:
-        L.append(f"| {c} | {len(cats.get(c, []))} | {meaning[c]} |")
-    L.append("\n| category | text | photo (v2, observation sent) |\n|---|---|---|")
-    for c in order:
-        rs = cats.get(c, [])
+    disagreement_cats = order[:4]
+    for ver in versions:
+        rows_v = by_version.get(ver, [])
+        label = (
+            f"`{ver}` (current rubric)"
+            if ver == CURRENT_INSTRUCTIONS_VERSION
+            else f"`{ver}` (historical — not pooled with the current rubric)"
+        )
+        cats: dict[str, list[dict[str, Any]]] = {}
+        for r in rows_v:
+            cats.setdefault(r["category"], []).append(r)
         L.append(
-            f"| {c} | {sum(1 for r in rs if r['segment'] == 'text')} | {sum(1 for r in rs if r['segment'] == 'photo')} |"
+            f"\n## Disagreement categories — {label}, {len(rows_v)} interpretable judged turns\n"
         )
-    dis = sum(
-        len(cats.get(c, []))
-        for c in (
-            "D1 refused_jev_low",
-            "D2 answered_claim_jev_low",
-            "D3 answered_jev_low",
-            "D4 refused_jev_high",
+        L.append(
+            "| category | n | text | photo (observation sent) | meaning |\n|---|---|---|---|---|"
         )
-    )
-    L.append(
-        f"\nDisagreements: {dis}/{len(judged)} interpretable judged turns"
-        + (f" ({len(blind)} blind-spot photo turns excluded)." if blind else ".")
-        + (" Too few judged turns to conclude; keep collecting." if len(judged) < lo else "")
-    )
-    L.append(
-        "\n## Concrete examples (trace id · source · strategy · chunks · decision · jev · claim)\n"
-    )
-    for c, rs in sorted(cats.items()):
-        L.append(f"**{c}**")
-        for r in rs[:8]:
+        for c in order:
+            rs = cats.get(c, [])
             L.append(
-                f"- `{str(r.get('trace_id'))[:16]}` · {r.get('source')}{(' case ' + str(r.get('scenario'))) if r.get('scenario') else ''} · {r.get('retrieval_strategy')} · chunks={r.get('chunk_count')} · {r.get('decision')}/{r.get('reason')} · jev={r.get('jev_sufficient')} · unit_claim={r.get('ungrounded_unit_claim')} · lat={r.get('jev_latency_ms')}ms"
+                f"| {c} | {len(rs)} | {sum(1 for r in rs if r['segment'] == 'text')} | {sum(1 for r in rs if r['segment'] == 'photo')} | {meaning[c]} |"
             )
+        dis = sum(len(cats.get(c, [])) for c in disagreement_cats)
+        tag = (
+            f"`{ver}`"
+            if ver == CURRENT_INSTRUCTIONS_VERSION
+            else f"`{ver}`, historical — not pooled"
+        )
+        L.append(
+            f"\nDisagreements ({tag}): {dis}/{len(rows_v)} interpretable judged turns"
+            + (
+                f" ({len(blind)} blind-spot photo turns excluded)."
+                if blind and ver == "sufficiency-v1"
+                else "."
+            )
+            + (
+                " Too few judged turns to conclude; keep collecting."
+                if ver == CURRENT_INSTRUCTIONS_VERSION and len(rows_v) < lo
+                else ""
+            )
+        )
+        if rows_v:
+            L.append(
+                "\nConcrete examples (trace id · source · strategy · chunks · decision · jev · claim):\n"
+            )
+            for c, rs in sorted(cats.items()):
+                L.append(f"**{c}**")
+                for r in rs[:8]:
+                    L.append(
+                        f"- `{str(r.get('trace_id'))[:16]}` · {r.get('source')}{(' case ' + str(r.get('scenario'))) if r.get('scenario') else ''} · {r.get('retrieval_strategy')} · chunks={r.get('chunk_count')} · {r.get('decision')}/{r.get('reason')} · jev={r.get('jev_sufficient')} · unit_claim={r.get('ungrounded_unit_claim')} · lat={r.get('jev_latency_ms')}ms"
+                    )
     L.append(f"\nCSV: `{out_csv}` (one row per packet; no text fields).")
     out_md.write_text("\n".join(L) + "\n")
     print("\n".join(L))

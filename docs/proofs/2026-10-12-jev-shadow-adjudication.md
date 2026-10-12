@@ -133,7 +133,11 @@ the turn's visual-evidence rows) beside each answer.
    dropped real text disagreements). A v1 photo turn is `blind_spot`: listed, CSV-flagged,
    excluded from the window count and the disagreement rate; a v2 judgment never is. Every table
    is split text / photo. The "every judged turn had chunks" invariant becomes "chunks or an
-   observation", since v2 may judge an observation-only photo turn.
+   observation", since v2 may judge an observation-only photo turn. The window, the category tables and the
+   disagreement rate are computed **per rubric version**, the current one as the headline and
+   every historical version reported apart (Codex r1 on #4380, F1 — a v1 text judgment must never
+   fill the v2 window); spend and latency count **every** judged call, blind spots included (F2 —
+   they were paid and timed).
 3. **Egress statement amended** in the decision log: the sufficiency lane now sends the raw photo
    observation readings in staging — a subset of the text the decision lane's privacy note already
    covers, same cap, same scrub. Still staging only; production remains the owner's data-sharing
