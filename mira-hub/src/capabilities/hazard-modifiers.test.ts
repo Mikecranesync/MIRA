@@ -124,6 +124,11 @@ export const R5F7_MUST_RELEASE: Record<string, string> = {
   YOU_CANNOT_ATMOSPHERE: "You cannot skip the atmosphere test.",
   YOU_MUST_NEVER_LIGHTER: "You must never use a lighter to find the gas leak.",
   NEVER_LIGHTER_SECOND_SENTENCE: "Check the gauge first. Never use a lighter to find the gas leak.",
+  // #4201 Codex post-cap F8: ordinary subjects and modal chains still prohibit.
+  F8_I_WILL_NOT: "I will not use a lighter to find the gas leak.",
+  F8_HE_WILL_NOT: "He will not use a lighter to find the gas leak.",
+  F8_A_TECHNICIAN_MUST_NEVER: "A technician must never use a lighter to find the gas leak.",
+  F8_QUALIFIED_PERSONNEL: "Qualified personnel must never lift the 4-ton die using the 2-ton hoist.",
 };
 
 /**

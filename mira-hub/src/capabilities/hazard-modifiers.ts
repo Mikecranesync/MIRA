@@ -76,13 +76,18 @@ const NP_HEAD = /^(?:energi[sz]ed|live|hot|power(?:ed)?)\b/i;
 // cannot…", "Myth: you cannot…", "It is false that it is not…") reverses the
 // negation, so the sentence denies the prohibition (#4201 Codex R5 F7). The
 // lead-ins are an allowlist, not a frame list: an unlisted frame fails closed.
-// Subject = a pronoun/role or "the" + up to three words that are not pronouns
-// or complementizers ("The rumor that you cannot…" fails closed); then an
-// optional auxiliary ("It is not…", "The E-12 fault should not…").
+// Subject: a pronoun/role, or a noun phrase of up to three words that contain
+// no pronoun, complementizer or frame word ("The rumor that you cannot…" and
+// "It is a myth that…" fail closed). A noun phrase without a determiner must be
+// followed by a modal ("Qualified personnel must never…"). Then up to two
+// auxiliaries ("It is not…", "I will not…", "The E-12 fault should not…").
+const AUX = "(?:is|are|must|should|will|shall|can|may|might|could|would|do|does)";
+const NP_WORD = "(?!(?:you|we|they|it|i|he|she|that|whether|if|myths?|false|true|untrue|lies?|wrong|incorrect|misconceptions?|rumou?rs?|claims?)\\b)[\\w-]+";
 const SENTENCE_LEAD_IN = new RegExp(
-  "^(?:[-*•>]\\s*)?(?:please|do|does|it's|(?:you|we|they|technicians?|operators?|workers?|it|this|" +
-    "the(?:\\s+(?!(?:you|we|they|it|i|he|she|that|whether|if)\\b)[\\w-]+){1,3})" +
-    "(?:\\s+(?:is|are|must|should|will|can|may|might|could|would|do|does))?)?$",
+  "^(?:[-*•>]\\s*)?(?:please|do|does|it's|" +
+    "(?:i|you|we|they|he|she|it|this|technicians?|operators?|workers?)(?:\\s+" + AUX + "){0,2}|" +
+    "(?:the|a|an|any|every|all)(?:\\s+" + NP_WORD + "){1,3}(?:\\s+" + AUX + "){0,2}|" +
+    NP_WORD + "(?:\\s+" + NP_WORD + "){0,2}(?:\\s+" + AUX + "){1,2})?$",
   "i",
 );
 // A comma clause may restart the lead-in ("…only after de-energizing, never
