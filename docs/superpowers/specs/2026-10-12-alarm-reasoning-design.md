@@ -135,10 +135,20 @@ show a screen.
 
 `recordLookObservation` (`mira-hub/src/lib/visual-evidence-context.ts`) already writes structured,
 server-side vision output (`hazards`) into `evidence_item.capture_meta` (JSONB). The lines are
-stored there as `screen_text_lines`, normalized (trimmed, length-capped, count-capped). **No
-migration.** Later turns read the stored lines; the photo is never re-sent to a vision model for
-this purpose (`.claude/rules/materialized-evidence.md` rules 1, 3, 14). The field is never accepted
-from the client.
+stored in that same `capture_meta` as `screen_text_lines`, normalized (trimmed, length-capped,
+count-capped). **No migration.** Later turns read the stored lines; the photo is never re-sent to a
+vision model for this purpose (`.claude/rules/materialized-evidence.md` rules 1, 3, 14). The field
+is never accepted from the client.
+
+`mira-hub/src/lib/**` is frozen by the lifecycle guard, so `visual-evidence-context.ts` is not
+edited. A new module, `mira-hub/src/capabilities/screen-text.ts`, merges the lines into the
+`capture_meta` of the evidence row `recordLookObservation` just returned (`evidence_item` allows
+UPDATE for derived fields, migration 063). It reads them back by the `sessionId` of the photo's
+already-verified LOOK row, so the existing verification is reused rather than re-implemented. The
+write is fail-open like the observation write: without lines the card simply does not fire.
+
+The vision call's output cap rises from 600 to 1600 tokens. A full alarm list plus the observation
+does not fit in 600; a cut-off JSON reply would fail to parse and silently lose the observation.
 
 ### 4.3 Fidelity gate and fallback
 
@@ -260,12 +270,12 @@ Each entry also carries:
     1. Read the actual value and the time of the alarm from the alarm history or diagnostic view.
     2. Compare the sibling channel at the same location (e.g. the other sensor of a left/right pair).
     3. Read the input channel's diagnostic (wire break / overrange / underrange) on the HMI
-       diagnostics page or online in the engineering software — read only: no download, no change.
+       diagnostics page or online in the engineering software — read only — change nothing in the controller.
   - Fail-safe output:
     1. Read the full time of each alarm, to the second, from the alarm history or the
        controller's diagnostic buffer, to see which came first.
     2. Read the module and channel diagnostics on the HMI diagnostics page or online in the
-       engineering software — read only: no download, no change.
+       engineering software — read only — change nothing in the controller.
     3. On the drawings, find what each listed channel drives and what those circuits share
        (cable, connector, junction box, load supply).
 - **site_procedure_line** — fixed text, always the **last line of the card** (after every other
@@ -302,10 +312,14 @@ Deterministic; no model in its path. It groups (§5.1), parses (§5.2), collapse
 (§5.3), and returns `null` when no record parses as an alarm a pack covers. Rendering rules:
 
 - **One card per photo.** It leads with one covered record:
-  - **first-out:** when every covered record shows a complete time to the second (and a date when
-    the list shows dates), lead with the earliest;
-  - otherwise lead with the top covered record, and the card says: "This screen cuts off the
-    times, so it can't show which alarm came first — read it from the alarm history."
+  - a passivation never leads when a covered cause record (e.g. a wire break) is on the screen —
+    the consequence does not head the card;
+  - **first-out:** when every candidate record shows a complete time to the second and they all
+    show the same date (dates are not compared, because `10/8` reads two ways), lead with the
+    earliest;
+  - otherwise lead with the top candidate record, and the card says: "This screen cuts off the
+    times, so it can't show which alarm came first — read it from the alarm history." (or, when
+    the times are complete but the dates differ, that the order must be read from the history).
   - Other covered records go under "Also on this screen" with their count. Alarm-like records
     that did not parse go under "What I could not read".
 - **Cross-record rules** (fixed wording, from the fail-safe output pack):
