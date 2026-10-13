@@ -127,6 +127,10 @@ describe("parseAlarmRecord", () => {
     expect(l.kind).toBe("measurement_limit");
     expect(l.value).toEqual({ shown: false, reason: "unrecognized" });
   });
+  it("control: the word limit with no number after it is not a reading (limit switch)", () => {
+    const l = parseAlarmRecord(rec("Error: Temperature measurement LEFT WINDING too high =1.HYD+04-TE2 limit switch S1"))!;
+    expect(l.value).toEqual({ shown: false, reason: "not_displayed" });
+  });
   it("an unreadable value is never parsed as a number", () => {
     const l = parseAlarmRecord(rec("Error: Temperature measurement LEFT WINDING too high =1.HYD+04-TE2 value 1?2.5 °C"))!;
     expect(l.value).toEqual({ shown: false, reason: "unreadable" });
