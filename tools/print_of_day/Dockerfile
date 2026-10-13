@@ -39,14 +39,18 @@ COPY tools/internet_print_test/ ./tools/internet_print_test/
 COPY tools/print_of_day/ ./tools/print_of_day/
 COPY tools/canary_fixtures/ ./tools/canary_fixtures/
 # The MINIMAL free-cascade judge dependency (independent judge). The import
-# closure of shared.inference.router is exactly these three files (stdlib +
+# closure of shared.inference.router is exactly these four files (stdlib +
 # httpx + yaml, both already installed) — NOT the whole bot. WORKDIR /app is on
-# sys.path[0], so `import shared.inference.router` resolves. Verified: router.py
-# imports only stdlib + httpx + yaml, and both __init__.py are empty; the judge
-# does not call get_system_prompt(), so mira-bots/prompts is not required.
+# sys.path[0], so `import shared.inference.router` resolves. router.py imports
+# stdlib + httpx + yaml plus its sibling run_budget.py (the per-run OpenAI spend
+# hard stop, #4355); both __init__.py are empty; the judge does not call
+# get_system_prompt(), so mira-bots/prompts is not required.
+# tests/test_print_of_day_image_closure.py fails if router.py gains a relative
+# import this list does not copy.
 COPY mira-bots/shared/__init__.py ./shared/__init__.py
 COPY mira-bots/shared/inference/__init__.py ./shared/inference/__init__.py
 COPY mira-bots/shared/inference/router.py ./shared/inference/router.py
+COPY mira-bots/shared/inference/run_budget.py ./shared/inference/run_budget.py
 # No .git in the image: a built container has no live git. Its identity is the
 # baked IMAGE_REVISION (below), which the provenance gate treats as the
 # authoritative, immutable SHA — the reproducible production path.
