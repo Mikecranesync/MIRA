@@ -724,6 +724,44 @@ class TestManualDiscoverySearchErrorHandling:
         assert body["found"] is False
         assert body["reason"] == "search_unavailable"
 
+    def test_timeout_and_error_say_which_in_reason_detail(self, monkeypatch):
+        # #4401: both read "search_unavailable" to the Hub (the technician sees the
+        # one approved outage sentence), but the record must say WHICH — a slow search
+        # was misdiagnosed as an outage on staging 2026-10-13.
+        monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.05")
+
+        async def slow_search_manual(make, model, deadline_at=None):
+            await asyncio.sleep(1.0)
+            return dict(_VALIDATED_CANDIDATE)
+
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", slow_search_manual)
+        timed_out = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+
+        async def broken_search_manual(make, model, deadline_at=None):
+            raise RuntimeError("boom")
+
+        monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "50")
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", broken_search_manual)
+        errored = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+
+        assert timed_out["reason"] == errored["reason"] == "search_unavailable"
+        assert timed_out["reason_detail"] == "Manual search ran out of time before it finished."
+        assert errored["reason_detail"] == "Manual search stopped on an internal error."
+
     def test_timeout_returns_search_unavailable(self, monkeypatch):
         monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.05")
 
@@ -1141,6 +1179,10 @@ class TestManualDiscoverySearchStats:
             await asyncio.sleep(30)  # stalls past the endpoint timeout
 
         monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.2")
+        # The search's own deadline handling (#4401) is pushed past the endpoint's
+        # timeout so this test still covers the ENDPOINT-cancels-mid-read path —
+        # reachable whenever any stage overruns its budget.
+        monkeypatch.setattr(judge_mod, "RETURN_RESERVE_S", -60.0)
         monkeypatch.setattr(search_mod._judge, "judge_enabled", lambda: True)
         monkeypatch.setattr(search_mod, "_serper_search", fake_serper)
         monkeypatch.setattr(judge_mod, "fetch_pdf_bytes", fake_fetch)

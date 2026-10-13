@@ -585,3 +585,63 @@ def test_preprint_servers_are_denied():
     assert _is_denied("www.biorxiv.org") is True
     assert _is_denied("arxiv.org") is True
     assert _is_denied("static.smc.eu") is False
+
+
+@pytest.mark.asyncio
+async def test_head_validation_stops_at_the_callers_deadline():
+    # #4401: after reading, up to five candidates are HEAD-validated at 8 s each.
+    # Near the deadline that loop alone outran mira-ask's discovery timeout, which
+    # cancels the whole search and reports an outage. Out of time -> return the top
+    # candidate unvalidated (for review) instead of probing on.
+    import asyncio
+    import time
+
+    hits = [
+        _organic(f"https://example.com/750-um00{i}.pdf", "PowerFlex 750 Manual") for i in range(5)
+    ]
+    probed: list[str] = []
+
+    async def fake_serper(query: str, num: int = 10):
+        return hits
+
+    async def stalled_validate(url: str) -> bool:
+        probed.append(url)
+        await asyncio.sleep(5)
+        return True
+
+    with (
+        patch.object(search_mod, "_serper_search", fake_serper),
+        patch.object(search_mod, "validate_pdf", stalled_validate),
+    ):
+        t0 = time.monotonic()
+        result = await search_mod.search_manual(
+            "Rockwell Automation", "750", deadline_at=time.monotonic() + 0.5
+        )
+
+    assert time.monotonic() - t0 < 2.0
+    assert probed == []
+    assert result is not None and result["validated"] is False
+
+
+@pytest.mark.asyncio
+async def test_head_validation_runs_when_time_allows():
+    # Control: with time to spare the HEAD loop still validates as before.
+    import time
+
+    hit = _organic("https://example.com/750-um001.pdf", "PowerFlex 750 Manual")
+
+    async def fake_serper(query: str, num: int = 10):
+        return [hit]
+
+    async def ok_validate(url: str) -> bool:
+        return True
+
+    with (
+        patch.object(search_mod, "_serper_search", fake_serper),
+        patch.object(search_mod, "validate_pdf", ok_validate),
+    ):
+        result = await search_mod.search_manual(
+            "Rockwell Automation", "750", deadline_at=time.monotonic() + 60
+        )
+
+    assert result is not None and result["validated"] is True

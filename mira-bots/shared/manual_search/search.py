@@ -1174,6 +1174,14 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
     # HEAD-validate the top few; first one that confirms PDF wins.
     for c in deduped[:5]:
         if not c.get("validated"):
+            # #4401: a probe that cannot finish before the caller's deadline is not
+            # sent (each may take HEAD_TIMEOUT). The top candidate is returned
+            # unvalidated for review below, instead of the whole search being
+            # cancelled upstream and reported as an outage.
+            if deadline_at is not None and (
+                deadline_at - time.monotonic() < HEAD_TIMEOUT + _judge.RETURN_RESERVE_S
+            ):
+                break
             _note_examined([c["url"]])
         if c.get("validated") or await validate_pdf(c["url"]):
             c["validated"] = True

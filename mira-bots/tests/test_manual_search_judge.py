@@ -1061,6 +1061,76 @@ async def test_r2_f1_the_callers_shorter_timeout_caps_the_upgrade(monkeypatch):
     assert got is not None and judge.is_match(got) and got["validated"] is True
 
 
+# #4401 — staging 2026-10-13: "Emerson IC752DPA062A" pulled four unrelated PDFs
+# (a city health-department archive, a reseller brochure, …). Reading them ran past
+# mira-ask's 50 s discovery timeout; the router cancelled the search and the Hub told
+# the technician "Manual search is unavailable". With NO match in hand, a reading batch
+# must still stop at the caller's deadline and hand back what it has.
+async def test_a_slow_search_batch_stops_at_the_callers_deadline(volumes, monkeypatch):
+    import asyncio
+    import time
+
+    async def stalled_fetch(url, max_bytes=judge.MAX_BYTES):
+        await asyncio.sleep(5)
+        return None
+
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", stalled_fetch)
+    trace: dict = {}
+    t0 = time.monotonic()
+    ranked = await judge.judge_candidates(
+        "Allen-Bradley",
+        "PowerFlex 525",
+        _vol_cands(COMMS),
+        deadline_at=time.monotonic() + judge.RETURN_RESERVE_S + 0.3,
+        trace=trace,
+    )
+    assert time.monotonic() - t0 < 2.0
+    assert trace["stop"] == "search_deadline"
+    assert not any(judge.is_match(c) for c in ranked)
+
+
+async def test_a_spent_deadline_schedules_no_read_at_all(volumes, monkeypatch):
+    # Review of #4408: the deadline was checked only AFTER the batch's reads were
+    # scheduled, then cancelled unawaited. A spent deadline must start no work.
+    import time
+
+    scheduled: list[str] = []
+    real_judge_one = judge._judge_one
+
+    def recording_judge_one(make, model, c):
+        scheduled.append(c["url"])
+        return real_judge_one(make, model, c)
+
+    monkeypatch.setattr(judge, "_judge_one", recording_judge_one)
+    trace: dict = {}
+    await judge.judge_candidates(
+        "Allen-Bradley",
+        "PowerFlex 525",
+        _vol_cands(COMMS),
+        deadline_at=time.monotonic() + judge.RETURN_RESERVE_S - 0.5,
+        trace=trace,
+    )
+    assert trace["stop"] == "search_deadline"
+    assert scheduled == []
+
+
+async def test_a_search_batch_with_time_to_spare_reads_to_the_end(volumes):
+    # Control: a deadline far away changes nothing — the batch is read and judged.
+    import time
+
+    trace: dict = {}
+    ranked = await judge.judge_candidates(
+        "Allen-Bradley",
+        "PowerFlex 525",
+        _vol_cands(PROG),
+        deadline_at=time.monotonic() + 60,
+        trace=trace,
+    )
+    assert volumes.read == [PROG]
+    assert trace["stop"] == "ideal_match"
+    assert ranked[0]["url"] == PROG and judge.is_match(ranked[0])
+
+
 # #4400 — staging 2026-10-13, "GE Fanuc IC752DPA062A" (2/2): the only hits were a
 # reseller's company profile and unrelated archive PDFs. None names the make or the
 # model, none could be read, and the finder still offered the company profile as

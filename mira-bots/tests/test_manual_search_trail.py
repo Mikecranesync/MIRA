@@ -402,6 +402,9 @@ def test_f2_endpoint_timeout_reports_the_interruption(monkeypatch):
 
     monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "k")
     monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.5")
+    # The search's own deadline handling (#4401) is pushed past the endpoint's timeout
+    # so this still covers the ENDPOINT-cancels-mid-read path (any overrunning stage).
+    monkeypatch.setattr(judge, "RETURN_RESERVE_S", -60.0)
 
     async def serper(query, num=10):
         return [
@@ -438,3 +441,54 @@ def test_f2_endpoint_timeout_reports_the_interruption(monkeypatch):
     assert trail["stop"] == "cancelled"
     row = trail["candidates"][0]
     assert row["read"] == "interrupted" and row["read_reason"] == "cancelled_during_fetch"
+
+
+def test_a_slow_read_stops_at_the_search_deadline_instead_of_an_outage(monkeypatch):
+    # #4401, staging 2026-10-13: a read still running when mira-ask's discovery timeout
+    # fired got the search cancelled, and the Hub said "Manual search is unavailable".
+    # The search now stops its own reading before that timeout and answers normally.
+    import asyncio
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import ask_api.manual_discovery as md
+
+    monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "k")
+    monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", str(judge.RETURN_RESERVE_S + 0.5))
+
+    async def serper(query, num=10):
+        return [
+            {
+                "link": "https://oem.example.com/docs/model-x/user-manual.pdf",
+                "title": "Model X user manual",
+            }
+        ]
+
+    async def stalled_fetch(url, max_bytes=judge.MAX_BYTES):
+        await asyncio.sleep(30)
+
+    async def no_link(make):
+        return None
+
+    async def ok(_identity):
+        return "ok"
+
+    monkeypatch.setattr(search_mod, "_serper_search", serper)
+    monkeypatch.setattr(judge, "fetch_pdf_bytes", stalled_fetch)
+    monkeypatch.setattr(judge, "judge_enabled", lambda: True)
+    monkeypatch.setattr(md, "oem_request_link", no_link)
+    import shared.manual_search.quota as quota
+
+    monkeypatch.setattr(quota, "reserve_provider_query", ok)
+    app = FastAPI()
+    app.include_router(md.router)
+    client = TestClient(app, headers={"X-Mira-Key": "k", "X-Mira-Tenant": "t", "X-Mira-User": "u"})
+    body = client.post(
+        "/manual-discovery/search", json={"manufacturer": "ExampleOEM", "model": "Model X"}
+    ).json()
+    assert body["reason"] != "search_unavailable"
+    trail = body["candidate_trail"]
+    assert trail["stop"] == "search_deadline"
+    row = trail["candidates"][0]
+    assert row["read"] == "interrupted" and row["read_reason"] == "search_deadline_during_fetch"
