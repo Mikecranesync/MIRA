@@ -7,6 +7,11 @@ const rec = (text: string, extra: Partial<AlarmRecord> = {}): AlarmRecord => ({
 });
 
 describe("groupAlarmRecords", () => {
+  it("keeps every listed row when asked not to collapse", () => {
+    const rows = groupAlarmRecords(SCREEN_FAIL_SAFE, { collapse: false });
+    expect(rows).toHaveLength(10);
+    expect(rows.every((r) => r.count === 1)).toBe(true);
+  });
   it("joins wrapped lines into records, drops the header, collapses duplicates (fail-safe screen)", () => {
     const records = groupAlarmRecords(SCREEN_FAIL_SAFE);
     expect(records.map((r) => [r.number, r.text, r.count])).toEqual([

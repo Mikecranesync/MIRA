@@ -94,7 +94,8 @@ export function timeSeconds(text: string): number | null {
   return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
 }
 
-export function groupAlarmRecords(lines: readonly string[]): AlarmRecord[] {
+/** `collapse: false` keeps every listed row (the fidelity scorer compares raw record boundaries). */
+export function groupAlarmRecords(lines: readonly string[], opts: { collapse?: boolean } = {}): AlarmRecord[] {
   const records: AlarmRecord[] = [];
   for (const raw of lines) {
     const line = clean(raw);
@@ -121,7 +122,7 @@ export function groupAlarmRecords(lines: readonly string[]): AlarmRecord[] {
     current.lines.push(line);
     current.text = current.text ? `${current.text} ${line}` : line;
   }
-  return collapseDuplicates(records);
+  return opts.collapse === false ? records : collapseDuplicates(records);
 }
 
 function collapseDuplicates(records: AlarmRecord[]): AlarmRecord[] {

@@ -1,0 +1,76 @@
+<!doctype html>
+<!--
+  Synthetic HMI alarm screen for the alarm-card fidelity run
+  (docs/superpowers/specs/2026-10-12-alarm-reasoning-design.md §9,
+   docs/runbooks/alarm-fidelity-capture.md).
+
+  Every tag, address, date and time here is INVENTED. The strings are copied from
+  mira-hub/src/capabilities/alarm-screens.fixture.ts, which is also the scorer's ground truth
+  (tools/alarm-fidelity/score-run.ts); a drift test keeps the two identical. The look
+  deliberately imitates a vendor HMI alarm
+  view (red unacknowledged rows, wrapped text, cut-off columns), so it does not use the
+  FactoryLM design tokens: it is a photograph target, not a FactoryLM surface.
+
+  Open full screen. Default view is the fail-safe output screen; add #rtd for the RTD screen.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alarm view</title>
+<style>
+  html, body { margin: 0; background: #1d2633; color: #f2f4f7; font-family: "DejaVu Sans", "Segoe UI", Arial, sans-serif; }
+  .screen { display: none; padding: 24px 32px; }
+  .screen.on { display: block; }
+  table { border-collapse: collapse; width: 100%; font-size: 22px; line-height: 1.35; }
+  th { text-align: left; font-weight: 400; font-size: 26px; padding: 6px 12px; border-bottom: 2px solid #9fb3c8; }
+  td { vertical-align: top; padding: 8px 12px; white-space: nowrap; }
+  td.text { white-space: normal; }
+  td.text div { white-space: nowrap; }
+  tr.alarm { background: #e8341c; }
+  tr.alarm.selected { background: #26364a; outline: 2px solid #c9d6e3; }
+  tr.alarm.done { background: #3c4a5c; }
+  .col-no { width: 4em; } .col-time { width: 7em; } .col-date { width: 8em; } .col-status { width: 5em; }
+</style>
+</head>
+<body>
+<section class="screen" id="failsafe">
+  <table>
+    <thead><tr><th class="col-no">No.</th><th class="col-time">Time</th><th class="col-date">Date</th><th class="col-status">Status</th><th>Text</th></tr></thead>
+    <tbody>
+      <tr class="alarm selected"><td>40</td><td>08:14:3…</td><td>03/02/2027</td><td>I</td><td class="text"><div>Error: Wire break on Output channel 1</div><div>=y.CTL+07-K4.1 / =y.CTL+07-K4.1-2.</div></td></tr>
+      <tr class="alarm"><td>46</td><td>08:14:3…</td><td>03/02/2027</td><td>I</td><td class="text"><div>Error: Safety program: F-I/O channel passivated</div><div>F-runtime group 1</div><div>Start address of the F-I/O: 61…</div></td></tr>
+      <tr class="alarm"><td>40</td><td>08:14:3…</td><td>03/02/2027</td><td>I</td><td class="text"><div>Error: Wire break on Output channel 5</div><div>=y.CTL+07-K4.1 / =y.CTL+07-K4.1-2.</div></td></tr>
+      <tr class="alarm"><td>46</td><td>08:14:3…</td><td>03/02/2027</td><td>I</td><td class="text"><div>Error: Safety program: F-I/O channel passivated</div><div>F-runtime group 1</div><div>Start address of the F-I/O: 61…</div></td></tr>
+      <tr class="alarm"><td>40</td><td>08:14:3…</td><td>03/02/2027</td><td>I</td><td class="text"><div>Error: Wire break on Output channel 1</div><div>=y.CTL+07-K4.1 / =y.CTL+07-K4.1-2.</div></td></tr>
+      <tr class="alarm"><td>40</td><td>08:14:3…</td><td>03/02/2027</td><td>I</td><td class="text"><div>Error: Wire break on Output channel 5</div><div>=y.CTL+07-K4.1 / =y.CTL+07-K4.1-2.</div></td></tr>
+      <tr class="alarm"><td>46</td><td>08:14:3…</td><td>03/02/2027</td><td>I</td><td class="text"><div>Error: Safety program: F-I/O channel passivated</div><div>F-runtime group 1</div><div>Start address of the F-I/O: 62…</div></td></tr>
+      <tr class="alarm"><td>40</td><td>08:14:3…</td><td>03/02/2027</td><td>I</td><td class="text"><div>Error: Wire break on Output channel 4</div><div>=y.CTL+07-K4.1 / =y.CTL+07-K4.1-6.</div></td></tr>
+      <tr class="alarm"><td>46</td><td>08:14:3…</td><td>03/02/2027</td><td>I</td><td class="text"><div>Error: Safety program: F-I/O channel passivated</div><div>F-runtime group 1</div><div>Start address of the F-I/O: 62…</div></td></tr>
+      <tr class="alarm"><td>40</td><td>08:14:3…</td><td>03/02/2027</td><td>I</td><td class="text"><div>Error: Wire break on Output channel 4</div><div>=y.CTL+07-K4.1 / =y.CTL+07-K4.1-6.</div></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="screen" id="rtd">
+  <table>
+    <thead><tr><th class="col-no">No.</th><th class="col-time">Time</th><th class="col-date">Date</th><th class="col-status">Status</th><th>Text</th></tr></thead>
+    <tbody>
+      <tr class="alarm selected"><td>113</td><td>06:02:19</td><td>11/05/2027</td><td>I</td><td class="text"><div>Error: Temperature measurement RIGHT WINDING too high</div><div>=1.HYD+04-TE3</div></td></tr>
+      <tr class="alarm"><td>112</td><td>06:02:17</td><td>11/05/2027</td><td>I</td><td class="text"><div>Error: Temperature measurement LEFT WINDING too high</div><div>=1.HYD+04-TE2 value 0 limit 0</div></td></tr>
+      <tr class="alarm"><td>9</td><td>06:02:20</td><td>11/05/2027</td><td>I</td><td class="text"><div>Warning: Automatic stop</div></td></tr>
+      <tr class="alarm done"><td>7</td><td>06:01:58</td><td>11/05/2027</td><td>IO</td><td class="text"><div>Error: E-stop reset required</div></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<script>
+  function show() {
+    var id = location.hash === "#rtd" ? "rtd" : "failsafe";
+    document.querySelectorAll(".screen").forEach(function (s) { s.classList.toggle("on", s.id === id); });
+  }
+  window.addEventListener("hashchange", show);
+  show();
+</script>
+</body>
+</html>
