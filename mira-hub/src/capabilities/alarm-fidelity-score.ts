@@ -35,7 +35,7 @@ export type ScoredPhoto = { screen: string; score: ScreenScore };
  * cover every screen at least this often — ten good photos of one screen measure nothing about
  * the other.
  */
-export const RUN_PLAN: Readonly<Record<string, number>> = { failsafe: 6, rtd: 4 };
+export const RUN_PLAN: Readonly<Record<string, number>> = { failsafe: 4, rtd: 3, history: 3 };
 export const MIN_PHOTOS = Object.values(RUN_PLAN).reduce((a, n) => a + n, 0);
 
 const CUT_TOKEN = /(\S+?)(?:…|\.\.\.)/g;
