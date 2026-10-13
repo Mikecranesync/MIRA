@@ -129,7 +129,8 @@ function collapseDuplicates(records: AlarmRecord[]): AlarmRecord[] {
   const seen = new Map<string, AlarmRecord>();
   const out: AlarmRecord[] = [];
   for (const r of records) {
-    const key = `${r.number ?? ""}\u0000${r.text}`;
+    // The date is part of the identity: the same alarm on another day is another event.
+    const key = `${r.number ?? ""}\u0000${r.date?.text ?? ""}\u0000${r.text}`;
     const first = seen.get(key);
     if (!first) {
       seen.set(key, r);

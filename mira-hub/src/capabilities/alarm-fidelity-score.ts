@@ -6,7 +6,7 @@
  *  (a) designations reproduced exactly            — gate ≥ 90 % across all photos
  *  (b) characters invented inside cut-off fields  — gate: zero, across all photos
  *  (c) records reproduced with the screen's boundaries and contents — gate ≥ 90 %
- *  A run passes only with at least MIN_PHOTOS photos (the capture sheet takes 10).
+ *  A run passes only when every screen in RUN_PLAN was photographed as often as it asks.
  */
 import { groupAlarmRecords, parseDesignations } from "./alarm-line";
 
@@ -24,10 +24,19 @@ export type GateResult = {
   groupingRate: number;
   invented: number;
   photos: number;
+  /** Screens photographed fewer times than the run plan asks for. */
+  shortScreens: string[];
 };
 
-/** The capture sheet (docs/runbooks/alarm-fidelity-capture.md) takes 10 photos; fewer is not a run. */
-export const MIN_PHOTOS = 10;
+export type ScoredPhoto = { screen: string; score: ScreenScore };
+
+/**
+ * The capture sheet (docs/runbooks/alarm-fidelity-capture.md): photos per screen. A run must
+ * cover every screen at least this often — ten good photos of one screen measure nothing about
+ * the other.
+ */
+export const RUN_PLAN: Readonly<Record<string, number>> = { failsafe: 6, rtd: 4 };
+export const MIN_PHOTOS = Object.values(RUN_PLAN).reduce((a, n) => a + n, 0);
 
 const CUT_TOKEN = /(\S+?)(?:…|\.\.\.)/g;
 
@@ -91,12 +100,15 @@ export function scoreScreen(truthLines: readonly string[], transcribed: readonly
   };
 }
 
-export function gate(scores: readonly ScreenScore[], minPhotos: number = MIN_PHOTOS): GateResult {
+export function gate(photos: readonly ScoredPhoto[], plan: Readonly<Record<string, number>> = RUN_PLAN): GateResult {
+  const scores = photos.map((p) => p.score);
   const sum = (k: keyof ScreenScore) => scores.reduce((a, s) => a + s[k], 0);
   const designationRate = sum("designationTotal") ? sum("designationExact") / sum("designationTotal") : 1;
   const groupingRate = sum("recordsTotal") ? sum("recordsCorrect") / sum("recordsTotal") : 1;
   const invented = sum("inventedInCutFields");
-  const photos = scores.length;
-  const pass = photos >= minPhotos && designationRate >= 0.9 && groupingRate >= 0.9 && invented === 0;
-  return { pass, designationRate, groupingRate, invented, photos };
+  const shortScreens = Object.entries(plan)
+    .filter(([screen, n]) => photos.filter((p) => p.screen === screen).length < n)
+    .map(([screen]) => screen);
+  const pass = shortScreens.length === 0 && designationRate >= 0.9 && groupingRate >= 0.9 && invented === 0;
+  return { pass, designationRate, groupingRate, invented, photos: photos.length, shortScreens };
 }

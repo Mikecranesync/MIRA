@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { gate, MIN_PHOTOS, scoreScreen } from "./alarm-fidelity-score";
+import { gate, MIN_PHOTOS, RUN_PLAN, scoreScreen, type ScreenScore } from "./alarm-fidelity-score";
+
+const fs = (score: ScreenScore) => ({ screen: "failsafe", score });
+const ONE = { failsafe: 1 };
 import { SCREEN_FAIL_SAFE, SCREEN_RTD } from "./alarm-screens.fixture";
 
 const truth = SCREEN_FAIL_SAFE;
@@ -20,14 +23,14 @@ describe("scoreScreen", () => {
     expect(s.inventedInCutFields).toBe(0);
     expect(s.recordsTotal).toBe(10);
     expect(s.recordsCorrect).toBe(10);
-    expect(gate([s], 1).pass).toBe(true);
+    expect(gate([fs(s)], ONE).pass).toBe(true);
   });
 
   it("a completed cut-off time is an invented character and fails the gate on its own", () => {
     const s = scoreScreen(truth, replaceFirst(truth, "08:14:3…", "08:14:35"));
     expect(s.inventedInCutFields).toBe(1);
     expect(s.designationExact).toBe(12);
-    expect(gate([s], 1).pass).toBe(false);
+    expect(gate([fs(s)], ONE).pass).toBe(false);
   });
 
   it("a completed cut-off address is an invented character too", () => {
@@ -88,23 +91,38 @@ describe("gate", () => {
   it("pools photos: 90 % designations and 90 % grouping across all photos, zero invented", () => {
     const good = scoreScreen(truth, truth);
     const oneTagWrong = scoreScreen(truth, replaceFirst(truth, "=y.CTL+07-K4.1-2.", "=y.CTL+07-K4.1-Z."));
-    const g = gate([good, oneTagWrong], 2);
+    const g = gate([fs(good), fs(oneTagWrong)], { failsafe: 2 });
     expect(g.designationRate).toBeCloseTo(23 / 24);
     expect(g.pass).toBe(true);
   });
   it("fails below 90 % grouping", () => {
     const lines = SCREEN_FAIL_SAFE.filter((l) => !l.startsWith("46 ")); // passivation rows lose their prefix
-    const g = gate([scoreScreen(truth, lines)], 1);
+    const g = gate([fs(scoreScreen(truth, lines))], ONE);
     expect(g.groupingRate).toBeLessThan(0.9);
     expect(g.pass).toBe(false);
   });
 });
 
-describe("gate photo count", () => {
-  it(`a run needs at least ${MIN_PHOTOS} photos, however good they are`, () => {
-    const perfect = scoreScreen(truth, truth);
-    expect(gate([perfect]).pass).toBe(false);
-    expect(gate(Array.from({ length: MIN_PHOTOS }, () => perfect)).pass).toBe(true);
+describe("gate run plan", () => {
+  const perfectFs = { screen: "failsafe", score: scoreScreen(truth, truth) };
+  const perfectRtd = { screen: "rtd", score: scoreScreen(SCREEN_RTD, SCREEN_RTD) };
+  const times = <T,>(n: number, x: T) => Array.from({ length: n }, () => x);
+
+  it("the run plan is the capture sheet's 6 fail-safe + 4 RTD photos", () => {
+    expect(RUN_PLAN).toEqual({ failsafe: 6, rtd: 4 });
     expect(MIN_PHOTOS).toBe(10);
+  });
+  it("one perfect photo is not a run", () => {
+    expect(gate([perfectFs]).pass).toBe(false);
+  });
+  it("ten perfect photos of one screen are not a run — the other screen was never measured", () => {
+    const g = gate(times(10, perfectFs));
+    expect(g.pass).toBe(false);
+    expect(g.shortScreens).toEqual(["rtd"]);
+  });
+  it("control: 6 fail-safe + 4 RTD perfect photos pass", () => {
+    const g = gate([...times(6, perfectFs), ...times(4, perfectRtd)]);
+    expect(g.shortScreens).toEqual([]);
+    expect(g.pass).toBe(true);
   });
 });

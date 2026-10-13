@@ -22,6 +22,13 @@ describe("groupAlarmRecords", () => {
       ["40", "Error: Wire break on Output channel 4 =y.CTL+07-K4.1 / =y.CTL+07-K4.1-6.", 2],
     ]);
   });
+  it("the same alarm on two different dates stays two records", () => {
+    const records = groupAlarmRecords([
+      "40 23:59:58 03/02/2027 I Error: Wire break on Output channel 1", "=y.CTL+07-K4.1-2.",
+      "40 00:00:03 03/03/2027 I Error: Wire break on Output channel 1", "=y.CTL+07-K4.1-2.",
+    ]);
+    expect(records.map((r) => [r.date?.text, r.count])).toEqual([["03/02/2027", 1], ["03/03/2027", 1]]);
+  });
   it("captures number, cut-off time, date and status", () => {
     const [first] = groupAlarmRecords(SCREEN_FAIL_SAFE);
     expect(first.time).toEqual({ text: "08:14:3…", truncated: true });
