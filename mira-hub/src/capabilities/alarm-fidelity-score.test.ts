@@ -60,6 +60,22 @@ describe("scoreScreen", () => {
     expect(scoreScreen(truth, swapped).recordsCorrect).toBe(9);
   });
 
+  it("a designation line that moves to another alarm is not grouped correctly", () => {
+    // Swap the continuation lines of the first channel-1 and first channel-4 records.
+    const lines = [...truth];
+    const a = lines.indexOf("=y.CTL+07-K4.1 / =y.CTL+07-K4.1-2.");
+    const b = lines.indexOf("=y.CTL+07-K4.1 / =y.CTL+07-K4.1-6.");
+    [lines[a], lines[b]] = [lines[b], lines[a]];
+    const s = scoreScreen(truth, lines);
+    expect(s.designationExact).toBe(12); // the tag multiset is unchanged — only grouping can see this
+    expect(s.recordsCorrect).toBe(8);
+  });
+
+  it("control: punctuation and case slips are not grouping errors", () => {
+    const sloppy = truth.map((l) => l.replace("Error:", "error;"));
+    expect(scoreScreen(truth, sloppy).recordsCorrect).toBe(10);
+  });
+
   it("scores the RTD screen too (full times, no cut-off fields)", () => {
     const s = scoreScreen(SCREEN_RTD, SCREEN_RTD);
     expect(s.designationTotal).toBe(2);

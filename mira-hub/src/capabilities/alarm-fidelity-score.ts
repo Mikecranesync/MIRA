@@ -5,7 +5,7 @@
  *
  *  (a) designations reproduced exactly            — gate ≥ 90 % across all photos
  *  (b) characters invented inside cut-off fields  — gate: zero, across all photos
- *  (c) records reproduced with the screen's boundaries and first line — gate ≥ 90 %
+ *  (c) records reproduced with the screen's boundaries and contents — gate ≥ 90 %
  *  A run passes only with at least MIN_PHOTOS photos (the capture sheet takes 10).
  */
 import { groupAlarmRecords, parseDesignations } from "./alarm-line";
@@ -53,16 +53,18 @@ function matched(truth: string[], got: string[]): number {
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Normalize for comparison only: case, spacing, and the two spellings of the cut-off marker. */
-const norm = (s: string) => s.toLowerCase().replace(/…/g, "...").replace(/\s+/g, " ").trim();
+/** Compare letters and digits only: case, spacing and punctuation are not grouping errors. */
+const alnum = (s: string) => s.toLowerCase().replace(/[^0-9a-z]/g, "");
 
 /**
- * A record's identity for the grouping measure: how many visual lines it spans plus its
- * first line. Line count alone would credit one alarm swapped for another of the same
- * size; the first line carries the alarm number, time and message, so a swap is caught.
+ * A record's identity for the grouping measure: how many visual lines it spans plus ALL
+ * its text, letters and digits only. Line count alone would credit one alarm swapped for
+ * another of the same size, and the first line alone would credit a designation line that
+ * wandered to the wrong alarm (the card would then pair a channel with the wrong module).
+ * Case and punctuation are ignored so a stray ";" for ":" does not count as a grouping error.
  */
 function shapes(lines: readonly string[]): string[] {
-  return groupAlarmRecords(lines, { collapse: false }).map((r) => `${r.lines.length}|${norm(r.lines[0])}`);
+  return groupAlarmRecords(lines, { collapse: false }).map((r) => `${r.lines.length}|${alnum(r.lines.join(" "))}`);
 }
 
 export function scoreScreen(truthLines: readonly string[], transcribed: readonly string[]): ScreenScore {
