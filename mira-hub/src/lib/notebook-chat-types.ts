@@ -74,6 +74,15 @@ export type NotebookStatusFrame = {
    */
   reason?: "all_providers_failed" | "no_provider_configured";
   providers?: { provider: string; httpStatus: number | null; reason: string }[];
+  /**
+   * Weak-evidence badge (`MIRA_JEV_WEAK_EVIDENCE_BADGE=1`, staging) — set only
+   * on `status: "answered"` when the Jev sufficiency rule fired
+   * (capabilities/observability/jev-weak-evidence.ts). The answer and its
+   * citations are delivered unchanged; the evidence frame's label already
+   * says so in words. Additive: a client that ignores it sees the turn it
+   * always saw.
+   */
+  evidence?: "weak";
 };
 
 /**
@@ -340,6 +349,26 @@ export function isSafetyStopEntry(e: unknown): e is SafetyStopEntry {
     e !== null &&
     (e as { kind?: unknown }).kind === "safety_stop" &&
     typeof (e as { trigger?: unknown }).trigger === "string"
+  );
+}
+
+/** Durable marker that the weak-evidence badge fired on this turn, persisted
+ * in `evidence[]` so a replay carries the same caption the live stream did.
+ * Stores the rule version and the score that fired it — never the question
+ * or answer text. Clients that do not know the kind ignore it. */
+export type WeakEvidenceEntry = {
+  kind: "weak_evidence";
+  rule: string;
+  jev_sufficient: number;
+};
+
+export function isWeakEvidenceEntry(e: unknown): e is WeakEvidenceEntry {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { kind?: unknown }).kind === "weak_evidence" &&
+    typeof (e as { rule?: unknown }).rule === "string" &&
+    typeof (e as { jev_sufficient?: unknown }).jev_sufficient === "number"
   );
 }
 
