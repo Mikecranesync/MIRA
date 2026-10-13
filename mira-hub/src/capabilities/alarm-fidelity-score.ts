@@ -5,7 +5,8 @@
  *
  *  (a) designations reproduced exactly            — gate ≥ 90 % across all photos
  *  (b) characters invented inside cut-off fields  — gate: zero, across all photos
- *  (c) records grouped with the screen's boundaries — gate ≥ 90 % across all photos
+ *  (c) records reproduced with the screen's boundaries and first line — gate ≥ 90 %
+ *  A run passes only with at least MIN_PHOTOS photos (the capture sheet takes 10).
  */
 import { groupAlarmRecords, parseDesignations } from "./alarm-line";
 
@@ -17,7 +18,16 @@ export type ScreenScore = {
   recordsTotal: number;
 };
 
-export type GateResult = { pass: boolean; designationRate: number; groupingRate: number; invented: number };
+export type GateResult = {
+  pass: boolean;
+  designationRate: number;
+  groupingRate: number;
+  invented: number;
+  photos: number;
+};
+
+/** The capture sheet (docs/runbooks/alarm-fidelity-capture.md) takes 10 photos; fewer is not a run. */
+export const MIN_PHOTOS = 10;
 
 const CUT_TOKEN = /(\S+?)(?:…|\.\.\.)/g;
 
@@ -43,9 +53,16 @@ function matched(truth: string[], got: string[]): number {
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** A record's boundary shape: its list number and how many visual lines it spans. */
+/** Normalize for comparison only: case, spacing, and the two spellings of the cut-off marker. */
+const norm = (s: string) => s.toLowerCase().replace(/…/g, "...").replace(/\s+/g, " ").trim();
+
+/**
+ * A record's identity for the grouping measure: how many visual lines it spans plus its
+ * first line. Line count alone would credit one alarm swapped for another of the same
+ * size; the first line carries the alarm number, time and message, so a swap is caught.
+ */
 function shapes(lines: readonly string[]): string[] {
-  return groupAlarmRecords(lines, { collapse: false }).map((r) => `${r.number ?? "-"}/${r.lines.length}`);
+  return groupAlarmRecords(lines, { collapse: false }).map((r) => `${r.lines.length}|${norm(r.lines[0])}`);
 }
 
 export function scoreScreen(truthLines: readonly string[], transcribed: readonly string[]): ScreenScore {
@@ -72,10 +89,12 @@ export function scoreScreen(truthLines: readonly string[], transcribed: readonly
   };
 }
 
-export function gate(scores: readonly ScreenScore[]): GateResult {
+export function gate(scores: readonly ScreenScore[], minPhotos: number = MIN_PHOTOS): GateResult {
   const sum = (k: keyof ScreenScore) => scores.reduce((a, s) => a + s[k], 0);
   const designationRate = sum("designationTotal") ? sum("designationExact") / sum("designationTotal") : 1;
   const groupingRate = sum("recordsTotal") ? sum("recordsCorrect") / sum("recordsTotal") : 1;
   const invented = sum("inventedInCutFields");
-  return { pass: designationRate >= 0.9 && groupingRate >= 0.9 && invented === 0, designationRate, groupingRate, invented };
+  const photos = scores.length;
+  const pass = photos >= minPhotos && designationRate >= 0.9 && groupingRate >= 0.9 && invented === 0;
+  return { pass, designationRate, groupingRate, invented, photos };
 }

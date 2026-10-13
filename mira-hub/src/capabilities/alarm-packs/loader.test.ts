@@ -24,6 +24,8 @@ const MUST_REJECT: [string, string][] = [
   ["change-config", "Change the F-parameters to stop it."],
   ["download", "Download the corrected program."],
   ["load-resistor", "Fit a load resistor across the output."],
+  ["run-test", "Run an insulation test on the output wiring."],
+  ["restore", "Reactivate the output once the alarm is gone."],
 ];
 
 describe("alarm packs", () => {
@@ -59,7 +61,7 @@ describe("alarm packs", () => {
   });
   it("control: read-only wording that names the risk without instructing it passes", () => {
     const ok = clone();
-    ok.entries[0].checks[2] = "Read the module diagnostics online in the engineering software, read only — change nothing in the controller.";
+    ok.entries[0].checks[2] = "Read the module diagnostics online in the engineering software, in view mode only — do not enter configuration or change any setting in the controller.";
     expect(() => validatePack(ok)).not.toThrow();
   });
   it("rejects structural defects", () => {

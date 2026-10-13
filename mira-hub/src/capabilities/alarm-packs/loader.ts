@@ -49,6 +49,10 @@ export const BANNED_PATTERNS: readonly { id: string; rx: RegExp }[] = [
   { id: "change-config", rx: /\bchang\w*\s+(?:the\s+)?(?:hardware configuration|F-parameter)/i },
   { id: "download", rx: /\bdownload/i },
   { id: "load-resistor", rx: /\b(?:load|dummy|pull-?down)\s+(?:resistor|load)\b|\badd(?:ing)?\s+(?:a\s+)?resistor/i },
+  // Safety review 2026-10-12: a test is hands-on work on the circuit (insulation, resistance),
+  // and nothing in a pack may describe bringing a passivated or tripped channel back.
+  { id: "run-test", rx: /\b(?:perform|run|execute|carry out)\w*\s+(?:an?\s+|the\s+)?(?:\w+\s+)?(?:diagnostics?|tests?)\b/i },
+  { id: "restore", rx: /\b(?:restor|reactivat|re-?enabl|enabl|bring(?:ing)?\s+(?:it\s+|them\s+)?back)\w*/i },
 ];
 
 function fail(code: string, packId: string): never {

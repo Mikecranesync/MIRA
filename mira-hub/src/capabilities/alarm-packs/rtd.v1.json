@@ -16,7 +16,7 @@
       "checks": [
         "Read the actual value and the time of the alarm from the alarm history or the diagnostic view.",
         "Compare the sibling channel at the same location, such as the other sensor of a left/right pair.",
-        "Read the input channel's diagnostic (wire break, overrange, underrange) on the HMI diagnostics page or online in the engineering software, read only — change nothing in the controller."
+        "Read the input channel's diagnostic (wire break, overrange, underrange) on the HMI diagnostics page or online in the engineering software in view mode only — do not enter configuration or change any setting in the controller."
       ],
       "does_not_prove": ["an over-temperature", "a sensor fault", "the cause"]
     },
@@ -30,7 +30,7 @@
       "checks": [
         "Read the actual value and the time of the alarm from the alarm history or the diagnostic view.",
         "Compare the sibling channel at the same location, such as the other sensor of a left/right pair.",
-        "Read the input channel's diagnostic (wire break, overrange, underrange) on the HMI diagnostics page or online in the engineering software, read only — change nothing in the controller."
+        "Read the input channel's diagnostic (wire break, overrange, underrange) on the HMI diagnostics page or online in the engineering software in view mode only — do not enter configuration or change any setting in the controller."
       ],
       "does_not_prove": ["an under-temperature", "a sensor fault", "the cause"]
     },
@@ -44,7 +44,7 @@
       "checks": [
         "Read the time of the alarm from the alarm history or the diagnostic view.",
         "Compare the sibling channel at the same location, such as the other sensor of a left/right pair.",
-        "Read the module and channel diagnostics on the HMI diagnostics page or online in the engineering software, read only — change nothing in the controller."
+        "Read the module and channel diagnostics on the HMI diagnostics page or online in the engineering software in view mode only — do not enter configuration or change any setting in the controller."
       ],
       "does_not_prove": ["that a wire is broken", "which part of the loop is open", "the cause"]
     }

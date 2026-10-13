@@ -19,7 +19,7 @@
       ],
       "checks": [
         "Read the full time of each alarm, to the second, from the alarm history or the controller's diagnostic buffer, to see which came first.",
-        "Read the module and channel diagnostics on the HMI diagnostics page or online in the engineering software, read only — change nothing in the controller.",
+        "Read the module and channel diagnostics on the HMI diagnostics page or online in the engineering software in view mode only — do not enter configuration or change any setting in the controller.",
         "On the drawings, find what each listed channel drives and what those circuits share: cable, connector, junction box, load supply."
       ],
       "does_not_prove": ["that a wire is broken", "which alarm came first", "what the outputs drive", "the cause"]
@@ -33,7 +33,7 @@
       ],
       "checks": [
         "Read the full time of each alarm, to the second, from the alarm history or the controller's diagnostic buffer, to see which came first.",
-        "Read the module and channel diagnostics on the HMI diagnostics page or online in the engineering software, read only — change nothing in the controller.",
+        "Read the module and channel diagnostics on the HMI diagnostics page or online in the engineering software in view mode only — do not enter configuration or change any setting in the controller.",
         "On the drawings or a printout of the hardware configuration, find which module the F-I/O start address belongs to and what its channels drive."
       ],
       "does_not_prove": ["which channel or module is at fault", "what the outputs drive", "the cause"]

@@ -85,6 +85,12 @@ describe("parseAlarmRecord", () => {
     expect(l.fGroup).toBe("1");
     expect(l.fAddress).toEqual({ text: "61…", truncated: true });
   });
+  it("passivation fields are recognized whatever their case", () => {
+    const l = parseAlarmRecord(rec("error: safety program: f-i/o channel passivated f-runtime group 1 start address of the f-i/o: 61…"))!;
+    expect(l).not.toBeNull();
+    expect(l.fGroup).toBe("1");
+    expect(l.fAddress).toEqual({ text: "61…", truncated: true });
+  });
   it("temperature too high with a subject", () => {
     const l = parseAlarmRecord(rec("Error: Temperature measurement RIGHT WINDING too high =1.HYD+04-TE3"))!;
     expect([l.kind, l.quantity, l.direction, l.subject]).toEqual(["measurement_limit", "temperature", "high", "RIGHT WINDING"]);

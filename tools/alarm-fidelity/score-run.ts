@@ -10,7 +10,7 @@
  * Exit 0 when the gate passes, 1 when it fails, 2 on bad input.
  */
 import { readFileSync } from "node:fs";
-import { gate, scoreScreen, type ScreenScore } from "../../mira-hub/src/capabilities/alarm-fidelity-score";
+import { gate, MIN_PHOTOS, scoreScreen, type ScreenScore } from "../../mira-hub/src/capabilities/alarm-fidelity-score";
 import { SCREEN_FAIL_SAFE, SCREEN_RTD } from "../../mira-hub/src/capabilities/alarm-screens.fixture";
 
 type Photo = { id: string; screen: "failsafe" | "rtd"; lines: string[] };
@@ -46,6 +46,6 @@ for (const p of run.photos) {
 const g = gate(scores);
 console.log(
   `\nGATE ${g.pass ? "PASS" : "FAIL"} — tags ${(g.designationRate * 100).toFixed(1)} % (need ≥ 90), ` +
-    `grouping ${(g.groupingRate * 100).toFixed(1)} % (need ≥ 90), invented ${g.invented} (need 0), photos ${scores.length}`,
+    `grouping ${(g.groupingRate * 100).toFixed(1)} % (need ≥ 90), invented ${g.invented} (need 0), photos ${g.photos} (need ≥ ${MIN_PHOTOS})`,
 );
 process.exit(g.pass ? 0 : 1);
