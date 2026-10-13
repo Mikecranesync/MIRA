@@ -551,12 +551,19 @@ class InferenceRouter:
         max_tokens: int = 1024,
         session_id: str = "unknown_unknown_unknown",
         sanitize: bool = True,
+        reasoning_retry: bool = True,
     ) -> tuple[str, dict]:
         """Try each provider in cascade order. Return first successful response.
 
         Messages are PII-sanitized by default (IPv4, MAC, serial numbers stripped).
         Pass `sanitize=False` only for offline evals that need to verify the
         sanitizer itself or test PII-detection paths.
+
+        `reasoning_retry=False` makes `max_tokens` a HARD per-attempt cap: the
+        one reasoning-burn retry with `LLM_REASONING_RETRY_MAX_TOKENS` headroom
+        is skipped. Bounded callers (the intent classifier's 300 tokens) use it
+        so a burn costs one capped attempt, not an unguarded 8,192-token one
+        (Codex r1 on #4359).
 
         Returns (content_str, usage_dict) on success.
         Returns ("", {}) when all providers fail.
@@ -608,6 +615,7 @@ class InferenceRouter:
                     max_tokens,
                     session_id,
                     has_image,
+                    reasoning_retry=reasoning_retry,
                     reservation=reservation,
                 )
                 if content:
@@ -650,6 +658,7 @@ class InferenceRouter:
         max_tokens: int,
         session_id: str,
         has_image: bool,
+        reasoning_retry: bool = True,
         reservation: BudgetReservation | None = None,
     ) -> tuple[str, dict]:
         """Call an OpenAI-compatible provider (OpenAI, Groq, Cerebras, Together).
@@ -782,7 +791,7 @@ class InferenceRouter:
                     or bool(message.get("reasoning_content"))
                     or "<think>" in raw_content.lower()
                 )
-                if attempt_idx == 0 and burned and retry_cap > attempt_cap:
+                if reasoning_retry and attempt_idx == 0 and burned and retry_cap > attempt_cap:
                     logger.warning(
                         "REASONING_BURN provider=%s model=%s output=%d cap=%d — "
                         "retrying once with max_tokens=%d",
