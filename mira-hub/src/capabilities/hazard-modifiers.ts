@@ -93,11 +93,6 @@ const SENTENCE_LEAD_IN = new RegExp(
     NP_WORD + "(?:\\s+" + NP_WORD + "){0,2}(?:\\s+" + AUX + "){1,2})?$",
   "i",
 );
-// A comma clause may restart the lead-in ("…only after de-energizing, never
-// while energized") only when the sentence before it carries no frame that
-// could reverse it.
-const COPULA = /\b(?:is|are|was|were|isn't|aren't|wasn't|weren't)\b|'s\b/i;
-const FRAME_BEFORE_COMMA = /\b(?:that|whether|myths?|false|true|untrue|lies?|wrong|incorrect|misconceptions?|rumou?rs?|claims?)\b|:/i;
 const PSEUDO_SRC = `(?:${PSEUDO_TRIGGERS.join("|")})`;
 const PSEUDO_BEFORE_MATCH = new RegExp(`\\b${PSEUDO_SRC}[ \\t]+$`, "i");
 
