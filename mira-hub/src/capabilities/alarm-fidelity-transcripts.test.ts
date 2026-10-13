@@ -4,13 +4,22 @@ import { scoreScreen } from "./alarm-fidelity-score";
 import { photoFromTranscript, transcriptToLines } from "./alarm-fidelity-transcripts";
 import { SCREEN_FAIL_SAFE } from "./alarm-screens.fixture";
 
-// What a general AI chat typically returns: the list in a code block, with blank lines.
+// What a general AI chat typically returns: a sentence of preamble, the list in a code
+// block, and a closing offer — the chat's own words are not screen lines.
 const asChatReply = (lines: readonly string[]) =>
-  ["Here is the alarm list, transcribed exactly:", "", "```", ...lines, "```", ""].join("\n");
+  [
+    "Here is the alarm list, transcribed exactly:",
+    "",
+    "```text",
+    ...lines,
+    "```",
+    "",
+    "Let me know if you want it as a table.",
+  ].join("\n");
 
 describe("alarm fidelity — scoring any reader's transcript (#4404)", () => {
-  it("a faithful transcript keeps every screen line and passes on all three measures", () => {
-    const lines = transcriptToLines(asChatReply(SCREEN_FAIL_SAFE).replace(/^Here is.*\n/, ""));
+  it("a faithful chat reply keeps exactly the screen lines and passes on all three measures", () => {
+    const lines = transcriptToLines(asChatReply(SCREEN_FAIL_SAFE));
     expect(lines).toEqual([...SCREEN_FAIL_SAFE]);
     const s = scoreScreen(SCREEN_FAIL_SAFE, lines);
     expect(s.inventedInCutFields).toBe(0);
