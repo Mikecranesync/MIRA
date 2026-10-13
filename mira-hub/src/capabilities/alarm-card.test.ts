@@ -29,6 +29,9 @@ describe("alarm card — fail-safe output screen", () => {
     expect(idx.every((i) => i >= 0)).toBe(true);
     expect([...idx].sort((a, b) => a - b)).toEqual(idx);
     expect(card.text.trimEnd().endsWith(SITE_PROCEDURE_LINE)).toBe(true);
+    // Exactly once: a copy anywhere earlier would put the energized-step check's
+    // isolation scope in front of the quoted alarm text (spec §7).
+    expect(card.text.split(SITE_PROCEDURE_LINE)).toHaveLength(2);
   });
   it("adds the shared-cause and consequence notes", () => {
     expect(card.text).toContain("Several channels came in at the same time on this screen");
