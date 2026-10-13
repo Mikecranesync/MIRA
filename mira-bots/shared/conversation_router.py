@@ -6,6 +6,7 @@ RIGHT NOW?" Returns one of the defined intents.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -147,6 +148,26 @@ def reset_router_for_tests() -> None:
 # failures in the staging gate.
 ROUTER_MAX_TOKENS = 300
 
+# The classifier's own deadline, covering every provider attempt, wait and
+# retry inside the cascade (Codex r3 F1 on #4359, review of #4391). The shared
+# router's per-provider timeouts (OpenAI 60 s) are longer than the engine's
+# whole-turn deadline (MIRA_PROCESS_TIMEOUT, default 30 s), so a stalled
+# provider used to cancel the turn into TIMEOUT_WARNING before the keyword
+# fallback could run. 8 s is about four times OpenAI's observed classification
+# latency (canary 2026-10-12: 2.1 s) and leaves the turn 22 s to answer. The
+# old direct-Groq client used 5 s.
+ROUTER_DEADLINE_S = 8.0
+
+
+def _escape_session_part(value: str) -> str:
+    """Escape ``%`` then ``_`` so the part can never contain the split delimiter.
+
+    The exact inverse is ``urllib.parse.unquote`` (used by the writer). Every
+    other character is left alone, so a value with neither is unchanged.
+    (``urllib.parse.quote`` cannot do this: it never encodes ``_``.)
+    """
+    return value.replace("%", "%25").replace("_", "%5F")
+
 
 def accounting_session_id(
     tenant_id: str | None, platform: str | None, chat_id: str | int | None
@@ -160,12 +181,18 @@ def accounting_session_id(
     ``ignition:acme:press7``, which the writer would read as tenant
     ``ignition:acme:press7`` / platform ``unknown``; Codex r2 on #4359).
     A missing part is recorded as ``unknown``, never as a word that reads like
-    a tenant. Pure.
+    a tenant.
+
+    Tenant and platform are percent-encoded, so an underscore inside either
+    (an Ignition tenant ``plant_alpha``) cannot move the split; the writer
+    decodes them (Codex r3 F3 on #4359). A value with no ``_`` or ``%`` is
+    unchanged, so ordinary UUID tenants keep their spelling. The chat part is
+    the remainder after the second split and needs no encoding. Pure.
     """
     tenant = (tenant_id or "").strip() or "unknown"
     surface = (platform or "").strip() or "unknown"
     chat = (str(chat_id) if chat_id is not None else "").strip() or "unknown"
-    return f"{tenant}_{surface}_{chat}"
+    return f"{_escape_session_part(tenant)}_{_escape_session_part(surface)}_{chat}"
 
 
 async def _call_router_llm(messages: list[dict], session_id: str | None = None) -> str:
@@ -198,12 +225,30 @@ async def _call_router_llm(messages: list[dict], session_id: str | None = None) 
     # cap — no reasoning-burn retry at the router's 8,192-token headroom — and
     # the usage row carries the caller's session (tenant_platform_chat), not a
     # constant the writer would split into a fictitious tenant/platform.
+    # Its own deadline over the whole cascade (ROUTER_DEADLINE_S): a stalled
+    # provider costs the turn at most this, then the honest fallback, never
+    # the engine's whole-turn deadline. A cancellation from the CALLER is a
+    # CancelledError (BaseException) and propagates; only our own deadline is
+    # caught here. A cancelled OpenAI attempt books its worst case in the
+    # router's finally, so no budget hold is left behind.
     try:
-        content, _usage = await router.complete(
-            messages,
-            max_tokens=ROUTER_MAX_TOKENS,
-            session_id=session_id or "unknown_unknown_unknown",
-            reasoning_retry=False,
+        content, _usage = await asyncio.wait_for(
+            router.complete(
+                messages,
+                max_tokens=ROUTER_MAX_TOKENS,
+                session_id=session_id or "unknown_unknown_unknown",
+                reasoning_retry=False,
+            ),
+            timeout=ROUTER_DEADLINE_S,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("ROUTER_LLM_TIMEOUT after %.1fs — falling back", ROUTER_DEADLINE_S)
+        return json.dumps(
+            {
+                "intent": "continue_current",
+                "confidence": 0.4,
+                "reasoning": f"Router LLM timeout after {ROUTER_DEADLINE_S:.0f}s",
+            }
         )
     except Exception as exc:
         logger.warning("ROUTER_LLM_FAILURE error=%s", str(exc)[:200])

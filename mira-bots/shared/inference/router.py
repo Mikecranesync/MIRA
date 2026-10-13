@@ -31,6 +31,7 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import unquote
 
 import httpx
 import yaml
@@ -907,9 +908,12 @@ class InferenceRouter:
         if not db_path or not os.path.exists(db_path):
             return
 
+        # tenant_platform_rest. Tenant and platform may carry %-escaped
+        # underscores (conversation_router.accounting_session_id; Codex r3 F3
+        # on #4359), so decode them; a part with no % is unchanged.
         parts = session_id.split("_", 2)
-        tenant_id = parts[0] if len(parts) >= 1 else "unknown"
-        platform = parts[1] if len(parts) >= 2 else "unknown"
+        tenant_id = unquote(parts[0]) if len(parts) >= 1 else "unknown"
+        platform = unquote(parts[1]) if len(parts) >= 2 else "unknown"
 
         try:
             con = sqlite3.connect(db_path, timeout=5)

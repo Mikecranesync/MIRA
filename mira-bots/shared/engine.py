@@ -3351,12 +3351,12 @@ class Supervisor:
                     conversation_history=(state.get("context") or {}).get("history", []),
                     current_fsm_state=state.get("state", "IDLE"),
                     asset_identified=state.get("asset_identified", ""),
-                    # Accounting identity, built from the authenticated tenant and
-                    # the surface — never the FSM chat key, whose spelling is the
-                    # surface's own ("ignition:acme:press7"; Codex r2 on #4359).
-                    session_id=accounting_session_id(
-                        tenant_id or self.tenant_id, platform, chat_id
-                    ),
+                    # Accounting identity, built from the RESOLVED tenant (the one
+                    # retrieval uses: explicit, else chat-mapped, else the RAG
+                    # default; Codex r3 F2 on #4359) and the surface — never the
+                    # FSM chat key, whose spelling is the surface's own
+                    # ("ignition:acme:press7"; Codex r2 on #4359).
+                    session_id=accounting_session_id(resolved_tenant, platform, chat_id),
                 )
                 _router_intent = _routing["intent"]
                 _router_conf = float(_routing.get("confidence", 0) or 0)

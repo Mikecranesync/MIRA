@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from urllib.parse import unquote
 import sqlite3
 import sys
 from pathlib import Path
@@ -171,8 +172,10 @@ def test_engine_hands_an_accounting_identity_to_route_intent() -> None:
     idx = src.find("await route_intent(")
     assert idx > 0, "route_intent call not found"
     call = re.sub(r"\s+", " ", src[idx : idx + 1200])
+    # The tenant is the RESOLVED one (Codex r3 F2); behaviour is proven by
+    # test_classification_usage_names_each_chats_resolved_tenant below.
     assert re.search(
-        r"session_id=accounting_session_id\( ?tenant_id or self\.tenant_id, platform, chat_id,? ?\)",
+        r"session_id=accounting_session_id\( ?resolved_tenant, platform, chat_id,? ?\)",
         call,
     ), call
     assert "session_id=str(chat_id)" not in call
@@ -243,6 +246,41 @@ async def test_control_the_bare_ignition_chat_key_is_the_defect(real_router, tmp
             )
     rows = sqlite3.connect(str(db)).execute("SELECT tenant_id, platform FROM api_usage").fetchall()
     assert rows == [("ignition:acme:press7", "unknown")]
+
+
+async def test_underscored_tenants_round_trip_exactly_through_the_real_writer(
+    real_router, tmp_path
+) -> None:
+    # Codex r3 F3 on #4359: the writer splits on the first two underscores, so an
+    # Ignition tenant "plant_alpha" was recorded as tenant "plant", platform
+    # "alpha", merging it with the real tenant "plant". The builder escapes the
+    # parts and the writer decodes them; both tenants land on their own rows.
+    db = tmp_path / "mira.db"
+    db.touch()
+    real_router.write_api_usage = InferenceRouter.write_api_usage
+    _queue(_response(CLASSIFY, completion_tokens=40), _response(CLASSIFY, completion_tokens=40))
+    with patch.dict("os.environ", {"MIRA_DB_PATH": str(db)}):
+        with patch("shared.inference.router.httpx.AsyncClient", _FakeAsyncClient):
+            for tenant in ("plant_alpha", "plant"):
+                await cr.route_intent(
+                    "drive faulted",
+                    [],
+                    "IDLE",
+                    "",
+                    session_id=cr.accounting_session_id(tenant, "ignition", "press7"),
+                )
+    rows = sqlite3.connect(str(db)).execute("SELECT tenant_id, platform FROM api_usage").fetchall()
+    assert rows == [("plant_alpha", "ignition"), ("plant", "ignition")]
+
+
+def test_builder_escapes_only_the_delimiter_and_its_escape() -> None:
+    assert (
+        cr.accounting_session_id("plant_alpha", "ignition", "a_b") == "plant%5Falpha_ignition_a_b"
+    )
+    assert cr.accounting_session_id("50%_off", "web", "c") == "50%25%5Foff_web_c"
+    # Control: an ordinary UUID-style tenant keeps its exact spelling.
+    tid = "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
+    assert cr.accounting_session_id(tid, "web", "c") == f"{tid}_web_c"
 
 
 # The Ignition missing-asset preflight (mira-pipeline/ignition_chat.py::_is_asset_specific)
@@ -367,3 +405,205 @@ async def test_concurrent_classifications_cannot_overshoot_the_cap(
     assert sum('"continue_current"' in o for o in outs) == 4
     assert budget.spent_usd <= budget.cap_usd
     assert budget.held_usd == 0
+
+
+# ---------------------------------------------------------------------------
+# Codex r3 F2 on #4359 (review of #4391) — a caller that passes no tenant (the
+# Open WebUI pipeline) must still have classification usage attributed to the
+# tenant the chat RESOLVES to, the same one retrieval uses, not the Supervisor
+# default. Behavioural, through process_full with the real accounting builder.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def supervisor(tmp_path):
+    from shared.engine import Supervisor
+
+    with patch.dict("os.environ", {"INFERENCE_BACKEND": "local"}):
+        with (
+            patch("shared.engine.VisionWorker"),
+            patch("shared.engine.NameplateWorker"),
+            patch("shared.engine.RAGWorker"),
+            patch("shared.engine.PrintWorker"),
+            patch("shared.engine.PLCWorker"),
+            patch("shared.engine.NemotronClient"),
+            patch("shared.engine.InferenceRouter"),
+        ):
+            sup = Supervisor(
+                db_path=str(tmp_path / "acct.db"),
+                openwebui_url="http://localhost:3000",
+                api_key="test-key",
+                collection_id="test-collection",
+                tenant_id="supervisor-default",
+            )
+    sup.rag.tenant_id = "rag-default"
+    return sup
+
+
+async def test_classification_usage_names_each_chats_resolved_tenant(supervisor) -> None:
+    from unittest.mock import AsyncMock
+
+    mapping = {"chat-a": "plant_alpha", "chat-b": "beta-works"}
+    seen: list[str] = []
+
+    async def capture(**kwargs):
+        seen.append(kwargs["session_id"])
+        return {"intent": "general_question", "confidence": 0.9, "reasoning": "t"}
+
+    with (
+        patch("shared.engine.resolve_tenant", side_effect=lambda chat_id: mapping.get(chat_id)),
+        patch("shared.engine.route_intent", side_effect=capture),
+        patch.object(
+            supervisor,
+            "_handle_general_question",
+            AsyncMock(return_value={"reply": "ok", "dispatch_kind": ""}),
+        ),
+    ):
+        await supervisor.process_full(
+            "chat-a", "how do I read a motor nameplate", platform="openwebui"
+        )
+        await supervisor.process_full(
+            "chat-b", "how do I read a motor nameplate", platform="openwebui"
+        )
+
+    assert len(seen) == 2, seen  # precondition: both turns classified
+    rows = [(unquote(s.split("_", 2)[0]), unquote(s.split("_", 2)[1])) for s in seen]
+    assert rows == [("plant_alpha", "openwebui"), ("beta-works", "openwebui")], seen
+    assert all("supervisor-default" not in s and "rag-default" not in s for s in seen), seen
+
+
+async def test_control_an_explicit_tenant_still_wins(supervisor) -> None:
+    from unittest.mock import AsyncMock
+
+    seen: list[str] = []
+
+    async def capture(**kwargs):
+        seen.append(kwargs["session_id"])
+        return {"intent": "general_question", "confidence": 0.9, "reasoning": "t"}
+
+    with (
+        patch("shared.engine.resolve_tenant", side_effect=lambda chat_id: "plant_alpha"),
+        patch("shared.engine.route_intent", side_effect=capture),
+        patch.object(
+            supervisor,
+            "_handle_general_question",
+            AsyncMock(return_value={"reply": "ok", "dispatch_kind": ""}),
+        ),
+    ):
+        await supervisor.process_full(
+            "chat-a",
+            "how do I read a motor nameplate",
+            platform="telegram",
+            tenant_id="explicit-co",
+        )
+    assert [unquote(s.split("_", 2)[0]) for s in seen] == ["explicit-co"], seen
+
+
+# ---------------------------------------------------------------------------
+# Codex r3 F1 on #4359 (review of #4391) — the classifier has its OWN deadline.
+# The shared router's OpenAI timeout (60 s) is longer than the engine's
+# whole-turn deadline (30 s): a stalled provider cancelled the turn into
+# TIMEOUT_WARNING before the keyword fallback could run.
+# ---------------------------------------------------------------------------
+
+
+class _StalledRouter:
+    enabled = True
+
+    async def complete(self, *args, **kwargs):
+        await asyncio.sleep(3600)
+        return "", {}
+
+
+async def test_a_stalled_classifier_falls_back_at_its_own_deadline(monkeypatch) -> None:
+    monkeypatch.setattr(cr, "_get_router", lambda: _StalledRouter())
+    monkeypatch.setattr(cr, "ROUTER_DEADLINE_S", 0.05)
+    loop = asyncio.get_running_loop()
+    t0 = loop.time()
+    # Outer bound so a regression FAILS (TimeoutError) instead of hanging the suite.
+    out = await asyncio.wait_for(
+        cr._call_router_llm([{"role": "user", "content": "the drive faulted"}], "t_tg_1"), timeout=5
+    )
+    assert loop.time() - t0 < 1.0
+    assert '"continue_current"' in out and "timeout" in out
+
+
+async def test_a_caller_cancellation_still_propagates(monkeypatch) -> None:
+    monkeypatch.setattr(cr, "_get_router", lambda: _StalledRouter())
+    monkeypatch.setattr(cr, "ROUTER_DEADLINE_S", 30.0)
+    task = asyncio.create_task(cr._call_router_llm([{"role": "user", "content": "x"}], "t_tg_1"))
+    await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task  # never swallowed into the fallback JSON
+
+
+async def test_a_timed_out_openai_classification_leaves_no_budget_hold(
+    real_router, fresh_budget, monkeypatch
+) -> None:
+    # The real router + budget: the deadline cancels the in-flight OpenAI attempt,
+    # whose finally books the worst case — nothing stays held against the cap.
+    monkeypatch.setattr(cr, "ROUTER_DEADLINE_S", 0.05)
+    _GatedAsyncClient.gate = asyncio.Event()  # never set: the request stalls
+    _FakeAsyncClient.posts = []
+    with patch("shared.inference.router.httpx.AsyncClient", _GatedAsyncClient):
+        out = await asyncio.wait_for(  # outer bound: a regression fails, not hangs
+            cr._call_router_llm([{"role": "user", "content": "the drive faulted"}], "t_tg_1"),
+            timeout=5,
+        )
+    budget = rb.get_openai_run_budget()
+    assert len(_FakeAsyncClient.posts) == 1  # precondition: the request was in flight
+    assert '"continue_current"' in out
+    assert budget.held_usd == 0
+    assert budget.spent_usd > 0  # the unseen outcome was booked, not forgotten
+
+
+async def test_engine_answers_before_its_deadline_when_the_classifier_stalls(
+    supervisor, monkeypatch
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from shared import engine as engine_mod
+
+    monkeypatch.setattr(cr, "_get_router", lambda: _StalledRouter())
+    monkeypatch.setattr(cr, "ROUTER_DEADLINE_S", 0.05)
+    monkeypatch.setattr(engine_mod, "_PROCESS_TIMEOUT", 2.0)
+    # After the classifier's fallback the turn reaches the retrieval worker.
+    supervisor.rag.process = AsyncMock(
+        return_value="Read the rated voltage on the nameplate data block."
+    )
+    reply = await supervisor.process(
+        "stall-1", "how do I read a motor nameplate", platform="openwebui"
+    )
+    assert reply != engine_mod.TIMEOUT_WARNING
+    assert "rated voltage" in reply
+    supervisor.rag.process.assert_awaited()
+
+
+async def test_control_without_its_own_deadline_the_stall_times_the_turn_out(
+    supervisor, monkeypatch
+) -> None:
+    # The defect, pinned: with the classifier deadline longer than the turn's,
+    # the stalled classification consumes the whole turn.
+    from unittest.mock import AsyncMock
+
+    from shared import engine as engine_mod
+
+    monkeypatch.setattr(cr, "_get_router", lambda: _StalledRouter())
+    monkeypatch.setattr(cr, "ROUTER_DEADLINE_S", 60.0)
+    monkeypatch.setattr(engine_mod, "_PROCESS_TIMEOUT", 0.3)
+    supervisor.rag.process = AsyncMock(
+        return_value="Read the rated voltage on the nameplate data block."
+    )
+    reply = await supervisor.process(
+        "stall-2", "how do I read a motor nameplate", platform="openwebui"
+    )
+    assert reply == engine_mod.TIMEOUT_WARNING
+    supervisor.rag.process.assert_not_awaited()
+
+
+def test_the_classifier_deadline_leaves_the_turn_time_to_answer() -> None:
+    from shared import engine as engine_mod
+
+    # Production defaults: the classifier gives up well inside the turn.
+    assert cr.ROUTER_DEADLINE_S <= engine_mod._PROCESS_TIMEOUT / 3
