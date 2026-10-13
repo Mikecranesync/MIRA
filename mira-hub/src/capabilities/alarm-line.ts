@@ -16,6 +16,9 @@ export type AlarmRecord = {
   status: string | null;
   text: string;
   count: number;
+  /** Date-first history-layout rows only (the "Path"/"Name" columns) — never on a text. */
+  path?: string | null;
+  name?: string | null;
 };
 
 export type Designation = {
@@ -43,7 +46,12 @@ export type AlarmLine = {
   direction: "high" | "low" | null;
   value:
     | { shown: true; number: number; unit: string | null }
-    | { shown: false; reason: "not_displayed" | "zero_and_zero_limit" | "unreadable" | "truncated" | "unrecognized" };
+    | {
+        shown: false;
+        reason:
+          | "not_displayed" | "zero_and_zero_limit" | "unreadable" | "truncated" | "unrecognized"
+          | "contradicts_alarm" | "rounded";
+      };
   limit: { number: number; unit: string | null } | null;
 };
 
@@ -56,6 +64,11 @@ const ROW_PREFIX = new RegExp(
     `(?:(${STATUS})\\s+)?(.*)$`,
 );
 const MESSAGE_START = /^(?:error|warning|fault|alarm|fehler|warnung|störung)\s*:/i;
+// Date-first alarm-history layout: "Event Time Display Path Name Label". Display and the
+// Path/Name columns never appear in the quoted text — only the Label does (spec §5 part 2).
+const HISTORY_ROW_PREFIX = new RegExp(
+  `^(\\d{1,2}/\\d{1,2}/\\d{4})\\s+(\\d{1,2}:\\d{2}:\\d{2})\\s+(\\S+)\\s+(\\d+)\\s+(\\S+)\\s+(.*)$`,
+);
 const FULL_TIME = /^(\d{1,2}):(\d{2}):(\d{2})$/;
 const UNIT = "(°C|°F|Ω|ohm|%|mA|V|A|bar)";
 
@@ -100,6 +113,21 @@ export function groupAlarmRecords(lines: readonly string[], opts: { collapse?: b
   for (const raw of lines) {
     const line = clean(raw);
     if (!line) continue;
+    const hist = HISTORY_ROW_PREFIX.exec(line);
+    if (hist) {
+      records.push({
+        lines: [line],
+        number: null,
+        time: field(hist[2]),
+        date: field(hist[1]),
+        status: null,
+        text: hist[6].trim(),
+        count: 1,
+        path: hist[4],
+        name: hist[5],
+      });
+      continue;
+    }
     const row = ROW_PREFIX.exec(line);
     if (row) {
       records.push({
@@ -146,6 +174,11 @@ function collapseDuplicates(records: AlarmRecord[]): AlarmRecord[] {
   return out;
 }
 
+/** A row from the date-first history layout (has the Path/Name columns the standard layout lacks). */
+export function isHistoryRecord(record: AlarmRecord): boolean {
+  return record.path != null || record.name != null;
+}
+
 export function parseDesignations(text: string): Designation[] {
   const out: Designation[] = [];
   for (const m of text.matchAll(DESIGNATION)) {
@@ -181,9 +214,39 @@ function parseValue(t: string): AlarmLine["value"] {
   return { shown: true, number: n, unit: m[3] ?? null };
 }
 
+// History-layout reading: "(N <unit>, limit is M <unit>)" or "(N <unit>, limit M <unit>)". The
+// unit may arrive garbled ("Â°C", "Â, A°C", "Ã, Â°C") — key on the ", limit" structure, never
+// on the unit spelling (spec §5 part 2). `[^()]*?` (lazy) absorbs any garbled unit text,
+// including a stray embedded comma, up to the real ", limit" boundary.
+const HISTORY_READING = /\((-?\d+(?:[.,]\d+)?)[^()]*?,\s*limit(?:\s+is)?\s+(-?\d+(?:[.,]\d+)?)[^()]*?\)/i;
+
+function detectUnit(s: string): string | null {
+  if (/ohm|Ω/i.test(s)) return "Ohm";
+  if (/C/.test(s)) return "°C";
+  return null;
+}
+
+/** History-layout value + limit, parsed from the reading in parentheses (spec §5 part 2). */
+function parseHistoryValue(t: string, direction: AlarmLine["direction"]): { value: AlarmLine["value"]; limit: AlarmLine["limit"] } {
+  const m = HISTORY_READING.exec(t);
+  if (!m) return { value: parseValue(t), limit: parseLimit(t) };
+  const n = num(m[1]);
+  const limitNum = num(m[2]);
+  const unit = detectUnit(m[0]);
+  const limit = { number: limitNum, unit };
+  if (n === 0 && limitNum === 0) return { value: { shown: false, reason: "zero_and_zero_limit" }, limit };
+  if (direction === "high" && n < limitNum) return { value: { shown: false, reason: "contradicts_alarm" }, limit };
+  if (direction === "low" && n > limitNum) return { value: { shown: false, reason: "contradicts_alarm" }, limit };
+  if (n === limitNum && direction) return { value: { shown: false, reason: "rounded" }, limit };
+  return { value: { shown: true, number: n, unit }, limit };
+}
+
 export function parseAlarmRecord(record: AlarmRecord): AlarmLine | null {
   const t = record.text;
-  const designations = parseDesignations(t).sort((a, b) => (b.device?.length ?? 0) - (a.device?.length ?? 0));
+  // History-layout rows carry their designation in the Name column, stripped out of the
+  // quoted text (spec §5 part 2) — parse it from there too.
+  const designations = parseDesignations(record.name ? `${t} ${record.name}` : t)
+    .sort((a, b) => (b.device?.length ?? 0) - (a.device?.length ?? 0));
   const ch = RX.channel.exec(t);
   const channel = ch
     ? { io: (ch[1].toLowerCase() === "output" ? "output" : "input") as "input" | "output", number: Number(ch[2]) }
@@ -210,6 +273,9 @@ export function parseAlarmRecord(record: AlarmRecord): AlarmLine | null {
   if (!identified) return null;
 
   const isMeasurement = kind === "measurement_limit";
+  const { value, limit } = isHistoryRecord(record)
+    ? parseHistoryValue(t, direction)
+    : { value: parseValue(t), limit: parseLimit(t) };
   return {
     record,
     designations,
@@ -221,7 +287,7 @@ export function parseAlarmRecord(record: AlarmRecord): AlarmLine | null {
     quantity,
     subject: isMeasurement ? RX.subject.exec(t)?.[1]?.trim() ?? null : null,
     direction: isMeasurement ? direction : null,
-    value: parseValue(t),
-    limit: parseLimit(t),
+    value,
+    limit,
   };
 }

@@ -72,3 +72,19 @@ export const SCREEN_UNCOVERED_ONLY: readonly string[] = [
   "21 10:00:01 11/05/2027 I Error: Overrange on Input channel 2",
   "=1.HYD+04-A2.1-3.",
 ];
+
+/**
+ * Date-first alarm-history layout: "Event Time Display Path Name Label". One line per
+ * record, no wrapping, newest-first. The RTD alarm appears three times with garbled
+ * degree signs (Â°C, Â, A°C) — the middle one prints 0 against a limit of 0, and the
+ * earliest (05:58:02) is the real first-out, reading on the safe side of its limit.
+ */
+export const SCREEN_HISTORY: readonly string[] = [
+  "Event Time Display Path Name Label",
+  "11/05/2027 06:02:19 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (88Â°C, limit is 70Â°C)",
+  "11/05/2027 06:01:40 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (0Â, A°C, limit is 0Â, A°C)",
+  "11/05/2027 05:58:02 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (0°C, limit is 70°C)",
+  "11/05/2027 05:40:11 Line1 589 =k.TBR+QM1-Meas resistance measurement COIL PHASE V too high (1 Ohm, limit is 1 Ohm)",
+  "11/05/2027 05:39:58 Line2 661 =k.HP2+00-AS AUTOMATIC START automatic stop",
+  "11/05/2027 05:39:58 Line2 842 =k.HP2+82.09-B15-C proximity switch DOOR CLOSED not flagged",
+];

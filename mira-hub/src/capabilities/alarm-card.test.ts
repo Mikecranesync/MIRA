@@ -5,7 +5,7 @@ import { stepEnergyContradiction } from "./step-energy";
 import { SITE_PROCEDURE_LINE } from "./alarm-packs/loader";
 import {
   SCREEN_FAIL_SAFE, SCREEN_FAIL_SAFE_PASSIVATION_FIRST, SCREEN_PASSIVATION_ONLY,
-  SCREEN_RTD, SCREEN_NEGATIVE, SCREEN_UNCOVERED_ONLY,
+  SCREEN_RTD, SCREEN_NEGATIVE, SCREEN_UNCOVERED_ONLY, SCREEN_HISTORY,
 } from "./alarm-screens.fixture";
 
 const HEADINGS = ["**Alarm**", "**What it means**", "**Two hypotheses**", "**Next three checks**", "**What this does not prove**"];
@@ -170,5 +170,59 @@ describe("alarm card — a shown value", () => {
     expect(card).not.toBeNull();
     passesCheckers(card.text);
     if (card.valuesRedacted) expect(card.text).toContain("values left on your photo");
+  });
+});
+
+describe("alarm card — date-first history layout screen", () => {
+  const card = buildAlarmCard(SCREEN_HISTORY)!;
+  it("builds a card, led by the earliest same-day reading (first-out), on the safe side of its limit", () => {
+    expect(card).not.toBeNull();
+    expect(card.firstOut).toBe(true);
+    expect(card.lead.record.text).toContain("(0°C, limit is 70°C)");
+  });
+  it("says the value is on the safe side of its limit, under What I could not read", () => {
+    const cannot = card.text.slice(card.text.indexOf("**What I could not read**"));
+    expect(cannot).toContain(
+      "The value shown is on the safe side of its limit, so it is not the reading that raised this alarm — read the value at the alarm time from the diagnostic view.",
+    );
+  });
+  it("keeps the fixed section order and passes both checkers", () => {
+    const idx = HEADINGS.map((h) => card.text.indexOf(h));
+    expect(idx.every((i) => i >= 0)).toBe(true);
+    expect([...idx].sort((a, b) => a - b)).toEqual(idx);
+    passesCheckers(card.text);
+  });
+});
+
+describe("alarm card — history-layout reason wording", () => {
+  const header = "Event Time Display Path Name Label";
+  it("zero_and_zero_limit on a history record gets the diagnostic-view wording, not the alarm-history one", () => {
+    const card = buildAlarmCard([
+      header,
+      "11/05/2027 06:01:40 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (0Â, A°C, limit is 0Â, A°C)",
+    ])!;
+    expect(card).not.toBeNull();
+    const cannot = card.text.slice(card.text.indexOf("**What I could not read**"));
+    expect(cannot).toContain(
+      "The screen prints 0 against a limit of 0, so this line does not show the real reading — read it from the diagnostic view.",
+    );
+    expect(card.text).not.toContain("The reading isn't shown on this screen — read it from the alarm history.");
+    passesCheckers(card.text);
+  });
+  it("the existing-layout zero_and_zero_limit wording stays byte-identical", () => {
+    const card = buildAlarmCard(SCREEN_RTD)!;
+    expect(card.text).toContain("The reading isn't shown on this screen — read it from the alarm history.");
+  });
+  it("rounded gets the diagnostic-view wording", () => {
+    const card = buildAlarmCard([
+      header,
+      "11/05/2027 06:01:40 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (70°C, limit is 70°C)",
+    ])!;
+    expect(card).not.toBeNull();
+    const cannot = card.text.slice(card.text.indexOf("**What I could not read**"));
+    expect(cannot).toContain(
+      "The value shown equals its limit; the screen may be rounding it — read the exact value from the diagnostic view.",
+    );
+    passesCheckers(card.text);
   });
 });
