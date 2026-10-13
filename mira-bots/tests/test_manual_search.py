@@ -172,6 +172,23 @@ async def test_ge_fanuc_search_starts_on_emersons_own_site():
 
 
 @pytest.mark.asyncio
+async def test_a_bare_ge_search_is_not_scoped_to_emerson():
+    # A bare "GE" may be a motor or relay, not GE's former PLC/HMI line, so its
+    # first pass must not be confined to emerson.com.
+    sent: list[str] = []
+
+    async def recording_serper(query: str, num: int = 10):
+        sent.append(query)
+        return []
+
+    with patch.object(search_mod, "_serper_search", recording_serper):
+        assert await search_mod.search_manual("GE", "5KS184SAA205") is None
+
+    assert sent, "no search pass was sent"
+    assert not any("site:emerson.com" in q for q in sent)
+
+
+@pytest.mark.asyncio
 async def test_unknown_maker_search_is_not_site_scoped():
     # Control: a maker with no OEM-domain entry gets no site-scoped first pass.
     sent: list[str] = []

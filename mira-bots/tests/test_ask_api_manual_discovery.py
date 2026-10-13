@@ -829,12 +829,17 @@ class TestIsOemHost:
         assert is_oem_host("emerson", "emerson.com") is True
 
     def test_ge_automation_names_map_to_emerson(self):
-        # Technicians read "GE Fanuc" / "GE" off the hardware; the documentation
-        # now lives on emerson.com.
+        # Technicians read "GE Fanuc" off the hardware; the documentation for
+        # GE's PLC/HMI line now lives on emerson.com.
         assert is_oem_host("GE Fanuc", "www.emerson.com") is True
         assert is_oem_host("GE Intelligent Platforms", "www.emerson.com") is True
         assert is_oem_host("GE Automation", "www.emerson.com") is True
-        assert is_oem_host("GE", "www.emerson.com") is True
+
+    def test_a_bare_ge_is_not_mapped_to_emerson(self):
+        # A bare "GE" is ambiguous: GE's motor, relay and power lines are not
+        # Emerson's, and oem_host gates auto-import. It must not make an
+        # emerson.com PDF count as the maker's own documentation.
+        assert is_oem_host("GE", "www.emerson.com") is False
 
     def test_ge_lookalike_names_do_not_map_to_emerson(self):
         # Exact-key lookup: a name that merely contains "ge" must not inherit
