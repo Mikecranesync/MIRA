@@ -1157,10 +1157,12 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
         # rather than surfacing an unread stranger.
         unread = [c for c in ranked if not _judge.is_rejected(c)]
         deduped = [c for c in unread if _judge.relevant(c, make, model)]
-        if not deduped and rejected:
-            deduped = []
-        elif not deduped:
-            deduped = unread
+        if not deduped and not rejected:
+            # #4400: nothing names the make or the model and nothing was judged. The
+            # old fallback to EVERY unread candidate offered a reseller's company
+            # profile as "a possible manual"; a stranger may win only by being read
+            # and judged the manual (above). An honest miss instead.
+            return None
         if not deduped:
             worst = next((c for c in ranked if _judge.is_rejected(c)), ranked[0])
             code, line = _judge.judge_summary(worst)

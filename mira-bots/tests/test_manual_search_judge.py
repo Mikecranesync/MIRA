@@ -1059,3 +1059,55 @@ async def test_r2_f1_the_callers_shorter_timeout_caps_the_upgrade(monkeypatch):
         timeout=timeout,
     )
     assert got is not None and judge.is_match(got) and got["validated"] is True
+
+
+# #4400 — staging 2026-10-13, "GE Fanuc IC752DPA062A" (2/2): the only hits were a
+# reseller's company profile and unrelated archive PDFs. None names the make or the
+# model, none could be read, and the finder still offered the company profile as
+# "a possible manual". An unread candidate is offered for review ONLY if it names the
+# make or the model; a stranger can win only by being READ and judged the manual.
+_STRANGERS = [
+    (
+        "https://5.imimg.com/data5/SELLER/Doc/2026/7/1/XM/GE/KP/1/brightech-company-profile-5.pdf",
+        "industrial - automation and - image",
+    ),
+    ("https://msa.maryland.gov/megafile/msa/cm1134/000058.pdf", "BALTIMORE CITY HEALTH DEPARTMENT"),
+]
+
+
+async def test_unread_strangers_are_never_offered_as_a_possible_manual(wired, monkeypatch):
+    assert not any(
+        judge.relevant({"url": u, "title": t}, "GE Fanuc", "IC752DPA062A") for u, t in _STRANGERS
+    )
+
+    async def serper(query, num=10):
+        return [{"link": u, "title": t} for u, t in _STRANGERS]
+
+    async def head_ok(url):
+        return True
+
+    monkeypatch.setattr(search_mod, "_serper_search", serper)
+    monkeypatch.setattr(search_mod, "_score", lambda url, title, make, model: 25)
+    monkeypatch.setattr(search_mod, "validate_pdf", head_ok)
+    # wired's fetch returns None for these URLs: unread, so unjudged.
+    assert await search_mod.search_manual("GE Fanuc", "IC752DPA062A") is None
+
+
+async def test_an_unread_candidate_naming_the_model_is_still_offered_for_review(wired, monkeypatch):
+    # Control: uncertain stays uncertain — a relevant candidate the judge could not
+    # read is still handed back unvalidated, for the technician to check.
+    named = "https://cdn.example.com/docs/ic752dpa062a-operator-interface-manual.pdf"
+    assert judge.relevant({"url": named, "title": ""}, "GE Fanuc", "IC752DPA062A")
+
+    async def serper(query, num=10):
+        return [{"link": named, "title": "Operator interface manual"}]
+
+    async def head_ok(url):
+        return True
+
+    monkeypatch.setattr(search_mod, "_serper_search", serper)
+    monkeypatch.setattr(search_mod, "_score", lambda url, title, make, model: 25)
+    monkeypatch.setattr(search_mod, "validate_pdf", head_ok)
+    r = await search_mod.search_manual("GE Fanuc", "IC752DPA062A")
+    assert r is not None and r["url"] == named
+    assert r["validated"] is False and r["reason"] == judge.REASON_JUDGE_UNAVAILABLE
