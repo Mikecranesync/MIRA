@@ -1,0 +1,42 @@
+{
+  "pack_id": "fail-safe-output",
+  "version": 1,
+  "title": "fail-safe output",
+  "source": "MIRA engineering reference",
+  "invalidated_by": "Any reviewed edit to these entries; bump version.",
+  "site_procedure_line": "Anything that opens an enclosure or touches the circuit follows your site's lockout procedure with the equipment out of service.",
+  "rules": {
+    "shared_cause": "Several channels came in at the same time on this screen — look first for something they share (cable, connector, junction box, load supply) before chasing separate faults.",
+    "consequence": "The passivation messages are most likely the safety program's response to these wire breaks. This screen doesn't show which passivation belongs to which channel."
+  },
+  "entries": [
+    {
+      "key": "io_diagnostic:wire_break:output",
+      "means": "The output channel reports that it cannot detect its load — the module's wire-break check tripped.",
+      "hypotheses": [
+        "An open circuit between the output and its load: wire, terminal, connector, or the load's own coil or element.",
+        "The load is connected but draws less current than the channel needs to detect it, for example after an actuator or relay was replaced with a different type."
+      ],
+      "checks": [
+        "Read the full time of each alarm, to the second, from the alarm history or the controller's diagnostic buffer, to see which came first.",
+        "Read the module and channel diagnostics on the HMI diagnostics page or online in the engineering software, read only — change nothing in the controller.",
+        "On the drawings, find what each listed channel drives and what those circuits share: cable, connector, junction box, load supply."
+      ],
+      "does_not_prove": ["that a wire is broken", "which alarm came first", "what the outputs drive", "the cause"]
+    },
+    {
+      "key": "safety_passivation",
+      "means": "The safety program switched this channel to its safe state — output off — because of a fault it was told about. It stays there while the fault is present.",
+      "hypotheses": [
+        "A channel or module fault the module reported to the safety program.",
+        "A communication fault between the controller and the module. The diagnostic buffer tells these apart."
+      ],
+      "checks": [
+        "Read the full time of each alarm, to the second, from the alarm history or the controller's diagnostic buffer, to see which came first.",
+        "Read the module and channel diagnostics on the HMI diagnostics page or online in the engineering software, read only — change nothing in the controller.",
+        "On the drawings or a printout of the hardware configuration, find which module the F-I/O start address belongs to and what its channels drive."
+      ],
+      "does_not_prove": ["which channel or module is at fault", "what the outputs drive", "the cause"]
+    }
+  ]
+}

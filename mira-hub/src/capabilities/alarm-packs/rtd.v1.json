@@ -1,0 +1,52 @@
+{
+  "pack_id": "rtd",
+  "version": 1,
+  "title": "RTD",
+  "source": "MIRA engineering reference",
+  "invalidated_by": "Any reviewed edit to these entries; bump version.",
+  "site_procedure_line": "Anything that opens an enclosure or touches the circuit follows your site's lockout procedure with the equipment out of service.",
+  "entries": [
+    {
+      "key": "measurement_limit:temperature:high",
+      "means": "A temperature measurement is above its alarm limit.",
+      "hypotheses": [
+        "The measured point really is above its limit.",
+        "The RTD loop is open or high-resistance (lead, terminal, joint, or element). That also raises a wire-break or overrange diagnostic on the input channel."
+      ],
+      "checks": [
+        "Read the actual value and the time of the alarm from the alarm history or the diagnostic view.",
+        "Compare the sibling channel at the same location, such as the other sensor of a left/right pair.",
+        "Read the input channel's diagnostic (wire break, overrange, underrange) on the HMI diagnostics page or online in the engineering software, read only — change nothing in the controller."
+      ],
+      "does_not_prove": ["an over-temperature", "a sensor fault", "the cause"]
+    },
+    {
+      "key": "measurement_limit:temperature:low",
+      "means": "A temperature measurement is below its alarm limit.",
+      "hypotheses": [
+        "The measured point really is below its limit.",
+        "The RTD or its leads are shorted, or the channel is configured for the wrong sensor type."
+      ],
+      "checks": [
+        "Read the actual value and the time of the alarm from the alarm history or the diagnostic view.",
+        "Compare the sibling channel at the same location, such as the other sensor of a left/right pair.",
+        "Read the input channel's diagnostic (wire break, overrange, underrange) on the HMI diagnostics page or online in the engineering software, read only — change nothing in the controller."
+      ],
+      "does_not_prove": ["an under-temperature", "a sensor fault", "the cause"]
+    },
+    {
+      "key": "io_diagnostic:wire_break:input",
+      "means": "The input channel reports an open circuit in its field wiring.",
+      "hypotheses": [
+        "An open circuit in the field loop: lead, terminal, joint, or the sensor element.",
+        "A failed input channel."
+      ],
+      "checks": [
+        "Read the time of the alarm from the alarm history or the diagnostic view.",
+        "Compare the sibling channel at the same location, such as the other sensor of a left/right pair.",
+        "Read the module and channel diagnostics on the HMI diagnostics page or online in the engineering software, read only — change nothing in the controller."
+      ],
+      "does_not_prove": ["that a wire is broken", "which part of the loop is open", "the cause"]
+    }
+  ]
+}
