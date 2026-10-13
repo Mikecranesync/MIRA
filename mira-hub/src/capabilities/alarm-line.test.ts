@@ -288,4 +288,13 @@ describe("parseAlarmRecord — history-layout readings in parentheses", () => {
     const l = parseAlarmRecord(records[0])!;
     expect(l.value).toEqual({ shown: false, reason: "unrecognized" });
   });
+  it("a unit is °C only when a degree sign (or its garble) is there — VDC is not °C", () => {
+    const [r] = groupAlarmRecords([
+      "Event Time Display Path Name Label",
+      "11/05/2027 06:02:19 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (88 VDC, limit is 70 VDC)",
+    ]);
+    const l = parseAlarmRecord(r)!;
+    expect(l.value).toEqual({ shown: true, number: 88, unit: null });
+    expect(l.limit).toEqual({ number: 70, unit: null });
+  });
 });

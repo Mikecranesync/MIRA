@@ -223,7 +223,8 @@ const HISTORY_READING = /\((-?\d+(?:[.,]\d+)?)[^()]*?,\s*limit(?:\s+is)?\s+(-?\d
 
 function detectUnit(s: string): string | null {
   if (/ohm|Ω/i.test(s)) return "Ohm";
-  if (/C/.test(s)) return "°C";
+  // °C only with a degree sign or its garble ("Â°C", "Â, A°C", "Ã, Â°C") — never "VDC" (review #4393).
+  if (/[°ºÂÃ][^()]*C/.test(s)) return "°C";
   return null;
 }
 
