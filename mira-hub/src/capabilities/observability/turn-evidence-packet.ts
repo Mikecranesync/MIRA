@@ -215,6 +215,12 @@ export type TurnEvidencePacketAnswerGate = {
    * the packet.
    */
   citations_shipped: number;
+  /** Weak-evidence badge (jev-weak-evidence.ts, `MIRA_JEV_WEAK_EVIDENCE_BADGE`):
+   *  true when the rule fired and the turn's evidence label was replaced. The
+   *  badge RATE over this field is what the 2026-10-12 adjudication asks to
+   *  measure before the rule touches anything else. Optional: absent on paths
+   *  that never evaluate it (read as false). */
+  weak_evidence_badge?: boolean;
   /**
    * #4315 (observe-only): numeric values the answer cited that appear nowhere in the
    * cited page's model-visible text (number + unit). A count — never the values or any
@@ -421,6 +427,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       jev_observation_count: null,
       jev_instructions_version: null,
       citations_shipped: 0,
+      weak_evidence_badge: false,
       evidence_followed: null,
       gate_match: null,
     },
