@@ -57,6 +57,17 @@ export function jevDecisionEnabled(): boolean {
   return process.env.MIRA_JEV_DECISION === "1";
 }
 
+/** The weak-evidence badge (jev-weak-evidence.ts) — the first CONSULTED use of
+ *  the sufficiency shadow, proposed by the 2026-10-12 adjudication
+ *  (`docs/proofs/2026-10-12-jev-shadow-adjudication.md`). A third flag, on
+ *  purpose: it changes what the technician SEES, where the two above only
+ *  record. It needs `MIRA_JEV_SHADOW=1` to have a score to read; alone it is
+ *  inert. It never withholds an answer and never asks a question — it only
+ *  relabels the evidence frame and marks the status frame. Staging only. */
+export function jevWeakEvidenceBadgeEnabled(): boolean {
+  return process.env.MIRA_JEV_WEAK_EVIDENCE_BADGE === "1";
+}
+
 /** Parses the W3C-Baggage-shaped `OTEL_RESOURCE_ATTRIBUTES` (`k1=v1,k2=v2`). */
 function parseResourceAttributes(raw: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
