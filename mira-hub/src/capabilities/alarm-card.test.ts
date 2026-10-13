@@ -231,6 +231,26 @@ describe("alarm card — history-layout reason wording", () => {
     expect(card.firstOut).toBe(true);
     expect(card.lead.record.text).toContain("LEFT WINDING");
   });
+  // Across dates, clock times cannot be compared (00:01 the next day is later than 23:58), so the
+  // list's own order stands. The "can't order these alarms — read the alarm history" note is not
+  // shown: the tech is already on the alarm history, and each row carries its own date and time.
+  it("a history list spanning two dates keeps the list's order and adds no order note", () => {
+    const card = buildAlarmCard([
+      header,
+      "11/05/2027 00:01:10 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (85°C, limit is 70°C)",
+      "11/04/2027 23:58:02 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (90°C, limit is 70°C)",
+    ])!;
+    expect(card).not.toBeNull();
+    expect(card.covered).toHaveLength(2);
+    expect(card.firstOut).toBe(false);
+    expect(card.lead.record.date?.text).toBe("11/05/2027");
+    expect(card.lead.record.text).toContain("(85°C, limit is 70°C)");
+    const also = card.text.slice(card.text.indexOf("**Also on this screen**"));
+    expect(also).toContain("(90°C, limit is 70°C)");
+    expect(card.text).not.toContain("I can't order these alarms from this screen");
+    expect(card.text).not.toContain("This screen cuts off the times");
+    passesCheckers(card.text);
+  });
   it("rounded gets the diagnostic-view wording", () => {
     const card = buildAlarmCard([
       header,
