@@ -45,8 +45,11 @@ function pickLead(covered: AlarmLine[]): { lead: AlarmLine; firstOut: boolean; n
   const pool = causes.length > 0 ? causes : covered;
   if (pool.length === 1) return { lead: pool[0], firstOut: false, note: null };
   const secs = pool.map((l) => fullSeconds(l.record));
-  const dates = new Set(pool.map((l) => (l.record.date ? `${l.record.date.text}|${l.record.date.truncated}` : "")));
-  const sameDay = dates.size === 1 && !pool.some((l) => l.record.date?.truncated);
+  // First-out needs every record to show the SAME full date: times without a date cannot be
+  // ordered (23:59:58 and 00:00:03 may be different days) — review #4389 r7.
+  const dates = new Set(pool.map((l) => l.record.date?.text ?? ""));
+  const sameDay =
+    dates.size === 1 && !dates.has("") && !pool.some((l) => !l.record.date || l.record.date.truncated);
   if (secs.every((s) => s !== null) && sameDay) {
     let best = 0;
     secs.forEach((s, i) => { if ((s as number) < (secs[best] as number)) best = i; });
@@ -67,9 +70,11 @@ function sharedCause(covered: AlarmLine[]): boolean {
   for (const l of covered) {
     if (l.kind !== "io_diagnostic" || l.diagnostic !== "wire_break" || !l.record.time) continue;
     const who = `${l.designations[0]?.raw ?? ""}#${l.channel?.number ?? ""}`;
-    const set = byTime.get(l.record.time.text) ?? new Set<string>();
+    // "Same time" means same date AND same visible time — review #4389 r7.
+    const when = `${l.record.date?.text ?? ""}|${l.record.time.text}`;
+    const set = byTime.get(when) ?? new Set<string>();
     set.add(who);
-    byTime.set(l.record.time.text, set);
+    byTime.set(when, set);
   }
   return [...byTime.values()].some((s) => s.size >= 2);
 }

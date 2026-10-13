@@ -116,6 +116,31 @@ describe("alarm card — shared-cause rule edges", () => {
   });
 });
 
+describe("alarm card — dates", () => {
+  it("full times without dates are not ordered (they may span midnight)", () => {
+    const card = buildAlarmCard([
+      "40 23:59:58 I Error: Wire break on Output channel 1", "=y.CTL+07-K4.1-2.",
+      "40 00:00:03 I Error: Wire break on Output channel 5", "=y.CTL+07-K4.1-2.",
+    ])!;
+    expect(card.firstOut).toBe(false);
+    expect(card.text).toContain("I can't order these alarms from this screen — read the order from the alarm history.");
+  });
+  it("the same clock time on different dates is not the same moment", () => {
+    const card = buildAlarmCard([
+      "40 08:14:31 03/02/2027 I Error: Wire break on Output channel 1", "=y.CTL+07-K4.1-2.",
+      "40 08:14:31 03/03/2027 I Error: Wire break on Output channel 5", "=y.CTL+07-K4.1-2.",
+    ])!;
+    expect(card.text).not.toContain("Several channels came in at the same time");
+  });
+  it("control: the same time on the same date still is", () => {
+    const card = buildAlarmCard([
+      "40 08:14:31 03/02/2027 I Error: Wire break on Output channel 1", "=y.CTL+07-K4.1-2.",
+      "40 08:14:31 03/02/2027 I Error: Wire break on Output channel 5", "=y.CTL+07-K4.1-2.",
+    ])!;
+    expect(card.text).toContain("Several channels came in at the same time on this screen");
+  });
+});
+
 describe("alarm card — a shown value", () => {
   it("either shows the value or leaves it on the photo; never fails the checker", () => {
     const card = buildAlarmCard([
