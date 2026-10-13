@@ -229,11 +229,14 @@ import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validatio
 import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import {
+  JUDGE_OUTPUT_TOKENS,
+  judgeHoldInputBound,
   selectForSemanticCheck,
   semanticCheckEnabled,
   semanticSafetyCheck,
   triageSemanticSafetyCheck,
   type HazardTriageResult,
+  type JudgeOpenAiHold,
 } from "@/capabilities/answer-safety-check";
 
 export const dynamic = "force-dynamic";
@@ -3140,6 +3143,10 @@ async function handleChatTurn(
       clientAbort.abort();
     },
     async start(controller) {
+      // #4355 option 1 (Mike, 2026-10-12): room for this turn's safety-judge
+      // OpenAI call, held together with the OpenAI answer's. Released in the
+      // `finally` below on every exit; a no-op once the judge has settled it.
+      let judgeHold: JudgeOpenAiHold | null = null;
       try {
       // Turn Flight Recorder correlation frame — FIRST, additive, only when a
       // real trace id exists (see file header + notebook-chat-types.ts).
@@ -3210,6 +3217,10 @@ async function handleChatTurn(
       // The completion cap the request ACTUALLY sends (the legacy body ignores
       // outputCap), so the hold is sized by what the provider may bill.
       const requestCap = seam ? Math.min(coverageDirective ? 1400 : 800, outputCap) : coverageDirective ? 1400 : 800;
+      // The semantic judge runs on every served answer while the gate is on, and
+      // it calls OpenAI first. Its room is sized now, before the answer exists.
+      const judgeWillRun = gate && semanticCheckEnabled();
+      const judgeInputBound = judgeWillRun ? judgeHoldInputBound(message, requestCap) : 0;
       cascade: for (const provider of cascadeProviders) {
         if (!provider.key) continue;
         // STRM-2: a stopped turn must never open a second provider stream.
@@ -3242,6 +3253,24 @@ async function handleChatTurn(
             logBudgetExhausted("notebook-chat", verdict);
             if (seam) attempted.push(provider.name);
             continue;
+          }
+          // Option 1: OpenAI writes the answer only if its safety check also
+          // fits — otherwise a flagged answer could go out unjudged at the cap
+          // edge (the route fails open on "unknown", #4022). Same refusal as
+          // above when the pair does not fit; with no other live provider that
+          // turn gets the provider-exhaustion frame instead of an answer (a band
+          // of one judge hold, about 0.4 to 1.2 cents, at the cap edge).
+          // Residual: an answer denser than the hold's 8 bytes per token makes
+          // the judge re-reserve, which can be refused (see answer-safety-check).
+          if (judgeWillRun && !judgeHold) {
+            const judgeVerdict = openAiRunBudget().reserve(judgeInputBound, JUDGE_OUTPUT_TOKENS);
+            if (!judgeVerdict.ok) {
+              verdict.reservation.release();
+              logBudgetExhausted("notebook-chat+safety-judge", judgeVerdict);
+              if (seam) attempted.push(provider.name);
+              continue;
+            }
+            judgeHold = { reservation: judgeVerdict.reservation, inputBound: judgeInputBound };
           }
           reservation = verdict.reservation;
         }
@@ -3770,6 +3799,7 @@ async function handleChatTurn(
           answerText,
           general: !docGrounded,
           selectedClass,
+          openAiHold: judgeHold,
         });
         console.log(`[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`);
         // 2026-09-27 (Mike, settles #4022): the judge FLAGS, it never
@@ -4248,6 +4278,10 @@ async function handleChatTurn(
         } catch {
           // A cancelled response controller is already terminal.
         }
+      } finally {
+        // #4355 option 1: a judge hold the judge never used (answer not served,
+        // gate path skipped, an exception) must not pin cap room forever.
+        judgeHold?.reservation.release();
       }
     },
   });

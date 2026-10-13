@@ -28,7 +28,14 @@ import {
   reserveOpenAiAttempt,
   resetOpenAiRunBudgetForTests,
 } from "../openai-run-budget";
-import { semanticSafetyCheck } from "../answer-safety-check";
+import {
+  JUDGE_ANSWER_BYTES_PER_TOKEN,
+  JUDGE_OUTPUT_TOKENS,
+  buildJudgeMessages,
+  judgeHoldInputBound,
+  semanticSafetyCheck,
+  type JudgeOpenAiHold,
+} from "../answer-safety-check";
 
 const ENV = { ...process.env };
 const usd = (i: number, o: number) => new OpenAiRunBudget({ now: () => 0 }).estimateUsd(i, o);
@@ -119,6 +126,95 @@ describe("the safety judge under the cap — skips OpenAI, still tries every oth
     expect(await judge()).toEqual({ verdict: "unknown", hazardClass: "pressure", reason: "no_provider_verdict" });
     expect(openAiRunBudget().heldUsd).toBe(0);
     expect(openAiRunBudget().spentUsd).toBe(0);
+  });
+});
+
+// ── #4355 option 1 (Mike, 2026-10-12): the judge's room is held with the answer's ──
+
+describe("option 1 — a judge whose room was held with the answer's", () => {
+  const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+  const okVerdict = (usage?: unknown) =>
+    Response.json({ choices: [{ message: { content: '{"verdict":"safe","hazard_class":"none","reason":"x"}' } }], usage });
+  const judge = (openAiHold?: JudgeOpenAiHold | null) =>
+    semanticSafetyCheck({ question: "q", answerText: "a", general: false, selectedClass: "pressure", openAiHold });
+  const urls = (m: ReturnType<typeof vi.fn>) => m.mock.calls.map((c) => String((c as unknown[])[0]));
+
+  /** A cap that fits exactly one hold of this shape — a concurrent turn could take nothing more. */
+  function capFitsOnly(holdIn: number): JudgeOpenAiHold {
+    process.env.OPENAI_RUN_BUDGET_USD = String(usd(holdIn, JUDGE_OUTPUT_TOKENS) * 1.000001);
+    resetOpenAiRunBudgetForTests();
+    const v = openAiRunBudget().reserve(holdIn, JUDGE_OUTPUT_TOKENS);
+    if (!v.ok) throw new Error("precondition: the hold fits the cap");
+    expect(openAiRunBudget().reserve(1, 1).ok).toBe(false); // precondition: nothing else fits
+    return { reservation: v.reservation, inputBound: holdIn };
+  }
+
+  it("past the cap, the held room still lets the judge use OpenAI, and books actual usage", async () => {
+    const hold = capFitsOnly(judgeHoldInputBound("q", 800));
+    const fetchMock = vi.fn(async () => okVerdict({ prompt_tokens: 30, completion_tokens: 12 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await judge(hold)).verdict).toBe("safe");
+    expect(urls(fetchMock)).toEqual([OPENAI_URL]);
+    expect(openAiRunBudget().heldUsd).toBe(0);
+    expect(openAiRunBudget().spentUsd).toBeCloseTo(usd(30, 12), 12);
+  });
+
+  it("control: the same full cap WITHOUT the held room — OpenAI refused, UNKNOWN, budget named", async () => {
+    const other = capFitsOnly(judgeHoldInputBound("q", 800)); // a concurrent turn holds the last room
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => okVerdict());
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await judge()).toEqual({ verdict: "unknown", hazardClass: "pressure", reason: "openai_budget_exhausted" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    other.reservation.release();
+  });
+
+  it("an answer denser than the hold: the hold is released and the judge reserves its real bound", async () => {
+    const v = openAiRunBudget().reserve(10, JUDGE_OUTPUT_TOKENS);
+    if (!v.ok) throw new Error("precondition");
+    const reserve = vi.spyOn(OpenAiRunBudget.prototype, "reserve");
+    vi.stubGlobal("fetch", vi.fn(async () => okVerdict({ prompt_tokens: 30, completion_tokens: 12 })));
+    expect((await judge({ reservation: v.reservation, inputBound: 10 })).verdict).toBe("safe");
+    const realBound = boundInputTokens(buildJudgeMessages({ question: "q", answerText: "a", general: false, selectedClass: "pressure" }));
+    expect(realBound).toBeGreaterThan(10); // precondition: the hold really was too small
+    expect(reserve.mock.calls).toContainEqual([realBound, JUDGE_OUTPUT_TOKENS]);
+    expect(openAiRunBudget().heldUsd).toBe(0);
+    expect(openAiRunBudget().spentUsd).toBeCloseTo(usd(30, 12), 12);
+  });
+
+  it("denser than the hold AND no room for the real bound: refused, UNKNOWN, nothing left held", async () => {
+    const hold = capFitsOnly(10);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => okVerdict());
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await judge(hold)).toEqual({ verdict: "unknown", hazardClass: "pressure", reason: "openai_budget_exhausted" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(openAiRunBudget().heldUsd).toBe(0);
+  });
+
+  it("an unused hold is released when OpenAI never comes up (no key)", async () => {
+    delete process.env.OPENAI_API_KEY;
+    process.env.GROQ_API_KEY = "k1";
+    const v = openAiRunBudget().reserve(judgeHoldInputBound("q", 800), JUDGE_OUTPUT_TOKENS);
+    if (!v.ok) throw new Error("precondition");
+    expect(openAiRunBudget().heldUsd).toBeGreaterThan(0); // precondition
+    const fetchMock = vi.fn(async () => okVerdict());
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await judge({ reservation: v.reservation, inputBound: judgeHoldInputBound("q", 800) })).verdict).toBe("safe");
+    expect(urls(fetchMock)).not.toContain(OPENAI_URL);
+    expect(openAiRunBudget().heldUsd).toBe(0);
+    expect(openAiRunBudget().spentUsd).toBe(0);
+  });
+
+  it("the hold covers a full-cap answer at the assumed bytes per token — and not one byte more", () => {
+    for (const cap of [800, 1400]) {
+      const real = (bytesPerToken: number) =>
+        boundInputTokens(
+          buildJudgeMessages({ question: "q", answerText: "y".repeat(cap * bytesPerToken), general: true, selectedClass: "unclassified" }),
+        );
+      expect(real(JUDGE_ANSWER_BYTES_PER_TOKEN)).toBeLessThanOrEqual(judgeHoldInputBound("q", cap));
+      expect(real(JUDGE_ANSWER_BYTES_PER_TOKEN + 1)).toBeGreaterThan(judgeHoldInputBound("q", cap)); // not vacuous
+    }
   });
 });
 
