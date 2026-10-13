@@ -45,7 +45,7 @@ describe("the Jev shadow cannot reach the delivery path", () => {
 
   it("the early call sites are upstream of the assignment, so they pass null", () => {
     const assign = assigns[0];
-    // These are the safety-stop / abstain / client-stop paths. If this count
+    // These are the alarm-card / abstain / client-stop paths. If this count
     // ever drops to zero, someone moved the assignment up — see the file header.
     expect(persists.filter((p) => p < assign).length).toBeGreaterThan(0);
   });

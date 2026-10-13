@@ -1134,14 +1134,15 @@ async function handleChatTurn(
     //
     // WHY THIS CANNOT DELAY DELIVERY — the precise version.
     // `finishAndPersist` has FIVE call sites and they are NOT all post-close:
-    // the safety-stop path awaits it and only then returns its Response, and
-    // the gate-abstain path runs before its `controller.close()`. The guarantee
-    // is narrower than "the helper is always late": `decisionState` is assigned
-    // at exactly ONE place — inside the final answer-gate block — and the only
-    // two call sites downstream of that assignment (the recordTurn-failure path
-    // and the final path) both sit after a `controller.close()`. The three
-    // earlier call sites reach this line with `decisionState` still null and
-    // make no call at all.
+    // the alarm-card fast path and the gate-abstain path await it before their
+    // stream is built, and the client-stop path runs before the final close. (The
+    // terminal safety-stop branch that used to be one of them was removed
+    // 2026-09-27.) The guarantee is narrower than "the helper is always late":
+    // `decisionState` is assigned at exactly ONE place — inside the final
+    // answer-gate block — and the only two call sites downstream of that
+    // assignment (the recordTurn-failure path and the final path) both sit after
+    // a `controller.close()`. The three earlier call sites reach this line with
+    // `decisionState` still null and make no call at all.
     //
     // That invariant is load-bearing and easy to break by populating
     // `decisionState` earlier, which would silently put a ~280 ms vendor call
