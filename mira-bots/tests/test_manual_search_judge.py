@@ -1089,6 +1089,31 @@ async def test_a_slow_search_batch_stops_at_the_callers_deadline(volumes, monkey
     assert not any(judge.is_match(c) for c in ranked)
 
 
+async def test_a_spent_deadline_schedules_no_read_at_all(volumes, monkeypatch):
+    # Review of #4408: the deadline was checked only AFTER the batch's reads were
+    # scheduled, then cancelled unawaited. A spent deadline must start no work.
+    import time
+
+    scheduled: list[str] = []
+    real_judge_one = judge._judge_one
+
+    def recording_judge_one(make, model, c):
+        scheduled.append(c["url"])
+        return real_judge_one(make, model, c)
+
+    monkeypatch.setattr(judge, "_judge_one", recording_judge_one)
+    trace: dict = {}
+    await judge.judge_candidates(
+        "Allen-Bradley",
+        "PowerFlex 525",
+        _vol_cands(COMMS),
+        deadline_at=time.monotonic() + judge.RETURN_RESERVE_S - 0.5,
+        trace=trace,
+    )
+    assert trace["stop"] == "search_deadline"
+    assert scheduled == []
+
+
 async def test_a_search_batch_with_time_to_spare_reads_to_the_end(volumes):
     # Control: a deadline far away changes nothing — the batch is read and judged.
     import time
