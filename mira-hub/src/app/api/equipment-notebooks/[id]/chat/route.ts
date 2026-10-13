@@ -1618,7 +1618,11 @@ async function handleChatTurn(
     let alarmCard: ReturnType<typeof alarmCardForTurn> = null;
     try {
       const sessionId = lookRow.sessionId;
-      const lines = await withTenantContext(ctx.tenantId, (c) => loadScreenTextLines(c, ctx.tenantId, sessionId));
+      // Bound to THIS photo (verified file id), not just its LOOK session.
+      const photoFileId = visualEntry.fileId;
+      const lines = await withTenantContext(ctx.tenantId, (c) =>
+        loadScreenTextLines(c, ctx.tenantId, sessionId, photoFileId),
+      );
       alarmCard = alarmCardForTurn({ question: message, lines });
     } catch (err) {
       console.error("[notebook-chat] alarm card skipped (falling through):", err instanceof Error ? err.message : err);
@@ -1630,6 +1634,25 @@ async function handleChatTurn(
       // than moving the existing declaration.
       const cardEnc = new TextEncoder();
       lifecycleOutcome = "answered";
+      // Record what grounded the card the same way the model path does (visual_evidence
+      // ~L2949, context ~L3137): the photo's stored screen text IS the evidence. Without
+      // these the turn recorder flags PHOTO_WITH_NO_OBSERVATIONS and
+      // EQUIPMENT_ANSWER_WITH_NO_EVIDENCE on every card turn (false alarms).
+      rec.stage("visual_evidence", {
+        observation_available: true,
+        observation_in_context: true,
+        prior_turn_observation_count: 0,
+        prior_file_ids: [],
+      });
+      rec.stage("context", {
+        evidence_doc_ids: [],
+        chunk_count: 0,
+        visual_evidence_count: 1,
+        identity_included: boundAsset.state === "resolved",
+        history_turns: 0,
+        prompt_chars: 0,
+        system_prompt_kind: null,
+      });
       // "alarm_card" is not a StageKey — answer_gate is the closest existing
       // stage, and `decision` is a closed union (AnswerGateDecision) that does
       // not include "alarm_card" either. Record it in `reason` instead of

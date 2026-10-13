@@ -89,6 +89,7 @@ vi.mock("@/capabilities/screen-text", async (importOriginal) => ({
   loadScreenTextLines: screenMock.loadScreenTextLines,
 }));
 import { SCREEN_FAIL_SAFE } from "@/capabilities/alarm-screens.fixture";
+import { persistTurnUsage } from "@/lib/inference/persist-usage";
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 
@@ -153,7 +154,16 @@ describe("alarm card fast path", () => {
     expect(persisted.answerStatus).toBe("answered");
     expect(persisted.model).toBeNull();
     expect(persisted.evidence.map((e) => e.kind)).toEqual(expect.arrayContaining(["visual_observation", "alarm_reading"]));
-    expect(screenMock.loadScreenTextLines).toHaveBeenCalledWith(expect.anything(), TENANT, "s1");
+    expect(screenMock.loadScreenTextLines).toHaveBeenCalledWith(expect.anything(), TENANT, "s1", PHOTO);
+  });
+
+  it("records the photo as the card's evidence, so the turn recorder raises no false anomaly", async () => {
+    const res = await POST(req({ message: "what does this alarm mean", mode: "general", visualEvidence: { fileId: PHOTO } }), params);
+    await res.text();
+    const persisted = JSON.stringify(vi.mocked(persistTurnUsage).mock.calls);
+    expect(vi.mocked(persistTurnUsage)).toHaveBeenCalled();
+    expect(persisted).not.toContain("PHOTO_WITH_NO_OBSERVATIONS");
+    expect(persisted).not.toContain("EQUIPMENT_ANSWER_WITH_NO_EVIDENCE");
   });
 
   it("falls through on an unrelated question", async () => {
