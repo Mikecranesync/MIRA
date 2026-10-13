@@ -77,6 +77,7 @@ import { openAiVisionSelectable } from "@/capabilities/openai-run-budget";
 import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 import { openAiVisionCall, togetherVisionCall, safeJson, type VisionCall } from "@/lib/nameplate/passes";
+import { attachScreenTextLines, normalizeScreenTextLines } from "@/capabilities/screen-text";
 
 export const dynamic = "force-dynamic";
 
@@ -115,7 +116,12 @@ For safety classification, also report only hazards visibly present now using th
 - smoke: visible smoke
 Do not infer a hazard from labels, warnings, equipment type, or absence of a guard unless the hazardous condition itself is visible.
 Use a confidence from 0 to 1. A healthy image or negated condition has an empty hazards array.
-Respond ONLY with JSON: {"observation": string, "hazards": [{"code": "arcing" | "exposed_conductor" | "active_fire" | "smoke", "confidence": number}]}`;
+If the photo shows a screen, display, or printed alarm list, also transcribe its text into screen_text_lines:
+- one entry per visual line, top to bottom, exactly as shown (keep spacing between columns as single spaces)
+- characters you cannot read are written as "?"
+- text that is cut off on the screen keeps its "…" or "..." exactly; never complete it and never guess the hidden characters
+- an empty array when no screen or display text is visible
+Respond ONLY with JSON: {"observation": string, "hazards": [{"code": "arcing" | "exposed_conductor" | "active_fire" | "smoke", "confidence": number}], "screen_text_lines": [string]}`;
 
 function safePhotoName(raw: string | undefined, mime: string): string {
   const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : mime === "image/gif" ? "gif" : "jpg";
@@ -143,12 +149,18 @@ const fixtureVisionCall: VisionCall = async () => ({
 });
 
 /** Unwrap and validate JSON-mode output; a prose answer stays a healthy observation. */
-function extractInspection(text: string): { text: string; hazards: LookHazardDescriptor[] } | null {
+function extractInspection(
+  text: string,
+): { text: string; hazards: LookHazardDescriptor[]; screenTextLines: string[] } | null {
   const parsed = safeJson(text);
   const fromJson = parsed && typeof parsed.observation === "string" ? parsed.observation : null;
   const value = (fromJson ?? text).trim();
   if (value.length === 0 || value === "{}") return null;
-  return { text: value, hazards: normalizeLookHazards(parsed?.hazards) };
+  return {
+    text: value,
+    hazards: normalizeLookHazards(parsed?.hazards),
+    screenTextLines: normalizeScreenTextLines(parsed?.screen_text_lines),
+  };
 }
 
 async function handleLookTurn(
@@ -436,7 +448,8 @@ async function handleLookTurn(
       prompt,
       images: [{ base64: read.base64, mimeType: read.mimeType }],
       temperature: 0.1,
-      maxTokens: 600,
+      // A full alarm list + the observation does not fit in 600; a cut-off JSON reply would lose the observation.
+      maxTokens: 1600,
     });
     const inspection = extractInspection(reply.text);
     if (!inspection) throw new Error("vision_empty_response");
@@ -449,8 +462,9 @@ async function handleLookTurn(
     // is told whether it landed — a chat turn that re-sends this photo grounds
     // on the PERSISTED observation, so an unpersisted one must not be sent.
     let observationPersisted = false;
+    let recorded: Awaited<ReturnType<typeof recordLookObservation>> = null;
     try {
-      await recordLookObservation({
+      recorded = await recordLookObservation({
         tenantId: ctx.tenantId,
         ...(attachment.linkId ? { notebookId, threadId } : {}),
         fileId: parked.fileId,
@@ -465,6 +479,15 @@ async function handleLookTurn(
     } catch (err) {
       console.error("[notebook-look] observation persist failed (continuing):", err);
     }
+    // Spec §4.2 — verbatim screen text rides on the same evidence row. Fail-open:
+    // without lines the alarm card simply does not fire on a later turn.
+    if (recorded && inspection.screenTextLines.length > 0) {
+      try {
+        await attachScreenTextLines(ctx.tenantId, recorded.evidenceId, inspection.screenTextLines);
+      } catch (err) {
+        console.error("[notebook-look] screen text persist failed (continuing):", err);
+      }
+    }
     visionSpan.updateName(`chat ${reply.model}`);
     setSpanAttrs(
       {
@@ -473,6 +496,7 @@ async function handleLookTurn(
         "gen_ai.response.model": reply.model,
         "mira.vision.observation_chars": inspection.text.length,
         "mira.vision.hazard_count": inspection.hazards.length,
+        "mira.vision.screen_lines": inspection.screenTextLines.length,
         "mira.vision.ok": true,
       },
       visionSpan,
@@ -485,6 +509,7 @@ async function handleLookTurn(
       latency_ms: Date.now() - visionStartedAt,
       observation_chars: inspection.text.length,
       hazard_count: inspection.hazards.length,
+      screen_lines: inspection.screenTextLines.length,
       ok: true,
     });
     await finishLook({

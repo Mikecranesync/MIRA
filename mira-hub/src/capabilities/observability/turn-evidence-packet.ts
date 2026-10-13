@@ -74,6 +74,8 @@ export type TurnEvidencePacketVision = {
   latency_ms: number | null;
   observation_chars: number;
   hazard_count: number;
+  /** Verbatim on-screen text lines LOOK transcribed (alarm-reasoning spec §4). */
+  screen_lines?: number;
   ok: boolean;
 };
 
