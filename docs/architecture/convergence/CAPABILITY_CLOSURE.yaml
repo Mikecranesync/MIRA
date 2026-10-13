@@ -602,29 +602,35 @@ capabilities:
       - "mira-hub/db/migrations/102_notebook_manual_acquisition_revoke_spares_confirmed.sql   # the revocation never touches a technician-confirmed manual"
     environments:
       dev: unset
-      staging: unset
-      production: unset
-    state: deployed_disabled
+      staging: "1"                          # Doppler factorylm/stg, observed 2026-10-13 (MIRA_NOTEBOOK_CANDIDATE_ACQUISITION=1 too)
+      production: unset                     # unset in factorylm/prd AND not forwarded by docker-compose.saas.yml (#4406)
+    state: staging_enabled
     reason: >-
-      New in #4075 slice 2. Ships off: the create-time trigger also fires for
-      eval harnesses that create confirmed notebooks, so it is enabled in staging
-      only after merge and migration 100, and measured before any production
-      decision.
+      New in #4075 slice 2. Enabled in staging (the record said unset until
+      2026-10-13 — #4406). Production stays off: the flag is unset in
+      factorylm/prd and docker-compose.saas.yml does not forward it to mira-hub,
+      so setting Doppler alone would not turn it on. The nameplate-scan confirm
+      route searches regardless of this flag; the flag gates the create-time
+      trigger and the notebook-chat fallback/candidate takeover.
     owner: "Mike Harper"
     ci_jobs:
       - mira-hub-unit        # notebook-manual-acquisition + chat-flight-recorder + create-starts-manual-acquisition suites
     required_checks: []
-    evidence: []
+    evidence:
+      - "https://github.com/Mikecranesync/MIRA/issues/4406"   # staging probe 2026-10-13 (Hub a40eb52a0): GE Fanuc IC752DPA062A completed with a junk candidate (#4400); Emerson IC752DPA062A 'unavailable' 3/3 (#4401)
     rollback: >-
       Set MIRA_NOTEBOOK_MANUAL_ACQUISITION=0 (or unset) in Doppler and redeploy
       mira-hub. The column is additive and nullable; code fails open without it.
     blocker: >-
-      Not enabled anywhere yet. Needs migration 100 on staging and a staging
-      walk (scan a machine, ask, see the state change) before promotion.
+      Production: the finder still surfaced a junk "possible manual" (#4400) and
+      reported a deadline overrun as an outage (#4401) on the 2026-10-13 staging
+      probe; fixes in draft PRs #4409 and #4408. Production also needs the
+      compose passthrough in docker-compose.saas.yml (#4406) and an owner decision.
     acknowledged_rules: []
     promotion_criteria:
       - "Staging: set the flag after 100 is applied; scan SMC VQ1000-FPG and STEPPERONLINE MG17 notebooks; record the packet manual_acquisition states."
-      - "Production: owner decision after the staging walk and the #4102 human-readiness run."
+      - "Staging: #4400 and #4401 fixed and re-probed on staging (GE Fanuc and Emerson IC752DPA062A end in an honest result, not a junk candidate or 'unavailable')."
+      - "Production: owner decision after the staging walk and the #4102 human-readiness run; compose passthrough added first (#4406)."
     review_by: "2026-10-27"
     notes: >-
       Pairs with manual_discovery_judge: without the judge, discovery can return
