@@ -61,6 +61,7 @@ import {
   productionRouteDetected,
   serviceVersion,
 } from "@/capabilities/observability/config";
+import { sniffImageFormat } from "@/capabilities/image-format-sniff";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import type { TurnUsage } from "@/lib/inference/canonical-cascade";
 import { sessionOr401 } from "@/lib/session";
@@ -202,8 +203,16 @@ async function handleLookTurn(
   const buffer = Buffer.from(await file.arrayBuffer());
   const mime = effectiveImageMime(file.type, buffer, ALLOWED_IMAGE_MIMES);
   if (!mime) {
+    // 2026-10-12: a Pixel gallery pick got this 415 and nothing recorded which
+    // format it was. Name it in the log and the body; the allowlist is unchanged.
+    const detected = sniffImageFormat(buffer);
+    console.warn("[notebook-look] unsupported image type", {
+      declared: file.type || "(none)",
+      detected,
+      bytes: file.size,
+    });
     return NextResponse.json(
-      { error: "unsupported_image_type", message: "Send a JPEG, PNG, GIF, or WebP photo." },
+      { error: "unsupported_image_type", message: "Send a JPEG, PNG, GIF, or WebP photo.", detected_type: detected },
       { status: 415 },
     );
   }
