@@ -56,6 +56,14 @@ function pickLead(covered: AlarmLine[]): { lead: AlarmLine; firstOut: boolean; n
   const dates = new Set(pool.map((l) => l.record.date?.text ?? ""));
   const sameDay =
     dates.size === 1 && !dates.has("") && !pool.some((l) => !l.record.date || l.record.date.truncated);
+  // An alarm-history list spans hours: its earliest line is not a first-out. Lead with the most
+  // recent same-day occurrence; across dates, the list's own order stands (Mike, 2026-10-13).
+  if (pool.every((l) => isHistoryRecord(l.record))) {
+    if (!secs.every((s) => s !== null) || !sameDay) return { lead: pool[0], firstOut: false, note: null };
+    let latest = 0;
+    secs.forEach((s, i) => { if ((s as number) > (secs[latest] as number)) latest = i; });
+    return { lead: pool[latest], firstOut: false, note: null };
+  }
   if (secs.every((s) => s !== null) && sameDay) {
     let best = 0;
     secs.forEach((s, i) => { if ((s as number) < (secs[best] as number)) best = i; });

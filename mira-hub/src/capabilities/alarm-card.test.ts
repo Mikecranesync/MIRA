@@ -175,16 +175,17 @@ describe("alarm card — a shown value", () => {
 
 describe("alarm card — date-first history layout screen", () => {
   const card = buildAlarmCard(SCREEN_HISTORY)!;
-  it("builds a card, led by the earliest same-day reading (first-out), on the safe side of its limit", () => {
+  // An alarm-history list spans hours, so its earliest line is not a first-out: the card leads
+  // with the most recent same-day occurrence (Mike, 2026-10-13).
+  it("builds a card led by the most recent same-day occurrence, not the earliest", () => {
     expect(card).not.toBeNull();
-    expect(card.firstOut).toBe(true);
-    expect(card.lead.record.text).toContain("(0°C, limit is 70°C)");
+    expect(card.firstOut).toBe(false);
+    expect(card.lead.record.time?.text).toBe("06:02:19");
+    expect(card.lead.record.text).toContain("(88Â°C, limit is 70Â°C)");
   });
-  it("says the value is on the safe side of its limit, under What I could not read", () => {
-    const cannot = card.text.slice(card.text.indexOf("**What I could not read**"));
-    expect(cannot).toContain(
-      "The value shown is on the safe side of its limit, so it is not the reading that raised this alarm — read the value at the alarm time from the diagnostic view.",
-    );
+  it("the older occurrences stay on the card under Also on this screen", () => {
+    const also = card.text.slice(card.text.indexOf("**Also on this screen**"));
+    expect(also).toContain("(0°C, limit is 70°C)");
   });
   it("keeps the fixed section order and passes both checkers", () => {
     const idx = HEADINGS.map((h) => card.text.indexOf(h));
@@ -212,6 +213,43 @@ describe("alarm card — history-layout reason wording", () => {
   it("the existing-layout zero_and_zero_limit wording stays byte-identical", () => {
     const card = buildAlarmCard(SCREEN_RTD)!;
     expect(card.text).toContain("The reading isn't shown on this screen — read it from the alarm history.");
+  });
+  it("contradicts_alarm gets the safe-side wording", () => {
+    const card = buildAlarmCard([
+      header,
+      "11/05/2027 05:58:02 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (0°C, limit is 70°C)",
+    ])!;
+    expect(card).not.toBeNull();
+    const cannot = card.text.slice(card.text.indexOf("**What I could not read**"));
+    expect(cannot).toContain(
+      "The value shown is on the safe side of its limit, so it is not the reading that raised this alarm — read the value at the alarm time from the diagnostic view.",
+    );
+    passesCheckers(card.text);
+  });
+  it("control: a non-history screen still leads with the earliest full time (first-out)", () => {
+    const card = buildAlarmCard(SCREEN_RTD)!;
+    expect(card.firstOut).toBe(true);
+    expect(card.lead.record.text).toContain("LEFT WINDING");
+  });
+  // Across dates, clock times cannot be compared (00:01 the next day is later than 23:58), so the
+  // list's own order stands. The "can't order these alarms — read the alarm history" note is not
+  // shown: the tech is already on the alarm history, and each row carries its own date and time.
+  it("a history list spanning two dates keeps the list's order and adds no order note", () => {
+    const card = buildAlarmCard([
+      header,
+      "11/05/2027 00:01:10 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (85°C, limit is 70°C)",
+      "11/04/2027 23:58:02 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (90°C, limit is 70°C)",
+    ])!;
+    expect(card).not.toBeNull();
+    expect(card.covered).toHaveLength(2);
+    expect(card.firstOut).toBe(false);
+    expect(card.lead.record.date?.text).toBe("11/05/2027");
+    expect(card.lead.record.text).toContain("(85°C, limit is 70°C)");
+    const also = card.text.slice(card.text.indexOf("**Also on this screen**"));
+    expect(also).toContain("(90°C, limit is 70°C)");
+    expect(card.text).not.toContain("I can't order these alarms from this screen");
+    expect(card.text).not.toContain("This screen cuts off the times");
+    passesCheckers(card.text);
   });
   it("rounded gets the diagnostic-view wording", () => {
     const card = buildAlarmCard([
