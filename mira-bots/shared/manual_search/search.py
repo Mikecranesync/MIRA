@@ -184,6 +184,19 @@ OEM_DOMAINS: dict[str, tuple[str, ...]] = {
     "banner": ("bannerengineering.com",),
     "pepperl": ("pepperl-fuchs.com",),
     "pepperl+fuchs": ("pepperl-fuchs.com",),
+    # #4402: Emerson took over GE's PLC/HMI line (GE Fanuc -> GE Intelligent
+    # Platforms -> Emerson); technicians read "GE Fanuc" off the hardware and the
+    # manuals are served from www.emerson.com. Exact keys only. Never a bare
+    # "ge" or "general electric": GE's motor, relay and power lines are not
+    # Emerson's, and an entry here makes Emerson's site count as the maker's own
+    # documentation (the auto-import gate).
+    "emerson": ("emerson.com",),
+    "emerson automation solutions": ("emerson.com",),
+    "emerson process management": ("emerson.com",),
+    # Not "emerson electric": also the old motor brand (now Nidec / US Motors).
+    "ge fanuc": ("emerson.com",),
+    "ge intelligent platforms": ("emerson.com",),
+    "ge automation": ("emerson.com",),
 }
 
 # Domains whose `.pdf` URLs are SEO spam, third-party scrapes, or random
