@@ -56,6 +56,7 @@ export async function loadScreenTextLines(
     `SELECT capture_meta->'screen_text_lines' AS lines
        FROM evidence_item
       WHERE tenant_id = $1 AND session_id = $2::uuid
+        AND capture_meta ? 'screen_text_lines'
       ORDER BY created_at DESC
       LIMIT 1`,
     [tenantId, sessionId],

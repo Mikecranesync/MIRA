@@ -32,6 +32,8 @@ describe("loadScreenTextLines", () => {
     const [sql, params] = query.mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toMatch(/tenant_id = \$1/);
     expect(sql).toMatch(/session_id = \$2::uuid/);
+    // Newest row that HAS lines — a later row without them must not hide them (review #4389 r4).
+    expect(sql).toMatch(/capture_meta \? 'screen_text_lines'/);
     expect(params).toEqual(["tenant-1", "11111111-2222-3333-4444-555555555555"]);
   });
   it("returns null for a non-UUID session without querying", async () => {
