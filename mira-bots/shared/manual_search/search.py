@@ -191,6 +191,9 @@ OEM_DOMAINS: dict[str, tuple[str, ...]] = {
     # Emerson's, and an entry here makes Emerson's site count as the maker's own
     # documentation (the auto-import gate).
     "emerson": ("emerson.com",),
+    "emerson automation solutions": ("emerson.com",),
+    "emerson process management": ("emerson.com",),
+    # Not "emerson electric": also the old motor brand (now Nidec / US Motors).
     "ge fanuc": ("emerson.com",),
     "ge intelligent platforms": ("emerson.com",),
     "ge automation": ("emerson.com",),

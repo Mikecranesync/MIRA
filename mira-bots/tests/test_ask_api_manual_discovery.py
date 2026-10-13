@@ -835,6 +835,16 @@ class TestIsOemHost:
         assert is_oem_host("GE Intelligent Platforms", "www.emerson.com") is True
         assert is_oem_host("GE Automation", "www.emerson.com") is True
 
+    def test_emerson_automation_division_names_map_to_emerson(self):
+        # Nameplates and catalogs also carry the automation divisions' names.
+        assert is_oem_host("Emerson Automation Solutions", "www.emerson.com") is True
+        assert is_oem_host("Emerson Process Management", "www.emerson.com") is True
+
+    def test_emerson_electric_is_not_mapped_to_emerson_com(self):
+        # "Emerson Electric" is also the old motor brand (now Nidec / US Motors),
+        # whose manuals are not on emerson.com — ambiguous, like a bare "GE".
+        assert is_oem_host("Emerson Electric", "www.emerson.com") is False
+
     def test_a_bare_ge_is_not_mapped_to_emerson(self):
         # A bare "GE" is ambiguous: GE's motor, relay and power lines are not
         # Emerson's, and oem_host gates auto-import. It must not make an
