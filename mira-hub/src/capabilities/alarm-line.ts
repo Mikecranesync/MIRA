@@ -67,7 +67,7 @@ const MESSAGE_START = /^(?:error|warning|fault|alarm|fehler|warnung|störung)\s*
 // Date-first alarm-history layout: "Event Time Display Path Name Label". Display and the
 // Path/Name columns never appear in the quoted text — only the Label does (spec §5 part 2).
 const HISTORY_ROW_PREFIX = new RegExp(
-  `^(\\d{1,2}/\\d{1,2}/\\d{4})\\s+(\\d{1,2}:\\d{2}:\\d{2})\\s+(\\S+)\\s+(\\d+)\\s+(\\S+)\\s+(.*)$`,
+  `^(\\d{1,2}/\\d{1,2}/\\d{4})\\s+(\\d{1,2}:\\d{2}:\\d{2})\\s+(\\S+)\\s+(\\d+)\\s+(.*)$`,
 );
 const FULL_TIME = /^(\d{1,2}):(\d{2}):(\d{2})$/;
 const UNIT = "(°C|°F|Ω|ohm|%|mA|V|A|bar)";
@@ -121,10 +121,10 @@ export function groupAlarmRecords(lines: readonly string[], opts: { collapse?: b
         time: field(hist[2]),
         date: field(hist[1]),
         status: null,
-        text: hist[6].trim(),
+        text: hist[5].trim(),
         count: 1,
-        path: hist[4],
-        name: hist[5],
+        path: hist[3],
+        name: hist[4],
       });
       continue;
     }
@@ -243,10 +243,7 @@ function parseHistoryValue(t: string, direction: AlarmLine["direction"]): { valu
 
 export function parseAlarmRecord(record: AlarmRecord): AlarmLine | null {
   const t = record.text;
-  // History-layout rows carry their designation in the Name column, stripped out of the
-  // quoted text (spec §5 part 2) — parse it from there too.
-  const designations = parseDesignations(record.name ? `${t} ${record.name}` : t)
-    .sort((a, b) => (b.device?.length ?? 0) - (a.device?.length ?? 0));
+  const designations = parseDesignations(t).sort((a, b) => (b.device?.length ?? 0) - (a.device?.length ?? 0));
   const ch = RX.channel.exec(t);
   const channel = ch
     ? { io: (ch[1].toLowerCase() === "output" ? "output" : "input") as "input" | "output", number: Number(ch[2]) }

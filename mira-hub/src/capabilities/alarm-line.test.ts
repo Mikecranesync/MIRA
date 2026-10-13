@@ -164,12 +164,17 @@ describe("groupAlarmRecords — date-first history layout", () => {
     const first = records[0];
     expect(first.date).toEqual({ text: "11/05/2027", truncated: false });
     expect(first.time).toEqual({ text: "06:02:19", truncated: false });
-    expect(first.path).toBe("525");
-    expect(first.name).toBe("=k.TBR+05-BT3");
-    expect(first.text).toBe("temperature measurement LEFT COIL too high (88Â°C, limit is 70Â°C)");
+    // Columns are Display Path | Name | Label: the Label carries the device tag, and the
+    // quote a technician reads must keep it.
+    expect(first.path).toBe("Line2");
+    expect(first.name).toBe("525");
+    expect(first.text).toBe("=k.TBR+05-BT3 temperature measurement LEFT COIL too high (88Â°C, limit is 70Â°C)");
     expect(first.text).not.toContain("Line2");
     expect(first.text).not.toContain("525");
-    expect(first.text).not.toContain("=k.TBR");
+  });
+  it("a history row's designation comes from its label, so the card quote keeps the device tag", () => {
+    const l = parseAlarmRecord(groupAlarmRecords(SCREEN_HISTORY)[0])!;
+    expect(l.designations.map((d) => d.raw)).toEqual(["=k.TBR+05-BT3"]);
   });
   it("isHistoryRecord is true only for a row carrying path/name", () => {
     const [history] = groupAlarmRecords(SCREEN_HISTORY);
