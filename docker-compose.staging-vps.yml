@@ -257,6 +257,10 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4-mini}
+      - OPENAI_RUN_BUDGET_USD=${OPENAI_RUN_BUDGET_USD:-}
+      - OPENAI_RUN_BUDGET_WINDOW_S=${OPENAI_RUN_BUDGET_WINDOW_S:-}
+      - OPENAI_PRICE_PER_MTOK_IN=${OPENAI_PRICE_PER_MTOK_IN:-}
+      - OPENAI_PRICE_PER_MTOK_OUT=${OPENAI_PRICE_PER_MTOK_OUT:-}
       - GROQ_MODEL=openai/gpt-oss-120b
       - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
@@ -376,6 +380,10 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4-mini}
+      - OPENAI_RUN_BUDGET_USD=${OPENAI_RUN_BUDGET_USD:-}
+      - OPENAI_RUN_BUDGET_WINDOW_S=${OPENAI_RUN_BUDGET_WINDOW_S:-}
+      - OPENAI_PRICE_PER_MTOK_IN=${OPENAI_PRICE_PER_MTOK_IN:-}
+      - OPENAI_PRICE_PER_MTOK_OUT=${OPENAI_PRICE_PER_MTOK_OUT:-}
       - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=${CEREBRAS_MODEL:-gpt-oss-120b}
@@ -434,6 +442,10 @@ services:
       # one by accident. Staging only until the vendor-retention item in
       # docs/proofs/2026-09-23-jev-decision-privacy.md is closed.
       - MIRA_JEV_DECISION=${MIRA_JEV_DECISION:-0}
+      # Weak-evidence badge: the sufficiency shadow's one consulted use (needs
+      # MIRA_JEV_SHADOW=1). Relabels the evidence frame, never withholds an answer.
+      # Staging only; production Compose does not pass it.
+      - MIRA_JEV_WEAK_EVIDENCE_BADGE=${MIRA_JEV_WEAK_EVIDENCE_BADGE:-0}
       # 093 stale-turn reconciler: the only writer of the `abandoned` outcome.
       # A start record whose container was SIGKILLed mid-turn can be closed from
       # nowhere else. Default 0 so it is enabled per environment, not by merge.
@@ -550,6 +562,10 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4-mini}
+      - OPENAI_RUN_BUDGET_USD=${OPENAI_RUN_BUDGET_USD:-}
+      - OPENAI_RUN_BUDGET_WINDOW_S=${OPENAI_RUN_BUDGET_WINDOW_S:-}
+      - OPENAI_PRICE_PER_MTOK_IN=${OPENAI_PRICE_PER_MTOK_IN:-}
+      - OPENAI_PRICE_PER_MTOK_OUT=${OPENAI_PRICE_PER_MTOK_OUT:-}
       - GROQ_MODEL=openai/gpt-oss-120b
       - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
@@ -647,6 +663,10 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4-mini}
+      - OPENAI_RUN_BUDGET_USD=${OPENAI_RUN_BUDGET_USD:-}
+      - OPENAI_RUN_BUDGET_WINDOW_S=${OPENAI_RUN_BUDGET_WINDOW_S:-}
+      - OPENAI_PRICE_PER_MTOK_IN=${OPENAI_PRICE_PER_MTOK_IN:-}
+      - OPENAI_PRICE_PER_MTOK_OUT=${OPENAI_PRICE_PER_MTOK_OUT:-}
       - GROQ_MODEL=openai/gpt-oss-120b
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=gpt-oss-120b

@@ -46,8 +46,16 @@ import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evide
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { finishedAfterChunk } from "@/capabilities/stream-stop";
+import {
+  billableTokens,
+  boundInputTokens,
+  logBudgetExhausted,
+  openAiRunBudget,
+  type BudgetReservation,
+} from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
+import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
   proposeIdentityFromText,
   unconfirmedMachineDirective,
@@ -72,6 +80,7 @@ import {
   serviceVersion,
   productionRouteDetected,
   anomalyChecksEnabled,
+  jevWeakEvidenceBadgeEnabled,
 } from "@/capabilities/observability/config";
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
@@ -210,23 +219,28 @@ import type {
   VisualObservationEntry,
   IdentityDisputeEntry,
   EvidenceBasis,
+  WeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
 import {
   isMachineEvidenceEntry,
   isSafetyNoticeEntry,
   isSafetyStopEntry,
   isVisualObservationEntry,
+  isWeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
 import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import {
+  JUDGE_OUTPUT_TOKENS,
+  judgeHoldInputBound,
   selectForSemanticCheck,
   semanticCheckEnabled,
   semanticSafetyCheck,
   triageSemanticSafetyCheck,
   type HazardTriageResult,
+  type JudgeOpenAiHold,
 } from "@/capabilities/answer-safety-check";
 
 export const dynamic = "force-dynamic";
@@ -748,6 +762,9 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   );
   const storedProposal = turn.evidence.find(isIdentityProposalEntry) ?? null;
   const basis = REPLAY_BASES.has(turn.basis as EvidenceBasis) ? turn.basis as EvidenceBasis : null;
+  // The weak-evidence badge replays exactly as it was delivered: the persisted
+  // marker (not a re-run of the rule) decides, and only on the basis it fired for.
+  const weakEvidence = basis === "oem_documentation" && turn.evidence.some(isWeakEvidenceEntry);
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -778,7 +795,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
           emit({
             kind: "evidence",
             basis,
-            label: replayBasisLabel(basis),
+            label: weakEvidence ? WEAK_EVIDENCE_LABEL : replayBasisLabel(basis),
             ...(machineEvidence ? { machineEvidence } : {}),
             ...(visualEvidence ? { visualEvidence } : {}),
             ...(identityDisputed ? { identityDisputed: true } : {}),
@@ -798,7 +815,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
           }
         : turn.answerStatus === "error"
           ? { kind: "status", status: "error", message: "No answer provider available." }
-          : { kind: "status", status: "answered" };
+          : { kind: "status", status: "answered", ...(weakEvidence ? { evidence: "weak" as const } : {}) };
       emit(status);
       // Codex #4120 F4 — the stored proposal replays exactly as it was delivered.
       if (storedProposal) controller.enqueue(enc.encode(sse(storedProposal)));
@@ -3133,6 +3150,10 @@ async function handleChatTurn(
       clientAbort.abort();
     },
     async start(controller) {
+      // #4355 option 1 (Mike, 2026-10-12): room for this turn's safety-judge
+      // OpenAI call, held together with the OpenAI answer's. Released in the
+      // `finally` below on every exit; a no-op once the judge has settled it.
+      let judgeHold: JudgeOpenAiHold | null = null;
       try {
       // Turn Flight Recorder correlation frame — FIRST, additive, only when a
       // real trace id exists (see file header + notebook-chat-types.ts).
@@ -3194,6 +3215,19 @@ async function handleChatTurn(
       let genResponseId: string | null = null;
       let genAttemptIndex = 0;
 
+      // Per-run OpenAI spend hard stop (owner directive 2026-10-11): the worst
+      // case of a request is HELD for its whole life, not merely pre-checked,
+      // so concurrent turns cannot each pass against the same unspent balance
+      // (Gate 7 on #4355; the same discipline as lib/llm/cascade.ts). The hold
+      // is sized by an UPPER bound on the input, never the chars/4 average.
+      const inputBound = boundInputTokens(messages);
+      // The completion cap the request ACTUALLY sends (the legacy body ignores
+      // outputCap), so the hold is sized by what the provider may bill.
+      const requestCap = seam ? Math.min(coverageDirective ? 1400 : 800, outputCap) : coverageDirective ? 1400 : 800;
+      // The semantic judge runs on every served answer while the gate is on, and
+      // it calls OpenAI first. Its room is sized now, before the answer exists.
+      const judgeWillRun = gate && semanticCheckEnabled();
+      const judgeInputBound = judgeWillRun ? judgeHoldInputBound(message, requestCap) : 0;
       cascade: for (const provider of cascadeProviders) {
         if (!provider.key) continue;
         // STRM-2: a stopped turn must never open a second provider stream.
@@ -3211,6 +3245,41 @@ async function handleChatTurn(
           providerFailures.push({ provider: provider.name, httpStatus: null, reason: "quarantined" });
           attempted.push(provider.name);
           continue;
+        }
+        // The only metered provider is refused BEFORE the request once this
+        // window's cap would be crossed; the cascade falls through as for a
+        // provider that is down. Reserved here — after every `continue`/`break`
+        // above — so a hold is never taken on a provider this turn skips.
+        let reservation: BudgetReservation | null = null;
+        // This attempt's own usage block. `rawUsage` lives across the whole
+        // cascade, so a block from an earlier provider must never price this one.
+        let attemptUsage: unknown = null;
+        if (provider.name === "OpenAI") {
+          const verdict = openAiRunBudget().reserve(inputBound, requestCap);
+          if (!verdict.ok) {
+            logBudgetExhausted("notebook-chat", verdict);
+            if (seam) attempted.push(provider.name);
+            continue;
+          }
+          // Option 1: OpenAI writes the answer only if its safety check also
+          // fits — otherwise a flagged answer could go out unjudged at the cap
+          // edge (the route fails open on "unknown", #4022). Same refusal as
+          // above when the pair does not fit; with no other live provider that
+          // turn gets the provider-exhaustion frame instead of an answer (a band
+          // of one judge hold, about 0.4 to 1.2 cents, at the cap edge).
+          // Residual: an answer denser than the hold's 8 bytes per token makes
+          // the judge re-reserve, which can be refused (see answer-safety-check).
+          if (judgeWillRun && !judgeHold) {
+            const judgeVerdict = openAiRunBudget().reserve(judgeInputBound, JUDGE_OUTPUT_TOKENS);
+            if (!judgeVerdict.ok) {
+              verdict.reservation.release();
+              logBudgetExhausted("notebook-chat+safety-judge", judgeVerdict);
+              if (seam) attempted.push(provider.name);
+              continue;
+            }
+            judgeHold = { reservation: judgeVerdict.reservation, inputBound: judgeInputBound };
+          }
+          reservation = verdict.reservation;
         }
         genSpan = startStage(`chat ${provider.model}`);
         genOutcome = "exception";
@@ -3234,13 +3303,13 @@ async function handleChatTurn(
                 ? buildRequestBody(
                     provider as never,
                     messages,
-                    Math.min(coverageDirective ? 1400 : 800, outputCap),
+                    requestCap,
                   )
                 : {
                     model: provider.model,
                     messages,
                     stream: true,
-                    max_tokens: coverageDirective ? 1400 : 800,
+                    max_tokens: requestCap,
                     temperature: 0.3,
                     ...(provider.name === "Groq"
                       ? { reasoning_effort: process.env.GROQ_REASONING_EFFORT ?? "low" }
@@ -3260,6 +3329,10 @@ async function handleChatTurn(
             providerFailures.push({ provider: provider.name, httpStatus: res.status, reason: "http_error" });
             health.markFailed(provider.name, res.status);
             genOutcome = "http_error";
+            // A rejection ran nothing billable: drop the hold. A 200 with no
+            // body was still served: book the worst case.
+            if (!res.ok) reservation?.release();
+            else reservation?.settle(inputBound, requestCap);
             continue;
           }
           const reader = res.body.getReader();
@@ -3320,7 +3393,10 @@ async function handleChatTurn(
                 // include_usage delivers the usage block on a FINAL chunk that
                 // carries no choices — capture it whenever present rather than
                 // only at finish_reason, or it is missed on some providers.
-                if (parsed.usage) rawUsage = parsed.usage;
+                if (parsed.usage) {
+                  rawUsage = parsed.usage;
+                  attemptUsage = parsed.usage;
+                }
                 if (parsed.id && !genResponseId) genResponseId = parsed.id;
                 const delta = parsed.choices?.[0]?.delta?.content;
                 if (delta) {
@@ -3385,12 +3461,28 @@ async function handleChatTurn(
                 capped ? "capped" : "ok",
               );
             }
+            // Served: replace the hold with the provider's ACTUAL usage, read
+            // from the raw usage block (captured seam on or off). A count the
+            // provider did not report is unknown, not small: it books the input
+            // bound / the request cap — the visible answer says nothing about a
+            // reasoning model's hidden tokens, and a post-stop drain failure
+            // loses the usage block entirely (Codex r1 F3 on #4355).
+            reservation?.settle(...billableTokens(attemptUsage, inputBound, requestCap));
             break;
           }
           if (seam) attempted.push(provider.name);
           providerFailures.push({ provider: provider.name, httpStatus: res.status, reason: "empty_stream" });
           genOutcome = "http_error";
+          // A 200 that streamed nothing was still accepted and may be billed.
+          reservation?.settle(inputBound, requestCap);
         } catch (err) {
+          // Whatever threw — a client stop part-way through a stream, a
+          // timeout, a dropped connection, a route bug — the provider may
+          // already have generated and billed tokens, and a stopped turn
+          // never receives the usage block. Book the worst case; never free
+          // budget on an outcome we cannot see (Gate 7 on #4355: a Stop used
+          // to leave the spend unrecorded). Idempotent after a settle above.
+          reservation?.settle(inputBound, requestCap);
           // Client stopped generation (STRM-2). Checked BEFORE the cascade
           // classifier: the race rejects with an AbortError, and a cancelled
           // controller makes enqueue throw a TypeError — neither is a
@@ -3421,6 +3513,10 @@ async function handleChatTurn(
           genOutcome = "exception";
           continue; // cascade to next provider
         } finally {
+          // Backstop for any exit after the reservation that no path above decided
+          // (Codex r3 F9 on #4355, the class): book the worst case. Idempotent — a
+          // no-op once served-settle, release, or the catch's settle ran.
+          reservation?.settle(inputBound, requestCap);
           if (genSpan) {
             const rawUsageObj = rawUsage as { prompt_tokens?: number; completion_tokens?: number } | null | undefined;
             setSpanAttrs(
@@ -3668,9 +3764,11 @@ async function handleChatTurn(
       }
 
       // #3793 semantic layer (2026-09-14 coverage audit): meaning-aware check
-      // on the ACCEPTED candidate. Fail-closed: a flagged candidate that cannot
-      // be judged (timeout, provider failure, malformed verdict) is withheld
-      // behind the controlled unverified fallback — never silently released.
+      // on the ACCEPTED candidate. It FLAGS, never withholds (owner decision
+      // 2026-09-27, #4022): "unsafe" adds a hazard banner; a candidate that
+      // cannot be judged (timeout, provider failure, malformed verdict, or the
+      // OpenAI run budget refusing with no other provider — reason
+      // "openai_budget_exhausted") is logged UNVERIFIED and served as written.
       // Lives inside the gate: gate-off stays byte-identical legacy with zero
       // inference spend. Class/verdict/latency are logged so the real
       // invocation rate is measured, not assumed.
@@ -3708,6 +3806,7 @@ async function handleChatTurn(
           answerText,
           general: !docGrounded,
           selectedClass,
+          openAiHold: judgeHold,
         });
         console.log(`[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`);
         // 2026-09-27 (Mike, settles #4022): the judge FLAGS, it never
@@ -3775,6 +3874,10 @@ async function handleChatTurn(
           ? "insufficient_evidence"
           : "answered";
 
+      // Hoisted out of the answer-gate block below for the weak-evidence badge,
+      // which is decided after the basis is known. Same value as the packet's
+      // `answer_gate.ungrounded_unit_claim`; computed once.
+      let ungroundedClaimForBadge = false;
       {
         const finalAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
         const answerLower = answerText.toLowerCase();
@@ -3800,6 +3903,7 @@ async function handleChatTurn(
           ? "blocked"
           : answerStatus;
         const ungroundedClaim = served && !refused ? ungroundedUnitClaim(answerText) : false;
+        ungroundedClaimForBadge = ungroundedClaim;
         // #3962 — run on the RAW strings here, like ungroundedUnitClaim, because
         // the packet deliberately carries no answer text and so this can never
         // be recomputed later from stored packets. Only the verdict, its version
@@ -3956,6 +4060,38 @@ async function handleChatTurn(
       if (hazardEntries.length > 0) evidenceFrame.hazardEntries = hazardEntries;
       if (identityDisputed) evidenceFrame.identityDisputed = true;
 
+      // Weak-evidence badge (jev-weak-evidence.ts; `MIRA_JEV_WEAK_EVIDENCE_BADGE`).
+      // The ONLY consulted use of the sufficiency shadow. Decided here — after
+      // the shadow was awaited above and after the basis is known — and it
+      // changes exactly two things: the evidence frame's caption and a marker
+      // on the status frame. `answerStatus`, the answer text and its citations
+      // are untouched, and no clarifying question is asked (the adjudication's
+      // reasoning: a low score cannot tell an ambiguous question from a manual
+      // that does not cover it). The packet records that it fired so the badge
+      // RATE can be measured before the rule touches anything else.
+      const weakEvidence =
+        jevWeakEvidenceBadgeEnabled() &&
+        served &&
+        !refused &&
+        !outputRejected &&
+        isWeakEvidence({
+          jevSufficient: jev.noul,
+          basis: evidenceFrame.basis,
+          ungroundedUnitClaim: ungroundedClaimForBadge,
+          citationsShipped: emittedCitations.length,
+        });
+      const weakEntry: WeakEvidenceEntry | null =
+        weakEvidence && typeof jev.noul === "number"
+          ? { kind: "weak_evidence", rule: WEAK_EVIDENCE_RULE, jev_sufficient: jev.noul }
+          : null;
+      if (weakEvidence) {
+        evidenceFrame.label = WEAK_EVIDENCE_LABEL;
+        rec.stage("answer_gate", { weak_evidence_badge: true });
+        console.log(
+          `[notebook-chat] weak-evidence badge: jev=${jev.noul} citations=${emittedCitations.length} unit_claim=${ungroundedClaimForBadge}`,
+        );
+      }
+
       // Complete the durable turn before touching the response controller.
       // Cancellation during the semantic judge closes that controller; a
       // later enqueue may throw, but terminal truth must already be replayable.
@@ -3981,7 +4117,7 @@ async function handleChatTurn(
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries]
+              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
             : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : [])],
@@ -4068,7 +4204,7 @@ async function handleChatTurn(
 
       const statusFrame: NotebookStatusFrame =
         answerStatus === "answered"
-          ? { kind: "status", status: "answered" }
+          ? { kind: "status", status: "answered", ...(weakEvidence ? { evidence: "weak" as const } : {}) }
           : answerStatus === "insufficient_evidence"
             ? { kind: "status", status: "insufficient_evidence", message: "Not found in the selected sources." }
             : internalError
@@ -4186,6 +4322,10 @@ async function handleChatTurn(
         } catch {
           // A cancelled response controller is already terminal.
         }
+      } finally {
+        // #4355 option 1: a judge hold the judge never used (answer not served,
+        // gate path skipped, an exception) must not pin cap room forever.
+        judgeHold?.reservation.release();
       }
     },
   });
