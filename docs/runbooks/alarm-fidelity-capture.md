@@ -18,13 +18,17 @@ involved. Spec: `docs/superpowers/specs/2026-10-12-alarm-reasoning-design.md` §
    `alarm fidelity 2026`.
 3. Take **10 photos** with the in-app camera (the LOOK photo button), one per message. Send
    each one with **no question**, or with "what does this alarm mean":
-   - 6 photos of the default screen (the fail-safe list):
+   - 4 photos of the default screen (the fail-safe list):
      - 2 straight on;
-     - 2 angled about 30°, one left and one right;
-     - 1 with an overhead light glaring on the screen;
+     - 1 angled about 30°;
+     - 1 with an overhead light glaring on the screen.
+   - Add `#rtd` to the end of the address to switch screens. 3 photos of that screen:
+     - 1 straight on;
+     - 1 angled;
      - 1 from about 1.5 m away.
-   - Add `#rtd` to the end of the address to switch screens. 4 photos of that screen:
-     - 2 straight on;
+   - Change the ending to `#history` for the alarm-history screen (one line per alarm, coloured
+     rows, readings in brackets). 3 photos of that screen:
+     - 1 straight on;
      - 1 angled;
      - 1 from about 1.5 m away.
    - In every photo the screen must fill at least half the frame.
@@ -51,7 +55,7 @@ with a recommendation; nothing switches over automatically.
    production. The lines are in `evidence_item.capture_meta`, on the visual sessions whose
    `metadata->>'notebook_id'` is the test notebook.
 2. Write them to `run.json` as
-   `{"photos":[{"id":"p1","screen":"failsafe"|"rtd","lines":[...]}]}`.
+   `{"photos":[{"id":"p1","screen":"failsafe"|"rtd"|"history","lines":[...]}]}`.
 3. Run `cd mira-hub && npx vite-node ../tools/alarm-fidelity/score-run.ts run.json`. It exits
    0 on a pass and 1 on a fail.
 4. Post the printed table on the alarm-card PR.

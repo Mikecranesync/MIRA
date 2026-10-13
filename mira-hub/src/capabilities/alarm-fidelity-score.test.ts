@@ -3,7 +3,7 @@ import { gate, MIN_PHOTOS, RUN_PLAN, scoreScreen, type ScreenScore } from "./ala
 
 const fs = (score: ScreenScore) => ({ screen: "failsafe", score });
 const ONE = { failsafe: 1 };
-import { SCREEN_FAIL_SAFE, SCREEN_RTD } from "./alarm-screens.fixture";
+import { SCREEN_FAIL_SAFE, SCREEN_HISTORY, SCREEN_RTD } from "./alarm-screens.fixture";
 
 const truth = SCREEN_FAIL_SAFE;
 const replaceFirst = (lines: readonly string[], from: string, to: string): string[] => {
@@ -106,33 +106,39 @@ describe("gate", () => {
 describe("gate run plan", () => {
   const perfectFs = { screen: "failsafe", score: scoreScreen(truth, truth) };
   const perfectRtd = { screen: "rtd", score: scoreScreen(SCREEN_RTD, SCREEN_RTD) };
+  const perfectHist = { screen: "history", score: scoreScreen(SCREEN_HISTORY, SCREEN_HISTORY) };
   const times = <T,>(n: number, x: T) => Array.from({ length: n }, () => x);
+  const planned = () => [...times(4, perfectFs), ...times(3, perfectRtd), ...times(3, perfectHist)];
 
-  it("the run plan is the capture sheet's 6 fail-safe + 4 RTD photos", () => {
-    expect(RUN_PLAN).toEqual({ failsafe: 6, rtd: 4 });
+  it("the run plan is the capture sheet's 4 fail-safe + 3 RTD + 3 alarm-history photos", () => {
+    expect(RUN_PLAN).toEqual({ failsafe: 4, rtd: 3, history: 3 });
     expect(MIN_PHOTOS).toBe(10);
   });
   it("one perfect photo is not a run", () => {
     expect(gate([perfectFs]).pass).toBe(false);
   });
-  it("ten perfect photos of one screen are not a run — the other screen was never measured", () => {
+  it("ten perfect photos of one screen are not a run — the other screens were never measured", () => {
     const g = gate(times(10, perfectFs));
     expect(g.pass).toBe(false);
-    expect(g.offPlanScreens).toEqual(["failsafe", "rtd"]);
+    expect(g.offPlanScreens).toEqual(["failsafe", "rtd", "history"]);
   });
-  it("control: 6 fail-safe + 4 RTD perfect photos pass", () => {
-    const g = gate([...times(6, perfectFs), ...times(4, perfectRtd)]);
+  it("control: 4 fail-safe + 3 RTD + 3 alarm-history perfect photos pass", () => {
+    const g = gate(planned());
     expect(g.offPlanScreens).toEqual([]);
     expect(g.pass).toBe(true);
   });
   it("extra photos are off plan — they could dilute failures in the planned ten", () => {
-    const g = gate([...times(6, perfectFs), ...times(4, perfectRtd), ...times(5, perfectFs)]);
+    const g = gate([...planned(), ...times(5, perfectFs)]);
     expect(g.offPlanScreens).toEqual(["failsafe"]);
     expect(g.pass).toBe(false);
   });
   it("a photo of a screen not in the plan is off plan", () => {
-    const g = gate([...times(6, perfectFs), ...times(4, perfectRtd), { screen: "other", score: perfectFs.score }]);
+    const g = gate([...planned(), { screen: "other", score: perfectFs.score }]);
     expect(g.offPlanScreens).toEqual(["other"]);
     expect(g.pass).toBe(false);
+  });
+  it("the alarm-history screen is scored row by row, one device tag per row", () => {
+    const s = scoreScreen(SCREEN_HISTORY, SCREEN_HISTORY);
+    expect([s.designationExact, s.designationTotal, s.recordsCorrect, s.recordsTotal]).toEqual([6, 6, 6, 6]);
   });
 });
