@@ -4,7 +4,7 @@
  * and renders a fixed-order card that must pass validateAnswer and the energized-step
  * check UNMODIFIED — if it cannot, there is no card (the turn falls through).
  */
-import { groupAlarmRecords, parseAlarmRecord, timeSeconds, type AlarmLine, type AlarmRecord } from "./alarm-line";
+import { groupAlarmRecords, parseAlarmRecord, timeSeconds, isHistoryRecord, type AlarmLine, type AlarmRecord } from "./alarm-line";
 import { ALARM_PACKS, packFor, type AlarmPack } from "./alarm-packs/loader";
 import { validateAnswer } from "./answer-validation";
 import { stepEnergyContradiction } from "./step-energy";
@@ -23,6 +23,12 @@ const CUT_TIMES =
   "This screen cuts off the times, so it can't show which alarm came first — read it from the alarm history.";
 const MIXED_DATES = "I can't order these alarms from this screen — read the order from the alarm history.";
 const NOT_ON_VIEW = "The reading isn't shown on this screen — read it from the alarm history.";
+const VALUE_ROUNDED =
+  "The value shown equals its limit; the screen may be rounding it — read the exact value from the diagnostic view.";
+const VALUE_CONTRADICTS =
+  "The value shown is on the safe side of its limit, so it is not the reading that raised this alarm — read the value at the alarm time from the diagnostic view.";
+const ZERO_LIMIT_HISTORY =
+  "The screen prints 0 against a limit of 0, so this line does not show the real reading — read it from the diagnostic view.";
 
 export function packKey(l: AlarmLine): string | null {
   if (l.kind === "measurement_limit" && l.quantity === "temperature" && l.direction) {
@@ -50,6 +56,14 @@ function pickLead(covered: AlarmLine[]): { lead: AlarmLine; firstOut: boolean; n
   const dates = new Set(pool.map((l) => l.record.date?.text ?? ""));
   const sameDay =
     dates.size === 1 && !dates.has("") && !pool.some((l) => !l.record.date || l.record.date.truncated);
+  // An alarm-history list spans hours: its earliest line is not a first-out. Lead with the most
+  // recent same-day occurrence; across dates, the list's own order stands (Mike, 2026-10-13).
+  if (pool.every((l) => isHistoryRecord(l.record))) {
+    if (!secs.every((s) => s !== null) || !sameDay) return { lead: pool[0], firstOut: false, note: null };
+    let latest = 0;
+    secs.forEach((s, i) => { if ((s as number) > (secs[latest] as number)) latest = i; });
+    return { lead: pool[latest], firstOut: false, note: null };
+  }
   if (secs.every((s) => s !== null) && sameDay) {
     let best = 0;
     secs.forEach((s, i) => { if ((s as number) < (secs[best] as number)) best = i; });
@@ -96,7 +110,8 @@ function render(
   out.push(redact ? "**Alarm** — as read from your photo (values left on your photo)" : "**Alarm** — as read from your photo");
   out.push(`> ${quote(lead.record, redact)}`);
   if (lead.kind === "measurement_limit" && !lead.value.shown &&
-      (lead.value.reason === "not_displayed" || lead.value.reason === "zero_and_zero_limit")) {
+      (lead.value.reason === "not_displayed" ||
+        (lead.value.reason === "zero_and_zero_limit" && !isHistoryRecord(lead.record)))) {
     out.push(NOT_ON_VIEW);
   }
   out.push("", "**What it means**", entry.means);
@@ -119,8 +134,20 @@ function render(
   const cannot: string[] = [];
   if (orderNote) cannot.push(orderNote);
   if (covered.some((l) => l.fAddress?.truncated)) cannot.push("The F-I/O start addresses are cut off.");
+  if (!lead.value.shown && lead.value.reason === "unrecognized") {
+    cannot.push("The reading on the alarm line is in a form I can't read — read it from your photo.");
+  }
   if (!lead.value.shown && (lead.value.reason === "truncated" || lead.value.reason === "unreadable")) {
     cannot.push("The reading is cut off or unreadable on this screen.");
+  }
+  if (!lead.value.shown && lead.value.reason === "rounded") {
+    cannot.push(VALUE_ROUNDED);
+  }
+  if (!lead.value.shown && lead.value.reason === "contradicts_alarm") {
+    cannot.push(VALUE_CONTRADICTS);
+  }
+  if (!lead.value.shown && lead.value.reason === "zero_and_zero_limit" && isHistoryRecord(lead.record)) {
+    cannot.push(ZERO_LIMIT_HISTORY);
   }
   if ([...covered.map((l) => l.record), ...uncovered].some((r) => r.text.includes("?"))) {
     cannot.push("Some characters could not be read; they are shown as ?.");

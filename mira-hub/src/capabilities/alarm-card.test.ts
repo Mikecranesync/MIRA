@@ -5,7 +5,7 @@ import { stepEnergyContradiction } from "./step-energy";
 import { SITE_PROCEDURE_LINE } from "./alarm-packs/loader";
 import {
   SCREEN_FAIL_SAFE, SCREEN_FAIL_SAFE_PASSIVATION_FIRST, SCREEN_PASSIVATION_ONLY,
-  SCREEN_RTD, SCREEN_NEGATIVE, SCREEN_UNCOVERED_ONLY,
+  SCREEN_RTD, SCREEN_NEGATIVE, SCREEN_UNCOVERED_ONLY, SCREEN_HISTORY,
 } from "./alarm-screens.fixture";
 
 const HEADINGS = ["**Alarm**", "**What it means**", "**Two hypotheses**", "**Next three checks**", "**What this does not prove**"];
@@ -74,6 +74,23 @@ describe("alarm card — lead selection", () => {
     expect(card.firstOut).toBe(true);
     expect(card.lead.record.text).toContain("LEFT WINDING");
     expect(card.text).not.toContain("cuts off the times");
+  });
+});
+
+describe("alarm card — a reading in a form the parser does not know", () => {
+  const card = buildAlarmCard([
+    "No. Time Date Status Text",
+    "112 06:02:17 11/05/2027 I Error: Temperature measurement LEFT WINDING too high",
+    "=1.HYD+04-TE2 (115 °C, limit is 70 °C)",
+  ])!;
+  it("never says the screen hides a reading it shows", () => {
+    expect(card).not.toBeNull();
+    expect(card.text).not.toContain("isn't shown");
+  });
+  it("says it could not read the reading, under What I could not read", () => {
+    const cannot = card.text.slice(card.text.indexOf("**What I could not read**"));
+    expect(cannot).toContain("The reading on the alarm line is in a form I can't read — read it from your photo.");
+    passesCheckers(card.text);
   });
 });
 
@@ -153,5 +170,97 @@ describe("alarm card — a shown value", () => {
     expect(card).not.toBeNull();
     passesCheckers(card.text);
     if (card.valuesRedacted) expect(card.text).toContain("values left on your photo");
+  });
+});
+
+describe("alarm card — date-first history layout screen", () => {
+  const card = buildAlarmCard(SCREEN_HISTORY)!;
+  // An alarm-history list spans hours, so its earliest line is not a first-out: the card leads
+  // with the most recent same-day occurrence (Mike, 2026-10-13).
+  it("builds a card led by the most recent same-day occurrence, not the earliest", () => {
+    expect(card).not.toBeNull();
+    expect(card.firstOut).toBe(false);
+    expect(card.lead.record.time?.text).toBe("06:02:19");
+    expect(card.lead.record.text).toContain("(88Â°C, limit is 70Â°C)");
+  });
+  it("the older occurrences stay on the card under Also on this screen", () => {
+    const also = card.text.slice(card.text.indexOf("**Also on this screen**"));
+    expect(also).toContain("(0°C, limit is 70°C)");
+  });
+  it("keeps the fixed section order and passes both checkers", () => {
+    const idx = HEADINGS.map((h) => card.text.indexOf(h));
+    expect(idx.every((i) => i >= 0)).toBe(true);
+    expect([...idx].sort((a, b) => a - b)).toEqual(idx);
+    passesCheckers(card.text);
+  });
+});
+
+describe("alarm card — history-layout reason wording", () => {
+  const header = "Event Time Display Path Name Label";
+  it("zero_and_zero_limit on a history record gets the diagnostic-view wording, not the alarm-history one", () => {
+    const card = buildAlarmCard([
+      header,
+      "11/05/2027 06:01:40 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (0Â, A°C, limit is 0Â, A°C)",
+    ])!;
+    expect(card).not.toBeNull();
+    const cannot = card.text.slice(card.text.indexOf("**What I could not read**"));
+    expect(cannot).toContain(
+      "The screen prints 0 against a limit of 0, so this line does not show the real reading — read it from the diagnostic view.",
+    );
+    expect(card.text).not.toContain("The reading isn't shown on this screen — read it from the alarm history.");
+    passesCheckers(card.text);
+  });
+  it("the existing-layout zero_and_zero_limit wording stays byte-identical", () => {
+    const card = buildAlarmCard(SCREEN_RTD)!;
+    expect(card.text).toContain("The reading isn't shown on this screen — read it from the alarm history.");
+  });
+  it("contradicts_alarm gets the safe-side wording", () => {
+    const card = buildAlarmCard([
+      header,
+      "11/05/2027 05:58:02 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (0°C, limit is 70°C)",
+    ])!;
+    expect(card).not.toBeNull();
+    const cannot = card.text.slice(card.text.indexOf("**What I could not read**"));
+    expect(cannot).toContain(
+      "The value shown is on the safe side of its limit, so it is not the reading that raised this alarm — read the value at the alarm time from the diagnostic view.",
+    );
+    passesCheckers(card.text);
+  });
+  it("control: a non-history screen still leads with the earliest full time (first-out)", () => {
+    const card = buildAlarmCard(SCREEN_RTD)!;
+    expect(card.firstOut).toBe(true);
+    expect(card.lead.record.text).toContain("LEFT WINDING");
+  });
+  // Across dates, clock times cannot be compared (00:01 the next day is later than 23:58), so the
+  // list's own order stands. The "can't order these alarms — read the alarm history" note is not
+  // shown: the tech is already on the alarm history, and each row carries its own date and time.
+  it("a history list spanning two dates keeps the list's order and adds no order note", () => {
+    const card = buildAlarmCard([
+      header,
+      "11/05/2027 00:01:10 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (85°C, limit is 70°C)",
+      "11/04/2027 23:58:02 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (90°C, limit is 70°C)",
+    ])!;
+    expect(card).not.toBeNull();
+    expect(card.covered).toHaveLength(2);
+    expect(card.firstOut).toBe(false);
+    expect(card.lead.record.date?.text).toBe("11/05/2027");
+    expect(card.lead.record.text).toContain("(85°C, limit is 70°C)");
+    const also = card.text.slice(card.text.indexOf("**Also on this screen**"));
+    expect(also).toContain("(90°C, limit is 70°C)");
+    expect(card.text).not.toContain("I can't order these alarms from this screen");
+    expect(card.text).not.toContain("This screen cuts off the times");
+    passesCheckers(card.text);
+  });
+  it("rounded gets the diagnostic-view wording", () => {
+    const card = buildAlarmCard([
+      header,
+      "11/05/2027 06:01:40 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (70°C, limit is 70°C)",
+    ])!;
+    expect(card).not.toBeNull();
+    const cannot = card.text.slice(card.text.indexOf("**What I could not read**"));
+    expect(cannot).toContain(
+      "The value shown equals its limit; the screen may be rounding it — read the exact value from the diagnostic view.",
+    );
+    passesCheckers(card.text);
   });
 });
