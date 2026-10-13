@@ -77,7 +77,9 @@ Success for slice 1:
     a cut-off marker (`…`) where the screen shows one;
   - (b) **zero** invented characters in cut-off fields: any completed truncation fails the gate
     on its own;
-  - (c) records grouped correctly (same record boundaries as the screen) on ≥ 90 % of records.
+  - (c) records reproduced with the screen's boundaries and contents (case and punctuation
+    ignored) on ≥ 90 % of records;
+  - and the run has at least 10 photos — fewer is not a run.
 
   Below any threshold, slice 1 does not ship the card; the fallback in §4.3 is measured instead.
 - The grouper and parser classify every record of the synthetic golden set correctly and let
@@ -270,12 +272,12 @@ Each entry also carries:
     1. Read the actual value and the time of the alarm from the alarm history or diagnostic view.
     2. Compare the sibling channel at the same location (e.g. the other sensor of a left/right pair).
     3. Read the input channel's diagnostic (wire break / overrange / underrange) on the HMI
-       diagnostics page or online in the engineering software — read only — change nothing in the controller.
+       diagnostics page or online in the engineering software — in view mode only — do not enter configuration or change any setting in the controller.
   - Fail-safe output:
     1. Read the full time of each alarm, to the second, from the alarm history or the
        controller's diagnostic buffer, to see which came first.
     2. Read the module and channel diagnostics on the HMI diagnostics page or online in the
-       engineering software — read only — change nothing in the controller.
+       engineering software — in view mode only — do not enter configuration or change any setting in the controller.
     3. On the drawings, find what each listed channel drives and what those circuits share
        (cable, connector, junction box, load supply).
 - **site_procedure_line** — fixed text, always the **last line of the card** (after every other
@@ -297,6 +299,8 @@ pins each pattern, and the safety reviewer's brief lists them):
 - turning a diagnostic off: deactivate / disable wire break, disable diagnostics, parameterize
   off, change the hardware configuration or F-parameters, download;
 - adding a resistor or load to satisfy the channel (load resistor, pull-down, dummy load).
+- running or performing a test or diagnostic on the circuit (insulation, resistance — hands-on work);
+- restoring, reactivating, enabling or bringing back a channel (safety review 2026-10-12).
 
 The "draws too little current" hypothesis may stay; a resistor never appears as a check.
 
