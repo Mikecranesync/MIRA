@@ -20,9 +20,10 @@ beforeEach(() => {
   process.env.GROQ_API_KEY = "k1";
   delete process.env.CEREBRAS_API_KEY;
   delete process.env.TOGETHERAI_API_KEY;
-  // Input priced at zero so the arithmetic is only the 600-token output cap:
-  // worst case per call = 600 / 1e6 * 4.5 = $0.0027.
-  process.env.OPENAI_PRICE_PER_MTOK_IN = "0";
+  // Input priced at (almost) zero so the arithmetic is only the 600-token
+  // output cap: worst case per call = 600 / 1e6 * 4.5 = $0.0027. Not "0":
+  // a zero price is junk and falls back to the default (Gate 7 on #4355).
+  process.env.OPENAI_PRICE_PER_MTOK_IN = "0.000001";
   process.env.OPENAI_PRICE_PER_MTOK_OUT = "4.5";
   resetOpenAiRunBudgetForTests();
   vi.spyOn(console, "log").mockImplementation(() => {});
@@ -64,6 +65,43 @@ const MESSAGES = [{ role: "user" as const, content: "PowerFlex 525 fault F0004 o
 const hosts = (calls: Call[]) => calls.map((c) => c.host);
 
 describe("lib/llm/cascade — the OpenAI leg is spend-capped", () => {
+  it("a 200 whose JSON is null books the worst case, leaks no hold, and falls through (Codex r3 F9 on #4355)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) =>
+        String(url).includes("api.openai.com")
+          ? new Response("null", { status: 200 })
+          : Response.json({ choices: [{ message: { content: "from groq" } }] }),
+      ),
+    );
+    const r = await cascadeComplete(MESSAGES);
+    expect(r?.provider).toBe("Groq");
+    expect(openAiRunBudget().heldUsd).toBe(0);
+    expect(openAiRunBudget().spentUsd).toBeGreaterThanOrEqual(0.0027 - 1e-9); // the 600-token output cap at 4.5 / Mtok
+  });
+
+  it("control (Codex r2 F4 on #4355): a TEXT call on a model with no verified image bound still goes to OpenAI", async () => {
+    process.env.OPENAI_MODEL = "gpt-5.6-sol";
+    stubFetch({ content: "from openai", usage: { prompt_tokens: 50, completion_tokens: 100 } });
+    const r = await cascadeComplete(MESSAGES);
+    expect(r?.provider).toBe("OpenAI");
+  });
+
+  it("a malformed usage block books the hold, not NaN (Codex r2 F8 on #4355 — the reservation sanitizes for every caller)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) =>
+        String(url).includes("api.openai.com")
+          ? Response.json({ choices: [{ message: { content: "from openai" } }], usage: { prompt_tokens: "bad", completion_tokens: -1 } })
+          : Response.json({ choices: [{ message: { content: "from groq" } }] }),
+      ),
+    );
+    const r = await cascadeComplete(MESSAGES);
+    expect(r?.provider).toBe("OpenAI");
+    expect(Number.isFinite(openAiRunBudget().spentUsd)).toBe(true);
+    expect(openAiRunBudget().spentUsd).toBeGreaterThanOrEqual(0.0027 - 1e-9); // the 600-token output cap at 4.5 / Mtok
+  });
+
   it("a served OpenAI call books the provider's ACTUAL usage, not the worst case", async () => {
     process.env.OPENAI_RUN_BUDGET_USD = "1";
     stubFetch({ content: "from openai", usage: { prompt_tokens: 50, completion_tokens: 100 } });
@@ -125,10 +163,10 @@ describe("lib/llm/cascade — the OpenAI leg is spend-capped", () => {
   });
 
   it("token-dense input is held at its UPPER bound: a cap the chars/4 average would have passed refuses BEFORE the fetch (Codex r3 F4)", async () => {
-    // Input priced, output free, so only the input hold decides. 100 × "故障代码" = 400 CJK
+    // Input priced, output (almost) free, so only the input hold decides. 100 × "故障代码" = 400 CJK
     // chars ≈ 1,200 UTF-8 bytes: the byte bound is about 1,230 tokens, chars/4 about 110.
     process.env.OPENAI_PRICE_PER_MTOK_IN = "1000";
-    process.env.OPENAI_PRICE_PER_MTOK_OUT = "0";
+    process.env.OPENAI_PRICE_PER_MTOK_OUT = "0.000001"; // not "0": a zero price falls back to the default
     process.env.OPENAI_RUN_BUDGET_USD = "0.5"; // 500 tokens' worth: above the average, below the bound
     resetOpenAiRunBudgetForTests();
     const dense = [{ role: "user" as const, content: "故障代码".repeat(100) }];

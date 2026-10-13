@@ -26,6 +26,14 @@
  */
 
 import { requestDialectFields } from "../inference/canonical-cascade";
+import {
+  billableTokens,
+  boundVisionInputTokens,
+  logBudgetExhausted,
+  logVisionModelUnverified,
+  openAiRunBudget,
+  openAiVisionSelectable,
+} from "../../capabilities/openai-run-budget";
 import { openAiVisionProvider, togetherVisionModel } from "./index";
 
 // ── Field vocabulary ─────────────────────────────────────────────────────────
@@ -615,44 +623,91 @@ export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("recognizer_not_configured");
   const provider = openAiVisionProvider(key);
-  const content: unknown[] = [{ type: "text", text: prompt }];
-  for (const img of images) {
-    content.push({
-      type: "image_url",
-      image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
-    });
+  // Per-run spend hard stop (owner directive 2026-10-11): refuse BEFORE the
+  // request once the window's cap would be crossed; callers map the throw to
+  // their honest provider_error path and the photo stays parked. The worst
+  // case is HELD for the life of the request: `runMultiPass` fires several of
+  // these concurrently from one photo, and a plain precheck let every one of
+  // them pass against the same balance (Gate 7 on #4355).
+  // Sized by an UPPER bound: prompt bytes plus the model's worst-case image
+  // cost (Codex r1 F4 on #4355), never the chars/4 + 1,500 average.
+  const inputBound = boundVisionInputTokens(prompt, images.length, provider.model);
+  if (inputBound === null) {
+    // No verified worst case for this model's images: refuse rather than guess (Codex r2 F4).
+    logVisionModelUnverified("vision-call", provider.model);
+    throw new Error("recognizer_model_unverified");
   }
-  // Bounded like `openAiCompatVision`: a stalled request must reach the LOOK
-  // error path and must not hold `runMultiPass`'s Promise.all hostage (Codex F2
-  // on #4353). The signal covers the request AND the body read.
-  const signal = AbortSignal.timeout(visionTimeoutMs());
-  let resp: Response;
+  const verdict = openAiRunBudget().reserve(inputBound, maxTokens);
+  if (!verdict.ok) {
+    logBudgetExhausted("vision-call", verdict);
+    throw new Error("recognizer_budget_exhausted");
+  }
+  const reservation = verdict.reservation;
+  // Every exit after the reservation decides it: served settles actual usage,
+  // a rejection releases, and the finally books the worst case for anything
+  // else — a malformed body, an unexpected throw. Settle/release are
+  // idempotent, so the finally is a no-op once a path above decided.
   try {
-    resp = await fetch(provider.url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      signal,
-      body: JSON.stringify({
-        model: provider.model,
-        ...requestDialectFields(provider, maxTokens, temperature),
-        response_format: { type: "json_object" },
-        messages: [{ role: "user", content }],
-      }),
-    });
-  } catch (err) {
-    throw new Error(signal.aborted ? "recognizer_provider_timeout" : "recognizer_provider_unreachable", {
-      cause: err,
-    });
+    const content: unknown[] = [{ type: "text", text: prompt }];
+    for (const img of images) {
+      content.push({
+        type: "image_url",
+        image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+      });
+    }
+    // Bounded like `openAiCompatVision`: a stalled request must reach the LOOK
+    // error path and must not hold `runMultiPass`'s Promise.all hostage (Codex F2
+    // on #4353). The signal covers the request AND the body read.
+    const signal = AbortSignal.timeout(visionTimeoutMs());
+    let resp: Response;
+    try {
+      resp = await fetch(provider.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        signal,
+        body: JSON.stringify({
+          model: provider.model,
+          ...requestDialectFields(provider, maxTokens, temperature),
+          response_format: { type: "json_object" },
+          messages: [{ role: "user", content }],
+        }),
+      });
+    } catch (err) {
+      // Ambiguous: a timeout or a dropped connection after the request was
+      // accepted may still have been billed. Book the worst case.
+      reservation.settle(inputBound, maxTokens);
+      throw new Error(signal.aborted ? "recognizer_provider_timeout" : "recognizer_provider_unreachable", {
+        cause: err,
+      });
+    }
+    if (!resp.ok) {
+      // The provider rejected the request: nothing billable ran.
+      reservation.release();
+      throw new Error(`recognizer_provider_error_${resp.status}`);
+    }
+    let body: {
+      choices?: { message?: { content?: string } }[];
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+    try {
+      body = (await resp.json()) as typeof body;
+    } catch (err) {
+      // A 200 whose body could not be read was still served and billed.
+      reservation.settle(inputBound, maxTokens);
+      if (signal.aborted) throw new Error("recognizer_provider_timeout", { cause: err });
+      throw err;
+    }
+    if (!body || typeof body !== "object") {
+      // A 200 whose JSON is not an object (`null`, a number) was served and may be
+      // billed; the finally books the worst case (Codex r3 F9 on #4355).
+      throw new Error("recognizer_provider_malformed");
+    }
+    // Served: replace the hold with ACTUAL usage (the bound when the provider omits it).
+    reservation.settle(...billableTokens(body.usage, inputBound, maxTokens));
+    return { text: body.choices?.[0]?.message?.content ?? "{}", model: provider.model };
+  } finally {
+    reservation.settle(inputBound, maxTokens);
   }
-  if (!resp.ok) throw new Error(`recognizer_provider_error_${resp.status}`);
-  let body: { choices?: { message?: { content?: string } }[] };
-  try {
-    body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
-  } catch (err) {
-    if (signal.aborted) throw new Error("recognizer_provider_timeout", { cause: err });
-    throw err;
-  }
-  return { text: body.choices?.[0]?.message?.content ?? "{}", model: provider.model };
 };
 
 /**
@@ -667,7 +722,9 @@ export function visionTimeoutMs(): number {
 
 /** OpenAI leads when its key is set; otherwise the Together call, exactly as before. */
 export function defaultVisionCall(): VisionCall {
-  return process.env.OPENAI_API_KEY ? openAiVisionCall : togetherVisionCall;
+  // OpenAI leads only on a model whose image cost is verified (Codex r2 F4 on
+  // #4355); otherwise the free Together call runs, exactly as without a key.
+  return openAiVisionSelectable() ? openAiVisionCall : togetherVisionCall;
 }
 
 export function safeJson(text: string): Record<string, unknown> | null {
