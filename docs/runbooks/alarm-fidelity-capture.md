@@ -27,7 +27,7 @@ involved. Spec: `docs/superpowers/specs/2026-10-12-alarm-reasoning-design.md` §
      - 1 angled;
      - 1 from about 1.5 m away.
    - Change the ending to `#history` for the alarm-history screen (one line per alarm, coloured
-     rows, readings in brackets). 3 photos of that screen:
+     rows, readings in parentheses). 3 photos of that screen:
      - 1 straight on;
      - 1 angled;
      - 1 from about 1.5 m away.
