@@ -821,6 +821,48 @@ class TestIsOemHost:
         assert is_oem_host("SMC", "notsmc.eu") is False
         assert is_oem_host("SMC", "smc.eu.attacker.net") is False
 
+    def test_emerson_documentation_host_is_oem(self):
+        # #4402: Emerson took over GE's PLC/HMI line; its manuals are served from
+        # www.emerson.com/documents/... Without an entry, a genuine first-party
+        # Emerson PDF could never auto-import (oem_host gates auto-import).
+        assert is_oem_host("Emerson", "www.emerson.com") is True
+        assert is_oem_host("emerson", "emerson.com") is True
+
+    def test_ge_automation_names_map_to_emerson(self):
+        # Technicians read "GE Fanuc" off the hardware; the documentation for
+        # GE's PLC/HMI line now lives on emerson.com.
+        assert is_oem_host("GE Fanuc", "www.emerson.com") is True
+        assert is_oem_host("GE Intelligent Platforms", "www.emerson.com") is True
+        assert is_oem_host("GE Automation", "www.emerson.com") is True
+
+    def test_emerson_automation_division_names_map_to_emerson(self):
+        # Nameplates and catalogs also carry the automation divisions' names.
+        assert is_oem_host("Emerson Automation Solutions", "www.emerson.com") is True
+        assert is_oem_host("Emerson Process Management", "www.emerson.com") is True
+
+    def test_emerson_electric_is_not_mapped_to_emerson_com(self):
+        # "Emerson Electric" is also the old motor brand (now Nidec / US Motors),
+        # whose manuals are not on emerson.com — ambiguous, like a bare "GE".
+        assert is_oem_host("Emerson Electric", "www.emerson.com") is False
+
+    def test_a_bare_ge_is_not_mapped_to_emerson(self):
+        # A bare "GE" is ambiguous: GE's motor, relay and power lines are not
+        # Emerson's, and oem_host gates auto-import. It must not make an
+        # emerson.com PDF count as the maker's own documentation.
+        assert is_oem_host("GE", "www.emerson.com") is False
+
+    def test_ge_lookalike_names_do_not_map_to_emerson(self):
+        # Exact-key lookup: a name that merely contains "ge" must not inherit
+        # Emerson's host, and General Electric's non-automation lines are not
+        # Emerson's.
+        assert is_oem_host("Gefran", "www.emerson.com") is False
+        assert is_oem_host("Georg Fischer", "www.emerson.com") is False
+        assert is_oem_host("General Electric", "www.emerson.com") is False
+
+    def test_emerson_does_not_match_lookalike_hosts(self):
+        assert is_oem_host("Emerson", "notemerson.com") is False
+        assert is_oem_host("GE Fanuc", "emerson.com.attacker.net") is False
+
     def test_trusted_distributor_is_NOT_oem_host(self):
         # Codex P1 (2026-08-16): docs.rs-online.com is on the general trusted
         # list, but oem_host gates AUTO-verify — a distributor (or another
