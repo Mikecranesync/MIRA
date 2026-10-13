@@ -261,9 +261,11 @@ Keyed by `(kind, quantity | diagnostic, direction | io)`. Slice 1 entries:
 | io_diagnostic · wire_break · output | an open circuit between the output and its load: wire, terminal, connector, or the load's own coil or element | the load is connected but draws less current than the channel needs to detect it (for example after an actuator or relay was replaced with a different type) |
 | safety_passivation (alone on the screen) | a channel or module fault the module reported to the safety program | a communication fault between the controller and the module; the diagnostic buffer tells these apart |
 
-**What a passivation means** (fixed text): "The safety program switched this channel to its safe
-state — output off — because of a fault it was told about. It stays there while the fault is
-present." Nothing about how it comes back.
+**What a passivation means** (fixed text): "The safety program switched this channel to its
+fail-safe value because of a fault it was told about: an output channel goes off, an input
+channel reads as its safe value. It stays there while the fault is present." Passivation happens
+on fail-safe inputs too, so the text never claims an output went off. Nothing about how it
+comes back.
 
 Each entry also carries:
 
