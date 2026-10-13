@@ -20,7 +20,11 @@ if (!dir) {
   console.error("usage: transcripts-to-run.ts <folder of <id>.<screen>.txt files>");
   process.exit(2);
 }
-const photos = readdirSync(dir)
+// Only regular files are read, and only once the name says they are a transcript, so a
+// subfolder or a stray file in the same folder is skipped rather than aborting the run.
+const photos = readdirSync(dir, { withFileTypes: true })
+  .filter((entry) => entry.isFile() && photoFromTranscript(entry.name, "") !== null)
+  .map((entry) => entry.name)
   .sort()
   .map((name) => photoFromTranscript(name, readFileSync(join(dir, name), "utf8")))
   .filter((p): p is RunPhoto => p !== null);
