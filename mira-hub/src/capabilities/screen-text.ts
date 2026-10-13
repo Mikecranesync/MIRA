@@ -22,7 +22,10 @@ export function normalizeScreenTextLines(raw: unknown): string[] {
   const out: string[] = [];
   for (const item of raw) {
     if (typeof item !== "string") continue;
-    const line = item.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, MAX_SCREEN_LINE_CHARS);
+    const clean = item.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+    // A line cut by our own cap ends in "…" so it reads as cut off, never as complete
+    // (review #4389 r5) — the parser treats a trailing "…" as could-not-read.
+    const line = clean.length > MAX_SCREEN_LINE_CHARS ? `${clean.slice(0, MAX_SCREEN_LINE_CHARS - 1)}…` : clean;
     if (line) out.push(line);
     if (out.length >= MAX_SCREEN_LINES) break;
   }

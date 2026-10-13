@@ -46,6 +46,6 @@ for (const p of run.photos) {
 const g = gate(scored);
 console.log(
   `\nGATE ${g.pass ? "PASS" : "FAIL"} — tags ${(g.designationRate * 100).toFixed(1)} % (need ≥ 90), ` +
-    `grouping ${(g.groupingRate * 100).toFixed(1)} % (need ≥ 90), invented ${g.invented} (need 0), photos ${g.photos} (plan ${JSON.stringify(RUN_PLAN)}${g.shortScreens.length ? `, short: ${g.shortScreens.join(", ")}` : ""})`,
+    `grouping ${(g.groupingRate * 100).toFixed(1)} % (need ≥ 90), invented ${g.invented} (need 0), photos ${g.photos} (plan ${JSON.stringify(RUN_PLAN)}${g.offPlanScreens.length ? `, off plan: ${g.offPlanScreens.join(", ")}` : ""})`,
 );
 process.exit(g.pass ? 0 : 1);

@@ -6,7 +6,7 @@
  *  (a) designations reproduced exactly            — gate ≥ 90 % across all photos
  *  (b) characters invented inside cut-off fields  — gate: zero, across all photos
  *  (c) records reproduced with the screen's boundaries and contents — gate ≥ 90 %
- *  A run passes only when every screen in RUN_PLAN was photographed as often as it asks.
+ *  A run passes only when the photos match RUN_PLAN exactly, screen by screen.
  */
 import { groupAlarmRecords, parseDesignations } from "./alarm-line";
 
@@ -24,8 +24,8 @@ export type GateResult = {
   groupingRate: number;
   invented: number;
   photos: number;
-  /** Screens photographed fewer times than the run plan asks for. */
-  shortScreens: string[];
+  /** Screens whose photo count differs from the run plan (too few, too many, or not in it). */
+  offPlanScreens: string[];
 };
 
 export type ScoredPhoto = { screen: string; score: ScreenScore };
@@ -106,9 +106,12 @@ export function gate(photos: readonly ScoredPhoto[], plan: Readonly<Record<strin
   const designationRate = sum("designationTotal") ? sum("designationExact") / sum("designationTotal") : 1;
   const groupingRate = sum("recordsTotal") ? sum("recordsCorrect") / sum("recordsTotal") : 1;
   const invented = sum("inventedInCutFields");
-  const shortScreens = Object.entries(plan)
-    .filter(([screen, n]) => photos.filter((p) => p.screen === screen).length < n)
-    .map(([screen]) => screen);
-  const pass = shortScreens.length === 0 && designationRate >= 0.9 && groupingRate >= 0.9 && invented === 0;
-  return { pass, designationRate, groupingRate, invented, photos: photos.length, shortScreens };
+  // Exact counts: too few leaves a screen unmeasured; extras would dilute failures in the
+  // planned photos (review #4389 r5). A run that is off plan is not a run.
+  const screens = new Set([...Object.keys(plan), ...photos.map((p) => p.screen)]);
+  const offPlanScreens = [...screens].filter(
+    (screen) => photos.filter((p) => p.screen === screen).length !== (plan[screen] ?? 0),
+  );
+  const pass = offPlanScreens.length === 0 && designationRate >= 0.9 && groupingRate >= 0.9 && invented === 0;
+  return { pass, designationRate, groupingRate, invented, photos: photos.length, offPlanScreens };
 }

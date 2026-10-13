@@ -118,11 +118,21 @@ describe("gate run plan", () => {
   it("ten perfect photos of one screen are not a run — the other screen was never measured", () => {
     const g = gate(times(10, perfectFs));
     expect(g.pass).toBe(false);
-    expect(g.shortScreens).toEqual(["rtd"]);
+    expect(g.offPlanScreens).toEqual(["failsafe", "rtd"]);
   });
   it("control: 6 fail-safe + 4 RTD perfect photos pass", () => {
     const g = gate([...times(6, perfectFs), ...times(4, perfectRtd)]);
-    expect(g.shortScreens).toEqual([]);
+    expect(g.offPlanScreens).toEqual([]);
     expect(g.pass).toBe(true);
+  });
+  it("extra photos are off plan — they could dilute failures in the planned ten", () => {
+    const g = gate([...times(6, perfectFs), ...times(4, perfectRtd), ...times(5, perfectFs)]);
+    expect(g.offPlanScreens).toEqual(["failsafe"]);
+    expect(g.pass).toBe(false);
+  });
+  it("a photo of a screen not in the plan is off plan", () => {
+    const g = gate([...times(6, perfectFs), ...times(4, perfectRtd), { screen: "other", score: perfectFs.score }]);
+    expect(g.offPlanScreens).toEqual(["other"]);
+    expect(g.pass).toBe(false);
   });
 });

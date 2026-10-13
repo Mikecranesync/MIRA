@@ -17,7 +17,13 @@ describe("normalizeScreenTextLines", () => {
   it("caps line count and line length", () => {
     const many = Array.from({ length: MAX_SCREEN_LINES + 5 }, (_, i) => `line ${i}`);
     expect(normalizeScreenTextLines(many)).toHaveLength(MAX_SCREEN_LINES);
-    expect(normalizeScreenTextLines(["x".repeat(MAX_SCREEN_LINE_CHARS + 50)])[0]).toHaveLength(MAX_SCREEN_LINE_CHARS);
+    const capped = normalizeScreenTextLines(["x".repeat(MAX_SCREEN_LINE_CHARS + 50)])[0];
+    expect(capped).toHaveLength(MAX_SCREEN_LINE_CHARS);
+    expect(capped.endsWith("…")).toBe(true); // cut by the cap = cut off, never "complete"
+  });
+  it("control: a line exactly at the cap is stored unchanged", () => {
+    const exact = "y".repeat(MAX_SCREEN_LINE_CHARS);
+    expect(normalizeScreenTextLines([exact])[0]).toBe(exact);
   });
   it("strips control characters", () => {
     expect(normalizeScreenTextLines(["Error:\u0007 Wire break"])).toEqual(["Error: Wire break"]);
