@@ -5,7 +5,7 @@
  * diagnostic, download, or load resistor never loads. The ban list is the safety
  * boundary — read-only troubleshooting intelligence, no control actions.
  */
-import rtdJson from "./rtd.v1.json";
+import rtdJson from "./rtd.v2.json";
 import failSafeOutputJson from "./fail-safe-output.v1.json";
 
 export type PackEntry = {
