@@ -41,8 +41,9 @@ Across all 10 photos, all three must hold:
   example `08:14:35`). Even one is a fail.
 - **Lines kept together:** at least 90 % of the alarms are grouped back into the right entry.
 
-If it fails, MIRA tries the same 10 photos through its OCR reader instead. You do not need to
-take new photos. The session reports both results with a recommendation.
+If it fails, the session (not MIRA on its own) runs the same 10 photos through MIRA's OCR
+reader as a manual step. You do not need to take new photos. The session reports both results
+with a recommendation; nothing switches over automatically.
 
 ## For the session (scoring)
 

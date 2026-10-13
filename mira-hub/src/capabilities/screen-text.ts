@@ -49,20 +49,27 @@ export async function attachScreenTextLines(
   });
 }
 
+/**
+ * The lines stored for ONE photo: the verified LOOK row's session AND the photo's file id.
+ * Binding to the file id means another photo's text can never be read as this photo's
+ * (review #4389 r6), even if a session ever held more than one evidence row.
+ */
 export async function loadScreenTextLines(
   c: QueryClient,
   tenantId: string,
   sessionId: string,
+  fileId: string,
 ): Promise<string[] | null> {
-  if (!UUID_RE.test(sessionId)) return null;
+  if (!UUID_RE.test(sessionId) || !UUID_RE.test(fileId)) return null;
   const res = await c.query(
     `SELECT capture_meta->'screen_text_lines' AS lines
        FROM evidence_item
       WHERE tenant_id = $1 AND session_id = $2::uuid
+        AND capture_meta->>'file_id' = $3
         AND capture_meta ? 'screen_text_lines'
       ORDER BY created_at DESC
       LIMIT 1`,
-    [tenantId, sessionId],
+    [tenantId, sessionId, fileId],
   );
   const lines = normalizeScreenTextLines(res.rows[0]?.lines);
   return lines.length > 0 ? lines : null;

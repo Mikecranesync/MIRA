@@ -33,22 +33,29 @@ describe("normalizeScreenTextLines", () => {
 describe("loadScreenTextLines", () => {
   it("reads the lines stored on the LOOK row's own evidence item, tenant-scoped", async () => {
     const query = vi.fn(async () => ({ rows: [{ lines: ["Error: Wire break on Output channel 3"] }] }));
-    const out = await loadScreenTextLines({ query } as never, "tenant-1", "11111111-2222-3333-4444-555555555555");
+    const out = await loadScreenTextLines({ query } as never, "tenant-1", "11111111-2222-3333-4444-555555555555", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
     expect(out).toEqual(["Error: Wire break on Output channel 3"]);
     const [sql, params] = query.mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toMatch(/tenant_id = \$1/);
     expect(sql).toMatch(/session_id = \$2::uuid/);
     // Newest row that HAS lines — a later row without them must not hide them (review #4389 r4).
     expect(sql).toMatch(/capture_meta \? 'screen_text_lines'/);
-    expect(params).toEqual(["tenant-1", "11111111-2222-3333-4444-555555555555"]);
+    // Bound to THIS photo, not just its session — another photo's text can never be read as this one's.
+    expect(sql).toMatch(/capture_meta->>'file_id' = \$3/);
+    expect(params).toEqual(["tenant-1", "11111111-2222-3333-4444-555555555555", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"]);
   });
   it("returns null for a non-UUID session without querying", async () => {
     const query = vi.fn();
-    expect(await loadScreenTextLines({ query } as never, "tenant-1", "not-a-uuid")).toBeNull();
+    expect(await loadScreenTextLines({ query } as never, "tenant-1", "not-a-uuid", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")).toBeNull();
+    expect(query).not.toHaveBeenCalled();
+  });
+  it("returns null for a non-UUID file id without querying", async () => {
+    const query = vi.fn();
+    expect(await loadScreenTextLines({ query } as never, "tenant-1", "11111111-2222-3333-4444-555555555555", "nope")).toBeNull();
     expect(query).not.toHaveBeenCalled();
   });
   it("returns null when no lines are stored", async () => {
     const query = vi.fn(async () => ({ rows: [{ lines: null }] }));
-    expect(await loadScreenTextLines({ query } as never, "tenant-1", "11111111-2222-3333-4444-555555555555")).toBeNull();
+    expect(await loadScreenTextLines({ query } as never, "tenant-1", "11111111-2222-3333-4444-555555555555", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")).toBeNull();
   });
 });
