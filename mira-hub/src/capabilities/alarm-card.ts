@@ -4,7 +4,7 @@
  * and renders a fixed-order card that must pass validateAnswer and the energized-step
  * check UNMODIFIED — if it cannot, there is no card (the turn falls through).
  */
-import { groupAlarmRecords, parseAlarmRecord, timeSeconds, type AlarmLine, type AlarmRecord } from "./alarm-line";
+import { groupAlarmRecords, parseAlarmRecord, timeSeconds, isHistoryRecord, type AlarmLine, type AlarmRecord } from "./alarm-line";
 import { ALARM_PACKS, packFor, type AlarmPack } from "./alarm-packs/loader";
 import { validateAnswer } from "./answer-validation";
 import { stepEnergyContradiction } from "./step-energy";
@@ -23,6 +23,12 @@ const CUT_TIMES =
   "This screen cuts off the times, so it can't show which alarm came first — read it from the alarm history.";
 const MIXED_DATES = "I can't order these alarms from this screen — read the order from the alarm history.";
 const NOT_ON_VIEW = "The reading isn't shown on this screen — read it from the alarm history.";
+const VALUE_ROUNDED =
+  "The value shown equals its limit; the screen may be rounding it — read the exact value from the diagnostic view.";
+const VALUE_CONTRADICTS =
+  "The value shown is on the safe side of its limit, so it is not the reading that raised this alarm — read the value at the alarm time from the diagnostic view.";
+const ZERO_LIMIT_HISTORY =
+  "The screen prints 0 against a limit of 0, so this line does not show the real reading — read it from the diagnostic view.";
 
 export function packKey(l: AlarmLine): string | null {
   if (l.kind === "measurement_limit" && l.quantity === "temperature" && l.direction) {
@@ -96,7 +102,8 @@ function render(
   out.push(redact ? "**Alarm** — as read from your photo (values left on your photo)" : "**Alarm** — as read from your photo");
   out.push(`> ${quote(lead.record, redact)}`);
   if (lead.kind === "measurement_limit" && !lead.value.shown &&
-      (lead.value.reason === "not_displayed" || lead.value.reason === "zero_and_zero_limit")) {
+      (lead.value.reason === "not_displayed" ||
+        (lead.value.reason === "zero_and_zero_limit" && !isHistoryRecord(lead.record)))) {
     out.push(NOT_ON_VIEW);
   }
   out.push("", "**What it means**", entry.means);
@@ -124,6 +131,15 @@ function render(
   }
   if (!lead.value.shown && (lead.value.reason === "truncated" || lead.value.reason === "unreadable")) {
     cannot.push("The reading is cut off or unreadable on this screen.");
+  }
+  if (!lead.value.shown && lead.value.reason === "rounded") {
+    cannot.push(VALUE_ROUNDED);
+  }
+  if (!lead.value.shown && lead.value.reason === "contradicts_alarm") {
+    cannot.push(VALUE_CONTRADICTS);
+  }
+  if (!lead.value.shown && lead.value.reason === "zero_and_zero_limit" && isHistoryRecord(lead.record)) {
+    cannot.push(ZERO_LIMIT_HISTORY);
   }
   if ([...covered.map((l) => l.record), ...uncovered].some((r) => r.text.includes("?"))) {
     cannot.push("Some characters could not be read; they are shown as ?.");

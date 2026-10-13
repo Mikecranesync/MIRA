@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { groupAlarmRecords, parseAlarmRecord, parseDesignations, timeSeconds, type AlarmRecord } from "./alarm-line";
-import { SCREEN_FAIL_SAFE, SCREEN_NEGATIVE, SCREEN_RTD } from "./alarm-screens.fixture";
+import { groupAlarmRecords, parseAlarmRecord, parseDesignations, timeSeconds, isHistoryRecord, type AlarmRecord } from "./alarm-line";
+import { SCREEN_FAIL_SAFE, SCREEN_NEGATIVE, SCREEN_RTD, SCREEN_HISTORY } from "./alarm-screens.fixture";
 
 const rec = (text: string, extra: Partial<AlarmRecord> = {}): AlarmRecord => ({
   lines: [text], number: null, time: null, date: null, status: null, text, count: 1, ...extra,
@@ -158,5 +158,143 @@ describe("timeSeconds", () => {
     expect(timeSeconds("06:02:17")).toBe(6 * 3600 + 2 * 60 + 17);
     expect(timeSeconds("08:14:3…")).toBeNull();
     expect(timeSeconds("08:14")).toBeNull();
+  });
+});
+
+describe("groupAlarmRecords — date-first history layout", () => {
+  it("drops the header and produces one record per row, path and name kept off the quoted text", () => {
+    const records = groupAlarmRecords(SCREEN_HISTORY);
+    expect(records).toHaveLength(6);
+    const first = records[0];
+    expect(first.date).toEqual({ text: "11/05/2027", truncated: false });
+    expect(first.time).toEqual({ text: "06:02:19", truncated: false });
+    // Columns are Display Path | Name | Label: the Label carries the device tag, and the
+    // quote a technician reads must keep it.
+    expect(first.path).toBe("Line2");
+    expect(first.name).toBe("525");
+    expect(first.text).toBe("=k.TBR+05-BT3 temperature measurement LEFT COIL too high (88Â°C, limit is 70Â°C)");
+    expect(first.text).not.toContain("Line2");
+    expect(first.text).not.toContain("525");
+  });
+  it("a history row's designation comes from its label, so the card quote keeps the device tag", () => {
+    const l = parseAlarmRecord(groupAlarmRecords(SCREEN_HISTORY)[0])!;
+    expect(l.designations.map((d) => d.raw)).toEqual(["=k.TBR+05-BT3"]);
+  });
+  it("isHistoryRecord is true only for a row carrying path/name", () => {
+    const [history] = groupAlarmRecords(SCREEN_HISTORY);
+    expect(isHistoryRecord(history)).toBe(true);
+    const [standard] = groupAlarmRecords(SCREEN_FAIL_SAFE);
+    expect(isHistoryRecord(standard)).toBe(false);
+  });
+  it("the existing row-prefix layout is unaffected by the new date-first branch", () => {
+    const records = groupAlarmRecords(SCREEN_FAIL_SAFE);
+    expect(records.map((r) => [r.number, r.text, r.count])).toEqual([
+      ["40", "Error: Wire break on Output channel 1 =y.CTL+07-K4.1 / =y.CTL+07-K4.1-2.", 2],
+      ["46", "Error: Safety program: F-I/O channel passivated F-runtime group 1 Start address of the F-I/O: 61…", 2],
+      ["40", "Error: Wire break on Output channel 5 =y.CTL+07-K4.1 / =y.CTL+07-K4.1-2.", 2],
+      ["46", "Error: Safety program: F-I/O channel passivated F-runtime group 1 Start address of the F-I/O: 62…", 2],
+      ["40", "Error: Wire break on Output channel 4 =y.CTL+07-K4.1 / =y.CTL+07-K4.1-6.", 2],
+    ]);
+  });
+});
+
+describe("parseAlarmRecord — history-layout readings in parentheses", () => {
+  it.each([
+    ["(88Â°C, limit is 70Â°C)", 70, "°C"],
+    ["(0°C, limit is 70°C)", 70, "°C"],
+    ["(1 Ohm, limit is 1 Ohm)", 1, "Ohm"],
+  ])("parses the limit M and unit out of %s regardless of the unit spelling", (paren, m, unit) => {
+    const records = groupAlarmRecords([
+      "Event Time Display Path Name Label",
+      `11/05/2027 06:02:19 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high ${paren}`,
+    ]);
+    const l = parseAlarmRecord(records[0])!;
+    expect(l.limit).toEqual({ number: m, unit });
+  });
+
+  it("N==0 and M==0 is the existing zero_and_zero_limit reason, garbled degree sign (Â°C)", () => {
+    const records = groupAlarmRecords([
+      "Event Time Display Path Name Label",
+      "11/05/2027 06:01:40 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (0Â, A°C, limit is 0Â, A°C)",
+    ]);
+    const l = parseAlarmRecord(records[0])!;
+    expect(l.value).toEqual({ shown: false, reason: "zero_and_zero_limit" });
+    expect(l.limit).toEqual({ number: 0, unit: "°C" });
+  });
+
+  it("N==0 and M==0 with the Ã, Â°C garble form also parses", () => {
+    const records = groupAlarmRecords([
+      "Event Time Display Path Name Label",
+      "11/05/2027 06:01:40 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (0Ã, Â°C, limit is 0Ã, Â°C)",
+    ]);
+    const l = parseAlarmRecord(records[0])!;
+    expect(l.value).toEqual({ shown: false, reason: "zero_and_zero_limit" });
+  });
+
+  it("direction high and N<M contradicts the alarm (reading on the safe side)", () => {
+    const records = groupAlarmRecords([
+      "Event Time Display Path Name Label",
+      "11/05/2027 05:58:02 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (0°C, limit is 70°C)",
+    ]);
+    const l = parseAlarmRecord(records[0])!;
+    expect(l.value).toEqual({ shown: false, reason: "contradicts_alarm" });
+    expect(l.limit).toEqual({ number: 70, unit: "°C" });
+  });
+
+  it("direction low and N>M also contradicts the alarm", () => {
+    const records = groupAlarmRecords([
+      "Event Time Display Path Name Label",
+      "11/05/2027 05:58:02 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too low (90°C, limit is 70°C)",
+    ]);
+    const l = parseAlarmRecord(records[0])!;
+    expect(l.value).toEqual({ shown: false, reason: "contradicts_alarm" });
+  });
+
+  it("N==M with a direction is the rounded reason", () => {
+    const records = groupAlarmRecords([
+      "Event Time Display Path Name Label",
+      "11/05/2027 05:58:02 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (70°C, limit is 70°C)",
+    ]);
+    const l = parseAlarmRecord(records[0])!;
+    expect(l.value).toEqual({ shown: false, reason: "rounded" });
+  });
+
+  it("otherwise the value is shown, with its unit, even through a garbled degree sign", () => {
+    const records = groupAlarmRecords([
+      "Event Time Display Path Name Label",
+      "11/05/2027 06:02:19 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (88Â°C, limit is 70Â°C)",
+    ]);
+    const l = parseAlarmRecord(records[0])!;
+    expect(l.value).toEqual({ shown: true, number: 88, unit: "°C" });
+    expect(l.limit).toEqual({ number: 70, unit: "°C" });
+  });
+
+  it("the exact same reading text keeps the OLD unrecognized behaviour on the standard layout", () => {
+    // Same parenthetical shape as the history-layout tests above, fed through the
+    // existing row-prefix layout (no date-first match): the existing behaviour from
+    // #4392 must not change.
+    const l = parseAlarmRecord({
+      lines: [], number: null, time: null, date: null, status: null, count: 1,
+      text: "Error: Temperature measurement LEFT COIL too high =1.HYD+04-TE2 (70°C, limit is 70°C)",
+    })!;
+    expect(l.value).toEqual({ shown: false, reason: "unrecognized" });
+  });
+
+  it("an unparseable leftover (no , limit is structure) stays unrecognized on a history record", () => {
+    const records = groupAlarmRecords([
+      "Event Time Display Path Name Label",
+      "11/05/2027 06:02:19 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (115 °C only)",
+    ]);
+    const l = parseAlarmRecord(records[0])!;
+    expect(l.value).toEqual({ shown: false, reason: "unrecognized" });
+  });
+  it("a unit is °C only when a degree sign (or its garble) is there — VDC is not °C", () => {
+    const [r] = groupAlarmRecords([
+      "Event Time Display Path Name Label",
+      "11/05/2027 06:02:19 Line2 525 =k.TBR+05-BT3 temperature measurement LEFT COIL too high (88 VDC, limit is 70 VDC)",
+    ]);
+    const l = parseAlarmRecord(r)!;
+    expect(l.value).toEqual({ shown: true, number: 88, unit: null });
+    expect(l.limit).toEqual({ number: 70, unit: null });
   });
 });
