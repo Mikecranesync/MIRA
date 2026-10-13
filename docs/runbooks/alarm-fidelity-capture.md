@@ -68,3 +68,18 @@ with a recommendation; nothing switches over automatically.
 3. Run `cd mira-hub && npx vite-node ../tools/alarm-fidelity/score-run.ts run.json`. It exits
    0 on a pass and 1 on a fail.
 4. Post the printed table on the alarm-card PR.
+
+## Scoring another reader the same way (for example, a general AI chat)
+
+To compare MIRA with another reader on the same synthetic screens:
+
+1. Give the other reader the same photo of `alarm-page.html` and ask it to "transcribe this alarm
+   list exactly, one screen line per line". Use the synthetic page only, never a real plant
+   screen.
+2. Save each reply as a text file named `<id>.<screen>.txt`, where `<screen>` is `failsafe`,
+   `rtd` or `history` (for example `chatgpt-1.failsafe.txt`), all in one folder. Paste the whole
+   reply. If the reply puts the list in a code block, only the lines inside the block are scored,
+   so a sentence before or after it does no harm.
+3. Run `cd mira-hub && npx vite-node ../tools/alarm-fidelity/transcripts-to-run.ts <folder> > run.json`,
+   then `npx vite-node ../tools/alarm-fidelity/score-run.ts run.json`. The same three measures
+   apply: exact tags, invented characters in cut-off fields, and correct grouping.
