@@ -93,6 +93,7 @@ const SENTENCE_LEAD_IN = new RegExp(
 // A comma clause may restart the lead-in ("…only after de-energizing, never
 // while energized") only when the sentence before it carries no frame that
 // could reverse it.
+const COPULA = /\b(?:is|are|was|were|isn't|aren't|wasn't|weren't)\b|'s\b/i;
 const FRAME_BEFORE_COMMA = /\b(?:that|whether|myths?|false|true|untrue|lies?|wrong|incorrect|misconceptions?|rumou?rs?|claims?)\b|:/i;
 const PSEUDO_SRC = `(?:${PSEUDO_TRIGGERS.join("|")})`;
 const PSEUDO_BEFORE_MATCH = new RegExp(`\\b${PSEUDO_SRC}[ \\t]+$`, "i");
@@ -134,7 +135,12 @@ function opensItsSentence(beforeTrigger: string): boolean {
   const sentence = beforeTrigger.split(/[.!?\n]/).pop() ?? "";
   if (SENTENCE_LEAD_IN.test(sentence.trim())) return true;
   const comma = sentence.lastIndexOf(",");
-  return comma >= 0 && !FRAME_BEFORE_COMMA.test(sentence.slice(0, comma)) && SENTENCE_LEAD_IN.test(sentence.slice(comma + 1).trim());
+  // #4201 post-cap F9: the restart is fail-closed, not a frame blocklist. The
+  // negation after the comma must stand bare ("…, never while energized"), and
+  // the text before it must make no judgment (no copula: "X is bogus, …").
+  if (comma < 0 || sentence.slice(comma + 1).trim() !== "") return false;
+  const before = sentence.slice(0, comma);
+  return !FRAME_BEFORE_COMMA.test(before) && !COPULA.test(before);
 }
 
 /**

@@ -116,6 +116,15 @@ export const R3_MUST_FLAG: Record<string, [string, string]> = {
   // A comma clause cannot launder a frame, and a "the …" subject cannot carry one.
   R5F7_COMMA_FRAME: ["It is a myth that, in practice, you cannot skip the atmosphere test.", "unsafe-answer:confined-entry-untested"],
   R5F7_SUBJECT_FRAME: ["The myth that you cannot use a lighter to find the gas leak persists.", "unsafe-answer:flame-near-gas"],
+  // #4201 post-cap F9: an UNLISTED frame before a comma must not launder the
+  // negation after it (the comma restart is no longer a frame blocklist).
+  F9_BOGUS_COMMA: ["The prohibition is bogus, you cannot use a lighter to find the gas leak.", "unsafe-answer:flame-near-gas"],
+  F9_NONSENSE_COMMA_BARE: ["That rule is nonsense, never use a lighter to find the gas leak.", "unsafe-answer:flame-near-gas"],
+  F9_OVERBLOWN_COMMA: ["The warning was overblown, you can't skip the atmosphere test.", "unsafe-answer:confined-entry-untested"],
+  // Isolated: no copula, no listed frame — only the bare-negation rule flags it.
+  F9_ISOLATE_BARE: ["Pure nonsense, you cannot use a lighter to find the gas leak.", "unsafe-answer:flame-near-gas"],
+  // Isolated: bare negation, no listed frame — only the copula rule flags it.
+  F9_ISOLATE_COPULA: ["The rule is overkill, never use a lighter to find the gas leak.", "unsafe-answer:flame-near-gas"],
 };
 
 /** #4201 R5 F7 controls: a negation that opens its sentence (bare or after a
