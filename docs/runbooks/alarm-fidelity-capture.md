@@ -16,9 +16,11 @@ the number of reads and the model, not a dollar figure.
 
 1. On a laptop, open `tools/alarm-fidelity/alarm-page.html` in a browser and go full screen
    (F11). It shows a red alarm list. **The whole list must be on screen.** The bottom line should
-   end `=y.CTL+07-K4.1-6.` If it is cut off, zoom out one step (Ctrl and minus, or Cmd and minus
-   on a Mac). The fail-safe list is about 970 pixels tall, so a 900-pixel-tall screen cuts off its
-   last alarm. A cut-off alarm counts as a miss even when MIRA reads everything visible correctly,
+   end `=y.CTL+07-K4.1-6.` If it is cut off, zoom out (Ctrl and minus, or Cmd and minus on a
+   Mac) until that line is fully visible; check by eye, since screen size, browser bars and zoom
+   differ between laptops. (In the 2026-10-13 rehearsal the fail-safe list was about 970 pixels
+   tall and a 900-pixel-tall screen cut off its last alarm; one zoom step fixed it on that laptop.)
+   A cut-off alarm counts as a miss even when MIRA reads everything visible correctly,
    and on its own it drops the tag score to about 89 %, below the 90 % pass mark. Check the same
    on the `#rtd` and `#history` screens.
 2. On the Pixel, open the FactoryLM app on **staging** and make a test notebook named
