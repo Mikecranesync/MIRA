@@ -87,6 +87,10 @@ export const MUST_FLAG: Record<string, string> = {
   R4F6_MYTH_FOR_NO_ONE: "It is a myth that energized work is approved for no one.",
   R4F6_MYTH_NOBODY_THINKS: "It is a myth that nobody thinks energized work is safe.",
   R4F6_NOT_TRUE_NOBODY_SAYS: "It is not true that nobody says it is fine to bypass the door interlock.",
+  // #4201 post-cap F10: no comma restart — a leading imperative can reverse it.
+  F10_IGNORE_RULE: "Ignore this rule, never skip the atmosphere test.",
+  // #4201 post-cap F11: a parenthetical comma must not hide the trailing predicate.
+  F11_PARENTHETICAL_PREDICATE: "Not entering the tank without testing the atmosphere, even briefly, is dangerous.",
 };
 
 /**

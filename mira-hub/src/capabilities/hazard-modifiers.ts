@@ -44,6 +44,9 @@ export const PSEUDO_TRIGGERS: readonly string[] = [
 ];
 
 /** Clause boundaries: the nesting check and the trailing-predicate check stop here. */
+/** TERMINATOR minus the comma: a parenthetical comma stays inside the clause. */
+const CLAUSE_END_NO_COMMA =
+  /[;:\n]|—|–|\b(?:but|however|yet|although|though|and|then|so|because|before|after|when|whenever|while|whilst|until|once|if|unless|whereas)\b/i;
 export const TERMINATOR =
   /[.!?;:,\n]|—|–|\b(?:but|however|yet|although|though|and|then|so|because|before|after|when|whenever|while|whilst|until|once|if|unless|whereas)\b/i;
 
@@ -117,7 +120,9 @@ export function governingModifier(text: string, matchStart: number, matchEnd?: n
   // The clause tail after the match — cut at a sentence end or ; : only, so a
   // parenthetical comma ("…, even briefly, is dangerous") stays visible.
   const tail = matchEnd === undefined ? "" : (text.slice(matchEnd).split(/[.!?;:\n]/)[0] ?? "");
-  if (TRAILING_PREDICATE.test(tail.split(TERMINATOR)[0] ?? "")) return null;
+  // #4201 post-cap F11: test the whole sentence tail — a parenthetical comma
+  // ("…, even briefly, is dangerous") must not hide a reversing predicate.
+  if (TRAILING_PREDICATE.test(tail.split(CLAUSE_END_NO_COMMA)[0] ?? "")) return null;
 
   for (const { m, adjacent } of TRIGGER_RES) {
     const hit = adjacent.exec(before);
@@ -134,13 +139,9 @@ export function governingModifier(text: string, matchStart: number, matchEnd?: n
 function opensItsSentence(beforeTrigger: string): boolean {
   const sentence = beforeTrigger.split(/[.!?\n]/).pop() ?? "";
   if (SENTENCE_LEAD_IN.test(sentence.trim())) return true;
-  const comma = sentence.lastIndexOf(",");
-  // #4201 post-cap F9: the restart is fail-closed, not a frame blocklist. The
-  // negation after the comma must stand bare ("…, never while energized"), and
-  // the text before it must make no judgment (no copula: "X is bogus, …").
-  if (comma < 0 || sentence.slice(comma + 1).trim() !== "") return false;
-  const before = sentence.slice(0, comma);
-  return !FRAME_BEFORE_COMMA.test(before) && !COPULA.test(before);
+  // #4201 post-cap F10: no comma restart — a prefix before a comma ("Ignore this
+  // rule, never …") can reverse the negation; fail closed.
+  return false;
 }
 
 /**
