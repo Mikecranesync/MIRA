@@ -26,7 +26,7 @@
     },
     {
       "key": "safety_passivation",
-      "means": "The safety program switched this channel to its safe state — output off — because of a fault it was told about. It stays there while the fault is present.",
+      "means": "The safety program switched this channel to its fail-safe value because of a fault it was told about: an output channel goes off, an input channel reads as its safe value. It stays there while the fault is present.",
       "hypotheses": [
         "A channel or module fault the module reported to the safety program.",
         "A communication fault between the controller and the module. The diagnostic buffer tells these apart."
@@ -34,7 +34,7 @@
       "checks": [
         "Read the full time of each alarm, to the second, from the alarm history or the controller's diagnostic buffer, to see which came first.",
         "Read the module and channel diagnostics on the HMI diagnostics page or online in the engineering software in view mode only — do not enter configuration or change any setting in the controller.",
-        "On the drawings or a printout of the hardware configuration, find which module the F-I/O start address belongs to and what its channels drive."
+        "On the drawings or a printout of the hardware configuration, find which module the F-I/O start address belongs to and what its channels drive or sense."
       ],
       "does_not_prove": ["which channel or module is at fault", "what the outputs drive", "the cause"]
     }

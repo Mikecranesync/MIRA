@@ -64,6 +64,9 @@ describe("alarm card — lead selection", () => {
     expect(card.lead.kind).toBe("safety_passivation");
     expect(card.text).toContain("A communication fault between the controller and the module.");
     expect(card.text).not.toContain("which passivation belongs to which channel");
+    // Passivation happens on inputs too: never claim an output went off (review #4389 r8).
+    expect(card.text).not.toContain("output off");
+    expect(card.text).toContain("an input channel reads as its safe value");
     passesCheckers(card.text);
   });
   it("first-out: full times on one date lead with the earliest, not the top line", () => {
