@@ -154,6 +154,39 @@ async def test_search_returns_none_when_a_pass_succeeds_empty():
 
 
 @pytest.mark.asyncio
+async def test_ge_fanuc_search_starts_on_emersons_own_site():
+    # #4402: with an OEM-domain entry, the first (highest-precision) pass is
+    # scoped to the maker's own documentation host. GE-labelled automation
+    # hardware is documented on emerson.com.
+    sent: list[str] = []
+
+    async def recording_serper(query: str, num: int = 10):
+        sent.append(query)
+        return []
+
+    with patch.object(search_mod, "_serper_search", recording_serper):
+        assert await search_mod.search_manual("GE Fanuc", "IC752DPA062A") is None
+
+    assert sent, "no search pass was sent"
+    assert "site:emerson.com" in sent[0]
+
+
+@pytest.mark.asyncio
+async def test_unknown_maker_search_is_not_site_scoped():
+    # Control: a maker with no OEM-domain entry gets no site-scoped first pass.
+    sent: list[str] = []
+
+    async def recording_serper(query: str, num: int = 10):
+        sent.append(query)
+        return []
+
+    with patch.object(search_mod, "_serper_search", recording_serper):
+        assert await search_mod.search_manual("Acmeco", "X100") is None
+
+    assert sent and not any("site:" in q for q in sent)
+
+
+@pytest.mark.asyncio
 async def test_search_prefers_head_validated_candidate():
     oem_hit = _organic(
         "https://literature.rockwellautomation.com/750-um001.pdf",
