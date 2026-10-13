@@ -724,6 +724,44 @@ class TestManualDiscoverySearchErrorHandling:
         assert body["found"] is False
         assert body["reason"] == "search_unavailable"
 
+    def test_timeout_and_error_say_which_in_reason_detail(self, monkeypatch):
+        # #4401: both read "search_unavailable" to the Hub (the technician sees the
+        # one approved outage sentence), but the record must say WHICH — a slow search
+        # was misdiagnosed as an outage on staging 2026-10-13.
+        monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.05")
+
+        async def slow_search_manual(make, model, deadline_at=None):
+            await asyncio.sleep(1.0)
+            return dict(_VALIDATED_CANDIDATE)
+
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", slow_search_manual)
+        timed_out = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+
+        async def broken_search_manual(make, model, deadline_at=None):
+            raise RuntimeError("boom")
+
+        monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "50")
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", broken_search_manual)
+        errored = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+
+        assert timed_out["reason"] == errored["reason"] == "search_unavailable"
+        assert timed_out["reason_detail"] == "Manual search ran out of time before it finished."
+        assert errored["reason_detail"] == "Manual search stopped on an internal error."
+
     def test_timeout_returns_search_unavailable(self, monkeypatch):
         monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.05")
 
@@ -820,6 +858,48 @@ class TestIsOemHost:
     def test_smc_does_not_match_lookalike_hosts(self):
         assert is_oem_host("SMC", "notsmc.eu") is False
         assert is_oem_host("SMC", "smc.eu.attacker.net") is False
+
+    def test_emerson_documentation_host_is_oem(self):
+        # #4402: Emerson took over GE's PLC/HMI line; its manuals are served from
+        # www.emerson.com/documents/... Without an entry, a genuine first-party
+        # Emerson PDF could never auto-import (oem_host gates auto-import).
+        assert is_oem_host("Emerson", "www.emerson.com") is True
+        assert is_oem_host("emerson", "emerson.com") is True
+
+    def test_ge_automation_names_map_to_emerson(self):
+        # Technicians read "GE Fanuc" off the hardware; the documentation for
+        # GE's PLC/HMI line now lives on emerson.com.
+        assert is_oem_host("GE Fanuc", "www.emerson.com") is True
+        assert is_oem_host("GE Intelligent Platforms", "www.emerson.com") is True
+        assert is_oem_host("GE Automation", "www.emerson.com") is True
+
+    def test_emerson_automation_division_names_map_to_emerson(self):
+        # Nameplates and catalogs also carry the automation divisions' names.
+        assert is_oem_host("Emerson Automation Solutions", "www.emerson.com") is True
+        assert is_oem_host("Emerson Process Management", "www.emerson.com") is True
+
+    def test_emerson_electric_is_not_mapped_to_emerson_com(self):
+        # "Emerson Electric" is also the old motor brand (now Nidec / US Motors),
+        # whose manuals are not on emerson.com — ambiguous, like a bare "GE".
+        assert is_oem_host("Emerson Electric", "www.emerson.com") is False
+
+    def test_a_bare_ge_is_not_mapped_to_emerson(self):
+        # A bare "GE" is ambiguous: GE's motor, relay and power lines are not
+        # Emerson's, and oem_host gates auto-import. It must not make an
+        # emerson.com PDF count as the maker's own documentation.
+        assert is_oem_host("GE", "www.emerson.com") is False
+
+    def test_ge_lookalike_names_do_not_map_to_emerson(self):
+        # Exact-key lookup: a name that merely contains "ge" must not inherit
+        # Emerson's host, and General Electric's non-automation lines are not
+        # Emerson's.
+        assert is_oem_host("Gefran", "www.emerson.com") is False
+        assert is_oem_host("Georg Fischer", "www.emerson.com") is False
+        assert is_oem_host("General Electric", "www.emerson.com") is False
+
+    def test_emerson_does_not_match_lookalike_hosts(self):
+        assert is_oem_host("Emerson", "notemerson.com") is False
+        assert is_oem_host("GE Fanuc", "emerson.com.attacker.net") is False
 
     def test_trusted_distributor_is_NOT_oem_host(self):
         # Codex P1 (2026-08-16): docs.rs-online.com is on the general trusted
@@ -1099,6 +1179,10 @@ class TestManualDiscoverySearchStats:
             await asyncio.sleep(30)  # stalls past the endpoint timeout
 
         monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.2")
+        # The search's own deadline handling (#4401) is pushed past the endpoint's
+        # timeout so this test still covers the ENDPOINT-cancels-mid-read path —
+        # reachable whenever any stage overruns its budget.
+        monkeypatch.setattr(judge_mod, "RETURN_RESERVE_S", -60.0)
         monkeypatch.setattr(search_mod._judge, "judge_enabled", lambda: True)
         monkeypatch.setattr(search_mod, "_serper_search", fake_serper)
         monkeypatch.setattr(judge_mod, "fetch_pdf_bytes", fake_fetch)

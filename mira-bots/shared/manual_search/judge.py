@@ -676,6 +676,16 @@ async def _judge_queue(
         # just not an ideal one) is time-boxed so it can never cost that match.
         upgrading = any(is_match(c) for c in candidates)
         try:
+            if not upgrading and deadline_at is not None:
+                # #4401: with no match in hand the batch is bounded by the caller's
+                # deadline too. A read that outlived it got the whole search cancelled
+                # upstream, which the Hub then reported as an outage. Checked before
+                # any read is scheduled, so a spent deadline starts no work at all.
+                remaining = deadline_at - RETURN_RESERVE_S - time.monotonic()
+                if remaining <= 0:
+                    trace["stop"] = "search_deadline"
+                    _mark_interrupted(batch, "search_deadline")
+                    break
             reads = asyncio.gather(*(_judge_one(make, model, c) for c in batch))
             if upgrading:
                 remaining = upgrade_until - time.monotonic()
@@ -686,12 +696,19 @@ async def _judge_queue(
                     _mark_interrupted(batch, "upgrade_skipped")
                     break
                 await asyncio.wait_for(reads, timeout=remaining)
+            elif deadline_at is not None:
+                await asyncio.wait_for(reads, timeout=remaining)
             else:
                 await reads
         except asyncio.TimeoutError:
-            logger.info("judge upgrade batch hit its deadline; keeping the match in hand")
-            trace["stop"] = "upgrade_deadline"
-            _mark_interrupted(batch, "upgrade_deadline")
+            if upgrading:
+                logger.info("judge upgrade batch hit its deadline; keeping the match in hand")
+                trace["stop"] = "upgrade_deadline"
+                _mark_interrupted(batch, "upgrade_deadline")
+            else:
+                logger.info("judge search batch hit the caller's deadline; returning what was read")
+                trace["stop"] = "search_deadline"
+                _mark_interrupted(batch, "search_deadline")
             break
         except Exception as e:  # noqa: BLE001 — belt and braces; _judge_one never raises
             logger.info("judge_candidates degraded: %s", e)
