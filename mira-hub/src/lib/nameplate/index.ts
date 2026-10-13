@@ -70,6 +70,16 @@ export function normalizeCandidate(raw: unknown): EquipmentIdentityCandidate {
 //   NAMEPLATE_RECOGNIZER=fixture — deterministic test switch (no module mocking)
 
 import { requestDialectFields, type CanonicalProvider } from "../inference/canonical-cascade";
+import {
+  billableTokens,
+  boundVisionInputTokens,
+  logBudgetExhausted,
+  logVisionModelUnverified,
+  openAiRunBudget,
+  openAiVisionModelId,
+  openAiVisionSelectable,
+  type BudgetReservation,
+} from "../../capabilities/openai-run-budget";
 
 // 2026-08-25: google/gemma-3n-E4B-it stopped being served serverless on Together
 // (400 model_not_available) and every prod nameplate read 502'd. MiniMax-M3 is the
@@ -81,8 +91,9 @@ const TOGETHER_VISION_DEFAULT = "MiniMaxAI/MiniMax-M3";
 // organization_delinquent on every photo, so the staging acceptance audit's photo
 // scenario 502'd and production could not be authorized. #4349 put OpenAI first in
 // every TEXT cascade; this is the same move for VISION. gpt-5.4-mini reads images
-// and is the model the paid lane already proves against this key.
-const OPENAI_VISION_DEFAULT = "gpt-5.4-mini";
+// and is the model the paid lane already proves against this key. The default id
+// lives in capabilities/openai-run-budget.ts (OPENAI_VISION_DEFAULT_MODEL), next to
+// the verified image-bound table that decides whether OpenAI may serve vision.
 const OPENAI_VISION_URL = "https://api.openai.com/v1/chat/completions";
 
 /**
@@ -122,8 +133,9 @@ export function groqVisionModel(): string {
  * NAMEPLATE_VISION_MODEL on purpose — that holds a Together/Groq id.
  */
 export function openAiVisionModel(): string {
-  return process.env.OPENAI_MODEL || OPENAI_VISION_DEFAULT;
+  return openAiVisionModelId();
 }
+
 
 /**
  * The OpenAI vision provider in the canonical-cascade shape, so its request
@@ -190,55 +202,107 @@ async function openAiCompatVision(
   // caps the whole round-trip; the caller's route already maps a throw to its
   // fallback path.
   const timeoutMs = Number(process.env.NAMEPLATE_VISION_TIMEOUT_MS ?? 30_000);
+  // Per-run spend hard stop (owner directive 2026-10-11), OpenAI only: the
+  // worst case is HELD for the life of the request so concurrent recognitions
+  // cannot each pass against the same balance (Gate 7 on #4355). Reserved
+  // inside callOnce so the SyntaxError retry below takes its own hold.
+  // Sized by an UPPER bound: prompt bytes plus the model's VERIFIED worst-case
+  // image cost (Codex r1/r2 F4 on #4355), never the chars/4 + 1,500 average.
+  // OpenAI only: Together/Groq are free and need no bound.
+  const visionBound = provider ? boundVisionInputTokens(VISION_PROMPT, 1, model) : 0;
   const callOnce = async (): Promise<EquipmentIdentityCandidate> => {
-    let resp: Response;
+    let reservation: BudgetReservation | null = null;
+    let inputBound = 0;
+    if (provider) {
+      if (visionBound === null) {
+        // No verified worst case for this model's images: refuse rather than guess.
+        logVisionModelUnverified("nameplate-recognize", model);
+        throw new Error("recognizer_model_unverified");
+      }
+      inputBound = visionBound;
+      const verdict = openAiRunBudget().reserve(inputBound, 1200);
+      if (!verdict.ok) {
+        logBudgetExhausted("nameplate-recognize", verdict);
+        throw new Error("recognizer_budget_exhausted");
+      }
+      reservation = verdict.reservation;
+    }
+    // Every exit after the reservation decides it (see passes.ts openAiVisionCall):
+    // the finally books the worst case for a malformed body or any unexpected
+    // throw, and is a no-op once a path above settled or released.
     try {
-      resp = await fetch(apiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        signal: AbortSignal.timeout(timeoutMs),
-        body: JSON.stringify({
-          model,
-          ...dialect,
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: VISION_PROMPT },
-                {
-                  type: "image_url",
-                  image_url: { url: `data:${mimeType};base64,${imageBase64}` },
-                },
-              ],
-            },
-          ],
-        }),
-      });
-    } catch (err) {
-      // TimeoutError / network error — surface a stable, credential-free code.
-      if (err instanceof DOMException && err.name === "TimeoutError") {
-        throw new Error("recognizer_provider_timeout");
-      }
-      throw new Error("recognizer_provider_unreachable");
-    }
-    if (!resp.ok) {
-      // Scrub any credential-bearing detail from provider errors (PRD §20):
-      // keep only the status and the provider's short error CODE (e.g.
-      // `model_not_available`), never the free-text message.
-      let code = "";
+      let resp: Response;
       try {
-        const body = (await resp.json()) as { error?: { code?: unknown } };
-        const c = body?.error?.code;
-        if (typeof c === "string" && /^[a-z0-9_]{1,40}$/i.test(c)) code = `_${c}`;
-      } catch {
-        // non-JSON error body — status alone is the signal
+        resp = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(timeoutMs),
+          body: JSON.stringify({
+            model,
+            ...dialect,
+            response_format: { type: "json_object" },
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: VISION_PROMPT },
+                  {
+                    type: "image_url",
+                    image_url: { url: `data:${mimeType};base64,${imageBase64}` },
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+      } catch (err) {
+        // Ambiguous outcome (the request may have been accepted and billed): book the worst case.
+        reservation?.settle(inputBound, 1200);
+        // TimeoutError / network error — surface a stable, credential-free code.
+        if (err instanceof DOMException && err.name === "TimeoutError") {
+          throw new Error("recognizer_provider_timeout");
+        }
+        throw new Error("recognizer_provider_unreachable");
       }
-      throw new Error(`recognizer_provider_error_${resp.status}${code}`);
+      if (!resp.ok) {
+        // The provider rejected the request: nothing billable ran.
+        reservation?.release();
+        // Scrub any credential-bearing detail from provider errors (PRD §20):
+        // keep only the status and the provider's short error CODE (e.g.
+        // `model_not_available`), never the free-text message.
+        let code = "";
+        try {
+          const body = (await resp.json()) as { error?: { code?: unknown } };
+          const c = body?.error?.code;
+          if (typeof c === "string" && /^[a-z0-9_]{1,40}$/i.test(c)) code = `_${c}`;
+        } catch {
+          // non-JSON error body — status alone is the signal
+        }
+        throw new Error(`recognizer_provider_error_${resp.status}${code}`);
+      }
+      let body: {
+        choices?: { message?: { content?: string } }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
+      try {
+        body = (await resp.json()) as typeof body;
+      } catch (err) {
+        // A 200 whose body could not be read was still served and billed.
+        reservation?.settle(inputBound, 1200);
+        throw err;
+      }
+      if (!body || typeof body !== "object") {
+        // A 200 whose JSON is not an object (`null`, a number) was served and may
+        // be billed; the finally books the worst case (Codex r3 F9 on #4355).
+        throw new Error("recognizer_provider_malformed");
+      }
+      // Served: replace the hold with ACTUAL usage (the bound when the provider omits it).
+      reservation?.settle(...billableTokens(body.usage, inputBound, 1200));
+      const text = body.choices?.[0]?.message?.content ?? "{}";
+      return normalizeCandidate(JSON.parse(text));
+    } finally {
+      reservation?.settle(inputBound, 1200);
     }
-    const body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
-    const text = body.choices?.[0]?.message?.content ?? "{}";
-    return normalizeCandidate(JSON.parse(text));
   };
   try {
     return await callOnce();
@@ -324,6 +388,9 @@ export class OpenAIVisionRecognizer implements NameplateRecognizer {
     const key = process.env.OPENAI_API_KEY;
     if (!key) throw new Error("recognizer_not_configured");
     const provider = openAiVisionProvider(key);
+    // The per-run spend hard stop lives inside `openAiCompatVision` (it reserves
+    // the worst case right before the fetch); a `recognizer_budget_exhausted`
+    // throw maps to the route's honest provider_error path and the photo stays parked.
     return openAiCompatVision(provider.url, key, provider.model, imageBase64, mimeType, provider);
   }
 }
@@ -367,7 +434,9 @@ function fixtureCandidate(): EquipmentIdentityCandidate {
  */
 export function defaultRecognizer(): NameplateRecognizer {
   if (fixtureSelected()) return new FixtureRecognizer(fixtureCandidate());
-  if (process.env.OPENAI_API_KEY) return new OpenAIVisionRecognizer();
+  // OpenAI leads only on a model whose image cost is verified (Codex r2 F4 on
+  // #4355); otherwise the free recognizers are picked, exactly as without a key.
+  if (openAiVisionSelectable()) return new OpenAIVisionRecognizer();
   if (process.env.TOGETHERAI_API_KEY) return new TogetherVisionRecognizer();
   return new GroqVisionRecognizer();
 }

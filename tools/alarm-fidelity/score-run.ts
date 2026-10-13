@@ -2,7 +2,7 @@
  * Score a fidelity run: LOOK's stored screen_text_lines for each photo, against the
  * synthetic screen it was a photo of (docs/runbooks/alarm-fidelity-capture.md).
  *
- * Input JSON:  { "photos": [ { "id": "p1", "screen": "failsafe" | "rtd", "lines": string[] } ] }
+ * Input JSON:  { "photos": [ { "id": "p1", "screen": "failsafe" | "rtd" | "history", "lines": string[] } ] }
  * The lines come from a READ-ONLY staging query of evidence_item.capture_meta
  * (screen_text_lines) for the test notebook's LOOK photos — never production.
  *
@@ -11,11 +11,15 @@
  */
 import { readFileSync } from "node:fs";
 import { gate, RUN_PLAN, scoreScreen, type ScoredPhoto } from "../../mira-hub/src/capabilities/alarm-fidelity-score";
-import { SCREEN_FAIL_SAFE, SCREEN_RTD } from "../../mira-hub/src/capabilities/alarm-screens.fixture";
+import { SCREEN_FAIL_SAFE, SCREEN_HISTORY, SCREEN_RTD } from "../../mira-hub/src/capabilities/alarm-screens.fixture";
 
-type Photo = { id: string; screen: "failsafe" | "rtd"; lines: string[] };
+type Photo = { id: string; screen: "failsafe" | "rtd" | "history"; lines: string[] };
 
-const TRUTH: Record<Photo["screen"], readonly string[]> = { failsafe: SCREEN_FAIL_SAFE, rtd: SCREEN_RTD };
+const TRUTH: Record<Photo["screen"], readonly string[]> = {
+  failsafe: SCREEN_FAIL_SAFE,
+  rtd: SCREEN_RTD,
+  history: SCREEN_HISTORY,
+};
 
 const path = process.argv[2];
 if (!path) {

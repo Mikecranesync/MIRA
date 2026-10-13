@@ -77,6 +77,7 @@ vi.mock("@/lib/visual-evidence-context", async (importOriginal) => ({
 }));
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { OpenAiRunBudget, resetOpenAiRunBudgetForTests } from "@/capabilities/openai-run-budget";
 
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC_A = "33333333-3333-4333-8333-333333333333";
@@ -245,6 +246,30 @@ describe("post-stop usage drain failure (Codex F1 on #4354)", () => {
     expect(turn).toMatchObject({ answerStatus: "answered" });
     expect(String(turn.answerText)).toContain("Check the DC bus");
     expect(persistedUsage().provider).toBe("OpenAI");
+  });
+
+  // Codex r1 F3 on #4355: the per-run spend hard stop must not read a lost usage
+  // block as a cheap answer. The visible text is ~9 tokens; a reasoning model's
+  // hidden tokens are invisible, so an unknown completion count books the cap
+  // the request actually sent (800 with the seam on), never chars/4.
+  it("the budget books the REQUEST CAP when the usage block is lost, not the visible answer's chars/4", async () => {
+    resetOpenAiRunBudgetForTests();
+    const record = vi.spyOn(OpenAiRunBudget.prototype, "record");
+    stubFetch("timeout");
+    await run();
+    const outputs = record.mock.calls.map(([, out]) => out);
+    expect(outputs).toContain(800);
+    expect(outputs).not.toContain(Math.ceil(FIRST.length / 4));
+    expect(outputs).not.toContain(Math.ceil((FIRST + " ").length / 4));
+  });
+
+  it("control: when the usage block lands, the budget books the provider's actual 12 / 7", async () => {
+    resetOpenAiRunBudgetForTests();
+    const record = vi.spyOn(OpenAiRunBudget.prototype, "record");
+    stubFetch("usage");
+    await run();
+    expect(record.mock.calls.map(([inp, out]) => [inp, out])).toContainEqual([12, 7]);
+    expect(record.mock.calls.map(([, out]) => out)).not.toContain(800);
   });
 
   it("control: when the usage chunk lands after the stop marker it is recorded (the D9 fix)", async () => {

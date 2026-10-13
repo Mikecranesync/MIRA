@@ -34,7 +34,9 @@ vi.mock("@/lib/visual-evidence-context", async (importOriginal) => {
     })),
   };
 });
-vi.mock("@/lib/nameplate", () => ({
+vi.mock("@/lib/nameplate", async (importOriginal) => ({
+  // The real pick policy (`openAiVisionSelectable`) runs; only these two are stubbed.
+  ...(await importOriginal<typeof import("@/lib/nameplate")>()),
   isRecognizerConfigured: vi.fn(),
   fixtureSelected: vi.fn(),
 }));
@@ -88,7 +90,9 @@ function makeReq() {
 const params = { params: Promise.resolve({ id: NOTEBOOK_ID }) };
 
 const savedKey = process.env.OPENAI_API_KEY;
+const savedModel = process.env.OPENAI_MODEL;
 beforeEach(() => {
+  delete process.env.OPENAI_MODEL; // the verified default (gpt-5.4-mini) unless a test sets one
   vi.resetAllMocks();
   vi.mocked(sessionOr401).mockResolvedValue(session);
   vi.mocked(getNotebook).mockResolvedValue(notebook);
@@ -108,6 +112,8 @@ beforeEach(() => {
 afterEach(() => {
   if (savedKey === undefined) delete process.env.OPENAI_API_KEY;
   else process.env.OPENAI_API_KEY = savedKey;
+  if (savedModel === undefined) delete process.env.OPENAI_MODEL;
+  else process.env.OPENAI_MODEL = savedModel;
 });
 
 describe("look route vision provider pick", () => {
@@ -153,6 +159,23 @@ describe("look route vision provider pick", () => {
     expect(res.status).toBe(200);
     expect(togetherVisionCall).toHaveBeenCalledTimes(1);
     expect(openAiVisionCall).not.toHaveBeenCalled();
+    expect(persistedProvider()).toBe("together");
+  });
+
+  it("Codex r4 F10 on #4355: with BOTH keys but an OpenAI model that has no verified image bound, Together serves and OpenAI is never called", async () => {
+    process.env.OPENAI_API_KEY = "sk-test";
+    process.env.OPENAI_MODEL = "gpt-5.6-sol";
+    vi.mocked(togetherVisionCall).mockResolvedValue({
+      text: JSON.stringify({ observation: "Together observation on an unverified OpenAI model." }),
+      model: "vision-test",
+    });
+
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(200);
+    expect(togetherVisionCall).toHaveBeenCalledTimes(1);
+    expect(openAiVisionCall).not.toHaveBeenCalled();
+    expect((await res.json()).observation.text).toContain("unverified OpenAI model");
     expect(persistedProvider()).toBe("together");
   });
 });

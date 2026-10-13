@@ -14,9 +14,13 @@
  *    inference call.
  *  - Providers are the canonical cascade registry (`canonicalProviders()`),
  *    never a second provider list (Hard Constraint #2 — no Anthropic here).
- *  - Fail-closed: a flagged candidate whose check times out, errors, or
- *    returns a malformed verdict is NEVER silently released — the route
- *    replaces it with `SEMANTIC_UNVERIFIED_FALLBACK`.
+ *  - Flags, never withholds (owner decision 2026-09-27, settles #4022): the
+ *    notebook chat route puts a hazard banner above an "unsafe" answer, and a
+ *    check that could not decide ("unknown" — timeout, error, malformed
+ *    verdict, or the OpenAI run budget refusing with no other provider) is
+ *    logged and the answer is served WITHOUT a banner (fail-open). This module
+ *    returns the verdict; the route owns that policy.
+ *    `SEMANTIC_UNVERIFIED_FALLBACK` below is no longer used by the route.
  *  - Every decision is logged with class + verdict + latency so the real
  *    invocation rate and cost are MEASURED, not assumed (#3793 estimates are
  *    unadopted until staging measurements exist).
@@ -32,6 +36,7 @@
  */
 
 import { canonicalProviders, requestDialectFields } from "@/lib/inference/canonical-cascade";
+import { billableTokens, boundInputTokens, reserveOpenAiAttempt, type BudgetReservation } from "./openai-run-budget";
 import type { JevShadowResult } from "@/capabilities/observability/jev-shadow";
 
 /** `NOTEBOOK_SEMANTIC_CHECK=0` is the kill switch for this layer only; the
@@ -267,6 +272,59 @@ export function parseVerdict(text: unknown): SemanticVerdict | null {
   }
 }
 
+/** The judge's completion cap — the output side of every judge hold. */
+export const JUDGE_OUTPUT_TOKENS = 200;
+
+/**
+ * Upper bound on the UTF-8 bytes per answer token the judge will re-read, used
+ * to size the judge's OpenAI hold BEFORE the answer exists. English and
+ * technical text from gpt-5.4-mini averages 4-5 bytes per token; 8 leaves room
+ * for JSON escaping of quotes and newlines. An answer denser than this is caught
+ * at judge time: the hold is released and the judge reserves its real bound
+ * (see `semanticSafetyCheck`). That fresh reservation CAN be refused if other
+ * turns took the room meanwhile — then the judge returns "unknown" and the route
+ * serves the answer without a banner (#4022). This narrows the gap; it does not
+ * close it for answers denser than this bound.
+ */
+export const JUDGE_ANSWER_BYTES_PER_TOKEN = 8;
+
+/** The judge's exact request messages — one definition for the call and its pre-held bound. */
+export function buildJudgeMessages(opts: { question: string; answerText: string; general: boolean; selectedClass: string }) {
+  return [
+    { role: "system", content: JUDGE_SYSTEM },
+    {
+      role: "user",
+      content: JSON.stringify({
+        question: opts.question,
+        candidate_answer: opts.answerText,
+        lane: opts.general ? "general" : "grounded",
+        flagged_hazard_class: opts.selectedClass,
+      }),
+    },
+  ];
+}
+
+/**
+ * Input bound for the judge call that will check an answer of at most
+ * `answerOutputCap` tokens — sized before the answer is written, so the chat
+ * route can hold the judge's room together with the answer's (owner decision
+ * 2026-10-12, #4355 option 1: OpenAI writes an answer only if its safety check
+ * also fits under the cap). Uses the longer lane label and a 32-byte class.
+ */
+export function judgeHoldInputBound(question: string, answerOutputCap: number): number {
+  return boundInputTokens(
+    buildJudgeMessages({
+      question,
+      answerText: "x".repeat(Math.max(0, answerOutputCap) * JUDGE_ANSWER_BYTES_PER_TOKEN),
+      general: false,
+      selectedClass: "x".repeat(32),
+    }),
+  );
+}
+
+/** Room for the judge's OpenAI call, held by the chat route with the answer's. */
+export type JudgeOpenAiHold = { reservation: BudgetReservation; inputBound: number };
+
 /**
  * One bounded, non-streaming judge call through the canonical provider
  * registry. Per-provider timeout; a provider that errors, times out, or
@@ -279,56 +337,93 @@ export async function semanticSafetyCheck(opts: {
   general: boolean;
   selectedClass: string;
   timeoutMs?: number;
+  /**
+   * Room the chat route already holds for this judge's OpenAI call (#4355
+   * option 1). Used for OpenAI when it covers the real bound; otherwise released
+   * and replaced by a normal reservation. Released on every exit if unused.
+   */
+  openAiHold?: JudgeOpenAiHold | null;
 }): Promise<SemanticVerdict> {
   const timeoutMs = opts.timeoutMs ?? Number(process.env.NOTEBOOK_SEMANTIC_TIMEOUT_MS ?? 4000);
-  for (const p of canonicalProviders()) {
-    if (!p.key) continue;
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), timeoutMs);
-    try {
-      const res = await fetch(p.url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.key}` },
-        body: JSON.stringify({
-          model: p.model,
-          messages: [
-            { role: "system", content: JUDGE_SYSTEM },
-            {
-              role: "user",
-              content: JSON.stringify({
-                question: opts.question,
-                candidate_answer: opts.answerText,
-                lane: opts.general ? "general" : "grounded",
-                flagged_hazard_class: opts.selectedClass,
-              }),
-            },
-          ],
-          stream: false,
-          // Provider dialect (Codex F1 on #4349): compat → max_tokens 200 +
-          // temperature 0; OpenAI gpt-5 → max_completion_tokens 200, no
-          // temperature — the judge would otherwise 400 on the one funded
-          // provider and this route would serve the answer with an `unknown`
-          // hazard verdict.
-          ...requestDialectFields(p, 200, 0),
-          // #4130: the provider's own body extras (Groq gpt-oss reasoning_effort),
-          // as every other canonical-cascade call sends them. Without it the
-          // hidden reasoning ate the 200-token budget: 8/10 valid verdicts at a
-          // 758 ms median vs 10/10 at 413 ms, and each miss fell through to the
-          // next provider.
-          ...(p.extra ?? {}),
-        }),
-        signal: ac.signal,
-      });
-      if (!res.ok) continue;
-      const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
-      const parsed = parseVerdict(data?.choices?.[0]?.message?.content);
-      if (parsed) return parsed;
-      // Malformed verdict from this provider — try the next one.
-    } catch {
-      // Timeout / network / non-JSON body — try the next provider.
-    } finally {
-      clearTimeout(timer);
+  const judgeMessages = buildJudgeMessages(opts);
+  const inputBound = boundInputTokens(judgeMessages);
+  let hold = opts.openAiHold ?? null;
+  let budgetRefused = false;
+  try {
+    for (const p of canonicalProviders()) {
+      if (!p.key) continue;
+      // Per-run OpenAI spend hard stop (#4355). Refused at the cap → next provider.
+      // With none left the verdict is "unknown" and the route serves the answer
+      // with NO hazard banner (fail-open, #4022) — so the reason names the budget,
+      // making a cap-caused skip visible in the route's UNVERIFIED log line.
+      // A route that held the judge's room with the answer's (option 1) passes it
+      // in, so a turn whose OpenAI answer was admitted is also judged.
+      let gate: ReturnType<typeof reserveOpenAiAttempt>;
+      if (p.name === "OpenAI" && hold) {
+        const h = hold;
+        hold = null;
+        if (inputBound <= h.inputBound) {
+          gate = { ok: true, reservation: h.reservation };
+        } else {
+          h.reservation.release(); // the answer was denser than the hold assumed
+          gate = reserveOpenAiAttempt(p.name, "safety-judge", inputBound, JUDGE_OUTPUT_TOKENS);
+        }
+      } else {
+        gate = reserveOpenAiAttempt(p.name, "safety-judge", inputBound, JUDGE_OUTPUT_TOKENS);
+      }
+      if (!gate.ok) {
+        budgetRefused = true;
+        continue;
+      }
+      const reservation = gate.reservation;
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), timeoutMs);
+      try {
+        const res = await fetch(p.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.key}` },
+          body: JSON.stringify({
+            model: p.model,
+            messages: judgeMessages,
+            stream: false,
+            // Provider dialect (Codex F1 on #4349): compat → max_tokens 200 +
+            // temperature 0; OpenAI gpt-5 → max_completion_tokens 200, no
+            // temperature — the judge would otherwise 400 on the one funded
+            // provider and this route would serve the answer with an `unknown`
+            // hazard verdict.
+            ...requestDialectFields(p, JUDGE_OUTPUT_TOKENS, 0),
+            // #4130: the provider's own body extras (Groq gpt-oss reasoning_effort),
+            // as every other canonical-cascade call sends them. Without it the
+            // hidden reasoning ate the 200-token budget: 8/10 valid verdicts at a
+            // 758 ms median vs 10/10 at 413 ms, and each miss fell through to the
+            // next provider.
+            ...(p.extra ?? {}),
+          }),
+          signal: ac.signal,
+        });
+        if (!res.ok) {
+          reservation?.release(); // a rejection ran nothing billable
+          continue;
+        }
+        const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[]; usage?: unknown } | null;
+        // Served: book billable usage (unknown counts book the bound / cap).
+        if (data && typeof data === "object") reservation?.settle(...billableTokens(data.usage, inputBound, JUDGE_OUTPUT_TOKENS));
+        const parsed = parseVerdict(data?.choices?.[0]?.message?.content);
+        if (parsed) return parsed;
+        // Malformed verdict from this provider — try the next one.
+      } catch {
+        // Timeout / network / non-JSON body — try the next provider.
+      } finally {
+        clearTimeout(timer);
+        reservation?.settle(inputBound, JUDGE_OUTPUT_TOKENS); // any undecided exit books the worst case (idempotent)
+      }
     }
+    return {
+      verdict: "unknown",
+      hazardClass: opts.selectedClass,
+      reason: budgetRefused ? "openai_budget_exhausted" : "no_provider_verdict",
+    };
+  } finally {
+    hold?.reservation.release(); // OpenAI never reached (no key / not listed): free the held room
   }
-  return { verdict: "unknown", hazardClass: opts.selectedClass, reason: "no_provider_verdict" };
 }

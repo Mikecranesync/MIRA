@@ -3,7 +3,8 @@
 // Pins: env contract incl. the compose empty-string case, precheck-before /
 // record-after arithmetic, the rolling window, the default price equal to the
 // repo's declared gpt-5.4-mini rate, and that the three Hub spend paths
-// (notebook chat loop, nameplate recognizer, LOOK vision call) go through it.
+// (notebook chat loop, nameplate recognizer, LOOK vision call) and the
+// non-streaming cascade go through it.
 //
 // Run: cd mira-hub && npx vitest run src/capabilities/__tests__/openai-run-budget
 
@@ -14,6 +15,7 @@ import {
   OpenAiRunBudget,
   DEFAULT_PRICE_PER_MTOK_IN,
   DEFAULT_PRICE_PER_MTOK_OUT,
+  billableTokens,
   boundInputTokens,
   estimateInputTokens,
   estimateVisionInputTokens,
@@ -61,11 +63,32 @@ describe("env contract", () => {
     expect(b.windowS).toBe(86_400);
     expect(b.estimateUsd(1_000_000, 1_000_000)).toBeCloseTo(0.75 + 4.5);
   });
+  it("a price of 0 is junk, not free: it falls back, while a cap of 0 stays a legal 'spend nothing' (Gate 7 on #4355)", () => {
+    process.env.OPENAI_PRICE_PER_MTOK_IN = "0";
+    process.env.OPENAI_PRICE_PER_MTOK_OUT = "0.0";
+    expect(new OpenAiRunBudget({ now: clock().now }).estimateUsd(1_000_000, 1_000_000)).toBeCloseTo(0.75 + 4.5);
+    process.env.OPENAI_RUN_BUDGET_USD = "0";
+    expect(new OpenAiRunBudget({ now: clock().now }).capUsd).toBe(0);
+  });
   it("default prices equal the repo's declared gpt-5.4-mini rate (tools/review_router/prices.json)", () => {
     const prices = JSON.parse(readFileSync(resolve(__dirname, "../../../../tools/review_router/prices.json"), "utf8"))
       .usd_per_mtok["gpt-5.4-mini"];
     expect(DEFAULT_PRICE_PER_MTOK_IN).toBe(prices.input);
     expect(DEFAULT_PRICE_PER_MTOK_OUT).toBe(prices.output);
+  });
+});
+
+describe("billableTokens — unknown usage is not free (Codex r1 F2/F3 on #4355)", () => {
+  it("books reported counts, including an honest zero", () => {
+    expect(billableTokens({ prompt_tokens: 3, completion_tokens: 4 }, 100, 50)).toEqual([3, 4]);
+    expect(billableTokens({ prompt_tokens: 0, completion_tokens: 0 }, 100, 50)).toEqual([0, 0]);
+  });
+  it("books the input bound / output cap for missing, null, negative or non-numeric counts", () => {
+    expect(billableTokens(null, 100, 50)).toEqual([100, 50]);
+    expect(billableTokens({}, 100, 50)).toEqual([100, 50]);
+    expect(billableTokens({ prompt_tokens: 7 }, 100, 50)).toEqual([7, 50]);
+    expect(billableTokens({ prompt_tokens: null, completion_tokens: "12" }, 100, 50)).toEqual([100, 50]);
+    expect(billableTokens({ prompt_tokens: -1, completion_tokens: Number.NaN }, 100, 50)).toEqual([100, 50]);
   });
 });
 
@@ -207,8 +230,86 @@ describe("reserve / settle / release — the hold that stops concurrent overshoo
   });
 });
 
-describe("source contract — the Hub OpenAI spend path in this branch goes through the budget", () => {
+describe("source contract — every Hub OpenAI spend path goes through the budget", () => {
   const read = (p: string) => readFileSync(resolve(__dirname, p), "utf8");
+  // Gate 7 on #4355: a plain precheck/record pair is not atomic across the
+  // network await, so every concurrent-capable Hub spend path HOLDS the worst
+  // case (reserve) and decides it (settle/release) on every exit — including
+  // the client-stop path, which used to leave billed tokens unrecorded.
+  it("notebook chat route: reserve (sized by the input bound and the cap the request sends) after every skip, before the fetch; settle billable usage on serve, release on a rejection, settle in the catch before the stop/internal-error breaks", () => {
+    const route = read("../../app/api/equipment-notebooks/[id]/chat/route.ts");
+    expect(route).not.toMatch(/openAiRunBudget\(\)\.(precheck|record)\(/);
+    expect(route).toMatch(/const inputBound = boundInputTokens\(messages\);/);
+    // Codex r1 F3 on #4355: the hold and every worst-case settle use the cap the
+    // request SENDS; the legacy body ignores outputCap.
+    expect(route).toMatch(/const requestCap = seam \? Math\.min\(coverageDirective \? 1400 : 800, outputCap\) : coverageDirective \? 1400 : 800;/);
+    expect(route).toMatch(/max_tokens: requestCap,/);
+    expect(route).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, requestCap\)/);
+    expect(route).not.toMatch(/reservation\?\.settle\(inputBound, outputCap\)/);
+    const reserveAt = route.indexOf("openAiRunBudget().reserve(inputBound, requestCap)");
+    // After the STRM-2 and D6 skips (a skipped provider must not take a hold)…
+    expect(reserveAt).toBeGreaterThan(route.indexOf("if (clientAbort.signal.aborted) break cascade;"));
+    expect(reserveAt).toBeGreaterThan(route.indexOf('reason: "quarantined"'));
+    // …and before the fetch.
+    const fetchAt = route.indexOf("const res = await fetch(provider.url", reserveAt);
+    expect(fetchAt).toBeGreaterThan(reserveAt);
+    expect(route).toMatch(/if \(!res\.ok\) reservation\?\.release\(\);/);
+    // Served: billable usage from THIS attempt's usage block; unknown counts book the bound / cap.
+    expect(route).toMatch(/reservation\?\.settle\(\.\.\.billableTokens\(attemptUsage, inputBound, requestCap\)\);/);
+    expect(route).not.toMatch(/responseBuffer\.join\(""\)\.length \/ 4\),?\s*\);/);
+    // The OUTER cascade catch (the one that owns the client-stop break — the
+    // read loop has an inner catch of its own) settles FIRST, before the
+    // client-stop and internal-error breaks.
+    const clientStopBreak = route.indexOf('genOutcome = "client_stop";', fetchAt);
+    const catchAt = route.lastIndexOf("} catch (err) {", clientStopBreak);
+    expect(catchAt).toBeGreaterThan(fetchAt);
+    const catchSettleAt = route.indexOf("reservation?.settle(inputBound, requestCap);", catchAt);
+    expect(catchSettleAt).toBeGreaterThan(catchAt);
+    expect(catchSettleAt).toBeLessThan(clientStopBreak);
+    // Backstop: the per-attempt finally books any hold no path decided (Codex r3 F9, the class).
+    const finallyAt = route.indexOf("} finally {", clientStopBreak);
+    const backstopAt = route.indexOf("reservation?.settle(inputBound, requestCap);", finallyAt);
+    expect(finallyAt).toBeGreaterThan(clientStopBreak);
+    expect(backstopAt).toBeGreaterThan(finallyAt); // present INSIDE the finally (indexOf -1 must not pass)
+    expect(backstopAt).toBeLessThan(route.indexOf("if (genSpan) {", finallyAt));
+  });
+  it("nameplate recognizer + LOOK vision call: reserve before the fetch, settle on serve or an unknown outcome, release only on a rejection", () => {
+    for (const file of ["../../lib/nameplate/index.ts", "../../lib/nameplate/passes.ts"]) {
+      const src = read(file);
+      expect(src, file).not.toMatch(/openAiRunBudget\(\)\.(precheck|record)\(/);
+      expect(src, file).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, /);
+      // The OpenAI fetch is the one that FOLLOWS the reserve (index.ts also
+      // carries the Together/Groq fetch earlier in the file).
+      const reserveAt = src.indexOf(".reserve(inputBound, ");
+      const fetchAt = src.indexOf("await fetch(", reserveAt);
+      expect(fetchAt, file).toBeGreaterThan(reserveAt);
+      expect(src.slice(reserveAt, fetchAt), file).not.toMatch(/\.(settle|release)\(/);
+      expect(src, file).toMatch(/reservation\??\.settle\(inputBound, /);
+      // Served: billable usage (a malformed count books the bound / cap), never the raw counts.
+      expect(src, file).toMatch(/reservation\??\.settle\(\.\.\.billableTokens\(body\.usage, inputBound, /);
+      expect(src, file).not.toMatch(/settle\(body\.usage\?\.prompt_tokens/);
+      // An unverified model is refused before the reserve, never sized by a guess (Codex r2 F4).
+      expect(src, file).toMatch(/throw new Error\("recognizer_model_unverified"\)/);
+      expect(src.indexOf("recognizer_model_unverified"), file).toBeLessThan(src.indexOf(".reserve(inputBound, "));
+      // A non-object body is malformed, and an idempotent finally books the hold on every exit (Codex r3 F9).
+      // (The vision PICK is pinned below: one policy, no key-only selector anywhere.)
+      expect(src, file).toMatch(/throw new Error\("recognizer_provider_malformed"\)/);
+      expect(src, file).toMatch(/\} finally \{\s*reservation\??\.settle\(inputBound, (maxTokens|1200)\);\s*\}/);
+      expect(src, file).toMatch(/reservation\??\.release\(\)/);
+    }
+  });
+  it("every vision pick reads ONE policy, openAiVisionSelectable — no surface picks OpenAI by key alone (Codex r4 F10)", () => {
+    const look = read("../../app/api/equipment-notebooks/[id]/look/route.ts");
+    const index = read("../../lib/nameplate/index.ts");
+    const passes = read("../../lib/nameplate/passes.ts");
+    expect(look).toMatch(/openAiVisionSelectable\(\) \? "openai" : "together"/);
+    expect(look).not.toMatch(/process\.env\.OPENAI_API_KEY \? "openai"/);
+    expect(index).toMatch(/if \(openAiVisionSelectable\(\)\) return new OpenAIVisionRecognizer\(\);/);
+    expect(passes).toMatch(/return openAiVisionSelectable\(\) \? openAiVisionCall : togetherVisionCall;/);
+    const capability = read("../openai-run-budget.ts");
+    expect(capability).toMatch(/Boolean\(process\.env\.OPENAI_API_KEY\) && imagePartMaxTokens\(openAiVisionModelId\(\)\) !== null/);
+    expect(index).toMatch(/return openAiVisionModelId\(\);/); // one model default, shared with the policy
+  });
   it("non-streaming cascade (quickstart, hub ask, translate, extractor): reserve before the OpenAI fetch, settle after usage or an unknown outcome, release only on a rejection", () => {
     const cascade = read("../../lib/llm/cascade.ts");
     expect(cascade).toMatch(/const inputBound = boundInputTokens\(messages\)/);
