@@ -116,6 +116,21 @@ describe("parseAlarmRecord", () => {
     expect(l.value).toEqual({ shown: true, number: 132.5, unit: "°C" });
     expect(l.limit).toEqual({ number: 120, unit: "°C" });
   });
+  // A reading in a form the parser does not know is still ON the line: "unrecognized", never
+  // "not_displayed" — the card must not tell a technician the screen hides a value it shows.
+  it.each([
+    "Error: Temperature measurement LEFT WINDING too high =1.HYD+04-TE2 (115 °C, limit is 70 °C)",
+    "Error: Temperature measurement LEFT WINDING too high =1.HYD+04-TE2 (0Â°C, limit is 0Â°C)",
+    "Error: Resistance measurement BRAKE COIL PHASE V too high =1.HYD+04-TE7 (1.317 Ohm, limit is 1.300 Ohm)",
+  ])("a reading in an unparsed form is unrecognized: %s", (text) => {
+    const l = parseAlarmRecord(rec(text))!;
+    expect(l.kind).toBe("measurement_limit");
+    expect(l.value).toEqual({ shown: false, reason: "unrecognized" });
+  });
+  it("control: the word limit with no number after it is not a reading (limit switch)", () => {
+    const l = parseAlarmRecord(rec("Error: Temperature measurement LEFT WINDING too high =1.HYD+04-TE2 limit switch S1"))!;
+    expect(l.value).toEqual({ shown: false, reason: "not_displayed" });
+  });
   it("an unreadable value is never parsed as a number", () => {
     const l = parseAlarmRecord(rec("Error: Temperature measurement LEFT WINDING too high =1.HYD+04-TE2 value 1?2.5 °C"))!;
     expect(l.value).toEqual({ shown: false, reason: "unreadable" });

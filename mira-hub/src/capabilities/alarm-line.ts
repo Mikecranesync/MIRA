@@ -43,7 +43,7 @@ export type AlarmLine = {
   direction: "high" | "low" | null;
   value:
     | { shown: true; number: number; unit: string | null }
-    | { shown: false; reason: "not_displayed" | "zero_and_zero_limit" | "unreadable" | "truncated" };
+    | { shown: false; reason: "not_displayed" | "zero_and_zero_limit" | "unreadable" | "truncated" | "unrecognized" };
   limit: { number: number; unit: string | null } | null;
 };
 
@@ -166,9 +166,14 @@ function parseLimit(t: string): AlarmLine["limit"] {
   return m ? { number: num(m[1]), unit: m[2] ?? null } : null;
 }
 
+// A number with a unit (the degree sign may arrive garbled as "Â°"), or a limit word followed by
+// a number, means a reading IS on the line even in a form RX.value does not parse. A bare
+// "limit" ("limit switch") is not a reading.
+const READING_ON_LINE = /-?\d+(?:[.,]\d+)?\s*Â?(?:°C|°F|Ω|ohm)(?![A-Za-z])|\b(?:limit|grenzwert)(?:\s+is)?\s*[:=]?\s*-?\d/i;
+
 function parseValue(t: string): AlarmLine["value"] {
   const m = RX.value.exec(t);
-  if (!m) return { shown: false, reason: "not_displayed" };
+  if (!m) return { shown: false, reason: READING_ON_LINE.test(t) ? "unrecognized" : "not_displayed" };
   if (m[2]) return { shown: false, reason: "truncated" };
   if (m[1].includes("?")) return { shown: false, reason: "unreadable" };
   const n = num(m[1]);

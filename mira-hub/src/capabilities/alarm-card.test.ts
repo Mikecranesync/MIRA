@@ -77,6 +77,23 @@ describe("alarm card — lead selection", () => {
   });
 });
 
+describe("alarm card — a reading in a form the parser does not know", () => {
+  const card = buildAlarmCard([
+    "No. Time Date Status Text",
+    "112 06:02:17 11/05/2027 I Error: Temperature measurement LEFT WINDING too high",
+    "=1.HYD+04-TE2 (115 °C, limit is 70 °C)",
+  ])!;
+  it("never says the screen hides a reading it shows", () => {
+    expect(card).not.toBeNull();
+    expect(card.text).not.toContain("isn't shown");
+  });
+  it("says it could not read the reading, under What I could not read", () => {
+    const cannot = card.text.slice(card.text.indexOf("**What I could not read**"));
+    expect(cannot).toContain("The reading on the alarm line is in a form I can't read — read it from your photo.");
+    passesCheckers(card.text);
+  });
+});
+
 describe("alarm card — RTD screen", () => {
   const card = buildAlarmCard(SCREEN_RTD)!;
   it("says the reading is not on this view when value and limit are both 0", () => {

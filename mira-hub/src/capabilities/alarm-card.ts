@@ -119,6 +119,9 @@ function render(
   const cannot: string[] = [];
   if (orderNote) cannot.push(orderNote);
   if (covered.some((l) => l.fAddress?.truncated)) cannot.push("The F-I/O start addresses are cut off.");
+  if (!lead.value.shown && lead.value.reason === "unrecognized") {
+    cannot.push("The reading on the alarm line is in a form I can't read — read it from your photo.");
+  }
   if (!lead.value.shown && (lead.value.reason === "truncated" || lead.value.reason === "unreadable")) {
     cannot.push("The reading is cut off or unreadable on this screen.");
   }
