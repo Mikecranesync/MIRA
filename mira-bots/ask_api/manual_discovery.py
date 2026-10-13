@@ -92,6 +92,10 @@ class ManualSearchRequest(BaseModel):
     catalog_number: str | None = Field(default=None, max_length=_MAX_FIELD_LEN)
 
 
+# reason_detail for the two "search_unavailable" infra misses (#4401).
+_TIMED_OUT_DETAIL = "Manual search ran out of time before it finished."
+_ERRORED_DETAIL = "Manual search stopped on an internal error."
+
 _NO_RESULT = {
     "found": False,
     "candidate": None,
@@ -289,6 +293,9 @@ async def manual_discovery_search(
         )
         result = _NO_RESULT.copy()
         result["reason"] = "search_unavailable"
+        # #4401: same reason as an error (the technician sees the one approved
+        # outage sentence), but the record says which — a slow search is not an outage.
+        result["reason_detail"] = _TIMED_OUT_DETAIL
         result["oem_request_url"] = oem_request_url
         result["search_stats"] = _search_stats(budget)
         return _with_trail(result, trail)
@@ -296,6 +303,7 @@ async def manual_discovery_search(
         logger.error("MANUAL_DISCOVERY_ERROR error=%s", e, exc_info=True)
         result = _NO_RESULT.copy()
         result["reason"] = "search_unavailable"
+        result["reason_detail"] = _ERRORED_DETAIL
         result["oem_request_url"] = oem_request_url
         result["search_stats"] = _search_stats(budget)
         return _with_trail(result, trail)
