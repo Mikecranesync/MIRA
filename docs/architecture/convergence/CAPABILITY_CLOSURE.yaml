@@ -179,7 +179,8 @@ capabilities:
       - "Answer the two artifact questions: why anomalous_runs=0 while critical diffs are written, and whether a window-average baseline should be labelled as such in any UI."
       - "Produce one diff from REAL production tag_events through NeonRunStore, not the in-memory store."
       - "REVIEW DEFERRED 2026-09-20 -> 2026-10-19 (reason): the 2026-09-19 review date lapsed during the #3875 merge train, which failed the capability-closure check on main. Open promotion criteria remain unchanged - CI enumeration, artifact questions, and production NeonRunStore proof. Re-decide by the new date."
-    review_by: "2026-10-19"
+      - "REVIEW DEFERRED 2026-10-19 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
+    review_by: "2026-11-10"
     notes: >-
       Issue #2341 still describes this engine as not existing. It shipped and is
       enabled. Commented there 2026-08-18; the issue text remains stale.
@@ -256,7 +257,7 @@ capabilities:
       - "mira-pipeline"
     environments:
       dev: unset
-      staging: unset
+      staging: "true"                       # Doppler factorylm/stg (read 2026-10-13); staging /api/health approvedRetrievalEnforced=true at 0905517be, 2026-10-14
       production: "true"                    # Doppler factorylm/prd; in-container 2026-08-27
     state: production_enabled
     owner: null
@@ -295,7 +296,8 @@ capabilities:
       - "Record an owner."
       - "REVIEW DEFERRED 2026-09-06 -> 2026-10-05 (reason): the 2026-09-05 review date lapsed with the owner still unassigned, which failed the capability-closure check on every open PR and blocked the #3597 release train. Nothing about the capability changed - it is production_enabled and runtime-proven (evidence above). The only open item remains recording an owner; that is the owner's decision (Mike), not this deferral's. Re-decide by the new date."
       - "REVIEW DEFERRED 2026-10-01 -> 2026-10-14 (reason): moved without re-deciding, together with machine_memory_observer_cv101, so a date lapsing mid-queue does not fail CI Gate on every open PR again; owner-approved agent PR (same route as #4027). Recording an owner is still the open item. Re-decide by the new date."
-    review_by: "2026-10-14"
+      - "REVIEW DEFERRED 2026-10-14 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
+    review_by: "2026-11-10"
 
   # =========================================================================
   - id: technician_context_contract
@@ -336,7 +338,8 @@ capabilities:
       - "ADR-0033 accepted or explicitly re-scoped."
       - "A staging turn whose decision_traces.context_manifest is reviewed and recorded here."
       - "REVIEW DEFERRED 2026-09-20 -> 2026-10-19 (reason): the 2026-09-19 review date lapsed during the #3875 merge train, which failed the capability-closure check on main. Open promotion criteria remain unchanged - ADR-0033 decision and staging evidence. Re-decide by the new date."
-    review_by: "2026-10-19"
+      - "REVIEW DEFERRED 2026-10-19 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
+    review_by: "2026-11-10"
 
   # =========================================================================
   - id: live_machine_state
@@ -406,7 +409,8 @@ capabilities:
       - "ADR-0036 accepted, or the manual-discovery arc re-implemented without external egress."
       - "A confirmation-gated flow so identity is proposed, never asserted."
       - "tests/test_nameplate_e2e.py enumerated in a named CI job (currently --ignore'd)."
-    review_by: "2026-10-19"
+      - "REVIEW DEFERRED 2026-10-19 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
+    review_by: "2026-11-10"
 
   # =========================================================================
   - id: photo_ocr_evidence
@@ -495,13 +499,16 @@ capabilities:
     promotion_criteria:
       - "Mike sets MACHINE_MEMORY_OBSERVER_ENABLED=1, _ASSET_ID, _EMAIL/_PASSWORD in Doppler prd; redeploy dogfood worker+beat via deploy-vps.yml."
       - "series.json: consecutive_days >= 7, defects == [], real_fault_window_with_rows == true."
-    review_by: "2026-10-14"
+    review_by: "2026-11-10"
     notes: >-
       Workstream C of docs/prd/2026-08-29-technician-beta-recovery-prd.md (PR #3486).
       REVIEW DEFERRED 2026-10-01 -> 2026-10-14: the 2026-09-30 date lapsed at UTC
       midnight and failed CI Gate on every open PR and on main. Moved without
       re-deciding by an owner-approved agent PR (same route as #4027); nothing
       about the capability changed. Re-decide by the new date.
+      REVIEW DEFERRED 2026-10-14 -> 2026-11-10: moved without re-deciding by an
+      owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse
+      at UTC midnight and fail CI Gate on every PR. Re-decide by the new date.
 
 # ---------------------------------------------------------------------------
 # Gate flags deliberately NOT tracked as product capabilities. Each needs a
