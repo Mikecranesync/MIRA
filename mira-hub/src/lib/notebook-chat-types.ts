@@ -72,7 +72,7 @@ export type NotebookStatusFrame = {
    * `providers` is every attempt in cascade order with its HTTP status and a
    * short reason, so "why" is visible without server logs.
    */
-  reason?: "all_providers_failed" | "no_provider_configured";
+  reason?: "all_providers_failed" | "no_provider_configured" | "budget_exhausted";
   providers?: { provider: string; httpStatus: number | null; reason: string }[];
   /**
    * Weak-evidence badge (`MIRA_JEV_WEAK_EVIDENCE_BADGE=1`, staging) — set only
@@ -349,13 +349,13 @@ export function isSafetyNoticeEntry(e: unknown): e is SafetyNoticeEntry {
  * markers it rides `evidence[]`, has no `docId`, and older clients skip it. */
 export type ProviderFailureEntry = {
   kind: "provider_failure";
-  reason: "all_providers_failed" | "no_provider_configured";
+  reason: "all_providers_failed" | "no_provider_configured" | "budget_exhausted";
 };
 
 export function isProviderFailureEntry(e: unknown): e is ProviderFailureEntry {
   if (typeof e !== "object" || e === null) return false;
   const { kind, reason } = e as { kind?: unknown; reason?: unknown };
-  return kind === "provider_failure" && (reason === "all_providers_failed" || reason === "no_provider_configured");
+  return kind === "provider_failure" && (reason === "all_providers_failed" || reason === "no_provider_configured" || reason === "budget_exhausted");
 }
 
 export function isSafetyStopEntry(e: unknown): e is SafetyStopEntry {

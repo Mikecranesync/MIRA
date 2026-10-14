@@ -78,7 +78,13 @@ vi.mock("@/lib/visual-evidence-context", async (importOriginal) => ({
 }));
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
-import { ALL_PROVIDERS_FAILED_MESSAGE, NO_PROVIDER_CONFIGURED_MESSAGE, resetProviderHealthForTests } from "@/capabilities/provider-health";
+import {
+  ALL_PROVIDERS_FAILED_MESSAGE,
+  BUDGET_EXHAUSTED_MESSAGE,
+  NO_PROVIDER_CONFIGURED_MESSAGE,
+  resetProviderHealthForTests,
+} from "@/capabilities/provider-health";
+import { resetOpenAiRunBudgetForTests } from "@/capabilities/openai-run-budget";
 
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC_A = "33333333-3333-4333-8333-333333333333";
@@ -168,6 +174,7 @@ const ENV = { ...process.env };
 beforeEach(() => {
   vi.clearAllMocks();
   resetProviderHealthForTests();
+  resetOpenAiRunBudgetForTests();
   process.env.MIRA_CANONICAL_SEAM = "1";
   process.env.NOTEBOOK_ANSWER_GATE = "0";
   process.env.OPENAI_API_KEY = "k0";
@@ -370,6 +377,34 @@ describe("#4374 — the persisted turn carries the provider-failure reason", () 
     expect(markers(turn)).toEqual([]);
   });
 
+  // #4374 Codex post-cap F1: a configured provider refused by its run-budget
+  // cap is not "no provider configured" — live, durable, and in the record.
+  it("a keyed OpenAI refused by its run budget persists reason budget_exhausted, not no_provider_configured", async () => {
+    delete process.env.GROQ_API_KEY;
+    process.env.OPENAI_RUN_BUDGET_USD = "0";
+    resetOpenAiRunBudgetForTests();
+    const calls = stubFetch({});
+    const { text, turn } = await run();
+    expect(calls).toEqual({ openai: 0, groq: 0 });
+    expect(markers(turn)).toEqual([{ kind: "provider_failure", reason: "budget_exhausted" }]);
+    expect(statusFrame(text)).toMatchObject({
+      status: "error",
+      reason: "budget_exhausted",
+      message: BUDGET_EXHAUSTED_MESSAGE,
+      providers: [{ provider: "OpenAI", httpStatus: null, reason: "budget_exhausted" }],
+    });
+    expect(String(statusFrame(text)?.message)).not.toContain("No AI answer provider is configured");
+  });
+
+  it("a budget refusal plus another provider's HTTP failure is all_providers_failed", async () => {
+    process.env.OPENAI_RUN_BUDGET_USD = "0";
+    resetOpenAiRunBudgetForTests();
+    stubFetch({ groq: [{ status: 401 }] });
+    const { text, turn } = await run();
+    expect(markers(turn)).toEqual([{ kind: "provider_failure", reason: "all_providers_failed" }]);
+    expect(statusFrame(text)).toMatchObject({ reason: "all_providers_failed", message: ALL_PROVIDERS_FAILED_MESSAGE });
+  });
+
   it("control: with the canonical seam OFF nothing new is persisted (legacy path unchanged)", async () => {
     process.env.MIRA_CANONICAL_SEAM = "0";
     stubFetch({ openai: [{ status: 402 }], groq: [{ status: 401 }] });
@@ -407,6 +442,11 @@ describe("#4374 — replaying a saved exhaustion turn keeps its technician copy"
   it("no_provider_configured marker → the admin message and reason", async () => {
     const status = await replay([{ kind: "provider_failure", reason: "no_provider_configured" }]);
     expect(status).toMatchObject({ status: "error", message: NO_PROVIDER_CONFIGURED_MESSAGE, reason: "no_provider_configured" });
+  });
+
+  it("budget_exhausted marker → the budget message and reason (#4374 post-cap F1)", async () => {
+    const status = await replay([{ kind: "provider_failure", reason: "budget_exhausted" }]);
+    expect(status).toMatchObject({ status: "error", message: BUDGET_EXHAUSTED_MESSAGE, reason: "budget_exhausted" });
   });
 
   it("control: a historical error row with no marker keeps the legacy frame byte-for-byte", async () => {

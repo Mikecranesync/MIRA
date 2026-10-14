@@ -148,8 +148,7 @@ import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   logProvidersExhausted,
   providerExhaustionStatus,
-  ALL_PROVIDERS_FAILED_MESSAGE,
-  NO_PROVIDER_CONFIGURED_MESSAGE,
+  PROVIDER_EXHAUSTION_COPY,
   providerHealth,
   type ProviderAttemptFailure,
 } from "@/capabilities/provider-health";
@@ -750,7 +749,7 @@ function replayedErrorStatus(evidence: readonly unknown[]): NotebookStatusFrame 
   return {
     kind: "status",
     status: "error",
-    message: failure.reason === "all_providers_failed" ? ALL_PROVIDERS_FAILED_MESSAGE : NO_PROVIDER_CONFIGURED_MESSAGE,
+    message: PROVIDER_EXHAUSTION_COPY[failure.reason],
     reason: failure.reason,
   };
 }
@@ -3276,6 +3275,7 @@ async function handleChatTurn(
           if (!verdict.ok) {
             logBudgetExhausted("notebook-chat", verdict);
             if (seam) attempted.push(provider.name);
+            providerFailures.push({ provider: provider.name, httpStatus: null, reason: "budget_exhausted" });
             continue;
           }
           // Option 1: OpenAI writes the answer only if its safety check also
@@ -3292,6 +3292,7 @@ async function handleChatTurn(
               verdict.reservation.release();
               logBudgetExhausted("notebook-chat+safety-judge", judgeVerdict);
               if (seam) attempted.push(provider.name);
+              providerFailures.push({ provider: provider.name, httpStatus: null, reason: "budget_exhausted" });
               continue;
             }
             judgeHold = { reservation: judgeVerdict.reservation, inputBound: judgeInputBound };

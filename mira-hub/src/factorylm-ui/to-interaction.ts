@@ -37,16 +37,13 @@ import type {
 import { isMachineEvidenceEntry, isProviderFailureEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
-import { ALL_PROVIDERS_FAILED_MESSAGE, NO_PROVIDER_CONFIGURED_MESSAGE } from "@/capabilities/provider-health";
+import { PROVIDER_EXHAUSTION_COPY } from "@/capabilities/provider-health";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { BASIS_LABEL, splitEvidence } from "@/components/equipment/notebook-chat-utils";
 
 type StatusAwareStreamResult = StreamResult & { statusMessage?: string | null };
 
-const PROVIDER_FAILURE_COPY = {
-  all_providers_failed: ALL_PROVIDERS_FAILED_MESSAGE,
-  no_provider_configured: NO_PROVIDER_CONFIGURED_MESSAGE,
-} as const;
+const PROVIDER_FAILURE_MESSAGES = new Set(Object.values(PROVIDER_EXHAUSTION_COPY));
 
 const GENERIC_ABSTENTION_COPY = "I couldn't find that in the selected sources.";
 const PHOTO_ABSTENTION_COPY =
@@ -359,7 +356,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
     // Only the server's technician copy for provider exhaustion (#4356) is shown
     // verbatim; other status messages ("see server logs") are operator text.
     const serverMessage = result.statusMessage?.trim();
-    if (serverMessage === ALL_PROVIDERS_FAILED_MESSAGE || serverMessage === NO_PROVIDER_CONFIGURED_MESSAGE) {
+    if (serverMessage && PROVIDER_FAILURE_MESSAGES.has(serverMessage)) {
       parts.push({
         type: "error",
         error: { code: "provider_failure", message: serverMessage, retryable: false },
@@ -475,7 +472,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     // idempotent request (#4374 Codex R2); a scoped Retry is tracked on #4366.
     // `PersistedTurn.evidence` (guarded legacy type) predates this marker; read it as unknown.
     const failure = (row.evidence as readonly unknown[]).find(isProviderFailureEntry);
-    const message = failure ? PROVIDER_FAILURE_COPY[failure.reason] : "The answer could not be completed.";
+    const message = failure ? PROVIDER_EXHAUSTION_COPY[failure.reason] : "The answer could not be completed.";
     parts.push({ type: "error", error: { code: "provider_failure", message, retryable: false } });
   }
 

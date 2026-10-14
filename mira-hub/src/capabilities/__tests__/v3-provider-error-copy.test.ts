@@ -7,7 +7,7 @@ import {
   turnsFromPersisted,
   type HubNotebookMeta,
 } from "@/factorylm-ui/to-interaction";
-import { ALL_PROVIDERS_FAILED_MESSAGE, NO_PROVIDER_CONFIGURED_MESSAGE } from "@/capabilities/provider-health";
+import { ALL_PROVIDERS_FAILED_MESSAGE, BUDGET_EXHAUSTED_MESSAGE, NO_PROVIDER_CONFIGURED_MESSAGE } from "@/capabilities/provider-health";
 
 type Live = StreamResult & { statusMessage?: string | null };
 const LIVE = { turnId: "live-1-a" };
@@ -99,5 +99,10 @@ describe("hydration renders the persisted provider-exhaustion copy (#4374 R1 F1)
   it("control: an unknown reason falls back to the generic copy", () => {
     const part = errorPart(turnsFromPersisted(errorRow("t1", [{ kind: "provider_failure", reason: "bogus" }]), META));
     expect(part?.error.message).toBe("The answer could not be completed.");
+  });
+
+  it("budget_exhausted marker → the budget message (#4374 post-cap F1)", () => {
+    const part = errorPart(turnsFromPersisted(errorRow("t1", [{ kind: "provider_failure", reason: "budget_exhausted" }]), META));
+    expect(part?.error.message).toBe(BUDGET_EXHAUSTED_MESSAGE);
   });
 });
