@@ -192,6 +192,10 @@ export async function findDuplicateUpload(
        AND status = 'parsed'
        AND ingest_route = 'v2'
        AND kind = 'document'
+       -- A duplicate row ("duplicate of <id>", local-upload.ts) owns no
+       -- chunks; naming it would chain the next re-upload to a document
+       -- with nothing to cite (#4420 Codex r1 F1).
+       AND (status_detail IS NULL OR status_detail NOT LIKE 'duplicate of %')
      ORDER BY created_at DESC
      LIMIT 1
   `,

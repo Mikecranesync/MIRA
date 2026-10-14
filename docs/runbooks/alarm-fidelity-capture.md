@@ -6,14 +6,23 @@ kept together. This run measures that on a **made-up** alarm screen, so no real 
 involved. Spec: `docs/superpowers/specs/2026-10-12-alarm-reasoning-design.md` §2 and §9.
 
 **Cost:** about 10 photo reads with `gpt-5.4-mini`, a few cents in total. The declared cap is
-**$1.00**. The session reads the actual spend afterwards from the turn records.
+**$1.00**. The turn records hold the provider and model for each photo but **not** its tokens or
+cost, because the photo step stores those as empty (#4398). Until that is fixed, the session reports
+the number of reads and the model, not a dollar figure.
 
 **When:** after the alarm-card PR (PR B) is deployed to **staging**. Do not use production.
 
 ## Steps
 
 1. On a laptop, open `tools/alarm-fidelity/alarm-page.html` in a browser and go full screen
-   (F11). It shows a red alarm list.
+   (F11). It shows a red alarm list. **The whole list must be on screen.** The bottom line should
+   end `=y.CTL+07-K4.1-6.` If it is cut off, zoom out (Ctrl and minus, or Cmd and minus on a
+   Mac) until that line is fully visible; check by eye, since screen size, browser bars and zoom
+   differ between laptops. (In the 2026-10-13 rehearsal the fail-safe list was about 970 pixels
+   tall and a 900-pixel-tall screen cut off its last alarm; one zoom step fixed it on that laptop.)
+   A cut-off alarm counts as a miss even when MIRA reads everything visible correctly,
+   and on its own it drops the tag score to about 89 %, below the 90 % pass mark. Check the same
+   on the `#rtd` and `#history` screens.
 2. On the Pixel, open the FactoryLM app on **staging** and make a test notebook named
    `alarm fidelity 2026`.
 3. Take **10 photos** with the in-app camera (the LOOK photo button), one per message. Send
@@ -59,3 +68,18 @@ with a recommendation; nothing switches over automatically.
 3. Run `cd mira-hub && npx vite-node ../tools/alarm-fidelity/score-run.ts run.json`. It exits
    0 on a pass and 1 on a fail.
 4. Post the printed table on the alarm-card PR.
+
+## Scoring another reader the same way (for example, a general AI chat)
+
+To compare MIRA with another reader on the same synthetic screens:
+
+1. Give the other reader the same photo of `alarm-page.html` and ask it to "transcribe this alarm
+   list exactly, one screen line per line". Use the synthetic page only, never a real plant
+   screen.
+2. Save each reply as a text file named `<id>.<screen>.txt`, where `<screen>` is `failsafe`,
+   `rtd` or `history` (for example `chatgpt-1.failsafe.txt`), all in one folder. Paste the whole
+   reply. If the reply puts the list in a code block, only the lines inside the block are scored,
+   so a sentence before or after it does no harm.
+3. Run `cd mira-hub && npx vite-node ../tools/alarm-fidelity/transcripts-to-run.ts <folder> > run.json`,
+   then `npx vite-node ../tools/alarm-fidelity/score-run.ts run.json`. The same three measures
+   apply: exact tags, invented characters in cut-off fields, and correct grouping.

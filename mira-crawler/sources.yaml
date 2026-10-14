@@ -288,6 +288,53 @@ tiers:
       crawl_pattern: direct
       description: "Allen-Bradley Bulletin 100-C30 IEC contactor technical data (100-TD013) — ratings, wiring, dimensions"
 
+    # ── Emerson (formerly GE Fanuc / GE Intelligent Platforms PLCs) — #4403.
+    # Two Answer Radar holds had ZERO chunks for this line (RX3i/VersaMax 2026-10-08;
+    # Series 90-30 + IC752 operator panel 2026-10-13). Searched 2026-10-13 for
+    # official, zero-login PDFs per family:
+    #   - RX3i, VersaMax: only the three static data sheets below qualify.
+    #   - Series 90-30 (GFK-0356, GFK-0467, GFK-0898), IC752 DataPanel/QuickPanel,
+    #     and PAC/Proficy Machine Edition (GFK-1868): NO official public copy. Every
+    #     copy found is a distributor/repairer re-host (qualitrol.com, astor.com.pl,
+    #     instrumart.com, manualslib) — disqualified like FANUC/KUKA above. The
+    #     Emerson Customer Center (emerson-mas.force.com) returns 404 to the public.
+    #   - EXCLUDED, owner decision pending: discreteautomation.emerson.com serves real
+    #     manuals login-free (e.g. GFK-2222AZ RX3i CPU Reference Manual, GFK-3248K
+    #     CPU product information), but only through Salesforce CMS media-ID URLs
+    #     (/sfsites/c/cms/delivery/media/<ID>) that rotate when a document is
+    #     revised — 3 of 4 indexed IDs already 404. Same class as the dynamic
+    #     document-ID endpoints excluded in the re-acquisition note above. Adding it
+    #     would also need its own provenance_policy.yaml entry (it is a sibling of
+    #     www.emerson.com, not a subdomain).
+    # Each entry below: 200 application/pdf, %PDF- header + %%EOF trailer, extractable
+    # text, no redirect, path not disallowed by robots.txt — verified 2026-10-13.
+    emerson_pacsystems_rx3i_io_datasheet:
+      url: "https://www.emerson.com/is/content/emerson/en/systems-and-software/programmable-logic-controllers/pacsystems-plcs/data-sheets/pds-pacsystems-rack-based-io-en.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Emerson
+      equipment_id: RX3i
+      crawl_pattern: direct
+      description: "Emerson (GE Fanuc) PACSystems RX3i rack-based I/O data sheet — module families, specifications"
+
+    emerson_versamax_modular_io_datasheet:
+      url: "https://www.emerson.com/is/content/emerson/en/corporate/industries/shared-assets/documents/versamax-modular-io-and-control.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Emerson
+      equipment_id: VersaMax
+      crawl_pattern: direct
+      description: "Emerson (GE Fanuc) VersaMax Modular I/O and Control data sheet (00813-0100-0112) — CPUs, I/O, specifications"
+
+    emerson_versamax_micro_datasheet:
+      url: "https://www.emerson.com/is/content/emerson/en/corporate/industries/shared-assets/documents/versamax-micro.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Emerson
+      equipment_id: VersaMax Micro
+      crawl_pattern: direct
+      description: "Emerson (GE Fanuc) VersaMax Micro PLC data sheet (00813-0100-0113) — models, I/O, specifications"
+
   # ── TIER 4: Open Educational ────────────────────────────────────
   4_educational:
     # MIT OCW, OER Commons — URLs to be added

@@ -184,6 +184,19 @@ OEM_DOMAINS: dict[str, tuple[str, ...]] = {
     "banner": ("bannerengineering.com",),
     "pepperl": ("pepperl-fuchs.com",),
     "pepperl+fuchs": ("pepperl-fuchs.com",),
+    # #4402: Emerson took over GE's PLC/HMI line (GE Fanuc -> GE Intelligent
+    # Platforms -> Emerson); technicians read "GE Fanuc" off the hardware and the
+    # manuals are served from www.emerson.com. Exact keys only. Never a bare
+    # "ge" or "general electric": GE's motor, relay and power lines are not
+    # Emerson's, and an entry here makes Emerson's site count as the maker's own
+    # documentation (the auto-import gate).
+    "emerson": ("emerson.com",),
+    "emerson automation solutions": ("emerson.com",),
+    "emerson process management": ("emerson.com",),
+    # Not "emerson electric": also the old motor brand (now Nidec / US Motors).
+    "ge fanuc": ("emerson.com",),
+    "ge intelligent platforms": ("emerson.com",),
+    "ge automation": ("emerson.com",),
 }
 
 # Domains whose `.pdf` URLs are SEO spam, third-party scrapes, or random
@@ -1144,10 +1157,12 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
         # rather than surfacing an unread stranger.
         unread = [c for c in ranked if not _judge.is_rejected(c)]
         deduped = [c for c in unread if _judge.relevant(c, make, model)]
-        if not deduped and rejected:
-            deduped = []
-        elif not deduped:
-            deduped = unread
+        if not deduped and not rejected:
+            # #4400: nothing names the make or the model and nothing was judged. The
+            # old fallback to EVERY unread candidate offered a reseller's company
+            # profile as "a possible manual"; a stranger may win only by being read
+            # and judged the manual (above). An honest miss instead.
+            return None
         if not deduped:
             worst = next((c for c in ranked if _judge.is_rejected(c)), ranked[0])
             code, line = _judge.judge_summary(worst)
@@ -1159,6 +1174,14 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
     # HEAD-validate the top few; first one that confirms PDF wins.
     for c in deduped[:5]:
         if not c.get("validated"):
+            # #4401: a probe that cannot finish before the caller's deadline is not
+            # sent (each may take HEAD_TIMEOUT). The top candidate is returned
+            # unvalidated for review below, instead of the whole search being
+            # cancelled upstream and reported as an outage.
+            if deadline_at is not None and (
+                deadline_at - time.monotonic() < HEAD_TIMEOUT + _judge.RETURN_RESERVE_S
+            ):
+                break
             _note_examined([c["url"]])
         if c.get("validated") or await validate_pdf(c["url"]):
             c["validated"] = True
