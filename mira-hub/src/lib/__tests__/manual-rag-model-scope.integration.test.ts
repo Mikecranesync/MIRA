@@ -21,6 +21,7 @@ beforeAll(async () => {
   await client.query("BEGIN");
   await client.query(`
     CREATE TEMP TABLE knowledge_entries (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       tenant_id text NOT NULL,
       content text NOT NULL,
       content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
@@ -233,5 +234,91 @@ describe("quickstart retrieval surfaces the fault code the question names", () =
     const danfoss = await pagesFor("What does Alarm 7 mean on this drive", DECOY_MFR, false);
     expect(danfoss).toContain(42);
     expect(danfoss).not.toContain(88);
+  });
+});
+
+// #3331 / #4373 Codex R1 F1: rows tied on rank, source_url, source_page and
+// chunk_index must still resolve in one fixed order, so the same question cites
+// the same chunk every time. chunk_index is not unique (public rows span tenants;
+// it may be null), so the primary key is the final discriminator. Each case uses
+// its own vocabulary so it cannot match this file's other rows.
+describe("tied rows resolve by primary key (#4373 R1 F1)", () => {
+  const OTHER_TENANT = "39700000-0000-4000-8000-0000000000bb";
+  const LOW_ID = "00000000-0000-4000-8000-0000000000a1";
+  const HIGH_ID = "00000000-0000-4000-8000-0000000000a2";
+  let n = 0;
+
+  /** Insert the HIGH id first, so physical order alone would return it. */
+  async function seedTie(term: string, metadata: object, tenants: [string, string]) {
+    n += 1;
+    for (const [id, tenant, model] of [
+      [HIGH_ID.replace(/a2$/, `${n}2`), tenants[1], "TIE-HIGH"],
+      [LOW_ID.replace(/a1$/, `${n}1`), tenants[0], "TIE-LOW"],
+    ]) {
+      await client.query(
+        `INSERT INTO knowledge_entries (id, tenant_id, content, manufacturer, model_number, source_url, source_page, metadata, is_private)
+         VALUES ($1, $2, $3, 'Tiebreak Co', $4, $5, 7, $6::jsonb, false)`,
+        [id, tenant, `${term} specification`, model, `https://test.invalid/tie-${n}.pdf`, JSON.stringify(metadata)],
+      );
+    }
+  }
+
+  async function topOne(term: string): Promise<string | undefined> {
+    const hits = await retrieveManualChunks(client, TENANT, term, { topK: 1 });
+    expect(hits).toHaveLength(1);
+    return hits[0]?.modelNumber;
+  }
+
+  it("same chunk_index under two public tenants: the lower id wins", async () => {
+    await seedTie("gearbox lubricant", { chunk_index: 3 }, [TENANT, OTHER_TENANT]);
+    expect(await topOne("gearbox lubricant")).toBe("TIE-LOW");
+  });
+
+  it("no chunk_index at all: the lower id wins", async () => {
+    await seedTie("bearing grease", {}, [TENANT, TENANT]);
+    expect(await topOne("bearing grease")).toBe("TIE-LOW");
+  });
+
+  it("the answer is identical across repeated runs", async () => {
+    await seedTie("coupling alignment", {}, [TENANT, OTHER_TENANT]);
+    const runs = new Set<string | undefined>();
+    for (let i = 0; i < 5; i++) runs.add(await topOne("coupling alignment"));
+    expect([...runs]).toEqual(["TIE-LOW"]);
+  });
+});
+
+// #4373 Codex R3 F1: the notebook lane (retrieveNodeChunks) had the same gap —
+// two same-page chunks of one document tie on doc_id/page_start/source_page and
+// rank, so database order picked the cited excerpt. Ends on `id` too.
+describe("notebook lane: tied same-page chunks resolve by primary key (#4373 R3 F1)", () => {
+  const NB = "39700000-0000-4000-8000-0000000000cc";
+  const DOC_T = "39700000-0000-4000-8000-0000000000d9";
+  const LOW = "00000000-0000-4000-8000-0000000000e1";
+  const HIGH = "00000000-0000-4000-8000-0000000000e2";
+
+  beforeAll(async () => {
+    // HIGH id first, so physical order alone would return it.
+    for (const [id, file] of [[HIGH, "HIGH.pdf"], [LOW, "LOW.pdf"]]) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+           (id, tenant_id, content, manufacturer, model_number, source_url, source_page, page_start,
+            doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, 'gearbox oil level sight glass', '', '', 'https://test.invalid/t.pdf', 4, 4, $3, 'v2', $4::jsonb, true, true)`,
+        [id, NB, DOC_T, JSON.stringify({ node_id: "n9", filename: file })],
+      );
+    }
+  });
+
+  async function topFile(): Promise<string> {
+    const hits = await retrieveNodeChunks(client, NB, "gearbox oil level", {
+      nodeId: "n9", unsPath: null, topK: 1, docIds: [DOC_T], rawQuery: "gearbox oil level",
+      validatedDocScope: true, approvedSourceDocIds: [DOC_T],
+    });
+    expect(hits).toHaveLength(1);
+    return JSON.stringify(hits[0]);
+  }
+
+  it("the lower id wins, every time", async () => {
+    for (let i = 0; i < 5; i++) expect(await topFile()).toContain("LOW.pdf");
   });
 });
