@@ -393,7 +393,7 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
                 json=body,
                 headers=headers,
             )
-        except (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError) as exc:
+        except httpx.TransportError as exc:  # any connect/read/write/protocol failure (#4423 F1)
             attempts.append(f"{provider.name}={type(exc).__name__}")
             logger.warning("judge %s transport error: %s — retrying", provider.name, exc)
             continue

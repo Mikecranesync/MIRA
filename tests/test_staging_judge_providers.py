@@ -152,3 +152,29 @@ def test_a_clean_first_answer_is_never_retried(monkeypatch):
     client = _Client([_Resp(200, _GOOD)])
     asyncio.run(st.judge_reply(client, _Q, "reply"))
     assert client.calls == 1
+
+
+class _RaisingThenOkClient:
+    """First POST raises `exc`; the second returns a good answer."""
+
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+        self.calls = 0
+
+    async def post(self, url: str, json: dict, headers: dict) -> _Resp:  # noqa: A002 - httpx signature
+        self.calls += 1
+        if self.calls == 1:
+            raise self._exc
+        return _Resp(200, _GOOD)
+
+
+@pytest.mark.parametrize("exc_type", ["ReadError", "WriteError", "ConnectError", "ReadTimeout"])
+def test_any_transport_failure_is_retried_once(monkeypatch, exc_type):
+    """#4423 Codex F1: a reset mid-read (httpx.ReadError) is a transport
+    failure like any other and gets the second attempt."""
+    import httpx
+
+    _pin_keys(monkeypatch, OPENAI_API_KEY="sk-test")
+    client = _RaisingThenOkClient(getattr(httpx, exc_type)("boom"))
+    assert asyncio.run(st.judge_reply(client, _Q, "reply")).grounding == 5
+    assert client.calls == 2

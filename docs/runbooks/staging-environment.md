@@ -68,12 +68,16 @@ The staging gate runs in GitHub Actions; the secrets live on a `staging` environ
 # Create the environment (Settings → Environments → New environment: "staging")
 # Then set these secrets under that environment:
 gh secret set NEON_STG_DATABASE_URL --env staging --body "$NEON_STG_DATABASE_URL"
+# REQUIRED: the staging-gate judge is OpenAI only (2026-10-14). Without this
+# key the gate exits "no judge providers configured".
+gh secret set STAGING_OPENAI_API_KEY --env staging --body "$STAGING_OPENAI_API_KEY"
+# Engine (answering) cascade keys — not used by the judge.
 gh secret set STAGING_GROQ_API_KEY  --env staging --body "$STAGING_GROQ_API_KEY"
 gh secret set STAGING_CEREBRAS_API_KEY --env staging --body "$STAGING_CEREBRAS_API_KEY"
 gh secret set STAGING_GEMINI_API_KEY --env staging --body "$STAGING_GEMINI_API_KEY"
 ```
 
-Use a Groq key dedicated to staging — it isolates the staging rate budget from prod. If you only have one key, reuse `GROQ_API_KEY`; the staging gate still works.
+`STAGING_OPENAI_API_KEY` is the only key the judge reads: Groq, Cerebras and Gemini were deprecated as judges on 2026-10-14 (`tools/staging_test.py`). The remaining keys feed the engine's answering cascade under test; use a Groq key dedicated to staging if you set one, so the staging rate budget stays isolated from prod.
 
 ### 5. Make Staging Gate a required check (branch protection)
 
