@@ -295,6 +295,28 @@ describe("#4426 — an uncited manufacturer-library answer abstains deterministi
     expect(r.persisted?.answerText).toBe(FROM_PHOTO);
   });
 
+  it("a stored nameplate reading does NOT exempt an uncited answer that never uses it", async () => {
+    // One photo of a machine must not switch the floor off for every later library
+    // question on it: the exemption follows the section's own attribution rule.
+    domainMock.resolveBoundAsset.mockResolvedValue({
+      state: "resolved",
+      entityId: "44444444-4444-4444-8444-444444444444",
+      name: "Line 3 HMI",
+      unsPath: "enterprise.plant.line3.hmi",
+      selectedVia: null,
+      confirmedAt: "2026-10-14T00:00:00Z",
+    });
+    visualMock.loadVisualEvidenceForAsset.mockResolvedValue([{ text: "Supply 24 V DC", trust: "verified" }]);
+    visualMock.renderVisualEvidenceSection.mockReturnValue(
+      "## Visual Evidence (nameplate photographed on THIS machine)\n- Supply 24 V DC (confirmed by a technician)",
+    );
+    const r = await ask(UNCITED);
+    const sent = JSON.stringify((vi.mocked(fetch).mock.calls.at(-1) as unknown[])[1]);
+    expect(sent).toContain("nameplate photographed on THIS machine");
+    expect(r.status).toBe("insufficient_evidence");
+    expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+  });
+
   it("a bound machine with NO stored nameplate reading still abstains on an uncited answer", async () => {
     domainMock.resolveBoundAsset.mockResolvedValue({
       state: "resolved",

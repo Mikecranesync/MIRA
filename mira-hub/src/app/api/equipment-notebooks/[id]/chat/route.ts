@@ -3763,11 +3763,16 @@ async function handleChatTurn(
         isUncitedDocumentClaim(answerText, {
           oemGrounded: oemRetrieval && docGrounded,
           citations,
-          // `visualSection` is the bound machine's stored nameplate readings; its
-          // prompt section requires prose attribution and forbids [n], so an
-          // answer grounded there cites no passage by design.
+          // `visualSection` is every stored nameplate reading for the bound machine
+          // (not this turn's evidence), so it exempts only an answer that uses it:
+          // its prompt section requires prose attribution to "the photographed
+          // nameplate" and forbids [n]. Presence alone would switch this floor off
+          // for every later library question on a once-photographed machine.
           exempt:
-            Boolean(groundedMachineEntry) || Boolean(lookContext) || Boolean(visualSection) || Boolean(safetyTrigger),
+            Boolean(groundedMachineEntry) ||
+            Boolean(lookContext) ||
+            (Boolean(visualSection) && /\bnameplate\b/i.test(answerText)) ||
+            Boolean(safetyTrigger),
         });
       if (uncitedDocumentClaim) {
         console.warn(`[notebook-chat] uncited manufacturer-library claim withheld (#4426): ${answerText.length} chars, ${citations.length} citations available`);
