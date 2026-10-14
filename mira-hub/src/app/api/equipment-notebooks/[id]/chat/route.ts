@@ -3763,7 +3763,11 @@ async function handleChatTurn(
         isUncitedDocumentClaim(answerText, {
           oemGrounded: oemRetrieval && docGrounded,
           citations,
-          exempt: Boolean(groundedMachineEntry) || Boolean(lookContext) || Boolean(safetyTrigger),
+          // `visualSection` is the bound machine's stored nameplate readings; its
+          // prompt section requires prose attribution and forbids [n], so an
+          // answer grounded there cites no passage by design.
+          exempt:
+            Boolean(groundedMachineEntry) || Boolean(lookContext) || Boolean(visualSection) || Boolean(safetyTrigger),
         });
       if (uncitedDocumentClaim) {
         console.warn(`[notebook-chat] uncited manufacturer-library claim withheld (#4426): ${answerText.length} chars, ${citations.length} citations available`);

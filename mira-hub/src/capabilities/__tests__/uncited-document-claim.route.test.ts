@@ -39,7 +39,7 @@ const domainMock = vi.hoisted(() => ({
   listTurns: vi.fn(async () => [] as unknown[]),
   normalizeNotebookThreadId: (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null),
   recordTurn: vi.fn(async () => "ffffffff-ffff-4fff-8fff-ffffffffffff"),
-  resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
+  resolveBoundAsset: vi.fn(async (): Promise<ResolvedAsset> => ({ state: "unbound" })),
   getNotebook: vi.fn(async () => ({
     id: "22222222-2222-4222-8222-222222222222",
     displayName: "Line 3 HMI",
@@ -76,10 +76,13 @@ vi.mock("@/lib/db", () => ({
 }));
 vi.mock("@/lib/inference/persist-usage", () => ({ persistTurnUsage: vi.fn(async () => ({ persisted: true, traceId: "t" })) }));
 vi.mock("@/lib/workspace-files", () => ({ photoLinkedToTarget: vi.fn(async () => null) }));
-vi.mock("@/lib/visual-evidence-context", () => ({
-  blockingLookHazard: vi.fn(() => null),
+const visualMock = vi.hoisted(() => ({
   loadVisualEvidenceForAsset: vi.fn(async () => [] as unknown[]),
   renderVisualEvidenceSection: vi.fn(() => ""),
+}));
+vi.mock("@/lib/visual-evidence-context", () => ({
+  blockingLookHazard: vi.fn(() => null),
+  ...visualMock,
   loadVisualEvidenceForPhoto: vi.fn(async () => null as unknown),
   loadRecentLookObservations: vi.fn(async () => []),
   renderLookObservationSection: vi.fn(() => ""),
@@ -109,6 +112,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async () => {
 
 import { POST, UNCITED_OEM_CLAIM_TEXT, isUncitedDocumentClaim } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
+import type { ResolvedAsset } from "@/lib/equipment-notebooks";
 
 // One retrieved TP700 passage that does NOT answer the question asked.
 const OEM_CHUNK = {
@@ -182,6 +186,8 @@ beforeEach(() => {
   sessionMock.sessionOr401.mockResolvedValue({ tenantId: TENANT, userId: "u1" });
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
   domainMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
+  visualMock.loadVisualEvidenceForAsset.mockResolvedValue([]);
+  visualMock.renderVisualEvidenceSection.mockReturnValue("");
   ragMock.retrieveNodeChunks.mockResolvedValue([]);
   ragMock.retrieveManualChunks.mockResolvedValue([OEM_CHUNK]);
   manualDiscoveryMock.discoverManual.mockResolvedValue({
@@ -259,6 +265,50 @@ describe("#4426 — an uncited manufacturer-library answer abstains deterministi
     expect(ragMock.retrieveNodeChunks).toHaveBeenCalled();
     expect(r.status).toBe("answered");
     expect(r.content).toContain("7-inch");
+  });
+
+  it("control: an answer from the machine's stored nameplate photo is not withheld (prose attribution, no [n])", async () => {
+    // A bound machine with a photographed-nameplate reading and OEM passages, but
+    // no photo attached this turn and no machine readings. The visual-evidence
+    // section tells the model to attribute these readings in prose and never with
+    // bracketed numbers, so a correct answer cites no passage by design.
+    domainMock.resolveBoundAsset.mockResolvedValue({
+      state: "resolved",
+      entityId: "44444444-4444-4444-8444-444444444444",
+      name: "Line 3 HMI",
+      unsPath: "enterprise.plant.line3.hmi",
+      selectedVia: null,
+      confirmedAt: "2026-10-14T00:00:00Z",
+    });
+    const SECTION = "## Visual Evidence (nameplate photographed on THIS machine)\n- Supply 24 V DC (confirmed by a technician)";
+    visualMock.loadVisualEvidenceForAsset.mockResolvedValue([{ text: "Supply 24 V DC", trust: "verified" }]);
+    visualMock.renderVisualEvidenceSection.mockReturnValue(SECTION);
+    const FROM_PHOTO = "The photographed nameplate shows a 24 V DC supply.";
+    const r = await ask(FROM_PHOTO, { message: "What supply voltage does this panel need", mode: "general" });
+    // Preconditions: the OEM search ran, and the nameplate section reached the provider.
+    expect(ragMock.retrieveManualChunks).toHaveBeenCalled();
+    const sent = JSON.stringify((vi.mocked(fetch).mock.calls.at(-1) as unknown[])[1]);
+    expect(sent).toContain("nameplate photographed on THIS machine");
+    expect(r.status).toBe("answered");
+    expect(r.content).toBe(FROM_PHOTO);
+    expect(r.persisted?.answerStatus).toBe("answered");
+    expect(r.persisted?.answerText).toBe(FROM_PHOTO);
+  });
+
+  it("a bound machine with NO stored nameplate reading still abstains on an uncited answer", async () => {
+    domainMock.resolveBoundAsset.mockResolvedValue({
+      state: "resolved",
+      entityId: "44444444-4444-4444-8444-444444444444",
+      name: "Line 3 HMI",
+      unsPath: "enterprise.plant.line3.hmi",
+      selectedVia: null,
+      confirmedAt: "2026-10-14T00:00:00Z",
+    });
+    const r = await ask(UNCITED);
+    expect(ragMock.retrieveManualChunks).toHaveBeenCalled();
+    expect(visualMock.loadVisualEvidenceForAsset).toHaveBeenCalled();
+    expect(r.status).toBe("insufficient_evidence");
+    expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
   });
 });
 
