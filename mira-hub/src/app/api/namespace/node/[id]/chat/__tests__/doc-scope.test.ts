@@ -7,7 +7,7 @@
 // script the pg client, call the real handler. No LLM call happens — providers
 // have no keys in the test env, so the cascade is skipped after retrieval.
 
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
@@ -122,6 +122,60 @@ describe("NodeChat docId scope", () => {
     const res = await POST(chatReq({ messages: MESSAGES, docId: DOC_ID }), params);
     expect(res.status).toBe(200);
     expect(linkedDocIdsForNode).not.toHaveBeenCalled();
+  });
+});
+
+// #4417 — owner ruling A: on a training surface (onboarding's "Try MIRA", the
+// namespace) the uploader's own manual answers as soon as the technician opens
+// it, with MIRA_ENFORCE_APPROVED_RETRIEVAL on as it is in staging and
+// production. Onboarding relies on exactly this route branch, so it is locked
+// here: a later "tighten /v3 and friends to approval-first" change must fail
+// this test, not the beta gate.
+describe("approval gate on: an opened private upload answers, an unopened one does not", () => {
+  const PRIVATE_CHUNK = { ...CHUNK_ROW, doc_id: DOC_ID, verified: false };
+
+  function sqlAwareClient() {
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const client = {
+      query: vi.fn(async (sql: string, params: unknown[]) => {
+        calls.push({ sql, params });
+        // Retrieval first: its projection also selects metadata->>'filename'.
+        if (sql.includes("content_tsv @@")) return { rows: [PRIVATE_CHUNK] };
+        if (sql.includes("FROM kg_entities") && sql.includes("name")) return { rows: [NODE_ROW] };
+        if (sql.includes("metadata->>'filename'")) return { rows: [{ filename: "T2108_Manual_EN.pdf" }] };
+        return { rows: [{ id: NODE_ID }] };
+      }),
+    };
+    vi.mocked(withTenantContext).mockImplementation(
+      ((_t: string, fn: (c: unknown) => unknown) => fn(client)) as never,
+    );
+    return calls;
+  }
+
+  beforeEach(() => {
+    process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
+  });
+  afterEach(() => {
+    delete process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL;
+  });
+
+  it("with docId: the private chunk is admitted in SQL and the turn streams, not 412", async () => {
+    const calls = sqlAwareClient();
+    const res = await POST(chatReq({ messages: MESSAGES, docId: DOC_ID }), params);
+    expect(res.status).toBe(200);
+    const retrieval = calls.find((c) => c.sql.includes("content_tsv @@"));
+    expect(retrieval!.sql).toContain("is_private = true AND doc_id = ANY($6::uuid[])");
+    expect(retrieval!.params).toContainEqual([DOC_ID]);
+    const raw = await new Response(res.body).text();
+    expect(raw).toContain("\"approved_source_count\":1");
+  });
+
+  it("without docId (and no link): the same private chunk is refused — 412 approved_context", async () => {
+    sqlAwareClient();
+    const res = await POST(chatReq({ messages: MESSAGES }), params);
+    expect(res.status).toBe(412);
+    const body = (await res.json()) as { gate?: string };
+    expect(body.gate).toBe("approved_context");
   });
 });
 

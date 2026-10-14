@@ -24,6 +24,7 @@ import { AssetValidateTab } from "@/components/AssetValidateTab";
 import { NodeChat } from "@/components/namespace/NodeChat";
 import { isManualReady } from "@/lib/onboarding-flow";
 import type { UploadStatus } from "@/lib/uploads";
+import { tryMiraChatScope, type TryMiraScope } from "@/factorylm-ui/onboarding-try-mira";
 
 type StepId = "company" | "site" | "line" | "tag-import" | "review" | "upload" | "try" | "validate";
 
@@ -683,7 +684,7 @@ function UploadStep({
   const [file, setFile] = useState<File | null>(null);
   const [phase, setPhase] = useState<UploadPhase>("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
-  const [readyNodeId, setReadyNodeId] = useState<string | null>(null);
+  const [scope, setScope] = useState<TryMiraScope | null>(null);
   const stopPollRef = useRef<(() => void) | null>(null);
   useEffect(() => () => { stopPollRef.current?.(); }, []);
 
@@ -694,7 +695,7 @@ function UploadStep({
       try {
         const res = await fetch(`${API_BASE}/api/uploads/${uploadId}`, { cache: "no-store" });
         const row = res.ok
-          ? ((await res.json()) as { status?: string; knowledge_chunks_count?: number; kgEntityId?: string | null })
+          ? ((await res.json()) as { status?: string; statusDetail?: string | null; knowledge_chunks_count?: number; kgEntityId?: string | null })
           : null;
         if (row?.status === "failed" || row?.status === "cancelled") {
           setErrMsg("Processing failed for that file. Try a different PDF.");
@@ -702,7 +703,9 @@ function UploadStep({
           return;
         }
         if (row && isManualReady({ status: String(row.status ?? "") as UploadStatus, knowledge_chunks_count: Number(row.knowledge_chunks_count ?? 0) })) {
-          setReadyNodeId(row.kgEntityId ?? null);
+          // #4417: ask the manual just uploaded — the route admits an opened
+          // document under the approval gate; an unscoped ask is refused (412).
+          if (lineNode) setScope(tryMiraChatScope({ uploadId, upload: row, line: lineNode }));
           setPhase("ready");
           return;
         }
@@ -761,9 +764,11 @@ function UploadStep({
         </div>
         <div className="rounded-lg border border-slate-200" data-testid="onboarding-node-chat">
           <NodeChat
-            nodeId={readyNodeId ?? lineNode.id}
+            nodeId={scope?.nodeId ?? lineNode.id}
             nodeName={lineNode.name}
-            unsPath={readyNodeId ? null : lineNode.unsPath}
+            unsPath={scope ? scope.unsPath : lineNode.unsPath}
+            docId={scope?.docId}
+            docName={file?.name}
           />
         </div>
         <NavButtons rightLabel="Continue" onRight={onContinue} rightTestId="onboarding-upload-continue" />
