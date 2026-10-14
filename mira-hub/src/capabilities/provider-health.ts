@@ -110,7 +110,19 @@ export const NO_PROVIDER_CONFIGURED_MESSAGE =
   "No AI answer provider is configured for this workspace yet, so this question wasn't answered. " +
   "Your admin needs to add a provider key.";
 
-export type ProviderExhaustionReason = "all_providers_failed" | "no_provider_configured";
+/** #4374 post-cap F1: a keyed provider refused by its run-budget cap. */
+export const BUDGET_EXHAUSTED_MESSAGE =
+  "The AI answer service has reached its usage limit for now, so this question wasn't answered. " +
+  "Try again later, or ask your admin to raise the limit.";
+
+export type ProviderExhaustionReason = "all_providers_failed" | "no_provider_configured" | "budget_exhausted";
+
+/** The technician copy for each exhaustion reason — live frame, replay, and hydration share it. */
+export const PROVIDER_EXHAUSTION_COPY: Record<ProviderExhaustionReason, string> = {
+  all_providers_failed: ALL_PROVIDERS_FAILED_MESSAGE,
+  no_provider_configured: NO_PROVIDER_CONFIGURED_MESSAGE,
+  budget_exhausted: BUDGET_EXHAUSTED_MESSAGE,
+};
 
 /**
  * The additive fields the final `status: "error"` frame carries on provider
@@ -122,9 +134,16 @@ export function providerExhaustionStatus(failures: ProviderAttemptFailure[]): {
   reason: ProviderExhaustionReason;
   providers: ProviderAttemptFailure[];
 } {
-  const reason: ProviderExhaustionReason = failures.length === 0 ? "no_provider_configured" : "all_providers_failed";
+  // Budget only when every attempt was a budget refusal: a real provider
+  // failure alongside it is still "all providers failed".
+  const reason: ProviderExhaustionReason =
+    failures.length === 0
+      ? "no_provider_configured"
+      : failures.every((f) => f.reason === "budget_exhausted")
+        ? "budget_exhausted"
+        : "all_providers_failed";
   return {
-    message: reason === "all_providers_failed" ? ALL_PROVIDERS_FAILED_MESSAGE : NO_PROVIDER_CONFIGURED_MESSAGE,
+    message: PROVIDER_EXHAUSTION_COPY[reason],
     reason,
     providers: failures,
   };
