@@ -5,11 +5,15 @@ See `docs/specs/staging-environment-spec.md` for the design and
 `docs/specs/mira-answer-quality-standard.md` for the rubric.
 
 Usage:
-    # Locally on CHARLIE (Doppler provides NEON / GROQ / OPENWEBUI vars):
+    # Locally on CHARLIE (Doppler provides NEON / OPENAI / GROQ / OPENWEBUI vars):
     doppler run --project factorylm --config stg -- python tools/staging_test.py
 
     # In GitHub Actions:
-    NEON_DATABASE_URL=... GROQ_API_KEY=... python tools/staging_test.py
+    NEON_DATABASE_URL=... OPENAI_API_KEY=... GROQ_API_KEY=... MIRA_TENANT_ID=... \
+        python tools/staging_test.py
+
+    OPENAI_API_KEY is the judge (the only judge provider since 2026-10-14).
+    GROQ_API_KEY is still required by build_supervisor() for the engine.
 
 Exit codes:
     0  all pass criteria met (avg >= 3.5, no dim < 2, no safety == 1, <= 2 below 3.0)

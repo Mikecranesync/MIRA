@@ -49,7 +49,7 @@ Vercel, Railway, and Render all expose preview environments as "branch ↔ env" 
        │   │    ├─ Supervisor (in-process)                │
        │   │    │    └─ neon_recall.recall_knowledge()    │
        │   │    │         └── NEON_STG_DATABASE_URL ──┐   │
-       │   │    └─ judge via InferenceRouter (Groq)   │   │
+       │   │    └─ judge: direct OpenAI call          │   │
        │   └─ post results as PR comment              │   │
        └──────────────────────────────────────────────┼───┘
                                                       │
@@ -95,11 +95,12 @@ The staging Telegram bot (`@MiraStaging_bot`) still exists for **operator manual
 
 ### Why ubuntu-latest works (no Open WebUI needed)
 
-The retrieval path used by `RAGWorker` calls `neon_recall.recall_knowledge()` directly against NeonDB (`mira-bots/shared/neon_recall.py:702`+). It does **not** require an Open WebUI knowledge collection for text queries. LLM calls go through `InferenceRouter` (Groq → Cerebras → Gemini cascade). So:
+The retrieval path used by `RAGWorker` calls `neon_recall.recall_knowledge()` directly against NeonDB (`mira-bots/shared/neon_recall.py:702`+). It does **not** require an Open WebUI knowledge collection for text queries. Engine LLM calls go through the key-gated `InferenceRouter` cascade (`mira-bots/shared/inference/router.py`: OpenAI → Groq → Cerebras → Together); the judge is a separate, OpenAI-only call. So:
 
 - `NEON_DATABASE_URL` → staging branch
 - `INFERENCE_BACKEND=cloud`
-- `GROQ_API_KEY` (and Cerebras / Gemini as fallback)
+- `OPENAI_API_KEY` (judge — required; also leads the engine cascade)
+- `GROQ_API_KEY` (still required by `build_supervisor()`; billing-restricted, so the engine falls through it)
 - `OPENWEBUI_BASE_URL` → unused dummy
 - `KNOWLEDGE_COLLECTION_ID` → unused dummy
 - `MIRA_DB_PATH` → temp SQLite file in CI workspace
@@ -110,22 +111,22 @@ Photo questions are out of scope for staging — they need Open WebUI + qwen-vl,
 
 | Surface | What it does | Why staging is different |
 |---|---|---|
-| `deepeval-ci.yml` (PR-triggered, offline) | Scores reference responses against canned questions, no live cascade, no DB. | Staging hits real NeonDB and real Groq cascade; catches retrieval and inference bugs DeepEval can't see. |
+| `deepeval-ci.yml` (PR-triggered, offline) | Scores reference responses against canned questions, no live cascade, no DB. | Staging hits real NeonDB and the real inference cascade; catches retrieval and inference bugs DeepEval can't see. |
 | `ci-evals.yml` (nightly + manual) | 5-regime test sweep; runs in dry-run by default. | Runs nightly, not on every PR. Doesn't block merges. |
 | `tests/golden_factorylm.csv` (pytest) | Pinned-input → pinned-output golden cases. | Doesn't grade quality of the *answer*, only that the engine doesn't crash. |
 | `tests/eval/watch_set.txt` (pre-commit) | Local watcher for engine smoke. | Runs locally only; no NeonDB; depends on the developer running it. |
 | **`staging-gate.yml` (this spec)** | PR → real NeonDB → real cascade → rubric → block merge. | **Only surface that touches real data + real LLM on every PR.** |
 
-The staging gate **adds**, it does not replace. DeepEval still runs (offline, free, fast). The staging gate runs in parallel (real-data, costs ~10 Groq tokens per PR).
+The staging gate **adds**, it does not replace. DeepEval still runs (offline, free, fast). The staging gate runs in parallel (real-data; the OpenAI judge is metered at gpt-5.4-mini rates, about two calls per question).
 
 ## Test contract
 
 `tools/staging_test.py`:
 
 - Loads questions from `tools/staging_questions.yaml` (10 entries).
-- Instantiates `Supervisor` with `NEON_STG_DATABASE_URL`, `GROQ_API_KEY`, `INFERENCE_BACKEND=cloud`.
+- Instantiates `Supervisor` with `NEON_STG_DATABASE_URL`, `GROQ_API_KEY` (required by `build_supervisor()`), `INFERENCE_BACKEND=cloud`.
 - For each question, calls `await supervisor.process(chat_id=f"stg-{i}", message=q.message)`.
-- Grades the reply via an LLM judge against the 5-dimension rubric (`docs/specs/mira-answer-quality-standard.md`). Judge is one Groq call returning 5 ints 1–5.
+- Grades the reply via an LLM judge against the 5-dimension rubric (`docs/specs/mira-answer-quality-standard.md`). Judge is one OpenAI call (`gpt-5.4-mini`, `reasoning_effort=medium`, `max_completion_tokens=4096`) returning 5 ints 1–5, retried once on an empty/malformed answer or transport failure, then fail-closed. OpenAI is the only judge since 2026-10-14; Groq / Cerebras / Gemini are deprecated.
 - Records: question, reply (truncated), 5 dimension scores, mean, pass/fail.
 - Exit code:
   - `0` if all hard rules pass (no dim < 2, no safety == 1, mean ≥ 3.5, ≤ 2 questions below 3.0).
@@ -192,16 +193,16 @@ The change is in the same PR but called out so the operator can roll back the ve
 
 ## Eval framework choice
 
-The judge in `tools/staging_test.py` is a **direct Groq OpenAI-compatible call** returning compact JSON for the 5 rubric dimensions. That is intentionally minimal — no framework wraps the LLM call (PRD §4) and the rubric is MIRA-specific enough that a generic framework adds more weight than it removes. We evaluated the relevant open-source options before settling on the in-line judge:
+The judge in `tools/staging_test.py` is a **direct OpenAI chat-completions call** returning compact JSON for the 5 rubric dimensions. That is intentionally minimal — no framework wraps the LLM call (PRD §4) and the rubric is MIRA-specific enough that a generic framework adds more weight than it removes. We evaluated the relevant open-source options before settling on the in-line judge:
 
 | Framework | Disposition | Why |
 |---|---|---|
-| **DeepEval** | **Natural upgrade path.** Already in the repo via `deepeval-ci.yml`. Its `GEval` custom-rubric metric maps 1:1 to the 5-dimension scorecard, and the LLM backend is pluggable so we can route the judge through Groq instead of OpenAI. Migrate when a second eval surface needs to share the rubric. | One dep for several wins (Confident.ai-style report, pytest integration, regression deltas). |
+| **DeepEval** | **Natural upgrade path.** Already in the repo via `deepeval-ci.yml`. Its `GEval` custom-rubric metric maps 1:1 to the 5-dimension scorecard, and the LLM backend is pluggable so the judge model stays our choice. Migrate when a second eval surface needs to share the rubric. | One dep for several wins (Confident.ai-style report, pytest integration, regression deltas). |
 | **Promptfoo** | Deferred. Strong CI ergonomics but its provider model expects the prompt template to live in YAML — `Supervisor.process()` is not a single prompt, it's an orchestrator. Awkward fit. | Reconsider if we ever expose a flat `/chat` HTTP surface for staging. |
 | **Ragas** | Out of scope. Metrics (`faithfulness`, `context_precision`, `answer_relevancy`) require *reference contexts* per question; we don't have ground-truth retrievals for the fixture. | Track if we add a labeled retrieval gold set. |
 | **Trulens** | Out of scope. Excellent tracing + feedback functions, but requires an OTEL exporter + persistent store. Too much surface for a 10-question PR gate. | Revisit if we want production-side observability of the same metrics. |
 | **LangSmith** | Rejected. Closed source / paid, LangChain-coupled. We do not run LangChain (PRD §4). |
-| **Braintrust** | Deferred. Open-core SDK is fine standalone, but adds a dep for no immediate gain over a direct Groq call. | Reconsider if we want shared evals across staging + offline (one place to host fixtures and replays). |
+| **Braintrust** | Deferred. Open-core SDK is fine standalone, but adds a dep for no immediate gain over a direct OpenAI call. | Reconsider if we want shared evals across staging + offline (one place to host fixtures and replays). |
 
 The pattern we *are* adopting is the Vercel/Railway "PR → preview env → CI gate" shape, with NeonDB branching as the ephemeral-DB primitive instead of a copy-on-write Postgres restore. That decision is documented in "Prior art" above; the framework table is the LLM-judge half of the same decision.
 
@@ -212,9 +213,10 @@ The staging gate runs on **`ubuntu-latest`** (GitHub Actions, no Docker-in-Docke
 | Env | Source | Purpose |
 |---|---|---|
 | `NEON_DATABASE_URL` | `staging` env secret `NEON_STG_DATABASE_URL` | Connection string for the NeonDB staging branch. |
-| `GROQ_API_KEY` | `staging` env secret `STAGING_GROQ_API_KEY` | Cascade primary + judge. |
-| `CEREBRAS_API_KEY` | optional | Cascade fallback. |
-| `GEMINI_API_KEY` | optional | Cascade fallback. |
+| `OPENAI_API_KEY` | `staging` env secret `STAGING_OPENAI_API_KEY` | **Required.** The only judge provider; also leads the engine cascade. |
+| `GROQ_API_KEY` | `staging` env secret `STAGING_GROQ_API_KEY` | Required by `build_supervisor()`; engine cascade member (billing-restricted). Not a judge. |
+| `CEREBRAS_API_KEY` | optional | Engine cascade member (archived, 402). Not a judge. |
+| `GEMINI_API_KEY` | optional | Exported by the workflow but read by nothing in the engine or judge. |
 | `INFERENCE_BACKEND` | `cloud` (literal) | Skips Ollama / Open WebUI; the runner has neither. |
 | `MIRA_TENANT_ID` | `staging` env secret `STAGING_TENANT_ID` (default: the prod shared-tenant UUID) | **Must be a valid UUID** — `kg_entities.tenant_id` is a `uuid` column. Passing a literal string like `"staging"` trips a Postgres cast error and disables BM25 for every question. |
 | `MIRA_DB_PATH` | `${{ runner.temp }}/mira-stg.db` | `mira-bots/shared/chat_tenant.py` reads this at module import time and opens a SQLite file; the default `/data/mira.db` is the VPS container path and not writable on `ubuntu-latest`. |
@@ -246,6 +248,7 @@ psql "$NEON_STG_DATABASE_URL" -c \
 
 # 3. Drop the connection string into the staging GitHub environment:
 gh secret set NEON_STG_DATABASE_URL --env staging --body "<conn_str>"
+gh secret set STAGING_OPENAI_API_KEY --env staging --body "$OPENAI_API_KEY"
 gh secret set STAGING_GROQ_API_KEY  --env staging --body "$GROQ_API_KEY"
 ```
 
@@ -254,4 +257,5 @@ If the staging branch is empty or missing the shared tenant, the gate will run c
 ## Change log
 
 - 2026-05-18 — v1.0 — initial spec, written alongside implementation.
+- 2026-10-14 — judge is OpenAI only (owner directive; Groq/Cerebras/Gemini deprecated), with reasoning headroom and one retry (#4423).
 - 2026-05-18 — v1.1 — first-run bug-fix pass: documented the UUID requirement for `MIRA_TENANT_ID`, the `MIRA_DB_PATH` override, the eval-framework comparison, and the operator setup commands. Switched PR-comment delivery from `GITHUB_OUTPUT` heredoc to the sticky action's `path:` input.
