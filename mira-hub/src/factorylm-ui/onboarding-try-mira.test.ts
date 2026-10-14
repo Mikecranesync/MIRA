@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { nodeChatFailureMessage, tryMiraChatScope } from "./onboarding-try-mira";
 
@@ -37,6 +38,18 @@ describe("tryMiraChatScope — Try MIRA asks the manual the stranger just upload
         line: LINE,
       }),
     ).toEqual({ nodeId: INBOX, unsPath: null, docId: UPLOAD });
+  });
+
+  it("reads the duplicate marker exactly as its one writer (local-upload.ts) writes it", () => {
+    // Cheap-lane review on #4420: the parser depends on another module's
+    // status text. Pin the writer, so a reworded marker fails here instead of
+    // silently sending a re-upload's chat to a document with no chunks.
+    const writer = readFileSync(new URL("../lib/local-upload.ts", import.meta.url), "utf8");
+    const written = /`duplicate of \$\{(\w+)\.id\}`/.exec(writer);
+    expect(written, "local-upload.ts no longer writes `duplicate of ${dup.id}`").not.toBeNull();
+    const detail = `duplicate of ${ORIGINAL}`;
+    expect(tryMiraChatScope({ uploadId: UPLOAD, upload: { kgEntityId: INBOX, statusDetail: detail }, line: LINE }).docId)
+      .toBe(ORIGINAL);
   });
 
   it("with no node on the upload there is nothing to scope to — the line node, as before", () => {
