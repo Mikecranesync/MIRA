@@ -592,6 +592,29 @@ export function isUncitedDocumentClaim(
   return citationsUsedInAnswer(answer, ctx.citations).length === 0;
 }
 
+/** #4426: the bound machine's stored nameplate readings exempt the floor above only
+ *  when the answer affirmatively uses one — it attributes to "the photographed
+ *  nameplate" (the visual-evidence section's own prose-attribution rule) AND repeats
+ *  a reading from it (a digit-bearing token such as "24" or "6AV2124-0GC01-0AX0").
+ *  A passing mention ("check the nameplate") or a statement that the nameplate
+ *  lacks the answer exempts nothing. Exported for unit testing. */
+export function answerUsesStoredNameplateReading(answer: string, readings: readonly string[]): boolean {
+  if (!/\bphotographed nameplate\b/i.test(answer)) return false;
+  const upper = answer.toUpperCase();
+  return readings.some((text) =>
+    text.split(/[\s,;:()]+/).some((raw) => {
+      const tok = raw.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "").toUpperCase();
+      if (tok.length < 2 || !/\d/.test(tok)) return false;
+      for (let i = upper.indexOf(tok); i !== -1; i = upper.indexOf(tok, i + 1)) {
+        const before = i === 0 ? "" : upper[i - 1];
+        const after = upper[i + tok.length] ?? "";
+        if (!/[A-Z0-9]/.test(before) && !/[0-9]/.test(after)) return true;
+      }
+      return false;
+    }),
+  );
+}
+
 /** The fixed, server-written text that replaces an uncited manufacturer-library
  *  claim (#4426). Same voice as the zero-passage library abstain (#4004). */
 export const UNCITED_OEM_CLAIM_TEXT =
@@ -2890,12 +2913,14 @@ async function handleChatTurn(
   // bound, return no visual evidence"). Own try/catch: a ledger read failure
   // never drops the document/machine context already built.
   let visualSection = "";
+  let visualReadings: string[] = [];
   if (boundAsset.state === "resolved" && !identityDisputed) {
     try {
       const visualRows = await withTenantContext(ctx.tenantId, (c) =>
         loadVisualEvidenceForAsset(c, ctx.tenantId, boundAsset.entityId),
       );
       visualSection = renderVisualEvidenceSection(visualRows);
+      if (visualSection) visualReadings = visualRows.map((r) => r.text);
     } catch (err) {
       console.error(
         `[notebook-chat] visual evidence load failed code=${(err as { code?: string }).code ?? "?"} ` +
@@ -3764,14 +3789,13 @@ async function handleChatTurn(
           oemGrounded: oemRetrieval && docGrounded,
           citations,
           // `visualSection` is every stored nameplate reading for the bound machine
-          // (not this turn's evidence), so it exempts only an answer that uses it:
-          // its prompt section requires prose attribution to "the photographed
-          // nameplate" and forbids [n]. Presence alone would switch this floor off
-          // for every later library question on a once-photographed machine.
+          // (not this turn's evidence), so it exempts only an answer that uses one
+          // (answerUsesStoredNameplateReading). Presence alone would switch this
+          // floor off for every later library question on a once-photographed machine.
           exempt:
             Boolean(groundedMachineEntry) ||
             Boolean(lookContext) ||
-            (Boolean(visualSection) && /\bnameplate\b/i.test(answerText)) ||
+            (Boolean(visualSection) && answerUsesStoredNameplateReading(answerText, visualReadings)) ||
             Boolean(safetyTrigger),
         });
       if (uncitedDocumentClaim) {

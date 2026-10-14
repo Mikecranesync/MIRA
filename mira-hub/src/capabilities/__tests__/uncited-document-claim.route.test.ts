@@ -110,7 +110,12 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async () => {
   };
 });
 
-import { POST, UNCITED_OEM_CLAIM_TEXT, isUncitedDocumentClaim } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import {
+  POST,
+  UNCITED_OEM_CLAIM_TEXT,
+  answerUsesStoredNameplateReading,
+  isUncitedDocumentClaim,
+} from "@/app/api/equipment-notebooks/[id]/chat/route";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import type { ResolvedAsset } from "@/lib/equipment-notebooks";
 
@@ -317,6 +322,28 @@ describe("#4426 — an uncited manufacturer-library answer abstains deterministi
     expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
   });
 
+  it("a passing nameplate mention does NOT exempt an unrelated uncited claim (Codex r2 F3)", async () => {
+    domainMock.resolveBoundAsset.mockResolvedValue({
+      state: "resolved",
+      entityId: "44444444-4444-4444-8444-444444444444",
+      name: "Line 3 HMI",
+      unsPath: "enterprise.plant.line3.hmi",
+      selectedVia: null,
+      confirmedAt: "2026-10-14T00:00:00Z",
+    });
+    visualMock.loadVisualEvidenceForAsset.mockResolvedValue([{ text: "Supply 24 V DC", trust: "verified" }]);
+    visualMock.renderVisualEvidenceSection.mockReturnValue(
+      "## Visual Evidence (nameplate photographed on THIS machine)\n- Supply 24 V DC (confirmed by a technician)",
+    );
+    const r = await ask(`${UNCITED} Check the nameplate to confirm the model.`);
+    const sent = JSON.stringify((vi.mocked(fetch).mock.calls.at(-1) as unknown[])[1]);
+    expect(sent).toContain("nameplate photographed on THIS machine");
+    expect(r.status).toBe("insufficient_evidence");
+    expect(r.citations).toEqual([]);
+    expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+    expect(r.persisted?.answerStatus).toBe("insufficient_evidence");
+  });
+
   it("a bound machine with NO stored nameplate reading still abstains on an uncited answer", async () => {
     domainMock.resolveBoundAsset.mockResolvedValue({
       state: "resolved",
@@ -360,6 +387,26 @@ describe("isUncitedDocumentClaim — the decision itself", () => {
 
   it("exempt (safety flag, machine reading or photo) → never applies", () => {
     expect(isUncitedDocumentClaim(UNCITED, { ...base, exempt: true })).toBe(false);
+  });
+
+  it("a stored nameplate reading exempts only an answer that attributes to it AND repeats a reading", () => {
+    const readings = ["Supply 24 V DC", "Order no. 6AV2124-0GC01-0AX0"];
+    expect(answerUsesStoredNameplateReading("The photographed nameplate shows a 24 V DC supply.", readings)).toBe(true);
+    expect(answerUsesStoredNameplateReading("The photographed nameplate reads 6AV2124-0GC01-0AX0.", readings)).toBe(true);
+    // Attribution without a reading: the nameplate "lacks" it, then an unrelated claim.
+    expect(
+      answerUsesStoredNameplateReading(
+        "The photographed nameplate doesn't list the display size; the panel has a 7-inch display.",
+        readings,
+      ),
+    ).toBe(false);
+    // A reading without the attribution is an ordinary uncited claim.
+    expect(answerUsesStoredNameplateReading("The panel needs a 24 V DC supply.", readings)).toBe(false);
+    // A recommendation to look at the nameplate is not attribution.
+    expect(answerUsesStoredNameplateReading("Check the nameplate to confirm the 24 V model.", readings)).toBe(false);
+    // A longer number is not the stored reading.
+    expect(answerUsesStoredNameplateReading("The photographed nameplate says 240 V.", readings)).toBe(false);
+    expect(answerUsesStoredNameplateReading("The photographed nameplate shows 24 V.", [])).toBe(false);
   });
 
   it("the message names the library that was searched and the way forward", () => {
