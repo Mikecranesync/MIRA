@@ -178,3 +178,38 @@ def test_any_transport_failure_is_retried_once(monkeypatch, exc_type):
     client = _RaisingThenOkClient(getattr(httpx, exc_type)("boom"))
     assert asyncio.run(st.judge_reply(client, _Q, "reply")).grounding == 5
     assert client.calls == 2
+
+
+class _ShapeResp(_Resp):
+    """A 200 whose JSON body has an arbitrary (possibly malformed) shape."""
+
+    def __init__(self, data: object) -> None:
+        self.status_code = 200
+        self._data = data
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"choices": []},
+        {},
+        {"choices": [{}]},
+        {"choices": [{"message": None}]},
+        ["not", "a", "dict"],
+    ],
+)
+def test_a_malformed_200_is_retried_once(monkeypatch, bad):
+    """#4423 Codex r3 F1: an unexpected 200 shape goes through the retry."""
+    _pin_keys(monkeypatch, OPENAI_API_KEY="sk-test")
+    client = _Client([_ShapeResp(bad), _Resp(200, _GOOD)])
+    assert asyncio.run(st.judge_reply(client, _Q, "reply")).grounding == 5
+    assert client.calls == 2
+
+
+def test_two_malformed_200s_fail_closed(monkeypatch):
+    """Control: still fail closed after the second invalid response."""
+    _pin_keys(monkeypatch, OPENAI_API_KEY="sk-test")
+    client = _Client([_ShapeResp({"choices": []}), _ShapeResp({"choices": []})])
+    with pytest.raises(RuntimeError, match="judge failed"):
+        asyncio.run(st.judge_reply(client, _Q, "reply"))
+    assert client.calls == 2

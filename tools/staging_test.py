@@ -412,7 +412,14 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
                     f"empty judge response (finish_reason={choice.get('finish_reason')})"
                 )
             score = _parse_judge(raw)
-        except (httpx.HTTPStatusError, KeyError, ValueError, RuntimeError) as exc:
+        except (
+            httpx.HTTPStatusError,
+            KeyError,
+            IndexError,
+            TypeError,
+            ValueError,
+            RuntimeError,
+        ) as exc:
             attempts.append(f"{provider.name}={type(exc).__name__}")
             logger.warning("judge %s parse/status error: %s — retrying", provider.name, exc)
             continue
