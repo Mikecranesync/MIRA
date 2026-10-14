@@ -83,9 +83,11 @@ except Exception:  # pragma: no cover - shared not importable in this context
 _ASSET_SPECIFIC_INTENTS = frozenset({"diagnose_equipment", "schedule_maintenance"})
 
 try:
+    from shared.conversation_router import accounting_session_id as _accounting_session_id
     from shared.conversation_router import route_intent as _route_intent
 except Exception:  # pragma: no cover - shared not importable in this context
     _route_intent = None  # type: ignore[assignment]
+    _accounting_session_id = None  # type: ignore[assignment]
 
 
 # Deterministic live-tag assessment (the same one the engine path + Hub packet
@@ -107,18 +109,27 @@ except Exception:  # pragma: no cover - shared not importable in this context
     _tag_scaling_from_jsonb = None  # type: ignore[assignment]
 
 
-async def _is_asset_specific(question: str) -> bool:
+async def _is_asset_specific(question: str, tenant_id: str | None = None) -> bool:
     """True when ``question`` is asset-specific troubleshooting (so a turn with
     no UNS identifier must be rejected). Uses the engine's own intent classifier.
 
     Fails OPEN — returns False (→ treat as a general chat turn, do NOT reject) —
     when the classifier is unavailable or errors, so a Neon/LLM blip can never
     brick a working HMI.
+
+    ``tenant_id`` is the authenticated tenant, so the classification's usage row
+    is attributed to it on the ``ignition`` platform (``<tenant>_ignition_preflight``)
+    instead of to "unknown" (Codex r2 on #4359).
     """
     if _route_intent is None:
         return False
     try:
-        result = await _route_intent(question, [])
+        session_id = (
+            _accounting_session_id(tenant_id, "ignition", "preflight")
+            if _accounting_session_id is not None
+            else None
+        )
+        result = await _route_intent(question, [], session_id=session_id)
         return result.get("intent") in _ASSET_SPECIFIC_INTENTS
     except Exception:
         logger.warning("IGNITION_CHAT uns_required_classify_failed — failing open to plain chat")
@@ -665,7 +676,7 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
             uns_source = "direct_connection"
         else:
             uns_source = None
-            if await _is_asset_specific(question):
+            if await _is_asset_specific(question, tenant_id):
                 logger.info(
                     "IGNITION_CHAT uns_required tenant=%s — asset-specific turn with no "
                     "UNS identifier; rejecting (not downgrading to chat-gate)",
