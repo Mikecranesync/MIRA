@@ -96,6 +96,7 @@ _GOOD = json.dumps(
 class _Resp:
     def __init__(self, status: int, content: str | None, finish: str = "stop") -> None:
         self.status_code = status
+        self.headers: dict[str, str] = {}
         self._data = {"choices": [{"message": {"content": content}, "finish_reason": finish}]}
 
     def raise_for_status(self) -> None:
@@ -131,11 +132,12 @@ def test_an_empty_length_truncated_answer_is_retried_once(monkeypatch):
     assert score.judge_reason.startswith("[openai]")
 
 
-def test_a_retryable_http_status_is_retried_once(monkeypatch):
+def test_a_retryable_http_status_is_retried_once(monkeypatch, slept):
     _pin_keys(monkeypatch, OPENAI_API_KEY="sk-test")
     client = _Client([_Resp(503, None), _Resp(200, _GOOD)])
     assert asyncio.run(st.judge_reply(client, _Q, "reply")).tone == 4
     assert client.calls == 2
+    assert slept == [2.0]  # 503 without Retry-After: short default backoff
 
 
 def test_two_empty_answers_fail_closed_after_exactly_two_calls(monkeypatch):
@@ -185,6 +187,7 @@ class _ShapeResp(_Resp):
 
     def __init__(self, data: object) -> None:
         self.status_code = 200
+        self.headers: dict[str, str] = {}
         self._data = data
 
 
@@ -213,3 +216,62 @@ def test_two_malformed_200s_fail_closed(monkeypatch):
     with pytest.raises(RuntimeError, match="judge failed"):
         asyncio.run(st.judge_reply(client, _Q, "reply"))
     assert client.calls == 2
+
+
+# ---------------------------------------------------------------------------
+# #4423 Codex r5 F1: a throttled retry waits for the server's Retry-After
+# (bounded) instead of firing again inside the same rate-limit window.
+
+
+def _throttled(status: int, retry_after: str | None) -> _Resp:
+    r = _Resp(status, None)
+    if retry_after is not None:
+        r.headers["Retry-After"] = retry_after
+    return r
+
+
+@pytest.fixture
+def slept(monkeypatch):
+    calls: list[float] = []
+
+    async def _fake_sleep(seconds: float) -> None:
+        calls.append(seconds)
+
+    monkeypatch.setattr(st, "_sleep", _fake_sleep)
+    return calls
+
+
+@pytest.mark.parametrize(
+    ("status", "retry_after", "expected"),
+    [
+        (429, "7", 7.0),  # server-directed wait is honored
+        (503, "3", 3.0),  # 503 honors it too
+        (429, "600", 30.0),  # capped so a hostile/huge value can't stall the gate
+        (429, None, 2.0),  # header absent: short default backoff
+        (429, "Wed, 21 Oct 2026 07:28:00 GMT", 2.0),  # HTTP-date form: default
+        (429, "-5", 2.0),  # nonsense: default
+    ],
+)
+def test_a_throttled_retry_waits_for_retry_after(monkeypatch, slept, status, retry_after, expected):
+    _pin_keys(monkeypatch, OPENAI_API_KEY="sk-test")
+    client = _Client([_throttled(status, retry_after), _Resp(200, _GOOD)])
+    assert asyncio.run(st.judge_reply(client, _Q, "reply")).grounding == 5
+    assert client.calls == 2
+    assert slept == [expected]
+
+
+def test_no_wait_after_the_final_attempt(monkeypatch, slept):
+    _pin_keys(monkeypatch, OPENAI_API_KEY="sk-test")
+    client = _Client([_throttled(429, "7"), _throttled(429, "7")])
+    with pytest.raises(RuntimeError, match="judge failed"):
+        asyncio.run(st.judge_reply(client, _Q, "reply"))
+    assert client.calls == 2
+    assert slept == [7.0]  # one wait, before the retry; none after the last call
+
+
+def test_control_an_empty_answer_still_retries_immediately(monkeypatch, slept):
+    """Control: only throttling waits; an empty/truncated answer does not."""
+    _pin_keys(monkeypatch, OPENAI_API_KEY="sk-test")
+    client = _Client([_Resp(200, "", finish="length"), _Resp(200, _GOOD)])
+    asyncio.run(st.judge_reply(client, _Q, "reply"))
+    assert slept == []

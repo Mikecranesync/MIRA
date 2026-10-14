@@ -93,6 +93,11 @@ OPENAI_JUDGE_MAX_COMPLETION_TOKENS = 4096
 # One call plus one retry: with no fallback provider left, a single empty
 # or truncated answer must not fail a required check on its own.
 JUDGE_ATTEMPTS = 2
+# Throttled retries (429/503) wait for the server's Retry-After, capped so a
+# huge value can't stall the gate; without a usable header, a short backoff.
+JUDGE_RETRY_AFTER_CAP_S = 30.0
+JUDGE_THROTTLE_BACKOFF_S = 2.0
+_sleep = asyncio.sleep  # module seam so tests observe the wait without sleeping
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +361,24 @@ def _judge_request_body(provider: JudgeProvider, base_body: dict[str, object]) -
 
 # Status codes that mean "retry" — transient or capacity issues.
 _RETRYABLE_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+# Of those, the throttling ones whose retry must wait (#4423 Codex r5 F1).
+_THROTTLE_STATUSES = frozenset({429, 503})
+
+
+def _throttle_wait_s(resp: httpx.Response) -> float:
+    """Seconds to wait before retrying a throttled response.
+
+    Honors a numeric `Retry-After`, capped at JUDGE_RETRY_AFTER_CAP_S; an
+    absent, non-positive, or HTTP-date value gets JUDGE_THROTTLE_BACKOFF_S.
+    """
+    raw = (resp.headers.get("Retry-After") or "").strip()
+    try:
+        seconds = float(raw)
+    except ValueError:
+        return JUDGE_THROTTLE_BACKOFF_S
+    if seconds <= 0:
+        return JUDGE_THROTTLE_BACKOFF_S
+    return min(seconds, JUDGE_RETRY_AFTER_CAP_S)
 
 
 async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str) -> Score:
@@ -385,7 +408,8 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
     }
 
     attempts: list[str] = []
-    for provider in [p for p in providers for _ in range(JUDGE_ATTEMPTS)]:
+    plan = [p for p in providers for _ in range(JUDGE_ATTEMPTS)]
+    for attempt_no, provider in enumerate(plan, start=1):
         body = _judge_request_body(provider, base_body)
         headers = {
             "Authorization": f"Bearer {os.environ[provider.api_key_env]}",
@@ -403,7 +427,14 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
             continue
         if resp.status_code in _RETRYABLE_STATUSES:
             attempts.append(f"{provider.name}=HTTP{resp.status_code}")
-            logger.warning("judge %s HTTP %s — retrying", provider.name, resp.status_code)
+            wait_s = 0.0
+            if resp.status_code in _THROTTLE_STATUSES and attempt_no < len(plan):
+                wait_s = _throttle_wait_s(resp)
+            logger.warning(
+                "judge %s HTTP %s — retrying in %.1fs", provider.name, resp.status_code, wait_s
+            )
+            if wait_s:
+                await _sleep(wait_s)
             continue
         try:
             resp.raise_for_status()
