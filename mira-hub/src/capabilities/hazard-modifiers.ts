@@ -62,6 +62,8 @@ const CLAUSE_SUBJECT_START = /^(?:you|it|it's|we|i|they|he|she|yes|this|that)\b/
 // the same clause ("never X … is dangerous") makes the negation deny something
 // else, so the flag stays (#4201 Codex R2 F5).
 const TRAILING_PREDICATE = /\b(?:is|are|was|were|be|been|being|has|have|had|can|could|will|would|shall|should|may|might|must|does|did|seems?|remains?|becomes?|counts?)\b|\w+n't\b/i;
+// A coordinate connective that may open a new clause (#4201 post-cap F13).
+const COORDINATE_BREAK = /,\s*\b(?:but|yet)\b/i;
 // Polarity cues for the nesting check (#4201 Codex R1 F3).
 const NEGATION_WORD = /\b(?:no|not|never|cannot|\w+n't)\b/gi;
 // Determiner negations ("no", "not all") negate a noun phrase, never a verb:
@@ -114,13 +116,17 @@ export function governingModifier(text: string, matchStart: number, matchEnd?: n
   const tail = matchEnd === undefined ? "" : (text.slice(matchEnd).split(/[.!?;:\n]/)[0] ?? "");
   // #4201 post-cap F11: test the whole sentence tail — a parenthetical comma
   // ("…, even briefly, is dangerous") must not hide a reversing predicate.
-  // #4201 post-cap F12: subordinate connectives (when, while, if, unless, until,
-  // because, since, after, before, as, where, whenever, although, though, once)
-  // must not stop the trailing-predicate check. But hard COORDINATE clause boundaries
-  // like ", but" DO end the governed scope. Check for predicates only before these boundaries.
-  const hardCoordinateConnective = /,\s*\b(?:but|yet)\b/i;
-  const beforeCoordinate = tail.split(hardCoordinateConnective)[0] ?? "";
-  if (TRAILING_PREDICATE.test(beforeCoordinate)) return null;
+  // #4201 post-cap F12/F13: subordinate connectives ("when …") never end the
+  // check. A ", but"/", yet" ends it only when a finite clause follows before
+  // the next comma; a parenthetical (", yet unquestionably, is dangerous")
+  // stays in scope so its trailing predicate keeps the hazard flagged.
+  const [head = "", ...coordinates] = tail.split(COORDINATE_BREAK);
+  let scope = head;
+  for (const part of coordinates) {
+    if (TRAILING_PREDICATE.test(part.split(",")[0] ?? "")) break;
+    scope += part;
+  }
+  if (TRAILING_PREDICATE.test(scope)) return null;
 
   for (const { m, adjacent } of TRIGGER_RES) {
     const hit = adjacent.exec(before);

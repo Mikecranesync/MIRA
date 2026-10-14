@@ -21,6 +21,9 @@ export const MUST_RELEASE: Record<string, string> = {
   // caution exclusion — the one per-rule frame exception kept in this slice.
   NEVER_ASSUME_LIVE: "Never assume the seal bar can be inspected live.",
   DOESNT_THINK: "The manual doesn't say, so do not think the seal bar can be inspected live.",
+  // #4201 post-cap F13 controls: a verbless "but"/"yet" tail must not re-flag a safe negation.
+  F13_NEVER_LIGHTER_BUT: "Never use a lighter to find the gas leak, but always a detector.",
+  F13_NEVER_LIFT_YET: "Never lift the 4-ton die using the 2-ton hoist, yet again today.",
 };
 
 /** Affirmative, or cancellation ended by a terminator: must stay flagged. */
@@ -101,6 +104,9 @@ export const MUST_FLAG: Record<string, string> = {
   F12_IF: "Not entering the tank without testing the atmosphere if you are in a hurry is dangerous.",
   F12_UNLESS: "Not entering the tank without testing the atmosphere unless safety permits is dangerous.",
   F12_BECAUSE: "Not entering the tank without testing the atmosphere because of time pressure is dangerous.",
+  // #4201 post-cap F13: a parenthetical "but"/"yet" must not hide the trailing predicate.
+  F13_PARENTHETICAL_YET: "Not entering the tank without testing the atmosphere, yet unquestionably, is dangerous.",
+  F13_PARENTHETICAL_BUT: "Not entering the tank without testing the atmosphere, but honestly, is dangerous.",
 };
 
 /**
