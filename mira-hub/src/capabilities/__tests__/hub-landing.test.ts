@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EncryptJWT } from "jose";
 import { NextRequest, type NextFetchEvent } from "next/server";
-import { CLASSIC_LANDING, SHELL_LANDING, landingRedirect } from "@/capabilities/hub-landing";
+import { SHELL_LANDING, landingRedirect } from "@/capabilities/hub-landing";
 import middleware from "@/middleware";
 
 const SECRET = "test-secret-for-hub-landing-0123456789";
@@ -41,30 +41,24 @@ afterEach(() => {
 });
 
 describe("landingRedirect — the decision", () => {
-  it("staging sends the root and the classic home to the shell", () => {
-    expect(landingRedirect("/", "staging")).toBe(SHELL_LANDING);
-    expect(landingRedirect("/feed", "staging")).toBe(SHELL_LANDING);
-    expect(landingRedirect("/feed/", "staging")).toBe(SHELL_LANDING);
+  // Owner directive (Mike, 2026-10-14, #3880): "make them default to the new
+  // interface". Production now gets the landing staging has had since 10-05, so
+  // the old "production cannot flip by accident" rule is retired on purpose:
+  // every environment sends the root and the classic home to the shell.
+  it("sends the root and the classic home to the shell", () => {
+    expect(landingRedirect("/")).toBe(SHELL_LANDING);
+    expect(landingRedirect("/feed")).toBe(SHELL_LANDING);
+    expect(landingRedirect("/feed/")).toBe(SHELL_LANDING);
   });
 
-  it("every other environment keeps exactly the old rule: root → /feed, /feed stays", () => {
-    for (const env of ["production", "unknown", "", "Staging", "staging-2"]) {
-      expect(landingRedirect("/", env)).toBe(CLASSIC_LANDING);
-      expect(landingRedirect("/feed", env)).toBeNull();
-      expect(landingRedirect("/feed/", env)).toBeNull();
-    }
-  });
-
-  it("never redirects anything else, on staging or off it", () => {
-    for (const env of ["staging", "production"]) {
-      for (const p of ["/v3/", "/equipment/abc/", "/feeds", "/feed/x", "/assets/"]) {
-        expect(landingRedirect(p, env)).toBeNull();
-      }
+  it("never redirects anything else", () => {
+    for (const p of ["/v3/", "/equipment/abc/", "/feeds", "/feed/x", "/assets/", "/onboarding/"]) {
+      expect(landingRedirect(p)).toBeNull();
     }
   });
 });
 
-describe("middleware — a signed-in request lands where the environment says", () => {
+describe("middleware — a signed-in request lands on the shell everywhere", () => {
   it("staging: the root lands on the shell", async () => {
     expect(await landOn("/", "staging")).toBe(SHELL_LANDING);
   });
@@ -74,12 +68,19 @@ describe("middleware — a signed-in request lands where the environment says", 
     expect(await landOn("/feed/", "staging")).toBe(SHELL_LANDING);
   });
 
-  it("control — production (no environment attribute) still sends the root to /feed and serves /feed", async () => {
-    expect(await landOn("/", null)).toBe(CLASSIC_LANDING);
-    expect(await landOn("/feed/", null)).toBeNull();
+  it("production (no environment attribute): the root and the classic home land on the shell", async () => {
+    expect(await landOn("/", null)).toBe(SHELL_LANDING);
+    expect(await landOn("/feed", null)).toBe(SHELL_LANDING);
+    expect(await landOn("/feed/", null)).toBe(SHELL_LANDING);
   });
 
-  it("control — staging serves the shell itself without a redirect", async () => {
+  it("control — the shell itself is served without a redirect, on staging and production", async () => {
     expect(await landOn("/v3/", "staging")).toBeNull();
+    expect(await landOn("/v3/", null)).toBeNull();
+  });
+
+  it("control — legacy pages other than the classic home stay reachable by direct URL", async () => {
+    expect(await landOn("/onboarding/", null)).toBeNull();
+    expect(await landOn("/assets/", null)).toBeNull();
   });
 });
