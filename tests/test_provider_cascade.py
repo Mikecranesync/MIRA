@@ -55,7 +55,13 @@ async def test_cascade_skips_failed_provider():
     call_order = []
 
     async def mock_call_provider(
-        provider, messages, max_tokens, session_id, has_image, reservation=None
+        provider,
+        messages,
+        max_tokens,
+        session_id,
+        has_image,
+        reasoning_retry=True,
+        reservation=None,
     ):
         call_order.append(provider.name)
         if len(call_order) == 1:
@@ -98,7 +104,15 @@ async def test_cascade_stops_at_first_success():
 
     call_count = 0
 
-    async def first_wins(provider, messages, max_tokens, session_id, has_image, reservation=None):
+    async def first_wins(
+        provider,
+        messages,
+        max_tokens,
+        session_id,
+        has_image,
+        reasoning_retry=True,
+        reservation=None,
+    ):
         nonlocal call_count
         call_count += 1
         return ("Winner reply", {"provider": provider.name})
