@@ -32,7 +32,7 @@ import pytest
 sys.path.insert(0, "mira-bots")
 
 from shared import conversation_router as cr  # noqa: E402
-from shared.inference.router import InferenceRouter  # noqa: E402
+from shared.inference.router import EncodedSessionId, InferenceRouter  # noqa: E402
 
 CLASSIFY = '{"intent": "diagnose_equipment", "confidence": 0.9, "reasoning": "fault"}'
 
@@ -281,6 +281,63 @@ def test_builder_escapes_only_the_delimiter_and_its_escape() -> None:
     # Control: an ordinary UUID-style tenant keeps its exact spelling.
     tid = "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
     assert cr.accounting_session_id(tid, "web", "c") == f"{tid}_web_c"
+
+
+def _usage_rows_for(db: Path, *session_ids: str) -> list[tuple[str, str]]:
+    """Write one row per id through the REAL writer and read tenant, platform back."""
+    with patch.dict("os.environ", {"MIRA_DB_PATH": str(db)}):
+        for sid in session_ids:
+            InferenceRouter.write_api_usage(sid, {"input_tokens": 1}, "openai/m", False, 1)
+    return sqlite3.connect(str(db)).execute("SELECT tenant_id, platform FROM api_usage").fetchall()
+
+
+def test_a_legacy_raw_session_id_is_never_decoded(tmp_path) -> None:
+    # Codex r4 F5 on #4391: the writer decoded EVERY session id, so a raw id from
+    # another caller whose tenant literally contains "%5F" was recorded as tenant
+    # "plant_alpha", merging it with the real plant_alpha. Only the builder's
+    # encoded ids are decoded now; the raw id keeps its literal tenant.
+    db = tmp_path / "mira.db"
+    db.touch()
+    rows = _usage_rows_for(
+        db,
+        "plant%5Falpha_telegram_123",  # legacy raw id (plain str)
+        cr.accounting_session_id("plant%5Falpha", "telegram", 123),
+        cr.accounting_session_id("plant_alpha", "telegram", 123),
+    )
+    assert rows == [
+        ("plant%5Falpha", "telegram"),
+        ("plant%5Falpha", "telegram"),
+        ("plant_alpha", "telegram"),
+    ]
+
+
+def test_control_the_same_bytes_as_an_encoded_id_are_decoded(tmp_path) -> None:
+    # The type is the only difference between these two ids; the writer must
+    # read it. (If this fails, the marker is not reaching the writer.)
+    db = tmp_path / "mira.db"
+    db.touch()
+    raw = "plant%5Falpha_telegram_123"
+    assert cr.accounting_session_id("plant_alpha", "telegram", 123) == raw
+    rows = _usage_rows_for(db, raw, EncodedSessionId(raw))
+    assert rows == [("plant%5Falpha", "telegram"), ("plant_alpha", "telegram")]
+
+
+async def test_the_encoded_marker_survives_the_classifier_hop_to_the_writer(real_router) -> None:
+    # route_intent -> _call_router_llm -> complete -> _call_openai_compat ->
+    # write_api_usage: any str operation on the way would drop the marker and
+    # silently record the escaped spelling. Pin that the writer gets the type.
+    _queue(_response(CLASSIFY, completion_tokens=40))
+    with patch("shared.inference.router.httpx.AsyncClient", _FakeAsyncClient):
+        await cr.route_intent(
+            "drive faulted",
+            [],
+            "IDLE",
+            "",
+            session_id=cr.accounting_session_id("plant_alpha", "ignition", "press7"),
+        )
+    (call,) = real_router.write_api_usage.call_args_list
+    assert isinstance(call.kwargs["session_id"], EncodedSessionId)
+    assert call.kwargs["session_id"] == "plant%5Falpha_ignition_press7"
 
 
 # The Ignition missing-asset preflight (mira-pipeline/ignition_chat.py::_is_asset_specific)

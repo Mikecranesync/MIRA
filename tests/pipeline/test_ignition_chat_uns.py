@@ -158,6 +158,10 @@ async def test_preflight_classifies_under_the_tenants_ignition_identity(monkeypa
     assert await ignition_chat._is_asset_specific("why is the drive faulting", "acme") is True
     assert seen == [{"session_id": "acme_ignition_preflight"}]
     assert ignition_chat._accounting_session_id is accounting_session_id
+    # The writer decodes only the builder's typed ids (Codex r4 F5 on #4391).
+    from shared.inference.router import EncodedSessionId
+
+    assert isinstance(seen[0]["session_id"], EncodedSessionId)
 
 
 async def test_preflight_without_a_tenant_records_unknown_not_a_fake_tenant(monkeypatch):

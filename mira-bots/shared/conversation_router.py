@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 
-from .inference.router import InferenceRouter
+from .inference.router import EncodedSessionId, InferenceRouter
 
 logger = logging.getLogger("mira-gsd")
 
@@ -171,7 +171,7 @@ def _escape_session_part(value: str) -> str:
 
 def accounting_session_id(
     tenant_id: str | None, platform: str | None, chat_id: str | int | None
-) -> str:
+) -> EncodedSessionId:
     """The usage-accounting identity for a classification: ``tenant_platform_chat``.
 
     `InferenceRouter.write_api_usage` splits its session id on the first two
@@ -188,11 +188,17 @@ def accounting_session_id(
     decodes them (Codex r3 F3 on #4359). A value with no ``_`` or ``%`` is
     unchanged, so ordinary UUID tenants keep their spelling. The chat part is
     the remainder after the second split and needs no encoding. Pure.
+
+    The result is an `EncodedSessionId`: the writer decodes only ids of that
+    type, so a raw id from any other caller is never decoded (Codex r4 F5 on
+    #4391). Pass it on unchanged — any ``str`` operation drops the marker.
     """
     tenant = (tenant_id or "").strip() or "unknown"
     surface = (platform or "").strip() or "unknown"
     chat = (str(chat_id) if chat_id is not None else "").strip() or "unknown"
-    return f"{_escape_session_part(tenant)}_{_escape_session_part(surface)}_{chat}"
+    return EncodedSessionId(
+        f"{_escape_session_part(tenant)}_{_escape_session_part(surface)}_{chat}"
+    )
 
 
 async def _call_router_llm(messages: list[dict], session_id: str | None = None) -> str:

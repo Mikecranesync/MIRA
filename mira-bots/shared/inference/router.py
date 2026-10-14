@@ -417,6 +417,21 @@ def _build_providers() -> list[_Provider]:
     return providers
 
 
+class EncodedSessionId(str):
+    """A ``tenant_platform_rest`` session id whose tenant and platform are %-escaped.
+
+    Built only by ``conversation_router.accounting_session_id``. The TYPE is the
+    marker: `InferenceRouter.write_api_usage` decodes the parts of these ids and
+    of nothing else. A plain ``str`` is a legacy raw id from another caller and
+    is split exactly as before, never decoded, so a tenant whose name literally
+    contains ``%5F`` keeps it (Codex r4 F5 on #4391). The marker lives on the
+    object: ``str()``, ``.strip()``, slicing or an f-string return a plain
+    ``str`` and drop it, so hand the builder's result through unchanged.
+    """
+
+    __slots__ = ()
+
+
 class InferenceRouter:
     """Multi-provider LLM cascade with automatic failover.
 
@@ -908,12 +923,15 @@ class InferenceRouter:
         if not db_path or not os.path.exists(db_path):
             return
 
-        # tenant_platform_rest. Tenant and platform may carry %-escaped
-        # underscores (conversation_router.accounting_session_id; Codex r3 F3
-        # on #4359), so decode them; a part with no % is unchanged.
+        # tenant_platform_rest. An EncodedSessionId (conversation_router.
+        # accounting_session_id) carries %-escaped underscores in tenant and
+        # platform (Codex r3 F3 on #4359), so its parts are decoded. Any other
+        # id is a legacy raw id and is never decoded (Codex r4 F5 on #4391).
         parts = session_id.split("_", 2)
-        tenant_id = unquote(parts[0]) if len(parts) >= 1 else "unknown"
-        platform = unquote(parts[1]) if len(parts) >= 2 else "unknown"
+        tenant_id = parts[0] if len(parts) >= 1 else "unknown"
+        platform = parts[1] if len(parts) >= 2 else "unknown"
+        if isinstance(session_id, EncodedSessionId):
+            tenant_id, platform = unquote(tenant_id), unquote(platform)
 
         try:
             con = sqlite3.connect(db_path, timeout=5)
