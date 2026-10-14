@@ -284,6 +284,40 @@ transitions. No agent may self-award a PASS on work it authored.
   disputed. R0/R1: not required.
 - Hotfix deferral (§10.1) is allowed only when the PR touches no guarded control-plane path.
 
+#### 4.3.1 Review-spend discipline (owner decision 2026-10-14)
+
+Every round (including a crashed one) draws on the Codex allowance and consumes a ledger slot, and a
+GREEN goes stale the moment the head or body moves. These rules cut repeat rounds **without relaxing
+any gate**: R3 and guarded changes still need the exact-head, exact-body GREEN, and every post-cap
+pass still needs Mike's per-run authorization.
+
+- **Preflight before reserving a round:**
+  - the branch is current with main;
+  - the required checks are green or running;
+  - the PR body is final;
+  - the cheap lane has run at this head with no unresolved finding;
+  - peers have been told a merge to main is coming;
+  - any model passed via `CODEX_MODEL` is one the active Codex login actually offers.
+- **Merge on GREEN.** When the exact-head GREEN lands and the required contexts pass, merge at once
+  under the existing merge authority, pinned with `--match-head-commit`.
+  - Do not push or edit the PR body after GREEN.
+  - The peer announcement is a courtesy, **not a lock**: it blocks no one. A peer that merges first
+    makes this GREEN stale, and the ordinary update-and-re-review route applies. This keeps a failed CI
+    run or a dead session from ever holding main.
+- **The round-3 ask.** The ledger already caps autonomous rounds at three. When asking Mike to
+  authorize a post-cap pass, post on the PR and send him:
+  - one row per finding across all rounds (round, severity, disposition, whether a test now pins it);
+  - what changed since the last round;
+  - the options: (a) one more pass after fixing each open finding's whole class and re-running the
+    cheap lane; (b) split the PR so the settled part can land; (c) stop and redesign.
+
+Evidence (60 PRs merged 2026-10-05 → 10-14):
+- 130 Codex rounds in total.
+- 10 GREENs landed at a new head whose PR changes were identical (same `git patch-id`) to an earlier
+  GREEN, i.e. the branch had been updated from main after it was approved.
+- 8 of 9 blocker/high findings came in rounds 1–2; rounds 4+ found issues 24 times, one of them high.
+- A model the login does not offer fails after reserving: #4424, 2026-10-14.
+
 ### 4.4 Trust limitation of the attestation (stated plainly)
 
 The lifecycle guard and the ledger count a `[CODEX-ADVERSARIAL-REVIEW]` comment only when posted by the
