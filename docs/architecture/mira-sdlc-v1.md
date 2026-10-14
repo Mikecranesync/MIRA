@@ -309,10 +309,12 @@ pass still needs Mike's per-run authorization.
   - the options: (a) one more pass after fixing each open finding's whole class and re-running the
     cheap lane; (b) split the PR so the settled part can land; (c) stop and redesign.
 
-Evidence (60 PRs merged 2026-10-05 → 10-14): 130 Codex rounds; 10 re-approved byte-identical PR
-changes only because main or the body moved after GREEN; 8 of 9 blocker/high findings came in rounds
-1–2, and rounds 4+ found issues 24 times, one of them high. A model the login does not offer fails
-after reserving: #4424, 2026-10-14.
+Evidence (60 PRs merged 2026-10-05 → 10-14):
+- 130 Codex rounds in total.
+- 10 GREENs landed at a new head whose PR changes were identical (same `git patch-id`) to an earlier
+  GREEN, i.e. the branch had been updated from main after it was approved.
+- 8 of 9 blocker/high findings came in rounds 1–2; rounds 4+ found issues 24 times, one of them high.
+- A model the login does not offer fails after reserving: #4424, 2026-10-14.
 
 ### 4.4 Trust limitation of the attestation (stated plainly)
 
