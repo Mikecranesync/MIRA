@@ -566,6 +566,37 @@ export function refusalVerdict(
   return !(ctx.docGrounded && isCitedPartialAnswer(answer, ctx.citations));
 }
 
+/**
+ * #4426 — the deterministic floor under `refusalVerdict`, for the shared
+ * manufacturer library. An identity-bound OEM search that retrieved passages,
+ * followed by an answer that cites NONE of them (no `[n]`, or only `[n]` that
+ * resolve to nothing), is an uncited documentation claim. The server records
+ * it as `insufficient_evidence` instead of trusting the model's wording to
+ * decline: retrieval acceptance scenario 2 showed the same six chunks and the
+ * same prompt producing an honest decline on two runs and an uncited
+ * "answered" on two others (2026-10-14). This extends #4004/#4010, which made
+ * the zero-passage case of the same search abstain.
+ *
+ * Exempt: a turn also grounded by something other than documents (a machine
+ * reading or a photo), and a safety-flagged turn. A flag never blocks an
+ * answer (owner decision 2026-09-27); Gate G exempts it the same way.
+ * Notebook-source turns are out of scope: whether an unmatched attached source
+ * should decline or answer from general knowledge is still open (#4255, F004
+ * #4303). Exported for tests.
+ */
+export function isUncitedDocumentClaim(
+  answer: string,
+  ctx: { oemGrounded: boolean; citations: EvidenceCitation[]; exempt: boolean },
+): boolean {
+  if (!ctx.oemGrounded || ctx.exempt) return false;
+  return citationsUsedInAnswer(answer, ctx.citations).length === 0;
+}
+
+/** The fixed, server-written text that replaces an uncited manufacturer-library
+ *  claim (#4426). Same voice as the zero-passage library abstain (#4004). */
+export const UNCITED_OEM_CLAIM_TEXT =
+  "I couldn't find that in the manufacturer documentation I have, so I won't guess. Upload the manual for this equipment (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.";
+
 /** Assemble the provider messages: system prompt, then the sanitized
  *  conversation history (so a follow-up has memory of the thread), then the
  *  current user turn carrying the fresh grounding excerpts. Prior turns are plain
@@ -3720,7 +3751,25 @@ async function handleChatTurn(
       // shipped source is not a refusal just because it also states a
       // limitation. `isRefusal` itself is unchanged (the observability mirror
       // below still reports the raw phrase match).
-      const refused = served && refusalVerdict(answerText, { docGrounded, citations });
+      const refusedByText = served && refusalVerdict(answerText, { docGrounded, citations });
+      // #4426 deterministic floor: a manufacturer-library answer that cites none
+      // of the retrieved passages is not left to the model's wording. Under the
+      // gate nothing has been released yet, so the uncited draft is replaced
+      // before a byte of it reaches the technician; gate off stays legacy.
+      const uncitedDocumentClaim =
+        gate &&
+        served &&
+        !refusedByText &&
+        isUncitedDocumentClaim(answerText, {
+          oemGrounded: oemRetrieval && docGrounded,
+          citations,
+          exempt: Boolean(groundedMachineEntry) || Boolean(lookContext) || Boolean(safetyTrigger),
+        });
+      if (uncitedDocumentClaim) {
+        console.warn(`[notebook-chat] uncited manufacturer-library claim withheld (#4426): ${answerText.length} chars, ${citations.length} citations available`);
+        answerText = UNCITED_OEM_CLAIM_TEXT;
+      }
+      const refused = refusedByText || uncitedDocumentClaim;
       // SECOND BRACKET GUARD (the prompt is the first). A general answer has no
       // sources, so any [n] the model emitted anyway points at nothing and would
       // render as a citation chip in mira-mobile. Strip the markers rather than
@@ -3915,7 +3964,9 @@ async function handleChatTurn(
               ? "internal_error"
               : "provider_exhausted"
             : refused
-              ? "refusal_regex"
+              ? uncitedDocumentClaim
+                ? "uncited_document_claim"
+                : "refusal_regex"
               : "served";
         const gateDecision: "answered" | "insufficient_evidence" | "blocked" | "error" = outputRejected
           ? "blocked"
