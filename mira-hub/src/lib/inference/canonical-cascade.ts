@@ -43,7 +43,56 @@ export type CanonicalProvider = {
    * through the cascade. Default `openai-compat` is Groq/Cerebras/Together.
    */
   requestStyle?: "openai-compat" | "openai-reasoning";
+  /**
+   * OpenRouter's `provider` routing block, sent on EVERY request to it by
+   * `requestDialectFields` (the one body shaper every consumer uses): route only
+   * to hosts that neither train on nor retain prompts. Absent for everyone else.
+   */
+  providerRouting?: Record<string, unknown>;
 };
+
+/**
+ * OpenRouter backup tier (owner decision 2026-10-14) — mirrors the Python
+ * router (`mira-bots/shared/inference/router.py`): non-reasoning Llama 3.3 70B,
+ * and a data policy verified live on 2026-10-14 (both default models have
+ * zero-retention hosts).
+ */
+export const OPENROUTER_TEXT_MODEL = "meta-llama/llama-3.3-70b-instruct";
+export const OPENROUTER_ROUTING = { data_collection: "deny", zdr: true } as const;
+
+/**
+ * True for a model OpenRouter could serve as Claude. Anthropic is banned from
+ * this cascade (PR #610); OpenRouter serves it as `anthropic/...`, through
+ * `~anthropic/...-latest` aliases, and through its `openrouter/...` auto-routers.
+ */
+export function openRouterModelRefused(model: string): boolean {
+  const m = model.trim().toLowerCase();
+  return m.includes("anthropic") || m.includes("claude") || m.startsWith("openrouter/");
+}
+
+/**
+ * The OpenRouter member of a cascade, or none: key-gated, and fail-closed on a
+ * refused model (the provider is dropped rather than allowed to answer as Claude).
+ */
+export function openRouterProviders(): Array<CanonicalProvider & { key: string }> {
+  const key = process.env.OPENROUTER_API_KEY;
+  if (!key) return [];
+  // `||` because compose maps ${OPENROUTER_MODEL:-} to an EMPTY STRING in-container.
+  const model = process.env.OPENROUTER_MODEL || OPENROUTER_TEXT_MODEL;
+  if (openRouterModelRefused(model)) {
+    console.error(`OPENROUTER_MODEL_REFUSED model=${model} — provider left out`);
+    return [];
+  }
+  return [
+    {
+      name: "OpenRouter",
+      url: "https://openrouter.ai/api/v1/chat/completions",
+      key,
+      model,
+      providerRouting: { ...OPENROUTER_ROUTING },
+    },
+  ];
+}
 
 /**
  * Per-turn spend record. Field names mirror migration 078 columns so this maps
@@ -75,6 +124,9 @@ const PRICE_PER_MTOK: Record<string, { input: number; output: number }> = {
   Groq: { input: 0.15, output: 0.75 },
   Cerebras: { input: 0.1, output: 0.6 },
   Together: { input: 0.88, output: 0.88 },
+  // Metered. The zero-retention Llama 3.3 70B host the 2026-10-14 live probe
+  // landed on (AkashML); OpenRouter picks among hosts, so this is an estimate.
+  OpenRouter: { input: 0.2, output: 0.52 },
 };
 
 /** Cached input is billed at ~10% of the input rate across these providers. */
@@ -101,9 +153,10 @@ export function canonicalSeamEnabled(): boolean {
 }
 
 /**
- * The canonical cascade: OpenAI → Groq → Cerebras → Together (Hard Constraint #2,
- * OpenAI added by owner directive 2026-10-11 while Groq is billing-restricted and
- * Cerebras archived — key-gated, so an unset OPENAI_API_KEY leaves the list as before).
+ * The canonical cascade: OpenAI → OpenRouter → Groq → Cerebras → Together (Hard
+ * Constraint #2, OpenAI added by owner directive 2026-10-11 while Groq is
+ * billing-restricted and Cerebras archived; OpenRouter is the backup tier since
+ * 2026-10-14 — both key-gated, so unset keys leave the list as before).
  *
  * Gemini is deliberately ABSENT. Env-var names and model defaults match
  * `mira-bots/shared/inference/router.py` so the two runtimes cannot silently
@@ -131,6 +184,7 @@ export function canonicalProviders(): CanonicalProvider[] {
     : [];
   return [
     ...openai,
+    ...openRouterProviders(),
     {
       name: "Groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
@@ -252,10 +306,11 @@ export function requestDialectFields(
   maxTokens: number,
   temperature: number,
 ): Record<string, unknown> {
+  const routing = provider.providerRouting ? { provider: provider.providerRouting } : {};
   if (provider.requestStyle === "openai-reasoning") {
-    return { max_completion_tokens: maxTokens, ...(provider.extra ?? {}) };
+    return { max_completion_tokens: maxTokens, ...(provider.extra ?? {}), ...routing };
   }
-  return { max_tokens: maxTokens, temperature };
+  return { max_tokens: maxTokens, temperature, ...routing };
 }
 
 export function buildRequestBody(
