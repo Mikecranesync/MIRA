@@ -43,10 +43,7 @@ export const PSEUDO_TRIGGERS: readonly string[] = [
   "(?:never|don'?t|do\\s+not|doesn'?t|does\\s+not)\\s+think\\s+twice", "never\\s+mind", "no\\s+problem",
 ];
 
-/** Clause boundaries: the nesting check and the trailing-predicate check stop here. */
-/** TERMINATOR minus the comma: a parenthetical comma stays inside the clause. */
-const CLAUSE_END_NO_COMMA =
-  /[;:\n]|—|–|\b(?:but|however|yet|although|though|and|then|so|because|before|after|when|whenever|while|whilst|until|once|if|unless|whereas)\b/i;
+/** Clause boundaries: the nesting check stops here. */
 export const TERMINATOR =
   /[.!?;:,\n]|—|–|\b(?:but|however|yet|although|though|and|then|so|because|before|after|when|whenever|while|whilst|until|once|if|unless|whereas)\b/i;
 
