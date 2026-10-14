@@ -117,7 +117,13 @@ export function governingModifier(text: string, matchStart: number, matchEnd?: n
   const tail = matchEnd === undefined ? "" : (text.slice(matchEnd).split(/[.!?;:\n]/)[0] ?? "");
   // #4201 post-cap F11: test the whole sentence tail — a parenthetical comma
   // ("…, even briefly, is dangerous") must not hide a reversing predicate.
-  if (TRAILING_PREDICATE.test(tail.split(CLAUSE_END_NO_COMMA)[0] ?? "")) return null;
+  // #4201 post-cap F12: subordinate connectives (when, while, if, unless, until,
+  // because, since, after, before, as, where, whenever, although, though, once)
+  // must not stop the trailing-predicate check. But hard COORDINATE clause boundaries
+  // like ", but" DO end the governed scope. Check for predicates only before these boundaries.
+  const hardCoordinateConnective = /,\s*\b(?:but|yet)\b/i;
+  const beforeCoordinate = tail.split(hardCoordinateConnective)[0] ?? "";
+  if (TRAILING_PREDICATE.test(beforeCoordinate)) return null;
 
   for (const { m, adjacent } of TRIGGER_RES) {
     const hit = adjacent.exec(before);

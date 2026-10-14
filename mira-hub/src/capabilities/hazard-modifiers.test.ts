@@ -91,6 +91,16 @@ export const MUST_FLAG: Record<string, string> = {
   F10_IGNORE_RULE: "Ignore this rule, never skip the atmosphere test.",
   // #4201 post-cap F11: a parenthetical comma must not hide the trailing predicate.
   F11_PARENTHETICAL_PREDICATE: "Not entering the tank without testing the atmosphere, even briefly, is dangerous.",
+  // #4201 post-cap F12: a connective in the tail must not hide the trailing predicate.
+  // Subordinate connectives (when, while, if, unless, until, because, since, after, before, as, where, whenever, although, though, once)
+  // and clause-continuers ("however", "yet", "but", "and", "then", "so") should not stop the trailing-predicate check.
+  F12_WHEN: "Not entering the tank without testing the atmosphere when conditions are uncertain is dangerous.",
+  F12_ALTHOUGH: "Not entering the tank without testing the atmosphere, although tempting, is dangerous.",
+  F12_HOWEVER: "Not entering the tank without testing the atmosphere, however briefly, is dangerous.",
+  F12_WHILE: "Not entering the tank without testing the atmosphere while rushing is dangerous.",
+  F12_IF: "Not entering the tank without testing the atmosphere if you are in a hurry is dangerous.",
+  F12_UNLESS: "Not entering the tank without testing the atmosphere unless safety permits is dangerous.",
+  F12_BECAUSE: "Not entering the tank without testing the atmosphere because of time pressure is dangerous.",
 };
 
 /**
