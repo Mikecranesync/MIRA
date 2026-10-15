@@ -510,8 +510,15 @@ describe("isUncitedDocumentClaim — the decision itself", () => {
     const obs = ["Drive keypad showing fault F004 (undervoltage); nameplate reads GS10-20P2."];
     // Attributed + its identifier.
     expect(answerUsesEarlierPhoto("Your earlier photo shows fault F004 on the keypad.", obs)).toBe(true);
-    // Attributed + its equipment class (the drive), in the prompt's own wording.
-    expect(answerUsesEarlierPhoto("That is an unconfirmed reading of an earlier photo: the drive has tripped.", obs)).toBe(true);
+    // A photo that carries identifiers is used only when the answer repeats one:
+    // naming the same kind of equipment is not enough (cheap-lane r2 on #4450).
+    expect(answerUsesEarlierPhoto("From your earlier photo, the drive has two Ethernet ports and a USB port.", obs)).toBe(false);
+    expect(answerUsesEarlierPhoto("That is an unconfirmed reading of an earlier photo: the drive has tripped.", obs)).toBe(false);
+    // A photo with no identifiers: its equipment is the distinctive content, in
+    // the prompt's own wording.
+    const plain = ["Contactor coil with burn marks and discoloured terminals."];
+    expect(answerUsesEarlierPhoto("That is an unconfirmed reading of an earlier photo: the contactor coil looks burned.", plain)).toBe(true);
+    expect(answerUsesEarlierPhoto("From your earlier photo, the drive has two Ethernet ports.", plain)).toBe(false);
     expect(answerUsesEarlierPhoto("In the photo you sent earlier the drive keypad shows GS10-20P2.", obs)).toBe(true);
     // Content without the attribution is an ordinary uncited claim.
     expect(answerUsesEarlierPhoto("Fault F004 on this drive means undervoltage.", obs)).toBe(false);

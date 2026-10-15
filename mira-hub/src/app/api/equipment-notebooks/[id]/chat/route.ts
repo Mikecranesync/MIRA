@@ -636,20 +636,25 @@ const EARLIER_PHOTO_ATTRIBUTION: readonly RegExp[] = [
 /** #4442: the photos attached to EARLIER questions in this conversation ride in
  *  every later turn's context, so their presence says nothing about whether this
  *  answer came from them. They exempt the #4426 floor only when the answer uses
- *  one: it attributes to an earlier photo (the section's own rule) AND names
- *  something that photo showed, an identifier such as "F004" or the same kind of
- *  equipment (`subjectIdentifiers` / `equipmentClassesOf`, the evidence-follow
- *  check's own signals). A passing mention exempts nothing, mirroring
- *  `answerUsesStoredNameplateReading`. Exported for unit testing. */
+ *  one: it attributes to an earlier photo (the section's own rule) AND repeats
+ *  what that photo showed: one of its identifiers such as "F004", or, for a photo
+ *  with no identifiers, the same kind of equipment (`subjectIdentifiers` /
+ *  `equipmentClassesOf`, the evidence-follow check's own signals). A passing
+ *  mention exempts nothing, mirroring `answerUsesStoredNameplateReading`.
+ *  Exported for unit testing. */
 export function answerUsesEarlierPhoto(answer: string, observations: readonly string[]): boolean {
   if (!EARLIER_PHOTO_ATTRIBUTION.some((re) => re.test(answer))) return false;
   const upper = answer.toUpperCase();
   const answerClasses = equipmentClassesOf(answer);
-  return observations.some(
-    (obs) =>
-      subjectIdentifiers(obs).some((id) => upper.includes(id)) ||
-      equipmentClassesOf(obs).some((c) => answerClasses.includes(c)),
-  );
+  return observations.some((obs) => {
+    // A photo that carries identifiers (a fault code, a model number) is used only
+    // when the answer repeats one: "your earlier photo... the drive has Ethernet"
+    // names the photo's equipment and none of what it showed. The equipment class
+    // is the distinctive content only of a photo with no identifiers at all.
+    const ids = subjectIdentifiers(obs);
+    if (ids.length > 0) return ids.some((id) => upper.includes(id));
+    return equipmentClassesOf(obs).some((c) => answerClasses.includes(c));
+  });
 }
 
 /** The fixed, server-written text that replaces an uncited manufacturer-library
