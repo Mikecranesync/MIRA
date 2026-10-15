@@ -35,7 +35,7 @@ fail at industrial maintenance because they:
 How MIRA differs: it answers from the plant's own uploaded manuals, and when the
 answer comes from a manual it names the document and the page so it can be
 checked. Safety-critical questions get a safety warning (MIRA is not a safety
-system). It does not yet use the plant's work-order history.
+system).
 
 ---
 
