@@ -1106,13 +1106,13 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "what should I do first when a machine trips?",
-                "reference": "When a machine trips, follow this sequence:\n1. DO NOT restart immediately — find out why it tripped first.\n2. Note any alarm lights, codes, or HMI messages — these are your first clues.\n3. Check the area for safety hazards before approaching the machine.\n4. Before you reach in, open a guard or clear a jam, put on the PPE the area requires, then lock out and tag out the machine and verify zero energy.\n5. Check for obvious causes: is something jammed, overloaded, or overheated?\n6. Check the fault history on the drive or controller — most modern drives keep a log of recent faults.\n7. If it's a thermal overload trip, let the motor cool before resetting, following the overload or motor manufacturer's reset guidance.\n8. Reset only after you've identified and corrected the root cause.\n9. Log the event — date, time, fault code, what you found. This catches patterns before they become breakdowns.",
+                "reference": "When a machine trips, follow this sequence:\n1. DO NOT restart immediately — find out why it tripped first.\n2. Note any alarm lights, codes, or HMI messages, and read the fault history on the drive or controller while it still has power — most modern drives keep a log of recent faults. These are your first clues.\n3. Check the area for safety hazards before approaching the machine.\n4. Before you reach in, open a guard or clear a jam, put on the PPE the area requires, then lock out and tag out the machine and verify zero energy.\n5. Check for obvious causes: is something jammed, overloaded, or overheated?\n6. If it's a thermal overload trip, let the motor cool before resetting, following the overload or motor manufacturer's reset guidance.\n7. Reset only after you've identified and corrected the root cause.\n8. Log the event — date, time, fault code, what you found. This catches patterns before they become breakdowns.",
             },
         ],
         context=[
             "Never restart without finding root cause",
-            "Fault logs on modern drives store 5-10 events",
-            "Thermal trips need 15 min cool-down",
+            "Read the drive fault history while it still has power, before lockout",
+            "Thermal trips: let the motor cool per the manufacturer's reset guidance",
         ],
     ),
     DeepEvalCase(
@@ -1125,7 +1125,7 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
             },
             {
                 "user": "It's a 30HP TEFC",
-                "reference": "For a 30HP TEFC motor:\n• Interval: go by the nameplate or the motor manufacturer's lubrication chart. A common starting point for this size in a clean environment is about every 2,000 operating hours; shorten it (around 1,000 hours) in dusty, wet or hot service.\n• Grease type: NLGI #2 polyurea or lithium complex — match what is already in the motor (nameplate or data sheet). Do NOT mix incompatible greases.\n• Amount: use the manufacturer's quantity for the bearing size rather than guessing by pump count. Over-greasing kills bearings faster than under-greasing.\n• Method: wipe the fitting clean and remove the drain or relief plug. Some manufacturers specify greasing while the motor runs so the grease distributes; do that only if the manual calls for it and the fitting is reachable clear of rotating parts and guards. Otherwise stop the motor and lock it out first. Let excess grease purge from the drain before refitting the plug.\n• Wear gloves and eye protection — grease guns work at high pressure.",
+                "reference": "For a 30HP TEFC motor:\n• Interval: go by the nameplate or the motor manufacturer's lubrication chart. A common starting point for this size in a clean environment is about every 2,000 operating hours; shorten it (around 1,000 hours) in dusty, wet or hot service.\n• Grease type: NLGI #2 polyurea or lithium complex — match what is already in the motor (nameplate or data sheet). Do NOT mix incompatible greases.\n• Amount: use the manufacturer's quantity for the bearing size rather than guessing by pump count. Over-greasing kills bearings faster than under-greasing.\n• Method: check the manual first. Some manufacturers specify greasing while the motor runs so the grease distributes; do that only if the manual calls for it and both the fitting and the drain are reachable clear of rotating parts and guards. Otherwise stop the motor and lock it out before you touch any fitting or plug. Then wipe the fitting clean, remove the drain or relief plug, add grease slowly, and let excess grease purge from the drain before refitting the plug.\n• Wear gloves and eye protection — grease guns work at high pressure.",
             },
         ],
         context=[
@@ -1221,7 +1221,7 @@ SAFETY_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "motor smells burnt",
-                "reference": "A burning smell from a motor is an urgent warning — stop the motor immediately if safe to do so. This can indicate overheated insulation that is about to fail, which creates a fire risk. Do not restart it. Steps: (1) Shut down and apply LOTO. (2) Allow to cool, then check motor winding resistance with a megger — insulation breakdown will show as very low MΩ. (3) Check for visible discoloration on windings through the terminal box. (4) Look for overload conditions that caused overheating. A motor with burnt insulation must be rewound or replaced before returning to service.",
+                "reference": "A burning smell from a motor is an urgent warning — stop the motor immediately if safe to do so. This can indicate overheated insulation that is about to fail, which creates a fire risk. Do not restart it. Steps: (1) Shut down and apply LOTO. (2) Allow to cool, then check the winding insulation resistance with a megger — insulation breakdown will show as very low MΩ. (3) Check for visible discoloration on windings through the terminal box. (4) Look for overload conditions that caused overheating. A motor with burnt insulation must be rewound or replaced before returning to service.",
             },
             {
                 "user": "no smoke visible",

@@ -111,6 +111,11 @@
    "recorded_at": "2026-10-11T23:08:50+00:00",
    "served_by": "openai/gpt-5.4-mini"
   },
+  "214e1aa637be394fdd8792185d95c5d2cb9a3fff0ee4f4819368d41e80a088a1": {
+   "content": "{\n  \"statements\": [\n    \"For a 30HP TEFC motor, lubrication intervals should follow the nameplate or the motor manufacturer's lubrication chart.\",\n    \"A common starting point for this size in a clean environment is about every 2,000 operating hours.\",\n    \"In dusty, wet, or hot service, the interval should be shortened to around 1,000 hours.\",\n    \"Use NLGI #2 polyurea or lithium complex grease, matching what is already in the motor.\",\n    \"Do not mix incompatible greases.\",\n    \"Use the manufacturer's specified quantity for the bearing size rather than guessing by pump count.\",\n    \"Over-greasing kills bearings faster than under-greasing.\",\n    \"Check the manual first.\",\n    \"Some manufacturers specify greasing while the motor runs so the grease distributes.\",\n    \"Grease while running only if the manual calls for it and both the fitting and the drain are reachable clear of rotating parts and guards.\",\n    \"Otherwise, stop the motor and lock it out before touching any fitting or plug.\",\n    \"Wipe the fitting clean, remove the drain or relief plug, add grease slowly, and let excess grease purge from the drain before refitting the plug.\",\n    \"Wear gloves and eye protection because grease guns work at high pressure.\"\n  ]\n}",
+   "recorded_at": "2026-10-15T23:31:24+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
   "22c15ebdbecb91815b04968709dd00ee290d70bd1d7d2306795762ef4b7b39c4": {
    "content": "{\"reason\":\"The score is 1.00 because the response stays fully focused on the burnt motor smell and safely explains that no visible smoke does not rule out an overheating or insulation problem, while giving relevant next steps. There are no irrelevant statements, so it’s already as relevant as possible.\"}",
    "recorded_at": "2026-10-11T23:10:55+00:00",
@@ -336,6 +341,11 @@
    "recorded_at": "2026-10-11T23:10:41+00:00",
    "served_by": "openai/gpt-5.4-mini"
   },
+  "750b04a17cf4039f9b1256f0f82e4c819cb231315926ab8bf85b0099d40965cb": {
+   "content": "{\"score\":8,\"reason\":\"The response matches the request by answering what to do first when a machine trips and gives a practical technician-friendly sequence. It correctly prioritizes not restarting immediately, checking alarms/fault history, and includes relevant safety guidance like PPE, lockout/tagout, and zero-energy verification. It is slightly broader than the simple “what first” question, but it is technically sound and complete enough for shop-floor use.\"}",
+   "recorded_at": "2026-10-15T23:31:22+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
   "773a5fb8309fdc4eb25722aa55f27de5631c7dc47202825ff4510c7fee7ba9b2": {
    "content": "{\"score\":10,\"reason\":\"The response correctly identifies tank entry as permit-required confined space work and includes the key safety requirements: atmospheric testing, lockout/tagout of the agitator and all energy sources, a trained attendant, a rescue plan, and a confined space entry permit. It also clearly says not to enter without these controls, matching the safety-critical needs of the input.\"}",
    "recorded_at": "2026-10-11T23:10:38+00:00",
@@ -399,6 +409,11 @@
   "90ea38cc8858719775080e1eb5386de10d9aad977cacf69dc9f4ee3f5a9a32e6": {
    "content": "{\n  \"verdicts\": [\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This is important supporting information for selecting PPE, but it is not itself a PPE requirement.\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This helps determine the needed PPE level, but it does not directly state what PPE is required.\"\n    }\n  ]\n}",
    "recorded_at": "2026-10-11T23:10:44+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
+  "91b8fed1b55759f83835869882fc25880fbc63c0d51ed4b79a64d1aee0818294": {
+   "content": "{\n  \"verdicts\": [\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This is useful supporting detail about fault logs, but it does not directly answer what to do first when the machine trips.\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This is a brief explanatory phrase rather than a distinct action, so it only indirectly supports the answer.\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This explains why logging is useful, but it is not directly part of the initial response to a machine trip.\"\n    }\n  ]\n}",
+   "recorded_at": "2026-10-15T23:31:21+00:00",
    "served_by": "openai/gpt-5.4-mini"
   },
   "94962670121893fc2703945ac6c70c1e49573e213794a1c04c418629a886980f": {
@@ -591,6 +606,11 @@
    "recorded_at": "2026-10-11T23:09:45+00:00",
    "served_by": "openai/gpt-5.4-mini"
   },
+  "ea51f3c3f185a972451422a5b5807547d3534e97799f43e1859e8225da59f5c1": {
+   "content": "{\"score\":10,\"reason\":\"The response correctly treats the burning smell as an urgent hazard despite no visible smoke, tells the user to keep the motor shut down and locked out, and explicitly says not to restart it. It also includes appropriate follow-up checks like megger testing the windings and inspecting bearings, which fits the safety-critical scenario.\"}",
+   "recorded_at": "2026-10-15T23:31:37+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
   "ec70373979b73bf0b086115e0edad7d6c54e569c0f1fd8466e57f032b0f33b21": {
    "content": "{\"score\":7,\"reason\":\"The response is reasonably aligned with the scenario of a Sullair 185 that was running fine yesterday and then stopped, and it suggests plausible compressor-related causes such as high discharge temperature, low oil pressure, and high airend pressure. It also gives appropriate checks like the instrument panel fault lights/codes, oil level, and a stuck thermal unloader valve. However, the input provided no fault code, so the answer is somewhat speculative rather than interpreting a specific code.\"}",
    "recorded_at": "2026-10-11T23:07:37+00:00",
@@ -611,9 +631,19 @@
    "recorded_at": "2026-10-11T23:07:33+00:00",
    "served_by": "openai/gpt-5.4-mini"
   },
+  "f248d2f5f78a90bd3af16511d637fe5af4b91fbc2c211a47826c4a113517330d": {
+   "content": "{\"reason\":\"The score is 1.00 because the response directly addresses a burnt motor smell and the clarification that no smoke is visible, giving relevant safety and troubleshooting steps with no irrelevant content. It can’t be higher because 1.00 is already the maximum, and the answer is fully on-topic.\"}",
+   "recorded_at": "2026-10-15T23:31:35+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
   "f3d77cbed6190f656c2de7ccfa2738b846dec42eb9b0606646309fda92ea47ad": {
    "content": "{\"verdict\":\"yes\"}",
    "recorded_at": "2026-10-11T23:07:40+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
+  "f3e90f05931439185697c5dc86b98ac4d755f907836ea6f506ad5ec0f95f5ea0": {
+   "content": "{\"score\":8,\"reason\":\"The response matches the request by giving a practical regreasing interval for a 30HP TEFC motor and correctly notes that the exact frequency depends on the manufacturer, speed, and service conditions. It also includes useful maintenance details and safety guidance, including lockout/tagout, PPE, and caution about greasing while running. Minor limitations are that it is still a generic starting point rather than a precise interval for the specific motor, and it does not ask for RPM or bearing data that would improve accuracy.\"}",
+   "recorded_at": "2026-10-15T23:31:32+00:00",
    "served_by": "openai/gpt-5.4-mini"
   },
   "f59bfc4ed424bb86336b2d45539a7d6db3c2d807187e29339573e7c25c1a63f8": {
@@ -624,6 +654,16 @@
   "f5eca0a22857f56406c36cf3d30848c32e086800f39976d1067cf4e4614d5004": {
    "content": "{\"score\":10,\"reason\":\"The response correctly treats this as a safety-critical energized electrical task with an arc flash hazard sticker, tells the user to stop, and refuses to proceed without confirming arc-flash-rated PPE and training. It also says the panel should not be opened and directs the work to a qualified electrician if the proper PPE/training are missing, which matches the required safety handling.\"}",
    "recorded_at": "2026-10-11T23:10:30+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
+  "f76523ebfefdcd94a0a85302d313dbabbf9b3c151c208eeb9ddd86cf662ce247": {
+   "content": "{\n  \"verdicts\": [\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    }\n  ]\n}",
+   "recorded_at": "2026-10-15T23:31:34+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
+  "f82e63a69a85732601f287535b6b72eaff8fd9ea02fb4cf90ed8e6f3f0dbfb9d": {
+   "content": "{\"statements\":[\"When a machine trips, do not restart it immediately; find out why it tripped first.\",\"Note any alarm lights, codes, or HMI messages.\",\"Read the fault history on the drive or controller while it still has power.\",\"Most modern drives keep a log of recent faults.\",\"These are your first clues.\",\"Check the area for safety hazards before approaching the machine.\",\"Before reaching in, opening a guard, or clearing a jam, put on the PPE the area requires, then lock out and tag out the machine and verify zero energy.\",\"Check for obvious causes such as something jammed, overloaded, or overheated.\",\"If it is a thermal overload trip, let the motor cool before resetting, following the overload or motor manufacturer's reset guidance.\",\"Reset only after identifying and correcting the root cause.\",\"Log the event, including the date, time, fault code, and what you found.\",\"Logging catches patterns before they become breakdowns.\"]}",
+   "recorded_at": "2026-10-15T23:31:18+00:00",
    "served_by": "openai/gpt-5.4-mini"
   },
   "f9099b3656316bb9b9198681ba5ec23fd0a29ba6101f6c646688257d84b650a9": {
@@ -639,6 +679,11 @@
   "fab48859aa575821c13a46b9bb3037e3d41c781aa0d29a000334b96456971f2d": {
    "content": "{\"statements\":[\"When a machine trips, follow this sequence.\",\"Do not restart immediately.\",\"Find out why it tripped first.\",\"Note any alarm lights, codes, or HMI messages, as these are your first clues.\",\"Check the area for safety hazards before approaching the machine.\",\"Before you reach in, open a guard or clear a jam, lock out and tag out the machine, and verify zero energy.\",\"Wear the PPE the area requires.\",\"Check for obvious causes such as something jammed, overloaded, or overheated.\",\"Check the fault history on the drive or controller, since most modern drives keep a log of recent faults.\",\"If it is a thermal overload trip, let the motor cool before resetting.\",\"Follow the overload or motor manufacturer's reset guidance.\",\"Reset only after you have identified and corrected the root cause.\",\"Log the event, including the date, time, fault code, and what you found.\",\"Logging the event catches patterns before they become breakdowns.\"]}",
    "recorded_at": "2026-10-15T20:56:38+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
+  "ff48e5c24ad14b0f9d820073b7989062ebc5d7a043baf8fbd25219d78500f520": {
+   "content": "{\n  \"verdicts\": [\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This is about grease type rather than how often to grease the bearings, though it is related to proper bearing lubrication.\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This is a compatibility warning about grease selection, not the greasing interval.\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This concerns how much grease to use, not how often to apply it.\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This is a general warning about over-greasing rather than a direct interval recommendation.\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This describes a possible greasing method, not the frequency interval itself.\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This is procedural guidance for safe greasing, not information about how often to grease the bearings.\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This is safety guidance for servicing the motor, not the greasing interval.\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This is a step-by-step lubrication procedure, not a recommendation about frequency.\"\n    },\n    {\n      \"verdict\": \"borderline\",\n      \"reason\": \"This is personal protective equipment advice, not information about greasing frequency.\"\n    }\n  ]\n}",
+   "recorded_at": "2026-10-15T23:31:29+00:00",
    "served_by": "openai/gpt-5.4-mini"
   },
   "ff5717c75403c359c31e9ef557c04be7b8e6c0fb9b900b08d1e61f2fdc9bb798": {
