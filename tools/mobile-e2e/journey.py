@@ -9,8 +9,8 @@ physical. This harness replays the same journey on an emulator so nobody's phone
 held hostage again.
 
 What it covers (same chain as the physical run)
-    install -> sign in -> create notebook -> upload PDF -> ingest+embed
-    -> ask -> grounded cited answer -> citation resolves to a real passage
+    install -> sign in -> create project -> attach PDF -> ask (upload + ingest on send)
+    -> grounded cited answer -> citation resolves to the passage and the original page
     -> (optional) nameplate image -> structured extraction
 
 What it deliberately CANNOT cover -- and reports as SKIP, never as PASS:
@@ -242,6 +242,20 @@ class Device:
                     return True
         return False
 
+    def launch_app(self) -> None:
+        """Start the app's launcher activity.
+
+        `monkey -p PKG -c LAUNCHER 1` silently starts nothing on the API 35 emulator, so
+        resolve the launcher activity and `am start` it; monkey stays as the fallback.
+        """
+        out = self.shell("cmd", "package", "resolve-activity", "--brief", "-c",
+                         "android.intent.category.LAUNCHER", PKG)
+        component = out.splitlines()[-1].strip() if out else ""
+        if component.startswith(f"{PKG}/"):
+            self.shell("am", "start", "-n", component)
+        else:
+            self.shell("monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+
     def top_package(self) -> str:
         out = self.shell("dumpsys", "activity", "activities")
         m = re.search(r"topResumedActivity.*?\{[^}]*?\s(\S+?)/", out)
@@ -256,7 +270,7 @@ class Device:
         """
         top = self.top_package()
         if top and top != PKG and "packageinstaller" not in top and "permission" not in top:
-            self.shell("monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+            self.launch_app()
             time.sleep(5)
             return True
         return False
@@ -431,6 +445,22 @@ def log(step: str, msg: str = "") -> None:
     print(f"[{step}] {msg}".rstrip(), flush=True)
 
 
+# A source chip reads "FILE manual.pdf p. 3" and the citation sheet "[1] manual.pdf -- p.3".
+# Parse the page NUMBER: a substring test for "p.3" never matches the spaced chip, and
+# would accept "p.31" if it did.
+_CITED_PAGE = re.compile(r"(?P<file>[^\s\u2014]+\.pdf)\b.*?\bp\.\s*(?P<page>\d+)\b", re.IGNORECASE)
+
+
+def cited_pages(labels: list[str]) -> list[tuple[str, int]]:
+    """(file, page) for every label that cites a PDF page."""
+    found = []
+    for t in labels:
+        m = _CITED_PAGE.search(t)
+        if m:
+            found.append((m.group("file"), int(m.group("page"))))
+    return found
+
+
 def native_path(s: str) -> Path:
     """argparse type: accept Git-Bash `/c/...` paths and return a real Path.
 
@@ -508,7 +538,7 @@ def install(dev: Device, apk: Path, *, reinstall_physical: bool = False) -> None
 
 def launch(dev: Device) -> None:
     dev.shell("am", "force-stop", PKG)
-    dev.shell("monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+    dev.launch_app()
     time.sleep(6)
     dev.dismiss_anr()
 
@@ -527,31 +557,41 @@ def sign_in(dev: Device, email: str, password: str) -> None:
     dev.screenshot("signin-filled")
     dev.tap_button("Sign in")
 
+    # The unified shell lands on HOME, which shows no account name; only the drawer
+    # does. Wait for the shell, then read who is signed in from the drawer.
     deadline = time.time() + 60
-    while time.time() < deadline:
-        if any(email in t for t in dev.texts()):
-            dev.screenshot("signed-in")
-            log("signin", "OK")
-            return
+    while dev.find("Open navigation", clickable=True) is None:
+        if time.time() > deadline:
+            dev.screenshot("signin-failed")
+            raise Fail("sign-in did not complete -- check credentials, or the trial may be expired")
         time.sleep(3)
-    dev.screenshot("signin-failed")
-    raise Fail("sign-in did not complete -- check credentials, or the trial may be expired")
+    dev.tap_button("Open navigation")
+    try:
+        dev.wait_for(email, timeout=20)
+    except Fail:
+        dev.screenshot("signin-wrong-account")
+        raise Fail(f"signed in, but the drawer does not show {email} -- wrong account") from None
+    dev.screenshot("signed-in")
+    dev.tap_button("Close navigation")
+    log("signin", "OK")
 
 
 def create_notebook(dev: Device, name: str, mfr: str, model: str) -> None:
     log("notebook", name)
-    dev.tap_text("Notebook")
-    dev.tap_text("Create new")
-    dev.wait_for("New machine notebook")
-    dev.type_into("Name", name)
-    dev.hide_keyboard()  # conditional: a bare BACK would leave the form
-    dev.type_into("Manufacturer", mfr)
-    dev.hide_keyboard()
-    dev.type_into("Model", model)
-    dev.hide_keyboard()
+    # Unified shell: drawer -> "New project" -> one form. An empty manufacturer/model
+    # is left blank, as a technician who only names the machine would.
+    dev.tap_button("Open navigation")
+    dev.tap_button("New project")
+    dev.wait_for("Name the machine")
+    for label, value in (("Name", name), ("Manufacturer", mfr), ("Model", model)):
+        if value:
+            dev.type_into(label, value)
+            dev.hide_keyboard()  # conditional: a bare BACK would leave the form
     dev.screenshot("notebook-form")
-    dev.tap_text("Create notebook")
-    dev.wait_for("Add sources", timeout=60)
+    dev.tap_button("Create project")
+    # The form's Name box holds the same string, so wait for the form to go first.
+    dev.wait_for("Name the machine", timeout=60, absent=True)
+    dev.wait_for(name, timeout=30)
     log("notebook", "created")
 
 
@@ -566,61 +606,75 @@ def upload_pdf(dev: Device, pdf: Path) -> None:
         raise Fail(f"sha256 mismatch after push: {device_sha} != {local_sha}")
     log("upload", f"sha256 verified {local_sha[:16]}...")
     dev.shell(
-        "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
-        "-d", f"file://{remote}",
+        "am",
+        "broadcast",
+        "-a",
+        "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+        "-d",
+        f"file://{remote}",
     )
 
-    if dev.find("Add sources") is None:
-        dev.tap_text("Add sources")
-    dev.tap_text("Upload a PDF manual")
-    dev.tap_text(pdf.stem[:24], timeout=60)  # SAF picker row
-
-    # Do NOT assert that "Uploading" appears: a small PDF completes before the poll
-    # can observe the transient state, and requiring a spinner you raced past fails a
-    # run that actually succeeded. Wait for the terminal state instead, and only wait
-    # OUT an "Uploading" that happens to be visible.
-    if dev.find("Uploading") is not None:
-        dev.wait_for("Uploading", timeout=900, absent=True)
-    dev.wait_for("Searchable source", timeout=600)
-    dev.screenshot("source-added")
-    log("upload", "source added and marked searchable")
+    # Unified shell: "+" -> File -> system picker. The file rides on the NEXT message
+    # and is read when that message is sent, so ask() is what proves ingest; there is
+    # no separate "Searchable source" state to wait for here.
+    dev.tap_button("Add attachment")
+    dev.tap_button("File")
+    # Exact match: the picker card also carries a "Preview the file <name>" button,
+    # which opens a preview instead of choosing the file.
+    deadline = time.time() + 60
+    while (row := dev.find(pdf.name, exact=True)) is None:
+        if time.time() > deadline:
+            dev.screenshot("picker-missing-file")
+            raise Fail(f"{pdf.name} is not listed in the file picker")
+        time.sleep(2)
+    dev.tap(*row.center)
+    dev.wait_for("Pending attachments", timeout=60)
+    if dev.find(pdf.name, exact=True) is None:
+        raise Fail(f"picked {pdf.name}, but it is not attached to the message")
+    dev.screenshot("source-attached")
+    log("upload", "attached to the next message")
 
 
 def ask(dev: Device, question: str, expect_page: int | None) -> str:
     log("ask", question)
-    if dev.find("Done") is not None:
-        dev.tap_button("Done", timeout=20)
-    # tap_button, not tap_text: the Sources pane carries the sentence "...include this
-    # source in notebook chat", which matches "Chat" case-insensitively. Only the tab
-    # is clickable.
-    dev.tap_button("Chat")
-    dev.wait_for("Send", timeout=90, keep_foreground=True)
+    turns_before = dev.texts().count("MIRA")
     box = dev.bottom_edit_text()
     dev.tap(*box.center)
     dev.type_text(question)
     dev.screenshot("question-typed")
     dev.tap_button("Send", timeout=30)
 
+    # Wait for a NEW MIRA turn that has settled -- it shows its source chip, or its
+    # Copy action once it has finished without one. Count turns first: a thread can
+    # already hold a finished answer whose chip and Copy would end the wait on it.
     deadline = time.time() + 180
-    answer = ""
+    turn: list[str] = []
     while time.time() < deadline:
-        long_texts = [t for t in dev.texts() if len(t) > 60 and t != question]
-        if long_texts:
-            answer = max(long_texts, key=len)
-            break
+        labels = dev.texts()
+        if labels.count("MIRA") > turns_before:
+            turn = labels[len(labels) - labels[::-1].index("MIRA") :]
+            if cited_pages(turn) or "Copy" in turn:
+                break
         time.sleep(5)
-    if not answer:
+    else:
         raise Fail("no answer rendered within 180s")
 
     dev.screenshot("answer")
+    prose: list[str] = []
+    for t in turn:
+        if cited_pages([t]):
+            break
+        if not re.fullmatch(r"Citation \d+", t):
+            prose.append(t.strip())
+    answer = " ".join(p for p in prose if p)
 
-    cites = [t for t in dev.texts() if ".pdf" in t and "p." in t]
+    cites = cited_pages(turn)
     if not cites:
         raise Fail(f"answer is UNCITED -- grounding failure. Answer was: {answer[:300]}")
     log("ask", f"cited: {cites}")
 
     if expect_page is not None:
-        if not any(f"p.{expect_page}" in c for c in cites):
+        if expect_page not in {page for _, page in cites}:
             raise Fail(f"expected a citation to p.{expect_page}, got {cites}")
         log("ask", f"expected page p.{expect_page} cited")
     return answer
@@ -628,12 +682,30 @@ def ask(dev: Device, question: str, expect_page: int | None) -> str:
 
 def verify_citation(dev: Device, expect_page: int | None) -> str:
     log("citation", "opening sheet")
-    target = f"p.{expect_page}" if expect_page else ".pdf"
-    node = dev.find(target)
-    if node is None:
-        raise Fail(f"no citation chip matching {target!r}")
-    dev.tap(*node.center)
-    time.sleep(4)
+    chips = [
+        n
+        for n in dev.dump()
+        if n.clickable
+        and cited_pages([n.label])
+        and (expect_page is None or cited_pages([n.label])[0][1] == expect_page)
+    ]
+    if not chips:
+        raise Fail(f"no source chip citing {f'p.{expect_page}' if expect_page else 'a PDF'}")
+    dev.tap(*chips[0].center)
+
+    # The sheet names its source as "[1] manual.pdf -- p.3". Check that page too: the
+    # chip and the passage it opens must agree.
+    deadline = time.time() + 20
+    while (
+        header := next((t for t in dev.texts() if t.startswith("[") and cited_pages([t])), None)
+    ) is None:
+        if time.time() > deadline:
+            dev.screenshot("citation-empty")
+            raise Fail("citation sheet never opened")
+        time.sleep(2)
+    page = cited_pages([header])[0][1]
+    if expect_page is not None and page != expect_page:
+        raise Fail(f"chip cites p.{expect_page} but the sheet shows p.{page}: {header!r}")
 
     passage = ""
     for t in dev.texts():
@@ -645,39 +717,45 @@ def verify_citation(dev: Device, expect_page: int | None) -> str:
         raise Fail("citation sheet opened but rendered no passage")
 
     dev.screenshot("citation-sheet")
-    log("citation", f"passage: {passage[:110]}...")
-    if dev.find("Close") is not None:
-        dev.tap_text("Close")
+    log("citation", f"{header} -- passage: {passage[:110]}...")
+
+    # Resolve the citation to the original document at that page. Android's WebView
+    # cannot render PDF pages in-app, so the sheet confirms the fetch instead.
+    dev.tap_button(f"Open original at cited page {page}", timeout=20)
+    dev.wait_for("opened successfully", timeout=60)
+    dev.screenshot("citation-original")
+    log("citation", f"original opened at p.{page}")
+    dev.tap_button("Close", timeout=20)
     return passage
 
 
 def nameplate(dev: Device, image: Path | None) -> None:
     if image is None:
-        log("nameplate", "SKIP -- no --nameplate given. A synthetic image would not "
-                         "exercise real-photo OCR, so this is skipped, not faked.")
+        log(
+            "nameplate",
+            "SKIP -- no --nameplate given. A synthetic image would not "
+            "exercise real-photo OCR, so this is skipped, not faked.",
+        )
         return
     log("nameplate", image.name)
     remote = f"{DEVICE_TMP}/{image.name}"
     dev.push(image, remote)
-    dev.shell("am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
-              "-d", f"file://{remote}")
+    dev.shell(
+        "am",
+        "broadcast",
+        "-a",
+        "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+        "-d",
+        f"file://{remote}",
+    )
 
-    dev.tap_button("Sources")
-    dev.tap_button("Add sources")
-    dev.tap_button("Photograph a component nameplate")
+    # Unified shell: "+" -> Photo opens the system photo picker ("Camera" is its own
+    # entry beside it, so the old picker-instead-of-camera defect no longer applies).
+    dev.tap_button("Add attachment")
+    dev.tap_button("Photo")
     time.sleep(4)
-
-    if dev.find("While using the app") is not None:
-        dev.tap_text("While using the app")
-        time.sleep(4)
-
-    # KNOWN DEFECT (P1): this opens the system photo picker, not a camera. There is no
-    # capture affordance. Recorded so the harness documents the bug instead of hiding it.
-    if dev.find("camera") is None and dev.find("Search") is not None:
-        log("nameplate", "NOTE: opened the photo picker, not a camera (known P1 defect)")
-
     dev.screenshot("nameplate-picker")
-    log("nameplate", "picker reached; select an image manually or extend this step")
+    log("nameplate", "photo picker reached; select an image manually or extend this step")
 
 
 def _sha256(p: Path) -> str:
@@ -706,8 +784,8 @@ def main() -> int:
                          "you are checking the answer, not trusting it.")
     ap.add_argument("--nameplate", type=native_path, default=None)
     ap.add_argument("--notebook-name", default=None)
-    ap.add_argument("--manufacturer", default="Danfoss")
-    ap.add_argument("--model", default="FC 202")
+    ap.add_argument("--manufacturer", default="Danfoss", help="'' leaves it blank")
+    ap.add_argument("--model", default="FC 202", help="'' leaves it blank")
     ap.add_argument("--outdir", type=Path,
                     default=Path("docs/promo-screenshots/mobile-e2e"))
     ap.add_argument("--adb", default=os.environ.get(
@@ -741,7 +819,9 @@ def main() -> int:
         return 2
 
     stamp = time.strftime("%Y-%m-%d")
-    name = args.notebook_name or f"E2E {stamp} {args.manufacturer} {args.model}"
+    name = args.notebook_name or " ".join(
+        p for p in ("E2E", stamp, args.manufacturer, args.model) if p
+    )
 
     try:
         serial = pick_device(args.adb, args.allow_physical)

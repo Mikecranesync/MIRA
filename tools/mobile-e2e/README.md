@@ -8,8 +8,14 @@ export FLM_EMAIL='...' FLM_PASSWORD='...'
 bash tools/mobile-e2e/run.sh ~/Downloads/some-manual.pdf "When do I need to derate this drive" 117
 ```
 
-`run.sh` boots an emulator (cold, no snapshot), builds the debug APK if it is missing, then
-runs `journey.py`. Exit code 0 = the grounded chain verified; non-zero = a named failure.
+`run.sh` boots an emulator (cold, no snapshot), builds the staging-flavour debug APK
+(`com.factorylm.mira.staging`, which talks to app-staging) if it is missing, then runs
+`journey.py`. Exit code 0 = the grounded chain verified; non-zero = a named failure. It runs
+from Git Bash on Windows and from macOS/Linux (set `ANDROID_HOME`).
+
+The steps drive the **unified shell** the app renders (#4455): drawer → New project, "+" →
+File to attach the manual to the question, the `FILE manual.pdf p. N` source chip, and the
+citation sheet's "Open original at cited page N".
 
 ## Why it exists
 
@@ -86,14 +92,12 @@ Two traps, both hit for real on 2026-08-21:
    `timeout-minutes: 5`; against prod the later steps get cancelled while the grants and
    coverage steps have already printed.
 
-## Known defect this harness documents
+## Known defect this harness documented (classic screen)
 
-**P1 — "Photograph a component nameplate" opens the photo picker, not a camera.** It requests
-camera permission and then launches
-`com.google.android.photopicker/.PhotopickerGetContentActivity`, which has no capture
-affordance at all. A technician at a machine cannot photograph the nameplate in front of them.
-The `nameplate()` step logs this rather than hiding it. When the defect is fixed, that branch
-should start failing — which is the point.
+**P1 — "Photograph a component nameplate" opened the photo picker, not a camera.** That was
+the classic notebook screen. The unified shell's "+" menu lists **Photo** and **Camera** as
+separate entries; `nameplate()` now goes "+" → Photo (it feeds a pushed image), so it no longer
+observes this defect. Camera capture itself still needs real hardware and is not covered.
 
 ## Proving which backend the installed app talks to (`env-proof.mjs`)
 
@@ -160,10 +164,20 @@ future adb driver will hit:
 | `never appeared: 'Manufacturer'` | one-directional scroll overshoots; scroll to top first, then walk down |
 | `never appeared: 'Uploading'` | a small PDF finishes before the spinner is observable; never assert a transient state |
 | `cannot stat` a local path | `MSYS_NO_PATHCONV=1` (needed for device paths) also stops local-path conversion; normalize at the argument boundary |
+| `never appeared within 240s: 'Sign in'` | `monkey -c LAUNCHER` starts nothing on the API 35 emulator; `am start` the resolved launcher activity |
+| `sign-in did not complete` on a good login | the unified home shows no account name; wait for `Open navigation`, then read the account in the drawer |
+| `no citation chip matching 'p.3'` | the unified chip reads `p. 3` (with a space); parse the page number, which also stops `p.31` passing for `p.3` |
 
 ## Validated
 
 Full green run 2026-08-21 on `Medium_Phone_API_36.1` (4 GB) against production, no physical
 device: sign in -> notebook -> upload (sha256 verified) -> searchable -> cited answer citing
 the expected page -> citation sheet returning the verbatim passage -> nameplate honestly
-SKIPped. Exit 0.
+SKIPped. Exit 0. (Classic screens; superseded by the run below.)
+
+Unified-shell runs 2026-10-15 on AVD `mira35` (API 35) on CHARLIE (macOS) against **staging**
+(Hub `78bab6e98`), staging APK sha256 `6c08922c…`, a fresh stranger account, a fresh-sha copy
+of `tools/drive-pack-extract/fixtures/pf_sample.pdf` (C124 appears only on p.3): sign in ->
+drawer New project -> "+" File (sha256 verified) -> cited answer `FILE … p. 3` -> sheet
+`[1] … — p.3` with the verbatim passage -> original opened at p.3. Exit 0 via `journey.py`
+(207 s) and via `run.sh` (250 s).
