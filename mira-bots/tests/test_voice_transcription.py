@@ -511,3 +511,28 @@ async def test_unparseable_audio_is_refused_with_nothing_sent(fresh_budget, payl
 
     assert result is None
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_malformed_success_body_is_booked_exactly_once(fresh_budget):
+    """Cheap-lane r5 on #4451 asked whether a 200 with a non-JSON body books the
+    hold twice (settle, then the error path's worst case). It does not: a
+    reservation decides once and later calls are no-ops. Pinned here."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    bad = MagicMock()
+    bad.status_code = 200
+    bad.raise_for_status = MagicMock(return_value=None)
+    bad.json = MagicMock(side_effect=ValueError("not json"))
+    calls: list = []
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "1"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, bad, calls)
+            result = await transcribe_voice(SIXTY_SECONDS_OF_BYTES)
+        budget = fresh_budget()
+        assert result is None and len(calls) == 1
+        assert budget.spent_usd == pytest.approx(0.006, abs=1e-5)
+        assert budget.calls == 1
+        assert budget.held_usd == pytest.approx(0.0)
