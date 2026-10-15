@@ -120,6 +120,13 @@ def test_env_can_choose_other_allowed_models(monkeypatch):
         ("OPENROUTER_MODEL", "openrouter/free"),
         ("OPENROUTER_VISION_MODEL", "anthropic/claude-haiku-4.5"),
         ("OPENROUTER_VISION_MODEL", "openrouter/auto-beta"),
+        # Presets (Codex r1 F1 on #4436): a preset picks its model remotely and
+        # can be changed to Claude without any local change, so no preset
+        # reference is accepted, alone or combined with a model id.
+        ("OPENROUTER_MODEL", "@preset/backup"),
+        ("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct@preset/backup"),
+        ("OPENROUTER_VISION_MODEL", "@preset/vision"),
+        ("OPENROUTER_VISION_MODEL", "qwen/qwen3-vl-30b-a3b-instruct@preset/vision"),
     ],
 )
 def test_a_claude_or_auto_routed_model_drops_the_provider(monkeypatch, caplog, var, model):

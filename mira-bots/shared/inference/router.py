@@ -69,10 +69,13 @@ def _openrouter_model_refused(model: str) -> bool:
 
     Anthropic is banned from this cascade (PR #610). OpenRouter serves it as
     ``anthropic/...``, through ``~anthropic/...-latest`` aliases, and through its
-    ``openrouter/...`` auto-routers, which pick a model per request.
+    ``openrouter/...`` auto-routers, which pick a model per request. A preset
+    reference (``@preset/x``, alone or as ``model@preset/x``) is refused too: the
+    preset chooses its models remotely and can be switched to Claude without any
+    change here (Codex r1 F1 on #4436).
     """
     m = model.strip().lower()
-    return "anthropic" in m or "claude" in m or m.startswith("openrouter/")
+    return "anthropic" in m or "claude" in m or m.startswith("openrouter/") or "@" in m
 
 
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"

@@ -64,10 +64,13 @@ export const OPENROUTER_ROUTING = { data_collection: "deny", zdr: true } as cons
  * True for a model OpenRouter could serve as Claude. Anthropic is banned from
  * this cascade (PR #610); OpenRouter serves it as `anthropic/...`, through
  * `~anthropic/...-latest` aliases, and through its `openrouter/...` auto-routers.
+ * A preset reference (`@preset/x`, alone or as `model@preset/x`) is refused too:
+ * the preset chooses its models remotely and can be switched to Claude without
+ * any change here (Codex r1 F1 on #4436).
  */
 export function openRouterModelRefused(model: string): boolean {
   const m = model.trim().toLowerCase();
-  return m.includes("anthropic") || m.includes("claude") || m.startsWith("openrouter/");
+  return m.includes("anthropic") || m.includes("claude") || m.startsWith("openrouter/") || m.includes("@");
 }
 
 /**

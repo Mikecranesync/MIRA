@@ -56,6 +56,9 @@ const REFUSED = [
   "~anthropic/claude-sonnet-latest",
   "openrouter/auto",
   "openrouter/free",
+  // Presets (Codex r1 F1 on #4436): selected remotely, so never accepted.
+  "@preset/backup",
+  "meta-llama/llama-3.3-70b-instruct@preset/backup",
 ];
 
 describe("canonical cascade — OpenRouter backup tier", () => {
@@ -184,9 +187,9 @@ describe("lib/llm/cascade — OpenRouter backs up OpenAI", () => {
     });
   });
 
-  it("a refused model leaves OpenRouter out of the classifier cascade too", async () => {
+  it.each(["anthropic/claude-haiku-4.5", "@preset/backup"])("a refused model (%s) leaves OpenRouter out of the classifier cascade too", async (model) => {
     process.env.OPENROUTER_API_KEY = "kr";
-    process.env.OPENROUTER_MODEL = "anthropic/claude-haiku-4.5";
+    process.env.OPENROUTER_MODEL = model;
     process.env.GROQ_API_KEY = "k1";
     vi.spyOn(console, "error").mockImplementation(() => {});
     const calls = stubFetch();
