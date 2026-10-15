@@ -300,7 +300,7 @@ function whatHappensNext(): string {
     <li class="fl-step">
       <div class="fl-step-marker">${stateBadge("indexed", "Grounded AI")}</div>
       <h3 class="fl-step-h">MIRA on the floor</h3>
-      <p class="fl-step-body">Telegram, Slack, web. Every answer cites your manuals, your fault history, your assets. No hallucinations because the namespace exists.</p>
+      <p class="fl-step-body">Telegram, Slack, web. When the answer comes from your manuals, MIRA shows the manual and the page, so your tech can check it.</p>
     </li>
   </ol>
   <p style="text-align:center; margin-top: var(--fl-sp-6); color: var(--fl-muted-600); font-size: var(--fl-type-base);">
