@@ -1,6 +1,7 @@
 """MIRA Inference Router — Multi-provider LLM cascade.
 
-Cascade order: OpenAI → Groq → Cerebras → Together → (caller falls back to Open WebUI).
+Cascade order: OpenAI → OpenRouter → Groq → Cerebras → Together → (caller falls back
+to Open WebUI).
 
 Each provider is tried in sequence. On any failure (rate limit, billing,
 timeout, service error), the next provider is attempted. The caller
@@ -8,8 +9,8 @@ timeout, service error), the next provider is attempted. The caller
 providers failed" and falls through to the local Open WebUI/Ollama path.
 
 Provider enablement is key-based: if OPENAI_API_KEY is set, OpenAI leads the
-cascade; same for GROQ_API_KEY, CEREBRAS_API_KEY and TOGETHERAI_API_KEY. Order
-is fixed. OpenAI's gpt-5 family speaks a slightly different dialect
+cascade; same for OPENROUTER_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY and
+TOGETHERAI_API_KEY. Order is fixed. OpenAI's gpt-5 family speaks a slightly different dialect
 (`max_completion_tokens`, no `temperature`, `reasoning_effort`) — see
 `_Provider.request_style` / `_request_payload()`.
 
