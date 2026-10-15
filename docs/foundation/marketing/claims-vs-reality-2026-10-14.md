@@ -186,7 +186,7 @@ Each of these must be proven on prod, not just merged.
 
 ## Appendix A: live-site evidence for claim 22 (GET-only, Oct 14, 2026, ~8 PM ET)
 
-Each page was fetched with `curl -sL` (HTTP 200), its tags were stripped, and the exact phrase in the middle column was searched for. Every phrase was found on the page listed. The source column is the file in this repo (`origin/main` at `47bc07d66`) that renders it.
+Each page was fetched with `curl -sL` (HTTP 200), its tags were stripped and its whitespace collapsed, and the exact quoted phrase(s) in the middle column were searched for on the page(s) listed. All 21 phrase/page pairs were found verbatim on a re-check at ~9 PM ET. The two rows marked "…but" are code facts, not site text, and their evidence is the source column. The source column is the file in this repo (`origin/main` at `47bc07d66`) that renders it.
 
 | Claim on the live site | Exact phrase found | Page | Source |
 |---|---|---|---|
@@ -204,7 +204,7 @@ Each page was fetched with `curl -sL` (HTTP 200), its tags were stripped, and th
 | …but the app stores passwords | bcrypt hash compare; "Sign in with password" on app.factorylm.com/login | app.factorylm.com/login | `mira-hub/src/auth.ts:55-56` |
 | Safety escalation | "trigger an immediate escalation to your designated safety contact" | factorylm.com/security, /limitations | `mira-web/src/views/security.ts:227,333`; `mira-web/src/views/limitations.ts:158` |
 | …but no code routes to a safety contact | no match for `safety contact` / `escalat… to` in `mira-hub/src`, `mira-bots/shared`, `mira-pipeline` | — | `git grep` on `origin/main` |
-| Slack and Telegram | "Telegram" | factorylm.com/, /cmms, /pricing, /limitations | `mira-web/src/views/cmms.ts:303` |
-| Team plan price | "Team plan" ($497/mo) | factorylm.com/trust | `mira-web/public/trust.html:238` |
+| Slack and Telegram | "Telegram, Slack, web" (and `"operatingSystem":"Web, Telegram, Slack"` in the home page's structured data) | factorylm.com/cmms, factorylm.com/ | `mira-web/src/views/cmms.ts:303`; `mira-web/src/views/home.ts:56` |
+| Team plan price | "Team plan" and "$497" | factorylm.com/trust | `mira-web/public/trust.html:238` |
 | No PLC streaming (limits page) | "No PLC tag streaming" | factorylm.com/limitations | `mira-web/src/views/limitations.ts:161` |
 
