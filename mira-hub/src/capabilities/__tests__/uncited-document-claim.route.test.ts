@@ -116,7 +116,6 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async () => {
 import {
   POST,
   UNCITED_OEM_CLAIM_TEXT,
-  answerUsesEarlierPhoto,
   answerUsesStoredNameplateReading,
   isUncitedDocumentClaim,
 } from "@/app/api/equipment-notebooks/[id]/chat/route";
@@ -444,15 +443,20 @@ describe("#4426 — an uncited manufacturer-library answer abstains deterministi
       expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
     });
 
-    it("control: an answer that uses the earlier photo (attributed, and naming what it showed) still ships", async () => {
+    // Strict (#4450 option a): an earlier photo never exempts the floor, however the
+    // answer refers to it. Three Codex rounds each found a new phrasing that slipped
+    // through a "does the answer use the photo" heuristic; the cost of strict is a
+    // false abstain here, on a library turn that retrieved passages and cited none.
+    it("strict: even an answer that uses the earlier photo abstains when it cites none of the retrieved passages", async () => {
       earlierPhotoInThread();
       const FROM_PHOTO = "From your earlier photo (an unconfirmed reading), the drive is showing fault F004, an undervoltage trip.";
       const r = await ask(FROM_PHOTO, { message: "what was the fault on it", mode: "general" });
       expect(ragMock.retrieveManualChunks).toHaveBeenCalled();
       expect(priorSectionReachedProvider()).toBe(true);
-      expect(r.status).toBe("answered");
-      expect(r.content).toBe(FROM_PHOTO);
-      expect(r.persisted?.answerStatus).toBe("answered");
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.citations).toEqual([]);
+      expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+      expect(r.persisted?.answerStatus).toBe("insufficient_evidence");
     });
 
     it("control: a photo attached THIS turn still exempts the answer it was asked with", async () => {
@@ -528,100 +532,6 @@ describe("isUncitedDocumentClaim — the decision itself", () => {
     // A longer number is not the stored reading.
     expect(answerUsesStoredNameplateReading("The photographed nameplate says 240 V.", readings)).toBe(false);
     expect(answerUsesStoredNameplateReading("The photographed nameplate shows 24 V.", [])).toBe(false);
-  });
-
-  it("an earlier photo exempts only an answer that attributes to it AND names what it showed (#4442)", () => {
-    const obs = ["Drive keypad showing fault F004 (undervoltage); nameplate reads GS10-20P2."];
-    // Attributed + its identifier.
-    expect(answerUsesEarlierPhoto("Your earlier photo shows fault F004 on the keypad.", obs)).toBe(true);
-    // A photo that carries identifiers is used only when the answer repeats one:
-    // naming the same kind of equipment is not enough (cheap-lane r2 on #4450).
-    expect(answerUsesEarlierPhoto("From your earlier photo, the drive has two Ethernet ports and a USB port.", obs)).toBe(false);
-    expect(answerUsesEarlierPhoto("That is an unconfirmed reading of an earlier photo: the drive has tripped.", obs)).toBe(false);
-    // A photo with no identifiers: its equipment is the distinctive content, in
-    // the prompt's own wording.
-    const plain = ["Contactor coil with burn marks and discoloured terminals."];
-    expect(answerUsesEarlierPhoto("That is an unconfirmed reading of an earlier photo: the contactor coil looks burned.", plain)).toBe(true);
-    expect(answerUsesEarlierPhoto("From your earlier photo, the drive has two Ethernet ports.", plain)).toBe(false);
-    expect(answerUsesEarlierPhoto("In the photo you sent earlier the drive keypad shows GS10-20P2.", obs)).toBe(true);
-    // Content without the attribution is an ordinary uncited claim.
-    expect(answerUsesEarlierPhoto("Fault F004 on this drive means undervoltage.", obs)).toBe(false);
-    // Attribution with nothing from the photo: a passing mention, then an unrelated claim.
-    expect(
-      answerUsesEarlierPhoto("Unlike your earlier photo, the TP700 has a 7-inch touch display with Ethernet ports.", obs),
-    ).toBe(false);
-    // No earlier observation, nothing to use.
-    expect(answerUsesEarlierPhoto("Your earlier photo shows fault F004.", [])).toBe(false);
-  });
-
-  it("recognises the ways a model actually refers back to an earlier photo (conversation review, #4450)", () => {
-    const obs = ["Drive keypad showing fault F004 (undervoltage); nameplate reads GS10-20P2."];
-    for (const answer of [
-      "From the photo earlier, the keypad shows fault F004.",
-      "In the picture you showed me before, the fault code was F004.",
-      "As shown in the image you sent previously, the drive is a GS10-20P2.",
-      "You showed me a photo earlier of the drive keypad with F004 on it.",
-      "That matches what I saw in the photo before: F004.",
-      "Referring to the photo from earlier in our conversation, the drive has tripped on F004.",
-      "The photo you sent a few minutes ago shows F004.",
-    ]) {
-      expect(answerUsesEarlierPhoto(answer, obs), answer).toBe(true);
-    }
-    // Asking for a NEW photo is not attribution to an earlier one, even when the
-    // answer names the earlier photo's equipment.
-    for (const answer of [
-      "Take a photo before you reset the drive, then check F004 in the manual.",
-      // Codex r1 F1 on #4450: the definite article is still a request.
-      "Take the photo before you reset the drive, then check F004 in the manual.",
-      "Please retake that picture before you power down, and look up F004.",
-      "Send a photo of the drive keypad if F004 comes back.",
-      "Once you have a picture of the drive nameplate, I can confirm the model.",
-      "Once you have sent a photo of the nameplate, I can confirm GS10-20P2.",
-      "If you sent a photo of the keypad, F004 would show on it.",
-    ]) {
-      expect(answerUsesEarlierPhoto(answer, obs), answer).toBe(false);
-    }
-  });
-
-  it("counts only a sentence that STATES what the earlier photo showed (Codex r2 F4, #4450)", () => {
-    const obs = ["Drive keypad showing fault F004 (undervoltage); nameplate reads GS10-20P2."];
-    for (const answer of [
-      // Codex's case: an instruction to inspect the photo, naming its code.
-      "The TP700 Comfort has a 7-inch widescreen touch display with Ethernet and USB ports. Check your earlier photo to see whether F004 is visible.",
-      "Look at your earlier photo to confirm F004 is on the keypad.",
-      "Compare the F004 reading in your earlier photo with the manual table.",
-      "Please double-check the earlier photo for GS10-20P2.",
-      // Questions about it.
-      "Does your earlier photo show F004?",
-      "Your earlier photo showed F004, right?",
-      "Can you check the earlier photo for F004",
-      // Conditionals.
-      "If your earlier photo shows F004, the drive tripped on undervoltage.",
-      "It depends on whether your earlier photo shows F004.",
-      // The reference and the code in different sentences.
-      "Your earlier photo is blurry. F004 on a TP700 means a backlight fault.",
-    ]) {
-      expect(answerUsesEarlierPhoto(answer, obs), answer).toBe(false);
-    }
-    // A statement of what it showed, even after an unrelated sentence, still counts.
-    expect(
-      answerUsesEarlierPhoto("The TP700 has a 7-inch display. Your earlier photo shows F004 on the drive keypad.", obs),
-    ).toBe(true);
-  });
-
-  it("repeats an identifier only as a whole token, not inside a longer one (Codex r1 F2, #4450)", () => {
-    const obs = ["Drive keypad showing fault F004 (undervoltage); nameplate reads GS10-20P2."];
-    for (const answer of [
-      "Unlike your earlier photo, the GS10-20P20 has two Ethernet ports and a USB port.",
-      "Your earlier photo isn't the F0041 overcurrent code; that one needs a new IGBT module.",
-      "Your earlier photo aside, the GS10-20P2-EX variant has a USB port.",
-    ]) {
-      expect(answerUsesEarlierPhoto(answer, obs), answer).toBe(false);
-    }
-    // Exact tokens, including next to punctuation, still count.
-    expect(answerUsesEarlierPhoto("Your earlier photo shows fault (F004).", obs)).toBe(true);
-    expect(answerUsesEarlierPhoto("Your earlier photo shows a GS10-20P2, faulted.", obs)).toBe(true);
-    expect(answerUsesEarlierPhoto("your earlier photo shows f004", obs)).toBe(true);
   });
 
   it("the message names the library that was searched and the way forward", () => {
