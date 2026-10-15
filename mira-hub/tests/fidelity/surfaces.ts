@@ -48,7 +48,10 @@ export const UI: Record<Surface, Ui> = {
   },
   // Unified shell: app/v3 → factorylm-ui/hub-host.tsx (+ to-interaction.ts)
   clone: {
-    url: `/hub/v3/?notebook=${NB}`,
+    // `thread=legacy`: the classic page shows the notebook's shared (thread-less)
+    // conversation, so the clone must open that same one. A bare `?notebook=`
+    // now opens a fresh chat (#4444), which is a different conversation.
+    url: `/hub/v3/?notebook=${NB}&thread=legacy`,
     composer: (p) => p.getByRole("textbox", { name: "Ask MIRA" }),
     ready: (p) => p.getByText(/Answers cite 1 selected source/),
     settled: async (p) => {
