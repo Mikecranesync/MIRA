@@ -61,7 +61,7 @@ Statuses:
 | 19 | It doesn't connect to PLCs, read work-order history, or create work orders | one-pager L30–32; POS L122 | **SAFE** | These are honest limits (KD A1; POS L45, L48). |
 | 20 | Answers in seconds | post-1 rewrite note L43 ("seconds") | **CAVEAT** | About 7 s on the server, about 10 s on a phone, and about 25 s with a photo (PL C25). **Use:** "in seconds" for text only, never "instantly." |
 | 21 | A US founder on your floor (Central Florida in person, remote anywhere); published flat price | POS L18, L73, L117 | **SAFE** (founder) / **NOT YET** (price) | The founder part is a business fact. The price isn't published consistently yet (#12). |
-| 22 | Website: CMMS write-back, PLC tags, 68,000+ chunks, F005 example, "no hallucinations", "every answer cites", voice→RCA, 480 V photo detection, Slack/Telegram, Atlas, Enterprise/SSO | factorylm.com (POS L44–60; KD A1) | **NOT YET: remove** | All confirmed live on Oct 14 by GET-only reads. The evidence is the exact quoted sentence and URL for each claim in PR #4433's accuracy-check comment (`issuecomment-6180865532`), and the repo source file and line in **#4434**. Re-run that phrase list against the live pages before relying on this row later. Also live: a false safety-escalation promise (claim 17), "no passwords stored", and provider lists that contradict each other (claim 18). The "68,000+" figure may actually be true: a June count found 83,553 library rows. It needs a fresh count, not removal. The fix is #4434 (P0) plus owner item M15. **It's live today, and it's the biggest exposure**, because any prospect we warm up will read it. |
+| 22 | Website: CMMS write-back, PLC tags, 68,000+ chunks, F005 example, "no hallucinations", "every answer cites", voice→RCA, 480 V photo detection, Slack/Telegram, Atlas, Enterprise/SSO | factorylm.com (POS L44–60; KD A1) | **NOT YET: remove** | All confirmed live on Oct 14 by GET-only reads. Each quote, its page and its source file are listed in **Appendix A** below (also #4434). Re-run that phrase list against the live pages before relying on this row later. Also live: a false safety-escalation promise (claim 17), "no passwords stored", and provider lists that contradict each other (claim 18). The "68,000+" figure may actually be true: a June count found 83,553 library rows. It needs a fresh count, not removal. The fix is #4434 (P0) plus owner item M15. **It's live today, and it's the biggest exposure**, because any prospect we warm up will read it. |
 | 23 | Drive Commander G120 page: 8 faults, 5 with cited detail | market-analysis L13 | **SAFE** (as a static page) | It's a public page, not the chat product. Don't present it as live chat. |
 | 24 | Forum replies (no product mention) | drafts/forum-2026-10-12, -10-19 | **SAFE** | No product claims. Every citation was read from saved OEM PDFs. |
 | 25 | Problem-only posts (2 a.m. PDF hunt, retiring tech, where manuals live), Plant Engineering abstract, Breakdown Stories | drafts | **SAFE** | The only product line is in linkedin-2am L16, and it's the CAVEAT wording from claim 1. The retiring-tech post's "Line 2 drive / jumper" detail is illustrative (marked). |
@@ -181,3 +181,30 @@ Each of these must be proven on prod, not just merged.
 6. Pilot account plus price (M6, C03, C17). This unlocks the "$500 pilot."
 7. Add to home screen or a store track (#4376, M11). This unlocks "on your phone" and "the app."
 8. OCR (C06). This unlocks "any manual / scanned."
+
+---
+
+## Appendix A: live-site evidence for claim 22 (GET-only, Oct 14, 2026, ~8 PM ET)
+
+Each page was fetched with `curl -sL` (HTTP 200), its tags were stripped, and the exact phrase in the middle column was searched for. Every phrase was found on the page listed. The source column is the file in this repo (`origin/main` at `47bc07d66`) that renders it.
+
+| Claim on the live site | Exact phrase found | Page | Source |
+|---|---|---|---|
+| No hallucinations | "No hallucinations" | factorylm.com/cmms | `mira-web/src/views/cmms.ts:303`; `mira-web/src/lib/feature-renderer.ts:62,122` |
+| Corpus size | "68,000+ chunks of OEM documentation indexed" | factorylm.com/ | `mira-web/src/views/home.ts:582`; `mira-web/public/llms.txt:7` |
+| F005 example | "Why is the Powerflex 755 tripping F005 at 1,200 RPM?" | factorylm.com/, /cmms | `mira-web/src/views/home.ts:163` |
+| Automatic CMMS write-back | "writes work orders into it automatically" | factorylm.com/pricing | `mira-web/public/pricing.html:503` |
+| …contradicted on the same site | "There are no automated write-backs" | factorylm.com/security | `mira-web/src/views/security.ts:231` |
+| Photo hazard detection | "MIRA detected 480 V on a 240 V branch via the photo" | factorylm.com/ | `mira-web/src/views/home.ts:219` |
+| Voice to RCA | "Senior tech's voice notes become structured RCA records" | factorylm.com/ | `mira-web/src/views/home.ts:194` |
+| Every answer cites | "Every answer cites its source" | factorylm.com/security | `mira-web/src/views/security.ts:334` |
+| AI providers (list 1) | "Groq, Cerebras, and Gemini" | factorylm.com/security | `mira-web/src/views/security.ts:197,332` |
+| AI providers (list 2) | "Anthropic (Claude API)" | factorylm.com/trust | `mira-web/public/trust.html:163`; `mira-web/public/privacy.html:158` |
+| No passwords | "no passwords stored" / "no passwords to steal" | factorylm.com/trust, /security | `mira-web/public/trust.html:235`; `mira-web/src/views/security.ts:207-208` |
+| …but the app stores passwords | bcrypt hash compare; "Sign in with password" on app.factorylm.com/login | app.factorylm.com/login | `mira-hub/src/auth.ts:55-56` |
+| Safety escalation | "trigger an immediate escalation to your designated safety contact" | factorylm.com/security, /limitations | `mira-web/src/views/security.ts:227,333`; `mira-web/src/views/limitations.ts:158` |
+| …but no code routes to a safety contact | no match for `safety contact` / `escalat… to` in `mira-hub/src`, `mira-bots/shared`, `mira-pipeline` | — | `git grep` on `origin/main` |
+| Slack and Telegram | "Telegram" | factorylm.com/, /cmms, /pricing, /limitations | `mira-web/src/views/cmms.ts:303` |
+| Team plan price | "Team plan" ($497/mo) | factorylm.com/trust | `mira-web/public/trust.html:238` |
+| No PLC streaming (limits page) | "No PLC tag streaming" | factorylm.com/limitations | `mira-web/src/views/limitations.ts:161` |
+
