@@ -43,37 +43,60 @@ class _Result:
 
 
 class _FakeDevice:
-    """Records every adb call; never touches a real device."""
+    """Records every adb call; never touches a real device.
 
-    def __init__(self, serial: str) -> None:
+    `installed` lists the packages `pm path` reports, as a real phone would.
+    """
+
+    def __init__(self, serial: str, installed: tuple[str, ...] = ()) -> None:
         self.serial = serial
+        self.installed = installed
         self.calls: list[list[str]] = []
 
     def _run(self, args: list[str], **_kw) -> _Result:
         self.calls.append(list(args))
+        if args[:3] == ["shell", "pm", "path"]:
+            pkg = args[3]
+            return _Result(f"package:/data/app/{pkg}-1/base.apk\n" if pkg in self.installed else "")
         return _Result()
 
     def shell(self, *args: str) -> str:
-        self.calls.append(["shell", *args])
-        return ""
+        return (self._run(["shell", *args]).stdout or "").strip()
 
     def uninstalled(self) -> bool:
         return any(c and c[0] == "uninstall" for c in self.calls)
 
+    def installed_apk(self) -> bool:
+        return any(c and c[0] == "install" for c in self.calls)
+
+    def only_queried(self) -> bool:
+        # Nothing but read-only `pm path` lookups reached the phone.
+        return all(c[:3] == ["shell", "pm", "path"] for c in self.calls)
+
 
 def test_physical_device_is_never_uninstalled_by_default(monkeypatch, tmp_path):
     journey = _load(monkeypatch)
-    dev = _FakeDevice("55081JEBF07026")
+    dev = _FakeDevice("55081JEBF07026", installed=("com.factorylm.mira",))
     with pytest.raises(journey.Fail, match="physical"):
         journey.install(dev, tmp_path / "app.apk")
     assert not dev.uninstalled()
-    # Nothing at all was sent to the phone.
-    assert dev.calls == []
+    assert not dev.installed_apk()
+    assert dev.only_queried()
+
+
+def test_physical_device_without_the_app_installs_without_uninstalling(monkeypatch, tmp_path):
+    # Cheap-lane finding on #4458: a phone that does not have the app has no account to
+    # lose, so --allow-physical alone must still install it, and never uninstall.
+    journey = _load(monkeypatch)
+    dev = _FakeDevice("55081JEBF07026", installed=("com.factorylm.mira.staging",))
+    journey.install(dev, tmp_path / "app.apk")
+    assert dev.installed_apk()
+    assert not dev.uninstalled()
 
 
 def test_physical_device_uninstall_only_with_explicit_opt_in(monkeypatch, tmp_path):
     journey = _load(monkeypatch)
-    dev = _FakeDevice("55081JEBF07026")
+    dev = _FakeDevice("55081JEBF07026", installed=("com.factorylm.mira",))
     journey.install(dev, tmp_path / "app.apk", reinstall_physical=True)
     assert dev.uninstalled()
 

@@ -477,13 +477,18 @@ def install(dev: Device, apk: Path, *, reinstall_physical: bool = False) -> None
     # INSTALL_FAILED_UPDATE_INCOMPATIBLE. Uninstall first: a fresh install is also the
     # more honest starting state, since it re-exercises the permission grant.
     # On a REAL phone that uninstall signs the owner out of a real account (#4455), so
-    # it needs its own explicit opt-in on top of --allow-physical.
+    # it needs its own explicit opt-in on top of --allow-physical. A phone without the
+    # app has nothing to lose: install it, still without an uninstall. If `pm path`
+    # were wrong, a plain install replaces in place (same cert keeps the login) or
+    # fails on a cert mismatch -- neither path signs anyone out.
     if not dev.serial.startswith("emulator-") and not reinstall_physical:
-        raise Fail(
-            f"refusing to uninstall {PKG} on physical device {dev.serial}: it signs the "
-            "owner out of a real account. Pass --reinstall-physical if that is intended."
-        )
-    dev._run(["uninstall", PKG])
+        if "package:" in dev.shell("pm", "path", PKG):
+            raise Fail(
+                f"refusing to uninstall {PKG} on physical device {dev.serial}: it signs the "
+                "owner out of a real account. Pass --reinstall-physical if that is intended."
+            )
+    else:
+        dev._run(["uninstall", PKG])
     r = dev._run(["install", str(apk)])
     if "Success" not in (r.stdout or "") + (r.stderr or ""):
         raise Fail(f"install failed: {r.stdout} {r.stderr}")
