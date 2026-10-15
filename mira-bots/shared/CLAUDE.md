@@ -64,7 +64,7 @@ normalization before RAG retrieval.
 
 `InferenceRouter` — multi-provider LLM cascade with automatic failover.
 
-- Cascade order: OpenAI → Groq → Cerebras → Together → (caller falls back to Open WebUI). OpenAI leads since 2026-10-11 (owner directive; Groq billing-restricted, Together out of credit) — `gpt-5.4-mini`, metered.
+- Cascade order: OpenAI → OpenRouter → Groq → Cerebras → Together → (caller falls back to Open WebUI). OpenAI leads since 2026-10-11 (owner directive; Groq billing-restricted, Together out of credit) — `gpt-5.4-mini`, metered. OpenRouter is the backup tier since 2026-10-14: `meta-llama/llama-3.3-70b-instruct` text + `qwen/qwen3-vl-30b-a3b-instruct` vision, every request sends `provider: {data_collection: deny, zdr: true}`, and an Anthropic/Claude or `openrouter/*` auto-router model id drops the provider (`OPENROUTER_MODEL_REFUSED`). Metered; the OpenRouter key's own credit limit is its spend stop.
 - Enabled when `INFERENCE_BACKEND=cloud` AND at least one provider API key is set
 - Provider enablement is key-based: `OPENAI_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHERAI_API_KEY` (Anthropic removed PR #610)
 - All providers use the OpenAI-compatible chat-completions API; OpenAI's gpt-5 family needs the `openai_reasoning` request style (`max_completion_tokens`, no `temperature`, `reasoning_effort`) — `_Provider.request_style` / `_request_payload()`

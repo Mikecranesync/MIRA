@@ -57,6 +57,7 @@ interface CascadeProvider {
   /** Request dialect + body extras — see requestDialectFields (Codex F1 on #4349). */
   requestStyle?: CanonicalProvider["requestStyle"];
   extra?: CanonicalProvider["extra"];
+  providerRouting?: CanonicalProvider["providerRouting"];
 }
 
 function getProviders(): CascadeProvider[] {
@@ -70,6 +71,7 @@ function getProviders(): CascadeProvider[] {
     model: p.model,
     requestStyle: p.requestStyle,
     extra: p.extra,
+    providerRouting: p.providerRouting,
   }));
 }
 
