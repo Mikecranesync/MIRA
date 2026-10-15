@@ -224,7 +224,7 @@ function featureStrip(): string {
   );
   return `<section class="fl-section fl-feature-strip" aria-labelledby="fl-feature-h">
   <h2 id="fl-feature-h" class="fl-section-h">Built for the floor.</h2>
-  <p class="fl-section-sub">Every document gets a state. Every safety signal gets a stop.</p>
+  <p class="fl-section-sub">Every document gets a state. Every safety signal gets a warning.</p>
   <div class="fl-feature-grid">
     <div class="fl-state-row" role="group" aria-label="Document states">
       ${stateBadge("indexed")}
@@ -276,7 +276,7 @@ function buyerFit(): string {
   const notList = [
     "Teams with no manual or document access to structure",
     "Buyers looking for a standalone CMMS replacement",
-    "Anyone expecting autonomous safety decisions — MIRA escalates, it doesn't act",
+    "Anyone expecting a safety system — MIRA flags hazards with a warning; follow your site procedures and qualified people",
   ];
   const li = (items: string[]) => items.map((i) => `<li>${i}</li>`).join("\n      ");
   return `<section class="fl-section" aria-labelledby="fl-fit-h">

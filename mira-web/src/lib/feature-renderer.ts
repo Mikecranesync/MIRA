@@ -55,7 +55,7 @@ export const FEATURES: Record<string, Feature> = {
     title: "Fault Diagnosis | FactoryLM",
     tagline: ["Answers in seconds,", "not hours"],
     lede:
-      "Mira knows your equipment. Send a fault code, describe a symptom, or upload a photo — and get a cited, actionable answer straight from your specific OEM documentation and field history.",
+      "Mira knows your equipment. Send a fault code, describe a symptom, or upload a photo — and get an actionable answer from your specific OEM documentation, with the manual and page when the answer comes from it.",
     longBody: [
       "Every minute of VFD or PLC downtime costs money. The average maintenance technician wastes 20–40 minutes per fault code searching through PDFs, forum posts, and manufacturer websites — and the answer is still a guess.",
       "Mira closes that gap to seconds. Paste a fault code into chat. Mira pulls the matching section from your PowerFlex, GS20, ACS880, or Siemens manual, ranks the candidates by confidence, and returns a root cause plus the exact corrective action — with a page-level citation you can verify.",
@@ -114,7 +114,7 @@ export const FEATURES: Record<string, Feature> = {
       {
         label: "SPEED",
         title: "Under one second to first token",
-        body: "Mira responds before you finish typing. The average fault code goes from input to cited answer in under four seconds end-to-end.",
+        body: "Text answers typically arrive in seconds, so the manual page comes to you instead of you hunting for it.",
       },
       {
         label: "TRUTH",
