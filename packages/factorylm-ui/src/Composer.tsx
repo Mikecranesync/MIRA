@@ -131,7 +131,12 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
 
   const send = () => {
     const text = state.draft.trim();
-    if (!canSend) return;
+    // While an answer is in flight the Send button is replaced by Stop, but
+    // Enter in the field still lands here. A host ignores a send while busy and
+    // returns normally, which below reads as "sent" and clears the draft and
+    // chips -- the technician's next question vanished unsent (#4443). Keep
+    // both until the answer finishes, the same as the disabled button.
+    if (!canSend || hooks?.busy) return;
     if (hooks?.onSend) {
       try {
         const sent = visiblePending;

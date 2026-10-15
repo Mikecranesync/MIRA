@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { getFixture } from "@factorylm/interaction";
+import { act } from "react";
 import { fakeAdapter, renderHarness, type HarnessView } from "./harness";
 
 const views: HarnessView[] = [];
@@ -257,5 +258,47 @@ describe("universal composer", () => {
     expect(busy.buttonNamed("Send")).toBeNull();
     view.click(busy.buttonNamed("Stop") ?? new Error("Stop is required") as never);
     expect(calls).toContain("stop");
+  });
+
+  // #4443: while an answer streams the Send button is replaced by Stop, but
+  // Enter in the field still reached send(). The host ignores a send while
+  // busy and returns normally, so the composer cleared the draft as if it had
+  // gone out -- the technician's next question vanished with nothing sent.
+  it("keeps the next question and its attachment when Enter is pressed while MIRA is answering", async () => {
+    const enter = (target: HTMLTextAreaElement) => act(() => {
+      target.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    });
+    for (const surface of ["hub", "mobile"] as const) {
+      const calls: string[] = [];
+      const adapter = fakeAdapter({
+        photo: { id: "file-busy-photo", name: "fault-screen.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      });
+      const hooks = { onSend: (text: string) => calls.push(`send:${text}`), onStop: () => calls.push("stop"), busy: true };
+      const view = render({ surface, fixture: "grounded-answer", adapter, hooks });
+      const { textarea } = composer(view);
+      view.click(view.buttonNamed("Add attachment") ?? new Error("Add attachment is required") as never);
+      view.click(view.buttonNamed("Photo") ?? new Error("Photo is required") as never);
+      await view.flush();
+      view.type(textarea, "what does fault F004 mean");
+      // Precondition: the busy state really is showing (Stop, not Send).
+      expect(view.buttonNamed("Stop")).not.toBeNull();
+      expect(view.buttonNamed("Send")).toBeNull();
+
+      enter(textarea);
+      await view.flush();
+
+      expect(calls).toEqual([]);
+      expect(view.outputs().draft).toBe("what does fault F004 mean");
+      expect(view.container.querySelector('[aria-label="Pending attachments"]')?.textContent).toContain("fault-screen.jpg");
+    }
+
+    // Control: the same Enter when MIRA is idle does send.
+    const calls: string[] = [];
+    const idle = render({ surface: "hub", fixture: "grounded-answer", hooks: { onSend: (text: string) => calls.push(`send:${text}`), busy: false } });
+    const { textarea } = composer(idle);
+    idle.type(textarea, "what does fault F004 mean");
+    enter(textarea);
+    expect(calls).toEqual(["send:what does fault F004 mean"]);
+    expect(idle.outputs().draft).toBe("");
   });
 });
