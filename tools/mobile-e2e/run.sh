@@ -12,9 +12,14 @@ PDF="${1:?usage: run.sh <manual.pdf> <question-without-questionmark> [expected-p
 QUESTION="${2:?question required}"
 EXPECT_PAGE="${3:-}"
 
-SDK="${ANDROID_SDK_ROOT:-$HOME/AppData/Local/Android/Sdk}"
-ADB="$SDK/platform-tools/adb.exe"
-EMULATOR="$SDK/emulator/emulator.exe"
+SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/AppData/Local/Android/Sdk}}"
+# Git Bash on Windows ships adb.exe / emulator.exe; macOS and Linux ship them bare.
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) EXE=".exe" ;; *) EXE="" ;; esac
+ADB="$SDK/platform-tools/adb$EXE"
+EMULATOR="$SDK/emulator/emulator$EXE"
+# The staging flavour (#3938) talks to app-staging and installs beside the
+# production app, so the journey never touches a real account (#4455).
+export MIRA_PKG="${MIRA_PKG:-com.factorylm.mira.staging}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MOBILE="$REPO_ROOT/mira-mobile"
 
@@ -42,9 +47,9 @@ else
 fi
 
 # --------------------------------------------------------------- 2. apk
-APK="$MOBILE/android/app/build/outputs/apk/debug/app-debug.apk"
+APK="$MOBILE/android/app/build/outputs/apk/staging/debug/app-staging-debug.apk"
 if [ ! -f "$APK" ]; then
-  echo "==> building debug APK"
+  echo "==> building staging debug APK"
   ( cd "$MOBILE"
     # bun-installed deps break `npx cap`; call the CLI directly.
     node node_modules/@capacitor/cli/bin/capacitor sync android
@@ -52,13 +57,14 @@ if [ ! -f "$APK" ]; then
     # local.properties MUST use forward slashes -- backslashes are Java-properties
     # escapes and the resulting error impersonates a long-path failure.
     [ -f local.properties ] || echo "sdk.dir=${SDK//\\//}" > local.properties
-    ./gradlew --no-daemon assembleDebug )
+    ./gradlew --no-daemon assembleStagingDebug )
 fi
 [ -f "$APK" ] || { echo "APK not found after build: $APK" >&2; exit 1; }
 
 # --------------------------------------------------------------- 3. journey
-ARGS=(--apk "$APK" --pdf "$PDF" --question "$QUESTION")
+ARGS=(--apk "$APK" --pdf "$PDF" --question "$QUESTION" --adb "$ADB")
 [ -n "$EXPECT_PAGE" ] && ARGS+=(--expect-page "$EXPECT_PAGE")
 
+PY="$(command -v python3 || command -v python)"
 echo "==> replaying journey"
-exec python "$REPO_ROOT/tools/mobile-e2e/journey.py" "${ARGS[@]}"
+exec "$PY" "$REPO_ROOT/tools/mobile-e2e/journey.py" "${ARGS[@]}"
