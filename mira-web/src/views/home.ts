@@ -245,7 +245,7 @@ function howItWorks(): string {
     { n: "2", h: "Bind manuals to assets", b: "OEM manuals, wiring diagrams, and datasheets indexed and attached to the asset they serve." },
     { n: "3", h: "Map fault history, CMMS &amp; PLC tags", b: "Work-order history and PLC tag names reconciled to the right asset — the IT/OT gap, closed." },
     { n: "4", h: "Ask MIRA", b: "A technician asks a fault-code or troubleshooting question in Slack, Telegram, or the web." },
-    { n: "5", h: "MIRA cites the source", b: "Every answer points to the manual section, fault-history entry, or PLC tag that grounds it." },
+    { n: "5", h: "MIRA cites the source", b: "When the answer comes from a manual, MIRA points to the manual and the page that grounds it." },
     { n: "6", h: "Draft PMs &amp; work orders", b: "Validated answers become PM suggestions and work-order drafts — synced to your CMMS." },
   ];
   const cards = steps

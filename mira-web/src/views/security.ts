@@ -235,8 +235,8 @@ const AI_SAFETY: SecurityItem[] = [
     body: "The provider cascade (Groq → Cerebras → Gemini) is configured in code, not learned. Every LLM call logs the provider used, token count, and latency to structured logs.",
   },
   {
-    lead: "Source citations are required on every diagnostic answer.",
-    body: "MIRA's RAG pipeline must cite the source chunk (OEM manual section, fault history entry) that grounds each claim. Uncited speculative answers are blocked at the guardrail layer.",
+    lead: "Answers from your documents show their source.",
+    body: "When an answer comes from an OEM manual or a document you uploaded, MIRA shows the document and page it used. Not every answer has a document behind it, so check the citation before you act.",
   },
 ];
 

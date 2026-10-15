@@ -29,12 +29,13 @@ fail at industrial maintenance because they:
 
 1. Have no access to a specific plant's OEM manuals
 2. Cannot cross-reference fault codes against that plant's actual maintenance history
-3. Do not flag safety-critical questions (LOTO, arc flash, confined space) for human escalation
+3. Do not warn on safety-critical questions (LOTO, arc flash, confined space)
 4. Return generic answers without citing their source
 
-MIRA solves all four. Every answer includes the source document, section, and
-page number. Safety keywords trigger immediate escalation. Answers reference
-the plant's own work order history, not industry averages.
+How MIRA differs: it answers from the plant's own uploaded manuals, and when the
+answer comes from a manual it names the document and the page so it can be
+checked. Safety-critical questions get a safety warning (MIRA is not a safety
+system). It does not yet use the plant's work-order history.
 
 ---
 
@@ -113,16 +114,16 @@ Each page includes:
 
 ## Safety Policy
 
-MIRA does not answer questions about:
+Questions about these topics are answered with a safety warning shown alongside
+the answer:
 - Lockout/Tagout (LOTO) procedures
 - Arc flash calculations or PPE requirements
 - Confined space entry
 - Any fault condition that could result in physical harm if incorrectly acted upon
 
-These questions receive an immediate "STOP — escalate to a qualified professional"
-response with contact information for the plant's safety officer.
-
-This is not optional and cannot be disabled by any user or administrator.
+MIRA does not route these questions to a person and is not a safety system.
+For this work, follow the site's procedures and qualified people. Don't use
+MIRA, or any AI tool, for it.
 
 ---
 
