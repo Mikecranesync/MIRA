@@ -50,9 +50,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      # deepeval is pinned to the version the committed judge evidence
+      # (mira-bots/benchmarks/judge_evidence/) was seeded with: every stored
+      # verdict is keyed on it, and an unpinned install re-judged 97 of 114
+      # verdicts live the morning 4.2.9 shipped (#4375). Bumping this pin means
+      # re-seeding that evidence at the new version in the same PR.
       - name: Install dependencies
         run: |
-          pip install httpx deepeval>=1.0.0
+          pip install httpx "deepeval==4.2.8"
 
       - name: Run DeepEval suite (offline)
         if: github.actor != 'dependabot[bot]'
