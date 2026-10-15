@@ -566,6 +566,60 @@ export function refusalVerdict(
   return !(ctx.docGrounded && isCitedPartialAnswer(answer, ctx.citations));
 }
 
+/**
+ * #4426 — the deterministic floor under `refusalVerdict`, for the shared
+ * manufacturer library. An identity-bound OEM search that retrieved passages,
+ * followed by an answer that cites NONE of them (no `[n]`, or only `[n]` that
+ * resolve to nothing), is an uncited documentation claim. The server records
+ * it as `insufficient_evidence` instead of trusting the model's wording to
+ * decline: retrieval acceptance scenario 2 showed the same six chunks and the
+ * same prompt producing an honest decline on two runs and an uncited
+ * "answered" on two others (2026-10-14). This extends #4004/#4010, which made
+ * the zero-passage case of the same search abstain.
+ *
+ * Exempt: a turn also grounded by something other than documents (a machine
+ * reading or a photo), and a safety-flagged turn. A flag never blocks an
+ * answer (owner decision 2026-09-27); Gate G exempts it the same way.
+ * Notebook-source turns are out of scope: whether an unmatched attached source
+ * should decline or answer from general knowledge is still open (#4255, F004
+ * #4303). Exported for tests.
+ */
+export function isUncitedDocumentClaim(
+  answer: string,
+  ctx: { oemGrounded: boolean; citations: EvidenceCitation[]; exempt: boolean },
+): boolean {
+  if (!ctx.oemGrounded || ctx.exempt) return false;
+  return citationsUsedInAnswer(answer, ctx.citations).length === 0;
+}
+
+/** #4426: the bound machine's stored nameplate readings exempt the floor above only
+ *  when the answer affirmatively uses one — it attributes to "the photographed
+ *  nameplate" (the visual-evidence section's own prose-attribution rule) AND repeats
+ *  a reading from it (a digit-bearing token such as "24" or "6AV2124-0GC01-0AX0").
+ *  A passing mention ("check the nameplate") or a statement that the nameplate
+ *  lacks the answer exempts nothing. Exported for unit testing. */
+export function answerUsesStoredNameplateReading(answer: string, readings: readonly string[]): boolean {
+  if (!/\bphotographed nameplate\b/i.test(answer)) return false;
+  const upper = answer.toUpperCase();
+  return readings.some((text) =>
+    text.split(/[\s,;:()]+/).some((raw) => {
+      const tok = raw.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "").toUpperCase();
+      if (tok.length < 2 || !/\d/.test(tok)) return false;
+      for (let i = upper.indexOf(tok); i !== -1; i = upper.indexOf(tok, i + 1)) {
+        const before = i === 0 ? "" : upper[i - 1];
+        const after = upper[i + tok.length] ?? "";
+        if (!/[A-Z0-9]/.test(before) && !/[0-9]/.test(after)) return true;
+      }
+      return false;
+    }),
+  );
+}
+
+/** The fixed, server-written text that replaces an uncited manufacturer-library
+ *  claim (#4426). Same voice as the zero-passage library abstain (#4004). */
+export const UNCITED_OEM_CLAIM_TEXT =
+  "I couldn't find that in the manufacturer documentation I have, so I won't guess. Upload the manual for this equipment (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.";
+
 /** Assemble the provider messages: system prompt, then the sanitized
  *  conversation history (so a follow-up has memory of the thread), then the
  *  current user turn carrying the fresh grounding excerpts. Prior turns are plain
@@ -2859,12 +2913,14 @@ async function handleChatTurn(
   // bound, return no visual evidence"). Own try/catch: a ledger read failure
   // never drops the document/machine context already built.
   let visualSection = "";
+  let visualReadings: string[] = [];
   if (boundAsset.state === "resolved" && !identityDisputed) {
     try {
       const visualRows = await withTenantContext(ctx.tenantId, (c) =>
         loadVisualEvidenceForAsset(c, ctx.tenantId, boundAsset.entityId),
       );
       visualSection = renderVisualEvidenceSection(visualRows);
+      if (visualSection) visualReadings = visualRows.map((r) => r.text);
     } catch (err) {
       console.error(
         `[notebook-chat] visual evidence load failed code=${(err as { code?: string }).code ?? "?"} ` +
@@ -3720,7 +3776,33 @@ async function handleChatTurn(
       // shipped source is not a refusal just because it also states a
       // limitation. `isRefusal` itself is unchanged (the observability mirror
       // below still reports the raw phrase match).
-      const refused = served && refusalVerdict(answerText, { docGrounded, citations });
+      const refusedByText = served && refusalVerdict(answerText, { docGrounded, citations });
+      // #4426 deterministic floor: a manufacturer-library answer that cites none
+      // of the retrieved passages is not left to the model's wording. Under the
+      // gate nothing has been released yet, so the uncited draft is replaced
+      // before a byte of it reaches the technician; gate off stays legacy.
+      const uncitedDocumentClaim =
+        gate &&
+        served &&
+        !refusedByText &&
+        isUncitedDocumentClaim(answerText, {
+          oemGrounded: oemRetrieval && docGrounded,
+          citations,
+          // `visualSection` is every stored nameplate reading for the bound machine
+          // (not this turn's evidence), so it exempts only an answer that uses one
+          // (answerUsesStoredNameplateReading). Presence alone would switch this
+          // floor off for every later library question on a once-photographed machine.
+          exempt:
+            Boolean(groundedMachineEntry) ||
+            Boolean(lookContext) ||
+            (Boolean(visualSection) && answerUsesStoredNameplateReading(answerText, visualReadings)) ||
+            Boolean(safetyTrigger),
+        });
+      if (uncitedDocumentClaim) {
+        console.warn(`[notebook-chat] uncited manufacturer-library claim withheld (#4426): ${answerText.length} chars, ${citations.length} citations available`);
+        answerText = UNCITED_OEM_CLAIM_TEXT;
+      }
+      const refused = refusedByText || uncitedDocumentClaim;
       // SECOND BRACKET GUARD (the prompt is the first). A general answer has no
       // sources, so any [n] the model emitted anyway points at nothing and would
       // render as a citation chip in mira-mobile. Strip the markers rather than
@@ -3915,7 +3997,9 @@ async function handleChatTurn(
               ? "internal_error"
               : "provider_exhausted"
             : refused
-              ? "refusal_regex"
+              ? uncitedDocumentClaim
+                ? "uncited_document_claim"
+                : "refusal_regex"
               : "served";
         const gateDecision: "answered" | "insufficient_evidence" | "blocked" | "error" = outputRejected
           ? "blocked"
