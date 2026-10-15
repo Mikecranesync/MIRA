@@ -67,11 +67,11 @@ Enterprise (multi-plant, SOC 2, SSO): contact mike@factorylm.com
 ## How MIRA Works
 
 1. A technician uploads OEM manuals (PDF) to their asset workspace.
-2. MIRA's OCR + chunking pipeline indexes the document into 68,000+ searchable chunks.
+2. MIRA indexes the document's text into searchable chunks (text PDFs; scanned pages are viewable but not yet searchable).
 3. When the technician asks a maintenance question (via web chat, Telegram, or Slack), MIRA retrieves the relevant chunks using semantic search.
-4. MIRA generates a cited answer, naming the document, section, and page for every claim.
-5. Safety-critical questions (arc flash, LOTO, confined space, etc.) are intercepted and escalated to the plant's designated safety contact — no AI answer is given.
-6. Answers appear in under 3 seconds on average.
+4. When the answer comes from the technician's manuals, MIRA names the document and the page so it can be checked.
+5. Safety-critical questions (arc flash, LOTO, confined space, etc.) are answered with a safety warning. MIRA is not a safety system: follow the site's procedures for that work.
+6. Text answers typically arrive in seconds.
 
 ---
 
