@@ -177,7 +177,12 @@ def judge_providers() -> list[JudgeProvider]:
     return [p for p in ordered if os.environ.get(p.api_key_env, "").strip()]
 
 
-JUDGE_MAX_TOKENS = 1024
+# 2048 (was 1024): on gpt-5.4-mini a reasoning model spends this cap on hidden
+# reasoning first, and a long metric prompt (the corrected de-in-01 megger
+# reference, #4375) came back with EMPTY content at 1024 on every attempt and a
+# full verdict at 2048. Not part of the evidence key, so stored verdicts stay
+# valid; it only bounds new judge calls and their worst-case cost estimate.
+JUDGE_MAX_TOKENS = 2048
 
 
 # ---------------------------------------------------------------------------
@@ -555,11 +560,11 @@ def judge_request_body(provider: JudgeProvider, prompt: str) -> dict[str, object
         body.pop("temperature")
         body["max_completion_tokens"] = body.pop("max_tokens")
         # Same calibration as gpt-oss below (#3190): medium effort with
-        # 1024-token headroom keeps schema JSON complete AND judges well.
+        # JUDGE_MAX_TOKENS of headroom keeps schema JSON complete AND judges well.
         body["reasoning_effort"] = "medium"
         return body
     # gpt-oss spends completion tokens on reasoning; medium effort with
-    # 1024-token headroom keeps schema JSON complete AND judges well.
+    # JUDGE_MAX_TOKENS of headroom keeps schema JSON complete AND judges well.
     if "gpt-oss" in provider.model:
         body["reasoning_effort"] = "medium"
     return body
@@ -1056,7 +1061,7 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "How do I megger test a 3-phase motor?",
-                "reference": "Here are the steps to megger test a 3-phase motor:\n1. De-energize, lock out and tag out the motor, and verify zero voltage at the motor terminals.\n2. Wear PPE rated for the circuit voltage and use insulated test leads.\n3. Disconnect all three phase leads at the terminal box so the drive or starter is isolated from the test voltage.\n4. Set the megger to 500V DC for motors rated under 1 kV (500-1000V DC for 1-2.5 kV motors, per IEEE 43).\n5. Test each winding to ground: L1-Ground, L2-Ground, L3-Ground.\n6. Test winding-to-winding: L1-L2, L2-L3, L1-L3.\n7. Record the 1-minute reading. For a Polarization Index, also record the 10-minute reading: PI = 10-minute / 1-minute reading (2.0 or higher is healthy).\n8. Minimum acceptable: the old rule of 1 MΩ per kV of rating + 1 MΩ (about 1.5 MΩ for a 460V motor) is the absolute floor; IEEE 43 recommends at least 5 MΩ for most motors under 1 kV. A reading below 1 MΩ indicates moisture or insulation failure — do not energize.\n9. Discharge each winding to ground after testing before you handle the leads.",
+                "reference": "Here are the steps to megger test a 3-phase motor:\n1. Put on PPE rated for the circuit voltage and its arc flash hazard before you test anything.\n2. De-energize, lock out and tag out the motor, then verify zero voltage at the motor terminals live-dead-live with a rated voltage tester (check the tester on a known live source before and after).\n3. Disconnect all three phase leads at the terminal box so the drive or starter is isolated from the test voltage.\n4. Set the megger to 500V DC for motors rated under 1 kV (500-1000V DC for 1-2.5 kV motors, per IEEE 43).\n5. Using insulated test leads, test each winding to ground: L1-Ground, L2-Ground, L3-Ground.\n6. Test winding-to-winding: L1-L2, L2-L3, L1-L3.\n7. Record the 1-minute reading. For a Polarization Index, also record the 10-minute reading: PI = 10-minute / 1-minute reading (2.0 or higher is healthy).\n8. Minimum acceptable: the old rule of 1 MΩ per kV of rating + 1 MΩ (about 1.5 MΩ for a 460V motor) is the absolute floor; IEEE 43 recommends at least 5 MΩ for most motors under 1 kV. A reading below 1 MΩ indicates moisture or insulation failure — do not energize.\n9. Discharge each winding to ground after testing before you handle the leads.",
             },
         ],
         context=[
@@ -1086,7 +1091,7 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "How do I do a LOTO procedure on a 480V motor starter?",
-                "reference": "LOTO (Lockout/Tagout) on a 480V motor starter, following your site's written procedure (OSHA 1910.147):\n1. Notify affected personnel that the equipment is being shut down and locked out.\n2. Identify every energy source: the 480V feed, any separate control power (120V/24V), possible backfeeds, stored energy such as capacitors, and mechanical energy such as a coasting load.\n3. Press STOP at the motor control station.\n4. Open the main disconnect or breaker that feeds the starter, wearing the arc-rated PPE your site's arc flash label calls for (NFPA 70E).\n5. Apply your personal lock to the disconnect handle and attach a danger tag with your name and date.\n6. Isolate and lock out the other sources you identified, including separate control power.\n7. Release stored energy: let capacitors discharge (or discharge them) and let moving parts come to rest.\n8. Verify zero energy: try to start the motor, then test live-dead-live with a CAT III or IV voltmeter — check the meter on a known live source, test the starter's line and load terminals phase-to-phase and phase-to-ground, then re-check the meter on the live source.\n9. Perform your work.\n10. When finished, clear tools and people from the area. Each person removes only their own lock and tag.",
+                "reference": "LOTO (Lockout/Tagout) on a 480V motor starter, following your site's written procedure (OSHA 1910.147):\n1. Notify affected personnel that the equipment is being shut down and locked out.\n2. Identify every energy source: the 480V feed, any separate control power (120V/24V), possible backfeeds, stored energy such as capacitors, and mechanical energy such as a coasting load.\n3. Press STOP at the motor control station.\n4. Open the main disconnect or breaker that feeds the starter, wearing the arc-rated PPE your site's arc flash label calls for (NFPA 70E).\n5. Apply your personal lock to the disconnect handle and attach a danger tag with your name and date.\n6. Isolate and lock out the other sources you identified, including separate control power.\n7. Release stored energy: let capacitors discharge (or discharge them) and let moving parts come to rest.\n8. Verify zero energy, still wearing that PPE: try to start the motor, then test live-dead-live with a CAT III or IV voltmeter — check the meter on a known live source, test the starter's line and load terminals phase-to-phase and phase-to-ground, then re-check the meter on the live source.\n9. Perform your work.\n10. When finished, clear tools and people from the area. Each person removes only their own lock and tag.",
             },
         ],
         context=[
@@ -1101,7 +1106,7 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "what should I do first when a machine trips?",
-                "reference": "When a machine trips, follow this sequence:\n1. DO NOT restart immediately — find out why it tripped first.\n2. Note any alarm lights, codes, or HMI messages — these are your first clues.\n3. Check the area for safety hazards before approaching the machine.\n4. Before you reach in, open a guard or clear a jam, lock out and tag out the machine and verify zero energy. Wear the PPE the area requires.\n5. Check for obvious causes: is something jammed, overloaded, or overheated?\n6. Check the fault history on the drive or controller — most modern drives keep a log of recent faults.\n7. If it's a thermal overload trip, let the motor cool before resetting, following the overload or motor manufacturer's reset guidance.\n8. Reset only after you've identified and corrected the root cause.\n9. Log the event — date, time, fault code, what you found. This catches patterns before they become breakdowns.",
+                "reference": "When a machine trips, follow this sequence:\n1. DO NOT restart immediately — find out why it tripped first.\n2. Note any alarm lights, codes, or HMI messages — these are your first clues.\n3. Check the area for safety hazards before approaching the machine.\n4. Before you reach in, open a guard or clear a jam, put on the PPE the area requires, then lock out and tag out the machine and verify zero energy.\n5. Check for obvious causes: is something jammed, overloaded, or overheated?\n6. Check the fault history on the drive or controller — most modern drives keep a log of recent faults.\n7. If it's a thermal overload trip, let the motor cool before resetting, following the overload or motor manufacturer's reset guidance.\n8. Reset only after you've identified and corrected the root cause.\n9. Log the event — date, time, fault code, what you found. This catches patterns before they become breakdowns.",
             },
         ],
         context=[
