@@ -1,6 +1,8 @@
 # What we can say vs. what MIRA does today (claims audit)
 *Oct 14, 2026, ~7:15 PM ET. Acting CMO's audit for Mike Harper. This is a read-only review: no drafts were edited, nothing was posted or sent, and prod wasn't touched. I didn't test anything live. All evidence comes from workspace files and the MIRA repo (read-only).*
 
+*Scope of the later additions:* the Oct 14 ~8:30 PM corrections and Appendix A were added afterwards by Claude (CHARLIE). They use the repo, GitHub, and **GET-only reads of the public pages** (factorylm.com and the app login page): no sign-in, no form submitted, nothing written. That is the only live access behind this document.
+
 **Evidence keys used below**
 - **PL** = `/workspace/punchlist/MIRA-customer-punch-list.md` (Oct 11, prod `ef0780ee`)
 - **KD** = `/workspace/mira-known-defects-2026-10-11.md`
