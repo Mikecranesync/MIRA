@@ -32,6 +32,8 @@ type Run = {
   offsite: string[];
   /** Clone only: data-turn-id of the live and the hydrated assistant turn. */
   turnIds: { live: string | null; hydrated: string | null };
+  /** Clone only (#4454): follow-up chips on the live turn, and after the in-page refetch swaps in the persisted row. */
+  followups: { live: string[]; settled: string[] } | null;
 };
 const SURFACES: Surface[] = ["reference", "clone"];
 const SCENARIOS: Scenario[] = ["G", "S"];
@@ -61,7 +63,22 @@ async function drive(browser: Browser, baseURL: string, surface: Surface, scenar
     if (process.env.FIDELITY_SHOTS) await page.screenshot({ path: path.join(process.env.FIDELITY_SHOTS, `${surface}-${scenario}-live.png`) });
 
     // Reload (step 7): let the held post-turn detail GETs through first.
+    const chips = '[data-part-type="followups"] button';
+    const liveFollowups = surface === "clone" ? await liveTurn.locator(chips).allInnerTexts() : null;
     cap.release();
+    // Settle (#4454): the clone swaps its streamed turn for the persisted row in
+    // place, and that row never carries follow-ups. What shows after the swap is
+    // what the technician keeps until the next send, so read it before reloading.
+    // Wait for the live turn to LEAVE, not for the row to appear: the row renders
+    // beside the live turn while the host still awaits the notebook list.
+    let followups: Run["followups"] = null;
+    if (surface === "clone") {
+      const turnSel = '.fl-turn--aui[data-role="assistant"]';
+      await page.locator(`${turnSel}[data-turn-id^="live-"]`).waitFor({ state: "detached", timeout: 30_000 });
+      const swapped = page.locator(`${turnSel}[data-turn-id="turn-${scenario}-a"]`);
+      await swapped.waitFor({ timeout: 30_000 });
+      followups = { live: liveFollowups!, settled: await swapped.locator(chips).allInnerTexts() };
+    }
     await page.goto(ui.url);
     const hydratedTurn = await ui.settled(page);
     const hydrated = await extractTurn(surface, hydratedTurn);
@@ -83,7 +100,7 @@ async function drive(browser: Browser, baseURL: string, surface: Surface, scenar
     }
     return {
       request: cap.chatBodies[0] ?? null, chatPosts: cap.chatBodies.length, live, hydrated, opened,
-      unrecognized: [...cap.unrecognized], offsite, turnIds: { live: liveId, hydrated: hydratedId },
+      unrecognized: [...cap.unrecognized], offsite, turnIds: { live: liveId, hydrated: hydratedId }, followups,
     };
   } finally {
     await context.close();
@@ -193,6 +210,14 @@ test("citation inspectable: opens the cited doc + page (AC5)", () => {
   for (const s of SURFACES) {
     expect.soft(runs[s].G.opened, `${s} opened ${DOC}`).toEqual({ fileId: FILE, page: "87", fetched: true });
   }
+});
+
+// #4454: on staging the chips showed while /v3 streamed and were gone ~1–3 s
+// after it finished. G streams one suggestion; S streams none (the control).
+test("settle: follow-ups survive the post-turn refetch (clone, #4454)", () => {
+  expect(runs.clone.G.followups?.live, "precondition: G's stream shows its follow-up").toEqual(["How do I clear fault F004?"]);
+  expect.soft(runs.clone.G.followups?.settled, "G after the swap").toEqual(["How do I clear fault F004?"]);
+  expect.soft(runs.clone.S.followups, "S streams none").toEqual({ live: [], settled: [] });
 });
 
 for (const sc of SCENARIOS) {
