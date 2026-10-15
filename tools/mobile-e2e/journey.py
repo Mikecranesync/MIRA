@@ -633,9 +633,14 @@ def upload_pdf(dev: Device, pdf: Path) -> None:
             raise Fail(f"{pdf.name} is not listed in the file picker")
         time.sleep(2)
     dev.tap(*row.center)
-    dev.wait_for("Pending attachments", timeout=60)
-    if dev.find(pdf.name, exact=True) is None:
-        raise Fail(f"picked {pdf.name}, but it is not attached to the message")
+    # The attachment chip: its name plus a "Remove <name>" button. (The list's own
+    # "Pending attachments" label is in the emulator's accessibility tree but not the
+    # Pixel 9a's, so it cannot be the signal.)
+    try:
+        dev.wait_for(f"Remove {pdf.name}", timeout=60)
+    except Fail:
+        dev.screenshot("attach-missing")
+        raise Fail(f"picked {pdf.name}, but it is not attached to the message") from None
     dev.screenshot("source-attached")
     log("upload", "attached to the next message")
 

@@ -196,9 +196,13 @@ class FakePhone:
                     )
                 n.append(("Copy", "Button", (42, 1519, 160, 1637), True, None))
         if self.pending:
+            # The Pixel's WebView does not expose the list's "Pending attachments" label;
+            # the chip's name and its Remove button show on both devices.
+            if not self.pixel:
+                n.append(("Pending attachments", "ListView", (28, 1986, 1052, 2115), False, None))
             n += [
-                ("Pending attachments", "ListView", (28, 1986, 1052, 2115), False, None),
                 (self.pending, "TextView", (175, 2031, 401, 2070), False, None),
+                (f"Remove {self.pending}", "Button", (438, 1991, 1052, 2112), True, None),
             ]
         n += [
             ("Add attachment", "Button", (52, 2157, 170, 2275), True, ("menu",)),
@@ -377,6 +381,17 @@ def test_create_project_fills_identity_when_given(rig):
     journey, phone, dev = rig(start="home")
     journey.create_notebook(dev, "E2E 2026-10-15", "Allen-Bradley", "PowerFlex 525")
     assert phone.created == {"mfr": "Allen-Bradley", "model": "PowerFlex 525"}
+
+
+def test_upload_confirms_the_attachment_on_a_pixel(rig, tmp_path):
+    # Found on the Pixel 9a: the file attached (chip + "Remove <name>" shown), but the
+    # wait for the list's "Pending attachments" label timed out -- that label is not in
+    # the Pixel WebView's accessibility tree.
+    journey, phone, dev = rig(start="home", pixel=True)
+    pdf = tmp_path / PDF
+    pdf.write_bytes(b"%PDF-1.4 fixture")
+    journey.upload_pdf(dev, pdf)
+    assert phone.pending == PDF
 
 
 def test_upload_attaches_the_pdf_through_the_file_picker(rig, tmp_path):
