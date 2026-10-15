@@ -11,13 +11,13 @@ routes or this harness, and fails if the committed oracle is stale.
 |---|---|
 | AC1 files/deps | harness only under `mira-hub/tests/fidelity/**`; 0 `package.json`/lockfile changes |
 | AC2 declared network | 0 unrecognized `/api` requests, 0 off-site browser requests (4 surface×scenario runs); proved red by deleting the `/api/auth/session` handler |
-| AC3 request | G and S: normalized chat body equal (allowlist: `clientRequestId`, `threadId`) |
+| AC3 request | G and S: normalized chat body equal; `clientRequestId` a distinct v4 UUID per send; `threadId` absent on classic, `null` on the clone |
 | AC4 rendered turn | G and S equal (after the safety-order fix, see Finding) |
 | AC5 citation | both surfaces point the viewer at file `5555…` page 87 **and** fetch it |
 | AC6 live ≡ hydrated | equal on both surfaces, G and S |
 | AC7 determinism | 3/3 control runs → identical records, sha256 `e15564fb…a486d9` |
 | AC8 seeded defects | M1–M4 each turn exactly their predicted checks red (table below) |
-| AC9 no false alarms | unchanged clone → 10/10 green on 3/3 runs |
+| AC9 no false alarms | unchanged clone → 11/11 green on 3/3 runs |
 | AC10 cost/data | $0 inference (all browser traffic routed to the oracle), synthetic ids only |
 
 ### Finding (fixed) — safety notice order differed
@@ -73,15 +73,22 @@ Hub default suite with the fix: `npx vitest run` → 382 files passed / 4 skippe
 
 | Id | Mutation (clone code only) | Predicted red | Result |
 |---|---|---|---|
-| control | none | — | 10 passed / 0 red — EXACT |
-| M1 | drop source parts in both mappers (`to-interaction.ts`) | rendered turn: grounded answer; citation inspectable | 8 / 2 — EXACT |
-| M2 | suppress every `safetyNoticePart` push (`to-interaction.ts`) | safety notice present; safety notice first ¹ | 8 / 2 — EXACT |
-| M3 | persisted mapper drops `basisPart` (`to-interaction.ts`) | live ≡ hydrated: G; live ≡ hydrated: S | 8 / 2 — EXACT |
-| M4 | `chatBodyFor` omits `sourceDocIds` (`hub-host-logic.ts`) | request: G; request: S | 8 / 2 — EXACT |
-| M5 | `safetyFirst` returns parts unchanged (the pre-fix order) | safety notice first | 9 / 1 — EXACT |
+| control | none | — | 11 passed / 0 red — EXACT |
+| M1 | drop source parts in both mappers (`to-interaction.ts`) | rendered turn: grounded answer; citation inspectable | 9 / 2 — EXACT |
+| M2 | suppress every `safetyNoticePart` push (`to-interaction.ts`) | safety notice present; safety notice first ¹ | 9 / 2 — EXACT |
+| M3 | persisted mapper drops `basisPart` (`to-interaction.ts`) | live ≡ hydrated: G; live ≡ hydrated: S | 9 / 2 — EXACT |
+| M4 | `chatBodyFor` omits `sourceDocIds` (`hub-host-logic.ts`) | request: G; request: S | 9 / 2 — EXACT |
+| M5 | `safetyFirst` returns parts unchanged (the pre-fix order) | safety notice first | 10 / 1 — EXACT |
+| M6 ² | BOTH surfaces put the notice after the answer (clone + classic `NotebookChat.tsx`) | safety notice first | 10 / 1 — EXACT |
+| M7 ² | shared `buildChatBody` reuses one fixed `clientRequestId` | clientRequestId is unique per send | 10 / 1 — EXACT |
+| M8 ² | `chatBodyFor` omits `threadId` (`hub-host-logic.ts`) | request: G; request: S | 9 / 2 — EXACT |
 
 ¹ M2 was first predicted as "present" only and came back MISMATCH: an absent notice is not first either.
 The cascade had been masked while "first" was a standing red. Prediction corrected, then re-run EXACT.
+² Added for Codex review #4441 round 1 (F1, F2). Each was first run against the old checks and came back
+MISMATCH with 10/10 green — parity-only "first", syntax-only `clientRequestId`, and a `threadId` rule that
+allowed absence on the clone. M6/M7 touch the reference or a shared module on purpose: they prove the checks
+that must hold absolutely cannot pass when both surfaces regress together.
 
 M1 also reddens AC5 by construction (no citation left to open). Named first-red test
 `rendered turn: grounded answer` fails under M1 as the PRD requires.

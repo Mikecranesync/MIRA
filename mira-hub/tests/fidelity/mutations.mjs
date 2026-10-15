@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /**
  * AC8 seeded-defect proof (ADR-0038, #4439): mutate the CLONE's code (never
- * the fixture, never a module both surfaces share), run the harness, and
- * check that exactly the predicted checks turn red. Every mutated file is
+ * the fixture), run the harness, and check that exactly the predicted checks
+ * turn red. M6/M7 deliberately also touch the reference or a module both
+ * surfaces share: they prove the checks that must hold ABSOLUTELY (not just as
+ * parity) cannot pass when both surfaces regress together. Every mutated file is
  * restored with `git checkout` on every exit path.
  *
  *   node tests/fidelity/mutations.mjs            # control + M1..M4
@@ -16,6 +18,12 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const TI = "src/factorylm-ui/to-interaction.ts";
 const LOGIC = "src/factorylm-ui/hub-host-logic.ts";
+const CLASSIC = "src/components/equipment/NotebookChat.tsx";
+const SHARED_UTILS = "src/components/equipment/notebook-chat-utils.ts";
+const ANSWER_BODY = `      <div className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }} data-testid="answer-body">
+        <AnswerMarkdown content={turn.content} citations={cites} onCite={onCite} />
+      </div>
+`;
 const BASELINE = [];
 
 const MUTATIONS = {
@@ -59,6 +67,35 @@ const MUTATIONS = {
       replace: "  return parts;", count: 1,
     }],
     red: ["rendered turn: safety notice first (AC4, S)"],
+  },
+  // Codex #4441 F1: both surfaces regress to answer-then-notice together.
+  M6: {
+    what: "BOTH surfaces put the safety notice after the answer",
+    edits: [
+      {
+        file: TI,
+        find: '  return [...parts.filter((p) => p.type === "safety_notice"), ...parts.filter((p) => p.type !== "safety_notice")];',
+        replace: "  return parts;", count: 1,
+      },
+      { file: CLASSIC, find: ANSWER_BODY, replace: "", count: 1 },
+      { file: CLASSIC, find: '    <div className="w-full">\n', replace: `    <div className="w-full">\n${ANSWER_BODY}`, count: 1 },
+    ],
+    red: ["rendered turn: safety notice first (AC4, S)"],
+  },
+  // Codex #4441 F2: one constant idempotency key on every send (shared builder).
+  M7: {
+    what: "every send reuses one fixed clientRequestId",
+    edits: [{
+      file: SHARED_UTILS, find: "  clientRequestId = crypto.randomUUID(),",
+      replace: '  clientRequestId = "00000000-0000-4000-8000-000000000000",', count: 1,
+    }],
+    red: ["request: clientRequestId is unique per send (AC3)"],
+  },
+  // Codex #4441 F2: the clone stops sending threadId.
+  M8: {
+    what: "clone omits threadId from the chat request",
+    edits: [{ file: LOGIC, find: "    threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId,\n", replace: "", count: 1 }],
+    red: ["request: G — normalized chat body equal (AC3)", "request: S — normalized chat body equal (AC3)"],
   },
 };
 

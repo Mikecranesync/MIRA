@@ -140,12 +140,18 @@ for (const sc of SCENARIOS) {
     expect(clone, "clone sent a chat request").not.toBeNull();
     for (const [k, rule] of Object.entries(REQUEST_ALLOWLIST)) {
       for (const [s, b] of [["reference", ref], ["clone", clone]] as const) {
-        expect(rule.valid(b![k], k in b!), `${s}.${k} (${rule.reason})`).toBe(true);
+        expect(rule.valid(b![k], k in b!, s), `${s}.${k} (${rule.reason})`).toBe(true);
       }
     }
     expect(normalizeRequest(clone)).toEqual(normalizeRequest(ref));
   });
 }
+
+test("request: clientRequestId is unique per send (AC3)", () => {
+  const ids = SURFACES.flatMap((s) => SCENARIOS.map((sc) => runs[s][sc].request?.clientRequestId));
+  expect(ids.every((id) => typeof id === "string"), "every send carries a clientRequestId").toBe(true);
+  expect(new Set(ids).size, `distinct ids across ${ids.length} sends`).toBe(ids.length);
+});
 
 test("rendered turn: grounded answer (AC4, G)", () => {
   const ref = runs.reference.G.live;
@@ -165,8 +171,12 @@ test("rendered turn: safety notice present (AC4, S)", () => {
   expect(withoutOrder(runs.clone.S.live)).toEqual(withoutOrder(ref));
 });
 
+// Absolute, not just parity: a regression on BOTH surfaces must still fail (Codex #4441 F1).
 test("rendered turn: safety notice first (AC4, S)", () => {
-  expect(runs.clone.S.live.safety.first).toBe(runs.reference.S.live.safety.first);
+  for (const s of SURFACES) {
+    expect.soft(runs[s].S.live.safety.first, `${s} live`).toBe(true);
+    expect.soft(runs[s].S.hydrated.safety.first, `${s} hydrated`).toBe(true);
+  }
 });
 
 test("citation inspectable: opens the cited doc + page (AC5)", () => {
