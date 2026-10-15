@@ -43,7 +43,10 @@ async function signUp(page: Page, base: string): Promise<string> {
   await page.goto(`${base}/signup/`);
   await page.locator("#signup-email").fill(`strangerwalk-${RUN_ID.toLowerCase()}@factorylm.com`);
   await page.locator("#signup-password").fill(`Sw!${crypto.randomUUID()}Aa1`);
+  const register = page.waitForResponse((r) => /\/api\/auth\/register\/?$/.test(new URL(r.url()).pathname), { timeout: 60_000 });
   await page.getByRole("button", { name: /create|sign up/i }).first().click();
+  const reg = await register;
+  if (!reg.ok()) throw new Error(`signup refused: register ${reg.status()} ${(await reg.text()).slice(0, 120)}`);
   await page.waitForURL(/\/v3\/?/, { timeout: 60_000 });
   const me = await page.evaluate(async () => (await (await fetch("/api/me/")).json()) as { tenantId?: string });
   if (!me.tenantId) throw new Error("signed up but /api/me has no tenantId");
@@ -183,7 +186,8 @@ test("stranger walk", async ({ page }) => {
     const td = tenantId ? teardownTenant(tenantId) : { ok: true, detail: "no tenant was created" };
     notes.push(`teardown: ${td.ok ? "OK" : "FAILED"} — ${td.detail}`);
     const asked = ONLY ? { ...corpus, questions: corpus.questions.filter((q) => ONLY.has(q.id)) } : corpus;
-    const rows = scoreAll(asked, obs);
+    const aborted = notes.find((n) => n.startsWith("run aborted: "));
+    const rows = scoreAll(asked, obs).map((r) => (aborted && !obs.some((o) => o.id === r.id) ? { ...r, reason: aborted } : r));
     const card = scorecard(rows);
     const meta = { ...start, runId: RUN_ID };
     for (const r of rows.filter((x) => x.classification !== "CORRECT" || x.safetyRedLine)) {
