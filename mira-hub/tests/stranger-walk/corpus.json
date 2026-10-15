@@ -1,0 +1,520 @@
+{
+  "version": 1,
+  "frozen": "2026-10-15",
+  "pageUnit": "1-based physical PDF page (node-knowledge-ingest.ts chunk page = p + 1)",
+  "tolerance": 1,
+  "manuals": [
+    {
+      "id": "gs10-ch6",
+      "oem": "AutomationDirect",
+      "family": "vfd",
+      "title": "DURApulse GS10 User Manual, Chapter 6: Maintenance and Troubleshooting",
+      "url": "https://cdn.automationdirect.com/static/manuals/gs10m/ch6.pdf",
+      "filename": "gs10-ch6.pdf",
+      "sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669",
+      "bytes": 2510664,
+      "pages": 44
+    },
+    {
+      "id": "pf40",
+      "oem": "Rockwell Automation",
+      "family": "vfd",
+      "title": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001)",
+      "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/22b-um001_-en-e.pdf",
+      "filename": "pf40.pdf",
+      "sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9",
+      "bytes": 6459340,
+      "pages": 156
+    },
+    {
+      "id": "pf4m",
+      "oem": "Rockwell Automation",
+      "family": "vfd",
+      "title": "PowerFlex 4M Adjustable Frequency AC Drive User Manual (22F-UM001)",
+      "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/22f-um001_-en-e.pdf",
+      "filename": "pf4m.pdf",
+      "sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5",
+      "bytes": 5637647,
+      "pages": 114
+    },
+    {
+      "id": "acs355",
+      "oem": "ABB",
+      "family": "vfd",
+      "title": "ACS355 drives User's manual (3AUA0000066143)",
+      "url": "https://library.e.abb.com/public/805f31a82d524d8aa8a750011e2cd001/EN_ACS355_UM_E_A5.pdf",
+      "filename": "acs355.pdf",
+      "sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac",
+      "bytes": 11378626,
+      "pages": 440
+    },
+    {
+      "id": "micro820-um",
+      "oem": "Rockwell Automation",
+      "family": "plc",
+      "title": "Micro820 Programmable Controllers User Manual (2080-UM005)",
+      "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/2080-um005_-en-e.pdf",
+      "filename": "micro820-um.pdf",
+      "sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675",
+      "bytes": 23247391,
+      "pages": 226
+    },
+    {
+      "id": "micro820-in",
+      "oem": "Rockwell Automation",
+      "family": "plc",
+      "title": "Micro820 20-Point Programmable Controllers Installation Instructions (2080-IN009)",
+      "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/in/2080-in009_-en-p.pdf",
+      "filename": "micro820-in.pdf",
+      "sha256": "6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4",
+      "bytes": 1347724,
+      "pages": 24
+    },
+    {
+      "id": "ml1100",
+      "oem": "Rockwell Automation",
+      "family": "plc",
+      "title": "MicroLogix 1100 Programmable Controllers User Manual (1763-UM001)",
+      "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/1763-um001_-en-p.pdf",
+      "filename": "ml1100.pdf",
+      "sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9",
+      "bytes": 8447818,
+      "pages": 178
+    },
+    {
+      "id": "smcflex",
+      "oem": "Rockwell Automation",
+      "family": "motor_starter",
+      "title": "SMC Flex Smart Motor Controller User Manual (150-UM008)",
+      "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/150-um008_-en-p.pdf",
+      "filename": "smcflex.pdf",
+      "sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd",
+      "bytes": 7161400,
+      "pages": 116
+    },
+    {
+      "id": "e3plus",
+      "oem": "Rockwell Automation",
+      "family": "motor_starter",
+      "title": "E3 and E3 Plus Solid-State Overload Relay User Manual (193-UM002)",
+      "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/193-um002_-en-p.pdf",
+      "filename": "e3plus.pdf",
+      "sha256": "aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80",
+      "bytes": 6630594,
+      "pages": 276
+    },
+    {
+      "id": "smc50",
+      "oem": "Rockwell Automation",
+      "family": "motor_starter",
+      "title": "SMC-50 Solid-State Smart Motor Controller User Manual (150-UM011)",
+      "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/150-um011_-en-p.pdf",
+      "filename": "smc50.pdf",
+      "sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069",
+      "bytes": 18331238,
+      "pages": 276
+    }
+  ],
+  "questions": [
+    {
+      "id": "gs10-ch6-q1",
+      "manual": "gs10-ch6",
+      "question": "What does fault code ocA mean on a GS10 drive, and what are the corrective actions?",
+      "expectedPage": 17,
+      "safetyRelevant": false,
+      "anchor": "acceleration (ocA)"
+    },
+    {
+      "id": "gs10-ch6-q2",
+      "manual": "gs10-ch6",
+      "question": "Before I inspect a GS10 drive, how long do I wait after power off, and what DC bus voltage tells me the capacitors are discharged?",
+      "expectedPage": 4,
+      "safetyRelevant": true,
+      "anchor": "less than 25VDC"
+    },
+    {
+      "id": "gs10-ch6-q3",
+      "manual": "gs10-ch6",
+      "question": "What does a GFF fault mean on the GS10?",
+      "expectedPage": 19,
+      "safetyRelevant": false,
+      "anchor": "Ground fault (GFF)"
+    },
+    {
+      "id": "gs10-ch6-q4",
+      "manual": "gs10-ch6",
+      "question": "What causes an oH1 IGBT overheating fault on the GS10?",
+      "expectedPage": 24,
+      "safetyRelevant": false,
+      "anchor": "IGBT overheating (oH1)"
+    },
+    {
+      "id": "gs10-ch6-q5",
+      "manual": "gs10-ch6",
+      "question": "How do I recharge the DC link on a GS10 drive that has not been operated for over a year?",
+      "expectedPage": 3,
+      "safetyRelevant": true,
+      "anchor": "Recharge the DC link"
+    },
+    {
+      "id": "pf40-q1",
+      "manual": "pf40",
+      "question": "What does fault F5 OverVoltage mean on a PowerFlex 40, and what should I do?",
+      "expectedPage": 93,
+      "safetyRelevant": false,
+      "anchor": "OverVoltage"
+    },
+    {
+      "id": "pf40-q2",
+      "manual": "pf40",
+      "question": "How long must I wait after removing power from a PowerFlex 40 before working on it?",
+      "expectedPage": 9,
+      "safetyRelevant": true,
+      "anchor": "Wait three minutes for capacitors to discharge"
+    },
+    {
+      "id": "pf40-q3",
+      "manual": "pf40",
+      "question": "How do I set up a PowerFlex 40 to automatically clear a fault and restart?",
+      "expectedPage": 73,
+      "safetyRelevant": false,
+      "anchor": "Sets the maximum number of times the drive attempts to reset a fault and restart"
+    },
+    {
+      "id": "pf40-q4",
+      "manual": "pf40",
+      "question": "My PowerFlex 40 will not accelerate to the commanded speed. What should I check?",
+      "expectedPage": 97,
+      "safetyRelevant": false,
+      "anchor": "Motor and/or drive will not accelerate to commanded speed"
+    },
+    {
+      "id": "pf40-q5",
+      "manual": "pf40",
+      "question": "What does fault F33 Auto Rstrt Tries mean on a PowerFlex 40?",
+      "expectedPage": 94,
+      "safetyRelevant": false,
+      "anchor": "F33 Auto Rstrt Tries"
+    },
+    {
+      "id": "pf4m-q1",
+      "manual": "pf4m",
+      "question": "What does fault F13 Ground Fault mean on a PowerFlex 4M?",
+      "expectedPage": 73,
+      "safetyRelevant": false,
+      "anchor": "F13 Ground Fault"
+    },
+    {
+      "id": "pf4m-q2",
+      "manual": "pf4m",
+      "question": "How do I verify the bus capacitors are discharged before working on a PowerFlex 4M?",
+      "expectedPage": 9,
+      "safetyRelevant": true,
+      "anchor": "Measure the DC bus voltage at the -DC and +DC"
+    },
+    {
+      "id": "pf4m-q3",
+      "manual": "pf4m",
+      "question": "My PowerFlex 4M will not start from the Run input wired to the terminal block. What should I check?",
+      "expectedPage": 76,
+      "safetyRelevant": false,
+      "anchor": "Drive does not Start from Start or Run Inputs wired to the terminal block"
+    },
+    {
+      "id": "pf4m-q4",
+      "manual": "pf4m",
+      "question": "What does fault F38 Phase U to Gnd mean on a PowerFlex 4M?",
+      "expectedPage": 74,
+      "safetyRelevant": false,
+      "anchor": "F38 Phase U to Gnd"
+    },
+    {
+      "id": "pf4m-q5",
+      "manual": "pf4m",
+      "question": "What are the minimum mounting clearances and ambient operating temperatures for a PowerFlex 4M?",
+      "expectedPage": 12,
+      "safetyRelevant": false,
+      "anchor": "Minimum Mounting Clearances"
+    },
+    {
+      "id": "acs355-q1",
+      "manual": "acs355",
+      "question": "What does fault 0001 OVERCURRENT mean on an ACS355, and how do I fix it?",
+      "expectedPage": 359,
+      "safetyRelevant": false,
+      "anchor": "0001 OVERCURRENT"
+    },
+    {
+      "id": "acs355-q2",
+      "manual": "acs355",
+      "question": "How long do I wait after disconnecting input power before working on an ACS355?",
+      "expectedPage": 18,
+      "safetyRelevant": true,
+      "anchor": "always wait for 5 minutes"
+    },
+    {
+      "id": "acs355-q3",
+      "manual": "acs355",
+      "question": "How do I replace the cooling fan on an ACS355 frame size R1 to R4?",
+      "expectedPage": 372,
+      "safetyRelevant": true,
+      "anchor": "Replacing the cooling fan (frame sizes R1"
+    },
+    {
+      "id": "acs355-q4",
+      "manual": "acs355",
+      "question": "What does alarm 2035 SAFE TORQUE mean on an ACS355?",
+      "expectedPage": 355,
+      "safetyRelevant": true,
+      "anchor": "2035 SAFE TORQUE"
+    },
+    {
+      "id": "acs355-q5",
+      "manual": "acs355",
+      "question": "What does fault 0016 EARTH FAULT mean on an ACS355?",
+      "expectedPage": 363,
+      "safetyRelevant": false,
+      "anchor": "0016 EARTH FAULT"
+    },
+    {
+      "id": "micro820-um-q1",
+      "manual": "micro820-um",
+      "question": "What does error code 0xD011 mean on a Micro820 controller, and how do I fix it?",
+      "expectedPage": 155,
+      "safetyRelevant": false,
+      "anchor": "0xD011"
+    },
+    {
+      "id": "micro820-um-q2",
+      "manual": "micro820-um",
+      "question": "What does error code 0xF050 mean on a Micro820?",
+      "expectedPage": 152,
+      "safetyRelevant": false,
+      "anchor": "0xF050"
+    },
+    {
+      "id": "micro820-um-q3",
+      "manual": "micro820-um",
+      "question": "How do I restore a Micro820 project from the microSD card at power-up?",
+      "expectedPage": 118,
+      "safetyRelevant": false,
+      "anchor": "ConfigMeFirst.txt at power-up"
+    },
+    {
+      "id": "micro820-um-q4",
+      "manual": "micro820-um",
+      "question": "Is it safe to connect the USB cable to a Micro820 with power applied in a hazardous location?",
+      "expectedPage": 35,
+      "safetyRelevant": true,
+      "anchor": "Be sure that power is removed or the area is nonhazardous"
+    },
+    {
+      "id": "micro820-um-q5",
+      "manual": "micro820-um",
+      "question": "What does data log error DLG_ERR_RTC mean on a Micro820?",
+      "expectedPage": 126,
+      "safetyRelevant": false,
+      "anchor": "DLG_ERR_RTC"
+    },
+    {
+      "id": "micro820-in-q1",
+      "manual": "micro820-in",
+      "question": "What is the input voltage range of analog inputs I-00 to I-03 on the Micro820 20-point controller?",
+      "expectedPage": 17,
+      "safetyRelevant": false,
+      "anchor": "Analog Input Specifications for I-00"
+    },
+    {
+      "id": "micro820-in-q2",
+      "manual": "micro820-in",
+      "question": "What are the relay contact ratings at 120 V AC on a Micro820 2080-LC20-20QWB?",
+      "expectedPage": 19,
+      "safetyRelevant": false,
+      "anchor": "Relay Contact Ratings"
+    },
+    {
+      "id": "micro820-in-q3",
+      "manual": "micro820-in",
+      "question": "What cable should I use for analog wiring on a Micro820, and how do I ground it?",
+      "expectedPage": 13,
+      "safetyRelevant": false,
+      "anchor": "Belden #8761"
+    },
+    {
+      "id": "micro820-in-q4",
+      "manual": "micro820-in",
+      "question": "What module spacing do I need when mounting a Micro820 20-point controller?",
+      "expectedPage": 9,
+      "safetyRelevant": false,
+      "anchor": "Module Spacing"
+    },
+    {
+      "id": "micro820-in-q5",
+      "manual": "micro820-in",
+      "question": "Can I disconnect the serial cable from a Micro820 with power applied in a hazardous location?",
+      "expectedPage": 5,
+      "safetyRelevant": true,
+      "anchor": "If you connect or disconnect the serial cable with power"
+    },
+    {
+      "id": "ml1100-q1",
+      "manual": "ml1100",
+      "question": "On a MicroLogix 1100 the Power LED is on and the FAULT LED is flashing. What does that mean?",
+      "expectedPage": 135,
+      "safetyRelevant": false,
+      "anchor": "Hardware/software major"
+    },
+    {
+      "id": "ml1100-q2",
+      "manual": "ml1100",
+      "question": "What happens to the MicroLogix 1100 real-time clock data if the battery is low and power is removed?",
+      "expectedPage": 102,
+      "safetyRelevant": false,
+      "anchor": "RTC data is lost"
+    },
+    {
+      "id": "ml1100-q3",
+      "manual": "ml1100",
+      "question": "How do I upgrade the operating system on a MicroLogix 1100?",
+      "expectedPage": 141,
+      "safetyRelevant": false,
+      "anchor": "ControlFLASH"
+    },
+    {
+      "id": "ml1100-q4",
+      "manual": "ml1100",
+      "question": "How should I dispose of the lithium battery from a MicroLogix 1100?",
+      "expectedPage": 131,
+      "safetyRelevant": true,
+      "anchor": "Do not incinerate or dispose of lithium batteries"
+    },
+    {
+      "id": "ml1100-q5",
+      "manual": "ml1100",
+      "question": "Does the MicroLogix 1100 detect a duplicate IP address on the network?",
+      "expectedPage": 159,
+      "safetyRelevant": false,
+      "anchor": "duplicate IP address detection"
+    },
+    {
+      "id": "smcflex-q1",
+      "manual": "smcflex",
+      "question": "My SMC Flex shows a Shorted SCR fault. What are the causes and fixes?",
+      "expectedPage": 104,
+      "safetyRelevant": false,
+      "anchor": "Shorted SCR"
+    },
+    {
+      "id": "smcflex-q2",
+      "manual": "smcflex",
+      "question": "My motor accelerates too fast with an SMC Flex soft starter. What settings should I change?",
+      "expectedPage": 106,
+      "safetyRelevant": false,
+      "anchor": "Accelerates too fast"
+    },
+    {
+      "id": "smcflex-q3",
+      "manual": "smcflex",
+      "question": "Is hazardous voltage present in the motor circuit when the SMC Flex controller is off?",
+      "expectedPage": 103,
+      "safetyRelevant": true,
+      "anchor": "Hazardous voltage is present in the motor circuit even"
+    },
+    {
+      "id": "smcflex-q4",
+      "manual": "smcflex",
+      "question": "What overload class settings are available on the SMC Flex?",
+      "expectedPage": 17,
+      "safetyRelevant": false,
+      "anchor": "Overload Class"
+    },
+    {
+      "id": "smcflex-q5",
+      "manual": "smcflex",
+      "question": "What does NVS Error fault 39 mean on an SMC Flex?",
+      "expectedPage": 105,
+      "safetyRelevant": false,
+      "anchor": "NVS Error 39"
+    },
+    {
+      "id": "e3plus-q1",
+      "manual": "e3plus",
+      "question": "The Trip/Warn LED on my E3 Plus overload relay flashes a red code 4. What trip is that?",
+      "expectedPage": 214,
+      "safetyRelevant": false,
+      "anchor": "Ground Fault"
+    },
+    {
+      "id": "e3plus-q2",
+      "manual": "e3plus",
+      "question": "What does the Trip Class parameter set on an E3 overload relay, and what is its range?",
+      "expectedPage": 113,
+      "safetyRelevant": false,
+      "anchor": "TRIP CLASS Parameter Number 29"
+    },
+    {
+      "id": "e3plus-q3",
+      "manual": "e3plus",
+      "question": "How long does an E3 Plus wait before tripping on phase loss by default?",
+      "expectedPage": 115,
+      "safetyRelevant": false,
+      "anchor": "PL TRIP DELAY"
+    },
+    {
+      "id": "e3plus-q4",
+      "manual": "e3plus",
+      "question": "How do I reset a trip on an E3 overload relay?",
+      "expectedPage": 217,
+      "safetyRelevant": true,
+      "anchor": "Resetting a trip will not correct the cause"
+    },
+    {
+      "id": "e3plus-q5",
+      "manual": "e3plus",
+      "question": "What happens if I press the Test/Reset button on an E3 relay while the motor is running?",
+      "expectedPage": 16,
+      "safetyRelevant": true,
+      "anchor": "will cause the starting contactor to drop out"
+    },
+    {
+      "id": "smc50-q1",
+      "manual": "smc50",
+      "question": "My SMC-50 shows a Starts per Hour fault 29. What should I do?",
+      "expectedPage": 211,
+      "safetyRelevant": false,
+      "anchor": "Starts per Hour 29"
+    },
+    {
+      "id": "smc50-q2",
+      "manual": "smc50",
+      "question": "What does fault code 10 or 60, SCR Overtemp, mean on an SMC-50?",
+      "expectedPage": 210,
+      "safetyRelevant": false,
+      "anchor": "SCR Overtemp"
+    },
+    {
+      "id": "smc50-q3",
+      "manual": "smc50",
+      "question": "With an SMC-50 and no isolation contactor, are the load terminals live when the controller is off?",
+      "expectedPage": 104,
+      "safetyRelevant": true,
+      "anchor": "hazardous voltages are present at the load terminals"
+    },
+    {
+      "id": "smc50-q4",
+      "manual": "smc50",
+      "question": "What does fault 46 Ov Pwr Reac+ mean on an SMC-50?",
+      "expectedPage": 212,
+      "safetyRelevant": false,
+      "anchor": "Ov Pwr Reac+"
+    },
+    {
+      "id": "smc50-q5",
+      "manual": "smc50",
+      "question": "How do I check an SMC-50 power module, and what must I disconnect first?",
+      "expectedPage": 215,
+      "safetyRelevant": true,
+      "anchor": "Power Module Check"
+    }
+  ]
+}
