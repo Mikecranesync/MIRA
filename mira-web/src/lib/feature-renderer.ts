@@ -55,11 +55,11 @@ export const FEATURES: Record<string, Feature> = {
     title: "Fault Diagnosis | FactoryLM",
     tagline: ["Answers in seconds,", "not hours"],
     lede:
-      "Mira knows your equipment. Send a fault code, describe a symptom, or upload a photo — and get a cited, actionable answer straight from your specific OEM documentation and field history.",
+      "Mira knows your equipment. Send a fault code, describe a symptom, or upload a photo — and get an actionable answer from your specific OEM documentation, with the manual and page when the answer comes from it.",
     longBody: [
       "Every minute of VFD or PLC downtime costs money. The average maintenance technician wastes 20–40 minutes per fault code searching through PDFs, forum posts, and manufacturer websites — and the answer is still a guess.",
       "Mira closes that gap to seconds. Paste a fault code into chat. Mira pulls the matching section from your PowerFlex, GS20, ACS880, or Siemens manual, ranks the candidates by confidence, and returns a root cause plus the exact corrective action — with a page-level citation you can verify.",
-      "No hallucinations. No generic LLM answers. Every claim points at a page number in a manual you uploaded. If Mira isn't confident, it says so and asks for more detail instead of making something up.",
+      "When the answer comes from a manual you uploaded, Mira shows you the manual and the page, so you can check it before you touch the machine.",
       "Works on phone, tablet, and desktop. Speaks every OEM dialect: Allen-Bradley, Yaskawa, ABB, Siemens, Delta, FANUC, and any other equipment manual you drop into the system.",
     ],
     slides: [
@@ -107,19 +107,19 @@ export const FEATURES: Record<string, Feature> = {
     screenshots: [
       { src: "/public/screenshots/fault-diagnosis-01.webp", alt: "User asks MIRA about PowerFlex F-012 fault code", caption: "Ask a fault code", description: "Type or voice a fault code into chat. MIRA searches your uploaded OEM manuals and returns a cited answer in seconds." },
       { src: "/public/screenshots/fault-diagnosis-02.webp", alt: "MIRA streaming a diagnostic response with manual citations", caption: "Real-time diagnosis", description: "MIRA matches the fault code to your specific OEM manual section, ranks candidates by confidence, and streams the answer in real time." },
-      { src: "/public/screenshots/fault-diagnosis-03.webp", alt: "Full diagnostic response with root cause and manual citation", caption: "Cited answer", description: "Every answer cites a specific page in your OEM manual. Root cause, corrective action, and source — verified, not hallucinated." },
+      { src: "/public/screenshots/fault-diagnosis-03.webp", alt: "Full diagnostic response with root cause and manual citation", caption: "Cited answer", description: "When the answer comes from your OEM manual, it shows the specific page, so you can check the root cause and corrective action against the source." },
       { src: "/public/screenshots/fault-diagnosis-04.webp", alt: "Work order auto-created from MIRA diagnostic conversation", caption: "Auto work order", description: "MIRA auto-creates a work order from the diagnosis — asset, description, priority, and parts already filled in." },
     ],
     benefits: [
       {
         label: "SPEED",
         title: "Under one second to first token",
-        body: "Mira responds before you finish typing. The average fault code goes from input to cited answer in under four seconds end-to-end.",
+        body: "Text answers typically arrive in seconds, so the manual page comes to you instead of you hunting for it.",
       },
       {
         label: "TRUTH",
-        title: "Every answer cites a manual page",
-        body: "No hallucinations. Every root cause and corrective action links back to a specific OEM section. Verify or ignore — the citation is always there.",
+        title: "Answers from your manuals show the page",
+        body: "When an answer comes from your OEM manual, Mira shows the manual and the page. You check it before you act.",
       },
       {
         label: "COVERAGE",

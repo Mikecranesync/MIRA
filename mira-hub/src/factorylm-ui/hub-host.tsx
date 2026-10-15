@@ -72,11 +72,11 @@ import {
   historyRows,
   homeSendPlan,
   initialHubShellState,
-  initialSelection,
   landingSelection,
   latestRequestGate,
   metaFor,
   newThreadId,
+  openNotebookSelection,
   retainedStreamInterruption,
   searchForSelection,
   selectionFromSearch,
@@ -198,6 +198,9 @@ export function HubShellHost() {
       if (next) {
         syncThread(next);
         setSelection(next);
+        // A link without a thread opened a freshly minted one (#4444); name it
+        // in the URL so a reload returns to this chat, not another blank one.
+        writeSearch(searchForSelection(next));
       }
     }
     return data.notebooks;
@@ -646,8 +649,8 @@ export function HubShellHost() {
     const notebookId = notebookIdFromProject(projectId);
     if (!notebookId) return;
     const nb = notebooks?.find((n) => n.id === notebookId);
-    const sel = nb ? initialSelection([nb]) : null;
-    if (sel) select(sel);
+    // A fresh chat, not the notebook's last conversation (#4444).
+    if (nb) select(openNotebookSelection(nb));
   }, [notebooks, select]);
 
   /**
