@@ -21,6 +21,8 @@ import { REQUEST_ALLOWLIST } from "./allowlist";
 
 type Run = {
   request: Record<string, unknown> | null;
+  /** Every chat POST the surface made during the whole drive (one send is expected). */
+  chatPosts: number;
   live: TurnRecord;
   hydrated: TurnRecord;
   /** First citation opened: file + page the viewer points at, and whether that file was actually fetched. */
@@ -80,7 +82,7 @@ async function drive(browser: Browser, baseURL: string, surface: Surface, scenar
       opened = { fileId: m?.[1] ?? null, page: m?.[2] ?? null, fetched: await fetched };
     }
     return {
-      request: cap.chatBodies[0] ?? null, live, hydrated, opened,
+      request: cap.chatBodies[0] ?? null, chatPosts: cap.chatBodies.length, live, hydrated, opened,
       unrecognized: [...cap.unrecognized], offsite, turnIds: { live: liveId, hydrated: hydratedId },
     };
   } finally {
@@ -146,6 +148,14 @@ for (const sc of SCENARIOS) {
     expect(normalizeRequest(clone)).toEqual(normalizeRequest(ref));
   });
 }
+
+// Codex #4441 round 2 F1: a second (e.g. fire-and-forget) POST would be
+// duplicate inference and a duplicate persisted turn, yet render identically.
+test("request: exactly one chat POST per send (AC3)", () => {
+  for (const s of SURFACES) for (const sc of SCENARIOS) {
+    expect.soft(runs[s][sc].chatPosts, `${s}/${sc}`).toBe(1);
+  }
+});
 
 test("request: clientRequestId is unique per send (AC3)", () => {
   const ids = SURFACES.flatMap((s) => SCENARIOS.map((sc) => runs[s][sc].request?.clientRequestId));

@@ -97,6 +97,17 @@ const MUTATIONS = {
     edits: [{ file: LOGIC, find: "    threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId,\n", replace: "", count: 1 }],
     red: ["request: G — normalized chat body equal (AC3)", "request: S — normalized chat body equal (AC3)"],
   },
+  // Codex #4441 round 2 F1: one Enter, two POSTs (the second fire-and-forget).
+  M9: {
+    what: "clone fires a second chat POST per send",
+    edits: [{
+      file: "src/factorylm-ui/hub-host.tsx",
+      find: "      const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {",
+      replace: "      void fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, { method: \"POST\", headers: { \"Content-Type\": \"application/json\" }, body: JSON.stringify({ ...body, clientRequestId: crypto.randomUUID() }) }).catch(() => undefined);\n      const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {",
+      count: 1,
+    }],
+    red: ["request: exactly one chat POST per send (AC3)"],
+  },
 };
 
 function apply(edits) {
