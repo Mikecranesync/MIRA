@@ -46,6 +46,11 @@
    "recorded_at": "2026-10-11T23:10:26+00:00",
    "served_by": "openai/gpt-5.4-mini"
   },
+  "0e469496e907c88169554e8613c7a7bc8da65228143670654543e0166e1e6572": {
+   "content": "{\"statements\":[\"Wear PPE rated for the circuit voltage and arc flash hazard before testing.\",\"De-energize, lock out, and tag out the motor before testing.\",\"Verify zero voltage at the motor terminals using the live-dead-live method with a rated voltage tester.\",\"Check the tester on a known live source before and after verifying zero voltage.\",\"Disconnect the motor leads from the supply at the terminal box.\",\"Ensure the drive or starter is isolated from the test voltage.\",\"Set the megger to 500V DC for motors rated under 1 kV.\",\"Set the megger to 500-1000V DC for motors rated 1-2.5 kV.\",\"Use insulated test leads.\",\"Test the windings to ground.\",\"On a 3-lead motor, the three leads are joined inside and should be tested to ground together.\",\"Phase-to-phase readings on a 3-lead motor tell you nothing.\",\"On a 6- or 12-lead motor, separate the winding ends.\",\"Test each winding to ground and winding-to-winding on a 6- or 12-lead motor.\",\"Check winding balance separately with a low-resistance ohmmeter, not the megger.\",\"Record the 1-minute reading.\",\"For a polarization index, also record the 10-minute reading.\",\"Polarization Index equals the 10-minute reading divided by the 1-minute reading.\",\"A PI of 2.0 or higher is healthy.\",\"Note the winding temperature.\",\"IEEE 43 corrects readings to 40°C before comparing them.\",\"The minimum acceptable insulation value is the old rule of 1 MΩ per kV of rating plus 1 MΩ.\",\"About 1.5 MΩ is the absolute floor for a 460V motor.\",\"IEEE 43 recommends at least 5 MΩ for most motors under 1 kV.\",\"Below the floor, do not energize the motor.\",\"A value below the floor indicates moisture or insulation failure.\",\"Between the floor and 5 MΩ, dry the motor out and retest it, or have it investigated.\",\"Discharge each winding to ground after testing before handling the leads.\"]}",
+   "recorded_at": "2026-10-15T23:28:32+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
   "0fd8ff93c043676c9079dc54a3e1f41af06774d22a23ce3dfb8f67e5af6f3d40": {
    "content": "{\"score\":8,\"reason\":\"The response fits the user’s follow-up about a 30HP TEFC motor by giving practical regreasing guidance, including that the exact interval should come from the nameplate/manufacturer chart and providing a reasonable starting point of about 2,000 operating hours, shortened to 1,000 hours in dusty, wet, or hot service. It also adds useful maintenance details on grease type, quantity, purging excess grease, and safety precautions like LOTO and PPE. The main limitation is that it does not mention motor speed, which is a key factor in bearing grease intervals, so the advice is helpful but not fully complete.\"}",
    "recorded_at": "2026-10-15T20:57:54+00:00",
@@ -79,6 +84,11 @@
   "19a20b74ab0c5f75439b7edf0a1d3eb1270cf7b9ad2d0931967c704b93cbed49": {
    "content": "{\"reason\":\"The score is 1.00 because the response stayed fully on-topic and directly addressed how to enter the tank to inspect the agitator, with no irrelevant statements. Great relevance overall.\"}",
    "recorded_at": "2026-10-11T23:10:36+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
+  "1af84193258a38cc73f7dd47852f812007cd95aba517b01aee21069ce53a80ee": {
+   "content": "{\"score\":8,\"reason\":\"The response matches the requested how-to format and is practical for a technician, with solid safety steps including PPE, LOTO, live-dead-live verification, isolation of the motor, and post-test discharge. It also covers test-to-ground procedure, 1-minute and PI readings, and temperature correction. The main weakness is a technical voltage error/inconsistency in the IEEE 43 guidance: it says 500–1000 VDC for 1–2.5 kV motors, whereas the standard is typically 1000 VDC for that range. The 3-lead testing explanation is a bit oversimplified, but not unsafe.\"}",
+   "recorded_at": "2026-10-15T23:28:40+00:00",
    "served_by": "openai/gpt-5.4-mini"
   },
   "1b09247607bc1eb93712f829ac8e8e5878a50bffb5aab5df9ec2904544c7e874": {
@@ -534,6 +544,11 @@
   "d74c3b9c6193b075cf76dc8a51f244f7ae53fe3d23b8497d29ade9abb5c3d8f1": {
    "content": "{\"score\":9,\"reason\":\"The response closely matches the request by giving a practical LOTO procedure for a 480V motor starter in the right step-by-step format. It includes key safety elements like notifying affected personnel, identifying all energy sources, arc-flash PPE, locking/tagging, stored-energy release, and live-dead-live verification. It is technically sound overall, though it could be more complete on site-specific re-energization, group lockout/shift-change considerations, and other detailed company procedures.\"}",
    "recorded_at": "2026-10-15T20:57:48+00:00",
+   "served_by": "openai/gpt-5.4-mini"
+  },
+  "df344fab2476fc38884fd526905fe3cc248f684a25c393a866d0678111646ec9": {
+   "content": "{\n  \"verdicts\": [\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    },\n    {\n      \"verdict\": \"yes\"\n    }\n  ]\n}",
+   "recorded_at": "2026-10-15T23:28:35+00:00",
    "served_by": "openai/gpt-5.4-mini"
   },
   "df4a5009240fe0d1d97d46f79d9dfbf8c35e6393f62dc00266ebe19fce44b976": {
