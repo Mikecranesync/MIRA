@@ -1246,7 +1246,9 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     async with typing_action(context, update.effective_chat.id):
-        transcribed = await transcribe_voice(bytes(audio_bytes))
+        transcribed = await transcribe_voice(
+            bytes(audio_bytes), duration_s=voice.duration if voice else None
+        )
 
     if not transcribed:
         await update.message.reply_text(

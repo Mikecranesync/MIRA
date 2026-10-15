@@ -278,3 +278,114 @@ async def test_transcribe_model_override_and_empty_value_fallback():
                 _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
                 await transcribe_voice(b"ogg")
         assert calls[0][1]["data"]["model"] == expected, value
+
+
+# ---------------------------------------------------------------------------
+# #4451 cheap-lane r2: transcription goes through the per-run OpenAI spend stop
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fresh_budget():
+    from shared.inference.run_budget import get_openai_run_budget, reset_openai_run_budget
+
+    reset_openai_run_budget()
+    yield get_openai_run_budget
+    reset_openai_run_budget()
+
+
+@pytest.mark.asyncio
+async def test_exhausted_budget_sends_nothing(fresh_budget):
+    """A 60 s note costs about 0.006 USD at the conservative rate; a cap below
+    that refuses BEFORE any request leaves the process."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    calls: list = []
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "0.001"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+            result = await transcribe_voice(b"ogg", duration_s=60)
+
+    assert result is None
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_successful_transcription_books_its_cost(fresh_budget):
+    """Control for the test above: with room under the cap the request is sent
+    and a 60 s note is booked at the per-minute rate (default 0.006 USD/min)."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    calls: list = []
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "1"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+            result = await transcribe_voice(b"ogg", duration_s=60)
+        budget = fresh_budget()
+        assert result == "ok" and len(calls) == 1
+        assert budget.spent_usd == pytest.approx(0.006, abs=1e-5)
+        assert budget.held_usd == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_rejected_request_releases_the_hold(fresh_budget):
+    """An HTTP error is not billed: the hold is released and nothing is booked."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "1"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client.post = AsyncMock(side_effect=_mock_http_error(429, "rate limit"))
+            mock_client_cls.return_value = mock_client
+            result = await transcribe_voice(b"ogg", duration_s=60)
+        budget = fresh_budget()
+        assert result is None
+        assert budget.spent_usd == pytest.approx(0.0)
+        assert budget.held_usd == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_unknown_outcome_books_the_worst_case(fresh_budget):
+    """A network failure after dispatch may have been billed: the worst case is booked."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "1"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client.post = AsyncMock(side_effect=ConnectionError("dropped"))
+            mock_client_cls.return_value = mock_client
+            result = await transcribe_voice(b"ogg", duration_s=120)
+        budget = fresh_budget()
+        assert result is None
+        assert budget.spent_usd == pytest.approx(0.012, abs=1e-5)
+        assert budget.held_usd == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_unknown_duration_reserves_the_default_bound(fresh_budget):
+    """Without a duration the hold is sized for UNKNOWN_DURATION_S (600 s =
+    0.06 USD): a cap below that refuses with nothing sent."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    calls: list = []
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "0.05"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+            result = await transcribe_voice(b"ogg")
+
+    assert result is None
+    assert calls == []
