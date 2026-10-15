@@ -13,7 +13,11 @@
  * PRD §4 violation, never reintroduce.
  */
 
-import { requestDialectFields, type CanonicalProvider } from "@/lib/inference/canonical-cascade";
+import {
+  openRouterProviders,
+  requestDialectFields,
+  type CanonicalProvider,
+} from "@/lib/inference/canonical-cascade";
 import {
   billableTokens,
   boundInputTokens,
@@ -30,6 +34,8 @@ interface CascadeProvider {
   /** See CanonicalProvider — the gpt-5 family needs its own cap/temperature dialect. */
   requestStyle?: CanonicalProvider["requestStyle"];
   extra?: Record<string, unknown>;
+  /** OpenRouter's data-policy block — see CanonicalProvider.providerRouting. */
+  providerRouting?: CanonicalProvider["providerRouting"];
 }
 
 function defaultProviders(): CascadeProvider[] {
@@ -53,6 +59,8 @@ function defaultProviders(): CascadeProvider[] {
     : [];
   return [
     ...openai,
+    // Backup tier (2026-10-14), the same member the streaming cascade uses.
+    ...openRouterProviders(),
     {
       name: "Groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
