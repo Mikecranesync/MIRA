@@ -1,33 +1,35 @@
 # Behavioral-fidelity harness (PoC) — classic notebook chat vs `/v3`
 
 PRD: `docs/prd/2026-10-14-behavioral-fidelity-harness.md` · ADR: `docs/adr/0038-behavioral-fidelity-harness.md` · Claim: #4439.
-Local-only: nothing here is collected by `vitest run` / the default `playwright.config.ts` or wired into CI (P2 is not authorized).
+Not collected by `vitest run` or the default `playwright.config.ts`. P2: `.github/workflows/hub-fidelity.yml`
+runs the checks **advisory** (not a required check) on PRs touching either surface, the shared shell, the chat
+routes or this harness, and fails if the committed oracle is stale.
 
-## Status (2026-10-15) — P1 built; AC9 NOT met (one real divergence)
+## Status (2026-10-15) — P1 met after one clone fix; P2 advisory job added
 
 | AC | Result |
 |---|---|
 | AC1 files/deps | harness only under `mira-hub/tests/fidelity/**`; 0 `package.json`/lockfile changes |
 | AC2 declared network | 0 unrecognized `/api` requests, 0 off-site browser requests (4 surface×scenario runs); proved red by deleting the `/api/auth/session` handler |
 | AC3 request | G and S: normalized chat body equal (allowlist: `clientRequestId`, `threadId`) |
-| AC4 rendered turn | G equal; S equal **except safety-notice order** (see Finding) |
+| AC4 rendered turn | G and S equal (after the safety-order fix, see Finding) |
 | AC5 citation | both surfaces point the viewer at file `5555…` page 87 **and** fetch it |
 | AC6 live ≡ hydrated | equal on both surfaces, G and S |
-| AC7 determinism | 3/3 control runs → identical records, sha256 `2a756f2e…850014` |
+| AC7 determinism | 3/3 control runs → identical records, sha256 `e15564fb…a486d9` |
 | AC8 seeded defects | M1–M4 each turn exactly their predicted checks red (table below) |
-| AC9 no false alarms | **1 standing diff** — it is a real divergence, not a harness artifact |
+| AC9 no false alarms | unchanged clone → 10/10 green on 3/3 runs |
 | AC10 cost/data | $0 inference (all browser traffic routed to the oracle), synthetic ids only |
 
-### Finding — safety notice order differs
+### Finding (fixed) — safety notice order differed
 
 For the S prompt (eval safety-03) both surfaces render the energized-electrical **warning**, with the same
 answer and evidence label. The classic page renders it **above** the answer
 (`hazard-directive-banner`, `NotebookChat.tsx`); `/v3` renders it **after** the answer, sources and basis
 (`partsFromStream` / `turnsFromPersisted` part order in `src/factorylm-ui/to-interaction.ts`).
-Check `rendered turn: safety notice first (AC4, S)` is red on the unchanged clone. Not allowlisted and not
-skipped: whether `/v3` must match is an owner decision; fixing it is a clone change outside this harness.
-Inverse probe `F1` (`mutations.mjs`) moves the clone's safety parts ahead of the answer in both mappers:
-all 10 checks go green and nothing else moves — so the red is the ordering itself, not a harness artifact.
+Check `rendered turn: safety notice first (AC4, S)` was red on the clone. An inverse probe (safety parts
+moved ahead of the answer in both mappers) turned all 10 checks green with nothing else moving, so the red
+was the ordering itself. Owner decision (2026-10-15): `/v3` matches the classic order. Fixed in
+`to-interaction.ts` (`safetyFirst`, both mappers), unit tests updated first and seen red; `M5` below keeps it.
 
 Not measured (outside AC4 as written): the notice **copy** also differs — classic "Energized electrical
 work — de-energize, lock out, and verify absence of voltage…", `/v3` "Warning · Energized electrical work:
@@ -65,18 +67,21 @@ Side effect: `next dev` rewrites `mira-hub/AGENTS.md`; `git checkout -- mira-hub
 - `mutations.mjs` — AC8 runner; refuses a dirty target, restores with `git checkout` in `finally`,
   exits 1 on any red-set mismatch (proved with a deliberately wrong expectation → `MISMATCH`, exit 1).
 
-## AC8 — seeded clone defects (2026-10-15 run, counts both ways)
+## AC8 — seeded clone defects (2026-10-15, after the fix; counts both ways)
 
-Hub default suite on the same tree: `npx vitest run` → 382 files passed / 4 skipped; 6088 tests passed / 53 skipped / 0 failed.
+Hub default suite with the fix: `npx vitest run` → 382 files passed / 4 skipped; 6088 tests passed / 53 skipped / 0 failed.
 
-| Id | Mutation (clone code only) | Predicted red (beyond the standing "safety first") | Result |
+| Id | Mutation (clone code only) | Predicted red | Result |
 |---|---|---|---|
-| control | none | — | 9 passed / 1 red — EXACT |
-| M1 | drop source parts in both mappers (`to-interaction.ts`) | rendered turn: grounded answer; citation inspectable | 7 / 3 — EXACT |
-| M2 | suppress every `safetyNoticePart` push (`to-interaction.ts`) | rendered turn: safety notice present | 8 / 2 — EXACT |
-| M3 | persisted mapper drops `basisPart` (`to-interaction.ts`) | live ≡ hydrated: G; live ≡ hydrated: S | 7 / 3 — EXACT |
-| M4 | `chatBodyFor` omits `sourceDocIds` (`hub-host-logic.ts`) | request: G; request: S | 7 / 3 — EXACT |
-| F1 | inverse probe: safety parts first in both mappers | none — baseline red must clear | 10 / 0 — EXACT |
+| control | none | — | 10 passed / 0 red — EXACT |
+| M1 | drop source parts in both mappers (`to-interaction.ts`) | rendered turn: grounded answer; citation inspectable | 8 / 2 — EXACT |
+| M2 | suppress every `safetyNoticePart` push (`to-interaction.ts`) | safety notice present; safety notice first ¹ | 8 / 2 — EXACT |
+| M3 | persisted mapper drops `basisPart` (`to-interaction.ts`) | live ≡ hydrated: G; live ≡ hydrated: S | 8 / 2 — EXACT |
+| M4 | `chatBodyFor` omits `sourceDocIds` (`hub-host-logic.ts`) | request: G; request: S | 8 / 2 — EXACT |
+| M5 | `safetyFirst` returns parts unchanged (the pre-fix order) | safety notice first | 9 / 1 — EXACT |
+
+¹ M2 was first predicted as "present" only and came back MISMATCH: an absent notice is not first either.
+The cascade had been masked while "first" was a standing red. Prediction corrected, then re-run EXACT.
 
 M1 also reddens AC5 by construction (no citation left to open). Named first-red test
 `rendered turn: grounded answer` fails under M1 as the PRD requires.
