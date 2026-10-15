@@ -420,6 +420,22 @@ describe("#4426 — an uncited manufacturer-library answer abstains deterministi
       expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
     });
 
+    it("a request for a NEW photo that names the earlier code does NOT exempt an uncited claim (Codex r1 F1)", async () => {
+      earlierPhotoInThread();
+      const r = await ask(`${UNCITED} Take the photo before checking F004 in the manual.`);
+      expect(priorSectionReachedProvider()).toBe(true);
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+    });
+
+    it("a longer model code that merely contains the photographed one does NOT exempt (Codex r1 F2)", async () => {
+      earlierPhotoInThread();
+      const r = await ask("Unlike your earlier photo, the GS10-20P20 has two Ethernet ports and a USB port.");
+      expect(priorSectionReachedProvider()).toBe(true);
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+    });
+
     it("control: an answer that uses the earlier photo (attributed, and naming what it showed) still ships", async () => {
       earlierPhotoInThread();
       const FROM_PHOTO = "From your earlier photo (an unconfirmed reading), the drive is showing fault F004, an undervoltage trip.";
@@ -547,11 +563,31 @@ describe("isUncitedDocumentClaim — the decision itself", () => {
     // answer names the earlier photo's equipment.
     for (const answer of [
       "Take a photo before you reset the drive, then check F004 in the manual.",
+      // Codex r1 F1 on #4450: the definite article is still a request.
+      "Take the photo before you reset the drive, then check F004 in the manual.",
+      "Please retake that picture before you power down, and look up F004.",
       "Send a photo of the drive keypad if F004 comes back.",
       "Once you have a picture of the drive nameplate, I can confirm the model.",
+      "Once you have sent a photo of the nameplate, I can confirm GS10-20P2.",
+      "If you sent a photo of the keypad, F004 would show on it.",
     ]) {
       expect(answerUsesEarlierPhoto(answer, obs), answer).toBe(false);
     }
+  });
+
+  it("repeats an identifier only as a whole token, not inside a longer one (Codex r1 F2, #4450)", () => {
+    const obs = ["Drive keypad showing fault F004 (undervoltage); nameplate reads GS10-20P2."];
+    for (const answer of [
+      "Unlike your earlier photo, the GS10-20P20 has two Ethernet ports and a USB port.",
+      "Your earlier photo isn't the F0041 overcurrent code; that one needs a new IGBT module.",
+      "Your earlier photo aside, the GS10-20P2-EX variant has a USB port.",
+    ]) {
+      expect(answerUsesEarlierPhoto(answer, obs), answer).toBe(false);
+    }
+    // Exact tokens, including next to punctuation, still count.
+    expect(answerUsesEarlierPhoto("Your earlier photo shows fault (F004).", obs)).toBe(true);
+    expect(answerUsesEarlierPhoto("Your earlier photo shows a GS10-20P2, faulted.", obs)).toBe(true);
+    expect(answerUsesEarlierPhoto("your earlier photo shows f004", obs)).toBe(true);
   });
 
   it("the message names the library that was searched and the way forward", () => {

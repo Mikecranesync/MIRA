@@ -621,17 +621,37 @@ export function answerUsesStoredNameplateReading(answer: string, readings: reado
 
 /** How an answer refers back to a photo from an earlier turn. The prior-photo
  *  section asks for "an unconfirmed reading of an earlier photo", but the cascade
- *  paraphrases, so each pattern is anchored to a PAST or specific photo, never to
- *  a request for a new one ("take a photo before you reset…"):
+ *  paraphrases, so each pattern needs RETROSPECTIVE context and none matches a
+ *  request for a new photo ("take the photo before you reset…", "once you have
+ *  sent a photo…", Codex r1 F1 on #4450):
  *  - "your earlier photo", "a previous picture", "the last image";
- *  - "the photo earlier", "the picture you showed me before", "the image you sent
- *    previously", "the photo from earlier", "the photo you sent a few minutes ago";
- *  - "you showed me a photo", "you sent a picture" (past-tense verbs only). */
+ *  - "in/from the photo earlier|before|previously" (a place the reading came from);
+ *  - "the photo from earlier";
+ *  - "the picture you showed me before", "the image you sent previously", "the
+ *    photo you sent a few minutes ago" (a past-tense verb by you or me between);
+ *  - "you showed me a photo", "you sent a picture", unless conditional ("if/once/
+ *    when/after you sent…"). */
 const EARLIER_PHOTO_ATTRIBUTION: readonly RegExp[] = [
   /\b(?:earlier|previous|prior|last)\s+(?:photo|picture|image|pic)s?\b/i,
-  /\b(?:the|your|that)\s+(?:photo|picture|image|pic)s?\b(?:\s+[\w']+){0,5}?\s+(?:earlier|before|previously|ago)\b/i,
-  /\b(?:showed|sent|shared|attached|took|uploaded)\s+(?:me\s+|us\s+)?(?:a|an|the|your|that)\s+(?:photo|picture|image|pic)s?\b/i,
+  /\b(?:in|from|on)\s+(?:the|your|that)\s+(?:photo|picture|image|pic)s?\s+(?:earlier|before|previously)\b/i,
+  /\b(?:the|your|that)\s+(?:photo|picture|image|pic)s?\s+from\s+(?:earlier|before)\b/i,
+  /\b(?:the|your|that)\s+(?:photo|picture|image|pic)s?\s+(?:you|I)\s+(?:[\w']+\s+){0,2}?(?:showed|sent|shared|attached|took|uploaded|saw|gave)\b(?:\s+[\w']+){0,3}?\s+(?:earlier|before|previously|ago)\b/i,
+  /(?<!\b(?:if|once|when|after|until|soon as)\s+)\byou\s+(?:showed|sent|shared|attached|took|uploaded)\s+(?:me\s+|us\s+)?(?:a|an|the|your|that)\s+(?:photo|picture|image|pic)s?\b/i,
 ];
+
+/** `id` occurs in `upper` as a whole token: not inside a longer code
+ *  ("GS10-20P2" in "GS10-20P20", "F004" in "F0041") and not continued by a
+ *  hyphenated suffix ("GS10-20P2-EX"). Both strings are upper-case. */
+function containsIdentifierToken(upper: string, id: string): boolean {
+  for (let i = upper.indexOf(id); i !== -1; i = upper.indexOf(id, i + 1)) {
+    const before = i === 0 ? "" : upper[i - 1];
+    const after = upper[i + id.length] ?? "";
+    const afterNext = upper[i + id.length + 1] ?? "";
+    const continued = /[A-Z0-9]/.test(after) || (after === "-" && /[A-Z0-9]/.test(afterNext));
+    if (!/[A-Z0-9-]/.test(before) && !continued) return true;
+  }
+  return false;
+}
 
 /** #4442: the photos attached to EARLIER questions in this conversation ride in
  *  every later turn's context, so their presence says nothing about whether this
@@ -652,7 +672,7 @@ export function answerUsesEarlierPhoto(answer: string, observations: readonly st
     // names the photo's equipment and none of what it showed. The equipment class
     // is the distinctive content only of a photo with no identifiers at all.
     const ids = subjectIdentifiers(obs);
-    if (ids.length > 0) return ids.some((id) => upper.includes(id));
+    if (ids.length > 0) return ids.some((id) => containsIdentifierToken(upper, id));
     return equipmentClassesOf(obs).some((c) => answerClasses.includes(c));
   });
 }
