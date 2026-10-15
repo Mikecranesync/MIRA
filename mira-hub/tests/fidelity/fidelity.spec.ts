@@ -23,7 +23,8 @@ type Run = {
   request: Record<string, unknown> | null;
   live: TurnRecord;
   hydrated: TurnRecord;
-  opened: { fileId: string | null; page: string | null } | null;
+  /** First citation opened: file + page the viewer points at, and whether that file was actually fetched. */
+  opened: { fileId: string | null; page: string | null; fetched: boolean } | null;
   unrecognized: string[];
   /** Requests to any origin other than the dev server (never routed, so listed here). */
   offsite: string[];
@@ -54,6 +55,8 @@ async function drive(browser: Browser, baseURL: string, surface: Surface, scenar
     const liveTurn = await ui.settled(page);
     const live = await extractTurn(surface, liveTurn);
     const liveId = await liveTurn.getAttribute("data-turn-id");
+    // Optional visual evidence (never committed): FIDELITY_SHOTS=<dir>.
+    if (process.env.FIDELITY_SHOTS) await page.screenshot({ path: path.join(process.env.FIDELITY_SHOTS, `${surface}-${scenario}-live.png`) });
 
     // Reload (step 7): let the held post-turn detail GETs through first.
     cap.release();
@@ -66,12 +69,15 @@ async function drive(browser: Browser, baseURL: string, surface: Surface, scenar
     let opened: Run["opened"] = null;
     const chip = page.getByRole("button", { name: /^Open citation / }).first();
     if (await chip.count()) {
+      const fetched = page
+        .waitForRequest((r) => r.url().includes(`/api/namespace/files/${FILE}`), { timeout: 10_000 })
+        .then(() => true, () => false);
       await chip.click();
       const frame = ui.viewerFrame(page);
       await frame.waitFor({ timeout: 10_000 }).catch(() => undefined);
       const src = (await frame.count()) ? await frame.getAttribute("src") : null;
       const m = src ? /\/api\/namespace\/files\/([^/#?]+)\/?(?:[^#]*)(?:#page=(\d+))?/.exec(src) : null;
-      opened = { fileId: m?.[1] ?? null, page: m?.[2] ?? null };
+      opened = { fileId: m?.[1] ?? null, page: m?.[2] ?? null, fetched: await fetched };
     }
     return {
       request: cap.chatBodies[0] ?? null, live, hydrated, opened,
@@ -165,7 +171,7 @@ test("rendered turn: safety notice first (AC4, S)", () => {
 
 test("citation inspectable: opens the cited doc + page (AC5)", () => {
   for (const s of SURFACES) {
-    expect.soft(runs[s].G.opened, `${s} opened ${DOC}`).toEqual({ fileId: FILE, page: "87" });
+    expect.soft(runs[s].G.opened, `${s} opened ${DOC}`).toEqual({ fileId: FILE, page: "87", fetched: true });
   }
 });
 

@@ -7,6 +7,7 @@
  *
  *   node tests/fidelity/mutations.mjs            # control + M1..M4
  *   node tests/fidelity/mutations.mjs M2         # one
+ *   node tests/fidelity/mutations.mjs F1         # inverse probe of the standing finding
  *
  * Expected red sets are written BEFORE the run (prove-the-test-fails.md); the
  * control's standing red ("safety notice first") is part of every baseline.
@@ -17,6 +18,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 const TI = "src/factorylm-ui/to-interaction.ts";
 const LOGIC = "src/factorylm-ui/hub-host-logic.ts";
 const BASELINE = ["rendered turn: safety notice first (AC4, S)"];
+
+const SAFETY_FIRST = '[...parts.filter((p) => p.type === "safety_notice"), ...parts.filter((p) => p.type !== "safety_notice")]';
 
 const MUTATIONS = {
   control: { what: "unchanged clone", edits: [], red: [] },
@@ -48,6 +51,23 @@ const MUTATIONS = {
       replace: "const { sourceDocIds: _m4, ...base } = buildChatBody(question, [...docIds], history);", count: 1,
     }],
     red: ["request: G — normalized chat body equal (AC3)", "request: S — normalized chat body equal (AC3)"],
+  },
+  // Inverse probe: the standing "safety first" red must be a real ordering
+  // divergence, so moving the clone's safety parts ahead of the answer in BOTH
+  // mappers must clear it — and nothing else may change. Not a defect.
+  F1: {
+    what: "clone renders safety parts before the answer (finding fix probe)",
+    edits: [
+      {
+        file: TI,
+        find: '    if (result.followups.length) parts.push({ type: "followups", suggestions: result.followups });\n    return parts;',
+        replace: `    if (result.followups.length) parts.push({ type: "followups", suggestions: result.followups });\n    return ${SAFETY_FIRST};`,
+        count: 1,
+      },
+      { file: TI, find: '    role: "assistant",\n    parts,\n    lifecycle,', replace: `    role: "assistant",\n    parts: ${SAFETY_FIRST},\n    lifecycle,`, count: 1 },
+    ],
+    baseline: [],
+    red: [],
   },
 };
 
@@ -90,7 +110,7 @@ for (const id of ids) {
   let results;
   try { apply(m.edits); results = run(); } finally { restore(m.edits); }
   const red = results.filter((r) => r.status !== "passed").map((r) => r.title).sort();
-  const expected = [...BASELINE, ...m.red].sort();
+  const expected = [...(m.baseline ?? BASELINE), ...m.red].sort();
   const exact = JSON.stringify(red) === JSON.stringify(expected);
   ok &&= exact;
   console.log(`${id} (${m.what}): ${results.length - red.length} passed, ${red.length} red — ${exact ? "EXACT" : "MISMATCH"}`);

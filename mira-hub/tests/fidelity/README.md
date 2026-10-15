@@ -8,15 +8,15 @@ Local-only: nothing here is collected by `vitest run` / the default `playwright.
 | AC | Result |
 |---|---|
 | AC1 files/deps | harness only under `mira-hub/tests/fidelity/**`; 0 `package.json`/lockfile changes |
-| AC2 declared network | 0 unrecognized `/api` requests, 0 off-site requests (4 surface×scenario runs) |
+| AC2 declared network | 0 unrecognized `/api` requests, 0 off-site browser requests (4 surface×scenario runs); proved red by deleting the `/api/auth/session` handler |
 | AC3 request | G and S: normalized chat body equal (allowlist: `clientRequestId`, `threadId`) |
 | AC4 rendered turn | G equal; S equal **except safety-notice order** (see Finding) |
-| AC5 citation | both surfaces open file `5555…` at page 87 |
+| AC5 citation | both surfaces point the viewer at file `5555…` page 87 **and** fetch it |
 | AC6 live ≡ hydrated | equal on both surfaces, G and S |
-| AC7 determinism | 3/3 control runs → identical records, sha256 `877587e1…ab58d` |
+| AC7 determinism | 3/3 control runs → identical records, sha256 `2a756f2e…850014` |
 | AC8 seeded defects | M1–M4 each turn exactly their predicted checks red (table below) |
 | AC9 no false alarms | **1 standing diff** — it is a real divergence, not a harness artifact |
-| AC10 cost/data | $0 inference (all traffic routed to the oracle), synthetic ids only |
+| AC10 cost/data | $0 inference (all browser traffic routed to the oracle), synthetic ids only |
 
 ### Finding — safety notice order differs
 
@@ -26,6 +26,12 @@ answer and evidence label. The classic page renders it **above** the answer
 (`partsFromStream` / `turnsFromPersisted` part order in `src/factorylm-ui/to-interaction.ts`).
 Check `rendered turn: safety notice first (AC4, S)` is red on the unchanged clone. Not allowlisted and not
 skipped: whether `/v3` must match is an owner decision; fixing it is a clone change outside this harness.
+Inverse probe `F1` (`mutations.mjs`) moves the clone's safety parts ahead of the answer in both mappers:
+all 10 checks go green and nothing else moves — so the red is the ordering itself, not a harness artifact.
+
+Not measured (outside AC4 as written): the notice **copy** also differs — classic "Energized electrical
+work — de-energize, lock out, and verify absence of voltage…", `/v3` "Warning · Energized electrical work:
+this answer is framed by the NFPA 70E directive…". The record compares `kind`, not text.
 
 ## Run it
 
@@ -42,6 +48,8 @@ node tests/fidelity/mutations.mjs                                          # con
 The config boots `next dev -p 3999` (basePath `/hub`) with a **throwaway `AUTH_SECRET` minted per run**;
 the spec mints a next-auth JWE cookie (`status: "active"`) against it. Never use a staging/prod secret.
 Each run writes `tests/fidelity/.out/records.json` (gitignored) and prints its sha256 — the AC7 evidence.
+`FIDELITY_SHOTS=<dir>` also saves each surface's live turn as a PNG (keep it outside the repo). While the
+post-turn refetch is held the clone's composer still shows Stop; the turn itself is `data-lifecycle=completed`.
 Side effect: `next dev` rewrites `mira-hub/AGENTS.md`; `git checkout -- mira-hub/AGENTS.md` after a run.
 
 ## How it works
@@ -59,6 +67,8 @@ Side effect: `next dev` rewrites `mira-hub/AGENTS.md`; `git checkout -- mira-hub
 
 ## AC8 — seeded clone defects (2026-10-15 run, counts both ways)
 
+Hub default suite on the same tree: `npx vitest run` → 382 files passed / 4 skipped; 6088 tests passed / 53 skipped / 0 failed.
+
 | Id | Mutation (clone code only) | Predicted red (beyond the standing "safety first") | Result |
 |---|---|---|---|
 | control | none | — | 9 passed / 1 red — EXACT |
@@ -66,6 +76,7 @@ Side effect: `next dev` rewrites `mira-hub/AGENTS.md`; `git checkout -- mira-hub
 | M2 | suppress every `safetyNoticePart` push (`to-interaction.ts`) | rendered turn: safety notice present | 8 / 2 — EXACT |
 | M3 | persisted mapper drops `basisPart` (`to-interaction.ts`) | live ≡ hydrated: G; live ≡ hydrated: S | 7 / 3 — EXACT |
 | M4 | `chatBodyFor` omits `sourceDocIds` (`hub-host-logic.ts`) | request: G; request: S | 7 / 3 — EXACT |
+| F1 | inverse probe: safety parts first in both mappers | none — baseline red must clear | 10 / 0 — EXACT |
 
 M1 also reddens AC5 by construction (no citation left to open). Named first-red test
 `rendered turn: grounded answer` fails under M1 as the PRD requires.
