@@ -257,6 +257,13 @@ export function hasTerminalSafetyStop(evidence: readonly unknown[]): boolean {
   return safetyNoticesOf(evidence).some(isTerminalSafetyNotice);
 }
 
+/** The classic notebook draws every safety banner ABOVE the answer (`NotebookChat`
+ *  `Bubble`), and the shell renders parts in array order — so notices lead, live
+ *  and hydrated alike. Caught by the fidelity harness (#4439). */
+function safetyFirst(parts: InteractionPart[]): InteractionPart[] {
+  return [...parts.filter((p) => p.type === "safety_notice"), ...parts.filter((p) => p.type !== "safety_notice")];
+}
+
 export function safetyNoticePart(entry: SafetyNoticeEntry): InteractionPart {
   const terminal = isTerminalSafetyNotice(entry);
   return {
@@ -342,7 +349,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
     // hydrated row uses, so live and reloaded turns render identically.
     if (result.hazardNotice) parts.push(safetyNoticePart(result.hazardNotice));
     if (result.followups.length) parts.push({ type: "followups", suggestions: result.followups });
-    return parts;
+    return safetyFirst(parts);
   }
 
   if (stopped) {
@@ -365,7 +372,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
       parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
     }
   }
-  return parts;
+  return safetyFirst(parts);
 }
 
 /**
@@ -489,7 +496,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     id: answerId,
     threadId,
     role: "assistant",
-    parts,
+    parts: safetyFirst(parts),
     lifecycle,
     context,
     createdAt: at,

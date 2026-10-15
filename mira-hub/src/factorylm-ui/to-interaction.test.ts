@@ -127,12 +127,12 @@ describe("partsFromStream", () => {
     expect(me).toMatchObject({ type: "machine_evidence", evidence: { source: "live", reason: "unavailable" } });
   });
 
-  it("a live directive (hazardNotice) renders a WARNING notice after the evidence and stays completed (#3841)", () => {
+  it("a live directive (hazardNotice) renders a WARNING notice ahead of the answer, as the classic notebook does, and stays completed (#3841, #4439)", () => {
     const directive = { kind: "safety_notice" as const, trigger: ENERGIZED_ELECTRICAL_HAZARD };
     const live = stream({ hazardNotice: directive });
     const parts = partsFromStream(live, LIVE);
-    expect(parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "safety_notice", "followups"]);
-    expect(parts[3]).toMatchObject({ notice: { severity: "warning", trigger: ENERGIZED_ELECTRICAL_HAZARD, message: expect.stringContaining("NFPA 70E") } });
+    expect(parts.map((p) => p.type)).toEqual(["safety_notice", "text", "source", "evidence_basis", "followups"]);
+    expect(parts[0]).toMatchObject({ notice: { severity: "warning", trigger: ENERGIZED_ELECTRICAL_HAZARD, message: expect.stringContaining("NFPA 70E") } });
     expect(lifecycleFromStream(live)).toBe("completed");
   });
 
@@ -140,8 +140,8 @@ describe("partsFromStream", () => {
     const safety = stream({ citations: [], basis: null, followups: [], safetyNotice: { kind: "safety_notice", trigger: "bypass the interlock" } });
     const parts = partsFromStream(safety, LIVE);
     expect(parts).toEqual([
-      { type: "text", text: "Check the Modbus link first." },
       { type: "safety_notice", notice: { severity: "stop", message: expect.stringContaining("lockout/tagout"), trigger: "bypass the interlock" } },
+      { type: "text", text: "Check the Modbus link first." },
     ]);
     expect(lifecycleFromStream(safety)).toBe("safety_stop");
     // Precedence: stopped and failed still outrank safety_stop; an ordinary answered status does not.
@@ -168,8 +168,8 @@ describe("partsFromStream", () => {
       safetyNotice: { kind: "safety_notice", trigger: "bypass the interlock" },
       visualEvidence: visual,
     }), LIVE);
-    expect(parts.map((part) => part.type)).toEqual(["text", "safety_notice", "error"]);
-    expect(parts[1]).toMatchObject({
+    expect(parts.map((part) => part.type)).toEqual(["safety_notice", "text", "error"]);
+    expect(parts[0]).toMatchObject({
       type: "safety_notice",
       notice: { severity: "stop", trigger: "bypass the interlock" },
     });
@@ -188,8 +188,8 @@ describe("partsFromStream", () => {
       safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
       visualEvidence: visual,
     }), { stopped: true, ...LIVE });
-    expect(parts.map((part) => part.type)).toEqual(["text", "safety_notice", "error"]);
-    expect(parts[1]).toMatchObject({ type: "safety_notice", notice: { severity: "stop", trigger: "smoke coming" } });
+    expect(parts.map((part) => part.type)).toEqual(["safety_notice", "text", "error"]);
+    expect(parts[0]).toMatchObject({ type: "safety_notice", notice: { severity: "stop", trigger: "smoke coming" } });
     expect(parts.some((part) => part.type === "source" || part.type === "evidence_basis" || part.type === "visual_observation")).toBe(false);
   });
 
@@ -266,7 +266,7 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
         { kind: "identity_dispute", requestedAssetId: "x", boundAssetId: "asset-uuid-1", boundUnsPath: "enterprise.garage.cv_101" } as unknown as EvidenceCitation,
       ],
     }), meta);
-    expect(a.parts.map((p) => p.type)).toEqual(["text", "identity_dispute", "source", "evidence_basis", "machine_evidence", "visual_observation", "safety_notice"]);
+    expect(a.parts.map((p) => p.type)).toEqual(["safety_notice", "text", "identity_dispute", "source", "evidence_basis", "machine_evidence", "visual_observation"]);
     // A disputed turn is rendered with the machine identity downgraded.
     expect(a.context).toMatchObject({ machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
   });
@@ -291,8 +291,8 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
   it("a persisted safety refusal hydrates as safety_stop, not completed (Codex #3839 F2)", () => {
     const [, a] = turnsFromPersisted(row({ evidence: [citation, { kind: "safety_notice", trigger: "arc flash" }] }), meta);
     expect(a.lifecycle).toBe("safety_stop");
-    expect(a.parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "safety_notice"]);
-    expect(a.parts[3]).toMatchObject({ notice: { severity: "stop", trigger: "arc flash" } });
+    expect(a.parts.map((p) => p.type)).toEqual(["safety_notice", "text", "source", "evidence_basis"]);
+    expect(a.parts[0]).toMatchObject({ notice: { severity: "stop", trigger: "arc flash" } });
     // A stopped or failed row with a stale safety marker keeps its stronger lifecycle.
     const [, stoppedTurn] = turnsFromPersisted(row({ answerStatus: "error", answerText: "Ver", evidence: [{ kind: "safety_notice", trigger: "x" }] }), meta);
     expect(stoppedTurn.lifecycle).toBe("stopped");
@@ -306,8 +306,8 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
     // Persisted: a directive-framed answered row completes with its citations and a warning notice.
     const [, a] = turnsFromPersisted(row({ evidence: [directive, citation] }), meta);
     expect(a.lifecycle).toBe("completed");
-    expect(a.parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "safety_notice"]);
-    expect(a.parts[3]).toMatchObject({ notice: { severity: "warning", trigger: ENERGIZED_ELECTRICAL_HAZARD, message: expect.stringContaining("NFPA 70E") } });
+    expect(a.parts.map((p) => p.type)).toEqual(["safety_notice", "text", "source", "evidence_basis"]);
+    expect(a.parts[0]).toMatchObject({ notice: { severity: "warning", trigger: ENERGIZED_ELECTRICAL_HAZARD, message: expect.stringContaining("NFPA 70E") } });
     // Live: the directive turn streams an ordinary evidence frame (no safety frame), so it completes — identical lifecycle.
     expect(lifecycleFromStream(stream())).toBe("completed");
     // A rejected unsafe answer persists the directive AND the violation; the violation decides: safety_stop, both notices rendered.
