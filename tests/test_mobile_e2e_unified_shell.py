@@ -67,7 +67,9 @@ class FakePhone:
         cited=True,
         polls=2,
         earlier_page=None,
+        pixel=False,
     ):
+        self.pixel = pixel  # Pixel 9a font metrics on the create form (see the test)
         # earlier_page: the thread already holds a finished answer citing that page.
         self.history = [] if earlier_page is None else [("an earlier question", earlier_page)]
         self.state, self.account, self.cited = start, account, cited
@@ -105,18 +107,38 @@ class FakePhone:
                 ("Sign in", "Button", (78, 810, 1002, 928), True, ("signin",)),
             ]
         if self.state == "create":
-            return [
+            # The hint renders until a name is typed. On the Pixel its line is 47 px tall
+            # and the "Name" label 48 px; on the emulator 42 px vs 40 px.
+            label, hint = ((603, 651), (1722, 1769)) if self.pixel else ((555, 595), (1642, 1684))
+            form = [
                 (" Back", "Button", (42, 170, 257, 288), True, None),
                 ("New project", "TextView", (283, 259, 527, 317), False, None),
                 ("Name the machine", "TextView", (73, 477, 1008, 527), False, None),
-                ("Name", "TextView", (73, 555, 160, 595), False, None),
-                (f["name"], "EditText", (73, 603, 1008, 721), True, ("focus", "name")),
+                ("Name", "TextView", (73, label[0], 160, label[1]), False, None),
+                (
+                    f["name"],
+                    "EditText",
+                    (73, label[1] + 7, 1008, label[1] + 126),
+                    True,
+                    ("focus", "name"),
+                ),
                 ("Manufacturer", "TextView", (73, 750, 270, 792), False, None),
                 (f["mfr"], "EditText", (73, 797, 1008, 918), True, ("focus", "mfr")),
                 ("Model", "TextView", (73, 944, 165, 986), False, None),
                 (f["model"], "EditText", (73, 991, 1008, 1112), True, ("focus", "model")),
                 ("Create project", "Button", (73, 1529, 1008, 1647), True, ("createproject",)),
             ]
+            if not f["name"]:
+                form.append(
+                    (
+                        "To create: give the machine a name.",
+                        "TextView",
+                        (73, hint[0], 1008, hint[1]),
+                        False,
+                        None,
+                    )
+                )
+            return form
         if self.state == "picker":
             return [
                 ("Downloads", "TextView", (189, 155, 453, 226), False, None),
@@ -340,6 +362,15 @@ def test_create_project_goes_through_the_drawer(rig):
     journey.create_notebook(dev, "E2E 2026-10-15", "", "")
     assert phone.project == "E2E 2026-10-15"
     assert phone.created == {"mfr": "", "model": ""}
+
+
+def test_create_project_on_pixel_metrics_types_into_the_name_box(rig):
+    # Found on the Pixel 9a: the hint "To create: give the machine a name." contains
+    # "name" and is 1 px shorter than the "Name" label there, so the shortest-match
+    # lookup took the hint and found no input beneath it. Exact labels win.
+    journey, phone, dev = rig(start="home", pixel=True)
+    journey.create_notebook(dev, "E2E Pixel", "", "")
+    assert phone.project == "E2E Pixel"
 
 
 def test_create_project_fills_identity_when_given(rig):

@@ -387,7 +387,12 @@ class Device:
             if "EditText" in n.cls:
                 return n
 
-        label = min(labels, key=lambda n: n.bounds[3] - n.bounds[1])
+        # An exact label beats a sentence that merely contains the word: the unified
+        # create form's hint "To create: give the machine a name." contains "name", and on
+        # the Pixel 9a it renders 1 px shorter than the "Name" label (47 vs 48 px), so the
+        # shortest match alone took the hint and found no input beneath it.
+        exact = [n for n in labels if n.label.strip() == field_label]
+        label = min(exact or labels, key=lambda n: n.bounds[3] - n.bounds[1])
         edits = [
             n for n in nodes
             if "EditText" in n.cls and n.bounds[1] >= label.bounds[3] - 5
