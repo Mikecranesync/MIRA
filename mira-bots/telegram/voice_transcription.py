@@ -1,7 +1,15 @@
-"""Groq Whisper transcription for incoming Telegram voice messages.
+"""OpenAI speech-to-text for incoming Telegram voice messages.
 
-Uses Groq's /openai/v1/audio/transcriptions endpoint (whisper-large-v3-turbo).
-Falls back to a safe error string on any failure — never raises to the caller.
+Uses OpenAI's /v1/audio/transcriptions endpoint (default model
+gpt-4o-mini-transcribe, override with OPENAI_TRANSCRIBE_MODEL). This was Groq
+Whisper until Groq was deprecated (owner decision 2026-10-14, #4438); a
+leftover GROQ_API_KEY no longer enables anything here.
+
+Falls back to None on any failure — never raises to the caller.
+
+The call does not pass through InferenceRouter, which is text and vision only,
+so the per-run OpenAI spend stop (#4355) does not cover it. Cost is per minute
+of audio.
 
 Typical flow:
     ogg_bytes = await context.bot.get_file(voice.file_id) → download_as_bytearray()
@@ -18,9 +26,9 @@ import httpx
 
 logger = logging.getLogger("mira-bot")
 
-GROQ_TRANSCRIPTION_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
-GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo")
-_TIMEOUT = 30  # seconds — Whisper can take a moment on longer messages
+OPENAI_TRANSCRIPTION_URL = "https://api.openai.com/v1/audio/transcriptions"
+DEFAULT_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe"
+_TIMEOUT = 30  # seconds — longer messages take a moment
 
 
 async def transcribe_voice(
@@ -28,7 +36,7 @@ async def transcribe_voice(
     language: str | None = None,
     filename: str = "voice.ogg",
 ) -> str | None:
-    """Transcribe audio bytes using Groq Whisper.
+    """Transcribe audio bytes using OpenAI speech-to-text.
 
     Args:
         audio_bytes: Raw audio data (Telegram sends .ogg/Opus).
@@ -38,19 +46,21 @@ async def transcribe_voice(
     Returns:
         Transcribed text string, or None if transcription failed.
     """
-    api_key = os.getenv("GROQ_API_KEY", "")
+    api_key = os.getenv("OPENAI_API_KEY", "")
     if not api_key:
-        logger.warning("GROQ_API_KEY not set — voice transcription disabled")
+        logger.warning("OPENAI_API_KEY not set — voice transcription disabled")
         return None
 
-    data: dict[str, str] = {"model": GROQ_WHISPER_MODEL}
+    # `or` form: compose delivers an unset ${VAR:-} as an empty string.
+    model = os.getenv("OPENAI_TRANSCRIBE_MODEL") or DEFAULT_TRANSCRIBE_MODEL
+    data: dict[str, str] = {"model": model}
     if language:
         data["language"] = language
 
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.post(
-                GROQ_TRANSCRIPTION_URL,
+                OPENAI_TRANSCRIPTION_URL,
                 headers={"Authorization": f"Bearer {api_key}"},
                 files={"file": (filename, bytes(audio_bytes), "audio/ogg")},
                 data=data,
@@ -63,8 +73,9 @@ async def transcribe_voice(
             return text or None
     except httpx.HTTPStatusError as exc:
         logger.error(
-            "Groq Whisper HTTP %d: %s",
+            "Voice transcription HTTP %d (model=%s): %s",
             exc.response.status_code,
+            model,
             exc.response.text[:200],
         )
         return None
