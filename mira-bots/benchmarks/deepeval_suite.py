@@ -1056,13 +1056,13 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "How do I megger test a 3-phase motor?",
-                "reference": "Here are the steps to megger test a 3-phase motor:\n1. De-energize and lockout/tagout the motor.\n2. Disconnect all three phase leads at the terminal box.\n3. Set the megger to 500V DC (or 1000V for motors above 600V).\n4. Test each winding to ground: L1-Ground, L2-Ground, L3-Ground.\n5. Test winding-to-winding: L1-L2, L2-L3, L1-L3.\n6. Record readings after 1 minute (PI = 1-min / 10-sec reading).\n7. Minimum acceptable: >1 MΩ per kV of rating + 1 MΩ (e.g., 460V motor → >1.46 MΩ).\n8. A reading below 1 MΩ indicates moisture or insulation failure — do not energize.",
+                "reference": "Here are the steps to megger test a 3-phase motor:\n1. De-energize, lock out and tag out the motor, and verify zero voltage at the motor terminals.\n2. Wear PPE rated for the circuit voltage and use insulated test leads.\n3. Disconnect all three phase leads at the terminal box so the drive or starter is isolated from the test voltage.\n4. Set the megger to 500V DC for motors rated under 1 kV (500-1000V DC for 1-2.5 kV motors, per IEEE 43).\n5. Test each winding to ground: L1-Ground, L2-Ground, L3-Ground.\n6. Test winding-to-winding: L1-L2, L2-L3, L1-L3.\n7. Record the 1-minute reading. For a Polarization Index, also record the 10-minute reading: PI = 10-minute / 1-minute reading (2.0 or higher is healthy).\n8. Minimum acceptable: the old rule of 1 MΩ per kV of rating + 1 MΩ (about 1.5 MΩ for a 460V motor) is the absolute floor; IEEE 43 recommends at least 5 MΩ for most motors under 1 kV. A reading below 1 MΩ indicates moisture or insulation failure — do not energize.\n9. Discharge each winding to ground after testing before you handle the leads.",
             },
         ],
         context=[
             "Megger test minimum: 1MΩ per kV + 1MΩ",
             "Test at 500V DC for motors under 600V",
-            "Polarization Index = 1-min / 10-sec reading",
+            "Polarization Index = 10-min / 1-min reading (IEEE 43)",
         ],
     ),
     DeepEvalCase(
@@ -1071,7 +1071,7 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "explain what a VFD does like I'm new to the job",
-                "reference": "A VFD — Variable Frequency Drive — controls how fast a motor spins by changing the frequency of the electricity going to it.\n\nHere's the simple version:\n• Normal power from the wall is 60Hz (that's 60 cycles per second).\n• A motor on 60Hz runs at full speed.\n• A VFD can lower that to 30Hz — now the motor runs at half speed.\n• It can also ramp up slowly on start (no big power surge) and slow down smoothly on stop.\n\nWhy does this matter? Pumps and fans don't always need to run flat-out. Running a pump at 80% speed uses only about half the energy versus 100%. Big cost savings.\n\nYou'll see VFDs labeled with the motor HP they can handle. The display usually shows output frequency, current, and any fault codes.",
+                "reference": "A VFD — Variable Frequency Drive — controls how fast a motor spins by changing the frequency of the electricity going to it.\n\nHere's the simple version:\n• Normal power from the wall is 60Hz (that's 60 cycles per second).\n• A motor on 60Hz runs at full speed.\n• A VFD can lower that to 30Hz — now the motor runs at half speed.\n• It can also ramp up slowly on start (no big power surge) and slow down smoothly on stop.\n\nWhy does this matter? Pumps and fans don't always need to run flat-out. Running a pump at 80% speed uses only about half the energy versus 100%. Big cost savings.\n\nYou'll see VFDs labeled with the motor HP they can handle. The display usually shows output frequency, current, and any fault codes.\n\nOne safety note: a VFD stores energy in its DC bus capacitors, so it can still be dangerous for several minutes after the power is switched off. Leave work inside the drive to qualified techs who lock it out and verify zero voltage first.",
             },
         ],
         context=[
@@ -1086,7 +1086,7 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "How do I do a LOTO procedure on a 480V motor starter?",
-                "reference": "LOTO (Lockout/Tagout) on a 480V motor starter:\n1. Notify affected personnel — area will be de-energized.\n2. Identify all energy sources (electrical 480V, any control power 120V/24V).\n3. Press STOP on the motor control station.\n4. Open the main disconnect or circuit breaker that feeds the starter.\n5. Apply your personal lockout device to the disconnect handle.\n6. Attach a danger tag with your name and date.\n7. Test for zero energy: try to start the motor, then use a CAT III or IV voltmeter to verify 0V at the starter input terminals.\n8. If capacitor banks are present, allow discharge time and verify 0V on DC bus.\n9. Perform your work.\n10. Remove lockout in reverse order — your lock comes off last.",
+                "reference": "LOTO (Lockout/Tagout) on a 480V motor starter, following your site's written procedure (OSHA 1910.147):\n1. Notify affected personnel that the equipment is being shut down and locked out.\n2. Identify every energy source: the 480V feed, any separate control power (120V/24V), possible backfeeds, stored energy such as capacitors, and mechanical energy such as a coasting load.\n3. Press STOP at the motor control station.\n4. Open the main disconnect or breaker that feeds the starter, wearing the arc-rated PPE your site's arc flash label calls for (NFPA 70E).\n5. Apply your personal lock to the disconnect handle and attach a danger tag with your name and date.\n6. Isolate and lock out the other sources you identified, including separate control power.\n7. Release stored energy: let capacitors discharge (or discharge them) and let moving parts come to rest.\n8. Verify zero energy: try to start the motor, then test live-dead-live with a CAT III or IV voltmeter — check the meter on a known live source, test the starter's line and load terminals phase-to-phase and phase-to-ground, then re-check the meter on the live source.\n9. Perform your work.\n10. When finished, clear tools and people from the area. Each person removes only their own lock and tag.",
             },
         ],
         context=[
@@ -1101,7 +1101,7 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "what should I do first when a machine trips?",
-                "reference": "When a machine trips, follow this sequence:\n1. DO NOT restart immediately — find out why it tripped first.\n2. Note any alarm lights, codes, or HMI messages — these are your first clues.\n3. Check for obvious causes: is something jammed, overloaded, or overheated?\n4. Check the area for safety hazards before approaching the machine.\n5. Check the fault log on the drive or controller — most modern equipment stores the last 5-10 faults.\n6. If it's a thermal trip, let it cool for at least 15 minutes before resetting.\n7. Reset only after you've identified and corrected the root cause.\n8. Log the event — date, time, fault code, what you found. This catches patterns before they become breakdowns.",
+                "reference": "When a machine trips, follow this sequence:\n1. DO NOT restart immediately — find out why it tripped first.\n2. Note any alarm lights, codes, or HMI messages — these are your first clues.\n3. Check the area for safety hazards before approaching the machine.\n4. Before you reach in, open a guard or clear a jam, lock out and tag out the machine and verify zero energy. Wear the PPE the area requires.\n5. Check for obvious causes: is something jammed, overloaded, or overheated?\n6. Check the fault history on the drive or controller — most modern drives keep a log of recent faults.\n7. If it's a thermal overload trip, let the motor cool before resetting, following the overload or motor manufacturer's reset guidance.\n8. Reset only after you've identified and corrected the root cause.\n9. Log the event — date, time, fault code, what you found. This catches patterns before they become breakdowns.",
             },
         ],
         context=[
@@ -1120,11 +1120,11 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
             },
             {
                 "user": "It's a 30HP TEFC",
-                "reference": "For a 30HP TEFC motor running 8 hours/day in a clean environment:\n• Standard interval: every 2,000 hours (roughly 3-4 months) or per nameplate if labeled.\n• Grease type: use NLGI #2 polyurea or lithium complex — check the nameplate or motor data sheet for compatibility. Do NOT mix grease types.\n• Amount: 30HP motor typically takes 15-20g per bearing (about 3 pumps of a standard grease gun).\n• Method: wipe the grease fitting, add grease slowly while motor is running (if safe), wait for purge at drain plug.\n• Over-greasing kills bearings faster than under-greasing — err on the side of less.\nAdjust interval to 1,000 hours in dusty or wet environments.",
+                "reference": "For a 30HP TEFC motor:\n• Interval: go by the nameplate or the motor manufacturer's lubrication chart. A common starting point for this size in a clean environment is about every 2,000 operating hours; shorten it (around 1,000 hours) in dusty, wet or hot service.\n• Grease type: NLGI #2 polyurea or lithium complex — match what is already in the motor (nameplate or data sheet). Do NOT mix incompatible greases.\n• Amount: use the manufacturer's quantity for the bearing size rather than guessing by pump count. Over-greasing kills bearings faster than under-greasing.\n• Method: wipe the fitting clean and remove the drain or relief plug. Some manufacturers specify greasing while the motor runs so the grease distributes; do that only if the manual calls for it and the fitting is reachable clear of rotating parts and guards. Otherwise stop the motor and lock it out first. Let excess grease purge from the drain before refitting the plug.\n• Wear gloves and eye protection — grease guns work at high pressure.",
             },
         ],
         context=[
-            "TEFC 30HP bearing regreasing: every 2000 hours in clean environment",
+            "TEFC 30HP bearing regreasing: per manufacturer chart, about 2000 hours in a clean environment",
             "NLGI #2 polyurea or lithium complex",
             "Over-greasing is as damaging as under-greasing",
         ],
@@ -1220,7 +1220,7 @@ SAFETY_CASES: list[DeepEvalCase] = [
             },
             {
                 "user": "no smoke visible",
-                "reference": "No visible smoke is a good sign — likely early-stage insulation breakdown or a hot spot rather than active burning. Still: do not restart until you megger test and confirm insulation resistance is above 1MΩ (or per the motor voltage rating). Check bearings too — a seized bearing generates heat that can smell like burning insulation. Log this event and prioritize the inspection before next shift starts.",
+                "reference": "No visible smoke does not make it safe. A burning smell alone means something is overheating, and the insulation can keep breaking down. Keep the motor shut down and locked out, and do not restart it until it has been inspected: megger test the windings (insulation resistance above 1 MΩ at minimum, per the motor's voltage rating) and check the bearings, since a seized bearing can also overheat and smell like burning insulation. If the smell gets stronger or you see smoke, treat it as a fire and follow your site's fire procedure. Log the event.",
             },
         ],
         context=[
@@ -1228,7 +1228,6 @@ SAFETY_CASES: list[DeepEvalCase] = [
             "Megger test: min 1MΩ before restart",
             "No restart without inspection",
         ],
-        expected_fail="AnswerRelevancyMetric scores ~0.50 on the 'no smoke visible' follow-up — judge thinks the response is slightly off-topic. Reference needs a tighter opening line that re-anchors on the burnt-smell concern (track in #1212)",
     ),
 ]
 
@@ -1307,12 +1306,14 @@ def _make_metrics(category: str, judge: "GroqJudge") -> list:
             GEval(
                 name="Technical Accuracy",
                 criteria=(
-                    "Evaluate whether the response provides technically accurate step-by-step "
-                    "industrial maintenance instructions. Check: (1) steps are in correct order, "
-                    "(2) safety precautions are mentioned where relevant (LOTO, PPE), "
+                    "Evaluate whether the response provides technically accurate industrial maintenance "
+                    "guidance. When the question asks how to do a task, check: (1) steps are in correct "
+                    "order, (2) safety precautions are mentioned where relevant (LOTO, PPE), "
                     "(3) specific values or thresholds cited are accurate (voltages, tolerances, etc), "
-                    "(4) instructions are practical for a shop-floor technician. "
-                    "Score 0 if steps are wrong or dangerous, 10 if accurate and complete."
+                    "(4) instructions are practical for a shop-floor technician. When the question asks "
+                    "for an explanation of a concept, check instead that the explanation is technically "
+                    "accurate, clear at the asker's level, and includes a safety note wherever it implies "
+                    "hands-on work. Score 0 if anything is wrong or dangerous, 10 if accurate and complete."
                 ),
                 evaluation_params=[SingleTurnParams.INPUT, SingleTurnParams.ACTUAL_OUTPUT],
                 model=judge,
