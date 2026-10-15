@@ -19,6 +19,7 @@ import {
   threadFromPersisted,
   turnsFromPersisted,
   withManualSearchStatus,
+  withSettledFollowups,
   type HubNotebookMeta,
 } from "./to-interaction";
 
@@ -491,6 +492,64 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
     const userOnly = [{ ...threadFromPersisted([row()], meta).turns[0]! }];
     const out = withManualSearchStatus(userOnly, { manufacturer: "SMC", model: "X", running: true });
     expect(out).toEqual(userOnly);
+  });
+});
+
+// #4454: saved rows never carry follow-up suggestions, so when the host reloads
+// the thread after a stream and drops the live turn, the chips the technician
+// just saw vanished (Pixel 9a Chrome, staging 78bab6e98: present for ~2 s, gone
+// at settle). The host keeps the just-finished answer's suggestions and this
+// overlay puts them back on that answer.
+describe("withSettledFollowups — follow-ups survive the post-stream reload (#4454)", () => {
+  const settled = { question: "what should I check first", suggestions: ["What does P9.02 do"] };
+  const lastAssistant = (turns: readonly { role: string }[]) => [...turns].reverse().find((t) => t.role === "assistant")! as (typeof turns)[number] & { parts: readonly { type: string }[] };
+
+  it("puts the finished answer's suggestions back on the reloaded answer", () => {
+    const turns = threadFromPersisted([row()], meta).turns;
+    // Precondition: the reloaded row itself has no follow-ups (the defect).
+    expect(lastAssistant(turns).parts.some((p) => p.type === "followups")).toBe(false);
+    const out = withSettledFollowups(turns, settled);
+    expect(lastAssistant(out).parts).toContainEqual({ type: "followups", suggestions: ["What does P9.02 do"] });
+  });
+
+  it("only the last answer gets them; earlier answers stay as they were", () => {
+    const turns = threadFromPersisted(
+      [row({ question: "what should I check first" }), row({ id: "turn-2", question: "what should I check first", createdAt: "2026-09-17T12:05:00.000Z" })],
+      meta,
+    ).turns;
+    const out = withSettledFollowups(turns, settled);
+    const answers = out.filter((t) => t.role === "assistant");
+    expect(answers[0]!.parts.some((p) => p.type === "followups")).toBe(false);
+    expect(answers[1]!.parts.some((p) => p.type === "followups")).toBe(true);
+  });
+
+  it("does not attach them to a different question's answer (a newer turn from another device)", () => {
+    const turns = threadFromPersisted([row(), row({ id: "turn-2", question: "something else entirely", createdAt: "2026-09-17T12:05:00.000Z" })], meta).turns;
+    expect(withSettledFollowups(turns, settled)).toEqual(turns);
+  });
+
+  it("leaves a stopped or failed last answer alone", () => {
+    const stopped = threadFromPersisted([row({ answerStatus: "error", answerText: "partial" })], meta).turns;
+    const failed = threadFromPersisted([row({ answerStatus: "error", answerText: null })], meta).turns;
+    expect(withSettledFollowups(stopped, settled)).toEqual(stopped);
+    expect(withSettledFollowups(failed, settled)).toEqual(failed);
+  });
+
+  it("no settled suggestions, or none to show: unchanged", () => {
+    const turns = threadFromPersisted([row()], meta).turns;
+    expect(withSettledFollowups(turns, null)).toEqual(turns);
+    expect(withSettledFollowups(turns, { question: settled.question, suggestions: [] })).toEqual(turns);
+  });
+
+  it("renders in the same order as the live turn: follow-ups before the manual-search status", () => {
+    const turns = threadFromPersisted([row()], meta).turns;
+    const out = withManualSearchStatus(withSettledFollowups(turns, settled), { manufacturer: "SMC", model: "X", running: false });
+    const types = lastAssistant(out).parts.map((p) => p.type);
+    expect(types.indexOf("followups")).toBeGreaterThan(-1);
+    expect(types.indexOf("followups")).toBeLessThan(types.indexOf("manual_search_status"));
+    // Same placement partsFromStream gives the live turn: after sources and basis.
+    const live = partsFromStream(stream(), LIVE).map((p) => p.type);
+    expect(types.slice(0, types.indexOf("followups") + 1)).toEqual(live.slice(0, live.indexOf("followups") + 1));
   });
 });
 

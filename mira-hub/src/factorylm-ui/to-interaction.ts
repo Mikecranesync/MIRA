@@ -538,6 +538,41 @@ export function withManualSearchStatus(
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
 }
 
+/** The follow-up suggestions of the answer that just finished streaming, and
+ *  the question they answered (#4454). */
+export interface SettledFollowups {
+  readonly question: string;
+  readonly suggestions: readonly string[];
+}
+
+/**
+ * #4454 — saved rows never carry follow-up suggestions, so once `hub-host.tsx`
+ * re-loads the thread after a stream and drops the live turn, the chips the
+ * technician just saw vanished. The host keeps the finished answer's
+ * suggestions; this puts them back on the LAST assistant turn, but only when
+ * that turn completed and answers the same question (a newer turn from another
+ * device never inherits them). Same overlay shape as `withManualSearchStatus`,
+ * applied before it so the order matches the live turn.
+ */
+export function withSettledFollowups(
+  turns: readonly InteractionTurn[],
+  settled: SettledFollowups | null,
+): InteractionTurn[] {
+  if (!settled || settled.suggestions.length === 0) return [...turns];
+  let lastAssistantIndex = -1;
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i]!.role === "assistant") lastAssistantIndex = i;
+  }
+  const answer = turns[lastAssistantIndex];
+  const question = turns[lastAssistantIndex - 1];
+  if (!answer || answer.lifecycle !== "completed" || question?.role !== "user") return [...turns];
+  if (answer.parts.some((p) => p.type === "followups")) return [...turns];
+  const asked = question.parts.find((p) => p.type === "text");
+  if (!asked || asked.type !== "text" || asked.text.trim() !== settled.question.trim()) return [...turns];
+  const part: InteractionPart = { type: "followups", suggestions: settled.suggestions };
+  return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
+}
+
 export function threadFromPersisted(
   rows: readonly (PersistedTurn & { createdAt?: string })[],
   meta: HubNotebookMeta,
