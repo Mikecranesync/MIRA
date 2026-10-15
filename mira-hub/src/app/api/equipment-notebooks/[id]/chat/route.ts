@@ -153,7 +153,11 @@ import {
   type ProviderAttemptFailure,
 } from "@/capabilities/provider-health";
 import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
-import { assessEvidenceFollowed } from "@/capabilities/observability/evidence-consistency";
+import {
+  assessEvidenceFollowed,
+  equipmentClassesOf,
+  subjectIdentifiers,
+} from "@/capabilities/observability/evidence-consistency";
 import {
   recordArrival,
   recordResponse,
@@ -612,6 +616,31 @@ export function answerUsesStoredNameplateReading(answer: string, readings: reado
       }
       return false;
     }),
+  );
+}
+
+/** "your earlier photo", "a previous picture", "the photo you sent earlier": the
+ *  prior-photo section tells the model to say it is "an unconfirmed reading of an
+ *  earlier photo" whenever it relies on one. */
+const EARLIER_PHOTO_ATTRIBUTION =
+  /\b(?:earlier|previous|prior|last)\s+(?:photo|picture|image)s?\b|\b(?:photo|picture|image)s?\s+(?:you\s+)?(?:attached|sent|shared|took|uploaded)\s+earlier\b/i;
+
+/** #4442: the photos attached to EARLIER questions in this conversation ride in
+ *  every later turn's context, so their presence says nothing about whether this
+ *  answer came from them. They exempt the #4426 floor only when the answer uses
+ *  one: it attributes to an earlier photo (the section's own rule) AND names
+ *  something that photo showed, an identifier such as "F004" or the same kind of
+ *  equipment (`subjectIdentifiers` / `equipmentClassesOf`, the evidence-follow
+ *  check's own signals). A passing mention exempts nothing, mirroring
+ *  `answerUsesStoredNameplateReading`. Exported for unit testing. */
+export function answerUsesEarlierPhoto(answer: string, observations: readonly string[]): boolean {
+  if (!EARLIER_PHOTO_ATTRIBUTION.test(answer)) return false;
+  const upper = answer.toUpperCase();
+  const answerClasses = equipmentClassesOf(answer);
+  return observations.some(
+    (obs) =>
+      subjectIdentifiers(obs).some((id) => upper.includes(id)) ||
+      equipmentClassesOf(obs).some((c) => answerClasses.includes(c)),
   );
 }
 
@@ -2937,9 +2966,11 @@ async function handleChatTurn(
   // It rides in the injection-hardened user-data channel (buildManualUserContent
   // below), NEVER the system prompt. Fail-open: a load failure must not drop the
   // turn. No stored observation → "" → no block, the turn still answers.
-  const lookContext = [renderLookObservationSection(lookRow), renderPriorLookObservationsSection(priorLookRows)]
-    .filter(Boolean)
-    .join("\n\n");
+  // Kept apart for the #4426 floor's exemption (#4442): this turn's photo is this
+  // turn's evidence; earlier photos ride along on every later turn of the thread.
+  const thisTurnLookSection = renderLookObservationSection(lookRow);
+  const priorLookSection = renderPriorLookObservationsSection(priorLookRows);
+  const lookContext = [thisTurnLookSection, priorLookSection].filter(Boolean).join("\n\n");
   // Correction to `evidence.materialize`'s earlier default: the LOOK
   // observation, when present, DOES reach the prompt (buildManualUserContent
   // below carries `lookContext`) — `observation_available`/`observation_in_context`
@@ -3792,9 +3823,12 @@ async function handleChatTurn(
           // (not this turn's evidence), so it exempts only an answer that uses one
           // (answerUsesStoredNameplateReading). Presence alone would switch this
           // floor off for every later library question on a once-photographed machine.
+          // Earlier photos in the thread are the same case (#4442): only this turn's
+          // photo exempts by presence.
           exempt:
             Boolean(groundedMachineEntry) ||
-            Boolean(lookContext) ||
+            Boolean(thisTurnLookSection) ||
+            (Boolean(priorLookSection) && answerUsesEarlierPhoto(answerText, priorLookRows.map((r) => r.text))) ||
             (Boolean(visualSection) && answerUsesStoredNameplateReading(answerText, visualReadings)) ||
             Boolean(safetyTrigger),
         });
