@@ -639,6 +639,25 @@ const EARLIER_PHOTO_ATTRIBUTION: readonly RegExp[] = [
   /(?<!\b(?:if|once|when|after|until|soon as)\s+)\byou\s+(?:showed|sent|shared|attached|took|uploaded)\s+(?:me\s+|us\s+)?(?:a|an|the|your|that)\s+(?:photo|picture|image|pic)s?\b/i,
 ];
 
+/** A sentence that refers to an earlier photo but states no reading from it
+ *  (Codex r2 F4 on #4450): an instruction to inspect it ("check / look at /
+ *  compare your earlier photo…"), a question about it, or a conditional ("if your
+ *  earlier photo shows…", "…whether…"). */
+const NON_AFFIRMATIVE_PHOTO_SENTENCE: readonly RegExp[] = [
+  /\?\s*$/,
+  /^\s*(?:(?:please|so|now|then|first|also|just)[,\s]+)*(?:check|look|see|review|compare|verify|inspect|confirm|open|zoom|re-?check|double-?check|examine|re-?read|refer back|go back)\b/i,
+  /^\s*(?:can|could|would|will|do|does|did|is|are)\s+(?:you|it|the|your|that)\b/i,
+  /^\s*(?:if|once|unless)\b|\bwhether\b/i,
+];
+
+/** The sentences of `answer` that affirmatively refer to an earlier photo. */
+function earlierPhotoStatements(answer: string): string[] {
+  return answer
+    .split(/(?<=[.!?])\s+|\n+/)
+    .filter((s) => EARLIER_PHOTO_ATTRIBUTION.some((re) => re.test(s)))
+    .filter((s) => !NON_AFFIRMATIVE_PHOTO_SENTENCE.some((re) => re.test(s)));
+}
+
 /** `id` occurs in `upper` as a whole token: not inside a longer code
  *  ("GS10-20P2" in "GS10-20P20", "F004" in "F0041") and not continued by a
  *  hyphenated suffix ("GS10-20P2-EX"). Both strings are upper-case. */
@@ -663,17 +682,20 @@ function containsIdentifierToken(upper: string, id: string): boolean {
  *  mention exempts nothing, mirroring `answerUsesStoredNameplateReading`.
  *  Exported for unit testing. */
 export function answerUsesEarlierPhoto(answer: string, observations: readonly string[]): boolean {
-  if (!EARLIER_PHOTO_ATTRIBUTION.some((re) => re.test(answer))) return false;
-  const upper = answer.toUpperCase();
-  const answerClasses = equipmentClassesOf(answer);
-  return observations.some((obs) => {
-    // A photo that carries identifiers (a fault code, a model number) is used only
-    // when the answer repeats one: "your earlier photo... the drive has Ethernet"
-    // names the photo's equipment and none of what it showed. The equipment class
-    // is the distinctive content only of a photo with no identifiers at all.
-    const ids = subjectIdentifiers(obs);
-    if (ids.length > 0) return ids.some((id) => containsIdentifierToken(upper, id));
-    return equipmentClassesOf(obs).some((c) => answerClasses.includes(c));
+  // The reading must be stated in the SAME sentence that refers to the photo:
+  // "Your earlier photo is blurry. F004 on a TP700 means…" uses no reading.
+  return earlierPhotoStatements(answer).some((sentence) => {
+    const upper = sentence.toUpperCase();
+    const sentenceClasses = equipmentClassesOf(sentence);
+    return observations.some((obs) => {
+      // A photo that carries identifiers (a fault code, a model number) is used only
+      // when the answer repeats one: "your earlier photo... the drive has Ethernet"
+      // names the photo's equipment and none of what it showed. The equipment class
+      // is the distinctive content only of a photo with no identifiers at all.
+      const ids = subjectIdentifiers(obs);
+      if (ids.length > 0) return ids.some((id) => containsIdentifierToken(upper, id));
+      return equipmentClassesOf(obs).some((c) => sentenceClasses.includes(c));
+    });
   });
 }
 

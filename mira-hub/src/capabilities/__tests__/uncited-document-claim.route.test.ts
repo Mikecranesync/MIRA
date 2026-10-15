@@ -436,6 +436,14 @@ describe("#4426 — an uncited manufacturer-library answer abstains deterministi
       expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
     });
 
+    it("an instruction to check the earlier photo for its code does NOT exempt an uncited claim (Codex r2 F4)", async () => {
+      earlierPhotoInThread();
+      const r = await ask(`${UNCITED} Check your earlier photo to see whether F004 is visible.`);
+      expect(priorSectionReachedProvider()).toBe(true);
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+    });
+
     it("control: an answer that uses the earlier photo (attributed, and naming what it showed) still ships", async () => {
       earlierPhotoInThread();
       const FROM_PHOTO = "From your earlier photo (an unconfirmed reading), the drive is showing fault F004, an undervoltage trip.";
@@ -573,6 +581,32 @@ describe("isUncitedDocumentClaim — the decision itself", () => {
     ]) {
       expect(answerUsesEarlierPhoto(answer, obs), answer).toBe(false);
     }
+  });
+
+  it("counts only a sentence that STATES what the earlier photo showed (Codex r2 F4, #4450)", () => {
+    const obs = ["Drive keypad showing fault F004 (undervoltage); nameplate reads GS10-20P2."];
+    for (const answer of [
+      // Codex's case: an instruction to inspect the photo, naming its code.
+      "The TP700 Comfort has a 7-inch widescreen touch display with Ethernet and USB ports. Check your earlier photo to see whether F004 is visible.",
+      "Look at your earlier photo to confirm F004 is on the keypad.",
+      "Compare the F004 reading in your earlier photo with the manual table.",
+      "Please double-check the earlier photo for GS10-20P2.",
+      // Questions about it.
+      "Does your earlier photo show F004?",
+      "Your earlier photo showed F004, right?",
+      "Can you check the earlier photo for F004",
+      // Conditionals.
+      "If your earlier photo shows F004, the drive tripped on undervoltage.",
+      "It depends on whether your earlier photo shows F004.",
+      // The reference and the code in different sentences.
+      "Your earlier photo is blurry. F004 on a TP700 means a backlight fault.",
+    ]) {
+      expect(answerUsesEarlierPhoto(answer, obs), answer).toBe(false);
+    }
+    // A statement of what it showed, even after an unrelated sentence, still counts.
+    expect(
+      answerUsesEarlierPhoto("The TP700 has a 7-inch display. Your earlier photo shows F004 on the drive keypad.", obs),
+    ).toBe(true);
   });
 
   it("repeats an identifier only as a whole token, not inside a longer one (Codex r1 F2, #4450)", () => {
