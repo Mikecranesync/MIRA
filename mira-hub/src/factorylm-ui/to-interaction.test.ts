@@ -501,26 +501,37 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
 // at settle). The host keeps the just-finished answer's suggestions and this
 // overlay puts them back on that answer.
 describe("withSettledFollowups — follow-ups survive the post-stream reload (#4454)", () => {
-  const settled = { question: "what should I check first", suggestions: ["What does P9.02 do"] };
+  // `answeredBefore`: the answers already in the thread when the send started.
+  const settled = { question: "what should I check first", suggestions: ["What does P9.02 do"], answeredBefore: [] as string[] };
   const lastAssistant = (turns: readonly { role: string }[]) => [...turns].reverse().find((t) => t.role === "assistant")! as (typeof turns)[number] & { parts: readonly { type: string }[] };
+  const hasFollowups = (t: { parts: readonly { type: string }[] }) => t.parts.some((p) => p.type === "followups");
+  const sameQuestionTwice = () => threadFromPersisted(
+    [row({ question: "what should I check first" }), row({ id: "turn-2", question: "what should I check first", createdAt: "2026-09-17T12:05:00.000Z" })],
+    meta,
+  ).turns;
 
   it("puts the finished answer's suggestions back on the reloaded answer", () => {
     const turns = threadFromPersisted([row()], meta).turns;
     // Precondition: the reloaded row itself has no follow-ups (the defect).
-    expect(lastAssistant(turns).parts.some((p) => p.type === "followups")).toBe(false);
+    expect(hasFollowups(lastAssistant(turns))).toBe(false);
     const out = withSettledFollowups(turns, settled);
     expect(lastAssistant(out).parts).toContainEqual({ type: "followups", suggestions: ["What does P9.02 do"] });
   });
 
-  it("only the last answer gets them; earlier answers stay as they were", () => {
-    const turns = threadFromPersisted(
-      [row({ question: "what should I check first" }), row({ id: "turn-2", question: "what should I check first", createdAt: "2026-09-17T12:05:00.000Z" })],
-      meta,
-    ).turns;
-    const out = withSettledFollowups(turns, settled);
+  it("an earlier answer to the same question, already there before the send, stays as it was", () => {
+    const turns = sameQuestionTwice();
+    const out = withSettledFollowups(turns, { ...settled, answeredBefore: [answerTurnId("turn-1")] });
     const answers = out.filter((t) => t.role === "assistant");
-    expect(answers[0]!.parts.some((p) => p.type === "followups")).toBe(false);
-    expect(answers[1]!.parts.some((p) => p.type === "followups")).toBe(true);
+    expect(hasFollowups(answers[0]!)).toBe(false);
+    expect(hasFollowups(answers[1]!)).toBe(true);
+  });
+
+  // Cheap-lane finding on #4456: matching on the question alone let another
+  // device's answer to the SAME question inherit them. Two new answers to it
+  // cannot be told apart from here, so neither gets them.
+  it("another device answered the same question meanwhile: neither answer gets them", () => {
+    const turns = sameQuestionTwice();
+    expect(withSettledFollowups(turns, settled)).toEqual(turns);
   });
 
   it("does not attach them to a different question's answer (a newer turn from another device)", () => {
@@ -538,7 +549,7 @@ describe("withSettledFollowups — follow-ups survive the post-stream reload (#4
   it("no settled suggestions, or none to show: unchanged", () => {
     const turns = threadFromPersisted([row()], meta).turns;
     expect(withSettledFollowups(turns, null)).toEqual(turns);
-    expect(withSettledFollowups(turns, { question: settled.question, suggestions: [] })).toEqual(turns);
+    expect(withSettledFollowups(turns, { ...settled, suggestions: [] })).toEqual(turns);
   });
 
   it("renders in the same order as the live turn: follow-ups before the manual-search status", () => {

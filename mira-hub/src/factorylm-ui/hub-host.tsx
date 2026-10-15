@@ -56,7 +56,7 @@ import { HOME_THREAD, createOutgoingOwner, withOutgoing, type Outgoing } from ".
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
+import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
   EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
@@ -139,6 +139,8 @@ export function HubShellHost() {
   const selectionRef = useRef<HubSelection | null>(null);
   useEffect(() => { selectionRef.current = selection; }, [selection]);
   const [detail, setDetail] = useState<Detail | null>(null);
+  const detailRef = useRef(detail);
+  useEffect(() => { detailRef.current = detail; }, [detail]);
   const [live, setLive] = useState<Live | null>(null);
   // #4454: the finished answer's follow-up suggestions, kept past the reload
   // that replaces the live turn (saved rows never carry them).
@@ -403,6 +405,8 @@ export function HubShellHost() {
     const outgoingId = outgoingOwner.current?.id ?? null;
     setFailedBody(null);
     setSettledFollowups(null);
+    // #4454: which answers were already there, so the kept follow-ups land on the one this send produces.
+    const answeredBefore = (detailRef.current?.turns ?? []).map((row) => answerTurnId(row.id));
     dispatch({ type: "set-send-error", error: null });
     setLive({ id, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString(), outgoingId });
     setBusy(true);
@@ -430,7 +434,7 @@ export function HubShellHost() {
       const finished = partsFromStream(result, { turnId: `${id}-a` }).find((p) => p.type === "followups");
       setSettledFollowups(
         finished?.type === "followups"
-          ? { notebookId: sel.notebookId, threadId: sel.threadId, question: body.message, suggestions: finished.suggestions }
+          ? { notebookId: sel.notebookId, threadId: sel.threadId, question: body.message, suggestions: finished.suggestions, answeredBefore }
           : null,
       );
       setLive((cur) => (cur && cur.id === id ? null : cur));
