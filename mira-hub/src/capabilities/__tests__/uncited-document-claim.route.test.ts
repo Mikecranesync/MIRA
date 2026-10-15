@@ -523,6 +523,30 @@ describe("isUncitedDocumentClaim — the decision itself", () => {
     expect(answerUsesEarlierPhoto("Your earlier photo shows fault F004.", [])).toBe(false);
   });
 
+  it("recognises the ways a model actually refers back to an earlier photo (conversation review, #4450)", () => {
+    const obs = ["Drive keypad showing fault F004 (undervoltage); nameplate reads GS10-20P2."];
+    for (const answer of [
+      "From the photo earlier, the keypad shows fault F004.",
+      "In the picture you showed me before, the fault code was F004.",
+      "As shown in the image you sent previously, the drive is a GS10-20P2.",
+      "You showed me a photo earlier of the drive keypad with F004 on it.",
+      "That matches what I saw in the photo before: F004.",
+      "Referring to the photo from earlier in our conversation, the drive has tripped on F004.",
+      "The photo you sent a few minutes ago shows F004.",
+    ]) {
+      expect(answerUsesEarlierPhoto(answer, obs), answer).toBe(true);
+    }
+    // Asking for a NEW photo is not attribution to an earlier one, even when the
+    // answer names the earlier photo's equipment.
+    for (const answer of [
+      "Take a photo before you reset the drive, then check F004 in the manual.",
+      "Send a photo of the drive keypad if F004 comes back.",
+      "Once you have a picture of the drive nameplate, I can confirm the model.",
+    ]) {
+      expect(answerUsesEarlierPhoto(answer, obs), answer).toBe(false);
+    }
+  });
+
   it("the message names the library that was searched and the way forward", () => {
     expect(UNCITED_OEM_CLAIM_TEXT).toMatch(/manufacturer documentation I have/);
     expect(UNCITED_OEM_CLAIM_TEXT).toMatch(/show you the page/);

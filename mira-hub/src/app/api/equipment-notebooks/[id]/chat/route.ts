@@ -619,11 +619,19 @@ export function answerUsesStoredNameplateReading(answer: string, readings: reado
   );
 }
 
-/** "your earlier photo", "a previous picture", "the photo you sent earlier": the
- *  prior-photo section tells the model to say it is "an unconfirmed reading of an
- *  earlier photo" whenever it relies on one. */
-const EARLIER_PHOTO_ATTRIBUTION =
-  /\b(?:earlier|previous|prior|last)\s+(?:photo|picture|image)s?\b|\b(?:photo|picture|image)s?\s+(?:you\s+)?(?:attached|sent|shared|took|uploaded)\s+earlier\b/i;
+/** How an answer refers back to a photo from an earlier turn. The prior-photo
+ *  section asks for "an unconfirmed reading of an earlier photo", but the cascade
+ *  paraphrases, so each pattern is anchored to a PAST or specific photo, never to
+ *  a request for a new one ("take a photo before you reset…"):
+ *  - "your earlier photo", "a previous picture", "the last image";
+ *  - "the photo earlier", "the picture you showed me before", "the image you sent
+ *    previously", "the photo from earlier", "the photo you sent a few minutes ago";
+ *  - "you showed me a photo", "you sent a picture" (past-tense verbs only). */
+const EARLIER_PHOTO_ATTRIBUTION: readonly RegExp[] = [
+  /\b(?:earlier|previous|prior|last)\s+(?:photo|picture|image|pic)s?\b/i,
+  /\b(?:the|your|that)\s+(?:photo|picture|image|pic)s?\b(?:\s+[\w']+){0,5}?\s+(?:earlier|before|previously|ago)\b/i,
+  /\b(?:showed|sent|shared|attached|took|uploaded)\s+(?:me\s+|us\s+)?(?:a|an|the|your|that)\s+(?:photo|picture|image|pic)s?\b/i,
+];
 
 /** #4442: the photos attached to EARLIER questions in this conversation ride in
  *  every later turn's context, so their presence says nothing about whether this
@@ -634,7 +642,7 @@ const EARLIER_PHOTO_ATTRIBUTION =
  *  check's own signals). A passing mention exempts nothing, mirroring
  *  `answerUsesStoredNameplateReading`. Exported for unit testing. */
 export function answerUsesEarlierPhoto(answer: string, observations: readonly string[]): boolean {
-  if (!EARLIER_PHOTO_ATTRIBUTION.test(answer)) return false;
+  if (!EARLIER_PHOTO_ATTRIBUTION.some((re) => re.test(answer))) return false;
   const upper = answer.toUpperCase();
   const answerClasses = equipmentClassesOf(answer);
   return observations.some(
