@@ -87,3 +87,50 @@ one. Several development runs in an hour hit it — the walk then reports
 `.github/workflows/stranger-walk.yml` — nightly 06:30 UTC + `workflow_dispatch`, staging only,
 in the shared `staging-environment` concurrency group, advisory (a low score is a finding, not a
 failed job). It only runs once on the default branch.
+
+## Baseline — 2026-10-15, staging `78bab6e98` (evidence: #4460)
+
+| Run | CORRECT | WRONG_PAGE | UNCITED | ABSTAINED | BROKEN | safety red lines |
+|---|---|---|---|---|---|---|
+| #1 | **32/50** | 12 | 3 | 3 | 0 | 15/15 |
+| #2 | **31/50** | 12 | 4 | 3 | 0 | 15/15 |
+
+Repeat: 46/50 rows identical; CORRECT/BROKEN flakes `pf40-q3`, `pf4m-q3`, `micro820-um-q3` (staging
+nondeterminism — each run's recorded streams replay 50/50 through local `/v3`). Seeded defects on
+run #1: strip-sources 32 → 0 CORRECT, page-offset 32 → 2 CORRECT, both exactly as predicted.
+
+### Failure causes, ranked
+
+1. **No safety notice, ever (15/15 safety-relevant questions, both runs).** The stream carries no
+   `safety` frame and no `hazardEntries` for stored-energy / de-energize / live-terminal / battery
+   questions, so `/v3` has nothing to render. One non-safety answer instead put "⚠️ Safety flag" in
+   the answer *text* (run #2 `pf40-q3`) with no structured notice. *Fix:* widen the Hub chat
+   route's hazard detection to stored-energy and isolation intents (capacitor discharge, DC-bus
+   voltage, "wait N minutes after power off", hazardous voltage present, disconnect main power,
+   lithium battery handling) and make a safety-worded answer carry the structured notice; the 15
+   red-line fixtures are the regression set.
+2. **Retrieval misses on table pages (6–7 rows per run → UNCITED/ABSTAINED, "the loaded excerpts do
+   not say").** Fault-code and parameter tables (SMC Flex fault 39 p.105, SMC-50 fault 46 p.212,
+   SMC Flex overload classes p.17, MicroLogix duplicate-IP p.159) never reach the context.
+   *Fix:* exact-token boosting for fault codes / parameter names in notebook retrieval, and
+   row-preserving chunking for tabular pages; write each fixture's question as a failing
+   retrieval test first.
+3. **First citation is a supporting-but-secondary page (≈8 of 12 WRONG_PAGE).** The cited page does
+   state the fact — a parameter list, spec summary or index table (E3 p.45/89/107, SMC-50
+   p.126/210, GS10 p.36, MicroLogix p.143, SMC Flex p.82) — but not the troubleshooting /
+   definition page a technician needs. *Fix:* intent-aware rerank (a fault question prefers the
+   fault-table page; a "how do I" question the procedure page). Scoring note: a reviewed
+   `alsoAccept` list would move these rows; it is offered for owner review, **not applied** —
+   expected pages are never weakened to raise the number.
+4. **Citation order is nondeterministic (the 3 flakes).** With the right page in the sources both
+   times, the first marker moved (`pf4m-q3` p.27 ↔ p.76; `pf40-q3` p.73 ↔ p.92), and the restore
+   question was answered once and abstained once. Inline markers are excerpt indices ("[11][14]"
+   with two sources). *Fix:* order sources by retrieval rank and renumber markers 1..n server-side;
+   pin generation settings on the notebook route so one deploy gives one answer.
+5. **The stranger's surface hides readiness and mislabels "I can't find it".** `/v3` has no readiness
+   label (the walk reads the API; 41/45 follow-ups were asked while it said "Ready to ask ·
+   improving search…"); after attaching, the scope line kept "no selected sources yet — general
+   help only" until a reload; and "the excerpts do not say" replies arrive as `status: answered`
+   with a general-guidance basis instead of `insufficient_evidence`. *Fix:* render the source's
+   readiness label in the `/v3` scope line and refresh it after an attached send; route a
+   no-evidence reply through `insufficient_evidence`.
