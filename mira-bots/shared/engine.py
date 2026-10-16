@@ -25,7 +25,9 @@ from .citation_compliance import check_citation_compliance as _check_citation_co
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .citation_compliance import established_context_text as _established_context_text
+from .citation_compliance import strip_conflicting_citations as _strip_conflicting_citations
 from .citation_compliance import trusted_uns_context as _trusted_uns_context
+from .citation_compliance import valid_source_labels as _valid_source_labels
 from .conversation_router import accounting_session_id, route_intent
 from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .detection.recurring_fault import check_recurring_and_annotate
@@ -944,7 +946,7 @@ def _normalize_reply_text(text: str) -> str:
 # exactly THREE distinct parameter tokens — P09.03, P09.04 and P0594 — of which
 # only P0594 is absent from the corpus. Zero false positives on the real ones.
 # Offline detector + sweep: tests/regime1_telethon/campaign/{fabrication,offline_lab}.py
-_PARAM_CLAIM_RE = re.compile(r"\b([APbtCd]\d{1,4}(?:[.-]\d{1,2})?|E-\d{2})\b")
+_PARAM_CLAIM_RE = re.compile(r"\b([APbtCd]\d{1,4}(?:[.-]\d{1,2})?|E-\d{2}|E\d{1,2}-\d{1,2})\b")
 _SOURCE_TAG_RE = re.compile(r"\[Source:[^\]]*\]", re.IGNORECASE)
 _CLAIM_ACTION_RE = re.compile(
     r"\b(set|change|increase|decrease|raise|lower|extend|adjust|program|write|enable|disable)\b",
@@ -1104,6 +1106,56 @@ def _find_unsupported_param_claims(
     return sorted(unsupported)
 
 
+def _unsupported_fault_definition(sentence: str, chunks: list) -> bool:
+    """Require actual meaning support for explicit code definitions, not code status."""
+    body = _SOURCE_TAG_RE.sub(" ", sentence)
+    definition = re.search(
+        r"(?<![\w-])(F\d{2,5}|OC|OV|UV)\b\s*(?:(?:typically|usually|generally)\s+)?"
+        r"(?:=|means?|indicates?|is)\s+([^.;\[—]+)",
+        body,
+        re.I,
+    )
+    if not definition or re.search(
+        r"\b(?:cannot verify|can't verify|not documented|unknown|whether)\b", body, re.I
+    ):
+        return False
+    code, meaning = definition.groups()
+    if re.match(r"(?:the\s+)?(?:active|displayed|reported)\s+(?:fault|code)\b", meaning, re.I):
+        return False
+
+    def normalize(text):
+        text = re.sub(r"\b(?:a|an|the|condition|fault)\b", "", text.lower())
+        return re.sub(r"[^a-z0-9]+", "", text)
+
+    for chunk in chunks:
+        if not isinstance(chunk, dict) or chunk.get("evidence_applicability") not in {
+            "model",
+            "family",
+        }:
+            continue
+        for passage in _claim_sentences(chunk.get("text") or chunk.get("content") or ""):
+            supported = re.search(r"\b" + re.escape(code) + r"\b([^.;,]*)", passage, re.I)
+            if (
+                supported
+                and normalize(meaning)
+                and normalize(meaning) in normalize(supported[1])
+                and not re.search(
+                    r"\b(?:not|never|incorrect|unknown|unsupported)\b", supported[1], re.I
+                )
+                and all(
+                    normalize(condition[0]) in normalize(meaning)
+                    for condition in re.finditer(
+                        r"\b(?:at constant speed|during acceleration|during deceleration|"
+                        r"during startup|on startup|at startup)\b",
+                        supported[1],
+                        re.I,
+                    )
+                )
+            ):
+                return False
+    return True
+
+
 def _sanitize_claim_support(reply: str, message: str, history: list, chunks: list) -> str:
     """Remove unsupported sentences, retaining independent supported/general help."""
     facts = " ".join(
@@ -1127,8 +1179,18 @@ def _sanitize_claim_support(reply: str, message: str, history: list, chunks: lis
         )
         for fact in _claim_sentences(facts)
     )
-    kept, removed = [], False
-    for sentence in _claim_sentences(reply):
+    fault_definition_gap = any(
+        not _claim_is_report_or_question(part, facts)
+        and _unsupported_fault_definition(part, chunks)
+        for part in _claim_sentences(reply)
+    )
+    kept, removed, previous_removed = [], False, False
+    parts = re.split(r"((?<=[.!?])\s+|\n+)", reply)
+    for index in range(0, len(parts), 2):
+        sentence = parts[index]
+        separator = parts[index + 1] if index + 1 < len(parts) else ""
+        if previous_removed and not _SOURCE_TAG_RE.sub("", sentence).strip():
+            continue
         unsupported = _find_unsupported_param_claims(sentence, message, history, chunks)
         inferred = (
             disconnected.search(sentence)
@@ -1136,17 +1198,49 @@ def _sanitize_claim_support(reply: str, message: str, history: list, chunks: lis
             and not _claim_is_report_or_question(sentence, facts)
             and not re.search(r"\b(?:if|whether|not|confirm|verify)\b", sentence, re.I)
         )
-        if unsupported or inferred:
-            removed = True
+        dependent_cause = fault_definition_gap and re.match(
+            r"\s*(?:Most (?:likely|common) causes?|Most likely cause)\b", sentence, re.I
+        )
+        if (
+            unsupported
+            or inferred
+            or dependent_cause
+            or (
+                not _claim_is_report_or_question(sentence, facts)
+                and _unsupported_fault_definition(sentence, chunks)
+            )
+        ):
+            removed, previous_removed = True, True
+            if kept and re.fullmatch(r"\s*\d+\.\s*", kept[-1]):
+                kept.pop()
         else:
-            kept.append(sentence)
+            kept.append(sentence + separator)
+            previous_removed = False
     if not removed:
+        if (
+            re.search(r"\bstartup\b", facts, re.I)
+            and re.search(r"\b(?:F\d{2,5}|OC|OV|UV)\b[^.\n]*at constant speed", reply, re.I)
+            and "differs from your reported startup" not in reply
+        ):
+            return (
+                reply
+                + "\n\nThis definition describes constant-speed operation and differs from your reported startup timing. Confirm the displayed code and when it occurs before using that mapping."
+            )
         return reply
-    kept.append(
-        "I cannot verify that setting or equipment state from the available evidence. "
-        "Please share the applicable manual passage or confirm the actual wiring state."
+    retained = "".join(kept).rstrip()
+    removed_tags = set(_SOURCE_TAG_RE.findall(reply)) - set(_SOURCE_TAG_RE.findall(retained))
+    if removed_tags:
+        retained = _strip_conflicting_citations(
+            retained, sorted(removed_tags), None, "admission_conflict"
+        )
+    return (
+        retained.rstrip()
+        + "\n\n"
+        + (
+            "I cannot verify that equipment-specific claim from the available evidence. "
+            "Please share the applicable manual passage or confirm the reported fault and actual wiring state."
+        )
     )
-    return " ".join(part for part in kept if part.strip())
 
 
 def _find_repeated_answer(reply: str, message: str, history: list) -> bool:
@@ -2609,6 +2703,34 @@ class Supervisor:
 
         # Quality handling, salvage and Sources normalization can all alter the
         # reply after the inner gate. Validate what will actually be delivered.
+        scope_identity = citation_scope.get("uns_context") or {}
+        expected_model = canonical_model(
+            scope_identity.get("model"), scope_identity.get("product_family")
+        )
+        eligible_labels = _valid_source_labels(
+            [
+                c
+                for c in citation_evidence.get("chunks") or []
+                if isinstance(c, dict) and c.get("evidence_applicability") in {"model", "family"}
+            ]
+        )
+        conflicts = []
+        for tag in _SOURCE_TAG_RE.findall(reply):
+            label = tag[8:-1].strip()
+            cited_identity = resolve_uns_path(label)
+            cited_model = canonical_model(cited_identity.model, cited_identity.product_family)
+            if (
+                expected_model
+                and cited_identity.manufacturer
+                and cited_model
+                and cited_model != expected_model
+                and label not in eligible_labels
+            ):
+                conflicts.append(tag)
+        if conflicts:
+            reply = _strip_conflicting_citations(
+                reply, conflicts, scope_identity.get("manufacturer"), "admission_conflict"
+            )
         final_citations = _check_citation_compliance(
             reply,
             citation_evidence.get("kb_status") or {},

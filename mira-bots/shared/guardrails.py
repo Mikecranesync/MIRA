@@ -1579,6 +1579,12 @@ def ensure_action_safety_prerequisites(reply: str) -> str:
             continue
         for pattern, warning, adequate in _ACTION_PREREQUISITES:
             matches = list(pattern.finditer(text))
+            if pattern is _ACTION_PREREQUISITES[0][0]:
+                # A later KB-gap/nameplate note cannot suppress an earlier meter check.
+                matches = [m for m in matches if not (
+                    re.search(r"\b(?:display|screen|history|log|nameplate)\b", text[m.start():].split(".")[0], re.I)
+                    and not re.search(r"\b(?:measure|terminals?|probe|meter|leads?)\b", text[m.start():].split(".")[0], re.I)
+                )]
             actionable = any(
                 not re.search(r"(?:do not|don't|never)\s+(?:\w+\s+){0,2}$", text[:m.start()], re.I)
                 and not re.match(
@@ -1589,11 +1595,6 @@ def ensure_action_safety_prerequisites(reply: str) -> str:
                 )
                 for m in matches
             )
-            # Display/history readings do not expose a person to conductors.
-            if pattern is _ACTION_PREREQUISITES[0][0] and re.search(
-                r"\b(?:display|screen|history|log|nameplate)\b", text, re.I
-            ) and not re.search(r"\b(?:measure|terminals?|probe|meter|leads?)\b", text, re.I):
-                actionable = False
             if not actionable:
                 continue
             has_prerequisites = all(re.search(p, text, re.I) for p in adequate)
