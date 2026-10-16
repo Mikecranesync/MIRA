@@ -23,11 +23,11 @@ from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import SOURCES_BLOCK_RE as _SOURCES_BLOCK_RE
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
+from .citation_compliance import citation_scope_conflicts as _citation_scope_conflicts
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .citation_compliance import established_context_text as _established_context_text
 from .citation_compliance import strip_conflicting_citations as _strip_conflicting_citations
 from .citation_compliance import trusted_uns_context as _trusted_uns_context
-from .citation_compliance import valid_source_labels as _valid_source_labels
 from .conversation_router import accounting_session_id, route_intent
 from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .detection.recurring_fault import check_recurring_and_annotate
@@ -2714,30 +2714,11 @@ class Supervisor:
         scope_identity = citation_scope.get("uns_context")
         if not isinstance(scope_identity, dict):
             scope_identity = {}
-        expected_model = canonical_model(
-            scope_identity.get("product_family") or scope_identity.get("model")
+        conflicts = _citation_scope_conflicts(
+            reply,
+            citation_evidence.get("chunks") or [],
+            scope_identity,
         )
-        eligible_labels = _valid_source_labels(
-            [
-                c
-                for c in citation_evidence.get("chunks") or []
-                if isinstance(c, dict) and c.get("evidence_applicability") == "family"
-            ]
-        )
-        conflicts = []
-        for tag in _SOURCE_TAG_RE.findall(reply):
-            label = tag[8:-1].strip()
-            cited_identity = resolve_uns_path(label)
-            # Known drive family outranks fallback edition/page tokens in a title.
-            cited_model = canonical_model(cited_identity.product_family or cited_identity.model)
-            if (
-                expected_model
-                and cited_identity.manufacturer
-                and cited_model
-                and cited_model != expected_model
-                and label not in eligible_labels
-            ):
-                conflicts.append(tag)
         if conflicts:
             reply = _strip_conflicting_citations(
                 reply, conflicts, scope_identity.get("manufacturer"), "admission_conflict"

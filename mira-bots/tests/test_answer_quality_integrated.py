@@ -510,3 +510,55 @@ async def test_other_code_contraction_does_not_reject_supported_definition(harne
     )
     assert "F004 = UnderVoltage" in output
     assert "Record when it trips" in output
+
+
+@pytest.mark.asyncio
+async def test_reverse_yaskawa_prefix_cannot_hide_conflicting_title(harness):
+    _, run, _ = harness
+    row = raw_row("Record the displayed fault.", "Yaskawa", "V1000")
+    row["metadata"]["section"] = "A1000 Family Manual"
+    label = "Yaskawa V1000 — A1000 Family Manual"
+    output = await run(
+        {"user_message": "V1000 fault on startup"},
+        [row],
+        "Yaskawa",
+        "V1000",
+        draft=f"Record the displayed fault. [Source: {label}]",
+    )
+    assert f"[Source: {label}]" not in output
+    assert "Record the displayed fault." in output
+
+
+@pytest.mark.asyncio
+async def test_unknown_scope_generic_label_does_not_support_a_delivered_reset_procedure(harness):
+    _, run, _ = harness
+    text = "Reset the A1000 by cycling power."
+    row = raw_row(text, "Yaskawa", "")
+    row["metadata"]["section"] = "Getting Started"
+    label = "Yaskawa — Getting Started"
+    output = await run(
+        RECORDINGS["yaskawa_a1000_ov_23"],
+        [row],
+        "Yaskawa",
+        "A1000",
+        draft=f"{text} [Source: {label}]",
+    )
+    assert f"[Source: {label}]" not in output
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("conflicting", [False, True])
+async def test_powerflex_model_prefix_keeps_specific_identity(harness, conflicting):
+    _, run, _ = harness
+    section = "PowerFlex 520 Manual" if conflicting else "Getting Started"
+    row = raw_row("Record the displayed fault.", "Rockwell Automation", "PowerFlex 525")
+    row["metadata"]["section"] = section
+    label = f"Rockwell Automation PowerFlex 525 — {section}"
+    output = await run(
+        {"user_message": "PF525 showing F004"},
+        [row],
+        "Rockwell Automation",
+        "PowerFlex 525",
+        draft=f"Record the displayed fault. [Source: {label}]",
+    )
+    assert (f"[Source: {label}]" in output) != conflicting
