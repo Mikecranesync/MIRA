@@ -3152,6 +3152,18 @@ class Supervisor:
             tenant_id=resolved_tenant,
             prior_ctx=prior_uns,
         )
+        # A comparison is not an asset selection, and chat text cannot replace
+        # the identity supplied by a connected surface. Preserve retrieval scope
+        # as well as the display pin; allow a connected asset's new fault code.
+        comparison = bool(
+            re.search(r"\b(compare|comparison|versus|vs|difference)\b", message, re.I)
+        )
+        bound_identity = uns_source or (prior_uns or {}).get("source") == "direct_connection"
+        if prior_uns and state.get("asset_identified") and (comparison or bound_identity):
+            identity_query = state["asset_identified"]
+            if not comparison and uns_ctx.fault_code_raw:
+                identity_query += f" {uns_ctx.fault_code_raw}"
+            uns_ctx = resolve_uns_path(identity_query, prior_ctx=prior_uns)
         _uns_ctx_dict = uns_ctx.as_dict()
         # Direct-connection provenance: a surface that already knows which
         # machine the technician is on (Ignition, MQTT, PLC bridge, Hub display,
@@ -8157,15 +8169,25 @@ class Supervisor:
         if uns_source:
             return False
         try:
-            from .uns_resolver import canonical_vendor  # noqa: PLC0415
+            from .uns_resolver import canonical_model, canonical_vendor  # noqa: PLC0415
 
             fresh = resolve_uns_path(message)
             if not fresh.manufacturer or (fresh.confidence or 0.0) < 0.7:
                 return False
             fresh_vendor = canonical_vendor(fresh.manufacturer)
             pinned_vendor = canonical_vendor(pinned.split(",")[0].strip())
-            if not fresh_vendor or fresh_vendor == pinned_vendor:
+            if not fresh_vendor:
                 return False
+            if fresh_vendor == pinned_vendor:
+                # A model correction within one manufacturer is still a new
+                # diagnostic scope. Comparisons do not select an active asset.
+                if re.search(r"\b(compare|comparison|versus|vs|difference)\b", message, re.I):
+                    return False
+                prior_identity = resolve_uns_path(pinned.split(",", 1)[-1])
+                fresh_model = canonical_model(fresh.model, fresh.product_family)
+                prior_model = canonical_model(prior_identity.model, prior_identity.product_family)
+                if not fresh_model or fresh_model == prior_model:
+                    return False
         except Exception as exc:  # noqa: BLE001 — a re-pin check must never break a turn
             logger.warning("CTX_ASSET_REPIN_CHECK_FAILED chat_id=%s err=%s", chat_id, exc)
             return False
@@ -8181,6 +8203,10 @@ class Supervisor:
         # turn — a re-pin always starts a fresh thread (rag_worker consumes).
         ctx_repin = state.get("context") or {}
         ctx_repin["fresh_thread_turn"] = True
+        ctx_repin["uns_context"] = fresh.as_dict()
+        ctx_repin["history"] = []
+        ctx_repin.pop("diag_rev_count", None)
+        ctx_repin.pop("revision_critique", None)
         state["context"] = ctx_repin
         logger.info("CTX_ASSET_REPIN chat_id=%s new=%r (previous pin superseded)", chat_id, label)
         return True
