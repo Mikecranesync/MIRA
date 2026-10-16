@@ -60,7 +60,13 @@ test("replay recorded staging turns through /v3", async ({ browser, baseURL }) =
   const rows: { id: string; live: Classification; expected: Classification; replayed: Classification; reason: string }[] = [];
   const replayed = new Map<string, Observation>();
 
-  for (const o of observed.filter((x) => x.sse && live.get(x.id)?.classification !== "BROKEN")) {
+  // Every non-BROKEN live row must replay: a row without its recorded stream is a hole in the
+  // proof, never a silent skip (a zero-row replay would otherwise pass every mutation).
+  const eligible = observed.filter((x) => live.has(x.id) && live.get(x.id)!.classification !== "BROKEN");
+  const missing = eligible.filter((x) => !x.sse).map((x) => x.id);
+  expect(missing, "non-BROKEN rows without a recorded stream").toEqual([]);
+  expect(eligible.length, "nothing to replay").toBeGreaterThan(0);
+  for (const o of eligible) {
     const q = corpus.questions.find((x) => x.id === o.id)!;
     const m = corpus.manuals.find((x) => x.id === q.manual)!;
     const liveRow = live.get(o.id)!;
@@ -118,7 +124,8 @@ test("replay recorded staging turns through /v3", async ({ browser, baseURL }) =
 
   const count = (k: "expected" | "replayed") => rows.reduce((acc, r) => ({ ...acc, [r[k]]: (acc[r[k]] ?? 0) + 1 }), {} as Record<string, number>);
   const mismatches = rows.filter((r) => r.expected !== r.replayed);
-  const summary = { mutation: MUTATION, replayed: rows.length, expected: count("expected"), got: count("replayed"), mismatches, rows };
+  expect(rows.map((r) => r.id), "replayed rows must be exactly the eligible rows").toEqual(eligible.map((x) => x.id));
+  const summary = { mutation: MUTATION, eligible: eligible.length, replayed: rows.length, expected: count("expected"), got: count("replayed"), mismatches, rows };
   writeFileSync(path.join(FROM, `replay-${MUTATION}.json`), JSON.stringify(summary, null, 2));
   console.log(`replay ${MUTATION}: ${rows.length} rows · expected ${JSON.stringify(summary.expected)} · got ${JSON.stringify(summary.got)} · ${mismatches.length} mismatch(es)`);
   expect(mismatches, `rows not where ${MUTATION} predicts`).toEqual([]);
