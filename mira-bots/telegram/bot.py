@@ -1214,12 +1214,12 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     Pipeline:
       1. Download voice file from Telegram
-      2. Transcribe via Groq Whisper (whisper-large-v3-turbo)
+      2. Transcribe via OpenAI speech-to-text (voice_transcription.py)
       3. Route transcribed text through the normal GSD engine (same as text)
       4. If MIRA's reply contains a WO preview, the FSM handles "yes" confirmation
          through the same handle_message path on the next turn
 
-    Falls back gracefully if GROQ_API_KEY is missing or Whisper fails.
+    Falls back gracefully if OPENAI_API_KEY is missing or transcription fails.
     """
     voice = update.message.voice
     chat_id = str(update.effective_chat.id)
@@ -1251,7 +1251,7 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
     if not transcribed:
         await update.message.reply_text(
             "I couldn't transcribe your voice message "
-            "(GROQ_API_KEY may not be set, or the audio was unclear).\n"
+            "(transcription is unavailable right now, or the audio was unclear).\n"
             "Please type your message instead."
         )
         return

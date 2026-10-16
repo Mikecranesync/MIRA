@@ -534,6 +534,7 @@ export function withManualSearchStatus(
     model: status.model,
     running: status.running,
     ...(status.message ? { message: status.message } : {}),
+    ...(status.manualUrl ? { manualUrl: status.manualUrl } : {}),
   };
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
 }

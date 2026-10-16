@@ -30,6 +30,7 @@ export async function fetchManualSearchStatus(
     manufacturer: r.manufacturer,
     model: r.model,
     running: r.running,
+    ...(typeof r.manualUrl === "string" && r.manualUrl ? { manualUrl: r.manualUrl } : {}),
     ...(typeof r.message === "string" && r.message ? { message: r.message } : {}),
     // Codex round 3 F12: `startedAt` is the search's own GENERATION — the
     // shared follower keys its retry budget on it (via `reseedManualSearchFollow`
