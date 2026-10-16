@@ -383,3 +383,14 @@ async def test_reported_startup_condition_is_not_reasked_with_applicable_evidenc
     )
     assert "Does it happen during startup" not in reply
     assert "What changed" in reply
+
+
+@pytest.mark.asyncio
+async def test_model_shaped_alarm_candidate_does_not_fill_missing_fault(sv):
+    state = _state(
+        model="A1000",
+        manufacturer="Yaskawa",
+        symptom_history=[{"role": "user", "content": "This is a Yaskawa A1000 drive"}],
+    )
+    reply, _ = await _turn(sv, state, "It trips on startup", "model-not-alarm")
+    assert "what exact fault or alarm code" in reply

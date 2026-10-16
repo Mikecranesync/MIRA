@@ -133,6 +133,7 @@ from .telemetry import trace as tl_trace
 from .uns_resolver import (
     UNSResolution,
     _extract_fault_codes,
+    canonical_model,
     resolve_uns_path,
     resolve_uns_path_multi,
 )
@@ -4626,11 +4627,18 @@ class Supervisor:
                     for h in ctx_sc.get("history", [])
                     if h.get("role") == "user"
                 ] + [message]
+                model_tokens = {
+                    canonical_model(_uns_cr.get(k)) for k in ("model", "product_family")
+                }
                 _fault_already_supplied = bool(
                     _uns_cr.get("fault_code")
                     or _uns_cr.get("fault_code_raw")
                     or _sc_cr.get("active_alarm")
-                    or any(_extract_fault_codes(text) for text in user_reports)
+                    or any(
+                        canonical_model(raw) not in model_tokens
+                        for text in user_reports
+                        for _norm, raw, _priority in _extract_fault_codes(text)
+                    )
                     or any(
                         re.search(r"\bno (?:fault |alarm )?code(?:s)?\b", text, re.I)
                         for text in user_reports
