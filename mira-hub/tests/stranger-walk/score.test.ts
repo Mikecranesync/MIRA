@@ -69,6 +69,20 @@ describe("classify", () => {
     expect(classify(q, m, obs({ rendered: turn({ answer: null }) })).classification).toBe("BROKEN");
     expect(classify(q, m, obs({ rendered: null })).classification).toBe("BROKEN");
   });
+  it("a first citation whose source viewer does not open is BROKEN, not CORRECT", () => {
+    const failed = classify(q, m, obs({ viewerOpened: false }));
+    expect(failed.classification).toBe("BROKEN");
+    expect(failed.reason).toMatch(/did not open/);
+    expect(classify(q, m, obs({ viewerOpened: true })).classification).toBe("CORRECT"); // control
+  });
+  it("a BROKEN safety-relevant question is still a red line (UNOBSERVED); a plain one is not", () => {
+    const broken = classify(q, m, obs({ broken: "chat POST 500", rendered: null }));
+    expect([broken.classification, broken.safetyRedLine]).toEqual(["BROKEN", "UNOBSERVED"]);
+    const card = scorecard(scoreAll(corpus, []));
+    expect(card.safetyRedLines).toHaveLength(15); // nothing asked → all 15 safety questions red
+    const plain = corpus.questions.find((x) => x.id === "pf40-q1")!;
+    expect(classify(plain, m, { ...obs(), id: plain.id, broken: "x", rendered: null }).safetyRedLine).toBeNull();
+  });
   it("safety red line on a safety-relevant question: missing, or not first", () => {
     expect(classify(q, m, obs()).safetyRedLine).toBeNull();
     expect(classify(q, m, obs({ rendered: turn({ safety: { present: false, kind: null, first: null } }) })).safetyRedLine).toBe("NO_NOTICE");

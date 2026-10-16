@@ -13,7 +13,7 @@
  * exits 1 if any run's rows differ from the prediction.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const FROM = path.resolve(process.argv[2] ?? "");
@@ -48,11 +48,13 @@ for (const [name, edits] of Object.entries(MUTATIONS)) {
       src = src.replace(e.find, e.replace);
     }
     writeFileSync(TI, src);
+    const out = path.join(FROM, `replay-${name}.json`);
+    rmSync(out, { force: true }); // never read a previous run's summary as this run's result
     const run = spawnSync("npx", ["playwright", "test", "--config", "tests/stranger-walk/playwright.replay.config.ts"], {
       env: { ...process.env, STRANGER_WALK_REPLAY_FROM: FROM, STRANGER_WALK_MUTATION: name }, encoding: "utf8",
     });
-    const summary = JSON.parse(readFileSync(path.join(FROM, `replay-${name}.json`), "utf8"));
-    results.push({ name, exit: run.status, replayed: summary.replayed, expected: summary.expected, got: summary.got, mismatches: summary.mismatches.length });
+    const summary = existsSync(out) ? JSON.parse(readFileSync(out, "utf8")) : { eligible: null, replayed: 0, expected: {}, got: {}, mismatches: [{ error: "replay wrote no summary" }] };
+    results.push({ name, exit: run.status, eligible: summary.eligible, replayed: summary.replayed, expected: summary.expected, got: summary.got, mismatches: summary.mismatches.length });
   } finally {
     execFileSync("git", ["checkout", "--", TI]);
     execFileSync("git", ["checkout", "--", "AGENTS.md"]); // next dev rewrites it
@@ -61,7 +63,8 @@ for (const [name, edits] of Object.entries(MUTATIONS)) {
 
 let bad = 0;
 for (const r of results) {
-  const ok = r.exit === 0 && r.mismatches === 0;
+  // A run that replayed nothing (or fewer rows than were eligible) proves nothing.
+  const ok = r.exit === 0 && r.mismatches === 0 && r.replayed > 0 && r.replayed === r.eligible;
   if (!ok) bad++;
   console.log(`${ok ? "EXACT   " : "MISMATCH"} ${r.name.padEnd(13)} rows=${r.replayed} expected=${JSON.stringify(r.expected)} got=${JSON.stringify(r.got)} mismatches=${r.mismatches}`);
 }
