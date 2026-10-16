@@ -1252,7 +1252,14 @@ class TestAnswerQualityCitationBoundary:
         cited = f"{original} [Source: Pilz PNOZ]"
         supervisor.rag._call_llm = AsyncMock(return_value=cited)
         evidence = {
-            "chunks": [{"manufacturer": "Pilz", "model_number": "PNOZ"}],
+            "chunks": [
+                {
+                    "manufacturer": "Pilz",
+                    "model_number": "PNOZ",
+                    "content": original,
+                    "evidence_applicability": "model",
+                }
+            ],
             "kb_status": {"status": "partial"},
             "citation_scope": {
                 "uns_context": {"manufacturer": "Pilz"},

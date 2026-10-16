@@ -40,7 +40,7 @@ import re
 from collections import Counter
 from collections.abc import Awaitable, Callable
 
-from .workers.rag_worker import CITATION_TAG_RE, format_source_label
+from .workers.rag_worker import CITATION_TAG_RE, _applicable_chunk, format_source_label
 
 logger = logging.getLogger("mira-gsd")
 
@@ -777,6 +777,120 @@ def valid_source_labels(chunks: list[dict] | None) -> set[str]:
     return labels
 
 
+def _citation_models(text: str) -> set[str]:
+    """All curated concrete model names in a label, not just its first token."""
+    from .uns_resolver import FAMILY_FROM_ALIAS, _alias_pattern, canonical_model
+
+    return {
+        canonical_model(family)
+        for alias, family in FAMILY_FROM_ALIAS.items()
+        if any(char.isdigit() for char in family)
+        and any(
+            re.search(_alias_pattern(name), text, re.I)
+            for name in {alias, family.lower(), family.lower().replace(" ", "")}
+        )
+    }
+
+
+def _citation_model_conflict(label: str, chunks: list[dict], uns_context: dict) -> bool:
+    from .uns_resolver import canonical_model, resolve_uns_path
+
+    family = canonical_model(uns_context.get("product_family"))
+    expected = (
+        family
+        if family in _citation_models(str(uns_context.get("product_family") or ""))
+        else (
+            canonical_model(uns_context.get("model"), uns_context.get("product_family")) or family
+        )
+    )
+    if not expected:
+        return False
+    # An explicitly applicable family document may name several concrete models.
+    if label in valid_source_labels(
+        [c for c in chunks if c.get("evidence_applicability") == "family"]
+    ):
+        return False
+    models = _citation_models(label)
+    if not models:
+        cited = resolve_uns_path(label)
+        if cited.manufacturer:
+            models = {canonical_model(cited.model, cited.product_family)} - {""}
+    return any(model != expected for model in models)
+
+
+def _scoped_chunks(chunks: list[dict] | None, uns_context: dict) -> list[dict]:
+    rows = []
+    for chunk in chunks or []:
+        if not isinstance(chunk, dict):
+            continue
+        if chunk.get("evidence_applicability") or not uns_context:
+            rows.append(chunk)
+        else:
+            classified = _applicable_chunk(chunk, {"context": {"uns_context": uns_context}})
+            if classified is not None:
+                rows.append(classified)
+    return rows
+
+
+def _generic_passage_supports(sentence: str, chunk: dict) -> bool:
+    """Unknown scope can cite source-backed observations, not machine procedures.
+
+    This is a conservative citation-scope rule, not semantic claim verification.
+    Whole-sentence matching avoids turning a source prohibition into support.
+    """
+    from .uns_resolver import _extract_fault_codes
+
+    text = CITATION_TAG_RE.sub("", sentence).strip()
+    if (
+        not text
+        or _citation_models(text)
+        or _extract_fault_codes(text)
+        or re.search(
+            r"\b(?:reset|cycl(?:e|ing)|set|change|adjust|program|write|enable|disable|"
+            r"connect|disconnect|replace|remove|install|press|bypass|bridge|means?|indicates?)\b"
+            r"|\b[APbtCd]\d{2,4}(?:\.\d{1,2})?\b"
+            r"|\b\d+(?:\.\d+)?\s*(?:hz|kv|v|a|ma|rpm|psi|seconds?|°c|°f)\b",
+            text,
+            re.I,
+        )
+    ):
+        return False
+
+    def normalize(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+    passage = chunk.get("content") or chunk.get("text") or ""
+    return normalize(text) in {
+        normalize(part) for part in re.split(r"(?<=[.!?])\s+|\n+", passage) if part.strip()
+    }
+
+
+def citation_scope_conflicts(
+    reply: str,
+    chunks: list[dict] | None,
+    uns_context: dict | None,
+) -> list[str]:
+    """Tags violating this turn's model or source-to-sentence scope contract."""
+    identity = uns_context if isinstance(uns_context, dict) else {}
+    rows = _scoped_chunks(chunks, identity)
+    conflicts = []
+    for match in _LABEL_RE.finditer(reply or ""):
+        label = match.group(1).strip()
+        matching = [c for c in rows if format_source_label(c) == label]
+        conflict = _citation_model_conflict(label, rows, identity)
+        if matching and not any(
+            c.get("evidence_applicability") in {"model", "family"}
+            or not c.get("evidence_applicability")
+            for c in matching
+        ):
+            prefix = CITATION_TAG_RE.sub("", reply[: match.start()]).rstrip()
+            sentence = re.split(r"(?<=[.!?])\s+|\n+", prefix)[-1]
+            conflict = conflict or not any(_generic_passage_supports(sentence, c) for c in matching)
+        if conflict:
+            conflicts.append(match.group(0))
+    return conflicts
+
+
 def _emitted_labels(text: str) -> set[str]:
     return {m.group(1).strip() for m in _LABEL_RE.finditer(text or "")}
 
@@ -844,7 +958,18 @@ async def enforce_citation_via_rewrite(
     if not compliance["required"] or compliance["present"]:
         return reply
 
-    labels = valid_source_labels(chunks)
+    identity = uns_context if isinstance(uns_context, dict) else {}
+    rows = _scoped_chunks(chunks, identity)
+    sentences = re.split(r"(?<=[.!?])\s+|\n+", reply)
+    labels = valid_source_labels(
+        [
+            c
+            for c in rows
+            if c.get("evidence_applicability") != "unknown"
+            or any(_generic_passage_supports(sentence, c) for sentence in sentences)
+        ]
+    )
+    labels = {label for label in labels if not _citation_model_conflict(label, rows, identity)}
     # Retrieval membership is not equipment applicability. Exclude every
     # ineligible vendor, not only the particular label an earlier pass removed.
     labels = {
@@ -883,6 +1008,9 @@ async def enforce_citation_via_rewrite(
             sorted(emitted),
             sorted(labels),
         )
+        return reply
+
+    if citation_scope_conflicts(rewritten, rows, identity):
         return reply
 
     if not _content_preserved(reply, rewritten):
