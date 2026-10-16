@@ -207,3 +207,85 @@ def test_legacy_metadata_does_not_break_evidence_boundary(metadata):
     chunk = row("passage")
     chunk["metadata"] = metadata
     assert _applicable_chunk(chunk, state())["evidence_applicability"] == "model"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("label", ["ch4Parameters", "Getting Started", "Serial Comms"])
+async def test_actual_corpus_chapter_labels_remain_unknown_prompt_context(label):
+    worker = _make_worker()
+    chunk = row(
+        "GS10 reference context retained, not independently model proof.",
+        vendor=None,
+        model=label,
+        source_url=f"gdrive://{label}.pdf",
+        section=None,
+        chunk_type="text",
+        chunk_index=4,
+    )
+    chunk["source_type"] = "gdrive"
+    chunk["source_url"] = f"gdrive://{label}.pdf"
+    s = state("AutomationDirect", "GS10")
+    captured = []
+
+    async def llm(messages, model=None):
+        captured.append(str(messages))
+        return "answer"
+
+    with (
+        patch.object(worker, "_embed_ollama", AsyncMock(return_value=None)),
+        patch.object(worker, "_call_llm", llm),
+        patch("shared.workers.rag_worker._neon_recall.recall_knowledge", return_value=[chunk]),
+    ):
+        await worker.process("GS10 VFD showing OC fault on startup", s)
+    assert "GS10 reference context retained" in captured[0]
+    assert "general/context only" in captured[0]
+    assert s["_rag_last_chunks"][0]["evidence_applicability"] == "unknown"
+    assert s["_rag_last_chunks"][0]["model_number"] == label
+
+
+@pytest.mark.parametrize(
+    "url,text",
+    [
+        (
+            "https://html.duckduckgo.com/html/?q=Pilz+PNOZ",
+            "Pilz PNOZ X safety relay manual at DuckDuckGo",
+        ),
+        (
+            "https://www.pilz.com/en-US/support/downloads",
+            "# 404 Error - Page not found\nPlease contact me",
+        ),
+        ("https://www.youtube.com/watch?v=demo", "Generic demonstration video"),
+    ],
+)
+def test_clear_search_error_and_junk_sources_cannot_enter_reference_prompt(url, text):
+    from shared.workers.rag_worker import _applicable_chunk
+
+    chunk = row(text, vendor="Pilz", model="")
+    chunk.update(source_url=url, source_type="equipment_manual")
+    assert _applicable_chunk(chunk, state("Pilz", "PNOZ")) is None
+    prompt = str(
+        _make_worker()._build_prompt(state("Pilz", "PNOZ"), "Explain", neon_chunks=[chunk])
+    )
+    assert text not in prompt
+
+
+def test_legitimate_manual_containing_404_remains_applicable():
+    from shared.workers.rag_worker import _applicable_chunk
+
+    chunk = row("Manual reference: parameter 404 is a diagnostic display item.")
+    chunk.update(source_url="https://www.yaskawa.com/manual.pdf", source_type="manual")
+    assert _applicable_chunk(chunk, state())["evidence_applicability"] == "model"
+
+
+def test_ch_prefix_equipment_model_is_not_guessed_to_be_a_chapter():
+    from shared.workers.rag_worker import _applicable_chunk
+
+    assert _applicable_chunk(row("Different equipment", model="CH4A"), state()) is None
+
+
+def test_pdf_diagnostic_section_is_not_misclassified_as_web_404_page():
+    from shared.workers.rag_worker import _applicable_chunk
+
+    chunk = row("# 404 Error - Page not found\nHTTP diagnostic reference in a genuine manual.")
+    chunk.update(source_url="https://www.yaskawa.com/manual.pdf", source_type="manual")
+    assert _applicable_chunk(chunk, state())["evidence_applicability"] == "model"
