@@ -57,9 +57,13 @@ the question in its own reviewed commit.
 
 ## Spend (zero-token rule)
 
-Hard budget **$3.00 per run**, enforced as a turn cap (`staging.ts`: ≤ $0.05 ceiling per turn —
-gpt-5.4-mini plus the safety judge plus a possible cascade fallback, deliberately high — so at
-most 60 turns; 50 are needed). Unasked rows are BROKEN ("budget stop"), never dropped.
+Hard budget **$3.00 per run**, enforced by a meter (`staging.ts BudgetMeter`), not a call count.
+Each turn is charged from its own stream's `usage` frames at declared worst-case rates
+(input $2 / output $16 per Mtok, deliberately above gpt-5.4-mini list price), plus $0.02 per turn
+for calls the stream does not report (the safety judge, a cascade retry). A turn with no usage
+frame is charged the $0.05 ceiling. Before every turn the meter reserves the most expensive turn
+seen so far, and refuses the turn if spent + reserve would pass $3. Unasked rows are BROKEN
+("budget stop"), never dropped. Run #1's recorded usage meters at about $1.39 under these rates.
 Paid inference is validation only. Debug the walk at $0:
 
 ```bash

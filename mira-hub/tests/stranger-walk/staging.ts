@@ -18,19 +18,55 @@ export function stagingBase(): string {
 }
 
 /**
- * Hard $ budget, declared up front. Paid inference here is validation, never
- * debugging (zero-token rule): selectors and scoring are proven at $0 by the
- * replay spec. One chat turn on staging is gpt-5.4-mini plus the safety judge
- * and at worst a cascade fallback; $0.05 is a deliberate over-estimate of that
- * ceiling. The cap is enforced as a TURN count: the walker refuses to send turn
- * N+1 once N * ceiling would exceed the budget, and every unasked row is BROKEN
- * ("budget stop"), never silently skipped.
+ * Hard $ budget, declared up front (zero-token rule: paid inference here is validation, never
+ * debugging). Enforced by a METER, not a call count: every turn is charged from the stream's own
+ * `usage` frames at the declared worst-case RATES (deliberately above gpt-5.4-mini list price),
+ * plus a fixed allowance for calls the stream does not report (the safety judge, a cascade retry).
+ * A turn with no usage frame is charged the full per-turn ceiling. Before each turn the meter
+ * reserves the most expensive turn seen so far (at least the ceiling) and refuses the turn if
+ * spent + reserve would exceed the budget; every unasked row is then BROKEN ("budget stop").
  */
 export const BUDGET = {
   usdPerRun: Number(process.env.STRANGER_WALK_BUDGET_USD ?? "3.00"),
   usdCeilingPerTurn: 0.05,
 };
-export const MAX_TURNS = Math.floor(BUDGET.usdPerRun / BUDGET.usdCeilingPerTurn + 1e-9);
+export const RATES = { inputPerMTok: 2.0, cachedInputPerMTok: 0.2, outputPerMTok: 16.0 };
+export const UNMETERED_USD_PER_TURN = 0.02;
+
+/** Worst-case $ for one turn, from its recorded stream (null = the request went out, nothing came back). */
+export function turnCostUsd(sse: string | null): { usd: number; metered: boolean } {
+  let usd = 0;
+  let metered = false;
+  for (const line of (sse ?? "").split("\n")) {
+    if (!line.startsWith("data: ")) continue;
+    let f: Record<string, unknown>;
+    try { f = JSON.parse(line.slice(6)); } catch { continue; }
+    if (f?.kind !== "usage") continue;
+    const n = (k: string) => (typeof f[k] === "number" ? (f[k] as number) : 0);
+    const cached = n("cachedInputTokens");
+    usd += (Math.max(n("inputTokens") - cached, 0) * RATES.inputPerMTok + cached * RATES.cachedInputPerMTok + n("outputTokens") * RATES.outputPerMTok) / 1e6;
+    metered = true;
+  }
+  return metered ? { usd: usd + UNMETERED_USD_PER_TURN, metered } : { usd: BUDGET.usdCeilingPerTurn, metered };
+}
+
+export class BudgetMeter {
+  spent = 0;
+  turns = 0;
+  unmetered = 0;
+  private worst = BUDGET.usdCeilingPerTurn;
+  constructor(readonly budget = BUDGET.usdPerRun) {}
+  /** May the next paid turn go out without risking the budget? */
+  canAfford(): boolean { return this.spent + this.worst <= this.budget + 1e-9; }
+  charge(sse: string | null): number {
+    const c = turnCostUsd(sse);
+    this.spent += c.usd;
+    this.turns++;
+    if (!c.metered) this.unmetered++;
+    this.worst = Math.max(this.worst, c.usd);
+    return c.usd;
+  }
+}
 
 export type Identity = { gitSha: string; builtAt: string };
 

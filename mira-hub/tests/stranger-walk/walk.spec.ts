@@ -18,7 +18,7 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
-import { identity, manualBytes, MAX_TURNS, BUDGET, stagingBase, teardownTenant } from "./staging";
+import { BudgetMeter, identity, manualBytes, RATES, UNMETERED_USD_PER_TURN, stagingBase, teardownTenant } from "./staging";
 
 const corpus = corpusJson as Corpus;
 const RUN_ID = process.env.STRANGER_WALK_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
@@ -138,7 +138,7 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
     viewerOpened = await UI.clone.viewerFrame(page).waitFor({ state: "visible", timeout: 20_000 }).then(() => true, () => false);
     if (viewerOpened) {
       const manualFileId = (await sourceReadiness(page, manualFilename).catch(() => null))?.fileId ?? null;
-      viewer = { ...(await viewerTargetOf(UI.clone.viewerFrame(page))), manualFileId };
+      viewer = await viewerTargetOf(UI.clone.viewerFrame(page)).then((t) => ({ ...t, manualFileId }), () => null);
     }
     await page.keyboard.press("Escape");
   }
@@ -153,9 +153,9 @@ test("stranger walk", async ({ page }) => {
   if (DRY) await page.route(/\/chat\/?$/, (r) => r.request().method() === "POST" ? r.abort() : r.fallback());
   const start = await identity(base);
   const obs: Observation[] = [];
-  const notes: string[] = [`budget $${BUDGET.usdPerRun} at ≤$${BUDGET.usdCeilingPerTurn}/turn → hard stop after ${MAX_TURNS} turns`];
+  const meter = new BudgetMeter();
+  const notes: string[] = [];
   let tenantId: string | null = null;
-  let turns = 0;
   try {
     tenantId = await signUp(page, base); // tenant.txt is already written; teardown reads it on every exit path
     for (const m of corpus.manuals) {
@@ -169,7 +169,7 @@ test("stranger walk", async ({ page }) => {
         continue;
       }
       for (const [i, q] of qs.entries()) {
-        if (turns >= MAX_TURNS) { obs.push(brokenObs(q.id, "budget stop")); continue; }
+        if (!DRY && !meter.canAfford()) { obs.push(brokenObs(q.id, "budget stop")); continue; }
         try {
           if (i > 0) {
             await page.getByRole("button", { name: "New chat" }).click();
@@ -178,8 +178,9 @@ test("stranger walk", async ({ page }) => {
             uploaded ||= (await sourceReadiness(page, m.filename)) !== null;
             if (uploaded) notes.push(`${q.id}: readiness "${await waitReady(page, m.filename)}"`);
           }
-          turns++;
-          obs.push(await ask(page, q, m.filename, uploaded ? null : { name: m.filename, buffer: pdf.bytes }));
+          const o = await ask(page, q, m.filename, uploaded ? null : { name: m.filename, buffer: pdf.bytes });
+          if (!DRY) meter.charge(o.sse); // charged whether or not the turn succeeded
+          obs.push(o);
         } catch (e) {
           await page.screenshot({ path: path.join(OUT, "shots", `${q.id}.png`) }).catch(() => undefined);
           obs.push(brokenObs(q.id, `walker: ${(e as Error).message.split("\n")[0].slice(0, 200)}`));
@@ -199,6 +200,7 @@ test("stranger walk", async ({ page }) => {
     const td = tenantId ? teardownTenant(tenantId) : { ok: true, detail: "no tenant was created" };
     notes.push(`teardown: ${td.ok ? "OK" : "FAILED"} — ${td.detail}`);
     const asked = ONLY ? { ...corpus, questions: corpus.questions.filter((q) => ONLY.has(q.id)) } : corpus;
+    notes.unshift(`budget: $${meter.budget.toFixed(2)} hard stop; metered $${meter.spent.toFixed(2)} over ${meter.turns} turns (${meter.unmetered} without a usage frame, charged the ceiling) at worst-case rates in $${RATES.inputPerMTok}/out $${RATES.outputPerMTok} per Mtok + $${UNMETERED_USD_PER_TURN}/turn unmetered allowance`);
     const aborted = notes.find((n) => n.startsWith("run aborted: "));
     const rows = scoreAll(asked, obs).map((r) => (aborted && !obs.some((o) => o.id === r.id) ? { ...r, reason: aborted } : r));
     const card = scorecard(rows, superseded);
@@ -209,7 +211,7 @@ test("stranger walk", async ({ page }) => {
       writeFileSync(path.join(OUT, "fixtures", `${r.id}.json`), JSON.stringify(fixtureFor(q, corpus.manuals.find((x) => x.id === q.manual)!, o, r, meta, corpus.tolerance), null, 2));
     }
     writeFileSync(path.join(OUT, "observations.json"), JSON.stringify(obs, null, 2));
-    writeFileSync(path.join(OUT, "scored.json"), JSON.stringify({ meta, turns, notes, card, rows }, null, 2));
+    writeFileSync(path.join(OUT, "scored.json"), JSON.stringify({ meta, turns: meter.turns, spentUsd: meter.spent, notes, card, rows }, null, 2));
     writeFileSync(path.join(OUT, "scorecard.md"), `${markdownScorecard(rows, card, meta)}\n\n${notes.map((n) => `- ${n}`).join("\n")}\n`);
     console.log(`stranger walk ${card.headline} · ${JSON.stringify(card.counts)} · red lines ${card.safetyRedLines.length} · ${OUT}`);
     if (!td.ok) throw new Error(`tenant teardown failed: ${td.detail}`);
