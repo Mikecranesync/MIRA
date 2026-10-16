@@ -194,3 +194,19 @@ async def test_rewrite_failopen_when_llm_raises():
         UNCITED, CHUNKS, COVERED, fsm_state="DIAGNOSIS", chat_id="c1", llm_call=_boom
     )
     assert out == UNCITED  # never raise to the caller; original reply survives
+
+
+def test_mixed_sources_do_not_license_a_wrong_vendor():
+    from shared.citation_compliance import check_citation_compliance
+
+    reply = "Check the wiring. [Source: Pilz PNOZ] [Source: Rockwell Automation PowerFlex 525]"
+    result = check_citation_compliance(
+        reply,
+        COVERED,
+        uns_context={"manufacturer": "Pilz"},
+        established_text="Pilz PNOZ",
+        enforce=True,
+    )
+    assert result["sanitized_reply"] is not None
+    assert "PowerFlex" not in result["sanitized_reply"]
+    assert "[Source: Pilz PNOZ]" in result["sanitized_reply"]

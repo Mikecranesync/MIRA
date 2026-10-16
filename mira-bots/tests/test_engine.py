@@ -1220,3 +1220,76 @@ class TestDecisionTraceIsolation:
         # The shared per-turn tenant footgun is gone — nothing to race on.
         assert not hasattr(supervisor, "_current_tenant_id")
         assert not hasattr(supervisor, "_current_mira_user_id")
+
+
+class TestAnswerQualityCitationBoundary:
+    """The recorded Pilz failure: stripping one label must not license another."""
+
+    @pytest.mark.asyncio
+    async def test_rewrite_rejects_an_alternate_wrong_vendor(self, supervisor):
+        original = "Check the relay wiring."
+        wrong = "Rockwell Automation PowerFlex 525"
+        supervisor.rag._call_llm = AsyncMock(return_value=f"{original} [Source: {wrong}]")
+        evidence = {
+            "chunks": [{"manufacturer": "Rockwell Automation", "model_number": "PowerFlex 525"}],
+            "kb_status": {"status": "partial"},
+            "stripped_labels": ["Rockwell Automation GuardMaster"],
+            "citation_scope": {
+                "uns_context": {"manufacturer": "Pilz"},
+                "established_text": "Pilz PNOZ intermittent faults",
+            },
+        }
+        with patch.dict("os.environ", {"MIRA_CITATION_REWRITE": "1"}):
+            out = await supervisor._enforce_citation_rewrite(
+                original, chat_id="pilz", fsm_state="Q2", evidence=evidence
+            )
+        assert out == original
+        supervisor.rag._call_llm.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_rewrite_keeps_an_eligible_source(self, supervisor):
+        original = "Check the relay wiring."
+        cited = f"{original} [Source: Pilz PNOZ]"
+        supervisor.rag._call_llm = AsyncMock(return_value=cited)
+        evidence = {
+            "chunks": [{"manufacturer": "Pilz", "model_number": "PNOZ"}],
+            "kb_status": {"status": "partial"},
+            "citation_scope": {
+                "uns_context": {"manufacturer": "Pilz"},
+                "established_text": "Pilz PNOZ intermittent faults",
+            },
+        }
+        with patch.dict("os.environ", {"MIRA_CITATION_REWRITE": "1"}):
+            out = await supervisor._enforce_citation_rewrite(
+                original, chat_id="pilz", fsm_state="Q2", evidence=evidence
+            )
+        assert out == cited
+        supervisor.rag._call_llm.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_final_answer_rejects_citations_added_after_initial_gate(self, supervisor):
+        """Exercise the public process boundary, including H4 Sources normalization."""
+        initial = "What indication is visible on the Pilz PNOZ?"
+        wrong = "Rockwell Automation PowerMonitor 5000"
+        late = f"{initial}\n\n--- Sources ---\n[1] {wrong}"
+        result = {
+            "reply": initial,
+            "next_state": "Q2",
+            "confidence": "LOW",
+            "_citation_scope": {
+                "uns_context": {"manufacturer": "Pilz"},
+                "established_text": "Pilz PNOZ intermittent faults",
+            },
+        }
+        with (
+            patch.dict("os.environ", {"MIRA_CITATION_ENFORCE": "1", "MIRA_ANSWER_QC": "off"}),
+            patch.object(supervisor, "process_full", AsyncMock(return_value=result)),
+            patch.object(supervisor, "_apply_quality_gate", AsyncMock(return_value=initial)),
+            patch.object(supervisor, "_enforce_citation_rewrite", AsyncMock(return_value=late)),
+            patch.object(supervisor, "_log_interaction") as logged,
+            patch.object(supervisor, "_schedule_decision_trace"),
+        ):
+            out = await supervisor.process("pilz-final", "Pilz PNOZ intermittent faults")
+        assert wrong not in out
+        assert "--- Sources ---" not in out
+        assert logged.call_args.args[2] == out

@@ -2217,7 +2217,7 @@ class Supervisor:
         }
 
     @staticmethod
-    def _evidence_from_parsed(parsed: dict) -> dict:
+    def _evidence_from_parsed(parsed: dict, state: dict, message: str) -> dict:
         """Per-turn citation/grounding evidence carried on ``parsed`` (#1704).
 
         Built from the snapshot _call_with_correction popped off ``state``;
@@ -2233,6 +2233,10 @@ class Supervisor:
             # bridge passes them as disallowed so a rejected citation cannot be
             # silently re-inserted by the salvage pass.
             "stripped_labels": parsed.get("_stripped_labels") or [],
+            "citation_scope": {
+                "uns_context": dict(_trusted_uns_context(state) or {}),
+                "established_text": _established_context_text(message, state),
+            },
         }
 
     async def _enforce_citation_rewrite(
@@ -2269,6 +2273,8 @@ class Supervisor:
                 chat_id=chat_id,
                 llm_call=rag._call_llm,
                 disallowed_labels=set(evidence.get("stripped_labels") or []),
+                uns_context=(evidence.get("citation_scope") or {}).get("uns_context"),
+                established_text=(evidence.get("citation_scope") or {}).get("established_text", ""),
             )
         except Exception:
             logger.warning(
@@ -2380,6 +2386,9 @@ class Supervisor:
             )
             return GENERIC_ENGINE_ERROR
         elapsed_ms = int((time.monotonic() - t0) * 1000)
+        citation_scope = result.get("_citation_scope") or {"established_text": message}
+        citation_evidence = dict(result.get("_citation_evidence") or {})
+        citation_evidence.setdefault("citation_scope", citation_scope)
         reply = await self._apply_quality_gate(
             chat_id,
             message,
@@ -2395,7 +2404,7 @@ class Supervisor:
             reply,
             chat_id=chat_id,
             fsm_state=result.get("next_state", ""),
-            evidence=result.get("_citation_evidence"),
+            evidence=citation_evidence,
         )
         # H4 enforcer (2026-06-06): every reply must carry a [Source:] citation
         # or an explicit KB-gap admission. Applied AFTER the quality gate so the
@@ -2405,6 +2414,20 @@ class Supervisor:
         reply = enforce_citation_or_gap_admission(
             reply, dispatch_kind=result.get("dispatch_kind", "")
         )
+
+        # Quality handling, salvage and Sources normalization can all alter the
+        # reply after the inner gate. Validate what will actually be delivered.
+        final_citations = _check_citation_compliance(
+            reply,
+            citation_evidence.get("kb_status") or {},
+            fsm_state=result.get("next_state", ""),
+            chat_id=chat_id,
+            uns_context=citation_scope.get("uns_context"),
+            established_text=citation_scope.get("established_text", message),
+            enforce=_citation_enforce_enabled(),
+        )
+        if final_citations.get("sanitized_reply") is not None:
+            reply = final_citations["sanitized_reply"]
 
         # Final answer-integrity QC. This is the last point at which the reply is
         # fully assembled, so it is the only place a check can see what the
@@ -2995,6 +3018,19 @@ class Supervisor:
                 uns_source=uns_source,
                 retrieval_query=retrieval_query,
             )
+            # RAG paths carry the state used for this answer; non-RAG paths
+            # snapshot their persisted context before any outer rewrite awaits.
+            if isinstance(result, dict):
+                scope = (result.get("_citation_evidence") or {}).get("citation_scope")
+                if scope is None:
+                    citation_state = self._load_state(chat_id)
+                    scope = {
+                        "uns_context": dict(_trusted_uns_context(citation_state) or {}),
+                        "established_text": _established_context_text(
+                            message or "", citation_state
+                        ),
+                    }
+                result["_citation_scope"] = scope
             banner = _SAFETY_FLAG.get()
             if banner and isinstance(result, dict) and result.get("reply"):
                 result["reply"] = f"{banner}\n\n{result['reply']}"
@@ -4568,7 +4604,7 @@ class Supervisor:
             self._infer_confidence(formatted),
             trace_id,
             state["state"],
-            citation_evidence=self._evidence_from_parsed(parsed),
+            citation_evidence=self._evidence_from_parsed(parsed, state, message),
             context_manifest=parsed.get("_context_manifest"),
         )
 
@@ -5924,7 +5960,7 @@ class Supervisor:
             self._infer_confidence(formatted),
             None,
             state["state"],
-            citation_evidence=self._evidence_from_parsed(parsed),
+            citation_evidence=self._evidence_from_parsed(parsed, state, message),
             context_manifest=parsed.get("_context_manifest"),
         )
 

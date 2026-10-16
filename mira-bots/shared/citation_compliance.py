@@ -375,9 +375,9 @@ def evaluate_citation_relevance(
 
     **Conflict** — a manufacturer is resolved and the reply cites a different
     one. Flagged only when ALL of: the expected manufacturer canonicalizes to a
-    recognized vendor, the reply names ≥1 recognized cited vendor, and none of
-    them equals the expected one. A correct citation alongside a wrong one is
-    NOT a miss.
+    recognized vendor, the reply names ≥1 recognized cited vendor, and at least one
+    differs from the expected one. A correct citation never licenses a wrong
+    vendor alongside it.
 
     **Unsupported attribution** — NO manufacturer is resolved, yet the reply
     cites one anyway. `established_text` is the conversation's own words (this
@@ -400,7 +400,7 @@ def evaluate_citation_relevance(
     conflicting: list[str] = []
     reason = ""
 
-    if expected and cited and expected not in cited:
+    if expected and any(vendor != expected for vendor in cited):
         # Case 1 — CONFLICT. A vendor is resolved and the reply cites a
         # different one. This is the original P0-3 gate.
         relevant = False
@@ -818,6 +818,8 @@ async def enforce_citation_via_rewrite(
     chat_id: str = "",
     llm_call: Callable[[list[dict]], Awaitable[str]],
     disallowed_labels: set[str] | None = None,
+    uns_context: dict | None = None,
+    established_text: str = "",
 ) -> str:
     """Salvage an uncited-but-grounded technical reply via one insertion-only pass.
 
@@ -843,6 +845,15 @@ async def enforce_citation_via_rewrite(
         return reply
 
     labels = valid_source_labels(chunks)
+    # Retrieval membership is not equipment applicability. Exclude every
+    # ineligible vendor, not only the particular label an earlier pass removed.
+    labels = {
+        label
+        for label in labels
+        if evaluate_citation_relevance(
+            f"[Source: {label}]", (uns_context or {}).get("manufacturer"), established_text
+        )["relevant"]
+    }
     # #3213 — a label the relevance/eligibility/admission gates stripped THIS
     # turn was already judged unpresentable; re-inserting it here silently
     # undoes the strip (observed live: photo-less-ocr-claim, run 31662003031).
