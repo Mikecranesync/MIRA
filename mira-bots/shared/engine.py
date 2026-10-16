@@ -2705,20 +2705,21 @@ class Supervisor:
         # reply after the inner gate. Validate what will actually be delivered.
         scope_identity = citation_scope.get("uns_context") or {}
         expected_model = canonical_model(
-            scope_identity.get("model"), scope_identity.get("product_family")
+            scope_identity.get("product_family") or scope_identity.get("model")
         )
         eligible_labels = _valid_source_labels(
             [
                 c
                 for c in citation_evidence.get("chunks") or []
-                if isinstance(c, dict) and c.get("evidence_applicability") in {"model", "family"}
+                if isinstance(c, dict) and c.get("evidence_applicability") == "family"
             ]
         )
         conflicts = []
         for tag in _SOURCE_TAG_RE.findall(reply):
             label = tag[8:-1].strip()
             cited_identity = resolve_uns_path(label)
-            cited_model = canonical_model(cited_identity.model, cited_identity.product_family)
+            # Known drive family outranks fallback edition/page tokens in a title.
+            cited_model = canonical_model(cited_identity.product_family or cited_identity.model)
             if (
                 expected_model
                 and cited_identity.manufacturer

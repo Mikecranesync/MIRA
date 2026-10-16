@@ -432,3 +432,21 @@ async def test_fault_definition_retains_explicit_operating_condition(harness, me
     assert "Record the displayed code" in output
     if supported:
         assert "reported startup" in output
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["", "A1000"])
+async def test_v1000_title_cannot_be_excused_by_an_a1000_prefix(harness, model):
+    _, run, _ = harness
+    row = raw_row("Record the displayed fault.", "Yaskawa", model)
+    row["metadata"]["section"] = "V1000 Family Manual"
+    label = "Yaskawa A1000 — V1000 Family Manual"
+    output = await run(
+        RECORDINGS["yaskawa_a1000_ov_23"],
+        [row],
+        "Yaskawa",
+        "A1000",
+        draft=f"Record the displayed fault. [Source: {label}]",
+    )
+    assert f"[Source: {label}]" not in output
+    assert "Record the displayed fault." in output
