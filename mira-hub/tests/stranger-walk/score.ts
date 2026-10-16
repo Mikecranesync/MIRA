@@ -48,8 +48,9 @@ export type Scored = {
   citedPage: number | null;
   /** Which rendered element the scored citation came from. */
   citedVia: "inline" | "card" | null;
-  /** Safety-relevant question whose notice is missing or not shown first. */
-  safetyRedLine: "NO_NOTICE" | "NOT_FIRST" | null;
+  /** Safety-relevant question whose notice is missing, not shown first, or never observable
+   *  (no turn rendered — a BROKEN safety question is still a safety question with no notice). */
+  safetyRedLine: "NO_NOTICE" | "NOT_FIRST" | "UNOBSERVED" | null;
   viewerOpened: boolean | null;
 };
 
@@ -63,7 +64,8 @@ export function classify(q: Question, m: Manual, o: Observation, tolerance = 1):
   const citedPage = first?.page != null && /^\d+$/.test(first.page) ? Number(first.page) : null;
   const cited = { citedTitle: first?.title ?? null, citedPage, citedVia: first ? (inline ? "inline" as const : "card" as const) : null };
   const redLine = (): Scored["safetyRedLine"] => {
-    if (!q.safetyRelevant || !r) return null;
+    if (!q.safetyRelevant) return null;
+    if (!r) return "UNOBSERVED";
     if (!r.safety.present) return "NO_NOTICE";
     return r.safety.first === true ? null : "NOT_FIRST";
   };
@@ -83,6 +85,8 @@ export function classify(q: Question, m: Manual, o: Observation, tolerance = 1):
   }
   if (!first!.title.toLowerCase().includes(stem(m.filename))) return done("WRONG_PAGE", `wrong_doc: first citation is "${first!.title}"`);
   if (citedPage === null) return done("WRONG_PAGE", "first citation carries no page");
+  // Opening the first citation is part of the journey: one that does not open is not a citation.
+  if (o.viewerOpened === false) return done("BROKEN", `first citation did not open in the source viewer (cited p.${citedPage ?? "?"})`);
   const off = citedPage - q.expectedPage;
   if (Math.abs(off) > tolerance) return done("WRONG_PAGE", `cited p.${citedPage}, expected p.${q.expectedPage} (off by ${off})`);
   return done("CORRECT", `cited p.${citedPage}, expected p.${q.expectedPage}`);

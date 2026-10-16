@@ -37,6 +37,10 @@ jobs:
     name: Stranger walk — 50 questions on staging /v3
     runs-on: ubuntu-latest
     environment: staging # inherits DOPPLER_TOKEN scoped to factorylm/stg
+    # The job holds the staging DOPPLER_TOKEN, so it only ever runs main's code: a dispatch on any
+    # other ref is skipped before the job (and its secrets) start, and the step below proves the
+    # exact SHA is on main before anything is checked out (retrieval-acceptance.yml precedent).
+    if: ${{ github.ref == 'refs/heads/main' }}
     timeout-minutes: 150
     env:
       STRANGER_WALK_BASE: https://app-staging.factorylm.com
@@ -49,6 +53,17 @@ jobs:
           case "$STRANGER_WALK_BASE" in
             https://app-staging.factorylm.com) ;;
             *) echo "::error::stranger walk runs against staging only (got $STRANGER_WALK_BASE)"; exit 1 ;;
+          esac
+
+      - name: The SHA must be on main before any of its code runs here
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          status="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$RUN_SHA" --jq '.status' 2>/dev/null || true)"
+          case "$status" in
+            identical|behind) echo "$RUN_SHA is on main (compare: $status)" ;;
+            *) echo "::error::$RUN_SHA is not on main (compare: ${status:-api error}) — refusing to run with staging credentials"; exit 1 ;;
           esac
 
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
