@@ -151,10 +151,10 @@ jobs:
             -u ANDROID_KEY_ALIAS \
             -u ANDROID_KEY_PASSWORD \
             GRADLE_USER_HOME="$RUNNER_TEMP/gradle-home" \
-            ./gradlew --no-daemon assembleRelease bundleRelease
+            ./gradlew --no-daemon assembleProductionRelease bundleProductionRelease
 
-          APK=app/build/outputs/apk/release/app-release-unsigned.apk
-          AAB=app/build/outputs/bundle/release/app-release.aab
+          APK=app/build/outputs/apk/production/release/app-production-release-unsigned.apk
+          AAB=app/build/outputs/bundle/productionRelease/app-production-release.aab
           test -s "$APK"
           test -s "$AAB"
 
