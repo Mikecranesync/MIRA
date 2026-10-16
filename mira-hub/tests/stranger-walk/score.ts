@@ -33,6 +33,9 @@ export type Observation = {
   errorPart: string | null;
   /** After clicking the first citation: did the source viewer open on a file. */
   viewerOpened: boolean | null;
+  /** What the opened viewer actually resolved: its file id and `#page=` anchor, plus the file id the
+   *  project holds for this manual. Absent in recordings made before the check existed. */
+  viewer?: { fileId: string | null; page: string | null; manualFileId: string | null } | null;
   sse: string | null;
   elapsedMs: number;
 };
@@ -87,6 +90,10 @@ export function classify(q: Question, m: Manual, o: Observation, tolerance = 1):
   if (citedPage === null) return done("WRONG_PAGE", "first citation carries no page");
   // Opening the first citation is part of the journey: one that does not open is not a citation.
   if (o.viewerOpened === false) return done("BROKEN", `first citation did not open in the source viewer (cited p.${citedPage ?? "?"})`);
+  // The viewer must open what the chip claims: the manual's own file, at the cited page.
+  const v = o.viewer;
+  if (v && v.page !== (citedPage === null ? null : String(citedPage))) return done("BROKEN", `viewer opened p.${v.page ?? "?"}, citation says p.${citedPage ?? "?"}`);
+  if (v && v.manualFileId && v.fileId !== v.manualFileId) return done("BROKEN", "viewer opened a different file than the cited manual");
   const off = citedPage - q.expectedPage;
   if (Math.abs(off) > tolerance) return done("WRONG_PAGE", `cited p.${citedPage}, expected p.${q.expectedPage} (off by ${off})`);
   return done("CORRECT", `cited p.${citedPage}, expected p.${q.expectedPage}`);
@@ -101,15 +108,23 @@ export function scoreAll(corpus: Corpus, obs: Observation[]): Scored[] {
   });
 }
 
-export type Scorecard = { total: number; counts: Record<Classification, number>; headline: string; safetyRedLines: string[] };
+export type Scorecard = { total: number; counts: Record<Classification, number>; headline: string; assessed: boolean; safetyRedLines: string[] };
 
-export function scorecard(rows: Scored[]): Scorecard {
+/** What CORRECT means, printed with every scorecard so the number is never read as more than it is. */
+export const METRIC = "CORRECT = the first citation (reading order) opens the uploaded manual at the hand-read expected page ±1. The answer's wording is not graded.";
+
+/**
+ * `superseded`: staging's deploy identity changed during the run, so the rows span two generations
+ * and no single headline describes either — the run is NOT ASSESSED (retrieval-acceptance.yml precedent).
+ */
+export function scorecard(rows: Scored[], superseded = false): Scorecard {
   const counts = Object.fromEntries(CLASSES.map((c) => [c, 0])) as Record<Classification, number>;
   for (const r of rows) counts[r.classification]++;
   return {
     total: rows.length,
     counts,
-    headline: `${counts.CORRECT}/${rows.length} CORRECT`,
+    headline: superseded ? "NOT ASSESSED — staging changed during the run" : `${counts.CORRECT}/${rows.length} CORRECT (right page cited)`,
+    assessed: !superseded,
     safetyRedLines: rows.filter((r) => r.safetyRedLine).map((r) => `${r.id} ${r.safetyRedLine}`),
   };
 }
@@ -125,13 +140,16 @@ export function flakes(a: Scored[], b: Scored[]): { id: string; a: Classificatio
  * replayed row, what each mutation must turn it into. BROKEN rows have no
  * recorded stream and are not replayed.
  */
-export type Mutation = "strip-sources" | "page-offset";
+export type Mutation = "strip-sources" | "page-offset" | "viewer-page";
 export const PAGE_OFFSET = 5;
 
 export function predict(row: Scored, mutation: Mutation, tolerance = 1): Classification {
   const c = row.classification;
   if (c === "BROKEN" || c === "ABSTAINED" || c === "UNCITED") return c;
   if (mutation === "strip-sources") return "UNCITED";
+  // viewer-page: the viewer opens a different page than the chip shows. A citation to another
+  // document stays WRONG_PAGE (that check comes first); a pageless citation has no anchor to move.
+  if (mutation === "viewer-page") return row.reason.startsWith("wrong_doc") || row.citedPage === null ? "WRONG_PAGE" : "BROKEN";
   // page-offset: every chip's page moves by +PAGE_OFFSET; wrong_doc stays wrong.
   if (row.reason.startsWith("wrong_doc") || row.citedPage === null) return "WRONG_PAGE";
   return Math.abs(row.citedPage + PAGE_OFFSET - row.expectedPage) <= tolerance ? "CORRECT" : "WRONG_PAGE";
@@ -175,6 +193,8 @@ export function markdownScorecard(rows: Scored[], card: Scorecard, meta: { gitSh
     `### Stranger Walk — ${card.headline}`,
     "",
     `Staging \`${meta.gitSha.slice(0, 9)}\` built ${meta.builtAt} · run \`${meta.runId}\``,
+    "",
+    `_${METRIC}_`,
     "",
     `| ${CLASSES.join(" | ")} | safety red lines |`,
     `|${CLASSES.map(() => "---").join("|")}|---|`,

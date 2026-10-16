@@ -16,7 +16,7 @@ import path from "node:path";
 import { test, type Page, type Response } from "@playwright/test";
 import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
-import { cardsOf, firstChipOf } from "./extract";
+import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import { identity, manualBytes, MAX_TURNS, BUDGET, stagingBase, teardownTenant } from "./staging";
 
@@ -68,14 +68,14 @@ async function newProject(page: Page, name: string) {
 }
 
 /** The open project's source for this manual, as the page itself fetches it (null: not attached). */
-async function sourceReadiness(page: Page, filename: string): Promise<{ label?: string; canChat?: boolean } | null> {
+async function sourceReadiness(page: Page, filename: string): Promise<{ label?: string; canChat?: boolean; fileId?: string | null } | null> {
   const nb = new URL(page.url()).searchParams.get("notebook");
   const sources = await page.evaluate(async (id) => {
     const r = await fetch(`/api/equipment-notebooks/${id}/`, { cache: "no-store" });
-    return r.ok ? ((await r.json()).sources as { filename: string; readiness?: { label?: string; canChat?: boolean } }[]) : [];
+    return r.ok ? ((await r.json()).sources as { filename: string; fileId?: string | null; readiness?: { label?: string; canChat?: boolean } }[]) : [];
   }, nb);
   const s = sources.find((x) => x.filename === filename);
-  return s ? (s.readiness ?? {}) : null;
+  return s ? { ...(s.readiness ?? {}), fileId: s.fileId ?? null } : null;
 }
 
 /** Wait until the manual's readiness label says it can be asked ("Ready to ask"). */
@@ -91,7 +91,7 @@ async function waitReady(page: Page, filename: string): Promise<string> {
   throw new Error(`source never became ready (last label: ${label})`);
 }
 
-async function ask(page: Page, q: Question, attach: { name: string; buffer: Buffer } | null): Promise<Observation> {
+async function ask(page: Page, q: Question, manualFilename: string, attach: { name: string; buffer: Buffer } | null): Promise<Observation> {
   const t0 = Date.now();
   const before = await page.locator(turnSel).count();
   if (attach) {
@@ -130,14 +130,19 @@ async function ask(page: Page, q: Question, attach: { name: string; buffer: Buff
 
   // Open the first citation the way a technician would: the inline chip, else the first source card.
   let viewerOpened: boolean | null = null;
+  let viewer: Observation["viewer"] = null;
   const inline = settled.getByRole("button", { name: /^Open citation / }).first();
   const chip = (await inline.count()) ? inline : settled.locator('[data-part-type="source"]').first();
   if (await chip.count()) {
     await chip.click();
     viewerOpened = await UI.clone.viewerFrame(page).waitFor({ state: "visible", timeout: 20_000 }).then(() => true, () => false);
+    if (viewerOpened) {
+      const manualFileId = (await sourceReadiness(page, manualFilename).catch(() => null))?.fileId ?? null;
+      viewer = { ...(await viewerTargetOf(UI.clone.viewerFrame(page))), manualFileId };
+    }
     await page.keyboard.press("Escape");
   }
-  return { id: q.id, broken: null, rendered, cards, firstChip, streamStatus: sseStatus(sse), errorPart, viewerOpened, sse, elapsedMs: Date.now() - t0 };
+  return { id: q.id, broken: null, rendered, cards, firstChip, streamStatus: sseStatus(sse), errorPart, viewerOpened, viewer, sse, elapsedMs: Date.now() - t0 };
 }
 
 test("stranger walk", async ({ page }) => {
@@ -174,7 +179,7 @@ test("stranger walk", async ({ page }) => {
             if (uploaded) notes.push(`${q.id}: readiness "${await waitReady(page, m.filename)}"`);
           }
           turns++;
-          obs.push(await ask(page, q, uploaded ? null : { name: m.filename, buffer: pdf.bytes }));
+          obs.push(await ask(page, q, m.filename, uploaded ? null : { name: m.filename, buffer: pdf.bytes }));
         } catch (e) {
           await page.screenshot({ path: path.join(OUT, "shots", `${q.id}.png`) }).catch(() => undefined);
           obs.push(brokenObs(q.id, `walker: ${(e as Error).message.split("\n")[0].slice(0, 200)}`));
@@ -196,7 +201,7 @@ test("stranger walk", async ({ page }) => {
     const asked = ONLY ? { ...corpus, questions: corpus.questions.filter((q) => ONLY.has(q.id)) } : corpus;
     const aborted = notes.find((n) => n.startsWith("run aborted: "));
     const rows = scoreAll(asked, obs).map((r) => (aborted && !obs.some((o) => o.id === r.id) ? { ...r, reason: aborted } : r));
-    const card = scorecard(rows);
+    const card = scorecard(rows, superseded);
     const meta = { ...start, runId: RUN_ID };
     for (const r of rows.filter((x) => x.classification !== "CORRECT" || x.safetyRedLine)) {
       const q = corpus.questions.find((x) => x.id === r.id)!;
@@ -208,5 +213,6 @@ test("stranger walk", async ({ page }) => {
     writeFileSync(path.join(OUT, "scorecard.md"), `${markdownScorecard(rows, card, meta)}\n\n${notes.map((n) => `- ${n}`).join("\n")}\n`);
     console.log(`stranger walk ${card.headline} · ${JSON.stringify(card.counts)} · red lines ${card.safetyRedLines.length} · ${OUT}`);
     if (!td.ok) throw new Error(`tenant teardown failed: ${td.detail}`);
+    if (superseded) throw new Error("NOT ASSESSED: staging changed during the run — the rows span two deploy generations");
   }
 });
