@@ -57,7 +57,7 @@ jobs:
           wiki/orchestrator/patches/2026-06-11-D4-replay-seam-activation.md \
           steps 1-2; this gate activates automatically once the store lands."
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         if: steps.store.outputs.present == 'true'
         with:
           python-version: "3.12"

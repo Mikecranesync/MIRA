@@ -91,7 +91,7 @@ jobs:
           echo "the weekly cadence doesn't spam red. Re-run after PR #1513"
           echo "merges, or use workflow_dispatch from the PR branch."
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         if: steps.check_files.outputs.missing == '0'
         with:
           python-version: "3.12"
