@@ -1043,16 +1043,31 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
                 try:
                     parsed = urlparse(url)
                     host = parsed.hostname or ""
-                    if (parsed.scheme != "https" or not host or parsed.username or parsed.password
-                            or parsed.port not in (None, 443) or _is_denied(host)
-                            or re.search(r"[\\\s<>\"']", url) or _is_direct_pdf(url)):
+                    if (
+                        parsed.scheme != "https"
+                        or not host
+                        or parsed.username
+                        or parsed.password
+                        or parsed.port not in (None, 443)
+                        or _is_denied(host)
+                        or re.search(r"[\\\s<>\"']", url)
+                        or _is_direct_pdf(url)
+                    ):
                         continue
                     # Do not retain signed credentials as a browser handoff.
-                    if re.search(r"(?:token|signature|x-sign|credential|secret|password|api.?key)", parsed.query, re.I):
+                    if re.search(
+                        r"(?:token|signature|x-sign|credential|secret|password|api.?key)",
+                        parsed.query,
+                        re.I,
+                    ):
                         continue
                     official = _is_oem_host(host, make)
-                    names_make = len(make) >= 2 and re.search(r"(?<!\w)" + re.escape(make) + r"(?!\w)", title, re.I)
-                    helpful = re.search(r"manual|support|download|documentation", title + " " + parsed.path, re.I)
+                    names_make = len(make) >= 2 and re.search(
+                        r"(?<!\w)" + re.escape(make) + r"(?!\w)", title, re.I
+                    )
+                    helpful = re.search(
+                        r"manual|support|download|documentation", title + " " + parsed.path, re.I
+                    )
                     homepage = parsed.path in ("", "/")
                     if not (official or names_make) or not (helpful or homepage):
                         continue
@@ -1196,14 +1211,18 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
             # old fallback to EVERY unread candidate offered a reseller's company
             # profile as "a possible manual"; a stranger may win only by being read
             # and judged the manual (above). An honest miss instead.
-            if trail is not None and not trail.search_page_url and (
-                deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT
+            if (
+                trail is not None
+                and not trail.search_page_url
+                and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
             ):
                 await _send(f"{make} {model} manual support", "q3 (website handoff)")
             return None
         if not deduped:
-            if trail is not None and not trail.search_page_url and (
-                deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT
+            if (
+                trail is not None
+                and not trail.search_page_url
+                and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
             ):
                 await _send(f"{make} {model} manual support", "q3 (website handoff)")
             worst = next((c for c in ranked if _judge.is_rejected(c)), ranked[0])
