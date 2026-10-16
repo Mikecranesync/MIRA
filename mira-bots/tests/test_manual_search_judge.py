@@ -501,7 +501,7 @@ async def test_oem_request_link_is_a_curated_link_not_a_fetch():
     assert await search_mod.oem_request_link("Harrington Hoists and Cranes") == (
         "https://www.harringtonhoists.com/owners-manual-request"
     )
-    assert await search_mod.oem_request_link("Siemens") is None  # no form on file
+    assert await search_mod.oem_request_link("Siemens") == "https://industry.siemens.com/"  # known OEM site, no form on file
 
 
 # ── review findings 2026-08-26 ───────────────────────────────────────────────

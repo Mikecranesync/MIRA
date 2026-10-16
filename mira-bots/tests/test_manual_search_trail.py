@@ -492,3 +492,69 @@ def test_a_slow_read_stops_at_the_search_deadline_instead_of_an_outage(monkeypat
     assert trail["stop"] == "search_deadline"
     row = trail["candidates"][0]
     assert row["read"] == "interrupted" and row["read_reason"] == "search_deadline_during_fetch"
+
+
+@pytest.mark.asyncio
+async def test_unknown_manufacturer_website_survives_a_manual_miss(monkeypatch):
+    async def hits(query):
+        return [{"link": "https://novel-controls.example/support/?language=en", "title": "Novel Controls support"}]
+    monkeypatch.setattr(search_mod, "_serper_search", hits)
+    monkeypatch.setattr(judge, "judge_enabled", lambda: False)
+    with search_mod.acquisition_trail() as trail:
+        candidate = await search_mod.search_manual("Novel Controls", "Z7")
+    assert candidate is None  # website is not a manual candidate
+    assert trail.search_page_url == "https://novel-controls.example/support/?language=en"
+
+
+@pytest.mark.asyncio
+async def test_no_website_is_invented_from_an_unknown_manufacturer(monkeypatch):
+    async def hits(query):
+        return []
+    monkeypatch.setattr(search_mod, "_serper_search", hits)
+    with search_mod.acquisition_trail() as trail:
+        assert await search_mod.search_manual("Unlisted Maker", "Z7") is None
+    assert trail.search_page_url is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url,title", [
+    ("https://unrelated.example/support", "Different Manufacturer support"),
+    ("https://novel-controls.example/manual.pdf", "Novel Controls manual"),
+    ("https://novel-controls.example/support?token=secret", "Novel Controls support"),
+    ("javascript:alert(1)", "Novel Controls support"),
+])
+async def test_handoff_does_not_promote_unrelated_documents_or_credentials(monkeypatch, url, title):
+    async def hits(query):
+        return [{"link": url, "title": title}]
+    async def no_pdf(url):
+        return False
+    monkeypatch.setattr(search_mod, "_serper_search", hits)
+    monkeypatch.setattr(search_mod, "validate_pdf", no_pdf)
+    monkeypatch.setattr(judge, "judge_enabled", lambda: False)
+    with search_mod.acquisition_trail() as trail:
+        await search_mod.search_manual("Novel Controls", "Z7")
+    assert trail.search_page_url is None
+
+
+@pytest.mark.asyncio
+async def test_rejected_document_still_searches_for_a_website(monkeypatch):
+    calls = []
+    async def hits(query):
+        calls.append(query)
+        if "filetype:pdf" in query:
+            return [{"link": "https://novel-controls.example/Z7.pdf", "title": "Novel Controls Z7 brochure"}]
+        return [{"link": "https://novel-controls.example/support/", "title": "Novel Controls support"}]
+    async def reject(make, model, candidates, **kwargs):
+        return candidates
+    monkeypatch.setattr(search_mod, "_serper_search", hits)
+    monkeypatch.setattr(judge, "judge_enabled", lambda: True)
+    monkeypatch.setattr(judge, "judge_candidates", reject)
+    monkeypatch.setattr(judge, "is_match", lambda c: False)
+    monkeypatch.setattr(judge, "is_rejected", lambda c: True)
+    monkeypatch.setattr(judge, "judge_summary", lambda c: ("judged_not_applicable", "Not the manual"))
+    with search_mod.acquisition_trail() as trail:
+        candidate = await search_mod.search_manual("Novel Controls", "Z7")
+    assert candidate["reason"] == "judged_not_applicable"
+    assert not candidate["validated"]
+    assert trail.search_page_url == "https://novel-controls.example/support/"
+    assert "filetype:pdf" not in calls[-1]

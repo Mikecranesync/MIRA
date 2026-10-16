@@ -42,7 +42,8 @@ async def test_total_outage_is_unavailable_even_when_the_budget_skips_passes(mon
         with pytest.raises(s.ManualSearchUnavailable):
             await s.search_manual("SMC", "SS5Y3-DUW01302")
     assert len(real_search) == budget.limit == 4
-    assert budget.refused >= 1, "the scenario must include locally skipped passes"
+    assert budget.refused == 0  # variants were skipped to reserve the website query
+    assert "filetype:pdf" not in real_search[-1]
 
 
 async def test_control_successful_empty_responses_are_a_genuine_miss(monkeypatch, real_search):

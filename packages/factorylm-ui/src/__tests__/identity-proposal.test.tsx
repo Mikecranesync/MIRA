@@ -220,7 +220,7 @@ describe("manual download handoff", () => {
     const link = view.container.querySelector('[data-part-type="manual_search_status"] a');
     expect(link?.getAttribute("href")).toBe(url);
     expect(link?.getAttribute("target")).toBe("_blank");
-    expect(link?.textContent).toContain("Open manual download page");
+    expect(link?.textContent).toContain("Open website to find the manual");
   });
 });
 

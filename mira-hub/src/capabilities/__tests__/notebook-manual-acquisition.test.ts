@@ -263,6 +263,19 @@ describe("acquisitionDeclineText — honest about what the search did", () => {
     expect(acquisitionDeclineText(null, "K", "X")).toBeNull();
 
   });
+  it("does not re-offer a security-rejected URL through the website fallback", () => {
+    const url = "https://example.com/support/";
+    const r = rec({ state: "download_rejected", download_reason: "blocked_address", candidate_url: url, search_page_url: url, oem_request_url: "https://example.com/" });
+    expect(acquisitionManualUrl(r)).toBe("https://example.com/");
+  });
+  it("keeps a search website separate from a citable manual", () => {
+    const r = recordFromOutcome("K", null, { status: "no_manual_found", payload: { searchPageUrl: "https://novel-controls.example/support/" } });
+    expect(acquisitionManualUrl(r)).toBe("https://novel-controls.example/support/");
+    const text = acquisitionDeclineText(r, "K", "Novel Controls Z7")!;
+    expect(text).toContain("https://novel-controls.example/support/");
+    expect(text).toContain("website");
+    expect(text).not.toContain("request it from the manufacturer");
+  });
   it.each(["download_rejected", "search_unavailable"] as const)("%s retains a failed download URL without claiming it was read", (state) => {
     const t = acquisitionDeclineText(rec({ state, download_reason: "wrong_content_type", candidate_url: "https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319" }), "K", "KEYENCE GL-R")!;
     expect(t).toContain("https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319");

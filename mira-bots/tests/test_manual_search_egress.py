@@ -83,9 +83,9 @@ async def test_keyence_manual_directory_is_available_without_search_or_download(
     )
 
 
-async def test_oem_request_link_is_none_for_a_maker_with_no_curated_form(monkeypatch):
+async def test_known_oem_site_fallback_without_a_curated_form(monkeypatch):
     _refuse_all_network(monkeypatch)
-    assert await search_mod.oem_request_link("Siemens") is None
+    assert await search_mod.oem_request_link("Siemens") == "https://industry.siemens.com/"
     assert await search_mod.oem_request_link("") is None
 
 
@@ -120,7 +120,8 @@ async def test_the_budget_caps_provider_queries_per_call(monkeypatch):
     assert search_mod.max_provider_queries() == 4
     assert len(sent) == 4
     assert budget.used == 4
-    assert budget.refused == 2
+    assert budget.refused == 0
+    assert "filetype:pdf" not in sent[-1]  # reserve the last query for websites
     # Pass 1 (the site-scoped, highest-precision query) is never the one cut.
     assert "site:" in sent[0]
 
