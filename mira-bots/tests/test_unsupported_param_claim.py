@@ -390,3 +390,41 @@ def test_model_name_cannot_hide_a_numeric_setting():
 
     reply = "Set acceleration time on the Yaskawa A1000 to 30 seconds."
     assert reply not in _sanitize_claim_support(reply, "A1000 startup fault", [], [])
+
+
+@pytest.mark.parametrize("token", ["A09", "C03", "D02"])
+def test_article_does_not_hide_parameter_action(token):
+    reply = f"Disable the {token} parameter."
+    assert _find_unsupported_param_claims(reply, "What next?", [], [])
+    rows = [{"content": reply, "evidence_applicability": "model"}]
+    assert _find_unsupported_param_claims(reply, "What next?", [], rows) == []
+
+
+def test_supported_parameter_value_with_article_is_retained():
+    reply = "Set the A09 parameter to 10."
+    rows = [{"content": "Set A09 to 10.", "evidence_applicability": "model"}]
+    assert _find_unsupported_param_claims(reply, "What next?", [], rows) == []
+
+
+@pytest.mark.parametrize("suffix", [" (step 2 of 3)", " (see item 2)", " (see steps 2 and 3)"])
+def test_incidental_step_reference_does_not_change_supported_values(suffix):
+    reply = "Increase P3.00 from 10s to 20s" + suffix + "."
+    rows = [{"content": "Increase P3.00 from 10s to 20s.", "evidence_applicability": "model"}]
+    assert _find_unsupported_param_claims(reply, "What next?", [], rows) == []
+
+
+@pytest.mark.parametrize("value", ["2", "3", "23"])
+def test_real_unitless_settings_are_not_incidental_step_counts(value):
+    rows = [{"content": "Set A09 to 1.", "evidence_applicability": "model"}]
+    assert _find_unsupported_param_claims(f"Set A09 to {value} (see item 2).", "", [], rows)
+
+
+def test_step_reference_does_not_license_unsupported_start_value():
+    rows = [{"content": "Increase P3.00 to 20s.", "evidence_applicability": "model"}]
+    reply = "Increase P3.00 from 10s to 20s (step 2 of 3)."
+    assert _find_unsupported_param_claims(reply, "What next?", [], rows) == ["P3.00"]
+
+
+def test_model_parameter_list_reference_is_not_parameter_setting():
+    reply = "Read the Yaskawa A1000 parameter list."
+    assert _find_unsupported_param_claims(reply, "A1000 manual?", [], []) == []

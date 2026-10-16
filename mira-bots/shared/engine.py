@@ -946,7 +946,7 @@ def _normalize_reply_text(text: str) -> str:
 # exactly THREE distinct parameter tokens — P09.03, P09.04 and P0594 — of which
 # only P0594 is absent from the corpus. Zero false positives on the real ones.
 # Offline detector + sweep: tests/regime1_telethon/campaign/{fabrication,offline_lab}.py
-_PARAM_CLAIM_RE = re.compile(r"\b([APbtCd]\d{1,4}(?:[.-]\d{1,2})?|E-\d{2}|E\d{1,2}-\d{1,2})\b")
+_PARAM_CLAIM_RE = re.compile(r"\b([APbtCdD]\d{1,4}(?:[.-]\d{1,2})?|E-\d{2}|E\d{1,2}-\d{1,2})\b")
 _SOURCE_TAG_RE = re.compile(r"\[Source:[^\]]*\]", re.IGNORECASE)
 _CLAIM_ACTION_RE = re.compile(
     r"\b(set|change|increase|decrease|raise|lower|extend|adjust|program|write|enable|disable)\b",
@@ -962,6 +962,14 @@ def _claim_sentences(reply: str) -> list[str]:
 def _claim_values(text: str) -> set[str]:
     """Normalize quantity spelling without losing the unit (400 V == 400V)."""
     text = _PARAM_CLAIM_RE.sub(" ", _SOURCE_TAG_RE.sub(" ", text)).lower()
+    # A parenthetical step/item cross-reference is not a setting value. Keep
+    # unitless settings and every quantity outside this narrow reference form.
+    text = re.sub(
+        r"\(\s*(?:see\s+)?(?:steps?|items?)\s+\d+"
+        r"(?:\s*(?:of|and|,|[-–])\s*\d+)*\s*\)",
+        " ",
+        text,
+    )
     for pattern, unit in (
         (r"milliseconds?", "ms"),
         (r"seconds?|secs?", "s"),
@@ -1071,8 +1079,8 @@ def _find_unsupported_param_claims(
                 _CLAIM_ACTION_RE.search(body) or re.search(r"\bparameter\b", body, re.I)
             ):
                 continue
-            if token[0] in "ACD" and not re.search(
-                r"\b(?:parameter|set|change|adjust|program|write|enable|disable)\s+"
+            if token[0] in "ACDd" and not re.search(
+                r"\b(?:parameter|set|change|adjust|program|write|enable|disable)\s+(?:the\s+)?"
                 + re.escape(token)
                 + r"\b",
                 body,
@@ -1140,7 +1148,7 @@ def _unsupported_fault_definition(sentence: str, chunks: list) -> bool:
                 and normalize(meaning)
                 and normalize(meaning) in normalize(supported[1])
                 and not re.search(
-                    r"\b(?:not|never|incorrect|unknown|unsupported)\b", supported[1], re.I
+                    r"\b(?:not|never|incorrect|unknown|unsupported|\w+n['’]t)\b", supported[1], re.I
                 )
                 and all(
                     normalize(condition[0]) in normalize(meaning)
