@@ -556,3 +556,135 @@ async def test_retry_attempt_sees_fresh_thread_flag(sv):
     if len(flags) > 1:
         assert flags[1], "retry attempt lost the fresh-thread flag"
     assert flags[0], "first attempt should carry the fresh-thread flag"
+
+
+@pytest.mark.asyncio
+async def test_same_vendor_model_correction_survives_followup(sv):
+    chat = "gs20-correction"
+    sv._save_state(chat, _dead_thread_state())
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "Actually sorry, it's a GS20 not a GS10. Same OC fault.")
+        corrected = sv._load_state(chat)
+        assert corrected["asset_identified"] == "AutomationDirect, GS20"
+        assert corrected["context"]["uns_context"]["model"] == "GS20"
+        assert corrected["context"]["uns_context"]["fault_code"] == "OC"
+        assert corrected["context"]["session_context"].get("active_alarm") != "CE10"
+        await sv.process(chat, "3HP motor, pumping water, trips every time we start")
+    assert sv._load_state(chat)["asset_identified"] == "AutomationDirect, GS20"
+
+
+@pytest.mark.parametrize(
+    "message,source",
+    [
+        ("Compare GS10 and GS20", None),
+        ("GS10 versus GS20", None),
+        ("The GS10 is still tripping", None),
+        ("It's a GS20", "direct_connection"),
+    ],
+)
+def test_model_repin_preserves_comparison_existing_and_connected_asset(sv, message, source):
+    state = _dead_thread_state()
+    assert not sv._maybe_repin_asset("repin-control", state, message, source)
+    assert state["asset_identified"] == "AutomationDirect, GS10"
+
+
+def test_model_repin_keeps_manufacturer_and_model_aliases(sv):
+    state = _dead_thread_state()
+    state["asset_identified"] = "Rockwell Automation, PowerFlex 525"
+    assert not sv._maybe_repin_asset("alias-control", state, "Allen-Bradley PF525", None)
+    assert state["asset_identified"] == "Rockwell Automation, PowerFlex 525"
+
+
+def test_model_repin_accepts_powerflex_model_correction(sv):
+    state = _dead_thread_state()
+    state["asset_identified"] = "Rockwell Automation, PowerFlex 525"
+    assert sv._maybe_repin_asset("pf520", state, "Actually PF520, not PF525", None)
+    assert "520" in state["asset_identified"]
+    assert "525" not in state["asset_identified"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "message,source",
+    [
+        ("Compare GS10 and GS20", None),
+        ("It's a GS20", "direct_connection"),
+    ],
+)
+async def test_non_switch_keeps_retrieval_identity_too(sv, message, source):
+    chat = "identity-scope-control"
+    sv._save_state(chat, _dead_thread_state())
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, message, uns_source=source)
+    saved = sv._load_state(chat)
+    assert saved["asset_identified"] == "AutomationDirect, GS10"
+    assert saved["context"]["uns_context"]["model"] == "GS10"
+
+
+@pytest.mark.asyncio
+async def test_cross_vendor_comparison_preserves_display_and_retrieval_identity(sv):
+    chat = "cross-vendor-comparison-control"
+    sv._save_state(chat, _dead_thread_state())
+    seen = []
+
+    async def rag(message, state, *args, **kwargs):
+        seen.append((message, dict(state["context"]["uns_context"])))
+        return RAG_REPLY
+
+    sv.rag.process = rag
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "Compare Rockwell Automation PowerFlex 525 versus GS10")
+    saved = sv._load_state(chat)
+    assert saved["asset_identified"] == "AutomationDirect, GS10"
+    assert saved["context"]["uns_context"]["model"] == "GS10"
+    assert seen and all(context["model"] == "GS10" for _, context in seen)
+
+
+@pytest.mark.asyncio
+async def test_connected_provenance_survives_followup_without_source_argument(sv):
+    chat = "persistent-connected-control"
+    sv._save_state(chat, _dead_thread_state())
+    seen = []
+
+    async def rag(message, state, *args, **kwargs):
+        seen.append((state["asset_identified"], dict(state["context"]["uns_context"])))
+        return RAG_REPLY
+
+    sv.rag.process = rag
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "The motor trips with OC.", uns_source="direct_connection")
+        assert sv._load_state(chat)["context"]["uns_context"]["source"] == "direct_connection"
+        await sv.process(chat, "Actually it's a GS20, not a GS10.")
+        saved = sv._load_state(chat)
+        assert saved["asset_identified"] == "AutomationDirect, GS10"
+        assert saved["context"]["uns_context"]["model"] == "GS10"
+        assert saved["context"]["uns_context"]["source"] == "direct_connection"
+        await sv.process(chat, "Actually it is a PowerFlex 525.")
+    saved = sv._load_state(chat)
+    assert saved["asset_identified"] == "AutomationDirect, GS10"
+    assert saved["context"]["uns_context"]["model"] == "GS10"
+    assert saved["context"]["uns_context"]["source"] == "direct_connection"
+    assert seen and all(
+        pin == "AutomationDirect, GS10" and context["model"] == "GS10" for pin, context in seen
+    )
+
+
+@pytest.mark.asyncio
+async def test_explicit_unbound_cross_vendor_correction_still_changes_scope(sv):
+    chat = "explicit-cross-vendor-control"
+    sv._save_state(chat, _dead_thread_state())
+    seen = []
+
+    async def rag(message, state, *args, **kwargs):
+        seen.append(dict(state["context"]["uns_context"]))
+        return RAG_REPLY
+
+    sv.rag.process = rag
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "Actually it is a Rockwell PowerFlex 525 with F004, not a GS10.")
+    saved = sv._load_state(chat)
+    assert "525" in saved["asset_identified"]
+    assert "GS10" not in saved["asset_identified"]
+    assert saved["context"]["session_context"].get("active_alarm") != "CE10"
+    assert saved["context"]["uns_context"]["fault_code"] == "F0004"
+    assert seen and all("525" in context["model"] for context in seen)

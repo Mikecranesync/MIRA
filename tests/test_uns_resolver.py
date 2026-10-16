@@ -549,3 +549,15 @@ def test_separator_shorthand_is_a_single_character():
     """Two tokens far apart are not a model reference."""
     ctx = resolve_uns_path("the pf reading and the 525 volt bus")
     assert ctx.manufacturer is None
+
+
+def test_model_correction_excludes_negated_equipment():
+    for text in (
+        "Actually sorry, it's a GS20 not a GS10. Same OC fault.",
+        "It's not a GS10, it's a GS20. Same OC fault.",
+    ):
+        ctx = resolve_uns_path(text)
+        assert ctx.manufacturer == "AutomationDirect"
+        assert ctx.model == "GS20"
+        assert ctx.product_family == "GS20"
+        assert ctx.fault_code == "OC"

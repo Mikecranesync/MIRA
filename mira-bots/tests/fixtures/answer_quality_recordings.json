@@ -1,0 +1,62 @@
+{
+  "source_sha": "4682cf47b2d4a6f5ffb633479c70603f43b2983f",
+  "evidence_sha256": "2d91e43a3028cefbb11618080929db05da36d9cce52c9cf840b5123488e95fdc",
+  "cases": {
+    "gs20_cross_vendor_03": {
+      "provider": "openrouter",
+      "id": 6,
+      "chat_id": "offline-gs20_cross_vendor_03-34af24a2",
+      "user_message": "Getting F004 on my GS20, what does it mean?",
+      "bot_response": "Based on general industrial knowledge (not from documentation specific to this equipment): F004 typically indicates an under-voltage condition. Most likely causes include low incoming line voltage or a supply sag during startup. Check the incoming voltage at L1-L2-L3. For official documentation, visit automationdirect.com/support.\n\nI don't have specific documentation indexed for this \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base \u2014 consult the asset nameplate or vendor manual.]",
+      "fsm_state": "DIAGNOSIS"
+    },
+    "pilz_manual_miss_11": {
+      "provider": "openai",
+      "id": 28,
+      "chat_id": "offline-pilz_manual_miss_11-a2921f3f",
+      "user_message": "I'm working on a Pilz PNOZ distribution block, getting intermittent faults",
+      "bot_response": "Intermittent faults on a PNOZ usually track a specific input. [Source: Rockwell Automation PowerFlex 525] Which circuit is dropping first: E-stop, gate switch, feedback loop, or reset?\n\n1. E-stop\n2. Gate switch\n3. Feedback loop\n4. Reset\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+      "fsm_state": "Q2"
+    },
+    "yaskawa_a1000_ov_23": {
+      "provider": "openai",
+      "id": 71,
+      "chat_id": "offline-yaskawa_a1000_ov_23-543bacdd",
+      "user_message": "Dynamic braking option is installed but I'm not sure if it's configured",
+      "bot_response": "E1-01 < 400 V Vdc = 660 V should not be used with a dynamic braking resistor [Source: Yaskawa V1000 \u2014 E1-01 < 400 V Vdc = 660 V]. Is E1-01 set that way, or is stall prevention during decel enabled?",
+      "fsm_state": "FIX_STEP"
+    },
+    "full_diagnosis_happy_path_07": {
+      "provider": "openrouter",
+      "id": 15,
+      "chat_id": "offline-full_diagnosis_happy_path_07-0e957149",
+      "user_message": "Trips within 2 seconds of start, load is a centrifugal pump, no output reactor",
+      "bot_response": "Based on general industrial knowledge (not from documentation specific to this equipment): Tripping within 2 seconds on a centrifugal pump load suggests the VFD's acceleration ramp might be too short for the pump's inertia. Most likely cause: accel time too short or a potential output issue. Check P3.00 accel time and consider extending it to 20-30s. [Source: General industrial knowledge]",
+      "fsm_state": "DIAGNOSIS"
+    },
+    "gs10_overcurrent_01": {
+      "provider": "openai",
+      "id": 3,
+      "chat_id": "offline-gs10_overcurrent_01-6e60b5b8",
+      "user_message": "Motor is 5HP 460V three-phase, no load connected during startup test",
+      "bot_response": "Motor is disconnected on startup. Did the OC still trip with the output wires off?\n\nI don't have specific documentation indexed for this \u2014 consult the asset nameplate or vendor manual. [KB-gap: I do not have that specific information in the knowledge base \u2014 consult the asset nameplate or vendor manual.]",
+      "fsm_state": "Q3"
+    },
+    "asset_change_mid_session_08": {
+      "provider": "openai",
+      "id": 21,
+      "chat_id": "offline-asset_change_mid_session_08-6e3c0c83",
+      "user_message": "Actually sorry, it's a GS20 not a GS10. Same OC fault.",
+      "bot_response": "GS20 OC = overcurrent at constant speed [Source: AutomationDirect GS20 \u2014 Fault Code Table]. Most likely sudden load change or motor insulation. Does it trip with the motor uncoupled?",
+      "fsm_state": "DIAGNOSIS"
+    },
+    "pf525_f004_02": {
+      "provider": "openrouter",
+      "id": 5,
+      "chat_id": "offline-pf525_f004_02-fe7729ba",
+      "user_message": "Motor is 10HP, cable run about 100ft, installed last month",
+      "bot_response": "F004 = Undervoltage. Given the 100ft cable run, check for voltage drop at the motor terminals under load [Source: Rockwell Automation PowerFlex 525]. Is the motor insulation resistance within spec?",
+      "fsm_state": "DIAGNOSIS"
+    }
+  }
+}

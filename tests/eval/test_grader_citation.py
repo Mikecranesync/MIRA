@@ -6,6 +6,8 @@ appear in retrieved chunks. Blocks the fabricated-parameter failure mode.
 from __future__ import annotations
 
 import sys
+
+import pytest
 from pathlib import Path
 
 
@@ -20,6 +22,7 @@ if str(_MIRA_BOTS) not in sys.path:
 
 from shared.citation_compliance import evaluate_citation_relevance  # noqa: E402
 from tests.eval.grader import (  # noqa: E402
+    cp_keyword_match,
     cp_citation_groundedness,
     cp_citation_vendor_relevance,
     grade_scenario,
@@ -237,14 +240,13 @@ class TestCitationVendorRelevance:
         rel = evaluate_citation_relevance(reply, "Rockwell Automation")
         assert rel["relevant"] is True
 
-    def test_correct_citation_alongside_wrong_is_not_a_miss(self):
-        # Conservative: a correct citation present means no miss, even if a
-        # second tag names another vendor.
+    def test_correct_citation_does_not_license_wrong_vendor(self):
+        # A valid citation never licenses an unrelated vendor citation.
         reply = (
             "Do X. [Source: Danfoss VLT FC 302 — A] and [Source: Siemens G120 — B]"
         )
         rel = evaluate_citation_relevance(reply, "Danfoss")
-        assert rel["relevant"] is True
+        assert rel["relevant"] is False
 
     def test_unknown_expected_vendor_fails_open(self):
         reply = "Do X. [Source: Siemens SINAMICS — A]"
@@ -277,3 +279,66 @@ class TestCheckpointVendorRelevance:
     def test_checkpoint_no_expected_vendor_passes(self):
         cp = cp_citation_vendor_relevance({"id": "t"}, "anything")
         assert cp.passed is True
+
+
+# Regression: only the literal numbered clarifier option is an example.
+_CANNED_SENSOR_OPTION = "3. Sensor reading (e.g. pressure at 120 PSI, temp at 90°C)"
+
+
+def test_canned_sensor_option_is_not_a_measurement_claim():
+    reply = "What is the equipment showing?\n" + _CANNED_SENSOR_OPTION + "\n4. Other"
+    assert cp_citation_groundedness({}, reply, []).passed
+
+
+@pytest.mark.parametrize("reply", [
+    "Pressure is 120 PSI and temperature is 90°C.",
+    "Example: pressure at 120 PSI, temp at 90°C.",
+    _CANNED_SENSOR_OPTION + "\nMeasured pressure is 120 PSI.",
+    _CANNED_SENSOR_OPTION + " Measured pressure is 120 PSI.",
+    "3. Sensor reading (e.g. pressure at 140 PSI, temp at 90°C)",
+])
+def test_example_wording_does_not_exempt_unsupported_claims(reply):
+    assert not cp_citation_groundedness({}, reply, []).passed
+
+
+@pytest.mark.parametrize("expected,reply", [
+    ("400 V", "Measured 400V."),
+    ("400V", "Measured 400 V."),
+    ("400 V", "Measured 400\tV."),
+    ("400 V", "Measured 400 V."),
+])
+def test_keyword_voltage_spacing_is_equivalent(expected, reply):
+    assert cp_keyword_match({"expected_keywords": [expected]}, reply).passed
+
+
+@pytest.mark.parametrize("reply", ["1400 V", "4000V", "400 kV", "400 A", "400VAC"])
+def test_keyword_wrong_value_or_unit_does_not_match(reply):
+    assert not cp_keyword_match({"expected_keywords": ["400 V"]}, reply).passed
+
+
+@pytest.mark.parametrize("reply", ["Measured 400V", "Measured 400 V"])
+def test_forbidden_voltage_uses_same_spacing_rules(reply):
+    cp = cp_keyword_match({"expected_keywords": ["Measured"], "forbidden_keywords": ["400 V"]}, reply)
+    assert not cp.passed
+
+
+@pytest.mark.parametrize("chunk", ["1400 V", "4000V", "400 kV", "400 A", "400VAC"])
+def test_grounding_wrong_value_or_unit_does_not_match(chunk):
+    assert not cp_citation_groundedness({}, "Measured 400 V", [chunk]).passed
+
+
+@pytest.mark.parametrize("chunk", ["400V", "400 V", "400\tV", "400\nV"])
+def test_grounding_voltage_spacing_is_equivalent(chunk):
+    assert cp_citation_groundedness({}, "Measured 400 V", [chunk]).passed
+
+
+def test_negative_voltage_is_not_positive_voltage_keyword():
+    assert not cp_keyword_match({'expected_keywords': ['400 V']}, 'Measured -400V').passed
+
+
+def test_negative_voltage_is_not_supported_by_positive_voltage():
+    assert not cp_citation_groundedness({}, 'Measured -400V', ['Measured 400 V']).passed
+
+
+def test_negative_voltage_retains_its_sign_when_supported():
+    assert cp_citation_groundedness({}, 'Measured -400V', ['Measured -400 V']).passed

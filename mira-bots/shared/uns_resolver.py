@@ -581,6 +581,20 @@ def vendors_in_text(text: str | None) -> set[str]:
     return {canonical for canonical, _alias, _family, _pos in _match_all_vendors(text.lower())}
 
 
+def canonical_model(model: str | None, product_family: str | None = None) -> str:
+    """Compare model aliases without equating different models of one vendor."""
+    key = re.sub(r"[^a-z0-9]", "", (model or "").lower())
+    aliases = {
+        re.sub(r"[^a-z0-9]", "", alias.lower()): re.sub(r"[^a-z0-9]", "", family.lower())
+        for alias, family in FAMILY_FROM_ALIAS.items()
+    }
+    key = aliases.get(key, key)
+    family = re.sub(r"[^a-z0-9]", "", (product_family or "").lower())
+    if key.isdecimal() and family:
+        return family if family.endswith(key) else family + key
+    return key
+
+
 def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:
     """A token is a model candidate iff:
     - Not a fault code we already captured
@@ -891,14 +905,27 @@ def resolve_uns_path(
     # actual fault below, after we know the model position)
     fault_pairs = _extract_fault_codes(message)
 
+    # A corrected identity must not be anchored by its explicitly negated
+    # predecessor ("GS20, not GS10"). Keep the original text for fault/symptom
+    # extraction; exclude only known equipment references from identity parsing.
+    identity_message = message
+    for alias in sorted(VENDOR_ALIASES, key=len, reverse=True):
+        identity_message = re.sub(
+            rf"\bnot\s+(?:an?\s+)?{_alias_pattern(alias)}"
+            r"(?:\s+[a-z0-9.-]*\d[a-z0-9.-]*)?",
+            " ",
+            identity_message,
+            flags=re.IGNORECASE,
+        )
+
     # Stage 1b: vendor match first — needed to find model position
-    message_lower = message.lower()
+    message_lower = identity_message.lower()
     mfr, alias_lower, family_token = _match_vendor(message_lower)
 
     # Stage 1c: find model-position token (the first reasonable candidate
     # adjacent to the vendor). For this pass we treat NO tokens as fault yet —
     # the model-position lookup tells the fault picker which token to avoid.
-    model_position = _find_model_near_vendor(message, alias_lower, frozenset())
+    model_position = _find_model_near_vendor(identity_message, alias_lower, frozenset())
 
     # Stage 1d: pick the fault, preferring strong patterns and avoiding the
     # model-position token when a better candidate exists.
@@ -907,7 +934,7 @@ def resolve_uns_path(
     # Stage 2: now strip the chosen fault token(s) from the model candidate
     # pool and re-resolve the model. If the model-position token IS the chosen
     # fault, look further down the token stream.
-    model = _find_model_near_vendor(message, alias_lower, fault_raw_tokens)
+    model = _find_model_near_vendor(identity_message, alias_lower, fault_raw_tokens)
 
     # Strip the alias key itself out of the model if model accidentally
     # matched a sub-word inside the alias (defensive — _find_model_near_vendor

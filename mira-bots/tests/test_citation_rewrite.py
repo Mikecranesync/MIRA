@@ -194,3 +194,132 @@ async def test_rewrite_failopen_when_llm_raises():
         UNCITED, CHUNKS, COVERED, fsm_state="DIAGNOSIS", chat_id="c1", llm_call=_boom
     )
     assert out == UNCITED  # never raise to the caller; original reply survives
+
+
+def test_mixed_sources_do_not_license_a_wrong_vendor():
+    from shared.citation_compliance import check_citation_compliance
+
+    reply = "Check the wiring. [Source: Pilz PNOZ] [Source: Rockwell Automation PowerFlex 525]"
+    result = check_citation_compliance(
+        reply,
+        COVERED,
+        uns_context={"manufacturer": "Pilz"},
+        established_text="Pilz PNOZ",
+        enforce=True,
+    )
+    assert result["sanitized_reply"] is not None
+    assert "PowerFlex" not in result["sanitized_reply"]
+    assert "[Source: Pilz PNOZ]" in result["sanitized_reply"]
+
+
+async def test_unknown_scope_cannot_salvage_an_equipment_specific_procedure():
+    reply = "Reset the A1000 by cycling power."
+    chunk = {
+        "manufacturer": "Yaskawa",
+        "model_number": "",
+        "metadata": {"section": "Getting Started"},
+        "content": reply,
+        "evidence_applicability": "unknown",
+    }
+    calls = []
+    output = await enforce_citation_via_rewrite(
+        reply,
+        [chunk],
+        COVERED,
+        fsm_state="DIAGNOSIS",
+        llm_call=_make_llm(reply + " [Source: Yaskawa — Getting Started]", calls),
+        uns_context={"manufacturer": "Yaskawa", "model": "A1000"},
+    )
+    assert output == reply
+    assert not calls
+
+
+async def test_unknown_scope_generic_drawing_guidance_can_be_salvaged():
+    reply = "Record the displayed fault and compare the drawing labels."
+    chunk = {
+        "manufacturer": "Yaskawa",
+        "model_number": "",
+        "metadata": {"section": "Drawing"},
+        "content": reply,
+        "evidence_applicability": "unknown",
+    }
+    cited = reply + " [Source: Yaskawa — Drawing]"
+    output = await enforce_citation_via_rewrite(
+        reply,
+        [chunk],
+        COVERED,
+        fsm_state="DIAGNOSIS",
+        llm_call=_make_llm(cited, []),
+        uns_context={"manufacturer": "Yaskawa", "model": "A1000"},
+    )
+    assert output == cited
+
+
+async def test_unknown_generic_label_cannot_be_moved_to_model_specific_sentence():
+    general = "Record the displayed fault and compare the drawing labels."
+    specific = "Reset the A1000 by cycling power."
+    reply = general + " " + specific
+    chunk = {
+        "manufacturer": "Yaskawa",
+        "model_number": "",
+        "metadata": {"section": "Drawing"},
+        "content": general,
+        "evidence_applicability": "unknown",
+    }
+    bad = general + " " + specific + " [Source: Yaskawa — Drawing]"
+    output = await enforce_citation_via_rewrite(
+        reply,
+        [chunk],
+        COVERED,
+        fsm_state="DIAGNOSIS",
+        llm_call=_make_llm(bad, []),
+        uns_context={"manufacturer": "Yaskawa", "model": "A1000"},
+    )
+    assert output == reply
+
+
+async def test_mixed_reply_preserves_generic_unknown_citation_on_its_own_sentence():
+    general = "Record the displayed fault and compare the drawing labels."
+    specific = "Reset the A1000 by cycling power."
+    generic = {
+        "manufacturer": "Yaskawa",
+        "model_number": "",
+        "metadata": {"section": "Drawing"},
+        "content": general,
+        "evidence_applicability": "unknown",
+    }
+    model = {
+        "manufacturer": "Yaskawa",
+        "model_number": "A1000",
+        "metadata": {"section": "Reset"},
+        "content": specific,
+        "evidence_applicability": "model",
+    }
+    reply = general + " " + specific
+    cited = (
+        general + " [Source: Yaskawa — Drawing] " + specific + " [Source: Yaskawa A1000 — Reset]"
+    )
+    output = await enforce_citation_via_rewrite(
+        reply,
+        [generic, model],
+        COVERED,
+        fsm_state="DIAGNOSIS",
+        llm_call=_make_llm(cited, []),
+        uns_context={"manufacturer": "Yaskawa", "model": "A1000"},
+    )
+    assert output == cited
+
+
+async def test_explicitly_applicable_family_manual_can_be_salvaged_for_another_model():
+    reply = "Set P01-01 to 60Hz to configure the max output frequency."
+    chunk = {**CHUNKS[0], "evidence_applicability": "family"}
+    cited = reply + f" [Source: {VALID_LABEL}]"
+    output = await enforce_citation_via_rewrite(
+        reply,
+        [chunk],
+        COVERED,
+        fsm_state="DIAGNOSIS",
+        llm_call=_make_llm(cited, []),
+        uns_context={"manufacturer": "AutomationDirect", "model": "GS20"},
+    )
+    assert output == cited

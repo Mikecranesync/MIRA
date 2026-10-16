@@ -40,7 +40,8 @@ os.environ.setdefault("KNOWLEDGE_COLLECTION_ID", "dummy-collection")
 
 from shared.engine import Supervisor  # noqa: E402
 
-# A real, useful procedural answer — exactly what the clarifier throws away.
+# A plausible procedural draft, deliberately without retrieved support.
+# A known fault prevents a repeat question but cannot verify this procedure.
 DIAG_REPLY = (
     '{"reply": "Reset F004 by cycling power, or press Stop/Reset on the keypad. '
     'Then verify incoming voltage at L1-L2-L3 before restarting.",'
@@ -141,7 +142,8 @@ async def test_clarifier_does_not_reask_a_pinned_fault_code(sv):
     assert CLARIFIER_MARK not in reply, (
         "the clarifier re-asked for the fault code the session already holds"
     )
-    assert "reset" in reply.lower(), "the real procedural answer was discarded"
+    assert "can't verify" in reply.lower()
+    assert "cycling power" not in reply.lower(), "a known fault is not procedure support"
     assert saved.get("state") != "DIAGNOSIS_REVISION", (
         "session parked in DIAGNOSIS_REVISION on info it already had — this is "
         "the park CTX-001d's pivot then has to escape"
@@ -180,3 +182,215 @@ async def test_clarifier_still_fires_when_only_the_model_is_known(sv):
     assert CLARIFIER_MARK in reply, (
         "a known model does not supply the fault/symptom the clarifier requests"
     )
+
+
+@pytest.mark.asyncio
+async def test_critic_receives_turn_evidence_user_facts_and_full_bounded_answer(sv):
+    state = _state(
+        model="GS10",
+        manufacturer="AutomationDirect",
+        symptom_history=[
+            {
+                "role": "user",
+                "content": "Motor is 5HP 460V three-phase, no load connected during startup test",
+            },
+            {"role": "assistant", "content": "ASSISTANT_INFERENCE_POISON motor disconnected"},
+        ],
+    )
+    chunks = [
+        {"content": "Applicable OC passage", "evidence_applicability": "model"},
+        {"content": "Unknown settings poison", "evidence_applicability": "unknown"},
+    ]
+    scores = await sv._self_critique_diagnosis(
+        "prefix " * 100 + "FINAL CLAIM", "How do I reset it?", "ctx", state=state, chunks=chunks
+    )
+    prompt = sv.router.complete.call_args.args[0][0]["content"]
+    assert "Applicable OC passage" in prompt
+    assert "Unknown settings poison" not in prompt
+    assert "no load connected" in prompt
+    assert "ASSISTANT_INFERENCE_POISON" not in prompt
+    assert "FINAL CLAIM" in prompt
+    assert scores["notes"]["groundedness"] == "no citation"
+
+
+@pytest.mark.asyncio
+async def test_recorded_startup_symptom_does_not_get_generic_symptom_question(sv):
+    # Stored PF525 transcript's second user turn; historical F004 was lost by
+    # the old resolver on later turns, so user history must inform the critic.
+    state = _state(
+        model="PowerFlex 525",
+        manufacturer="Rockwell Automation",
+        symptom_history=[
+            {"role": "user", "content": "PF525 showing F004, what's wrong?"},
+            {"role": "assistant", "content": "F004 = undervoltage"},
+        ],
+    )
+    reply, saved = await _turn(
+        sv, state, "Main conveyor, trips on startup every time", "recorded-startup"
+    )
+    assert "what exact fault code, alarm number, or behaviour" not in reply
+    assert "what exact fault or alarm code" not in reply
+    assert "can't verify" in reply.lower()
+    assert "cycling power" not in reply.lower()
+    assert saved["context"]["revision_critique"]["scores"]["notes"]["groundedness"] == "no citation"
+
+
+@pytest.mark.asyncio
+async def test_missing_fault_question_options_survive_persistence(sv):
+    reply, saved = await _turn(
+        sv,
+        _state(model="GS10", manufacturer="AutomationDirect"),
+        "It trips on startup",
+        "missing-code-options",
+    )
+    assert "behaviour is the equipment showing" not in reply
+    assert "code" in reply.lower()
+    sc = saved["context"]["session_context"]
+    assert sc["last_options"]
+    assert sc["last_question"].split("\n", 1)[0] == reply.split("\n", 1)[0]
+    assert sc["last_options"] == [
+        "Fault/alarm code displayed",
+        "No code displayed",
+        "Display unreadable",
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "output", ["not json", "[]", '{"groundedness":{"score":true}}', '{"groundedness":{"score":8}}']
+)
+async def test_malformed_critic_scores_fail_open_without_false_revision(sv, output):
+    sv.router.complete = AsyncMock(return_value=(output, {}))
+    assert await sv._self_critique_diagnosis("answer", "question", "bad-output") == {}
+
+
+@pytest.mark.asyncio
+async def test_explicit_no_code_is_not_asked_for_again(sv):
+    reply, _ = await _turn(
+        sv,
+        _state(model="GS10", manufacturer="AutomationDirect"),
+        "The drive trips on startup, no code displayed",
+        "no-code",
+    )
+    assert "what exact fault or alarm code" not in reply
+
+
+@pytest.mark.asyncio
+async def test_critic_input_is_bounded_with_explicit_truncation_and_tail(sv):
+    await sv._self_critique_diagnosis(
+        "x" * 10000 + "DRAFT_TAIL",
+        "question",
+        "bound",
+        state=_state(symptom_history=[{"role": "user", "content": "y" * 10000}] * 20),
+        chunks=[{"content": "z" * 10000, "evidence_applicability": "family"}] * 20,
+    )
+    prompt = sv.router.complete.call_args.args[0][0]["content"]
+    assert "[... truncated ...]" in prompt
+    assert "DRAFT_TAIL" in prompt
+    assert len(prompt) < 10000
+
+
+@pytest.mark.asyncio
+async def test_process_threads_only_turn_local_applicable_passages_to_critic(sv):
+    async def rag(message, state, **kwargs):
+        state["_rag_last_chunks"] = [
+            {"content": "TURN_LOCAL_MANUAL", "evidence_applicability": "model"}
+        ]
+        return DIAG_REPLY
+
+    sv.rag.process = rag
+    sv.rag._last_neon_chunks = [{"content": "OTHER_TENANT_POISON"}]
+    await _turn(
+        sv,
+        _state(fault_code="F004", model="PowerFlex 525", manufacturer="Rockwell Automation"),
+        "How do I reset it?",
+        "context-bridge",
+    )
+    prompts = str(sv.router.complete.call_args_list)
+    assert "TURN_LOCAL_MANUAL" in prompts
+    assert "OTHER_TENANT_POISON" not in prompts
+
+
+@pytest.mark.asyncio
+async def test_known_fault_missing_manual_gets_concrete_evidence_request(sv):
+    reply, _ = await _turn(
+        sv,
+        _state(fault_code="F004", model="PowerFlex 525", manufacturer="Rockwell Automation"),
+        "How do I reset it?",
+        "manual-gap",
+    )
+    assert "upload" in reply.lower() and "manual" in reply.lower()
+    assert "no citation" not in reply  # free-form critic notes remain internal
+
+
+@pytest.mark.asyncio
+async def test_supported_general_help_survives_and_only_missing_condition_is_asked(sv):
+    guidance = "Record when the fault occurs and any recent changes."
+
+    async def rag(message, state, **kwargs):
+        state["_rag_last_chunks"] = [{"content": guidance, "evidence_applicability": "model"}]
+        return (
+            '{"reply": "'
+            + guidance
+            + ' Set an undocumented control.", "next_state": "DIAGNOSIS", "options": []}'
+        )
+
+    sv.rag.process = rag
+    reply, saved = await _turn(
+        sv,
+        _state(fault_code="F004", model="PowerFlex 525", manufacturer="Rockwell Automation"),
+        "What should I check?",
+        "supported-general",
+    )
+    assert guidance in reply
+    assert "undocumented control" not in reply
+    assert "startup" in reply.lower() and "stopping" in reply.lower()
+    assert saved["context"]["session_context"]["last_options"]
+
+
+@pytest.mark.asyncio
+async def test_source_prohibition_does_not_support_positive_instruction(sv):
+    async def rag(message, state, **kwargs):
+        state["_rag_last_chunks"] = [
+            {"content": "Never increase the motor speed.", "evidence_applicability": "model"}
+        ]
+        return '{"reply": "Increase the motor speed.", "next_state": "DIAGNOSIS", "options": []}'
+
+    sv.rag.process = rag
+    reply, _ = await _turn(
+        sv,
+        _state(fault_code="F004", model="PowerFlex 525", manufacturer="Rockwell Automation"),
+        "What should I check?",
+        "negated-evidence",
+    )
+    assert "Increase the motor speed." not in reply
+
+
+@pytest.mark.asyncio
+async def test_reported_startup_condition_is_not_reasked_with_applicable_evidence(sv):
+    async def rag(message, state, **kwargs):
+        state["_rag_last_chunks"] = [
+            {"content": "Applicable fault description.", "evidence_applicability": "model"}
+        ]
+        return DIAG_REPLY
+
+    sv.rag.process = rag
+    reply, _ = await _turn(
+        sv,
+        _state(fault_code="F004", model="PowerFlex 525", manufacturer="Rockwell Automation"),
+        "Trips on startup, no code displayed",
+        "condition-supplied",
+    )
+    assert "Does it happen during startup" not in reply
+    assert "What changed" in reply
+
+
+@pytest.mark.asyncio
+async def test_model_shaped_alarm_candidate_does_not_fill_missing_fault(sv):
+    state = _state(
+        model="A1000",
+        manufacturer="Yaskawa",
+        symptom_history=[{"role": "user", "content": "This is a Yaskawa A1000 drive"}],
+    )
+    reply, _ = await _turn(sv, state, "It trips on startup", "model-not-alarm")
+    assert "what exact fault or alarm code" in reply

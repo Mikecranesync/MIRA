@@ -1518,3 +1518,112 @@ def hazard_banner(message: str) -> str:
         if pattern.search(msg):
             return banner
     return "\u26a0\ufe0f Safety flag. This task involves a hazard. Isolate and verify zero energy before hands-on work."
+
+
+# Delivered-action warnings complement inbound hazard flags. They do not certify
+# isolation, authorize live work, or validate any equipment-specific claim.
+# Scope: the concrete electrical/hands-on/restart actions seen in saved audits.
+_ACTION_PREREQUISITES = (
+    (
+        re.compile(
+            r"\b(?:measure|check|test|verify)\b(?!\s+(?:absence of|zero)\s+voltage)[^.!?\n]{0,80}"
+            r"\b(?:voltage|current(?!\s+(?:software|firmware|fault|alarm|status|settings|configuration|temperature|speed|position)\b)|dc[- ]bus|motor terminals?|line[- ]to[- ]line)\b",
+            re.I,
+        ),
+        "⚠️ Before electrical measurements: use a qualified person and the site's electrical "
+        "safe-work procedure. De-energize and verify absence of voltage whenever the task allows. "
+        "Readings requiring power need approved energized-work controls and appropriate PPE.",
+        (r"qualified", r"energized.work", r"\bppe\b", r"de.energiz|lockout|lock/tag"),
+    ),
+    (
+        re.compile(
+            r"\b(?:disconnect|remove|reconnect|rewire|open)\b[^.!?\n]{0,60}"
+            r"\b(?:motor|wires?|leads?|output|cabinet|panel|cover|terminals?|coupling)\b"
+            r"|\b(?:uncouple|megger)\b"
+            r"|\b(?:does|try|run|test)\b[^.!?\n]{0,80}\buncoupled\b"
+            r"|\b(?:inspect|check)\b[^.!?\n]{0,40}\b(?:wiring|terminals|connections)\b",
+            re.I,
+        ),
+        "⚠️ Before this hands-on step: de-energize and lock/tag all energy sources, "
+        "release or block stored energy, and have a qualified person verify absence of voltage "
+        "before touching conductors. Follow the equipment's discharge procedure.",
+        (
+            r"lockout|lock/tag|lock.out",
+            r"stored energy",
+            r"verify absence of voltage|verify zero voltage",
+        ),
+    ),
+    (
+        re.compile(
+            r"\b(?:press|push|perform|try)\s+(?:(?:the|a)\s+)?reset\b"
+            r"|\b(?:reset|restart)\s+(?:the|it|again|once|after|with|without|now|and)\b"
+            r"|\bretry\b",
+            re.I,
+        ),
+        "⚠️ Before reset/restart: confirm guards and safety functions are restored, "
+        "clear people and tools from the hazard area, and follow the site's authorized restart "
+        "procedure. Do not bypass interlocks or remove another person's lock.",
+        (r"guards", r"clear people|people.*clear", r"authorized restart"),
+    ),
+)
+
+
+def ensure_action_safety_prerequisites(reply: str) -> str:
+    """Add local prerequisites to recognized actions; preserve the supplied reply.
+
+    This is bounded phrase detection, not a semantic safety certification. Only
+    the final sanitized text is input; no removed claim can be reconstructed.
+    """
+    warnings = {rule[1] for rule in _ACTION_PREREQUISITES}
+    output: list[str] = []
+    for line in reply.splitlines(keepends=True):
+        text = line.strip()
+        if text in warnings:
+            output.append(line)
+            continue
+        for pattern, warning, adequate in _ACTION_PREREQUISITES:
+            matches = list(pattern.finditer(text))
+            if pattern is _ACTION_PREREQUISITES[0][0]:
+                # A later KB-gap/nameplate note cannot suppress an earlier meter check.
+                matches = [
+                    m
+                    for m in matches
+                    if not (
+                        re.search(
+                            r"\b(?:display|screen|history|log|nameplate)\b",
+                            text[m.start() :].split(".")[0],
+                            re.I,
+                        )
+                        and not re.search(
+                            r"\b(?:measure|terminals?|probe|meter|leads?)\b",
+                            text[m.start() :].split(".")[0],
+                            re.I,
+                        )
+                    )
+                ]
+            actionable = any(
+                not re.search(r"(?:do not|don't|never)\s+(?:\w+\s+){0,2}$", text[: m.start()], re.I)
+                and not re.match(
+                    r"(?:retry|restart|reset|(?:try|perform)\s+(?:(?:a|the)\s+)?reset)\s+"
+                    r"(?:(?:the|a|your)\s+)?(?:upload(?:ing)?|download(?:ing)?|browser|page|app|password|"
+                    r"connection|request|login|network|file|phone|computer|server|service|container|wifi)\b",
+                    text[m.start() :],
+                    re.I,
+                )
+                for m in matches
+            )
+            if not actionable:
+                continue
+            has_prerequisites = all(re.search(p, text, re.I) for p in adequate)
+            if re.search(r"\b(?:skip|without|not needed|not necessary|no need)\b", text, re.I):
+                has_prerequisites = False
+            preceding = []
+            for previous in reversed(output):
+                if previous.strip() in warnings:
+                    preceding.append(previous.strip())
+                elif previous.strip():
+                    break
+            if not has_prerequisites and warning not in preceding:
+                output.append(warning + "\n")
+        output.append(line)
+    return "".join(output)
