@@ -1527,7 +1527,7 @@ _ACTION_PREREQUISITES = (
     (
         re.compile(
             r"\b(?:measure|check|test|verify)\b(?!\s+(?:absence of|zero)\s+voltage)[^.!?\n]{0,80}"
-            r"\b(?:voltage|current(?!\s+(?:software|firmware|fault|alarm|status|settings|configuration)\b)|dc[- ]bus|motor terminals?|line[- ]to[- ]line)\b",
+            r"\b(?:voltage|current(?!\s+(?:software|firmware|fault|alarm|status|settings|configuration|temperature|speed|position)\b)|dc[- ]bus|motor terminals?|line[- ]to[- ]line)\b",
             re.I,
         ),
         "⚠️ Before electrical measurements: use a qualified person and the site's electrical "
