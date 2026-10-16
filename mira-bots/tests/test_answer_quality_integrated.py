@@ -474,3 +474,39 @@ async def test_final_citation_boundary_tolerates_missing_or_malformed_identity(
     )
     output = await sup.process("malformed-identity", "GS20 OC at startup", tenant_id="tenant-a")
     assert "Record the displayed fault." in output
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "negation",
+    ["doesn't mean", "doesn’t mean", "isn't", "isn’t", "wasn't", "wasn’t", "aren't", "aren’t"],
+)
+async def test_contracted_fault_negation_cannot_support_definition(harness, negation):
+    _, run, _ = harness
+    output = await run(
+        RECORDINGS["gs20_cross_vendor_03"],
+        [
+            raw_row(
+                f"F004 {negation} UnderVoltage, it means Overvoltage.", "AutomationDirect", "GS20"
+            )
+        ],
+        draft="F004 = UnderVoltage. Record when it trips.",
+    )
+    assert "F004 = UnderVoltage" not in output
+    assert "Record when it trips" in output
+
+
+@pytest.mark.asyncio
+async def test_other_code_contraction_does_not_reject_supported_definition(harness):
+    _, run, _ = harness
+    output = await run(
+        RECORDINGS["gs20_cross_vendor_03"],
+        [
+            raw_row(
+                "F004 = UnderVoltage; F005 doesn't mean UnderVoltage.", "AutomationDirect", "GS20"
+            )
+        ],
+        draft="F004 = UnderVoltage. Record when it trips.",
+    )
+    assert "F004 = UnderVoltage" in output
+    assert "Record when it trips" in output
