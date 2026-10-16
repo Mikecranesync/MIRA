@@ -1547,7 +1547,11 @@ _ACTION_PREREQUISITES = (
         "⚠️ Before this hands-on step: de-energize and lock/tag all energy sources, "
         "release or block stored energy, and have a qualified person verify absence of voltage "
         "before touching conductors. Follow the equipment's discharge procedure.",
-        (r"lockout|lock/tag|lock.out", r"stored energy", r"verify absence of voltage|verify zero voltage"),
+        (
+            r"lockout|lock/tag|lock.out",
+            r"stored energy",
+            r"verify absence of voltage|verify zero voltage",
+        ),
     ),
     (
         re.compile(
@@ -1581,17 +1585,30 @@ def ensure_action_safety_prerequisites(reply: str) -> str:
             matches = list(pattern.finditer(text))
             if pattern is _ACTION_PREREQUISITES[0][0]:
                 # A later KB-gap/nameplate note cannot suppress an earlier meter check.
-                matches = [m for m in matches if not (
-                    re.search(r"\b(?:display|screen|history|log|nameplate)\b", text[m.start():].split(".")[0], re.I)
-                    and not re.search(r"\b(?:measure|terminals?|probe|meter|leads?)\b", text[m.start():].split(".")[0], re.I)
-                )]
+                matches = [
+                    m
+                    for m in matches
+                    if not (
+                        re.search(
+                            r"\b(?:display|screen|history|log|nameplate)\b",
+                            text[m.start() :].split(".")[0],
+                            re.I,
+                        )
+                        and not re.search(
+                            r"\b(?:measure|terminals?|probe|meter|leads?)\b",
+                            text[m.start() :].split(".")[0],
+                            re.I,
+                        )
+                    )
+                ]
             actionable = any(
-                not re.search(r"(?:do not|don't|never)\s+(?:\w+\s+){0,2}$", text[:m.start()], re.I)
+                not re.search(r"(?:do not|don't|never)\s+(?:\w+\s+){0,2}$", text[: m.start()], re.I)
                 and not re.match(
                     r"(?:retry|restart|reset|(?:try|perform)\s+(?:(?:a|the)\s+)?reset)\s+"
                     r"(?:(?:the|a|your)\s+)?(?:upload(?:ing)?|download(?:ing)?|browser|page|app|password|"
                     r"connection|request|login|network|file|phone|computer|server|service|container|wifi)\b",
-                    text[m.start():], re.I,
+                    text[m.start() :],
+                    re.I,
                 )
                 for m in matches
             )
