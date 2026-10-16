@@ -16,6 +16,7 @@ import path from "node:path";
 import { test, type Page, type Response } from "@playwright/test";
 import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
+import { cardsOf, firstChipOf } from "./extract";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import { identity, manualBytes, MAX_TURNS, BUDGET, stagingBase, teardownTenant } from "./staging";
 
@@ -29,7 +30,7 @@ const ANSWER_TIMEOUT = DRY ? 15_000 : 180_000;
 
 const turnSel = '.fl-turn--aui[data-role="assistant"]';
 const brokenObs = (id: string, why: string | null, elapsedMs = 0): Observation =>
-  ({ id, broken: why, rendered: null, cards: [], streamStatus: null, errorPart: null, viewerOpened: null, sse: null, elapsedMs });
+  ({ id, broken: why, rendered: null, cards: [], firstChip: null, streamStatus: null, errorPart: null, viewerOpened: null, sse: null, elapsedMs });
 const sseStatus = (sse: string | null) => {
   let status: string | null = null;
   for (const line of (sse ?? "").split("\n")) {
@@ -117,10 +118,8 @@ async function ask(page: Page, q: Question, attach: { name: string; buffer: Buff
   const rendered = await extractTurn("clone", settled);
   const errorPart = await settled.locator('[data-part-type="error"]').first().getAttribute("data-error-code").catch(() => null);
 
-  const cards = await settled.locator('[data-part-type="source"]').evaluateAll((els) => els.map((e) => ({
-    title: (e.querySelector(".fl-source__title")?.textContent ?? "").trim(),
-    page: /\bp\.\s*(\d+)/.exec(e.querySelector(".fl-source__locator")?.textContent ?? "")?.[1] ?? null,
-  })));
+  const cards = await cardsOf(settled);
+  const firstChip = await firstChipOf(settled);
 
   // Open the first citation the way a technician would: the inline chip, else the first source card.
   let viewerOpened: boolean | null = null;
@@ -131,7 +130,7 @@ async function ask(page: Page, q: Question, attach: { name: string; buffer: Buff
     viewerOpened = await UI.clone.viewerFrame(page).waitFor({ state: "visible", timeout: 20_000 }).then(() => true, () => false);
     await page.keyboard.press("Escape");
   }
-  return { id: q.id, broken: null, rendered, cards, streamStatus: sseStatus(sse), errorPart, viewerOpened, sse, elapsedMs: Date.now() - t0 };
+  return { id: q.id, broken: null, rendered, cards, firstChip, streamStatus: sseStatus(sse), errorPart, viewerOpened, sse, elapsedMs: Date.now() - t0 };
 }
 
 test("stranger walk", async ({ page }) => {
