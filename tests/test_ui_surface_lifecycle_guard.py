@@ -3691,7 +3691,9 @@ def test_native_unsigned_build_is_exact_sha_and_secret_free():
     assert "bun install --frozen-lockfile" in build_text
     assert "bun run build" in build_text
     assert "capacitor sync android" in build_text
-    assert "assembleRelease bundleRelease" in build_text
+    assert "assembleProductionRelease bundleProductionRelease" in build_text
+    assert "app/build/outputs/apk/production/release/app-production-release-unsigned.apk" in build_text
+    assert "app/build/outputs/bundle/productionRelease/app-production-release.aab" in build_text
     assert "app-release-unsigned.apk" in build_text
     assert "app-release.aab" in build_text
     assert "21.0.12+101.0.LTS" in build_text
