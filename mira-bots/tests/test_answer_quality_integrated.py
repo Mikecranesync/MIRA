@@ -450,3 +450,27 @@ async def test_v1000_title_cannot_be_excused_by_an_a1000_prefix(harness, model):
     )
     assert f"[Source: {label}]" not in output
     assert "Record the displayed fault." in output
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("identity", [None, "malformed scope", ["not", "a", "mapping"]])
+async def test_final_citation_boundary_tolerates_missing_or_malformed_identity(
+    harness, monkeypatch, identity
+):
+    sup, _, _ = harness
+    monkeypatch.setattr(
+        sup,
+        "process_full",
+        AsyncMock(
+            return_value={
+                "reply": "Record the displayed fault.",
+                "next_state": "Q2",
+                "_citation_scope": {
+                    "uns_context": identity,
+                    "established_text": "GS20 OC at startup",
+                },
+            }
+        ),
+    )
+    output = await sup.process("malformed-identity", "GS20 OC at startup", tenant_id="tenant-a")
+    assert "Record the displayed fault." in output

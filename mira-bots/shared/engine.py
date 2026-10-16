@@ -2703,7 +2703,9 @@ class Supervisor:
 
         # Quality handling, salvage and Sources normalization can all alter the
         # reply after the inner gate. Validate what will actually be delivered.
-        scope_identity = citation_scope.get("uns_context") or {}
+        scope_identity = citation_scope.get("uns_context")
+        if not isinstance(scope_identity, dict):
+            scope_identity = {}
         expected_model = canonical_model(
             scope_identity.get("product_family") or scope_identity.get("model")
         )
