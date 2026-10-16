@@ -212,6 +212,7 @@ def _mk_rag(replies, calls):
         ctx = state.get("context") or {}
         calls.append(bool(ctx.pop("fresh_thread_turn", False)))
         reply = replies[min(len(calls) - 1, len(replies) - 1)]
+        state["_rag_last_chunks"] = [{"content": PRIOR_ANSWER, "evidence_applicability": "model"}]
         return f'{{"reply": {reply!r}, "next_state": "Q1", "options": []}}'.replace("'", '"')
 
     return rag_process

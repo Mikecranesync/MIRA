@@ -925,36 +925,186 @@ def _normalize_reply_text(text: str) -> str:
 #
 # `F` is deliberately excluded: F004/F111 are FAULT codes that legitimately
 # reach a reply from uns_context without appearing in any retrieved chunk.
-# 2-4 digits keeps ordinary tokens ("L1", "P1") out.
+# Named settings include P3.00/P01-01; F-prefixed fault codes remain excluded.
 #
 # Measured over all 13 frozen campaign ledgers (671 MIRA replies) there are
 # exactly THREE distinct parameter tokens — P09.03, P09.04 and P0594 — of which
 # only P0594 is absent from the corpus. Zero false positives on the real ones.
 # Offline detector + sweep: tests/regime1_telethon/campaign/{fabrication,offline_lab}.py
-_PARAM_CLAIM_RE = re.compile(r"\b([APbtCd]\d{2,4}(?:\.\d{1,2})?)\b")
+_PARAM_CLAIM_RE = re.compile(r"\b([APbtCd]\d{1,4}(?:[.-]\d{1,2})?|E-\d{2})\b")
 _SOURCE_TAG_RE = re.compile(r"\[Source:[^\]]*\]", re.IGNORECASE)
+_CLAIM_ACTION_RE = re.compile(
+    r"\b(set|change|increase|decrease|raise|lower|extend|adjust|program|write|enable|disable)\b",
+    re.I,
+)
+
+
+def _claim_sentences(reply: str) -> list[str]:
+    # Decimal points in parameter names/values are not sentence boundaries.
+    return re.split(r"(?<=[.!?])\s+|\n+", reply or "")
+
+
+def _claim_values(text: str) -> set[str]:
+    """Normalize quantity spelling without losing the unit (400 V == 400V)."""
+    text = _PARAM_CLAIM_RE.sub(" ", _SOURCE_TAG_RE.sub(" ", text)).lower()
+    for pattern, unit in (
+        (r"milliseconds?", "ms"),
+        (r"seconds?|secs?", "s"),
+        (r"volts?", "v"),
+        (r"hertz", "hz"),
+    ):
+        text = re.sub(r"\b" + pattern + r"\b", unit, text)
+    # Carry a range's unit to both endpoints before extracting signed quantities.
+    text = re.sub(
+        r"([+-]?\d+(?:\.\d+)?)\s*[-–]\s*([+-]?\d+(?:\.\d+)?)\s*(ms|s|v|hz|a|%)\b",
+        r"\1\3 \2\3",
+        text,
+    )
+    return {
+        f"{float(number):g}" + (unit or "")
+        for number, unit in re.findall(
+            r"(?<![\w.])([+-]?[0-9]+(?:\.[0-9]+)?)\s*(ms|s|v|hz|a|%)?\b", text
+        )
+    }
+
+
+def _claim_is_report_or_question(sentence: str, facts: str = "") -> bool:
+    body = _SOURCE_TAG_RE.sub("", sentence).strip()
+    if body.endswith("?") and (
+        not _CLAIM_ACTION_RE.search(body) or re.match(r"what\s+is\b.*\bcurrently\b", body, re.I)
+    ):
+        return True
+    report = re.match(
+        r"(?:[-*]\s*)?(?:you|(?:the\s+)?user|(?:the\s+)?technician)"
+        r"\s+(?:said|reported|measured)\s+(.+)",
+        body,
+        re.I,
+    )
+    if report:
+        reported = re.sub(r"[^a-z0-9]+", " ", report[1].lower()).strip()
+        return reported in re.sub(r"[^a-z0-9]+", " ", facts.lower()).strip()
+    return bool(re.match(r"(?:[-*]\s*)?(?:do\s+not\s+(?:change|set|adjust)|compare\b)", body, re.I))
+
+
+def _claim_actions(text: str) -> set[str]:
+    aliases = {
+        "change": "set",
+        "adjust": "set",
+        "program": "set",
+        "write": "set",
+        "raise": "increase",
+        "extend": "increase",
+        "lower": "decrease",
+    }
+    return {
+        aliases.get(action.lower(), action.lower()) for action in _CLAIM_ACTION_RE.findall(text)
+    }
 
 
 def _find_unsupported_param_claims(
     reply: str, message: str, history: list, sources: list | None
 ) -> list[str]:
-    """Parameter tokens asserted by ``reply`` that nothing supports.
+    """CIT-006: require the parameter and its values in an applicable passage.
 
-    Supported means: present in this turn's retrieved sources, in the
-    technician's message, or anywhere in the conversation so far. A token
-    inside a ``[Source: …]`` label is attribution, not a claim.
+    Source strings are legacy applicable passage inputs for offline callers.
+    Production passes only turn-local chunks, explicitly marked model/family.
+    User reports and assistant history never authorize a prescribed setting.
     """
-    body = _SOURCE_TAG_RE.sub(" ", reply or "")
-    claimed = set(_PARAM_CLAIM_RE.findall(body))
-    if not claimed:
-        return []
-    supported = " ".join(
+    passages = []
+    for source in sources or []:
+        if isinstance(source, str):
+            passages.extend(_claim_sentences(source))
+        elif isinstance(source, dict) and source.get("evidence_applicability") in {
+            "model",
+            "family",
+        }:
+            passages.extend(_claim_sentences(source.get("text") or source.get("content") or ""))
+    facts = " ".join(
         [message or ""]
-        + [(h.get("content") or "") for h in (history or []) if isinstance(h, dict)]
-        + [str(s) for s in (sources or [])]
+        + [
+            h.get("content", "")
+            for h in history or []
+            if isinstance(h, dict) and h.get("role") == "user"
+        ]
     )
-    known = set(_PARAM_CLAIM_RE.findall(supported))
-    return sorted(claimed - known)
+    unsupported = set()
+    for sentence in _claim_sentences(reply):
+        if _claim_is_report_or_question(sentence, facts):
+            continue
+        body = _SOURCE_TAG_RE.sub(" ", sentence)
+        for token in _PARAM_CLAIM_RE.findall(body):
+            # E-01 can be a fault code; only setting advice treats it as a parameter.
+            if token.startswith("E-") and not (
+                _CLAIM_ACTION_RE.search(body) or re.search(r"\bparameter\b", body, re.I)
+            ):
+                continue
+            if token[0] in "ACD" and not re.search(
+                r"\b(?:parameter|set|change|adjust|program|write|enable|disable)\s+"
+                + re.escape(token)
+                + r"\b",
+                body,
+                re.I,
+            ):
+                continue
+            values = _claim_values(body)
+            candidates = [p for p in passages if token in _PARAM_CLAIM_RE.findall(p)]
+            if not any(
+                values <= _claim_values(p)
+                and (_claim_actions(body) <= _claim_actions(p))
+                and (
+                    not _claim_actions(body)
+                    or all(
+                        c.group(0).rstrip(".").lower() in body.lower()
+                        for c in re.finditer(
+                            r"\b(?:only when|provided that|if|when)\b[^.;]*", p, re.I
+                        )
+                    )
+                )
+                and not re.search(r"\b(?:not|unsupported|unknown)\b", p, re.I)
+                for p in candidates
+            ):
+                unsupported.add(token)
+    return sorted(unsupported)
+
+
+def _sanitize_claim_support(reply: str, message: str, history: list, chunks: list) -> str:
+    """Remove unsupported sentences, retaining independent supported/general help."""
+    facts = " ".join(
+        [message or ""]
+        + [
+            h.get("content", "")
+            for h in history or []
+            if isinstance(h, dict) and h.get("role") == "user"
+        ]
+    )
+    disconnected = re.compile(
+        r"\b(?:motor|output|motor leads?)\s+(?:(?:is|are|was|were)\s+)?"
+        r"(?:electrically\s+)?disconnected\b",
+        re.I,
+    )
+    verified_disconnection = bool(disconnected.search(facts)) and not re.search(
+        r"\b(?:not|never)\s+(?:electrically\s+)?disconnected\b", facts, re.I
+    )
+    kept, removed = [], False
+    for sentence in _claim_sentences(reply):
+        unsupported = _find_unsupported_param_claims(sentence, message, history, chunks)
+        inferred = (
+            disconnected.search(sentence)
+            and not verified_disconnection
+            and not _claim_is_report_or_question(sentence, facts)
+            and not re.search(r"\b(?:if|whether|not|confirm|verify)\b", sentence, re.I)
+        )
+        if unsupported or inferred:
+            removed = True
+        else:
+            kept.append(sentence)
+    if not removed:
+        return reply
+    kept.append(
+        "I cannot verify that setting or equipment state from the available evidence. "
+        "Please share the applicable manual passage or confirm the actual wiring state."
+    )
+    return " ".join(part for part in kept if part.strip())
 
 
 def _find_repeated_answer(reply: str, message: str, history: list) -> bool:
@@ -2429,6 +2579,13 @@ class Supervisor:
         if final_citations.get("sanitized_reply") is not None:
             reply = final_citations["sanitized_reply"]
 
+        reply = _sanitize_claim_support(
+            reply,
+            citation_scope.get("established_text", message),
+            [],
+            citation_evidence.get("chunks") or [],
+        )
+
         # Final answer-integrity QC. This is the last point at which the reply is
         # fully assembled, so it is the only place a check can see what the
         # technician will actually read. Runs EVERY registered check and reports
@@ -3686,6 +3843,11 @@ class Supervisor:
                         trace_id,
                         state.get("state", "IDLE"),
                         dispatch_kind="drive_pack",
+                        citation_evidence={
+                            "chunks": [
+                                {"text": _dp_answer.answer, "evidence_applicability": "model"}
+                            ]
+                        },
                     )
                 # else: matched=False — the question doesn't map to this pack's
                 # fault/parameter content; fall through to the existing
@@ -4248,6 +4410,11 @@ class Supervisor:
                             trace_id,
                             state.get("state", "IDLE"),
                             dispatch_kind="drive_pack",
+                            citation_evidence={
+                                "chunks": [
+                                    {"text": _pf_ans.answer, "evidence_applicability": "model"}
+                                ]
+                            },
                         )
 
                 # Auto-diagnose: inject fault context into message and route to RAG
@@ -5858,34 +6025,36 @@ class Supervisor:
                 # The severed retry repeated too — fail safe: return it, loudly.
                 logger.info("REPEATED_ANSWER_UNRESOLVED reply_len=%d", len(parsed.get("reply", "")))
 
-            # CIT-006 (#3165): an unsupported parameter claim gets exactly one
-            # corrective retry, then fails safe like the repeat guard above —
-            # the reply is returned and logged, never withheld. Bounding the
-            # cost of a false positive to one extra call is what makes this
-            # shippable: suppressing a CORRECT answer would be worse than the
-            # defect it prevents.
-            if not photo_b64:
-                _unsupported = _find_unsupported_param_claims(
-                    parsed.get("reply", ""),
-                    message,
-                    (state.get("context") or {}).get("history") or [],
-                    parsed.get("_sources"),
-                )
-                if _unsupported:
-                    if not _param_retry_used:
-                        _param_retry_used = True
-                        logger.info(
-                            "UNSUPPORTED_PARAM_CLAIM_DETECTED attempt=%d tokens=%s",
-                            attempt,
-                            _unsupported,
-                        )
-                        max_attempts = max(max_attempts, attempt + 2)
-                        attempt += 1
-                        continue
-                    logger.warning(
-                        "UNSUPPORTED_PARAM_CLAIM_UNRESOLVED tokens=%s — returning reply",
+            # CIT-006: one bounded correction, then withhold only unsupported
+            # sentences. Photo turns and ordinary follow-ups share this guard.
+            _unsupported = _find_unsupported_param_claims(
+                parsed.get("reply", ""),
+                message,
+                (state.get("context") or {}).get("history") or [],
+                parsed.get("_last_chunks"),
+            )
+            _sanitized = _sanitize_claim_support(
+                parsed.get("reply", ""),
+                message,
+                (state.get("context") or {}).get("history") or [],
+                parsed.get("_last_chunks") or [],
+            )
+            if _unsupported or _sanitized != parsed.get("reply", ""):
+                if not _param_retry_used:
+                    _param_retry_used = True
+                    logger.info(
+                        "UNSUPPORTED_PARAM_CLAIM_DETECTED attempt=%d tokens=%s",
+                        attempt,
                         _unsupported,
                     )
+                    max_attempts = max(max_attempts, attempt + 2)
+                    attempt += 1
+                    continue
+                logger.warning(
+                    "UNSUPPORTED_PARAM_CLAIM_UNRESOLVED tokens=%s — removing unsupported sentences",
+                    _unsupported,
+                )
+                parsed["reply"] = _sanitized
 
             # Check grounding against THIS turn's sources snapshot, never the
             # shared self.rag._last_sources (#1704).
