@@ -19,12 +19,15 @@ export function stagingBase(): string {
 
 /**
  * Hard $ budget, declared up front (zero-token rule: paid inference here is validation, never
- * debugging). Enforced by a METER, not a call count: every turn is charged from the stream's own
- * `usage` frames at the declared worst-case RATES (deliberately above gpt-5.4-mini list price),
- * plus a fixed allowance for calls the stream does not report (the safety judge, a cascade retry).
- * A turn with no usage frame is charged the full per-turn ceiling. Before each turn the meter
- * reserves the most expensive turn seen so far (at least the ceiling) and refuses the turn if
- * spent + reserve would exceed the budget; every unasked row is then BROKEN ("budget stop").
+ * debugging). Enforced by a METER, not a call count: every dispatched turn is charged from its
+ * stream's own `usage` frames at the declared worst-case RATES (deliberately above gpt-5.4-mini
+ * list price), plus a fixed allowance for calls the stream does not report (the safety judge).
+ * Before each turn the meter reserves the most expensive turn seen so far (at least the per-turn
+ * ceiling) and refuses the turn if spent + reserve would pass the budget.
+ *
+ * FAILS CLOSED: a dispatched turn whose cost cannot be read — no response, no usage frame, or a
+ * usage frame with null / negative / non-finite token counts — has no mechanical bound, so the
+ * meter stops every later paid turn. Unasked rows are BROKEN ("budget stop"), never dropped.
  */
 export const BUDGET = {
   usdPerRun: Number(process.env.STRANGER_WALK_BUDGET_USD ?? "3.00"),
@@ -33,36 +36,40 @@ export const BUDGET = {
 export const RATES = { inputPerMTok: 2.0, cachedInputPerMTok: 0.2, outputPerMTok: 16.0 };
 export const UNMETERED_USD_PER_TURN = 0.02;
 
-/** Worst-case $ for one turn, from its recorded stream (null = the request went out, nothing came back). */
+const count = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+
+/** Worst-case $ for one dispatched turn, from its recorded stream; `metered: false` = cost unknowable. */
 export function turnCostUsd(sse: string | null): { usd: number; metered: boolean } {
   let usd = 0;
-  let metered = false;
+  let frames = 0;
   for (const line of (sse ?? "").split("\n")) {
     if (!line.startsWith("data: ")) continue;
     let f: Record<string, unknown>;
     try { f = JSON.parse(line.slice(6)); } catch { continue; }
     if (f?.kind !== "usage") continue;
-    const n = (k: string) => (typeof f[k] === "number" ? (f[k] as number) : 0);
-    const cached = n("cachedInputTokens");
-    usd += (Math.max(n("inputTokens") - cached, 0) * RATES.inputPerMTok + cached * RATES.cachedInputPerMTok + n("outputTokens") * RATES.outputPerMTok) / 1e6;
-    metered = true;
+    const input = count(f.inputTokens), cached = count(f.cachedInputTokens ?? 0), output = count(f.outputTokens);
+    if (input === null || cached === null || output === null) return { usd: 0, metered: false };
+    usd += (Math.max(input - cached, 0) * RATES.inputPerMTok + cached * RATES.cachedInputPerMTok + output * RATES.outputPerMTok) / 1e6;
+    frames++;
   }
-  return metered ? { usd: usd + UNMETERED_USD_PER_TURN, metered } : { usd: BUDGET.usdCeilingPerTurn, metered };
+  return frames ? { usd: usd + UNMETERED_USD_PER_TURN, metered: true } : { usd: 0, metered: false };
 }
 
 export class BudgetMeter {
   spent = 0;
   turns = 0;
-  unmetered = 0;
+  /** Set by the first dispatched turn whose cost could not be read; no paid turn follows it. */
+  unbounded: string | null = null;
   private worst = BUDGET.usdCeilingPerTurn;
   constructor(readonly budget = BUDGET.usdPerRun) {}
   /** May the next paid turn go out without risking the budget? */
-  canAfford(): boolean { return this.spent + this.worst <= this.budget + 1e-9; }
-  charge(sse: string | null): number {
+  canAfford(): boolean { return this.unbounded === null && this.spent + this.worst <= this.budget + 1e-9; }
+  /** Charge one DISPATCHED turn exactly once, as soon as its response (or its absence) is known. */
+  charge(id: string, sse: string | null): number {
     const c = turnCostUsd(sse);
-    this.spent += c.usd;
     this.turns++;
-    if (!c.metered) this.unmetered++;
+    if (!c.metered) { this.unbounded ??= id; return 0; }
+    this.spent += c.usd;
     this.worst = Math.max(this.worst, c.usd);
     return c.usd;
   }
