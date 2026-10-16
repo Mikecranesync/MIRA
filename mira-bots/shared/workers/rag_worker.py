@@ -1181,12 +1181,15 @@ class RAGWorker:
             nc = _applicable_chunk(nc, state)
             if nc is None:
                 continue
-            text = _evidence_scope_note(nc) + _neutralize_chunk_text(text)
+            # Scope cautions describe the reference, not the quoted passage.
+            # Keep the source header immediately adjacent to its actual text.
+            scope_note = _evidence_scope_note(nc)
+            text = _neutralize_chunk_text(text)
             label = format_source_label(nc)
             if label:
-                ref_lines.append(f"--- [{i}] [Source: {label}] ---\n{text}\n---")
+                ref_lines.append(f"{scope_note}--- [{i}] [Source: {label}] ---\n{text}\n---")
             else:
-                ref_lines.append(f"--- [{i}] ---\n{text}\n---")
+                ref_lines.append(f"{scope_note}--- [{i}] ---\n{text}\n---")
         ref_block = ""
         if ref_lines:
             ref_block = (
@@ -1361,11 +1364,10 @@ class RAGWorker:
                 label = format_source_label(chunk) or _sanitize_label_field(
                     chunk.get("equipment_type") or "unknown"
                 )
-                safe_content = _evidence_scope_note(chunk) + _neutralize_chunk_text(
-                    chunk["content"]
-                )
+                scope_note = _evidence_scope_note(chunk)
+                safe_content = _neutralize_chunk_text(chunk["content"])
                 ref_lines.append(
-                    f"--- [{i}] [Source: {label}] (score={score:.3f}) ---\n{safe_content}\n---"
+                    f"{scope_note}--- [{i}] [Source: {label}] (score={score:.3f}) ---\n{safe_content}\n---"
                 )
             ref_block = (
                 _REFERENCE_PREAMBLE

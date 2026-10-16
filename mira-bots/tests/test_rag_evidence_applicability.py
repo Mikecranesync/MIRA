@@ -289,3 +289,32 @@ def test_pdf_diagnostic_section_is_not_misclassified_as_web_404_page():
     chunk = row("# 404 Error - Page not found\nHTTP diagnostic reference in a genuine manual.")
     chunk.update(source_url="https://www.yaskawa.com/manual.pdf", source_type="manual")
     assert _applicable_chunk(chunk, state())["evidence_applicability"] == "model"
+
+
+@pytest.mark.parametrize("builder", ["_build_prompt", "_build_prompt_with_chunks"])
+def test_scope_warning_precedes_header_and_passage_stays_immediately_after_it(builder):
+    worker = _make_worker()
+    unknown_text = "Generic drawing observation, applicability not established."
+    known_text = "Applicable A1000 passage."
+    chunks = [row(unknown_text, model="", section="Drawing"), row(known_text, section="Manual")]
+    s = state()
+    if builder == "_build_prompt":
+        messages = worker._build_prompt(s, "Explain", neon_chunks=chunks)
+    else:
+        messages = worker._build_prompt_with_chunks(s, "Explain", chunks, neon_chunks_meta=chunks)
+    prompt = "\n".join(m["content"] for m in messages if isinstance(m.get("content"), str))
+    lines = [line for line in prompt.splitlines() if line.strip()]
+    unknown_header = next(
+        i for i, line in enumerate(lines) if "[Source: Yaskawa — Drawing]" in line
+    )
+    known_header = next(
+        i for i, line in enumerate(lines) if "[Source: Yaskawa A1000 — Manual]" in line
+    )
+    assert lines[unknown_header + 1] == unknown_text
+    assert lines[known_header + 1] == known_text
+    assert "Applicability unknown: general/context only" in lines[unknown_header - 1]
+    assert prompt.count("Applicability unknown: general/context only") == 1
+    assert (
+        "do not use this passage to substantiate model-specific codes, settings or procedures"
+        in prompt
+    )
