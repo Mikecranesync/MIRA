@@ -60,10 +60,13 @@ the question in its own reviewed commit.
 Hard budget **$3.00 per run**, enforced by a meter (`staging.ts BudgetMeter`), not a call count.
 Each turn is charged from its own stream's `usage` frames at declared worst-case rates
 (input $2 / output $16 per Mtok, deliberately above gpt-5.4-mini list price), plus $0.02 per turn
-for calls the stream does not report (the safety judge, a cascade retry). A turn with no usage
-frame is charged the $0.05 ceiling. Before every turn the meter reserves the most expensive turn
-seen so far, and refuses the turn if spent + reserve would pass $3. Unasked rows are BROKEN
-("budget stop"), never dropped. Run #1's recorded usage meters at about $1.39 under these rates.
+for calls the stream does not report (the safety judge, a cascade retry). Each dispatched turn is charged once, as soon as its response is in, before any UI step that could
+throw. Before every turn the meter reserves the most expensive turn seen so far (at least $0.05) and
+refuses the turn if spent + reserve would pass $3. It **fails closed**: a dispatched turn whose cost
+cannot be read (no response, no usage frame, null or malformed token counts) stops every later paid
+turn. Unasked rows are BROKEN ("budget stop"), never dropped. Run #1's recorded usage meters at about
+$1.39 under these rates.
+
 Paid inference is validation only. Debug the walk at $0:
 
 ```bash
@@ -75,7 +78,7 @@ STRANGER_WALK_DRY=1 STRANGER_WALK_ONLY=gs10-ch6-q1 doppler run -p factorylm -c s
 STRANGER_WALK_REPLAY_FROM=<out dir> npx playwright test --config tests/stranger-walk/playwright.replay.config.ts
 # seeded defects (control + strip-sources + page-offset + viewer-page), counts both ways
 node tests/stranger-walk/mutations.mjs <out dir>
-# scorer unit tests
+# scorer + budget unit tests (also the workflow's `unit` job on every PR touching the harness)
 npx vitest run --config tests/stranger-walk/vitest.stranger-walk.config.ts
 ```
 

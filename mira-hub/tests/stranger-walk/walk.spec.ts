@@ -91,7 +91,7 @@ async function waitReady(page: Page, filename: string): Promise<string> {
   throw new Error(`source never became ready (last label: ${label})`);
 }
 
-async function ask(page: Page, q: Question, manualFilename: string, attach: { name: string; buffer: Buffer } | null): Promise<Observation> {
+async function ask(page: Page, q: Question, manualFilename: string, attach: { name: string; buffer: Buffer } | null, meter: BudgetMeter): Promise<Observation> {
   const t0 = Date.now();
   const before = await page.locator(turnSel).count();
   if (attach) {
@@ -108,12 +108,15 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
   };
 
   const res = await chat.catch(() => null);
+  // The request is out: charge it exactly once, now, before any UI step that could throw.
+  // No response or a non-200 has no readable cost and stops later paid turns (fail closed).
+  const sse = res && res.status() === 200 ? await res.text().catch(() => null) : null;
+  if (!DRY) meter.charge(q.id, sse);
   if (!res) {
     const err = await page.getByRole("alert", { name: "Send error" }).innerText().catch(() => "");
     return broken(`no chat response${err ? `: ${err.replace(/\s+/g, " ").slice(0, 160)}` : ""}`);
   }
   if (res.status() !== 200) return broken(`chat POST ${res.status()}`);
-  const sse = await res.text().catch(() => null);
   const turn = page.locator(turnSel).nth(before);
   try {
     await turn.and(page.locator(':not([data-lifecycle="running"])')).waitFor({ timeout: ANSWER_TIMEOUT });
@@ -169,7 +172,7 @@ test("stranger walk", async ({ page }) => {
         continue;
       }
       for (const [i, q] of qs.entries()) {
-        if (!DRY && !meter.canAfford()) { obs.push(brokenObs(q.id, "budget stop")); continue; }
+        if (!DRY && !meter.canAfford()) { obs.push(brokenObs(q.id, meter.unbounded ? `budget stop: ${meter.unbounded} had no readable cost` : "budget stop")); continue; }
         try {
           if (i > 0) {
             await page.getByRole("button", { name: "New chat" }).click();
@@ -178,8 +181,7 @@ test("stranger walk", async ({ page }) => {
             uploaded ||= (await sourceReadiness(page, m.filename)) !== null;
             if (uploaded) notes.push(`${q.id}: readiness "${await waitReady(page, m.filename)}"`);
           }
-          const o = await ask(page, q, m.filename, uploaded ? null : { name: m.filename, buffer: pdf.bytes });
-          if (!DRY) meter.charge(o.sse); // charged whether or not the turn succeeded
+          const o = await ask(page, q, m.filename, uploaded ? null : { name: m.filename, buffer: pdf.bytes }, meter);
           obs.push(o);
         } catch (e) {
           await page.screenshot({ path: path.join(OUT, "shots", `${q.id}.png`) }).catch(() => undefined);
@@ -200,7 +202,7 @@ test("stranger walk", async ({ page }) => {
     const td = tenantId ? teardownTenant(tenantId) : { ok: true, detail: "no tenant was created" };
     notes.push(`teardown: ${td.ok ? "OK" : "FAILED"} — ${td.detail}`);
     const asked = ONLY ? { ...corpus, questions: corpus.questions.filter((q) => ONLY.has(q.id)) } : corpus;
-    notes.unshift(`budget: $${meter.budget.toFixed(2)} hard stop; metered $${meter.spent.toFixed(2)} over ${meter.turns} turns (${meter.unmetered} without a usage frame, charged the ceiling) at worst-case rates in $${RATES.inputPerMTok}/out $${RATES.outputPerMTok} per Mtok + $${UNMETERED_USD_PER_TURN}/turn unmetered allowance`);
+    notes.unshift(`budget: $${meter.budget.toFixed(2)} hard stop; metered $${meter.spent.toFixed(2)} over ${meter.turns} dispatched turns at worst-case rates in $${RATES.inputPerMTok}/out $${RATES.outputPerMTok} per Mtok + $${UNMETERED_USD_PER_TURN}/turn allowance${meter.unbounded ? `; STOPPED: ${meter.unbounded} had no readable cost` : ""}`);
     const aborted = notes.find((n) => n.startsWith("run aborted: "));
     const rows = scoreAll(asked, obs).map((r) => (aborted && !obs.some((o) => o.id === r.id) ? { ...r, reason: aborted } : r));
     const card = scorecard(rows, superseded);
