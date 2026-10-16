@@ -43,6 +43,12 @@ const MUTATIONS = {
 if (!FROM || FROM === path.resolve("")) { console.error("usage: node tests/stranger-walk/mutations.mjs <walk out dir>"); process.exit(2); }
 if (execFileSync("git", ["status", "--porcelain", "--", TI], { encoding: "utf8" }).trim()) throw new Error(`${TI} is dirty — refusing to mutate`);
 
+// `next dev` rewrites AGENTS.md. Keep the developer's exact bytes (committed or not) and put them
+// back — never `git checkout` a file this runner does not own.
+const AGENTS = "AGENTS.md";
+const agentsBefore = existsSync(AGENTS) ? readFileSync(AGENTS) : null;
+const restoreAgents = () => { if (agentsBefore !== null) writeFileSync(AGENTS, agentsBefore); };
+
 const results = [];
 for (const [name, edits] of Object.entries(MUTATIONS)) {
   const original = readFileSync(TI, "utf8");
@@ -63,7 +69,7 @@ for (const [name, edits] of Object.entries(MUTATIONS)) {
     results.push({ name, exit: run.status, eligible: summary.eligible, replayed: summary.replayed, expected: summary.expected, got: summary.got, mismatches: summary.mismatches.length });
   } finally {
     execFileSync("git", ["checkout", "--", TI]);
-    execFileSync("git", ["checkout", "--", "AGENTS.md"]); // next dev rewrites it
+    restoreAgents();
   }
 }
 

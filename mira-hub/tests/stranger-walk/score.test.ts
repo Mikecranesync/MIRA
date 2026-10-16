@@ -149,24 +149,42 @@ describe("scorecard, flakes, predictions", () => {
   });
 });
 
-describe("budget meter (hard $ stop from the stream's usage frames)", () => {
-  const usage = (inputTokens: number, outputTokens: number) =>
-    `data: ${JSON.stringify({ kind: "usage", inputTokens, cachedInputTokens: 0, outputTokens })}\n\ndata: [DONE]\n`;
-  it("prices a turn from its usage frame, and a turn with no usage frame at the ceiling", () => {
-    expect(turnCostUsd(usage(3000, 250)).metered).toBe(true);
-    expect(turnCostUsd(usage(3000, 250)).usd).toBeLessThan(BUDGET.usdCeilingPerTurn);
-    expect(turnCostUsd(null)).toEqual({ usd: BUDGET.usdCeilingPerTurn, metered: false });
+describe("budget meter (hard $ stop from the stream's usage frames, fail closed)", () => {
+  const frame = (f: Record<string, unknown>) => `data: ${JSON.stringify({ kind: "usage", ...f })}\n\ndata: [DONE]\n`;
+  const usage = (inputTokens: number, outputTokens: number) => frame({ inputTokens, cachedInputTokens: 0, outputTokens });
+  it("prices a turn from a fully numeric usage frame", () => {
+    const c = turnCostUsd(usage(3000, 250));
+    expect(c.metered).toBe(true);
+    expect(c.usd).toBeGreaterThan(0);
+    expect(c.usd).toBeLessThan(BUDGET.usdCeilingPerTurn);
+  });
+  it("a turn whose cost cannot be read is unmetered: no response, no frame, null / negative / non-finite counts", () => {
+    for (const sse of [
+      null,
+      "data: [DONE]\n",
+      frame({ inputTokens: null, cachedInputTokens: null, outputTokens: null }),
+      frame({ inputTokens: 3000, cachedInputTokens: 0, outputTokens: -5 }),
+      frame({ inputTokens: "3000", cachedInputTokens: 0, outputTokens: 250 }),
+      'data: {"kind":"usage","inputTokens":1e999,"cachedInputTokens":0,"outputTokens":1}\n',
+    ]) expect(turnCostUsd(sse).metered, String(sse)).toBe(false);
+  });
+  it("an unmetered turn stops every later paid turn", () => {
+    const meter = new BudgetMeter(3);
+    meter.charge("a", usage(3000, 250));
+    expect(meter.canAfford()).toBe(true);
+    meter.charge("b", frame({ inputTokens: null, cachedInputTokens: null, outputTokens: null }));
+    expect([meter.canAfford(), meter.unbounded]).toEqual([false, "b"]);
   });
   it("refuses the next turn once an expensive turn makes the budget unsafe", () => {
     const meter = new BudgetMeter(3);
-    meter.charge(usage(1_000_000, 50_000)); // $2 + $0.80 + allowance: one runaway turn
+    meter.charge("a", usage(1_000_000, 50_000)); // $2 + $0.80 + allowance: one runaway turn
     expect(meter.spent).toBeGreaterThan(2.8);
-    expect(meter.canAfford()).toBe(false); // the next turn could cost as much again
+    expect(meter.canAfford()).toBe(false);
   });
   it("control: 50 ordinary turns fit the $3 budget", () => {
     const meter = new BudgetMeter(3);
     let asked = 0;
-    for (let i = 0; i < 50 && meter.canAfford(); i++) { meter.charge(usage(3200, 120)); asked++; }
+    for (let i = 0; i < 50 && meter.canAfford(); i++) { meter.charge(`q${i}`, usage(3200, 120)); asked++; }
     expect(asked).toBe(50);
     expect(meter.spent).toBeLessThanOrEqual(3);
   });
