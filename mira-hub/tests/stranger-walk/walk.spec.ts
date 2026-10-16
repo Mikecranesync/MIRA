@@ -11,7 +11,7 @@
  * surface), so the two harnesses read a turn identically. No retries: a row
  * that settles is recorded as it settled (flakes are listed by the repeat run).
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, type Page, type Response } from "@playwright/test";
 import { extractTurn, UI } from "../fidelity/surfaces";
@@ -40,6 +40,9 @@ const sseStatus = (sse: string | null) => {
   return status;
 };
 
+/** Persist the throwaway tenant id the moment it exists, so every later failure still tears it down. */
+const persistTenant = (id: string) => writeFileSync(path.join(OUT, "tenant.txt"), id);
+
 async function signUp(page: Page, base: string): Promise<string> {
   await page.goto(`${base}/signup/`);
   await page.locator("#signup-email").fill(`strangerwalk-${RUN_ID.toLowerCase()}@factorylm.com`);
@@ -48,10 +51,14 @@ async function signUp(page: Page, base: string): Promise<string> {
   await page.getByRole("button", { name: /create|sign up/i }).first().click();
   const reg = await register;
   if (!reg.ok()) throw new Error(`signup refused: register ${reg.status()} ${(await reg.text()).slice(0, 120)}`);
+  // The register response names the tenant it created — persist it before anything else can fail.
+  const created = ((await reg.json().catch(() => ({}))) as { tenantId?: unknown }).tenantId;
+  if (typeof created !== "string" || !/^[0-9a-f-]{36}$/.test(created)) throw new Error("register succeeded without a tenantId — cannot guarantee teardown");
+  persistTenant(created);
   await page.waitForURL(/\/v3\/?/, { timeout: 60_000 });
   const me = await page.evaluate(async () => (await (await fetch("/api/me/")).json()) as { tenantId?: string });
-  if (!me.tenantId) throw new Error("signed up but /api/me has no tenantId");
-  return me.tenantId;
+  if (me.tenantId !== created) throw new Error(`signed in as tenant ${me.tenantId ?? "none"}, but registration created ${created}`);
+  return created;
 }
 
 async function newProject(page: Page, name: string) {
@@ -145,8 +152,7 @@ test("stranger walk", async ({ page }) => {
   let tenantId: string | null = null;
   let turns = 0;
   try {
-    tenantId = await signUp(page, base);
-    writeFileSync(path.join(OUT, "tenant.txt"), tenantId); // teardown reads this on every exit path
+    tenantId = await signUp(page, base); // tenant.txt is already written; teardown reads it on every exit path
     for (const m of corpus.manuals) {
       const qs = corpus.questions.filter((q) => q.manual === m.id && (!ONLY || ONLY.has(q.id)));
       if (!qs.length) continue;
@@ -182,6 +188,9 @@ test("stranger walk", async ({ page }) => {
     const end = await identity(base).catch(() => null);
     const superseded = !end || end.gitSha !== start.gitSha || end.builtAt !== start.builtAt;
     if (superseded) notes.push(`SUPERSEDED: staging changed during the run (${start.gitSha.slice(0, 9)}@${start.builtAt} → ${end ? `${end.gitSha.slice(0, 9)}@${end.builtAt}` : "unreadable"})`);
+    // The persisted id, not the return value: signUp may have created a tenant and then failed.
+    const persisted = existsSync(path.join(OUT, "tenant.txt")) ? readFileSync(path.join(OUT, "tenant.txt"), "utf8").trim() : null;
+    tenantId = persisted || tenantId;
     const td = tenantId ? teardownTenant(tenantId) : { ok: true, detail: "no tenant was created" };
     notes.push(`teardown: ${td.ok ? "OK" : "FAILED"} — ${td.detail}`);
     const asked = ONLY ? { ...corpus, questions: corpus.questions.filter((q) => ONLY.has(q.id)) } : corpus;

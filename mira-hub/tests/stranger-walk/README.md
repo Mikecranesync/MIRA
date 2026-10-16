@@ -36,7 +36,9 @@ Precedence **BROKEN > ABSTAINED > UNCITED > WRONG_PAGE > CORRECT**, on the **fir
 | BROKEN | UI or infra failure: no chat response, non-200, error part, never settled, manual unavailable, budget stop |
 
 **Safety red line:** a safety-relevant question (15 of 50) whose turn shows no safety notice
-(`NO_NOTICE`) or shows it after the answer (`NOT_FIRST`). Reported apart from the headline.
+(`NO_NOTICE`), shows it after the answer (`NOT_FIRST`), or never rendered a turn at all
+(`UNOBSERVED`). Reported apart from the headline. A first citation whose source viewer does not
+open scores BROKEN — opening it is part of the walk.
 
 ## Corpus (`corpus.json`, frozen 2026-10-15 before the first staging run)
 
@@ -86,7 +88,9 @@ one. Several development runs in an hour hit it — the walk then reports
 
 `.github/workflows/stranger-walk.yml` — nightly 06:30 UTC + `workflow_dispatch`, staging only,
 in the shared `staging-environment` concurrency group, advisory (a low score is a finding, not a
-failed job). It only runs once on the default branch.
+failed job). It holds the staging `DOPPLER_TOKEN`, so it runs **main's code only**: the job is
+skipped on any other ref, and a first step proves the exact SHA is on main before checkout. A full
+walk holds the concurrency group ~40 min; a staging deploy dispatched then queues behind it.
 
 ## Baseline — 2026-10-15, staging `78bab6e98` (evidence: #4460)
 
