@@ -21,7 +21,7 @@ import { expect, test } from "@playwright/test";
 import { addSessionCookie, DOC, FILE, installRoutes, oracle, type Scenario } from "../fidelity/harness";
 import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
-import { cardsOf, firstChipOf } from "./extract";
+import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { classify, fixtureFor, markdownScorecard, predict, scoreAll, scorecard, type Classification, type Corpus, type Mutation, type Observation, type Scored } from "./score";
 
 const corpus = corpusJson as Corpus;
@@ -87,7 +87,17 @@ test("replay recorded staging turns through /v3", async ({ browser, baseURL }) =
       const cards = await cardsOf(turn);
       const firstChip = await firstChipOf(turn);
       const errorPart = await turn.locator('[data-part-type="error"]').first().getAttribute("data-error-code", { timeout: 500 }).catch(() => null);
-      const replayObs: Observation = { ...o, rendered, cards, firstChip, errorPart, streamStatus: sseStatus(sse) };
+      // Open the first citation exactly as the walk does and read what the viewer resolved.
+      let viewerOpened: boolean | null = null;
+      let viewer: Observation["viewer"] = null;
+      const inline = turn.getByRole("button", { name: /^Open citation / }).first();
+      const chip = (await inline.count()) ? inline : turn.locator('[data-part-type="source"]').first();
+      if (await chip.count()) {
+        await chip.click();
+        viewerOpened = await UI.clone.viewerFrame(page).waitFor({ state: "visible", timeout: 10_000 }).then(() => true, () => false);
+        if (viewerOpened) viewer = { ...(await viewerTargetOf(UI.clone.viewerFrame(page))), manualFileId: FILE };
+      }
+      const replayObs: Observation = { ...o, rendered, cards, firstChip, errorPart, viewerOpened, viewer, streamStatus: sseStatus(sse) };
       replayed.set(o.id, replayObs);
       const scored = classify(q, m, replayObs, corpus.tolerance);
       const expected = MUTATION === "control" ? liveRow.classification : predict(liveRow, MUTATION, corpus.tolerance);

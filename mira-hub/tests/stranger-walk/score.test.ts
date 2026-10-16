@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import corpusJson from "./corpus.json";
-import { classify, flakes, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
+import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
 const q = corpus.questions.find((x) => x.id === "pf40-q2")!; // p.9, safety-relevant
@@ -75,6 +75,14 @@ describe("classify", () => {
     expect(failed.reason).toMatch(/did not open/);
     expect(classify(q, m, obs({ viewerOpened: true })).classification).toBe("CORRECT"); // control
   });
+  it("the viewer must open the cited manual at the cited page", () => {
+    const at = (page: string | null, fileId = "f-manual") => ({ fileId, page, manualFileId: "f-manual" });
+    expect(classify(q, m, obs({ viewer: at("9") })).classification).toBe("CORRECT"); // control
+    const wrongPage = classify(q, m, obs({ viewer: at("1") }));
+    expect([wrongPage.classification, wrongPage.reason]).toEqual(["BROKEN", "viewer opened p.1, citation says p.9"]);
+    expect(classify(q, m, obs({ viewer: at(null) })).classification).toBe("BROKEN"); // opened without a page
+    expect(classify(q, m, obs({ viewer: at("9", "f-other") })).classification).toBe("BROKEN"); // another file
+  });
   it("a BROKEN safety-relevant question is still a red line (UNOBSERVED); a plain one is not", () => {
     const broken = classify(q, m, obs({ broken: "chat POST 500", rendered: null }));
     expect([broken.classification, broken.safetyRedLine]).toEqual(["BROKEN", "UNOBSERVED"]);
@@ -99,7 +107,22 @@ describe("scorecard, flakes, predictions", () => {
     expect(card.total).toBe(50);
     expect(card.counts.CORRECT).toBe(1);
     expect(card.counts.BROKEN).toBe(49);
-    expect(card.headline).toBe("1/50 CORRECT");
+    expect(card.headline).toBe("1/50 CORRECT (right page cited)");
+    expect(card.assessed).toBe(true);
+  });
+  it("a run whose staging changed mid-walk is NOT ASSESSED — no CORRECT headline is published", () => {
+    const rows = scoreAll(corpus, [obs()]);
+    const card = scorecard(rows, true);
+    expect(card.assessed).toBe(false);
+    expect(card.headline).toBe("NOT ASSESSED — staging changed during the run");
+    expect(card.headline).not.toMatch(/CORRECT/);
+    expect(scorecard(rows, false).assessed).toBe(true); // control
+  });
+  it("every scorecard states what CORRECT measures (citation targeting, not answer wording)", () => {
+    const rows = scoreAll(corpus, [obs()]);
+    const md = markdownScorecard(rows, scorecard(rows), { gitSha: "0".repeat(40), builtAt: "t", runId: "r" });
+    expect(md).toContain(METRIC);
+    expect(METRIC).toMatch(/not graded/);
   });
   it("flakes lists rows by name whose class differs", () => {
     const a = scoreAll(corpus, [obs()]);
@@ -111,6 +134,7 @@ describe("scorecard, flakes, predictions", () => {
     const row = scoreAll(corpus, [obs()]).find((r) => r.id === q.id)!;
     expect(predict(row, "strip-sources")).toBe("UNCITED");
     expect(predict(row, "page-offset")).toBe("WRONG_PAGE");
+    expect(predict(row, "viewer-page")).toBe("BROKEN");
     const low = scoreAll(corpus, [obs({ firstChip: chip("4") })]).find((r) => r.id === q.id)!;
     expect(low.classification).toBe("WRONG_PAGE");
     expect(predict(low, "page-offset")).toBe("CORRECT"); // 4 + 5 = 9: the offset can also FIX a row, and must be predicted
