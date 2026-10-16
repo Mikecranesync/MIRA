@@ -34,7 +34,8 @@ export type Observation = {
   /** After clicking the first citation: did the source viewer open on a file. */
   viewerOpened: boolean | null;
   /** What the opened viewer actually resolved: its file id and `#page=` anchor, plus the file id the
-   *  project holds for this manual. Absent in recordings made before the check existed. */
+   *  project holds for this manual. `null` = opened but not captured (fails closed). The key is
+   *  ABSENT only in the two 2026-10-15 recordings made before the capture existed. */
   viewer?: { fileId: string | null; page: string | null; manualFileId: string | null } | null;
   sse: string | null;
   elapsedMs: number;
@@ -91,9 +92,13 @@ export function classify(q: Question, m: Manual, o: Observation, tolerance = 1):
   // Opening the first citation is part of the journey: one that does not open is not a citation.
   if (o.viewerOpened === false) return done("BROKEN", `first citation did not open in the source viewer (cited p.${citedPage ?? "?"})`);
   // The viewer must open what the chip claims: the manual's own file, at the cited page.
-  const v = o.viewer;
-  if (v && v.page !== (citedPage === null ? null : String(citedPage))) return done("BROKEN", `viewer opened p.${v.page ?? "?"}, citation says p.${citedPage ?? "?"}`);
-  if (v && v.manualFileId && v.fileId !== v.manualFileId) return done("BROKEN", "viewer opened a different file than the cited manual");
+  if (o.viewer !== undefined && o.viewerOpened === true) {
+    const v = o.viewer;
+    if (!v) return done("BROKEN", "viewer opened but its target was not captured");
+    if (v.page !== (citedPage === null ? null : String(citedPage))) return done("BROKEN", `viewer opened p.${v.page ?? "?"}, citation says p.${citedPage ?? "?"}`);
+    if (!v.fileId || !v.manualFileId) return done("BROKEN", `viewer file identity unverifiable (viewer ${v.fileId ?? "none"}, manual ${v.manualFileId ?? "none"})`);
+    if (v.fileId !== v.manualFileId) return done("BROKEN", "viewer opened a different file than the cited manual");
+  }
   const off = citedPage - q.expectedPage;
   if (Math.abs(off) > tolerance) return done("WRONG_PAGE", `cited p.${citedPage}, expected p.${q.expectedPage} (off by ${off})`);
   return done("CORRECT", `cited p.${citedPage}, expected p.${q.expectedPage}`);

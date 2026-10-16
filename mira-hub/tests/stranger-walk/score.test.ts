@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import corpusJson from "./corpus.json";
+import { BUDGET, BudgetMeter, turnCostUsd } from "./staging";
 import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
@@ -83,6 +84,13 @@ describe("classify", () => {
     expect(classify(q, m, obs({ viewer: at(null) })).classification).toBe("BROKEN"); // opened without a page
     expect(classify(q, m, obs({ viewer: at("9", "f-other") })).classification).toBe("BROKEN"); // another file
   });
+  it("viewer identity fails closed: opened but uncaptured, or either file id unknown, is BROKEN", () => {
+    const at = (fileId: string | null, manualFileId: string | null) => ({ fileId, page: "9", manualFileId });
+    expect(classify(q, m, obs({ viewer: at("f", "f") })).classification).toBe("CORRECT"); // control
+    expect(classify(q, m, obs({ viewer: null })).classification).toBe("BROKEN");
+    expect(classify(q, m, obs({ viewer: at(null, "f") })).classification).toBe("BROKEN");
+    expect(classify(q, m, obs({ viewer: at("f", null) })).classification).toBe("BROKEN");
+  });
   it("a BROKEN safety-relevant question is still a red line (UNOBSERVED); a plain one is not", () => {
     const broken = classify(q, m, obs({ broken: "chat POST 500", rendered: null }));
     expect([broken.classification, broken.safetyRedLine]).toEqual(["BROKEN", "UNOBSERVED"]);
@@ -138,5 +146,28 @@ describe("scorecard, flakes, predictions", () => {
     const low = scoreAll(corpus, [obs({ firstChip: chip("4") })]).find((r) => r.id === q.id)!;
     expect(low.classification).toBe("WRONG_PAGE");
     expect(predict(low, "page-offset")).toBe("CORRECT"); // 4 + 5 = 9: the offset can also FIX a row, and must be predicted
+  });
+});
+
+describe("budget meter (hard $ stop from the stream's usage frames)", () => {
+  const usage = (inputTokens: number, outputTokens: number) =>
+    `data: ${JSON.stringify({ kind: "usage", inputTokens, cachedInputTokens: 0, outputTokens })}\n\ndata: [DONE]\n`;
+  it("prices a turn from its usage frame, and a turn with no usage frame at the ceiling", () => {
+    expect(turnCostUsd(usage(3000, 250)).metered).toBe(true);
+    expect(turnCostUsd(usage(3000, 250)).usd).toBeLessThan(BUDGET.usdCeilingPerTurn);
+    expect(turnCostUsd(null)).toEqual({ usd: BUDGET.usdCeilingPerTurn, metered: false });
+  });
+  it("refuses the next turn once an expensive turn makes the budget unsafe", () => {
+    const meter = new BudgetMeter(3);
+    meter.charge(usage(1_000_000, 50_000)); // $2 + $0.80 + allowance: one runaway turn
+    expect(meter.spent).toBeGreaterThan(2.8);
+    expect(meter.canAfford()).toBe(false); // the next turn could cost as much again
+  });
+  it("control: 50 ordinary turns fit the $3 budget", () => {
+    const meter = new BudgetMeter(3);
+    let asked = 0;
+    for (let i = 0; i < 50 && meter.canAfford(); i++) { meter.charge(usage(3200, 120)); asked++; }
+    expect(asked).toBe(50);
+    expect(meter.spent).toBeLessThanOrEqual(3);
   });
 });
