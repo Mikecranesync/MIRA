@@ -3359,6 +3359,10 @@ class Supervisor:
         # .claude/rules/direct-connection-uns-certified.md.
         if uns_source:
             _uns_ctx_dict["source"] = uns_source
+        elif (prior_uns or {}).get("source") == "direct_connection":
+            # Resolver output has no provenance field. Preserve the certified
+            # connection across follow-ups that omit the adapter argument.
+            _uns_ctx_dict["source"] = "direct_connection"
         _ctx_for_uns["uns_context"] = _uns_ctx_dict
         state["context"] = _ctx_for_uns
         if uns_ctx.manufacturer and uns_ctx.confidence >= 0.7 and not state.get("asset_identified"):
@@ -8364,7 +8368,15 @@ class Supervisor:
         pinned = state.get("asset_identified") or ""
         if not pinned or not (message or "").strip():
             return False
-        if uns_source:
+        if (
+            uns_source
+            or ((state.get("context") or {}).get("uns_context") or {}).get("source")
+            == "direct_connection"
+        ):
+            return False
+        # A comparison never selects an active machine, including across
+        # manufacturers. Check before the same-vendor model comparison.
+        if re.search(r"\b(compare|comparison|versus|vs|difference)\b", message, re.I):
             return False
         try:
             from .uns_resolver import canonical_model, canonical_vendor  # noqa: PLC0415
@@ -8378,9 +8390,7 @@ class Supervisor:
                 return False
             if fresh_vendor == pinned_vendor:
                 # A model correction within one manufacturer is still a new
-                # diagnostic scope. Comparisons do not select an active asset.
-                if re.search(r"\b(compare|comparison|versus|vs|difference)\b", message, re.I):
-                    return False
+                # diagnostic scope.
                 prior_identity = resolve_uns_path(pinned.split(",", 1)[-1])
                 fresh_model = canonical_model(fresh.model, fresh.product_family)
                 prior_model = canonical_model(prior_identity.model, prior_identity.product_family)

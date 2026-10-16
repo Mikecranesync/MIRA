@@ -619,3 +619,72 @@ async def test_non_switch_keeps_retrieval_identity_too(sv, message, source):
     saved = sv._load_state(chat)
     assert saved["asset_identified"] == "AutomationDirect, GS10"
     assert saved["context"]["uns_context"]["model"] == "GS10"
+
+
+@pytest.mark.asyncio
+async def test_cross_vendor_comparison_preserves_display_and_retrieval_identity(sv):
+    chat = "cross-vendor-comparison-control"
+    sv._save_state(chat, _dead_thread_state())
+    seen = []
+
+    async def rag(message, state, *args, **kwargs):
+        seen.append((message, dict(state["context"]["uns_context"])))
+        return RAG_REPLY
+
+    sv.rag.process = rag
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "Compare Rockwell Automation PowerFlex 525 versus GS10")
+    saved = sv._load_state(chat)
+    assert saved["asset_identified"] == "AutomationDirect, GS10"
+    assert saved["context"]["uns_context"]["model"] == "GS10"
+    assert seen and all(context["model"] == "GS10" for _, context in seen)
+
+
+@pytest.mark.asyncio
+async def test_connected_provenance_survives_followup_without_source_argument(sv):
+    chat = "persistent-connected-control"
+    sv._save_state(chat, _dead_thread_state())
+    seen = []
+
+    async def rag(message, state, *args, **kwargs):
+        seen.append((state["asset_identified"], dict(state["context"]["uns_context"])))
+        return RAG_REPLY
+
+    sv.rag.process = rag
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "The motor trips with OC.", uns_source="direct_connection")
+        assert sv._load_state(chat)["context"]["uns_context"]["source"] == "direct_connection"
+        await sv.process(chat, "Actually it's a GS20, not a GS10.")
+        saved = sv._load_state(chat)
+        assert saved["asset_identified"] == "AutomationDirect, GS10"
+        assert saved["context"]["uns_context"]["model"] == "GS10"
+        assert saved["context"]["uns_context"]["source"] == "direct_connection"
+        await sv.process(chat, "Actually it is a PowerFlex 525.")
+    saved = sv._load_state(chat)
+    assert saved["asset_identified"] == "AutomationDirect, GS10"
+    assert saved["context"]["uns_context"]["model"] == "GS10"
+    assert saved["context"]["uns_context"]["source"] == "direct_connection"
+    assert seen and all(
+        pin == "AutomationDirect, GS10" and context["model"] == "GS10" for pin, context in seen
+    )
+
+
+@pytest.mark.asyncio
+async def test_explicit_unbound_cross_vendor_correction_still_changes_scope(sv):
+    chat = "explicit-cross-vendor-control"
+    sv._save_state(chat, _dead_thread_state())
+    seen = []
+
+    async def rag(message, state, *args, **kwargs):
+        seen.append(dict(state["context"]["uns_context"]))
+        return RAG_REPLY
+
+    sv.rag.process = rag
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "Actually it is a Rockwell PowerFlex 525 with F004, not a GS10.")
+    saved = sv._load_state(chat)
+    assert "525" in saved["asset_identified"]
+    assert "GS10" not in saved["asset_identified"]
+    assert saved["context"]["session_context"].get("active_alarm") != "CE10"
+    assert saved["context"]["uns_context"]["fault_code"] == "F0004"
+    assert seen and all("525" in context["model"] for context in seen)
