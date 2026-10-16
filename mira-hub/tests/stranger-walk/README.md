@@ -92,45 +92,60 @@ failed job). It only runs once on the default branch.
 
 | Run | CORRECT | WRONG_PAGE | UNCITED | ABSTAINED | BROKEN | safety red lines |
 |---|---|---|---|---|---|---|
-| #1 | **32/50** | 12 | 3 | 3 | 0 | 15/15 |
-| #2 | **31/50** | 12 | 4 | 3 | 0 | 15/15 |
+| #1 | **33/50** | 11 | 3 | 3 | 0 | 15/15 |
+| #2 | **32/50** | 11 | 4 | 3 | 0 | 15/15 |
 
-Repeat: 46/50 rows identical; CORRECT/BROKEN flakes `pf40-q3`, `pf4m-q3`, `micro820-um-q3` (staging
-nondeterminism — each run's recorded streams replay 50/50 through local `/v3`). Seeded defects on
-run #1: strip-sources 32 → 0 CORRECT, page-offset 32 → 2 CORRECT, both exactly as predicted.
+"First citation" is the first inline chip in **reading order** (`extract.ts`). The runs were first
+scored with the id-sorted list from `extractTurn` (32 and 31); both were rescored from their
+recorded streams through `/v3` (`STRANGER_WALK_RESCORE=1`), no expected page changed, and the
+id-order scorecards are kept as `*.v1-idorder.*`.
+
+Repeat: 48/50 rows identical; the one CORRECT/BROKEN flake is `micro820-um-q3` (answered once,
+abstained once); `smc50-q3` moved ABSTAINED → UNCITED. Each run replays 50/50 through local `/v3`,
+so the flake is staging's. Seeded defects, both runs: strip-sources 33 → 0 and 32 → 0 CORRECT;
+page-offset 33 → 1 and 32 → 1 CORRECT — every row exactly as predicted.
 
 ### Failure causes, ranked
 
-1. **No safety notice, ever (15/15 safety-relevant questions, both runs).** The stream carries no
-   `safety` frame and no `hazardEntries` for stored-energy / de-energize / live-terminal / battery
-   questions, so `/v3` has nothing to render. One non-safety answer instead put "⚠️ Safety flag" in
-   the answer *text* (run #2 `pf40-q3`) with no structured notice. *Fix:* widen the Hub chat
-   route's hazard detection to stored-energy and isolation intents (capacitor discharge, DC-bus
-   voltage, "wait N minutes after power off", hazardous voltage present, disconnect main power,
-   lithium battery handling) and make a safety-worded answer carry the structured notice; the 15
-   red-line fixtures are the regression set.
-2. **Retrieval misses on table pages (6–7 rows per run → UNCITED/ABSTAINED, "the loaded excerpts do
-   not say").** Fault-code and parameter tables (SMC Flex fault 39 p.105, SMC-50 fault 46 p.212,
-   SMC Flex overload classes p.17, MicroLogix duplicate-IP p.159) never reach the context.
-   *Fix:* exact-token boosting for fault codes / parameter names in notebook retrieval, and
-   row-preserving chunking for tabular pages; write each fixture's question as a failing
-   retrieval test first.
-3. **First citation is a supporting-but-secondary page (≈8 of 12 WRONG_PAGE).** The cited page does
-   state the fact — a parameter list, spec summary or index table (E3 p.45/89/107, SMC-50
-   p.126/210, GS10 p.36, MicroLogix p.143, SMC Flex p.82) — but not the troubleshooting /
-   definition page a technician needs. *Fix:* intent-aware rerank (a fault question prefers the
-   fault-table page; a "how do I" question the procedure page). Scoring note: a reviewed
-   `alsoAccept` list would move these rows; it is offered for owner review, **not applied** —
-   expected pages are never weakened to raise the number.
-4. **Citation order is nondeterministic (the 3 flakes).** With the right page in the sources both
-   times, the first marker moved (`pf4m-q3` p.27 ↔ p.76; `pf40-q3` p.73 ↔ p.92), and the restore
-   question was answered once and abstained once. Inline markers are excerpt indices ("[11][14]"
-   with two sources). *Fix:* order sources by retrieval rank and renumber markers 1..n server-side;
-   pin generation settings on the notebook route so one deploy gives one answer.
-5. **The stranger's surface hides readiness and mislabels "I can't find it".** `/v3` has no readiness
-   label (the walk reads the API; 41/45 follow-ups were asked while it said "Ready to ask ·
-   improving search…"); after attaching, the scope line kept "no selected sources yet — general
-   help only" until a reload; and "the excerpts do not say" replies arrive as `status: answered`
-   with a general-guidance basis instead of `insufficient_evidence`. *Fix:* render the source's
-   readiness label in the `/v3` scope line and refresh it after an attached send; route a
-   no-evidence reply through `insufficient_evidence`.
+1. **No safety notice, ever — 15/15 safety-relevant questions, both runs.** No stream carried a
+   `safety` frame or `hazardEntries`. The only notice paths are `matchSafetyStop` (tier-1
+   hard-stop phrases) and `detectEnergizedElectricalHazardIntent` (lethal-voltage context **and**
+   live-work intent) in `src/lib/safety-classifier.ts`; stored-energy / de-energize / live-terminal
+   / battery questions match neither. Run #2 even put "⚠️ Safety flag" in the answer *text* of a
+   non-safety question with no structured notice. *Fix:* a non-terminal stored-energy notice
+   (warning severity, answer still streams) on the same seam #4114 extends for improvised
+   lockout — capacitor/DC-bus discharge, "wait N minutes after power off", hazardous voltage
+   with the controller off, disconnect main/control power, lithium battery handling — pushed
+   into `hazardEntries` in `api/equipment-notebooks/[id]/chat/route.ts`. Regression set: the 15
+   red-line fixtures plus a classifier unit test that is shown red first.
+2. **Retrieval never surfaces table pages — 6–7 rows per run end UNCITED/ABSTAINED with "the loaded
+   excerpts do not say".** Fault-code and parameter tables (SMC Flex fault 39 p.105, SMC-50 fault
+   46 p.212, SMC Flex overload classes p.17, MicroLogix duplicate-IP p.159, SMC-50 live load
+   terminals p.104, MicroLogix battery p.131). *Fix:* in `retrieveNodeChunks`
+   (`src/lib/manual-rag.ts`) and `buildRetrievalQuery` (`src/lib/notebook-query.ts`), boost exact
+   fault-code / parameter tokens ("NVS", "39", "Ov Pwr Reac+") and keep table rows intact when
+   chunking (`node-knowledge-ingest.ts`). Write each fixture's question as a failing retrieval
+   test first.
+3. **The first citation is a related page, not the one the question needs — 11 WRONG_PAGE rows in
+   run #1, each cited page read by hand:** 4 state the answer's fact (duplicate warning text
+   PF40 p.12, MicroLogix p.143, E3 summary table p.89, SMC-50 p.126); 5 are on-topic but lack what
+   was asked — causes, fix or procedure (GS10 p.36 is the *b4GF* variant, SMC Flex p.101 and p.10,
+   E3 p.107 parameter list, SMC-50 p.210 "see page 215"); 2 do not support the answer (E3 p.45,
+   SMC-50 p.127). *Fix:* intent-aware rerank — a fault question prefers the fault-table page, a
+   "how do I" question the procedure page. An owner-reviewed `alsoAccept` list would move the 4
+   supporting rows; it is offered, **not applied** — expected pages are never weakened.
+4. **Citation markers are excerpt indices, and the reading-order first marker is not the strongest
+   source.** Answers cite "[6] … [5]" or "[11][14]" with two sources; with the right page in the
+   sources the first marker still pointed elsewhere (`pf4m-q3` run #1: p.76 retrieved, p.27 cited
+   first by id). This is also what the id-sorted extraction tripped on. *Fix:* renumber markers
+   1..n server-side in `normalizeCitationMarkers` (`src/capabilities/answer-shape.ts`) in
+   retrieval-rank order, so "[1]" is the best page and every surface agrees.
+5. **The stranger's surface hides readiness and calls "I can't find it" an answer.** `/v3` shows no
+   readiness label — the walk reads the API, and 41/45 follow-ups were asked while it said "Ready
+   to ask · improving search…"; after an attached send the scope line kept "no selected sources
+   yet — general help only" until a reload; and "the excerpts do not say" replies arrive as
+   `status: answered` with a general-guidance basis (`smc50-q3` run #2, `ml1100-q5`, `smcflex-q5`,
+   `smc50-q4`) instead of `insufficient_evidence`. *Fix:* render the source readiness label in the
+   `/v3` scope line (`hub-host-logic.ts`) and re-read sources after an attached send; route a
+   no-evidence reply through `insufficient_evidence` (adjacent to #4238, which covers invented
+   fault-code meanings, not honest misses).
