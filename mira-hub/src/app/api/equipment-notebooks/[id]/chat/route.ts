@@ -67,6 +67,7 @@ import {
   acquisitionKey,
   candidateAcquisitionEnabled,
   acquisitionDeclineText,
+  acquisitionManualUrl,
   readAcquisition,
   reconcileAcquisition,
   startManualAcquisition,
@@ -781,6 +782,7 @@ function manualSearchStatusFrame(
   manualSearchRunning: "confirmed" | "candidate" | null,
   candidateAcquisitionText: string | null,
   candidateSearchStartedAt?: string,
+  candidateManualUrl?: string | null,
 ): Record<string, unknown> | null {
   if (!identityProposal) return null;
   const running = manualSearchRunning === "candidate";
@@ -792,6 +794,7 @@ function manualSearchStatusFrame(
     running,
     ...(!running && candidateAcquisitionText ? { message: candidateAcquisitionText } : {}),
     ...(candidateSearchStartedAt ? { startedAt: candidateSearchStartedAt } : {}),
+    ...(!running && candidateManualUrl ? { manualUrl: candidateManualUrl } : {}),
   };
 }
 
@@ -2465,6 +2468,7 @@ async function handleChatTurn(
   // follower can tell a genuinely NEW search apart from a replay of an old
   // one. Scoped to the candidate basis only, matching `manualSearchStatusFrame`.
   let candidateSearchStartedAt: string | undefined;
+  let candidateManualUrl: string | null = null;
   if (
     (missingModelManual || noEvidenceForMachine) &&
     !oemRetrievalFailed &&
@@ -2593,6 +2597,7 @@ async function handleChatTurn(
         if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
         if (cAcq && cAcq.key === candidateKey) {
           if (cAcq.state === "running") manualSearchRunning = "candidate";
+          candidateManualUrl = !cAcq.attached_indexed && !cAcq.source_removed ? acquisitionManualUrl(cAcq) : null;
           candidateAcquisitionText = acquisitionDeclineText(
             cAcq,
             candidateKey,
@@ -2837,7 +2842,7 @@ async function handleChatTurn(
           controller.enqueue(enc.encode(sse(proposalFrame)));
         }
         // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
-        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt);
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl);
         if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
         if (photoPartLookup?.proposal) {
           const chips: NotebookFollowupsFrame = {
@@ -4358,7 +4363,7 @@ async function handleChatTurn(
       }
       // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
       {
-        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt);
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl);
         if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
       }
       if (answerStatus === "answered" && !identityDisputed && !outputRejected) {

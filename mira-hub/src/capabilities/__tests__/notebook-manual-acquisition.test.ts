@@ -48,6 +48,7 @@ import type { ManualAcquisitionInput, ManualAcquisitionOutcome } from "@/capabil
 
 import {
   acquisitionDeclineText,
+  acquisitionManualUrl,
   MANUAL_SEARCH_LIMIT_COPY,
   MANUAL_SEARCH_UNAVAILABLE_COPY,
   acquisitionEnabled,
@@ -260,8 +261,24 @@ describe("acquisitionDeclineText — honest about what the search did", () => {
   it("adds nothing for a record about a different identity, or for outcomes with nothing to show", () => {
     expect(acquisitionDeclineText(rec({ state: "no_manual_found" }), "OTHER", "X")).toBeNull();
     expect(acquisitionDeclineText(null, "K", "X")).toBeNull();
-    expect(acquisitionDeclineText(rec({ state: "download_rejected" }), "K", "X")).toBeNull();
+
   });
+  it.each(["download_rejected", "search_unavailable"] as const)("%s retains a failed download URL without claiming it was read", (state) => {
+    const t = acquisitionDeclineText(rec({ state, download_reason: "wrong_content_type", candidate_url: "https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319" }), "K", "KEYENCE GL-R")!;
+    expect(t).toContain("https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319");
+    expect(t).toContain("couldn't download");
+    expect(t.toLowerCase()).toContain("upload");
+    expect(t).not.toContain("couldn't find");
+  });
+  it.each(["javascript:alert(1)", "http://example.com/manual", "https://user:pass@example.com/manual", "https://127.0.0.1/manual", "https://example.com:9200/manual", "https://example.com/\\manual"])("does not expose an unsafe acquisition link: %s", (candidate_url) => {
+    expect(acquisitionManualUrl(rec({ state: "candidate_review", candidate_url }))).toBeNull();
+  });
+  it("does not offer a URL rejected by the download security boundary", () => {
+    const t = acquisitionDeclineText(rec({ state: "download_rejected", download_reason: "blocked_address", candidate_url: "https://localhost/manual.pdf" }), "K", "GL-R")!;
+    expect(t).not.toContain("localhost");
+    expect(t.toLowerCase()).toContain("upload");
+  });
+
 });
 
 describe("recordFromOutcome", () => {
@@ -1011,6 +1028,13 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
   const confirmedIdentity = { identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: null };
   const confirmedKey = acquisitionKey(confirmedIdentity)!;
   const candidateKey = acquisitionKey({ identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" })!;
+
+  it("returns the exact manual URL in settled status for both clients", async () => {
+    db.readRow = { key: confirmedKey, state: "download_rejected", started_at: null, finished_at: null, candidate_host: "www.keyence.com", match_state: null, oem_request_url: null, candidate_url: "https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319", download_reason: "wrong_content_type" };
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });
+    expect(r?.manualUrl).toBe("https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319");
+    expect(r?.message).toContain("couldn't download");
+  });
 
   it("returns null when acquisition is disabled", async () => {
     db.readRow = { key: confirmedKey, state: "running", started_at: null, finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };

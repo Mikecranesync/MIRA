@@ -76,6 +76,13 @@ async def test_oem_request_link_returns_the_curated_link_without_any_request(mon
     )
 
 
+async def test_keyence_manual_directory_is_available_without_search_or_download(monkeypatch):
+    _refuse_all_network(monkeypatch)
+    assert await search_mod.oem_request_link("KEYENCE") == (
+        "https://www.keyence.com/support/user/safety/manual/"
+    )
+
+
 async def test_oem_request_link_is_none_for_a_maker_with_no_curated_form(monkeypatch):
     _refuse_all_network(monkeypatch)
     assert await search_mod.oem_request_link("Siemens") is None

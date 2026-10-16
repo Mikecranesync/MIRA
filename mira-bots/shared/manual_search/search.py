@@ -258,6 +258,7 @@ TRUSTED_DOMAINS: tuple[tuple[str, int], ...] = (
 # opens it. The server never fetches it (Manual-First PRD R7, Codex G1 —
 # the old live probe read an uncapped body before any search admission).
 OEM_MANUAL_REQUEST: dict[str, str] = {
+    "keyence": "https://www.keyence.com/support/user/safety/manual/",
     "harrington": "https://www.harringtonhoists.com/owners-manual-request",
     "harrington hoists": "https://www.harringtonhoists.com/owners-manual-request",
     "harrington hoists and cranes": "https://www.harringtonhoists.com/owners-manual-request",

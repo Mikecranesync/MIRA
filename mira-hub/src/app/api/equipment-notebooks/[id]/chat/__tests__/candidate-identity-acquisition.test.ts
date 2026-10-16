@@ -300,6 +300,13 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     expect(f.find((x) => x.kind === "manual_search_status")).toBeUndefined();
   });
 
+  it("sends the failed-download link on the live settled frame", async () => {
+    acqMock.startManualAcquisition.mockResolvedValue(false);
+    acqMock.readAcquisition.mockResolvedValue({ key: "SMC|SS5Y3DUW01302|", state: "download_rejected", started_at: null, finished_at: null, candidate_host: "www.keyence.com", match_state: null, oem_request_url: null, candidate_url: "https://www.keyence.com/download/?dlAssetId=AS_164319", download_reason: "wrong_content_type" });
+    const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    expect(f.find(x => x.kind === "manual_search_status")).toMatchObject({ running: false, manualUrl: "https://www.keyence.com/download/?dlAssetId=AS_164319" });
+  });
+
   // Codex round 5 F15 (#4195): the live `manual_search_status` frame must
   // carry the search's own GENERATION (`startedAt`) — the SAME value the GET
   // route (`currentManualSearchStatus`, proven against this identical

@@ -20,6 +20,7 @@
  * missing column (prod applies migrations after merge), a database error, or a
  * disabled flag means "no automatic search", never a failed request.
  */
+import { isPublicHttpsUrl, isBlockedHost } from "@/lib/safe-download";
 import { withTenantContext } from "@/lib/tenant-context";
 import type { NotebookSource } from "@/lib/equipment-notebooks";
 import type { CandidateTrail } from "@/lib/manual-discovery";
@@ -916,6 +917,20 @@ export async function reconcileAcquisition(
  */
 export { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY };
 
+/** A download handoff is not source admission. Never hand a security-rejected
+ * URL to the browser as a workaround for the hardened downloader. */
+export function acquisitionManualUrl(rec: AcquisitionRecord): string | null {
+  const downloadableFailure = !rec.download_reason ||
+    ["http_error", "network_error", "timeout", "wrong_content_type", "not_pdf", "too_large", "empty_body"].includes(rec.download_reason);
+  const raw = (downloadableFailure ? rec.candidate_url : null) || rec.oem_request_url;
+  if (!raw || /[\\\s<>"']/.test(raw)) return null;
+  try {
+    const url = new URL(raw);
+    if (!isPublicHttpsUrl(raw) || isBlockedHost(url.hostname)) return null;
+    return raw;
+  } catch { return null; }
+}
+
 export function acquisitionDeclineText(
   rec: AcquisitionRecord | null,
   key: string | null,
@@ -975,10 +990,18 @@ export function acquisitionDeclineText(
       // "I'll try again automatically": a retry only happens on a later turn.
       return MANUAL_SEARCH_LIMIT_COPY;
     case "search_unavailable":
+      if (rec.download_reason && acquisitionManualUrl(rec)) {
+        return `I found a possible manual for the ${label}, but couldn't download it. Open the download page: ${acquisitionManualUrl(rec)}. If it is the right manual, download it and upload it to this notebook so I can answer with page citations.`;
+      }
       // #4160 gate NO-GO: an outage had no copy and fell through to a generic
       // "couldn't find anything" — which reads as "no manual exists".
       return MANUAL_SEARCH_UNAVAILABLE_COPY;
-    case "download_rejected":
+    case "download_rejected": {
+      const url = acquisitionManualUrl(rec);
+      return url
+        ? `I found a possible manual for the ${label}, but couldn't download it. Open the download page: ${url}. The site may require sign-in or a manual download. If it is the right manual, download it and upload it to this notebook so I can answer with page citations.`
+        : `I couldn't safely download a manual for the ${label}. Upload the official manual to this notebook so I can answer with page citations.`;
+    }
     case "manufacturer_model_required":
       return null;
   }
@@ -998,6 +1021,7 @@ export interface ManualSearchStatus {
   model: string;
   running: boolean;
   message?: string;
+  manualUrl?: string;
   startedAt?: string;
 }
 
@@ -1099,5 +1123,7 @@ export async function currentManualSearchStatus(
   if (!reconciled) return null;
   const running = reconciled.state === "running";
   const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis);
-  return { manufacturer, model, running, ...(message ? { message } : {}), ...(startedAt ? { startedAt } : {}) };
+  const manualUrl = !running && !reconciled.attached_indexed && !reconciled.source_removed
+    ? acquisitionManualUrl(reconciled) : null;
+  return { manufacturer, model, running, ...(message ? { message } : {}), ...(manualUrl ? { manualUrl } : {}), ...(startedAt ? { startedAt } : {}) };
 }
