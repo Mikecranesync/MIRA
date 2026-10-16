@@ -52,6 +52,22 @@ function latestThreadId(notebook: Notebook | undefined): string {
   return notebook?.threads?.[0]?.id ?? LEGACY_THREAD_ID;
 }
 
+/** The drawer's notebooks with the server's current source counts. Only the
+ *  counts change: a notebook the server list does not have yet stays, and the
+ *  order the technician is looking at is kept. */
+function withSourceCounts(current: Notebook[] | null, fresh: readonly Notebook[]): Notebook[] | null {
+  if (!current) return current;
+  const counts = new Map(fresh.map((nb) => [nb.id, nb.sourceCount]));
+  let changed = false;
+  const next = current.map((nb) => {
+    const count = counts.get(nb.id);
+    if (count === undefined || count === nb.sourceCount) return nb;
+    changed = true;
+    return { ...nb, sourceCount: count };
+  });
+  return changed ? next : current;
+}
+
 /** A deep link as the native layer delivers it: the extracted asset tag (null
  * when the URL carried none) plus the raw URL for honest error copy. */
 export interface UnifiedDeepLink {
@@ -102,6 +118,31 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   const [showAbout, setShowAbout] = useState(false);
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // The list is read once at boot, so "Sources (N)" would otherwise stay at
+  // what it was then (R6). The conversation signals when a source may have
+  // been added; only the newest re-read to START is applied, so a slow older
+  // one can never put back a smaller count.
+  const sourceReads = useRef({ started: 0, applied: 0 });
+  const refreshSourceCounts = useCallback(() => {
+    const mine = ++sourceReads.current.started;
+    void listNotebooks()
+      .then((fresh) => {
+        if (!mounted.current || mine < sourceReads.current.applied) return;
+        sourceReads.current.applied = mine;
+        setNotebooks((current) => withSourceCounts(current, fresh));
+      })
+      .catch(() => {
+        // The conversation is unaffected; the count catches up on the next signal.
+      });
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -411,6 +452,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         const id = notebookIdFromProject(projectId);
         if (id) open(id);
       },
+      onSourcesMayHaveChanged: refreshSourceCounts,
       navigationFooter: (
         <>
           <p className="fl-card__meta">{me.email}</p>
@@ -429,7 +471,7 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
       ),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigationNotebooks, notebooks, me.email, signingOut, open]);
+  }, [navigationNotebooks, notebooks, me.email, signingOut, open, refreshSourceCounts]);
 
   // #4188: the project root's title + recent-threads list — the SAME
   // `Project` the drawer's ProjectTree renders (`host.projects`), so the
