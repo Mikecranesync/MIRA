@@ -110,11 +110,30 @@ def _confident_query_vendor(state: dict) -> str | None:
 def _is_junk_source(chunk: dict) -> bool:
     """Non-authoritative sources (e.g. YouTube transcripts) must not back a cited
     answer — checked against source_url / title / metadata.source_url."""
-    meta = chunk.get("metadata") or {}
+    meta = chunk.get("metadata")
+    meta = meta if isinstance(meta, dict) else {}
     blob = " ".join(
         str(v or "") for v in (chunk.get("source_url"), chunk.get("title"), meta.get("source_url"))
     )
-    return bool(_JUNK_SOURCE_RE.search(blob))
+    if _JUNK_SOURCE_RE.search(blob):
+        return True
+    urls = [str(u or "") for u in (chunk.get("source_url"), meta.get("source_url"))]
+    # Search HTML and an explicit web error page were ingested as Pilz manuals.
+    # Source URL + page heading establish these cases; a manual mentioning a
+    # diagnostic number 404 is not an error page.
+    if any(re.match(r"https?://(?:html\.)?duckduckgo\.com/", u, re.I) for u in urls):
+        return True
+    web_page = any(
+        re.match(r"https?://", u, re.I) and not re.search(r"\.pdf(?:[?#]|$)", u, re.I) for u in urls
+    )
+    return bool(
+        web_page
+        and re.match(
+            r"^\s*#{0,6}\s*404\s+error\s*[-—:]\s*page\s+not\s+found\b",
+            chunk.get("content") or "",
+            re.I,
+        )
+    )
 
 
 def _chunk_supports_coverage(chunk: dict) -> bool:
@@ -209,6 +228,8 @@ def _applicable_chunk(chunk: dict, state: dict) -> dict | None:
     Tenant drawings without equipment tags remain useful context, with no claim
     that their settings apply to the active model.
     """
+    if _is_junk_source(chunk):
+        return None
     uns = (state.get("context") or {}).get("uns_context") or {}
     vendor = _confident_query_vendor(state)
     # A pinned, explicitly named manufacturer is trustworthy without a model;
@@ -243,7 +264,18 @@ def _applicable_chunk(chunk: dict, state: dict) -> dict | None:
         re.sub(r"\s+series$", "", tag.strip(), flags=re.I)
         for tag in re.split(r"[/,;]", chunk.get("model_number") or "")
     ]
-    chunk_models = {canonical_model(tag) for tag in model_tags if tag}
+    # Legacy GDrive ingestion stored document/chapter titles in model_number.
+    # These observed section labels do not assert a competing equipment model.
+    # Preserve them as unknown context; neither body mentions nor a generic
+    # filename establish model-specific support.
+    section_label = re.compile(
+        r"(?:ch(?:apter)?\s*\d+\s*(?:parameters?|install(?:ation)?|keypad|maint(?:enance)?)\b.*"
+        r"|getting\s+started|serial\s+comms|appendix\s+[A-Z])",
+        re.I,
+    )
+    chunk_models = {
+        canonical_model(tag) for tag in model_tags if tag and not section_label.fullmatch(tag)
+    }
     if model and chunk_models and model not in chunk_models and not family_match:
         return None
     same_vendor = bool(
