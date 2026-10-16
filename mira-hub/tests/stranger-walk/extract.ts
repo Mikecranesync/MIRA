@@ -27,3 +27,12 @@ export async function cardsOf(turn: Locator): Promise<Observation["cards"]> {
     page: /\bp\.\s*(\d+)/.exec(e.querySelector(".fl-source__locator")?.textContent ?? "")?.[1] ?? null,
   })));
 }
+
+/** The opened source viewer's resolved target: `/api/namespace/files/<fileId>…#page=<n>`. */
+export async function viewerTargetOf(frame: Locator): Promise<{ fileId: string | null; page: string | null }> {
+  const src = (await frame.getAttribute("src")) ?? "";
+  return {
+    fileId: /\/files\/([0-9a-f-]{36})/.exec(src)?.[1] ?? null,
+    page: /#page=(\d+)/.exec(src)?.[1] ?? null,
+  };
+}
