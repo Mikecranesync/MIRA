@@ -110,10 +110,11 @@ export interface DiscoveryResult {
   trustedDistributorHost: boolean;
   /** Technician-facing, already honest. Safe to render as-is. */
   reason: string;
-  /** The manufacturer's own manual-request page, validated live by the
-   * discovery service (200 right now) — the official next step when nothing
-   * could be found or trusted. */
+  /** A configured manufacturer request page or known OEM site. Not live-probed
+   * and not evidence that a manual was retrieved. */
   oemRequestUrl: string | null;
+  /** Search-observed website; not verified as a manual or official OEM. */
+  searchPageUrl?: string | null;
   /** The search service answered with reason="quota_exceeded" — a per-user,
    * per-tenant, or global daily/monthly cap is at capacity RIGHT NOW (#4160
    * S4). This is NEVER the same as "no manual exists" (PRD R5) — the caller
@@ -356,12 +357,14 @@ export async function discoverManual(
 
   const body = (raw ?? {}) as Record<string, unknown>;
   const candidateTrail = parseCandidateTrail(body);
+  const searchPageUrl = typeof body.search_page_url === "string" ? body.search_page_url : null;
   if (body.reason === "quota_exceeded") {
     // A cap denial must NEVER look like "no manual exists" (PRD R5) — a
     // distinct, named outcome so the caller says "limit reached".
     return {
       ...quotaExceededResult(str(body.reason_detail) || "manual-search limit reached", requestUrl(body), parseSearchStats(body)),
       candidateTrail,
+      searchPageUrl,
     };
   }
   if (body.reason === "search_unavailable") {
@@ -380,6 +383,7 @@ export async function discoverManual(
       ...unavailable(str(body.reason_detail) || UNAVAILABLE, parseSearchStats(body)),
       oemRequestUrl: requestUrl(body),
       candidateTrail,
+      searchPageUrl,
     };
   }
   const c = (body.candidate ?? null) as Record<string, unknown> | null;
@@ -391,6 +395,7 @@ export async function discoverManual(
       ...notFound(str(body.reason_detail) || str(body.reason) || NO_MANUAL, parseSearchStats(body)),
       oemRequestUrl: requestUrl(body),
       candidateTrail,
+      searchPageUrl,
     };
   }
   let host = c ? (str(c.host) ?? "") : "";
@@ -425,6 +430,7 @@ export async function discoverManual(
     quotaExceeded: false,
     searchStats: parseSearchStats(body),
     candidateTrail,
+    searchPageUrl,
   };
 }
 

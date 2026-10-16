@@ -469,7 +469,8 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
       manufacturer: "SMC",
       model: "SS5Y3-DUW01302",
       running: false,
-      message: "I looked for the official SMC SS5Y3-DUW01302 manual and couldn't find one.",
+      message: "Download the manual first.",
+      manualUrl: "https://www.keyence.com/manual",
     });
     const lastAssistant = [...out].reverse().find((t) => t.role === "assistant")!;
     expect(lastAssistant.parts).toContainEqual({
@@ -477,7 +478,8 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
       manufacturer: "SMC",
       model: "SS5Y3-DUW01302",
       running: false,
-      message: "I looked for the official SMC SS5Y3-DUW01302 manual and couldn't find one.",
+      message: "Download the manual first.",
+      manualUrl: "https://www.keyence.com/manual",
     });
   });
 

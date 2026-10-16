@@ -20,6 +20,7 @@
  * missing column (prod applies migrations after merge), a database error, or a
  * disabled flag means "no automatic search", never a failed request.
  */
+import { isPublicHttpsUrl, isBlockedHost } from "@/lib/safe-download";
 import { withTenantContext } from "@/lib/tenant-context";
 import type { NotebookSource } from "@/lib/equipment-notebooks";
 import type { CandidateTrail } from "@/lib/manual-discovery";
@@ -60,6 +61,7 @@ export interface AcquisitionRecord {
   candidate_host: string | null;
   match_state: string | null;
   oem_request_url: string | null;
+  search_page_url?: string | null;
   /** The discovered document's URL, when discovery returned one. */
   candidate_url?: string | null;
   /** An INDEXED document was attached to this notebook's sources (reviewable in Sources). */
@@ -342,6 +344,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
       candidateApplicability?: unknown;
     } | null;
     oemRequestUrl?: unknown;
+    searchPageUrl?: unknown;
     warning?: unknown;
     reason?: unknown;
     httpStatus?: unknown;
@@ -380,6 +383,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     candidate_host: str(p.candidate?.host),
     match_state: str(p.manual?.matchState),
     oem_request_url: str(p.oemRequestUrl),
+    search_page_url: str(p.searchPageUrl),
     candidate_url: str(p.candidate?.url),
     attached_indexed: attachedIndexed,
     promotes_on_confirm: attachedIndexed && p.manual?.candidateApplicability === "verified",
@@ -916,6 +920,22 @@ export async function reconcileAcquisition(
  */
 export { MANUAL_SEARCH_LIMIT_COPY, MANUAL_SEARCH_UNAVAILABLE_COPY };
 
+/** A download handoff is not source admission. Never hand a security-rejected
+ * URL to the browser as a workaround for the hardened downloader. */
+export function acquisitionManualUrl(rec: AcquisitionRecord): string | null {
+  const downloadableFailure = !rec.download_reason ||
+    ["http_error", "network_error", "timeout", "wrong_content_type", "not_pdf", "too_large", "empty_body"].includes(rec.download_reason);
+  for (const raw of [downloadableFailure ? rec.candidate_url : null, rec.search_page_url, rec.oem_request_url]) {
+    if (!raw || /[\\\s<>"']/.test(raw) || (!downloadableFailure && raw === rec.candidate_url)) continue;
+    try {
+      const url = new URL(raw);
+      if (!isPublicHttpsUrl(raw) || isBlockedHost(url.hostname)) continue;
+      return raw;
+    } catch { continue; }
+  }
+  return null;
+}
+
 export function acquisitionDeclineText(
   rec: AcquisitionRecord | null,
   key: string | null,
@@ -943,6 +963,8 @@ export function acquisitionDeclineText(
         break;
     }
   }
+  const website = acquisitionManualUrl(rec);
+  const websiteHelp = website ? ` Open this website to look for the ${label} manual: ${website}. Check the model and revision, then download and upload the manual to this notebook for page citations.` : "";
   switch (rec.state) {
     case "running":
       return `I don't have the ${label} manual yet — I'm looking for the official one now. It will show up in this notebook's Sources when I find it; ask again in a minute and I'll answer from it and show you the page.`;
@@ -959,7 +981,7 @@ export function acquisitionDeclineText(
     case "no_extractable_text":
       return `I found a manual for the ${label}, but it's a scanned image I can't read, so I can't answer from it. It's saved in this notebook's Sources for you to open.`;
     case "no_manual_found":
-      return `I looked for the official ${label} manual and couldn't find one${rec.oem_request_url ? ` — you can request it from the manufacturer: ${rec.oem_request_url}` : ""}. Upload the manual (or the page that covers it) to this notebook, and I'll answer from it and show you the page.`;
+      return `I looked for the official ${label} manual and couldn't find one.` + (websiteHelp || " Upload the manual (or the page that covers it) to this notebook, and I'll answer from it and show you the page.");
     case "search_limit_reached":
       // Distinct from "couldn't find one" (PRD R5, #4160 S4) — a cap denial
       // must never read as "no manual exists". Scope-agnostic on purpose: the
@@ -973,12 +995,20 @@ export function acquisitionDeclineText(
       // does not know — the denial may be the daily or the monthly cap. The #4160
       // gate (NO-GO 2026-10-01) required the approved sentence verbatim and no
       // "I'll try again automatically": a retry only happens on a later turn.
-      return MANUAL_SEARCH_LIMIT_COPY;
+      return MANUAL_SEARCH_LIMIT_COPY + websiteHelp;
     case "search_unavailable":
+      if (rec.download_reason && acquisitionManualUrl(rec)) {
+        return `I found a possible manual for the ${label}, but couldn't download it. Open this website: ${acquisitionManualUrl(rec)}. If it is the right manual, download it and upload it to this notebook so I can answer with page citations.`;
+      }
       // #4160 gate NO-GO: an outage had no copy and fell through to a generic
       // "couldn't find anything" — which reads as "no manual exists".
-      return MANUAL_SEARCH_UNAVAILABLE_COPY;
-    case "download_rejected":
+      return MANUAL_SEARCH_UNAVAILABLE_COPY + websiteHelp;
+    case "download_rejected": {
+      const url = acquisitionManualUrl(rec);
+      return url
+        ? `I found a possible manual for the ${label}, but couldn't download it. Open this website: ${url}. The site may require sign-in or a manual download. If it is the right manual, download it and upload it to this notebook so I can answer with page citations.`
+        : `I couldn't safely download a manual for the ${label}. Upload the official manual to this notebook so I can answer with page citations.`;
+    }
     case "manufacturer_model_required":
       return null;
   }
@@ -998,6 +1028,7 @@ export interface ManualSearchStatus {
   model: string;
   running: boolean;
   message?: string;
+  manualUrl?: string;
   startedAt?: string;
 }
 
@@ -1099,5 +1130,7 @@ export async function currentManualSearchStatus(
   if (!reconciled) return null;
   const running = reconciled.state === "running";
   const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis);
-  return { manufacturer, model, running, ...(message ? { message } : {}), ...(startedAt ? { startedAt } : {}) };
+  const manualUrl = !running && !reconciled.attached_indexed && !reconciled.source_removed
+    ? acquisitionManualUrl(reconciled) : null;
+  return { manufacturer, model, running, ...(message ? { message } : {}), ...(manualUrl ? { manualUrl } : {}), ...(startedAt ? { startedAt } : {}) };
 }
