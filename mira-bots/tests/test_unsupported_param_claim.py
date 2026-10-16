@@ -326,7 +326,67 @@ def test_source_condition_cannot_be_dropped_from_instruction():
     )
 
 
-@pytest.mark.parametrize('reply', ['Yaskawa A1000 OV occurs during deceleration.',
-                                  'Check the Yaskawa A1000 nameplate.'])
+@pytest.mark.parametrize(
+    "reply", ["Yaskawa A1000 OV occurs during deceleration.", "Check the Yaskawa A1000 nameplate."]
+)
 def test_equipment_model_reference_is_not_parameter_assertion(reply):
-    assert _find_unsupported_param_claims(reply, 'Yaskawa A1000', [], []) == []
+    assert _find_unsupported_param_claims(reply, "Yaskawa A1000", [], []) == []
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Set acceleration time to 30 seconds.",
+        "Increase the deceleration ramp to 20-30s.",
+        "The default acceleration time is 10 seconds.",
+    ],
+)
+def test_setting_without_parameter_code_still_needs_applicable_source(reply):
+    from shared.engine import _sanitize_claim_support
+
+    assert reply not in _sanitize_claim_support(reply, "Startup fault.", [], [])
+
+
+def test_documented_named_setting_survives_and_measurement_is_not_setting():
+    from shared.engine import _sanitize_claim_support
+
+    reply = "Set acceleration time to 30 seconds."
+    chunks = [{"text": reply, "evidence_applicability": "model"}]
+    assert _sanitize_claim_support(reply, "", [], chunks) == reply
+    measured = "Record the input voltage, for example 400 V."
+    assert _sanitize_claim_support(measured, "", [], []) == measured
+
+
+@pytest.mark.parametrize(
+    "reply",
+    ["Default is 10 seconds. Increase it to 20-30 seconds.", "Increase it to 20-30 seconds."],
+)
+def test_unresolved_numeric_setting_references_cannot_escape(reply):
+    from shared.engine import _sanitize_claim_support
+
+    delivered = _sanitize_claim_support(reply, "Startup fault.", [], [])
+    assert "20-30" not in delivered
+    assert "10 seconds" not in delivered
+
+
+@pytest.mark.parametrize(
+    "user",
+    [
+        "Is motor disconnected?",
+        "If motor is disconnected, what next?",
+        "The motor might be disconnected.",
+    ],
+)
+def test_uncertain_user_wiring_statement_is_not_verified_disconnection(user):
+    from shared.engine import _sanitize_claim_support
+
+    assert "Motor is disconnected." not in _sanitize_claim_support(
+        "Motor is disconnected.", user, [], []
+    )
+
+
+def test_model_name_cannot_hide_a_numeric_setting():
+    from shared.engine import _sanitize_claim_support
+
+    reply = "Set acceleration time on the Yaskawa A1000 to 30 seconds."
+    assert reply not in _sanitize_claim_support(reply, "A1000 startup fault", [], [])

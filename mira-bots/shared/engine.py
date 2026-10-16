@@ -1001,6 +1001,23 @@ def _claim_actions(text: str) -> set[str]:
     }
 
 
+def _claim_passage_supports(body: str, passage: str) -> bool:
+    return (
+        _claim_values(body) <= _claim_values(passage)
+        and _claim_actions(body) <= _claim_actions(passage)
+        and (
+            not _claim_actions(body)
+            or all(
+                c.group(0).rstrip(".").lower() in body.lower()
+                for c in re.finditer(
+                    r"\b(?:only when|provided that|if|when)\b[^.;]*", passage, re.I
+                )
+            )
+        )
+        and not re.search(r"\b(?:not|unsupported|unknown)\b", passage, re.I)
+    )
+
+
 def _find_unsupported_param_claims(
     reply: str, message: str, history: list, sources: list | None
 ) -> list[str]:
@@ -1032,6 +1049,7 @@ def _find_unsupported_param_claims(
         if _claim_is_report_or_question(sentence, facts):
             continue
         body = _SOURCE_TAG_RE.sub(" ", sentence)
+        parameter_claim = False
         for token in _PARAM_CLAIM_RE.findall(body):
             # E-01 can be a fault code; only setting advice treats it as a parameter.
             if token.startswith("E-") and not (
@@ -1046,24 +1064,30 @@ def _find_unsupported_param_claims(
                 re.I,
             ):
                 continue
-            values = _claim_values(body)
+            parameter_claim = True
             candidates = [p for p in passages if token in _PARAM_CLAIM_RE.findall(p)]
-            if not any(
-                values <= _claim_values(p)
-                and (_claim_actions(body) <= _claim_actions(p))
-                and (
-                    not _claim_actions(body)
-                    or all(
-                        c.group(0).rstrip(".").lower() in body.lower()
-                        for c in re.finditer(
-                            r"\b(?:only when|provided that|if|when)\b[^.;]*", p, re.I
-                        )
-                    )
-                )
-                and not re.search(r"\b(?:not|unsupported|unknown)\b", p, re.I)
-                for p in candidates
-            ):
+            if not any(_claim_passage_supports(body, p) for p in candidates):
                 unsupported.add(token)
+        # Numeric prescriptions and asserted defaults remain settings even when
+        # the model omits a parameter code or writes an unresolved "it".
+        if (
+            not parameter_claim
+            and _claim_values(body)
+            and (_claim_actions(body) or re.search(r"\bdefault\b", body, re.I))
+        ):
+            setting = re.search(
+                r"\b(?:(?:accel(?:eration)?|decel(?:eration)?)\s+(?:time|ramp)|"
+                r"ramp\s+time|time-?out|voltage|current|frequency|speed|torque)\b",
+                body,
+                re.I,
+            )
+            candidates = [
+                p
+                for p in passages
+                if setting and re.search(r"\b" + re.escape(setting[0]) + r"\b", p, re.I)
+            ]
+            if not any(_claim_passage_supports(body, p) for p in candidates):
+                unsupported.add(setting[0] if setting else "numerical setting")
     return sorted(unsupported)
 
 
@@ -1082,8 +1106,13 @@ def _sanitize_claim_support(reply: str, message: str, history: list, chunks: lis
         r"(?:electrically\s+)?disconnected\b",
         re.I,
     )
-    verified_disconnection = bool(disconnected.search(facts)) and not re.search(
-        r"\b(?:not|never)\s+(?:electrically\s+)?disconnected\b", facts, re.I
+    verified_disconnection = any(
+        disconnected.search(fact)
+        and not fact.rstrip().endswith("?")
+        and not re.search(
+            r"\b(?:if|whether|might|may|could|not|never|confirm|verify)\b", fact, re.I
+        )
+        for fact in _claim_sentences(facts)
     )
     kept, removed = [], False
     for sentence in _claim_sentences(reply):
