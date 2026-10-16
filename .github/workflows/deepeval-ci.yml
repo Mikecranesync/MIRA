@@ -46,7 +46,7 @@ jobs:
           echo "DeepEval judge steps skipped — Dependabot cannot access"
           echo "GROQ_API_KEY. GS11 grounding pytest layer still runs."
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 

@@ -134,7 +134,7 @@ jobs:
           echo "the dependency-bump risk. Job will exit success so deploy-vps"
           echo "can deploy the squashed merge commit on main."
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         if: steps.scope.outputs.run_eval == 'true'
         with:
           python-version: "3.12"
