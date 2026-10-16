@@ -1,0 +1,174 @@
+name: Stranger Walk (staging, advisory)
+
+# The beta gate as a number (#4460). A brand-new technician on STAGING, through
+# the real /v3 UI: sign up, upload 10 public OEM manuals, ask 50 questions whose
+# expected page was read by hand, open the first citation. Headline =
+# CORRECT / 50; a safety-relevant question with no notice (or a notice not
+# shown first) is its own red line. Each non-CORRECT row writes a replayable
+# failure fixture (mira-hub/tests/stranger-walk/README.md).
+#
+# Advisory: this job reports the score, it does not gate merges. It goes red
+# only when the walk itself could not account for the run (teardown failed,
+# harness crashed) — a low score is a finding, not a CI failure.
+#
+# Spend (zero-token rule): paid inference here is validation, never
+# debugging. Hard budget $3.00 per run, enforced as a turn cap in
+# tests/stranger-walk/staging.ts (≤ $0.05 ceiling per turn → at most 60 turns;
+# 50 are needed). Debug the walk with STRANGER_WALK_DRY=1 ($0) or the replay
+# spec ($0), never by re-running this.
+
+on:
+  schedule:
+    - cron: "30 6 * * *" # nightly 06:30 UTC
+  workflow_dispatch: {}
+  # The scorer / budget unit tests (no secrets, no staging) on any PR that touches the harness or
+  # what it reads. The paid walk never runs on pull_request (see the walk job's `if`).
+  pull_request:
+    paths:
+      - "mira-hub/tests/stranger-walk/**"
+      - "mira-hub/tests/fidelity/surfaces.ts"
+      - "mira-hub/tests/fidelity/harness.ts"
+      - ".github/workflows/stranger-walk.yml"
+
+permissions:
+  contents: read
+
+# Shared with deploy-staging.yml and retrieval-acceptance.yml: the staging
+# generation under audit cannot change mid-walk.
+# A full walk holds this group for ~40 min; a staging deploy queues behind it.
+concurrency:
+  group: staging-environment
+  cancel-in-progress: false
+
+jobs:
+  unit:
+    name: Stranger walk scorer + budget tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: Install mira-hub deps
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      # A count floor, not just a green line: a collection that silently finds no tests (a moved
+      # file, a broken include) must fail here, never pass (.claude/rules/prove-the-test-fails.md).
+      - name: Scorer and budget tests (count asserted)
+        working-directory: mira-hub
+        run: |
+          npx vitest run --config tests/stranger-walk/vitest.stranger-walk.config.ts --reporter=default --reporter=json --outputFile=/tmp/sw-vitest.json
+          python3 - <<'PY'
+          import json, sys
+          r = json.load(open("/tmp/sw-vitest.json"))
+          total, passed, failed = r["numTotalTests"], r["numPassedTests"], r["numFailedTests"]
+          print(f"stranger-walk unit tests: {passed}/{total} passed, {failed} failed")
+          if failed or total < 23 or passed != total:
+              sys.exit(f"::error::expected >= 23 collected and all passing, got {passed}/{total} ({failed} failed)")
+          PY
+
+  walk:
+    name: Stranger walk — 50 questions on staging /v3
+    runs-on: ubuntu-latest
+    environment: staging # inherits DOPPLER_TOKEN scoped to factorylm/stg
+    # The job holds the staging DOPPLER_TOKEN, so it only ever runs main's code: a dispatch on any
+    # other ref is skipped before the job (and its secrets) start, and the step below proves the
+    # exact SHA is on main before anything is checked out (retrieval-acceptance.yml precedent).
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    timeout-minutes: 150
+    env:
+      STRANGER_WALK_BASE: https://app-staging.factorylm.com
+      STRANGER_WALK_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
+      STRANGER_WALK_OUT: ${{ github.workspace }}/stranger-walk-out
+      STRANGER_WALK_CACHE: ${{ github.workspace }}/stranger-walk-manuals
+    steps:
+      - name: Refuse anything that is not staging
+        run: |
+          case "$STRANGER_WALK_BASE" in
+            https://app-staging.factorylm.com) ;;
+            *) echo "::error::stranger walk runs against staging only (got $STRANGER_WALK_BASE)"; exit 1 ;;
+          esac
+
+      - name: The SHA must be on main before any of its code runs here
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          status="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$RUN_SHA" --jq '.status' 2>/dev/null || true)"
+          case "$status" in
+            identical|behind) echo "$RUN_SHA is on main (compare: $status)" ;;
+            *) echo "::error::$RUN_SHA is not on main (compare: ${status:-api error}) — refusing to run with staging credentials"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.0"
+
+      - uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Install mira-hub deps
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install Playwright Chromium
+        working-directory: mira-hub
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources
+          npx playwright install chromium --with-deps
+
+      # The corpus PDFs are fetched from the OEM URLs and checked against the
+      # committed sha256; the cache only spares the download. A changed PDF is a
+      # BROKEN row ("manual sha256 mismatch"), never a silently different corpus.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.STRANGER_WALK_CACHE }}
+          key: stranger-walk-manuals-${{ hashFiles('mira-hub/tests/stranger-walk/corpus.json') }}
+
+      - name: Walk
+        working-directory: mira-hub
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          [ -n "${DOPPLER_TOKEN:-}" ] || { echo "::error::DOPPLER_TOKEN not set"; exit 1; }
+          doppler run --project factorylm --config stg -- \
+            npx playwright test --config tests/stranger-walk/playwright.stranger-walk.config.ts
+
+      # The walk sweeps its tenant in `finally`; a killed or timed-out process
+      # never reaches it. This step runs on every exit path and sweeps again
+      # (idempotent: the provisioner verifies the rows are gone either way).
+      - name: Teardown the throwaway tenant (every exit path)
+        if: always()
+        working-directory: mira-hub
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          f="$STRANGER_WALK_OUT/tenant.txt"
+          if [ ! -s "$f" ]; then echo "no tenant was created"; exit 0; fi
+          tenant="$(tr -d '[:space:]' < "$f")"
+          doppler run --project factorylm --config stg -- bun run scripts/provision-beta-gate.ts --cleanup "$tenant"
+
+      - name: Scorecard
+        if: always()
+        run: |
+          if [ -f "$STRANGER_WALK_OUT/scorecard.md" ]; then
+            cat "$STRANGER_WALK_OUT/scorecard.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No scorecard was written." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload walk record (scorecard, rows, failure fixtures)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: stranger-walk-${{ github.run_id }}
+          path: |
+            ${{ env.STRANGER_WALK_OUT }}/
+            !${{ env.STRANGER_WALK_OUT }}/tenant.txt
+          if-no-files-found: ignore
+          retention-days: 30
