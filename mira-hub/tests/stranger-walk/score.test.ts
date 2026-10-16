@@ -13,8 +13,10 @@ const turn = (over: Partial<NonNullable<Observation["rendered"]>> = {}): Observa
   evidence: "Grounded in this notebook's sources.",
   ...over,
 });
+const chip = (page: string | null, title = "pf40.pdf", n = "1") => ({ n, title, page });
 const obs = (over: Partial<Observation> = {}): Observation => ({
-  id: q.id, broken: null, rendered: turn(), cards: [{ title: "pf40.pdf", page: "9" }], streamStatus: "answered", errorPart: null, viewerOpened: true, sse: "", elapsedMs: 1, ...over,
+  id: q.id, broken: null, rendered: turn(), cards: [{ title: "pf40.pdf", page: "9" }], firstChip: chip("9"),
+  streamStatus: "answered", errorPart: null, viewerOpened: true, sse: "", elapsedMs: 1, ...over,
 });
 
 describe("corpus", () => {
@@ -32,31 +34,33 @@ describe("corpus", () => {
 describe("classify", () => {
   it("CORRECT within ±1 of the expected page", () => {
     expect(classify(q, m, obs()).classification).toBe("CORRECT");
-    expect(classify(q, m, obs({ rendered: turn({ citations: [{ n: "1", title: "pf40.pdf", page: "10" }] }) })).classification).toBe("CORRECT");
+    expect(classify(q, m, obs({ firstChip: chip("10") })).classification).toBe("CORRECT");
   });
   it("WRONG_PAGE beyond the tolerance, without a page, or on another document", () => {
-    expect(classify(q, m, obs({ rendered: turn({ citations: [{ n: "1", title: "pf40.pdf", page: "11" }] }) })).classification).toBe("WRONG_PAGE");
-    expect(classify(q, m, obs({ rendered: turn({ citations: [{ n: "1", title: "pf40.pdf", page: null }] }) })).classification).toBe("WRONG_PAGE");
-    const other = classify(q, m, obs({ rendered: turn({ citations: [{ n: "1", title: "pf4m.pdf", page: "9" }] }) }));
+    expect(classify(q, m, obs({ firstChip: chip("11") })).classification).toBe("WRONG_PAGE");
+    expect(classify(q, m, obs({ firstChip: chip(null) })).classification).toBe("WRONG_PAGE");
+    const other = classify(q, m, obs({ firstChip: chip("9", "pf4m.pdf") }));
     expect(other.classification).toBe("WRONG_PAGE");
     expect(other.reason).toMatch(/^wrong_doc/);
   });
-  it("scores the FIRST citation, not any citation", () => {
-    const two = turn({ citations: [{ n: "1", title: "pf40.pdf", page: "40" }, { n: "2", title: "pf40.pdf", page: "9" }] });
-    expect(classify(q, m, obs({ rendered: two })).classification).toBe("WRONG_PAGE");
+  it("scores the first chip in READING order, not the id-sorted record", () => {
+    // Answer reads "... [6] ... [5]": the technician opens [6] (p.9); id order would pick [5] (p.40).
+    const rendered = turn({ citations: [{ n: "5", title: "pf40.pdf", page: "40" }, { n: "6", title: "pf40.pdf", page: "9" }] });
+    expect(classify(q, m, obs({ rendered, firstChip: chip("9", "pf40.pdf", "6") })).classification).toBe("CORRECT");
+    expect(classify(q, m, obs({ rendered, firstChip: chip("40", "pf40.pdf", "5") })).classification).toBe("WRONG_PAGE");
   });
   it("UNCITED: answered with a basis but no citation (no inline chip, no source card)", () => {
-    expect(classify(q, m, obs({ rendered: turn({ citations: [] }), cards: [] })).classification).toBe("UNCITED");
+    expect(classify(q, m, obs({ rendered: turn({ citations: [] }), firstChip: null, cards: [] })).classification).toBe("UNCITED");
   });
   it("a source card counts when no inline chip rendered; an inline chip wins over a card", () => {
-    const viaCard = classify(q, m, obs({ rendered: turn({ citations: [] }) }));
+    const viaCard = classify(q, m, obs({ firstChip: null }));
     expect([viaCard.classification, viaCard.citedVia]).toEqual(["CORRECT", "card"]);
-    const both = classify(q, m, obs({ rendered: turn({ citations: [{ n: "1", title: "pf40.pdf", page: "40" }] }) }));
+    const both = classify(q, m, obs({ firstChip: chip("40") }));
     expect([both.classification, both.citedVia]).toEqual(["WRONG_PAGE", "inline"]);
   });
   it("ABSTAINED: the server said insufficient_evidence, or nothing claims a basis", () => {
     expect(classify(q, m, obs({ streamStatus: "insufficient_evidence" })).classification).toBe("ABSTAINED");
-    expect(classify(q, m, obs({ rendered: turn({ citations: [], evidence: null }), cards: [] })).classification).toBe("ABSTAINED");
+    expect(classify(q, m, obs({ rendered: turn({ citations: [], evidence: null }), firstChip: null, cards: [] })).classification).toBe("ABSTAINED");
   });
   it("BROKEN outranks everything", () => {
     expect(classify(q, m, obs({ broken: "chat POST 500" })).classification).toBe("BROKEN");
@@ -85,7 +89,7 @@ describe("scorecard, flakes, predictions", () => {
   });
   it("flakes lists rows by name whose class differs", () => {
     const a = scoreAll(corpus, [obs()]);
-    const b = scoreAll(corpus, [obs({ rendered: turn({ citations: [] }), cards: [] })]);
+    const b = scoreAll(corpus, [obs({ rendered: turn({ citations: [] }), firstChip: null, cards: [] })]);
     expect(flakes(a, b)).toEqual([{ id: "pf40-q2", a: "CORRECT", b: "UNCITED" }]);
     expect(flakes(a, a)).toEqual([]);
   });
@@ -93,7 +97,7 @@ describe("scorecard, flakes, predictions", () => {
     const row = scoreAll(corpus, [obs()]).find((r) => r.id === q.id)!;
     expect(predict(row, "strip-sources")).toBe("UNCITED");
     expect(predict(row, "page-offset")).toBe("WRONG_PAGE");
-    const low = scoreAll(corpus, [obs({ rendered: turn({ citations: [{ n: "1", title: "pf40.pdf", page: "4" }] }) })]).find((r) => r.id === q.id)!;
+    const low = scoreAll(corpus, [obs({ firstChip: chip("4") })]).find((r) => r.id === q.id)!;
     expect(low.classification).toBe("WRONG_PAGE");
     expect(predict(low, "page-offset")).toBe("CORRECT"); // 4 + 5 = 9: the offset can also FIX a row, and must be predicted
   });

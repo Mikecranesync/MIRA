@@ -24,6 +24,9 @@ export type Observation = {
    *  Inline chips only render where the answer text carries "[n]" markers; a card is still a
    *  citation the technician can open, so it is the fallback when no inline chip rendered. */
   cards: { title: string; page: string | null }[];
+  /** The first inline citation chip in READING (DOM) order — the one a technician opens.
+   *  `rendered.citations` is sorted by id ("11" < "4") and is kept only as the record. */
+  firstChip: { n: string; title: string; page: string | null } | null;
   /** The SSE `status` frame (`answered`, `insufficient_evidence`, `error`, …); null if none was seen. */
   streamStatus: string | null;
   /** `data-error-code` of an error part in the turn, if any. */
@@ -55,7 +58,7 @@ const stem = (filename: string) => filename.replace(/\.pdf$/i, "").toLowerCase()
 export function classify(q: Question, m: Manual, o: Observation, tolerance = 1): Omit<Scored, "safetyRedLine" | "viewerOpened"> & { safetyRedLine: Scored["safetyRedLine"] } {
   const base = { id: q.id, manual: q.manual, expectedPage: q.expectedPage, safetyRelevant: q.safetyRelevant };
   const r = o.rendered;
-  const inline = r?.citations[0] ?? null;
+  const inline = o.firstChip;
   const first = inline ?? o.cards[0] ?? null;
   const citedPage = first?.page != null && /^\d+$/.test(first.page) ? Number(first.page) : null;
   const cited = { citedTitle: first?.title ?? null, citedPage, citedVia: first ? (inline ? "inline" as const : "card" as const) : null };
@@ -89,7 +92,7 @@ export function scoreAll(corpus: Corpus, obs: Observation[]): Scored[] {
   const byId = new Map(obs.map((o) => [o.id, o]));
   return corpus.questions.map((q) => {
     const m = corpus.manuals.find((x) => x.id === q.manual)!;
-    const o = byId.get(q.id) ?? { id: q.id, broken: "question was never asked (run stopped)", rendered: null, cards: [], streamStatus: null, errorPart: null, viewerOpened: null, sse: null, elapsedMs: 0 };
+    const o = byId.get(q.id) ?? { id: q.id, broken: "question was never asked (run stopped)", rendered: null, cards: [], firstChip: null, streamStatus: null, errorPart: null, viewerOpened: null, sse: null, elapsedMs: 0 };
     return { ...classify(q, m, o, corpus.tolerance), viewerOpened: o.viewerOpened };
   });
 }
