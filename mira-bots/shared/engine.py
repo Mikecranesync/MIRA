@@ -77,6 +77,7 @@ from .guardrails import (
     check_output,
     classify_intent,
     detect_session_followup,
+    ensure_action_safety_prerequisites,
     hazard_banner,
     is_control_action_request,
     is_orphan_back_reference,
@@ -2428,6 +2429,9 @@ class Supervisor:
         )
         if final_citations.get("sanitized_reply") is not None:
             reply = final_citations["sanitized_reply"]
+
+        # Only inspect final sanitized actions; never reconstruct removed claims.
+        reply = ensure_action_safety_prerequisites(reply)
 
         # Final answer-integrity QC. This is the last point at which the reply is
         # fully assembled, so it is the only place a check can see what the
