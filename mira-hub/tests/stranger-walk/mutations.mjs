@@ -26,11 +26,17 @@ const MUTATIONS = {
     { find: '    for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId) });\n', replace: "" },
     { find: '    for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId) });\n', replace: "" },
   ],
-  // Every rendered page moved by +5: the inline chip (citation index) and the card locator.
+  // Every page moved by +5, consistently: the inline chip (citation index), the card locator and
+  // the viewer's #page anchor — a citation that is wrong everywhere, not a display mismatch.
   "page-offset": [
+    { find: "  const page = citation.page ? `#page=${citation.page}` : \"\";", replace: "  const page = citation.page ? `#page=${citation.page + 5}` : \"\";" },
     { find: "    for (const c of splitEvidence(row.evidence).citations) index.set(sourceIdFor(turnId, c.citationId), c);", replace: "    for (const c of splitEvidence(row.evidence).citations) index.set(sourceIdFor(turnId, c.citationId), { ...c, page: typeof c.page === \"number\" ? c.page + 5 : c.page });" },
     { find: "  if (liveTurnId) for (const c of live) index.set(sourceIdFor(liveTurnId, c.citationId), c);", replace: "  if (liveTurnId) for (const c of live) index.set(sourceIdFor(liveTurnId, c.citationId), { ...c, page: typeof c.page === \"number\" ? c.page + 5 : c.page });" },
     { find: "  const page = citation.page ?? null;", replace: "  const page = typeof citation.page === \"number\" ? citation.page + 5 : citation.page ?? null;" },
+  ],
+  // The viewer opens 3 pages away from the page the chip shows (citationHref's #page anchor).
+  "viewer-page": [
+    { find: "  const page = citation.page ? `#page=${citation.page}` : \"\";", replace: "  const page = citation.page ? `#page=${citation.page + 3}` : \"\";" },
   ],
 };
 

@@ -24,6 +24,10 @@ to, and the repeat run lists flakes by name.
 
 ## Scoring (fixed in `score.ts` before any run)
 
+**What the number measures:** CORRECT = the first citation (reading order) opens the uploaded
+manual at the hand-read expected page ±1. It measures citation targeting — whether a stranger is
+sent to the right page — **not** whether the answer's wording is right; every scorecard prints this.
+
 Precedence **BROKEN > ABSTAINED > UNCITED > WRONG_PAGE > CORRECT**, on the **first** citation
 (the one a technician opens): the first inline `[n]` chip, else the first source card.
 
@@ -33,7 +37,7 @@ Precedence **BROKEN > ABSTAINED > UNCITED > WRONG_PAGE > CORRECT**, on the **fir
 | WRONG_PAGE | page off by more than 1, no page, or another document (`wrong_doc`) |
 | UNCITED | answered with an evidence basis but no citation |
 | ABSTAINED | stream status `insufficient_evidence`, or no citation and no basis |
-| BROKEN | UI or infra failure: no chat response, non-200, error part, never settled, manual unavailable, budget stop |
+| BROKEN | UI or infra failure: no chat response, non-200, error part, never settled, manual unavailable, budget stop; or the first citation does not open, or the viewer opens a different page or file than the chip names |
 
 **Safety red line:** a safety-relevant question (15 of 50) whose turn shows no safety notice
 (`NO_NOTICE`), shows it after the answer (`NOT_FIRST`), or never rendered a turn at all
@@ -65,7 +69,7 @@ STRANGER_WALK_DRY=1 STRANGER_WALK_ONLY=gs10-ch6-q1 doppler run -p factorylm -c s
   npx playwright test --config tests/stranger-walk/playwright.stranger-walk.config.ts
 # $0 replay of a recorded walk through local /v3 (fidelity harness, next dev)
 STRANGER_WALK_REPLAY_FROM=<out dir> npx playwright test --config tests/stranger-walk/playwright.replay.config.ts
-# seeded defects (control + strip-sources + page-offset), counts both ways
+# seeded defects (control + strip-sources + page-offset + viewer-page), counts both ways
 node tests/stranger-walk/mutations.mjs <out dir>
 # scorer unit tests
 npx vitest run --config tests/stranger-walk/vitest.stranger-walk.config.ts
@@ -77,7 +81,9 @@ one. Several development runs in an hour hit it — the walk then reports
 
 ## Outputs (`<out>` = `tests/stranger-walk/.out/<run id>` or `$STRANGER_WALK_OUT`)
 
-- `scorecard.md` — headline, counts, all 50 rows, notes (budget, readiness, teardown, SUPERSEDED).
+- `scorecard.md` — headline, counts, all 50 rows, notes (budget, readiness, teardown). If staging's
+  deploy identity changed mid-walk the headline is **NOT ASSESSED** and the job fails: the rows span
+  two generations and no single number describes either.
 - `scored.json` / `observations.json` — rows and raw observations (incl. each turn's SSE).
 - `fixtures/<id>.json` — one per non-CORRECT or red-line row: `message` + `sse` (the fidelity
   oracle's scenario shape), manual sha, expected page, rendered turn, staging SHA. Replay one
@@ -107,7 +113,10 @@ id-order scorecards are kept as `*.v1-idorder.*`.
 Repeat: 48/50 rows identical; the one CORRECT/BROKEN flake is `micro820-um-q3` (answered once,
 abstained once); `smc50-q3` moved ABSTAINED → UNCITED. Each run replays 50/50 through local `/v3`,
 so the flake is staging's. Seeded defects, both runs: strip-sources 33 → 0 and 32 → 0 CORRECT;
-page-offset 33 → 1 and 32 → 1 CORRECT — every row exactly as predicted.
+page-offset 33 → 1 and 32 → 1 CORRECT; viewer-page (viewer opens 3 pages off the chip) → 44 and 43
+BROKEN — every row exactly as predicted. The control replay also confirms every cited row's viewer
+opens the cited page. (The two staging runs predate the live viewer-target capture; from the next
+run on it is recorded per row.)
 
 ### Failure causes, ranked
 
