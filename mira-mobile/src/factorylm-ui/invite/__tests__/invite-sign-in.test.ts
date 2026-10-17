@@ -27,7 +27,7 @@ vi.mock("@capacitor/preferences", () => ({
 }));
 
 import { clearAllLocalState, request } from "../../../api/client";
-import { signInWithMagicToken } from "../invite-sign-in";
+import { confirmInviteSession, signInWithMagicToken } from "../invite-sign-in";
 
 const JAR_KEY = "flm.cookiejar.v1";
 const TOKEN = "11111111-2222-4333-8444-555555555555";
@@ -165,6 +165,66 @@ describe("signInWithMagicToken", () => {
     });
 
     await expect(signInWithMagicToken(TOKEN)).resolves.toEqual({ ok: true });
+  });
+
+  // #4470 F1 — the callback can successfully consume the invitation token
+  // and set a fresh cookie, then a TRANSIENT network/server error on the
+  // confirming /api/me can make the whole exchange report failure. A naive
+  // retry (another signInWithMagicToken call) would wipe that fresh cookie
+  // and resubmit the SAME token — which validateMagicToken already marked
+  // used_at, so NextAuth would reject it forever. confirmInviteSession()
+  // re-checks the SAME already-established session without either.
+  it("F1: a transient /api/me failure after a successful exchange is retried via confirmInviteSession, without replaying the token", async () => {
+    let callbackCalls = 0;
+    let meCalls = 0;
+    state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+      if (url.endsWith("/api/auth/csrf/")) {
+        return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+      }
+      if (url.endsWith("/api/auth/callback/magic-token/")) {
+        callbackCalls += 1;
+        return {
+          status: 200,
+          data: JSON.stringify({ url: "https://app.factorylm.com/feed" }),
+          headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+        };
+      }
+      if (url.endsWith("/api/me/")) {
+        meCalls += 1;
+        // /api/me is a GET — client.ts's requestWithRetries already retries
+        // GETs once on transport failure, so BOTH attempts must fail here to
+        // actually exhaust that and surface as a network failure; the 3rd
+        // call is confirmInviteSession's own (unretried-further) success.
+        if (meCalls <= 2) throw new Error("socket reset");
+        return { status: 200, data: JSON.stringify({ id: "u1" }), headers: {} };
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+
+    const first = await signInWithMagicToken("44444444-5555-4666-8777-888888888888");
+    expect(first).toEqual({ ok: false, reason: "network", sessionEstablished: true });
+    expect(callbackCalls).toBe(1);
+    // The fresh cookie from the successful exchange must still be present —
+    // exactly what a naive clearAllLocalState()+replay retry would destroy.
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({
+      "session-token": "fresh",
+    });
+
+    const retry = await confirmInviteSession();
+    expect(retry).toEqual({ ok: true });
+    expect(callbackCalls).toBe(1); // never replayed the already-consumed token
+    expect(meCalls).toBe(3);
+  });
+
+  it("confirmInviteSession reports failure (not a magic bypass) when there is no established session", async () => {
+    state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+      if (url.endsWith("/api/me/")) return { status: 401, data: "{}", headers: {} };
+      throw new Error(`unexpected ${url}`);
+    });
+    await expect(confirmInviteSession()).resolves.toEqual({
+      ok: false,
+      reason: "invalid_token",
+    });
   });
 
   it("could_not_start when csrf itself cannot be obtained", async () => {

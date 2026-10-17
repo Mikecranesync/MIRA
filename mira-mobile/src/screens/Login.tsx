@@ -25,17 +25,31 @@ export function Login({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // #4470 F2: InviteSignIn's own busy state is internal to that component
+  // and is simply discarded on unmount — it does NOT cancel the in-flight
+  // async submit(), which keeps running and can still apply its cookie and
+  // call onSignedIn after a different account signs in. Lifting its busy
+  // signal up here lets BOTH toggle buttons below disable for the whole
+  // window of either flow, removing the only UI path to abandon one attempt
+  // mid-flight and start another.
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const anyBusy = busy || inviteBusy;
 
   if (mode === "invite") {
     return (
       <div className="shell">
         <div className="topbar">FactoryLM</div>
         <div className="content bottompad">
-          <InviteSignIn onSignedIn={onSignedIn} onSignInStarted={onSignInStarted} />
+          <InviteSignIn
+            onSignedIn={onSignedIn}
+            onSignInStarted={onSignInStarted}
+            onBusyChange={setInviteBusy}
+          />
           <button
             type="button"
             className="btn-link"
             style={{ marginTop: 10 }}
+            disabled={anyBusy}
             onClick={() => setMode("password")}
           >
             Have a password instead? Sign in that way
@@ -87,6 +101,7 @@ export function Login({
           type="button"
           className="btn-link"
           style={{ marginTop: 10 }}
+          disabled={anyBusy}
           onClick={() => setMode("invite")}
         >
           Have an invitation link instead? No password needed

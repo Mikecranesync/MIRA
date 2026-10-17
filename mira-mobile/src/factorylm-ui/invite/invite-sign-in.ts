@@ -16,6 +16,20 @@ export type InviteSignInFailureReason =
   | "network"
   | "server";
 
+export type InviteSignInResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: InviteSignInFailureReason;
+      /** Set ONLY when the callback exchange itself succeeded (the token was
+       *  consumed, a fresh cookie was set) but the confirming /api/me call
+       *  then hit a transient network/server error — never alongside
+       *  "invalid_token" or "could_not_start" (#4470 F1). A caller seeing
+       *  this should retry via `confirmInviteSession()`, not by calling
+       *  `signInWithMagicToken` again with the same (now-consumed) token. */
+      sessionEstablished?: boolean;
+    };
+
 function inviteSignInFailureReason(
   error: unknown,
   fallback: Extract<InviteSignInFailureReason, "could_not_start" | "invalid_token">,
@@ -74,10 +88,27 @@ function callbackIndicatesRejection(data: unknown): boolean {
  * consulted, so a leftover session (native or browser) can never paper over
  * a definite rejection. Only when the callback does NOT indicate rejection
  * does /api/me run, as the final confirmation of a newly-established session.
+ *
+ * Exchange vs. confirmation (#4470 F1): once the callback is NOT a rejection,
+ * a subsequent /api/me failure is purely a confirmation problem, not a
+ * credential problem — the token is already consumed and a fresh cookie is
+ * already sitting in the jar. `checkSessionEstablished` is the shared tail
+ * for both this function and `confirmInviteSession` below, so a transient
+ * network/server blip here never has to be "fixed" by replaying the token.
  */
-export async function signInWithMagicToken(
-  token: string,
-): Promise<{ ok: true } | { ok: false; reason: InviteSignInFailureReason }> {
+async function checkSessionEstablished(): Promise<InviteSignInResult> {
+  try {
+    await request("/api/me/");
+    return { ok: true };
+  } catch (error) {
+    const reason = inviteSignInFailureReason(error, "invalid_token");
+    return reason === "network" || reason === "server"
+      ? { ok: false, reason, sessionEstablished: true }
+      : { ok: false, reason };
+  }
+}
+
+export async function signInWithMagicToken(token: string): Promise<InviteSignInResult> {
   invalidateLocalSessionRequests();
   await clearAllLocalState();
   return withAuthEventsSuppressed(async () => {
@@ -103,17 +134,25 @@ export async function signInWithMagicToken(
         return { ok: false, reason: "invalid_token" };
       }
 
-      try {
-        await request("/api/me/");
-        return { ok: true };
-      } catch (error) {
-        return {
-          ok: false,
-          reason: inviteSignInFailureReason(error, "invalid_token"),
-        };
-      }
+      return await checkSessionEstablished();
     } catch (error) {
       return { ok: false, reason: inviteSignInFailureReason(error, "could_not_start") };
     }
   });
+}
+
+/**
+ * Re-confirms a session a PRIOR call to `signInWithMagicToken` already
+ * established (returned `sessionEstablished: true`) — without wiping local
+ * state or resubmitting any token (#4470 F1). This is deliberately as
+ * trustworthy as a single `/api/me` check always was within an already-
+ * successful exchange: it introduces no new way to fake a sign-in, because
+ * it never touches the token-exchange step that proved the session is real
+ * in the first place. Callers must only invoke it after a genuine prior
+ * `sessionEstablished: true` result from THIS sign-in attempt — it is a
+ * retry of that attempt's confirmation step, not a general-purpose
+ * "am I logged in" probe.
+ */
+export async function confirmInviteSession(): Promise<InviteSignInResult> {
+  return withAuthEventsSuppressed(() => checkSessionEstablished());
 }
