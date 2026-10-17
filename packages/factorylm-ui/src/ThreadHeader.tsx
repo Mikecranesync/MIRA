@@ -55,15 +55,22 @@ export function ThreadHeader({ state, dispatch, hooks }: ThreadHeaderProps) {
         >
           <ComposeIcon />
         </button>
-        : <button
-          className="fl-shell__header-new-chat"
-          type="button"
-          disabled
-          aria-label={newThreadLabel}
-          title={newChatReason}
-        >
-          <ComposeIcon />
-        </button>}
+        : <>
+          {/* `title` alone is mouse-only; the reason is also linked for screen
+              readers (aria-describedby resolves a `hidden` node). Separate id from
+              the drawer's reason, which is inert while the drawer is closed. */}
+          <button
+            className="fl-shell__header-new-chat"
+            type="button"
+            disabled
+            aria-label={newThreadLabel}
+            aria-describedby="fl-header-new-chat-reason"
+            title={newChatReason}
+          >
+            <ComposeIcon />
+          </button>
+          <span id="fl-header-new-chat-reason" hidden>{newChatReason}</span>
+        </>}
       {canInspect ? <button
         className="fl-shell__inspector-toggle"
         type="button"

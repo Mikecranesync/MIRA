@@ -69,6 +69,10 @@ describe("ThreadHeader — New chat is always in the header", () => {
     expect(button?.disabled).toBe(true);
     expect(button?.getAttribute("aria-label")).toBe("New chat");
     expect(button?.getAttribute("title")).toMatch(/not available/i);
+    // Screen readers get the reason too, not only a mouse-hover tooltip.
+    const describedBy = button?.getAttribute("aria-describedby");
+    expect(describedBy).toBe("fl-header-new-chat-reason");
+    expect(header.querySelector(`#${describedBy}`)?.textContent).toMatch(/not available/i);
   });
 
   it("starts a host-owned thread and closes the drawer", () => {
