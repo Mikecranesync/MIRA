@@ -130,11 +130,55 @@ export function approvalGateEnabled(): boolean {
 // lines down abstains under this rule — the title segment genuinely has no
 // model in it. That is the conservative failure mode this design accepts.
 function titleSegment(text: string): string {
-  const newline = text.indexOf("\n");
-  const periodSpace = text.indexOf(". ");
-  const cut = [newline, periodSpace].filter((i) => i >= 0);
-  if (cut.length === 0) return text;
-  return text.slice(0, Math.min(...cut));
+  // Codex #4469 r2 F6: a layout line break is not the end of a title. A first
+  // line that ends on a joining word or mark ("Micro810 and" / "Micro810 &" /
+  // "Micro810/" / "Micro810,") continues on the next line, so the wrapped
+  // dual-model title keeps both models. Only that dangling-join shape joins;
+  // any other newline still ends the title (the "Related documents" line).
+  let rest = text;
+  let head = "";
+  for (;;) {
+    const newline = rest.indexOf("\n");
+    if (newline < 0) {
+      head += rest;
+      break;
+    }
+    const line = rest.slice(0, newline);
+    if (/(?:\b(?:and|or)|[&/,+])\s*$/i.test(line) && !line.includes(". ")) {
+      head += line.replace(/\s*$/, " ");
+      rest = rest.slice(newline + 1).replace(/^\s+/, "");
+      continue;
+    }
+    head += line;
+    break;
+  }
+  const periodSpace = head.indexOf(". ");
+  return periodSpace >= 0 ? head.slice(0, periodSpace) : head;
+}
+
+// Codex #4469 r2 F2: a first-line cross-reference ("Micro810 User Manual — for
+// Micro820 consult the separate manual") has no newline or period before it,
+// so the whole line read as coverage. The declared title is the shortest
+// leading part of the title segment that already names a model and ends at a
+// title boundary: the end of a document-type noun ("… User Manual"), a dash,
+// colon, semicolon, bracket or pipe, or a pointing/excluding word ("for",
+// "see", "consult", "refer", "not", "except", "excluding", "unlike",
+// "replaces", "supersedes"). This only ever TRUNCATES — nothing after the
+// boundary is read — so an unrecognized phrasing can only cause abstention,
+// never admission. A boundary whose prefix names no model is skipped, so
+// "User Manual for Micro820" keeps Micro820, and a genuine multi-model title
+// ("Micro810 and Micro820 Programmable Controllers User Manual") keeps both.
+const TITLE_BOUNDARY_RE =
+  /\b(?:user\s+manual|manual|guide|instructions|handbook|reference|specifications?|data\s*sheet|datasheet)\b|\s[\u2014\u2013-]\s|[\u2014\u2013:;([|]|\s(?=(?:for|see|consult|refer|not|except|excluding|unlike|replaces|supersedes)\b)/gi;
+
+function declaredTitle(segment: string): string {
+  for (const m of segment.matchAll(TITLE_BOUNDARY_RE)) {
+    const isNoun = /^\w/.test(m[0]);
+    const end = isNoun ? m.index! + m[0].length : m.index!;
+    const prefix = segment.slice(0, end);
+    if (modelIdentitiesInText(prefix).size > 0) return prefix;
+  }
+  return segment;
 }
 
 function stripFileExtension(filename: string): string {
@@ -142,11 +186,29 @@ function stripFileExtension(filename: string): string {
 }
 
 function affirmativeModelIdentities(filename: string, heading: string): Set<string> {
-  const headingIdentities = modelIdentitiesInText(titleSegment(heading));
+  const headingIdentities = modelIdentitiesInText(declaredTitle(titleSegment(heading)));
   if (headingIdentities.size > 0) return headingIdentities;
   // A generic cover with model-bearing prose is ambiguous; a renamed file cannot resolve it.
   if (modelIdentitiesInText(heading).size > 0) return new Set();
-  return modelIdentitiesInText(stripFileExtension(filename).replace(/_+/g, " "));
+  return modelIdentitiesInText(declaredTitle(stripFileExtension(filename).replace(/_+/g, " ")));
+}
+
+// Codex #4469 r2 F5: an exact catalog number is a stronger identity than a
+// shared panel label. When BOTH the question and the document name a catalog
+// number (6AV…), applicability requires a catalog match — a shared "TP700"
+// can never admit "6AV2124-0GC01-9AX0" for a "6AV2124-0GC01-0AX0" question.
+// With a catalog on only one side, the label match still applies (the
+// technician did not name a variant, or the manual covers the whole panel).
+const isCatalogIdentity = (id: string) => /^6AV/.test(id);
+
+function documentCoversRequest(requested: Set<string>, title: Set<string>): boolean {
+  const requestedCatalogs = [...requested].filter(isCatalogIdentity);
+  const titleCatalogs = [...title].filter(isCatalogIdentity);
+  if (requestedCatalogs.length > 0 && titleCatalogs.length > 0) {
+    return titleCatalogs.some((id) => requested.has(id));
+  }
+  for (const id of title) if (requested.has(id)) return true;
+  return false;
 }
 
 /**
@@ -1208,14 +1270,7 @@ export async function retrieveNodeChunks(
           String(r.filename ?? ""),
           String(r.document_heading ?? ""),
         );
-        let applicable = false;
-        for (const id of titleIdentities) {
-          if (requestedIdentities.has(id)) {
-            applicable = true;
-            break;
-          }
-        }
-        if (!applicable) continue;
+        if (!documentCoversRequest(requestedIdentities, titleIdentities)) continue;
       }
       const key = `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
       if (seen.has(key)) continue;
