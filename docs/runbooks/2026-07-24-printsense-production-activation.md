@@ -88,4 +88,4 @@ After production is confirmed stable:
 2. remove the legacy provider/model duplication from the bot router,
 3. make the scheduled canary and typed interpreter resolve the same model source,
 4. expose PrintSense-specific degraded status without taking down general MIRA chat, and
-5. retire this temporary post-deploy enforcement workflow once the base deployment path is canonical.
+5. retire this temporary dispatch-only activation workflow once the base deployment path is canonical.
