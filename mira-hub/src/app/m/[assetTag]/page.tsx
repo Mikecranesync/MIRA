@@ -203,13 +203,16 @@ export default function MobileAssetPage({
 
   // The page is auth-gated upstream, so we only get here with a valid
   // tenant-scoped session. WO creation links straight to the form.
-  const newWoHref = `/workorders/new?assetId=${encodeURIComponent(asset.id)}&assetTag=${encodeURIComponent(asset.tag)}`;
+  // Capture ids here: a nested handler does not keep the `asset` null-check.
+  const scannedAssetId = asset.id;
+  const scannedAssetTag = asset.tag;
+  const newWoHref = `/workorders/new?assetId=${encodeURIComponent(scannedAssetId)}&assetTag=${encodeURIComponent(scannedAssetTag)}`;
 
   async function openAskMira() {
     if (asking) return;
     setAsking(true);
     setAskError(null);
-    const result = await openScannedAssetAskMira(asset.id, {
+    const result = await openScannedAssetAskMira(scannedAssetId, {
       apiBase: API_BASE,
       post: async (path, body) => {
         const res = await fetch(`${API_BASE}${path}`, {
