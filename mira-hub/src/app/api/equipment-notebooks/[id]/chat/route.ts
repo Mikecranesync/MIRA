@@ -154,7 +154,11 @@ import {
   type ProviderAttemptFailure,
 } from "@/capabilities/provider-health";
 import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
-import { assessEvidenceFollowed } from "@/capabilities/observability/evidence-consistency";
+import {
+  assessEvidenceFollowed,
+  equipmentClassesOf,
+  subjectIdentifiers,
+} from "@/capabilities/observability/evidence-consistency";
 import {
   recordArrival,
   recordResponse,
@@ -614,6 +618,86 @@ export function answerUsesStoredNameplateReading(answer: string, readings: reado
       return false;
     }),
   );
+}
+
+/** How an answer refers back to a photo from an earlier turn. The prior-photo
+ *  section asks for "an unconfirmed reading of an earlier photo", but the cascade
+ *  paraphrases, so each pattern needs RETROSPECTIVE context and none matches a
+ *  request for a new photo ("take the photo before you reset…", "once you have
+ *  sent a photo…", Codex r1 F1 on #4450):
+ *  - "your earlier photo", "a previous picture", "the last image";
+ *  - "in/from the photo earlier|before|previously" (a place the reading came from);
+ *  - "the photo from earlier";
+ *  - "the picture you showed me before", "the image you sent previously", "the
+ *    photo you sent a few minutes ago" (a past-tense verb by you or me between);
+ *  - "you showed me a photo", "you sent a picture", unless conditional ("if/once/
+ *    when/after you sent…"). */
+const EARLIER_PHOTO_ATTRIBUTION: readonly RegExp[] = [
+  /\b(?:earlier|previous|prior|last)\s+(?:photo|picture|image|pic)s?\b/i,
+  /\b(?:in|from|on)\s+(?:the|your|that)\s+(?:photo|picture|image|pic)s?\s+(?:earlier|before|previously)\b/i,
+  /\b(?:the|your|that)\s+(?:photo|picture|image|pic)s?\s+from\s+(?:earlier|before)\b/i,
+  /\b(?:the|your|that)\s+(?:photo|picture|image|pic)s?\s+(?:you|I)\s+(?:[\w']+\s+){0,2}?(?:showed|sent|shared|attached|took|uploaded|saw|gave)\b(?:\s+[\w']+){0,3}?\s+(?:earlier|before|previously|ago)\b/i,
+  /(?<!\b(?:if|once|when|after|until|soon as)\s+)\byou\s+(?:showed|sent|shared|attached|took|uploaded)\s+(?:me\s+|us\s+)?(?:a|an|the|your|that)\s+(?:photo|picture|image|pic)s?\b/i,
+];
+
+/** A sentence that refers to an earlier photo but states no reading from it
+ *  (Codex r2 F4 on #4450): an instruction to inspect it ("check / look at /
+ *  compare your earlier photo…"), a question about it, or a conditional ("if your
+ *  earlier photo shows…", "…whether…"). */
+const NON_AFFIRMATIVE_PHOTO_SENTENCE: readonly RegExp[] = [
+  /\?\s*$/,
+  /^\s*(?:(?:please|so|now|then|first|also|just)[,\s]+)*(?:check|look|see|review|compare|verify|inspect|confirm|open|zoom|re-?check|double-?check|examine|re-?read|refer back|go back)\b/i,
+  /^\s*(?:can|could|would|will|do|does|did|is|are)\s+(?:you|it|the|your|that)\b/i,
+  /^\s*(?:if|once|unless)\b|\bwhether\b/i,
+];
+
+/** The sentences of `answer` that affirmatively refer to an earlier photo. */
+function earlierPhotoStatements(answer: string): string[] {
+  return answer
+    .split(/(?<=[.!?])\s+|\n+/)
+    .filter((s) => EARLIER_PHOTO_ATTRIBUTION.some((re) => re.test(s)))
+    .filter((s) => !NON_AFFIRMATIVE_PHOTO_SENTENCE.some((re) => re.test(s)));
+}
+
+/** `id` occurs in `upper` as a whole token: not inside a longer code
+ *  ("GS10-20P2" in "GS10-20P20", "F004" in "F0041") and not continued by a
+ *  hyphenated suffix ("GS10-20P2-EX"). Both strings are upper-case. */
+function containsIdentifierToken(upper: string, id: string): boolean {
+  for (let i = upper.indexOf(id); i !== -1; i = upper.indexOf(id, i + 1)) {
+    const before = i === 0 ? "" : upper[i - 1];
+    const after = upper[i + id.length] ?? "";
+    const afterNext = upper[i + id.length + 1] ?? "";
+    const continued = /[A-Z0-9]/.test(after) || (after === "-" && /[A-Z0-9]/.test(afterNext));
+    if (!/[A-Z0-9-]/.test(before) && !continued) return true;
+  }
+  return false;
+}
+
+/** #4442: the photos attached to EARLIER questions in this conversation ride in
+ *  every later turn's context, so their presence says nothing about whether this
+ *  answer came from them. They exempt the #4426 floor only when the answer uses
+ *  one: it attributes to an earlier photo (the section's own rule) AND repeats
+ *  what that photo showed: one of its identifiers such as "F004", or, for a photo
+ *  with no identifiers, the same kind of equipment (`subjectIdentifiers` /
+ *  `equipmentClassesOf`, the evidence-follow check's own signals). A passing
+ *  mention exempts nothing, mirroring `answerUsesStoredNameplateReading`.
+ *  Exported for unit testing. */
+export function answerUsesEarlierPhoto(answer: string, observations: readonly string[]): boolean {
+  // The reading must be stated in the SAME sentence that refers to the photo:
+  // "Your earlier photo is blurry. F004 on a TP700 means…" uses no reading.
+  return earlierPhotoStatements(answer).some((sentence) => {
+    const upper = sentence.toUpperCase();
+    const sentenceClasses = equipmentClassesOf(sentence);
+    return observations.some((obs) => {
+      // A photo that carries identifiers (a fault code, a model number) is used only
+      // when the answer repeats one: "your earlier photo... the drive has Ethernet"
+      // names the photo's equipment and none of what it showed. The equipment class
+      // is the distinctive content only of a photo with no identifiers at all.
+      const ids = subjectIdentifiers(obs);
+      if (ids.length > 0) return ids.some((id) => containsIdentifierToken(upper, id));
+      return equipmentClassesOf(obs).some((c) => sentenceClasses.includes(c));
+    });
+  });
 }
 
 /** The fixed, server-written text that replaces an uncited manufacturer-library
@@ -2942,9 +3026,11 @@ async function handleChatTurn(
   // It rides in the injection-hardened user-data channel (buildManualUserContent
   // below), NEVER the system prompt. Fail-open: a load failure must not drop the
   // turn. No stored observation → "" → no block, the turn still answers.
-  const lookContext = [renderLookObservationSection(lookRow), renderPriorLookObservationsSection(priorLookRows)]
-    .filter(Boolean)
-    .join("\n\n");
+  // Kept apart for the #4426 floor's exemption (#4442): this turn's photo is this
+  // turn's evidence; earlier photos ride along on every later turn of the thread.
+  const thisTurnLookSection = renderLookObservationSection(lookRow);
+  const priorLookSection = renderPriorLookObservationsSection(priorLookRows);
+  const lookContext = [thisTurnLookSection, priorLookSection].filter(Boolean).join("\n\n");
   // Correction to `evidence.materialize`'s earlier default: the LOOK
   // observation, when present, DOES reach the prompt (buildManualUserContent
   // below carries `lookContext`) — `observation_available`/`observation_in_context`
@@ -3797,9 +3883,12 @@ async function handleChatTurn(
           // (not this turn's evidence), so it exempts only an answer that uses one
           // (answerUsesStoredNameplateReading). Presence alone would switch this
           // floor off for every later library question on a once-photographed machine.
+          // Earlier photos in the thread are the same case (#4442): only this turn's
+          // photo exempts by presence.
           exempt:
             Boolean(groundedMachineEntry) ||
-            Boolean(lookContext) ||
+            Boolean(thisTurnLookSection) ||
+            (Boolean(priorLookSection) && answerUsesEarlierPhoto(answerText, priorLookRows.map((r) => r.text))) ||
             (Boolean(visualSection) && answerUsesStoredNameplateReading(answerText, visualReadings)) ||
             Boolean(safetyTrigger),
         });
