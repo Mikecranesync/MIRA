@@ -20,6 +20,7 @@ import {
   codeTokenMatcher,
   frontMatterLikeness,
   type ChatHistoryTurn,
+  type RerankTraceRow,
 } from "../notebook-query";
 
 describe("expandIndustrialQuery", () => {
@@ -796,7 +797,7 @@ describe("front-matter / TOC demotion (TQ-10, 22, 24, 25)", () => {
     // (page order) so top-6 was pp.1,3,3,4,5,6. After: p.33 leads.
     const beforePages = pool.map((c) => c.sourcePage).slice(0, 6);
     expect(beforePages).toEqual([1, 3, 3, 4, 5, 6]);
-    const trace: Array<{ page: number | null; score: number; frontMatter: number }> = [];
+    const trace: RerankTraceRow[] = [];
     const top6 = rerankChunks(e, pool, { trace }).slice(0, 6);
     expect(top6[0]).toBe(answer);
     expect(top6.map((c) => c.sourcePage)[0]).toBe(33);
