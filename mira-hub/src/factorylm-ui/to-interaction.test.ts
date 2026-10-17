@@ -739,4 +739,21 @@ describe("grounding_status — the turn's evidence status on reload (F004 M2, #4
     const alone = threadFromPersisted([failed], meta).turns.find((t) => t.role === "assistant")!;
     expect(statusPart(alone.parts)).not.toHaveProperty("fallbackUsed");
   });
+
+  it("Codex #4303 r2 F6: a linked provider error or stopped attempt does not use up the offer after reload", () => {
+    const FAILED = "11111111-1111-4111-8111-111111111111";
+    const failed = row({ id: FAILED, answerStatus: "insufficient_evidence", answerText: null, basis: null, evidence: [gs("refused_with_passages", { offered: true })] });
+    for (const outcome of ["provider_error", "stopped"]) {
+      const attempt = row({
+        id: "33333333-3333-4333-8333-333333333333",
+        answerStatus: "error",
+        answerText: null,
+        basis: null,
+        evidence: [gs(outcome, { offered: false, of: FAILED }, "not_attempted")],
+      });
+      const original = threadFromPersisted([failed, attempt], meta).turns.find((t) => t.role === "assistant")!;
+      expect(statusPart(original.parts), outcome).toMatchObject({ fallbackOffered: true });
+      expect(statusPart(original.parts), outcome).not.toHaveProperty("fallbackUsed");
+    }
+  });
 });

@@ -5,6 +5,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   fallbackSourceOf,
+  generalGuidanceDelivered,
   groundingStatusFromEntry,
   groundingStatusOf,
   isGroundingStatusEntry,
@@ -103,6 +104,20 @@ describe("evidence readers", () => {
     expect(fallbackSourceOf([entry({ fallback: { offered: false, of: "t-9" } })])).toBe("t-9");
     expect(fallbackSourceOf([entry({ v: 2, fallback: { offered: false, of: "t-9" } })])).toBeNull();
     expect(fallbackSourceOf([entry()])).toBeNull();
+  });
+  it("a failed general-guidance attempt does not consume the offer (Codex #4303 r2 F6)", () => {
+    for (const outcome of ["provider_error", "stopped"]) {
+      expect(fallbackSourceOf([entry({ outcome, fallback: { offered: false, of: "t-9" } })])).toBeNull();
+    }
+    for (const outcome of ["answered_without_manual", "refused_without_passages", "safety_stop"]) {
+      expect(fallbackSourceOf([entry({ outcome, fallback: { offered: false, of: "t-9" } })])).toBe("t-9");
+    }
+  });
+  it("generalGuidanceDelivered: a terminal error is a failed action unless it was a Safety STOP", () => {
+    expect(generalGuidanceDelivered("error", false)).toBe(false);
+    expect(generalGuidanceDelivered("error", true)).toBe(true);
+    expect(generalGuidanceDelivered("answered", false)).toBe(true);
+    expect(generalGuidanceDelivered("insufficient_evidence", false)).toBe(true);
   });
 });
 

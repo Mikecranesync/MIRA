@@ -488,4 +488,15 @@ describe("grounding_status — evidence status on the phone (F004 M2)", () => {
     expect(statusOf(fresh.turns[0]!)).not.toHaveProperty("fallbackUsed");
     expect(statusOf(fresh.turns[1]!)).not.toHaveProperty("fallbackUsed");
   });
+
+  it("Codex #4303 r2 F6: a linked provider error or stopped attempt leaves the saved offer available", () => {
+    const ROW = "11111111-1111-4111-8111-111111111111";
+    const failedSaved = msg(`${ROW}-a`, [{ type: "unknown", raw: gs("refused_with_passages", { offered: true }) }]);
+    for (const outcome of ["provider_error", "stopped"]) {
+      const attempt = msg("live-0-a", [{ type: "unknown", raw: gs(outcome, { offered: false, of: ROW }, "not_attempted") }]);
+      const thread = toThread([failedSaved, attempt], META);
+      expect(statusOf(thread.turns[0]!), outcome).toMatchObject({ fallbackOffered: true });
+      expect(statusOf(thread.turns[0]!), outcome).not.toHaveProperty("fallbackUsed");
+    }
+  });
 });

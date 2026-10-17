@@ -46,6 +46,7 @@ import { createSubmitGuard, deleteFailureMessage } from "../lib/notebook-delete"
 import { isTruncatedTurn, normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
 import { isGroundingStatusEntry } from "@factorylm/interaction";
 import { generalGuidanceTarget } from "../unified/general-guidance";
+import { generalGuidanceDelivered } from "@factorylm/interaction";
 import {
   photoCapturedLabel,
   visualCardTitle,
@@ -444,7 +445,10 @@ export function NotebookScreen({
         }
       } else {
         setLiveTurns((t) => [...t, { q: question, a, requestId: body.clientRequestId }]);
-        completed = true;
+        // Codex #4303 r2 F6: a general-guidance request whose stream ended in
+        // a terminal provider error delivered no answer — report failure so
+        // the action is offered again (a fresh tap mints a fresh request id).
+        completed = !body.fallbackOf || generalGuidanceDelivered(a.status, a.safetyTrigger !== undefined);
       }
     } catch (e) {
       const partial = pendingRef.current?.a ?? EMPTY_TURN;

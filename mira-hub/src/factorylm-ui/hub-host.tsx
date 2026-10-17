@@ -57,6 +57,7 @@ import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, ty
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
+import { generalGuidanceDelivered } from "../../../packages/factorylm-interaction/src";
 import {
   EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
@@ -446,6 +447,11 @@ export function HubShellHost() {
       // successful retry takes it away again (never a newer draft).
       const draft = draftAfterSendSucceeded(draftRef.current, question);
       if (draft !== null) dispatch({ type: "set-draft", draft });
+      // Codex #4303 r2 F6: a general-guidance request whose stream ended in a
+      // terminal provider error delivered no answer — report failure so the
+      // action is offered again (a fresh tap mints a fresh request id; Retry
+      // would only replay the stored error turn).
+      if ("fallbackOf" in body && !generalGuidanceDelivered(result.status, result.safetyNotice !== null)) return false;
       return true;
     } catch (err) {
       const retained = retainedStreamInterruption(err);

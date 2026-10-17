@@ -82,14 +82,31 @@ export function groundingStatusOf(evidence: readonly unknown[] | null | undefine
   return null;
 }
 
-/** The failed turn this general answer was requested from (`fallback.of`), if any. */
+/** Outcomes that did NOT deliver general guidance: the offer they were
+ *  requested from stays available (Codex #4303 r2 F6). A safety stop is a
+ *  terminal answer and does consume it. */
+const UNDELIVERED_FALLBACK: ReadonlySet<string> = new Set<GroundingOutcome>(["provider_error", "stopped"]);
+
+/** The failed turn this general answer was requested from (`fallback.of`),
+ *  if any — only when that request actually produced an answer. A linked
+ *  provider error or stopped attempt does not consume the offer, so a reload
+ *  keeps "Get general guidance" on the original turn (Codex #4303 r2 F6). */
 export function fallbackSourceOf(evidence: readonly unknown[] | null | undefined): string | null {
   for (const e of evidence ?? []) {
     const r = entryOf(e);
     const of = record(r?.fallback)?.of;
-    if (typeof of === "string" && of) return of;
+    if (typeof of === "string" && of) return UNDELIVERED_FALLBACK.has(r!.outcome as string) ? null : of;
   }
   return null;
+}
+
+/** Did a general-guidance request's completed stream deliver an answer?
+ *  A terminal `status: "error"` (every provider failed) is a FAILED action —
+ *  the host reports false so the offer is shown again — unless it was a
+ *  Safety STOP, which is a terminal answer (Codex #4303 r2 F6). Both hosts
+ *  use this one rule so live and reloaded turns agree with `fallbackSourceOf`. */
+export function generalGuidanceDelivered(status: string, safetyStop: boolean): boolean {
+  return status !== "error" || safetyStop;
 }
 
 /**
