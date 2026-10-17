@@ -2942,9 +2942,11 @@ async function handleChatTurn(
   // It rides in the injection-hardened user-data channel (buildManualUserContent
   // below), NEVER the system prompt. Fail-open: a load failure must not drop the
   // turn. No stored observation → "" → no block, the turn still answers.
-  const lookContext = [renderLookObservationSection(lookRow), renderPriorLookObservationsSection(priorLookRows)]
-    .filter(Boolean)
-    .join("\n\n");
+  // Kept apart for the #4426 floor's exemption (#4442): this turn's photo is this
+  // turn's evidence; earlier photos ride along on every later turn of the thread.
+  const thisTurnLookSection = renderLookObservationSection(lookRow);
+  const priorLookSection = renderPriorLookObservationsSection(priorLookRows);
+  const lookContext = [thisTurnLookSection, priorLookSection].filter(Boolean).join("\n\n");
   // Correction to `evidence.materialize`'s earlier default: the LOOK
   // observation, when present, DOES reach the prompt (buildManualUserContent
   // below carries `lookContext`) — `observation_available`/`observation_in_context`
@@ -3797,9 +3799,13 @@ async function handleChatTurn(
           // (not this turn's evidence), so it exempts only an answer that uses one
           // (answerUsesStoredNameplateReading). Presence alone would switch this
           // floor off for every later library question on a once-photographed machine.
+          // Earlier photos in the thread never exempt (#4442, strict): they ride along
+          // on every later turn, so their presence says nothing about this answer, and
+          // no wording check on "uses the earlier photo" held up under review. Only
+          // this turn's photo exempts.
           exempt:
             Boolean(groundedMachineEntry) ||
-            Boolean(lookContext) ||
+            Boolean(thisTurnLookSection) ||
             (Boolean(visualSection) && answerUsesStoredNameplateReading(answerText, visualReadings)) ||
             Boolean(safetyTrigger),
         });
