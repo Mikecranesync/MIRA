@@ -265,7 +265,7 @@ describe("retrieveNodeChunks page-split stitch", () => {
 
   it("TQ-20: retrieved connector chunk is joined with the same-page termination chunk", async () => {
     const { client, calls } = clientFor(tq20Head, [tq20Head, tq20Tail]);
-    const out = await retrieveNodeChunks(client, "tenant-a", "GS10 oC overcurrent", nodeOpts);
+    const out = await retrieveNodeChunks(client, "tenant-a", "CAN expansion bus termination", nodeOpts);
     expect(out.map((c) => c.content)).toEqual([tq20Head.content, tq20Tail.content]);
     expect(out.every((c) => c.sourcePage === 93)).toBe(true);
     expect(out.every((c) => c.docId === TM172)).toBe(true);
@@ -300,7 +300,7 @@ describe("retrieveNodeChunks page-split stitch", () => {
       rank: 0,
     };
     const { client } = clientFor(head, [head, tail]);
-    const out = await retrieveNodeChunks(client, "tenant-a", "GS10 oC overcurrent", {
+    const out = await retrieveNodeChunks(client, "tenant-a", "CAN expansion bus termination", {
       ...nodeOpts,
       docIds: [LXM],
     });
@@ -322,7 +322,7 @@ describe("retrieveNodeChunks page-split stitch", () => {
       },
       [],
     );
-    const out = await retrieveNodeChunks(client, "tenant-a", "GS10 oC overcurrent", nodeOpts);
+    const out = await retrieveNodeChunks(client, "tenant-a", "CAN expansion bus termination", nodeOpts);
     expect(out).toHaveLength(1);
     expect(calls.every((c) => !c.sql.includes("COALESCE(page_start, source_page)"))).toBe(true);
   });
@@ -332,7 +332,7 @@ describe("retrieveNodeChunks page-split stitch", () => {
       tq20Head,
       { ...tq20Tail, doc_id: OTHER_DOC, content: "Terminate the OTHER manual bus" },
     ]);
-    const out = await retrieveNodeChunks(client, "tenant-a", "GS10 oC overcurrent", nodeOpts);
+    const out = await retrieveNodeChunks(client, "tenant-a", "CAN expansion bus termination", nodeOpts);
     expect(out).toHaveLength(1);
     expect(out[0].content).toBe(tq20Head.content);
   });
@@ -340,7 +340,7 @@ describe("retrieveNodeChunks page-split stitch", () => {
   it("gate on: stitch binds the approved set as $5 and keeps tenant/doc pins", async () => {
     process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
     const { client, calls } = clientFor(tq20Head, [tq20Head, tq20Tail]);
-    await retrieveNodeChunks(client, "tenant-a", "GS10 oC overcurrent", {
+    await retrieveNodeChunks(client, "tenant-a", "CAN expansion bus termination", {
       ...nodeOpts,
       approvedSourceDocIds: [TM172],
     });
@@ -365,7 +365,7 @@ describe("retrieveNodeChunks page-split stitch", () => {
     const out = await retrieveNodeChunks(
       { query } as unknown as PoolClient,
       "tenant-a",
-      "GS10 oC overcurrent",
+      "CAN expansion bus termination",
       { ...nodeOpts, topK: 6 },
     );
     const terminations = out.filter((c) => c.content.includes("Terminate the CAN"));
@@ -403,5 +403,7 @@ describe("fetchPageSplitNeighbors scope", () => {
 describe("evidenceKey", () => {
   it("distinguishes same-page halves", () => {
     expect(evidenceKey(TM172, 93, "connector half")).not.toBe(evidenceKey(TM172, 93, "termination half"));
+    const header = "X".repeat(80);
+    expect(evidenceKey(TM172, 93, `${header} first row`)).not.toBe(evidenceKey(TM172, 93, `${header} second row`));
   });
 });

@@ -43,8 +43,11 @@ export function neighborPage(row: Pick<PageSplitNeighborRow, "page_start" | "sou
   return null;
 }
 
+/** Dedupe key for the evidence window. Uses the FULL content: a prefix would
+ *  collide for two chunks on one page that open the same way (repeated table
+ *  headers), and the stitch would then skip the real continuation. */
 export function evidenceKey(docId: string | null | undefined, page: number | null, content: string): string {
-  return `${docId ?? ""}|${page ?? ""}|${content.slice(0, 80)}`;
+  return `${docId ?? ""}|${page ?? ""}|${content}`;
 }
 
 /**
