@@ -84,6 +84,7 @@ Hub default suite with the fix: `npx vitest run` → 382 files passed / 4 skippe
 | M8 ² | `chatBodyFor` omits `threadId` (`hub-host-logic.ts`) | request: G; request: S | 10 / 2 — EXACT |
 | M9 ³ | clone fires a second, fire-and-forget chat POST per send (`hub-host.tsx`) | exactly one chat POST per send | 11 / 1 — EXACT |
 | M10 ⁴ | clone drops the finished answer's follow-ups when the persisted row replaces the live turn (`hub-host.tsx`) | settle: follow-ups survive the post-turn refetch | 12 / 1 — EXACT |
+| M11 ⁵ | clone declares a capability beyond `grounding_status_v1` in `clientCapabilities` (`hub-host-logic.ts`) | request: G; request: S | 11 / 2 — EXACT |
 
 ¹ M2 was first predicted as "present" only and came back MISMATCH: an absent notice is not first either.
 The cascade had been masked while "first" was a standing red. Prediction corrected, then re-run EXACT.
@@ -94,6 +95,9 @@ that must hold absolutely cannot pass when both surfaces regress together.
 ³ Added for Codex review #4441 round 2 (F1): first run against the old checks → MISMATCH, 11/11 green.
 ⁴ Added for #4454 with the `settle` check, which makes 13 checks: control 13 / 0, M10 12 / 1, both EXACT
 (2026-10-15). The check also goes red, alone, against main's unfixed `hub-host.tsx` + `to-interaction.ts`.
+⁵ Added for #4303 (2026-10-17): `clientCapabilities` is allowlisted for exactly `["grounding_status_v1"]` on the
+clone and must be absent on the reference (the frozen classic page is not edited). Control 13 / 0 and M11 11 / 2,
+both EXACT, on the #4303 branch; before the allowlist entry the control itself was 11 / 2 (both AC3 checks red).
 
 M1 also reddens AC5 by construction (no citation left to open). Named first-red test
 `rendered turn: grounded answer` fails under M1 as the PRD requires.
