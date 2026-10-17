@@ -86,10 +86,13 @@ export function Login({
                 setBusy(true);
                 setError("");
                 onSignInStarted?.();
-                const r = await signIn(email, password);
-                setBusy(false);
-                if (r.ok) await onSignedIn();
-                else setError(signInFailureCopy(r.reason));
+                try {
+                  const r = await signIn(email, password);
+                  if (r.ok) await onSignedIn();
+                  else setError(signInFailureCopy(r.reason));
+                } finally {
+                  setBusy(false);
+                }
               }}
             >
               {busy ? "Signing in…" : "Sign in"}

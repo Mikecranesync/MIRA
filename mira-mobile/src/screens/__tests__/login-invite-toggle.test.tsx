@@ -245,6 +245,26 @@ describe("Login — invitation-link path (#4364)", () => {
     });
   });
 
+  it("keeps password mode busy through account hydration", async () => {
+    state.httpRequest.mockImplementation(async ({ url }: { url: string }) => ({
+      status: 200,
+      data: JSON.stringify(url.endsWith("/csrf/") ? { csrfToken: "c" } : { id: "u1", url: "https://app.factorylm.com/feed" }),
+      headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+    }));
+    let release!: () => void;
+    const onSignedIn = vi.fn(() => new Promise<void>((resolve) => { release = resolve; }));
+    render(<Login onSignedIn={onSignedIn} />);
+    const inputs = document.querySelectorAll("input");
+    fireEvent.change(inputs[0], { target: { value: "tech@example.com" } });
+    fireEvent.change(inputs[1], { target: { value: "pw" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Sign in" })); });
+    expect(onSignedIn).toHaveBeenCalledOnce();
+    const toggle = screen.getByText(/Have an invitation link instead/) as HTMLButtonElement;
+    expect(toggle.disabled).toBe(true);
+    await act(async () => { release(); });
+    expect(toggle.disabled).toBe(false);
+  });
+
   // #4470 F2 gap (parent-found) — endBusy() used to run BEFORE awaiting
   // onSignedIn, so the mode toggle (and the textarea below) re-enabled
   // while the app was still hydrating the newly-signed-in account.
