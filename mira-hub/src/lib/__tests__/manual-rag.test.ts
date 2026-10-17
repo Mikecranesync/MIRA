@@ -89,6 +89,18 @@ describe("retrieveManualChunks", () => {
     ]);
   });
 
+  it("preserves a chapter-section page_label (2-15) instead of Number()-coercing it", async () => {
+    const { client, calls } = makeClient([
+      [row({ source_page: 2, page_label: "2-15" })],
+    ]);
+    const out = await retrieveManualChunks(client, "tenant-1", "warning before servicing");
+    expect(out[0].sourcePage).toBe(2);
+    expect(out[0].pageLabel).toBe("2-15");
+    expect(Number(out[0].pageLabel)).toBeNaN();
+    expect(parseInt(out[0].pageLabel ?? "", 10)).toBe(2);
+    expect(calls[0].sql).toContain("metadata->>'page_label'");
+  });
+
   it("falls back to tenant-only retrieval when the manufacturer scope is fully empty", async () => {
     // Each scope now tries AND then OR, so the mfr scope must exhaust both
     // (AND empty, OR empty) before the tenant-only query runs.
@@ -474,6 +486,17 @@ describe("retrieveNodeChunks", () => {
     for (const c of on.calls) expect(c.params.length).toBe(maxPlaceholder(c.sql));
     // The admission branch is present on the BM25 lane ($6 after $5 docIds) and the exact lane.
     expect(on.calls.some((c) => c.sql.includes("is_private = true AND doc_id = ANY($6::uuid[])"))).toBe(true);
+  });
+
+  it("preserves a chapter-section page_label (2-15) on node chunks", async () => {
+    const { client, calls } = makeClient([[nodeRow({ page_start: 2, source_page: 2, page_label: "2-15" })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "disconnect power warning", {
+      nodeId: "n-1",
+      unsPath: null,
+    });
+    expect(out[0].pageLabel).toBe("2-15");
+    expect(out[0].sourcePage).toBe(2);
+    expect(calls[0].sql).toContain("metadata->>'page_label'");
   });
 
   it("returns empty for empty query without touching DB", async () => {

@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { citationPageLabel } from "@/lib/citation-page";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { MODEL_PATTERNS, resolveModelFromObservationText } from "@/capabilities/model-token";
@@ -54,6 +55,12 @@ export interface ManualChunk {
   modelNumber: string;
   sourceUrl: string;
   sourcePage: number | null;
+  /**
+   * Printed page label from chunk metadata (`page_label` / `page` / `page_num`).
+   * Chapter-section labels like "2-15" live here — INTEGER `source_page` cannot
+   * hold them, and `Number("2-15")` is NaN / `parseInt("2-15")` is 2.
+   */
+  pageLabel?: string | null;
   /**
    * The chunk ordinal from ingest (`metadata->>'chunk_index'`), used only to
    * detect legacy rows that mis-stamped `source_page` with the chunk index
@@ -622,6 +629,21 @@ const rowKey = (r: Record<string, unknown>): string =>
   `${r.source_url ?? ""}|${r.source_page ?? ""}|${r.content ?? ""}`;
 
 /**
+ * Printed page label from JSON metadata. INTEGER source_page/page_start cannot
+ * hold "2-15"; reading the text keys and never Number()-coercing them is what
+ * lets the safety banner cite p.2-15 (TQ-29).
+ */
+const PAGE_LABEL_SQL = `COALESCE(
+          NULLIF(BTRIM(metadata->>'page_label'), ''),
+          NULLIF(BTRIM(metadata->>'page'), ''),
+          NULLIF(BTRIM(metadata->>'page_num'), '')
+        ) AS page_label`;
+
+function pageLabelFromRow(r: Record<string, unknown>): string | null {
+  return citationPageLabel(r.page_label);
+}
+
+/**
  * Build the manufacturer / model / family SQL scoping clauses, appending their
  * parameters to `params` and returning the clause fragments with positions that
  * match. Shared by the BM25 passes and the #4224 code-token lane so both carry
@@ -745,6 +767,7 @@ async function runBm25Query(
           model_number,
           source_url,
           source_page,
+          ${PAGE_LABEL_SQL},
           metadata->>'chunk_index' AS chunk_index,
           metadata->>'title' AS title,
           verified,
@@ -832,6 +855,7 @@ async function runBm25Query(
           model_number,
           source_url,
           source_page,
+          ${PAGE_LABEL_SQL},
           metadata->>'chunk_index' AS chunk_index,
           metadata->>'title' AS title,
           verified,
@@ -866,6 +890,7 @@ async function runBm25Query(
     modelNumber: String(r.model_number ?? ""),
     sourceUrl: String(r.source_url ?? ""),
     sourcePage: r.source_page == null ? null : Number(r.source_page),
+    pageLabel: pageLabelFromRow(r),
     chunkIndex: r.chunk_index == null ? null : Number(r.chunk_index),
     title: String(r.title ?? ""),
     rank: Number(r.rank ?? 0),
@@ -1028,6 +1053,7 @@ export async function retrieveNodeChunks(
           source_url,
           source_page,
           page_start,
+          ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
           verified,
@@ -1078,6 +1104,7 @@ export async function retrieveNodeChunks(
     const res = await client.query(
       `SELECT
           content, doc_id::text AS doc_id, source_url, source_page, page_start,
+          ${PAGE_LABEL_SQL},
           section_path, metadata->>'filename' AS filename, verified,
           0::float4 AS rank
         FROM knowledge_entries
@@ -1211,6 +1238,7 @@ export async function retrieveNodeChunks(
         : r.source_page == null
           ? null
           : Number(r.source_page),
+    pageLabel: pageLabelFromRow(r),
     // Node/v2 path sources a real page from page_start — never a chunk ordinal —
     // so leave chunkIndex null and always render the page (the #2910 guard is a no-op here).
     chunkIndex: null,
