@@ -33,8 +33,13 @@ def test_activation_authorizes_current_main_without_production_credentials() -> 
     assert '"$GITHUB_REF" = "refs/heads/main"' in script
     assert '"$GITHUB_SHA" = "$CURRENT_MAIN_SHA"' in script
     assert '"$SOURCE_SHA" = "$CURRENT_MAIN_SHA"' in script
-    assert "WORKFLOW_RUN_CONCLUSION" in script
-    assert "WORKFLOW_RUN_HEAD_BRANCH" in script
+    # #3709 / #3727: the controller runs only on an explicit dispatch — the
+    # authorize step must accept workflow_dispatch and refuse every other event,
+    # and no post-deploy (workflow_run) conclusion check may remain to re-enable it.
+    assert "workflow_dispatch)" in script
+    assert "unsupported production activation event" in script
+    assert "WORKFLOW_RUN_CONCLUSION" not in script
+    assert "workflow_run" not in script
 
 
 def test_activation_revalidates_main_immediately_before_ssh_key_access() -> None:
@@ -67,7 +72,9 @@ def test_activation_remote_checkout_is_bound_to_authorized_sha() -> None:
 
     assert step["env"] == {"ACTIVATION_SHA": "${{ needs.authorize-source.outputs.source_sha }}"}
     script = step["run"]
-    assert 'bash -s -- "$ACTIVATION_SHA"' in script
+    assert "ubuntu@40.160.141.61" in script
+    assert "sudo bash -s --" in script
+    assert "165.245.138.91" not in script
     assert "git fetch origin main --tags --force" in script
     assert '"$FETCHED_SHA" = "$TARGET_SHA"' in script
     assert 'git reset --hard "$TARGET_SHA"' in script
