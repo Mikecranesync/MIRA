@@ -1632,6 +1632,45 @@ export async function resolveBoundAsset(
   });
 }
 
+/**
+ * F004 contract v2 §5 — the failed turn a general-guidance request links to.
+ * Returned ONLY when it is this technician's own completed turn in the same
+ * tenant, notebook and thread. Strict ownership: a legacy ownerless row never
+ * qualifies, so a link can never point at someone else's conversation. The
+ * caller still checks the stored entry offered the action.
+ *
+ * `turnId` is the turn's row id OR the request id it was sent with: a phone
+ * that just received the answer live holds only the latter (the stream never
+ * carries the row id). Either way the ROW id is returned, so the stored link
+ * is canonical. Request ids are unique per tenant+notebook+owner (088).
+ */
+export async function getFallbackSourceTurn(
+  tenantId: string,
+  notebookId: string,
+  opts: { ownerUserId: string; threadId: string | null; turnId: string },
+): Promise<{ id: string; evidence: unknown[] } | null> {
+  const owner = (opts.ownerUserId ?? "").trim();
+  if (!owner) return null;
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `SELECT id::text AS id, evidence
+         FROM equipment_notebook_turns
+        WHERE tenant_id = $1::uuid
+          AND notebook_id = $2::uuid
+          AND (id = $3::uuid OR client_request_id = $3::uuid)
+          AND owner_user_id = $4
+          AND thread_id IS NOT DISTINCT FROM $5
+          AND client_request_state = 'complete'
+        ORDER BY (id = $3::uuid) DESC
+        LIMIT 1`,
+      [tenantId, notebookId, opts.turnId, owner, storedThreadId(opts.threadId)],
+    );
+    const r = res.rows[0] as Record<string, unknown> | undefined;
+    if (!r) return null;
+    return { id: String(r.id), evidence: Array.isArray(r.evidence) ? (r.evidence as unknown[]) : [] };
+  });
+}
+
 export async function listTurns(
   tenantId: string,
   notebookId: string,

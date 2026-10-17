@@ -59,6 +59,8 @@ fi
 # --------------------------------------------------------------- 3. journey
 ARGS=(--apk "$APK" --pdf "$PDF" --question "$QUESTION")
 [ -n "$EXPECT_PAGE" ] && ARGS+=(--expect-page "$EXPECT_PAGE")
+# F004 (#4303): optional honest-limitation leg — a question the manual cannot answer.
+[ -n "${LIMITATION_QUESTION:-}" ] && ARGS+=(--limitation-question "$LIMITATION_QUESTION")
 
 echo "==> replaying journey"
 exec python "$REPO_ROOT/tools/mobile-e2e/journey.py" "${ARGS[@]}"

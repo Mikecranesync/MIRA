@@ -340,6 +340,12 @@ export interface UnifiedChatHandlers
   readonly onSendErrorDismissed?: () => void;
   readonly onNewChat?: () => void;
   readonly onCreateProject?: () => void;
+  /**
+   * F004 M2 (#4303): the technician chose "Get general guidance (not from the
+   * manual)" on this shell answer turn. The host sends a NEW general turn
+   * linked to it; nothing switches modes without this tap.
+   */
+  readonly onRequestGeneralGuidance?: (turnId: string) => void | Promise<boolean>;
 }
 
 function initialState(messages: ReturnType<typeof threadMessages>, meta: UnifiedNotebookMeta, host?: UnifiedShellHost): ShellState {
@@ -983,6 +989,9 @@ function UnifiedChatForNotebook({
       if (citation) handlers.onCitation(citation);
     },
     onScanMachine: handlers.onScanMachine,
+    // F004 M2: the shared part settles itself after one tap; saved offers a
+    // later turn already used are marked by `toThread` from that turn's link.
+    ...(handlers.onRequestGeneralGuidance ? { onRequestGeneralGuidance: handlers.onRequestGeneralGuidance } : {}),
     groundingLine,
     suggestChips,
     busy,
