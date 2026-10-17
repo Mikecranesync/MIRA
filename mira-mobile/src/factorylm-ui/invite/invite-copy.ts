@@ -26,3 +26,7 @@ export function inviteSignInFailureCopy(reason: InviteSignInFailureReason): stri
       return "This invitation link is invalid, expired, or already used.";
   }
 }
+
+/** Signed in, but loading the account afterwards failed; retry re-confirms the session. */
+export const INVITE_HYDRATION_FAILED_COPY =
+  "You're signed in, but your account didn't finish loading — tap Sign in again.";

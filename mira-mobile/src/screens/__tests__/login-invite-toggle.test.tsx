@@ -370,4 +370,58 @@ describe("Login — invitation-link path (#4364)", () => {
       await Promise.resolve();
     });
   });
+
+  // Gate-7 (#4470): the parent's account hydration (onSignedIn -> getMe) can
+  // throw AFTER the single-use token was exchanged. That must not escape as an
+  // unhandled rejection or strand the technician: show a retry message, and
+  // the retry re-confirms the session without resubmitting the spent token.
+  it("hydration failure after a successful exchange is retriable without replaying the token", async () => {
+    let callbackCalls = 0;
+    state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+      if (url.endsWith("/api/auth/csrf/")) {
+        return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+      }
+      if (url.endsWith("/api/auth/callback/magic-token/")) {
+        callbackCalls += 1;
+        return {
+          status: 200,
+          data: JSON.stringify({ url: "https://app.factorylm.com/feed" }),
+          headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+        };
+      }
+      if (url.endsWith("/api/me/")) {
+        return { status: 200, data: JSON.stringify({ id: "u1" }), headers: {} };
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+
+    const onSignedIn = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("getMe network blip"))
+      .mockResolvedValue(undefined);
+    render(<Login onSignedIn={onSignedIn} />);
+    fireEvent.click(screen.getByText(/Have an invitation link instead/));
+    fireEvent.change(screen.getByLabelText("Invitation link"), {
+      target: {
+        value: "https://app.factorylm.com/hub/magic?token=11111111-2222-4333-8444-555555555555",
+      },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Use invite link"));
+      for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    });
+
+    expect(onSignedIn).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/account didn't finish loading/)).toBeTruthy();
+    expect(callbackCalls).toBe(1);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Finish signing in"));
+      for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    });
+
+    expect(onSignedIn).toHaveBeenCalledTimes(2);
+    expect(callbackCalls).toBe(1); // the consumed token was never resubmitted
+  });
 });

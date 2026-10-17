@@ -2,7 +2,7 @@ import { useState } from "react";
 import { resolveApiBase } from "../../plugins/build-config";
 import { parseInviteLink } from "./invite-link";
 import { confirmInviteSession, signInWithMagicToken } from "./invite-sign-in";
-import { inviteLinkErrorCopy, inviteSignInFailureCopy } from "./invite-copy";
+import { INVITE_HYDRATION_FAILED_COPY, inviteLinkErrorCopy, inviteSignInFailureCopy } from "./invite-copy";
 
 /**
  * Lets an invited technician sign in by pasting their invitation link
@@ -46,6 +46,22 @@ export function InviteSignIn({
     onBusyChange?.(false);
   }
 
+  // Gate-7 (#4470): the session is already real once the exchange or
+  // re-confirmation succeeded, and the invite token is single-use. If the
+  // parent's account hydration (onSignedIn) throws, e.g. a network blip on
+  // getMe(), keep the established session and surface a retry message, so the
+  // next tap re-confirms via confirmInviteSession() instead of replaying the
+  // spent token (which would wrongly read "already used"), and the rejection
+  // never escapes `void submit()` as an unhandled promise.
+  async function hydrate() {
+    try {
+      await onSignedIn();
+    } catch {
+      setSessionEstablished(true);
+      setError(INVITE_HYDRATION_FAILED_COPY);
+    }
+  }
+
   async function submit() {
     beginBusy();
     setError("");
@@ -62,7 +78,7 @@ export function InviteSignIn({
         onSignInStarted?.();
         const r = await confirmInviteSession();
         if (r.ok) {
-          await onSignedIn();
+          await hydrate();
           return;
         }
         setSessionEstablished(Boolean(r.sessionEstablished));
@@ -87,7 +103,7 @@ export function InviteSignIn({
       onSignInStarted?.();
       const r = await signInWithMagicToken(parsed.token);
       if (r.ok) {
-        await onSignedIn();
+        await hydrate();
         return;
       }
       setSessionEstablished(Boolean(r.sessionEstablished));
