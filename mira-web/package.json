@@ -13,7 +13,7 @@
     "verify:live": "bun run scripts/verify-deployment.ts"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.0",
+    "@neondatabase/serverless": "^1.2.0",
     "hono": "^4.12.23",
     "jose": "^6.0.11",
     "pdf-lib": "^1.17.1",
