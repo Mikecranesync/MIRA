@@ -108,6 +108,18 @@ const MUTATIONS = {
     }],
     red: ["request: exactly one chat POST per send (AC3)"],
   },
+  // #4454: the host stops keeping the finished answer's follow-ups, so the
+  // chips vanish when the persisted row replaces the live turn.
+  M10: {
+    what: "clone drops follow-ups when the persisted row replaces the live turn",
+    edits: [{
+      file: "src/factorylm-ui/hub-host.tsx",
+      find: '      const finished = partsFromStream(result, { turnId: `${id}-a` }).find((p) => p.type === "followups");',
+      replace: '      const finished = undefined as { type: "followups"; suggestions: string[] } | undefined;',
+      count: 1,
+    }],
+    red: ["settle: follow-ups survive the post-turn refetch (clone, #4454)"],
+  },
 };
 
 function apply(edits) {
