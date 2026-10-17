@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import {
   endsMidPassage,
   evidenceKey,
+  trimLeadingOverlap,
   fetchPageSplitNeighbors,
   neighborPage,
   pickNextAdjacentChunk,
@@ -405,5 +406,18 @@ describe("evidenceKey", () => {
     expect(evidenceKey(TM172, 93, "connector half")).not.toBe(evidenceKey(TM172, 93, "termination half"));
     const header = "X".repeat(80);
     expect(evidenceKey(TM172, 93, `${header} first row`)).not.toBe(evidenceKey(TM172, 93, `${header} second row`));
+  });
+});
+
+describe("trimLeadingOverlap", () => {
+  it("drops a verbatim chunk-overlap / ingest-carry prefix from the continuation", () => {
+    const prev = "Terminate the CAN expansion bus with a 120 ohm resistor on the last module and";
+    const tail = prev.slice(-40);
+    expect(trimLeadingOverlap(prev, `${tail}\nverify the wiring with the devices off.`)).toBe(
+      "verify the wiring with the devices off.",
+    );
+  });
+  it("leaves an unrelated continuation untouched (short coincidences are not overlap)", () => {
+    expect(trimLeadingOverlap("connector half and", "and termination half.")).toBe("and termination half.");
   });
 });

@@ -17,7 +17,14 @@ import {
   COMM_FACETS,
   type RerankTraceRow,
 } from "@/lib/notebook-query";
-import { endsMidPassage, evidenceKey, fetchPageSplitNeighbors, neighborPage, pickNextAdjacentChunk } from "@/lib/page-split";
+import {
+  endsMidPassage,
+  evidenceKey,
+  fetchPageSplitNeighbors,
+  neighborPage,
+  pickNextAdjacentChunk,
+  trimLeadingOverlap,
+} from "@/lib/page-split";
 
 export { resolveModelFromObservationText } from "@/capabilities/model-token";
 
@@ -1288,8 +1295,12 @@ async function stitchPageSplitPassages(
     if (seen.has(key)) continue;
     if (ctx.allowedDocIds.length > 0 && !ctx.allowedDocIds.includes(String(next.doc_id))) continue;
     seen.add(key);
+    // Chunks overlap (within-page CHUNK_OVERLAP, cross-page ingest carry):
+    // never put the shared tail in the evidence window twice.
+    const continuation = trimLeadingOverlap(chunk.content, String(next.content ?? ""));
+    if (!continuation.trim()) continue;
     out.push({
-      content: String(next.content ?? ""),
+      content: continuation,
       docId: String(next.doc_id),
       manufacturer: "",
       modelNumber: "",

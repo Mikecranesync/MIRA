@@ -37,6 +37,25 @@ export function endsMidPassage(content: string): boolean {
   return true;
 }
 
+/**
+ * Drop the part of `next` that repeats the end of `prev`. Hub chunks overlap
+ * (CHUNK_OVERLAP within a page; the ingest carry across a page break), so a
+ * stitched continuation would otherwise put the same tail in the evidence
+ * window twice. Only a verbatim overlap of >= 20 chars is removed.
+ */
+export function trimLeadingOverlap(prev: string, next: string): string {
+  const max = Math.min(prev.length, next.length, 400);
+  for (let k = max; k >= 20; k--) {
+    if (prev.endsWith(next.slice(0, k))) return next.slice(k).replace(/^\s+/, "");
+  }
+  // The ingest carry is joined with "\n" and trimmed: compare on trimmed prev too.
+  const p = prev.trimEnd();
+  for (let k = Math.min(p.length, next.length, 400); k >= 20; k--) {
+    if (p.endsWith(next.slice(0, k))) return next.slice(k).replace(/^\s+/, "");
+  }
+  return next;
+}
+
 export function neighborPage(row: Pick<PageSplitNeighborRow, "page_start" | "source_page">): number | null {
   if (row.page_start != null) return Number(row.page_start);
   if (row.source_page != null) return Number(row.source_page);
