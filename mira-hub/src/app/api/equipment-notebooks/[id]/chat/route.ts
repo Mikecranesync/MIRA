@@ -113,6 +113,7 @@ import {
   safetyFlagHeaders,
   withSafetyFlag,
 } from "@/lib/safety-classifier";
+import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
@@ -1655,7 +1656,7 @@ async function handleChatTurn(
   // renders on every client and survives reload. It is not a structured
   // safety_notice because today's web/mobile chips label every non-terminal
   // notice "energized electrical work".
-  const flagBanner = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
+  const flagBannerBase = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -2051,6 +2052,12 @@ async function handleChatTurn(
           }),
         ),
       );
+  // Banner is classified before retrieval; the page citation can only be
+  // written now that chunks exist. Prefer the WARNING/CAUTION/DANGER chunk's
+  // printed label (TQ-29: p.2-15) over INTEGER source_page.
+  const flagBanner = flagBannerBase
+    ? withPageCitation(flagBannerBase, pageFromRetrievedChunks(chunks))
+    : null;
   {
     // Notebook chunks carry a doc id; shared-OEM chunks carry no doc id but a
     // source URL + page, which is their durable identity in knowledge_entries.
@@ -3926,7 +3933,7 @@ async function handleChatTurn(
         if (sv.verdict === "unsafe") {
           const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
           console.warn(`[notebook-chat] semantic FLAGGED ${cls}: ${sv.reason ?? ""}`);
-          answerText = `${hazardBanner(cls)}\n\n${answerText}`;
+          answerText = `${withPageCitation(hazardBanner(cls), pageFromRetrievedChunks(chunks))}\n\n${answerText}`;
         } else if (sv.verdict !== "safe") {
           console.warn(`[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): serving the answer (fail-open)`);
         }
