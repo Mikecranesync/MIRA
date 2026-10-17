@@ -5,6 +5,7 @@
  */
 import type { Machine, Project, ProjectNode } from "@factorylm/interaction";
 import type { Notebook, NotebookThreadSummary } from "../api/resources";
+import { sourcesDrawerLabel } from "./notebook-sources-copy";
 
 export const LEGACY_THREAD_ID = "legacy";
 
@@ -124,7 +125,7 @@ export function notebookProjects(notebooks: readonly Notebook[]): readonly Proje
     children: [
       ...(nb.asset ? [{ kind: "machine-link" as const, id: `link-${nb.id}`, label: machineNameFor(nb), machineId: nb.asset.entityId }] : []),
       ...threadRows(nb),
-      { kind: "file" as const, id: sourcesItemId(nb.id), label: `Sources (${nb.sourceCount})` },
+      { kind: "file" as const, id: sourcesItemId(nb.id), label: sourcesDrawerLabel(nb.sourceCount) },
     ],
   }));
 }

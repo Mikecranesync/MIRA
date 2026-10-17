@@ -13,6 +13,11 @@ import { NotebookDeleteDialog } from "@/components/equipment/NotebookDeleteDialo
 import { deleteFailureMessage, createSubmitGuard } from "@/lib/notebook-delete";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import { persistedTurns } from "@/components/equipment/notebook-chat-utils";
+import {
+  notebookSourcesButtonCount,
+  notebookSourcesCountLine,
+  SOURCES_LOADING_LABEL,
+} from "@/factorylm-ui/notebook-sources-copy";
 
 type Notebook = {
   id: string;
@@ -37,6 +42,11 @@ export default function NotebookPage() {
   const router = useRouter();
   const [notebook, setNotebook] = useState<Notebook | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
+  // True only once THIS id's detail GET has settled. Derived from the id so a
+  // client navigation never reports the previous notebook's count, or "0 of 0"
+  // while the new GET is in flight (#4371).
+  const [loadedForId, setLoadedForId] = useState<string | null>(null);
+  const sourcesKnown = loadedForId === id;
   const [initialTurns, setInitialTurns] = useState<ChatTurn[]>([]);
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -59,6 +69,7 @@ export default function NotebookPage() {
     setNotebook(data.notebook);
     const srcs: Source[] = data.sources ?? [];
     setSources(srcs);
+    setLoadedForId(id);
     setEnabled((prev) => {
       const next = { ...prev };
       for (const s of srcs) if (!(s.docId in next)) next[s.docId] = s.enabledByDefault && s.matchState !== "rejected";
@@ -236,10 +247,15 @@ export default function NotebookPage() {
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{notebook?.displayName ?? "…"}</div>
           <div className="truncate text-xs" style={{ color: "var(--foreground-muted)" }}>
-            {[[notebook?.manufacturer, notebook?.model].filter(Boolean).join(" ") || "No model set", notebook?.locationLabel]
-              .filter(Boolean)
-              .join(" · ")}
-            {` · ${enabledDocIds.length} of ${usableCount} sources`}
+            {sourcesKnown
+              ? [
+                  [notebook?.manufacturer, notebook?.model].filter(Boolean).join(" ") || "No model set",
+                  notebook?.locationLabel,
+                  notebookSourcesCountLine(true, enabledDocIds.length, usableCount),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : notebookSourcesCountLine(false, 0, 0)}
           </div>
         </div>
         <button
@@ -249,7 +265,7 @@ export default function NotebookPage() {
           className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium"
           style={{ border: "1px solid var(--border)" }}
         >
-          <Layers size={14} aria-hidden /> Sources · {enabledDocIds.length}/{usableCount}
+          <Layers size={14} aria-hidden /> Sources · {notebookSourcesButtonCount(sourcesKnown, enabledDocIds.length, usableCount)}
         </button>
         <button
           onClick={() => {
@@ -311,7 +327,11 @@ export default function NotebookPage() {
                 <X size={18} />
               </button>
             </div>
-            {sources.length === 0 ? (
+            {!sourcesKnown ? (
+              <p className="py-4 text-center text-sm" style={{ color: "var(--foreground-muted)" }}>
+                {SOURCES_LOADING_LABEL}
+              </p>
+            ) : sources.length === 0 ? (
               <p className="py-4 text-center text-sm" style={{ color: "var(--foreground-muted)" }}>
                 Add a manual, drawing, or photo to start asking questions.
               </p>

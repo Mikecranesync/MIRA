@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Notebook } from "../../api/resources";
 import { machineNameFor, notebookIdFromItem, notebookMachines, notebookProjects, threadItemId, threadRefFromItem } from "../notebook-tree";
+import { sourcesDrawerLabel } from "../notebook-sources-copy";
 
 const nb = (
   id: string,
@@ -43,8 +44,13 @@ describe("notebook tree", () => {
     const [project] = notebookProjects([nb("blank", "", null)]);
     expect(project.children).toEqual([
       { kind: "thread", id: "notebook-blank:thread-legacy", label: "Untitled notebook" },
-      { kind: "file", id: "sources-blank", label: "Sources (0)" },
+      { kind: "file", id: "sources-blank", label: sourcesDrawerLabel(0) },
     ]);
+  });
+
+  it("#4371: a still-unknown count is Sources (…), never Sources (0)", () => {
+    expect(sourcesDrawerLabel(null)).toBe("Sources (…)");
+    expect(sourcesDrawerLabel(null)).not.toBe(sourcesDrawerLabel(0));
   });
 
   // Slice 0 — the CV-101 bug, generalized. A stale notebook display_name must
