@@ -118,24 +118,24 @@ def test_deploy_can_ship_the_image_only_service():
 
 def test_staging_includes_ollama_in_allowlist_and_targets():
     """F3: Staging must authorize mira-ollama and include it in default TARGETS.
-    
+
     Production's receipt verifier checks staging receipts for every effective
     service. If staging doesn't build/pull/inspect mira-ollama, the staging
     receipt won't contain its image identity, and production deployment of
     mira-ollama would fail the verification.
     """
     text = DEPLOY_STG.read_text()
-    
+
     # Check allowlist (the case statement that validates SERVICES input)
     allowlist_section = text[text.index("case \"$service\" in"):text.index("esac", text.index("case \"$service\" in"))]
     assert "mira-ollama" in allowlist_section, \
         "staging allowlist must include mira-ollama so it can be deployed manually"
-    
+
     # Check default TARGETS
     targets_line = next(line for line in text.splitlines() if line.strip().startswith('TARGETS="${SERVICES:-'))
     assert "mira-ollama" in targets_line, \
         "staging default TARGETS must include mira-ollama so its receipt covers it"
-    
+
     # Staging must also pull image-only targets before the identity check
     build_idx = text.index("docker compose -p \"$PROJECT\" -f \"$COMPOSE_FILE\" build --no-cache --pull")
     pull_idx = text.index("pull --ignore-buildable")
@@ -146,7 +146,7 @@ def test_staging_includes_ollama_in_allowlist_and_targets():
 
 def test_model_tag_alias_created_at_startup():
     """F2: The startup command must create a :latest alias from :v1.5.
-    
+
     Hub code requests 'nomic-embed-text' (untagged = :latest), but the compose
     files pull 'nomic-embed-text:v1.5'. Without a :latest alias, embeds would
     fail. Verify both files create the alias via `ollama cp`.
@@ -160,7 +160,7 @@ def test_model_tag_alias_created_at_startup():
         has_model_var = f"MODEL='{MODEL}'" in cmd or f'MODEL="{MODEL}"' in cmd
         has_literal_pull = f"ollama pull {MODEL}" in cmd
         assert has_model_var or has_literal_pull, f"{path.name}: must pull v1.5 via variable or literal"
-        
+
         # Check that :latest alias is created (either via variable or literal)
         has_var_cp = ("ollama cp" in cmd and "nomic-embed-text:latest" in cmd)
         has_literal_cp = f"ollama cp {MODEL} nomic-embed-text:latest" in cmd
@@ -170,7 +170,7 @@ def test_model_tag_alias_created_at_startup():
 
 def test_healthcheck_requires_both_model_tags():
     """F2: The healthcheck must verify BOTH v1.5 and :latest exist with the correct digest.
-    
+
     If only v1.5 is checked, the healthcheck could pass while Hub embed requests
     (which ask for untagged = :latest) would fail. Both tags must be present.
     """
@@ -184,7 +184,7 @@ def test_healthcheck_requires_both_model_tags():
 
 def test_hub_embed_callers_use_available_model():
     """F2: Hub embedding callers request a model name Ollama will resolve.
-    
+
     The Hub's write path (node-knowledge-ingest.ts) and read path
     (asset-intelligence.ts) both send a model name to the embedder. That name
     must either be untagged (resolved to :latest, which the startup creates) or
@@ -193,33 +193,33 @@ def test_hub_embed_callers_use_available_model():
     """
     ingest = ROOT / "mira-hub" / "src" / "lib" / "node-knowledge-ingest.ts"
     asset_intel = ROOT / "mira-hub" / "src" / "lib" / "agents" / "asset-intelligence.ts"
-    
+
     ingest_text = ingest.read_text()
     asset_text = asset_intel.read_text()
-    
+
     # Both files should reference nomic-embed-text (untagged or with a tag that
     # the compose files provide). The model name is passed to the /api/embeddings
     # endpoint. Verify the constants/literals used would resolve correctly.
-    
+
     # node-knowledge-ingest.ts defines EMBED_MODEL
     assert 'EMBED_MODEL = "nomic-embed-text"' in ingest_text or \
            'EMBED_MODEL = "nomic-embed-text:latest"' in ingest_text or \
            'EMBED_MODEL = "nomic-embed-text:v1.5"' in ingest_text, \
            "node-knowledge-ingest.ts must use an available model tag"
-    
+
     # asset-intelligence.ts hardcodes the model in the fetch body
     assert '"nomic-embed-text"' in asset_text or \
            '"nomic-embed-text:latest"' in asset_text or \
            '"nomic-embed-text:v1.5"' in asset_text, \
            "asset-intelligence.ts must request an available model"
-    
+
     # The startup creates :latest from v1.5, so untagged "nomic-embed-text" works.
     # If either file used a DIFFERENT tag (e.g., :v2.0), this test would fail.
 
 
 def test_production_overlay_does_not_override_embedder_url():
     """F1: The production overlay must not override the Hub's OLLAMA_BASE_URL.
-    
+
     The base saas.yml sets it to the internal mira-ollama service. The production
     overlay previously overrode it with ${OLLAMA_BASE_URL:-}, which would take the
     Doppler value (Bravo's unreachable tailnet address) when present. This test
@@ -227,7 +227,7 @@ def test_production_overlay_does_not_override_embedder_url():
     """
     prod_overlay = ROOT / "docker-compose.production.yml"
     text = prod_overlay.read_text()
-    
+
     # The production overlay must NOT contain an OLLAMA_BASE_URL line in the
     # mira-hub environment section. The base saas.yml sets it correctly.
     # Parse manually to avoid the !override tag issue with yaml.safe_load.
@@ -251,7 +251,7 @@ def test_production_overlay_does_not_override_embedder_url():
 
 def test_node_embed_retry_sweep_is_forwarded_to_hub():
     """The Hub must receive NODE_EMBED_RETRY_SWEEP so the rollback switch works.
-    
+
     PR #4293 added the embed retry sweep with an off switch (NODE_EMBED_RETRY_SWEEP),
     but the variable was never forwarded into the Hub container in the OVH compose
     files. This test verifies both saas.yml and staging-vps.yml forward it with the
@@ -271,13 +271,13 @@ def test_node_embed_retry_sweep_is_forwarded_to_hub():
 
 def test_production_overlay_does_not_override_node_embed_retry_sweep():
     """The production overlay must not override NODE_EMBED_RETRY_SWEEP.
-    
+
     The base saas.yml sets it with the correct default. The production overlay
     must not override it, just like OLLAMA_BASE_URL.
     """
     prod_overlay = ROOT / "docker-compose.production.yml"
     text = prod_overlay.read_text()
-    
+
     in_hub_env = False
     for line in text.splitlines():
         stripped = line.strip()
@@ -297,7 +297,7 @@ def test_production_overlay_does_not_override_node_embed_retry_sweep():
 
 def test_ollama_cp_is_idempotent():
     """The startup command must skip `ollama cp` if :latest already has the right digest.
-    
+
     On container restart, if nomic-embed-text:latest already exists with digest
     0a109f422b47, the command must check and skip the cp step if it does. The cp
     must be bounded with proper error handling so failures exit cleanly.
@@ -307,20 +307,20 @@ def test_ollama_cp_is_idempotent():
         cmd = " ".join(svc.get("entrypoint") or []) + " " + " ".join(
             svc["command"] if isinstance(svc.get("command"), list) else [str(svc.get("command") or "")]
         )
-        
+
         # Must check if :latest exists with digest
         has_alias_check = (
-            'nomic-embed-text:latest' in cmd and 
+            'nomic-embed-text:latest' in cmd and
             ('grep -qE' in cmd or 'grep -E' in cmd) and
             ('alias check' in cmd or 'alias_check' in cmd)
         )
         assert has_alias_check, \
             f"{path.name}: must check if :latest already exists with correct digest"
-        
+
         # Must conditionally run cp only if check fails
         assert "if !" in cmd and "ollama cp" in cmd, \
             f"{path.name}: must conditionally run cp only when :latest is missing/wrong"
-        
+
         # cp must be bounded
         assert "ollama cp" in cmd and "bounded_call" in cmd, \
             f"{path.name}: cp must be bounded with timeout"
