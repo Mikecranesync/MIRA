@@ -3847,11 +3847,7 @@ async function handleChatTurn(
           `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
         );
         if (gate) {
-          if (validation.kind === "hazard_warning") {
-            // 2026-09-27: a step the gate flags stays in the answer, quoted in
-            // a warning above it — served as an ordinary answered turn.
-            answerText = validation.replacement;
-          } else if (validation.kind === "energized_warning") {
+          if (validation.kind === "energized_warning") {
             // #3984 (Mike 2026-09-26): warn and keep troubleshooting. The
             // replacement is the candidate with a warning above it, served as
             // an ordinary answered turn — not a Safety STOP. The existing

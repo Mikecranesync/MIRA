@@ -4,6 +4,7 @@
  * code controls, not deployed acceptance or authority to clear holds.
  */
 import { describe, expect, it } from "vitest";
+import { SAFETY_STOP } from "@/lib/safety-classifier";
 import { validateAnswer, ENERGIZED_WARNING } from "./answer-validation";
 
 const check = (answerText: string, question: string, general = true) =>
@@ -45,15 +46,18 @@ describe("#3979 — permit contents are administrative, live-work directions are
     "Get a permit and put on PPE; then probe the conductors while the panel is energized.",
     "Describe the safe work practices to be used when working on energized parts. Then probe the conductors while the panel is energized.",
     "Describe the safe work practices to be used when working on energized parts; then probe the conductors while the panel is energized.",
-  ])("flags a live-work direction despite permit language, but still answers it: %s", (answer) => {
-    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
-    // The direction is still DETECTED (same non-permit-masked outcome) but the
-    // candidate is served with a hazard banner above it, never replaced.
+  ])("flags a live-work direction despite permit language, and blocks it: %s", (answer) => {
+    // OWNER DECISION 2026-10-16 (Mike, #4122/#3790): the direction is still
+    // DETECTED (same non-permit-masked outcome), and is now replaced with
+    // SAFETY_STOP rather than served under a banner — #4040's "flag, never
+    // withhold" policy is reinstated to "block" for this class of affirmed
+    // live-work instruction.
     const r = check(answer, "What has to be on an energized work permit?");
     expect(r.ok).toBe(false);
     if (!r.ok) {
-      expect(r.kind).toBe("hazard_warning");
-      expect(r.replacement).toContain(answer);
+      expect(r.kind).toBe("unsafe_answer");
+      expect(r.replacement).toBe(SAFETY_STOP);
+      expect(r.replacement).not.toContain(answer);
     }
   });
 

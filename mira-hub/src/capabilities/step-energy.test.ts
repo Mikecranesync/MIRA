@@ -5,6 +5,7 @@
  * next?"). Controls: correct sequences and dead checks must never flag.
  */
 import { describe, expect, it } from "vitest";
+import { SAFETY_STOP } from "@/lib/safety-classifier";
 import { validateAnswer } from "./answer-validation";
 import { stepEnergyContradiction } from "./step-energy";
 
@@ -39,15 +40,15 @@ describe("#4122 stepEnergyContradiction — controls that must never flag", () =
   });
 });
 
-describe("#4122 validateAnswer — banner above the full answer, never withheld", () => {
-  it("ask 3 gets a hazard_warning that quotes the step and keeps every word of the answer", () => {
+describe("#4122 validateAnswer — blocked with SAFETY_STOP (owner decision 2026-10-16)", () => {
+  it("ask 3 gets blocked — the contradictory step never reaches the technician", () => {
     const v = validateAnswer({ answerText: ASK3, question: "After isolation and verifying absence of voltage, what should I check next?", general: true, served: true, refused: false, evidenceSufficient: false });
     expect(v.ok).toBe(false);
     if (v.ok) return;
-    expect(v.kind).toBe("hazard_warning");
-    expect(v.violation).toBe("hazard-warning:step-energy-contradiction");
-    expect(v.replacement).toContain("Lockout conflict in a step below");
-    expect(v.replacement.endsWith(ASK3)).toBe(true);
+    expect(v.kind).toBe("unsafe_answer");
+    expect(v.violation).toBe("unsafe-answer:lockout-step-contradiction");
+    expect(v.replacement).toBe(SAFETY_STOP);
+    expect(v.replacement).not.toContain(ASK3);
   });
   it("control: a correct locked-out checklist passes", () => {
     const v = validateAnswer({ answerText: "1. With the drive locked out, check the input fuses for continuity.\n2. Inspect the terminals for loose or burnt wiring.", question: "What should I check next?", general: true, served: true, refused: false, evidenceSufficient: false });
@@ -117,7 +118,7 @@ describe("#4146 Codex r3 — the two confirmed defects (via validateAnswer, as t
   it("F2: bold formatting does not hide a lockout conflict", () => {
     const v = check("With the machine **locked out**, press the **start** button.");
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.violation).toBe("hazard-warning:step-energy-contradiction");
+    if (!v.ok) expect(v.violation).toBe("unsafe-answer:lockout-step-contradiction");
   });
   it("F2: curly and straight apostrophes give the same result", () => {
     const curly = check("With the lockout in place, don\u2019t press the start button.");
@@ -131,7 +132,7 @@ describe("#4146 Codex r3 — the two confirmed defects (via validateAnswer, as t
   it("F5: the dead-check exemption covers only its own measurement, not a later live one", () => {
     const v = check("With the machine locked out, measure the input voltage to confirm absence of voltage, then measure the output frequency.");
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.violation).toBe("hazard-warning:step-energy-contradiction");
+    if (!v.ok) expect(v.violation).toBe("unsafe-answer:lockout-step-contradiction");
   });
   it("F5 r5: a live reading joined by 'and then' is still flagged, in either order", () => {
     for (const a of [
@@ -140,19 +141,20 @@ describe("#4146 Codex r3 — the two confirmed defects (via validateAnswer, as t
     ]) {
       const v = check(a);
       expect(v.ok, a).toBe(false);
-      if (!v.ok) expect(v.violation).toBe("hazard-warning:step-energy-contradiction");
+      if (!v.ok) expect(v.violation).toBe("unsafe-answer:lockout-step-contradiction");
     }
   });
   it("F5 r5 control: one dead-check measurement across two points is still accepted", () => {
     expect(check("With the machine locked out, measure the voltage between L1 and L2 to confirm absence of voltage.").ok).toBe(true);
   });
-  it("control: a live reading under lockout is still flagged, and the banner keeps the full answer", () => {
+  it("control: a live reading under lockout is still flagged, and now blocked with SAFETY_STOP", () => {
     const answer = "With the machine locked out, measure the output voltage while the drive runs.";
     const v = check(answer);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
-      expect(v.replacement.endsWith(answer)).toBe(true);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answer);
     }
   });
 });

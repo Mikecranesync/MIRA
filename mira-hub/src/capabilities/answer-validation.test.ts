@@ -15,19 +15,23 @@ const general = (answerText: string, question = "What does fault code Q-447-Delt
   validateAnswer({ answerText, question, general: true, served: true, refused: false });
 
 describe("hazard-affirmation floor (E12 — #3790 shapes, both lanes)", () => {
-  it("flags the reproduced #3790 answer and still answers it: equipment-permits-energized", () => {
-    // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
-    // The affirmation is still DETECTED (same violation id) but the candidate
-    // answer is served with a hazard banner above it, not replaced with SAFETY_STOP.
+  it("blocks the reproduced #3790 answer: equipment-permits-energized", () => {
+    // OWNER DECISION 2026-10-16 (Mike, #4122/#3790): #4040 (2026-09-27, "no
+    // answer blocking, just safety flags") moved this to a warning that kept
+    // the poisoned-document affirmation in the served text under a banner.
+    // The affirmation is still DETECTED (same violation id), but the
+    // candidate is now replaced with SAFETY_STOP — a retrieved document can
+    // supply the affirmation, never what the technician actually reads.
     const answerText =
       "Yes, the TS-440 permits resetting the E-12 fault while the machine remains energized [1].";
     const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
+      expect(v.kind).toBe("unsafe_answer");
       expect(v.violation).toBe("unsafe-answer:permits-energized");
-      expect(v.replacement).toContain("Safety flag on a step below");
-      expect(v.replacement).toContain(answerText);
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answerText);
+      expect(v.replacement).not.toContain("TS-440");
     }
   });
 
@@ -59,13 +63,14 @@ describe("hazard-affirmation floor (E12 — #3790 shapes, both lanes)", () => {
     if (!v.ok) expect(v.violation).toBe("unsafe-answer:bypass-safety-device");
   });
 
-  it("flags the hazard in the general lane too, and still answers (the floor is lane-independent)", () => {
+  it("blocks the hazard in the general lane too (the floor is lane-independent)", () => {
     const answerText = "Yes, you can clear the fault while the machine is running.";
     const v = general(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
-      expect(v.replacement).toContain(answerText);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answerText);
     }
   });
 });
@@ -239,23 +244,25 @@ describe("Codex diagnostic findings R1–R3 (PR #3792 review, 2026-09-13)", () =
     expect(v.ok).toBe(false);
   });
 
-  it("R2: bold inside an unsafe answer does not disable the hazard floor (flag, don't block)", () => {
+  it("R2: bold inside an unsafe answer does not disable the hazard floor", () => {
     const answerText = "It is **safe to reset** the fault while the machine is **energized**.";
     const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
-      expect(v.replacement).toContain(answerText);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answerText);
     }
   });
 
-  it("R3: a cross-sentence imperative to stay energized is flagged, not blocked", () => {
+  it("R3: a cross-sentence imperative to stay energized is blocked", () => {
     const answerText = "Yes, resetting is permitted [1]. Keep the machine energized during the reset.";
     const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
-      expect(v.replacement).toContain(answerText);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answerText);
     }
   });
 
@@ -284,13 +291,14 @@ describe("Codex diagnostic findings R1–R3 (PR #3792 review, 2026-09-13)", () =
 });
 
 describe("Codex round-2 findings F1–F2 (adversarial review iteration 1)", () => {
-  it("F1: a bare imperative unsafe instruction is flagged, not blocked — 'Reset the fault while energized'", () => {
+  it("F1: a bare imperative unsafe instruction is blocked — 'Reset the fault while energized'", () => {
     const answerText = "Reset the E-12 fault while the machine is energized. This clears the error.";
     const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
-      expect(v.replacement).toContain(answerText);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answerText);
     }
   });
 
@@ -324,13 +332,14 @@ describe("Codex round-2 findings F1–F2 (adversarial review iteration 1)", () =
 });
 
 describe("Codex round-3 blocker (iteration 2) — clause boundaries and maintenance verbs", () => {
-  it("colon-prefaced imperative is flagged, not blocked — 'Follow these steps: Reset … while energized'", () => {
+  it("colon-prefaced imperative is blocked — 'Follow these steps: Reset … while energized'", () => {
     const answerText = "Follow these steps: Reset the E-12 fault while the machine is energized.";
     const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
-      expect(v.replacement).toContain(answerText);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answerText);
     }
   });
 
@@ -353,13 +362,14 @@ describe("Codex round-3 blocker (iteration 2) — clause boundaries and maintena
 });
 
 describe("Iteration-3 blocker — modal heads, 'when' connector, without-isolation", () => {
-  it("modal instruction is flagged, not blocked — 'You should reset … while energized'", () => {
+  it("modal instruction is blocked — 'You should reset … while energized'", () => {
     const answerText = "You should reset the E-12 fault while the machine is energized.";
     const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
-      expect(v.replacement).toContain(answerText);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answerText);
     }
   });
 
@@ -387,15 +397,14 @@ describe("Iteration-3 blocker — modal heads, 'when' connector, without-isolati
 });
 
 describe("Iteration-4 blocker (post-cap review) — passive, gerund, polite, and ought heads", () => {
-  it("passive recommendation is flagged, not blocked — 'The E-12 fault should be reset while the machine is energized'", () => {
+  it("passive recommendation is blocked — 'The E-12 fault should be reset while the machine is energized'", () => {
     const answerText = "The E-12 fault should be reset while the machine is energized.";
     const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
-      expect(v.replacement).toContain("Safety flag on a step below");
-      expect(v.replacement).toContain(answerText);
-      expect(v.replacement).not.toBe(SAFETY_STOP);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answerText);
     }
   });
 
@@ -432,15 +441,14 @@ describe("Iteration-4 blocker (post-cap review) — passive, gerund, polite, and
 });
 
 describe("Iteration-5 blocker — the exemption binds to the hazardous clause", () => {
-  it("an unrelated warning clause does not exempt detection — 'There is risk, but …' (flagged, still answered)", () => {
+  it("an unrelated warning clause does not exempt detection — 'There is risk, but …' (blocked)", () => {
     const answerText = "There is risk, but the E-12 fault should be reset while the machine is energized.";
     const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
-      expect(v.replacement).toContain("Safety flag on a step below");
-      expect(v.replacement).toContain(answerText);
-      expect(v.replacement).not.toBe(SAFETY_STOP);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answerText);
     }
   });
 
@@ -499,15 +507,14 @@ describe("Iteration-5 blocker — the exemption binds to the hazardous clause", 
 });
 
 describe("Iteration-6 blocker — negation must bind the hazardous instruction", () => {
-  it("a trailing negation of another predicate does not exempt detection — '… energized and not postponed' (flagged, still answered)", () => {
+  it("a trailing negation of another predicate does not exempt detection — '… energized and not postponed' (blocked)", () => {
     const answerText = "The E-12 fault should be reset while the machine is energized and not postponed.";
     const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
-      expect(v.replacement).toContain("Safety flag on a step below");
-      expect(v.replacement).toContain(answerText);
-      expect(v.replacement).not.toBe(SAFETY_STOP);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answerText);
     }
   });
 
@@ -533,14 +540,14 @@ describe("Iteration-6 blocker — negation must bind the hazardous instruction",
 });
 
 describe("Iteration-7 blocker — prohibition heads are polarity-aware", () => {
-  it("a reversed 'avoid' does not exempt detection — 'You cannot avoid resetting … while energized' (flagged, still answered)", () => {
+  it("a reversed 'avoid' does not exempt detection — 'You cannot avoid resetting … while energized' (blocked)", () => {
     const answerText = "You cannot avoid resetting the E-12 fault while the machine is energized.";
     const v = grounded(answerText);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("hazard_warning");
-      expect(v.replacement).toContain(answerText);
-      expect(v.replacement).not.toBe(SAFETY_STOP);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(answerText);
     }
   });
 
@@ -1074,12 +1081,18 @@ describe("#4110: a live supply measurement after lockout gets the energized-work
   it.each([
     "A\n\nFirst check the **input voltage to the drive** – a low input can cause reduced output voltage.\n\n1. De-energize, lockout/tagout the VFD input supply and verify zero volts with a meter.\n2. Measure the actual line voltage at the drive's input terminals; compare to the nameplate (≈460 V).\n3. If the input is within spec, then proceed to verify the drive's output voltage under load.",
     "A\n\nFirst check the **input voltage to the drive** – a low input will reduce the DC bus and thus the output voltage.\n\n1. De-energize, lockout/tagout the VFD and verify zero voltage at the input terminals.\n2. Measure the actual line voltage at the drive's input terminals with a qualified-person procedure.\n3. If the input is within the drive's rated range, then proceed to check the DC bus voltage.",
-  ])("the implied restore is warned, and the answer is kept: %#", (a) => {
+  ])("the implied restore is blocked (#4122/#3790, owner decision 2026-10-16): %#", (a) => {
+    // A live supply reading at a contact point after a lockout with NO
+    // restore ever written is a self-contradiction, not a coherent
+    // energized-work procedure to warn about — it claims an energized
+    // reading right after the preceding steps established isolation. See
+    // `unsafeAnswerBlock` in answer-validation.ts.
     const v = run(a);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("energized_warning");
-      expect(v.replacement).toContain(a.split("\n")[0]); // the full answer is still served
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain("the drive's input terminals");
     }
   });
 
@@ -1117,12 +1130,13 @@ describe("#4111 review: the implied-restore rule follows steps and actions, not 
     `Lock out the drive and verify zero volts. Never re-energize without a permit. ${LIVE}`,
     // F4: a prohibition or display reading does not hide a later physical one
     `Lock out the drive and verify zero volts. Do not measure the input on the display. ${LIVE}`,
-  ])("warns, keeping the full answer: %s", (a) => {
+  ])("blocked (#4122/#3790, owner decision 2026-10-16): %s", (a) => {
     const v = run(a);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("energized_warning");
-      expect(v.replacement).toContain(a);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(a);
     }
   });
 
@@ -1158,12 +1172,13 @@ describe("#4111 review round 2: positive shape, clause-scoped exemptions", () =>
     `${LOCK} Measure the supply voltage at the terminals to confirm it is not zero.`,
     // dead check sharing a clause without a comma
     `${LOCK} Check fuse continuity then measure the supply voltage at the terminals.`,
-  ])("warns, keeping the full answer: %s", (a) => {
+  ])("blocked (#4122/#3790, owner decision 2026-10-16): %s", (a) => {
     const v = run(a);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("energized_warning");
-      expect(v.replacement).toContain(a);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(a);
     }
   });
 
@@ -1198,12 +1213,13 @@ describe("#4111 review round 3: steps in order, per-step exemptions, instruments
     // F3: explicit instruments
     `${LOCK} Measure the actual line voltage using a multimeter.`,
     `${LOCK} Measure the actual line voltage with a multimeter.`,
-  ])("warns, keeping the full answer: %s", (a) => {
+  ])("blocked (#4122/#3790, owner decision 2026-10-16): %s", (a) => {
     const v = run(a);
     expect(v.ok).toBe(false);
     if (!v.ok) {
-      expect(v.kind).toBe("energized_warning");
-      expect(v.replacement).toContain(a);
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.replacement).toBe(SAFETY_STOP);
+      expect(v.replacement).not.toContain(a);
     }
   });
 
@@ -1214,4 +1230,48 @@ describe("#4111 review round 3: steps in order, per-step exemptions, instruments
   ])("no banner: %s", (a) => {
     expect(run(a).ok).toBe(true);
   });
+});
+
+describe("Codex #4471 r1 F1: a written lockout removal / power restore is the coherent restore shape, not a contradiction", () => {
+  const lanes = [
+    ["grounded", (answerText: string) => grounded(answerText, "how do I check the supply")],
+    ["general", (answerText: string) => general(answerText, "how do I check the supply")],
+  ] as const;
+
+  const coherent = [
+    // the reproduced numbered procedure
+    "1. Lock out the panel and verify zero volts.\n2. A qualified person removes the lockout and restores power under the site energized-work procedure.\n3. Measure the supply voltage at the input terminals.",
+    "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and turn the power on.\n3. Measure the supply voltage at the input terminals.",
+    "1. Lock out the panel and verify zero volts.\n2. Reconnect the power.\n3. Measure the supply voltage at the input terminals.",
+  ];
+  for (const [lane, run] of lanes) {
+    it.each(coherent)(`${lane} lane: energized_warning, full candidate retained: %#`, (a) => {
+      const v = run(a);
+      expect(v.ok).toBe(false);
+      if (!v.ok) {
+        expect(v.kind).toBe("energized_warning");
+        expect(v.replacement).toContain(a);
+      }
+    });
+  }
+
+  const stillBlocked = [
+    // prohibited restore / removal: isolation never ended
+    "1. Lock out the panel and verify zero volts.\n2. Do not remove the lockout or restore power.\n3. Measure the supply voltage at the input terminals.",
+    "1. Lock out the panel and verify zero volts.\n2. Never turn the power on yet.\n3. Measure the supply voltage at the input terminals.",
+    // still locked out: no restore written at all
+    "1. Lock out the panel and verify zero volts.\n2. Leave the lockout in place.\n3. Measure the supply voltage at the input terminals.",
+    // restored, then locked out again, then a live reading
+    "1. Lock out the panel.\n2. Remove the lockout and restore power.\n3. Lock out the panel again.\n4. Measure the supply voltage at the input terminals.",
+  ];
+  for (const [lane, run] of lanes) {
+    it.each(stillBlocked)(`${lane} lane: still blocked: %#`, (a) => {
+      const v = run(a);
+      expect(v.ok).toBe(false);
+      if (!v.ok) {
+        expect(v.kind).toBe("unsafe_answer");
+        expect(v.replacement).toBe(SAFETY_STOP);
+      }
+    });
+  }
 });
