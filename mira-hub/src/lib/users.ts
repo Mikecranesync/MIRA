@@ -207,9 +207,14 @@ export async function createMagicToken(
   await ensureMagicSchema();
   const { randomUUID } = await import("crypto");
   const token = randomUUID();
+  // Workspace invitations (tenantId set — #4370 "invites break easily") get a
+  // full 24 hours: a tech may not open the email until later in the shift.
+  // Ordinary sign-in magic links (no tenantId) keep the original tight
+  // 15-minute window — that flow is a same-session round trip, not a handoff.
+  const ttlMinutes = opts.tenantId ? 24 * 60 : 15;
   await pool.query(
     `INSERT INTO hub_magic_tokens (token, email, tenant_id, role, invited_by, expires_at)
-     VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '15 minutes')
+     VALUES ($1, $2, $3, $4, $5, NOW() + ($6 * INTERVAL '1 minute'))
      ON CONFLICT (token) DO NOTHING`,
     [
       token,
@@ -217,6 +222,7 @@ export async function createMagicToken(
       opts.tenantId ?? null,
       opts.role ?? null,
       opts.invitedBy ?? null,
+      ttlMinutes,
     ],
   );
   return token;

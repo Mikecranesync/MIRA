@@ -65,6 +65,51 @@ describe("team invite magic tokens", () => {
   });
 });
 
+describe("magic token TTL (#4370 — invites expiring in 15 minutes)", () => {
+  it("gives a workspace invitation (tenantId set) a 24-hour window", async () => {
+    await createMagicToken("invited@example.com", {
+      tenantId: "tenant-1",
+      role: "technician",
+      invitedBy: "user-admin",
+    });
+    const insert = callMatching(/INSERT INTO hub_magic_tokens/);
+    expect(insert.sql).toMatch(/NOW\(\) \+ \(\$6 \* INTERVAL '1 minute'\)/);
+    expect(insert.params[5]).toBe(24 * 60);
+  });
+
+  it("keeps an ordinary sign-in magic link (no tenantId) at 15 minutes", async () => {
+    await createMagicToken("owner@example.com");
+    const insert = callMatching(/INSERT INTO hub_magic_tokens/);
+    expect(insert.params[5]).toBe(15);
+  });
+});
+
+describe("consumed magic tokens cannot replay", () => {
+  it("returns the invite metadata once; a second validate of the same token fails", async () => {
+    let consumed = false;
+    queryMock.mockImplementation((sql: string) => {
+      if (/UPDATE hub_magic_tokens/.test(sql)) {
+        if (consumed) return Promise.resolve({ rows: [] });
+        consumed = true;
+        return Promise.resolve({
+          rows: [
+            {
+              email: "invited@example.com",
+              tenant_id: "tenant-1",
+              role: "technician",
+              invited_by: "user-admin",
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    await expect(validateMagicToken("tok-once")).resolves.not.toBeNull();
+    await expect(validateMagicToken("tok-once")).resolves.toBeNull();
+  });
+});
+
 describe("ensureInvitedUser", () => {
   it("attaches a new invited user to the inviter's tenant as approved", async () => {
     queryMock.mockImplementation((sql: string) => {
