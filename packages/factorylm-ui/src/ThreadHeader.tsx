@@ -48,6 +48,7 @@ export function ThreadHeader({ state, dispatch, hooks }: ThreadHeaderProps) {
           className="fl-shell__header-new-chat"
           type="button"
           aria-label={newThreadLabel}
+          title={newThreadLabel}
           onClick={() => {
             onNewChat();
             dispatch({ type: "set-navigation-visible", visible: false });

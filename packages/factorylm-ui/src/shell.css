@@ -124,7 +124,7 @@
 /* Icon-only, always visible (ChatGPT table-stakes: New chat in the header).
    Distinct class from the drawer's `.fl-shell__new-chat` so e2e locators that
    look for that button's visible text stay on the sidebar control. */
-.fl-shell__header-new-chat { display: inline-flex; align-items: center; justify-content: center; inline-size: auto; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-header-ink); }
+.fl-shell__header-new-chat { display: inline-flex; align-items: center; justify-content: center; inline-size: auto; width: auto; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-header-ink); }
 .fl-shell__header-new-chat svg { inline-size: 1.25rem; block-size: 1.25rem; }
 .fl-shell__header-new-chat:disabled { color: var(--fl-workspace-off-ink); border-style: dashed; cursor: not-allowed; }
 .fl-shell__navigation-toggle svg,

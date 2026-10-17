@@ -406,4 +406,10 @@ describe("stylesheet contract", () => {
     expect(mobile).toMatch(/\.fl-shell__sidebar\s*\{[^}]*visibility:\s*hidden/s);
     expect(mobile).toMatch(/\[data-navigation-visible="true"\] \.fl-shell__sidebar\s*\{[^}]*visibility:\s*visible/s);
   });
+
+  it("the header New chat icon does not inherit the mobile full-width button rule", () => {
+    // mira-mobile `button { width: 100% }` is an element rule; a class `width: auto`
+    // beats it. `inline-size` alone does not, because that property is orthogonal.
+    expect(shell).toMatch(/\.fl-shell__header-new-chat\s*\{[^}]*width:\s*auto/s);
+  });
 });

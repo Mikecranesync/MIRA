@@ -86,6 +86,9 @@ describe("ThreadHeader — New chat is always in the header", () => {
     const button = headerNewChat(header);
     expect(button?.disabled).toBe(false);
     expect(button?.getAttribute("aria-label")).toBe("New chat");
+    expect(button?.getAttribute("title")).toBe("New chat");
+    expect(button?.getAttribute("aria-describedby")).toBeNull();
+    expect(header.querySelector("#fl-header-new-chat-reason")).toBeNull();
     act(() => {
       button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -95,5 +98,16 @@ describe("ThreadHeader — New chat is always in the header", () => {
   it("names the public-demo control Start over", () => {
     const header = renderHeader("FactoryLM", { onNewChat: () => {} }, "public");
     expect(headerNewChat(header)?.getAttribute("aria-label")).toBe("Start over");
+    expect(headerNewChat(header)?.getAttribute("title")).toBe("Start over");
+  });
+
+  it("links the public-demo disabled reason for screen readers", () => {
+    const header = renderHeader("FactoryLM", undefined, "public");
+    const button = headerNewChat(header);
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute("aria-label")).toBe("Start over");
+    const describedBy = button?.getAttribute("aria-describedby");
+    expect(describedBy).toBe("fl-header-new-chat-reason");
+    expect(header.querySelector(`#${describedBy}`)?.textContent).toMatch(/fresh demo conversation/i);
   });
 });
