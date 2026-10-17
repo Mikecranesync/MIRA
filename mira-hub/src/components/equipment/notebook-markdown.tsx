@@ -10,9 +10,9 @@
 //
 // Citation `[n]` markers become chips INSIDE the markdown tree (tables, lists,
 // bold runs) via a tiny remark plugin built on `mdast-util-find-and-replace`
-// (MIT) — the same primitive GFM autolink-literal uses. Only markers with a
-// matching citation are converted; an unmatched `[7]` stays plain text so we
-// never render a dead citation button (existing contract).
+// (MIT) — the same primitive GFM autolink-literal uses. A matching marker
+// becomes a chip (manual + page in the accessible label). An unmatched `[7]`
+// is stripped — never left as a bare marker and never a dead citation button.
 
 import { useCallback, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -28,16 +28,18 @@ import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 export const CITE_HREF_PREFIX = "#mira-cite-";
 
 /** remark plugin: `[n]` in text nodes → `link` node pointing at `#mira-cite-n`
- *  when `n` is a known citation id. Text inside existing links is skipped
- *  (find-and-replace default), so a real markdown link is never mangled. */
+ *  when `n` is a known citation id. An unmatched `[n]` is removed (empty
+ *  text) so a technician never sees a bare marker. Text inside existing links
+ *  is skipped (find-and-replace default), so a real markdown link is never
+ *  mangled. */
 export function remarkCitationChips(options: { citationIds: ReadonlySet<string> }) {
   return (tree: Root) => {
     findAndReplace(tree, [
-      /\[(\d+)\]/g,
+      /[ \t]*\[(\d+)\]/g,
       (match: string, n: string) =>
         options.citationIds.has(n)
-          ? { type: "link", url: `${CITE_HREF_PREFIX}${n}`, children: [{ type: "text", value: match }] }
-          : false,
+          ? { type: "link", url: `${CITE_HREF_PREFIX}${n}`, children: [{ type: "text", value: `[${n}]` }] }
+          : { type: "text", value: "" },
     ]);
   };
 }

@@ -42,9 +42,10 @@ describe("AnswerMarkdown (RNDR-1)", () => {
     expect(html).not.toContain('href="#mira-cite-');
   });
 
-  it("does NOT fabricate a chip for an unmatched [n]", () => {
+  it("does NOT fabricate a chip for an unmatched [n] — the bare marker is stripped", () => {
     const html = renderToStaticMarkup(<AnswerMarkdown content={FIXTURE} citations={[c1, c2]} />);
-    expect(html).toContain("See [7] for nothing");
+    expect(html).not.toContain("[7]");
+    expect(html).toContain("See for nothing");
     expect(html).not.toMatch(/<button[^>]*>7<\/button>/);
   });
 

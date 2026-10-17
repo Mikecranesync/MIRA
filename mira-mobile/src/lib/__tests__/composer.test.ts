@@ -34,9 +34,9 @@ describe("splitCitationMarks", () => {
       { kind: "text", text: " too." },
     ]);
   });
-  it("an unknown [n] or non-numeric bracket stays literal — never a dead chip", () => {
+  it("an unknown [n] is stripped; a non-numeric bracket stays literal — never a dead chip", () => {
     expect(splitCitationMarks("see [9] and [note]", known)).toEqual([
-      { kind: "text", text: "see [9] and [note]" },
+      { kind: "text", text: "see and [note]" },
     ]);
   });
   it("no marks → one text segment; empty → none", () => {
