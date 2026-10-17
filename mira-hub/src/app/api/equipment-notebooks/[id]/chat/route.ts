@@ -1862,7 +1862,7 @@ async function handleChatTurn(
   // turn's or an earlier one's) that names the manufacturer — never the
   // client's free text (UNS gate doctrine).
   const notebookRetrieval = !(general || nodeId === null);
-  const askScope = askableChatScope(docIds, srcs as { docId: string; readiness: { canChat: boolean; state: string } }[]);
+  const askScope = askableChatScope(docIds, srcs);
   const retrieveDocIds = askScope.notReady ? [] : askScope.retrieveIds;
   const sourcesNotReadyMessage = notebookRetrieval && askScope.notReady ? askScope.message : null;
   // Resolve OEM identity from one observation: this turn's LOOK, otherwise the

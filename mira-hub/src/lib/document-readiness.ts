@@ -127,7 +127,14 @@ function coverage(f: ReadinessFacts): number | null {
  * reported as "not found in the selected sources" (that copy is for a
  * finished, searchable manual that simply didn't match).
  */
-export function notReadyAskMessage(states: readonly Pick<Readiness, "state">[]): string {
+/** Runtime view of a source's readiness — `state` is a string so route
+ *  catch-unions and test doubles type-check without a `ReadinessState` cast. */
+export type SourceReadinessView = {
+  canChat: boolean;
+  state: string;
+};
+
+export function notReadyAskMessage(states: readonly { state: string }[]): string {
   if (states.some((s) => s.state === "failed")) {
     return "This manual didn't finish ingesting, so MIRA can't answer from it. Re-upload it, then ask.";
   }
@@ -158,14 +165,16 @@ export type AskableChatScope = {
  */
 export function askableChatScope(
   requestedDocIds: readonly string[],
-  sources: readonly { docId: string; readiness?: Pick<Readiness, "canChat" | "state"> | null }[],
+  sources: readonly { docId?: string; readiness?: SourceReadinessView | null }[],
 ): AskableChatScope {
-  const byId = new Map(sources.map((s) => [s.docId, s]));
+  const byId = new Map(
+    sources
+      .filter((s): s is { docId: string; readiness?: SourceReadinessView | null } => Boolean(s.docId))
+      .map((s) => [s.docId, s]),
+  );
   const inspected = requestedDocIds
     .map((id) => byId.get(id))
-    .filter((s): s is { docId: string; readiness: Pick<Readiness, "canChat" | "state"> } =>
-      Boolean(s?.readiness),
-    );
+    .filter((s): s is { docId: string; readiness: SourceReadinessView } => Boolean(s?.readiness));
   if (inspected.length === 0) {
     return { retrieveIds: [...requestedDocIds], notReady: false, message: null };
   }

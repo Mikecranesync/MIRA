@@ -5,7 +5,7 @@
  * allowed to cite, and what history the canonical route receives.
  */
 import { PROFILES, createShellState, shellReducer, type ManualSearchStatus, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
-import { notReadyAskMessage, type Readiness } from "@/lib/document-readiness";
+import { notReadyAskMessage } from "@/lib/document-readiness";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
@@ -262,7 +262,7 @@ export function sourcesNotReadyError(
   const inspected = selected.filter((s) => s.readiness);
   if (inspected.length === 0) return null;
   if (inspected.some((s) => s.readiness.canChat)) return null;
-  return notReadyAskMessage(inspected.map((s) => s.readiness as Readiness));
+  return notReadyAskMessage(inspected.map((s) => s.readiness));
 }
 
 /** The notebook's own sources, enabled or not — what the basis chip may call
