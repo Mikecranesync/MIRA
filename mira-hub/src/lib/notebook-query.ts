@@ -1,4 +1,4 @@
-import { canonicalModelKey } from "@/capabilities/model-token";
+import { canonicalModelKey, resolveModelFromObservationText } from "@/capabilities/model-token";
 
 /**
  * Industrial query normalization + multi-query expansion + deterministic rerank
@@ -95,6 +95,49 @@ function codeLike(tok: string): boolean {
   return tok.length <= 4 && /[a-z][A-Za-z]*[A-Z]/.test(tok);
 }
 
+// Keep underscore identifiers (Addr_CAN_OB) and hyphen/dot codes (P1-02) as ONE
+// token. The previous class stopped at `_`, so "Addr_CAN_OB" split into words
+// the keyword-gated rules could never see.
+const QUERY_TOKEN_RE = /[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*/g;
+
+function isExactPatternToken(tok: string): boolean {
+  return (
+    /^[PpAaBbCcHhLdtUu]\d{2,4}$/.test(tok) ||
+    /^F\d{2,4}$/i.test(tok) ||
+    /^25[AB]-[A-Z0-9]+$/i.test(tok) ||
+    /^\d{2,3}-[A-Z]\d{2,}$/i.test(tok)
+  );
+}
+
+/**
+ * Keyword-free identifier: a fault / part / parameter code the technician
+ * named as the subject without "fault"/"alarm" next to it.
+ *
+ * 2026-10-17 notebook rerun: CE10 (TQ-18) ranked 9th and Addr_CAN_OB (TQ-21)
+ * ranked 12th because neither reached the exact-token lane (`x=false`). A
+ * generic protocol word like CANopen must NOT qualify — it already floods
+ * via the protocol exactTokens list.
+ *
+ * Product/family tokens (GS4, GS10, PF525) are skipped so a model name does
+ * not bind the whole-token lane on every page of the bound manual. Tokens
+ * already covered by EXACT_PATTERNS stay there so P042/F004 are not boosted
+ * twice.
+ */
+function isCodeLikeIdentifier(tok: string): boolean {
+  if (tok.length < 3) return false;
+  if (resolveModelFromObservationText(tok).model) return false;
+  if (isExactPatternToken(tok)) return false;
+  if (/_/.test(tok) && /[A-Za-z]/.test(tok)) return true;
+  if (/[.-]/.test(tok)) {
+    // P1-02 / E.OV1 have a mixed alnum segment. RS-485 / COB-ID do not.
+    return tok.split(/[.-]/).some((p) => /[A-Za-z]/.test(p) && /\d/.test(p));
+  }
+  // Compact mix (CE10): a short letter prefix + digits. A long English stem
+  // with a trailing number ("term10") is not a code.
+  const m = tok.match(/^([A-Za-z]+)(\d+[A-Za-z]?)$/);
+  return !!m && m[1].length <= 3 && m[2].length >= 1;
+}
+
 // #4224 follow-up — the keyword can come AFTER the code ("overcurrent oC fault",
 // "F4 trips"). Same shape test as the forward rule, except a bare number never
 // qualifies here: "PowerFlex 753 fault" names a model, not a code.
@@ -151,9 +194,15 @@ function extractCodeTokens(q: string): string[] {
   // all. When the whole message is one or two words and EVERY word is shaped
   // like a code, the words are the code. "GS10 oC overcurrent" and "hello
   // there" are not terse in this sense and keep the ordinary path.
-  const words = q.match(/[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*/g) ?? [];
+  QUERY_TOKEN_RE.lastIndex = 0;
+  const words = q.match(QUERY_TOKEN_RE) ?? [];
   if (words.length > 0 && words.length <= 2 && words.every((w) => codeLike(w) || CAPS_MNEMONIC.test(w))) {
     for (const w of words) out.add(w);
+  }
+  // Keyword-free identifier scan (TQ-18 CE10, TQ-21 Addr_CAN_OB). Mixed-case
+  // mnemonics without digits (oC, ovA) stay on the keyword + terse paths above.
+  for (const tok of words) {
+    if (isCodeLikeIdentifier(tok)) out.add(tok);
   }
   return [...out];
 }
