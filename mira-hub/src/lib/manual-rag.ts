@@ -1019,31 +1019,56 @@ export async function retrieveNodeChunks(
   // out-ranked). POOL is retrieved per pass; the final slice is topK.
   const POOL = Math.max(topK * 4, 24);
 
+  const requestedModel = resolveModelFromObservationText(opts.rawQuery ?? q);
+  // Give each attached manual its own candidate window for a named-model ask.
+  // Otherwise a large sibling manual can consume LIMIT before applicability
+  // filtering, hiding the correct manual and making a supported ask abstain.
+  const docWindows = requestedModel.model && !requestedModel.ambiguous && allowedDocIds.length > 1
+    ? allowedDocIds.map((id) => [id])
+    : [allowedDocIds];
+
+  // Read the document's opening text, not just the retrieved page: later pages
+  // often omit the product name and OEM filenames are publication numbers.
+  // Match tenant AND doc id so another tenant's attachment cannot supply identity.
+  const documentHeadingSql = `(SELECT left(header.content, 2000)
+    FROM knowledge_entries header
+    WHERE header.tenant_id = knowledge_entries.tenant_id
+      AND header.doc_id = knowledge_entries.doc_id
+      AND header.ingest_route = 'v2'
+    ORDER BY header.page_start NULLS LAST, header.source_page NULLS LAST,
+      (header.metadata->>'chunk_index')::int NULLS LAST, header.id
+    LIMIT 1) AS document_heading`;
+
   // $2 is the tsquery text (per-pass), $6 the exact-token ILIKE patterns.
   const runRetrieval = async (tsquery: string, queryText: string) => {
-    const res = await client.query(
-      `SELECT
-          content,
-          doc_id::text AS doc_id,
-          source_url,
-          source_page,
-          page_start,
-          section_path,
-          metadata->>'filename' AS filename,
-          verified,
-          ts_rank_cd(content_tsv, ${tsquery}) AS rank
-        FROM knowledge_entries
-        WHERE tenant_id = $1
-          AND ingest_route = 'v2'
-          ${approvalClauseMain}
-          ${nodeClauseMain}
-          ${docClause}
-          AND content_tsv @@ ${tsquery}
-        ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
-        LIMIT $4`,
-      [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...docParams, ...approvedParams],
-    );
-    return res.rows;
+    const rows: Record<string, unknown>[] = [];
+    for (const window of docWindows) {
+      const res = await client.query(
+        `SELECT
+            content,
+            doc_id::text AS doc_id,
+            source_url,
+            source_page,
+            page_start,
+            section_path,
+            metadata->>'filename' AS filename,
+            ${documentHeadingSql},
+            verified,
+            ts_rank_cd(content_tsv, ${tsquery}) AS rank
+          FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
+            ${approvalClauseMain}
+            ${nodeClauseMain}
+            ${docClause}
+            AND content_tsv @@ ${tsquery}
+          ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
+          LIMIT $4`,
+        [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...(window.length ? [window] : []), ...approvedParams],
+      );
+      rows.push(...res.rows);
+    }
+    return rows;
   };
 
   // Exact-token lane: a technician question naming P042 / F004 / terminal 07
@@ -1075,23 +1100,30 @@ export async function retrieveNodeChunks(
       exactParams.push(approvedSourceDocIds);
       approvalClauseExact = approvedSourceFilterSql(exactParams.length);
     }
-    const res = await client.query(
-      `SELECT
-          content, doc_id::text AS doc_id, source_url, source_page, page_start,
-          section_path, metadata->>'filename' AS filename, verified,
-          0::float4 AS rank
-        FROM knowledge_entries
-        WHERE tenant_id = $1
-          AND ingest_route = 'v2'
-          ${approvalClauseExact}
-          ${nodeClauseExact}
-          ${exactDocClause}
-          AND content ${match === "regex" ? "~*" : "ILIKE"} ANY($3::text[])
-        ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
-        LIMIT $4`,
-      exactParams,
-    );
-    return res.rows;
+    const rows: Record<string, unknown>[] = [];
+    for (const window of docWindows) {
+      const windowParams = [...exactParams];
+      if (window.length) windowParams[4] = window;
+      const res = await client.query(
+        `SELECT
+            content, doc_id::text AS doc_id, source_url, source_page, page_start,
+            section_path, metadata->>'filename' AS filename, verified,
+            ${documentHeadingSql},
+            0::float4 AS rank
+          FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
+            ${approvalClauseExact}
+            ${nodeClauseExact}
+            ${exactDocClause}
+            AND content ${match === "regex" ? "~*" : "ILIKE"} ANY($3::text[])
+          ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
+          LIMIT $4`,
+        windowParams,
+      );
+      rows.push(...res.rows);
+    }
+    return rows;
   };
 
   // Collect a pooled candidate set across: original AND (precision), each
@@ -1099,8 +1131,21 @@ export async function retrieveNodeChunks(
   // lane. De-dupe by (doc_id, page, content prefix) so a chunk counts once.
   const pool: Record<string, unknown>[] = [];
   const seen = new Set<string>();
+  // A notebook is a document boundary, not proof that every attached manual
+  // covers the model in the current question. Reject an explicitly different
+  // model before ranking; a sibling manual must never become citation evidence.
+  // Use the raw message so a previous turn's model cannot override this one.
   const add = (rs: Record<string, unknown>[]) => {
     for (const r of rs) {
+      if (requestedModel.model && !requestedModel.ambiguous) {
+        const title = `${String(r.filename ?? "")} ${String(r.document_heading ?? "")}`.replace(/[_-]+/g, " ");
+        const titleModels = MODEL_PATTERNS.flatMap((pattern) =>
+          [...title.matchAll(new RegExp(pattern.source, "gi"))].map(
+            (match) => resolveModelFromObservationText(match[0]).model,
+          ),
+        ).filter((model): model is string => model !== null);
+        if (!titleModels.includes(requestedModel.model)) continue;
+      }
       const key = `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
       if (seen.has(key)) continue;
       seen.add(key);
