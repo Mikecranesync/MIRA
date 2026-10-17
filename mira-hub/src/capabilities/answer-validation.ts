@@ -962,8 +962,18 @@ function codeMeaningViolation(
         const esc = escapeRe(tok);
         // "Q-447-Delta (usually) means/indicates/is a …" — a definition,
         // hedged or not. Hedges do not rescue an invented meaning.
-        const defFrame = new RegExp(
-          `["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the)|is\\s+caused\\s+by|occurs\\s+when)\\b`,
+        const VERBS =
+          "(?:fault\\s+|alarm\\s+|error\\s+|code\\s+)?(?:usually\\s+|typically\\s+|often\\s+|generally\\s+|most\\s+likely\\s+)?(?:means|indicates|signals|refers\\s+to|stands\\s+for|denotes|corresponds\\s+to|is\\s+(?:a|an|the(?!\\s+one\\b))|is\\s+caused\\s+by|occurs\\s+when)\\b";
+        const defFrame = new RegExp(`["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+${VERBS}`, "i");
+        // A short "on/for/in <machine>" qualifier between the code and the verb
+        // does not rescue it either: "Fault F49123 on a Siemens drive generally
+        // indicates…" shipped uncited on staging (Golden Walk 2026-10-05). Only
+        // when the code is the clause's SUBJECT — "Clearing fault F004 on the
+        // keypad is a separate step" describes an operation (Codex #4238 r7 F7).
+        // Codex #4238 r8 F8: also catches standalone "The code …" and numbered
+        // lists "1) Fault …". F9: "is the one" is deictic, not definitional.
+        const qualifiedFrame = new RegExp(
+          `^[^a-zA-Z]*(?:(?:the|this|that)\\s+)?(?:(?:fault|alarm|error|trip|warning|code)(?:\\s+code)?\\s+)?["'\`]?${esc}["'\`]?(?:\\s*\\([^)]{0,40}\\))?\\s+(?:on|for|in|with|from)\\s+[^.!?\\n,;]{1,60}?\\s+${VERBS}`,
           "i",
         );
         // "the most likely reason you're seeing 'Q-447-Delta' is …"
@@ -971,7 +981,7 @@ function codeMeaningViolation(
           `\\b(?:reason|cause)\\b[^.!?\\n]{0,60}\\b(?:seeing|getting|displaying|showing)\\s*["'\`]?${esc}["'\`]?[^.!?\\n]{0,25}\\bis\\b`,
           "i",
         );
-        if (defFrame.test(clause) || causeFrame.test(clause)) {
+        if (defFrame.test(clause) || qualifiedFrame.test(clause) || causeFrame.test(clause)) {
           return { code: tok, excerpt: s.slice(0, 160) };
         }
       }
@@ -1277,6 +1287,22 @@ export function validateAnswer(opts: {
   // entirely. Measured, not assumed — see answer-validation-unicode-hyphen.
   const scanQuestion = foldForDetection(question);
 
+  // Fault-code meaning, decided BEFORE the safety warnings: a warning keeps the
+  // draft and quotes it, so returning one first shipped an uncited definition
+  // inside it (Codex #4238 r1 F2). Withholding the draft also removes the step
+  // the warning would have quoted. General lane only (owner decision
+  // 2026-10-05): the grounded lane keeps the citation contract — matching a
+  // citation to the claim it backs is a semantic judgment no sentence-splitting
+  // rule got right across five review rounds.
+  // Independent of the answer-wide refusal verdict: "I cannot find this code
+  // … F49123 indicates a motor overload" is classified a refusal yet asserts a
+  // meaning (Codex #4238 r2 F2). Honest non-verification stays exempt through
+  // the clause-level NON_VERIFICATION check inside codeMeaningViolation.
+  if (general) {
+    const cm = codeMeaningViolation(scanText, scanQuestion);
+    if (cm) return codeMeaningRejection(cm, answerText, fallbackOpts);
+  }
+
   // A — both lanes, refusals included (cheap, and a mis-classified "refusal"
   // must not skip the floor).
   // Mask only complete administrative sentences, preserving every separator.
@@ -1390,21 +1416,24 @@ export function validateAnswer(opts: {
     }
   }
 
-  const cm = codeMeaningViolation(scanText, scanQuestion);
-  if (cm) {
-    return {
-      ok: false,
-      kind: "unsupported_specificity",
-      violation: "unsupported-specificity:code-meaning-asserted",
-      detail: cm.excerpt,
-      // The ONLY visible string in this module built from a matched token, so
-      // it is the one place the fold could leak into what a technician reads.
-      // Quote the code as the model actually spelled it.
-      replacement: specificityFallback(originalSpelling(cm.code, answerText), fallbackOpts),
-    };
-  }
-
   return energizedWarningOr(restore, answerText);
+}
+
+function codeMeaningRejection(
+  cm: { code: string; excerpt: string },
+  answerText: string,
+  fallbackOpts: { manualSearchRunning: ManualSearchRunning },
+): AnswerValidation {
+  return {
+    ok: false,
+    kind: "unsupported_specificity",
+    violation: "unsupported-specificity:code-meaning-asserted",
+    detail: cm.excerpt,
+    // The ONLY visible string in this module built from a matched token, so
+    // it is the one place the fold could leak into what a technician reads.
+    // Quote the code as the model actually spelled it.
+    replacement: specificityFallback(originalSpelling(cm.code, answerText), fallbackOpts),
+  };
 }
 
 /** Split accepted text into whitespace-boundary pieces (~≤120 chars) so the
