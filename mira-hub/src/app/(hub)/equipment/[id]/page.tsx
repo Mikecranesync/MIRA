@@ -60,16 +60,29 @@ export default function NotebookPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Same rule as `latestRequestGate` on the /v3 host: a GET started for A must
+  // not commit after the technician has opened B (or a newer refresh of B).
+  // Without this, a late A response would setLoadedForId(A) while `id` is B,
+  // so sourcesKnown stays false forever and the header sticks on loading.
+  const loadGen = useRef(0);
 
   const load = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/api/equipment-notebooks/${id}/`, { cache: "no-store" });
-    if (res.status === 404) return setNotFound(true);
+    const requestedId = id;
+    const token = ++loadGen.current;
+    const res = await fetch(`${API_BASE}/api/equipment-notebooks/${requestedId}/`, { cache: "no-store" });
+    if (token !== loadGen.current) return;
+    if (res.status === 404) {
+      setNotFound(true);
+      return;
+    }
     if (!res.ok) return;
     const data = await res.json();
+    if (token !== loadGen.current) return;
+    setNotFound(false);
     setNotebook(data.notebook);
     const srcs: Source[] = data.sources ?? [];
     setSources(srcs);
-    setLoadedForId(id);
+    setLoadedForId(requestedId);
     setEnabled((prev) => {
       const next = { ...prev };
       for (const s of srcs) if (!(s.docId in next)) next[s.docId] = s.enabledByDefault && s.matchState !== "rejected";
@@ -82,7 +95,11 @@ export default function NotebookPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: namespace/page.tsx)
+    setNotFound(false);
     void load();
+    return () => {
+      loadGen.current += 1;
+    };
   }, [load]);
 
   const enabledDocIds = useMemo(

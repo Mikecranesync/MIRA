@@ -21,7 +21,14 @@ describe("HubShellHost grounding line while a notebook's sources are unknown (#4
 describe("classic equipment page source count while unknown (#4371)", () => {
   it("treats the count as known only for the id that just loaded", () => {
     expect(page).toMatch(/const sourcesKnown = loadedForId === id/);
-    expect(page).toMatch(/setLoadedForId\(id\)/);
+    expect(page).toMatch(/setLoadedForId\(requestedId\)/);
+  });
+
+  it("a GET started for A does not mark B known if A lands after B is open", () => {
+    expect(page).toMatch(/const requestedId = id/);
+    expect(page).toMatch(/const token = \+\+loadGen.current/);
+    expect(page).toMatch(/if \(token !== loadGen.current\) return/);
+    expect(page).not.toMatch(/setLoadedForId\(id\)/);
   });
 
   it("renders the loading-aware count helpers, never a raw 0 of 0 interpolation", () => {
