@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
-import { MODEL_PATTERNS, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import {
   codeTokenMatcher,
   expandIndustrialQuery,
@@ -95,6 +95,120 @@ export function neutralizeReferenceText(text: string): string {
 
 export function approvalGateEnabled(): boolean {
   return process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL === "true";
+}
+
+// #4469 F2 (primary review, pass 2 — the pass-1 keyword-stripping remediation
+// was REJECTED as incomplete) — an arbitrary mention anywhere in a document's
+// opening text is not affirmative applicability, and no finite keyword list
+// ("for/consult/refer/see/separate/another") can cover every way a document
+// points away from itself: "See the separate Micro820 manual.", "Related
+// documents: Micro820 user manual", "Micro820 is not covered by this
+// manual." all defeat a keyword strip, and stripping-then-reading-the-rest
+// is the ORIGINAL bug restated with one more regex.
+//
+// So this does the opposite: instead of trying to recognize and remove bad
+// prose, it reads ONLY the document's own declared title and ignores every
+// other word, structurally. `titleSegment` returns just the lead segment of
+// the heading — up to the first newline or ". " (period-space) — which is
+// where a real title/cross-reference boundary actually falls. Everything
+// after that boundary (a cross-reference, a "related documents" list, an
+// explicit exclusion) is prose the title never asserted and is never read
+// for coverage, regardless of phrasing. A title that genuinely names two
+// models in one breath ("Micro810 and Micro820 User Manual") has no boundary
+// before "Manual" and both survive intact.
+//
+// The heading is authoritative: when its title segment names ANY model, the
+// filename is not consulted at all — a renamed/mismatched filename can never
+// override what the document's own heading actually declares. The filename
+// is read ONLY as a fallback, when the heading's title segment names no
+// model at all (an opaque OEM publication-number filename with a real
+// heading, or the reverse). No LLM call; conservative abstention (an empty
+// identity set, maybe from both sides) is accepted over false grounding.
+//
+// Known limitation (not solved, surfaced for the parent): a cover page whose
+// first line is a generic "User Manual" with the actual model named two
+// lines down abstains under this rule — the title segment genuinely has no
+// model in it. That is the conservative failure mode this design accepts.
+function titleSegment(text: string): string {
+  // Codex #4469 r2 F6: a layout line break is not the end of a title. A first
+  // line that ends on a joining word or mark ("Micro810 and" / "Micro810 &" /
+  // "Micro810/" / "Micro810,") continues on the next line, so the wrapped
+  // dual-model title keeps both models. Only that dangling-join shape joins;
+  // any other newline still ends the title (the "Related documents" line).
+  let rest = text;
+  let head = "";
+  for (;;) {
+    const newline = rest.indexOf("\n");
+    if (newline < 0) {
+      head += rest;
+      break;
+    }
+    const line = rest.slice(0, newline);
+    if (/(?:\b(?:and|or)|[&/,+])\s*$/i.test(line) && !line.includes(". ")) {
+      head += line.replace(/\s*$/, " ");
+      rest = rest.slice(newline + 1).replace(/^\s+/, "");
+      continue;
+    }
+    head += line;
+    break;
+  }
+  const periodSpace = head.indexOf(". ");
+  return periodSpace >= 0 ? head.slice(0, periodSpace) : head;
+}
+
+// Codex #4469 r2 F2: a first-line cross-reference ("Micro810 User Manual — for
+// Micro820 consult the separate manual") has no newline or period before it,
+// so the whole line read as coverage. The declared title is the shortest
+// leading part of the title segment that already names a model and ends at a
+// title boundary: the end of a document-type noun ("… User Manual"), a dash,
+// colon, semicolon, bracket or pipe, or a pointing/excluding word ("for",
+// "see", "consult", "refer", "not", "except", "excluding", "unlike",
+// "replaces", "supersedes"). This only ever TRUNCATES — nothing after the
+// boundary is read — so an unrecognized phrasing can only cause abstention,
+// never admission. A boundary whose prefix names no model is skipped, so
+// "User Manual for Micro820" keeps Micro820, and a genuine multi-model title
+// ("Micro810 and Micro820 Programmable Controllers User Manual") keeps both.
+const TITLE_BOUNDARY_RE =
+  /\b(?:user\s+manual|manual|guide|instructions|handbook|reference|specifications?|data\s*sheet|datasheet)\b|\s[\u2014\u2013-]\s|[\u2014\u2013:;([|]|\s(?=(?:for|see|consult|refer|not|except|excluding|unlike|replaces|supersedes)\b)/gi;
+
+function declaredTitle(segment: string): string {
+  for (const m of segment.matchAll(TITLE_BOUNDARY_RE)) {
+    const isNoun = /^\w/.test(m[0]);
+    const end = isNoun ? m.index! + m[0].length : m.index!;
+    const prefix = segment.slice(0, end);
+    if (modelIdentitiesInText(prefix).size > 0) return prefix;
+  }
+  return segment;
+}
+
+function stripFileExtension(filename: string): string {
+  return filename.replace(/\.[a-z0-9]{1,6}$/i, "");
+}
+
+function affirmativeModelIdentities(filename: string, heading: string): Set<string> {
+  const headingIdentities = modelIdentitiesInText(declaredTitle(titleSegment(heading)));
+  if (headingIdentities.size > 0) return headingIdentities;
+  // A generic cover with model-bearing prose is ambiguous; a renamed file cannot resolve it.
+  if (modelIdentitiesInText(heading).size > 0) return new Set();
+  return modelIdentitiesInText(declaredTitle(stripFileExtension(filename).replace(/_+/g, " ")));
+}
+
+// Codex #4469 r2 F5: an exact catalog number is a stronger identity than a
+// shared panel label. When BOTH the question and the document name a catalog
+// number (6AV…), applicability requires a catalog match — a shared "TP700"
+// can never admit "6AV2124-0GC01-9AX0" for a "6AV2124-0GC01-0AX0" question.
+// With a catalog on only one side, the label match still applies (the
+// technician did not name a variant, or the manual covers the whole panel).
+const isCatalogIdentity = (id: string) => /^6AV/.test(id);
+
+function documentCoversRequest(requested: Set<string>, title: Set<string>): boolean {
+  const requestedCatalogs = [...requested].filter(isCatalogIdentity);
+  const titleCatalogs = [...title].filter(isCatalogIdentity);
+  if (requestedCatalogs.length > 0 && titleCatalogs.length > 0) {
+    return titleCatalogs.some((id) => requested.has(id));
+  }
+  for (const id of title) if (requested.has(id)) return true;
+  return false;
 }
 
 /**
@@ -1019,31 +1133,56 @@ export async function retrieveNodeChunks(
   // out-ranked). POOL is retrieved per pass; the final slice is topK.
   const POOL = Math.max(topK * 4, 24);
 
+  const requestedModel = resolveModelFromObservationText(opts.rawQuery ?? q);
+  // Give each attached manual its own candidate window for a named-model ask.
+  // Otherwise a large sibling manual can consume LIMIT before applicability
+  // filtering, hiding the correct manual and making a supported ask abstain.
+  const docWindows = requestedModel.model && !requestedModel.ambiguous && allowedDocIds.length > 1
+    ? allowedDocIds.map((id) => [id])
+    : [allowedDocIds];
+
+  // Read the document's opening text, not just the retrieved page: later pages
+  // often omit the product name and OEM filenames are publication numbers.
+  // Match tenant AND doc id so another tenant's attachment cannot supply identity.
+  const documentHeadingSql = `(SELECT left(header.content, 2000)
+    FROM knowledge_entries header
+    WHERE header.tenant_id = knowledge_entries.tenant_id
+      AND header.doc_id = knowledge_entries.doc_id
+      AND header.ingest_route = 'v2'
+    ORDER BY header.page_start NULLS LAST, header.source_page NULLS LAST,
+      (header.metadata->>'chunk_index')::int NULLS LAST, header.id
+    LIMIT 1) AS document_heading`;
+
   // $2 is the tsquery text (per-pass), $6 the exact-token ILIKE patterns.
   const runRetrieval = async (tsquery: string, queryText: string) => {
-    const res = await client.query(
-      `SELECT
-          content,
-          doc_id::text AS doc_id,
-          source_url,
-          source_page,
-          page_start,
-          section_path,
-          metadata->>'filename' AS filename,
-          verified,
-          ts_rank_cd(content_tsv, ${tsquery}) AS rank
-        FROM knowledge_entries
-        WHERE tenant_id = $1
-          AND ingest_route = 'v2'
-          ${approvalClauseMain}
-          ${nodeClauseMain}
-          ${docClause}
-          AND content_tsv @@ ${tsquery}
-        ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
-        LIMIT $4`,
-      [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...docParams, ...approvedParams],
-    );
-    return res.rows;
+    const rows: Record<string, unknown>[] = [];
+    for (const window of docWindows) {
+      const res = await client.query(
+        `SELECT
+            content,
+            doc_id::text AS doc_id,
+            source_url,
+            source_page,
+            page_start,
+            section_path,
+            metadata->>'filename' AS filename,
+            ${documentHeadingSql},
+            verified,
+            ts_rank_cd(content_tsv, ${tsquery}) AS rank
+          FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
+            ${approvalClauseMain}
+            ${nodeClauseMain}
+            ${docClause}
+            AND content_tsv @@ ${tsquery}
+          ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
+          LIMIT $4`,
+        [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...(window.length ? [window] : []), ...approvedParams],
+      );
+      rows.push(...res.rows);
+    }
+    return rows;
   };
 
   // Exact-token lane: a technician question naming P042 / F004 / terminal 07
@@ -1075,23 +1214,30 @@ export async function retrieveNodeChunks(
       exactParams.push(approvedSourceDocIds);
       approvalClauseExact = approvedSourceFilterSql(exactParams.length);
     }
-    const res = await client.query(
-      `SELECT
-          content, doc_id::text AS doc_id, source_url, source_page, page_start,
-          section_path, metadata->>'filename' AS filename, verified,
-          0::float4 AS rank
-        FROM knowledge_entries
-        WHERE tenant_id = $1
-          AND ingest_route = 'v2'
-          ${approvalClauseExact}
-          ${nodeClauseExact}
-          ${exactDocClause}
-          AND content ${match === "regex" ? "~*" : "ILIKE"} ANY($3::text[])
-        ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
-        LIMIT $4`,
-      exactParams,
-    );
-    return res.rows;
+    const rows: Record<string, unknown>[] = [];
+    for (const window of docWindows) {
+      const windowParams = [...exactParams];
+      if (window.length) windowParams[4] = window;
+      const res = await client.query(
+        `SELECT
+            content, doc_id::text AS doc_id, source_url, source_page, page_start,
+            section_path, metadata->>'filename' AS filename, verified,
+            ${documentHeadingSql},
+            0::float4 AS rank
+          FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
+            ${approvalClauseExact}
+            ${nodeClauseExact}
+            ${exactDocClause}
+            AND content ${match === "regex" ? "~*" : "ILIKE"} ANY($3::text[])
+          ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
+          LIMIT $4`,
+        windowParams,
+      );
+      rows.push(...res.rows);
+    }
+    return rows;
   };
 
   // Collect a pooled candidate set across: original AND (precision), each
@@ -1099,8 +1245,33 @@ export async function retrieveNodeChunks(
   // lane. De-dupe by (doc_id, page, content prefix) so a chunk counts once.
   const pool: Record<string, unknown>[] = [];
   const seen = new Set<string>();
+  // A notebook is a document boundary, not proof that every attached manual
+  // covers the model in the current question. Reject an explicitly different
+  // model before ranking; a sibling manual must never become citation evidence.
+  // Use the raw message so a previous turn's model cannot override this one.
+  // #4469 F1 — family-qualified identities computed once per call, on the
+  // SAME text resolveModelFromObservationText used to resolve requestedModel
+  // (so "which model is this" and "which identities does that resolve to"
+  // never disagree). Null when the query named no single model — the filter
+  // below is then skipped entirely, same as before.
+  const requestedIdentities: Set<string> | null =
+    requestedModel.model && !requestedModel.ambiguous ? modelIdentitiesInText(opts.rawQuery ?? q) : null;
   const add = (rs: Record<string, unknown>[]) => {
     for (const r of rs) {
+      if (requestedIdentities) {
+        // F2 — affirmative title/heading applicability only (see
+        // affirmativeModelIdentities): the heading's own title segment is
+        // authoritative; the filename is consulted only as a fallback, and
+        // never overrides a heading that already named a model.
+        // F3 — only underscores are filename separators (and the file
+        // extension is stripped before matching); catalog hyphens
+        // (6AV2124-0GC01-0AX0) are left intact so the full number survives.
+        const titleIdentities = affirmativeModelIdentities(
+          String(r.filename ?? ""),
+          String(r.document_heading ?? ""),
+        );
+        if (!documentCoversRequest(requestedIdentities, titleIdentities)) continue;
+      }
       const key = `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
       if (seen.has(key)) continue;
       seen.add(key);
