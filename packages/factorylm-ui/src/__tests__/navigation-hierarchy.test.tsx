@@ -331,6 +331,21 @@ describe("context lines only when context differs", () => {
     expect(view.container.querySelector(".fl-shell")?.getAttribute("data-navigation-visible")).toBe("false");
   });
 
+  it("the conversation header has its own New chat control so a technician does not need the drawer", () => {
+    const calls: string[] = [];
+    const view = render({ surface: "mobile", fixture: "project-tree", hooks: { onNewChat: () => calls.push("header") } });
+    const headerButton = must(
+      view.container.querySelector<HTMLButtonElement>(".fl-shell__header-new-chat"),
+      "header New chat",
+    );
+    expect(headerButton.disabled).toBe(false);
+    expect(headerButton.getAttribute("aria-label")).toBe("New chat");
+    expect(headerButton.classList.contains("fl-shell__new-chat")).toBe(false);
+    view.click(headerButton);
+    expect(calls).toEqual(["header"]);
+    expect(view.container.querySelector(".fl-shell")?.getAttribute("data-navigation-visible")).toBe("false");
+  });
+
   it("an inert item row (no host opener) is the single current row when its thread is open, before and after a search", () => {
     const view = render({ surface: "web", fixture: "project-tree" });
     act(() => { view.dispatch({ type: "hydrate", data: { thread: { ...getFixture("project-tree").thread, id: "thread-drive-a" } } }); });

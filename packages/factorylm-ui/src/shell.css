@@ -115,11 +115,18 @@
 .fl-shell__header p { margin: 0; }
 .fl-shell__header h1 { font-size: var(--fl-workspace-fs-title); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-inline-size: 0; }
 .fl-shell__brand-mark { display: none; margin: 0; font-size: var(--fl-workspace-fs-xs); font-weight: 700; letter-spacing: 0.02em; color: var(--fl-workspace-header-muted); }
-.fl-shell__header-title { min-inline-size: 0; }
+.fl-shell__header-title { min-inline-size: 0; flex: 1 1 auto; }
+.fl-shell__header-actions { display: flex; align-items: center; gap: var(--fl-workspace-space-1); flex: 0 0 auto; }
 .fl-shell__navigation-toggle,
 .fl-shell__drawer-close { display: none; }
 .fl-shell__inspector-toggle { display: inline-flex; align-items: center; gap: var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; }
 .fl-shell__inspector-toggle svg { inline-size: 1rem; block-size: 1rem; }
+/* Icon-only, always visible (ChatGPT table-stakes: New chat in the header).
+   Distinct class from the drawer's `.fl-shell__new-chat` so e2e locators that
+   look for that button's visible text stay on the sidebar control. */
+.fl-shell__header-new-chat { display: inline-flex; align-items: center; justify-content: center; inline-size: auto; padding-inline: var(--fl-workspace-space-2); border-color: var(--fl-workspace-line) !important; color: var(--fl-workspace-header-ink); }
+.fl-shell__header-new-chat svg { inline-size: 1.25rem; block-size: 1.25rem; }
+.fl-shell__header-new-chat:disabled { color: var(--fl-workspace-off-ink); border-style: dashed; cursor: not-allowed; }
 .fl-shell__navigation-toggle svg,
 .fl-shell__drawer-close svg { inline-size: 1.5rem; block-size: 1.5rem; }
 .fl-shell__placeholder { display: grid; place-items: center; padding: var(--fl-workspace-space-6); color: var(--fl-workspace-muted); }
