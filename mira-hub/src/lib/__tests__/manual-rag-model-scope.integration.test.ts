@@ -109,6 +109,172 @@ describe("identity-bound OEM model SQL", () => {
     expect(crowded.every((hit) => hit.docId === doc820)).toBe(true);
   });
 
+  // #4469 F1: against the real BM25 SQL (not a mocked row), a plain numeric
+  // model token ("800") collides across unrelated families — ACS800 and
+  // Micro800 both reduce to "800" — so an ACS800-only notebook must not
+  // answer a Micro800 question and vice versa.
+  it("does not let an ACS800 manual answer a Micro800 question over real SQL (#4469 F1)", async () => {
+    const docAcs = "39700000-0000-4000-8000-0000000000a8";
+    const docMicro = "39700000-0000-4000-8000-0000000000a9";
+    for (const [doc, heading, content] of [
+      [docAcs, "ACS800 User Manual", "ACS800 communication settings are configured on the control panel."],
+      [docMicro, "Micro800 User Manual", "Micro800 communication settings are configured on the control panel."],
+    ] as const) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-f1.pdf', 1, $3, 'v2',
+           $4::jsonb, true, true)`,
+        [TENANT, `${heading}. ${content}`, doc, JSON.stringify({ node_id: "pilot-f1", filename: `${heading}.pdf` })],
+      );
+    }
+    const retrieve = (docIds: string[], question: string) =>
+      retrieveNodeChunks(client, TENANT, question, { nodeId: "pilot-f1", unsPath: null, docIds, validatedDocScope: true });
+    expect(await retrieve([docAcs], "Micro800 communication settings")).toEqual([]);
+    expect(await retrieve([docMicro], "ACS800 communication settings")).toEqual([]);
+    expect(await retrieve([docAcs], "ACS800 communication settings")).toHaveLength(1);
+    expect(await retrieve([docMicro], "Micro800 communication settings")).toHaveLength(1);
+  });
+
+  // #4469 F2 (primary review, pass 2): no finite keyword list can recognize
+  // every way a document points away from itself — each of the primary
+  // review's named phrasings, plus a renamed/mismatched filename, must
+  // abstain over the real BM25 SQL, while a heading that genuinely covers
+  // both models in one breath must still work, and a mismatched filename
+  // must never override what the heading affirmatively declares.
+  it("rejects every named cross-reference/exclusion phrasing as coverage over real SQL (#4469 F2)", async () => {
+    const seeDoc = "39700000-0000-4000-8000-0000000000b1";
+    const relatedDoc = "39700000-0000-4000-8000-0000000000b3";
+    const excludedDoc = "39700000-0000-4000-8000-0000000000b4";
+    const renamedDoc = "39700000-0000-4000-8000-0000000000b5";
+    const bothDoc = "39700000-0000-4000-8000-0000000000b2";
+    const rows: Array<[string, string, string, string]> = [
+      [seeDoc, "2080-um010.pdf", "Micro810 User Manual. See the separate Micro820 manual.",
+        "Configure the communication settings in the controller properties dialog."],
+      [relatedDoc, "2080-um012.pdf", "Micro810 User Manual\nRelated documents: Micro820 user manual",
+        "Configure the communication settings in the controller properties dialog."],
+      [excludedDoc, "2080-um013.pdf", "Micro810 User Manual. Micro820 is not covered by this manual.",
+        "Configure the communication settings in the controller properties dialog."],
+      [renamedDoc, "Micro820_User_Manual.pdf", "Micro810 Programmable Controllers User Manual",
+        "Configure the communication settings in the controller properties dialog."],
+      [bothDoc, "2080-um011.pdf", "Micro810 and Micro820 Programmable Controllers User Manual",
+        "Configure the communication settings in the controller properties dialog."],
+    ];
+    for (const [doc, filename, heading, body] of rows) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-f2.pdf', 1, $3, 'v2', $4::jsonb, true, true)`,
+        [TENANT, `${heading}\n${body}`, doc, JSON.stringify({ node_id: "pilot-f2", filename })],
+      );
+    }
+    const retrieve = (docIds: string[], question: string) =>
+      retrieveNodeChunks(client, TENANT, question, { nodeId: "pilot-f2", unsPath: null, docIds, validatedDocScope: true });
+    // Reject: none of these affirmatively declare Micro820 coverage.
+    expect(await retrieve([seeDoc], "Micro820 communication settings")).toEqual([]);
+    expect(await retrieve([relatedDoc], "Micro820 communication settings")).toEqual([]);
+    expect(await retrieve([excludedDoc], "Micro820 communication settings")).toEqual([]);
+    expect(await retrieve([renamedDoc], "Micro820 communication settings")).toEqual([]);
+    // Control: each doc still answers the Micro810 question its own heading declares.
+    expect(await retrieve([seeDoc], "Micro810 communication settings")).toHaveLength(1);
+    expect(await retrieve([relatedDoc], "Micro810 communication settings")).toHaveLength(1);
+    expect(await retrieve([excludedDoc], "Micro810 communication settings")).toHaveLength(1);
+    expect(await retrieve([renamedDoc], "Micro810 communication settings")).toHaveLength(1);
+    // Explicit multi-model coverage is retained.
+    expect(await retrieve([bothDoc], "Micro820 communication settings")).toHaveLength(1);
+  });
+
+  // #4469 F1 (primary review, pass 2): "Comfort" alone is a panel FAMILY
+  // hint, not a specific sibling model — a TP1200-Comfort-titled manual must
+  // not answer a TP700 Comfort question over the real BM25 SQL.
+  it("does not let a TP1200 Comfort manual answer a TP700 Comfort question over real SQL (#4469 F1)", async () => {
+    const tp700Doc = "39700000-0000-4000-8000-0000000000d4";
+    const tp1200Doc = "39700000-0000-4000-8000-0000000000d5";
+    for (const [doc, model] of [[tp700Doc, "TP700"], [tp1200Doc, "TP1200"]] as const) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-f1-comfort.pdf', 1, $3, 'v2', $4::jsonb, true, true)`,
+        [
+          TENANT,
+          `${model} Comfort Operating Instructions\n${model} Comfort supply voltage is 24 VDC.`,
+          doc,
+          JSON.stringify({ node_id: "pilot-f1-comfort", filename: `${model} Comfort Operating Instructions.pdf` }),
+        ],
+      );
+    }
+    const retrieve = (docIds: string[], question: string) =>
+      retrieveNodeChunks(client, TENANT, question, { nodeId: "pilot-f1-comfort", unsPath: null, docIds, validatedDocScope: true });
+    expect(await retrieve([tp1200Doc], "TP700 Comfort supply voltage")).toEqual([]);
+    expect(await retrieve([tp700Doc], "TP700 Comfort supply voltage")).toHaveLength(1);
+  });
+
+  // #4469 F3: title normalization replaced catalog hyphens with spaces,
+  // truncating a Siemens order number to its prefix before model-token
+  // matching ran. Over the real BM25 SQL, the exact number must survive and
+  // a different suffix sharing the same prefix must still be rejected.
+  it("preserves an exact Siemens catalog number through title normalization over real SQL (#4469 F3)", async () => {
+    const exactDoc = "39700000-0000-4000-8000-0000000000c1";
+    const suffixDoc = "39700000-0000-4000-8000-0000000000c2";
+    for (const [doc, catalog] of [
+      [exactDoc, "6AV2124-0GC01-0AX0"],
+      [suffixDoc, "6AV2124-0GC01-9AX0"],
+    ] as const) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-f3.pdf', 1, $3, 'v2', $4::jsonb, true, true)`,
+        [
+          TENANT,
+          `SIMATIC Panel ${catalog} Specification. Supply voltage: 24 VDC, rated current 500 mA.`,
+          doc,
+          JSON.stringify({ node_id: "pilot-f3", filename: `${catalog}.pdf` }),
+        ],
+      );
+    }
+    const retrieve = (docIds: string[]) =>
+      retrieveNodeChunks(client, TENANT, "6AV2124-0GC01-0AX0 supply voltage", {
+        nodeId: "pilot-f3", unsPath: null, docIds, validatedDocScope: true,
+      });
+    expect(await retrieve([exactDoc])).toHaveLength(1);
+    expect(await retrieve([suffixDoc])).toEqual([]);
+  });
+
+  // #4469 F3 (primary review, pass 2): the catalog pattern is greedy enough
+  // to swallow a file extension, so the filename-FALLBACK path (heading
+  // names no model) must strip it before matching over the real BM25 SQL.
+  it("preserves an exact catalog number through the FILENAME fallback over real SQL (#4469 F3)", async () => {
+    const exactDoc = "39700000-0000-4000-8000-0000000000c3";
+    const suffixDoc = "39700000-0000-4000-8000-0000000000c4";
+    for (const [doc, catalog] of [
+      [exactDoc, "6AV2124-0GC01-0AX0"],
+      [suffixDoc, "6AV2124-0GC01-9AX0"],
+    ] as const) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-f3b.pdf', 1, $3, 'v2', $4::jsonb, true, true)`,
+        [
+          TENANT,
+          "Panel Specification Sheet. Supply voltage: 24 VDC, rated current 500 mA.",
+          doc,
+          JSON.stringify({ node_id: "pilot-f3b", filename: `${catalog}.pdf` }),
+        ],
+      );
+    }
+    const retrieve = (docIds: string[]) =>
+      retrieveNodeChunks(client, TENANT, "6AV2124-0GC01-0AX0 supply voltage", {
+        nodeId: "pilot-f3b", unsPath: null, docIds, validatedDocScope: true,
+      });
+    expect(await retrieve([exactDoc])).toHaveLength(1);
+    expect(await retrieve([suffixDoc])).toEqual([]);
+  });
+
   it("admits TP700 and TP700 Comfort, never KTP700, TP7000, TP7001, or V20", async () => {
     expect(await modelsFor("TP700")).toEqual(["TP700", "TP700 Comfort"]);
   });
