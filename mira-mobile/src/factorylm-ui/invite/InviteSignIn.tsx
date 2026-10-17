@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { resolveApiBase } from "../../plugins/build-config";
-import { parseInviteLink } from "./invite-link";
+import { inviteTokenIdentity, parseInviteLink } from "./invite-link";
 import { confirmInviteSession, signInWithMagicToken } from "./invite-sign-in";
 import { INVITE_HYDRATION_FAILED_COPY, inviteLinkErrorCopy, inviteSignInFailureCopy } from "./invite-copy";
 
@@ -130,8 +130,17 @@ export function InviteSignIn({
         // flight — a late-arriving result for token A must never become
         // the confirmation for an edited token B.
         onChange={(e) => {
-          setPasted(e.target.value);
-          setSessionEstablished(false);
+          const next = e.target.value;
+          const previousToken = inviteTokenIdentity(pasted);
+          const nextToken = inviteTokenIdentity(next);
+          setPasted(next);
+          // Only a different invitation token drops the confirmation-retry
+          // path. A stray space or accidental keystroke after hydration
+          // failure must not clear sessionEstablished — that would replay
+          // the spent token and wipe the fresh cookie.
+          if (previousToken && nextToken && previousToken !== nextToken) {
+            setSessionEstablished(false);
+          }
           setError("");
         }}
         placeholder="https://app.factorylm.com/hub/magic?token=…"

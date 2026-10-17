@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseInviteLink } from "../invite-link";
+import { inviteTokenIdentity, parseInviteLink } from "../invite-link";
 
 const TRUSTED = "https://app.factorylm.com";
 const UUID = "11111111-2222-4333-8444-555555555555";
@@ -69,5 +69,18 @@ describe("parseInviteLink", () => {
     expect(parseInviteLink(`${TRUSTED}/hub/magic?token=not-a-uuid`, TRUSTED)).toEqual({
       error: "missing_token",
     });
+  });
+
+  it("inviteTokenIdentity treats a trailing-space edit as the same invite", () => {
+    const link = `${TRUSTED}/hub/magic?token=${UUID}`;
+    expect(inviteTokenIdentity(`${link} `)).toBe(inviteTokenIdentity(link));
+  });
+
+  it("inviteTokenIdentity distinguishes a different invitation token", () => {
+    expect(
+      inviteTokenIdentity(`${TRUSTED}/hub/magic?token=${UUID}`),
+    ).not.toBe(
+      inviteTokenIdentity(`${TRUSTED}/hub/magic?token=22222222-3333-4444-8555-666666666666`),
+    );
   });
 });

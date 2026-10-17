@@ -101,7 +101,12 @@ describe("signInWithMagicToken", () => {
     );
 
     const result = await signInWithMagicToken("22222222-3333-4444-8555-666666666666");
-    expect(result).toEqual({ ok: false, reason: "invalid_token" });
+    // Not signed in: the stale cookie was wiped and /api/me got nothing.
+    // The callback itself was not an HTTP 401 / error URL, so confirmation
+    // may report sessionEstablished — that must still not revive the stale
+    // session or attach its cookie.
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("invalid_token");
     expect(meHeaders?.Cookie).toBeUndefined();
     expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({});
   });
@@ -216,6 +221,97 @@ describe("signInWithMagicToken", () => {
     expect(meCalls).toBe(3);
   });
 
+  // After a successful callback the token is spent and the cookie is set.
+  // A 401 from the confirming /api/me is NOT a credential rejection — it is
+  // a confirmation miss. Omitting sessionEstablished here sends the next tap
+  // through signInWithMagicToken, which clearAllLocalState()s the fresh
+  // cookie and replays the already-used token.
+  it("F1: HTTP 401 from /api/me after a successful callback is a confirmation retry, not a spent-token replay", async () => {
+    let callbackCalls = 0;
+    let meCalls = 0;
+    state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+      if (url.endsWith("/api/auth/csrf/")) {
+        return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+      }
+      if (url.endsWith("/api/auth/callback/magic-token/")) {
+        callbackCalls += 1;
+        return {
+          status: 200,
+          data: JSON.stringify({ url: "https://app.factorylm.com/feed" }),
+          headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+        };
+      }
+      if (url.endsWith("/api/me/")) {
+        meCalls += 1;
+        if (meCalls === 1) return { status: 401, data: "{}", headers: {} };
+        return { status: 200, data: JSON.stringify({ id: "u1" }), headers: {} };
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+
+    const first = await signInWithMagicToken("55555555-6666-4777-8888-999999999999");
+    expect(first).toEqual({
+      ok: false,
+      reason: "invalid_token",
+      sessionEstablished: true,
+    });
+    expect(callbackCalls).toBe(1);
+    expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({
+      "session-token": "fresh",
+    });
+
+    const retry = await confirmInviteSession();
+    expect(retry).toEqual({ ok: true });
+    expect(callbackCalls).toBe(1);
+    expect(meCalls).toBe(2);
+  });
+
+  // 403 / other 4xx after a successful exchange are the same class of bug
+  // as 401: inviteSignInFailureReason maps them to invalid_token, and the
+  // previous guard only promoted network/server to sessionEstablished.
+  it.each([403, 422])(
+    "F1: HTTP %i from /api/me after a successful callback is a confirmation retry, not a spent-token replay",
+    async (status) => {
+      let callbackCalls = 0;
+      let meCalls = 0;
+      state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+        if (url.endsWith("/api/auth/csrf/")) {
+          return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+        }
+        if (url.endsWith("/api/auth/callback/magic-token/")) {
+          callbackCalls += 1;
+          return {
+            status: 200,
+            data: JSON.stringify({ url: "https://app.factorylm.com/feed" }),
+            headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+          };
+        }
+        if (url.endsWith("/api/me/")) {
+          meCalls += 1;
+          if (meCalls === 1) return { status, data: "{}", headers: {} };
+          return { status: 200, data: JSON.stringify({ id: "u1" }), headers: {} };
+        }
+        throw new Error(`unexpected ${url}`);
+      });
+
+      const first = await signInWithMagicToken("66666666-7777-4888-8999-aaaaaaaaaaaa");
+      expect(first).toEqual({
+        ok: false,
+        reason: "invalid_token",
+        sessionEstablished: true,
+      });
+      expect(callbackCalls).toBe(1);
+      expect(JSON.parse(state.data.get(JAR_KEY) ?? "null")).toEqual({
+        "session-token": "fresh",
+      });
+
+      const retry = await confirmInviteSession();
+      expect(retry).toEqual({ ok: true });
+      expect(callbackCalls).toBe(1);
+      expect(meCalls).toBe(2);
+    },
+  );
+
   it("confirmInviteSession reports failure (not a magic bypass) when there is no established session", async () => {
     state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
       if (url.endsWith("/api/me/")) return { status: 401, data: "{}", headers: {} };
@@ -224,6 +320,7 @@ describe("signInWithMagicToken", () => {
     await expect(confirmInviteSession()).resolves.toEqual({
       ok: false,
       reason: "invalid_token",
+      sessionEstablished: true,
     });
   });
 

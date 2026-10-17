@@ -21,12 +21,13 @@ export type InviteSignInResult =
   | {
       ok: false;
       reason: InviteSignInFailureReason;
-      /** Set ONLY when the callback exchange itself succeeded (the token was
-       *  consumed, a fresh cookie was set) but the confirming /api/me call
-       *  then hit a transient network/server error — never alongside
-       *  "invalid_token" or "could_not_start" (#4470 F1). A caller seeing
-       *  this should retry via `confirmInviteSession()`, not by calling
-       *  `signInWithMagicToken` again with the same (now-consumed) token. */
+      /** Set when the callback exchange itself succeeded (the token was
+       *  consumed, a fresh cookie was set) but confirming /api/me then
+       *  failed for ANY reason — network, server, HTTP 401, 403, or other
+       *  4xx. A caller seeing this must retry via `confirmInviteSession()`,
+       *  never by calling `signInWithMagicToken` again with the spent token.
+       *  A callback 401 or error URL remains a hard failure without this
+       *  flag (#4470 F1). */
       sessionEstablished?: boolean;
     };
 
@@ -92,19 +93,22 @@ function callbackIndicatesRejection(data: unknown): boolean {
  * Exchange vs. confirmation (#4470 F1): once the callback is NOT a rejection,
  * a subsequent /api/me failure is purely a confirmation problem, not a
  * credential problem — the token is already consumed and a fresh cookie is
- * already sitting in the jar. `checkSessionEstablished` is the shared tail
- * for both this function and `confirmInviteSession` below, so a transient
- * network/server blip here never has to be "fixed" by replaying the token.
+ * already sitting in the jar. That includes HTTP 401 `auth` and other 4xx
+ * kinds, not only transient network/server errors. `checkSessionEstablished`
+ * is the shared tail for both this function and `confirmInviteSession`
+ * below, so a confirmation miss never has to be "fixed" by replaying the
+ * spent token or clearing the new session.
  */
 async function checkSessionEstablished(): Promise<InviteSignInResult> {
   try {
     await request("/api/me/");
     return { ok: true };
   } catch (error) {
-    const reason = inviteSignInFailureReason(error, "invalid_token");
-    return reason === "network" || reason === "server"
-      ? { ok: false, reason, sessionEstablished: true }
-      : { ok: false, reason };
+    return {
+      ok: false,
+      reason: inviteSignInFailureReason(error, "invalid_token"),
+      sessionEstablished: true,
+    };
   }
 }
 

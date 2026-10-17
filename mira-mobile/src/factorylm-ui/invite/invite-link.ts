@@ -17,6 +17,23 @@ export interface InviteLinkResult {
 }
 
 /**
+ * Token identity of a pasted invitation URL — used only to decide whether a
+ * textarea edit is a *different* invite. Does not contact the host, does not
+ * log the value, and is not an authentication check (origin/HTTPS/path
+ * validation still happens in `parseInviteLink` at submit).
+ */
+export function inviteTokenIdentity(pasted: string): string | null {
+  const raw = pasted.trim();
+  if (!raw) return null;
+  try {
+    const token = new URL(raw).searchParams.get("token")?.trim() ?? "";
+    return UUID_RE.test(token) ? token.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * `trustedOrigin` is the app's own resolved backend origin (e.g.
  * `https://app.factorylm.com`), from `resolveApiBase()` — NOT derived from
  * the pasted text. A pasted link whose origin doesn't match is rejected

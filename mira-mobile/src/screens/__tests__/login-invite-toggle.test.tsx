@@ -424,4 +424,117 @@ describe("Login — invitation-link path (#4364)", () => {
     expect(onSignedIn).toHaveBeenCalledTimes(2);
     expect(callbackCalls).toBe(1); // the consumed token was never resubmitted
   });
+
+  // LOW (#4470): after hydration fails, any textarea onChange used to clear
+  // sessionEstablished. A stray space then forced signInWithMagicToken, which
+  // wipes the fresh cookie and replays the spent token. Only a different
+  // invite token may drop the confirmation-retry path.
+  it("a stray textarea edit after hydration failure does not replay the spent token", async () => {
+    let callbackCalls = 0;
+    state.httpRequest.mockImplementation(async ({ url }: { url: string }) => {
+      if (url.endsWith("/api/auth/csrf/")) {
+        return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+      }
+      if (url.endsWith("/api/auth/callback/magic-token/")) {
+        callbackCalls += 1;
+        return {
+          status: 200,
+          data: JSON.stringify({ url: "https://app.factorylm.com/feed" }),
+          headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+        };
+      }
+      if (url.endsWith("/api/me/")) {
+        return { status: 200, data: JSON.stringify({ id: "u1" }), headers: {} };
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+
+    const invite =
+      "https://app.factorylm.com/hub/magic?token=11111111-2222-4333-8444-555555555555";
+    const onSignedIn = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("getMe network blip"))
+      .mockResolvedValue(undefined);
+    render(<Login onSignedIn={onSignedIn} />);
+    fireEvent.click(screen.getByText(/Have an invitation link instead/));
+    const textarea = screen.getByLabelText("Invitation link") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: invite } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Use invite link"));
+      for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    });
+
+    expect(onSignedIn).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/account didn't finish loading/)).toBeTruthy();
+    expect(screen.getByText("Finish signing in")).toBeTruthy();
+    expect(callbackCalls).toBe(1);
+
+    fireEvent.change(textarea, { target: { value: `${invite} ` } });
+
+    expect(screen.getByText("Finish signing in")).toBeTruthy();
+    expect(screen.queryByText("Use invite link")).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Finish signing in"));
+      for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    });
+
+    expect(onSignedIn).toHaveBeenCalledTimes(2);
+    expect(callbackCalls).toBe(1);
+  });
+
+  it("a different pasted invite after hydration failure starts a new exchange", async () => {
+    let callbackTokens: string[] = [];
+    state.httpRequest.mockImplementation(
+      async ({ url, data }: { url: string; data?: string }) => {
+        if (url.endsWith("/api/auth/csrf/")) {
+          return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+        }
+        if (url.endsWith("/api/auth/callback/magic-token/")) {
+          callbackTokens.push(String(data ?? ""));
+          return {
+            status: 200,
+            data: JSON.stringify({ url: "https://app.factorylm.com/feed" }),
+            headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+          };
+        }
+        if (url.endsWith("/api/me/")) {
+          return { status: 200, data: JSON.stringify({ id: "u1" }), headers: {} };
+        }
+        throw new Error(`unexpected ${url}`);
+      },
+    );
+
+    const first =
+      "https://app.factorylm.com/hub/magic?token=11111111-2222-4333-8444-555555555555";
+    const second =
+      "https://app.factorylm.com/hub/magic?token=22222222-3333-4444-8555-666666666666";
+    const onSignedIn = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("getMe network blip"))
+      .mockResolvedValue(undefined);
+    render(<Login onSignedIn={onSignedIn} />);
+    fireEvent.click(screen.getByText(/Have an invitation link instead/));
+    const textarea = screen.getByLabelText("Invitation link") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: first } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Use invite link"));
+      for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    });
+
+    expect(screen.getByText("Finish signing in")).toBeTruthy();
+    fireEvent.change(textarea, { target: { value: second } });
+    expect(screen.getByText("Use invite link")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Use invite link"));
+      for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    });
+
+    expect(callbackTokens).toHaveLength(2);
+    expect(callbackTokens[1]).toContain("22222222-3333-4444-8555-666666666666");
+    expect(onSignedIn).toHaveBeenCalledTimes(2);
+  });
 });
