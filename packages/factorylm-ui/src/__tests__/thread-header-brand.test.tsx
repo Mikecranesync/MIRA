@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { PROFILES, createShellState, getFixture, type ShellState } from "@factorylm/interaction";
+import { PROFILES, createShellState, getFixture, type ShellAction, type ShellState } from "@factorylm/interaction";
+import type { HostHooks } from "../parts";
 import { ThreadHeader } from "../ThreadHeader";
 
 // The phone header stacks the product mark above the thread title. Both HOME
@@ -19,18 +20,27 @@ afterEach(() => {
   });
 });
 
-function renderHeader(title: string): HTMLElement {
-  const base = createShellState(getFixture("machine-ask"), PROFILES.mobile);
+function renderHeader(
+  title: string,
+  hooks?: HostHooks,
+  profile: keyof typeof PROFILES = "mobile",
+  dispatch: (action: ShellAction) => void = () => {},
+): HTMLElement {
+  const base = createShellState(getFixture("machine-ask"), PROFILES[profile]);
   const state: ShellState = { ...base, thread: { ...base.thread, title } };
   const container = document.createElement("div");
   document.body.append(container);
   let root: Root;
   act(() => {
     root = createRoot(container);
-    root.render(<ThreadHeader state={state} dispatch={() => {}} />);
+    root.render(<ThreadHeader state={state} dispatch={dispatch} hooks={hooks} />);
   });
   roots.push({ root: root!, container });
   return container;
+}
+
+function headerNewChat(header: HTMLElement): HTMLButtonElement | null {
+  return header.querySelector<HTMLButtonElement>(".fl-shell__header-new-chat");
 }
 
 describe("ThreadHeader — the brand appears once", () => {
@@ -48,5 +58,56 @@ describe("ThreadHeader — the brand appears once", () => {
     const header = renderHeader("Sensor v0 overnight 2026-08-28");
     expect(header.querySelector(".fl-shell__brand-mark")?.textContent).toBe("FactoryLM");
     expect(header.querySelector("h1")?.textContent).toBe("Sensor v0 overnight 2026-08-28");
+  });
+});
+
+describe("ThreadHeader — New chat is always in the header", () => {
+  it("is honestly disabled when the host cannot start a thread", () => {
+    const header = renderHeader("Drive A");
+    const button = headerNewChat(header);
+    expect(button).not.toBeNull();
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute("aria-label")).toBe("New chat");
+    expect(button?.getAttribute("title")).toMatch(/not available/i);
+    // Screen readers get the reason too, not only a mouse-hover tooltip.
+    const describedBy = button?.getAttribute("aria-describedby");
+    expect(describedBy).toBe("fl-header-new-chat-reason");
+    expect(header.querySelector(`#${describedBy}`)?.textContent).toMatch(/not available/i);
+  });
+
+  it("starts a host-owned thread and closes the drawer", () => {
+    const calls: Array<string | ShellAction> = [];
+    const header = renderHeader(
+      "Drive A",
+      { onNewChat: () => calls.push("newChat") },
+      "mobile",
+      (action) => calls.push(action),
+    );
+    const button = headerNewChat(header);
+    expect(button?.disabled).toBe(false);
+    expect(button?.getAttribute("aria-label")).toBe("New chat");
+    expect(button?.getAttribute("title")).toBe("New chat");
+    expect(button?.getAttribute("aria-describedby")).toBeNull();
+    expect(header.querySelector("#fl-header-new-chat-reason")).toBeNull();
+    act(() => {
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(calls).toEqual(["newChat", { type: "set-navigation-visible", visible: false }]);
+  });
+
+  it("names the public-demo control Start over", () => {
+    const header = renderHeader("FactoryLM", { onNewChat: () => {} }, "public");
+    expect(headerNewChat(header)?.getAttribute("aria-label")).toBe("Start over");
+    expect(headerNewChat(header)?.getAttribute("title")).toBe("Start over");
+  });
+
+  it("links the public-demo disabled reason for screen readers", () => {
+    const header = renderHeader("FactoryLM", undefined, "public");
+    const button = headerNewChat(header);
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute("aria-label")).toBe("Start over");
+    const describedBy = button?.getAttribute("aria-describedby");
+    expect(describedBy).toBe("fl-header-new-chat-reason");
+    expect(header.querySelector(`#${describedBy}`)?.textContent).toMatch(/fresh demo conversation/i);
   });
 });
