@@ -213,7 +213,9 @@ describe("STRM-2 — client stops generation mid-stream", () => {
     expect(turn).toMatchObject({
       question: "what is F004",
       answerStatus: "error",
-      answerText: "DC bus undervoltage [1] means ",
+      // Trailing whitespace is held by the grounded marker stripper (a
+      // following [n] may need it removed); the saved turn is what streamed.
+      answerText: "DC bus undervoltage [1] means",
       evidence: [],
       basis: null,
       enabledSourceDocIds: [DOC_A],
@@ -276,7 +278,9 @@ describe("STRM-2 — client stops generation mid-stream", () => {
     const reader = res.body!.getReader();
     const dec = new TextDecoder();
     let received = "";
-    while (!received.includes("the ")) {
+    // The grounded marker stripper holds a trailing space until the next
+    // delta (it may precede an unresolved [n]); "the" is what has streamed.
+    while (!received.includes("the")) {
       const { value, done } = await reader.read();
       if (done) break;
       received += dec.decode(value, { stream: true });
@@ -285,14 +289,14 @@ describe("STRM-2 — client stops generation mid-stream", () => {
 
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
     const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
-    expect(turn).toMatchObject({ answerStatus: "error", answerText: "Check the ", evidence: [], basis: null });
+    expect(turn).toMatchObject({ answerStatus: "error", answerText: "Check the", evidence: [], basis: null });
 
     await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
     const [scope, usage] = persistMock.persistTurnUsage.mock.calls[0] as unknown as [
       Record<string, unknown>,
       Record<string, unknown>,
     ];
-    expect(scope).toMatchObject({ answerText: "Check the ", citationsPresent: false });
+    expect(scope).toMatchObject({ answerText: "Check the", citationsPresent: false });
     expect(usage).toMatchObject({ provider: "Groq", status: "error", routeReason: "primary" });
     await vi.waitFor(() => expect(provider.state.cancelled).toBe(true));
   });
@@ -407,7 +411,7 @@ describe("STRM-2 — client stops generation mid-stream", () => {
 
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalledTimes(1));
     const [, , turn] = domainMock.recordTurn.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
-    expect(turn).toMatchObject({ answerStatus: "error", answerText: "The plate reads ", basis: null });
+    expect(turn).toMatchObject({ answerStatus: "error", answerText: "The plate reads", basis: null });
     expect(turn.evidence).toEqual([
       { kind: "visual_observation", fileId: PHOTO, capturedAt: "2026-10-05T20:00:00.000Z", provenance: "phone_photo" },
     ]);
