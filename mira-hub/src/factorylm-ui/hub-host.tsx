@@ -79,6 +79,7 @@ import {
   openNotebookSelection,
   retainedStreamInterruption,
   searchForSelection,
+  selectionForNotebook,
   selectionFromSearch,
   sendFailureMessage,
   shellThreadId,
@@ -127,7 +128,13 @@ function writeSearch(search: string): void {
   if (`${window.location.pathname}${window.location.search}` !== next) window.history.replaceState(window.history.state, "", next);
 }
 
-export function HubShellHost() {
+/**
+ * `initialNotebookId` — the notebook a route names in its PATH (the equipment
+ * page's `[id]`). It ranks below an explicit `?notebook=` deep link and above
+ * the HOME landing, and is read only for the first selection: later sends and
+ * clicks go through `select`, exactly as on `/v3`.
+ */
+export function HubShellHost({ initialNotebookId }: { initialNotebookId?: string } = {}) {
   // One capture timestamp per mount (state, not a ref: it is read during render).
   const [capturedAt] = useState(() => new Date().toISOString());
   const [signedOut, setSignedOut] = useState(false);
@@ -199,7 +206,10 @@ export function HubShellHost() {
     // would reset the draft on every render and the composer could not be
     // typed into (the e2e deep-link follow-up caught exactly that).
     if (!selectionRef.current) {
-      const next = selectionFromSearch(readSearch(), data.notebooks) ?? landingSelection(data.notebooks);
+      const next =
+        selectionFromSearch(readSearch(), data.notebooks) ??
+        (initialNotebookId ? selectionForNotebook(initialNotebookId, data.notebooks) : null) ??
+        landingSelection(data.notebooks);
       if (next) {
         syncThread(next);
         setSelection(next);
@@ -209,7 +219,7 @@ export function HubShellHost() {
       }
     }
     return data.notebooks;
-  }, [syncThread]);
+  }, [syncThread, initialNotebookId]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     void loadNotebooks();
