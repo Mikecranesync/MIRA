@@ -55,7 +55,6 @@ import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { HOME_THREAD, createOutgoingOwner, withOutgoing, type Outgoing } from "./outgoing-turn";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
-import { OnboardingGate } from "./onboarding-gate";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus } from "./to-interaction";
 import {
@@ -66,6 +65,7 @@ import {
   generalGuidanceRequest,
   createLatestLoadTracker,
   detailQueryFor,
+  draftAfterSendSucceeded,
   enabledDocIds,
   errorMessageFor,
   fixtureFor,
@@ -73,14 +73,15 @@ import {
   historyRows,
   homeSendPlan,
   initialHubShellState,
-  initialSelection,
   landingSelection,
   latestRequestGate,
   metaFor,
   newThreadId,
+  openNotebookSelection,
   retainedStreamInterruption,
   searchForSelection,
   selectionFromSearch,
+  sendFailureMessage,
   shellThreadId,
   type CompatibleStreamResult,
   type HubSelection,
@@ -159,6 +160,11 @@ export function HubShellHost() {
   const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 
   const [state, dispatch] = useReducer(shellReducer, undefined, initialHubShellState);
+  // #4311: the send path finishes long after the render that started it; a
+  // successful retry needs the composer's CURRENT draft to decide whether the
+  // question it put back is still sitting there.
+  const draftRef = useRef(state.draft);
+  useEffect(() => { draftRef.current = state.draft; }, [state.draft]);
 
   /**
    * Tell the reducer WHICH thread is open, from event handlers (never effects).
@@ -193,6 +199,9 @@ export function HubShellHost() {
       if (next) {
         syncThread(next);
         setSelection(next);
+        // A link without a thread opened a freshly minted one (#4444); name it
+        // in the URL so a reload returns to this chat, not another blank one.
+        writeSearch(searchForSelection(next));
       }
     }
     return data.notebooks;
@@ -410,6 +419,10 @@ export function HubShellHost() {
       await loadNotebooks();
       setLive((cur) => (cur && cur.id === id ? null : cur));
       dropOutgoing(outgoingId);
+      // #4311: a failed send put the question back in the composer; a
+      // successful retry takes it away again (never a newer draft).
+      const draft = draftAfterSendSucceeded(draftRef.current, question);
+      if (draft !== null) dispatch({ type: "set-draft", draft });
       return true;
     } catch (err) {
       const retained = retainedStreamInterruption(err);
@@ -420,13 +433,13 @@ export function HubShellHost() {
             : cur,
         );
         if (!retained.stopped) {
-          const message = err instanceof Error ? err.message : String(err);
+          const message = sendFailureMessage(err);
           setFailedBody({ body, question });
           dispatch({ type: "set-send-error", error: message });
         }
         return false;
       }
-      const message = err instanceof Error ? err.message : String(err);
+      const message = sendFailureMessage(err);
       setLive((cur) => (cur && cur.id === id ? null : cur));
       dropOutgoing(outgoingId);
       setFailedBody({ body, question });
@@ -530,7 +543,7 @@ export function HubShellHost() {
     if (plan.kind === "create") {
       setBusy(true);
       try { notebookId = await createNotebook(plan.body); }
-      catch (err) { dropOutgoing(); dispatch({ type: "set-send-error", error: err instanceof Error ? err.message : String(err) }); dispatch({ type: "set-draft", draft: q }); return; }
+      catch (err) { dropOutgoing(); dispatch({ type: "set-send-error", error: sendFailureMessage(err) }); dispatch({ type: "set-draft", draft: q }); return; }
       finally { setBusy(false); }
     }
     // No id means the create was refused (401 → signed-out screen) — hand the
@@ -651,8 +664,8 @@ export function HubShellHost() {
     const notebookId = notebookIdFromProject(projectId);
     if (!notebookId) return;
     const nb = notebooks?.find((n) => n.id === notebookId);
-    const sel = nb ? initialSelection([nb]) : null;
-    if (sel) select(sel);
+    // A fresh chat, not the notebook's last conversation (#4444).
+    if (nb) select(openNotebookSelection(nb));
   }, [notebooks, select]);
 
   /**
@@ -853,17 +866,15 @@ export function HubShellHost() {
 
   return (
     <div className="hub-shell-host" data-testid="hub-shell">
-      <OnboardingGate>
-        <FactoryLMShell
-          state={view}
-          dispatch={dispatch}
-          adapter={adapter}
-          hooks={hooks}
-          conversationSurface="assistant"
-          onOpenItem={onOpenItem}
-          onSelectProject={onSelectProject}
-        />
-      </OnboardingGate>
+      <FactoryLMShell
+        state={view}
+        dispatch={dispatch}
+        adapter={adapter}
+        hooks={hooks}
+        conversationSurface="assistant"
+        onOpenItem={onOpenItem}
+        onSelectProject={onSelectProject}
+      />
     </div>
   );
 }

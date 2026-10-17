@@ -629,7 +629,7 @@ jobs:
           APPROVED_RELEASE_TAG: ${{ needs.authorize-source.outputs.approved_release_tag }}
         run: |
           set -euo pipefail
-          ALLOWED_SERVICES="factorylm-foreman mira-ask mira-bot-slack mira-bot-telegram mira-cmms-sync mira-historian-beat mira-historian-worker mira-hub mira-ingest mira-mcp mira-pipeline mira-redis mira-relay mira-synthetic-dogfood-beat mira-synthetic-dogfood-worker mira-tika mira-web nango-db nango-server"
+          ALLOWED_SERVICES="factorylm-foreman mira-ask mira-bot-slack mira-bot-telegram mira-cmms-sync mira-historian-beat mira-historian-worker mira-hub mira-ingest mira-mcp mira-ollama mira-pipeline mira-redis mira-relay mira-synthetic-dogfood-beat mira-synthetic-dogfood-worker mira-tika mira-web nango-db nango-server"
           NORMALIZED_SERVICES=""
           for service in $SERVICES; do
             case " $ALLOWED_SERVICES " in
@@ -789,6 +789,9 @@ jobs:
           # images and dependency fallbacks remain mutable inputs — this is NOT a
           # reproducible-build claim).
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml -f docker-compose.production.yml build --no-cache --pull $TARGETS
+          # Image-only targets (mira-ollama) have no build: pull their pinned image now,
+          # or the identity check below fails closed on an image never pulled.
+          doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml -f docker-compose.production.yml pull --ignore-buildable $TARGETS
 
           echo "=== Built image identities ==="
           BUILT_IDS="$(mktemp)"

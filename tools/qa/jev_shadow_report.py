@@ -19,9 +19,10 @@ Eligible turn = the shadow ran or was skipped for a reason other than
 `disabled`/`no_key` (those mean config never reached the container and are
 reported as a defect, not as data). Judged turn = `jev_sufficient` non-null.
 
-Because `evidence_sufficient` is true whenever chunks exist and Jev only runs
-when chunks exist, every judged turn has `evidence_sufficient=true`; the only
-possible disagreement is "MIRA says sufficient, Jev says low". Categories:
+Because `evidence_sufficient` is true whenever chunks exist OR an observation is
+in context, and Jev runs only when chunks or an observation exist, every judged
+turn has `evidence_sufficient=true`; the only possible disagreement is "MIRA says
+sufficient, Jev says low". Categories:
 
   D1 refused_jev_low        gate refused (insufficient_evidence) AND jev < LOW
                             → Jev agrees with the honest refusal; the presence flag was wrong.
@@ -32,6 +33,20 @@ possible disagreement is "MIRA says sufficient, Jev says low". Categories:
   D4 refused_jev_high       refused AND jev ≥ HIGH → retrieval fine, generation didn't use it.
   A  agree                  answered AND jev ≥ HIGH.
   U  uncertain              LOW ≤ jev < HIGH.
+
+Segments (2026-10-12 adjudication, docs/proofs/2026-10-12-jev-shadow-adjudication.md):
+  photo / text              a PHOTO turn had a vision observation in context for
+                            THIS turn — `answer_gate.jev_observation_count > 0`
+                            (v2) or `visual_evidence.observation_in_context` (v1).
+                            NOT `context.visual_evidence_count`: that also counts
+                            the asset's visual-evidence LEDGER, which is present on
+                            every later text turn for that asset (Gate 7 substitute
+                            review of #4380, finding 2). Under `sufficiency-v1` the
+                            shadow never saw the observation, so a v1 photo turn's
+                            low score is a BLIND SPOT, not a verdict: listed, CSV-
+                            flagged, EXCLUDED from the disagreement rate and the
+                            window count. A v2 judgment is never a blind spot: its
+                            count says exactly what Jev saw.
 
 Never prints question or answer text; the packet holds none and the DB text
 columns are never selected. Cost uses the vendor's published $/M input rate;
@@ -61,6 +76,17 @@ USD_PER_M_INPUT = 0.042  # api.typesafe.ai published rate (probe report, 2026-09
 MAX_QUESTION_CHARS = 600
 MAX_CHUNK_CHARS = 700
 MAX_CHUNKS = 6
+# sufficiency-v2 (2026-10-12): up to four RAW observation readings, 900 chars each
+# (jev-shadow.ts MAX_OBSERVATIONS / MAX_OBSERVATION_CHARS). The measured ceiling
+# below is a six-chunk v1 call; a v2 call adds at most 3,600 chars (~1,240 tokens).
+MAX_OBSERVATIONS = 4
+MAX_OBSERVATION_CHARS = 900
+# The rubric/state version the shipping code produces (JEV_INSTRUCTIONS_VERSION in
+# jev-shadow.ts). Scores from different versions are NOT poolable (Codex r1 on
+# #4380, F1): the window, the category tables and the disagreement rate are
+# computed PER VERSION, with this one as the headline. A packet without the
+# field predates the field and is v1.
+CURRENT_INSTRUCTIONS_VERSION = "sufficiency-v2"
 OBSERVED_MAX_INPUT_TOKENS = 1681
 LATENCY_CAP_MS = 1500  # DEFAULT_TIMEOUT_MS in jev-shadow.ts
 TARGET_JUDGED = (50, 100)
@@ -198,11 +224,48 @@ def flatten(p: dict[str, Any], **extra: Any) -> dict[str, Any]:
         "jev_skipped_reason": ag.get("jev_skipped_reason"),
         "jev_latency_ms": ag.get("jev_latency_ms"),
         "jev_input_tokens": ag.get("jev_input_tokens"),
+        "jev_observation_count": ag.get("jev_observation_count"),
+        "jev_instructions_version": ag.get("jev_instructions_version"),
+        # THIS turn's observation reached the model (not the asset ledger — see
+        # the module docstring). Older packets lack `visual_evidence`; fall back
+        # to the request flag for them.
+        "observation_in_context": (
+            bool((p.get("visual_evidence") or {}).get("observation_in_context"))
+            if "visual_evidence" in p
+            else bool((p.get("request") or {}).get("has_visual_evidence"))
+        ),
         "served_provider": gen.get("served_provider"),
         "generation_ms": tm.get("generation"),
         "total_ms": tm.get("total"),
         **extra,
     }
+
+
+def blind_spot(r: dict[str, Any]) -> bool:
+    """A photo turn judged without its observation: a sufficiency-v1 packet (or
+    one from before the version rode on it) on a turn whose observation was in
+    the model's context. The score says the CHUNKS cannot describe a photo —
+    true, and uninformative. A v2 packet carries `jev_observation_count`, which
+    says exactly what Jev saw, so it is never a blind spot: 0 there means a
+    chunks-only judgment of a turn that had no observation, which is a text turn."""
+    if r.get("jev_sufficient") is None:
+        return False
+    if isinstance(r.get("jev_observation_count"), (int, float)):
+        return False
+    if (r.get("jev_instructions_version") or "sufficiency-v1") != "sufficiency-v1":
+        return False
+    return bool(r.get("observation_in_context"))
+
+
+def version_of(r: dict[str, Any]) -> str:
+    return r.get("jev_instructions_version") or "sufficiency-v1"
+
+
+def segment(r: dict[str, Any]) -> str:
+    sent = r.get("jev_observation_count")
+    if isinstance(sent, (int, float)):
+        return "photo" if sent > 0 else "text"
+    return "photo" if r.get("observation_in_context") else "text"
 
 
 def categorize(r: dict[str, Any]) -> str:
@@ -244,33 +307,71 @@ def report(
     pre_shadow = [r for r in uniq if not r.get("jev_aware")]
     config_defects = [r for r in uniq if r["jev_skipped_reason"] in ("disabled", "no_key")]
     eligible = [r for r in uniq if r.get("jev_aware") and r not in config_defects]
-    judged = [r for r in eligible if r["jev_sufficient"] is not None]
+    judged_all = [r for r in eligible if r["jev_sufficient"] is not None]
+    blind = [r for r in judged_all if blind_spot(r)]
+    # Everything below — window progress, categories, disagreement rate — is
+    # computed on INTERPRETABLE judged turns. Blind-spot turns are reported on
+    # their own line and in the CSV (`blind_spot` column).
+    judged = [r for r in judged_all if not blind_spot(r)]
+    for r in judged_all:
+        r["blind_spot"] = blind_spot(r)
+        r["segment"] = segment(r)
     zero_chunk = [r for r in eligible if r["jev_skipped_reason"] == "no_evidence"]
     zero_chunk_bad = [r for r in zero_chunk if (r.get("chunk_count") or 0) > 0]
-    judged_bad = [r for r in judged if not (r.get("chunk_count") or 0)]
+    judged_bad = [
+        r
+        for r in judged_all
+        if not (r.get("chunk_count") or 0) and not (r.get("jev_observation_count") or 0)
+    ]
 
     with out_csv.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=sorted({k for r in uniq for k in r}))
         w.writeheader()
         w.writerows(uniq)
 
-    lat = [r["jev_latency_ms"] for r in judged if isinstance(r.get("jev_latency_ms"), (int, float))]
-    toks = [
-        r["jev_input_tokens"] for r in judged if isinstance(r.get("jev_input_tokens"), (int, float))
+    # Spend and latency are OPERATIONAL: every judged call was paid and timed,
+    # blind-spot photo calls included (Codex r1 on #4380, F2). Only the
+    # evaluation statistics below exclude them.
+    lat = [
+        r["jev_latency_ms"] for r in judged_all if isinstance(r.get("jev_latency_ms"), (int, float))
     ]
-    cats: dict[str, list[dict[str, Any]]] = {}
+    toks = [
+        r["jev_input_tokens"]
+        for r in judged_all
+        if isinstance(r.get("jev_input_tokens"), (int, float))
+    ]
+    # Evaluation is partitioned by rubric version: the current one is the
+    # headline; historical versions are reported separately and never pooled.
+    by_version: dict[str, list[dict[str, Any]]] = {}
     for r in judged:
-        cats.setdefault(r["category"], []).append(r)
+        by_version.setdefault(version_of(r), []).append(r)
+    versions = [CURRENT_INSTRUCTIONS_VERSION] + sorted(
+        (v for v in by_version if v != CURRENT_INSTRUCTIONS_VERSION), reverse=True
+    )
+    current = by_version.get(CURRENT_INSTRUCTIONS_VERSION, [])
 
     L = []
     L.append("# Jev shadow vs `evidence_sufficient` — staging evidence report\n")
     red_runs = sorted({r["source"] for r in uniq if r.get("run_conclusion") == "failure"})
     L.append(
-        f"Packets: {len(uniq)} · pre-shadow builds: {len(pre_shadow)} · eligible: {len(eligible)} · judged: {len(judged)} · zero-chunk skips: {len(zero_chunk)} · config defects (`disabled`/`no_key`): {len(config_defects)}"
+        f"Packets: {len(uniq)} · pre-shadow builds: {len(pre_shadow)} · eligible: {len(eligible)} · judged: {len(judged_all)} (interpretable: {len(judged)}, blind-spot: {len(blind)}) · zero-chunk skips: {len(zero_chunk)} · config defects (`disabled`/`no_key`): {len(config_defects)}"
     )
     lo, hi = TARGET_JUDGED
     L.append(
-        f"\nProgress toward the {lo}–{hi} judged-turn window: **{len(judged)}/{lo}**. Real staging usage preferred; do not fabricate traffic.\n"
+        f"\nProgress toward the {lo}–{hi} judged-turn window for the current rubric `{CURRENT_INSTRUCTIONS_VERSION}`: **{len(current)}/{lo}** interpretable. "
+        "Historical rubric versions are reported below and never pooled. Real staging usage preferred; do not fabricate traffic.\n"
+    )
+    if blind:
+        L.append(
+            f"**BLIND SPOT:** {len(blind)} photo turn(s) were judged under `sufficiency-v1`, which sent the retrieved chunks but not the "
+            "photo observation the answer was grounded in. Their low scores say the chunks cannot describe a photo — true and "
+            "uninformative — so they are excluded from the window and the disagreement rate (CSV `blind_spot=True`). "
+            "`sufficiency-v2` sends the observation; its photo turns count.\n"
+        )
+    L.append(
+        "Interpretable judged turns by rubric version: "
+        + " · ".join(f"`{v}` {len(by_version.get(v, []))}" for v in versions)
+        + "\n"
     )
     if config_defects:
         L.append(
@@ -288,7 +389,7 @@ def report(
         f"- Zero-chunk turns never call Jev: {'OK' if not zero_chunk_bad else 'VIOLATED'} ({len(zero_chunk)} skipped with chunk_count=0{'' if not zero_chunk_bad else '; ' + str(len(zero_chunk_bad)) + ' had chunks'})"
     )
     L.append(
-        f"- Every judged turn had chunks: {'OK' if not judged_bad else 'VIOLATED (' + str(len(judged_bad)) + ')'}"
+        f"- Every judged turn had chunks or an observation: {'OK' if not judged_bad else 'VIOLATED (' + str(len(judged_bad)) + ')'}"
     )
     L.append(
         f"- Every judged turn has `evidence_sufficient=true` (presence law): {'OK' if all(r['evidence_sufficient'] for r in judged) else 'VIOLATED'}"
@@ -300,13 +401,15 @@ def report(
     if toks:
         usd = sum(toks) * USD_PER_M_INPUT / 1e6
         L.append(
-            f"- Cost (actual, from `jev_input_tokens`): {sum(toks)} input tokens over {len(toks)} calls = ${usd:.6f} (${usd / len(toks):.6f}/call at ${USD_PER_M_INPUT}/M input; output free)"
+            f"- Cost (actual, from `jev_input_tokens`, every judged call incl. blind-spot photo calls): {sum(toks)} input tokens over {len(toks)} calls = ${usd:.6f} (${usd / len(toks):.6f}/call at ${USD_PER_M_INPUT}/M input; output free)"
         )
     else:
         L.append(
             "- Cost: no judged turn in this set carries `jev_input_tokens` (packets from builds before the field shipped). "
-            f"Bound: the request is capped at {MAX_QUESTION_CHARS} question chars + {MAX_CHUNKS}\u00d7{MAX_CHUNK_CHARS} chunk chars, "
-            f"measured at up to {OBSERVED_MAX_INPUT_TOKENS:,} input tokens/call (\u2248 ${OBSERVED_MAX_INPUT_TOKENS * USD_PER_M_INPUT / 1e6:.5f}/call)"
+            f"Bound: the request is capped at {MAX_QUESTION_CHARS} question chars + {MAX_CHUNKS}\u00d7{MAX_CHUNK_CHARS} chunk chars "
+            f"+ (v2) {MAX_OBSERVATIONS}\u00d7{MAX_OBSERVATION_CHARS} observation chars; a six-chunk v1 call measured up to "
+            f"{OBSERVED_MAX_INPUT_TOKENS:,} input tokens (\u2248 ${OBSERVED_MAX_INPUT_TOKENS * USD_PER_M_INPUT / 1e6:.5f}/call), "
+            f"so a full v2 call is bounded near {OBSERVED_MAX_INPUT_TOKENS + MAX_OBSERVATIONS * MAX_OBSERVATION_CHARS // 3:,} tokens"
         )
     if baseline:
         by = {}
@@ -324,8 +427,6 @@ def report(
                 if s in cur
             )
         )
-    L.append("\n## Disagreement categories (judged turns)\n")
-    L.append("| category | n | meaning |\n|---|---|---|")
     meaning = {
         "D1 refused_jev_low": "gate refused AND jev<0.30 — Jev agrees with the honest refusal; presence flag wrong",
         "D2 answered_claim_jev_low": "answered AND jev<0.30 AND ungrounded_unit_claim — likely ungrounded cited claim; adjudicate",
@@ -334,37 +435,65 @@ def report(
         "A agree": "answered AND jev≥0.70",
         "U uncertain": "0.30 ≤ jev < 0.70",
     }
-    for c in [
+    order = [
         "D1 refused_jev_low",
         "D2 answered_claim_jev_low",
         "D3 answered_jev_low",
         "D4 refused_jev_high",
         "A agree",
         "U uncertain",
-    ]:
-        L.append(f"| {c} | {len(cats.get(c, []))} | {meaning[c]} |")
-    dis = sum(
-        len(cats.get(c, []))
-        for c in (
-            "D1 refused_jev_low",
-            "D2 answered_claim_jev_low",
-            "D3 answered_jev_low",
-            "D4 refused_jev_high",
+    ]
+    disagreement_cats = order[:4]
+    for ver in versions:
+        rows_v = by_version.get(ver, [])
+        label = (
+            f"`{ver}` (current rubric)"
+            if ver == CURRENT_INSTRUCTIONS_VERSION
+            else f"`{ver}` (historical — not pooled with the current rubric)"
         )
-    )
-    L.append(
-        f"\nDisagreements: {dis}/{len(judged)} judged turns."
-        + (" Too few judged turns to conclude; keep collecting." if len(judged) < lo else "")
-    )
-    L.append(
-        "\n## Concrete examples (trace id · source · strategy · chunks · decision · jev · claim)\n"
-    )
-    for c, rs in sorted(cats.items()):
-        L.append(f"**{c}**")
-        for r in rs[:8]:
+        cats: dict[str, list[dict[str, Any]]] = {}
+        for r in rows_v:
+            cats.setdefault(r["category"], []).append(r)
+        L.append(
+            f"\n## Disagreement categories — {label}, {len(rows_v)} interpretable judged turns\n"
+        )
+        L.append(
+            "| category | n | text | photo (observation sent) | meaning |\n|---|---|---|---|---|"
+        )
+        for c in order:
+            rs = cats.get(c, [])
             L.append(
-                f"- `{str(r.get('trace_id'))[:16]}` · {r.get('source')}{(' case ' + str(r.get('scenario'))) if r.get('scenario') else ''} · {r.get('retrieval_strategy')} · chunks={r.get('chunk_count')} · {r.get('decision')}/{r.get('reason')} · jev={r.get('jev_sufficient')} · unit_claim={r.get('ungrounded_unit_claim')} · lat={r.get('jev_latency_ms')}ms"
+                f"| {c} | {len(rs)} | {sum(1 for r in rs if r['segment'] == 'text')} | {sum(1 for r in rs if r['segment'] == 'photo')} | {meaning[c]} |"
             )
+        dis = sum(len(cats.get(c, [])) for c in disagreement_cats)
+        tag = (
+            f"`{ver}`"
+            if ver == CURRENT_INSTRUCTIONS_VERSION
+            else f"`{ver}`, historical — not pooled"
+        )
+        L.append(
+            f"\nDisagreements ({tag}): {dis}/{len(rows_v)} interpretable judged turns"
+            + (
+                f" ({len(blind)} blind-spot photo turns excluded)."
+                if blind and ver == "sufficiency-v1"
+                else "."
+            )
+            + (
+                " Too few judged turns to conclude; keep collecting."
+                if ver == CURRENT_INSTRUCTIONS_VERSION and len(rows_v) < lo
+                else ""
+            )
+        )
+        if rows_v:
+            L.append(
+                "\nConcrete examples (trace id · source · strategy · chunks · decision · jev · claim):\n"
+            )
+            for c, rs in sorted(cats.items()):
+                L.append(f"**{c}**")
+                for r in rs[:8]:
+                    L.append(
+                        f"- `{str(r.get('trace_id'))[:16]}` · {r.get('source')}{(' case ' + str(r.get('scenario'))) if r.get('scenario') else ''} · {r.get('retrieval_strategy')} · chunks={r.get('chunk_count')} · {r.get('decision')}/{r.get('reason')} · jev={r.get('jev_sufficient')} · unit_claim={r.get('ungrounded_unit_claim')} · lat={r.get('jev_latency_ms')}ms"
+                    )
     L.append(f"\nCSV: `{out_csv}` (one row per packet; no text fields).")
     out_md.write_text("\n".join(L) + "\n")
     print("\n".join(L))

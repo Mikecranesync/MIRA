@@ -3,53 +3,59 @@ import pool from "@/lib/db";
 import { sessionOr401 } from "@/lib/session";
 import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
-import { canonicalProviders } from "@/lib/inference/canonical-cascade";
+import { canonicalProviders, requestDialectFields } from "@/lib/inference/canonical-cascade";
+import { billableTokens, boundInputTokens, reserveOpenAiAttempt } from "@/capabilities/openai-run-budget";
 
 export const dynamic = "force-dynamic";
 
-interface CascadeProvider {
-  name: string;
-  url: string;
-  key: string | undefined;
-  model: string;
-}
-
 async function callLLM(prompt: string): Promise<string> {
-  // Groq → Cerebras → Together, sourced from the ONE canonical definition
-  // (@/lib/inference/canonical-cascade) so this route cannot drift from root
-  // CLAUDE.md Hard Constraint #2. Gemini was removed 2026-09-08 (#3688) — it is
-  // a PRD §4 violation, never reintroduce. The loop below re-adds gpt-oss
-  // reasoning_effort inline, so only the provider LIST is borrowed here.
-  const providers: CascadeProvider[] = canonicalProviders().map((p) => ({
-    name: p.name,
-    url: p.url,
-    key: p.key,
-    model: p.model,
-  }));
-
-  for (const p of providers) {
+  // The canonical cascade (OpenAI → Groq → Cerebras → Together), sourced from
+  // the ONE canonical definition (@/lib/inference/canonical-cascade) so this
+  // route cannot drift from root CLAUDE.md Hard Constraint #2. Gemini was
+  // removed 2026-09-08 (#3688) — it is a PRD §4 violation, never reintroduce.
+  // The provider's request dialect comes from requestDialectFields (Codex F1
+  // on #4349); the loop re-adds gpt-oss reasoning_effort inline.
+  for (const p of canonicalProviders()) {
     if (!p.key) continue;
+    // Per-run OpenAI spend hard stop (#4355): hold before the fetch; refused at
+    // the cap → next provider. Every exit below decides the hold.
+    const messages = [{ role: "user", content: prompt }];
+    const inputBound = boundInputTokens(messages);
+    const gate = reserveOpenAiAttempt(p.name, "report-generate", inputBound, 500);
+    if (!gate.ok) continue;
+    const reservation = gate.reservation;
     try {
       const res = await fetch(p.url, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.key}` },
         body: JSON.stringify({
           model: p.model,
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 500,
-          temperature: 0.4,
+          messages,
+          // compat → max_tokens 500 + temperature 0.4; OpenAI gpt-5 →
+          // max_completion_tokens 500, no temperature (HTTP 400 otherwise).
+          ...requestDialectFields(p, 500, 0.4),
           // gpt-oss spends completion tokens on reasoning; low effort keeps
           // the report inside the 500-token cap.
           ...(p.model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
         }),
         signal: AbortSignal.timeout(15_000),
       });
-      if (!res.ok) continue;
-      const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-      const text = data.choices?.[0]?.message?.content?.trim();
+      if (!res.ok) {
+        reservation?.release(); // a rejection ran nothing billable
+        continue;
+      }
+      const data = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+        usage?: unknown;
+      } | null;
+      // Served: book billable usage (unknown counts book the bound / cap).
+      if (data && typeof data === "object") reservation?.settle(...billableTokens(data.usage, inputBound, 500));
+      const text = data?.choices?.[0]?.message?.content?.trim();
       if (text) return text;
     } catch {
       // cascade to next provider
+    } finally {
+      reservation?.settle(inputBound, 500); // any undecided exit books the worst case (idempotent)
     }
   }
   throw new Error("All LLM providers failed");

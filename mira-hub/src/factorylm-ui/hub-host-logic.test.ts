@@ -13,16 +13,19 @@ import {
   detailQueryFor,
   generalGuidanceBodyFor,
   generalGuidanceRequest,
+  draftAfterSendSucceeded,
   enabledDocIds,
   errorMessageFor,
   fixtureFor,
+  NETWORK_FAILURE_MESSAGE,
+  sendFailureMessage,
   groundingLineFor,
   historyRows,
-  initialSelection,
   latestRequestGate,
   metaFor,
   newThreadId,
   notebookSourceDocIds,
+  openNotebookSelection,
   retainedStreamInterruption,
   searchForSelection,
   selectionFromSearch,
@@ -30,6 +33,42 @@ import {
   stoppedStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
+
+describe("sendFailureMessage — #4311 the browser's network wording never reaches the banner", () => {
+  it.each(["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."])(
+    "maps the engine text %j to plain language",
+    (text) => {
+      expect(sendFailureMessage(new TypeError(text))).toBe(NETWORK_FAILURE_MESSAGE);
+    },
+  );
+  it("still maps an engine phrase that a runtime decorated with a suffix (cheap-lane finding on #4348)", () => {
+    expect(sendFailureMessage(new TypeError("Failed to fetch (while sending)"))).toBe(NETWORK_FAILURE_MESSAGE);
+    expect(sendFailureMessage(new TypeError("Load failed: connection reset"))).toBe(NETWORK_FAILURE_MESSAGE);
+  });
+  it("does not map a plain message that merely mentions fetching later in the sentence", () => {
+    expect(sendFailureMessage(new Error("MIRA couldn't fetch that manual just now."))).toBe("MIRA couldn't fetch that manual just now.");
+  });
+  it("passes a route message through unchanged", () => {
+    const plain = errorMessageFor("message_too_long", 400);
+    expect(sendFailureMessage(new Error(plain))).toBe(plain);
+  });
+  it("never yields an empty banner", () => {
+    expect(sendFailureMessage(new Error(""))).toMatch(/couldn't answer/);
+    expect(sendFailureMessage(undefined)).toMatch(/couldn't answer/);
+  });
+});
+
+describe("draftAfterSendSucceeded — #4311 the composer lets go of a retried question", () => {
+  it("clears the draft when it still holds the question that was retried", () => {
+    expect(draftAfterSendSucceeded("why F004 on PF525", "why F004 on PF525")).toBe("");
+  });
+  it("leaves a different draft alone (the technician typed something new)", () => {
+    expect(draftAfterSendSucceeded("and what about F005", "why F004 on PF525")).toBeNull();
+  });
+  it("is a no-op when the composer is already empty (a normal send)", () => {
+    expect(draftAfterSendSucceeded("", "why F004 on PF525")).toBeNull();
+  });
+});
 
 describe("stoppedStreamResult", () => {
   it("keeps only partial text and an authoritative safety notice from an abort", () => {
@@ -189,18 +228,36 @@ function nb(over: Partial<HubNotebook> = {}): HubNotebook {
   };
 }
 
-describe("initialSelection", () => {
-  it("opens the first notebook's most recently updated thread", () => {
-    const sel = initialSelection([nb({ threads: [
-      { id: "old", notebookId: "nb-1", title: "a", createdAt: "", updatedAt: "2026-09-01T00:00:00Z", turnCount: 1, sharedLegacy: false },
-      { id: "new", notebookId: "nb-1", title: "b", createdAt: "", updatedAt: "2026-09-17T00:00:00Z", turnCount: 1, sharedLegacy: false },
-    ] })]);
-    expect(sel).toEqual({ notebookId: "nb-1", threadId: "new" });
-    expect(shellThreadId(sel!)).toBe("notebook-nb-1:thread-new");
+/**
+ * #4444: opening a notebook (sidebar project click, a `?notebook=` link with no
+ * thread) resumed its most recently updated thread, so a technician's new
+ * question landed under an old, unrelated conversation. Opening a notebook now
+ * starts a fresh chat; earlier threads stay listed in the sidebar and a link
+ * that names a thread still opens exactly that thread.
+ */
+describe("openNotebookSelection — #4444 opening a notebook starts a fresh chat", () => {
+  const withThreads = nb({ threads: [
+    { id: "old", notebookId: "nb-1", title: "a", createdAt: "", updatedAt: "2026-09-01T00:00:00Z", turnCount: 1, sharedLegacy: false },
+    { id: "new", notebookId: "nb-1", title: "b", createdAt: "", updatedAt: "2026-09-17T00:00:00Z", turnCount: 1, sharedLegacy: false },
+  ] });
+
+  it("opens a new, empty thread, not the most recent one", () => {
+    const sel = openNotebookSelection(withThreads, () => "fresh-1");
+    expect(sel).toEqual({ notebookId: "nb-1", threadId: "fresh-1" });
+    expect(shellThreadId(sel)).toBe("notebook-nb-1:thread-fresh-1");
   });
-  it("falls back to the legacy thread and to null with no notebooks", () => {
-    expect(initialSelection([nb()])).toEqual({ notebookId: "nb-1", threadId: "legacy" });
-    expect(initialSelection([])).toBeNull();
+
+  it("opens a fresh thread for a notebook with no threads too, not the shared legacy one", () => {
+    expect(openNotebookSelection(nb(), () => "fresh-2")).toEqual({ notebookId: "nb-1", threadId: "fresh-2" });
+  });
+
+  it("mints the id exactly as New chat does", () => {
+    const random = () => "3f2a-UUID-like:ok";
+    expect(openNotebookSelection(withThreads, () => newThreadId(random)).threadId).toBe(newThreadId(random));
+    // Default minter: a real id in the server's thread grammar, never an existing thread.
+    const minted = openNotebookSelection(withThreads).threadId;
+    expect(minted).toMatch(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/);
+    expect(["old", "new", "legacy"]).not.toContain(minted);
   });
 });
 
@@ -398,23 +455,34 @@ describe("selectionFromSearch / searchForSelection — addressable conversations
   it("opens the exact thread a link names in a BOUND notebook", () => {
     expect(selectionFromSearch("?notebook=nb-bound&thread=t-b", list)).toEqual({ notebookId: "nb-bound", threadId: "t-b" });
   });
-  it("a notebook without a thread opens its most recent thread; legacy is addressable", () => {
-    expect(selectionFromSearch("?notebook=7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", list)).toEqual({ notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", threadId: "t-new" });
-    expect(selectionFromSearch("?notebook=nb-bound&thread=legacy", list)).toEqual({ notebookId: "nb-bound", threadId: "legacy" });
+  it("a notebook without a thread opens a fresh chat, not its most recent thread (#4444); legacy is addressable", () => {
+    expect(selectionFromSearch("?notebook=7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", list, () => "fresh-1")).toEqual({ notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", threadId: "fresh-1" });
+    expect(selectionFromSearch("?notebook=nb-bound&thread=legacy", list, () => "unused")).toEqual({ notebookId: "nb-bound", threadId: "legacy" });
+  });
+  it("a link that names a thread never mints one (#4444 control)", () => {
+    const mint = vi.fn(() => "fresh-x");
+    expect(selectionFromSearch("?notebook=nb-bound&thread=t-b", list, mint)).toEqual({ notebookId: "nb-bound", threadId: "t-b" });
+    expect(mint).not.toHaveBeenCalled();
   });
   it("keeps a well-formed thread id that has no server row yet (a reloaded New chat)", () => {
     expect(selectionFromSearch("?notebook=nb-bound&thread=fresh-1234", list)).toEqual({ notebookId: "nb-bound", threadId: "fresh-1234" });
   });
-  it("falls back to HOME for no/unknown notebook and to the recent thread for a malformed thread id", () => {
+  it("falls back to HOME for no/unknown notebook and to a fresh chat for a malformed thread id", () => {
     expect(selectionFromSearch("", list)).toBeNull();
     expect(selectionFromSearch("?thread=t-b", list)).toBeNull();
     expect(selectionFromSearch("?notebook=nope&thread=t-b", list)).toBeNull();
-    expect(selectionFromSearch("?notebook=nb-bound&thread=%20%3Cscript%3E", list)).toEqual({ notebookId: "nb-bound", threadId: "t-b" });
-    expect(selectionFromSearch("?notebook=nb-bound&thread=" + "x".repeat(121), list)).toEqual({ notebookId: "nb-bound", threadId: "t-b" });
+    expect(selectionFromSearch("?notebook=nb-bound&thread=%20%3Cscript%3E", list, () => "fresh-2")).toEqual({ notebookId: "nb-bound", threadId: "fresh-2" });
+    expect(selectionFromSearch("?notebook=nb-bound&thread=" + "x".repeat(121), list, () => "fresh-3")).toEqual({ notebookId: "nb-bound", threadId: "fresh-3" });
   });
   it("round-trips: the written query string re-selects the same conversation; HOME writes none", () => {
-    for (const sel of [{ notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", threadId: "t-old" }, { notebookId: "nb-bound", threadId: "legacy" }]) {
-      expect(selectionFromSearch(searchForSelection(sel), list)).toEqual(sel);
+    // Includes a freshly opened notebook (#4444): its minted thread has no server
+    // row yet, so once the host writes it to the URL a reload must return to it.
+    for (const sel of [
+      { notebookId: "7a352ed1-5f8a-48d6-b66c-1ff641fea9d4", threadId: "t-old" },
+      { notebookId: "nb-bound", threadId: "legacy" },
+      openNotebookSelection(bound, () => newThreadId(() => "6c1e-fresh")),
+    ]) {
+      expect(selectionFromSearch(searchForSelection(sel), list, () => "never")).toEqual(sel);
     }
     expect(searchForSelection(null)).toBe("");
     expect(searchForSelection({ notebookId: "a b", threadId: "t:1" })).toBe("?notebook=a+b&thread=t%3A1");

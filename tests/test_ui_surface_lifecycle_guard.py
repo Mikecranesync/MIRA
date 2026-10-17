@@ -2069,6 +2069,11 @@ def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
         ".claude/settings.json",
         ".claude/settings.local.json",
         "tools/hooks/prod-guard.sh",
+        ".githooks/pre-commit",
+        "tools/guard-check.py",
+        "tools/guarded_commit_approval.py",
+        "tools/hooks/guarded_approval_guard.py",
+        "tests/hooks/test_precommit_hook.sh",
         "tools/migration_drift.py",
         "tools/migration-drift-requirements.txt",
     ],
@@ -3686,7 +3691,9 @@ def test_native_unsigned_build_is_exact_sha_and_secret_free():
     assert "bun install --frozen-lockfile" in build_text
     assert "bun run build" in build_text
     assert "capacitor sync android" in build_text
-    assert "assembleRelease bundleRelease" in build_text
+    assert "assembleProductionRelease bundleProductionRelease" in build_text
+    assert "app/build/outputs/apk/production/release/app-production-release-unsigned.apk" in build_text
+    assert "app/build/outputs/bundle/productionRelease/app-production-release.aab" in build_text
     assert "app-release-unsigned.apk" in build_text
     assert "app-release.aab" in build_text
     assert "21.0.12+101.0.LTS" in build_text

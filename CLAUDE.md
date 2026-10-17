@@ -2,7 +2,7 @@
 
 **Version:** derived from the latest `v*` tag (no `/VERSION` file since #3064; every merge auto-tags `vX.Y.Z` + a rollback checkpoint — `docs/versioning.md`)
 **One-liner:** FactoryLM = the maintenance-context layer that makes messy factory data trustworthy for AI (on any UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Canonical wedge → `NORTH_STAR.md`** (lead with context, not copilot; adapters retained).
-**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Together (cascade; Cerebras archived 2026-09-29, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
+**Inference:** `INFERENCE_BACKEND=cloud` → OpenAI (`gpt-5.4-mini`, leads since 2026-10-11) → OpenRouter (backup tier since 2026-10-14, key-gated, no Claude models) → Groq → Together (cascade; Cerebras archived 2026-09-29, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
 
 ---
@@ -26,7 +26,7 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY. (Enforced today as a GPL/AGPL/UNKNOWN **denylist** in `ci.yml` `license-check`, plus an allowlist for the migration driver; the full allowlist is SDLC v1 step 7.)
-2. **Cloud LLMs:** Groq + Together cascade (OpenAI-compat). **Cerebras ARCHIVED 2026-09-29** (402 quota since 09-07): its key is `CEREBRAS_API_KEY_ARCHIVED` in Doppler dev/stg/prd; every cascade is key-gated, so it is simply absent. Restore = rename the key back + re-add it to `EXPECTED` in `tools/provider_health_check.py`. NeonDB for persistence. Doppler-managed secrets. **No Anthropic in the diagnostic cascade** (removed PR #610 — never reintroduce there). Sole owner-authorized carve-out: the PrintSynth print-vision interpreter (PR #2661) — print-photo vision only, never chat/diagnosis.
+2. **Cloud LLMs:** OpenAI (`OPENAI_API_KEY`, `gpt-5.4-mini`, leads — owner directive 2026-10-11 while Groq is billing-restricted; metered, so watch spend) → Groq → Together cascade (OpenAI-compat). **Cerebras ARCHIVED 2026-09-29** (402 quota since 09-07): its key is `CEREBRAS_API_KEY_ARCHIVED` in Doppler dev/stg/prd; every cascade is key-gated, so it is simply absent. Restore = rename the key back + re-add it to `EXPECTED` in `tools/provider_health_check.py`. NeonDB for persistence. Doppler-managed secrets. **No Anthropic in the diagnostic cascade** (removed PR #610 — never reintroduce there). Sole owner-authorized carve-out: the PrintSynth print-vision interpreter (PR #2661) — print-photo vision only, never chat/diagnosis.
 3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler. Config is env-scoped: `factorylm/dev` (local), `factorylm/stg` (staging), `factorylm/prd` (production). Never commit `.env` to git. Never paste prod values into a dev shell — set them in `factorylm/dev`.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
@@ -143,6 +143,7 @@ See local CLAUDE.md in each module for deep context.
 | mira-historian-worker | — | mira-net |
 | mira-historian-beat | — | mira-net |
 | mira-cmms-sync | — | mira-net, cmms-ext |
+| mira-ollama | — | mira-net |
 
 Profile-gated rows start only with `docker compose --profile <name> up`. Staging: `docker-compose.staging-vps.yml` (`stg-*` names) — see `docs/environments.md`.
 

@@ -407,10 +407,12 @@ function IdentityProposalPart({
 }
 
 function ManualSearchStatusPart({ part }: { readonly part: Extract<InteractionPart, { type: "manual_search_status" }> }) {
+  const manualUrl = !part.running && part.manualUrl?.startsWith("https://") ? openableUrl(part.manualUrl) : null;
   return <p className="fl-part fl-status" role="status" data-part-type="manual_search_status">
     {part.running
       ? `Searching ${part.manufacturer}'s documentation for ${part.model}…`
       : part.message ?? `Finished searching for the ${part.manufacturer} ${part.model} manual.`}
+    {manualUrl && <> <a href={manualUrl} target="_blank" rel="noopener noreferrer">Open website to find the manual ↗</a></>}
   </p>;
 }
 

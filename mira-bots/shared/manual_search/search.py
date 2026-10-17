@@ -184,6 +184,19 @@ OEM_DOMAINS: dict[str, tuple[str, ...]] = {
     "banner": ("bannerengineering.com",),
     "pepperl": ("pepperl-fuchs.com",),
     "pepperl+fuchs": ("pepperl-fuchs.com",),
+    # #4402: Emerson took over GE's PLC/HMI line (GE Fanuc -> GE Intelligent
+    # Platforms -> Emerson); technicians read "GE Fanuc" off the hardware and the
+    # manuals are served from www.emerson.com. Exact keys only. Never a bare
+    # "ge" or "general electric": GE's motor, relay and power lines are not
+    # Emerson's, and an entry here makes Emerson's site count as the maker's own
+    # documentation (the auto-import gate).
+    "emerson": ("emerson.com",),
+    "emerson automation solutions": ("emerson.com",),
+    "emerson process management": ("emerson.com",),
+    # Not "emerson electric": also the old motor brand (now Nidec / US Motors).
+    "ge fanuc": ("emerson.com",),
+    "ge intelligent platforms": ("emerson.com",),
+    "ge automation": ("emerson.com",),
 }
 
 # Domains whose `.pdf` URLs are SEO spam, third-party scrapes, or random
@@ -245,6 +258,7 @@ TRUSTED_DOMAINS: tuple[tuple[str, int], ...] = (
 # opens it. The server never fetches it (Manual-First PRD R7, Codex G1 —
 # the old live probe read an uncapped body before any search admission).
 OEM_MANUAL_REQUEST: dict[str, str] = {
+    "keyence": "https://www.keyence.com/support/user/safety/manual/",
     "harrington": "https://www.harringtonhoists.com/owners-manual-request",
     "harrington hoists": "https://www.harringtonhoists.com/owners-manual-request",
     "harrington hoists and cranes": "https://www.harringtonhoists.com/owners-manual-request",
@@ -252,12 +266,14 @@ OEM_MANUAL_REQUEST: dict[str, str] = {
 
 
 async def oem_request_link(make: str) -> str | None:
-    """The OEM's curated manual-request page for `make`, or None.
+    """A curated manual-request page or known OEM domain, or None.
 
-    No network I/O: the link comes only from OEM_MANUAL_REQUEST, never from
+    No network I/O: the link comes only from the OEM directory, never from
     search results, and is opened by the technician's browser. Kept async so
     existing awaiting callers are unchanged."""
-    return OEM_MANUAL_REQUEST.get(_norm(make))
+    curated = OEM_MANUAL_REQUEST.get(_norm(make))
+    domains = _oem_domains_for(make)
+    return curated or (f"https://{domains[-1]}/" if domains else None)
 
 
 def _norm(s: str) -> str:
@@ -499,6 +515,9 @@ def trail_url(url: str) -> str:
 
 @dataclass
 class AcquisitionTrail:
+    # Browser handoff only, never a manual candidate or source-admission signal.
+    search_page_url: str | None = None
+    search_page_score: int = -1
     queries: list[dict] = field(default_factory=list)
     candidates: list[dict] = field(default_factory=list)  # the deduped pool, mutated by the judge
     ranked: list[dict] | None = None
@@ -1018,6 +1037,45 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
                     {"pass": label.split(" ")[0], "query": query, "result": "error"}
                 )
             return None
+        if trail is not None:
+            for hit in hits:
+                url, title = hit.get("link") or "", hit.get("title") or ""
+                try:
+                    parsed = urlparse(url)
+                    host = parsed.hostname or ""
+                    if (
+                        parsed.scheme != "https"
+                        or not host
+                        or parsed.username
+                        or parsed.password
+                        or parsed.port not in (None, 443)
+                        or _is_denied(host)
+                        or re.search(r"[\\\s<>\"']", url)
+                        or _is_direct_pdf(url)
+                    ):
+                        continue
+                    # Do not retain signed credentials as a browser handoff.
+                    if re.search(
+                        r"(?:token|signature|x-sign|credential|secret|password|api.?key)",
+                        parsed.query,
+                        re.I,
+                    ):
+                        continue
+                    official = _is_oem_host(host, make)
+                    names_make = len(make) >= 2 and re.search(
+                        r"(?<!\w)" + re.escape(make) + r"(?!\w)", title, re.I
+                    )
+                    helpful = re.search(
+                        r"manual|support|download|documentation", title + " " + parsed.path, re.I
+                    )
+                    homepage = parsed.path in ("", "/")
+                    if not (official or names_make) or not (helpful or homepage):
+                        continue
+                    score = (100 if official else 0) + (20 if helpful else 0)
+                    if score > trail.search_page_score:
+                        trail.search_page_url, trail.search_page_score = url, score
+                except ValueError:
+                    continue
         sent_now = before is None or (budget is not None and budget.used > before)
         if sent_now:
             sent += 1
@@ -1043,6 +1101,9 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
     # Pass 2: typed PDF — broader, still PDFs only.
     if not any(c["is_direct_pdf"] for c in candidates):
         for i, variant in enumerate(_model_variants(model) or [model]):
+            budget = _provider_budget.get()
+            if i and budget is not None and budget.used >= budget.limit - 1:
+                break
             q2 = f"{make} {variant} manual filetype:pdf"
             hits = await _send(q2, "q2 (filetype:pdf)")
             if hits is None:
@@ -1055,9 +1116,10 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
                     c["score"] -= 5
             candidates.extend(found)
 
-    # Pass 3: widest fallback — accept landing pages too if nothing above.
+    # Pass 3: widest fallback — websites as well as PDFs. A bounded call
+    # reserves its final query for this instead of spending it on spelling variants.
     if not candidates:
-        q3 = f"{make} {model} manual pdf"
+        q3 = f"{make} {model} manual support"
         hits = await _send(q3, "q3 (wide)")
         if hits:
             candidates.extend(_tagged(_collect(hits, make, model), "q3"))
@@ -1144,11 +1206,25 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
         # rather than surfacing an unread stranger.
         unread = [c for c in ranked if not _judge.is_rejected(c)]
         deduped = [c for c in unread if _judge.relevant(c, make, model)]
-        if not deduped and rejected:
-            deduped = []
-        elif not deduped:
-            deduped = unread
+        if not deduped and not rejected:
+            # #4400: nothing names the make or the model and nothing was judged. The
+            # old fallback to EVERY unread candidate offered a reseller's company
+            # profile as "a possible manual"; a stranger may win only by being read
+            # and judged the manual (above). An honest miss instead.
+            if (
+                trail is not None
+                and not trail.search_page_url
+                and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
+            ):
+                await _send(f"{make} {model} manual support", "q3 (website handoff)")
+            return None
         if not deduped:
+            if (
+                trail is not None
+                and not trail.search_page_url
+                and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
+            ):
+                await _send(f"{make} {model} manual support", "q3 (website handoff)")
             worst = next((c for c in ranked if _judge.is_rejected(c)), ranked[0])
             code, line = _judge.judge_summary(worst)
             worst["reason"], worst["reason_detail"] = code, line
@@ -1159,6 +1235,14 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
     # HEAD-validate the top few; first one that confirms PDF wins.
     for c in deduped[:5]:
         if not c.get("validated"):
+            # #4401: a probe that cannot finish before the caller's deadline is not
+            # sent (each may take HEAD_TIMEOUT). The top candidate is returned
+            # unvalidated for review below, instead of the whole search being
+            # cancelled upstream and reported as an outage.
+            if deadline_at is not None and (
+                deadline_at - time.monotonic() < HEAD_TIMEOUT + _judge.RETURN_RESERVE_S
+            ):
+                break
             _note_examined([c["url"]])
         if c.get("validated") or await validate_pdf(c["url"]):
             c["validated"] = True

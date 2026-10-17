@@ -109,6 +109,15 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     "scripts/adversarial-review-trusted.sh",
     "docs/adversarial-review-workflow.md",
     "tools/hooks/prod-guard.sh",
+    # The local pre-commit gate, its owner-approval path, and the Claude-side
+    # guard for it. Unguarded, any session could loosen the gate by editing it
+    # (core.hooksPath runs the worktree copy). Guarded, changing the gate needs
+    # the gate's own owner approval.
+    ".githooks/**",
+    "tools/guard-check.py",
+    "tools/guarded_commit_approval.py",
+    "tools/hooks/guarded_approval_guard.py",
+    "tests/hooks/test_precommit_hook.sh",
     "tools/ota_handset_evidence.py",
 )
 

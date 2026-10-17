@@ -7,10 +7,12 @@
  * classic switch. NotebookScreen keeps owning the send path, scope, riders,
  * uploads, and the citation viewer — it just renders chromeless.
  */
-import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import type { ProjectItem } from "@factorylm/interaction";
 import { createNotebook, listNotebooks, type Me, type Notebook } from "../api/resources";
 import { homeSendPlan } from "../unified/home-send";
+import { claimAttachments, clearAttachments, stashAttachments, type HeldAttachment } from "../unified/attachment-handoff";
+import { defaultQuestionFor } from "../unified/attachments";
 import { hasActiveApiMutations } from "../api/client";
 import {
   hasActiveWorkOrderQueueProducers,
@@ -83,6 +85,18 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
   // clears this the same way it already clears `homeVisible`.
   const [projectRootVisible, setProjectRootVisible] = useState(false);
   const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
+  // A HOME send that could not create General is a failed SEND, not a dead
+  // app (Codex #4350 F1): the composer stays, the banner says why, the
+  // question comes back, and Try again re-attempts. Mirrors the Hub host's
+  // recoverable shell send error.
+  const [homeSendError, setHomeSendError] = useState<string | null>(null);
+  const [homeFailedQuestion, setHomeFailedQuestion] = useState<string | null>(null);
+  const homeFailedQuestionRef = useRef<string | null>(null);
+  homeFailedQuestionRef.current = homeFailedQuestion;
+  // What a failed HOME send had attached. Taken OUT of the handoff slot on
+  // failure so no later thread can claim it unseen; it rides only a retry of
+  // that same submission, and anything else discards it (Codex #4350 r2 F1).
+  const failedHomeAttachments = useRef<readonly HeldAttachment[]>([]);
   const [queuedOpenAddSources, setQueuedOpenAddSources] = useState(false);
   const [queuedSensorStart, setQueuedSensorStart] = useState<"read-scan" | null>(null);
   const [showAbout, setShowAbout] = useState(false);
@@ -222,26 +236,108 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
     return id;
   }, [preferredNotebookId]);
 
+  // One HOME send at a time (Codex #4350 r3 F5). While General is being
+  // created the shell's Send is disabled through `busy`, and a submit that
+  // still slips through is dropped rather than starting a second create.
+  const homeSendInFlight = useRef(false);
+  const [homeSending, setHomeSending] = useState(false);
+  // "Still on the home composer" for the fences below: HOME is also left by
+  // opening the New-project form or About, which do not clear `homeVisible`
+  // (Codex #4350 r7 F10).
+  const onHomeRef = useRef(true);
+  // Leaving HOME retires every send made there (r10 F13): a send carries the
+  // generation it was made in, and a continuation from an older generation
+  // is dropped even if HOME is showing again by the time it lands.
+  const homeGenRef = useRef(0);
+  {
+    const onHome = homeVisible && !showCreateProject && !showAbout;
+    if (onHomeRef.current && !onHome) homeGenRef.current += 1;
+    onHomeRef.current = onHome;
+  }
+  // The signed-in root going away (sign-out) retires every pending HOME send
+  // and empties the handoff slot: a create that completes afterwards must
+  // never park this account's photo where the next account's first question
+  // would claim it (Codex #4350 r11 F14, BLOCKER).
+  useEffect(() => () => {
+    onHomeRef.current = false;
+    homeGenRef.current += 1;
+    clearAttachments();
+  }, []);
+
   /**
-   * The thread a HOME question or a HOME "New chat" opens (#3877): an UNBOUND
-   * notebook — General first — never `preferredNotebookId()`, which is the
-   * last-opened notebook, i.e. the machine the technician was just at; its
-   * identity would ride the turn as machine context. With no unbound notebook
-   * it creates General so a stranger with no project can still ask. Async only
-   * on that create path; the caller sequences the question after it.
+   * A HOME send (`text`, possibly empty for an attachment-only send) or New
+   * chat (`null`) (#3877): it goes to an UNBOUND notebook — General first —
+   * never the last-opened machine notebook, and creates General when there is
+   * none, so a stranger with no project can still ask.
+   *
+   * The send's evidence is held HERE until the thread that claims it is the
+   * very next thing to mount; it reaches the single handoff slot only at that
+   * moment, so no other thread opened meanwhile can claim it. On a failed
+   * create the error and the question land in one render, so the shell
+   * restores the draft under its banner.
    */
-  const startHomeThread = useCallback(async (): Promise<string | null> => {
+  const sendFromHome = useCallback((text: string | null, opts: { readonly retry: boolean } = { retry: false }) => {
+    // The shell stashed THIS send's attachments just before calling here.
+    // Claim them before anything else: a send that slips past the disabled
+    // button while a create is in flight is dropped WITH its bytes, so they
+    // never sit in the slot for an unrelated thread to claim (r4 F5).
+    const fresh = claimAttachments();
+    if (homeSendInFlight.current) return;
+    setHomeSendError(null);
+    setHomeFailedQuestion(null);
+    const kept = failedHomeAttachments.current;
+    failedHomeAttachments.current = [];
+    // Only a retry of the failed submission — the banner still showing, same
+    // text, nothing attached anew — carries what it had; a replaced question,
+    // a send after Dismiss, or New chat drops it (r8 F11).
+    const retrying = opts.retry && fresh.length === 0 && text !== null && text === homeFailedQuestionRef.current;
+    const carry = retrying ? kept : fresh;
+    const handoff = (id: string) => {
+      stashAttachments(carry);
+      startNewThread(id);
+      // An empty text is still a submission when evidence was attached: the
+      // thread's composition path asks its default question (r2 F3).
+      if (text !== null) setQueuedQuestion(text);
+    };
     const plan = homeSendPlan(notebooks);
-    if (plan.kind === "loading") return null;
-    if (plan.kind === "existing") return startNewThread(plan.notebookId);
-    try {
-      const created = await createNotebook(plan.body);
-      setNotebooks((current) => (current?.some((nb) => nb.id === created.id) ? current : [created, ...(current ?? [])]));
-      return startNewThread(created.id);
-    } catch (e) {
-      setError(apiErrorCopy(e, "Could not create a project for your question."));
-      return null;
+    if (plan.kind === "loading") return;
+    if (plan.kind === "existing") {
+      handoff(plan.notebookId);
+      return;
     }
+    homeSendInFlight.current = true;
+    setHomeSending(true);
+    const gen = homeGenRef.current;
+    const stillThisSend = () => onHomeRef.current && homeGenRef.current === gen;
+    void createNotebook(plan.body)
+      .then(
+        (created) => {
+          setNotebooks((current) => (current?.some((nb) => nb.id === created.id) ? current : [created, ...(current ?? [])]));
+          // The technician opened something else while this was in flight:
+          // the send is abandoned, never a hijack of where they went — even
+          // if they are back on HOME by now.
+          if (!stillThisSend()) return;
+          handoff(created.id);
+        },
+        (e: unknown) => {
+          if (!stillThisSend()) return;
+          // Never the root's fatal error: that unmounts the composer with the
+          // question in it and leaves nothing on screen that can recover.
+          failedHomeAttachments.current = carry;
+          // An attachment-only send has no text to put back; restore the
+          // question the thread would have asked, so Try again can (r3 F4).
+          const restored = text === "" && carry.length > 0 ? defaultQuestionFor(carry) : text;
+          setHomeFailedQuestion(restored);
+          setHomeSendError(
+            apiErrorCopy(e, "Could not create a project for your question.") +
+              (carry.length > 0 ? " Your attachment is kept for Try again; changing the question drops it." : ""),
+          );
+        },
+      )
+      .finally(() => {
+        homeSendInFlight.current = false;
+        setHomeSending(false);
+      });
   }, [notebooks, startNewThread]);
 
   const openPreferredNotebook = useCallback((): string | null => {
@@ -398,6 +494,10 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
         onCancel={() => setShowCreateProject(false)}
         onCreated={(nb) => {
           setShowCreateProject(false);
+          // A project made here starts clean: nothing a HOME send left behind
+          // may ride into it (r7 F10).
+          setQueuedQuestion(null);
+          clearAttachments();
           // #3895: the list is fetched once at boot, so a project created here
           // has to be added to it or the drawer never shows it (no thread row,
           // no Sources to upload into) until the app is relaunched. Same idiom
@@ -434,24 +534,14 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
 
   if (error) return <div className="unified-root"><p className="unified-root__empty" role="alert">{error}</p></div>;
   if (!notebooks || !host) return <div className="unified-root"><p className="unified-root__empty">FactoryLM…</p></div>;
-  if (!selected) {
-    return (
-      <div className="unified-root">
-        {notice}
-        <p className="unified-root__empty">No projects yet. Create one to start a conversation.</p>
-        <button
-          type="button"
-          className="unified-root__create"
-          onClick={() => setShowCreateProject(true)}
-        >
-          New project
-        </button>
-        <div className="fl-shell__nav-footer">{host.navigationFooter}</div>
-      </div>
-    );
-  }
 
-  if (homeVisible) {
+  // Row 8: an account with no projects gets the SAME home composer, not a
+  // dead end — /v3 answers a brand-new account's general question, and so
+  // does the phone. The send path below already creates General for it
+  // (homeSendPlan on an empty list), so the only thing the old
+  // "No projects yet" screen guarded was a composer that would have worked.
+  // `!selected` implies zero notebooks (a non-empty list always selects).
+  if (homeVisible || !selected) {
     return (
       <div className="unified-root" data-testid="unified-home">
         {notice}
@@ -459,28 +549,46 @@ export function UnifiedRoot({ me, backRef, onSignOut, deepLink, onDeepLinkConsum
           turns={[]}
           liveTurns={[]}
           pending={null}
-          busy={false}
+          busy={homeSending}
           canStop={false}
           canRetry={false}
-          chatError={null}
+          chatError={homeSendError}
+          // The shell puts this back in the composer under the banner, and its
+          // Try again re-sends the draft through onSend (SendError.tsx): with
+          // no failed turn on HOME there is no host retry to wire.
+          failedQuestion={homeFailedQuestion}
           handlers={{
             // HOME has no notebook yet: the shell stashes whatever the composer
             // is holding and this send creates the thread that claims it.
-            onSend: (text) => {
-              void startHomeThread().then((id) => { if (id) setQueuedQuestion(text); });
+            onSend: (text, _evidence, _scope, opts) => sendFromHome(text, opts),
+            // Dismissed: the failed send is over. Nothing of it may survive a
+            // remount of the shell (About and back), least of all its photo.
+            onSendErrorDismissed: () => {
+              setHomeSendError(null);
+              setHomeFailedQuestion(null);
+              failedHomeAttachments.current = [];
             },
             onStop: () => {},
             onCitation: () => {},
             onRetry: undefined,
-            onNewChat: () => { void startHomeThread(); },
+            onNewChat: () => sendFromHome(null),
             onCreateProject: () => { onCreateProject(); },
             onScanMachine: async () => {
               const id = openPreferredNotebook();
               if (id) setQueuedSensorStart("read-scan");
+              // No project yet, so no notebook can host the scanner; the
+              // form that creates one is the honest next step, never a
+              // silently dead button.
+              else setShowCreateProject(true);
               return null;
             },
           }}
           host={host}
+          // The exact line /v3 renders for "no project picked"
+          // (mira-hub/src/factorylm-ui/hub-host-logic.ts groundingLineFor):
+          // identical surfaces, identical words (row 8).
+          groundingLine={() =>
+            "General question — answered from general knowledge, nothing cited. Pick a project to ask about its manuals."}
           // No notebook exists yet, so nothing can upload here; the shell holds
           // the bytes and hands them to the thread this send creates.
           attachmentNotebookId={null}

@@ -15,7 +15,20 @@ assert spec.loader is not None
 spec.loader.exec_module(mod)
 
 
-def packet(*, chunks: int, decision: str, jev, reason=None, claim=False, tokens=None, total=1000):
+def packet(
+    *,
+    chunks: int,
+    decision: str,
+    jev,
+    reason=None,
+    claim=False,
+    tokens=None,
+    total=1000,
+    visual: bool = False,
+    version=None,
+    obs=None,
+    ledger: bool = False,
+):
     ag = {
         "decision": decision,
         "reason": "served" if decision == "answered" else "refusal_regex",
@@ -26,9 +39,22 @@ def packet(*, chunks: int, decision: str, jev, reason=None, claim=False, tokens=
         "jev_latency_ms": 120 if jev is not None else None,
         "jev_input_tokens": tokens,
     }
+    if version is not None:
+        ag["jev_instructions_version"] = version
+    if obs is not None:
+        ag["jev_observation_count"] = obs
     return {
         "ids": {"turn_id": "t"},
         "environment": "staging",
+        "request": {"has_visual_evidence": visual},
+        # `visual_evidence` is the per-turn truth; `context.visual_evidence_count`
+        # ALSO counts the asset ledger (`ledger`), which is why the report must
+        # not read it (Gate 7 substitute review of #4380, finding 2).
+        "visual_evidence": {
+            "observation_in_context": visual,
+            "observation_available": visual,
+            "prior_turn_observation_count": 0,
+        },
         "answer_gate": ag,
         "retrieval": {
             "strategy": "oem_corpus_bm25" if chunks else "skipped_general_mode",
@@ -38,7 +64,7 @@ def packet(*, chunks: int, decision: str, jev, reason=None, claim=False, tokens=
         },
         "context": {
             "chunk_count": chunks,
-            "visual_evidence_count": 0,
+            "visual_evidence_count": (1 if visual else 0) + (1 if ledger else 0),
             "system_prompt_kind": "grounded" if chunks else "general",
         },
         "generation": {"served_provider": "Groq"},
@@ -116,7 +142,10 @@ def test_zero_chunk_call_is_a_violation(tmp_path: Path):
     )
     rc = mod.report([bad], tmp_path / "r.md", tmp_path / "r.csv", baseline=[])
     assert rc == 1
-    assert "Every judged turn had chunks: VIOLATED" in (tmp_path / "r.md").read_text()
+    assert (
+        "Every judged turn had chunks or an observation: VIOLATED"
+        in (tmp_path / "r.md").read_text()
+    )
 
 
 def test_artifact_rows_carry_trace_and_scenario(tmp_path: Path):
@@ -248,3 +277,221 @@ def test_unsampled_db_turns_are_not_collapsed(tmp_path: Path):
     mod.report(rows, tmp_path / "r.md", tmp_path / "r.csv", baseline=[])
     assert (tmp_path / "r.csv").read_text().count("\n") == 6  # header + 5 distinct turns
     assert "judged: 4" in (tmp_path / "r.md").read_text()
+
+
+def test_photo_turns_judged_without_their_observation_are_a_blind_spot_not_a_disagreement(
+    tmp_path: Path,
+):
+    """2026-10-12 adjudication: 97 of the first 131 judged turns were photo turns scored
+    on chunks alone. Those rows are listed, segmented and EXCLUDED from the window and
+    the disagreement rate; a v2 photo turn (observation sent) counts."""
+    rows = [
+        # v1 photo turn (no version field, no observation count) — blind spot
+        mod.flatten(
+            packet(chunks=6, decision="answered", jev=0.05, claim=True, visual=True),
+            source="x",
+            trace_id="p1" + "0" * 30,
+        ),
+        # explicit v1 on a photo turn — blind spot
+        mod.flatten(
+            packet(chunks=6, decision="answered", jev=0.10, visual=True, version="sufficiency-v1"),
+            source="x",
+            trace_id="p2" + "0" * 30,
+        ),
+        # v2 photo turn: observation sent → interpretable, photo segment, agrees
+        mod.flatten(
+            packet(
+                chunks=6,
+                decision="answered",
+                jev=0.85,
+                visual=True,
+                version="sufficiency-v2",
+                obs=1,
+            ),
+            source="x",
+            trace_id="p3" + "0" * 30,
+        ),
+        # v2 photo turn judged on the observation ALONE (zero chunks) — allowed, not a violation
+        mod.flatten(
+            packet(
+                chunks=0,
+                decision="answered",
+                jev=0.80,
+                visual=True,
+                version="sufficiency-v2",
+                obs=1,
+            ),
+            source="x",
+            trace_id="p4" + "0" * 30,
+        ),
+        # text turns, unchanged semantics
+        mod.flatten(
+            packet(chunks=6, decision="answered", jev=0.05, version="sufficiency-v2", obs=0),
+            source="x",
+            trace_id="t1" + "0" * 30,
+        ),
+        mod.flatten(
+            packet(
+                chunks=6,
+                decision="insufficient_evidence",
+                jev=0.04,
+                version="sufficiency-v2",
+                obs=0,
+            ),
+            source="x",
+            trace_id="t2" + "0" * 30,
+        ),
+    ]
+    assert [mod.blind_spot(r) for r in rows] == [True, True, False, False, False, False]
+    assert [mod.segment(r) for r in rows] == ["photo", "photo", "photo", "photo", "text", "text"]
+    rc = mod.report(rows, tmp_path / "r.md", tmp_path / "r.csv", [])
+    md = (tmp_path / "r.md").read_text()
+    assert rc == 0, md  # an observation-only v2 judgment is not the zero-chunk violation
+    assert "judged: 6 (interpretable: 4, blind-spot: 2)" in md
+    assert "**BLIND SPOT:** 2 photo turn(s) were judged under `sufficiency-v1`" in md
+    assert "Interpretable judged turns by rubric version: `sufficiency-v2` 4" in md
+    assert "current rubric `sufficiency-v2`: **4/50** interpretable" in md
+    # D3 (text) + D1 (text) = 2 disagreements over the 4 interpretable turns; the two A rows are photo
+    # D3 (text) + D1 (text) = 2 disagreements over the 4 interpretable v2 turns; the two A rows are photo
+    assert "Disagreements (`sufficiency-v2`): 2/4 interpretable judged turns." in md
+    assert "| A agree | 2 | 0 | 2 |" in md
+    assert "Every judged turn had chunks or an observation: OK" in md
+    csv_text = (tmp_path / "r.csv").read_text()
+    assert "blind_spot" in csv_text.splitlines()[0] and "segment" in csv_text.splitlines()[0]
+
+
+def test_a_v2_judgment_with_neither_chunks_nor_observation_is_still_a_violation(tmp_path: Path):
+    rows = [
+        mod.flatten(
+            packet(chunks=0, decision="answered", jev=0.5, version="sufficiency-v2", obs=0),
+            source="x",
+            trace_id="z" + "0" * 31,
+        )
+    ]
+    rc = mod.report(rows, tmp_path / "r.md", tmp_path / "r.csv", [])
+    assert rc == 1
+    assert (
+        "Every judged turn had chunks or an observation: VIOLATED (1)"
+        in (tmp_path / "r.md").read_text()
+    )
+
+
+def test_asset_ledger_visual_evidence_is_not_a_photo_turn(tmp_path: Path):
+    """Finding 2 of the Gate 7 substitute review of #4380: `context.visual_evidence_count`
+    also counts the asset's visual-evidence LEDGER, so it is >0 on every later TEXT turn
+    for that asset. A chunks-only v2 judgment on such a turn is a text disagreement,
+    never a blind spot, never the photo segment."""
+    text_turn_with_ledger_v2 = mod.flatten(
+        packet(
+            chunks=6, decision="answered", jev=0.05, version="sufficiency-v2", obs=0, ledger=True
+        ),
+        source="x",
+        trace_id="l1" + "0" * 30,
+    )
+    text_turn_with_ledger_v1 = mod.flatten(
+        packet(chunks=6, decision="answered", jev=0.05, ledger=True),
+        source="x",
+        trace_id="l2" + "0" * 30,
+    )
+    assert mod.blind_spot(text_turn_with_ledger_v2) is False
+    assert mod.segment(text_turn_with_ledger_v2) == "text"
+    assert mod.blind_spot(text_turn_with_ledger_v1) is False, (
+        "v1 + ledger only: no observation was in context"
+    )
+    assert mod.segment(text_turn_with_ledger_v1) == "text"
+    # And a v2 photo turn whose observation count is 0 (observation never reached the
+    # judge) is a text judgment too — the count, not the flag, says what Jev saw.
+    odd = mod.flatten(
+        packet(
+            chunks=6, decision="answered", jev=0.1, visual=True, version="sufficiency-v2", obs=0
+        ),
+        source="x",
+        trace_id="l3" + "0" * 30,
+    )
+    assert mod.blind_spot(odd) is False and mod.segment(odd) == "text"
+    rc = mod.report(
+        [text_turn_with_ledger_v2, text_turn_with_ledger_v1, odd],
+        tmp_path / "r.md",
+        tmp_path / "r.csv",
+        [],
+    )
+    md = (tmp_path / "r.md").read_text()
+    assert rc == 0
+    assert "judged: 3 (interpretable: 3, blind-spot: 0)" in md
+    # l1 + odd are v2, l2 (no version) is v1 — reported apart, never pooled
+    assert "Disagreements (`sufficiency-v2`): 2/2 interpretable judged turns." in md
+    assert (
+        "Disagreements (`sufficiency-v1`, historical — not pooled): 1/1 interpretable judged turns."
+        in md
+    )
+
+
+def test_old_packets_without_visual_evidence_block_fall_back_to_the_request_flag():
+    p = packet(chunks=6, decision="answered", jev=0.05, visual=True)
+    del p["visual_evidence"]
+    r = mod.flatten(p, source="x", trace_id="o1" + "0" * 30)
+    assert r["observation_in_context"] is True and mod.blind_spot(r) is True
+
+
+def test_rubric_versions_are_never_pooled(tmp_path: Path):
+    """Codex r1 on #4380, F1: historical v1 text judgments must not fill the v2 window or
+    its disagreement denominator. Each version gets its own window, tables and rate; the
+    current rubric is the headline; a packet without a version field is v1."""
+    v1_text_disagreement = mod.flatten(
+        packet(chunks=6, decision="answered", jev=0.05), source="x", trace_id="v1a" + "0" * 29
+    )
+    v2_text_agreement = mod.flatten(
+        packet(chunks=6, decision="answered", jev=0.9, version="sufficiency-v2", obs=0),
+        source="x",
+        trace_id="v2a" + "0" * 29,
+    )
+    rc = mod.report(
+        [v1_text_disagreement, v2_text_agreement], tmp_path / "r.md", tmp_path / "r.csv", []
+    )
+    md = (tmp_path / "r.md").read_text()
+    assert rc == 0
+    # The headline window counts the CURRENT rubric only.
+    assert "current rubric `sufficiency-v2`: **1/50** interpretable" in md
+    assert "**2/50**" not in md
+    # Each version has its own disagreement line; the v1 row never reaches the v2 denominator.
+    assert "Disagreements (`sufficiency-v2`): 0/1 interpretable judged turns" in md
+    assert (
+        "Disagreements (`sufficiency-v1`, historical — not pooled): 1/1 interpretable judged turns"
+        in md
+    )
+    assert "Disagreements: 1/2" not in md
+
+
+def test_blind_spot_calls_still_count_toward_actual_spend_and_latency(tmp_path: Path):
+    """Codex r1 on #4380, F2: a blind-spot photo call was still a paid, timed call. It is
+    excluded from EVALUATION only; spend and latency are operational and count every call."""
+    rows = [
+        mod.flatten(
+            packet(
+                chunks=6, decision="answered", jev=0.9, version="sufficiency-v2", obs=0, tokens=500
+            ),
+            source="x",
+            trace_id="s1" + "0" * 30,
+        ),
+        mod.flatten(
+            packet(
+                chunks=6, decision="answered", jev=0.1, version="sufficiency-v2", obs=0, tokens=500
+            ),
+            source="x",
+            trace_id="s2" + "0" * 30,
+        ),
+    ]
+    slow_blind = packet(chunks=6, decision="answered", jev=0.05, visual=True, tokens=700)
+    slow_blind["answer_gate"]["jev_latency_ms"] = 1400
+    rows.append(mod.flatten(slow_blind, source="x", trace_id="s3" + "0" * 30))
+    rc = mod.report(rows, tmp_path / "r.md", tmp_path / "r.csv", [])
+    md = (tmp_path / "r.md").read_text()
+    assert rc == 0
+    assert "1700 input tokens over 3 calls" in md, md
+    assert "max 1400" in md
+    # A dataset of ONLY blind-spot calls still reports what it cost.
+    only_blind = [mod.flatten(slow_blind, source="x", trace_id="s4" + "0" * 30)]
+    mod.report(only_blind, tmp_path / "r2.md", tmp_path / "r2.csv", [])
+    md2 = (tmp_path / "r2.md").read_text()
+    assert "700 input tokens over 1 calls" in md2
+    assert "no judged turn in this set carries" not in md2

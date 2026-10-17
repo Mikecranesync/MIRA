@@ -26,7 +26,7 @@ from .citation_compliance import citation_enforce_enabled as _citation_enforce_e
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .citation_compliance import established_context_text as _established_context_text
 from .citation_compliance import trusted_uns_context as _trusted_uns_context
-from .conversation_router import route_intent
+from .conversation_router import accounting_session_id, route_intent
 from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .detection.recurring_fault import check_recurring_and_annotate
 from .dialogue_state import (
@@ -2356,6 +2356,7 @@ class Supervisor:
                     message,
                     photo_b64,
                     tenant_id=tenant_id,
+                    platform=platform,
                     uns_source=uns_source,
                     retrieval_query=retrieval_query,
                 ),
@@ -2977,6 +2978,7 @@ class Supervisor:
         photo_b64: str = None,
         *,
         tenant_id: str | None = None,
+        platform: str | None = None,
         uns_source: str | None = None,
         retrieval_query: str | None = None,
     ) -> dict:
@@ -2989,6 +2991,7 @@ class Supervisor:
                 message,
                 photo_b64,
                 tenant_id=tenant_id,
+                platform=platform,
                 uns_source=uns_source,
                 retrieval_query=retrieval_query,
             )
@@ -3007,10 +3010,15 @@ class Supervisor:
         photo_b64: str = None,
         *,
         tenant_id: str | None = None,
+        platform: str | None = None,
         uns_source: str | None = None,
         retrieval_query: str | None = None,
     ) -> dict:
         """Full entry point. Returns {"reply", "confidence", "trace_id", "next_state"}.
+
+        ``platform`` is the surface that delivered the turn (telegram, slack,
+        ignition, …). It is an accounting input only: the intent classifier's
+        usage row is attributed to ``tenant_platform_chat`` (Codex r2 on #4359).
 
         Same logic as process(), but preserves structured metadata for
         benchmark and telemetry consumers.
@@ -3343,6 +3351,12 @@ class Supervisor:
                     conversation_history=(state.get("context") or {}).get("history", []),
                     current_fsm_state=state.get("state", "IDLE"),
                     asset_identified=state.get("asset_identified", ""),
+                    # Accounting identity, built from the RESOLVED tenant (the one
+                    # retrieval uses: explicit, else chat-mapped, else the RAG
+                    # default; Codex r3 F2 on #4359) and the surface — never the
+                    # FSM chat key, whose spelling is the surface's own
+                    # ("ignition:acme:press7"; Codex r2 on #4359).
+                    session_id=accounting_session_id(resolved_tenant, platform, chat_id),
                 )
                 _router_intent = _routing["intent"]
                 _router_conf = float(_routing.get("confidence", 0) or 0)

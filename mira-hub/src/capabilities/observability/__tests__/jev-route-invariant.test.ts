@@ -54,4 +54,33 @@ describe("the Jev shadow cannot reach the delivery path", () => {
     expect(linesOf(/evaluateTurnDecision\(/)).toHaveLength(1);
     expect(src).toContain("if (decisionState) {");
   });
+
+  // sufficiency-v2 (2026-10-12): the shadow is handed the vision model's RAW
+  // readings (this turn's row, then the prior rows already in context) — a
+  // subset of what the decision lane sends, never the rendered `lookContext`
+  // prompt sections, whose anti-injection headers alone (571 + 646 chars) would
+  // consume the judge's 900-char cap before any nameplate text (Gate 7
+  // substitute review of #4380, finding 1).
+  it("the sufficiency shadow receives the raw observation readings, this turn's first, never the rendered lookContext", () => {
+    const call = src.indexOf("judgeEvidenceSufficiencyShadow(");
+    expect(call).toBeGreaterThan(-1);
+    const window = src.slice(call, src.indexOf(").catch(", call));
+    expect(window).toMatch(/\{ observations: \[lookRow\?\.text, \.\.\.priorLookRows\.map\(\(r\) => r\.text\)\] \}/);
+    expect(window).not.toContain("lookContext");
+    // The decision lane's shape is its own versioned state (decision-fabric-v1); unchanged here.
+    const decision = src.slice(src.indexOf("buildTurnDecisionState({"));
+    expect(decision.slice(0, decision.indexOf("evidence:"))).toMatch(/observations: \[lookContext\]/);
+  });
+
+  // The two v2 fields ride on the packet from the SAME awaited result as the
+  // score, so a v1 photo blind spot and a v2 judgment are distinguishable in the
+  // ledger. (This file is where the route's Jev contract is pinned: the
+  // flight-recorder test under src/app/** is a lifecycle-guarded path.)
+  it("the packet records jev_observation_count and jev_instructions_version beside jev_sufficient", () => {
+    const gate = src.indexOf("jev_sufficient: jev.noul,");
+    expect(gate).toBeGreaterThan(-1);
+    const block = src.slice(gate, gate + 400);
+    expect(block).toMatch(/jev_observation_count: jev\.observation_count,/);
+    expect(block).toMatch(/jev_instructions_version: jev\.instructions_version,/);
+  });
 });

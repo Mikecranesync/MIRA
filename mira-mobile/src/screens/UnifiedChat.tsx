@@ -323,6 +323,10 @@ export interface UnifiedChatHandlers
     evidence?: VisualEvidenceRider,
     /** Chat scope re-read after an attachment upload; overrides the host's. */
     scope?: readonly string[],
+    /** HOME only: whether the shell's send-error banner was still showing
+     *  when this send was made. The HOME owner carries a failed send's kept
+     *  evidence only on such a send (Codex #4350 r8 F11). */
+    opts?: { readonly retry: boolean },
   ) => void;
   /** Inherited from ChatV2 and UNUSED here — optional so neither host has to
    *  pass a handler the unified composer never calls. */
@@ -330,6 +334,10 @@ export interface UnifiedChatHandlers
   readonly onAttachCamera?: () => void;
   readonly onAttachFile?: () => void;
   readonly onScanMachine?: () => Promise<string | null> | string | null;
+  /** The technician dismissed the shell's send-error banner. The host that
+   *  owns the failed send forgets it (its error, restored question and any
+   *  kept evidence), so nothing can re-arm from a remount (Codex #4350 r9 F12). */
+  readonly onSendErrorDismissed?: () => void;
   readonly onNewChat?: () => void;
   readonly onCreateProject?: () => void;
   /**
@@ -421,6 +429,36 @@ function UnifiedChatForNotebook({
   const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
   const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
+  // Whether the shell's send-error banner is still up, as of the last render.
+  // The shell's Try again dispatches the banner away and calls onSend in the
+  // SAME handler, so this still reads non-null for a retry; a send after
+  // Dismiss arrives with the banner already gone. That is how Dismiss disarms
+  // a failed photo without the shell telling us (Codex #4350 r7 F9).
+  const sendErrorRef = useRef(state.sendError);
+  sendErrorRef.current = state.sendError;
+  // Dismiss detection (r9 F12): the shell's SendError.dismiss clears only
+  // shell state. Every clear THIS component makes is flagged first, and so is
+  // a send made while the banner was up (the shell's Try again clears, then
+  // sends, in one handler). Any other non-null → null transition is Dismiss.
+  const ownClearRef = useRef(false);
+  const flagOwnClear = useCallback(() => {
+    if (sendErrorRef.current !== null) ownClearRef.current = true;
+  }, []);
+  const prevSendErrorRef = useRef(state.sendError);
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+  useEffect(() => {
+    const prev = prevSendErrorRef.current;
+    prevSendErrorRef.current = state.sendError;
+    if (prev === null || state.sendError !== null) return;
+    if (ownClearRef.current) {
+      ownClearRef.current = false;
+      return;
+    }
+    attachments.discardRetained?.();
+    handlersRef.current.onSendErrorDismissed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sendError]);
   const baseThread = useMemo(() => toThread(messages, fullMeta), [messages, fullMeta]);
 
   // Codex round 2 (#4195 F4/F6/F8/F9): "Searching…" must resolve once the
@@ -673,12 +711,19 @@ function UnifiedChatForNotebook({
   // behaviour the preview flow replaces.
   const attachTarget = attachmentNotebookId === undefined ? meta.notebookId : attachmentNotebookId;
   const attachments = useUnifiedAttachments(attachTarget, attachmentThreadId);
+  // The adapter must keep one identity for the life of the chat: the shared
+  // Composer releases every pending attachment whenever its adapter changes,
+  // and the hosts pass a fresh onScanMachine on every render. Read the scanner
+  // through a ref so a re-render never costs the technician a picked photo.
+  const scanMachineRef = useRef(handlers.onScanMachine);
+  scanMachineRef.current = handlers.onScanMachine;
   const adapter = useMemo(() => createCapacitorAdapter({
     onAttachPhoto: attachments.attachPhoto,
     onAttachFile: attachments.attachFile,
     onAttachCamera: attachments.attachCamera,
-    onScanMachine: handlers.onScanMachine,
-  }), [attachments.attachPhoto, attachments.attachFile, attachments.attachCamera, handlers.onScanMachine]);
+    onScanMachine: async () => (await scanMachineRef.current?.()) ?? null,
+    onRelease: attachments.release,
+  }), [attachments.attachPhoto, attachments.attachFile, attachments.attachCamera, attachments.release]);
 
   // The assistant surface renders text through the SAME markdown + inline
   // citation-mark pipeline ChatV2 uses (AnswerMarkdown), gated on the turn's
@@ -736,6 +781,7 @@ function UnifiedChatForNotebook({
     const next = chatError ?? null;
     if (mirroredChatError.current === next) return;
     mirroredChatError.current = next;
+    if (next === null) flagOwnClear();
     dispatch({ type: "set-send-error", error: next });
     // The composer clears the draft at send time, so by the time a failure
     // arrives the question is gone. Put it back — host-owned, because only the
@@ -753,6 +799,9 @@ function UnifiedChatForNotebook({
    * question on the host's existing send path.
    */
   const onSend = useCallback((text: string, pending: readonly Attachment[], opts: { retry?: boolean } = {}) => {
+    // A send made while the banner was up is the shell's Try again (or Send
+    // with the restored draft): its banner clear is not a dismissal.
+    flagOwnClear();
     // Codex F1 (HIGH, #4175/#4189): a confirmed identity may have just
     // promoted a candidate manual into an enabled source (migration 104) —
     // `onConfirmIdentity` below re-reads detail and stashes the refreshed
@@ -764,8 +813,11 @@ function UnifiedChatForNotebook({
     confirmedScopeRef.current = null;
     if (!attachTarget) {
       if (pending.length > 0) attachments.stashForHandoff(pending);
-      if (confirmedScope) handlers.onSend(text, undefined, confirmedScope);
-      else handlers.onSend(text);
+      // Same signal as the thread's inferred retry below: the banner is still
+      // up for the shell's Try again, gone for any send after Dismiss.
+      const homeRetry = { retry: sendErrorRef.current !== null };
+      if (confirmedScope) handlers.onSend(text, undefined, confirmedScope, homeRetry);
+      else handlers.onSend(text, undefined, undefined, homeRetry);
       return;
     }
     // Nothing held here, nothing carried from HOME, and not a retry: the plain,
@@ -775,12 +827,27 @@ function UnifiedChatForNotebook({
     // question and left the photo behind for the NEXT send. A failed send's
     // retained bytes are deliberately NOT a reason to compose here (#3863):
     // they ride only the explicit Try again below.
-    if (pending.length === 0 && !attachments.hasCarried() && !opts.retry) {
+    // Resending exactly the question a failed upload was asked with (the
+    // banner's Try again puts it back as the draft) is that turn's retry, and
+    // carries its bytes — the only retry path before a server turn exists
+    // (Codex #4350 r4 F6). Any other text is a different question (#3863).
+    // Optional calls: the guarded `src/screens/__tests__` doubles of this hook
+    // predate these two methods, and the frozen tree cannot be edited to add them.
+    // A freshly attached replacement is a NEW submission, never a retry of the
+    // failed one: it is what gets uploaded, and the failed bytes are dropped
+    // (r5 F7) — the same rule the home screen applies.
+    const retry =
+      opts.retry === true ||
+      (pending.length === 0 && sendErrorRef.current !== null && (attachments.isRetryOf?.(text) ?? false));
+    if (pending.length === 0 && !attachments.hasCarried() && !retry) {
+      // A different question supersedes a failed photo turn: drop its bytes
+      // here too, since this path never reaches compose (r6 F8).
+      attachments.discardRetained?.();
       if (confirmedScope) handlers.onSend(text, undefined, confirmedScope);
       else handlers.onSend(text);
       return;
     }
-    void attachments.compose(text, pending, opts).then((composed) => {
+    void attachments.compose(text, pending, { ...opts, retry }).then((composed) => {
       // Light review (#4195, HIGH, notebook-switch class): `confirmedScope`
       // was captured BEFORE this await, on THIS notebook. If the technician
       // switched notebooks while compose was pending, this instance is now
@@ -820,7 +887,9 @@ function UnifiedChatForNotebook({
       restoreConfirmedScope(confirmedScope);
       const message = error instanceof Error ? error.message : String(error);
       dispatch({ type: "set-send-error", error: message || "The attachment didn't upload — try again." });
-      dispatch({ type: "set-draft", draft: text });
+      // An attachment-only send has no text to put back; restore the question
+      // it was asked with, so the banner has a Try again that carries it.
+      dispatch({ type: "set-draft", draft: text || attachments.retainedQuestion?.() || text });
     });
   }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope]);
 
@@ -829,12 +898,17 @@ function UnifiedChatForNotebook({
   // composed and uploaded for THIS turn.
   const initialSentRef = useRef<string | null>(null);
   useEffect(() => {
-    const text = initialQuestion?.trim();
-    if (!text || busy || initialSentRef.current === text) return;
-    initialSentRef.current = text;
+    if (initialQuestion === null || initialQuestion === undefined || busy) return;
+    const text = initialQuestion.trim();
+    // An empty question is still a submission when HOME handed over an
+    // attachment: `compose` asks its default photo/document question with
+    // the evidence (Codex #4350 r2 F3). Empty with nothing carried is not.
+    if (!text && !attachments.hasCarried()) return;
+    if (initialSentRef.current === initialQuestion) return;
+    initialSentRef.current = initialQuestion;
     onSend(text, []);
     onInitialQuestionSent?.();
-  }, [busy, onSend, initialQuestion, onInitialQuestionSent]);
+  }, [busy, onSend, initialQuestion, onInitialQuestionSent, attachments.hasCarried]);
 
   // Read-aloud for gloved / hands-in-the-panel use. Null where the WebView has
   // no Web Speech, in which case no button renders. Stopped on unmount.
@@ -900,6 +974,7 @@ function UnifiedChatForNotebook({
     ...(canRetry && handlers.onRetry
       ? { onRetry: () => {
           if (attachments.hasRetained() || attachments.hasCarried()) {
+            flagOwnClear();
             dispatch({ type: "set-send-error", error: null });
             onSend(state.draft, [], { retry: true });
             return;

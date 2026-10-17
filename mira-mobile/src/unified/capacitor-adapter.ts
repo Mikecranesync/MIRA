@@ -28,6 +28,8 @@ export interface UnifiedAdapterHandlers {
   readonly onScanMachine?: () => Promise<string | null> | string | null;
   /** Text to share for an artifact id (handoff/report) — the screen owns the content. */
   readonly shareText?: (artifactId: string) => string | null;
+  /** The technician removed a picked attachment before sending; drop its bytes. */
+  readonly onRelease?: (id: string) => void;
 }
 
 export function createCapacitorAdapter(handlers: UnifiedAdapterHandlers): PlatformAdapter {
@@ -36,6 +38,7 @@ export function createCapacitorAdapter(handlers: UnifiedAdapterHandlers): Platfo
     attachFile: async () => (await handlers.onAttachFile()) ?? null,
     attachCamera: async () => (await handlers.onAttachCamera()) ?? null,
     scanMachine: async () => (handlers.onScanMachine ? await handlers.onScanMachine() : null),
+    release: (id) => handlers.onRelease?.(id),
     shareArtifact: async (artifactId) => {
       const text = handlers.shareText?.(artifactId) ?? null;
       if (!text) return "cancelled";

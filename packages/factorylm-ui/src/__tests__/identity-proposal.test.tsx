@@ -209,6 +209,21 @@ describe("manual_search_status — searching progress (#4189)", () => {
   });
 });
 
+describe("manual download handoff", () => {
+  it.each(["javascript:alert(1)", "http://example.com/manual", "https://example.com/\\manual"])("does not render an unsafe manual link: %s", (manualUrl) => {
+    const view = render({}, (f) => ({ ...f, thread: { ...f.thread, turns: f.thread.turns.map(t => ({ ...t, parts: t.parts.map(p => p.type === "manual_search_status" ? { ...p, running: false, manualUrl } : p) })) } }));
+    expect(view.container.querySelector('[data-part-type="manual_search_status"] a')).toBeNull();
+  });
+  it("offers a tappable download page without making it a citation", () => {
+    const url = "https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319";
+    const view = render({}, (f) => ({ ...f, thread: { ...f.thread, turns: f.thread.turns.map(t => ({ ...t, parts: t.parts.map(p => p.type === "manual_search_status" ? { ...p, running: false, message: "I couldn't download it. Upload it after downloading.", manualUrl: url } : p) })) } }));
+    const link = view.container.querySelector('[data-part-type="manual_search_status"] a');
+    expect(link?.getAttribute("href")).toBe(url);
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.textContent).toContain("Open website to find the manual");
+  });
+});
+
 describe("regression — an unknown frame still falls back to the inspection box (acceptance #4)", () => {
   it("still renders the preserved-for-inspection box for a kind this version doesn't know", () => {
     const view = render();

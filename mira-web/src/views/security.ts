@@ -204,8 +204,8 @@ const DATA_PROTECTION: SecurityItem[] = [
 
 const AUTH_ACCESS: SecurityItem[] = [
   {
-    lead: "Magic-link authentication — no passwords to steal.",
-    body: "Sign-in is handled via time-limited, single-use email tokens. There are no passwords stored in our database. Magic links expire in 15 minutes and are consumed on first use.",
+    lead: "Google, magic-link, or password sign-in.",
+    body: "Sign in with Google, a time-limited single-use email link, or a password. Passwords are stored only as salted bcrypt hashes, never in plain text. Magic links expire in 15 minutes and are consumed on first use.",
   },
   {
     lead: "Row-level security enforces tenant isolation.",
@@ -223,8 +223,8 @@ const AUTH_ACCESS: SecurityItem[] = [
 
 const AI_SAFETY: SecurityItem[] = [
   {
-    lead: "Safety-critical queries escalate — they never get an AI answer.",
-    body: "LOTO procedures, arc flash, confined space entry, and 18 other high-consequence keywords trigger an immediate escalation to your designated safety contact. MIRA does not produce step-by-step answers for life-safety scenarios.",
+    lead: "Safety-critical questions are flagged — MIRA is not a safety system.",
+    body: "Questions that mention lockout/tagout, arc flash, confined space entry, or other high-consequence hazards are answered with a safety warning. For that work, follow your site's procedures and qualified people. Don't use MIRA, or any AI tool, for it.",
   },
   {
     lead: "No autonomous actions — MIRA asks before it acts.",
@@ -235,8 +235,8 @@ const AI_SAFETY: SecurityItem[] = [
     body: "The provider cascade (Groq → Cerebras → Gemini) is configured in code, not learned. Every LLM call logs the provider used, token count, and latency to structured logs.",
   },
   {
-    lead: "Source citations are required on every diagnostic answer.",
-    body: "MIRA's RAG pipeline must cite the source chunk (OEM manual section, fault history entry) that grounds each claim. Uncited speculative answers are blocked at the guardrail layer.",
+    lead: "Answers from your documents show their source.",
+    body: "When an answer comes from an OEM manual or a document you uploaded, MIRA shows the document and page it used. Not every answer has a document behind it, so check the citation before you act.",
   },
 ];
 
@@ -330,8 +330,8 @@ export function renderSecurity(reqUrl?: string): string {
     <ul class="fl-sec-list">
       <li><strong>Your plant data is isolated by tenant.</strong> Row-level security means one customer can never read another's data — enforced in the database, not just the app.</li>
       <li><strong>Your manuals never train external models.</strong> We use Groq, Cerebras, and Gemini inference-only; your documents and conversations stay yours.</li>
-      <li><strong>Safety-critical questions escalate.</strong> LOTO, arc flash, and confined-space prompts stop and route to your safety contact instead of getting a risky AI answer.</li>
-      <li><strong>Every answer cites its source.</strong> Technicians can verify MIRA against the manual section or fault record it pulled from — no uncited speculation.</li>
+      <li><strong>Safety-critical questions are flagged.</strong> LOTO, arc flash, and confined-space questions come with a safety warning. For that work, follow your site procedure. Don't use any AI tool for it.</li>
+      <li><strong>Answers from your manuals show the page.</strong> When an answer comes from your manual, MIRA shows the manual and the page, so a technician can check it before touching the machine.</li>
       <li><strong>We're honest about the roadmap.</strong> We are not SOC 2 certified yet; readiness work is underway. The technical detail below says exactly where we stand.</li>
     </ul>
   </div>

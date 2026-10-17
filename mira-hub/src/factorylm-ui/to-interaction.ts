@@ -39,13 +39,16 @@ import type {
   SafetyNoticeEntry,
   VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
-import { isMachineEvidenceEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
+import { isMachineEvidenceEntry, isProviderFailureEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
+import { PROVIDER_EXHAUSTION_COPY } from "@/capabilities/provider-health";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { BASIS_LABEL, splitEvidence } from "@/components/equipment/notebook-chat-utils";
 
 type StatusAwareStreamResult = StreamResult & { statusMessage?: string | null };
+
+const PROVIDER_FAILURE_MESSAGES = new Set(Object.values(PROVIDER_EXHAUSTION_COPY));
 
 const GENERIC_ABSTENTION_COPY = "I couldn't find that in the selected sources.";
 const PHOTO_ABSTENTION_COPY =
@@ -259,6 +262,13 @@ export function hasTerminalSafetyStop(evidence: readonly unknown[]): boolean {
   return safetyNoticesOf(evidence).some(isTerminalSafetyNotice);
 }
 
+/** The classic notebook draws every safety banner ABOVE the answer (`NotebookChat`
+ *  `Bubble`), and the shell renders parts in array order — so notices lead, live
+ *  and hydrated alike. Caught by the fidelity harness (#4439). */
+function safetyFirst(parts: InteractionPart[]): InteractionPart[] {
+  return [...parts.filter((p) => p.type === "safety_notice"), ...parts.filter((p) => p.type !== "safety_notice")];
+}
+
 export function safetyNoticePart(entry: SafetyNoticeEntry): InteractionPart {
   const terminal = isTerminalSafetyNotice(entry);
   return {
@@ -344,7 +354,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
     // hydrated row uses, so live and reloaded turns render identically.
     if (result.hazardNotice) parts.push(safetyNoticePart(result.hazardNotice));
     if (result.followups.length) parts.push({ type: "followups", suggestions: result.followups });
-    return parts;
+    return safetyFirst(parts);
   }
 
   if (stopped) {
@@ -355,9 +365,19 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
       error: { code: "provider_failure", message: "The answer ended before it completed.", retryable: true },
     });
   } else {
-    parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
+    // Only the server's technician copy for provider exhaustion (#4356) is shown
+    // verbatim; other status messages ("see server logs") are operator text.
+    const serverMessage = result.statusMessage?.trim();
+    if (serverMessage && PROVIDER_FAILURE_MESSAGES.has(serverMessage)) {
+      parts.push({
+        type: "error",
+        error: { code: "provider_failure", message: serverMessage, retryable: false },
+      });
+    } else {
+      parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
+    }
   }
-  return parts;
+  return safetyFirst(parts);
 }
 
 /**
@@ -467,7 +487,13 @@ export function turnsFromPersisted(
   } else if (stopped) {
     parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } });
   } else {
-    parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: false } });
+    // #4374: the persisted provider-exhaustion reason shows the same copy the
+    // live turn did. Never retryable: the host's Retry replays the same
+    // idempotent request (#4374 Codex R2); a scoped Retry is tracked on #4366.
+    // `PersistedTurn.evidence` (guarded legacy type) predates this marker; read it as unknown.
+    const failure = (row.evidence as readonly unknown[]).find(isProviderFailureEntry);
+    const message = failure ? PROVIDER_EXHAUSTION_COPY[failure.reason] : "The answer could not be completed.";
+    parts.push({ type: "error", error: { code: "provider_failure", message, retryable: false } });
   }
 
   if (grounding) {
@@ -487,7 +513,7 @@ export function turnsFromPersisted(
     id: answerId,
     threadId,
     role: "assistant",
-    parts,
+    parts: safetyFirst(parts),
     lifecycle,
     context,
     createdAt: at,
@@ -525,6 +551,7 @@ export function withManualSearchStatus(
     model: status.model,
     running: status.running,
     ...(status.message ? { message: status.message } : {}),
+    ...(status.manualUrl ? { manualUrl: status.manualUrl } : {}),
   };
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
 }

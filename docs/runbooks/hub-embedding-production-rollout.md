@@ -157,6 +157,56 @@ doppler run -p factorylm -c prd -- \
 Must run from a **Tailnet node** — CI has no route to the embedder (`apply-seeds.yml` documents the
 same constraint). Re-measure with the `db-inspect` coverage probe after each slice.
 
+## 5a. The embedder lives on the OVH host (2026-10-05)
+
+**What broke.** Prod and staging moved to the OVH host on 2026-09-19 (#3800). That host is not
+on the tailnet, but Doppler `OLLAMA_BASE_URL` still names Bravo's tailnet address, so every
+embed-on-write failed:
+- staging's last private chunk with a vector was written 2026-09-18;
+- prod canary run 37328567165 found 264 of 264 fresh chunks dark.
+
+The canary's green days had no uploads at all, so they proved nothing.
+
+**The fix.** A `mira-ollama` service in both OVH compose files:
+- `ollama/ollama:0.22.0`, the same runtime Bravo runs, with `nomic-embed-text:v1.5` (manifest
+  `0a109f422b47`, the same digest as Bravo's `:latest`);
+- internal network only, with no ports, because Ollama has no auth;
+- a healthcheck that passes only once that digest is present.
+
+The Hub's `OLLAMA_BASE_URL` is set in compose to `http://mira-ollama:11434`. The shared Doppler
+value stays as it is, because tailnet tools such as the backfill below still use it.
+
+**Deploy order.**
+- **Production:** deploys use `up -d --no-deps`, so ship the embedder first, healthy, then the Hub:
+  1. `gh workflow run deploy-vps.yml -f approved_rc_sha=<sha> -f services="mira-ollama"`
+     (the first start pulls the about 274 MB model; healthcheck `start_period` is 300 s);
+  2. `gh workflow run deploy-vps.yml -f approved_rc_sha=<sha> -f services="mira-hub"`.
+- **Staging:** `deploy-staging.yml` brings up the whole staging stack, `stg-mira-ollama` included.
+
+The Hub deliberately does **not** `depends_on` the embedder. If the model pull ever fails, the Hub
+still starts and degrades to BM25-only, recording a failure code, instead of staying down.
+
+**Bootstrap timeouts (all operations bounded).** Every `ollama` CLI call in the startup script runs
+with a bounded timeout to prevent indefinite hangs:
+
+| Operation | Timeout | Justification |
+|---|---|---|
+| `ollama list` | 5s (`OLLAMA_LIST_TIMEOUT`) | Local registry read, no network; should complete <1s under normal load |
+| `ollama cp` | 10s (`OLLAMA_CP_TIMEOUT`) | Local model copy operation; model data already present, metadata-only |
+| `ollama pull` | 300s (`OLLAMA_PULL_TIMEOUT`) | Network download of ~128MB model; allows for slow connections; retried up to 5 times |
+| Ready deadline | 120s (`OLLAMA_READY_CAP`) | Real wall-clock time for serve to initialize and become responsive; measured with `date +%s` |
+
+The readiness deadline uses real elapsed time, not iteration count, so a 120s cap means 120s of
+wall-clock time regardless of probe duration. Failure diagnostics state the operation, whether it
+timed out or exited non-zero (with exit code), and the real elapsed time vs. cap.
+
+**Disk.** The image is about 3.8 GB compressed. Check free space on the host first, and prune the
+Docker build cache if it is low. It held 62 GB, 58.6 GB of it reclaimable, on 2026-10-05.
+
+**Verify after deploy.** Upload a small PDF to a notebook. Its `node_attachment` chunks must have
+`embedding IS NOT NULL` within a minute. Read it through the `db-inspect` coverage probe or the
+embedding-coverage canary; never a prod `psql`.
+
 ## 6. Rollback
 
 | what | how | blast radius |
