@@ -39,6 +39,11 @@ describe("splitCitationMarks", () => {
       { kind: "text", text: "see and [note]" },
     ]);
   });
+  it("an unknown [n] takes ALL spaces/tabs before it, like the Hub renderer", () => {
+    expect(splitCitationMarks("See  \t[999] for details.", known)).toEqual([
+      { kind: "text", text: "See for details." },
+    ]);
+  });
   it("no marks → one text segment; empty → none", () => {
     expect(splitCitationMarks("plain", known)).toEqual([{ kind: "text", text: "plain" }]);
     expect(splitCitationMarks("", known)).toEqual([]);

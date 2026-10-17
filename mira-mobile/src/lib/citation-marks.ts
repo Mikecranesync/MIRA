@@ -27,9 +27,11 @@ export function splitCitationMarks(text: string, knownIds: ReadonlySet<string>):
     const idx = m.index ?? 0;
     const known = knownIds.has(m[1]);
     if (!known) {
-      // Strip the unmatched marker (and a single space before it) so it never
-      // renders as a bare [n].
-      const from = idx > last && /[ \t]/.test(text[idx - 1] ?? "") ? idx - 1 : idx;
+      // Strip the unmatched marker and the spaces/tabs before it so it never
+      // renders as a bare [n] — same `[ \t]*\[n\]` rule as the Hub renderer
+      // and the server stripper (citation-markers.ts).
+      let from = idx;
+      while (from > last && /[ \t]/.test(text[from - 1] ?? "")) from -= 1;
       if (from > last) pushText(out, text.slice(last, from));
       last = idx + m[0].length;
       continue;
