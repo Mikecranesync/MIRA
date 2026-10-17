@@ -69,6 +69,46 @@ async function modelsFor(model: string): Promise<string[]> {
 }
 
 describe("identity-bound OEM model SQL", () => {
+  it("uses the opening page of opaque-named notebook manuals to reject sibling-model evidence", async () => {
+    const doc810 = "39700000-0000-4000-8000-000000000081";
+    const doc820 = "39700000-0000-4000-8000-000000000082";
+    for (const [doc, model] of [[doc810, "Micro810"], [doc820, "Micro820"]]) {
+      for (const [page, content] of [[1, `${model} Programmable Controllers User Manual`], [12, "Configure communication settings in controller properties."]] as const) {
+        await client.query(
+          `INSERT INTO knowledge_entries
+            (tenant_id, content, manufacturer, model_number, source_url, page_start,
+             doc_id, ingest_route, metadata, verified, is_private)
+           VALUES ($1, $2, '', '', 'https://test.invalid/2080.pdf', $3, $4, 'v2',
+             '{"node_id":"pilot-model","filename":"2080-publication.pdf","chunk_index":0}', true, true)`,
+          [TENANT, content, page, doc],
+        );
+      }
+    }
+    const retrieve = (docIds: string[]) => retrieveNodeChunks(client, TENANT, "Micro820 communication settings", {
+      nodeId: "pilot-model", unsPath: null, docIds, validatedDocScope: true,
+    });
+    expect(await retrieve([doc810])).toEqual([]);
+    const hits = await retrieve([doc810, doc820]);
+    expect(hits.some((hit) => hit.docId === doc820 && hit.sourcePage === 12)).toBe(true);
+    expect(hits.every((hit) => hit.docId === doc820)).toBe(true);
+    // More than one candidate window of high-ranking wrong-manual pages must
+    // not hide a valid later page from the other attached manual.
+    for (let page = 2; page < 40; page++) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, 'Micro820 communication settings communication settings communication settings',
+           '', '', 'https://test.invalid/2080.pdf', $2, $3, 'v2',
+           '{"node_id":"pilot-model","filename":"2080-publication.pdf"}', true, true)`,
+        [TENANT, page, doc810],
+      );
+    }
+    const crowded = await retrieve([doc810, doc820]);
+    expect(crowded.some((hit) => hit.docId === doc820 && hit.sourcePage === 12)).toBe(true);
+    expect(crowded.every((hit) => hit.docId === doc820)).toBe(true);
+  });
+
   it("admits TP700 and TP700 Comfort, never KTP700, TP7000, TP7001, or V20", async () => {
     expect(await modelsFor("TP700")).toEqual(["TP700", "TP700 Comfort"]);
   });

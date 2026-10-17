@@ -450,6 +450,68 @@ const nodeRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
 });
 
 describe("retrieveNodeChunks", () => {
+  it("does not claim model coverage when neither the filename nor opening text identifies it", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "manual.pdf", document_heading: "Controller Manual",
+      content: "Configure communication settings in the properties dialog.",
+    })]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    })).toEqual([]);
+  });
+  it("rejects a sibling manual with a publication-number filename using its document heading", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um001.pdf", document_heading: "Micro810 Programmable Controllers User Manual",
+      content: "Communication settings. Micro820 is a separate product.",
+    })]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    })).toEqual([]);
+  });
+
+  it("retains later pages of an opaque-named manual whose heading covers the requested model", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um005.pdf", document_heading: "Micro820 Programmable Controllers User Manual",
+      content: "Communication settings are configured in the controller properties.",
+    })]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    })).toHaveLength(1);
+  });
+  it("does not use a Micro810 manual to answer a Micro820 question", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro810 User Manual.pdf",
+      content: "Micro810 controller: configure the communication settings here.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("retains a manual explicitly covering both Micro810 and Micro820", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro810 and Micro820 User Manual.pdf",
+      content: "Micro820 controller: configure the communication settings here.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("uses the current question's model even when history names the old model", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro810_User_Manual.pdf",
+      content: "Micro810 communication settings. Micro820 is a different controller.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro810 Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, rawQuery: "Micro820 communication settings",
+      docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
   // Regression: with the approval gate OFF the admission clause is not emitted, so
   // the admission array must not be bound either. Binding it anyway produced
   // "bind message supplies 6 parameters, but prepared statement requires 5" on
