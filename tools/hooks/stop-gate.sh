@@ -80,6 +80,10 @@ fi
 # concurrent build still completes — so a "Another next build process is already
 # running" failure is a benign race, NOT a real build error, and must not block.
 if [ -n "$CHANGED_HUB" ] && [ -f "mira-hub/package.json" ] && [ -d "mira-hub/node_modules" ]; then
+  # Shared FactoryLM shell resolves react/@assistant-ui from Hub (#3839).
+  # Same symlink CI and the Dockerfile create; without it `next build` fails
+  # with Module not found: @assistant-ui/react under packages/factorylm-ui.
+  ln -sfn ../mira-hub/node_modules packages/node_modules
   BUILD_LOG=/tmp/mira-hub-stop-build.log
   if command -v flock >/dev/null 2>&1; then
     ( flock -w 300 9 || exit 0; cd mira-hub && npm run build >"$BUILD_LOG" 2>&1 ) 9>/tmp/mira-hub-stop-build.lock
