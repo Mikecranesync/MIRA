@@ -1231,3 +1231,47 @@ describe("#4111 review round 3: steps in order, per-step exemptions, instruments
     expect(run(a).ok).toBe(true);
   });
 });
+
+describe("Codex #4471 r1 F1: a written lockout removal / power restore is the coherent restore shape, not a contradiction", () => {
+  const lanes = [
+    ["grounded", (answerText: string) => grounded(answerText, "how do I check the supply")],
+    ["general", (answerText: string) => general(answerText, "how do I check the supply")],
+  ] as const;
+
+  const coherent = [
+    // the reproduced numbered procedure
+    "1. Lock out the panel and verify zero volts.\n2. A qualified person removes the lockout and restores power under the site energized-work procedure.\n3. Measure the supply voltage at the input terminals.",
+    "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and turn the power on.\n3. Measure the supply voltage at the input terminals.",
+    "1. Lock out the panel and verify zero volts.\n2. Reconnect the power.\n3. Measure the supply voltage at the input terminals.",
+  ];
+  for (const [lane, run] of lanes) {
+    it.each(coherent)(`${lane} lane: energized_warning, full candidate retained: %#`, (a) => {
+      const v = run(a);
+      expect(v.ok).toBe(false);
+      if (!v.ok) {
+        expect(v.kind).toBe("energized_warning");
+        expect(v.replacement).toContain(a);
+      }
+    });
+  }
+
+  const stillBlocked = [
+    // prohibited restore / removal: isolation never ended
+    "1. Lock out the panel and verify zero volts.\n2. Do not remove the lockout or restore power.\n3. Measure the supply voltage at the input terminals.",
+    "1. Lock out the panel and verify zero volts.\n2. Never turn the power on yet.\n3. Measure the supply voltage at the input terminals.",
+    // still locked out: no restore written at all
+    "1. Lock out the panel and verify zero volts.\n2. Leave the lockout in place.\n3. Measure the supply voltage at the input terminals.",
+    // restored, then locked out again, then a live reading
+    "1. Lock out the panel.\n2. Remove the lockout and restore power.\n3. Lock out the panel again.\n4. Measure the supply voltage at the input terminals.",
+  ];
+  for (const [lane, run] of lanes) {
+    it.each(stillBlocked)(`${lane} lane: still blocked: %#`, (a) => {
+      const v = run(a);
+      expect(v.ok).toBe(false);
+      if (!v.ok) {
+        expect(v.kind).toBe("unsafe_answer");
+        expect(v.replacement).toBe(SAFETY_STOP);
+      }
+    });
+  }
+});

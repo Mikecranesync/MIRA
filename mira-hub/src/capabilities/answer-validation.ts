@@ -461,7 +461,6 @@ const RESTORE_ENERGY_SRC =
   "(?:re[-\\s]?energi[sz]\\w*|restore\\s+(?:the\\s+)?power|" +
   "power\\s+(?:\\w+\\s+){0,3}back\\s+(?:on|up)|" +
   "(?:turn|switch|bring|put)\\s+(?:\\w+\\s+){0,3}back\\s+(?:on|up))";
-const RESTORE_ENERGY = new RegExp("\\b" + RESTORE_ENERGY_SRC, "i");
 // A narrower action set than HAZARD_ACTIONS on purpose: "work", "replace" and
 // "service" all appear in the legitimate restore-power sentence.
 const MEASURE_ACTION_SRC =
@@ -1086,8 +1085,40 @@ const MEASURE_VERB = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
 const METER = /\b(?:multi[-\s]?meter|volt[-\s]?meter|voltage\s+tester|clamp[-\s]?meter|meter)\b/i;
 const LOCKOUT_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+(?:lock[-\\s]?out|loto)\\b", "i");
 
-function liveMeasurementAfterLockout(text: string): string | null {
+// Codex #4471 r1 F1: an affirmative lockout REMOVAL ends isolation, and the
+// restore vocabulary the isolation tracker accepts covers the inflected and
+// "power on"/"reconnect" forms a numbered procedure actually uses ("a qualified
+// person removes the lockout and restores power"). Without this, "removes the
+// lockout" re-read as another isolation event and "restores power" was not a
+// restore, so a coherent written restore-then-measure procedure was BLOCKED as
+// a no-restore contradiction. Local to this tracker on purpose: the shared
+// RESTORE_ENERGY_SRC (A4/A2 masking) is unchanged.
+const LOCKOUT_REMOVAL_SRC =
+  "(?:remov\\w*|lift\\w*|clear\\w*|releas\\w*|take[sn]?\\s+off|took\\s+off)\\s+(?:(?:the|your|all|their|his|her|its)\\s+){0,2}(?:lock[-\\s]?outs?|loto|locks?(?:\\s+and\\s+tags?)?|lock\\s*/\\s*tags?)\\b";
+const RESTORE_VARIANT_SRC =
+  "(?:restor(?:e|es|ed|ing)\\s+(?:(?:the|its)\\s+)?(?:power|energy|supply|voltage)|" +
+  "reconnect\\w*\\s+(?:(?:the|its)\\s+)?(?:power|supply|mains)|" +
+  "(?:turn|switch)\\w*\\s+(?:(?:the|its)\\s+)?power\\s+(?:back\\s+)?on|" +
+  "power(?:s|ed|ing)?\\s+(?:it\\s+|the\\s+\\w+\\s+)?back\\s+(?:on|up))\\b";
+const ENDS_ISOLATION = new RegExp(
+  "\\b(?:" + LOCKOUT_REMOVAL_SRC + "|" + RESTORE_VARIANT_SRC + "|" + RESTORE_ENERGY_SRC + ")",
+  "i",
+);
+const ENDS_ISOLATION_PROHIBITION = new RegExp(
+  "\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+(?:" + LOCKOUT_REMOVAL_SRC + "|" + RESTORE_VARIANT_SRC + "|" + RESTORE_ENERGY_SRC + ")",
+  "i",
+);
+
+/** `blocked`: a live supply reading at a contact point after a lockout with NO
+ *  restore ever written (self-contradiction — A2a blocks it). `restored`: the
+ *  same reading after an explicitly WRITTEN lockout removal / power restore —
+ *  the coherent #3984 restore-to-measure shape, which only warns (A4). */
+type LockoutMeasurement = { blocked: string | null; restored: string | null };
+
+function liveMeasurementAfterLockout(text: string): LockoutMeasurement {
   let isolated = false;
+  let restoredAfterLockout = false;
+  let restored: string | null = null;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     for (const clause of sentence.split(CLAUSE_BOUNDARY)) {
       // #4111 review round 3: "then" starts a separate action, so an exemption
@@ -1096,7 +1127,14 @@ function liveMeasurementAfterLockout(text: string): string | null {
       for (let step of clause.split(/\bthen\b/i)) {
         if (!step.trim()) continue;
         // Only an affirmative restore ends isolation; "do not restore" does not.
-        if (RESTORE_ENERGY.test(step) && !RESTORE_PROHIBITION.test(step)) {
+        // A prohibition anywhere in the step ("do not remove the lockout or
+        // restore power") keeps it isolated.
+        if (
+          ENDS_ISOLATION.test(step) &&
+          !RESTORE_PROHIBITION.test(step) &&
+          !ENDS_ISOLATION_PROHIBITION.test(step)
+        ) {
+          if (isolated) restoredAfterLockout = true;
           isolated = false;
           continue;
         }
@@ -1107,7 +1145,7 @@ function liveMeasurementAfterLockout(text: string): string | null {
           isolated = true;
           step = step.slice(lock.index + lock[0].length);
         }
-        if (!isolated) continue;
+        if (!isolated && !restoredAfterLockout) continue;
         if (
           MEASURE_VERB.test(step) &&
           LIVE_SUPPLY_QUANTITY.test(step) &&
@@ -1115,12 +1153,13 @@ function liveMeasurementAfterLockout(text: string): string | null {
           !VERIFIES_ABSENCE.test(step) &&
           !MEASURE_PROHIBITION.test(step)
         ) {
-          return step.trim();
+          if (isolated) return { blocked: step.trim(), restored: null };
+          restored ??= step.trim();
         }
       }
     }
   }
-  return null;
+  return { blocked: null, restored };
 }
 
 // #4185/#4186 (the #4160 Pixel walk incident, c5941295415): the model
@@ -1302,9 +1341,9 @@ export function validateAnswer(opts: {
   if (lockoutStepContradiction) {
     return unsafeAnswerBlock("unsafe-answer:lockout-step-contradiction", lockoutStepContradiction);
   }
-  const lockoutNoRestore = liveMeasurementAfterLockout(scanText);
-  if (lockoutNoRestore) {
-    return unsafeAnswerBlock("unsafe-answer:lockout-live-measurement", lockoutNoRestore);
+  const lockoutMeasurement = liveMeasurementAfterLockout(scanText);
+  if (lockoutMeasurement.blocked) {
+    return unsafeAnswerBlock("unsafe-answer:lockout-live-measurement", lockoutMeasurement.blocked);
   }
 
   // A4 (#3973 → #3984): restoring power in order to take a reading.
@@ -1324,7 +1363,11 @@ export function validateAnswer(opts: {
   // Detection stays unconditional and runs before A2 for the same reason as
   // before: the same sentence usually satisfies A2's `energized` relation, and
   // letting A2 stop it would silently re-impose the withhold.
-  const restore = restoreEnergyToMeasure(scanText);
+  // Codex #4471 r1 F1: a live reading after an explicitly written lockout
+  // removal / power restore ("a qualified person removes the lockout and
+  // restores power … measure the supply voltage") is the same coherent shape,
+  // in vocabulary the A4 grammar does not cover — warn, keep the procedure.
+  const restore = restoreEnergyToMeasure(scanText) ?? lockoutMeasurement.restored;
 
   // A2 — the clause-level inversion, both lanes, refusals included. Runs
   // AFTER the head grammars so their pinned violation ids are preserved.
