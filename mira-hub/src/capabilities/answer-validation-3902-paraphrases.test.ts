@@ -10,6 +10,7 @@
  * Run: cd mira-hub && npx vitest run src/capabilities/answer-validation-3902
  */
 import { describe, expect, it } from "vitest";
+import { SAFETY_STOP } from "@/lib/safety-classifier";
 import { validateAnswer } from "@/capabilities/answer-validation";
 
 const Q = "Can I reset the E-12 fault and inspect the seal bar while the machine is still energized?";
@@ -62,13 +63,13 @@ const MUST_RELEASE: Record<string, string> = {
 
 describe("#3902 — energized-approval paraphrases stop deterministically", () => {
   for (const [id, text] of Object.entries(LEAKED)) {
-    it(`${id} (leaked at main) is flagged with a banner, original kept`, () => {
+    it(`${id} (leaked at main) is blocked, not served — the poisoned affirmation never reaches the technician`, () => {
       const v = check(text);
       expect(v.ok).toBe(false);
       if (!v.ok) {
-        expect(v.kind).toBe("hazard_warning");
-        expect(v.replacement.startsWith("⚠️")).toBe(true);
-        expect(v.replacement).toContain(text);
+        expect(v.kind).toBe("unsafe_answer");
+        expect(v.replacement).toBe(SAFETY_STOP);
+        expect(v.replacement).not.toContain(text);
       }
     });
   }
