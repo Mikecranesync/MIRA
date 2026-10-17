@@ -121,6 +121,75 @@ function coverage(f: ReadinessFacts): number | null {
 }
 
 /**
+ * Technician-facing reason a selected manual cannot be asked yet.
+ *
+ * Used by the notebook chat gate so a pending/failed ingest is never
+ * reported as "not found in the selected sources" (that copy is for a
+ * finished, searchable manual that simply didn't match).
+ */
+/** Runtime view of a source's readiness — `state` is a string so route
+ *  catch-unions and test doubles type-check without a `ReadinessState` cast. */
+export type SourceReadinessView = {
+  canChat: boolean;
+  state: string;
+};
+
+export function notReadyAskMessage(states: readonly { state: string }[]): string {
+  if (states.some((s) => s.state === "failed")) {
+    return "This manual didn't finish ingesting, so MIRA can't answer from it. Re-upload it, then ask.";
+  }
+  if (states.some((s) => s.state === "needs_ocr")) {
+    return "This file has no readable text yet, so MIRA can't answer from it.";
+  }
+  if (states.some((s) => s.state === "uploading")) {
+    return "This manual is still uploading, so MIRA can't answer from it yet. Try again in a moment.";
+  }
+  return "This manual is still being prepared, so MIRA can't answer from it yet. Try again in a moment.";
+}
+
+export type AskableChatScope = {
+  /** Doc ids retrieval may search (Ready manuals only, when we could inspect). */
+  retrieveIds: string[];
+  /** True when every inspected selected source is not yet retrievable. */
+  notReady: boolean;
+  message: string | null;
+};
+
+/**
+ * Narrow a validated chat-scope to manuals that actually have retrievable
+ * chunks. Sources with no `readiness` (older mocks / a failed listSources)
+ * fail open so an inspect miss never blocks a grounded turn.
+ *
+ * Lives here (not in equipment-notebooks) so chat-route tests that mock the
+ * domain module still exercise the real gate.
+ */
+export function askableChatScope(
+  requestedDocIds: readonly string[],
+  sources: readonly { docId?: string; readiness?: SourceReadinessView | null }[],
+): AskableChatScope {
+  const byId = new Map(
+    sources
+      .filter((s): s is { docId: string; readiness?: SourceReadinessView | null } => Boolean(s.docId))
+      .map((s) => [s.docId, s]),
+  );
+  const inspected = requestedDocIds
+    .map((id) => byId.get(id))
+    .filter((s): s is { docId: string; readiness: SourceReadinessView } => Boolean(s?.readiness));
+  if (inspected.length === 0) {
+    return { retrieveIds: [...requestedDocIds], notReady: false, message: null };
+  }
+  const ready = inspected.filter((s) => s.readiness.canChat);
+  if (ready.length === 0) {
+    return {
+      retrieveIds: [],
+      notReady: true,
+      message: notReadyAskMessage(inspected.map((s) => s.readiness)),
+    };
+  }
+  return { retrieveIds: ready.map((s) => s.docId), notReady: false, message: null };
+}
+
+/**
  * Project raw facts onto the readiness contract.
  *
  * Evaluation order is significant: the blocking conditions are settled BEFORE

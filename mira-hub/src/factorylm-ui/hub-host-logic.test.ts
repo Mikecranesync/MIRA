@@ -12,12 +12,14 @@ import {
   chatBodyFor,
   detailQueryFor,
   draftAfterSendSucceeded,
+  askableDocIds,
   enabledDocIds,
   errorMessageFor,
   fixtureFor,
   NETWORK_FAILURE_MESSAGE,
   sendFailureMessage,
   groundingLineFor,
+  sourcesNotReadyError,
   historyRows,
   latestRequestGate,
   metaFor,
@@ -355,6 +357,34 @@ describe("enabledDocIds / historyRows / groundingLineFor", () => {
     expect(groundingLineFor(nb(), 0)).toMatch(/no selected sources yet — general help only, nothing is cited/);
     expect(groundingLineFor(nb(), 1)).toBe("Answers cite 1 selected source for Conveyor CV-101.");
     expect(groundingLineFor(nb({ asset: { entityId: "a", name: null, assetTag: null, selectedVia: null, confirmedBy: null, confirmedAt: null } }), 3)).toBe("Answers cite 3 selected sources for Automation Direct GS10.");
+  });
+  it("grounding line does not claim Ready sources while ingest is still pending", () => {
+    expect(groundingLineFor(nb(), 1, 0)).toMatch(/aren't ready to answer from yet/i);
+  });
+  it("askableDocIds keeps pending manuals out of the Ready set", () => {
+    expect(
+      askableDocIds([
+        { docId: "ready", enabledByDefault: true, matchState: "user_confirmed", readiness: { canChat: true } as never },
+        { docId: "pending", enabledByDefault: true, matchState: "user_confirmed", readiness: { canChat: false } as never },
+        { docId: "off", enabledByDefault: false, matchState: "user_confirmed", readiness: { canChat: true } as never },
+      ]),
+    ).toEqual(["ready"]);
+  });
+  it("composer throws while selected manuals are not retrievable, and fails open without readiness", () => {
+    expect(
+      sourcesNotReadyError([
+        { docId: "a", enabledByDefault: true, matchState: "user_confirmed", readiness: { canChat: false, state: "stored" } as never },
+      ]),
+    ).toMatch(/still being prepared/i);
+    expect(
+      sourcesNotReadyError([
+        { docId: "a", enabledByDefault: true, matchState: "user_confirmed", readiness: { canChat: true, state: "chat_ready_basic" } as never },
+      ]),
+    ).toBeNull();
+    expect(
+      sourcesNotReadyError([{ docId: "a", enabledByDefault: true, matchState: "user_confirmed" } as never]),
+    ).toBeNull();
+    expect(sourcesNotReadyError([])).toBeNull();
   });
 });
 

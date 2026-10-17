@@ -30,6 +30,8 @@ const domainMock = vi.hoisted(() => ({
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" })),
   // 086: zero-source turns prove ownership before the 422; this notebook is ours.
   getNotebook: vi.fn(async () => ({ id: NB, displayName: "Conveyor 1" })),
+  // Fail-open when the test does not supply readiness — same as a listSources miss.
+  listSources: vi.fn(async () => [] as { docId: string; filename: string | null; readiness?: { canChat: boolean; state: string } }[]),
 }));
 vi.mock("@/lib/equipment-notebooks", () => domainMock);
 
@@ -131,5 +133,20 @@ describe("chat boundary", () => {
   it("rejects a missing message", async () => {
     const res = await POST(chatReq({ sourceDocIds: [DOC_A] }), params);
     expect(res.status).toBe(400);
+  });
+
+  it("abstains honestly when the selected manual has no retrievable chunks — no retrieval, no provider", async () => {
+    domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
+    domainMock.listSources.mockResolvedValue([
+      { docId: DOC_A, filename: "PF525.pdf", readiness: { canChat: false, state: "stored" } },
+    ]);
+    const res = await POST(chatReq({ message: "what does F004 mean", sourceDocIds: [DOC_A] }), params);
+    expect(res.status).toBe(200);
+    const frames = await readFrames(res);
+    expect(frames.some((f) => f.includes("still being prepared"))).toBe(true);
+    expect(frames.some((f) => f.includes("not found"))).toBe(false);
+    expect(frames.some((f) => f.includes('"insufficient_evidence"'))).toBe(true);
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

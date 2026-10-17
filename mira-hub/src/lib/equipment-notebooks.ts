@@ -17,6 +17,8 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { deriveReadiness, type Readiness } from "@/lib/document-readiness";
 import { insertWithUniqueFallback } from "@/lib/pg-unique-retry";
 
+export { askableChatScope, type AskableChatScope } from "@/lib/document-readiness";
+
 /** Short disambiguator for an internal backing-node name. Never user-facing. */
 function randomSuffix(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -120,10 +122,18 @@ export type NotebookSource = {
    *  evidence pages, decision method, discovery/final URLs, confidence. */
   matchEvidence: unknown | null;
   /** "Ready to Ask" contract (see lib/document-readiness.ts). Derived, not
-   *  stored — a projection of upload status + materialized chunk facts. The
-   *  composer gates on `readiness.canChat`, which never depends on embeddings. */
+   *  stored — a projection of upload status + retrievable (ingest_route='v2')
+   *  chunk facts. The composer and chat route gate on `readiness.canChat`,
+   *  which never depends on embeddings. */
   readiness: Readiness;
 };
+
+/**
+ * Retrieval in `retrieveNodeChunks` only reads `ingest_route = 'v2'` chunks.
+ * Ready/askable must use the same population — legacy-route rows are not
+ * searchable, so counting them would show "Ready" and then return empty.
+ */
+export const RETRIEVABLE_INGEST_ROUTE = "v2";
 
 export const LEGACY_THREAD_ID = "legacy";
 const THREAD_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
@@ -1089,9 +1099,10 @@ export async function listSources(
   );
 
   // Materialized-chunk facts for the readiness contract. Counted per doc:
-  //   n         -> citable chunks (what makes a doc askable)
-  //   emb       -> chunks carrying a vector (enhancement progress ONLY)
-  //   anchored  -> chunks with a real page locator (citations must resolve)
+  //   n         -> retrievable v2 chunks (what retrieveNodeChunks searches)
+  //   emb       -> v2 chunks carrying a vector (enhancement progress ONLY)
+  //   anchored  -> v2 chunks with a real page locator (citations must resolve)
+  //   total     -> any-route rows (scan vs legacy-only: OCR vs "preparing")
   // Raw pool, explicitly tenant-scoped. These are the caller's OWN uploads
   // (doc ids came from hub_uploads for this tenant), so this is a pure-tenant
   // read, NOT the hybrid OEM-corpus case in
@@ -1099,33 +1110,36 @@ export async function listSources(
   // arm, which would count another corpus into this tenant's readiness.
   const counts = await pool.query(
     `SELECT doc_id::text AS doc_id,
-            count(*)::int                                   AS n,
-            count(embedding)::int                           AS emb,
-            count(*) FILTER (WHERE source_page IS NOT NULL)::int AS anchored
+            count(*) FILTER (WHERE ingest_route = 'v2')::int AS n,
+            count(embedding) FILTER (WHERE ingest_route = 'v2')::int AS emb,
+            count(*) FILTER (WHERE ingest_route = 'v2' AND source_page IS NOT NULL)::int AS anchored,
+            count(*)::int AS total
        FROM knowledge_entries
       WHERE tenant_id = $1::uuid AND doc_id = ANY($2::uuid[])
       GROUP BY doc_id`,
     [tenantId, ids],
   );
-  const chunksById = new Map<string, { n: number; emb: number; anchored: number }>(
+  const chunksById = new Map<string, { n: number; emb: number; anchored: number; total: number }>(
     counts.rows.map((r: Record<string, unknown>) => [
       String(r.doc_id),
-      { n: Number(r.n), emb: Number(r.emb), anchored: Number(r.anchored) },
+      { n: Number(r.n), emb: Number(r.emb), anchored: Number(r.anchored), total: Number(r.total) },
     ]),
   );
 
   return memb.map((m) => {
     const d = byId.get(String(m.doc_id));
-    const c = chunksById.get(String(m.doc_id)) ?? { n: 0, emb: 0, anchored: 0 };
+    const c = chunksById.get(String(m.doc_id)) ?? { n: 0, emb: 0, anchored: 0, total: 0 };
     const status = d ? ((d.status as string) ?? null) : null;
     const readiness = deriveReadiness({
       // An upload row exists at all => the bytes were durably accepted.
       bytesDurable: Boolean(d),
-      parseFailed: status === "failed" && c.n === 0,
-      // Zero chunks after the parser finished = no text layer (a scan).
+      parseFailed: status === "failed" && c.total === 0,
+      // Zero chunks of ANY route after the parser finished = no text layer
+      // (a scan). Legacy-route rows are not retrievable, but they prove the
+      // file is not a blank scan — those stay "preparing", not needs_ocr.
       // While status is still 'queued'/'parsing' this stays false so the doc
       // reports "preparing text", not a premature OCR verdict.
-      noExtractableText: status === "parsed" && c.n === 0,
+      noExtractableText: status === "parsed" && c.total === 0,
       chunkCount: c.n,
       hasPageAnchors: c.anchored > 0,
       scopeValidated: true, // membership was proven by the query above
