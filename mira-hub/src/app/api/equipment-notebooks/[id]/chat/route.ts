@@ -115,6 +115,7 @@ import {
 } from "@/lib/safety-classifier";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
+import { makeUnresolvedCitationStripper, stripUnresolvedCitationMarkers } from "@/capabilities/citation-markers";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
 import { withPhotoProvenance } from "@/capabilities/photo-provenance";
 import { withRetailCodeNote } from "@/capabilities/retail-codes";
@@ -854,14 +855,18 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
         emit({ kind: "safety", trigger: terminalSafetyNotice.trigger });
         if (visualEvidence) emit(visualEvidenceMarker(visualEvidence));
         if (turn.answerText) {
-          for (const piece of chunkForRelease(turn.answerText)) emit({ kind: "content", content: piece });
+          for (const piece of chunkForRelease(stripUnresolvedCitationMarkers(turn.answerText, citations))) {
+            emit({ kind: "content", content: piece });
+          }
         }
       } else if (turn.answerStatus === "insufficient_evidence") {
         emit(sources);
         if (visualEvidence) emit(visualEvidenceMarker(visualEvidence));
       } else {
         if (turn.answerText) {
-          for (const piece of chunkForRelease(turn.answerText)) emit({ kind: "content", content: piece });
+          for (const piece of chunkForRelease(stripUnresolvedCitationMarkers(turn.answerText, citations))) {
+            emit({ kind: "content", content: piece });
+          }
         }
         emit(sources);
         if (basis) {
@@ -3249,6 +3254,11 @@ async function handleChatTurn(
       // Only used in general mode; constructing it unconditionally keeps the
       // grounded delta path byte-identical to before.
       const stripBrackets = makeGeneralBracketStripper();
+      // Grounded path: drop [n] that cannot resolve to a retrieved citation so
+      // a hallucinated [9] never streams as a bare marker. Resolvable [n] stay
+      // for the Hub/mobile citation renderers. Does not convert 【n】 — that is
+      // makeCitationNormalizer / #4303.
+      const stripUnknown = makeUnresolvedCitationStripper(citations);
       // B2: with the gate on, candidate deltas accumulate in responseBuffer
       // and are NOT enqueued — the full answer is validated first, then the
       // accepted text is released through the same frame grammar. The client
@@ -3479,7 +3489,9 @@ async function handleChatTurn(
                 if (parsed.id && !genResponseId) genResponseId = parsed.id;
                 const delta = parsed.choices?.[0]?.delta?.content;
                 if (delta) {
-                  const norm = !docGrounded ? stripBrackets.push(normalize.push(delta)) : normalize.push(delta);
+                  const norm = !docGrounded
+                    ? stripBrackets.push(normalize.push(delta))
+                    : stripUnknown.push(normalize.push(delta));
                   if (norm) {
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
@@ -3519,7 +3531,7 @@ async function handleChatTurn(
           if (responseBuffer.length > 0) {
             const tail = !docGrounded
               ? stripBrackets.push(normalize.flush()) + stripBrackets.flush()
-              : normalize.flush();
+              : stripUnknown.push(normalize.flush()) + stripUnknown.flush();
             if (tail) {
               responseBuffer.push(tail);
               if (!gate) {
@@ -3813,6 +3825,7 @@ async function handleChatTurn(
       // render as a citation chip in mira-mobile. Strip the markers rather than
       // ship a chip that resolves to no document.
       if (!docGrounded) answerText = answerText.replace(/\s*\[\d+\]/g, "");
+      else answerText = stripUnresolvedCitationMarkers(answerText, citations);
 
       // B2/B3 (#3790/#3787, PR #3791): pre-display validation on the COMPLETE
       // candidate. Under the gate nothing has been released yet, so a rejected
@@ -3973,6 +3986,11 @@ async function handleChatTurn(
         message,
       );
       const emittedCitations = quoted.citations;
+      // Technician-facing text: every leftover [n] either resolves to a
+      // shipped citation (manual + page on Hub/mobile) or is stripped. Entailment
+      // above already saw the model's marks; this second pass uses the SHIPPED
+      // list so a refusal with empty citations cannot keep a bare [n].
+      answerText = stripUnresolvedCitationMarkers(answerText, emittedCitations);
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
         ? "error"
         : refused

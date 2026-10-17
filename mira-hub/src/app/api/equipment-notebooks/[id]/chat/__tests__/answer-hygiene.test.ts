@@ -15,6 +15,7 @@ import {
   isProviderCascadeError,
   makeGeneralBracketStripper,
 } from "../route";
+import { stripUnresolvedCitationMarkers } from "@/capabilities/citation-markers";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import type { ChatHistoryTurn } from "@/lib/notebook-query";
 
@@ -139,6 +140,14 @@ describe("isProviderCascadeError — programming errors must not masquerade as p
     expect(isProviderCascadeError(new DOMException("Aborted", "AbortError"))).toBe(true);
     expect(isProviderCascadeError(new Error("HTTP 429 rate limited"))).toBe(true);
     expect(isProviderCascadeError("weird non-Error throw")).toBe(true);
+  });
+});
+
+describe("stripUnresolvedCitationMarkers — grounded leftover [n]", () => {
+  it("keeps [n] that will render as a citation and strips a bare leftover", () => {
+    expect(stripUnresolvedCitationMarkers("P042 is the decel ramp [3] see [9].", [cite("3")])).toBe(
+      "P042 is the decel ramp [3] see.",
+    );
   });
 });
 

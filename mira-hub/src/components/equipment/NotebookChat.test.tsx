@@ -36,7 +36,7 @@ describe("Bubble", () => {
     expect(html).toContain("1 supporting passage");
   });
 
-  it("does NOT fabricate a citation button when the [n] has no matching source", () => {
+  it("does NOT fabricate a citation button when the [n] has no matching source — the bare marker is stripped", () => {
     const turn: ChatTurn = {
       id: "a2",
       role: "assistant",
@@ -44,8 +44,9 @@ describe("Bubble", () => {
       citations: [citation], // only [1] exists
     };
     const html = renderToStaticMarkup(<Bubble turn={turn} />);
-    // [2] renders as plain text, never as a dead citation button
-    expect(html).toContain("[2]");
+    // An unmatched [2] is stripped (never a bare marker, never a dead button).
+    expect(html).not.toContain("[2]");
+    expect(html).toContain("See for details.");
     const buttonCount = (html.match(/<button/g) ?? []).length;
     // one chip row button for [1] + inline [1] = 2; the important part: no [2] button
     expect(html).not.toMatch(/<button[^>]*>\[2\]/);
