@@ -778,6 +778,11 @@ jobs:
     # canonical side of the TAG-001 contract, and editing them must re-run the
     # mobile shadow suite or the contract can drift silently again (the exact
     # bug this unit fixed).
+    # It also watches the shared FactoryLM UI packages (#4447): mira-mobile's
+    # vite/vitest config resolves @factorylm/theme|interaction|ui BY PATH to
+    # packages/factorylm-*/src, so the phone app ships whatever is in them and a
+    # packages-only PR (e.g. #4446) could break the mobile shell with this job
+    # reporting green-by-skip.
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -787,6 +792,7 @@ jobs:
           filters: |
             mobile:
               - 'mira-mobile/**'
+              - 'packages/factorylm-*/**'
               - 'docs/contracts/asset-tag-grammar.json'
               - 'mira-hub/src/lib/asset-tag.ts'
               - 'mira-hub/src/lib/scan-target.ts'
