@@ -512,6 +512,290 @@ describe("retrieveNodeChunks", () => {
     expect(out).toEqual([]);
   });
 
+  // #4469 F1: the plain numeric model token ("800") collides across unrelated
+  // product families — ACS800 (a drive) and Micro800 (a controller) both
+  // reduce to "800" under resolveModelFromObservationText, which must keep
+  // doing that for `model_number ILIKE` matching elsewhere. Applicability
+  // needs the family too so these two never admit each other's manual.
+  it("does not let an ACS800 manual answer a Micro800 question (family collision)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "ACS800 User Manual.pdf",
+      document_heading: "ACS800 User Manual",
+      content: "ACS800 communication settings are configured on the control panel.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro800 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("does not let a Micro800 manual answer an ACS800 question (family collision, reverse)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro800 User Manual.pdf",
+      document_heading: "Micro800 User Manual",
+      content: "Micro800 communication settings are configured on the control panel.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "ACS800 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("still matches an ACS800 manual to an ACS800 question (control)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "ACS800 User Manual.pdf",
+      document_heading: "ACS800 User Manual",
+      content: "ACS800 communication settings are configured on the control panel.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "ACS800 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("still matches a Micro800 manual to a Micro800 question (control)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro800 User Manual.pdf",
+      document_heading: "Micro800 User Manual",
+      content: "Micro800 communication settings are configured on the control panel.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro800 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  // #4469 F2 (primary review, pass 2): no finite keyword list can recognize
+  // every way a document points away from itself. These four scenarios are
+  // the ones the primary review named by name, in both a same-sentence shape
+  // and a separate-line shape (a real first chunk breaks on newlines, not
+  // just periods — a title-boundary rule that only looks for ". " would
+  // silently admit the separate-line form). Each reject case is paired with
+  // a control on the IDENTICAL row, answering the one question the document
+  // actually covers — proving the rule reads the title, not "any mismatch".
+  it('rejects "See the separate Micro820 manual." (same-sentence shape)', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um010.pdf",
+      document_heading: "Micro810 User Manual. See the separate Micro820 manual.",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('control: the "See the separate Micro820 manual." doc still answers its own Micro810 question', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um010.pdf",
+      document_heading: "Micro810 User Manual. See the separate Micro820 manual.",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro810 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it('rejects "Related documents: Micro820 user manual" on a separate line (no period)', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um012.pdf",
+      document_heading: "Micro810 User Manual\nRelated documents: Micro820 user manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('control: the "Related documents" doc still answers its own Micro810 question', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um012.pdf",
+      document_heading: "Micro810 User Manual\nRelated documents: Micro820 user manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro810 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it('rejects "Micro820 is not covered by this manual." (explicit exclusion statement)', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um013.pdf",
+      document_heading: "Micro810 User Manual. Micro820 is not covered by this manual.",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('control: the explicit-exclusion doc still answers its own Micro810 question', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um013.pdf",
+      document_heading: "Micro810 User Manual. Micro820 is not covered by this manual.",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro810 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("a renamed filename naming Micro820 does not override the actual Micro810 heading", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro820_User_Manual.pdf",
+      document_heading: "Micro810 Programmable Controllers User Manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("does not trust a renamed filename when the generic cover names another model below its title", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro820_User_Manual.pdf",
+      document_heading: "User Manual\nMicro810 Programmable Controllers",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("control: the renamed-filename doc still answers the Micro810 question its heading actually declares", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro820_User_Manual.pdf",
+      document_heading: "Micro810 Programmable Controllers User Manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro810 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  // Precedence, not "any disagreement rejects": when the HEADING affirmatively
+  // names a model, a mismatched filename is simply irrelevant (never widens
+  // and never narrows what the heading already declared).
+  it("precedence control: a mismatched filename never blocks what the heading affirmatively declares", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro810_User_Manual.pdf",
+      document_heading: "Micro820 Programmable Controllers User Manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("retains a manual explicitly covering both models in its heading, not just a cross-reference", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um011.pdf",
+      document_heading: "Micro810 and Micro820 Programmable Controllers User Manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  // #4469 F1 (primary review, pass 2): "Comfort" alone is a panel FAMILY
+  // hint, not a specific sibling model (mirrors resolveModelFromObservationText's
+  // own COMFORT-drop). Without dropping it on both sides, a TP700 Comfort
+  // question and a TP1200-Comfort-titled manual would intersect on COMFORT
+  // ALONE and false-ground, even though TP700 != TP1200 — the exact
+  // cross-family collision class F1 exists to prevent.
+  it("does not let a TP1200 Comfort manual answer a TP700 Comfort question (COMFORT is a family hint, not a model)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "TP1200 Comfort Operating Instructions.pdf",
+      document_heading: "TP1200 Comfort Operating Instructions",
+      content: "TP1200 Comfort supply voltage is 24 VDC.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "TP700 Comfort supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("still matches a TP700 Comfort manual to a TP700 Comfort question (control)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "TP700 Comfort Operating Instructions.pdf",
+      document_heading: "TP700 Comfort Operating Instructions",
+      content: "TP700 Comfort supply voltage is 24 VDC.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "TP700 Comfort supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  // #4469 F3: title normalization replaced hyphens with spaces, so a Siemens
+  // catalog number (6AV2124-0GC01-0AX0) was truncated to "6AV2124" before
+  // model-token matching ran, losing the suffix that makes it exact.
+  it("preserves an exact Siemens catalog number through title normalization", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "6AV2124-0GC01-0AX0.pdf",
+      document_heading: "SIMATIC Panel 6AV2124-0GC01-0AX0 Specification",
+      content: "Supply voltage: 24 VDC, rated current 500 mA.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "6AV2124-0GC01-0AX0 supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("rejects a different catalog suffix sharing the same prefix", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "6AV2124-0GC01-9AX0.pdf",
+      document_heading: "SIMATIC Panel 6AV2124-0GC01-9AX0 Specification",
+      content: "Supply voltage: 24 VDC, rated current 500 mA.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "6AV2124-0GC01-0AX0 supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  // #4469 F3 (primary review, pass 2): the catalog pattern (`6av[0-9a-z.-]+`)
+  // is greedy enough to swallow a file extension, so the filename-FALLBACK
+  // path (used when the heading names no model at all) must strip it before
+  // matching — otherwise "6AV2124-0GC01-0AX0.pdf" resolves to
+  // "6AV2124-0GC01-0AX0.PDF", a DIFFERENT identity than the query's, and the
+  // whole point of F3 (exact survives, suffix is rejected) is untested by
+  // the heading-driven cases above, which never reach this code path.
+  it("preserves an exact catalog number through the FILENAME fallback (heading names no model)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "6AV2124-0GC01-0AX0.pdf",
+      document_heading: "Panel Specification Sheet",
+      content: "Supply voltage: 24 VDC, rated current 500 mA.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "6AV2124-0GC01-0AX0 supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("rejects a different catalog suffix through the FILENAME fallback", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "6AV2124-0GC01-9AX0.pdf",
+      document_heading: "Panel Specification Sheet",
+      content: "Supply voltage: 24 VDC, rated current 500 mA.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "6AV2124-0GC01-0AX0 supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
   // Regression: with the approval gate OFF the admission clause is not emitted, so
   // the admission array must not be bound either. Binding it anyway produced
   // "bind message supplies 6 parameters, but prepared statement requires 5" on

@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
-import { MODEL_PATTERNS, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import {
   codeTokenMatcher,
   expandIndustrialQuery,
@@ -95,6 +95,58 @@ export function neutralizeReferenceText(text: string): string {
 
 export function approvalGateEnabled(): boolean {
   return process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL === "true";
+}
+
+// #4469 F2 (primary review, pass 2 — the pass-1 keyword-stripping remediation
+// was REJECTED as incomplete) — an arbitrary mention anywhere in a document's
+// opening text is not affirmative applicability, and no finite keyword list
+// ("for/consult/refer/see/separate/another") can cover every way a document
+// points away from itself: "See the separate Micro820 manual.", "Related
+// documents: Micro820 user manual", "Micro820 is not covered by this
+// manual." all defeat a keyword strip, and stripping-then-reading-the-rest
+// is the ORIGINAL bug restated with one more regex.
+//
+// So this does the opposite: instead of trying to recognize and remove bad
+// prose, it reads ONLY the document's own declared title and ignores every
+// other word, structurally. `titleSegment` returns just the lead segment of
+// the heading — up to the first newline or ". " (period-space) — which is
+// where a real title/cross-reference boundary actually falls. Everything
+// after that boundary (a cross-reference, a "related documents" list, an
+// explicit exclusion) is prose the title never asserted and is never read
+// for coverage, regardless of phrasing. A title that genuinely names two
+// models in one breath ("Micro810 and Micro820 User Manual") has no boundary
+// before "Manual" and both survive intact.
+//
+// The heading is authoritative: when its title segment names ANY model, the
+// filename is not consulted at all — a renamed/mismatched filename can never
+// override what the document's own heading actually declares. The filename
+// is read ONLY as a fallback, when the heading's title segment names no
+// model at all (an opaque OEM publication-number filename with a real
+// heading, or the reverse). No LLM call; conservative abstention (an empty
+// identity set, maybe from both sides) is accepted over false grounding.
+//
+// Known limitation (not solved, surfaced for the parent): a cover page whose
+// first line is a generic "User Manual" with the actual model named two
+// lines down abstains under this rule — the title segment genuinely has no
+// model in it. That is the conservative failure mode this design accepts.
+function titleSegment(text: string): string {
+  const newline = text.indexOf("\n");
+  const periodSpace = text.indexOf(". ");
+  const cut = [newline, periodSpace].filter((i) => i >= 0);
+  if (cut.length === 0) return text;
+  return text.slice(0, Math.min(...cut));
+}
+
+function stripFileExtension(filename: string): string {
+  return filename.replace(/\.[a-z0-9]{1,6}$/i, "");
+}
+
+function affirmativeModelIdentities(filename: string, heading: string): Set<string> {
+  const headingIdentities = modelIdentitiesInText(titleSegment(heading));
+  if (headingIdentities.size > 0) return headingIdentities;
+  // A generic cover with model-bearing prose is ambiguous; a renamed file cannot resolve it.
+  if (modelIdentitiesInText(heading).size > 0) return new Set();
+  return modelIdentitiesInText(stripFileExtension(filename).replace(/_+/g, " "));
 }
 
 /**
@@ -1135,16 +1187,35 @@ export async function retrieveNodeChunks(
   // covers the model in the current question. Reject an explicitly different
   // model before ranking; a sibling manual must never become citation evidence.
   // Use the raw message so a previous turn's model cannot override this one.
+  // #4469 F1 — family-qualified identities computed once per call, on the
+  // SAME text resolveModelFromObservationText used to resolve requestedModel
+  // (so "which model is this" and "which identities does that resolve to"
+  // never disagree). Null when the query named no single model — the filter
+  // below is then skipped entirely, same as before.
+  const requestedIdentities: Set<string> | null =
+    requestedModel.model && !requestedModel.ambiguous ? modelIdentitiesInText(opts.rawQuery ?? q) : null;
   const add = (rs: Record<string, unknown>[]) => {
     for (const r of rs) {
-      if (requestedModel.model && !requestedModel.ambiguous) {
-        const title = `${String(r.filename ?? "")} ${String(r.document_heading ?? "")}`.replace(/[_-]+/g, " ");
-        const titleModels = MODEL_PATTERNS.flatMap((pattern) =>
-          [...title.matchAll(new RegExp(pattern.source, "gi"))].map(
-            (match) => resolveModelFromObservationText(match[0]).model,
-          ),
-        ).filter((model): model is string => model !== null);
-        if (!titleModels.includes(requestedModel.model)) continue;
+      if (requestedIdentities) {
+        // F2 — affirmative title/heading applicability only (see
+        // affirmativeModelIdentities): the heading's own title segment is
+        // authoritative; the filename is consulted only as a fallback, and
+        // never overrides a heading that already named a model.
+        // F3 — only underscores are filename separators (and the file
+        // extension is stripped before matching); catalog hyphens
+        // (6AV2124-0GC01-0AX0) are left intact so the full number survives.
+        const titleIdentities = affirmativeModelIdentities(
+          String(r.filename ?? ""),
+          String(r.document_heading ?? ""),
+        );
+        let applicable = false;
+        for (const id of titleIdentities) {
+          if (requestedIdentities.has(id)) {
+            applicable = true;
+            break;
+          }
+        }
+        if (!applicable) continue;
       }
       const key = `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
       if (seen.has(key)) continue;
