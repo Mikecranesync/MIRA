@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { QrCodeImage } from "@/components/qr-code";
+import { openScannedAssetAskMira } from "@/capabilities/scan-ask-mira";
 import { API_BASE } from "@/lib/config";
 
 type ChildAsset = {
@@ -60,8 +61,6 @@ type RecentWorkOrder = {
   createdAt: string | null;
 };
 
-const TELEGRAM_BOT = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? "FactoryLMDiagnose_bot";
-
 export default function MobileAssetPage({
   params,
 }: {
@@ -79,6 +78,8 @@ export default function MobileAssetPage({
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [recentWos, setRecentWos] = useState<RecentWorkOrder[]>([]);
   const [shareUrl, setShareUrl] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -200,14 +201,33 @@ export default function MobileAssetPage({
     );
   }
 
-  // Telegram deep-link: passes the asset tag to the bot, which loads
-  // equipment context before greeting. Prefix `asset_` lets the start
-  // handler distinguish from invite tokens.
-  const tgDeepLink = `https://t.me/${TELEGRAM_BOT}?start=asset_${encodeURIComponent(asset.tag)}`;
-
   // The page is auth-gated upstream, so we only get here with a valid
   // tenant-scoped session. WO creation links straight to the form.
   const newWoHref = `/workorders/new?assetId=${encodeURIComponent(asset.id)}&assetTag=${encodeURIComponent(asset.tag)}`;
+
+  async function openAskMira() {
+    if (asking) return;
+    setAsking(true);
+    setAskError(null);
+    const result = await openScannedAssetAskMira(asset.id, {
+      apiBase: API_BASE,
+      post: async (path, body) => {
+        const res = await fetch(`${API_BASE}${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const payload = await res.json().catch(() => ({}));
+        return { ok: res.ok, body: payload };
+      },
+    });
+    if (!result.ok) {
+      setAskError(result.message);
+      setAsking(false);
+      return;
+    }
+    window.location.href = result.href;
+  }
 
   // Manual lookup: filter the library by manufacturer + model. Public for
   // anyone with an asset tag — manuals live outside the tenant boundary.
@@ -290,16 +310,20 @@ export default function MobileAssetPage({
       {/* Three primary actions — large, thumb-friendly */}
       <div className="mt-5 grid gap-3">
         <Button
-          asChild
           size="lg"
           className="w-full h-14 text-base font-semibold"
           style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)", color: "#fff" }}
+          disabled={asking}
+          onClick={() => void openAskMira()}
         >
-          <a href={tgDeepLink} target="_blank" rel="noopener noreferrer">
-            <Bot className="h-5 w-5 mr-2" />
-            Ask MIRA about this equipment
-          </a>
+          <Bot className="h-5 w-5 mr-2" />
+          {asking ? "Opening notebook…" : "Ask MIRA about this equipment"}
         </Button>
+        {askError ? (
+          <p className="text-sm text-rose-700" role="alert">
+            {askError}
+          </p>
+        ) : null}
 
         <Button asChild size="lg" variant="outline" className="w-full h-14 text-base font-semibold">
           <Link href={newWoHref}>
