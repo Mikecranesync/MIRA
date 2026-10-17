@@ -18,6 +18,7 @@ import {
   classifyIntent,
   diversifyByPage,
   codeTokenMatcher,
+  withoutIdentityCodes,
   type ChatHistoryTurn,
 } from "../notebook-query";
 
@@ -119,6 +120,41 @@ describe("expandIndustrialQuery — fault codes named in the question", () => {
   });
 });
 
+// 2026-10-17 prod notebook rerun: identifier tokens without a fault keyword
+// never reached the exact-token lane (trace x=false), so the answer chunk
+// ranked 9th (CE10) / 12th (Addr_CAN_OB) and missed the top-6 cut.
+describe("expandIndustrialQuery — code-like identifiers without a fault keyword", () => {
+  const codes = (q: string) => expandIndustrialQuery(q).codeTokens;
+  const TQ18 = "My GS4 keeps throwing CE10 when the PLC stops polling it. What sets that timeout and how do I fix it?";
+  const TQ21 = "TM172 Addr_CAN_OB default and range?";
+  const TQ10 = "CANopen: what COB-ID does a node's boot-up message use?";
+
+  it("TQ-18: picks CE10 from a verbose question that never says 'fault'", () => {
+    expect(codes(TQ18)).toContain("CE10");
+    expect(codes(TQ18)).not.toContain("GS4"); // model prefix, not a code
+  });
+
+  it("TQ-21: keeps Addr_CAN_OB as one underscored identifier", () => {
+    expect(codes(TQ21)).toContain("Addr_CAN_OB");
+  });
+
+  it("picks hyphenated parameter codes and already-covered F-codes stay on exactTokens", () => {
+    expect(codes("what is P1-02 on this drive")).toContain("P1-02");
+    expect(expandIndustrialQuery("what does F0001 mean").exactTokens).toContain("F0001");
+    expect(codes("what does F0001 mean")).not.toContain("F0001"); // not double-boosted
+  });
+
+  it("does NOT treat a generic protocol word as a code-like identifier (TQ-10 CANopen)", () => {
+    expect(codes(TQ10).some((t) => t.toLowerCase() === "canopen")).toBe(false);
+    expect(codes(TQ10).some((t) => t.toLowerCase() === "cob-id")).toBe(false);
+  });
+
+  it("does not treat RS-485 or an English stem+number as identifiers", () => {
+    expect(codes("How do I wire RS-485 between a Micro820 and a GS10 VFD?")).not.toContain("RS-485");
+    expect(codes("term10 signal11 overcurrent")).toEqual([]);
+  });
+});
+
 describe("codeTokenMatcher — whole-token match only", () => {
   it("matches the code as a whole token, case-insensitive", () => {
     const m = codeTokenMatcher("ovA");
@@ -196,6 +232,66 @@ describe("rerankChunks", () => {
     const a = mk("alpha content", 0.9);
     const b = mk("beta content", 0.3);
     expect(rerankChunks(e, [b, a])).toEqual([a, b]);
+  });
+});
+
+describe("rerankChunks — code-like identifier boost (2026-10-17 TQ-18 / TQ-21)", () => {
+  const mk = (content: string, rank: number, page: number) => ({ content, rank, sourcePage: page, docId: "d1" });
+  const TQ18 = "My GS4 keeps throwing CE10 when the PLC stops polling it. What sets that timeout and how do I fix it?";
+  const TQ21 = "TM172 Addr_CAN_OB default and range?";
+  const TQ10 = "CANopen: what COB-ID does a node's boot-up message use?";
+
+  it("TQ-18: CE10 answer chunk rises from 9th (no exact hit) into the top-6", () => {
+    const generics = [15, 23, 25, 21, 11, 12, 7, 8].map((p, i) =>
+      mk(`GS4 Ethernet timeout window CD10 Card TimeOut P9.94 PLC polling page ${p}`, 0.9 - i * 0.02, p),
+    );
+    const ce10 = mk(
+      "CE10 Card TimeOut: Ethernet communication was not received from the external controller within the Ethernet Timeout window. P9.94 sets the timeout check.",
+      0.05,
+      22,
+    );
+    const pool = [...generics, ce10];
+    const e = expandIndustrialQuery(TQ18);
+    const before = rerankChunks({ ...e, codeTokens: [] }, pool);
+    const after = rerankChunks(e, pool);
+    expect(before.findIndex((c) => c === ce10)).toBe(8); // 9th, outside top-6
+    expect(after.findIndex((c) => c === ce10)).toBeLessThan(6);
+    expect(after[0]).toBe(ce10);
+  });
+
+  it("TQ-21: Addr_CAN_OB row rises from 12th into the top-6, above generic CAN wiring", () => {
+    const wiring = [87, 85, 160, 84, 86, 148, 80, 81, 82, 83, 90].map((p, i) =>
+      mk(`TM172 CAN wiring CAN_H CAN_L termination cable shield page ${p}`, 0.9 - i * 0.02, p),
+    );
+    const addr = mk(
+      "Addr_CAN_OB: CAN expansion address. Default 1. Range 1 to 127. Address = Addr_CAN_OB + dip value.",
+      0.04,
+      145,
+    );
+    const pool = [...wiring, addr];
+    const e = withoutIdentityCodes(expandIndustrialQuery(TQ21), { model: "TM172" });
+    const before = rerankChunks({ ...e, codeTokens: [] }, pool);
+    const after = rerankChunks(e, pool);
+    expect(before.findIndex((c) => c === addr)).toBe(11); // 12th
+    expect(after.findIndex((c) => c === addr)).toBeLessThan(6);
+    expect(after[0]).toBe(addr);
+  });
+
+  it("does not give CANopen the code-like boost: TOC and body stay in ts_rank order among code-token-free chunks", () => {
+    const e = expandIndustrialQuery(TQ10);
+    expect(e.codeTokens.some((t) => /canopen/i.test(t))).toBe(false);
+    const toc = mk("CANopen user manual table of contents chapter 1 introduction", 0.9, 1);
+    const body = mk("CANopen boot-up message uses COB-ID 700h + node ID", 0.2, 33);
+    // Protocol exactTokens still boost every CANopen mention equally, so ts_rank
+    // order among those hits is preserved — the new identifier lane adds nothing.
+    expect(rerankChunks(e, [body, toc])[0]).toBe(toc);
+  });
+
+  it("matches CE10 as a whole token, not inside CE100", () => {
+    const e = expandIndustrialQuery("My GS4 keeps throwing CE10");
+    const near = mk("CE100 is a different card-timeout variant on a sibling drive", 0.9, 10);
+    const hit = mk("CE10 Card TimeOut on the GS4 Ethernet option", 0.1, 22);
+    expect(rerankChunks(e, [near, hit])[0]).toBe(hit);
   });
 });
 

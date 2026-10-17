@@ -150,6 +150,51 @@ describe("retrieveManualChunks — one thread, six phrasings, each reaches a lan
   });
 });
 
+describe("retrieveNodeChunks — code-like identifiers from the 2026-10-17 rerun", () => {
+  const DOC = "11111111-1111-4111-8111-111111111111";
+  const TQ18 = "My GS4 keeps throwing CE10 when the PLC stops polling it. What sets that timeout and how do I fix it?";
+  const TQ21 = "TM172 Addr_CAN_OB default and range?";
+
+  it("TQ-18: CE10 without a fault keyword binds the whole-token lane", async () => {
+    const { client, calls } = makeClient();
+    await retrieveNodeChunks(client, "tenant-1", TQ18, {
+      nodeId: "node-1",
+      unsPath: null,
+      topK: 6,
+      docIds: [DOC],
+      rawQuery: TQ18,
+      identity: { model: "GS4" },
+    });
+    expect(boundPatterns(calls)).toContain(codeTokenMatcher("CE10").sql);
+    expect(boundPatterns(calls)).not.toContain(codeTokenMatcher("GS4").sql);
+  });
+
+  it("TQ-21: Addr_CAN_OB binds the whole-token lane; the notebook model does not", async () => {
+    const { client, calls } = makeClient();
+    await retrieveNodeChunks(client, "tenant-1", TQ21, {
+      nodeId: "node-1",
+      unsPath: null,
+      topK: 6,
+      docIds: [DOC],
+      rawQuery: TQ21,
+      identity: { model: "TM172" },
+    });
+    expect(boundPatterns(calls)).toContain(codeTokenMatcher("Addr_CAN_OB").sql);
+    expect(boundPatterns(calls)).not.toContain(codeTokenMatcher("TM172").sql);
+  });
+
+  it("TQ-10 control: CANopen does not bind the whole-token code lane", async () => {
+    const { client, calls } = makeClient();
+    await retrieveNodeChunks(client, "tenant-1", "CANopen: what COB-ID does a node's boot-up message use?", {
+      nodeId: "node-1",
+      unsPath: null,
+      topK: 6,
+      docIds: [DOC],
+    });
+    expect(boundPatterns(calls).some((p) => /canopen/i.test(p))).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Codex r1 on #4360 — in a REAL thread the follow-up is conversation-augmented.
 // buildRetrievalQuery("oC", history) is "oC F0004 fault": three words (the bare
