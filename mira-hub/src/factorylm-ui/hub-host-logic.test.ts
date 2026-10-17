@@ -356,6 +356,16 @@ describe("enabledDocIds / historyRows / groundingLineFor", () => {
     expect(groundingLineFor(nb(), 1)).toBe("Answers cite 1 selected source for Conveyor CV-101.");
     expect(groundingLineFor(nb({ asset: { entityId: "a", name: null, assetTag: null, selectedVia: null, confirmedBy: null, confirmedAt: null } }), 3)).toBe("Answers cite 3 selected sources for Automation Direct GS10.");
   });
+  it("#4371: a selected notebook whose sources have not loaded yet is loading, not empty and not HOME", () => {
+    const loading = groundingLineFor(nb(), 0, false);
+    expect(loading).toMatch(/Loading this notebook's sources/);
+    expect(loading).not.toMatch(/no selected sources yet/);
+    expect(loading).not.toMatch(/Pick a project/);
+    expect(groundingLineFor(null, 0, false)).toMatch(/Loading this notebook's sources/);
+  });
+  it("#4371 control: HOME (no notebook) still names general knowledge once sources are not in flight", () => {
+    expect(groundingLineFor(null, 0, true)).toMatch(/Pick a project/);
+  });
 });
 
 describe("fixtureFor / newThreadId", () => {
