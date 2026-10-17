@@ -18,6 +18,7 @@ import {
   classifyIntent,
   diversifyByPage,
   codeTokenMatcher,
+  frontMatterLikeness,
   type ChatHistoryTurn,
 } from "../notebook-query";
 
@@ -728,5 +729,151 @@ describe("rerankChunks — intent-gated content features", () => {
     const e = expandIndustrialQuery("motor poles parameter");
     const out = rerankChunks(e, [paramIndex, procedure], { intent: "param_lookup" });
     expect(out[0]).toBe(paramIndex); // higher ts_rank wins; no index penalty
+  });
+});
+
+describe("front-matter / TOC demotion (TQ-10, 22, 24, 25)", () => {
+  const mk = (content: string, rank: number, page: number) => ({
+    content, rank, sourcePage: page, docId: "lxm",
+  });
+
+  // Prod rerun 2026-10-17: LXM exact-lane flooding. Generic "CANopen" is on
+  // 137/265 chunks; rank-0 ties ordered by page fill top-6 with pp.1-6.
+  const lxmToc = (page: number) => mk(
+    [
+      "Contents",
+      "About this document ................ 9",
+      "Safety Information ................. 11",
+      "Before you begin ................... 13",
+      "CANopen overview ................... 33",
+      "Object dictionary .................. 41",
+      "CANopen Device Connector Pinout .... 59",
+      "CANopen SDO services ............... 17",
+    ].join("\n"),
+    0,
+    page,
+  );
+
+  const tocPages = [1, 3, 3, 4, 5, 6].map((p) => lxmToc(p));
+
+  it("flags a Contents page with dot-leaders as front-matter", () => {
+    expect(frontMatterLikeness(lxmToc(1).content, 1)).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it("flags OCR replacement-char leaders and a trailing Index heading", () => {
+    const ocr = "CANopen overview \uFFFD \uFFFD \uFFFD 33\nObject dictionary \uFFFD \uFFFD \uFFFD 41\nCANopen pinout \uFFFD \uFFFD \uFFFD 59";
+    expect(frontMatterLikeness(ocr, 3)).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it("does not flag a COB-ID body table or a pinout table", () => {
+    const cob = "The boot-up message uses COB-ID 700h + node ID. After initialization the node sends this CANopen message.";
+    const pinout = [
+      "5-pin M12 CANopen Device Connector Pinout",
+      "Pin 1 CAN_H  CAN high",
+      "Pin 2 CAN_L  CAN low",
+      "Pin 3 GND    Ground",
+      "Pin 4 Drain  Shield",
+      "Pin 5 n/c    Not connected",
+    ].join("\n");
+    expect(frontMatterLikeness(cob, 33)).toBeLessThan(0.3);
+    expect(frontMatterLikeness(pinout, 47)).toBeLessThan(0.3);
+  });
+
+  it("does not flag an early procedure page just because it is page 2", () => {
+    const jumper = "Verify the drive is isolated, lock it out, and check the DC bus with a meter. Then remove the RFI jumper.";
+    expect(frontMatterLikeness(jumper, 2)).toBe(0);
+  });
+
+  it("TQ-10: boot-up COB-ID p.33 beats six CANopen TOC pages in top-6", () => {
+    const e = expandIndustrialQuery("CANopen: what COB-ID does a node's boot-up message use?");
+    const answer = mk(
+      "The boot-up message uses COB-ID 700h + node ID. After initialization the node sends this CANopen message.",
+      0,
+      33,
+    );
+    const pool = [...tocPages, answer];
+    // Before this demotion, equal exact-token scores sorted by insertion
+    // (page order) so top-6 was pp.1,3,3,4,5,6. After: p.33 leads.
+    const beforePages = pool.map((c) => c.sourcePage).slice(0, 6);
+    expect(beforePages).toEqual([1, 3, 3, 4, 5, 6]);
+    const trace: Array<{ page: number | null; score: number; frontMatter: number }> = [];
+    const top6 = rerankChunks(e, pool, { trace }).slice(0, 6);
+    expect(top6[0]).toBe(answer);
+    expect(top6.map((c) => c.sourcePage)[0]).toBe(33);
+    expect(trace[0]).toMatchObject({ page: 33, frontMatter: 0 });
+    expect(trace.filter((t) => (t.frontMatter ?? 0) >= 0.5).every((t) => t.score < (trace[0]?.score ?? 0))).toBe(true);
+  });
+
+  it("TQ-22: M12 pinout p.47 beats TOC that only points at page 59", () => {
+    const e = expandIndustrialQuery("Schneider 5-pin M12 CANopen connector pinout");
+    const answer = mk(
+      [
+        "5-pin M12 CANopen Device Connector Pinout",
+        "Pin 1 CAN_H  CAN high",
+        "Pin 2 CAN_L  CAN low",
+        "Pin 3 GND    Ground",
+        "Pin 4 Drain  Shield",
+        "Pin 5 n/c    Not connected",
+      ].join("\n"),
+      0,
+      47,
+    );
+    const top6 = rerankChunks(e, [...tocPages, answer]).slice(0, 6);
+    expect(top6[0]).toBe(answer);
+  });
+
+  it("TQ-24: SDO COB-ID table p.17 beats LXM front-matter pp.1-6", () => {
+    const e = expandIndustrialQuery("CANopen SDO COB-IDs");
+    const answer = mk(
+      "SDO COB-IDs on CANopen: T_SDO 580h, R_SDO 600h. The node uses these identifiers for service data objects.",
+      0,
+      17,
+    );
+    const top6 = rerankChunks(e, [...tocPages, answer]).slice(0, 6);
+    expect(top6).toContain(answer);
+    expect(top6[0]).toBe(answer);
+  });
+
+  it("TQ-25: ports table p.47 beats early Contents pages that name Modbus", () => {
+    const e = expandIndustrialQuery("Fatek CBEH default port for WinProladder / Fatek protocol? And Modbus TCP?");
+    const toc = mk(
+      [
+        "Contents",
+        "CBEH board overview .............. 5",
+        "Registers D3975 / D3976 ......... 10",
+        "Communication ports .............. 47",
+        "Modbus TCP setup ................. 52",
+      ].join("\n"),
+      0,
+      5,
+    );
+    const front = [5, 5, 6, 7, 10, 12].map((p, i) => (i === 0 ? toc : mk(toc.content, 0, p)));
+    const answer = mk(
+      "CBEH §2.1.5 ports: WinProladder / Fatek protocol default TCP port 500, Modbus TCP port 502, HTTP port 80.",
+      0,
+      47,
+    );
+    const top6 = rerankChunks(e, [...front, answer], { intent: "comm" }).slice(0, 6);
+    expect(top6).toContain(answer);
+  });
+
+  it("demotes, does not delete: a TOC page still wins when nothing else matches", () => {
+    const e = expandIndustrialQuery("CANopen: what COB-ID does a node's boot-up message use?");
+    const onlyToc = rerankChunks(e, tocPages);
+    expect(onlyToc).toHaveLength(tocPages.length);
+    expect(onlyToc[0].content).toContain("Contents");
+    expect(onlyToc.map((c) => c.sourcePage)).toEqual(tocPages.map((c) => c.sourcePage));
+  });
+
+  it("keeps an Index heading at the back of the book below a body hit", () => {
+    const e = expandIndustrialQuery("CANopen SDO COB-IDs");
+    const index = mk(
+      ["Index", "CANopen .............. 17", "COB-ID ............... 17", "SDO .................. 33"].join("\n"),
+      0,
+      240,
+    );
+    const body = mk("SDO COB-IDs on CANopen: T_SDO 580h, R_SDO 600h.", 0, 17);
+    expect(frontMatterLikeness(index.content, 240)).toBeGreaterThanOrEqual(0.5);
+    expect(rerankChunks(e, [index, body])[0]).toBe(body);
   });
 });
