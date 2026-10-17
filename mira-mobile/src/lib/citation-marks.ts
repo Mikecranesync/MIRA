@@ -11,7 +11,9 @@
 
 export type MarkSegment = { kind: "text"; text: string } | { kind: "cite"; id: string };
 
-const MARK = /\[(\d{1,3})\]/g;
+// Same digit rule as the Hub renderer and server stripper (`\[(\d+)\]`): a
+// 4+-digit unknown marker must be stripped here too, not left as bare text.
+const MARK = /\[(\d+)\]/g;
 
 function pushText(out: MarkSegment[], text: string) {
   if (!text) return;

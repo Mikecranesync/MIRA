@@ -44,6 +44,11 @@ describe("splitCitationMarks", () => {
       { kind: "text", text: "See for details." },
     ]);
   });
+  it("a 4+-digit unknown [n] is stripped too (same \\d+ rule as Hub)", () => {
+    expect(splitCitationMarks("See [1234] for details.", known)).toEqual([
+      { kind: "text", text: "See for details." },
+    ]);
+  });
   it("no marks → one text segment; empty → none", () => {
     expect(splitCitationMarks("plain", known)).toEqual([{ kind: "text", text: "plain" }]);
     expect(splitCitationMarks("", known)).toEqual([]);
