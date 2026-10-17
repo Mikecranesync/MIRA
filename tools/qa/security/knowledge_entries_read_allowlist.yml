@@ -516,24 +516,27 @@ approved:
       rather than widening that skip list, so a REAL knowledge_entries read added to this
       file later would still fail the gate on a hash mismatch. Deleting this test would
       remove the only guard that notebook deletion does not destroy shared documents."
-  "mira-hub/src/lib/equipment-notebooks.ts:1093":
+  "mira-hub/src/lib/equipment-notebooks.ts:1117":
     approved_classification: TENANT-ONLY
     query_sha256: "dbf369caa36584dcb8c49bfef0c788d99bd8d9315eb97770e28064e30d49777b"
-    reason: "listSources readiness facts — counts chunks / embedded / page-anchored for
-      the doc ids ALREADY resolved from equipment_notebook_sources for this tenant's own
-      notebook, to derive the Ready-to-Ask contract (lib/document-readiness.ts). It is an
-      aggregate COUNT over the caller's OWN uploads (doc ids come from this tenant's
-      hub_uploads via the membership query directly above), and returns NO content — only
-      integers. The hybrid OEM filter (is_private = false OR ...) is deliberately NOT
-      applied: adding it would count the shared system-tenant OEM corpus into ONE tenant's
-      per-document readiness, reporting a notebook as enhanced/enhancing based on chunks
-      that do not belong to its documents. That is the opposite of the #1761 fix's intent,
-      which is about not HIDING the OEM corpus from user-facing corpus reads; this is not a
-      corpus read. Raw owner pool (not withTenantContext) to match the surrounding
-      hub_uploads metadata read in the same function. KEY MIGRATION 2026-08-22: moved
-      :422 -> :509 when deleteNotebook was added ABOVE it in the same file. Pure line
-      shift — query_sha256 is unchanged, which is the proof the SQL text and its
-      tenant scope are byte-identical; no re-approval warranted."
+    reason: "listSources readiness facts — counts retrievable (ingest_route='v2') chunks /
+      embedded / page-anchored plus a total-row count for the doc ids ALREADY resolved from
+      equipment_notebook_sources for this tenant's own notebook, to derive the Ready-to-Ask
+      contract (lib/document-readiness.ts). Ready/askable uses the v2 population because
+      retrieveNodeChunks only searches ingest_route='v2'; legacy-route rows must not
+      report Ready. It is an aggregate COUNT over the caller's OWN uploads (doc ids come
+      from this tenant's hub_uploads via the membership query directly above), and returns
+      NO content — only integers. The hybrid OEM filter (is_private = false OR ...) is
+      deliberately NOT applied: adding it would count the shared system-tenant OEM corpus
+      into ONE tenant's per-document readiness, reporting a notebook as enhanced/enhancing
+      based on chunks that do not belong to its documents. That is the opposite of the
+      #1761 fix's intent, which is about not HIDING the OEM corpus from user-facing corpus
+      reads; this is not a corpus read. Raw owner pool (not withTenantContext) to match the
+      surrounding hub_uploads metadata read in the same function. KEY MIGRATION 2026-08-22:
+      moved :422 -> :509 when deleteNotebook was added ABOVE it in the same file. 2026-10-17
+      Ready-gating: SELECT list gained v2 FILTERs + total; the hashed WHERE/GROUP BY
+      (tenant_id + doc_id ANY) is unchanged so query_sha256 is identical — no re-approval
+      of tenant scope."
     query_snippet: |
       FROM knowledge_entries
             WHERE tenant_id = $1::uuid AND doc_id = ANY($2::uuid[])

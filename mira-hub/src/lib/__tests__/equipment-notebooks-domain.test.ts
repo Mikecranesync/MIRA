@@ -40,7 +40,15 @@ const poolMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
-import { attachSource, createNotebook, getNotebook, listNotebooks, validateChatSources } from "../equipment-notebooks";
+import {
+  attachSource,
+  createNotebook,
+  getNotebook,
+  listNotebooks,
+  listSources,
+  RETRIEVABLE_INGEST_ROUTE,
+  validateChatSources,
+} from "../equipment-notebooks";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -300,5 +308,115 @@ describe("bound-asset identity on the read path (Slice 0)", () => {
     });
     const nb = await getNotebook(TENANT, NB);
     expect(nb!.asset).toBeNull();
+  });
+});
+
+describe("listSources Ready facts count only retrievable v2 chunks", () => {
+  it("SQL searches the same ingest_route retrieveNodeChunks uses, tenant-scoped", async () => {
+    rowsByMatch.push({
+      re: /FROM equipment_notebook_sources/,
+      rows: [
+        {
+          doc_id: DOC,
+          enabled_by_default: true,
+          match_state: "user_confirmed",
+          source_role: null,
+          match_evidence: null,
+          origin_file_id: null,
+        },
+      ],
+    });
+    poolMock.query
+      .mockResolvedValueOnce({
+        rows: [{ id: DOC, filename: "PF525.pdf", status: "parsed", kb_chunk_count: 10, file_id: "f1" }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ doc_id: DOC, n: 4, emb: 1, anchored: 4, total: 4 }],
+      });
+    await listSources(TENANT, NB);
+    const ke = poolMock.query.mock.calls.find(([sql]) => String(sql).includes("knowledge_entries"));
+    expect(ke?.[0]).toContain(`ingest_route = '${RETRIEVABLE_INGEST_ROUTE}'`);
+    expect(ke?.[0]).toContain("tenant_id = $1::uuid");
+    expect(ke?.[0]).not.toMatch(/is_private\s*=\s*false/);
+    expect(ke?.[1]).toEqual([TENANT, [DOC]]);
+  });
+
+  it("legacy-only chunks are not Ready and are not reported as a scan", async () => {
+    rowsByMatch.push({
+      re: /FROM equipment_notebook_sources/,
+      rows: [
+        {
+          doc_id: DOC,
+          enabled_by_default: true,
+          match_state: "user_confirmed",
+          source_role: null,
+          match_evidence: null,
+          origin_file_id: null,
+        },
+      ],
+    });
+    poolMock.query
+      .mockResolvedValueOnce({
+        rows: [{ id: DOC, filename: "legacy.pdf", status: "parsed", kb_chunk_count: 12, file_id: "f1" }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ doc_id: DOC, n: 0, emb: 0, anchored: 0, total: 12 }],
+      });
+    const [src] = await listSources(TENANT, NB);
+    expect(src.readiness.canChat).toBe(false);
+    expect(src.readiness.state).toBe("stored");
+    expect(src.readiness.label).not.toMatch(/Ready/i);
+  });
+
+  it("a parsed upload with zero chunks of any route is needs_ocr, not Ready", async () => {
+    rowsByMatch.push({
+      re: /FROM equipment_notebook_sources/,
+      rows: [
+        {
+          doc_id: DOC,
+          enabled_by_default: true,
+          match_state: "user_confirmed",
+          source_role: null,
+          match_evidence: null,
+          origin_file_id: null,
+        },
+      ],
+    });
+    poolMock.query
+      .mockResolvedValueOnce({
+        rows: [{ id: DOC, filename: "scan.pdf", status: "parsed", kb_chunk_count: 0, file_id: "f1" }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ doc_id: DOC, n: 0, emb: 0, anchored: 0, total: 0 }],
+      });
+    const [src] = await listSources(TENANT, NB);
+    expect(src.readiness.canChat).toBe(false);
+    expect(src.readiness.state).toBe("needs_ocr");
+  });
+
+  it("v2 page-anchored chunks make the manual Ready to ask", async () => {
+    rowsByMatch.push({
+      re: /FROM equipment_notebook_sources/,
+      rows: [
+        {
+          doc_id: DOC,
+          enabled_by_default: true,
+          match_state: "user_confirmed",
+          source_role: null,
+          match_evidence: null,
+          origin_file_id: null,
+        },
+      ],
+    });
+    poolMock.query
+      .mockResolvedValueOnce({
+        rows: [{ id: DOC, filename: "PF525.pdf", status: "parsed", kb_chunk_count: 4, file_id: "f1" }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ doc_id: DOC, n: 4, emb: 0, anchored: 4, total: 4 }],
+      });
+    const [src] = await listSources(TENANT, NB);
+    expect(src.readiness.canChat).toBe(true);
+    expect(src.readiness.label).toMatch(/Ready to ask/i);
   });
 });

@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  askableChatScope,
   deriveReadiness,
   meetsBasicReady,
+  notReadyAskMessage,
   type ReadinessFacts,
 } from "../document-readiness";
 
@@ -180,5 +182,60 @@ describe("THE invariant: embeddings can never gate chat", () => {
     });
     expect(r.state).toBe("needs_ocr");
     expect(r.canChat).toBe(false);
+  });
+});
+
+describe("notReadyAskMessage — honest non-Ready copy", () => {
+  it("names a failed ingest instead of 'not found'", () => {
+    expect(notReadyAskMessage([{ state: "failed" }])).toMatch(/didn't finish ingesting/i);
+    expect(notReadyAskMessage([{ state: "failed" }])).not.toMatch(/not found/i);
+  });
+
+  it("names a scan that has no text", () => {
+    expect(notReadyAskMessage([{ state: "needs_ocr" }])).toMatch(/no readable text/i);
+  });
+
+  it("names an in-flight upload", () => {
+    expect(notReadyAskMessage([{ state: "uploading" }])).toMatch(/still uploading/i);
+  });
+
+  it("pending stored/enhancing wait is 'still being prepared', never 'not found'", () => {
+    expect(notReadyAskMessage([{ state: "stored" }])).toMatch(/still being prepared/i);
+    expect(notReadyAskMessage([{ state: "stored" }])).not.toMatch(/not found|BM25|embedding/i);
+  });
+
+  it("failed outranks pending when mixed", () => {
+    expect(notReadyAskMessage([{ state: "stored" }, { state: "failed" }])).toMatch(
+      /didn't finish ingesting/i,
+    );
+  });
+});
+
+describe("askableChatScope — Ready manuals only, fail-open without readiness", () => {
+  const pending = { canChat: false, state: "stored" as const };
+  const readySrc = { canChat: true, state: "chat_ready_basic" as const };
+
+  it("fails open when sources omit readiness (mocks / listSources miss)", () => {
+    expect(askableChatScope(["a"], [{ docId: "a" }])).toEqual({
+      retrieveIds: ["a"],
+      notReady: false,
+      message: null,
+    });
+  });
+
+  it("blocks when every inspected selected source is not retrievable", () => {
+    const scope = askableChatScope(["a"], [{ docId: "a", readiness: pending }]);
+    expect(scope.notReady).toBe(true);
+    expect(scope.retrieveIds).toEqual([]);
+    expect(scope.message).toMatch(/still being prepared/i);
+  });
+
+  it("retrieves only the Ready manuals when the set is mixed", () => {
+    expect(
+      askableChatScope(["a", "b"], [
+        { docId: "a", readiness: pending },
+        { docId: "b", readiness: readySrc },
+      ]),
+    ).toEqual({ retrieveIds: ["b"], notReady: false, message: null });
   });
 });

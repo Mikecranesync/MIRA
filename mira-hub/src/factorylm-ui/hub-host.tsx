@@ -65,6 +65,7 @@ import {
   createLatestLoadTracker,
   detailQueryFor,
   draftAfterSendSucceeded,
+  askableDocIds,
   enabledDocIds,
   errorMessageFor,
   fixtureFor,
@@ -81,6 +82,7 @@ import {
   searchForSelection,
   selectionFromSearch,
   sendFailureMessage,
+  sourcesNotReadyError,
   shellThreadId,
   type CompatibleStreamResult,
   type HubSelection,
@@ -318,6 +320,7 @@ export function HubShellHost() {
     [detail, selection, capturedAt],
   );
   const docIds = useMemo(() => enabledDocIds(detail?.sources ?? []), [detail]);
+  const readyDocIds = useMemo(() => askableDocIds(detail?.sources ?? []), [detail]);
   // Turn-scoped keys (Codex #3839 F1): every answer numbers its citations from
   // "[1]", so the index is keyed by (assistant turn id, citation number).
   const citations = useMemo(
@@ -634,6 +637,13 @@ export function HubShellHost() {
       return;
     }
     if (!detail) throw new Error(NO_PROJECT_ERROR);
+    // An attachment may be the manual that makes the notebook askable — don't
+    // block that send. A question with nothing new attached is refused here
+    // so it never becomes an ungrounded general turn.
+    if (files.length === 0) {
+      const notReady = sourcesNotReadyError(detail.sources);
+      if (notReady) throw new Error(notReady);
+    }
     beginOutgoing(shellThreadId(selection));
     if (files.length > 0) {
       void composeAndSend(q, files, selection, detail.notebook.nodeId, docIds, historyRows(detail.turns));
@@ -858,7 +868,7 @@ export function HubShellHost() {
     onCreateProject,
     ...(busy ? { onStop } : {}),
     ...(failedBody ? { onRetry } : {}),
-    groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length),
+    groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length, readyDocIds.length),
     busy,
   };
 
