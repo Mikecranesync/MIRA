@@ -1654,3 +1654,57 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
     expect(inferEquipmentType({ modelNumber: "SLC 500" })).toBe("PLCs");
   });
 });
+
+describe("Codex #4469 r2: declared-title applicability (F2 first-line cross-reference, F5 catalog precedence, F6 wrapped title)", () => {
+  const ask = async (heading: string, question: string, filename = "2080-um020.pdf") => {
+    const { client } = makeClient([[nodeRow({
+      filename, document_heading: heading,
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    return retrieveNodeChunks(client, "t-1", question, {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+  };
+
+  // F2
+  it.each([
+    "Micro810 User Manual — for Micro820 consult the separate manual",
+    "Micro810 User Manual - for Micro820 consult the separate manual",
+    "Micro810 User Manual (Micro820: see publication 2080-UM005)",
+    "Micro810 Controllers: Micro820 is covered separately",
+    "Micro810 Controllers for Micro820 see the separate manual",
+  ])("a first-line cross-reference does not admit Micro820: %s", async (heading) => {
+    expect(await ask(heading, "Micro820 communication settings")).toEqual([]);
+    expect(await ask(heading, "Micro810 communication settings")).toHaveLength(1);
+  });
+
+  it.each([
+    "Micro810 and Micro820 Programmable Controllers User Manual",
+    "User Manual for Micro820 Programmable Controllers",
+  ])("a genuine title naming Micro820 stays retrievable: %s", async (heading) => {
+    expect(await ask(heading, "Micro820 communication settings")).toHaveLength(1);
+  });
+
+  // F6
+  it.each([
+    "Micro810 and Micro820 Programmable Controllers User Manual",
+    "Micro810 and\nMicro820 Programmable Controllers User Manual",
+    "Micro810 &\nMicro820 Programmable Controllers User Manual",
+  ])("single-line and wrapped dual-model titles cover both models: %j", async (heading) => {
+    expect(await ask(heading, "Micro820 communication settings")).toHaveLength(1);
+    expect(await ask(heading, "Micro810 communication settings")).toHaveLength(1);
+  });
+
+  it("a wrapped title still stops at a non-joining newline (cross-reference line stays rejected)", async () => {
+    expect(await ask("Micro810 User Manual\nFor Micro820 and\nMicro830 see 2080-UM005", "Micro820 communication settings")).toEqual([]);
+  });
+
+  // F5
+  it("an exact catalog number outranks a shared panel label", async () => {
+    const q = "TP700 Comfort 6AV2124-0GC01-0AX0 communication settings";
+    expect(await ask("TP700 Comfort 6AV2124-0GC01-9AX0 Specification", q, "spec.pdf")).toEqual([]);
+    expect(await ask("TP700 Comfort 6AV2124-0GC01-0AX0 Specification", q, "spec.pdf")).toHaveLength(1);
+    // a label-only manual still covers a catalog-specific question
+    expect(await ask("TP700 Comfort Operating Instructions", q, "oi.pdf")).toHaveLength(1);
+  });
+});

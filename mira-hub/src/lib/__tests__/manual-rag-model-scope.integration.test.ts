@@ -186,6 +186,41 @@ describe("identity-bound OEM model SQL", () => {
     expect(await retrieve([bothDoc], "Micro820 communication settings")).toHaveLength(1);
   });
 
+  // Codex #4469 r2 F2/F5/F6 over the real BM25 SQL: a first-line
+  // cross-reference never declares coverage, a wrapped dual-model title still
+  // does, and an exact catalog number outranks a shared panel label.
+  it("declared-title applicability over real SQL (Codex #4469 r2 F2/F5/F6)", async () => {
+    const xrefDoc = "39700000-0000-4000-8000-0000000000e1";
+    const wrappedDoc = "39700000-0000-4000-8000-0000000000e2";
+    const catMatchDoc = "39700000-0000-4000-8000-0000000000e3";
+    const catConflictDoc = "39700000-0000-4000-8000-0000000000e4";
+    const body = "Configure the communication settings in the controller properties dialog.";
+    const rows: Array<[string, string, string]> = [
+      [xrefDoc, "2080-um020.pdf", `Micro810 User Manual \u2014 for Micro820 consult the separate manual\n${body}`],
+      [wrappedDoc, "2080-um021.pdf", `Micro810 and\nMicro820 Programmable Controllers User Manual\n${body}`],
+      [catMatchDoc, "spec-a.pdf", `TP700 Comfort 6AV2124-0GC01-0AX0 Specification\n${body}`],
+      [catConflictDoc, "spec-b.pdf", `TP700 Comfort 6AV2124-0GC01-9AX0 Specification\n${body}`],
+    ];
+    for (const [doc, filename, content] of rows) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-r2.pdf', 1, $3, 'v2', $4::jsonb, true, true)`,
+        [TENANT, content, doc, JSON.stringify({ node_id: "pilot-r2", filename })],
+      );
+    }
+    const retrieve = (docIds: string[], question: string) =>
+      retrieveNodeChunks(client, TENANT, question, { nodeId: "pilot-r2", unsPath: null, docIds, validatedDocScope: true });
+    expect(await retrieve([xrefDoc], "Micro820 communication settings")).toEqual([]);
+    expect(await retrieve([xrefDoc], "Micro810 communication settings")).toHaveLength(1);
+    expect(await retrieve([wrappedDoc], "Micro820 communication settings")).toHaveLength(1);
+    expect(await retrieve([wrappedDoc], "Micro810 communication settings")).toHaveLength(1);
+    const catalogQ = "TP700 Comfort 6AV2124-0GC01-0AX0 communication settings";
+    expect(await retrieve([catMatchDoc], catalogQ)).toHaveLength(1);
+    expect(await retrieve([catConflictDoc], catalogQ)).toEqual([]);
+  });
+
   // #4469 F1 (primary review, pass 2): "Comfort" alone is a panel FAMILY
   // hint, not a specific sibling model — a TP1200-Comfort-titled manual must
   // not answer a TP700 Comfort question over the real BM25 SQL.
