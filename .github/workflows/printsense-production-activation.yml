@@ -163,7 +163,7 @@ jobs:
           test -f docker-compose.printsense-production.yml
 
           # Deploy identity must be exported HERE too, not only in deploy-vps.yml.
-          # This workflow runs AFTER a deploy and rebuilds the two bot images, so
+          # This workflow (dispatched by a human) rebuilds the two bot images, so
           # whatever it bakes in is what actually runs. Before #3064 the bots read
           # a COPY'd /VERSION file and this path inherited the right answer for
           # free; now the version arrives as a BUILD ARG, so a rebuild without
