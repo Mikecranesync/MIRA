@@ -17,6 +17,7 @@ import {
   COMM_FACETS,
   type RerankTraceRow,
 } from "@/lib/notebook-query";
+import { endsMidPassage, evidenceKey, fetchPageSplitNeighbors, neighborPage, pickNextAdjacentChunk } from "@/lib/page-split";
 
 export { resolveModelFromObservationText } from "@/capabilities/model-token";
 
@@ -1198,7 +1199,7 @@ export async function retrieveNodeChunks(
     );
   }
 
-  return reranked.map(({ _row: r }) => ({
+  const mapped = reranked.map(({ _row: r }) => ({
     content: String(r.content ?? ""),
     docId: r.doc_id == null ? null : String(r.doc_id),
     // Node attachments have no manufacturer/model — the filename is the citable title.
@@ -1218,6 +1219,89 @@ export async function retrieveNodeChunks(
     rank: Number(r.rank ?? 0),
     verified: r.verified === true,
   }));
+  // Existing manuals are chunked per page with no cross-page overlap. When a
+  // top-ranked hit ends mid-passage, pull the next same-doc chunk (same page or
+  // the next page) into the evidence window so the answer half is not dropped.
+  return stitchPageSplitPassages(client, tenantId, mapped, {
+    nodeIds,
+    docScopeOnly,
+    allowedDocIds,
+    admitApproved,
+    approvedSourceDocIds,
+  });
+}
+
+async function stitchPageSplitPassages(
+  client: PoolClient,
+  tenantId: string,
+  chunks: ManualChunk[],
+  ctx: {
+    nodeIds: string[];
+    docScopeOnly: boolean;
+    allowedDocIds: string[];
+    admitApproved: boolean;
+    approvedSourceDocIds: string[];
+  },
+): Promise<ManualChunk[]> {
+  const truncated = chunks.filter(
+    (c) => c.docId && c.sourcePage != null && endsMidPassage(c.content),
+  );
+  if (truncated.length === 0) return chunks;
+
+  const retrievedDocs = [...new Set(truncated.map((c) => c.docId!))];
+  const docIds =
+    ctx.allowedDocIds.length > 0
+      ? retrievedDocs.filter((id) => ctx.allowedDocIds.includes(id))
+      : retrievedDocs;
+  if (docIds.length === 0) return chunks;
+
+  const pages = new Set<number>();
+  for (const c of truncated) {
+    pages.add(c.sourcePage!);
+    pages.add(c.sourcePage! + 1);
+  }
+
+  const neighbors = await fetchPageSplitNeighbors(client, {
+    tenantId,
+    docIds,
+    pages: [...pages],
+    nodeIds: ctx.nodeIds,
+    docScopeOnly: ctx.docScopeOnly,
+    admitApproved: ctx.admitApproved,
+    approvedSourceDocIds: ctx.approvedSourceDocIds,
+    approvalClause: approvedSourceFilterSql(ctx.admitApproved ? 5 : null),
+  });
+
+  const seen = new Set(chunks.map((c) => evidenceKey(c.docId, c.sourcePage, c.content)));
+  const out: ManualChunk[] = [];
+  for (const chunk of chunks) {
+    out.push(chunk);
+    if (!chunk.docId || chunk.sourcePage == null || !endsMidPassage(chunk.content)) continue;
+    if (ctx.allowedDocIds.length > 0 && !ctx.allowedDocIds.includes(chunk.docId)) continue;
+    const next = pickNextAdjacentChunk(
+      { docId: chunk.docId, sourcePage: chunk.sourcePage, content: chunk.content },
+      neighbors,
+    );
+    if (!next) continue;
+    const page = neighborPage(next);
+    const key = evidenceKey(String(next.doc_id), page, String(next.content ?? ""));
+    if (seen.has(key)) continue;
+    if (ctx.allowedDocIds.length > 0 && !ctx.allowedDocIds.includes(String(next.doc_id))) continue;
+    seen.add(key);
+    out.push({
+      content: String(next.content ?? ""),
+      docId: String(next.doc_id),
+      manufacturer: "",
+      modelNumber: "",
+      sourceUrl: String(next.source_url ?? ""),
+      sourcePage: page,
+      chunkIndex: null,
+      title: String(next.filename ?? next.section_path ?? chunk.title),
+      rank: chunk.rank,
+      verified: next.verified === true,
+    });
+  }
+  return out;
 }
 
 /**
