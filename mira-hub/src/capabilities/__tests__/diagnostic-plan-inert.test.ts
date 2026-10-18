@@ -9,7 +9,10 @@ import { describe, expect, it } from "vitest";
 
 const SRC = join(__dirname, "..", "..");
 const MODULE_DIR = join("capabilities", "diagnostic-plan") + sep;
-const IMPORT_RE = /from\s+["'][^"']*diagnostic-plan[^"']*["']|import\(\s*["'][^"']*diagnostic-plan/;
+// Every module-loading form that names the module: `from "…"` (import and re-export), a bare
+// side-effect `import "…"`, dynamic `import("…")`, and CommonJS `require("…")`.
+const IMPORT_RE =
+  /from\s+["'][^"']*diagnostic-plan[^"']*["']|\bimport\s+["'][^"']*diagnostic-plan|\b(?:import|require)\(\s*["'][^"']*diagnostic-plan/;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -39,6 +42,9 @@ describe("diagnostic-plan stays inert (#4498 Phase 1)", () => {
   it("the import matcher catches a real import and ignores the unrelated wizard nextStep", () => {
     expect(IMPORT_RE.test('import { nextStep } from "@/capabilities/diagnostic-plan";')).toBe(true);
     expect(IMPORT_RE.test('const m = await import("../capabilities/diagnostic-plan/runner");')).toBe(true);
+    expect(IMPORT_RE.test('import "@/capabilities/diagnostic-plan";')).toBe(true);
+    expect(IMPORT_RE.test('const { nextStep } = require("@/capabilities/diagnostic-plan");')).toBe(true);
+    expect(IMPORT_RE.test("export * from '../capabilities/diagnostic-plan/types';")).toBe(true);
     expect(IMPORT_RE.test("const next = nextStep(current);")).toBe(false);
   });
 });
