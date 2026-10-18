@@ -34,11 +34,13 @@ function findMarkerAndStatement(text: string): ManualSafetyStatement | null {
     const line = lines[i];
 
     for (const marker of SAFETY_MARKERS) {
-      // Match marker at word boundary: "WARNING:", "WARNING!" (ABB) or "WARNING\s" but not "XWARNING"
-      const markerRegex = new RegExp(`\\b${marker}[:!\\s]`);
-      if (markerRegex.test(line)) {
+      // The marker must open the line, after only whitespace and bullet/icon characters, and be
+      // followed by ":", "!" (ABB) or whitespace — so "XWARNING" and a marker word inside ordinary
+      // prose ("displays the WARNING: ACTIVE status") never count (#4509 Codex F2).
+      const markerMatch = new RegExp(`^[\\s\\-•*▪●■◆►▶⚠!]*(${marker})[:!\\s]`).exec(line);
+      if (markerMatch) {
         // Extract the statement following the marker
-        const markerIndex = line.indexOf(marker);
+        const markerIndex = markerMatch.index + markerMatch[0].length - marker.length - 1;
         // Drop the marker's own punctuation ("ATTENTION:" → the sentence itself).
         const afterMarker = line.substring(markerIndex + marker.length).replace(/^[\s:!\-–—]+/, '').trim();
 
@@ -217,7 +219,34 @@ export function extractManualSafetyStatement(text: string): ManualSafetyStatemen
 /** The cited-source fields the helper reads (a subset of `EvidenceCitation`). */
 type CitedSource = { citationId: string; docId: string; sourceTitle: string; page: number | null };
 /** The retrieved-chunk fields the helper reads (a subset of `ManualChunk`). */
-type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null };
+type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null; docId?: string | null };
+
+const pageKey = (c: { sourceUrl: string; sourcePage: number | null }) => `${c.sourceUrl}::${c.sourcePage ?? ''}`;
+
+/** Retrieved chunks grouped by page, in `buildCitations` order: citationId n is group n. */
+function pageGroups(chunks: readonly PageChunk[]): PageChunk[][] {
+  const byKey = new Map<string, PageChunk[]>();
+  for (const c of chunks) byKey.set(pageKey(c), [...(byKey.get(pageKey(c)) ?? []), c]);
+  return [...byKey.values()];
+}
+
+/**
+ * The notebook (v2) pages behind `citations`, for `retrieveCitedPageChunks` (#4509 Codex F1):
+ * each cited page's document, file and page, taken from a chunk retrieval returned. Pages with
+ * no document id (the OEM path) or no page number are skipped.
+ */
+export function citedPagesFor(
+  citations: readonly CitedSource[],
+  chunks: readonly PageChunk[],
+): Array<{ docId: string; sourceUrl: string; page: number }> {
+  const groups = pageGroups(chunks);
+  const out: Array<{ docId: string; sourceUrl: string; page: number }> = [];
+  for (const c of citations) {
+    const first = groups[Number(c.citationId) - 1]?.[0];
+    if (first?.docId && first.sourcePage != null) out.push({ docId: first.docId, sourceUrl: first.sourceUrl, page: first.sourcePage });
+  }
+  return out;
+}
 
 /**
  * The manual safety statement an answer's CITED pages carry, or null (#4508).
@@ -232,13 +261,17 @@ type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null
 export function manualSafetyStatementForCitations(
   citations: readonly CitedSource[],
   chunks: readonly PageChunk[],
+  pageChunks: readonly PageChunk[] = [],
 ): ManualSafetyStatementEntry | null {
-  const byKey = new Map<string, string[]>();
-  for (const c of chunks) {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ''}`;
-    byKey.set(key, [...(byKey.get(key) ?? []), c.content]);
+  const groups = pageGroups(chunks);
+  // The rest of each cited page (#4509 Codex F1) joins ONLY a page retrieval already returned, so
+  // it can add text to a cited page but never a new page or a shifted citation number.
+  const index = new Map(groups.map((g, i) => [pageKey(g[0]), i] as const));
+  const pages = groups.map((g) => g.map((c) => c.content)); // citationId n ⇔ pages[n - 1]
+  for (const c of pageChunks) {
+    const i = index.get(pageKey(c));
+    if (i !== undefined) pages[i].push(c.content);
   }
-  const pages = [...byKey.values()]; // citationId n ⇔ pages[n - 1]
   const ordered = [...citations].sort((a, b) => Number(a.citationId) - Number(b.citationId));
   for (const c of ordered) {
     for (const content of pages[Number(c.citationId) - 1] ?? []) {

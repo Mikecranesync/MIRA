@@ -1982,3 +1982,45 @@ export function chunksToSources(chunks: ManualChunk[]): ManualSource[] {
   }
   return out;
 }
+
+/** One page an answer cited on the notebook (v2) path: the chunk's document, file and page. */
+export type CitedPageRef = { docId: string; sourceUrl: string; page: number };
+
+/**
+ * Every v2 chunk of each cited page (#4509 Codex F1). Top-K retrieval returns
+ * individual chunks, so a page's WARNING can sit in a chunk retrieval left out;
+ * this reads the rest of the page. Each page is pinned to the exact document,
+ * file and page of a chunk retrieval already admitted, under the same tenant and
+ * the same approval predicate retrieval uses, so it can never widen what the
+ * turn may read beyond pages the answer cites.
+ */
+export async function retrieveCitedPageChunks(
+  client: Pick<PoolClient, "query">,
+  tenantId: string,
+  pages: readonly CitedPageRef[],
+  opts: { approvedSourceDocIds?: string[] } = {},
+): Promise<Array<{ content: string; sourceUrl: string; sourcePage: number }>> {
+  if (pages.length === 0) return [];
+  const params: unknown[] = [tenantId, pages.map((p) => p.docId), pages.map((p) => p.sourceUrl), pages.map((p) => p.page)];
+  const approved = (opts.approvedSourceDocIds ?? []).filter(Boolean);
+  const admitApproved = approved.length > 0 && approvalGateEnabled();
+  if (admitApproved) params.push(approved);
+  const res = await client.query(
+    `SELECT content, source_url, COALESCE(page_start, source_page) AS page
+       FROM knowledge_entries
+      WHERE tenant_id = $1
+        AND ingest_route = 'v2'
+        ${approvedSourceFilterSql(admitApproved ? 5 : null)}
+        AND (doc_id::text, source_url, COALESCE(page_start, source_page)) IN (
+          SELECT * FROM unnest($2::text[], $3::text[], $4::int[])
+        )
+      ORDER BY doc_id, COALESCE(page_start, source_page), metadata->>'chunk_index', id
+      LIMIT 200`,
+    params,
+  );
+  return res.rows.map((r: Record<string, unknown>) => ({
+    content: String(r.content ?? ""),
+    sourceUrl: String(r.source_url ?? ""),
+    sourcePage: Number(r.page),
+  }));
+}

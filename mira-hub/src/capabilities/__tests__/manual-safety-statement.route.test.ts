@@ -31,6 +31,7 @@ vi.mock("@/lib/equipment-notebooks", () => domainMock);
 
 const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
+  retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn(() => ""),
 }));
@@ -116,6 +117,7 @@ beforeEach(() => {
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
   domainMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
   domainMock.claimNotebookTurnRequest.mockResolvedValue(undefined);
+  ragMock.retrieveCitedPageChunks.mockResolvedValue([]);
   process.env.GROQ_API_KEY = "test-key";
   process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
 });
@@ -282,5 +284,60 @@ describe("a persisted manual_safety_statement entry is NOT a citation (#4508 doc
     expect(res.headers.get("X-Idempotent-Replay")).toBe("true");
     expect(sourcesFrame(text).citations).toEqual([CITATION]);
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("the rest of a cited page is read (#4509 Codex F1)", () => {
+  const sibling = (page: number, content: string) => ({ content, sourceUrl: "pf40.pdf", sourcePage: page });
+
+  it("a WARNING only in a chunk retrieval left out of a cited page still reaches the notice", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([chunk(73, PLAIN_TEXT)]);
+    ragMock.retrieveCitedPageChunks.mockResolvedValue([sibling(73, ATTENTION_TEXT)]);
+    stubProvider("Set A092 to the number of restart attempts [1].");
+
+    await (await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_A] }), params)).text();
+    expect(ragMock.retrieveCitedPageChunks).toHaveBeenCalledTimes(1);
+    expect(ragMock.retrieveCitedPageChunks.mock.calls[0].slice(1)).toEqual([
+      expect.any(String),
+      [{ docId: DOC_A, sourceUrl: "pf40.pdf", page: 73 }],
+      { approvedSourceDocIds: [DOC_A] },
+    ]);
+    const entries = recorded().evidence.filter(isManualSafetyStatementEntry);
+    expect(entries).toEqual([expect.objectContaining({ marker: "ATTENTION", sourceCitationId: "1", page: 73 })]);
+  });
+
+  it("control: without the page read, the same turn has no notice", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([chunk(73, PLAIN_TEXT)]);
+    stubProvider("Set A092 to the number of restart attempts [1].");
+
+    await (await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_A] }), params)).text();
+    expect(recorded().evidence.filter(isManualSafetyStatementEntry)).toEqual([]);
+  });
+
+  it("a returned chunk of a page the answer did NOT cite never counts", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([chunk(72, PLAIN_TEXT)]);
+    ragMock.retrieveCitedPageChunks.mockResolvedValue([sibling(73, ATTENTION_TEXT)]);
+    stubProvider("A092 sets the restart attempts [1].");
+
+    await (await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_A] }), params)).text();
+    expect(recorded().evidence.filter(isManualSafetyStatementEntry)).toEqual([]);
+  });
+
+  it("no citation → the page is never read", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([chunk(73, PLAIN_TEXT)]);
+    stubProvider("The drive retries a configurable number of times.");
+
+    await (await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_A] }), params)).text();
+    expect(ragMock.retrieveCitedPageChunks).not.toHaveBeenCalled();
+  });
+
+  it("a failed page read fails open: the answer is still recorded, decided from the retrieved chunks", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([chunk(73, ATTENTION_TEXT)]);
+    ragMock.retrieveCitedPageChunks.mockRejectedValue(new Error("db down"));
+    stubProvider("Set A092 to the number of restart attempts [1].");
+
+    await (await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_A] }), params)).text();
+    const turn = recorded();
+    expect(turn.evidence.filter(isManualSafetyStatementEntry)).toEqual([expect.objectContaining({ marker: "ATTENTION" })]);
   });
 });

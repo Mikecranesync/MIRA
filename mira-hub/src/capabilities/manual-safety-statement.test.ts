@@ -312,4 +312,23 @@ Verify voltage before working.`;
       expect(result!.statement).toContain('hazardous');
     });
   });
+
+  describe('Marker anchoring (#4509 Codex F2)', () => {
+    it('ignores a marker word embedded in ordinary prose', () => {
+      expect(
+        extractManualSafetyStatement('Parameter 42 displays the WARNING: ACTIVE status while the relay is energized.'),
+      ).toBeNull();
+    });
+
+    it('still extracts an indented marker', () => {
+      const result = extractManualSafetyStatement('      WARNING: Hazardous voltage.');
+      expect(result).toEqual({ marker: 'WARNING', statement: 'Hazardous voltage.' });
+    });
+
+    it('still extracts a bullet- or icon-prefixed marker', () => {
+      expect(extractManualSafetyStatement('• WARNING: Hazardous voltage.')?.marker).toBe('WARNING');
+      expect(extractManualSafetyStatement('⚠ DANGER: Arc flash hazard.')?.marker).toBe('DANGER');
+      expect(extractManualSafetyStatement('! CAUTION: Hot surface.')?.marker).toBe('CAUTION');
+    });
+  });
 });
