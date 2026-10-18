@@ -54,6 +54,7 @@ import {
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
+import { citedPagesFor, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
@@ -178,6 +179,7 @@ import {
   manufacturerFromObservationText,
   resolveModelFromObservationText,
   retrieveManualChunks,
+  retrieveCitedPageChunks,
   retrieveNodeChunks,
   type ManualChunk,
 } from "@/lib/manual-rag";
@@ -4155,6 +4157,25 @@ async function handleChatTurn(
         );
       }
 
+      // #4509 Codex F1: read the rest of every notebook page the answer cites, so a page's
+      // WARNING in a chunk top-K retrieval left out still reaches the manual safety statement
+      // below. Read here, before the commit point, so the tail after it stays synchronous.
+      // Fail-open: a failed read only means the notice is decided from the retrieved chunks.
+      let citedPageChunks: Awaited<ReturnType<typeof retrieveCitedPageChunks>> = [];
+      const citedPages =
+        !notebookRetrieval || !docGrounded || !served || refused || outputRejected
+          ? []
+          : citedPagesFor(citationsUsedInAnswer(answerText, citations), chunks);
+      if (citedPages.length > 0) {
+        try {
+          citedPageChunks = await withTenantContext(ctx.tenantId, (c) =>
+            retrieveCitedPageChunks(c, ctx.tenantId, citedPages, { approvedSourceDocIds: docIds }),
+          );
+        } catch (err) {
+          console.warn("[notebook-chat] cited-page read failed (notice from retrieved chunks only):", err instanceof Error ? err.message : err);
+        }
+      }
+
       // ADR-0038 rule 7 commit point: the stopped-vs-answered decision was
       // made once, above; validation (deterministic AND semantic) is complete;
       // from here to the write the tail is synchronous and never re-reads the
@@ -4175,6 +4196,12 @@ async function handleChatTurn(
         message,
       );
       const emittedCitations = quoted.citations;
+      // #4508: the manual's own safety statement (WARNING/CAUTION/… or narrow
+      // hazard prose) on a page the answer CITES. Read from the emitted
+      // citations only — empty on refused/rejected/unsafe turns, so the stop
+      // paths are untouched — and persisted as its own evidence kind, never a
+      // `safety_notice` (which every client reads as a stop or the 70E directive).
+      const manualSafetyEntry = manualSafetyStatementForCitations(emittedCitations, chunks, citedPageChunks);
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
         ? "error"
         : refused
@@ -4434,7 +4461,7 @@ async function handleChatTurn(
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(weakEntry ? [weakEntry] : [])]
+              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
             : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
