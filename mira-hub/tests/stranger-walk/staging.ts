@@ -47,9 +47,13 @@ export const PROVIDER_PRICES: Record<string, { input: number; output: number }> 
 };
 export const TURN_BOUND = { inputTokens: 16_000, answerOutputTokens: 1_400, judgeOutputTokens: 200 };
 
-/** Model env vars the cascade honours (canonical-cascade.ts). The table above prices only the
- *  defaults, so ANY override means an unpriced model: the walk refuses to start. */
-const MODEL_OVERRIDES = ["OPENAI_MODEL", "OPENROUTER_MODEL", "GROQ_MODEL", "CEREBRAS_MODEL", "TOGETHER_MODEL"];
+/** Model env vars the deployed cascades honour: the answer cascade (canonical-cascade.ts) and the
+ *  safety-judge cascade (src/lib/llm/cascade.ts). The table above prices only the defaults, so ANY
+ *  override means an unpriced model: the walk refuses to start. */
+const MODEL_OVERRIDES = [
+  "OPENAI_MODEL", "OPENROUTER_MODEL", "GROQ_MODEL", "CEREBRAS_MODEL", "TOGETHER_MODEL", "TOGETHERAI_MODEL",
+  "OPENAI_CLASSIFIER_MODEL", "GROQ_CLASSIFIER_MODEL", "CEREBRAS_CLASSIFIER_MODEL", "TOGETHERAI_CLASSIFIER_MODEL",
+];
 
 /**
  * The prices the deployed Hub bills against, read from the SAME env the Hub reads (the walk runs
@@ -65,7 +69,9 @@ export function pricesFromEnv(env: Record<string, string | undefined> = process.
     if (raw === undefined || raw.trim() === "") return fallback;
     const v = Number(raw);
     if (!Number.isFinite(v) || v < 0) throw new Error(`${k}=${raw} is not a valid price — refusing to spend`);
-    return v;
+    // Production (openai-run-budget.ts envNumber, exclusive minimum 0) replaces a zero rate with the
+    // nonzero default, so the walk books that default too.
+    return v > 0 ? v : fallback;
   };
   return {
     ...PROVIDER_PRICES,
@@ -83,9 +89,22 @@ export function worstCaseTurnUsd(prices = PROVIDER_PRICES, b = TURN_BOUND): numb
   return usd;
 }
 
+/** The declared hard cap per run. STRANGER_WALK_BUDGET_USD may only LOWER it: a value that is not a
+ *  finite number in [0, 4.50] (e.g. an inherited 100 or Infinity) refuses to start. */
+export const MAX_USD_PER_RUN = 4.5;
+export function budgetUsdFromEnv(env: Record<string, string | undefined> = process.env): number {
+  const raw = env.STRANGER_WALK_BUDGET_USD;
+  if (raw === undefined || raw.trim() === "") return MAX_USD_PER_RUN;
+  const v = Number(raw);
+  if (!Number.isFinite(v) || v < 0 || v > MAX_USD_PER_RUN) {
+    throw new Error(`STRANGER_WALK_BUDGET_USD=${raw} is outside the $0–$${MAX_USD_PER_RUN} budget — refusing to spend`);
+  }
+  return v;
+}
+
 export const BUDGET = {
   /** 50 questions × the booked worst case, rounded up. Real spend is a small fraction (≈ $0.2). */
-  usdPerRun: Number(process.env.STRANGER_WALK_BUDGET_USD ?? "4.50"),
+  usdPerRun: budgetUsdFromEnv(),
   usdBookedPerTurn: worstCaseTurnUsd(),
 };
 

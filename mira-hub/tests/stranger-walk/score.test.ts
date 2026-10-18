@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import corpusJson from "./corpus.json";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { BUDGET, BudgetMeter, PROVIDER_PRICES, pricesFromEnv, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
+import { BUDGET, BudgetMeter, budgetUsdFromEnv, PROVIDER_PRICES, pricesFromEnv, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
 import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
@@ -195,6 +195,22 @@ describe("budget (worst case booked at dispatch, never released; fail closed)", 
     expect(() => pricesFromEnv({ OPENROUTER_MODEL: "x" })).toThrow(/unpriced model/);
     expect(() => pricesFromEnv({ OPENAI_PRICE_PER_MTOK_IN: "abc" })).toThrow(/not a valid price/);
     expect(() => pricesFromEnv({ OPENAI_PRICE_PER_MTOK_OUT: "-1" })).toThrow(/not a valid price/);
+  });
+  it("refuses every answer and safety-judge model override the deployed cascades honour", () => {
+    for (const k of ["TOGETHERAI_MODEL", "OPENAI_CLASSIFIER_MODEL", "GROQ_CLASSIFIER_MODEL", "CEREBRAS_CLASSIFIER_MODEL", "TOGETHERAI_CLASSIFIER_MODEL"]) {
+      expect(() => pricesFromEnv({ [k]: "x" })).toThrow(/unpriced model/);
+    }
+  });
+  it("prices a zero OpenAI rate the way production does: the nonzero default", () => {
+    expect(pricesFromEnv({ OPENAI_PRICE_PER_MTOK_IN: "0", OPENAI_PRICE_PER_MTOK_OUT: "0" }).OpenAI).toEqual(PROVIDER_PRICES.OpenAI);
+    expect(pricesFromEnv({ OPENAI_PRICE_PER_MTOK_IN: "2" }).OpenAI.input).toBe(2); // control: a positive rate is kept
+  });
+  it("caps the run budget at $4.50: an inherited larger or invalid value refuses to start", () => {
+    expect(budgetUsdFromEnv({})).toBe(4.5);
+    expect(budgetUsdFromEnv({ STRANGER_WALK_BUDGET_USD: "1.25" })).toBe(1.25); // control: lower is allowed
+    for (const v of ["100", "Infinity", "4.51", "-1", "abc"]) {
+      expect(() => budgetUsdFromEnv({ STRANGER_WALK_BUDGET_USD: v })).toThrow(/budget/);
+    }
   });
   it("usage is unreadable for: no response, no frame, null / negative / non-finite / string counts", () => {
     expect(turnUsage(usage(3000, 250))).toMatchObject({ readable: true, inBound: true });
