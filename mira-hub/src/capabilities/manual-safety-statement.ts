@@ -7,6 +7,7 @@
  *
  * Reference: Task #4508, Stranger Walk safety-notice integration.
  */
+import type { ManualSafetyStatementEntry } from '@/lib/notebook-chat-types';
 
 export interface ManualSafetyStatement {
   marker: string;
@@ -38,7 +39,8 @@ function findMarkerAndStatement(text: string): ManualSafetyStatement | null {
       if (markerRegex.test(line)) {
         // Extract the statement following the marker
         const markerIndex = line.indexOf(marker);
-        const afterMarker = line.substring(markerIndex + marker.length).trim();
+        // Drop the marker's own punctuation ("ATTENTION:" → the sentence itself).
+        const afterMarker = line.substring(markerIndex + marker.length).replace(/^[\s:\-–—]+/, '').trim();
 
         // Collect sentences starting from the marker line
         const statementLines: string[] = [];
@@ -210,4 +212,49 @@ export function extractManualSafetyStatement(text: string): ManualSafetyStatemen
   } catch {
     return null;
   }
+}
+
+/** The cited-source fields the helper reads (a subset of `EvidenceCitation`). */
+type CitedSource = { citationId: string; docId: string; sourceTitle: string; page: number | null };
+/** The retrieved-chunk fields the helper reads (a subset of `ManualChunk`). */
+type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null };
+
+/**
+ * The manual safety statement an answer's CITED pages carry, or null (#4508).
+ *
+ * Chunks are grouped exactly as the chat route's `buildCitations` numbers them
+ * (and as `withSupportingQuotes` re-reads them): key
+ * `${sourceUrl}::${sourcePage ?? ""}`, citationId n = the n-th distinct key.
+ * Only the pages behind `citations` are read — the caller passes the EMITTED
+ * citations, so a retrieved page the answer did not cite never counts. The
+ * citations are walked in ascending citation number; the first hit wins.
+ */
+export function manualSafetyStatementForCitations(
+  citations: readonly CitedSource[],
+  chunks: readonly PageChunk[],
+): ManualSafetyStatementEntry | null {
+  const byKey = new Map<string, string[]>();
+  for (const c of chunks) {
+    const key = `${c.sourceUrl}::${c.sourcePage ?? ''}`;
+    byKey.set(key, [...(byKey.get(key) ?? []), c.content]);
+  }
+  const pages = [...byKey.values()]; // citationId n ⇔ pages[n - 1]
+  const ordered = [...citations].sort((a, b) => Number(a.citationId) - Number(b.citationId));
+  for (const c of ordered) {
+    for (const content of pages[Number(c.citationId) - 1] ?? []) {
+      const hit = extractManualSafetyStatement(content);
+      if (hit) {
+        return {
+          kind: 'manual_safety_statement',
+          marker: hit.marker,
+          statement: hit.statement,
+          sourceDocId: c.docId,
+          citationId: c.citationId,
+          sourceTitle: c.sourceTitle,
+          page: c.page,
+        };
+      }
+    }
+  }
+  return null;
 }

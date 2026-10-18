@@ -395,8 +395,10 @@ export function isWeakEvidenceEntry(e: unknown): e is WeakEvidenceEntry {
  * and statement verbatim from the source, along with the document and page.
  *
  * Rides INSIDE the turn's existing `evidence[]` JSONB, discriminated by `kind`.
- * It is NOT a citation itself: it complements an existing citation but carries
- * no new `docId` (the same doc is cited in sources.citations). The marker and
+ * It is NOT a citation: it carries NO `docId` field on purpose. Every reader
+ * that splits evidence (`splitEvidence`, the chat route's idempotent replay,
+ * `enrichCitationsWithOrigin`) treats ANY entry with a string `docId` as a
+ * citation, so the source doc is named `sourceDocId` instead. The marker and
  * statement are DISPLAYED as a safety notice to the technician, BEFORE the
  * answer text, and persisted for reload fidelity.
  *
@@ -410,8 +412,13 @@ export type ManualSafetyStatementEntry = {
   marker: string;
   /** Verbatim statement from the manual, whitespace collapsed, capped at ~400 chars. */
   statement: string;
-  /** The doc this statement came from (matches a citation's docId). */
-  docId: string;
+  /** The cited doc this statement came from (a citation's `docId`; "" for a
+   *  shared-library chunk). Deliberately NOT named `docId` — see above. */
+  sourceDocId: string;
+  /** The citation number the statement's chunk was cited under ("1", "2", ...). */
+  citationId: string;
+  /** The cited source's display title, so the notice can name its source. */
+  sourceTitle: string;
   /** The physical page number in the source (1-based). */
   page: number | null;
 };
@@ -426,7 +433,7 @@ export function isManualSafetyStatementEntry(
     (e as { kind?: unknown }).kind === "manual_safety_statement" &&
     typeof (e as { marker?: unknown }).marker === "string" &&
     typeof (e as { statement?: unknown }).statement === "string" &&
-    typeof (e as { docId?: unknown }).docId === "string"
+    typeof (e as { sourceDocId?: unknown }).sourceDocId === "string"
   );
 }
 

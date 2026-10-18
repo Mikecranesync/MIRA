@@ -54,6 +54,7 @@ import {
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
+import { manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
@@ -4175,6 +4176,12 @@ async function handleChatTurn(
         message,
       );
       const emittedCitations = quoted.citations;
+      // #4508: the manual's own safety statement (WARNING/CAUTION/… or narrow
+      // hazard prose) on a page the answer CITES. Read from the emitted
+      // citations only — empty on refused/rejected/unsafe turns, so the stop
+      // paths are untouched — and persisted as its own evidence kind, never a
+      // `safety_notice` (which every client reads as a stop or the 70E directive).
+      const manualSafetyEntry = manualSafetyStatementForCitations(emittedCitations, chunks);
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
         ? "error"
         : refused
@@ -4434,7 +4441,7 @@ async function handleChatTurn(
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(weakEntry ? [weakEntry] : [])]
+              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
             : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
