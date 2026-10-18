@@ -91,6 +91,11 @@ for (const p of plan) {
   const res = await pool.query(
     `UPDATE knowledge_entries
         SET content = $2,
+            -- The old vector was computed from the cipher text; drop it so the
+            -- embed-retry sweep (embedding IS NULL) re-embeds the decoded row.
+            -- Without this, BM25 found the repaired row while the vector lane
+            -- still ranked it as noise (Codex round 1 on #4486).
+            embedding = NULL,
             metadata = metadata || jsonb_build_object('text_repair', 'shift29')
       WHERE id = $1::uuid AND tenant_id = $3 AND (metadata->>'text_repair') IS NULL`,
     [p.id, p.content, tenantId],

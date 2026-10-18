@@ -149,8 +149,10 @@ export type PageRepair = { text: string; repair: "shift29" | null; unrepaired: b
  *   sharing a line with cipher ("Using Relay-Type Instructions ,QDGG…") was
  *   mangled along with it. A few stray lowercase letters are tolerated
  *   (LOWERCASE_CEILING); a block over that is English-bearing and is never
- *   handed to the decoder — a mixed heading+cipher LINE is therefore left
- *   garbled rather than mangled (false negative, the safe direction).
+ *   handed to the decoder. Round 3 (Codex round 1): the measurement now runs
+ *   on the block MINUS its lowercase-bearing tokens, and the decode itself is
+ *   token-by-token (`decodeCipherTokens`), so a mixed heading+cipher LINE is
+ *   repaired with the heading byte-identical instead of being left garbled.
  * - **40 letters**, because `englishDensity` returns 0 under 40. The +29 map
  *   preserves letter count for genuine cipher, so a block under 40 letters can
  *   never reach DECODED_FLOOR *as cipher* — the only way a short block ever
@@ -181,7 +183,13 @@ function hasEnglishLowercase(text: string, letters: number): boolean {
   return lower / Math.max(letters, 1) > LOWERCASE_CEILING;
 }
 
-function blockIsShift29(block: string): boolean {
+function blockIsShift29(rawBlock: string): boolean {
+  // Judge only the tokens that COULD be cipher. Any token carrying ASCII
+  // lowercase is English and is removed before measuring, so an English
+  // heading sharing the line ("Using Relay-Type Instructions ,QDGG…") no
+  // longer vetoes the cipher beside it — the token-level decoder
+  // (`decodeCipherTokens`) is what keeps that heading byte-identical.
+  const block = rawBlock.replace(/\S*[a-z]\S*/g, "");
   const letters = (block.match(/[A-Za-z]/g) ?? []).length;
   if (letters < 40) return false;
   if (hasEnglishLowercase(block, letters)) return false;
@@ -210,6 +218,117 @@ function blockIsShift29(block: string): boolean {
 }
 
 /**
+ * Decode ONE block that has already been judged cipher — token by token, so an
+ * English token sharing the line is kept byte-identical (Codex round 1 on
+ * #4486: "WARNING 120V " + cipher came back as "t^okfkd NOMs …", "Note " as
+ * "kote", "Caution " as "`~ution"). A space-delimited token is decoded only
+ * when it is structurally cipher and NOT structurally English:
+ *
+ * - a token with any ASCII lowercase is English (the shift leaves no lowercase);
+ * - a token with a C0 control character is cipher (original space / digit /
+ *   punctuation — a text extractor never emits one for English);
+ * - a token whose decode contains ``^_`{|}~[]\`` was English caps containing
+ *   A/B/C or punctuation (`WARNING` → `t^okfkd`, `CAUTION` → `` `^rqflk``), and
+ *   a token whose decoded letters have no word shape was English carrying
+ *   digits (`120V` → `NOMs`, `1771-P7` → `NTTNJmT`); a cipher token whose
+ *   original was capitalised decodes to a clean shape (`3URJUDP` → `Program`);
+ * - otherwise it is decoded when it carries a cipher-only character (a C0
+ *   control = original space/digit/punctuation, or shifted-uppercase punctuation
+ *   like the `,` in `,Q` = `In`), or its decode is a common word (`WKH` = `the`);
+ * - a remaining caps-only token (`WLPHU` = `timer`) is decoded only when it
+ *   FOLLOWS a token already decided cipher (and is followed by cipher or the end
+ *   of the block) and decodes to a vowel-bearing word of 4+ letters. At the
+ *   block's left edge it is left as-is — a false negative — so an English
+ *   acronym leading into cipher (`VFD LED ,Q…`) is never mangled.
+ *
+ * Measured on the probe set: `NOTE`→`klqb` (no vowel), `LED`→`iba`/`VFD`→`sca`
+ * (3 letters) and `OK`/`ON`/`NO` are all kept; every token of the PLC-5 fixture
+ * decodes.
+ */
+const DECODE_TELL_RE = /[\^_`{|}~[\]\\]/;
+const CIPHER_CHAR_RE = /[\x01-\x08\x0b\x0c\x0e-\x1f$%&'()*+,\-./:;<=>?@[\\\]]/;
+const STOPWORDS = new Set([
+  "a", "i", "an", "as", "at", "be", "by", "do", "if", "in", "is", "it", "of", "on", "or", "to", "up",
+  "we", "no", "so", "its", "has", "was", "may", "off",
+]);
+const COMMON_WORD_SET = new Set(COMMON_WORDS);
+
+const C0_RE = /[\x01-\x08\x0b\x0c\x0e-\x1f]/;
+/** The letters of a decoded token must have a word shape — ALLCAPS, Capitalised
+ *  or lowercase. English carrying digits decodes to a mixed-case non-shape
+ *  (`120V` → `NOMs`, `1771-P7` → `NTTNJmT`), while cipher whose original was a
+ *  capitalised word decodes cleanly (`3URJUDP` → `Program`, `%$77` → `BATT`). */
+const WORD_SHAPE_RE = /^(?:[A-Z]+|[A-Z]?[a-z]+)$/;
+
+function tokenIsEnglish(raw: string): boolean {
+  if (/[a-z]/.test(raw)) return true;
+  if (C0_RE.test(raw)) return false; // a C0 control is never emitted for English
+  const decoded = decodeShift29(raw);
+  if (DECODE_TELL_RE.test(decoded)) return true;
+  return !WORD_SHAPE_RE.test(decoded.replace(/[^A-Za-z]/g, ""));
+}
+
+function tokenIsCipher(raw: string): boolean {
+  if (CIPHER_CHAR_RE.test(raw)) return true;
+  const word = decodeShift29(raw).toLowerCase().replace(/[^a-z]/g, "");
+  return STOPWORDS.has(word) || COMMON_WORD_SET.has(word);
+}
+
+function tokenBridgesCipher(raw: string): boolean {
+  const word = decodeShift29(raw).toLowerCase().replace(/[^a-z]/g, "");
+  return word.length >= 4 && /[aeiouy]/.test(word);
+}
+
+export function decodeCipherTokens(block: string): string {
+  const parts = block.split(/( +)/);
+  // Pass 1: decide each token on its own evidence.
+  const verdict: Array<"english" | "cipher" | "unknown"> = parts.map((p, i) => {
+    if (i % 2 === 1 || p === "") return "english"; // whitespace / empty — never decoded, never a neighbour
+    if (tokenIsEnglish(p)) return "english";
+    return tokenIsCipher(p) ? "cipher" : "unknown";
+  });
+  // Pass 2: a RUN of undecided tokens bounded on both sides by decided-cipher
+  // tokens follows them ("status indicator turns on." has two unknowns in a row),
+  // as does a run that follows cipher and runs to the END of the block ("…when
+  // true"). A run at the START of the block, or touching an English token, is
+  // left alone: every mixed line seen so far carries its English as a PREFIX
+  // (heading, "WARNING 120V", "Note"), so the left edge is where an acronym
+  // would be mangled and the right edge is where cipher trails off.
+  for (let i = 0; i < parts.length; i += 2) {
+    if (verdict[i] !== "unknown") continue;
+    let j = i;
+    while (j < parts.length && verdict[j] === "unknown") j += 2;
+    const bounded = i >= 2 && verdict[i - 2] === "cipher" && (j >= parts.length || verdict[j] === "cipher");
+    if (bounded) for (let k = i; k < j; k += 2) if (tokenBridgesCipher(parts[k])) verdict[k] = "cipher";
+    i = j - 2;
+  }
+  return parts.map((p, i) => (i % 2 === 0 && verdict[i] === "cipher" ? decodeShift29(p) : p)).join("");
+}
+
+/** A block too short for the density gate that is nonetheless unmistakably the
+ *  cipher: no ASCII lowercase, letter-bearing, carrying a C0 control character
+ *  (an original space/digit/punctuation under the shift — nothing a text
+ *  extractor emits for English), and decoding to at least one common word.
+ *  Codex round 1 on #4486: a long cipher block decoded while the short one
+ *  beside it stayed `,QVWDOO WKH EDWWHU\ ILUVW\u0011`, and the page was
+ *  reported fully repaired. Used only once the page is known to be cipher. */
+function blockIsShortCipher(block: string): boolean {
+  const letters = (block.match(/[A-Za-z]/g) ?? []).length;
+  if (letters < 4 || letters >= 40) return false;
+  if (hasEnglishLowercase(block, letters)) return false;
+  if (!/[\x01-\x08\x0b\x0c\x0e-\x1f]/.test(block)) return false;
+  const decoded = decodeShift29(block).toLowerCase();
+  return decoded.split(/[^a-z]+/).some((w) => STOPWORDS.has(w) || COMMON_WORD_SET.has(w));
+}
+
+/** Does a block that was NOT decoded still look like cipher? (The OCR cue —
+ *  `unrepaired` — must not read "false" over a page that still carries it.) */
+function blockLooksCipher(block: string): boolean {
+  const letters = (block.match(/[A-Za-z]/g) ?? []).length;
+  return letters >= 4 && !hasEnglishLowercase(block, letters) && /[\x01-\x08\x0b\x0c\x0e-\x1f]/.test(block);
+}
+
+/**
  * Repair one extracted page, BLOCK BY BLOCK.
  *
  * Review A on #4486: a page whose header is English and whose body is cipher —
@@ -230,14 +349,27 @@ export function repairExtractedPage(text: string): PageRepair {
 
   // Split while KEEPING the separators, so re-joining is lossless.
   const parts = text.split(/(\n\s*\n|\n)/);
-  let decodedAny = false;
+  const isShift = parts.map((part, i) => i % 2 === 0 && blockIsShift29(part));
+  let decodedAny = isShift.some(Boolean);
+  // Once the page is known to be the cipher (a block proved it, or the page-level
+  // verdict did), its SHORT cipher blocks are decoded too — individually, never
+  // wholesale, so an English heading on the page is never touched.
+  const pageIsCipher = decodedAny || (() => {
+    const v = detectGarble(text);
+    return v.garbled && v.method === "shift29";
+  })();
+  let residualCipher = false;
   const out = parts.map((part, i) => {
     if (i % 2 === 1) return part; // a captured separator
-    if (!blockIsShift29(part)) return part;
-    decodedAny = true;
-    return decodeShift29(part);
+    if (isShift[i]) return decodeCipherTokens(part);
+    if (pageIsCipher && blockIsShortCipher(part)) {
+      decodedAny = true;
+      return decodeCipherTokens(part);
+    }
+    if (blockLooksCipher(part)) residualCipher = true;
+    return part;
   });
-  if (decodedAny) return { text: out.join(""), repair: "shift29", unrepaired: false };
+  if (decodedAny) return { text: out.join(""), repair: "shift29", unrepaired: residualCipher };
 
   // No block decoded. Fall back to the whole-page verdict so a page that is
   // garbled by some OTHER map still raises the OCR cue.
