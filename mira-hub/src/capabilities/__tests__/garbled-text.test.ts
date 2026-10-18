@@ -108,3 +108,46 @@ describe("planChunkRepairs (the flag-gated backfill for rows already in knowledg
     expect(plan[0]).toEqual({ id: "a", content: PLC5_PAGE, repair: "shift29" });
   });
 });
+
+// ── Review A (Grok 4.6 via Cursor, 2026-10-18) on #4486 ──
+// The reviewer reported a false-POSITIVE: an English header followed by a
+// cipher body supposedly got the whole page decoded, mangling the header.
+// Verified on 40626b375 — that does NOT reproduce; the page came back
+// `repair: null` with the header untouched. The real defect is the opposite
+// and the reviewer's second finding names it: the page is left GARBLED,
+// because the header's English words lift whole-page density above the gate.
+// That is the actual TQ-05/06 shape, so it is the shape that matters.
+//
+// Repairing block by block fixes the false negative AND makes the
+// false positive the reviewer feared structurally impossible: an English
+// block is never handed to the decoder.
+describe("Review A — a page that mixes English and cipher is repaired block by block", () => {
+  const BODY =
+    "In addition, the PLC-5 processor stores the program in battery-backed RAM. When the processor is in Program mode, the outputs are de-energized and the program is not scanned. Install the battery before you connect power to the chassis.";
+  const HEADER = "Chapter 4  Processor Status and Fault Handling";
+
+  it("decodes the cipher body and leaves the English header byte-identical", () => {
+    const out = repairExtractedPage(`${HEADER}\n\n${encodeShift29(BODY)}`);
+    expect(out.repair).toBe("shift29");
+    expect(out.text.split("\n")[0]).toBe(HEADER);
+    expect(out.text).toContain("battery-backed RAM");
+    expect(out.text).not.toContain(",QDGGLWLRQ");
+  });
+
+  it("a mostly-cipher page with a few real words is repaired, not skipped", () => {
+    const out = repairExtractedPage(`${encodeShift29(BODY)}\n\nWARNING Do not remove the cover.`);
+    expect(out.repair).toBe("shift29");
+    expect(out.text).toContain("WARNING Do not remove the cover.");
+    expect(out.text).toContain("battery-backed RAM");
+  });
+
+  it("control: an all-English page is still untouched, block by block", () => {
+    const page = `${HEADER}\n\n${BODY}`;
+    expect(repairExtractedPage(page)).toEqual({ text: page, repair: null, unrepaired: false });
+  });
+
+  it("control: a parts table beside an English header is untouched", () => {
+    const page = `${HEADER}\n\n1771-P7 120/220V AC 16A   1771-A1B 4-slot chassis   1785-L40E   1771-IBD 24V DC input`;
+    expect(repairExtractedPage(page).repair).toBeNull();
+  });
+});

@@ -130,11 +130,68 @@ export function planChunkRepairs(
 
 export type PageRepair = { text: string; repair: "shift29" | null; unrepaired: boolean };
 
-/** Repair one extracted page. `unrepaired` = garbled but not the fixed shift
- *  (the OCR fallback's cue); the text is returned unchanged in that case. */
+/**
+ * Is this ONE block cipher that decodes to English? Deliberately stricter than
+ * the page-level gate: a block is short, so the density signal is noisier, and
+ * rewriting a block that was already fine is the one outcome worth preventing.
+ */
+function blockIsShift29(block: string): boolean {
+  const letters = (block.match(/[A-Za-z]/g) ?? []).length;
+  if (letters < 24) return false;
+  // A code/parts table is number-heavy and is NOT prose in any cipher. Deciding
+  // per block made this necessary: at page scale the table's own density kept
+  // it safe, but one table line in isolation is short enough that a decode can
+  // coin a common-word substring by accident. Measured: without this guard the
+  // "1771-P7 120/220V AC 16A …" fixture was rewritten.
+  const digits = (block.match(/\d/g) ?? []).length;
+  if (digits / Math.max(letters + digits, 1) > 0.15) return false;
+  const raw = englishDensity(block);
+  if (raw >= RAW_CEILING) return false; // already reads as English — never touch it
+  const decodedText = decodeShift29(block);
+  const decoded = englishDensity(decodedText);
+  if (decoded < DECODED_FLOOR || decoded < raw * IMPROVEMENT) return false;
+  // Real prose decodes into SEVERAL different common words, not one repeated
+  // coincidence. Three distinct hits is the floor.
+  const distinct = new Set((decodedText.toLowerCase().match(COMMON_WORDS_RE) ?? []).map((w) => w.toLowerCase()));
+  return distinct.size >= 3;
+}
+
+/**
+ * Repair one extracted page, BLOCK BY BLOCK.
+ *
+ * Review A on #4486: a page whose header is English and whose body is cipher —
+ * the actual TQ-05/06 shape — was left entirely garbled, because the header's
+ * real words lifted whole-page density above the gate. Deciding per block
+ * fixes that, and it also makes the false positive the reviewer feared
+ * structurally impossible: a block that already reads as English is never
+ * handed to the decoder, so a header can no longer be mangled by its
+ * neighbours.
+ *
+ * Blocks are blank-line separated, falling back to single lines when a page
+ * has no blank lines (OEM extractions often don't). Separators are preserved
+ * exactly, so an untouched page is byte-identical. `unrepaired` = the page
+ * reads as garbled but no block was the fixed shift — the OCR fallback's cue.
+ */
 export function repairExtractedPage(text: string): PageRepair {
+  if (!text.trim()) return { text, repair: null, unrepaired: false };
+
+  // Split while KEEPING the separators, so re-joining is lossless.
+  const parts = text.split(/(\n\s*\n|\n)/);
+  let decodedAny = false;
+  const out = parts.map((part, i) => {
+    if (i % 2 === 1) return part; // a captured separator
+    if (!blockIsShift29(part)) return part;
+    decodedAny = true;
+    return decodeShift29(part);
+  });
+  if (decodedAny) return { text: out.join(""), repair: "shift29", unrepaired: false };
+
+  // No block decoded. Fall back to the whole-page verdict so a page that is
+  // garbled by some OTHER map still raises the OCR cue.
   const verdict = detectGarble(text);
-  if (!verdict.garbled) return { text, repair: null, unrepaired: false };
-  if (verdict.method === "shift29") return { text: verdict.decoded, repair: "shift29", unrepaired: false };
-  return { text, repair: null, unrepaired: true };
+  if (verdict.garbled && verdict.method === "shift29") {
+    // The page-level check agrees but no single block did — decode wholesale.
+    return { text: verdict.decoded, repair: "shift29", unrepaired: false };
+  }
+  return { text, repair: null, unrepaired: verdict.garbled };
 }
