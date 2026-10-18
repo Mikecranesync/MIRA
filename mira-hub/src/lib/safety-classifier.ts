@@ -212,20 +212,47 @@ export function matchSafetyStop(text: string): string | null {
   // unflagged. Word-bounded on purpose: "clock out", "block out" and
   // "lookout" are not lockout. Hub-side only — the parity test pins the
   // transcription list, and the bot engine is out of this change's scope.
-  const lockoutVerb = LOCKOUT_VERB_RE.exec(msg);
-  if (lockoutVerb) {
-    // DEFINITIONAL_RE, not EDUCATIONAL_QUESTION_RE: the parity-pinned pattern
-    // exempts anything opening with "how|what|is it|the |a ", which swallows
-    // the real reports this rule exists to catch ("the conveyor is locked out,
-    // can I reach in and clear the jam?"). The verb forms are a Hub-side
-    // addition, so they take the narrower exemption — only a definition
-    // question ("what is locking out?") is educational.
-    return DEFINITIONAL_RE.test(msg) ? null : lockoutVerb[0];
-  }
   return null;
 }
 
-const LOCKOUT_VERB_RE = /\block(?:ed|ing)?[- ]out\b|\block\s+(?:it|this|that|them|the\s+\w+)\s+out\b/;
+/**
+ * TQ-30's lockout forms — the NOTEBOOK surface only.
+ *
+ * Review A MEDIUM: these originally lived inside `matchSafetyStop`, which is
+ * shared with `/api/namespace/node/[id]/chat` and `/api/assets/[id]/chat`. So
+ * "We locked out the MCC yesterday, what's Addr_CAN_OB?" started carrying a
+ * lock-and-tag banner on all three surfaces — an over-trigger on two routes
+ * this item was never asked to change. Keeping the forms out of the shared
+ * matcher leaves those two routes byte-identical to base, which is also the
+ * answer to open decision 4.
+ *
+ * Word-bounded: "clock out", "block out" and "lookout" are not lockout. Bare
+ * "lockout" is included (the parity-pinned transcription list carries only
+ * "lockout tagout" / "lockout/tagout" / "loto"). The narrow `DEFINITIONAL_RE`
+ * applies, not the wide parity-pinned pattern, which exempted the real
+ * reports this is for ("the conveyor is locked out, can I reach in…").
+ */
+const LOCKOUT_VERB_RE =
+  /\block(?:ed|ing)?[- ]?out\b|\block(?:ed|ing)?\s+(?:it|this|that|them|the\s+\w+)\s+out\b/;
+
+/**
+ * The notebook route's safety trigger: the shared Tier-1/Tier-2 matcher first
+ * (unchanged precedence), then TQ-30's lockout forms.
+ *
+ * A lockout trigger is a BANNER, never a stop. "Walk me through locking out
+ * the M340" is a request for the safe procedure, and answering it is the
+ * point — a stop there would send the technician in knowing less. TQ-30 in
+ * the task asked only that these be *flagged*; the hard stop was asked for
+ * energized-work asks (TQ-29), which `isEnergizedWorkAsk` owns.
+ */
+export function notebookSafetyTrigger(text: string): string | null {
+  const shared = matchSafetyStop(text);
+  if (shared) return shared;
+  const msg = (text || "").toLowerCase().trim();
+  if (!msg || DEFINITIONAL_RE.test(msg)) return null;
+  const lockoutVerb = LOCKOUT_VERB_RE.exec(msg);
+  return lockoutVerb ? lockoutVerb[0] : null;
+}
 
 /**
  * A DEFINITION question — "what is lockout?", "what does LOTO mean?",
@@ -264,25 +291,39 @@ const DEFINITIONAL_RE =
 // The machine is in a POWERED state in the ask. On its own this is NOT enough
 // — "can I reset while energized?" is a reset, not hands-on work, and the
 // existing answer-gate tests (E13) rely on it streaming. It needs HANDS_ON too.
+// Review A HIGH: the real TQ-29 string is "How do I pull the RFI jumper with
+// it powered?" — and EVERY shape below returned false. The old list only knew
+// "while it's powered" / "with the power ON", so "with it powered", "with the
+// drive powered", "under power", "while running" and "hot" all walked past.
+// "while running" and "hot" are deliberately here even though they are
+// ambiguous alone: they only fire WITH a hands-on verb or work object, and the
+// controls in safety-classifier.test.ts pin the ordinary-diagnostic twins
+// ("check the fault log while running", "the motor is running hot").
 const POWERED_STATE_RE = new RegExp(
   "\\b(?:" +
     [
-      "while (?:it(?:'s| is) |it's |the \\w+ is |this is |still |it's still |it is still )?(?:live|powered(?: up| on)?|energized|hot)",
-      "with (?:the |it's |its )?power (?:still )?(?:on|applied|connected)",
-      "power still on",
-      "still (?:energized|live|powered)",
-      "live wire",
-      "live circuit",
-      "live panel",
-      "energized conductor",
+      // "while it's powered", "while the drive is live", "while still hot"
+      "while\\s+(?:it(?:'s| is)\\s+|it's\\s+|the\\s+\\w+\\s+is\\s+|this\\s+is\\s+|still\\s+|it's\\s+still\\s+|it\\s+is\\s+still\\s+)?(?:live|powered(?:\\s+up|\\s+on)?|energized|hot|running)",
+      // "with it powered", "with the drive powered", "with the unit energized"
+      "with\\s+(?:it|this|that|them|the\\s+\\w+)\\s+(?:still\\s+)?(?:powered(?:\\s+up|\\s+on)?|live|energized|hot|running)",
+      "with\\s+(?:the\\s+|it's\\s+|its\\s+)?power\\s+(?:still\\s+)?(?:on|applied|connected)",
+      "power\\s+still\\s+on",
+      "under\\s+power",
+      "still\\s+(?:energized|live|powered|hot)",
+      "live\\s+wire",
+      "live\\s+circuit",
+      "live\\s+panel",
+      "energized\\s+conductor",
     ].join("|") +
     ")\\b",
   "i",
 );
 // A spec ask ABOUT doing the work ("what torque on the cover screws while
-// it's live?") names no verb at all — the object is the tell.
+// it's live?") names no verb at all — the object is the tell. Review A HIGH:
+// "jumper" was missing, and the real TQ-29 string is about pulling an RFI
+// jumper.
 const WORK_OBJECT_RE =
-  /\b(?:torque|screws?|bolts?|cover|panel\s+cover|fan|contactor|relay|fuse|terminals?|lugs?|wires?|gasket|belt|coupling|bearing|card|module|keypad|display\s+module)\b/i;
+  /\b(?:torque|screws?|bolts?|cover|panel\s+cover|fan|contactor|relay|fuse|terminals?|lugs?|wires?|gasket|belt|coupling|bearing|card|module|keypad|display\s+module|jumpers?|dip\s+switch|battery|filter)\b/i;
 // Hands-on work on the equipment: the verbs a technician uses for the job
 // itself, not for reading a display or resetting a fault.
 const HANDS_ON_VERB_RE =
@@ -296,6 +337,10 @@ const SKIP_LOCKOUT_RE = new RegExp(
       "without (?:a |the |any |first )?(?:lock[- ]?out|locking (?:it |this |that |the \\w+ )?out|loto|lockout ?/ ?tagout)",
       "skip(?:ping)? (?:the |a )?(?:lock[- ]?out|loto)",
       "bypass(?:ing)? (?:the |a )?(?:lock[- ]?out|loto)",
+      // Trade slang that IS the intent on its own — no second signal needed
+      // ("can I do it hot"). Review A: this returned false before.
+      "(?:do|work|service|fix|run)\\s+it\\s+hot",
+      "hot\\s+work\\s+it",
     ].join("|") +
     ")\\b",
   "i",
@@ -303,6 +348,17 @@ const SKIP_LOCKOUT_RE = new RegExp(
 
 const ACTIVE_INCIDENT_RE =
   /\b(?:visible smoke|smoke from|smoke coming|burn mark|melted insulation|electrical fire|arcing|smell burning|burning smell|got shocked|just exploded)\b/;
+
+// "while running" on its own is the WEAKEST powered-state signal — a drive
+// display blinks while running, and "check the fault log while running" is
+// reading data, not hands-on work (Review A's own over-trigger control). So a
+// running-only ask needs a PHYSICAL verb or a work object, where reading
+// verbs (check/measure/probe/test/read/monitor) do not count on their own.
+// Every other powered-state phrase ("with it powered", "under power", "still
+// hot") is explicit enough to pair with any hands-on verb.
+const RUNNING_ONLY_RE = /\brunning\b/i;
+const PHYSICAL_VERB_RE =
+  /\b(?:swap(?:ping)?|replac(?:e|ing)|chang(?:e|ing)|pull(?:ing)?|remov(?:e|ing)|open(?:ing)?|touch(?:ing)?|rewir(?:e|ing)|tighten(?:ing)?|loosen(?:ing)?|clean(?:ing)?|servic(?:e|ing)|repair(?:ing)?|work(?:ing)? on|disconnect(?:ing)?|reconnect(?:ing)?|install(?:ing)?|unplug(?:ging)?|plug(?:ging)? in|tak(?:e|ing) off|put(?:ting)? on|reach(?:ing)? in)\b/i;
 
 export function isEnergizedWorkAsk(message: string): boolean {
   const msg = (message || "").toLowerCase().trim();
@@ -336,7 +392,12 @@ export function isEnergizedWorkAsk(message: string): boolean {
   // to revisit, so the route gates the stop on `!electricalHazardDirective`
   // and the split is raised for Mike instead.
   if (SKIP_LOCKOUT_RE.test(msg)) return true;
-  return POWERED_STATE_RE.test(msg) && (HANDS_ON_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg));
+  if (!POWERED_STATE_RE.test(msg)) return false;
+  // A "running"-only powered state is too weak to pair with a reading verb.
+  const strongState = POWERED_STATE_RE.test(msg.replace(RUNNING_ONLY_RE, ""));
+  return strongState
+    ? HANDS_ON_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg)
+    : PHYSICAL_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg);
 }
 
 /**

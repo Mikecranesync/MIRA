@@ -110,6 +110,7 @@ import {
   hazardBanner,
   isEnergizedWorkAsk,
   matchSafetyStop,
+  notebookSafetyTrigger,
   safetyFlagDirective,
   safetyFlagHeaders,
   withSafetyFlag,
@@ -1308,7 +1309,11 @@ async function handleChatTurn(
   // reuses their classifier rather than adding a second policy, which keeps the
   // educational carve-out ("what is arc flash?" is a question, not a hazard
   // report) that a fresh keyword list would silently lose.
-  const questionSafetyTrigger = matchSafetyStop(message);
+  // Review A MEDIUM: TQ-30's lockout verb forms are NOTEBOOK-ONLY. They live
+  // in `notebookSafetyTrigger`, not in the shared `matchSafetyStop`, so
+  // NodeChat and asset chat stay byte-identical to base and do not newly
+  // banner "we locked out the MCC yesterday, what's Addr_CAN_OB?".
+  const questionSafetyTrigger = notebookSafetyTrigger(message);
   // #3763: the energized-electrical hazard sentinel is a DIRECTIVE, not a stop.
   // The answer still streams, framed by the NFPA 70E directive injected below,
   // and the turn persists a safety_notice evidence entry. Every other non-null
@@ -1563,8 +1568,15 @@ async function handleChatTurn(
   // owner-decided NFPA 70E directive (answer streams, framed — #3763/#3841/
   // #3984). This stop covers the shape that had NO treatment: hands-on work
   // asked for on a powered machine, or an explicit "without locking out".
+  // Review A HIGH: `!visualSafetyTrigger` used to be here, which meant a photo
+  // hazard SKIPPED the stop — so attaching a picture to "can I pull the RFI
+  // jumper with it powered?" turned the stop off. The question's own intent is
+  // what this gate is about, and a photo cannot make energized work safe, so
+  // the photo no longer suppresses it. An ACTIVE incident is still excluded,
+  // but inside `isEnergizedWorkAsk` (ACTIVE_INCIDENT_RE), which is where that
+  // judgement belongs rather than keyed off whether an image was attached.
   const energizedWorkAsk =
-    !visualSafetyTrigger && !electricalHazardDirective && energizedHardStopEnabled() && isEnergizedWorkAsk(message);
+    !electricalHazardDirective && energizedHardStopEnabled() && isEnergizedWorkAsk(message);
   // `observation_available`/`observation_in_context` are derived from
   // `lookRow`/its rendered section later (renderLookObservationSection), not
   // hardcoded — the LOOK observation DOES reach the prompt (buildManualUserContent

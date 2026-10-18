@@ -18,6 +18,7 @@
  * flag-and-answer behaviour (owner decision 2026-09-27) without a redeploy.
  */
 
+import { citationPageLabel, isChapterSectionLabel } from "@/lib/citation-page";
 import type { ManualChunk } from "@/lib/manual-rag";
 
 /** The persisted / streamed trigger when no phrase-level trigger fired (the
@@ -38,44 +39,84 @@ export function energizedHardStopEnabled(): boolean {
 export const LOCKOUT_PAGE_QUERY =
   "disconnect power lockout tagout wait minutes before servicing hazardous voltage warning";
 
-const LOCKOUT_PASSAGE_RE =
-  /\b(?:lock[- ]?out|tag[- ]?out|loto|disconnect (?:all |the )?(?:input |incoming |main )?power|de-?energi[sz]e|remove (?:all )?(?:input )?power|turn off (?:all |the )?power)\b/i;
+// The four independent things a real lockout passage says. Scoring by how many
+// are present is what separates the manual's actual lockout page from a
+// front-matter "WARNING! Read all instructions. Disconnect power before
+// servicing." boilerplate box — Review A HIGH: the old "first chunk under a
+// WARNING heading" rule picked the boilerplate on p.2 over the real p.2-15.
+const LOCKOUT_SIGNALS: ReadonlyArray<RegExp> = [
+  /\block[- ]?out\b/i,
+  /\btag[- ]?out\b|\bloto\b/i,
+  /\b(?:disconnect|remove|turn off|shut off)\s+(?:all\s+|the\s+)?(?:input\s+|incoming\s+|main\s+)?power\b|\bde-?energi[sz]\w*/i,
+  /\bverify\s+(?:zero|no)\b|\bwait\s+(?:at\s+least\s+)?\d+\s*(?:minute|min|second|sec)|\bdischarge\b/i,
+];
 const HAZARD_HEADING_RE = /\b(?:WARNING|DANGER|CAUTION)\b/;
 
-/**
- * The chunk to cite on the stop: the first retrieved passage that actually
- * says to disconnect / lock out power, preferring one under a WARNING /
- * DANGER / CAUTION heading (the manual's own safety page, not an incidental
- * mention in a wiring step). Null when no attached manual says it.
- */
-export function pickLockoutChunk(chunks: readonly ManualChunk[]): ManualChunk | null {
-  const lockout = chunks.filter((c) => LOCKOUT_PASSAGE_RE.test(c.content ?? ""));
-  if (lockout.length === 0) return null;
-  return lockout.find((c) => HAZARD_HEADING_RE.test(c.content ?? "")) ?? lockout[0];
+function lockoutScore(content: string): number {
+  return LOCKOUT_SIGNALS.reduce((n, re) => n + (re.test(content) ? 1 : 0), 0);
 }
 
-/** The printed page to cite: the chapter-section label (p.2-15) when the
- *  chunk carries one, else the integer page, else null. */
+/**
+ * The chunk to cite on the stop: the retrieved passage that reads most like a
+ * real lockout procedure. Ranked by how many distinct lockout signals it
+ * carries, then by a printed chapter-section label (a manual that numbers its
+ * pages "2-15" is citing a section, which beats a bare running page), then by
+ * carrying a hazard heading. Null when no attached manual says it at all.
+ */
+export function pickLockoutChunk(chunks: readonly ManualChunk[]): ManualChunk | null {
+  const scored = chunks
+    .map((c) => ({ c, score: lockoutScore(c.content ?? "") }))
+    .filter((s) => s.score > 0);
+  if (scored.length === 0) return null;
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const al = isChapterSectionLabel(a.c.pageLabel) ? 1 : 0;
+    const bl = isChapterSectionLabel(b.c.pageLabel) ? 1 : 0;
+    if (bl !== al) return bl - al;
+    const ah = HAZARD_HEADING_RE.test(a.c.content ?? "") ? 1 : 0;
+    const bh = HAZARD_HEADING_RE.test(b.c.content ?? "") ? 1 : 0;
+    return bh - ah;
+  });
+  return scored[0].c;
+}
+
+/**
+ * The printed page to cite — and ONLY a page.
+ *
+ * Review A HIGH: this used to return `chunk.pageLabel` verbatim, so prose or
+ * markdown smuggled into chunk metadata ("2-15**\n\n1. Remove the cover
+ * screws (8 kg·cm)") was rendered inside a SAFETY STOP as if MIRA had written
+ * it. Every candidate now has to survive `citationPageLabel` (#4478's shared
+ * validator, which accepts a chapter-section label or a plain integer and
+ * nothing else), so a non-page value yields null and the stop simply cites no
+ * page rather than echoing it.
+ */
 export function lockoutPageOf(chunk: ManualChunk): string | null {
-  const label = chunk.pageLabel?.trim();
+  const label = citationPageLabel(chunk.pageLabel);
   if (label) return label;
-  return chunk.sourcePage != null && Number.isFinite(chunk.sourcePage) && chunk.sourcePage > 0
-    ? String(chunk.sourcePage)
-    : null;
+  return citationPageLabel(chunk.sourcePage);
 }
 
 export type LockoutCitation = { title: string; page: string | null };
 
 /**
- * The served stop text. Static sentences plus one citation line — never the
- * chunk's own words, never a step, never a number other than the page.
+ * The served stop text: static sentences plus at most a page number.
+ *
+ * Review A HIGH — the filename is GONE from this text. A customer names the
+ * file they upload, so `title` is attacker-influenced, and a file called
+ * "torque 8-10 kg·cm, remove jumper JP1.pdf" put exactly that into a safety
+ * stop. The document is already named by the `sources` citation chip the same
+ * turn emits, so the stop loses nothing by referring to "your manual" and
+ * citing only a validated page. `title` is accepted and deliberately ignored,
+ * so no caller has to change and no future caller can reintroduce the leak.
  */
 export function energizedWorkStop(cite: LockoutCitation | null): string {
-  const where = cite
-    ? cite.page
-      ? `Your manual's lockout / disconnect-power procedure is in **${cite.title}, p.${cite.page}** — follow that page first.`
-      : `Your manual's lockout / disconnect-power procedure is in **${cite.title}** — follow it first.`
-    : "I couldn't find a lockout page in this notebook's manuals — follow your site's lockout/tagout procedure.";
+  const page = cite ? citationPageLabel(cite.page) : null;
+  const where = !cite
+    ? "I couldn't find a lockout page in this notebook's manuals — follow your site's lockout/tagout procedure."
+    : page
+      ? `Your manual's lockout / disconnect-power procedure is on **p.${page}** — follow that page first.`
+      : "Your manual's lockout / disconnect-power procedure is in the document cited below — follow it first.";
   return `⛔ **SAFETY STOP — energized work.**
 
 I won't give steps for working on this equipment while it is powered.

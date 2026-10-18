@@ -25,6 +25,7 @@ import {
   ENERGIZED_WORK_INTENT,
   hazardBanner,
   isEnergizedWorkAsk,
+  notebookSafetyTrigger,
 } from "./safety-classifier";
 
 const GUARDRAILS_PATH = join(__dirname, "..", "..", "..", "mira-bots", "shared", "guardrails.py");
@@ -234,7 +235,7 @@ describe("withSafetyFlag / safetyFlagHeaders (every outcome of a flagged turn sh
 // matched because guardrails.py only carries the noun forms ("lockout tagout",
 // "lockout/tagout", "loto"). The verb forms are Hub-side additions (the
 // transcription list stays byte-identical to guardrails.py).
-describe("lockout verb forms (TQ-30)", () => {
+describe("lockout verb forms (TQ-30) — notebook surface only", () => {
   it.each([
     "do I need to be locking out the drive before changing the belt?",
     // A leading "the " was read as an educational framing by the parity-pinned
@@ -245,25 +246,25 @@ describe("lockout verb forms (TQ-30)", () => {
     "should I lock out the VFD first",
     "lock it out before you pull the cover?",
     "Lock-out the panel then swap the contactor",
-  ])("stops: %s", (msg) => {
-    expect(matchSafetyStop(msg)).not.toBeNull();
+  ])("flags (banner, never a stop): %s", (msg) => {
+    expect(notebookSafetyTrigger(msg)).not.toBeNull();
   });
 
   it("the matched text drives the isolation banner, not the generic fallback", () => {
-    const trigger = matchSafetyStop("the conveyor is locked out, can I reach in and clear the jam?");
+    const trigger = notebookSafetyTrigger("the conveyor is locked out, can I reach in and clear the jam?");
     expect(hazardBanner(trigger!)).toMatch(/Isolation/);
     expect(hazardBanner("locking out")).toMatch(/Isolation/);
   });
 
   it("educational framings stay unstopped (control)", () => {
-    expect(matchSafetyStop("What is locking out a machine?")).toBeNull();
-    expect(matchSafetyStop("Explain locked out tagged out")).toBeNull();
+    expect(notebookSafetyTrigger("What is locking out a machine?")).toBeNull();
+    expect(notebookSafetyTrigger("Explain locked out tagged out")).toBeNull();
   });
 
   it("'clock out' / 'block out' / 'lookout' are not lockout (word boundary control)", () => {
-    expect(matchSafetyStop("I clock out at five, can the PM wait")).toBeNull();
-    expect(matchSafetyStop("the lookout tower camera feed dropped")).toBeNull();
-    expect(matchSafetyStop("block out the light sensor with tape?")).toBeNull();
+    expect(notebookSafetyTrigger("I clock out at five, can the PM wait")).toBeNull();
+    expect(notebookSafetyTrigger("the lookout tower camera feed dropped")).toBeNull();
+    expect(notebookSafetyTrigger("block out the light sensor with tape?")).toBeNull();
   });
 });
 
@@ -301,10 +302,13 @@ describe("isEnergizedWorkAsk (TQ-29)", () => {
     // An ACTIVE incident keeps its Tier-1 incident banner + answer (route tests
     // chat-electrical-hazard-directive / -live-stream pin the 09-27 precedence).
     "I just got shocked on the 480V feeder — can I clamp meter it while it's running?",
-    // The 480 V + meter conjunction keeps the owner-decided NFPA 70E DIRECTIVE
-    // (#3763/#3841/#3984) — this stop deliberately does not take it over.
-    "measure the DC bus voltage on the 480V feeder while running",
-    "How do I measure the 480V feeder while running?",
+    // NOTE on the 480 V + meter conjunction: after Review A broadened the
+    // powered-state vocabulary ("while running"), the CLASSIFIER now calls
+    // those energized work — which is honest, because they are. The
+    // owner-decided NFPA 70E directive still owns those turns, enforced at the
+    // ROUTE (`!electricalHazardDirective`), and the directive suites
+    // chat-electrical-hazard-directive / -live-stream pin that end-to-end.
+    // So they are deliberately NOT asserted false here any more.
     // A Tier-1 phrase already earns the hazard banner + full answer (#4068/2i).
     "check the output terminals while live",
     "I need to work on the live panel to check it, what should I check",
@@ -314,5 +318,68 @@ describe("isEnergizedWorkAsk (TQ-29)", () => {
     "is the power on light supposed to blink while running",
   ])("is NOT energized work (control): %s", (msg) => {
     expect(isEnergizedWorkAsk(msg)).toBe(false);
+  });
+});
+
+// ── Review A (Grok 4.6 via Cursor, 2026-10-18) HIGH findings ──
+// The reviewer had the real TQ wording. The shipped detector returned FALSE
+// for the actual TQ-29 string and for every phrasing below — verified on
+// 0d28afad9. These are the real fixtures the earlier reconstructions should
+// have been.
+describe("Review A HIGH — the real TQ-29 phrasings must stop", () => {
+  it.each([
+    "How do I pull the RFI jumper with it powered?",
+    "pull the RFI jumper with the drive powered",
+    "swap it while running",
+    "check it under power",
+    "can I do it hot",
+    "it is still hot, can I pull the cover",
+    "replace the fan with the unit powered",
+  ])("energized work: %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(true);
+  });
+
+  // Broadening "while running" / "hot" risks over-triggering on ordinary
+  // diagnostics, so each one gets a harmless twin that must NOT stop.
+  it.each([
+    "check the fault log while running",
+    "the motor is running hot, what should I check",
+    "is the run light supposed to be on while running",
+    "what does it mean when the drive runs hot",
+    "the bearing is hot to the touch, what causes that",
+  ])("control, ordinary diagnostic: %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(false);
+  });
+});
+
+// TQ-30: the goal asked for these to be FLAGGED, not stopped — a request for
+// the lockout procedure is the safe path and must still be answered. The
+// trigger now comes from the notebook-only wrapper so the other two chat
+// routes stay byte-identical to base (Review A MEDIUM, over-trigger).
+describe("Review A — lockout forms flag on the notebook surface only", () => {
+  it.each([
+    "walk me through locking out the M340",
+    "lockout",
+    "lockout procedure for this press",
+    "I locked it out",
+    "the conveyor is locked out, can I reach in and clear the jam?",
+  ])("notebookSafetyTrigger flags: %s", (msg) => {
+    expect(notebookSafetyTrigger(msg)).not.toBeNull();
+  });
+
+  it("a lockout PROCEDURE request is flagged but never an energized-work stop", () => {
+    const q = "walk me through locking out the M340";
+    expect(notebookSafetyTrigger(q)).not.toBeNull();
+    expect(isEnergizedWorkAsk(q)).toBe(false);
+  });
+
+  it("the shared matcher is unchanged, so NodeChat and asset chat do not newly banner", () => {
+    // Review A MEDIUM: this exact message was bannering on all three surfaces.
+    expect(matchSafetyStop("We locked out the MCC yesterday, what's Addr_CAN_OB?")).toBeNull();
+    expect(matchSafetyStop("walk me through locking out the M340")).toBeNull();
+    expect(matchSafetyStop("how do I lock out this conveyor")).toBeNull();
+    // …while the Tier-1 transcription list still behaves exactly as before.
+    expect(matchSafetyStop("lockout tagout procedure")).not.toBeNull();
+    expect(matchSafetyStop("there are exposed wires near the panel")).not.toBeNull();
   });
 });

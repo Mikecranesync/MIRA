@@ -106,7 +106,13 @@ async function frames(res: Response): Promise<Record<string, unknown>[]> {
     .map((l) => JSON.parse(l.slice(6)) as Record<string, unknown>);
 }
 
-const ASK = "Can I swap the cooling fan on the GS10 while it's powered? What torque on the cover screws?";
+const contentOf = (f: Record<string, unknown>[]) =>
+  f.filter((x) => x.kind === "content").map((x) => String(x.content)).join("");
+
+// The REAL TQ-29 wording (Review A supplied it). The reconstruction this
+// replaced ("Can I swap the cooling fan...") passed while the real string
+// returned false, which is exactly how the gap survived the first round.
+const ASK = "How do I pull the RFI jumper with it powered?";
 
 function providerAnswers(text: string) {
   vi.stubGlobal(
@@ -159,7 +165,7 @@ describe("TQ-29 — energized-work ask hard-stops and cites the manual's lockout
 
     const content = out.filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
     expect(content).toContain("p.2-15");
-    expect(content).toContain("GS10 User Manual.pdf");
+    expect(content).not.toContain("GS10 User Manual.pdf"); // Review A HIGH: filename never reaches the stop
     expect(content).not.toMatch(/in-lb|N·m|torque|cover screws|remove the/i);
 
     const status = out.find((f) => f.kind === "status") as { status: string };
@@ -215,5 +221,31 @@ describe("TQ-29 — energized-work ask hard-stops and cites the manual's lockout
     // The lockout retrieval only runs for an energized-work ask.
     const lockoutCalls = vi.mocked(ragMock.retrieveNodeChunks).mock.calls.filter((c) => /lockout tagout/i.test(String(c[2])));
     expect(lockoutCalls).toHaveLength(0);
+  });
+});
+
+// ── Review A HIGH findings, at the route level ──
+describe("Review A HIGH — the leak and the photo skip, through the real route", () => {
+  it("a crafted upload filename cannot inject steps or torques into the served stop", async () => {
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) =>
+      /lockout tagout/i.test(String(query))
+        ? [{ ...LOCKOUT_CHUNK, title: "torque 8-10 kg·cm, remove jumper JP1.pdf" }]
+        : [{ ...TORQUE_CHUNK, title: "torque 8-10 kg·cm, remove jumper JP1.pdf" }],
+    );
+    const out = await frames(await POST(req({ message: ASK, sourceDocIds: [DOC_A] }), params));
+    const content = contentOf(out);
+    expect(content).toMatch(/SAFETY STOP/);
+    expect(content).not.toMatch(/kg·cm|remove jumper|torque/i);
+    expect(content).toContain("p.2-15");
+  });
+
+  it("a photo attached to the ask no longer switches the stop off", async () => {
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: "44444444-4444-4444-8444-444444444444", capturedAt: "2026-10-18T00:00:00.000Z" });
+    const out = await frames(
+      await POST(req({ message: ASK, sourceDocIds: [DOC_A], visualEvidence: { fileId: "44444444-4444-4444-8444-444444444444" } }), params),
+    );
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(out.some((f) => f.kind === "safety")).toBe(true);
+    expect(contentOf(out)).toMatch(/SAFETY STOP/);
   });
 });

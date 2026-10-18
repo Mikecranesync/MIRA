@@ -72,8 +72,12 @@ describe("lockoutPageOf", () => {
 describe("energizedWorkStop", () => {
   const text = energizedWorkStop({ title: "GS10 User Manual.pdf", page: "2-15" });
 
-  it("cites the manual's lockout page", () => {
-    expect(text).toContain("GS10 User Manual.pdf, p.2-15");
+  // Review A HIGH: the filename used to be rendered here and is now gone —
+  // the document is named by the turn's `sources` citation chip instead, so a
+  // customer-controlled upload name can never reach a safety stop.
+  it("cites the manual's lockout PAGE and never its filename", () => {
+    expect(text).toContain("p.2-15");
+    expect(text).not.toContain("GS10 User Manual.pdf");
     expect(text).toMatch(/SAFETY STOP/);
   });
 
@@ -90,8 +94,10 @@ describe("energizedWorkStop", () => {
     expect(noPage).not.toMatch(/\d/);
   });
 
-  it("cites the manual without a page when the chunk has none", () => {
-    expect(energizedWorkStop({ title: "GS10 User Manual.pdf", page: null })).toContain("**GS10 User Manual.pdf** — follow it first");
+  it("with no usable page, points at the cited document without naming it", () => {
+    const out = energizedWorkStop({ title: "GS10 User Manual.pdf", page: null });
+    expect(out).toContain("the document cited below");
+    expect(out).not.toContain("GS10 User Manual.pdf");
   });
 });
 
@@ -102,5 +108,58 @@ describe("energizedHardStopEnabled", () => {
     expect(energizedHardStopEnabled()).toBe(false);
     process.env.NOTEBOOK_ENERGIZED_HARD_STOP = "1";
     expect(energizedHardStopEnabled()).toBe(true);
+  });
+});
+
+// ── Review A (Grok 4.6 via Cursor, 2026-10-18) HIGH findings, reproduced ──
+// The stop text claimed "no removal steps, no torques". That held only because
+// every input to it was harmless. Both the TITLE and the PAGE are
+// attacker-influenced: a customer names the file they upload, and the page
+// label comes from chunk metadata. Verified leaking on 0d28afad9.
+describe("Review A HIGH — nothing from the manual may reach the stop text", () => {
+  it("a crafted upload filename cannot inject steps or torques", () => {
+    const out = energizedWorkStop({ title: "torque 8-10 kg·cm, remove jumper JP1.pdf", page: "2-15" });
+    expect(out).not.toMatch(/torque|remove jumper|kg·cm/i);
+    expect(out).toContain("p.2-15");
+  });
+
+  it("markdown or prose smuggled through the page label cannot inject steps", () => {
+    const out = energizedWorkStop({ title: "m.pdf", page: "2-15**\n\n1. Remove the cover screws (8 kg·cm)" });
+    expect(out).not.toMatch(/Remove the cover|kg·cm/i);
+  });
+
+  it.each([
+    ["a chapter-section label", "2-15", true],
+    ["a plain page number", "42", true],
+    ["prose", "see the lockout section", false],
+    ["markdown injection", "2-15**\n\n1. Remove the cover", false],
+    ["an empty label", "", false],
+  ])("only a real page label is ever cited: %s", (_l, page, kept) => {
+    const out = energizedWorkStop({ title: "m.pdf", page });
+    expect(/\bp\.[0-9A-Za-z-]+/.test(out)).toBe(kept);
+  });
+});
+
+describe("Review A HIGH — pickLockoutChunk must not prefer front matter", () => {
+  const FRONT = chunk({
+    content: "WARNING! Read all instructions before use. Disconnect power before servicing.",
+    sourcePage: 2,
+    pageLabel: "2",
+  });
+  const REAL = chunk({
+    content:
+      "WARNING! Hazardous voltage. Disconnect all power to the drive and wait at least 5 minutes for the DC bus capacitors to discharge before servicing. Lock out and tag out the disconnect.",
+    sourcePage: 25,
+    pageLabel: "2-15",
+  });
+
+  it("the real lockout passage (p.2-15) beats a front-matter warning on p.2", () => {
+    expect(lockoutPageOf(pickLockoutChunk([FRONT, REAL])!)).toBe("2-15");
+    // order must not decide it
+    expect(lockoutPageOf(pickLockoutChunk([REAL, FRONT])!)).toBe("2-15");
+  });
+
+  it("front matter is still used when it is the only lockout text there is", () => {
+    expect(lockoutPageOf(pickLockoutChunk([FRONT])!)).toBe("2");
   });
 });
