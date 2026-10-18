@@ -54,6 +54,11 @@ import {
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
+import {
+  CLAIM_NOT_STATED_TEXT,
+  checkClaimSupport,
+  claimSupportEnabled,
+} from "@/capabilities/claim-support";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
@@ -3807,7 +3812,50 @@ async function handleChatTurn(
         console.warn(`[notebook-chat] uncited manufacturer-library claim withheld (#4426): ${answerText.length} chars, ${citations.length} citations available`);
         answerText = UNCITED_OEM_CLAIM_TEXT;
       }
-      const refused = refusedByText || uncitedDocumentClaim;
+      // TQ-08 (2026-10-17 prod test): #4426 above asks "does the answer cite
+      // anything at all"; this asks the next question — "is the claim actually
+      // STATED on the page it cites". #4303's `citation.status = "linked"` is
+      // positional by design and says in its own header that it "never claims
+      // the passage supports the sentence", so an answer can cite a real
+      // retrieved page and still assert a number that appears nowhere on it.
+      //
+      // The signal is not new: `withSupportingQuotes` (#4315) already assigns
+      // every answer value to its nearest citation and returns the ones the
+      // cited page does not contain — the route just spent that on quote
+      // selection and a telemetry count. `checkClaimSupport` reuses the same
+      // extractor and the same citationId⇔page mapping, so the gate and the
+      // proof quote can never disagree about what the page says.
+      //
+      // Same shape as #4426: a fixed server-written replacement, OR'd into
+      // `refused`, which #4303's precedence then classifies as
+      // `refused_with_passages` without touching any of its files. Gate on =
+      // replaced before release (content is enqueued far below); gate off =
+      // detection-only logging, exactly like `validateAnswer`.
+      const claimSupport =
+        served && !refusedByText && !uncitedDocumentClaim && docGrounded && claimSupportEnabled()
+          ? checkClaimSupport({
+              answer: answerText,
+              question: message,
+              citations: citationsUsedInAnswer(answerText, citations),
+              chunks,
+            })
+          : null;
+      const unsupportedClaim = Boolean(claimSupport?.unsupported);
+      if (unsupportedClaim) {
+        console.warn(
+          `[notebook-chat] claim not stated in cited chunk ${gate ? "withheld" : "flagged (gate off)"} (TQ-08): ` +
+            `${claimSupport!.reason} values=${JSON.stringify(claimSupport!.values)} citations=${citations.length}`,
+        );
+        // REDRAFT (item 5's second half) IS NOT WIRED — see the PR body. One
+        // corrective re-generation belongs here, before the replacement, and
+        // `REDRAFT_DIRECTIVE` is the prompt it would use. It needs a second
+        // non-streaming provider call inside this controller with its own
+        // `reserveOpenAiAttempt` hold, which is a larger change than this
+        // detection slice and is deliberately left for its own PR rather than
+        // half-built here.
+        if (gate) answerText = CLAIM_NOT_STATED_TEXT;
+      }
+      const refused = refusedByText || uncitedDocumentClaim || (gate && unsupportedClaim);
       // SECOND BRACKET GUARD (the prompt is the first). A general answer has no
       // sources, so any [n] the model emitted anyway points at nothing and would
       // render as a citation chip in mira-mobile. Strip the markers rather than
