@@ -62,19 +62,19 @@ jobs:
           r = json.load(open("/tmp/sw-vitest.json"))
           total, passed, failed = r["numTotalTests"], r["numPassedTests"], r["numFailedTests"]
           print(f"stranger-walk unit tests: {passed}/{total} passed, {failed} failed")
-          if failed or total < 26 or passed != total:
-              sys.exit(f"::error::expected >= 26 collected and all passing, got {passed}/{total} ({failed} failed)")
+          if failed or total < 28 or passed != total:
+              sys.exit(f"::error::expected >= 28 collected and all passing, got {passed}/{total} ({failed} failed)")
           PY
 
   walk:
     name: Stranger walk — 50 questions on staging /v3
     runs-on: ubuntu-latest
     environment: staging # inherits DOPPLER_TOKEN scoped to factorylm/stg
-    # Job-level, so only the paid walk joins the repo-wide staging queue shared with
-    # deploy-staging.yml and retrieval-acceptance.yml (the generation under audit cannot change
-    # mid-walk; a full walk holds it ~40 min). The PR-only unit job never enters that queue.
+    # Its OWN group, never `staging-environment`: GitHub keeps one pending run per group, so joining
+    # the deploy/acceptance queue could cancel a pending staging deploy. A deploy that lands
+    # mid-walk is caught instead by the start/end identity check, and the run is NOT ASSESSED.
     concurrency:
-      group: staging-environment
+      group: stranger-walk
       cancel-in-progress: false
     # The job holds the staging DOPPLER_TOKEN, so it only ever runs main's code: a dispatch on any
     # other ref is skipped before the job (and its secrets) start, and the step below proves the

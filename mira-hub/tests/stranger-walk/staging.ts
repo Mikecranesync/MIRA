@@ -47,6 +47,32 @@ export const PROVIDER_PRICES: Record<string, { input: number; output: number }> 
 };
 export const TURN_BOUND = { inputTokens: 16_000, answerOutputTokens: 1_400, judgeOutputTokens: 200 };
 
+/** Model env vars the cascade honours (canonical-cascade.ts). The table above prices only the
+ *  defaults, so ANY override means an unpriced model: the walk refuses to start. */
+const MODEL_OVERRIDES = ["OPENAI_MODEL", "OPENROUTER_MODEL", "GROQ_MODEL", "CEREBRAS_MODEL", "TOGETHER_MODEL"];
+
+/**
+ * The prices the deployed Hub bills against, read from the SAME env the Hub reads (the walk runs
+ * under `doppler run --config stg`): OPENAI_PRICE_PER_MTOK_IN/OUT override gpt-5.4-mini's declared
+ * rate exactly as `openai-run-budget.ts` does. Fails closed — throws before any paid request — on
+ * an invalid price or a model override this table cannot price.
+ */
+export function pricesFromEnv(env: Record<string, string | undefined> = process.env): Record<string, { input: number; output: number }> {
+  const overridden = MODEL_OVERRIDES.filter((k) => (env[k] ?? "").trim() !== "");
+  if (overridden.length) throw new Error(`unpriced model override(s): ${overridden.join(", ")} — refusing to spend`);
+  const rate = (k: string, fallback: number) => {
+    const raw = env[k];
+    if (raw === undefined || raw.trim() === "") return fallback;
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v < 0) throw new Error(`${k}=${raw} is not a valid price — refusing to spend`);
+    return v;
+  };
+  return {
+    ...PROVIDER_PRICES,
+    OpenAI: { input: rate("OPENAI_PRICE_PER_MTOK_IN", PROVIDER_PRICES.OpenAI.input), output: rate("OPENAI_PRICE_PER_MTOK_OUT", PROVIDER_PRICES.OpenAI.output) },
+  };
+}
+
 /** $ upper bound of one turn: the answer and the judge, each attempted on every provider. */
 export function worstCaseTurnUsd(prices = PROVIDER_PRICES, b = TURN_BOUND): number {
   let usd = 0;
