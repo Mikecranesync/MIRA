@@ -418,21 +418,39 @@ const ACTIVE_INCIDENT_RE =
 const RUNNING_ONLY_RE = /\brunning\b/i;
 const PHYSICAL_VERB_RE =
   /\b(?:swap(?:ping)?|replac(?:e|ing)|chang(?:e|ing)|pull(?:ing)?|remov(?:e|ing)|open(?:ing)?|touch(?:ing)?|rewir(?:e|ing)|tighten(?:ing)?|loosen(?:ing)?|clean(?:ing)?|servic(?:e|ing)|repair(?:ing)?|work(?:ing)? on|disconnect(?:ing)?|reconnect(?:ing)?|install(?:ing)?|unplug(?:ging)?|plug(?:ging)? in|tak(?:e|ing) off|put(?:ting)? on|reach(?:ing)? in)\b/i;
-// A reading verb aimed AT a work object is contact, not observation: "measure
-// the terminals", "probe voltage at the connector", "check the bus bar" —
-// up to four words may sit between the verb and the object (Codex F2 round 2:
-// "measure voltage across the terminals" has a quantity and a preposition in
-// between). "What do I check?" and "check the fault log" name no object and
-// stay diagnosis.
-const CONTACT_RE =
-  /\b(?:measur|prob|test|check|meter|touch)\w*(?:\s+\S+){0,4}?\s+(?:terminals?|lugs?|bus(?:\s*bar)?|connectors?|wires?|contactor|relay|fuse|screws?|bolts?|cover|card|module|jumpers?|board|pins?|contacts?)\b/i;
+// A reading verb aimed AT a work object is contact, not observation. Rounds
+// 2–3 tried a proximity window between verb and object and lost to "measure
+// the voltage between the two output terminals"; there is no window now. A
+// message is powered CONTACT when it has (a) a meter/probe/touch verb, or a
+// test/check verb with a measurand (voltage, current, continuity…), AND (b) a
+// contact object — anywhere. "What do I check?" has no measurand and no
+// object; "check the fault log" has no object; "the display reads 480 volts"
+// has no contact verb.
+const METER_VERB_RE = /\b(?:measur|prob|meter|touch)\w*\b/i;
+const READ_VERB_RE = /\b(?:test|check)\w*\b/i;
+const MEASURAND_RE = /\b(?:voltage|current|continuity|resistance|signal|amps?|volts?|ohms?)\b/i;
+const CONTACT_OBJECT_RE =
+  /\b(?:terminals?|lugs?|bus(?:\s*bar)?|connectors?|wires?|contactor|relay|fuse|screws?|bolts?|cover|card|module|jumpers?|board|pins?|contacts?)\b/i;
+// A bare conductor: "check the bus bar" is contact even without a measurand,
+// while "check the keypad" is reading a display.
+const CONDUCTOR_RE = /\b(?:terminals?|lugs?|bus(?:\s*bar)?|wires?|connectors?|pins?|contacts?)\b/i;
+function isPoweredContact(msg: string): boolean {
+  if (METER_VERB_RE.test(msg) && CONTACT_OBJECT_RE.test(msg)) return true;
+  return READ_VERB_RE.test(msg) && (MEASURAND_RE.test(msg) ? CONTACT_OBJECT_RE.test(msg) : CONDUCTOR_RE.test(msg));
+}
+
+/** A whole-message "what is X" / "what does X mean" definition — the one
+ *  shape that stays definitional even when X is itself a skip-lockout phrase
+ *  ("what is working live", "what does lockout tagout mean"). */
+const PURE_DEFINITION_RE =
+  /^\s*what(?:'s|\s+is|\s+are|\s+does)\s+(?:the\s+(?:term|phrase|word)\s+)?["']?(?:[\w/-]+\s*){1,4}["']?\s*(?:mean|means|stand\s+for|refer\s+to)?\s*\??\s*$/i;
 
 /** Energized-work INTENT, opener-agnostic: a powered or skip-lockout state
  *  together with a hands-on verb, a work object, or powered contact. */
 function hasEnergizedWorkIntent(msg: string): boolean {
   const state = SKIP_LOCKOUT_RE.test(msg) || POWERED_STATE_RE.test(msg);
   if (!state) return false;
-  return HANDS_ON_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg) || CONTACT_RE.test(msg);
+  return HANDS_ON_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg) || isPoweredContact(msg);
 }
 
 export function isEnergizedWorkAsk(message: string): boolean {
@@ -441,8 +459,16 @@ export function isEnergizedWorkAsk(message: string): boolean {
   // Definitional only — see DEFINITIONAL_RE. The wide parity-pinned pattern
   // exempted "How do I swap the fan while it's powered?" and every other
   // procedural phrasing, which is the whole of TQ-29. An exempt opener on a
-  // message that carries energized-work INTENT is not definitional (Codex F1).
-  if (DEFINITIONAL_RE.test(msg) && !hasEnergizedWorkIntent(msg)) return false;
+  // message that carries energized-work INTENT is not definitional (Codex F1),
+  // and neither is one that explicitly asks to skip the lockout ("Explain how
+  // to bypass the lockout" — Codex F1 round 3), unless the whole message is a
+  // pure "what is X" definition ("what is working live").
+  if (
+    DEFINITIONAL_RE.test(msg) &&
+    !hasEnergizedWorkIntent(msg) &&
+    !(SKIP_LOCKOUT_RE.test(msg) && !PURE_DEFINITION_RE.test(msg))
+  )
+    return false;
   // An ACTIVE incident ("got shocked", "smoke coming", "just exploded") keeps
   // its incident banner + answer (get clear, isolate, call for help) — the
   // 2026-09-27 precedence the route tests pin. Whether an incident report
@@ -474,7 +500,7 @@ export function isEnergizedWorkAsk(message: string): boolean {
   // also asks to put a meter or probe ON a work object ("…can I measure the
   // terminals with it powered?"): a symptom sentence in front of that request
   // does not make it observation-only (Codex F2).
-  if (DIAGNOSTIC_CONTEXT_RE.test(msg) && !PHYSICAL_VERB_RE.test(msg) && !CONTACT_RE.test(msg)) return false;
+  if (DIAGNOSTIC_CONTEXT_RE.test(msg) && !PHYSICAL_VERB_RE.test(msg) && !isPoweredContact(msg)) return false;
   // A "running"-only powered state is too weak to pair with a reading verb.
   const strongState = POWERED_STATE_RE.test(msg.replace(RUNNING_ONLY_RE, ""));
   return strongState

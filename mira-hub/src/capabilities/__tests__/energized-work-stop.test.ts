@@ -198,6 +198,9 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
     "The capacitor discharge resistor is rated at 100 ohms and mounts on the heatsink.",
     "The keypad lockout feature prevents parameter changes from the front panel. Set P3.00 to enable it.",
     "Tag out of range: the tagout field accepts up to 16 characters.",
+    // round 3 — a declarative about relay behaviour, and a prohibition that is not about powered work
+    "The fault relay de-energizes when an alarm occurs.",
+    "Do not connect a low power sensor to this port.",
   ])("a single keyword noun is NOT a lockout page: %s", (content) => {
     expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 43, pageLabel: "4-3" })])).toBeNull();
   });

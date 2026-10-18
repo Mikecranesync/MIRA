@@ -262,6 +262,21 @@ describe("Codex F1/F2/F3 through the real route", () => {
     expect(contentOf(out)).not.toMatch(/SAFETY STOP/);
   });
 
+  // Codex F5 (round 3): with NOTHING attached, the real TQ-29 got
+  // `422 no_sources_selected` — a filing complaint instead of the stop.
+  it("a notebook with no sources selected still serves the stop (site-LOTO fallback), not a 422", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const res = await POST(req({ message: ASK, sourceDocIds: [] }), params);
+    expect(res.status).toBe(200);
+    const out = await frames(res);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const content = contentOf(out);
+    expect(content).toMatch(/SAFETY STOP/);
+    expect(content).toMatch(/lockout/i);
+    const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] } | undefined;
+    expect(sources?.citations ?? []).toEqual([]);
+  });
+
   it("control: a page with only a discharge-component spec yields the site-LOTO fallback, not a page citation", async () => {
     ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) =>
       /lockout tagout/i.test(String(query))

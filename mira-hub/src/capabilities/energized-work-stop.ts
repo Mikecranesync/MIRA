@@ -47,17 +47,20 @@ export const LOCKOUT_PAGE_QUERY =
 const LOCKOUT_SIGNALS: ReadonlyArray<RegExp> = [
   /\block[- ]?out\b/i,
   /\btag[- ]?out\b|\bloto\b/i,
-  /\b(?:disconnect|remove|turn off|shut off)\s+(?:all\s+|the\s+)?(?:input\s+|incoming\s+|main\s+)?power\b|\bde-?energi[sz]\w*/i,
+  // The disconnect-power INSTRUCTION — imperative only (Codex F4 round 3: "The
+  // fault relay de-energizes when an alarm occurs" is a declarative about relay
+  // behaviour and was being cited as the isolation procedure). The verb must
+  // open a sentence or follow must/always/first/then.
+  /(?:^|[.;:!]\s*|\b(?:must|always|first|then)\s+)(?:disconnect|remove|turn\s+off|shut\s+off|isolate|de-?energi[sz]e)\s+(?:all\s+|the\s+)?(?:input\s+|incoming\s+|main\s+)?power\b|\b(?:must|always)\s+be\s+de-?energi[sz]ed\b/im,
   /\bverify\s+(?:zero|no)\b|\bwait\s+(?:at\s+least\s+)?\d+\s*(?:minute|min|second|sec)|\bdischarge\b/i,
   // The manual's own "not while powered" PROHIBITION — round-2 review: the real
   // GS10 TQ-29 passage is "Do not remove the RFI jumper while power is
-  // applied" (p.2-17), and no signal above matched it, so that page could
-  // never be the one cited. Codex F3 (round 3): the powered-state phrase on
-  // its own is NOT a signal — "The RUN indicator is illuminated while power is
-  // applied" is operating text and was being cited as the lockout procedure.
-  // A prohibition (do not / never / must not) is required in the same sentence.
+  // applied" (p.2-17). The powered-state phrase alone is not a signal (round
+  // 3: operating text), and neither is a prohibition alone (round 3: "Do not
+  // connect a low power sensor to this port") — it must be a prohibition ON
+  // powered work: "do not <verb> … while/with/when/until … power(ed)/live".
   // Unverified against the real PDF; the positive shape is the reviewer's quote.
-  /\b(?:do\s+not|don't|never|must\s+not|not)\s+(?:remove|install|connect|disconnect|touch|open|service|replace|work\s+on)\b[^.]{0,80}\b(?:power(?:ed)?|energi[sz]ed|live)\b/i,
+  /\b(?:do\s+not|don't|never|must\s+not)\s+(?:remove|install|connect|disconnect|touch|open|service|replace|work\s+on)\b[^.]{0,80}\b(?:while|with|when|until|unless)\b[^.]{0,30}\b(?:power(?:ed)?|energi[sz]ed|live)\b/i,
 ];
 const HAZARD_HEADING_RE = /\b(?:WARNING|DANGER|CAUTION)\b/;
 

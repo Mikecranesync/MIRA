@@ -1314,6 +1314,12 @@ async function handleChatTurn(
   // NodeChat and asset chat stay byte-identical to base and do not newly
   // banner "we locked out the MCC yesterday, what's Addr_CAN_OB?".
   const questionSafetyTrigger = notebookSafetyTrigger(message);
+  // Codex F5 (round 3): the energized-work stop must pass BOTH zero-source
+  // gates below. A technician at a machine with nothing attached asking the
+  // real TQ-29 was getting `422 no_sources_selected` — a filing complaint
+  // instead of the stop and its site-LOTO fallback. Classified once, here;
+  // the stop itself is still decided later with the directive gate.
+  const energizedAskEarly = energizedHardStopEnabled() && isEnergizedWorkAsk(message);
   // #3763: the energized-electrical hazard sentinel is a DIRECTIVE, not a stop.
   // The answer still streams, framed by the NFPA 70E directive injected below,
   // and the turn persists a safety_notice evidence entry. Every other non-null
@@ -1445,7 +1451,12 @@ async function handleChatTurn(
     // branch above — it does NOT establish that this notebook belongs to the
     // caller. Letting it stand in for ownership would let any notebook id spend
     // this tenant's provider budget. getNotebook() is tenant-scoped.
-    if ((general || questionSafetyTrigger || visualClaimFileId) && validated.error === "no_sources_selected") {
+    // Codex F5 (round 3): the energized-work stop passes this gate too
+    // (energizedAskEarly). Ownership is already proven above.
+    if (
+      (general || questionSafetyTrigger || visualClaimFileId || energizedAskEarly) &&
+      validated.error === "no_sources_selected"
+    ) {
       // Ownership was proven above for every zero-source turn; a safety stop
       // needs neither sources nor general mode to be served.
     } else {
@@ -1607,7 +1618,7 @@ async function handleChatTurn(
   // A claimed photo is allowed past the early zero-source branch only so its
   // server record can be checked. If it is unverified/healthy and this is not a
   // general turn, preserve the original explicit no-sources refusal.
-  if (!validated.ok && !general && !safetyTrigger) {
+  if (!validated.ok && !general && !safetyTrigger && !energizedAskEarly) {
     await abandonRequestClaim();
     endRoot();
     return NextResponse.json({ error: validated.error }, { status: 422 });
