@@ -1708,3 +1708,67 @@ describe("Codex #4469 r2: declared-title applicability (F2 first-line cross-refe
     expect(await ask("TP700 Comfort Operating Instructions", q, "oi.pdf")).toHaveLength(1);
   });
 });
+
+// Overnight 2026-10-17 item 1 (stacked on #4469): the notebook's own confirmed
+// asset identity is the model boundary when the QUESTION names no model. A
+// Micro820 notebook asking "communication settings" must never cite a
+// Micro810-only manual that merely happens to be attached to it.
+describe("retrieveNodeChunks — notebook identity scopes model-less questions", () => {
+  const ask = (heading: string, question: string, identityModel: string | null, filename = "2080-um001.pdf") =>
+    retrieveNodeChunks(
+      makeClient([[nodeRow({ filename, document_heading: heading, content: "Communication settings are configured in the controller properties." })]]).client,
+      "t-1",
+      question,
+      {
+        nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+        identity: { manufacturer: "Allen-Bradley", model: identityModel },
+      },
+    );
+
+  it("a Micro820 notebook never cites a Micro810-only manual for a question that names no model", async () => {
+    expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", "Micro820")).toEqual([]);
+  });
+
+  it("control: the same notebook still answers from its own Micro820 manual", async () => {
+    expect(await ask("Micro820 Programmable Controllers User Manual", "communication settings", "Micro820")).toHaveLength(1);
+  });
+
+  it("control: a dual-model manual still covers a Micro820 notebook", async () => {
+    expect(await ask("Micro810 and Micro820 Programmable Controllers User Manual", "communication settings", "Micro820")).toHaveLength(1);
+  });
+
+  it("the question's own model outranks the notebook identity when both are named", async () => {
+    // The technician explicitly asked about the sibling; the notebook identity
+    // must not silently rewrite the question (existing #4469 behavior kept).
+    expect(await ask("Micro810 Programmable Controllers User Manual", "Micro810 communication settings", "Micro820")).toHaveLength(1);
+    expect(await ask("Micro820 Programmable Controllers User Manual", "Micro810 communication settings", "Micro820")).toEqual([]);
+  });
+
+  it("an identity the detector cannot read applies no filter (conservative: behaves as before)", async () => {
+    expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", "CV-101")).toHaveLength(1);
+    expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", null)).toHaveLength(1);
+  });
+
+  it("a manual that names no model is KEPT for an identity-bound notebook (the attachment is the technician's assertion)", async () => {
+    // One notch less strict than a named ask: only a manual that affirmatively
+    // declares a different model is rejected. A generic "Controller Manual"
+    // attached to the Micro820 notebook stays citable for a model-less ask.
+    expect(await ask("Controller Manual", "communication settings", "Micro820", "manual.pdf")).toHaveLength(1);
+    // control: the same generic manual is still declined for a NAMED ask (#4469 unchanged)
+    expect(await ask("Controller Manual", "Micro820 communication settings", "Micro820", "manual.pdf")).toEqual([]);
+  });
+
+  it("the notebook identity never admits a sibling manual via the filename when the heading names the sibling", async () => {
+    expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", "Micro820", "Micro820_notes.pdf")).toEqual([]);
+  });
+
+  it("gives each attached manual its own candidate window when the notebook identity scopes the ask", async () => {
+    const { client, calls } = makeClient([[], [], [], []]);
+    await retrieveNodeChunks(client, "t-1", "communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1", "d-2"], validatedDocScope: true,
+      identity: { manufacturer: "Allen-Bradley", model: "Micro820" },
+    });
+    const firstPassWindows = calls.slice(0, 2).map((c) => c.params[4]);
+    expect(firstPassWindows).toEqual([["d-1"], ["d-2"]]);
+  });
+});

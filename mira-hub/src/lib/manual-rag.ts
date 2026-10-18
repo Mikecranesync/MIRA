@@ -1134,10 +1134,31 @@ export async function retrieveNodeChunks(
   const POOL = Math.max(topK * 4, 24);
 
   const requestedModel = resolveModelFromObservationText(opts.rawQuery ?? q);
-  // Give each attached manual its own candidate window for a named-model ask.
+  // 2026-10-17 prod-test item 1 (stacked on #4469): the question is not the
+  // only source of model identity. The notebook is bound to ONE confirmed
+  // machine (`opts.identity.model`, from the notebook row), and most
+  // technician questions name no model at all ("communication settings",
+  // "what does oC mean") — under #4469 alone those asks fell through the
+  // filter and a Micro810-only sibling manual attached to a Micro820 notebook
+  // was cited as if it covered the machine. So:
+  //   - the question names one model → that model scopes (unchanged, and it
+  //     outranks the notebook: the technician may deliberately ask about a
+  //     sibling);
+  //   - the question names several models → no filter (unchanged);
+  //   - the question names none and the notebook identity resolves → the
+  //     notebook identity scopes;
+  //   - neither resolves (an unparseable asset name like "CV-101", or an
+  //     unbound notebook) → no filter, exactly as before.
+  const questionScoped = Boolean(requestedModel.model) && !requestedModel.ambiguous;
+  const notebookIdentities: Set<string> =
+    !requestedModel.model && !requestedModel.ambiguous && opts.identity?.model?.trim()
+      ? modelIdentitiesInText(opts.identity.model)
+      : new Set<string>();
+  const notebookScoped = !questionScoped && notebookIdentities.size > 0;
+  // Give each attached manual its own candidate window for a model-scoped ask.
   // Otherwise a large sibling manual can consume LIMIT before applicability
   // filtering, hiding the correct manual and making a supported ask abstain.
-  const docWindows = requestedModel.model && !requestedModel.ambiguous && allowedDocIds.length > 1
+  const docWindows = (questionScoped || notebookScoped) && allowedDocIds.length > 1
     ? allowedDocIds.map((id) => [id])
     : [allowedDocIds];
 
@@ -1254,11 +1275,12 @@ export async function retrieveNodeChunks(
   // (so "which model is this" and "which identities does that resolve to"
   // never disagree). Null when the query named no single model — the filter
   // below is then skipped entirely, same as before.
-  const requestedIdentities: Set<string> | null =
-    requestedModel.model && !requestedModel.ambiguous ? modelIdentitiesInText(opts.rawQuery ?? q) : null;
+  const requestedIdentities: Set<string> | null = questionScoped
+    ? modelIdentitiesInText(opts.rawQuery ?? q)
+    : null;
   const add = (rs: Record<string, unknown>[]) => {
     for (const r of rs) {
-      if (requestedIdentities) {
+      if (requestedIdentities || notebookScoped) {
         // F2 — affirmative title/heading applicability only (see
         // affirmativeModelIdentities): the heading's own title segment is
         // authoritative; the filename is consulted only as a fallback, and
@@ -1270,7 +1292,17 @@ export async function retrieveNodeChunks(
           String(r.filename ?? ""),
           String(r.document_heading ?? ""),
         );
-        if (!documentCoversRequest(requestedIdentities, titleIdentities)) continue;
+        if (requestedIdentities) {
+          if (!documentCoversRequest(requestedIdentities, titleIdentities)) continue;
+        } else if (titleIdentities.size > 0 && !documentCoversRequest(notebookIdentities, titleIdentities)) {
+          // Notebook-identity scope is deliberately one notch less strict than
+          // a named ask: a manual that names NO model is kept, because the
+          // technician attached it to this machine's notebook on purpose and
+          // the question gave no reason to doubt that. Only a manual that
+          // affirmatively declares a DIFFERENT model (the Micro810 manual in
+          // the Micro820 notebook — the prod-test miss) is rejected.
+          continue;
+        }
       }
       const key = `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
       if (seen.has(key)) continue;
