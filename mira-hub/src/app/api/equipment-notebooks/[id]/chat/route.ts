@@ -104,6 +104,7 @@ import {
   originFileIdsByDoc,
   type StoredNotebookTurn,
 } from "@/lib/equipment-notebooks";
+import { askableChatScope } from "@/lib/document-readiness";
 import {
   ELECTRICAL_HAZARD_DIRECTIVE,
   ENERGIZED_ELECTRICAL_HAZARD,
@@ -1841,7 +1842,7 @@ async function handleChatTurn(
       try {
         return await listSources(ctx.tenantId, notebookId);
       } catch {
-        return [] as { filename: string | null }[];
+        return [] as { filename: string | null; docId?: string; readiness?: { canChat: boolean; state: string } }[];
       }
     })(),
   ]);
@@ -1861,6 +1862,9 @@ async function handleChatTurn(
   // turn's or an earlier one's) that names the manufacturer — never the
   // client's free text (UNS gate doctrine).
   const notebookRetrieval = !(general || nodeId === null);
+  const askScope = askableChatScope(docIds, srcs);
+  const retrieveDocIds = askScope.notReady ? [] : askScope.retrieveIds;
+  const sourcesNotReadyMessage = notebookRetrieval && askScope.notReady ? askScope.message : null;
   // Resolve OEM identity from one observation: this turn's LOOK, otherwise the
   // newest prior LOOK. Earlier photos still reach context, but may be different
   // machines and must not contaminate retrieval identity (#3966).
@@ -1981,7 +1985,7 @@ async function handleChatTurn(
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
   const oemRetrieval = !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
-  const retrievalExecuted = notebookRetrieval || oemRetrieval;
+  const retrievalExecuted = (!sourcesNotReadyMessage && notebookRetrieval) || oemRetrieval;
   // Codex #4069 F4: a failed OEM query is not a completed zero-hit search —
   // the decline below must never say "I couldn't find it" when nothing ran.
   let oemRetrievalFailed = false;
@@ -2020,7 +2024,7 @@ async function handleChatTurn(
           }
         }
       })()
-    : !notebookRetrieval
+    : !notebookRetrieval || sourcesNotReadyMessage
     ? []
     : await releaseClaimOnFailure(() =>
         withTenantContext(ctx.tenantId, (client) =>
@@ -2028,7 +2032,7 @@ async function handleChatTurn(
             nodeId,
             unsPath: null, // notebook nodes are standalone; scope is the doc set
             topK: 6,
-            docIds,
+            docIds: retrieveDocIds,
             rawQuery: message,
             // The notebook's own machine name is never a fault code in the
             // whole-token lane ("GS10 oC" binds oC, not GS10 — Codex r6 on #4360).
@@ -2044,7 +2048,7 @@ async function handleChatTurn(
             // `body.sourceDocIds` was only an intersection request. Tenant-private
             // chunks of these docs are admitted without ever being marked globally
             // verified — confirmation is admission, not corpus promotion.
-            approvedSourceDocIds: docIds,
+            approvedSourceDocIds: retrieveDocIds,
           }),
         ),
       );
@@ -2071,6 +2075,8 @@ async function handleChatTurn(
       ? "ambiguous_model_observation"
       : oemRetrievalFailed
       ? "oem_query_failed"
+      : sourcesNotReadyMessage
+      ? "sources_not_ready"
       : retrievalExecuted && chunks.length === 0 ? "no_matches" : null;
     const oemScope: "model" | "vendor_fallback" | "manufacturer" | null =
       !oemRetrieval || chunks.length === 0
@@ -2730,6 +2736,8 @@ async function handleChatTurn(
       ? `I couldn't find that in the ${missingModelManual} manual pages I have, so I won't guess a documented value. Upload the manual (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : noEvidenceForMachine
         ? `I couldn't find anything about this in the ${noEvidenceForMachine} manuals I have${oemEquipmentType && oemEquipmentType !== "Other" ? ", or in related manuals from the same maker" : ""}, so I won't guess at a procedure for your machine. Upload the manual for the equipment this is about (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
+      : sourcesNotReadyMessage
+        ? sourcesNotReadyMessage
       : visualEntry
         ? "I saw your photo, but I couldn't find anything about it in the selected sources."
         : null;

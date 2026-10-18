@@ -5,6 +5,7 @@
  * allowed to cite, and what history the canonical route receives.
  */
 import { PROFILES, createShellState, shellReducer, type ManualSearchStatus, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
+import { notReadyAskMessage } from "@/lib/document-readiness";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
@@ -232,9 +233,36 @@ export function metaFor(
 }
 
 /** Which sources a turn may cite: enabled by default and not rejected — the
- *  classic notebook's rule, unchanged. */
+ *  classic notebook's rule, unchanged. Pending ingest still appears here so
+ *  the send is NOT silently rewritten as general help; the chat route refuses
+ *  honestly when none of these are retrievable. */
 export function enabledDocIds(sources: readonly Pick<NotebookSource, "docId" | "enabledByDefault" | "matchState">[]): string[] {
   return sources.filter((s) => s.enabledByDefault && s.matchState !== "rejected").map((s) => s.docId);
+}
+
+/** Selected sources whose manuals have retrievable chunks (Ready to ask). */
+export function askableDocIds(
+  sources: readonly Pick<NotebookSource, "docId" | "enabledByDefault" | "matchState" | "readiness">[],
+): string[] {
+  return sources
+    .filter((s) => s.enabledByDefault && s.matchState !== "rejected" && s.readiness?.canChat)
+    .map((s) => s.docId);
+}
+
+/**
+ * Composer contract: throw so the draft stays and the technician sees why
+ * this notebook is not askable yet. Null when send may proceed (including
+ * zero-source general help, and older payloads that omit readiness).
+ */
+export function sourcesNotReadyError(
+  sources: readonly Pick<NotebookSource, "docId" | "enabledByDefault" | "matchState" | "readiness">[],
+): string | null {
+  const selected = sources.filter((s) => s.enabledByDefault && s.matchState !== "rejected");
+  if (selected.length === 0) return null;
+  const inspected = selected.filter((s) => s.readiness);
+  if (inspected.length === 0) return null;
+  if (inspected.some((s) => s.readiness.canChat)) return null;
+  return notReadyAskMessage(inspected.map((s) => s.readiness));
 }
 
 /** The notebook's own sources, enabled or not — what the basis chip may call
@@ -265,11 +293,18 @@ export function historyRows(rows: readonly PersistedTurn[]): { role: "user" | "a
 }
 
 /** The first-run line under the greeting: claims only what this notebook can do. */
-export function groundingLineFor(nb: EquipmentNotebook | null, enabledCount: number): string | undefined {
+export function groundingLineFor(
+  nb: EquipmentNotebook | null,
+  enabledCount: number,
+  askableCount: number = enabledCount,
+): string | undefined {
   if (!nb) return "General question — answered from general knowledge, nothing cited. Pick a project to ask about its manuals.";
   const label = nb.asset ? machineNameFor(nb) : notebookLabel(nb);
   if (enabledCount === 0) return `${label} has no selected sources yet — general help only, nothing is cited.`;
-  return `Answers cite ${enabledCount} selected source${enabledCount === 1 ? "" : "s"} for ${label}.`;
+  if (askableCount === 0) {
+    return `${label}'s selected manuals aren't ready to answer from yet — still preparing, or ingest failed.`;
+  }
+  return `Answers cite ${askableCount} selected source${askableCount === 1 ? "" : "s"} for ${label}.`;
 }
 
 /** The Composer's contract: a hook that THROWS keeps the draft and shows this text. */
