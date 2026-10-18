@@ -108,12 +108,21 @@ import {
   ELECTRICAL_HAZARD_DIRECTIVE,
   ENERGIZED_ELECTRICAL_HAZARD,
   hazardBanner,
+  isEnergizedWorkAsk,
   matchSafetyStop,
   safetyFlagDirective,
   safetyFlagHeaders,
   withSafetyFlag,
 } from "@/lib/safety-classifier";
 import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
+import {
+  ENERGIZED_WORK_TRIGGER,
+  LOCKOUT_PAGE_QUERY,
+  energizedHardStopEnabled,
+  energizedWorkStop,
+  lockoutPageOf,
+  pickLockoutChunk,
+} from "@/capabilities/energized-work-stop";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
@@ -1545,6 +1554,12 @@ async function handleChatTurn(
   // non-terminal energized-work directive and therefore owns the turn.
   const safetyTrigger = visualSafetyTrigger ?? questionSafetyTrigger;
   const electricalHazardDirective = !visualSafetyTrigger && questionSafetyTrigger === ENERGIZED_ELECTRICAL_HAZARD;
+  // 2026-10-17 prod-test TQ-29 — a hands-on ask on a POWERED machine ("swap
+  // the fan while it's powered", "without locking out") is a terminal stop,
+  // not a flagged answer: the flag-and-answer shape still handed over the
+  // removal steps and torques. Question text only — a photo hazard keeps the
+  // banner path. Kill switch NOTEBOOK_ENERGIZED_HARD_STOP=0 (default on).
+  const energizedWorkAsk = !visualSafetyTrigger && energizedHardStopEnabled() && isEnergizedWorkAsk(message);
   // `observation_available`/`observation_in_context` are derived from
   // `lookRow`/its rendered section later (renderLookObservationSection), not
   // hardcoded — the LOOK observation DOES reach the prompt (buildManualUserContent
@@ -2710,6 +2725,143 @@ async function handleChatTurn(
     !groundedMachineEntry && !machineRequestRefused && asksAboutThisEquipment(message, null)
       ? unidentifiedServiceDecline(message)
       : null;
+
+  // 2026-10-17 prod-test TQ-29 — energized-work hard stop. Runs AFTER retrieval
+  // (so the manual's own lockout page can be cited) and BEFORE Gate G and the
+  // provider (so no procedure is ever generated for a powered machine). The
+  // stop text is static + one citation line — never the chunk's words, never
+  // a step, never a torque (`@/capabilities/energized-work-stop`). Persisted
+  // as a terminal safety_stop so reload replays the same stop (same grammar as
+  // #4471's unsafe_answer path: sources → safety → content → status).
+  if (energizedWorkAsk) {
+    const stopTrigger = safetyTrigger ?? ENERGIZED_WORK_TRIGGER;
+    // The manual's lockout / disconnect-power page: a dedicated pass inside the
+    // SAME validated doc scope as the question's retrieval, plus whatever the
+    // question's own pass already surfaced. Best-effort — a failed lookup
+    // serves the stop without a page (site LOTO), never an answer.
+    let lockoutChunks: ManualChunk[] = [];
+    if (notebookRetrieval && nodeId !== null) {
+      try {
+        lockoutChunks = await withTenantContext(ctx.tenantId, (client) =>
+          retrieveNodeChunks(client, ctx.tenantId, LOCKOUT_PAGE_QUERY, {
+            nodeId,
+            unsPath: null,
+            topK: 8,
+            docIds,
+            rawQuery: LOCKOUT_PAGE_QUERY,
+            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
+            validatedDocScope: true,
+            approvedSourceDocIds: docIds,
+          }),
+        );
+      } catch (err) {
+        console.error("[notebook-chat] lockout-page retrieval failed (stop served without a page):", err instanceof Error ? err.message : err);
+      }
+    }
+    const lockoutChunk = pickLockoutChunk([...lockoutChunks, ...chunks]);
+    const stopCitations = lockoutChunk
+      ? await releaseClaimOnFailure(() => buildCitations(ctx.tenantId, notebookId, [lockoutChunk], message))
+      : [];
+    const stopText = energizedWorkStop(
+      lockoutChunk ? { title: citationTitle(lockoutChunk), page: lockoutPageOf(lockoutChunk) } : null,
+    );
+    console.warn(`[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"}`);
+    const stopGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
+    lifecycleOutcome = "safety_stop";
+    rec.stage("answer_gate", {
+      invoked: true,
+      decision: "blocked",
+      reason: "energized_work_ask",
+      answer_chars: stopText.length,
+      refusal_phrase_matched: false,
+      evidence_phrase_matched: false,
+      safety_classification: "safety_stop",
+      evidence_sufficient: false,
+      ungrounded_unit_claim: false,
+    });
+    setSpanAttrs(
+      {
+        "mira.answer_gate.invoked": true,
+        "mira.answer_gate.decision": "blocked",
+        "mira.answer_gate.reason": "energized_work_ask",
+        "mira.answer_gate.answer_chars": stopText.length,
+        "mira.safety.trigger": stopTrigger,
+        "mira.safety.lockout_page": lockoutChunk ? lockoutPageOf(lockoutChunk) : null,
+      },
+      stopGateSpan,
+    );
+    stopGateSpan.end();
+    const stopPersistSpan = startStage("turn.persist");
+    const stopTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
+      ownerUserId: ctx.userId,
+      threadId,
+      clientRequestId,
+      claimToken: requestClaimToken,
+      question: message,
+      answerStatus: "answered",
+      answerText: stopText,
+      enabledSourceDocIds: docIds,
+      evidence: [
+        ...disputeEntries,
+        ...(visualEntry ? [visualEntry] : []),
+        { kind: "safety_notice", trigger: stopTrigger } satisfies SafetyNoticeEntry,
+        { kind: "safety_stop", trigger: stopTrigger } satisfies SafetyStopEntry,
+        ...stopCitations,
+        ...proposalEntries,
+      ],
+      model: null,
+      basis: null,
+      ...assetSnapshot,
+    }));
+    const stopUsage: TurnUsage = {
+      provider: null,
+      model: null,
+      routeReason: "legacy_cascade",
+      inputTokens: null,
+      cachedInputTokens: null,
+      outputTokens: null,
+      costUsdEstimate: null,
+      status: "empty",
+      attempted: [],
+    };
+    await finishAndPersist(stopTurnRowId, stopUsage, {
+      answerText: stopText,
+      citationsPresent: stopCitations.length > 0,
+      latencyMs: null,
+    });
+    setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": stopTurnRowId }, stopPersistSpan);
+    endTimed(stopPersistSpan, "persist");
+    endRoot();
+    const stopStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        if (rootTraceId) {
+          const traceFrame: NotebookTraceFrame = { kind: "trace", traceId: rootTraceId, turnId };
+          controller.enqueue(enc.encode(sse(traceFrame)));
+        }
+        if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
+        const sources: NotebookSourcesFrame = { kind: "sources", citations: stopCitations, sourceSnapshot: docIds };
+        controller.enqueue(enc.encode(sse(sources)));
+        controller.enqueue(enc.encode(sse({ kind: "safety", trigger: stopTrigger } as NotebookSafetyFrame)));
+        if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
+        for (const piece of chunkForRelease(stopText)) {
+          controller.enqueue(enc.encode(sse({ kind: "content", content: piece })));
+        }
+        const status: NotebookStatusFrame = { kind: "status", status: "answered" };
+        controller.enqueue(enc.encode(sse(status)));
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    return new Response(stopStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        ...safetyFlagHeaders(stopTrigger),
+        ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
+      },
+    });
+  }
 
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets

@@ -204,7 +204,90 @@ export function matchSafetyStop(text: string): string | null {
       return EDUCATIONAL_QUESTION_RE.test(msg) ? null : phrase;
     }
   }
+
+  // 2026-10-17 prod-test TQ-30 — the VERB forms of lockout. guardrails.py (and
+  // its byte-for-byte transcription SAFETY_PHRASES) carry only the nouns
+  // ("lockout tagout", "lockout/tagout", "loto"), so "locking out the drive",
+  // "the conveyor is locked out", "lock it out first" all flowed through
+  // unflagged. Word-bounded on purpose: "clock out", "block out" and
+  // "lookout" are not lockout. Hub-side only — the parity test pins the
+  // transcription list, and the bot engine is out of this change's scope.
+  const lockoutVerb = LOCKOUT_VERB_RE.exec(msg);
+  if (lockoutVerb) {
+    return EDUCATIONAL_QUESTION_RE.test(msg) ? null : lockoutVerb[0];
+  }
   return null;
+}
+
+const LOCKOUT_VERB_RE = /\block(?:ed|ing)?[- ]out\b|\block\s+(?:it|this|that|them|the\s+\w+)\s+out\b/;
+
+/**
+ * TQ-29 (2026-10-17 prod test) — an ENERGIZED-WORK ask: the technician wants
+ * to do hands-on work (swap, replace, pull, check, measure…) on a machine
+ * while it is powered, or wants to skip the lockout to do it. The notebook
+ * route hard-stops these (see `@/capabilities/energized-work-stop`) instead
+ * of answering under a banner, because the banner-and-answer shape still
+ * handed over the removal steps and torques (TQ-29).
+ *
+ * Deliberately narrower than the hazard FLAG: a mention of a locked-out
+ * machine, a verify-zero-energy question, or an educational framing is NOT
+ * an energized-work ask. "while running" on its own is not either — a drive
+ * display blinks "while running"; only live/powered/energized/hot qualify.
+ * Zero-token; mirrors nothing in guardrails.py (Hub-only, like the verb
+ * forms above).
+ */
+// The machine is in a POWERED state in the ask. On its own this is NOT enough
+// — "can I reset while energized?" is a reset, not hands-on work, and the
+// existing answer-gate tests (E13) rely on it streaming. It needs HANDS_ON too.
+const POWERED_STATE_RE = new RegExp(
+  "\\b(?:" +
+    [
+      "while (?:it(?:'s| is) |it's |the \\w+ is |this is |still |it's still |it is still )?(?:live|powered(?: up| on)?|energized|hot)",
+      "with (?:the |it's |its )?power (?:still )?(?:on|applied|connected)",
+      "power still on",
+      "still (?:energized|live|powered)",
+      "live wire",
+      "live circuit",
+      "live panel",
+      "energized conductor",
+    ].join("|") +
+    ")\\b",
+  "i",
+);
+// Hands-on work on the equipment: the verbs a technician uses for the job
+// itself, not for reading a display or resetting a fault.
+const HANDS_ON_VERB_RE =
+  /\b(?:swap(?:ping)?|replac(?:e|ing)|chang(?:e|ing)|pull(?:ing)?|remov(?:e|ing)|open(?:ing)?|check(?:ing)?|measur(?:e|ing)|prob(?:e|ing)|test(?:ing)?|touch(?:ing)?|rewir(?:e|ing)|tighten(?:ing)?|loosen(?:ing)?|clean(?:ing)?|servic(?:e|ing)|repair(?:ing)?|work(?:ing)? on|disconnect(?:ing)?|reconnect(?:ing)?|connect(?:ing)?|install(?:ing)?|unplug(?:ging)?|plug(?:ging)? in|adjust(?:ing)?|tak(?:e|ing) off|put(?:ting)? on|reach(?:ing)? in)\b/i;
+// Explicit intent to do the job without isolating — a stop regardless of verb.
+const SKIP_LOCKOUT_RE = new RegExp(
+  "\\b(?:" +
+    [
+      "working live",
+      "working on live",
+      "without (?:a |the |any |first )?(?:lock[- ]?out|locking (?:it |this |that |the \\w+ )?out|loto|lockout ?/ ?tagout)",
+      "skip(?:ping)? (?:the |a )?(?:lock[- ]?out|loto)",
+      "bypass(?:ing)? (?:the |a )?(?:lock[- ]?out|loto)",
+    ].join("|") +
+    ")\\b",
+  "i",
+);
+
+const ACTIVE_INCIDENT_RE =
+  /\b(?:visible smoke|smoke from|smoke coming|burn mark|melted insulation|electrical fire|arcing|smell burning|burning smell|got shocked|just exploded)\b/;
+
+export function isEnergizedWorkAsk(message: string): boolean {
+  const msg = (message || "").toLowerCase().trim();
+  if (!msg) return false;
+  if (EDUCATIONAL_QUESTION_RE.test(msg)) return false;
+  // An ACTIVE incident ("got shocked", "smoke coming", "just exploded") keeps
+  // its incident banner + answer (get clear, isolate, call for help) — the
+  // 2026-09-27 precedence the route tests pin. Whether an incident report
+  // that ALSO asks for live work should stop instead is an open owner call;
+  // this stop deliberately does not decide it.
+  if (ACTIVE_INCIDENT_RE.test(msg)) return false;
+  if (detectEnergizedElectricalHazardIntent(msg)) return true;
+  if (SKIP_LOCKOUT_RE.test(msg)) return true;
+  return POWERED_STATE_RE.test(msg) && HANDS_ON_VERB_RE.test(msg);
 }
 
 /**
@@ -228,7 +311,9 @@ const HAZARD_BANNER_CLASSES: Array<{ re: RegExp; banner: string }> = [
       "⚠️ **Energized electrical work.** Qualified person, arc-flash PPE and an energized-work permit (NFPA 70E). De-energize and verify zero energy whenever the task allows.",
   },
   {
-    re: /cut (the )?power|disconnect (the )?power|isolate power|pull the cable|which (cable|wire) to pull|lockout|tagout|loto|safe to work/,
+    // TQ-30: the verb forms ("locked out", "locking out", "lock it out") land
+    // here too — the matched text IS the trigger, so the class must read them.
+    re: /cut (the )?power|disconnect (the )?power|isolate power|pull the cable|which (cable|wire) to pull|lock(ed|ing)?[- ]?out|lock (it|this|that|them|the \w+) out|tagout|loto|safe to work/,
     banner:
       "⚠️ **Isolation.** Lock and tag every energy source (electrical, pneumatic, hydraulic, gravity) and verify zero energy before hands-on work.",
   },

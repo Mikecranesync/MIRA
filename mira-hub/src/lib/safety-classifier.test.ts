@@ -23,6 +23,8 @@ import {
   withSafetyFlag,
   LETHAL_VOLTAGE_CONTEXT,
   ENERGIZED_WORK_INTENT,
+  hazardBanner,
+  isEnergizedWorkAsk,
 } from "./safety-classifier";
 
 const GUARDRAILS_PATH = join(__dirname, "..", "..", "..", "mira-bots", "shared", "guardrails.py");
@@ -225,5 +227,75 @@ describe("withSafetyFlag / safetyFlagHeaders (every outcome of a flagged turn sh
     expect(withSafetyFlag("Try again in a minute.", null)).toBe("Try again in a minute.");
     expect(safetyFlagHeaders("smoke coming")).toEqual({ "X-Safety-Flag": "smoke coming" });
     expect(safetyFlagHeaders(null)).toBeUndefined();
+  });
+});
+
+// 2026-10-17 prod-test item 2 — TQ-30: "locking out" / "locked out" never
+// matched because guardrails.py only carries the noun forms ("lockout tagout",
+// "lockout/tagout", "loto"). The verb forms are Hub-side additions (the
+// transcription list stays byte-identical to guardrails.py).
+describe("lockout verb forms (TQ-30)", () => {
+  it.each([
+    "do I need to be locking out the drive before changing the belt?",
+    // Not "the conveyor…": a leading "the " is read as an educational framing
+    // by the parity-pinned EDUCATIONAL_QUESTION_PATTERN (same as every other
+    // Tier-2 phrase) — surfaced in the PR as an open item, not changed here.
+    "conveyor is locked out, can I reach in and clear the jam?",
+    "should I lock out the VFD first",
+    "lock it out before you pull the cover?",
+    "Lock-out the panel then swap the contactor",
+  ])("stops: %s", (msg) => {
+    expect(matchSafetyStop(msg)).not.toBeNull();
+  });
+
+  it("the matched text drives the isolation banner, not the generic fallback", () => {
+    const trigger = matchSafetyStop("conveyor is locked out, can I reach in and clear the jam?");
+    expect(hazardBanner(trigger!)).toMatch(/Isolation/);
+    expect(hazardBanner("locking out")).toMatch(/Isolation/);
+  });
+
+  it("educational framings stay unstopped (control)", () => {
+    expect(matchSafetyStop("What is locking out a machine?")).toBeNull();
+    expect(matchSafetyStop("Explain locked out tagged out")).toBeNull();
+  });
+
+  it("'clock out' / 'block out' / 'lookout' are not lockout (word boundary control)", () => {
+    expect(matchSafetyStop("I clock out at five, can the PM wait")).toBeNull();
+    expect(matchSafetyStop("the lookout tower camera feed dropped")).toBeNull();
+    expect(matchSafetyStop("block out the light sensor with tape?")).toBeNull();
+  });
+});
+
+// TQ-29: a hands-on ask on a POWERED machine is an energized-work ask — the
+// route hard-stops it (energized-work-stop.ts) instead of answering under a
+// banner. The classifier only decides WHICH asks qualify.
+describe("isEnergizedWorkAsk (TQ-29)", () => {
+  it.each([
+    "can I swap the cooling fan on the GS10 while it's powered? what torque on the cover screws",
+    "replace the keypad while the drive is powered",
+    "check the output terminals while live",
+    "change the contactor without locking out the panel",
+    "can I do this without lockout",
+    "pull the fuse holder with the power on",
+    "measure the DC bus voltage on the 480V feeder while running",
+  ])("is energized work: %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(true);
+  });
+
+  it.each([
+    "what does fault oC mean on the GS10",
+    "how do I set the carrier frequency",
+    // A reset is not hands-on work (answer-gate E13 relies on this streaming).
+    "Can I reset while energized?",
+    "is this a live wire or a signal wire",
+    // An ACTIVE incident keeps its Tier-1 incident banner + answer (route tests
+    // chat-electrical-hazard-directive / -live-stream pin the 09-27 precedence).
+    "I just got shocked on the 480V feeder — can I clamp meter it while it's running?",
+    "the drive is locked out, how do I verify zero energy",
+    "what is working live",
+    "explain the lockout procedure",
+    "is the power on light supposed to blink while running",
+  ])("is NOT energized work (control): %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(false);
   });
 });
