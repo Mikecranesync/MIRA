@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
@@ -208,6 +209,40 @@ function documentCoversRequest(requested: Set<string>, title: Set<string>): bool
     return titleCatalogs.some((id) => requested.has(id));
   }
   for (const id of title) if (requested.has(id)) return true;
+  return false;
+}
+
+// 2026-10-18 scope pass on #4484: some identities the detector returns name a
+// product FAMILY, not one model, and a family manual covers every member.
+// Measured: "PowerFlex 520-Series … User Manual" → {PF520} while a PowerFlex
+// 525 notebook → {PF525}, so the series manual — the one Rockwell actually
+// publishes for the 523/525 — was hidden from the notebook by the identity
+// filter. Same shape for the Micro800 manual over Micro810/820/850/870, and
+// for the Comfort Panels manual over any TP panel. Each root maps to the
+// member identities it covers; the table is deliberately small and literal.
+// KTP panels are Basic, not Comfort, so COMFORT does not reach them (the
+// TP700-must-not-admit-KTP700 rule at familySqlTerms stands).
+const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp]> = [
+  ["PF520", /^PF52\d$/], // PowerFlex 520-series: 523, 525, 527
+  ["MICRO800", /^MICRO8\d0$/], // Micro800: 810, 820, 830, 850, 870
+  ["COMFORT", /^TP\d{3,4}$/], // SIMATIC Comfort Panels: TP700, TP900, TP1200, …
+];
+const isFamilyRoot = (id: string) => FAMILY_ROOTS.some(([root]) => root === id);
+const familyCovers = (root: string, model: string) =>
+  FAMILY_ROOTS.some(([r, members]) => r === root && members.test(model));
+
+/** A notebook identity made ONLY of family roots ("Comfort", "Micro800") does
+ *  not name a machine the filter could scope to — any TP or Micro8x0 manual
+ *  attached to it is plausibly right, so the filter is skipped. */
+function identitiesAreFamilyOnly(ids: Set<string>): boolean {
+  return ids.size > 0 && [...ids].every(isFamilyRoot);
+}
+
+/** Notebook-identity applicability: the exact-identity rule, plus a title
+ *  that names a family root covering the notebook's model. */
+function documentCoversNotebook(notebook: Set<string>, title: Set<string>): boolean {
+  if (documentCoversRequest(notebook, title)) return true;
+  for (const t of title) for (const n of notebook) if (familyCovers(t, n)) return true;
   return false;
 }
 
@@ -1029,6 +1064,12 @@ export async function retrieveNodeChunks(
     /** The notebook's machine (manufacturer/model), so its own name is never
      *  read as a fault code by the whole-token lane (Codex r6 on #4360). */
     identity?: EquipmentIdentity | null;
+    /** How the notebook's identity was established. Model-less questions are
+     *  scoped to `identity.model` ONLY when this is `user_confirmed` or
+     *  `verified`: an OCR `candidate` can misread a nameplate, and scoping to a
+     *  misread hides the correct manual silently. Absent/unknown/candidate →
+     *  no notebook scoping (the fault-code suppression above still applies). */
+    identityStatus?: IdentityStatus | null;
     /** Canonical-files retrieval mode (workspace_file_links): scope by the
      *  validated docIds ALONE, without requiring the chunks' original
      *  metadata.node_id to equal this caller's node. A document ingested once
@@ -1150,11 +1191,20 @@ export async function retrieveNodeChunks(
   //   - neither resolves (an unparseable asset name like "CV-101", or an
   //     unbound notebook) → no filter, exactly as before.
   const questionScoped = Boolean(requestedModel.model) && !requestedModel.ambiguous;
+  // 2026-10-18 scope pass: two more ways the notebook identity must NOT scope.
+  //   - It was never confirmed by a person. `equipment_notebooks.model` and
+  //     `identity_status` are independent columns (updateNotebook builds its
+  //     SET clause from a column map), so a `candidate` OCR read can sit in
+  //     `model` — and scoping to a misread hides the right manual silently.
+  //   - It names only a product family ("Comfort", "Micro800"): there is no
+  //     single machine to scope to, so every member manual stays citable.
+  const identityConfirmed = opts.identityStatus === "user_confirmed" || opts.identityStatus === "verified";
   const notebookIdentities: Set<string> =
-    !requestedModel.model && !requestedModel.ambiguous && opts.identity?.model?.trim()
+    !requestedModel.model && !requestedModel.ambiguous && identityConfirmed && opts.identity?.model?.trim()
       ? modelIdentitiesInText(opts.identity.model)
       : new Set<string>();
-  const notebookScoped = !questionScoped && notebookIdentities.size > 0;
+  const notebookScoped =
+    !questionScoped && notebookIdentities.size > 0 && !identitiesAreFamilyOnly(notebookIdentities);
   // Give each attached manual its own candidate window for a model-scoped ask.
   // Otherwise a large sibling manual can consume LIMIT before applicability
   // filtering, hiding the correct manual and making a supported ask abstain.
@@ -1294,13 +1344,15 @@ export async function retrieveNodeChunks(
         );
         if (requestedIdentities) {
           if (!documentCoversRequest(requestedIdentities, titleIdentities)) continue;
-        } else if (titleIdentities.size > 0 && !documentCoversRequest(notebookIdentities, titleIdentities)) {
+        } else if (titleIdentities.size > 0 && !documentCoversNotebook(notebookIdentities, titleIdentities)) {
           // Notebook-identity scope is deliberately one notch less strict than
           // a named ask: a manual that names NO model is kept, because the
           // technician attached it to this machine's notebook on purpose and
           // the question gave no reason to doubt that. Only a manual that
           // affirmatively declares a DIFFERENT model (the Micro810 manual in
-          // the Micro820 notebook — the prod-test miss) is rejected.
+          // the Micro820 notebook — the prod-test miss) is rejected — and a
+          // FAMILY manual (PowerFlex 520-Series for a 525) counts as covering
+          // its members, not as a different model (FAMILY_ROOTS).
           continue;
         }
       }

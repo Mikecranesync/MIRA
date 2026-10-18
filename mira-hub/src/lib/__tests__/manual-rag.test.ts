@@ -1714,7 +1714,14 @@ describe("Codex #4469 r2: declared-title applicability (F2 first-line cross-refe
 // Micro820 notebook asking "communication settings" must never cite a
 // Micro810-only manual that merely happens to be attached to it.
 describe("retrieveNodeChunks — notebook identity scopes model-less questions", () => {
-  const ask = (heading: string, question: string, identityModel: string | null, filename = "2080-um001.pdf") =>
+  type Status = "unknown" | "candidate" | "user_confirmed" | "verified" | null;
+  const ask = (
+    heading: string,
+    question: string,
+    identityModel: string | null,
+    filename = "2080-um001.pdf",
+    identityStatus: Status = "user_confirmed",
+  ) =>
     retrieveNodeChunks(
       makeClient([[nodeRow({ filename, document_heading: heading, content: "Communication settings are configured in the controller properties." })]]).client,
       "t-1",
@@ -1722,6 +1729,7 @@ describe("retrieveNodeChunks — notebook identity scopes model-less questions",
       {
         nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
         identity: { manufacturer: "Allen-Bradley", model: identityModel },
+        identityStatus,
       },
     );
 
@@ -1767,8 +1775,73 @@ describe("retrieveNodeChunks — notebook identity scopes model-less questions",
     await retrieveNodeChunks(client, "t-1", "communication settings", {
       nodeId: "n-1", unsPath: null, docIds: ["d-1", "d-2"], validatedDocScope: true,
       identity: { manufacturer: "Allen-Bradley", model: "Micro820" },
+      identityStatus: "user_confirmed",
     });
     const firstPassWindows = calls.slice(0, 2).map((c) => c.params[4]);
     expect(firstPassWindows).toEqual([["d-1"], ["d-2"]]);
+  });
+
+  // 2026-10-18 scope pass. `equipment_notebooks.model` and `identity_status`
+  // are independent columns (updateNotebook builds SET from a column map), so
+  // a `candidate` OCR read can sit in `model`. Scoping to a misread would hide
+  // the right manual silently — so only a person's confirmation scopes.
+  describe("only a confirmed identity scopes (an OCR candidate must not hide the right manual)", () => {
+    const SIBLING = "Micro810 Programmable Controllers User Manual";
+    it.each(["candidate", "unknown", null] as const)("identityStatus=%s applies no filter", async (status) => {
+      expect(await ask(SIBLING, "communication settings", "Micro820", "2080-um001.pdf", status)).toHaveLength(1);
+    });
+    it("an ABSENT identityStatus applies no filter (a caller that forgets it cannot hide a manual)", async () => {
+      // Built directly: passing `undefined` through `ask` would hit its default parameter.
+      const rows = await retrieveNodeChunks(
+        makeClient([[nodeRow({ filename: "2080-um001.pdf", document_heading: SIBLING, content: "Communication settings are configured in the controller properties." })]]).client,
+        "t-1",
+        "communication settings",
+        { nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true, identity: { manufacturer: "Allen-Bradley", model: "Micro820" } },
+      );
+      expect(rows).toHaveLength(1);
+    });
+    it.each(["user_confirmed", "verified"] as const)("control: identityStatus=%s still scopes", async (status) => {
+      expect(await ask(SIBLING, "communication settings", "Micro820", "2080-um001.pdf", status)).toEqual([]);
+    });
+    it("the per-document candidate windows also wait for confirmation", async () => {
+      const { client, calls } = makeClient([[], [], [], []]);
+      await retrieveNodeChunks(client, "t-1", "communication settings", {
+        nodeId: "n-1", unsPath: null, docIds: ["d-1", "d-2"], validatedDocScope: true,
+        identity: { manufacturer: "Allen-Bradley", model: "Micro820" },
+        identityStatus: "candidate",
+      });
+      expect(calls[0].params[4]).toEqual(["d-1", "d-2"]);
+    });
+  });
+
+  // A family manual covers its members. Measured on the detector: "PowerFlex
+  // 520-Series … User Manual" → {PF520}, a PowerFlex 525 notebook → {PF525};
+  // before FAMILY_ROOTS the series manual Rockwell actually publishes for the
+  // 523/525 was hidden from the notebook.
+  describe("a family-root manual covers its member models (FAMILY_ROOTS)", () => {
+    it("the PowerFlex 520-Series manual is citable from a PowerFlex 525 notebook", async () => {
+      expect(await ask("PowerFlex 520-Series Adjustable Frequency AC Drive User Manual", "communication settings", "PowerFlex 525", "520-um001.pdf")).toHaveLength(1);
+    });
+    it("control: a PowerFlex 755 manual is still hidden from a PowerFlex 525 notebook", async () => {
+      expect(await ask("PowerFlex 755 AC Drives User Manual", "communication settings", "PowerFlex 525", "750-um001.pdf")).toEqual([]);
+    });
+    it("the Micro800 family manual is citable from a Micro820 notebook", async () => {
+      expect(await ask("Micro800 Programmable Controllers General Instructions", "communication settings", "Micro820", "2080-rm001.pdf")).toHaveLength(1);
+    });
+    it("the Comfort Panels manual is citable from a TP700 notebook", async () => {
+      expect(await ask("SIMATIC HMI Comfort Panels Operating Instructions", "communication settings", "TP700", "comfort.pdf")).toHaveLength(1);
+    });
+    it("control: KTP panels are Basic, not Comfort — the Comfort manual stays hidden from a KTP700 notebook", async () => {
+      expect(await ask("SIMATIC HMI Comfort Panels Operating Instructions", "communication settings", "KTP700", "comfort.pdf")).toEqual([]);
+    });
+    it("a notebook bound ONLY to a family ('Comfort') applies no filter — any member manual is plausibly right", async () => {
+      expect(await ask("TP1200 Comfort Operating Instructions", "communication settings", "Comfort", "tp1200.pdf")).toHaveLength(1);
+      expect(await ask("Micro850 Programmable Controllers User Manual", "communication settings", "Micro800", "2080-um002.pdf")).toHaveLength(1);
+    });
+    it("control: a sibling-specific manual is still hidden from a specific-model notebook", async () => {
+      // The family rule widens only toward family ROOTS, never sibling-to-sibling.
+      expect(await ask("TP1200 Comfort Operating Instructions", "communication settings", "TP700", "tp1200.pdf")).toEqual([]);
+      expect(await ask("PowerFlex 523 AC Drive User Manual", "communication settings", "PowerFlex 525", "523.pdf")).toEqual([]);
+    });
   });
 });

@@ -2033,6 +2033,9 @@ async function handleChatTurn(
             // The notebook's own machine name is never a fault code in the
             // whole-token lane ("GS10 oC" binds oC, not GS10 — Codex r6 on #4360).
             identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
+            // Model-less questions scope to that machine only once a person has
+            // confirmed it — an OCR `candidate` must not hide the right manual.
+            identityStatus: nb?.identityStatus ?? null,
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
             // document linked from another notebook's node stays retrievable here.
