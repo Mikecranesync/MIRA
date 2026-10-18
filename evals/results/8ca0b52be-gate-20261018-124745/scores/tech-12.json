@@ -1,0 +1,50 @@
+{
+  "case_id": "tech-12",
+  "case_type": "technician",
+  "category": "manual_grounded",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 15,
+      "missing_points": [
+        "Default parameters are reset by setting P053 (Reset Defaults) to value '2' 'Factory Reset'",
+        "After factory reset, all user parameters return to original defaults from the factory",
+        "The drive must be power-cycled to apply the factory reset completely",
+        "GS10 keypad will require re-entry of basic parameters after factory reset (Speed Reference, Control Source, etc.)"
+      ],
+      "wrong_if_present": [
+        "Confuses parameter P053 with P051 or P052 (which are backfill or recovery functions)"
+      ],
+      "note": "The answer identifies the wrong control parameter (P00.02 instead of P053) and gives reset values not supported by the rubric."
+    },
+    "grounding": {
+      "score": 20,
+      "note": "The citation supports 50/60 Hz default reset options and retention of P13.01~P13.50, but does not support P00.02 or the stated values 9/10."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "No diagnostic content requested."
+    },
+    "actionability": {
+      "score": 25,
+      "note": "It gives a concrete parameter/value pair, but it is not the correct one per the rubric and omits the required power-cycle and re-entry implications."
+    },
+    "uncertainty": {
+      "score": 18,
+      "note": "Low confidence in correctness because the cited evidence directly conflicts with the answer's parameter naming and values."
+    },
+    "context": {
+      "score": null,
+      "note": "No additional context scoring applicable."
+    }
+  },
+  "case_score": 19.0
+}

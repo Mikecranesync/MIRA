@@ -1,0 +1,69 @@
+{
+  "case_id": "tech-07",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-07",
+    "category": "troubleshooting",
+    "mode": "grounded",
+    "equipment": null,
+    "question": "GS10 drive is running at full nameplate speed but will not respond to speed command changes. What are the top two causes to verify?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Verify parameter P00.20 (Master Frequency Command Source) is set to the correct input source (0=Digital keypad, 1=RS-485 communication, 2=External analog input)",
+        "Check that the speed reference input (analog or digital terminal) is actually changing and is wired correctly per the manual's wiring diagram",
+        "If using terminal inputs, verify the terminal block connector is fully seated and the input signal is present with a voltmeter",
+        "Review the Speed Reference Control chart to ensure the correct parameter settings for the input source in use"
+      ],
+      "wrong_if": [
+        "Assumes the motor speed feedback is not working without checking command source first",
+        "States that speed commands are only via analog 0-10V input on GS10",
+        "Recommends resetting all drive parameters before checking the control wiring",
+        "Claims the drive display showing 'RUN' means the speed control input is working"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "GS10 drive is running at full nameplate speed but will not respond to speed command changes. What are the top two causes to verify?",
+      "answer": "Verify the active **speed reference selection** and the **start/source selection** first: the drive can be commanded to run from **[Preset Freq x]**, **[Speed Reference1/2/3]**, **Keypad Freq**, **MOP Freq**, **potentiometer**, **analog input**, or **network reference**, depending on how **[Speed Reference1] / [Start Source 1]** are set [7][11][12].  \nIf the wrong reference source is selected, the drive can stay at one speed even though the speed command changes elsewhere [7][11].",
+      "citations": [
+        {
+          "citationId": "7",
+          "sourceTitle": "PowerFlex525_UserManual.pdf",
+          "page": 49,
+          "quote": "\u2026Source 2]\nselect(1)\n[Speed Reference2]\nselect(1)\nDrive stopped\n(NOT running)\nDrive will start and\nrun at Purge Speed.\nDirection is always\nFORWARD.\nDrive will start and run at\nJog Speed.\nDirection is from Terminal\nBlock REV terminal (03),\nCo",
+          "docId": "2a528851-2c88-41c9-b90e-4b6e6f05dd21",
+          "fileId": "bc9aa0a8-2c00-4ea3-a9f6-1e2f3fda9cd0"
+        },
+        {
+          "citationId": "11",
+          "sourceTitle": "PowerFlex525_UserManual.pdf",
+          "page": 76,
+          "quote": "\u2026Disable A544\nMixer\nLanguage P030\nOutput Freq b001\nCommanded Freq b002\nOutput Current b003\nMotor NP Volts P031\nMotor NP Hertz P032\nMotor OL Current P033\nMotor NP FLA P034\nMotor NP Poles P035\nAutotune P040\nAccel Time 1 P041\nDecel Time 1 P042\n",
+          "docId": "2a528851-2c88-41c9-b90e-4b6e6f05dd21",
+          "fileId": "bc9aa0a8-2c00-4ea3-a9f6-1e2f3fda9cd0"
+        },
+        {
+          "citationId": "12",
+          "sourceTitle": "PowerFlex525_UserManual.pdf",
+          "page": 155,
+          "quote": "\u2026Cfg 3(1) 135 Fault 7 Time-min(1) 627 Keypad Freq 426\nEN Subnet Cfg 4(1) 136 Fault 8 BusVolts(1) 658 Ki Speed Loop(2) 538\nEN Tx Errors(1) 729 Fault 8 Code(1) 608 Kp Speed Loop(2) 539\nEN Tx Packets(1) 728 Fault 8 Current(1) 648 Language 30\nEn",
+          "docId": "2a528851-2c88-41c9-b90e-4b6e6f05dd21",
+          "fileId": "bc9aa0a8-2c00-4ea3-a9f6-1e2f3fda9cd0"
+        }
+      ],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "Grounded in this notebook's sources.",
+      "evidence_basis": "oem_documentation",
+      "safety_trigger": null,
+      "latency_s": 7.218430042266846,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:49:52.220070+00:00"
+}

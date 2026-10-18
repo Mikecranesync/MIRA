@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-22",
+  "case_type": "technician",
+  "category": "mechanical",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 92,
+      "missing_points": [
+        "Does not explicitly state the typical manufacturer-spec alignment tolerances (e.g., 0.002-0.005 inch or 0.05 inch).",
+        "Does not explicitly distinguish whether the 0.5 inch is parallel misalignment or axial offset."
+      ],
+      "wrong_if_present": [],
+      "note": "Correctly says 0.5 inch is not normal, that flexible couplings only tolerate minor misalignment, and that alignment should be checked and corrected."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided, but the answer is framed as general maintenance guidance rather than document-specific claims."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "The response gives a plausible diagnostic path: verify measurement, inspect for soft foot/loose bolts/piping strain, check coupling condition, then realign."
+    },
+    "actionability": {
+      "score": 90,
+      "note": "Clear next steps are given with what to check and what to do next, though it lacks explicit acceptance criteria/spec limits."
+    },
+    "uncertainty": {
+      "score": 88,
+      "note": "High confidence because the answer aligns with standard alignment practice and avoids the listed incorrect claims."
+    },
+    "context": {
+      "score": null,
+      "note": "Appropriately treats the situation as a likely alignment issue despite smooth running, without overclaiming machine-specific knowledge."
+    }
+  },
+  "case_score": 90.6
+}

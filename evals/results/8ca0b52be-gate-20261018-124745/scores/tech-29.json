@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-29",
+  "case_type": "technician",
+  "category": "multi_turn",
+  "mode": "multi_turn",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 62,
+      "missing_points": [
+        "Does not explicitly identify oH as a GS10 overtemperature fault tied to inadequate heat dissipation / blocked heat sink.",
+        "Does not state the immediate fix is cleaning the heat sink.",
+        "Does not mention the long-term fix of improved ventilation, environmental controls, or duty-cycle adjustment.",
+        "Does not mention recurrence after cleaning as evidence of ongoing thermal load or the need to verify the VFD load is within rating."
+      ],
+      "wrong_if_present": [],
+      "note": "The answer correctly treats oH as an overtemperature issue and recommends checking cooling, but it is generic and does not give the GS10-specific root cause or the required long-term mitigation."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided; the response is general guidance rather than document-grounded."
+    },
+    "diagnostic": {
+      "score": 68,
+      "note": "It starts with the highest-value check\u2014cooling/overtemperature\u2014then considers airflow, load, and sensor/cooling circuit, but it is not tightly narrowed to blocked heat sink as the primary discriminating check."
+    },
+    "actionability": {
+      "score": 74,
+      "note": "It gives clear next actions and expected follow-up, but lacks the specific what/where/expected/implication sequence for the GS10 fault and does not specify the permanent corrective action."
+    },
+    "uncertainty": {
+      "score": 72,
+      "note": "Reasonably confident that oH is treated as overtemp, but the answer remains generic and does not demonstrate GS10-specific certainty."
+    },
+    "context": {
+      "score": 58,
+      "note": "It stays on the fault topic and does not restart or re-ask the supplied facts, but it does not narrow to the target diagnosis and long-term fix."
+    }
+  },
+  "case_score": 65.9
+}

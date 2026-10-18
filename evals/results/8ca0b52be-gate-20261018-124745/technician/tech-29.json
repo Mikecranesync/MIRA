@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-29",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-29",
+    "category": "multi_turn",
+    "mode": "multi_turn",
+    "equipment": "Automation Direct GS10 VFD, AC motor load",
+    "question": "GS10 VFD showing oH fault and motor not running. Power supply looks OK. What's the next step?",
+    "turns": [
+      "GS10 VFD showing oH fault and motor not running. Power supply looks OK. What's the next step?",
+      "Checked the manual: oH is overtemp. VFD enclosure temperature is 85\u00b0C. Ambient is 40\u00b0C. Fan is running. What should you look for?",
+      "Checked heat sink fins\u2014caked with dust and debris. Cleaned fins with compressed air. Temps dropped to 60\u00b0C. oH cleared and motor starts. What was the problem?",
+      "Motor ran for 30 min then oH came back. Temp at 80\u00b0C again. What's the long-term fix?"
+    ],
+    "expected": {
+      "key_points": [
+        "oH (overheat/over-temperature) = overtemp fault on GS10, narrowed to inadequate heat dissipation (blocked heat sink) rather than hardware failure",
+        "Immediate fix: clean heat sink; long-term fix: improved ventilation, environmental controls, or duty cycle adjustment",
+        "Recurrence after cleaning suggests ongoing thermal load; need to verify load is within VFD rating or improve airflow permanently"
+      ],
+      "wrong_if": [
+        "Assumes heat sink cleaning permanently solves the problem without addressing root cause (ambient, load, ventilation)",
+        "Recommends VFD replacement after one cleaning cycle",
+        "Ignores the 40\u00b0C ambient temperature as a factor in thermal design"
+      ],
+      "final_turn_must_narrow_to": "VFD overtemp (oH code) due to blocked heat sink; long-term solution requires permanent ventilation/cooling improvement"
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "GS10 VFD showing oH fault and motor not running. Power supply looks OK. What's the next step?",
+      "answer": "\u26a0\ufe0f **Lockout conflict in a step below:** \u201cWith the drive still locked out, verify the motor/load is not binding or overloaded, since excess current can drive the temperature up.\u201d. That step mixes locked-out work with power on. Inspect, tighten and replace with the equipment locked out; any check that needs power is a separate step, after a qualified person removes the lockout and restores power under your site's energized-work procedure.\n\nMost likely the drive is reporting an overtemperature condition, so the next step is to check cooling first.  \n\n1. **With the drive de-energized and locked out,** inspect the enclosure vents, heatsink, and fan for blockage, dust, or a failed fan.  \n2. **With the drive still locked out,** verify the motor/load is not binding or overloaded, since excess current can drive the temperature up.  \n3. **After correcting any airflow or load issue,** let the drive cool and then clear the fault and restart.  \n4. If **oH** comes back immediately, the temperature sensor or cooling circuit may be faulty and the drive should be checked against the **GS10 full user manual** or by qualified service.\n\nIf you want, I can help you narrow down whether it\u2019s airflow, overload, or a sensor issue.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 6.44208288192749,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:49:06.855709+00:00"
+}

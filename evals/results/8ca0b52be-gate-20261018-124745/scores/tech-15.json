@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-15",
+  "case_type": "technician",
+  "category": "manual_grounded",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": true,
+    "has_citations": true,
+    "citation_count": 2,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 18,
+      "missing_points": [
+        "Method 1: Press the Stop button on the keypad or set control mode to Manual, then address the fault condition and restart",
+        "Method 2: Cycle the drive power completely OFF then back ON after confirming the fault condition has been corrected and load is secured",
+        "Method 3: Use a digital input terminal (e.g., terminal block inputs used for fault clear command via drive configuration) to signal fault clear after root cause is addressed",
+        "The safest method in production is Method 2 (power cycle) after confirming the fault condition has been corrected and the motor load is secured"
+      ],
+      "wrong_if_present": [],
+      "note": "The answer correctly abstains from overclaiming, but it does not provide the three requested methods or identify the safest one."
+    },
+    "grounding": {
+      "score": 22,
+      "note": "The cited excerpts support only manual reset for an external fault and auto/manual reset for STO faults; they do not support the three-method framework in the rubric."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable."
+    },
+    "actionability": {
+      "score": 28,
+      "note": "It explains why it cannot answer exactly from the excerpts and asks for the full section or fault code, but it does not answer the user\u2019s question."
+    },
+    "uncertainty": {
+      "score": 86,
+      "note": "High confidence because the response is clearly limited to the cited excerpts and does not claim unsupported methods."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable."
+    }
+  },
+  "case_score": 31.0
+}

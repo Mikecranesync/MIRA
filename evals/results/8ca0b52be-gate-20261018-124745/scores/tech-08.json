@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-08",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 72,
+      "missing_points": [
+        "Technician must inspect motor winding insulation and output cable insulation for damage or moisture",
+        "Check wiring between drive output terminals (T1, T2, T3) and motor leads for damaged insulation or loose connections"
+      ],
+      "wrong_if_present": [],
+      "note": "Correctly identifies F013 as a ground fault/current path to earth and recommends LOTO/de-energized inspection, but omits the specific insulation/wiring checks called for."
+    },
+    "grounding": {
+      "score": 78,
+      "note": "The citation supports that F013 is a current path to earth ground at the drive output terminals and to check motor/external wiring, but it does not explicitly support the added DC bus dead/energized-work procedural detail."
+    },
+    "diagnostic": {
+      "score": 70,
+      "note": "It gives the main check, but the response is more procedural/safety-focused than diagnostic and does not prioritize the specific insulation and lead checks."
+    },
+    "actionability": {
+      "score": 74,
+      "note": "It states what to inspect and the safety implication, but lacks concrete expected findings and the exact components/terminals to verify."
+    },
+    "uncertainty": {
+      "score": 82,
+      "note": "High confidence on the core fault meaning and general safety risk; moderate uncertainty because the answer adds procedural language not directly supported by the citation."
+    },
+    "context": {
+      "score": null,
+      "note": "No additional context scoring requested."
+    }
+  },
+  "case_score": 74.6
+}

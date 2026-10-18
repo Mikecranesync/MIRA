@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-28",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-28",
+    "category": "multi_turn",
+    "mode": "multi_turn",
+    "equipment": "480V three-phase motor with magnetic contactor",
+    "question": "Motor M-7 won't start. Breaker is in. What do you check next?",
+    "turns": [
+      "Motor M-7 won't start. Breaker is in. What do you check next?",
+      "Contactor is pulling in, humming. Motor shaft is locked. 480 three-phase at the breaker input. What's happening at the contactor output?",
+      "Contactor output has 480V between phases but 0V at the motor terminals. Wiring lugs look dark/oxidized. What's the most likely fault?",
+      "Verified the lug connection is corroded and loose. After cleaning and tightening, motor starts. What was the root cause and how do you prevent recurrence?"
+    ],
+    "expected": {
+      "key_points": [
+        "Multi-turn diagnosis narrowed from supply to contactor to wiring connection",
+        "Root cause identified as corroded lug connection causing voltage drop to zero at motor",
+        "Preventive action: scheduled lug inspection, anti-oxidant compound application, or replacement with rated connectors"
+      ],
+      "wrong_if": [
+        "Restarts the diagnosis from scratch in turn 4 instead of building on evidence from turns 1\u20133",
+        "Asks for information that was already provided (e.g., 'is the contactor pulling in' in turn 4)",
+        "Jumps to motor replacement without testing the connection"
+      ],
+      "final_turn_must_narrow_to": "Corroded or loose wiring lug connection causing voltage drop between contactor output and motor input"
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Motor M-7 won't start. Breaker is in. What do you check next?",
+      "answer": "Most likely the start command is being blocked by a control interlock, overload, or drive fault rather than the breaker itself.\n\n1. Check the drive or starter for a fault code, trip LED, or alarm history.\n2. Check E-stop, stop circuit, permissives, and any overload relay or auxiliary contact that could be open.\n3. With the equipment locked out and verified de-energized, check the motor overload/reset state and inspect for loose control wiring or blown control fuses.\n4. If it\u2019s VFD-driven, confirm the drive has a valid start command and speed reference from the control circuit, not just power input.\n5. If everything above looks normal, check the motor and output cable for open phases or a ground fault.\n\nIf you want, tell me whether M-7 is on a VFD or across-the-line starter, and whether there\u2019s any fault code showing.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 5.166616678237915,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:49:01.186803+00:00"
+}

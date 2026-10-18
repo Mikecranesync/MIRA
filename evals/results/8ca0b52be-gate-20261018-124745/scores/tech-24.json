@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-24",
+  "case_type": "technician",
+  "category": "sensors_instrumentation",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 0,
+      "missing_points": [
+        "4 mA = 0\u00b0F (start), 20 mA = 100\u00b0F (end), linear; 8 mA should correspond to ~25\u00b0F, not 75\u00b0F",
+        "Discrepancy suggests transmitter calibration error, sensor failure, or PLC input card not reading correctly",
+        "Verify transmitter output with a calibrated loop meter (milliamp clamp meter), then compare to PLC reading to isolate the fault"
+      ],
+      "wrong_if_present": [],
+      "note": "The response is an abstention and does not address the 4-20 mA temperature interpretation or likely fault."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided, but the answer also does not make any unsupported technical claims."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "It gives generic troubleshooting advice rather than diagnosing the stated loop-current/temperature mismatch."
+    },
+    "actionability": {
+      "score": 10,
+      "note": "It suggests general checks, but not the specific measurement, expected current-to-temperature relationship, or isolation steps needed for this case."
+    },
+    "uncertainty": {
+      "score": 95,
+      "note": "High confidence because the answer clearly avoids the asked technical diagnosis and provides only generic deflection."
+    },
+    "context": {
+      "score": null,
+      "note": "Does not use the provided case context beyond acknowledging lack of evidence."
+    }
+  },
+  "case_score": 22.0
+}

@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-18",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 78,
+      "missing_points": [
+        "GS10 Modbus registers require parameter cross-reference: confirm the exact register mapping in the drive's Modbus register table for your current firmware version",
+        "Verification steps: (1) confirm the Modbus parameter being written and its address, (2) check the speed reference source selection (P3xx parameter, depending on control mode), (3) verify three-phase output voltage at motor terminals, (4) confirm the motor is not mechanically stalled or overloaded"
+      ],
+      "wrong_if_present": [],
+      "note": "Good first-step guidance on scaling/reference-source mismatch and drive limits, but it does not explicitly prioritize the exact register cross-reference or the specific verification sequence expected."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided, so grounding cannot be assessed from source evidence."
+    },
+    "diagnostic": {
+      "score": 72,
+      "note": "It starts with a plausible highest-value check (scaling/mapping and reference source), but then broadens into a list rather than a tightly prioritized diagnostic path."
+    },
+    "actionability": {
+      "score": 74,
+      "note": "It tells the user what to check and gives some implications, but lacks concrete drive-specific checkpoints like the exact register table, control-mode parameter, and terminal voltage verification."
+    },
+    "uncertainty": {
+      "score": 68,
+      "note": "Reasonably aligned with the symptom, but the absence of machine-specific documentation limits confidence in the exact register interpretation."
+    },
+    "context": {
+      "score": null,
+      "note": "No product-specific context was available, so only general industrial troubleshooting can be evaluated."
+    }
+  },
+  "case_score": 74.2
+}

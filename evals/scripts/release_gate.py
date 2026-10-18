@@ -72,25 +72,40 @@ def judge_baseline_infra_check() -> tuple[bool, str | None]:
 def build_drift_check_cmd(results_dir: Path) -> list[str]:
     """Build drift_check command."""
     return [
-        sys.executable, "evals/scripts/drift_check.py",
+        sys.executable,
+        "evals/scripts/drift_check.py",
         str(results_dir),
     ]
 
 
-def build_run_technician_cmd(results_dir: Path, cases: list[str]) -> list[str]:
-    """Build run_technician command."""
+def build_run_technician_cmd(
+    results_dir: Path, cases: list[str], sha: str | None = None
+) -> list[str]:
+    """Build run_technician command.
+
+    `--sha` is passed through: without it run_technician auto-detects the
+    CHECKOUT's HEAD, which is not the revision under test when the gate runs
+    against a deployed build (the 2026-10-18 P1 baseline manifest said
+    eb6e2ed2b while production was 8ca0b52be).
+    """
     cmd = [
-        sys.executable, "evals/scripts/run_technician.py",
-        "--cases", *cases,
-        "--out", str(results_dir),
+        sys.executable,
+        "evals/scripts/run_technician.py",
+        "--cases",
+        *cases,
+        "--out",
+        str(results_dir),
     ]
+    if sha:
+        cmd += ["--sha", sha]
     return cmd
 
 
 def build_judge_baseline_cmd(results_dir: Path) -> list[str]:
     """Build judge_baseline command."""
     return [
-        sys.executable, "evals/scripts/judge_baseline.py",
+        sys.executable,
+        "evals/scripts/judge_baseline.py",
         str(results_dir),
     ]
 
@@ -98,7 +113,8 @@ def build_judge_baseline_cmd(results_dir: Path) -> list[str]:
 def build_report_cmd(results_dir: Path, baseline: Path | None) -> list[str]:
     """Build report.py command."""
     cmd = [
-        sys.executable, "evals/scripts/report.py",
+        sys.executable,
+        "evals/scripts/report.py",
         str(results_dir),
     ]
     if baseline:
@@ -109,7 +125,8 @@ def build_report_cmd(results_dir: Path, baseline: Path | None) -> list[str]:
 def build_android_cmd(results_dir: Path) -> list[str]:
     """Build run_android_workflows.py command."""
     return [
-        sys.executable, "evals/scripts/run_android_workflows.py",
+        sys.executable,
+        "evals/scripts/run_android_workflows.py",
         str(results_dir),
     ]
 
@@ -302,7 +319,7 @@ def main() -> int:
             logger.error(f"run_technician BLOCKED: {infra_err}")
             stage_status["technician_safety"] = "blocked"
         else:
-            cmd = build_run_technician_cmd(run_dir, cases)
+            cmd = build_run_technician_cmd(run_dir, cases, sha)
             exit_code, _ = run_stage("run_technician", cmd, logs_dir, offline_only)
             stage_status["technician_safety"] = "ok" if exit_code == 0 else "infra_fail"
             if exit_code != 0:
@@ -383,7 +400,9 @@ def main() -> int:
     for stage_name, st in stage_status.items():
         logger.info(f"stage {stage_name}: {st}")
     if bad_stages:
-        logger.error(f"VERDICT: INFRA_FAILURE (stages not cleanly executed: {', '.join(bad_stages)})")
+        logger.error(
+            f"VERDICT: INFRA_FAILURE (stages not cleanly executed: {', '.join(bad_stages)})"
+        )
         print("\nVERDICT: INFRA_FAILURE (exit 4)")
         return 4
     if report_exit_code == 3:
