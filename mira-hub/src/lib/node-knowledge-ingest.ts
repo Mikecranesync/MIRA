@@ -23,6 +23,8 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { createUpload, updateUploadStatus } from "@/lib/uploads";
 import { proposeDocumentEdgesForNode } from "@/lib/node-document-proposals";
 import { extractText, getDocumentProxy } from "unpdf";
+import { repairExtractedPage, type PageRepair } from "@/capabilities/garbled-text";
+import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
 
 const CHUNK_CHARS = 1000;
 const CHUNK_OVERLAP = 120;
@@ -366,6 +368,10 @@ interface NodeChunkOpts {
 async function writeChunkRowsForNode(
   pages: string[],
   opts: NodeChunkOpts,
+  /** Per-page repair marker (index-aligned with `pages`), recorded on every
+   *  chunk of that page as `metadata.text_repair` so a decoded row is
+   *  auditable and reversible (TQ-05/06). Absent = untouched extraction. */
+  repairs?: ReadonlyArray<TextRepair | null>,
 ): Promise<number> {
   const { tenantId, uploadId, nodeId, unsPath, filename } = opts;
 
@@ -373,7 +379,7 @@ async function writeChunkRowsForNode(
   // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
   const sourceUrl = `node-doc/${uploadId}/${filename}`;
 
-  type ChunkRow = { content: string; page: number; idx: number };
+  type ChunkRow = { content: string; page: number; idx: number; repair: TextRepair | null };
   let idx = 0;
   let batch: ChunkRow[] = [];
 
@@ -401,6 +407,7 @@ async function writeChunkRowsForNode(
             node_id: nodeId,
             chunk_index: r.idx,
             source: "hub_node_attachment",
+            ...(r.repair ? { text_repair: r.repair } : {}),
           }),
         );
       }
@@ -427,7 +434,7 @@ async function writeChunkRowsForNode(
       const pageText = pages[p];
       pages[p] = ""; // release each page's text once chunked — bounds peak memory
       for (const piece of chunkText(pageText)) {
-        batch.push({ content: piece, page: p + 1, idx: idx++ });
+        batch.push({ content: piece, page: p + 1, idx: idx++, repair: repairs?.[p] ?? null });
         if (batch.length >= BATCH_ROWS) await flush();
       }
     }
@@ -448,6 +455,62 @@ async function writeChunkRowsForNode(
   // Generated-chunk count (matches the historical `rows.length` semantics: the
   // number attempted, not the number actually inserted after ON CONFLICT).
   return idx;
+}
+
+/** `metadata.text_repair` values — how a page's text was changed after extraction. */
+export type TextRepair = "shift29" | "ocr";
+
+/**
+ * TQ-05 / TQ-06 (2026-10-17 prod test): repair garbled extraction IN PLACE
+ * before chunking. A page whose text came out as the fixed +29 cipher (the
+ * PLC-5 manual: ",QDGGLWLRQ" for "Inaddition") is decoded deterministically;
+ * a garbled page that is NOT the fixed shift is left as-is and — only behind
+ * NOTEBOOK_GARBLE_OCR_FALLBACK=1 — offered to the OCR seam, which may return
+ * replacement text. An ordinary page is never touched (the detector requires
+ * the decode to read like English and the original not to). Returns the
+ * index-aligned repair markers for `writeChunkRowsForNode`. Never throws:
+ * a repair failure means the page is written exactly as extracted.
+ */
+async function repairGarbledPages(pages: string[], opts: NodeChunkOpts): Promise<Array<TextRepair | null>> {
+  const repairs: Array<TextRepair | null> = new Array(pages.length).fill(null);
+  const ocrFallback = process.env.NOTEBOOK_GARBLE_OCR_FALLBACK === "1";
+  let decoded = 0;
+  let unrepaired = 0;
+  for (let p = 0; p < pages.length; p++) {
+    let verdict: PageRepair;
+    try {
+      verdict = repairExtractedPage(pages[p]);
+    } catch (err) {
+      console.warn(`[node-ingest] garble detector failed on ${opts.filename} p.${p + 1} (page kept as extracted):`, err instanceof Error ? err.message : err);
+      continue;
+    }
+    if (verdict.repair) {
+      pages[p] = verdict.text;
+      repairs[p] = verdict.repair;
+      decoded++;
+      continue;
+    }
+    if (!verdict.unrepaired) continue;
+    unrepaired++;
+    if (!ocrFallback) continue;
+    try {
+      const ocrText = await ocrExtractPage({ tenantId: opts.tenantId, uploadId: opts.uploadId, filename: opts.filename, page: p + 1, extracted: pages[p] });
+      if (ocrText && ocrText.trim()) {
+        pages[p] = ocrText;
+        repairs[p] = "ocr";
+        unrepaired--;
+      }
+    } catch (err) {
+      console.warn(`[node-ingest] OCR fallback failed on ${opts.filename} p.${p + 1} (page kept as extracted):`, err instanceof Error ? err.message : err);
+    }
+  }
+  if (decoded > 0) {
+    console.info(`[node-ingest] garbled extraction decoded (shift29) on ${decoded}/${pages.length} pages of ${opts.filename}`);
+  }
+  if (unrepaired > 0) {
+    console.warn(`[node-ingest] garbled extraction left unrepaired on ${unrepaired}/${pages.length} pages of ${opts.filename} (not the fixed shift; OCR fallback ${ocrFallback ? "returned nothing" : "off"})`);
+  }
+  return repairs;
 }
 
 /**
@@ -474,7 +537,8 @@ export async function writePdfChunksForNode(opts: {
     const pdf = await getDocumentProxy(new Uint8Array(buffer));
     const { text } = await extractText(pdf, { mergePages: false });
     const pages: string[] = Array.isArray(text) ? text : [text];
-    return await writeChunkRowsForNode(pages, rest);
+    const repairs = await repairGarbledPages(pages, rest);
+    return await writeChunkRowsForNode(pages, rest, repairs);
   } finally {
     release();
   }

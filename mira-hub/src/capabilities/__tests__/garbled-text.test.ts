@@ -1,0 +1,110 @@
+/**
+ * TQ-05 / TQ-06 (2026-10-17 prod test): the PLC-5 manual's pages extract as a
+ * fixed +29 cipher (",QDGGLWLRQ" is "Inaddition"). Detect it, decode it, and
+ * never touch a page that is already English.
+ */
+import { describe, expect, it } from "vitest";
+import {
+  decodeShift29,
+  detectGarble,
+  encodeShift29,
+  englishDensity,
+  planChunkRepairs,
+  repairExtractedPage,
+} from "../garbled-text";
+
+const PLC5_PAGE =
+  "In addition, the PLC-5 processor stores the program in battery-backed RAM. " +
+  "When the processor is in Program mode, the outputs are de-energized and the " +
+  "program is not scanned. Install the battery before you connect power to the " +
+  "chassis, and replace it when the BATT status indicator turns on. The fault " +
+  "table lists the major fault code in word S:12 of the status file.";
+
+const PARTS_TABLE =
+  "1771-P7 120/220V AC 16A   1771-A1B 4-slot chassis   1785-L40E   1771-IBD 24V DC input module\n" +
+  "1771-OBD 24V DC output module   1771-IAD 120V AC input   1771-OAD 120V AC output   1785-BCM\n" +
+  "Cat. No. Description Qty   1771-CP1 cable 1 m   1771-CP2 cable 2 m   1785-ENET Ethernet module";
+
+describe("the cipher itself", () => {
+  it("the prod-test sample decodes: ,QDGGLWLRQ → Inaddition", () => {
+    expect(decodeShift29(",QDGGLWLRQ")).toBe("Inaddition");
+  });
+  it("encode/decode round-trip a real sentence, spaces included", () => {
+    expect(decodeShift29(encodeShift29(PLC5_PAGE))).toBe(PLC5_PAGE);
+  });
+  it("the shifted space (0x03) and shifted punctuation (0x0F = ',') come back as space and comma", () => {
+    expect(decodeShift29(",Q\u0003DGGLWLRQ\u000f")).toBe("In addition,");
+  });
+  it("leaves layout whitespace, non-ASCII and already-lowercase letters alone (no double shift)", () => {
+    expect(decodeShift29("line one\nline two")).toBe("line one\nline two");
+    expect(decodeShift29("Ω ± ¼ zyx")).toBe("Ω ± ¼ zyx");
+  });
+});
+
+describe("englishDensity", () => {
+  it("is near zero for the cipher and well above the floor for prose", () => {
+    expect(englishDensity(encodeShift29(PLC5_PAGE))).toBeLessThan(1);
+    expect(englishDensity(PLC5_PAGE)).toBeGreaterThanOrEqual(6);
+  });
+  it("is zero for a short string (never decides on a header)", () => {
+    expect(englishDensity("WKH SURFHVVRU")).toBe(0);
+  });
+});
+
+describe("detectGarble", () => {
+  it("flags the shifted PLC-5 page as shift29 and returns the decoded page", () => {
+    const v = detectGarble(encodeShift29(PLC5_PAGE));
+    expect(v.garbled).toBe(true);
+    if (!v.garbled || v.method !== "shift29") throw new Error("expected shift29");
+    expect(v.decoded).toBe(PLC5_PAGE);
+    expect(v.decodedDensity).toBeGreaterThanOrEqual(3);
+  });
+
+  it("control: an ordinary English page is not garbled", () => {
+    expect(detectGarble(PLC5_PAGE)).toEqual({ garbled: false, density: expect.any(Number) });
+  });
+
+  it("control: a dense parts table (few common words, many codes) is not garbled", () => {
+    expect(detectGarble(PARTS_TABLE).garbled).toBe(false);
+    // …and the decoder is never applied to it, even when asked directly
+    expect(repairExtractedPage(PARTS_TABLE)).toEqual({ text: PARTS_TABLE, repair: null, unrepaired: false });
+  });
+
+  it("control: a short page (< 80 letters) is never flagged, cipher or not", () => {
+    expect(detectGarble(encodeShift29("In addition, the processor stores the program.")).garbled).toBe(false);
+  });
+
+  it("flags a long wordless letter-soup page as garbled-but-unknown (the OCR cue), without decoding it", () => {
+    const soup = "QXZKV JQPLX ZVKQJ XPLQZ VKJQX ".repeat(12);
+    const v = detectGarble(soup);
+    expect(v.garbled).toBe(true);
+    if (!v.garbled) throw new Error("unreachable");
+    expect(v.method).toBe("unknown");
+    expect(repairExtractedPage(soup)).toEqual({ text: soup, repair: null, unrepaired: true });
+  });
+});
+
+describe("repairExtractedPage", () => {
+  it("decodes a shifted page and marks the repair", () => {
+    expect(repairExtractedPage(encodeShift29(PLC5_PAGE))).toEqual({ text: PLC5_PAGE, repair: "shift29", unrepaired: false });
+  });
+  it("still repairs when the spaces were dropped by the parser (words run together but are searchable)", () => {
+    const noSpaces = encodeShift29(PLC5_PAGE).replace(/ /g, "");
+    const out = repairExtractedPage(noSpaces);
+    expect(out.repair).toBe("shift29");
+    expect(out.text).toContain("Inaddition");
+    expect(out.text).toContain("battery-backedRAM");
+  });
+});
+
+describe("planChunkRepairs (the flag-gated backfill for rows already in knowledge_entries)", () => {
+  it("returns only the rows it would rewrite, decoded, and leaves English rows out", () => {
+    const plan = planChunkRepairs([
+      { id: "a", content: encodeShift29(PLC5_PAGE) },
+      { id: "b", content: PLC5_PAGE },
+      { id: "c", content: PARTS_TABLE },
+    ]);
+    expect(plan.map((r) => r.id)).toEqual(["a"]);
+    expect(plan[0]).toEqual({ id: "a", content: PLC5_PAGE, repair: "shift29" });
+  });
+});
