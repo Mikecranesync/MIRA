@@ -228,7 +228,13 @@ def evidence_applicability(
     if not labels:
         return "unknown"
     keys = {canonical_model(label) for label in labels}
-    if canonical_model(asked_model, asked_family) in keys:
+    asked_key = canonical_model(asked_model, asked_family)
+    # A bare number with no series in the message ("AB 525") is the labelled
+    # model whose series prefix it omits ("PowerFlex 525") — never "PowerFlex 5250".
+    bare_number_match = asked_key[:1].isdigit() and any(
+        re.fullmatch(rf"[a-z]+{re.escape(asked_key)}", key) for key in keys
+    )
+    if asked_key in keys or bare_number_match:
         return "model" if len(keys) == 1 else "family"
     asked_families = product_families_in(asked_model)
     excerpt_families = set().union(*(product_families_in(label) for label in labels))

@@ -632,7 +632,9 @@ def canonical_model(model: str | None, product_family: str | None = None) -> str
     }
     key = aliases.get(key, key)
     family = re.sub(r"[^a-z0-9]", "", (product_family or "").lower())
-    if key.isdecimal() and family:
+    # "525", "40P", "4M": the resolver splits the series name off a model that
+    # starts with a digit, so put it back before comparing with "PowerFlex 40P".
+    if key[:1].isdigit() and family:
         return family if family.endswith(key) else family + key
     return key
 

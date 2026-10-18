@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from shared import uns_resolver
 from shared.uns_resolver import canonical_model, product_families_in
 from shared.workers.rag_worker import RAGWorker, evidence_applicability
 
@@ -111,6 +112,57 @@ def test_canonical_model_composes_a_bare_number_with_its_family():
     assert canonical_model("525", "PowerFlex") == canonical_model("PowerFlex 525")
     assert canonical_model("pf525") == canonical_model("PowerFlex 525")
     assert canonical_model("523", "PowerFlex") != canonical_model("PowerFlex 525")
+
+
+# ── Fed by the real resolver, not hand-written pairs ────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("message", "label"),
+    [
+        ("PowerFlex 525 F004", "PowerFlex 525"),
+        ("pf525 F004", "PowerFlex 525"),
+        ("AB 525 F004", "PowerFlex 525"),
+        ("Allen-Bradley 525 overvoltage", "PowerFlex 525"),
+        ("Rockwell 525 F004", "PowerFlex 525"),
+        ("PowerFlex 40P F004", "PowerFlex 40P"),
+        ("PowerFlex 4M fault", "PowerFlex 4M"),
+        ("PowerFlex 40 F004", "PowerFlex 40"),
+        ("pf40 fault", "PowerFlex 40"),
+        ("PowerFlex 70 fault", "PowerFlex 70"),
+        ("PowerFlex 400 fault", "PowerFlex 400"),
+        ("PowerFlex 753 fault", "PowerFlex 753"),
+        ("Allen-Bradley PowerFlex 753 F12", "PowerFlex 753"),
+        ("Yaskawa V1000 oC", "V1000"),
+        ("Yaskawa J1000 oL1", "J1000"),
+        ("GA500 oC fault", "GA500"),
+        ("GS10 CE10 fault", "GS10"),
+        ("AutomationDirect GS10 drive", "GS10"),
+    ],
+)
+def test_the_asked_models_own_manual_is_never_caveated(message, label):
+    # The resolver splits "PowerFlex 40P" into model "40P" + family "PowerFlex",
+    # and "AB 525" carries no family at all. Either way the technician's own
+    # manual (real staging label) must stay model scope, not "general context".
+    with patch.object(uns_resolver, "_enrich_from_db", lambda ctx, tenant: ctx):
+        ctx = uns_resolver.resolve_uns_path(message)
+    assert ctx.model, message
+    assert evidence_applicability(label, ctx.model, ctx.product_family) == "model"
+
+
+@pytest.mark.parametrize(
+    ("asked_model", "excerpt_label"),
+    [("40", "PowerFlex 400"), ("525", "PowerFlex 5250"), ("525", "SMC-3")],
+)
+def test_a_bare_number_names_only_the_exact_labelled_model(asked_model, excerpt_label):
+    assert evidence_applicability(excerpt_label, asked_model, None) == "unknown"
+
+
+def test_a_known_series_never_matches_another_series_label():
+    # "PowerFlex 40P" names the series, so a different series' "40P" label is
+    # not the asked model — only a bare "40P" with no series may match by suffix.
+    assert evidence_applicability("SMC 40P", "40P", "PowerFlex") == "unknown"
+    assert evidence_applicability("PowerFlex 40P", "40P", "PowerFlex") == "model"
 
 
 # ── At the generation boundary ──────────────────────────────────────────────
