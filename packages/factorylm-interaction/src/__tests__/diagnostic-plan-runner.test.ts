@@ -1,0 +1,299 @@
+/**
+ * Runner tests for pure step routing.
+ * Tests all outcomes, defaults, routes, and edge cases.
+ */
+
+import { describe, it, expect } from "bun:test";
+import { nextStep } from "../diagnostic-plan/runner";
+import { WorkflowTemplate, RunRecord } from "../diagnostic-plan/types";
+
+describe("Diagnostic Plan Runner (nextStep)", () => {
+  const simpleTemplate: WorkflowTemplate = {
+    id: "simple",
+    title: "Simple",
+    steps: [
+      { id: "step1", action: "IDENTIFY_ASSET" },
+      { id: "step2", action: "READ_FAULT" },
+      { id: "step3", action: "RECORD_FINDING" },
+    ],
+  };
+
+  const routedTemplate: WorkflowTemplate = {
+    id: "routed",
+    title: "Routed",
+    steps: [
+      {
+        id: "step1",
+        action: "IDENTIFY_ASSET",
+        on: {
+          PASS: { next: "step2" },
+          FAIL: { stop: "escalate" },
+        },
+      },
+      {
+        id: "step2",
+        action: "READ_FAULT",
+        on: {
+          UNSAFE: { stop: "unsafe" },
+          BLOCKED: { stop: "blocked" },
+          INCONCLUSIVE: { stop: "escalate" },
+        },
+      },
+      {
+        id: "step3",
+        action: "RECORD_FINDING",
+        on: {
+          PASS: { stop: "resolved" },
+        },
+      },
+    ],
+  };
+
+  describe("Empty run", () => {
+    it("should return first step for empty run", () => {
+      const result = nextStep(simpleTemplate, null);
+      expect(result.kind).toBe("step");
+      if (result.kind === "step") {
+        expect(result.step.id).toBe("step1");
+      }
+    });
+
+    it("should return first step for empty records", () => {
+      const run: RunRecord = { templateId: "simple", records: [] };
+      const result = nextStep(simpleTemplate, run);
+      expect(result.kind).toBe("step");
+      if (result.kind === "step") {
+        expect(result.step.id).toBe("step1");
+      }
+    });
+
+    it("should return done for empty template", () => {
+      const emptyTemplate: WorkflowTemplate = { id: "empty", title: "Empty", steps: [] };
+      const result = nextStep(emptyTemplate, null);
+      expect(result.kind).toBe("done");
+    });
+  });
+
+  describe("Default outcomes (no explicit routing)", () => {
+    it("PASS should default to next step", () => {
+      const run: RunRecord = {
+        templateId: "simple",
+        records: [{ stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" }],
+      };
+
+      const result = nextStep(simpleTemplate, run);
+      expect(result.kind).toBe("step");
+      if (result.kind === "step") {
+        expect(result.step.id).toBe("step2");
+      }
+    });
+
+    it("FAIL should default to next step", () => {
+      const run: RunRecord = {
+        templateId: "simple",
+        records: [{ stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" }],
+      };
+
+      const result = nextStep(simpleTemplate, run);
+      expect(result.kind).toBe("step");
+      if (result.kind === "step") {
+        expect(result.step.id).toBe("step2");
+      }
+    });
+
+    it("INCONCLUSIVE should default to escalate", () => {
+      const run: RunRecord = {
+        templateId: "simple",
+        records: [{ stepId: "step1", action: "IDENTIFY_ASSET", outcome: "INCONCLUSIVE", verification: "machine" }],
+      };
+
+      const result = nextStep(simpleTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toBe("escalate");
+      }
+    });
+
+    it("BLOCKED should default to blocked", () => {
+      const run: RunRecord = {
+        templateId: "simple",
+        records: [{ stepId: "step1", action: "IDENTIFY_ASSET", outcome: "BLOCKED", verification: "machine" }],
+      };
+
+      const result = nextStep(simpleTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toBe("blocked");
+      }
+    });
+
+    it("UNSAFE should default to unsafe", () => {
+      const run: RunRecord = {
+        templateId: "simple",
+        records: [{ stepId: "step1", action: "IDENTIFY_ASSET", outcome: "UNSAFE", verification: "machine" }],
+      };
+
+      const result = nextStep(simpleTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toBe("unsafe");
+      }
+    });
+  });
+
+  describe("Explicit routing", () => {
+    it("should follow explicit PASS route", () => {
+      const run: RunRecord = {
+        templateId: "routed",
+        records: [{ stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" }],
+      };
+
+      const result = nextStep(routedTemplate, run);
+      expect(result.kind).toBe("step");
+      if (result.kind === "step") {
+        expect(result.step.id).toBe("step2");
+      }
+    });
+
+    it("should follow explicit FAIL route to escalate", () => {
+      const run: RunRecord = {
+        templateId: "routed",
+        records: [{ stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" }],
+      };
+
+      const result = nextStep(routedTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toBe("escalate");
+      }
+    });
+
+    it("should follow explicit UNSAFE route", () => {
+      const run: RunRecord = {
+        templateId: "routed",
+        records: [{ stepId: "step2", action: "READ_FAULT", outcome: "UNSAFE", verification: "machine" }],
+      };
+
+      const result = nextStep(routedTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toBe("unsafe");
+      }
+    });
+
+    it("should follow explicit INCONCLUSIVE route to escalate", () => {
+      const run: RunRecord = {
+        templateId: "routed",
+        records: [{ stepId: "step2", action: "READ_FAULT", outcome: "INCONCLUSIVE", verification: "machine" }],
+      };
+
+      const result = nextStep(routedTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toBe("escalate");
+      }
+    });
+
+    it("should follow explicit PASS route to resolved", () => {
+      const run: RunRecord = {
+        templateId: "routed",
+        records: [
+          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" },
+          { stepId: "step2", action: "READ_FAULT", outcome: "PASS", verification: "machine" },
+          { stepId: "step3", action: "RECORD_FINDING", outcome: "PASS", verification: "machine" },
+        ],
+      };
+
+      const result = nextStep(routedTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toBe("resolved");
+      }
+    });
+  });
+
+  describe("Unknown step", () => {
+    it("should stop and escalate on unknown step", () => {
+      const run: RunRecord = {
+        templateId: "simple",
+        records: [{ stepId: "unknown_step", action: "UNKNOWN_ACTION", outcome: "PASS", verification: "machine" }],
+      };
+
+      const result = nextStep(simpleTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toContain("not found");
+      }
+    });
+  });
+
+  describe("Loop guard", () => {
+    it("should allow same step up to 3 times (continue on 3rd)", () => {
+      const run: RunRecord = {
+        templateId: "simple",
+        records: [
+          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" },
+          { stepId: "step2", action: "READ_FAULT", outcome: "FAIL", verification: "machine" },
+          { stepId: "step2", action: "READ_FAULT", outcome: "FAIL", verification: "machine" },
+          { stepId: "step2", action: "READ_FAULT", outcome: "FAIL", verification: "machine" },
+        ],
+      };
+
+      const result = nextStep(simpleTemplate, run);
+      // step2 has been executed 3 times, should still allow continuation to next step
+      expect(result.kind).toBe("step");
+      if (result.kind === "step") {
+        expect(result.step.id).toBe("step3");
+      }
+    });
+
+    it("should escalate on 4th occurrence of same step", () => {
+      const run: RunRecord = {
+        templateId: "simple",
+        records: [
+          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" },
+          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" },
+          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" },
+          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" },
+        ],
+      };
+
+      const result = nextStep(simpleTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toContain("more than 3");
+      }
+    });
+  });
+
+  describe("Done state", () => {
+    it("should return done when at last step and PASS", () => {
+      const run: RunRecord = {
+        templateId: "simple",
+        records: [
+          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" },
+          { stepId: "step2", action: "READ_FAULT", outcome: "PASS", verification: "machine" },
+          { stepId: "step3", action: "RECORD_FINDING", outcome: "PASS", verification: "machine" },
+        ],
+      };
+
+      const result = nextStep(simpleTemplate, run);
+      expect(result.kind).toBe("done");
+    });
+  });
+
+  describe("Template ID mismatch", () => {
+    it("should stop and escalate on template ID mismatch", () => {
+      const run: RunRecord = {
+        templateId: "other_template",
+        records: [{ stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" }],
+      };
+
+      const result = nextStep(simpleTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toContain("templateId");
+      }
+    });
+  });
+});
