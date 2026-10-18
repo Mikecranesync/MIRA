@@ -62,8 +62,8 @@ the question in its own reviewed commit.
 Hard budget **$4.50 per run** (`staging.ts BudgetMeter`). Every turn **books its worst case at
 dispatch**, before the request leaves, and nothing is ever released, because some billed calls never
 reach the client's stream (an attempt the Hub timed out and retried on the next provider, the safety
-judge). A turn is sent only if its booking still fits, so the booked total is an upper bound on true
-spend and can never pass the budget. The worst case comes from production constants: the answer
+judge). A turn is sent only if its booking still fits, so the booked total bounds true spend **as long
+as the deployed Hub bills at the prices the walk reads** (see Known limits). The worst case comes from production constants: the answer
 **and** the judge, each attempted on **every** cascade provider, with ≤ 16,000 input tokens (static
 prompt + ≤ 6 chunks of ≤ 1200 chars + no history; ~3k observed), ≤ 1400 answer / ≤ 200 judge output
 tokens (`requestCap`, judge `max_completion_tokens`), at the repo's declared prices (gpt-5.4-mini
@@ -106,13 +106,26 @@ one. Several development runs in an hour hit it — the walk then reports
 
 `.github/workflows/stranger-walk.yml` — nightly 06:30 UTC + `workflow_dispatch`, staging only,
 advisory (a low score is a finding, not a failed job). Deploys are NOT queued behind it and may
-overlap a run; an overlapping deploy invalidates that run as NOT ASSESSED (see below). It holds the staging `DOPPLER_TOKEN`, so it runs **main's code only**: the job is
+overlap a run; a deploy that changes the build identity mid-walk invalidates that run as NOT ASSESSED
+(see Known limits for the deploys this misses). It holds the staging `DOPPLER_TOKEN`, so it runs **main's code only**: the job is
 skipped on any other ref, and a first step proves the exact SHA is on main before checkout. It uses
 its **own** concurrency group, never `staging-environment`: GitHub keeps one pending run per group,
-so joining the deploy queue could cancel a pending staging deploy. A deploy that lands mid-walk is
-caught by the start/end identity check and the run is NOT ASSESSED. Prices come from the same env
-the Hub bills against (`OPENAI_PRICE_PER_MTOK_IN/OUT`); a model override the walk cannot price
-stops it before any paid request.
+so joining the deploy queue could cancel a pending staging deploy. A deploy that changes the build
+identity mid-walk is detected by the start/end identity check and the run is NOT ASSESSED. Prices
+come from the walk's own `doppler run --config stg` snapshot (`OPENAI_PRICE_PER_MTOK_IN/OUT`); a model
+override the walk cannot price stops it before any paid request.
+
+## Known limits (accepted by Mike, 2026-10-18)
+
+- **The budget prices the walk's Doppler snapshot, not the running Hub.** The Hub container keeps the
+  environment it was deployed with. If a model or price setting changes in Doppler without a redeploy,
+  the walk books the new values while the Hub bills the old ones, so true spend can exceed the booked
+  total. Every provider's model is a free-form setting, so no fixed worst-case price closes this.
+- **The start/end identity check does not catch every overlapping deploy.** It compares the build's git
+  SHA and build time. A redeploy of the same image with changed settings, or a deploy rolled back
+  before the walk ends (A→B→A), leaves both equal, and the run is still scored.
+- **Fix for both: #4507.** The Hub reports a deployment generation and an inference-config
+  fingerprint, and the walk checks them before every paid turn.
 
 ## Baseline — 2026-10-15, staging `78bab6e98` (evidence: #4460)
 

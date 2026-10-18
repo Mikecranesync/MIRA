@@ -23,7 +23,8 @@ export function stagingBase(): string {
  * own declared prices — before it is sent, and a turn is dispatched only if that booking still fits
  * the budget. Nothing is released afterwards, because some calls (a timed-out attempt the Hub
  * retried on the next provider, the safety judge) never reach the client's stream. So the recorded
- * spend is an upper bound on the true spend, and it can never pass the budget.
+ * spend bounds the true spend as long as the deployed Hub bills at the prices read here. A Doppler
+ * change without a Hub redeploy breaks that: an owner-accepted residual risk, fixed by #4507.
  *
  * Worst case of one turn, from production constants:
  *  - answer: every cascade provider may attempt it in full — ≤ TURN_BOUND.inputTokens in and
@@ -56,8 +57,8 @@ const MODEL_OVERRIDES = [
 ];
 
 /**
- * The prices the deployed Hub bills against, read from the SAME env the Hub reads (the walk runs
- * under `doppler run --config stg`): OPENAI_PRICE_PER_MTOK_IN/OUT override gpt-5.4-mini's declared
+ * The prices the deployed Hub bills against, read from the walk's own `doppler run --config stg`
+ * snapshot. That matches the Hub only if it was redeployed after the last Doppler change (#4507): OPENAI_PRICE_PER_MTOK_IN/OUT override gpt-5.4-mini's declared
  * rate exactly as `openai-run-budget.ts` does. Fails closed — throws before any paid request — on
  * an invalid price or a model override this table cannot price.
  */
