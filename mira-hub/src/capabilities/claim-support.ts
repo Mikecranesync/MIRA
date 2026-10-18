@@ -16,17 +16,29 @@
  * computes (`unsupportedValueCount`) and spends only on quote selection and
  * telemetry. Here it decides the answer.
  *
- * Deliberately narrow, and the PR says so: it judges only (a) values carrying
- * a recognized unit, via the existing extractor's closed unit table, and
- * (b) a polar lead ("Yes,"/"No,") when an identifier the QUESTION named
- * appears in no cited chunk. It does not attempt semantic entailment of prose
- * — the semantic judge and the groundedness signals own that.
+ * Deliberately narrow: it judges only (a) values the existing extractor fully
+ * parsed — number AND a unit inside its closed table — and (b) a polar lead
+ * ("Yes,"/"No,") when an identifier the QUESTION named appears in no cited
+ * chunk. It does not attempt semantic entailment of prose; the semantic judge
+ * and the groundedness signals own that.
+ *
+ * ⚠️ TQ-08 IS NOT SOLVED BY THIS, and Review A (2026-10-18) proved it in both
+ * directions on the very case this was built for:
+ *   - the WRONG answer "Yes, Modbus is supported" is NOT caught, because that
+ *     question contains no digit-bearing identifier for `claimIdentifiers` to
+ *     key on; and
+ *   - the CORRECT answer "No" was refused, over catalog numbers that happened
+ *     to parse as values.
+ * Checking whether a value string appears on the cited page is simply not the
+ * same question as whether the page SUPPORTS the claim. Treat this module as
+ * a design draft behind a default-off flag, not as the TQ-08 fix — see the PR
+ * body for the open decision on whether it should exist in this shape at all.
  *
  * Zero-token: pure and deterministic, no inference call.
  */
 
 import { claimIdentifiers } from "@/lib/quote-window";
-import { MODEL_VISIBLE_CHARS, normalize, supportingQuote } from "./supporting-quote";
+import { MODEL_VISIBLE_CHARS, assignValues, normalize, supportingQuote } from "./supporting-quote";
 
 /**
  * Default **OFF**, and that default is a measurement, not caution for its own
@@ -104,12 +116,31 @@ export function checkClaimSupport(opts: {
   if (!answer.trim() || citations.length === 0 || chunks.length === 0) return SUPPORTED;
 
   const pages = pagesByCitation(chunks);
+  // Review A HIGH: `supportingQuote.unsupported` (supporting-quote.ts:357)
+  // returns EVERY unmatched claim, including ones the extractor could not
+  // fully parse — a value whose unit is outside the closed table (kg·cm,
+  // kBd) or that carries no unit at all. This module's header claimed it
+  // judged "only fully-parsed units", and that was simply false: the correct
+  // TQ-02 torque answer was refused against a page containing that exact
+  // text, because kg·cm is not a known unit.
+  //
+  // So the usable set is re-derived here from the same `assignValues` the
+  // quote path uses, and an unusable claim is never grounds for refusal. If
+  // the extractor cannot fully parse a value, this check has no opinion about
+  // it — which is the only honest position.
+  const assigned = assignValues(answer, question);
   const values: string[] = [];
   for (const c of citations) {
     const pageChunks = pages[Number(c.citationId) - 1];
     if (!pageChunks) continue;
+    const usableText = new Set(
+      (assigned.get(c.citationId) ?? []).filter((v) => v.usable).map((v) => v.text.trim()),
+    );
+    if (usableText.size === 0) continue;
     const r = supportingQuote(pageChunks, answer, c.citationId, question);
-    for (const v of r.unsupported) if (!values.includes(v)) values.push(v);
+    for (const v of r.unsupported) {
+      if (usableText.has(v) && !values.includes(v)) values.push(v);
+    }
   }
   if (values.length > 0) {
     return { unsupported: true, reason: "spec_value_not_in_cited_chunk", values: values.slice(0, 8) };

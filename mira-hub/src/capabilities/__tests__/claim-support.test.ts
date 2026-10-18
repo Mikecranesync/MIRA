@@ -176,3 +176,57 @@ describe("the served replacement and the redraft directive", () => {
     expect(REDRAFT_DIRECTIVE).toMatch(/appear verbatim/);
   });
 });
+
+// ── Review A (Grok 4.6 via Cursor, 2026-10-18) HIGH on #4488 ──
+// The module header claimed it judged "only fully-parsed units". That was
+// FALSE: supportingQuote.unsupported returns every unmatched claim, including
+// values whose unit is outside the closed table. The reviewer's case: the
+// CORRECT TQ-02 torque answer was refused against a page containing that
+// exact text, because kg·cm is not a known unit.
+describe("Review A HIGH — an unparseable unit is never grounds for refusal", () => {
+  const KGCM_PAGE = chunk("Tighten the terminal screws to 8-10 kg·cm. Do not exceed 10 kg·cm.");
+
+  it("a kg·cm answer matching the page is NOT refused (TQ-02)", () => {
+    expect(
+      checkClaimSupport({
+        answer: "Tighten the terminal screws to 8-10 kg·cm [1].",
+        question: "what is the terminal screw torque",
+        citations: [{ citationId: "1" }],
+        chunks: [KGCM_PAGE],
+      }).unsupported,
+    ).toBe(false);
+  });
+
+  it("an unparseable unit is not flagged even when the page does NOT contain it", () => {
+    expect(
+      checkClaimSupport({
+        answer: "Tighten the terminal screws to 25 kg·cm [1].",
+        question: "what is the terminal screw torque",
+        citations: [{ citationId: "1" }],
+        chunks: [KGCM_PAGE],
+      }).unsupported,
+    ).toBe(false);
+  });
+
+  it("a kBd baud answer is not refused (TQ-19)", () => {
+    expect(
+      checkClaimSupport({
+        answer: "Set the port to 19.2 kBd [1].",
+        question: "what baud rate does the port use",
+        citations: [{ citationId: "1" }],
+        chunks: [chunk("The RS-485 port supports 9.6, 19.2 and 38.4 kBd.")],
+      }).unsupported,
+    ).toBe(false);
+  });
+
+  it("control: a KNOWN unit absent from the page is still refused", () => {
+    expect(
+      checkClaimSupport({
+        answer: "Tighten the main terminals to 2.5 N·m [1].",
+        question: "what is the terminal screw torque",
+        citations: [{ citationId: "1" }],
+        chunks: [chunk("Terminal screw torque: tighten the main circuit terminals to 1.76 N·m.")],
+      }).unsupported,
+    ).toBe(true);
+  });
+});
