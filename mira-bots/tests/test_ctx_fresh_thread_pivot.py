@@ -619,3 +619,16 @@ async def test_non_switch_keeps_retrieval_identity_too(sv, message, source):
     saved = sv._load_state(chat)
     assert saved["asset_identified"] == "AutomationDirect, GS10"
     assert saved["context"]["uns_context"]["model"] == "GS10"
+
+
+@pytest.mark.asyncio
+async def test_a_model_correction_does_not_inherit_the_old_machines_fault(sv):
+    # No fault named in the correction: the GS10's CE10 must not ride onto the GS20.
+    chat = "gs20-no-fault"
+    sv._save_state(chat, _dead_thread_state())
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "Sorry, it's actually a GS20, not a GS10.")
+    saved = sv._load_state(chat)
+    assert saved["asset_identified"] == "AutomationDirect, GS20"
+    assert saved["context"]["uns_context"]["model"] == "GS20"
+    assert saved["context"]["uns_context"].get("fault_code") != "CE10"
