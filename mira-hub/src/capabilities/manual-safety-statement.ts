@@ -52,9 +52,14 @@ function findMarkerAndStatement(text: string): ManualSafetyStatement | null {
           statementLines.push(afterMarker);
         }
 
-        // Continue collecting lines until a sentence boundary or meaningful gap
+        // Continue collecting lines until a sentence boundary or meaningful gap. A standalone
+        // marker may be separated from its text by up to two blank layout lines (#4509 Codex r2 F2).
         let sentenceCount = afterMarker ? 1 : 0;
-        for (let j = i + 1; j < lines.length && statementLines.join(' ').length < 500; j++) {
+        let start = i + 1;
+        if (!afterMarker) {
+          for (let gap = 0; gap < 2 && start < lines.length && !lines[start].trim(); gap++) start++;
+        }
+        for (let j = start; j < lines.length && statementLines.join(' ').length < 500; j++) {
           const nextLine = lines[j].trim();
           if (!nextLine) break; // Stop at blank lines
           statementLines.push(nextLine);
@@ -85,7 +90,8 @@ function findMarkerAndStatement(text: string): ManualSafetyStatement | null {
           }
         }
 
-        return { marker, statement };
+        // A marker with no statement after it is not a safety statement; keep looking.
+        if (statement) return { marker, statement };
       }
     }
   }

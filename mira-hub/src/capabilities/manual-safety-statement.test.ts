@@ -331,4 +331,18 @@ Verify voltage before working.`;
       expect(extractManualSafetyStatement('! CAUTION: Hot surface.')?.marker).toBe('CAUTION');
     });
   });
+
+  describe('Marker followed by a layout gap (#4509 Codex r2 F2)', () => {
+    it('skips blank layout lines after a standalone marker and keeps the statement', () => {
+      expect(extractManualSafetyStatement('WARNING:\n\nHazardous voltage. Disconnect power before servicing.')).toEqual({
+        marker: 'WARNING',
+        statement: 'Hazardous voltage. Disconnect power before servicing.',
+      });
+    });
+
+    it('a marker with no statement after it is not a safety statement', () => {
+      expect(extractManualSafetyStatement('WARNING:\n\n')).toBeNull();
+      expect(extractManualSafetyStatement('WARNING:')).toBeNull();
+    });
+  });
 });

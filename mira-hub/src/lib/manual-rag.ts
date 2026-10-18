@@ -2014,8 +2014,9 @@ export async function retrieveCitedPageChunks(
         AND (doc_id::text, source_url, COALESCE(page_start, source_page)) IN (
           SELECT * FROM unnest($2::text[], $3::text[], $4::int[])
         )
-      ORDER BY doc_id, COALESCE(page_start, source_page), metadata->>'chunk_index', id
-      LIMIT 200`,
+      ORDER BY doc_id, COALESCE(page_start, source_page), metadata->>'chunk_index', id`,
+    // No LIMIT (#4509 Codex r2 F1): the cited tuples already bound the read, and a cap could drop
+    // the one chunk of a large page that holds its warning.
     params,
   );
   return res.rows.map((r: Record<string, unknown>) => ({

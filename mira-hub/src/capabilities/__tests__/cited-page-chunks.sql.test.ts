@@ -34,6 +34,8 @@ describe("retrieveCitedPageChunks (#4509 Codex F1)", () => {
     expect(sql).toMatch(/ingest_route = 'v2'/);
     expect(sql).toMatch(/\(doc_id::text, source_url, COALESCE\(page_start, source_page\)\) IN/);
     expect(params).toEqual([TENANT, [DOC], ["pf40.pdf"], [73]]);
+    // #4509 Codex r2 F1: never truncated; the cited tuples already bound the read.
+    expect(sql).not.toMatch(/\bLIMIT\b/);
     expect(out).toEqual([{ content: "WARNING: x.", sourceUrl: "pf40.pdf", sourcePage: 73 }]);
   });
 

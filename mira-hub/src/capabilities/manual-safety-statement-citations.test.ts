@@ -60,3 +60,10 @@ describe("extractManualSafetyStatement — ABB's 'WARNING!' form (real ACS355 te
     expect(extractManualSafetyStatement("See the WARNINGS section of chapter 2 for details.")).toBeNull();
   });
 });
+
+describe("the rest of a cited page (#4509 Codex r2 F1)", () => {
+  it("a warning in the 250th chunk of a large cited page is still found", () => {
+    const rest = [...Array.from({ length: 249 }, () => page(1, PLAIN)), page(1, WARN)];
+    expect(manualSafetyStatementForCitations([cite("1", 1)], [page(1, PLAIN)], rest)).toMatchObject({ marker: "WARNING", page: 1 });
+  });
+});
