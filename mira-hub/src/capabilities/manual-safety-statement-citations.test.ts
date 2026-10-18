@@ -41,3 +41,22 @@ describe("manualSafetyStatementForCitations", () => {
     expect(manualSafetyStatementForCitations([cite("2", 2)], chunks)).toBeNull();
   });
 });
+
+describe("extractManualSafetyStatement — ABB's 'WARNING!' form (real ACS355 text)", () => {
+  // `pdftotext -layout` of the ACS355 user manual's Electrical safety page (Stranger Walk acs355-q2).
+  const ACS355_SAFETY =
+    " Electrical safety\n\n" +
+    "        WARNING! Ignoring the following instructions can cause physical injury or\n" +
+    "        death, or damage to the equipment.\n" +
+    "Only qualified electricians are allowed to install and maintain the drive!";
+
+  it("extracts the statement after 'WARNING!' without the exclamation mark", () => {
+    const hit = extractManualSafetyStatement(ACS355_SAFETY);
+    expect(hit?.marker).toBe("WARNING");
+    expect(hit?.statement).toMatch(/^Ignoring the following instructions can cause physical injury or death/);
+  });
+
+  it("control: 'WARNINGS' (a word, not the marker) does not match", () => {
+    expect(extractManualSafetyStatement("See the WARNINGS section of chapter 2 for details.")).toBeNull();
+  });
+});

@@ -34,13 +34,13 @@ function findMarkerAndStatement(text: string): ManualSafetyStatement | null {
     const line = lines[i];
 
     for (const marker of SAFETY_MARKERS) {
-      // Match marker at word boundary: "WARNING:" or "WARNING\s" but not "XWARNING"
-      const markerRegex = new RegExp(`\\b${marker}[:\\s]`);
+      // Match marker at word boundary: "WARNING:", "WARNING!" (ABB) or "WARNING\s" but not "XWARNING"
+      const markerRegex = new RegExp(`\\b${marker}[:!\\s]`);
       if (markerRegex.test(line)) {
         // Extract the statement following the marker
         const markerIndex = line.indexOf(marker);
         // Drop the marker's own punctuation ("ATTENTION:" → the sentence itself).
-        const afterMarker = line.substring(markerIndex + marker.length).replace(/^[\s:\-–—]+/, '').trim();
+        const afterMarker = line.substring(markerIndex + marker.length).replace(/^[\s:!\-–—]+/, '').trim();
 
         // Collect sentences starting from the marker line
         const statementLines: string[] = [];
