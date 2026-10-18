@@ -472,6 +472,15 @@ approved:
           WHERE header.tenant_id = knowledge_entries.tenant_id
             AND header.doc_id = knowledge_entries.doc_id
             AND header.ingest_route = 'v2'
+  "mira-hub/src/lib/manual-rag.ts:1399":
+    approved_classification: TENANT-ONLY
+    query_sha256: "792fa7f5d8d4f3ef95a374f85371d55683c4a4d99b6857bb408583efbc62e210"
+    reason: "NEW (2026-10-17 prod-test item 4, hybrid retrieval, flag NOTEBOOK_HYBRID_RETRIEVAL default off): retrieveNodeChunks VECTOR lane — the THIRD pass over the SAME pure-tenant scope as the BM25 pass (:1108) and the exact-token lane (:1163): tenant_id=$1, ingest_route='v2', the same ${approvalClauseMain} / ${nodeClauseMain} / ${docClause} fragments bound at the same parameter positions ($3 node ids, $5 validated doc scope, $6 server-derived confirmed set), plus `embedding IS NOT NULL`; ordered by cosine distance to the query vector bound as the lane's last parameter; LIMIT $4 (POOL). `($2::text IS NOT NULL)` only keeps the BM25 pass's $2 slot bound so the shared clause fragments keep their numbering — it is always true and never widens scope. Rows go through the SAME `admit()` applicability filter as every other lane before entering the pool; the correlated document_heading subquery it carries is the one allowlisted at :1084. Reads only the caller's own node-attached uploads — re-reviewed TENANT-ONLY by the same rule as :1108 (pure-tenant surface, not the OEM hybrid)."
+    query_snippet: |
+      FROM knowledge_entries
+              WHERE tenant_id = $1
+                AND ($2::text IS NOT NULL)
+                AND ingest_route = 'v2'
   "mira-hub/src/lib/__tests__/approved-source-admission.integration.test.ts:161":
     approved_classification: TENANT-ONLY
     query_sha256: "a19fac90fad5d3795b5f25ec76f2108a20def603b9d74ac8b9523a89dd672629"

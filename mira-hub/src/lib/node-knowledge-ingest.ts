@@ -133,8 +133,8 @@ export function chunkText(
 
 // Embedding contract — MUST match the query path or cosine is meaningless
 // (asset-intelligence.searchKB embeds with nomic-embed-text; column is vector(768)).
-const EMBED_MODEL = "nomic-embed-text";
-const EMBED_DIM = 768;
+export const EMBED_MODEL = "nomic-embed-text";
+export const EMBED_DIM = 768;
 const EMBED_BATCH = 16; // chunks embedded per SELECT→embed→UPDATE round
 // Kill switch (default ON). Set NODE_EMBED_ON_WRITE=0 to disable the trailing
 // embed pass without a redeploy if the embedder is ever overloaded — chunks stay
