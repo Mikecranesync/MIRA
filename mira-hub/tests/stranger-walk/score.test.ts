@@ -249,6 +249,29 @@ describe("teardown fallback lookup", () => {
   });
 });
 
+describe("honest residual risk (#4461 Codex F1/F2, accepted by Mike 2026-10-18)", () => {
+  const read = (p: string) => readFileSync(path.join(__dirname, p), "utf8");
+  const docs = {
+    readme: read("README.md"),
+    workflow: read("../../../.github/workflows/stranger-walk.yml"),
+    staging: read("staging.ts"),
+    walk: read("walk.spec.ts"),
+  };
+  it("no file claims spend can never pass the cap or that every mid-walk deploy is caught", () => {
+    for (const [name, text] of Object.entries(docs)) {
+      expect(text, name).not.toMatch(/can never pass|never passes the cap|hard stop;/);
+      expect(text, name).not.toMatch(/(?:is caught by|caught instead by) the start\/end identity check/);
+    }
+  });
+  it("the README names both accepted gaps and the fix issue", () => {
+    const limits = docs.readme.slice(docs.readme.indexOf("## Known limits"));
+    expect(docs.readme).toContain("## Known limits");
+    expect(limits).toMatch(/without a redeploy/);
+    expect(limits).toMatch(/A→B→A/);
+    expect(limits).toMatch(/#4507/);
+  });
+});
+
 describe("workflow", () => {
   const yml = readFileSync(path.join(__dirname, "../../../.github/workflows/stranger-walk.yml"), "utf8");
   it("never joins the shared staging deploy queue (it could cancel a pending deploy); PR runs never walk", () => {
