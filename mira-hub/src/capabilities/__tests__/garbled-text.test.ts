@@ -311,6 +311,47 @@ describe("round 4 — independent token evidence, residual cipher, partial marke
     },
   );
 
+  // Codex r4 F1: ordinary punctuation was positive cipher evidence — "0.5" → "MKR", "-" → "J", "(1)" → "ENF".
+  it.each(["0.5", "-", "/", "(1)", "P2.04", "$5", "24V", "10%", "VFD,", "LED.", "(VFD)", "I/O"])(
+    "F1 (r4): the clean number / punctuation token %j inside a cipher sentence is kept byte-identical",
+    (tok) => {
+      const a = encodeShift29("Set the input module current threshold to");
+      const b = encodeShift29("and connect the power before you install the processor in the chassis");
+      const page = `${a} ${tok} ${b}`;
+      expect(repairExtractedPage(page).text).toContain(` ${tok} `);
+      expect(planChunkRepairs([{ id: "r1", content: page }])[0].content).toContain(` ${tok} `);
+    },
+  );
+
+  it("F1 (r4) control: the cipher of an ALL-CAPS word is letterless too and still decodes (PLC-5, RAM., BATT, S:12)", () => {
+    expect(decodeCipherTokens(PLC5_CIPHER)).toBe(PLC5_PAGE);
+    // a plain number is neutral text, not an unresolved token: the sentence is complete
+    const a = encodeShift29("Set the input module current value to");
+    const b = encodeShift29("and connect the power before you install the processor in the chassis");
+    expect(repairExtractedPage(`${a} 0.5 ${b}`)).toMatchObject({
+      text: "Set the input module current value to 0.5 and connect the power before you install the processor in the chassis",
+      unrepaired: false,
+    });
+  });
+
+  // Codex r4 F3: a short cipher line sharing its line with an English prefix was never decoded and never counted.
+  it.each(["Note ", "WARNING ", "CAUTION: "])(
+    "F3 (r4): on a cipher page, the prefixed short line %j+cipher is decoded with the prefix byte-identical",
+    (prefix) => {
+      const out = repairExtractedPage(`${PLC5_CIPHER}\n${prefix}${encodeShift29("Turn the switch clockwise")}`);
+      expect(out.text.split("\n")[1]).toBe(`${prefix}Turn the switch clockwise`);
+      expect(out.unrepaired).toBe(false);
+    },
+  );
+
+  it("F3 (r4): …and when its words are unknown, the line stays garbled AND the page is reported partial", () => {
+    const page = `${PLC5_CIPHER}\nNote ${encodeShift29("Rotate the knob")}`;
+    const out = repairExtractedPage(page);
+    expect(out.text.split("\n")[1]).toBe(`Note ${encodeShift29("Rotate")} the ${encodeShift29("knob")}`);
+    expect(out.unrepaired).toBe(true);
+    expect(planChunkRepairs([{ id: "r1", content: page }])[0].repair).toBe("shift29_partial");
+  });
+
   it("F1 (r3) control: a cipher word the vocabulary does NOT know is left garbled (false negative), and reported", () => {
     // "rotate" / "knob" are deliberately absent from TOKEN_VOCAB.
     const out = repairExtractedPage(`${A} ${encodeShift29("rotate the knob")} ${B}`);
@@ -365,7 +406,7 @@ describe("round 4 — independent token evidence, residual cipher, partial marke
   });
 
   it("F3 control: a page of English CAPS lines has no positive cipher evidence — untouched and not flagged", () => {
-    const page = "Relay Ladder Logic\nWARNING 120V\nLOTO BEFORE SERVICE\nVFD LED STATUS\nPLC RAM BATT\nRESET SYSTEM";
+    const page = "Relay Ladder Logic\nWARNING 120V\nLOTO BEFORE SERVICE\nVFD LED STATUS\nPLC RAM BATT\nRESET SYSTEM\nSee note (1), P2.04 = 0.5 A";
     expect(repairExtractedPage(page)).toEqual({ text: page, repair: null, unrepaired: false });
   });
 
