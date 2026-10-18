@@ -214,6 +214,9 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
     "Parameter lockout is set in P9.07. Wait 10 seconds for the display to refresh.",
     "Lock out the machine as required by site policy. Wait 5 seconds to exit the menu.", // a real lockout noun + a MENU countdown is still one signal
     "The keypad lockout feature prevents parameter changes from the front panel. Verify no parameters were altered.", // a FEATURE lockout + a second keyword is still one signal
+    // Codex round 7 — "power" as a specification modifier inside a prohibition
+    "Do not connect the sensor with low power consumption.",
+    "Never install a module with a power rating below 24 W.",
   ])("a single keyword noun is NOT a lockout page: %s", (content) => {
     expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 43, pageLabel: "4-3" })])).toBeNull();
   });
@@ -229,6 +232,8 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
     "Turn off the power supply.", // round 5 control: bare, at end of sentence
     "Lock out the disconnect and wait 5 minutes for the bus capacitors to discharge.", // round 6 control: an energy countdown
     "Lockout/tagout the drive, then wait 10 minutes before opening the enclosure.", // round 6 control
+    "Do not remove the cover while the unit is powered up.", // round 7 control: a real powered-state prohibition
+    "Never touch the terminals with power on.", // round 7 control
   ])("control: an instruction or two signals still qualify: %s", (content) => {
     expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 25, pageLabel: "2-15" })])).not.toBeNull();
   });

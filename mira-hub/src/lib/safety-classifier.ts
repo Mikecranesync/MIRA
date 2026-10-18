@@ -452,7 +452,28 @@ const RUNNING_ONLY_RE = /\brunning\b/i;
 // the jumper with it powered?" was exempted as a diagnostic prefix because
 // connect was missing here while present in HANDS_ON_VERB_RE).
 const PHYSICAL_VERB_RE =
-  /\b(?:swap(?:ping)?|replac(?:e|ing)|chang(?:e|ing)|pull(?:ing)?|remov(?:e|ing)|open(?:ing)?|touch(?:ing)?|rewir(?:e|ing)|tighten(?:ing)?|loosen(?:ing)?|clean(?:ing)?|servic(?:e|ing)|repair(?:ing)?|work(?:ing)? on|connect(?:ing)?|disconnect(?:ing)?|reconnect(?:ing)?|install(?:ing)?|unplug(?:ging)?|plug(?:ging)? in|tak(?:e|ing) off|put(?:ting)? on|reach(?:ing)? in)\b/i;
+  /\b(?:swap(?:ping)?|replac(?:e|ing)|chang(?:e|ing)|pull(?:ing)?|remov(?:e|ing)|open(?:ing)?|touch(?:ing)?|rewir(?:e|ing)|tighten(?:ing)?|loosen(?:ing)?|clean(?:ing)?|servic(?:e|ing)|repair(?:ing)?|work(?:ing)? on|connect(?:ing)?|disconnect(?:ing)?|reconnect(?:ing)?|install(?:ing)?|unplug(?:ging)?|plug(?:ging)? in|adjust(?:ing)?|meter(?:ing)?|prob(?:e|ing)|tak(?:e|ing) off|put(?:ting)? on|reach(?:ing)? in)\b/i;
+
+/**
+ * Codex round 7 F3: a sentence that NEGATES the hands-on work ("I will not
+ * work on it while it is powered.", "Do not replace the fan while it is
+ * powered.") is not a request to do it — but its powered-state words were
+ * being combined with the next sentence's "How do I replace the fan after
+ * locking out?" into an energized-work ask. Such sentences are dropped before
+ * the whole-message checks. Only a negation of a HANDS-ON verb counts:
+ * "Don't tell me to lock out, how do I pull it with it powered?" negates
+ * "tell", keeps its powered-work ask, and still stops.
+ */
+const NEGATED_WORK_SENTENCE_RE = new RegExp(
+  "^\\s*(?:i\\s+|we\\s+|you\\s+)?(?:will\\s+not|won't|do\\s+not|don't|never|am\\s+not\\s+going\\s+to|are\\s+not\\s+going\\s+to|must\\s+not|should\\s+not|shouldn't|would\\s+not|wouldn't)\\s+(?:ever\\s+|be\\s+)?" +
+    HANDS_ON_VERB_RE.source.replace(/^\\b/, "").replace(/\\b$/, ""),
+  "i",
+);
+function withoutNegatedWorkSentences(msg: string): string {
+  const sentences = msg.split(/(?<=[.!?;])\s+/);
+  const kept = sentences.filter((s) => !NEGATED_WORK_SENTENCE_RE.test(s));
+  return kept.length === sentences.length ? msg : kept.join(" ");
+}
 
 /**
  * Codex round 6 F3: a skip/bypass phrase under NEGATION is the opposite intent
@@ -548,18 +569,25 @@ export function isEnergizedWorkAsk(message: string): boolean {
   // to revisit, so the route gates the stop on `!electricalHazardDirective`
   // and the split is raised for Mike instead.
   if (skipLockoutIntent(msg)) return true;
-  if (!POWERED_STATE_RE.test(msg)) return false;
+  // Codex round 7 F3: evaluate the powered state and the work ask only over
+  // the sentences that do not NEGATE the work (see NEGATED_WORK_SENTENCE_RE).
+  const msgEff = withoutNegatedWorkSentences(msg);
+  if (!POWERED_STATE_RE.test(msgEff)) return false;
   // A status report / reading question with no hands-on verb is diagnosis,
   // not energized work (round-2 review false positives) — unless the message
   // also asks to put a meter or probe ON a work object ("…can I measure the
   // terminals with it powered?"): a symptom sentence in front of that request
   // does not make it observation-only (Codex F2).
-  if (DIAGNOSTIC_CONTEXT_RE.test(msg) && !PHYSICAL_VERB_RE.test(msg) && !isPoweredContact(msg)) return false;
+  if (DIAGNOSTIC_CONTEXT_RE.test(msgEff) && !PHYSICAL_VERB_RE.test(msgEff) && !isPoweredContact(msgEff)) return false;
   // A "running"-only powered state is too weak to pair with a reading verb.
-  const strongState = POWERED_STATE_RE.test(msg.replace(RUNNING_ONLY_RE, ""));
+  // Codex round 7 F1: powered CONTACT ("meter the pins with it powered") is
+  // sufficient on its own — it was computed for the exemption above and then
+  // discarded here, so "meter" / "pins" fell through the verb / object lists.
+  if (isPoweredContact(msgEff)) return true;
+  const strongState = POWERED_STATE_RE.test(msgEff.replace(RUNNING_ONLY_RE, ""));
   return strongState
-    ? HANDS_ON_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg)
-    : PHYSICAL_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg);
+    ? HANDS_ON_VERB_RE.test(msgEff) || WORK_OBJECT_RE.test(msgEff)
+    : PHYSICAL_VERB_RE.test(msgEff) || WORK_OBJECT_RE.test(msgEff);
 }
 
 /**

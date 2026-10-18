@@ -74,7 +74,10 @@ const LOCKOUT_SIGNALS: ReadonlyArray<RegExp> = [
   // connect a low power sensor to this port") — it must be a prohibition ON
   // powered work: "do not <verb> … while/with/when/until … power(ed)/live".
   // Unverified against the real PDF; the positive shape is the reviewer's quote.
-  /\b(?:do\s+not|don't|never|must\s+not)\s+(?:remove|install|connect|disconnect|touch|open|service|replace|work\s+on)\b[^.]{0,80}\b(?:while|with|when|until|unless)\b[^.]{0,30}\b(?:power(?:ed)?|energi[sz]ed|live)\b/i,
+  // …and the state after while/with/when must BE a powered state (Codex round
+  // 7: "Do not connect the sensor with low power consumption" is a spec, not a
+  // prohibition on powered work — "power" there is a modifier).
+  /\b(?:do\s+not|don't|never|must\s+not)\s+(?:remove|install|connect|disconnect|touch|open|service|replace|work\s+on)\b[^.]{0,80}\b(?:while|with|when|until|unless)\b[^.]{0,30}\b(?:power\s+(?:is\s+)?(?:applied|on|connected|present)|(?:the\s+)?power\s+(?:is\s+)?on|powered(?:\s+(?:up|on))?|energi[sz]ed|live|under\s+power)\b/i,
 ];
 const HAZARD_HEADING_RE = /\b(?:WARNING|DANGER|CAUTION)\b/;
 

@@ -44,6 +44,10 @@ describe("isEnergizedWorkAsk — Codex r5 F1: ordinary subject / particle orderi
     "Can I pull the RFI jumper while it has power?",
     "The LED blinks; can I connect the jumper with it powered?",
     "If the drive still has power, can I swap the fan?",
+    // Codex round 7
+    "Can I meter the pins with it powered?",
+    "The LED blinks; can I adjust the jumper with it powered?",
+    "Don't tell me to lock out, how do I pull the jumper with it powered?",
   ])("STOP: %j", (msg) => {
     expect(isEnergizedWorkAsk(msg)).toBe(true);
   });
@@ -73,6 +77,10 @@ describe("isEnergizedWorkAsk — Codex r5 F1: ordinary subject / particle orderi
     // "The cover is on" names a cover; "the LED blinks" alone is observation
     "The cover is on. Why does it still trip?",
     "The LED blinks; what does that mean with it powered?",
+    // Codex round 7 — F3: a sentence that NEGATES the work is not a request to do it
+    "I will not work on it while it is powered. How do I replace the fan after locking out?",
+    "Do not replace the fan while it is powered. How do I replace it after locking out?",
+    "We never pull the jumper with it energized. What is the lockout sequence for this drive?",
   ])("control (no stop): %j", (msg) => {
     expect(isEnergizedWorkAsk(msg)).toBe(false);
   });
