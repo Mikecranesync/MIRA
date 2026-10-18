@@ -238,12 +238,11 @@ function blockIsShift29(rawBlock: string): boolean {
  * - otherwise it is decoded when it carries a cipher-only character (a C0
  *   control = original space/digit/punctuation, or shifted-uppercase punctuation
  *   like the `,` in `,Q` = `In`), or its decode is a common word (`WKH` = `the`);
- * - a remaining caps-only token is decoded only with evidence of its OWN: it
- *   sits BETWEEN two tokens already decided cipher AND its decode is
- *   pronounceable (`looksPronounceable`). A run touching either block edge or
- *   an English token is left as-is, so an English acronym before OR after the
- *   cipher (`VFD LED ,Q…`, `…WKH RESET SYSTEM`) is never mangled; trailing
- *   cipher words are reached through TOKEN_VOCAB instead (Codex r2 F1).
+ * - any remaining caps-only token is left exactly as extracted and reported as
+ *   unresolved. No neighbour rule survives (Codex r2 and r3 on #4486 each broke
+ *   one: "RESET SYSTEM" → "obpbq SYSTEM", then "HIGH" → "efde"), so an English
+ *   acronym before, after or BETWEEN cipher spans is never mangled; a cipher
+ *   word the vocabulary misses is a false negative that marks the page partial.
  *
  * Measured on the probe set: `NOTE`→`klqb` (no vowel), `LED`→`iba`/`VFD`→`sca`
  * (3 letters) and `OK`/`ON`/`NO` are all kept; every token of the PLC-5 fixture
@@ -258,30 +257,66 @@ const STOPWORDS = new Set([
 /** Token-level vocabulary evidence — SEPARATE from COMMON_WORDS, which also
  *  drives the density thresholds and must not drift. Manual vocabulary a
  *  decoded token is checked against as a whole word. */
+// Since Codex r3 on #4486 this list is the ONLY way a caps-only token with no
+// cipher character gets decoded (no neighbour rule survives — see
+// classifyTokens), so it is deliberately broad: common English plus the
+// vocabulary of controller / drive / panel manuals. A word missing here is a
+// false negative (left garbled, page marked partial), never a corruption.
 const TOKEN_VOCAB = new Set([
   ...COMMON_WORDS,
   ...STOPWORDS,
-  "true", "false", "value", "values", "timer", "turns", "stores", "stored", "outputs", "inputs", "chassis",
-  "condition", "instruction", "instructions", "energizes", "energized", "closed", "open", "relay", "ladder",
-  "logic", "rung", "contact", "coil", "sensor", "motor", "drive", "speed", "start", "stop", "reset", "alarm",
-  "code", "codes", "check", "test", "light", "switch", "cable", "ground", "signal", "pressure", "temperature",
-  "display", "screen", "menu", "setting", "settings", "parameter", "parameters", "default", "enable", "disable",
-  "manual", "section", "page", "figure", "note", "warning", "caution", "danger", "before", "after", "then",
-  "major", "minor", "lists", "list", "scanned", "indicator", "controller", "processor", "communication", "first",
+  // common English
+  "about", "above", "across", "add", "added", "again", "against", "allow", "allows", "also", "always", "am",
+  "among", "any", "apply", "applied", "around", "available", "back", "because", "become", "been", "begin",
+  "being", "below", "between", "both", "but", "cannot", "case", "cause", "causes", "change", "changed", "changes",
+  "clear", "cleared", "close", "closed", "come", "complete", "completed", "contains", "could", "defined", "describe",
+  "described", "detail", "details", "did", "different", "does", "done", "down", "during", "each", "either",
+  "else", "end", "ends", "enter", "entered", "even", "every", "example", "except", "exit", "first", "follow",
+  "following", "follows", "found", "function", "functions", "further", "general", "give", "given", "go", "goes",
+  "had", "have", "having", "he", "her", "here", "high", "higher", "him", "his", "hold", "how", "however", "if",
+  "include", "included", "includes", "into", "its", "just", "keep", "last", "least", "left", "less", "level",
+  "like", "limit", "limits", "line", "lines", "low", "lower", "made", "make", "makes", "many", "match", "me",
+  "means", "might", "more", "most", "move", "much", "must", "my", "near", "need", "needed", "needs", "never",
+  "new", "next", "normal", "normally", "now", "number", "numbers", "occur", "occurs", "once", "one", "only",
+  "onto", "open", "opened", "operate", "operates", "operating", "operation", "option", "options", "other",
+  "others", "our", "out", "over", "own", "part", "parts", "per", "place", "point", "possible", "present", "press",
+  "pressed", "proper", "provide", "provided", "provides", "range", "rate", "read", "reads", "refer", "related",
+  "required", "requires", "result", "results", "return", "returns", "right", "run", "running", "runs", "same",
+  "see", "select", "selected", "send", "sent", "several", "shall", "should", "show", "shown", "shows", "shut",
+  "since", "slow", "some", "specific", "specified", "step", "steps", "still", "stop", "stopped", "stops", "such",
+  "sure", "system", "systems", "take", "than", "their", "them", "then", "there", "these", "they", "those",
+  "three", "through", "time", "times", "trip", "true", "turn", "turned", "turns", "two", "under", "unit", "units",
+  "until", "upper", "used", "user", "using", "usually", "value", "values", "verify", "very", "via", "want", "well",
+  "were", "what", "where", "whether", "which", "while", "who", "why", "within", "without", "work", "works",
+  "would", "yes", "yet", "your", "zero", "false", "flow", "high", "before", "after", "lists", "list", "listed",
+  "inside", "outside", "behind", "beside", "prior", "whenever", "cannot", "already", "another", "away", "toward",
+  // controller / drive / panel manuals
+  "accessory", "actuator", "adapter", "alarm", "alarms", "analog", "backplane", "baud", "binary", "block", "blocks",
+  "board", "bolt", "bolts", "breaker", "bus", "button", "cabinet", "cable", "cables", "card", "cards", "chassis",
+  "check", "checks", "circuit", "circuits", "clockwise", "code", "codes", "coil", "coils", "command", "commands",
+  "communication", "communications", "component", "components", "condition", "conditions", "configuration",
+  "configure", "configured", "connection", "connections", "connector", "contact", "contacts", "contactor",
+  "control", "controller", "controllers", "controls", "counter", "counterclockwise", "cover", "cycle", "danger",
+  "default", "device", "devices", "diagnostic", "diagnostics", "digital", "disable", "disabled", "disconnect",
+  "display", "drive", "drives", "earth", "electrical", "enable", "enabled", "enclosure", "encoder", "energize",
+  "energized", "energizes", "ethernet", "fan", "feedback", "field", "figure", "filter", "firmware", "first",
+  "frequency", "fuse", "fuses", "gateway", "ground", "grounding", "hardware", "heat", "hertz", "hmi", "indicator",
+  "indicators", "inductive", "input", "inputs", "inspect", "inspection", "install", "installation", "installed",
+  "instruction", "instructions", "interface", "jumper", "jumpers", "key", "keypad", "ladder", "lamp", "led", "light",
+  "lights", "load", "loads", "lockout", "logic", "loop", "machine", "maintenance", "major", "manual", "manuals",
+  "menu", "message", "messages", "minor", "module", "modules", "motor", "motors", "mount", "mounted", "mounting",
+  "network", "node", "nodes", "note", "notes", "off", "on", "operator", "output", "outputs", "overload", "page",
+  "pages", "panel", "panels", "parameter", "parameters", "phase", "plug", "port", "ports", "position", "power",
+  "powered", "pressure", "procedure", "procedures", "processor", "program", "programming", "programs", "protocol",
+  "pump", "rack", "rail", "register", "registers", "relay", "relays", "remove", "removed", "repair", "replace",
+  "replaced", "replacement", "reset", "resistor", "routine", "rung", "rungs", "safety", "scan", "scanned", "scanner",
+  "screen", "screw", "screws", "section", "sections", "sensor", "sensors", "serial", "service", "setting",
+  "settings", "shield", "shielded", "short", "signal", "signals", "slot", "slots", "software", "speed", "start",
+  "started", "starter", "starts", "state", "states", "station", "status", "stores", "stored", "supply", "switch",
+  "switches", "table", "tables", "tag", "tags", "temperature", "terminal", "terminals", "test", "tests", "timer",
+  "timers", "torque", "transducer", "transformer", "transmitter", "valve", "valves", "variable", "voltage", "warning",
+  "wire", "wired", "wires", "wiring", "word", "words",
 ]);
-
-/** Pronounceability — the independent evidence an undecided token must show
- *  before it is decoded by its neighbours (Codex r2 F1 on #4486: "RESET
- *  SYSTEM" after cipher became "obpbq SYSTEM" on neighbour evidence alone).
- *  Real words decode to vowel-bearing text without a four-consonant pile-up;
- *  English caps acronyms do not: RESET → obpbq (bpbq), POWER → mltho (mlth),
- *  MOTOR → jlqlo (jlql), SYSTEM → pvpqbj (no vowel). */
-function looksPronounceable(word: string): boolean {
-  if (word.length < 4) return false;
-  const vowels = (word.match(/[aeiouy]/g) ?? []).length;
-  if (vowels / word.length < 0.2) return false; // "tests" is 0.2; RESET → obpbq is 0.2 but fails the run test
-  return !/[^aeiouy]{4}/.test(word);
-}
 
 const C0_RE = /[\x01-\x08\x0b\x0c\x0e-\x1f]/;
 /** The letters of a decoded token must have a word shape — ALLCAPS, Capitalised
@@ -315,29 +350,34 @@ export function classifyTokens(block: string): { parts: string[]; verdict: Token
     if (tokenIsEnglish(p)) return "english";
     return tokenIsCipher(p) ? "cipher" : "unknown";
   });
-  // Pass 2: an undecided token is decoded only with evidence of its OWN — a
-  // pronounceable decode — AND cipher on BOTH sides. Neighbours alone are not
-  // evidence (Codex r2 F1: "RESET SYSTEM" trailing a cipher sentence was being
-  // shifted), so a run touching either block edge or an English token is left
-  // as-is. Trailing cipher words are reached through TOKEN_VOCAB instead.
-  for (let i = 0; i < parts.length; i += 2) {
-    if (verdict[i] !== "unknown") continue;
-    let j = i;
-    while (j < parts.length && verdict[j] === "unknown") j += 2;
-    const bounded = i >= 2 && verdict[i - 2] === "cipher" && j < parts.length && verdict[j] === "cipher";
-    if (bounded) {
-      for (let k = i; k < j; k += 2) {
-        if (looksPronounceable(decodeShift29(parts[k]).toLowerCase().replace(/[^a-z]/g, ""))) verdict[k] = "cipher";
-      }
-    }
-    i = j - 2;
-  }
+  // There is NO second pass. Codex r2 and r3 on #4486 each showed that any
+  // rule promoting an undecided token on its neighbours' evidence — plain
+  // adjacency in r2 ("RESET SYSTEM" → "obpbq SYSTEM"), adjacency plus a
+  // pronounceability heuristic in r3 ("HIGH" → "efde", LEFT/RIGHT/SHUT/SLOW/
+  // FLOW/HOLD/TRIP/LOWER likewise) — corrupts clean uppercase text that sits
+  // between cipher spans. A token is decoded only on evidence of its own
+  // (cipher characters or a vocabulary decode); everything else stays as
+  // extracted and is reported through `unresolved`, so the page is marked
+  // partial rather than complete.
   return { parts, verdict };
 }
 
+/** Cipher tokens decoded; `unresolved` = tokens with no evidence either way
+ *  that sat in a block where cipher WAS decoded — the residue the page-level
+ *  `unrepaired` cue and the `shift29_partial` marker report (Codex r3 F3:
+ *  judging the rewritten line as one block hid "7XUQ the switch FORFNZLVH"
+ *  behind its new lowercase). */
 export function decodeCipherTokens(block: string): string {
+  return decodeBlockTokens(block).text;
+}
+function decodeBlockTokens(block: string): { text: string; decoded: boolean; unresolved: boolean } {
   const { parts, verdict } = classifyTokens(block);
-  return parts.map((p, i) => (verdict[i] === "cipher" ? decodeShift29(p) : p)).join("");
+  const decoded = verdict.includes("cipher");
+  return {
+    text: parts.map((p, i) => (verdict[i] === "cipher" ? decodeShift29(p) : p)).join(""),
+    decoded,
+    unresolved: decoded && verdict.includes("unknown"),
+  };
 }
 
 /** Does a block look like cipher by TOKEN evidence? No ASCII lowercase, at
@@ -401,10 +441,12 @@ export function repairExtractedPage(text: string): PageRepair {
   const out = parts.map((part, i) => {
     if (i % 2 === 1) return part; // a captured separator
     if (isShift[i] || (pageIsCipher && blockIsShortCipher(part))) {
-      const decoded = decodeCipherTokens(part);
-      if (decoded !== part) decodedAny = true;
-      if (blockLooksCipher(decoded)) residualCipher = true;
-      return decoded;
+      const out = decodeBlockTokens(part);
+      if (out.decoded) decodedAny = true;
+      // Residue is tracked per TOKEN during classification, never re-read from
+      // the rewritten line (whose new lowercase would hide it — Codex r3 F3).
+      if (out.unresolved || blockLooksCipher(out.text)) residualCipher = true;
+      return out.text;
     }
     if (blockLooksCipher(part)) residualCipher = true;
     return part;

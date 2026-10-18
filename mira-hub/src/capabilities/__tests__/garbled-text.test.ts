@@ -282,16 +282,40 @@ describe("round 4 — independent token evidence, residual cipher, partial marke
     },
   );
 
+  const A = encodeShift29("Install the battery before you connect power to the chassis and replace it when the");
+  const B = encodeShift29("status indicator turns on and the fault table lists the major fault code");
+
   it("F1: clean uppercase INSIDE the cipher (bounded by cipher on both sides) is kept — neighbours alone are not evidence", () => {
-    const a = encodeShift29("Install the battery before you connect power to the chassis and replace it when the");
-    const b = encodeShift29("status indicator turns on and the fault table lists the major fault code");
-    const out = repairExtractedPage(`${a} RESET SYSTEM ${b}`);
+    const out = repairExtractedPage(`${A} RESET SYSTEM ${B}`);
     expect(out.repair).toBe("shift29");
     expect(out.text).toContain(" RESET SYSTEM ");
     expect(out.text.startsWith("Install the battery")).toBe(true);
     expect(out.text.endsWith("major fault code")).toBe(true);
-    // control: a genuine cipher word in the same bounded position IS decoded ("timer" is not in the vocabulary)
-    expect(repairExtractedPage(`${a} ${encodeShift29("timer")} ${b}`).text).toContain(" timer ");
+    // control: a genuine cipher word in the same bounded position IS decoded, on its own vocabulary evidence
+    expect(repairExtractedPage(`${A} ${encodeShift29("timer")} ${B}`).text).toContain(" timer ");
+  });
+
+  // Codex r3 F1: pronounceability was not independent evidence either — HIGH → "efde".
+  it.each(["HIGH", "LEFT", "RIGHT", "SHUT", "SLOW", "FLOW", "HOLD", "TRIP", "LOWER", "DRIVE"])(
+    "F1 (r3): the pronounceable-looking caps word %j between cipher spans is kept byte-identical, by repairExtractedPage and planChunkRepairs alike",
+    (word) => {
+      const page = `${A} ${word} ${B}`;
+      const out = repairExtractedPage(page);
+      expect(out.text).toContain(` ${word} `);
+      expect(out.text.startsWith("Install the battery")).toBe(true);
+      expect(planChunkRepairs([{ id: "r1", content: page }])[0].content).toContain(` ${word} `);
+      // …and because a caps token with no evidence either way stayed in a decoded block, the
+      // page is reported partial rather than complete (the safe direction — flag, never mangle).
+      expect(out.unrepaired).toBe(true);
+      expect(planChunkRepairs([{ id: "r1", content: page }])[0].repair).toBe("shift29_partial");
+    },
+  );
+
+  it("F1 (r3) control: a cipher word the vocabulary does NOT know is left garbled (false negative), and reported", () => {
+    // "rotate" / "knob" are deliberately absent from TOKEN_VOCAB.
+    const out = repairExtractedPage(`${A} ${encodeShift29("rotate the knob")} ${B}`);
+    expect(out.text).toContain(` ${encodeShift29("rotate")} the ${encodeShift29("knob")} `);
+    expect(out.unrepaired).toBe(true);
   });
 
   it("F1: clean uppercase on BOTH sides of the cipher", () => {
@@ -310,6 +334,21 @@ describe("round 4 — independent token evidence, residual cipher, partial marke
     expect(short).not.toMatch(/[\x01-\x1f]/);
     const out = repairExtractedPage(`${PLC5_CIPHER}\n${short}`);
     expect(out).toEqual({ text: `${PLC5_PAGE}\nInstall the battery first`, repair: "shift29", unrepaired: false });
+  });
+
+  it("F3 (r3): a trailing line that decodes only in part is reported partial, not complete — residue is tracked per token", () => {
+    // Codex's string: "Turn the switch clockwise" decodes fully now that "turn"/"clockwise" are vocabulary…
+    expect(repairExtractedPage(`${PLC5_CIPHER}\n${encodeShift29("Turn the switch clockwise")}`)).toMatchObject({
+      text: `${PLC5_PAGE}\nTurn the switch clockwise`,
+      unrepaired: false,
+    });
+    // …so the same shape with non-vocabulary words is the regression: the half-decoded line
+    // ("5RWDWH the HQRE clockwise") used to read as English once "the" appeared.
+    const page = `${PLC5_CIPHER}\n${encodeShift29("Rotate the knob clockwise")}`;
+    const out = repairExtractedPage(page);
+    expect(out.text.split("\n")[1]).toBe(`${encodeShift29("Rotate")} the ${encodeShift29("knob")} clockwise`);
+    expect(out).toMatchObject({ repair: "shift29", unrepaired: true });
+    expect(planChunkRepairs([{ id: "r1", content: page }])[0].repair).toBe("shift29_partial");
   });
 
   it("F3: cipher the decoder cannot reach keeps the page unrepaired:true, and the backfill plan marks the row partial", () => {
