@@ -107,8 +107,12 @@ one. Several development runs in an hour hit it — the walk then reports
 `.github/workflows/stranger-walk.yml` — nightly 06:30 UTC + `workflow_dispatch`, staging only,
 in the shared `staging-environment` concurrency group, advisory (a low score is a finding, not a
 failed job). It holds the staging `DOPPLER_TOKEN`, so it runs **main's code only**: the job is
-skipped on any other ref, and a first step proves the exact SHA is on main before checkout. A full
-walk holds the concurrency group ~40 min; a staging deploy dispatched then queues behind it.
+skipped on any other ref, and a first step proves the exact SHA is on main before checkout. It uses
+its **own** concurrency group, never `staging-environment`: GitHub keeps one pending run per group,
+so joining the deploy queue could cancel a pending staging deploy. A deploy that lands mid-walk is
+caught by the start/end identity check and the run is NOT ASSESSED. Prices come from the same env
+the Hub bills against (`OPENAI_PRICE_PER_MTOK_IN/OUT`); a model override the walk cannot price
+stops it before any paid request.
 
 ## Baseline — 2026-10-15, staging `78bab6e98` (evidence: #4460)
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import corpusJson from "./corpus.json";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { BUDGET, BudgetMeter, PROVIDER_PRICES, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
+import { BUDGET, BudgetMeter, PROVIDER_PRICES, pricesFromEnv, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
 import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
@@ -179,6 +179,23 @@ describe("budget (worst case booked at dispatch, never released; fail closed)", 
     expect(sent).toBe(50);
     expect(meter.booked).toBeLessThanOrEqual(BUDGET.usdPerRun);
   });
+  it("books the deployed OpenAI price (production's env), and refuses once it would cross $4.50", () => {
+    const pricey = pricesFromEnv({ OPENAI_PRICE_PER_MTOK_IN: "10", OPENAI_PRICE_PER_MTOK_OUT: "50" });
+    expect(pricey.OpenAI).toEqual({ input: 10, output: 50 });
+    const meter = new BudgetMeter(4.5, worstCaseTurnUsd(pricey));
+    expect(meter.perTurn).toBeGreaterThan(BUDGET.usdBookedPerTurn);
+    let sent = 0;
+    while (meter.canAfford()) { meter.book(); sent++; }
+    expect(sent).toBeLessThan(50);
+    expect(meter.booked).toBeLessThanOrEqual(4.5);
+    expect(pricesFromEnv({}).OpenAI).toEqual(PROVIDER_PRICES.OpenAI); // control: defaults
+  });
+  it("refuses to price (throws before any paid request) an overridden model or an invalid price", () => {
+    expect(() => pricesFromEnv({ OPENAI_MODEL: "gpt-5.5" })).toThrow(/unpriced model/);
+    expect(() => pricesFromEnv({ OPENROUTER_MODEL: "x" })).toThrow(/unpriced model/);
+    expect(() => pricesFromEnv({ OPENAI_PRICE_PER_MTOK_IN: "abc" })).toThrow(/not a valid price/);
+    expect(() => pricesFromEnv({ OPENAI_PRICE_PER_MTOK_OUT: "-1" })).toThrow(/not a valid price/);
+  });
   it("usage is unreadable for: no response, no frame, null / negative / non-finite / string counts", () => {
     expect(turnUsage(usage(3000, 250))).toMatchObject({ readable: true, inBound: true });
     for (const sse of [
@@ -218,12 +235,11 @@ describe("teardown fallback lookup", () => {
 
 describe("workflow", () => {
   const yml = readFileSync(path.join(__dirname, "../../../.github/workflows/stranger-walk.yml"), "utf8");
-  it("only the paid walk job joins the shared staging queue; the PR unit job never does", () => {
-    expect(yml).not.toMatch(/^concurrency:/m); // no workflow-level group: a PR run would enter it
+  it("never joins the shared staging deploy queue (it could cancel a pending deploy); PR runs never walk", () => {
+    expect(yml).not.toMatch(/^concurrency:/m);
+    expect(yml).not.toMatch(/group: staging-environment/);
     const walk = yml.slice(yml.indexOf("\n  walk:"));
-    const unit = yml.slice(yml.indexOf("\n  unit:"), yml.indexOf("\n  walk:"));
-    expect(walk).toMatch(/\n {4}concurrency:\n {6}group: staging-environment/);
-    expect(unit).not.toMatch(/staging-environment/);
+    expect(walk).toMatch(/\n {4}concurrency:\n {6}group: stranger-walk/);
     expect(walk).toMatch(/if: \$\{\{ github\.event_name != 'pull_request' && github\.ref == 'refs\/heads\/main' \}\}/);
   });
 });
