@@ -339,6 +339,20 @@ describe("Review A HIGH — the real TQ-29 phrasings must stop", () => {
     expect(isEnergizedWorkAsk(msg)).toBe(true);
   });
 
+  // Scope-pass fixes (2026-10-18): two gaps the challenge found by phrasing.
+  // "while the power is still on" had no match — the list knew "with the
+  // power on" and bare "power still on", but the `while … is` form fell
+  // through. And "connector" was missing from the work objects, so a
+  // verb-less ask about handling one under power walked past. Each measured
+  // false on 24abb8e8a before the fix.
+  it.each([
+    "Can I replace the keypad while the power is still on?",
+    "can I remove the cover while power is applied",
+    "Is the connector safe to handle while it's powered?",
+  ])("energized work (scope-pass gap): %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(true);
+  });
+
   // Broadening "while running" / "hot" risks over-triggering on ordinary
   // diagnostics, so each one gets a harmless twin that must NOT stop.
   it.each([

@@ -307,6 +307,10 @@ const POWERED_STATE_RE = new RegExp(
       // "with it powered", "with the drive powered", "with the unit energized"
       "with\\s+(?:it|this|that|them|the\\s+\\w+)\\s+(?:still\\s+)?(?:powered(?:\\s+up|\\s+on)?|live|energized|hot|running)",
       "with\\s+(?:the\\s+|it's\\s+|its\\s+)?power\\s+(?:still\\s+)?(?:on|applied|connected)",
+      // "while the power is still on", "while power is applied" — the `while …
+      // is` form of the line above; it fell through until the 2026-10-18
+      // scope pass (measured false on 24abb8e8a).
+      "while\\s+(?:the\\s+)?power\\s+(?:is\\s+)?(?:still\\s+)?(?:on|applied|connected)",
       "power\\s+still\\s+on",
       "under\\s+power",
       "still\\s+(?:energized|live|powered|hot)",
@@ -321,9 +325,11 @@ const POWERED_STATE_RE = new RegExp(
 // A spec ask ABOUT doing the work ("what torque on the cover screws while
 // it's live?") names no verb at all — the object is the tell. Review A HIGH:
 // "jumper" was missing, and the real TQ-29 string is about pulling an RFI
-// jumper.
+// jumper. "connector" was added in the 2026-10-18 scope pass for the same
+// reason: a verb-less "is the connector safe to handle while it's powered?"
+// had no object to fire on.
 const WORK_OBJECT_RE =
-  /\b(?:torque|screws?|bolts?|cover|panel\s+cover|fan|contactor|relay|fuse|terminals?|lugs?|wires?|gasket|belt|coupling|bearing|card|module|keypad|display\s+module|jumpers?|dip\s+switch|battery|filter)\b/i;
+  /\b(?:torque|screws?|bolts?|cover|panel\s+cover|fan|contactor|relay|fuse|terminals?|lugs?|wires?|connectors?|gasket|belt|coupling|bearing|card|module|keypad|display\s+module|jumpers?|dip\s+switch|battery|filter)\b/i;
 // Hands-on work on the equipment: the verbs a technician uses for the job
 // itself, not for reading a display or resetting a fault.
 const HANDS_ON_VERB_RE =
