@@ -368,6 +368,16 @@ export async function updateNotebook(
   for (const [k, col] of Object.entries(map)) {
     if (k in patch) fields[col] = (patch as Record<string, unknown>)[k];
   }
+  // A changed machine identity is a NEW identity. `model` and `identity_status`
+  // are independent columns here, so until 2026-10-18 a PATCH could rewrite the
+  // model while the row stayed `user_confirmed` — and retrieval (#4484) scopes a
+  // notebook's manuals to its model only because a person confirmed it. If the
+  // caller changes manufacturer or model without saying what the new status is,
+  // it drops to `candidate`; the identity-confirm route sets it explicitly and
+  // is untouched. (Round-2 review LOW; owner go-ahead 2026-10-18.)
+  if (("model" in patch || "manufacturer" in patch) && !("identityStatus" in patch)) {
+    fields.identity_status = "candidate";
+  }
   if (Object.keys(fields).length === 0) return false;
   const sets = Object.keys(fields).map((col, i) => `${col} = $${i + 3}`);
   return withTenantContext(tenantId, async (c) => {

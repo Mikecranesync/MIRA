@@ -202,13 +202,51 @@ function affirmativeModelIdentities(filename: string, heading: string): Set<stri
 // technician did not name a variant, or the manual covers the whole panel).
 const isCatalogIdentity = (id: string) => /^6AV/.test(id);
 
+// Round-2 review on #4484: a catalog number and its panel label never met —
+// a TP700 notebook could not cite a manual titled by order number, and a
+// notebook identified by order number (the nameplate's "1P 6AV2124-0GC01-0AX0")
+// could not cite the "TP700 Comfort Operating Instructions". Siemens order
+// numbers encode the panel in their first 13 characters; this literal table
+// maps the ones FactoryLM has met to the label the manuals use. Add a row only
+// from a nameplate or the Siemens catalog page — never guess one.
+const CATALOG_PREFIX_TO_MODEL: ReadonlyArray<readonly [prefix: string, model: string]> = [
+  ["6AV2124-0GC01", "TP700"], // TP700 Comfort
+  ["6AV2124-0JC01", "TP900"], // TP900 Comfort
+  ["6AV2124-0MC01", "TP1200"], // TP1200 Comfort
+  ["6AV2124-0QC02", "TP1500"], // TP1500 Comfort
+  ["6AV2124-0UC02", "TP1900"], // TP1900 Comfort
+  ["6AV2124-0XC02", "TP2200"], // TP2200 Comfort
+  ["6AV2123-2DB03", "KTP400"], // KTP400 Basic
+  ["6AV2123-2GB03", "KTP700"], // KTP700 Basic
+  ["6AV2123-2JB03", "KTP900"], // KTP900 Basic
+  ["6AV2123-2MB03", "KTP1200"], // KTP1200 Basic
+];
+function panelModelOfCatalog(id: string): string | null {
+  const hit = CATALOG_PREFIX_TO_MODEL.find(([prefix]) => id.toUpperCase().startsWith(prefix));
+  return hit ? hit[1] : null;
+}
+/** The identities plus, for every catalog number, the panel label it names. */
+function withCatalogModels(ids: Set<string>): Set<string> {
+  const out = new Set(ids);
+  for (const id of ids) {
+    if (!isCatalogIdentity(id)) continue;
+    const model = panelModelOfCatalog(id);
+    if (model) out.add(model);
+  }
+  return out;
+}
+
 function documentCoversRequest(requested: Set<string>, title: Set<string>): boolean {
   const requestedCatalogs = [...requested].filter(isCatalogIdentity);
   const titleCatalogs = [...title].filter(isCatalogIdentity);
   if (requestedCatalogs.length > 0 && titleCatalogs.length > 0) {
+    // Codex #4469 r2 F5 stands: catalog on BOTH sides needs a catalog match
+    // (a variant mismatch is a different panel). The table never relaxes it.
     return titleCatalogs.some((id) => requested.has(id));
   }
-  for (const id of title) if (requested.has(id)) return true;
+  // Catalog on ONE side: it also names its panel, so the label match applies.
+  const req = withCatalogModels(requested);
+  for (const id of withCatalogModels(title)) if (req.has(id)) return true;
   return false;
 }
 

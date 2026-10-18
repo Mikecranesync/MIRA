@@ -1850,6 +1850,29 @@ describe("retrieveNodeChunks — notebook identity scopes model-less questions",
       expect(await ask("TP1200 Comfort Operating Instructions", "communication settings", "Comfort", "tp1200.pdf")).toHaveLength(1);
       expect(await ask("Micro850 Programmable Controllers User Manual", "communication settings", "Micro800", "2080-um002.pdf")).toHaveLength(1);
     });
+    // Round 2: a catalog number and its panel label never met (hidden both ways).
+    describe("a Siemens order number names its panel (CATALOG_PREFIX_TO_MODEL)", () => {
+      const TP700_CAT = "6AV2124-0GC01-0AX0";
+      it("a TP700 notebook cites a manual titled by the TP700 order number", async () => {
+        expect(await ask(`SIMATIC HMI ${TP700_CAT} Operating Instructions`, "communication settings", "TP700", "6av.pdf")).toHaveLength(1);
+      });
+      it("a notebook identified by the order number (nameplate '1P 6AV…') cites the TP700 Comfort manual", async () => {
+        expect(await ask("TP700 Comfort Operating Instructions", "communication settings", TP700_CAT, "tp700.pdf")).toHaveLength(1);
+      });
+      it("the same holds on the question-named path", async () => {
+        expect(await ask("TP700 Comfort Operating Instructions", `${TP700_CAT} communication settings`, null, "tp700.pdf")).toHaveLength(1);
+      });
+      it("control: the TP1200 order number does not reach a TP700 notebook", async () => {
+        expect(await ask("SIMATIC HMI 6AV2124-0MC01-0AX0 Operating Instructions", "communication settings", "TP700", "6av.pdf")).toEqual([]);
+      });
+      it("control: an order number not in the table maps to nothing (never guessed)", async () => {
+        expect(await ask("SIMATIC HMI 6AV2128-3GB06-0AX0 Operating Instructions", "communication settings", "TP700", "6av.pdf")).toEqual([]);
+      });
+      it("control: Codex #4469 F5 stands — a different suffix on BOTH sides is still a different panel", async () => {
+        expect(await ask("SIMATIC Panel 6AV2124-0GC01-9AX0 Specification", `${TP700_CAT} supply voltage`, null, "6av.pdf")).toEqual([]);
+      });
+    });
+
     it("control: a sibling-specific manual is still hidden from a specific-model notebook", async () => {
       // The family rule widens only toward family ROOTS, never sibling-to-sibling.
       expect(await ask("TP1200 Comfort Operating Instructions", "communication settings", "TP700", "tp1200.pdf")).toEqual([]);
