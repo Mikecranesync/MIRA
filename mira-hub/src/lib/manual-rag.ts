@@ -1987,12 +1987,23 @@ export function chunksToSources(chunks: ManualChunk[]): ManualSource[] {
 export type CitedPageRef = { docId: string; sourceUrl: string; page: number };
 
 /**
- * Every v2 chunk of each cited page (#4509 Codex F1). Top-K retrieval returns
- * individual chunks, so a page's WARNING can sit in a chunk retrieval left out;
- * this reads the rest of the page. Each page is pinned to the exact document,
- * file and page of a chunk retrieval already admitted, under the same tenant and
- * the same approval predicate retrieval uses, so it can never widen what the
- * turn may read beyond pages the answer cites.
+ * Case-insensitive superset of every trigger `extractManualSafetyStatement` can hit: the
+ * WARNING/DANGER/CAUTION/ATTENTION/SHOCK HAZARD/BURN HAZARD markers and the prose fallbacks
+ * (hazardous voltage, discharged capacitors, wait-N-minutes). A chunk without one of these words
+ * can never yield a statement, so filtering on it never drops a warning (#4509 Codex r3 F1).
+ */
+export const CANDIDATE_PATTERN = "warning|danger|caution|attention|shock hazard|burn hazard|hazardous|discharged|wait";
+/** Row bound on the candidate read. Only statement-candidate chunks of the cited pages count toward it. */
+const CITED_PAGE_CANDIDATE_LIMIT = 500;
+
+/**
+ * The statement-candidate chunks of each cited page (#4509 Codex F1). Top-K retrieval returns
+ * individual chunks, so a page's WARNING can sit in a chunk retrieval left out; this reads the
+ * rest of the page. Each page is pinned to the exact document, file and page of a chunk retrieval
+ * already admitted, under the same tenant and the same approval predicate retrieval uses, so it
+ * can never widen what the turn may read beyond pages the answer cites. Bounded (Codex r3 F1):
+ * only chunks matching CANDIDATE_PATTERN, at most CITED_PAGE_CANDIDATE_LIMIT rows, under a
+ * transaction-local statement timeout. The caller fails open on any error.
  */
 export async function retrieveCitedPageChunks(
   client: Pick<PoolClient, "query">,
@@ -2001,22 +2012,29 @@ export async function retrieveCitedPageChunks(
   opts: { approvedSourceDocIds?: string[] } = {},
 ): Promise<Array<{ content: string; sourceUrl: string; sourcePage: number }>> {
   if (pages.length === 0) return [];
-  const params: unknown[] = [tenantId, pages.map((p) => p.docId), pages.map((p) => p.sourceUrl), pages.map((p) => p.page)];
+  const params: unknown[] = [
+    tenantId,
+    pages.map((p) => p.docId),
+    pages.map((p) => p.sourceUrl),
+    pages.map((p) => p.page),
+    CANDIDATE_PATTERN,
+  ];
   const approved = (opts.approvedSourceDocIds ?? []).filter(Boolean);
   const admitApproved = approved.length > 0 && approvalGateEnabled();
   if (admitApproved) params.push(approved);
+  await client.query("SET LOCAL statement_timeout = '3s'");
   const res = await client.query(
     `SELECT content, source_url, COALESCE(page_start, source_page) AS page
        FROM knowledge_entries
       WHERE tenant_id = $1
         AND ingest_route = 'v2'
-        ${approvedSourceFilterSql(admitApproved ? 5 : null)}
+        ${approvedSourceFilterSql(admitApproved ? 6 : null)}
         AND (doc_id::text, source_url, COALESCE(page_start, source_page)) IN (
           SELECT * FROM unnest($2::text[], $3::text[], $4::int[])
         )
-      ORDER BY doc_id, COALESCE(page_start, source_page), metadata->>'chunk_index', id`,
-    // No LIMIT (#4509 Codex r2 F1): the cited tuples already bound the read, and a cap could drop
-    // the one chunk of a large page that holds its warning.
+        AND content ~* $5
+      ORDER BY doc_id, COALESCE(page_start, source_page), metadata->>'chunk_index', id
+      LIMIT ${CITED_PAGE_CANDIDATE_LIMIT}`,
     params,
   );
   return res.rows.map((r: Record<string, unknown>) => ({
