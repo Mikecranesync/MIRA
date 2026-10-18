@@ -18,7 +18,7 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
-import { BUDGET, BudgetMeter, identity, manualBytes, RATES, TURN_BOUND, UNMETERED_USD_PER_TURN, stagingBase, teardownTenant, tenantIdForEmail } from "./staging";
+import { BUDGET, BudgetMeter, identity, manualBytes, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND } from "./staging";
 
 const corpus = corpusJson as Corpus;
 const RUN_ID = process.env.STRANGER_WALK_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
@@ -104,6 +104,7 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
     await chooser.setFiles({ name: attach.name, mimeType: "application/pdf", buffer: attach.buffer });
   }
   await UI.clone.composer(page).fill(q.question);
+  if (!DRY) meter.book(); // booked at dispatch: no later failure can leave this turn uncounted
   const chat = page.waitForResponse((r: Response) => r.request().method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: ANSWER_TIMEOUT });
   await page.getByRole("button", { name: "Send" }).click();
   const broken = (why: string): Observation => {
@@ -112,10 +113,10 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
   };
 
   const res = await chat.catch(() => null);
-  // The request is out: charge it exactly once, now, before any UI step that could throw.
-  // No response or a non-200 has no readable cost and stops later paid turns (fail closed).
+  // Check the visible usage against the bound the booking assumed, before any UI step that could
+  // throw. No response or a non-200 has no readable usage and stops later paid turns (fail closed).
   const sse = res && res.status() === 200 ? await res.text().catch(() => null) : null;
-  if (!DRY) meter.charge(q.id, sse);
+  if (!DRY) meter.verify(q.id, sse);
   if (!res) {
     const err = await page.getByRole("alert", { name: "Send error" }).innerText().catch(() => "");
     return broken(`no chat response${err ? `: ${err.replace(/\s+/g, " ").slice(0, 160)}` : ""}`);
@@ -176,7 +177,7 @@ test("stranger walk", async ({ page }) => {
         continue;
       }
       for (const [i, q] of qs.entries()) {
-        if (!DRY && !meter.canAfford()) { obs.push(brokenObs(q.id, meter.unbounded ? `budget stop: ${meter.unbounded} had an unreadable or out-of-bound cost` : "budget stop")); continue; }
+        if (!DRY && !meter.canAfford()) { obs.push(brokenObs(q.id, meter.unbounded ? `budget stop: ${meter.unbounded} had unreadable or out-of-bound usage` : "budget stop")); continue; }
         try {
           if (i > 0) {
             await page.getByRole("button", { name: "New chat" }).click();
@@ -201,18 +202,23 @@ test("stranger walk", async ({ page }) => {
     const superseded = !end || end.gitSha !== start.gitSha || end.builtAt !== start.builtAt;
     if (superseded) notes.push(`SUPERSEDED: staging changed during the run (${start.gitSha.slice(0, 9)}@${start.builtAt} → ${end ? `${end.gitSha.slice(0, 9)}@${end.builtAt}` : "unreadable"})`);
     // The persisted id, not the return value: signUp may have created a tenant and then failed.
+    let tenantLookupFailed: string | null = null;
     const persisted = existsSync(path.join(OUT, "tenant.txt")) ? readFileSync(path.join(OUT, "tenant.txt"), "utf8").trim() : null;
     tenantId = persisted || tenantId;
     // Registration may have committed even though its response could not be read: look the
     // run-unique email up on staging before concluding that no tenant exists.
     if (!tenantId && existsSync(path.join(OUT, "email.txt"))) {
-      tenantId = await tenantIdForEmail(EMAIL).catch((e) => { notes.push(`teardown lookup by email failed: ${(e as Error).message}`); return null; });
+      let lookupError: string | null = null;
+      tenantId = await tenantIdForEmail(EMAIL).catch((e) => { lookupError = (e as Error).message; return null; });
       if (tenantId) notes.push(`teardown: tenant found by its run email (register response unreadable)`);
+      if (lookupError) tenantLookupFailed = `lookup by run email failed: ${lookupError}`;
     }
-    const td = tenantId ? teardownTenant(tenantId) : { ok: true, detail: "no tenant was created" };
+    const td = tenantLookupFailed
+      ? { ok: false, detail: tenantLookupFailed }
+      : tenantId ? teardownTenant(tenantId) : { ok: true, detail: "no tenant was created" };
     notes.push(`teardown: ${td.ok ? "OK" : "FAILED"} — ${td.detail}`);
     const asked = ONLY ? { ...corpus, questions: corpus.questions.filter((q) => ONLY.has(q.id)) } : corpus;
-    notes.unshift(`budget: $${meter.budget.toFixed(2)} hard stop, $${BUDGET.usdReservePerTurn.toFixed(3)} reserved before each turn (≤${TURN_BOUND.inputTokens} in / ≤${TURN_BOUND.outputTokens} out tokens at $${RATES.inputPerMTok}/$${RATES.outputPerMTok} per Mtok + $${UNMETERED_USD_PER_TURN} allowance); metered $${meter.spent.toFixed(2)} over ${meter.turns} dispatched turns${meter.unbounded ? `; STOPPED: ${meter.unbounded} had an unreadable or out-of-bound cost` : ""}`);
+    notes.unshift(`budget: $${meter.budget.toFixed(2)} hard stop; $${BUDGET.usdBookedPerTurn.toFixed(4)} booked per turn (answer + judge on every provider, ≤${TURN_BOUND.inputTokens} in / ≤${TURN_BOUND.answerOutputTokens} out tokens); booked $${meter.booked.toFixed(2)} over ${meter.turns} dispatched turns — an upper bound on true spend${meter.unbounded ? `; STOPPED: ${meter.unbounded} had unreadable or out-of-bound usage` : ""}`);
     const aborted = notes.find((n) => n.startsWith("run aborted: "));
     const rows = scoreAll(asked, obs).map((r) => (aborted && !obs.some((o) => o.id === r.id) ? { ...r, reason: aborted } : r));
     const card = scorecard(rows, superseded);
@@ -223,7 +229,7 @@ test("stranger walk", async ({ page }) => {
       writeFileSync(path.join(OUT, "fixtures", `${r.id}.json`), JSON.stringify(fixtureFor(q, corpus.manuals.find((x) => x.id === q.manual)!, o, r, meta, corpus.tolerance), null, 2));
     }
     writeFileSync(path.join(OUT, "observations.json"), JSON.stringify(obs, null, 2));
-    writeFileSync(path.join(OUT, "scored.json"), JSON.stringify({ meta, turns: meter.turns, spentUsd: meter.spent, notes, card, rows }, null, 2));
+    writeFileSync(path.join(OUT, "scored.json"), JSON.stringify({ meta, turns: meter.turns, bookedUsd: meter.booked, notes, card, rows }, null, 2));
     writeFileSync(path.join(OUT, "scorecard.md"), `${markdownScorecard(rows, card, meta)}\n\n${notes.map((n) => `- ${n}`).join("\n")}\n`);
     console.log(`stranger walk ${card.headline} · ${JSON.stringify(card.counts)} · red lines ${card.safetyRedLines.length} · ${OUT}`);
     if (!td.ok) throw new Error(`tenant teardown failed: ${td.detail}`);

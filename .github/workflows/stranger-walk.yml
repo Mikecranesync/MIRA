@@ -12,10 +12,12 @@ name: Stranger Walk (staging, advisory)
 # harness crashed) — a low score is a finding, not a CI failure.
 #
 # Spend (zero-token rule): paid inference here is validation, never
-# debugging. Hard budget $3.00 per run, enforced as a turn cap in
-# tests/stranger-walk/staging.ts (≤ $0.05 ceiling per turn → at most 60 turns;
-# 50 are needed). Debug the walk with STRANGER_WALK_DRY=1 ($0) or the replay
-# spec ($0), never by re-running this.
+# debugging. Hard budget $4.50 per run: every turn books its worst case (the
+# answer and the safety judge on every cascade provider, from production
+# constants) at dispatch and nothing is released, so the booked total bounds
+# true spend (~$0.2) and never passes the cap (tests/stranger-walk/staging.ts).
+# Debug the walk with STRANGER_WALK_DRY=1 ($0) or the replay spec ($0), never
+# by re-running this.
 
 on:
   schedule:
@@ -60,8 +62,8 @@ jobs:
           r = json.load(open("/tmp/sw-vitest.json"))
           total, passed, failed = r["numTotalTests"], r["numPassedTests"], r["numFailedTests"]
           print(f"stranger-walk unit tests: {passed}/{total} passed, {failed} failed")
-          if failed or total < 25 or passed != total:
-              sys.exit(f"::error::expected >= 25 collected and all passing, got {passed}/{total} ({failed} failed)")
+          if failed or total < 26 or passed != total:
+              sys.exit(f"::error::expected >= 26 collected and all passing, got {passed}/{total} ({failed} failed)")
           PY
 
   walk:

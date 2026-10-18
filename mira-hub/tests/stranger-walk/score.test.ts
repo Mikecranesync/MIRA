@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import corpusJson from "./corpus.json";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { BUDGET, BudgetMeter, TURN_BOUND, turnCostUsd } from "./staging";
+import { BUDGET, BudgetMeter, PROVIDER_PRICES, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
 import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
@@ -151,18 +151,36 @@ describe("scorecard, flakes, predictions", () => {
   });
 });
 
-describe("budget meter (declared per-turn reservation, fail closed)", () => {
+describe("budget (worst case booked at dispatch, never released; fail closed)", () => {
   const frame = (f: Record<string, unknown>) => `data: ${JSON.stringify({ kind: "usage", ...f })}\n\ndata: [DONE]\n`;
   const usage = (inputTokens: number, outputTokens: number) => frame({ inputTokens, cachedInputTokens: 0, outputTokens });
-  it("prices an in-bound turn from a fully numeric usage frame, below the reservation", () => {
-    const c = turnCostUsd(usage(3000, 250));
-    expect([c.metered, c.inBound]).toEqual([true, true]);
-    expect(c.usd).toBeGreaterThan(0);
-    expect(c.usd).toBeLessThan(BUDGET.usdReservePerTurn);
-    // The declared bound's own cost is exactly the reservation: the reservation covers any in-bound turn.
-    expect(turnCostUsd(usage(TURN_BOUND.inputTokens, TURN_BOUND.outputTokens)).usd).toBeCloseTo(BUDGET.usdReservePerTurn, 9);
+  it("the booked worst case covers the answer AND the judge attempted on every provider", () => {
+    const one = (p: { input: number; output: number }, out: number) => (TURN_BOUND.inputTokens * p.input + out * p.output) / 1e6;
+    let expected = 0;
+    for (const p of Object.values(PROVIDER_PRICES)) expected += one(p, TURN_BOUND.answerOutputTokens) + one(p, TURN_BOUND.judgeOutputTokens);
+    expect(worstCaseTurnUsd()).toBeCloseTo(expected, 12);
+    expect(BUDGET.usdBookedPerTurn).toBe(worstCaseTurnUsd());
+    // A turn with a fully billed hidden OpenAI attempt + a fallback answer + the judge is inside it.
+    const hidden = one(PROVIDER_PRICES.OpenAI, TURN_BOUND.answerOutputTokens) + one(PROVIDER_PRICES.OpenRouter, TURN_BOUND.answerOutputTokens) + one(PROVIDER_PRICES.OpenAI, TURN_BOUND.judgeOutputTokens);
+    expect(hidden).toBeLessThan(BUDGET.usdBookedPerTurn);
   });
-  it("a turn whose cost cannot be read is unmetered: no response, no frame, null / negative / non-finite counts", () => {
+  it("refuses the first dispatch whose worst case would cross the budget; booked never passes it", () => {
+    const meter = new BudgetMeter(3);
+    let sent = 0;
+    while (meter.canAfford()) { meter.book(); meter.verify(`t${sent}`, usage(3000, 250)); sent++; }
+    expect(sent).toBe(Math.floor(3 / BUDGET.usdBookedPerTurn));
+    expect(meter.booked).toBeLessThanOrEqual(3 + 1e-9);
+    expect(meter.booked + meter.perTurn).toBeGreaterThan(3); // the next one would cross
+  });
+  it("control: the declared budget fits all 50 questions", () => {
+    const meter = new BudgetMeter();
+    let sent = 0;
+    for (let i = 0; i < 50 && meter.canAfford(); i++) { meter.book(); meter.verify(`q${i}`, usage(3200, 120)); sent++; }
+    expect(sent).toBe(50);
+    expect(meter.booked).toBeLessThanOrEqual(BUDGET.usdPerRun);
+  });
+  it("usage is unreadable for: no response, no frame, null / negative / non-finite / string counts", () => {
+    expect(turnUsage(usage(3000, 250))).toMatchObject({ readable: true, inBound: true });
     for (const sse of [
       null,
       "data: [DONE]\n",
@@ -170,41 +188,31 @@ describe("budget meter (declared per-turn reservation, fail closed)", () => {
       frame({ inputTokens: 3000, cachedInputTokens: 0, outputTokens: -5 }),
       frame({ inputTokens: "3000", cachedInputTokens: 0, outputTokens: 250 }),
       'data: {"kind":"usage","inputTokens":1e999,"cachedInputTokens":0,"outputTokens":1}\n',
-    ]) expect(turnCostUsd(sse).metered, String(sse)).toBe(false);
+    ]) expect(turnUsage(sse).readable, String(sse)).toBe(false);
   });
-  it("an unmetered or out-of-bound turn stops every later paid turn", () => {
-    const a = new BudgetMeter(3);
-    a.charge("a", usage(3000, 250));
-    expect(a.canAfford()).toBe(true);
-    a.charge("b", frame({ inputTokens: null, cachedInputTokens: null, outputTokens: null }));
-    expect([a.canAfford(), a.unbounded]).toEqual([false, "b"]);
-    const b = new BudgetMeter(3);
-    b.charge("c", usage(TURN_BOUND.inputTokens + 1, 100)); // broke the declared bound
-    expect([b.canAfford(), b.unbounded]).toEqual([false, "c"]);
-  });
-  it("refuses a dispatch BEFORE it could pass the budget: two $0.10 turns, then the reserve must fit", () => {
-    const meter = new BudgetMeter(0.2 + BUDGET.usdReservePerTurn - 0.001);
-    meter.spent = 0.2; // two earlier turns
-    expect(meter.canAfford()).toBe(false); // the next turn's declared worst case would not fit
-    expect(new BudgetMeter(0.2 + BUDGET.usdReservePerTurn).canAfford()).toBe(true); // control
-  });
-  it("no sequence of in-bound turns can leave spent above the budget", () => {
-    let seed = 7;
-    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
-    for (let trial = 0; trial < 200; trial++) {
-      const meter = new BudgetMeter(3);
-      for (let t = 0; t < 200 && meter.canAfford(); t++) {
-        meter.charge(`t${t}`, usage(Math.floor(rnd() * TURN_BOUND.inputTokens), Math.floor(rnd() * TURN_BOUND.outputTokens)));
-      }
-      expect(meter.spent).toBeLessThanOrEqual(3 + 1e-9);
+  it("a turn with unreadable or out-of-bound usage stops every later paid turn", () => {
+    for (const bad of [null, usage(TURN_BOUND.inputTokens + 1, 100), usage(3000, TURN_BOUND.answerOutputTokens + 1)]) {
+      const meter = new BudgetMeter();
+      meter.book(); meter.verify("ok", usage(3000, 250));
+      expect(meter.canAfford()).toBe(true);
+      meter.book(); meter.verify("bad", bad);
+      expect([meter.canAfford(), meter.unbounded]).toEqual([false, "bad"]);
     }
   });
-  it("control: 50 ordinary turns fit the $3 budget", () => {
-    const meter = new BudgetMeter(3);
-    let asked = 0;
-    for (let i = 0; i < 50 && meter.canAfford(); i++) { meter.charge(`q${i}`, usage(3200, 120)); asked++; }
-    expect(asked).toBe(50);
-    expect(meter.spent).toBeLessThanOrEqual(3);
+});
+
+describe("teardown fallback lookup", () => {
+  it("throws, never returns 'no tenant', when the database is not configured", async () => {
+    const prior = process.env.NEON_DATABASE_URL;
+    delete process.env.NEON_DATABASE_URL;
+    try {
+      await expect(tenantIdForEmail("strangerwalk-x@factorylm.com")).rejects.toThrow(/NEON_DATABASE_URL unset/);
+    } finally {
+      if (prior !== undefined) process.env.NEON_DATABASE_URL = prior;
+    }
+  });
+  it("refuses anything but a run-unique walk email", async () => {
+    await expect(tenantIdForEmail("mike@factorylm.com")).rejects.toThrow(/non-walk email/);
   });
 });
 

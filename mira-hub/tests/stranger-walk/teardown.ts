@@ -14,7 +14,14 @@ const out = process.argv[2] ?? "";
 const read = (f: string) => (existsSync(path.join(out, f)) ? readFileSync(path.join(out, f), "utf8").trim() : "");
 let tenant = read("tenant.txt");
 const email = read("email.txt");
-if (!tenant && email) tenant = (await tenantIdForEmail(email)) ?? "";
+if (!tenant && email) {
+  try {
+    tenant = (await tenantIdForEmail(email)) ?? "";
+  } catch (e) {
+    console.log(`teardown FAILED — a tenant may exist for ${email} but the lookup could not run: ${(e as Error).message}`);
+    process.exit(1);
+  }
+}
 if (!tenant) {
   console.log(email ? `no tenant exists for ${email}` : "no tenant was created");
   process.exit(0);
