@@ -23,7 +23,7 @@ describe("manualSafetyStatementForCitations", () => {
   it("reads only cited pages: an uncited statement page is ignored", () => {
     const chunks = [page(1, PLAIN), page(2, WARN)];
     expect(manualSafetyStatementForCitations([cite("1", 1)], chunks)).toBeNull();
-    expect(manualSafetyStatementForCitations([cite("2", 2)], chunks)).toMatchObject({ marker: "WARNING", citationId: "2", page: 2 });
+    expect(manualSafetyStatementForCitations([cite("2", 2)], chunks)).toMatchObject({ marker: "WARNING", sourceCitationId: "2", page: 2 });
   });
 
   it("no citations → null", () => {
@@ -32,12 +32,12 @@ describe("manualSafetyStatementForCitations", () => {
 
   it("first hit in ascending citation order wins, whatever order the citations arrive in", () => {
     const chunks = [page(1, CAUTION), page(2, WARN)];
-    expect(manualSafetyStatementForCitations([cite("2", 2), cite("1", 1)], chunks)).toMatchObject({ marker: "CAUTION", citationId: "1" });
+    expect(manualSafetyStatementForCitations([cite("2", 2), cite("1", 1)], chunks)).toMatchObject({ marker: "CAUTION", sourceCitationId: "1" });
   });
 
   it("groups chunks per page like buildCitations: a statement in the page's second chunk still counts", () => {
     const chunks = [page(1, PLAIN), page(1, WARN), page(2, PLAIN)];
-    expect(manualSafetyStatementForCitations([cite("1", 1)], chunks)).toMatchObject({ marker: "WARNING", citationId: "1", page: 1 });
+    expect(manualSafetyStatementForCitations([cite("1", 1)], chunks)).toMatchObject({ marker: "WARNING", sourceCitationId: "1", page: 1 });
     expect(manualSafetyStatementForCitations([cite("2", 2)], chunks)).toBeNull();
   });
 });

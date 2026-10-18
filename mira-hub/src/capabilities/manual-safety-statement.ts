@@ -249,7 +249,7 @@ export function manualSafetyStatementForCitations(
           marker: hit.marker,
           statement: hit.statement,
           sourceDocId: c.docId,
-          citationId: c.citationId,
+          sourceCitationId: c.citationId,
           sourceTitle: c.sourceTitle,
           page: c.page,
         };

@@ -1,7 +1,7 @@
 /**
  * Equipment Notebook chat — the manual's own safety statement (#4508).
  *
- * Run: npx vitest run src/app/api/equipment-notebooks/__tests__/chat-manual-safety-statement.test.ts
+ * Run: npx vitest run src/capabilities/__tests__/manual-safety-statement.route.test.ts
  *
  * When the answer CITES a page that carries a manual safety statement, the turn
  * persists a `manual_safety_statement` evidence entry (never a `safety_notice`,
@@ -43,9 +43,9 @@ vi.mock("@/lib/tenant-context", () => ({
 const poolMock = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })) }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
-import { POST } from "../[id]/chat/route";
+import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
-import { extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
+import { extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { isManualSafetyStatementEntry } from "@/lib/notebook-chat-types";
 import { splitEvidence } from "@/components/equipment/notebook-chat-utils";
 import { turnsFromPersisted } from "@/factorylm-ui/to-interaction";
@@ -141,7 +141,7 @@ describe("manual safety statement on a CITED page (#4508)", () => {
         marker: "ATTENTION",
         statement: expect.stringContaining("Equipment damage and/or personal injury"),
         sourceDocId: DOC_A,
-        citationId: "1",
+        sourceCitationId: "1",
         sourceTitle: expect.any(String),
         page: 73,
       },
@@ -181,7 +181,7 @@ describe("manual safety statement on a CITED page (#4508)", () => {
     await (await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_A] }), params)).text();
     const entries = recorded().evidence.filter(isManualSafetyStatementEntry);
     expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ citationId: "2", page: 73, marker: "ATTENTION" });
+    expect(entries[0]).toMatchObject({ sourceCitationId: "2", page: 73, marker: "ATTENTION" });
   });
 
   it("no citations in the answer → no notice, even with a statement page retrieved", async () => {
@@ -240,10 +240,19 @@ describe("a persisted manual_safety_statement entry is NOT a citation (#4508 doc
     marker: "ATTENTION",
     statement: "Equipment damage and/or personal injury may result.",
     sourceDocId: DOC_A,
-    citationId: "1",
+    sourceCitationId: "1",
     sourceTitle: "PowerFlex 40 User Manual",
     page: 73,
   };
+
+  it("the entry carries neither key any evidence reader uses to spot a citation", () => {
+    // hub: splitEvidence / route replay / enrichCitationsWithOrigin key on `docId`;
+    // mobile: normalizeCitations (mira-mobile/src/lib/sse.ts) keys on `citationId`.
+    const produced = manualSafetyStatementForCitations([CITATION], [chunk(73, ATTENTION_TEXT)]);
+    expect(produced).not.toBeNull();
+    expect(Object.keys(produced!)).not.toContain("docId");
+    expect(Object.keys(produced!)).not.toContain("citationId");
+  });
 
   it("splitEvidence keeps exactly the one real citation", () => {
     expect(splitEvidence([ENTRY, CITATION]).citations).toEqual([CITATION]);

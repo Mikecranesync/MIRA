@@ -398,7 +398,8 @@ export function isWeakEvidenceEntry(e: unknown): e is WeakEvidenceEntry {
  * It is NOT a citation: it carries NO `docId` field on purpose. Every reader
  * that splits evidence (`splitEvidence`, the chat route's idempotent replay,
  * `enrichCitationsWithOrigin`) treats ANY entry with a string `docId` as a
- * citation, so the source doc is named `sourceDocId` instead. The marker and
+ * citation (and mobile's `normalizeCitations` does the same for `citationId`),
+ * so the source fields are named `sourceDocId` / `sourceCitationId` instead. The marker and
  * statement are DISPLAYED as a safety notice to the technician, BEFORE the
  * answer text, and persisted for reload fidelity.
  *
@@ -415,8 +416,10 @@ export type ManualSafetyStatementEntry = {
   /** The cited doc this statement came from (a citation's `docId`; "" for a
    *  shared-library chunk). Deliberately NOT named `docId` — see above. */
   sourceDocId: string;
-  /** The citation number the statement's chunk was cited under ("1", "2", ...). */
-  citationId: string;
+  /** The citation number the statement's chunk was cited under ("1", "2", ...).
+   *  Deliberately NOT named `citationId`: mobile's `normalizeCitations`
+   *  (mira-mobile/src/lib/sse.ts) treats any entry with that key as a citation. */
+  sourceCitationId: string;
   /** The cited source's display title, so the notice can name its source. */
   sourceTitle: string;
   /** The physical page number in the source (1-based). */
