@@ -192,4 +192,21 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
     expect(pickLockoutChunk([TORQUE_PAGE, OPERATING])).toBeNull();
     expect(energizedWorkStop(null)).toMatch(/lockout/i);
   });
+
+  // Codex F4 (round 2): one bare keyword is not a lockout page.
+  it.each([
+    "The capacitor discharge resistor is rated at 100 ohms and mounts on the heatsink.",
+    "The keypad lockout feature prevents parameter changes from the front panel. Set P3.00 to enable it.",
+    "Tag out of range: the tagout field accepts up to 16 characters.",
+  ])("a single keyword noun is NOT a lockout page: %s", (content) => {
+    expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 43, pageLabel: "4-3" })])).toBeNull();
+  });
+
+  it.each([
+    "Disconnect power before changing the DIP switch.", // the imperative alone qualifies
+    "WARNING! Do not remove the RFI jumper while power is applied.", // the prohibition alone qualifies
+    "Lock out the disconnect and wait 5 minutes before servicing.", // two signals qualify
+  ])("control: an instruction or two signals still qualify: %s", (content) => {
+    expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 25, pageLabel: "2-15" })])).not.toBeNull();
+  });
 });

@@ -433,6 +433,11 @@ describe("Codex F1 — a definitional OPENER does not make a definitional ask", 
     "Describe how to replace the fan without locking out",
     "Tell me how to swap the relay while its powered",
     "What is the right way to pull the jumper with it powered?",
+    // round 2 variants — the opener list lost; intent wins
+    "Explain how I can pull the RFI jumper with it powered",
+    "Describe replacing the fan without locking out",
+    "What do I need to pull the RFI jumper with it powered?",
+    "What are the steps for swapping the contactor with the power on",
   ])("procedural, stops: %s", (msg) => {
     expect(isEnergizedWorkAsk(msg)).toBe(true);
   });
@@ -453,6 +458,10 @@ describe("Codex F2 — a symptom sentence does not make powered contact observat
     "The display reads F004; can I measure the terminals with it powered?",
     "The LED blinks; can I probe the connector with it powered?",
     "it shows oL — check the bus bar with it powered?",
+    // round 2 variants — a quantity and a preposition between verb and object
+    "The display reads F004; can I measure voltage across the terminals with it powered?",
+    "The LED blinks; can I probe voltage at the connector with it powered?",
+    "It reads oC. Can I check continuity on the output terminals while it's powered?",
   ])("contact with a work object, stops: %s", (msg) => {
     expect(isEnergizedWorkAsk(msg)).toBe(true);
   });
@@ -470,6 +479,11 @@ describe("Codex F3 — powered off / powered down is the SAFE state", () => {
     "How do I pull the RFI jumper with it powered off?",
     "How do I pull the RFI jumper with it powered down?",
     "swap the fan while it's powered down",
+    // round 2 variants — the standalone "still powered" alternative and the hyphen
+    "How do I pull the RFI jumper with it still powered off?",
+    "How do I pull the RFI jumper with it still powered down?",
+    "How do I pull the RFI jumper with it powered-off?",
+    "it is still powered-down, can I swap the fan",
   ])("not energized work: %s", (msg) => {
     expect(isEnergizedWorkAsk(msg)).toBe(false);
   });

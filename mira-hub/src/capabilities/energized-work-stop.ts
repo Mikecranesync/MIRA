@@ -65,6 +65,18 @@ function lockoutScore(content: string): number {
   return LOCKOUT_SIGNALS.reduce((n, re) => n + (re.test(content) ? 1 : 0), 0);
 }
 
+// Codex F4 (round 2): one bare keyword is not a lockout page. "The capacitor
+// discharge resistor is rated at 100 ohms" scored 1 on `discharge`; a keypad
+// "lockout" feature description scores 1 on `lockout`. A page qualifies only
+// with TWO distinct signals, or with one that is itself an INSTRUCTION — the
+// disconnect-power imperative (index 2) or the not-while-powered prohibition
+// (index 4). Nouns alone fall through to the site-LOTO fallback.
+const INSTRUCTION_SIGNALS = [2, 4] as const;
+function isLockoutPage(content: string): boolean {
+  if (lockoutScore(content) >= 2) return true;
+  return INSTRUCTION_SIGNALS.some((i) => LOCKOUT_SIGNALS[i].test(content));
+}
+
 /**
  * The chunk to cite on the stop: the retrieved passage that reads most like a
  * real lockout procedure. Ranked by how many distinct lockout signals it
@@ -75,7 +87,7 @@ function lockoutScore(content: string): number {
 export function pickLockoutChunk(chunks: readonly ManualChunk[]): ManualChunk | null {
   const scored = chunks
     .map((c) => ({ c, score: lockoutScore(c.content ?? "") }))
-    .filter((s) => s.score > 0);
+    .filter((s) => s.score > 0 && isLockoutPage(s.c.content ?? ""));
   if (scored.length === 0) return null;
   scored.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;

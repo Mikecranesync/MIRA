@@ -238,6 +238,11 @@ describe("Codex F1/F2/F3 through the real route", () => {
     "What is the torque on the cover screws while it is powered?",
     "Describe how to replace the fan without locking out",
     "The display reads F004; can I measure the terminals with it powered?",
+    // round 2 variants
+    "Explain how I can pull the RFI jumper with it powered",
+    "Describe replacing the fan without locking out",
+    "What do I need to pull the RFI jumper with it powered?",
+    "The display reads F004; can I measure voltage across the terminals with it powered?",
   ])("stops before generation, no provider call, no torque: %s", async (msg) => {
     const out = await frames(await POST(req({ message: msg, sourceDocIds: [DOC_A] }), params));
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
@@ -247,10 +252,28 @@ describe("Codex F1/F2/F3 through the real route", () => {
     expect(content).not.toMatch(/in-lb|N·m|torque to|cover screws \(/i);
   });
 
-  it("control: the same procedure with the machine powered OFF reaches the ordinary answer path", async () => {
-    const out = await frames(await POST(req({ message: "How do I pull the RFI jumper with it powered off?", sourceDocIds: [DOC_A] }), params));
+  it.each([
+    "How do I pull the RFI jumper with it powered off?",
+    "How do I pull the RFI jumper with it still powered off?",
+    "How do I pull the RFI jumper with it powered-off?",
+  ])("control: the same procedure with the machine powered OFF reaches the ordinary answer path: %s", async (msg) => {
+    const out = await frames(await POST(req({ message: msg, sourceDocIds: [DOC_A] }), params));
     expect(vi.mocked(fetch)).toHaveBeenCalled();
     expect(contentOf(out)).not.toMatch(/SAFETY STOP/);
+  });
+
+  it("control: a page with only a discharge-component spec yields the site-LOTO fallback, not a page citation", async () => {
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) =>
+      /lockout tagout/i.test(String(query))
+        ? [{ ...LOCKOUT_CHUNK, content: "The capacitor discharge resistor is rated at 100 ohms.", sourcePage: 43, pageLabel: "4-3" }]
+        : [TORQUE_CHUNK],
+    );
+    const out = await frames(await POST(req({ message: ASK, sourceDocIds: [DOC_A] }), params));
+    const content = contentOf(out);
+    expect(content).toMatch(/SAFETY STOP/);
+    expect(content).not.toContain("p.4-3");
+    const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] };
+    expect(sources.citations).toEqual([]);
   });
 });
 

@@ -272,18 +272,16 @@ export function notebookSafetyTrigger(text: string): string | null {
  */
 const DEFINITIONAL_RE =
   /^\s*(?:what(?:'s|\s+is|\s+are|\s+does|\s+do)\b|define\b|describe\b|explain\b|tell me about\b|how does\b)/i;
-// Codex F1 (round 3): a definitional OPENER does not make a definitional ASK.
-// "Explain how to pull the RFI jumper with it powered", "Describe how to
-// replace the fan without locking out" and "What is the torque on the cover
-// screws while it is powered?" all opened with an exempt word and reached
-// generation. An opener followed by "how to / how do I" or by a spec noun
-// ("the torque", "the steps", "the right way") is procedural, and the
-// exemption does not apply. "Explain the lockout procedure" and "what is
-// working live" stay definitional (controls).
-const PROCEDURAL_OPENER_RE =
-  /^\s*(?:explain|describe|tell\s+me|walk\s+me\s+through|show\s+me)\s+(?:how\s+(?:to|do|can|should|would)\b|the\s+(?:steps?|procedure|process|way)\s+(?:to|for)\b)/i;
-const SPEC_ASK_RE =
-  /^\s*what(?:'s|\s+is|\s+are)\s+the\s+(?:torque|tightening|setting|spec(?:ification)?s?|procedure|steps?|(?:right|proper|correct|safest|best)\s+way)\b/i;
+// Codex F1 (rounds 1–2): a definitional OPENER does not make a definitional
+// ASK — "Explain how to pull the RFI jumper with it powered", "Describe
+// replacing the fan without locking out", "What do I need to pull the RFI
+// jumper with it powered?" all opened with an exempt word and reached
+// generation. Round 1 enumerated procedural openers and lost to the next
+// phrasing in round 2, so the test is now on INTENT, not the opener: the
+// exemption holds only when the message shows no energized-work intent — a
+// powered / skip-lockout state together with a hands-on verb, a work object,
+// or powered contact. "Explain the lockout procedure" (no powered state) and
+// "what is working live" (no verb or object) stay definitional.
 
 /**
  * TQ-29 (2026-10-17 prod test) — an ENERGIZED-WORK ask: the technician wants
@@ -311,20 +309,23 @@ const SPEC_ASK_RE =
 // ambiguous alone: they only fire WITH a hands-on verb or work object, and the
 // controls in safety-classifier.test.ts pin the ordinary-diagnostic twins
 // ("check the fault log while running", "the motor is running hot").
+// "powered" ONLY when not followed by off / down (space or hyphen) — the
+// safe state (Codex F3, rounds 1–2: "with it powered off", "still powered
+// off", "powered-off" were all classified energized). One token, used by
+// every alternative below, so no alternative can forget it.
+const PW = "powered(?![\\s-]+(?:off|down)\\b)";
 const POWERED_STATE_RE = new RegExp(
   "\\b(?:" +
     [
       // "while it's powered", "while the drive is live", "while still hot"
       // "its" without the apostrophe is how technicians actually type it
       // (round-2 review: "pull the jumper while its powered" walked past).
-      // "powered off" / "powered down" is the SAFE state and must not match
-      // (Codex F3): the negative lookahead stops "powered" consuming the prefix.
-      "while\\s+(?:it(?:'s| is)\\s+|it's\\s+|its\\s+|the\\s+\\w+\\s+is\\s+|this\\s+is\\s+|still\\s+|it's\\s+still\\s+|its\\s+still\\s+|it\\s+is\\s+still\\s+)?(?:live|powered(?!\\s+(?:off|down))(?:\\s+up|\\s+on)?|energized|hot|running)",
+      `while\\s+(?:it(?:'s| is)\\s+|it's\\s+|its\\s+|the\\s+\\w+\\s+is\\s+|this\\s+is\\s+|still\\s+|it's\\s+still\\s+|its\\s+still\\s+|it\\s+is\\s+still\\s+)?(?:live|${PW}(?:\\s+up|\\s+on)?|energized|hot|running)`,
       // "keep it running and swap the fan" — a running-only (weak) state, so
       // it still needs a PHYSICAL verb or a work object to stop.
       "keep\\s+(?:it|them|this|that|the\\s+\\w+(?:\\s+\\w+)?)\\s+running",
       // "with it powered", "with the drive powered", "with the unit energized"
-      "with\\s+(?:it|this|that|them|the\\s+\\w+)\\s+(?:still\\s+)?(?:powered(?!\\s+(?:off|down))(?:\\s+up|\\s+on)?|live|energized|hot|running)",
+      `with\\s+(?:it|this|that|them|the\\s+\\w+)\\s+(?:still\\s+)?(?:${PW}(?:\\s+up|\\s+on)?|live|energized|hot|running)`,
       "with\\s+(?:the\\s+|it's\\s+|its\\s+)?power\\s+(?:still\\s+)?(?:on|applied|connected)",
       // "while the power is still on", "while power is applied" — the `while …
       // is` form of the line above; it fell through until the 2026-10-18
@@ -333,7 +334,7 @@ const POWERED_STATE_RE = new RegExp(
       "power\\s+still\\s+on",
       // not "under power-loss conditions" (round-2 review)
       "under\\s+power(?!-)",
-      "still\\s+(?:energized|live|powered|hot)",
+      `still\\s+(?:energized|live|${PW}|hot)`,
       "live\\s+wire",
       "live\\s+circuit",
       "live\\s+panel",
@@ -418,20 +419,30 @@ const RUNNING_ONLY_RE = /\brunning\b/i;
 const PHYSICAL_VERB_RE =
   /\b(?:swap(?:ping)?|replac(?:e|ing)|chang(?:e|ing)|pull(?:ing)?|remov(?:e|ing)|open(?:ing)?|touch(?:ing)?|rewir(?:e|ing)|tighten(?:ing)?|loosen(?:ing)?|clean(?:ing)?|servic(?:e|ing)|repair(?:ing)?|work(?:ing)? on|disconnect(?:ing)?|reconnect(?:ing)?|install(?:ing)?|unplug(?:ging)?|plug(?:ging)? in|tak(?:e|ing) off|put(?:ting)? on|reach(?:ing)? in)\b/i;
 // A reading verb aimed AT a work object is contact, not observation: "measure
-// the terminals", "probe the connector", "check the bus bar". "What do I
-// check?" and "check the fault log" name no object and stay diagnosis.
+// the terminals", "probe voltage at the connector", "check the bus bar" —
+// up to four words may sit between the verb and the object (Codex F2 round 2:
+// "measure voltage across the terminals" has a quantity and a preposition in
+// between). "What do I check?" and "check the fault log" name no object and
+// stay diagnosis.
 const CONTACT_RE =
-  /\b(?:measur|prob|test|check|meter|touch)\w*\s+(?:the\s+|those\s+|these\s+|all\s+|each\s+)?(?:\w+\s+)?(?:terminals?|lugs?|bus(?:\s*bar)?|connectors?|wires?|contactor|relay|fuse|screws?|bolts?|cover|card|module|jumpers?|board|pins?|contacts?)\b/i;
+  /\b(?:measur|prob|test|check|meter|touch)\w*(?:\s+\S+){0,4}?\s+(?:terminals?|lugs?|bus(?:\s*bar)?|connectors?|wires?|contactor|relay|fuse|screws?|bolts?|cover|card|module|jumpers?|board|pins?|contacts?)\b/i;
+
+/** Energized-work INTENT, opener-agnostic: a powered or skip-lockout state
+ *  together with a hands-on verb, a work object, or powered contact. */
+function hasEnergizedWorkIntent(msg: string): boolean {
+  const state = SKIP_LOCKOUT_RE.test(msg) || POWERED_STATE_RE.test(msg);
+  if (!state) return false;
+  return HANDS_ON_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg) || CONTACT_RE.test(msg);
+}
 
 export function isEnergizedWorkAsk(message: string): boolean {
   const msg = (message || "").toLowerCase().trim();
   if (!msg) return false;
   // Definitional only — see DEFINITIONAL_RE. The wide parity-pinned pattern
   // exempted "How do I swap the fan while it's powered?" and every other
-  // procedural phrasing, which is the whole of TQ-29. A procedural opener
-  // ("explain how to…") or a spec ask ("what is the torque…") is not
-  // definitional (Codex F1).
-  if (DEFINITIONAL_RE.test(msg) && !PROCEDURAL_OPENER_RE.test(msg) && !SPEC_ASK_RE.test(msg)) return false;
+  // procedural phrasing, which is the whole of TQ-29. An exempt opener on a
+  // message that carries energized-work INTENT is not definitional (Codex F1).
+  if (DEFINITIONAL_RE.test(msg) && !hasEnergizedWorkIntent(msg)) return false;
   // An ACTIVE incident ("got shocked", "smoke coming", "just exploded") keeps
   // its incident banner + answer (get clear, isolate, call for help) — the
   // 2026-09-27 precedence the route tests pin. Whether an incident report
