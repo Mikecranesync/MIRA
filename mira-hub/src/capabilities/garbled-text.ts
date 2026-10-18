@@ -119,11 +119,14 @@ export function detectGarble(text: string): GarbleVerdict {
  */
 export function planChunkRepairs(
   rows: ReadonlyArray<{ id: string; content: string }>,
-): Array<{ id: string; content: string; repair: "shift29" }> {
-  const out: Array<{ id: string; content: string; repair: "shift29" }> = [];
+): Array<{ id: string; content: string; repair: "shift29" | "shift29_partial" }> {
+  const out: Array<{ id: string; content: string; repair: "shift29" | "shift29_partial" }> = [];
   for (const row of rows) {
     const verdict = repairExtractedPage(row.content);
-    if (verdict.repair === "shift29") out.push({ id: row.id, content: verdict.text, repair: "shift29" });
+    if (verdict.repair !== "shift29") continue;
+    // Codex r2 F3: a row the decoder only PARTLY repaired is marked as such, so
+    // the backfill can revisit it instead of treating the marker as "done".
+    out.push({ id: row.id, content: verdict.text, repair: verdict.unrepaired ? "shift29_partial" : "shift29" });
   }
   return out;
 }
@@ -235,11 +238,12 @@ function blockIsShift29(rawBlock: string): boolean {
  * - otherwise it is decoded when it carries a cipher-only character (a C0
  *   control = original space/digit/punctuation, or shifted-uppercase punctuation
  *   like the `,` in `,Q` = `In`), or its decode is a common word (`WKH` = `the`);
- * - a remaining caps-only token (`WLPHU` = `timer`) is decoded only when it
- *   FOLLOWS a token already decided cipher (and is followed by cipher or the end
- *   of the block) and decodes to a vowel-bearing word of 4+ letters. At the
- *   block's left edge it is left as-is — a false negative — so an English
- *   acronym leading into cipher (`VFD LED ,Q…`) is never mangled.
+ * - a remaining caps-only token is decoded only with evidence of its OWN: it
+ *   sits BETWEEN two tokens already decided cipher AND its decode is
+ *   pronounceable (`looksPronounceable`). A run touching either block edge or
+ *   an English token is left as-is, so an English acronym before OR after the
+ *   cipher (`VFD LED ,Q…`, `…WKH RESET SYSTEM`) is never mangled; trailing
+ *   cipher words are reached through TOKEN_VOCAB instead (Codex r2 F1).
  *
  * Measured on the probe set: `NOTE`→`klqb` (no vowel), `LED`→`iba`/`VFD`→`sca`
  * (3 letters) and `OK`/`ON`/`NO` are all kept; every token of the PLC-5 fixture
@@ -251,7 +255,33 @@ const STOPWORDS = new Set([
   "a", "i", "an", "as", "at", "be", "by", "do", "if", "in", "is", "it", "of", "on", "or", "to", "up",
   "we", "no", "so", "its", "has", "was", "may", "off",
 ]);
-const COMMON_WORD_SET = new Set(COMMON_WORDS);
+/** Token-level vocabulary evidence — SEPARATE from COMMON_WORDS, which also
+ *  drives the density thresholds and must not drift. Manual vocabulary a
+ *  decoded token is checked against as a whole word. */
+const TOKEN_VOCAB = new Set([
+  ...COMMON_WORDS,
+  ...STOPWORDS,
+  "true", "false", "value", "values", "timer", "turns", "stores", "stored", "outputs", "inputs", "chassis",
+  "condition", "instruction", "instructions", "energizes", "energized", "closed", "open", "relay", "ladder",
+  "logic", "rung", "contact", "coil", "sensor", "motor", "drive", "speed", "start", "stop", "reset", "alarm",
+  "code", "codes", "check", "test", "light", "switch", "cable", "ground", "signal", "pressure", "temperature",
+  "display", "screen", "menu", "setting", "settings", "parameter", "parameters", "default", "enable", "disable",
+  "manual", "section", "page", "figure", "note", "warning", "caution", "danger", "before", "after", "then",
+  "major", "minor", "lists", "list", "scanned", "indicator", "controller", "processor", "communication", "first",
+]);
+
+/** Pronounceability — the independent evidence an undecided token must show
+ *  before it is decoded by its neighbours (Codex r2 F1 on #4486: "RESET
+ *  SYSTEM" after cipher became "obpbq SYSTEM" on neighbour evidence alone).
+ *  Real words decode to vowel-bearing text without a four-consonant pile-up;
+ *  English caps acronyms do not: RESET → obpbq (bpbq), POWER → mltho (mlth),
+ *  MOTOR → jlqlo (jlql), SYSTEM → pvpqbj (no vowel). */
+function looksPronounceable(word: string): boolean {
+  if (word.length < 4) return false;
+  const vowels = (word.match(/[aeiouy]/g) ?? []).length;
+  if (vowels / word.length < 0.2) return false; // "tests" is 0.2; RESET → obpbq is 0.2 but fails the run test
+  return !/[^aeiouy]{4}/.test(word);
+}
 
 const C0_RE = /[\x01-\x08\x0b\x0c\x0e-\x1f]/;
 /** The letters of a decoded token must have a word shape — ALLCAPS, Capitalised
@@ -270,62 +300,68 @@ function tokenIsEnglish(raw: string): boolean {
 
 function tokenIsCipher(raw: string): boolean {
   if (CIPHER_CHAR_RE.test(raw)) return true;
-  const word = decodeShift29(raw).toLowerCase().replace(/[^a-z]/g, "");
-  return STOPWORDS.has(word) || COMMON_WORD_SET.has(word);
+  return TOKEN_VOCAB.has(decodeShift29(raw).toLowerCase().replace(/[^a-z]/g, ""));
 }
 
-function tokenBridgesCipher(raw: string): boolean {
-  const word = decodeShift29(raw).toLowerCase().replace(/[^a-z]/g, "");
-  return word.length >= 4 && /[aeiouy]/.test(word);
-}
+type TokenVerdict = "english" | "cipher" | "unknown" | "space";
 
-export function decodeCipherTokens(block: string): string {
+/** Decide every space-delimited token of a block. Exported for the page-level
+ *  classifiers; `decodeCipherTokens` is the rewrite built on it. */
+export function classifyTokens(block: string): { parts: string[]; verdict: TokenVerdict[] } {
   const parts = block.split(/( +)/);
-  // Pass 1: decide each token on its own evidence.
-  const verdict: Array<"english" | "cipher" | "unknown"> = parts.map((p, i) => {
-    if (i % 2 === 1 || p === "") return "english"; // whitespace / empty — never decoded, never a neighbour
+  // Pass 1: each token on its own evidence.
+  const verdict: TokenVerdict[] = parts.map((p, i) => {
+    if (i % 2 === 1 || p === "") return "space";
     if (tokenIsEnglish(p)) return "english";
     return tokenIsCipher(p) ? "cipher" : "unknown";
   });
-  // Pass 2: a RUN of undecided tokens bounded on both sides by decided-cipher
-  // tokens follows them ("status indicator turns on." has two unknowns in a row),
-  // as does a run that follows cipher and runs to the END of the block ("…when
-  // true"). A run at the START of the block, or touching an English token, is
-  // left alone: every mixed line seen so far carries its English as a PREFIX
-  // (heading, "WARNING 120V", "Note"), so the left edge is where an acronym
-  // would be mangled and the right edge is where cipher trails off.
+  // Pass 2: an undecided token is decoded only with evidence of its OWN — a
+  // pronounceable decode — AND cipher on BOTH sides. Neighbours alone are not
+  // evidence (Codex r2 F1: "RESET SYSTEM" trailing a cipher sentence was being
+  // shifted), so a run touching either block edge or an English token is left
+  // as-is. Trailing cipher words are reached through TOKEN_VOCAB instead.
   for (let i = 0; i < parts.length; i += 2) {
     if (verdict[i] !== "unknown") continue;
     let j = i;
     while (j < parts.length && verdict[j] === "unknown") j += 2;
-    const bounded = i >= 2 && verdict[i - 2] === "cipher" && (j >= parts.length || verdict[j] === "cipher");
-    if (bounded) for (let k = i; k < j; k += 2) if (tokenBridgesCipher(parts[k])) verdict[k] = "cipher";
+    const bounded = i >= 2 && verdict[i - 2] === "cipher" && j < parts.length && verdict[j] === "cipher";
+    if (bounded) {
+      for (let k = i; k < j; k += 2) {
+        if (looksPronounceable(decodeShift29(parts[k]).toLowerCase().replace(/[^a-z]/g, ""))) verdict[k] = "cipher";
+      }
+    }
     i = j - 2;
   }
-  return parts.map((p, i) => (i % 2 === 0 && verdict[i] === "cipher" ? decodeShift29(p) : p)).join("");
+  return { parts, verdict };
 }
 
-/** A block too short for the density gate that is nonetheless unmistakably the
- *  cipher: no ASCII lowercase, letter-bearing, carrying a C0 control character
- *  (an original space/digit/punctuation under the shift — nothing a text
- *  extractor emits for English), and decoding to at least one common word.
- *  Codex round 1 on #4486: a long cipher block decoded while the short one
- *  beside it stayed `,QVWDOO WKH EDWWHU\ ILUVW\u0011`, and the page was
- *  reported fully repaired. Used only once the page is known to be cipher. */
-function blockIsShortCipher(block: string): boolean {
-  const letters = (block.match(/[A-Za-z]/g) ?? []).length;
-  if (letters < 4 || letters >= 40) return false;
-  if (hasEnglishLowercase(block, letters)) return false;
-  if (!/[\x01-\x08\x0b\x0c\x0e-\x1f]/.test(block)) return false;
-  const decoded = decodeShift29(block).toLowerCase();
-  return decoded.split(/[^a-z]+/).some((w) => STOPWORDS.has(w) || COMMON_WORD_SET.has(w));
+export function decodeCipherTokens(block: string): string {
+  const { parts, verdict } = classifyTokens(block);
+  return parts.map((p, i) => (verdict[i] === "cipher" ? decodeShift29(p) : p)).join("");
 }
 
-/** Does a block that was NOT decoded still look like cipher? (The OCR cue —
- *  `unrepaired` — must not read "false" over a page that still carries it.) */
+/** Does a block look like cipher by TOKEN evidence? No ASCII lowercase, at
+ *  least four letters, no token that is structurally English, and at least one
+ *  token with positive cipher evidence (a C0 control, shifted punctuation, or a
+ *  decode in TOKEN_VOCAB). Codex r2 F3 on #4486: the earlier test demanded a C0
+ *  control, so a punctuation-free short line (`,QVWDOO WKH EDWWHU\ ILUVW`,
+ *  "Install the battery first") was neither decoded nor counted as unrepaired.
+ *  A block of English CAPS ("RESET SYSTEM", "LOTO BEFORE SERVICE") has no
+ *  positive evidence, or has an English token, and is never cipher. */
 function blockLooksCipher(block: string): boolean {
   const letters = (block.match(/[A-Za-z]/g) ?? []).length;
-  return letters >= 4 && !hasEnglishLowercase(block, letters) && /[\x01-\x08\x0b\x0c\x0e-\x1f]/.test(block);
+  if (letters < 4 || hasEnglishLowercase(block, letters)) return false;
+  const { verdict } = classifyTokens(block);
+  return !verdict.includes("english") && verdict.includes("cipher");
+}
+
+/** A block too short for the density gate that is nonetheless the cipher by
+ *  token evidence. Codex round 1 on #4486: a long cipher block decoded while
+ *  the short one beside it stayed garbled and the page was reported fully
+ *  repaired. Used only once the page is known to be cipher. */
+function blockIsShortCipher(block: string): boolean {
+  const letters = (block.match(/[A-Za-z]/g) ?? []).length;
+  return letters < 40 && blockLooksCipher(block);
 }
 
 /**
@@ -358,13 +394,17 @@ export function repairExtractedPage(text: string): PageRepair {
     const v = detectGarble(text);
     return v.garbled && v.method === "shift29";
   })();
+  // `unrepaired` is judged on what is LEFT after decoding (Codex r2 F3): a
+  // decoded block can still hold tokens no evidence reached, and a block that
+  // was never decoded can still look like cipher.
   let residualCipher = false;
   const out = parts.map((part, i) => {
     if (i % 2 === 1) return part; // a captured separator
-    if (isShift[i]) return decodeCipherTokens(part);
-    if (pageIsCipher && blockIsShortCipher(part)) {
-      decodedAny = true;
-      return decodeCipherTokens(part);
+    if (isShift[i] || (pageIsCipher && blockIsShortCipher(part))) {
+      const decoded = decodeCipherTokens(part);
+      if (decoded !== part) decodedAny = true;
+      if (blockLooksCipher(decoded)) residualCipher = true;
+      return decoded;
     }
     if (blockLooksCipher(part)) residualCipher = true;
     return part;

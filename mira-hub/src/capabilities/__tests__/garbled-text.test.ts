@@ -263,6 +263,85 @@ describe("round 3 — token-level decode inside a cipher block (Codex r1 F1 / F3
 
   it("F2 (the backfill script): a repaired row's stale embedding is dropped so the sweep re-embeds the decoded text", () => {
     const src = readFileSync(join(__dirname, "../../../scripts/repair-garbled-chunks.ts"), "utf8");
+    const update = src.slice(src.indexOf("UPDATE knowledge_entries"), src.indexOf("[p.id, p.content"));
+    expect(update).toMatch(/embedding\s*=\s*NULL/);
+  });
+});
+
+// Codex round 2 on #4486, reproduced on the reviewer's exact strings.
+describe("round 4 — independent token evidence, residual cipher, partial markers (Codex r2 F1 / F3)", () => {
+  const PLC5_CIPHER = encodeShift29(PLC5_PAGE);
+
+  it.each([" RESET SYSTEM", " RESET", " POWER MOTOR DRIVE", " LOTO FIRST"])(
+    "F1: clean uppercase text %j AFTER the cipher sentence survives byte-identical (was 'obpbq SYSTEM')",
+    (suffix) => {
+      const out = repairExtractedPage(PLC5_CIPHER + suffix);
+      expect(out.repair).toBe("shift29");
+      expect(out.text).toBe(PLC5_PAGE + suffix);
+      expect(planChunkRepairs([{ id: "r1", content: PLC5_CIPHER + suffix }])[0].content).toBe(PLC5_PAGE + suffix);
+    },
+  );
+
+  it("F1: clean uppercase INSIDE the cipher (bounded by cipher on both sides) is kept — neighbours alone are not evidence", () => {
+    const a = encodeShift29("Install the battery before you connect power to the chassis and replace it when the");
+    const b = encodeShift29("status indicator turns on and the fault table lists the major fault code");
+    const out = repairExtractedPage(`${a} RESET SYSTEM ${b}`);
+    expect(out.repair).toBe("shift29");
+    expect(out.text).toContain(" RESET SYSTEM ");
+    expect(out.text.startsWith("Install the battery")).toBe(true);
+    expect(out.text.endsWith("major fault code")).toBe(true);
+    // control: a genuine cipher word in the same bounded position IS decoded ("timer" is not in the vocabulary)
+    expect(repairExtractedPage(`${a} ${encodeShift29("timer")} ${b}`).text).toContain(" timer ");
+  });
+
+  it("F1: clean uppercase on BOTH sides of the cipher", () => {
+    const out = repairExtractedPage("WARNING 120V " + PLC5_CIPHER + " LOTO FIRST");
+    expect(out.text).toBe("WARNING 120V " + PLC5_PAGE + " LOTO FIRST");
+  });
+
+  it("F1 control: a trailing cipher word the vocabulary knows still decodes ('…when true')", () => {
+    const sentence = "The examine-if-closed instruction tests the bit for an on condition and the output energizes when true";
+    const line = "Using Relay-Type Instructions " + encodeShift29(sentence);
+    expect(repairExtractedPage(PLC5_CIPHER + "\n" + line).text.split("\n")[1]).toBe(`Using Relay-Type Instructions ${sentence}`);
+  });
+
+  it("F3: a punctuation-free short cipher line (no C0 control) beside a long block is decoded", () => {
+    const short = encodeShift29("Install the battery first");
+    expect(short).not.toMatch(/[\x01-\x1f]/);
+    const out = repairExtractedPage(`${PLC5_CIPHER}\n${short}`);
+    expect(out).toEqual({ text: `${PLC5_PAGE}\nInstall the battery first`, repair: "shift29", unrepaired: false });
+  });
+
+  it("F3: cipher the decoder cannot reach keeps the page unrepaired:true, and the backfill plan marks the row partial", () => {
+    // A control-bearing block whose letters no evidence reaches: decoded C0 bytes are
+    // still C0 bytes, so the block still looks like cipher after the pass.
+    const junk = "\u0001\u0002 QQQQ WWWW";
+    const page = `${PLC5_CIPHER}\n${junk}`;
+    expect(repairExtractedPage(page)).toMatchObject({ repair: "shift29", unrepaired: true });
+    expect(planChunkRepairs([{ id: "r1", content: page }])).toEqual([
+      expect.objectContaining({ id: "r1", repair: "shift29_partial" }),
+    ]);
+    // control: a fully decoded row is marked complete
+    expect(planChunkRepairs([{ id: "r2", content: PLC5_CIPHER }])[0].repair).toBe("shift29");
+  });
+
+  it("F3 control: a page of English CAPS lines has no positive cipher evidence — untouched and not flagged", () => {
+    const page = "Relay Ladder Logic\nWARNING 120V\nLOTO BEFORE SERVICE\nVFD LED STATUS\nPLC RAM BATT\nRESET SYSTEM";
+    expect(repairExtractedPage(page)).toEqual({ text: page, repair: null, unrepaired: false });
+  });
+
+  it("F3 (the backfill script): partial rows stay eligible and the marker written is the plan's own", () => {
+    const src = readFileSync(join(__dirname, "../../../scripts/repair-garbled-chunks.ts"), "utf8");
+    const select = src.slice(src.indexOf("SELECT id::text AS id"), src.indexOf("ORDER BY"));
+    expect(select).toMatch(/text_repair'\) = 'shift29_partial'/);
+    const update = src.slice(src.indexOf("UPDATE knowledge_entries"), src.indexOf("[p.id, p.content"));
+    expect(update).toMatch(/jsonb_build_object\('text_repair', \$4::text\)/);
+    expect(update).toMatch(/text_repair'\) = 'shift29_partial'/);
+    expect(src).toMatch(/\[p\.id, p\.content, tenantId, p\.repair\]/);
+  });
+
+  it("F2 (the backfill script): a repaired row's stale embedding is dropped so the sweep re-embeds the decoded text", () => {
+    const src = readFileSync(join(__dirname, "../../../scripts/repair-garbled-chunks.ts"), "utf8");
     const update = src.slice(src.indexOf("UPDATE knowledge_entries"), src.indexOf("WHERE id = $1::uuid"));
     expect(update).toMatch(/embedding\s*=\s*NULL/);
   });

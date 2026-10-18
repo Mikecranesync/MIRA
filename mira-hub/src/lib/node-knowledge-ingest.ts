@@ -17,7 +17,7 @@
 // from the insert and never blocks/fails ingest, so it cannot recreate the
 // embed-gate fragility (#1385): a down embedder just leaves chunks BM25-only.
 
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { createUpload, updateUploadStatus } from "@/lib/uploads";
@@ -289,11 +289,18 @@ export async function embedPendingNodeChunks(
 
       // Embed with NO DB connection held.
       const results = await Promise.all(rows.map((r) => embedText(r.content)));
-      const writable: { id: string; vec: number[] }[] = [];
+      const writable: { id: string; vec: number[]; contentMd5: string }[] = [];
       for (let i = 0; i < rows.length; i++) {
         const r = results[i];
-        if ("vec" in r) writable.push({ id: rows[i].id, vec: r.vec });
-        else code ??= r.code; // keep the FIRST reason — it explains the stall
+        if ("vec" in r) {
+          // The write below is fenced on the content this vector was computed
+          // FROM: if a repair (scripts/repair-garbled-chunks.ts) rewrote the row
+          // while the HTTP call was in flight, the stale vector is rejected and
+          // the next sweep embeds the repaired text (Codex r2 F2 on #4486).
+          writable.push({ id: rows[i].id, vec: r.vec, contentMd5: createHash("md5").update(rows[i].content).digest("hex") });
+        } else {
+          code ??= r.code; // keep the FIRST reason — it explains the stall
+        }
       }
       if (writable.length === 0) {
         // Embedder produced nothing usable. `code` is already set above; stop
@@ -306,8 +313,8 @@ export async function embedPendingNodeChunks(
           for (const w of writable) {
             await c.query(
               `UPDATE knowledge_entries SET embedding = $2::vector
-                WHERE id = $1 AND embedding IS NULL`,
-              [w.id, `[${w.vec.join(",")}]`],
+                WHERE id = $1 AND embedding IS NULL AND md5(content) = $3`,
+              [w.id, `[${w.vec.join(",")}]`, w.contentMd5],
             );
           }
         });
@@ -457,8 +464,11 @@ async function writeChunkRowsForNode(
   return idx;
 }
 
-/** `metadata.text_repair` values — how a page's text was changed after extraction. */
-export type TextRepair = "shift29" | "ocr";
+/** `metadata.text_repair` values — how a page's text was changed after
+ *  extraction. `shift29_partial` = the decoder repaired part of the page and
+ *  cipher-looking text remains (Codex r2 F3 on #4486): still searchable where
+ *  decoded, still eligible for the backfill and the OCR seam. */
+export type TextRepair = "shift29" | "shift29_partial" | "ocr";
 
 /**
  * TQ-05 / TQ-06 (2026-10-17 prod test): repair garbled extraction IN PLACE
@@ -480,6 +490,7 @@ async function repairGarbledPages(pages: string[], opts: NodeChunkOpts): Promise
   const repairs: Array<TextRepair | null> = new Array(pages.length).fill(null);
   if (process.env.NOTEBOOK_GARBLE_DECODE !== "1") return repairs;
   const ocrFallback = process.env.NOTEBOOK_GARBLE_OCR_FALLBACK === "1";
+  const originalPages = [...pages];
   let decoded = 0;
   let unrepaired = 0;
   for (let p = 0; p < pages.length; p++) {
@@ -492,15 +503,20 @@ async function repairGarbledPages(pages: string[], opts: NodeChunkOpts): Promise
     }
     if (verdict.repair) {
       pages[p] = verdict.text;
-      repairs[p] = verdict.repair;
+      // A partly-decoded page keeps the decoded text (already more searchable)
+      // but is marked partial, counted unrepaired, and still offered to OCR —
+      // the `continue` that used to sit here discarded that signal (Codex r2 F3).
+      repairs[p] = verdict.unrepaired ? "shift29_partial" : verdict.repair;
       decoded++;
+      if (!verdict.unrepaired) continue;
+    } else if (!verdict.unrepaired) {
       continue;
     }
-    if (!verdict.unrepaired) continue;
     unrepaired++;
     if (!ocrFallback) continue;
     try {
-      const ocrText = await ocrExtractPage({ tenantId: opts.tenantId, uploadId: opts.uploadId, filename: opts.filename, page: p + 1, extracted: pages[p] });
+      // OCR sees the ORIGINAL extraction, not the half-decoded text.
+      const ocrText = await ocrExtractPage({ tenantId: opts.tenantId, uploadId: opts.uploadId, filename: opts.filename, page: p + 1, extracted: originalPages[p] });
       if (ocrText && ocrText.trim()) {
         pages[p] = ocrText;
         repairs[p] = "ocr";

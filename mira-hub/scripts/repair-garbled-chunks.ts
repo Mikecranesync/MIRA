@@ -18,7 +18,9 @@
  * decoder runs block by block, so `encodeShift29` over a whole repaired row
  * would re-encode any block that was left alone. Recover from a backup or
  * re-ingest the document rather than trusting a round trip. Never
- * touches a row that already carries a text_repair marker, never touches
+ * touches a row that already carries a completed text_repair marker (a
+ * 'shift29_partial' row — part decoded, cipher remaining — stays eligible so a
+ * later pass can finish it), never touches
  * shared-OEM rows (node_attachment / v2 only), and re-runs are no-ops.
  */
 
@@ -66,7 +68,7 @@ const { rows } = await pool.query<{ id: string; content: string; source_page: nu
     WHERE tenant_id = $1
       AND ingest_route = 'v2'
       AND source_type = 'node_attachment'
-      AND (metadata->>'text_repair') IS NULL
+      AND ((metadata->>'text_repair') IS NULL OR (metadata->>'text_repair') = 'shift29_partial')
       ${docClause}
     ORDER BY source_url, source_page NULLS LAST, (metadata->>'chunk_index')::int NULLS LAST`,
   params,
@@ -96,9 +98,10 @@ for (const p of plan) {
             -- Without this, BM25 found the repaired row while the vector lane
             -- still ranked it as noise (Codex round 1 on #4486).
             embedding = NULL,
-            metadata = metadata || jsonb_build_object('text_repair', 'shift29')
-      WHERE id = $1::uuid AND tenant_id = $3 AND (metadata->>'text_repair') IS NULL`,
-    [p.id, p.content, tenantId],
+            metadata = metadata || jsonb_build_object('text_repair', $4::text)
+      WHERE id = $1::uuid AND tenant_id = $3
+        AND ((metadata->>'text_repair') IS NULL OR (metadata->>'text_repair') = 'shift29_partial')`,
+    [p.id, p.content, tenantId, p.repair],
   );
   written += res.rowCount ?? 0;
 }
