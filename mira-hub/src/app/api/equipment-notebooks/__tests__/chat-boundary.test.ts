@@ -103,6 +103,8 @@ describe("chat boundary", () => {
     expect(res.status).toBe(200);
     const frames = await readFrames(res);
     expect(frames.some((f) => f.includes('"insufficient_evidence"'))).toBe(true);
+    expect(frames.some((f) => f.includes("notebook's manuals"))).toBe(true);
+    expect(frames.some((f) => f.includes('"basis":"oem_documentation"'))).toBe(false);
     expect(frames.at(-1)).toBe("[DONE]");
     expect(fetch).not.toHaveBeenCalled();
     expect(domainMock.recordTurn).toHaveBeenCalledWith(
