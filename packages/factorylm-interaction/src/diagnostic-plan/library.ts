@@ -16,7 +16,7 @@ const ACTIONS = {
     requiresReport: false,
     inputs: { asset_context: {} },
     outputs: { asset_id: "", equipment_path: "" },
-  } as ActionDefinition,
+  },
 
   READ_FAULT: {
     id: "READ_FAULT",
@@ -27,7 +27,7 @@ const ACTIONS = {
     requiresReport: false,
     inputs: { fault_source: "" },
     outputs: { fault_code: "", fault_text: "" },
-  } as ActionDefinition,
+  },
 
   OBSERVE_STATE: {
     id: "OBSERVE_STATE",
@@ -38,7 +38,7 @@ const ACTIONS = {
     requiresReport: true,
     inputs: { observation_type: "" },
     outputs: { observed_state: "" },
-  } as ActionDefinition,
+  },
 
   REVIEW_HISTORY: {
     id: "REVIEW_HISTORY",
@@ -49,7 +49,7 @@ const ACTIONS = {
     requiresReport: false,
     inputs: { asset_id: "" },
     outputs: { events: [] },
-  } as ActionDefinition,
+  },
 
   // Safety actions - hazard and isolation
   ASSESS_HAZARDS: {
@@ -59,10 +59,10 @@ const ACTIONS = {
     executor: "technician",
     verification: "self_reported",
     requiresReport: true,
-    inputs: { hazard_type: "" },
-    outputs: { hazards_identified: "" },
+    inputs: {},
+    outputs: {},
     safetyWording: "PENDING_R3",
-  } as ActionDefinition,
+  },
 
   CONFIRM_ISOLATION: {
     id: "CONFIRM_ISOLATION",
@@ -72,10 +72,10 @@ const ACTIONS = {
     verification: "attested",
     requiresReport: true,
     attestation: "named_person",
-    inputs: { isolation_points: [] },
-    outputs: { isolation_confirmed: false },
+    inputs: {},
+    outputs: {},
     safetyWording: "PENDING_R3",
-  } as ActionDefinition,
+  },
 
   // Measure actions - data collection
   READ_PLC_TAG: {
@@ -87,7 +87,7 @@ const ACTIONS = {
     requiresReport: false,
     inputs: { tag_name: "" },
     outputs: { tag_value: "", timestamp: "" },
-  } as ActionDefinition,
+  },
 
   READ_DRIVE_PARAMETER: {
     id: "READ_DRIVE_PARAMETER",
@@ -98,7 +98,7 @@ const ACTIONS = {
     requiresReport: false,
     inputs: { parameter_id: "", drive_type: "" },
     outputs: { parameter_value: "", unit: "" },
-  } as ActionDefinition,
+  },
 
   MEASURE: {
     id: "MEASURE",
@@ -109,7 +109,7 @@ const ACTIONS = {
     requiresReport: true,
     inputs: { quantity: "" as "voltage" | "resistance" | "current" | "continuity" | "temperature" },
     outputs: { measured_value: 0, unit: "" },
-  } as ActionDefinition,
+  },
 
   // Diagnose actions - analysis
   COMPARE_TO_SPEC: {
@@ -121,7 +121,7 @@ const ACTIONS = {
     requiresReport: false,
     inputs: { measured: 0, specification: 0 },
     outputs: { comparison_result: "" },
-  } as ActionDefinition,
+  },
 
   SELECT_NEXT_TEST: {
     id: "SELECT_NEXT_TEST",
@@ -132,7 +132,7 @@ const ACTIONS = {
     requiresReport: false,
     inputs: { findings: [] },
     outputs: { recommended_action: "" },
-  } as ActionDefinition,
+  },
 
   // Record actions - documentation
   RECORD_FINDING: {
@@ -144,7 +144,7 @@ const ACTIONS = {
     requiresReport: true,
     inputs: { finding_text: "" },
     outputs: { record_id: "" },
-  } as ActionDefinition,
+  },
 
   ESCALATE: {
     id: "ESCALATE",
@@ -155,7 +155,7 @@ const ACTIONS = {
     requiresReport: true,
     inputs: { reason: "" },
     outputs: { escalation_id: "" },
-  } as ActionDefinition,
+  },
 } as const satisfies Record<string, ActionDefinition>;
 
 export const LIBRARY = Object.values(ACTIONS);

@@ -181,6 +181,46 @@ describe("Diagnostic Plan Runner (nextStep)", () => {
       }
     });
 
+    it("should follow explicit BLOCKED route to blocked", () => {
+      const run: RunRecord = {
+        templateId: "routed",
+        records: [{ stepId: "step2", action: "READ_FAULT", outcome: "BLOCKED", verification: "machine" }],
+      };
+
+      const result = nextStep(routedTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toBe("blocked");
+      }
+    });
+
+    it("should follow explicit BLOCKED route to escalate", () => {
+      const blockedEscalateTemplate: WorkflowTemplate = {
+        id: "blocked-escalate",
+        title: "Blocked Escalate",
+        steps: [
+          {
+            id: "step1",
+            action: "IDENTIFY_ASSET",
+            on: {
+              BLOCKED: { stop: "escalate" },
+            },
+          },
+        ],
+      };
+
+      const run: RunRecord = {
+        templateId: "blocked-escalate",
+        records: [{ stepId: "step1", action: "IDENTIFY_ASSET", outcome: "BLOCKED", verification: "machine" }],
+      };
+
+      const result = nextStep(blockedEscalateTemplate, run);
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") {
+        expect(result.reason).toBe("escalate");
+      }
+    });
+
     it("should follow explicit INCONCLUSIVE route to escalate", () => {
       const run: RunRecord = {
         templateId: "routed",

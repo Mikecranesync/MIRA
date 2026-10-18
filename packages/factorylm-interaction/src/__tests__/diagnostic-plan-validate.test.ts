@@ -114,6 +114,27 @@ describe("Diagnostic Plan Validation", () => {
       const r3Errors = result.errors.filter((e) => e.rule === "R3");
       expect(r3Errors).toHaveLength(0);
     });
+
+    it("should fail when UNSAFE routes to wrong stop value", () => {
+      const badTemplate = {
+        id: "bad_template",
+        title: "Bad Template",
+        steps: [
+          {
+            id: "step1",
+            action: "IDENTIFY_ASSET",
+            on: {
+              UNSAFE: { stop: "blocked" as const },
+            },
+          },
+        ],
+      };
+
+      const result = validateTemplate(badTemplate, LIBRARY);
+      const r3Errors = result.errors.filter((e) => e.rule === "R3");
+      expect(r3Errors.length).toBeGreaterThan(0);
+      expect(r3Errors[0].message).toContain("stop:unsafe");
+    });
   });
 
   describe("R4: BLOCKED outcome never routes to next", () => {
@@ -158,6 +179,47 @@ describe("Diagnostic Plan Validation", () => {
       const r4Errors = result.errors.filter((e) => e.rule === "R4");
       expect(r4Errors).toHaveLength(0);
     });
+
+    it("should accept BLOCKED routing to stop:escalate", () => {
+      const template = {
+        id: "good_template",
+        title: "Good Template",
+        steps: [
+          {
+            id: "step1",
+            action: "IDENTIFY_ASSET",
+            on: {
+              BLOCKED: { stop: "escalate" as const },
+            },
+          },
+        ],
+      };
+
+      const result = validateTemplate(template, LIBRARY);
+      const r4Errors = result.errors.filter((e) => e.rule === "R4");
+      expect(r4Errors).toHaveLength(0);
+    });
+
+    it("should fail when BLOCKED routes to wrong stop value", () => {
+      const badTemplate = {
+        id: "bad_template",
+        title: "Bad Template",
+        steps: [
+          {
+            id: "step1",
+            action: "IDENTIFY_ASSET",
+            on: {
+              BLOCKED: { stop: "unsafe" as const },
+            },
+          },
+        ],
+      };
+
+      const result = validateTemplate(badTemplate, LIBRARY);
+      const r4Errors = result.errors.filter((e) => e.rule === "R4");
+      expect(r4Errors.length).toBeGreaterThan(0);
+      expect(r4Errors[0].message).toContain("stop:blocked or stop:escalate");
+    });
   });
 
   describe("R5: Next targets exist and all steps reachable", () => {
@@ -191,10 +253,12 @@ describe("Diagnostic Plan Validation", () => {
             id: "step1",
             action: "IDENTIFY_ASSET",
             on: {
-              PASS: { stop: "resolved" as const },
+              PASS: { next: "step3" },
+              FAIL: { stop: "escalate" as const },
             },
           },
           { id: "step2", action: "READ_FAULT" },
+          { id: "step3", action: "RECORD_FINDING" },
         ],
       };
 

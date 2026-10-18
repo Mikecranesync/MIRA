@@ -3,7 +3,7 @@
  * Six validation rules ensure templates are well-formed and safe.
  */
 
-import { ActionDefinition, WorkflowTemplate } from "./types";
+import { ActionDefinition, ActionOutcome, WorkflowTemplate } from "./types";
 
 export interface ValidationError {
   rule: string;
@@ -38,12 +38,15 @@ export function validateTemplate(
   // R2: technician steps have requiresReport
   for (const step of template.steps) {
     const action = actionMap.get(step.action);
-    if (action && action.executor === "technician" && !action.requiresReport) {
-      errors.push({
-        rule: "R2",
-        stepId: step.id,
-        message: `Technician step '${step.id}' must have requiresReport=true`,
-      });
+    if (action) {
+      const executor = step.executor ?? action.executor;
+      if (executor === "technician" && !action.requiresReport) {
+        errors.push({
+          rule: "R2",
+          stepId: step.id,
+          message: `Technician step '${step.id}' must have requiresReport=true`,
+        });
+      }
     }
   }
 
@@ -56,6 +59,12 @@ export function validateTemplate(
           rule: "R3",
           stepId: step.id,
           message: `UNSAFE outcome cannot route to next step`,
+        });
+      } else if ("stop" in route && route.stop !== "unsafe") {
+        errors.push({
+          rule: "R3",
+          stepId: step.id,
+          message: `UNSAFE outcome must route to stop:unsafe, not stop:${route.stop}`,
         });
       }
     }
@@ -71,6 +80,12 @@ export function validateTemplate(
           stepId: step.id,
           message: `BLOCKED outcome cannot route to next step`,
         });
+      } else if ("stop" in route && route.stop !== "blocked" && route.stop !== "escalate") {
+        errors.push({
+          rule: "R4",
+          stepId: step.id,
+          message: `BLOCKED outcome must route to stop:blocked or stop:escalate, not stop:${route.stop}`,
+        });
       }
     }
   }
@@ -85,16 +100,16 @@ export function validateTemplate(
     changed = false;
     for (const step of template.steps) {
       if (reachableIds.has(step.id)) {
-        if (!step.on) {
-          // Default route to next step
-          const nextIdx = template.steps.findIndex((s) => s.id === step.id) + 1;
-          if (nextIdx < template.steps.length && !reachableIds.has(template.steps[nextIdx].id)) {
-            reachableIds.add(template.steps[nextIdx].id);
-            changed = true;
-          }
-        } else {
-          // Check all routes
-          for (const route of Object.values(step.on)) {
+        const stepIdx = template.steps.findIndex((s) => s.id === step.id);
+        const nextStepIdx = stepIdx + 1;
+        const hasNextStep = nextStepIdx < template.steps.length;
+
+        // Check explicit routes and default routing
+        const outcomes: ActionOutcome[] = ["PASS", "FAIL", "INCONCLUSIVE", "BLOCKED", "UNSAFE"];
+
+        for (const outcome of outcomes) {
+          if (step.on?.[outcome]) {
+            const route = step.on[outcome];
             if ("next" in route) {
               if (!stepIds.has(route.next)) {
                 errors.push({
@@ -106,6 +121,12 @@ export function validateTemplate(
                 reachableIds.add(route.next);
                 changed = true;
               }
+            }
+          } else if ((outcome === "PASS" || outcome === "FAIL") && hasNextStep) {
+            // Default PASS/FAIL to next step if not explicitly routed
+            if (!reachableIds.has(template.steps[nextStepIdx].id)) {
+              reachableIds.add(template.steps[nextStepIdx].id);
+              changed = true;
             }
           }
         }
