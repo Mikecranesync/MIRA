@@ -318,24 +318,34 @@ describe("updateNotebook — changing the machine drops identity_status to candi
   const updateCall = () => callFor(/UPDATE equipment_notebooks/)!;
   const setOf = (c: Call) => c.sql.match(/SET (.*), updated_at = now\(\)/)![1];
 
-  it("a model change with no explicit status sets identity_status = 'candidate'", async () => {
+  // Codex #4484 F3: the reset must be decided against the STORED value, in the
+  // UPDATE itself — a patch that re-saves the same model must not revoke the
+  // confirmation (migration 104's trigger disables auto-acquired manuals on a
+  // status change). So the SET carries a CASE over `IS DISTINCT FROM $n`, where
+  // $n is the very parameter the model is being written from.
+  it("a model write sets identity_status = 'candidate' ONLY WHEN the stored model differs", async () => {
     expect(await updateNotebook(TENANT, NB, { model: "PowerFlex 525" })).toBe(true);
     const c = updateCall();
-    expect(setOf(c)).toContain("identity_status");
-    expect(c.params).toContain("candidate");
+    const set = setOf(c);
+    expect(set).toMatch(/model = \$3/);
+    expect(set).toMatch(/identity_status = CASE WHEN model IS DISTINCT FROM \$3 THEN 'candidate' ELSE identity_status END/);
+    // no literal status parameter — the database decides
+    expect(c.params).not.toContain("candidate");
   });
 
-  it("a manufacturer change does the same", async () => {
+  it("a manufacturer write compares the stored manufacturer; both together compare both", async () => {
     await updateNotebook(TENANT, NB, { manufacturer: "Rockwell" });
-    expect(setOf(updateCall())).toContain("identity_status");
-    expect(updateCall().params).toContain("candidate");
+    expect(setOf(updateCall())).toMatch(/CASE WHEN manufacturer IS DISTINCT FROM \$3 THEN 'candidate'/);
+    calls.length = 0;
+    await updateNotebook(TENANT, NB, { manufacturer: "Rockwell", model: "PowerFlex 525" });
+    expect(setOf(updateCall())).toMatch(/CASE WHEN manufacturer IS DISTINCT FROM \$3 OR model IS DISTINCT FROM \$4 THEN 'candidate'/);
   });
 
   it("control: an explicit identityStatus in the patch is respected (the confirm route sets user_confirmed)", async () => {
     await updateNotebook(TENANT, NB, { model: "PowerFlex 525", identityStatus: "user_confirmed" });
     const c = updateCall();
     expect(c.params).toContain("user_confirmed");
-    expect(c.params).not.toContain("candidate");
+    expect(setOf(c)).not.toContain("CASE WHEN");
   });
 
   it("control: a patch that does not touch the machine leaves identity_status alone", async () => {

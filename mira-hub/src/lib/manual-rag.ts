@@ -279,9 +279,30 @@ function identitiesAreFamilyOnly(ids: Set<string>): boolean {
 
 /** Notebook-identity applicability: the exact-identity rule, plus a title
  *  that names a family root covering the notebook's model. */
+/** A confirmed notebook model stored as digits only ("820", "525"). */
+const BARE_MODEL_NUMBER_RE = /^\d{2,4}$/;
+const FAMILY_DIGITS_RE = /^([A-Z]+)(\d+)$/;
+
 function documentCoversNotebook(notebook: Set<string>, title: Set<string>): boolean {
-  if (documentCoversRequest(notebook, title)) return true;
-  for (const t of title) for (const n of notebook) if (familyCovers(t, n)) return true;
+  // Codex #4484 F2: a catalog-only notebook identity (6AV2124-0GC01-0AX0) must
+  // reach the family check AS its panel label, or the Comfort Panels manual is
+  // lost to it — expand before both comparisons.
+  const nb = withCatalogModels(notebook);
+  if (documentCoversRequest(nb, title)) return true;
+  for (const t of title) {
+    for (const n of nb) {
+      if (familyCovers(t, n)) return true;
+      if (n.startsWith("#")) {
+        // Bare-number identity (F1): the title's own digits must agree, or its
+        // family root must cover <family><digits>. A title naming a different
+        // number (MICRO810 for "#820") is a different model, exactly as for a
+        // family-qualified identity.
+        const digits = n.slice(1);
+        const m = FAMILY_DIGITS_RE.exec(t);
+        if (m && (m[2] === digits || familyCovers(t, `${m[1]}${digits}`))) return true;
+      }
+    }
+  }
   return false;
 }
 
@@ -1238,9 +1259,19 @@ export async function retrieveNodeChunks(
   //   - It names only a product family ("Comfort", "Micro800"): there is no
   //     single machine to scope to, so every member manual stays citable.
   const identityConfirmed = opts.identityStatus === "user_confirmed" || opts.identityStatus === "verified";
+  // Codex #4484 F1: the identity-proposal flow confirms models as bare numbers
+  // ("820", "525" — identity-proposal.test.ts pins that shape), which
+  // modelIdentitiesInText cannot read, so a confirmed Micro820 notebook was
+  // never scoped and cited the Micro810 manual. A bare number is carried as a
+  // marked identity (`#820`) that matches a title whose OWN digits agree
+  // (MICRO820, PF525) or whose family root covers them (MICRO800); no family is
+  // ever guessed from the number alone.
+  const notebookModel = opts.identity?.model?.trim() ?? "";
   const notebookIdentities: Set<string> =
-    !requestedModel.model && !requestedModel.ambiguous && identityConfirmed && opts.identity?.model?.trim()
-      ? modelIdentitiesInText(opts.identity.model)
+    !requestedModel.model && !requestedModel.ambiguous && identityConfirmed && notebookModel
+      ? BARE_MODEL_NUMBER_RE.test(notebookModel)
+        ? new Set([`#${notebookModel}`])
+        : modelIdentitiesInText(notebookModel)
       : new Set<string>();
   const notebookScoped =
     !questionScoped && notebookIdentities.size > 0 && !identitiesAreFamilyOnly(notebookIdentities);

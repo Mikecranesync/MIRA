@@ -1850,6 +1850,31 @@ describe("retrieveNodeChunks — notebook identity scopes model-less questions",
       expect(await ask("TP1200 Comfort Operating Instructions", "communication settings", "Comfort", "tp1200.pdf")).toHaveLength(1);
       expect(await ask("Micro850 Programmable Controllers User Manual", "communication settings", "Micro800", "2080-um002.pdf")).toHaveLength(1);
     });
+    // Codex #4484 F1: the identity-proposal flow confirms "820" / "525", not
+    // "Micro820" / "PowerFlex 525" (identity-proposal.test.ts F8 pins it), and
+    // modelIdentitiesInText("820") is empty — so a CONFIRMED Micro820 notebook
+    // was never scoped and cited the Micro810 manual.
+    describe("a confirmed identity stored as a bare number still scopes (no family is guessed)", () => {
+      it("'820' rejects the Micro810 manual and keeps the Micro820 manual", async () => {
+        expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", "820")).toEqual([]);
+        expect(await ask("Micro820 Programmable Controllers User Manual", "communication settings", "820")).toHaveLength(1);
+      });
+      it("'820' is covered by the Micro800 family manual", async () => {
+        expect(await ask("Micro800 Programmable Controllers General Instructions", "communication settings", "820", "2080-rm001.pdf")).toHaveLength(1);
+      });
+      it("'525' rejects a PowerFlex 755 manual and keeps the 520-Series and 525 manuals", async () => {
+        expect(await ask("PowerFlex 755 AC Drives User Manual", "communication settings", "525", "750-um001.pdf")).toEqual([]);
+        expect(await ask("PowerFlex 520-Series Adjustable Frequency AC Drive User Manual", "communication settings", "525", "520-um001.pdf")).toHaveLength(1);
+        expect(await ask("PowerFlex 525 Adjustable Frequency AC Drive User Manual", "communication settings", "525", "520-um001.pdf")).toHaveLength(1);
+      });
+      it("a manual naming no model stays citable for a bare-number notebook (unchanged lenience)", async () => {
+        expect(await ask("Controller Manual", "communication settings", "820", "manual.pdf")).toHaveLength(1);
+      });
+      it("control: a bare number is still not scoped without confirmation", async () => {
+        expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", "820", "2080-um001.pdf", "candidate")).toHaveLength(1);
+      });
+    });
+
     // Round 2: a catalog number and its panel label never met (hidden both ways).
     describe("a Siemens order number names its panel (CATALOG_PREFIX_TO_MODEL)", () => {
       const TP700_CAT = "6AV2124-0GC01-0AX0";
@@ -1858,6 +1883,11 @@ describe("retrieveNodeChunks — notebook identity scopes model-less questions",
       });
       it("a notebook identified by the order number (nameplate '1P 6AV…') cites the TP700 Comfort manual", async () => {
         expect(await ask("TP700 Comfort Operating Instructions", "communication settings", TP700_CAT, "tp700.pdf")).toHaveLength(1);
+      });
+      // Codex #4484 F2: the catalog→panel expansion ran only for the exact-match
+      // comparison, so the FAMILY manual was still lost to a catalog-only notebook.
+      it("a catalog-only notebook also keeps the Comfort Panels FAMILY manual", async () => {
+        expect(await ask("SIMATIC HMI Comfort Panels Operating Instructions", "communication settings", TP700_CAT, "comfort.pdf")).toHaveLength(1);
       });
       it("the same holds on the question-named path", async () => {
         expect(await ask("TP700 Comfort Operating Instructions", `${TP700_CAT} communication settings`, null, "tp700.pdf")).toHaveLength(1);
