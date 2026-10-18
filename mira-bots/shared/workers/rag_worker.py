@@ -210,10 +210,13 @@ def evidence_applicability(
 
     * ``"model"``  — the excerpt is labelled for the asked model.
     * ``"family"`` — a shared label covers it, or it names the same product family.
-    * ``"unknown"`` — the family can't be decided (no label, or a model the alias
-      table doesn't place in a family, e.g. every PowerFlex). Kept, as general
+    * ``"unknown"`` — labelled for another model whose family can't be decided
+      (the alias table places no PowerFlex in a family). Kept, as general
       context only — dropping on doubt would erase the 520-series manual
       (tagged "PowerFlex 525") for every 523 and 527 owner.
+    * ``"unlabelled"`` — no model label at all. Used exactly as before, with no
+      caveat (owner decision, option B): nearly every customer upload is
+      unlabelled, and hedging it would hedge the tenant's own manual.
     * ``None``     — both sides name a product family and they differ (a V1000
       page for an A1000 question). The only case that drops the excerpt.
 
@@ -226,7 +229,7 @@ def evidence_applicability(
     ]
     labels = [label for label in labels if label]
     if not labels:
-        return "unknown"
+        return "unlabelled"
     keys = {canonical_model(label) for label in labels}
     asked_key = canonical_model(asked_model, asked_family)
     # A bare number with no series in the message ("AB 525") is the labelled

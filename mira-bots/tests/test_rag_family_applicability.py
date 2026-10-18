@@ -38,9 +38,6 @@ UNKNOWN_NOTE = "general/context only"
         ("PowerFlex 755", "PowerFlex 755", "PowerFlex 753"),
         # 40P owner, 40 manual.
         ("40P", "PowerFlex", "PowerFlex 40"),
-        # Untagged excerpt from the right vendor.
-        ("A1000", "A1000", ""),
-        ("GS10", "GS10", None),
         # A family the alias table does not know (GA800) proves nothing.
         ("A1000", "A1000", "GA800"),
         # An A1000 drive's catalog code is not a family name.
@@ -51,6 +48,15 @@ def test_undecidable_family_keeps_the_excerpt_as_general_context(
     asked_model, asked_family, excerpt_label
 ):
     assert evidence_applicability(excerpt_label, asked_model, asked_family) == "unknown"
+
+
+@pytest.mark.parametrize("excerpt_label", ["", None, "  "])
+def test_an_unlabelled_excerpt_is_not_scored(excerpt_label):
+    # Owner decision 2026-10-18 (option B): an excerpt with no model label is
+    # used exactly as before — 5,934 of 5,946 customer-upload excerpts on
+    # staging carry no label, and caveating them would hedge the tenant's own
+    # manual. Only a label for a different model can earn the caveat.
+    assert evidence_applicability(excerpt_label, "GS10", "GS10") == "unlabelled"
 
 
 @pytest.mark.parametrize(
@@ -232,6 +238,16 @@ async def test_a_523_owner_still_gets_the_520_series_manual_marked_general():
     assert UNKNOWN_NOTE in prompt
     assert s["_rag_sources"] == ["F004 UnderVoltage table"]
     assert s["_rag_last_chunks"][0]["evidence_applicability"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_a_customers_unlabelled_upload_reaches_the_prompt_without_the_caveat():
+    s = _state("AutomationDirect", "GS10", "GS10")
+    upload = {**_row("Our GS10 CE10 comm-loss procedure", "AutomationDirect", ""), "metadata": {}}
+    prompt = await _prompt_for([upload], s)
+    assert "Our GS10 CE10 comm-loss procedure" in prompt
+    assert UNKNOWN_NOTE not in prompt
+    assert s["_rag_last_chunks"][0]["evidence_applicability"] == "unlabelled"
 
 
 @pytest.mark.asyncio
