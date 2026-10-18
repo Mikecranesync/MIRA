@@ -59,18 +59,18 @@ the question in its own reviewed commit.
 
 ## Spend (zero-token rule)
 
-Hard budget **$3.00 per run** (`staging.ts BudgetMeter`). Before every turn the meter reserves a
-**declared per-turn bound** and refuses the turn unless spent + that bound fits the budget, so no
-sequence of in-bound turns can pass $3 (property-tested). The bound comes from the Hub's code, not
-from history: ≤ 4000 output tokens (`DEFAULT_MAX_OUTPUT_TOKENS`) and ≤ 32,000 input tokens (static
-system prompt + at most 6 chunks of ≤ 1200 chars + no history on a fresh chat; ~3k observed), priced
-at worst-case rates ($2 in / $16 out per Mtok, above gpt-5.4-mini list price) plus $0.02 for calls
-the stream does not report (the safety judge) — $0.148 reserved per turn. Each dispatched turn is
-charged once, right after its response, from its own `usage` frames, before any UI step that could
-throw. It **fails closed**: a turn whose cost cannot be read, or whose usage breaks the declared
-bound, stops every later paid turn. Residual risk, stated: only a single turn that breaks the bound
-(possible only if the Hub's caps change) could overspend, and it ends the run. Unasked rows are
-BROKEN ("budget stop"), never dropped. Run #1's recorded usage meters at about $1.39.
+Hard budget **$4.50 per run** (`staging.ts BudgetMeter`). Every turn **books its worst case at
+dispatch**, before the request leaves, and nothing is ever released, because some billed calls never
+reach the client's stream (an attempt the Hub timed out and retried on the next provider, the safety
+judge). A turn is sent only if its booking still fits, so the booked total is an upper bound on true
+spend and can never pass the budget. The worst case comes from production constants: the answer
+**and** the judge, each attempted on **every** cascade provider, with ≤ 16,000 input tokens (static
+prompt + ≤ 6 chunks of ≤ 1200 chars + no history; ~3k observed), ≤ 1400 answer / ≤ 200 judge output
+tokens (`requestCap`, judge `max_completion_tokens`), at the repo's declared prices (gpt-5.4-mini
+from `tools/review_router/prices.json`, the rest from `PRICE_PER_MTOK`). That is $0.0782 per turn,
+$3.91 for 50. True spend is a small fraction of it (about $0.2 per run). It **fails closed**: a
+turn whose usage is unreadable, or breaks the declared bound, stops every later paid turn. Unasked
+rows are BROKEN ("budget stop"), never dropped.
 
 Paid inference is validation only. Debug the walk at $0:
 
