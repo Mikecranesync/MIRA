@@ -1,0 +1,470 @@
+/**
+ * TQ-05 / TQ-06 (2026-10-17 prod test): the PLC-5 manual's pages extract as a
+ * fixed +29 cipher (",QDGGLWLRQ" is "Inaddition"). Detect it, decode it, and
+ * never touch a page that is already English.
+ */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  decodeCipherTokens,
+  decodeShift29,
+  detectGarble,
+  encodeShift29,
+  englishDensity,
+  planChunkRepairs,
+  repairExtractedPage,
+} from "../garbled-text";
+
+const PLC5_PAGE =
+  "In addition, the PLC-5 processor stores the program in battery-backed RAM. " +
+  "When the processor is in Program mode, the outputs are de-energized and the " +
+  "program is not scanned. Install the battery before you connect power to the " +
+  "chassis, and replace it when the BATT status indicator turns on. The fault " +
+  "table lists the major fault code in word S:12 of the status file.";
+
+const PARTS_TABLE =
+  "1771-P7 120/220V AC 16A   1771-A1B 4-slot chassis   1785-L40E   1771-IBD 24V DC input module\n" +
+  "1771-OBD 24V DC output module   1771-IAD 120V AC input   1771-OAD 120V AC output   1785-BCM\n" +
+  "Cat. No. Description Qty   1771-CP1 cable 1 m   1771-CP2 cable 2 m   1785-ENET Ethernet module";
+
+describe("the cipher itself", () => {
+  it("the prod-test sample decodes: ,QDGGLWLRQ → Inaddition", () => {
+    expect(decodeShift29(",QDGGLWLRQ")).toBe("Inaddition");
+  });
+  it("encode/decode round-trip a real sentence, spaces included", () => {
+    expect(decodeShift29(encodeShift29(PLC5_PAGE))).toBe(PLC5_PAGE);
+  });
+  it("the shifted space (0x03) and shifted punctuation (0x0F = ',') come back as space and comma", () => {
+    expect(decodeShift29(",Q\u0003DGGLWLRQ\u000f")).toBe("In addition,");
+  });
+  it("leaves layout whitespace, non-ASCII and already-lowercase letters alone (no double shift)", () => {
+    expect(decodeShift29("line one\nline two")).toBe("line one\nline two");
+    expect(decodeShift29("Ω ± ¼ zyx")).toBe("Ω ± ¼ zyx");
+  });
+});
+
+describe("englishDensity", () => {
+  it("is near zero for the cipher and well above the floor for prose", () => {
+    expect(englishDensity(encodeShift29(PLC5_PAGE))).toBeLessThan(1);
+    expect(englishDensity(PLC5_PAGE)).toBeGreaterThanOrEqual(6);
+  });
+  it("is zero for a short string (never decides on a header)", () => {
+    expect(englishDensity("WKH SURFHVVRU")).toBe(0);
+  });
+});
+
+describe("detectGarble", () => {
+  it("flags the shifted PLC-5 page as shift29 and returns the decoded page", () => {
+    const v = detectGarble(encodeShift29(PLC5_PAGE));
+    expect(v.garbled).toBe(true);
+    if (!v.garbled || v.method !== "shift29") throw new Error("expected shift29");
+    expect(v.decoded).toBe(PLC5_PAGE);
+    expect(v.decodedDensity).toBeGreaterThanOrEqual(3);
+  });
+
+  it("control: an ordinary English page is not garbled", () => {
+    expect(detectGarble(PLC5_PAGE)).toEqual({ garbled: false, density: expect.any(Number) });
+  });
+
+  it("control: a dense parts table (few common words, many codes) is not garbled", () => {
+    expect(detectGarble(PARTS_TABLE).garbled).toBe(false);
+    // …and the decoder is never applied to it, even when asked directly
+    expect(repairExtractedPage(PARTS_TABLE)).toEqual({ text: PARTS_TABLE, repair: null, unrepaired: false });
+  });
+
+  it("control: a short page (< 80 letters) is never flagged, cipher or not", () => {
+    expect(detectGarble(encodeShift29("In addition, the processor stores the program.")).garbled).toBe(false);
+  });
+
+  it("flags a long wordless letter-soup page as garbled-but-unknown (the OCR cue), without decoding it", () => {
+    const soup = "QXZKV JQPLX ZVKQJ XPLQZ VKJQX ".repeat(12);
+    const v = detectGarble(soup);
+    expect(v.garbled).toBe(true);
+    if (!v.garbled) throw new Error("unreachable");
+    expect(v.method).toBe("unknown");
+    expect(repairExtractedPage(soup)).toEqual({ text: soup, repair: null, unrepaired: true });
+  });
+});
+
+describe("repairExtractedPage", () => {
+  it("decodes a shifted page and marks the repair", () => {
+    expect(repairExtractedPage(encodeShift29(PLC5_PAGE))).toEqual({ text: PLC5_PAGE, repair: "shift29", unrepaired: false });
+  });
+  it("still repairs when the spaces were dropped by the parser (words run together but are searchable)", () => {
+    const noSpaces = encodeShift29(PLC5_PAGE).replace(/ /g, "");
+    const out = repairExtractedPage(noSpaces);
+    expect(out.repair).toBe("shift29");
+    expect(out.text).toContain("Inaddition");
+    expect(out.text).toContain("battery-backedRAM");
+  });
+});
+
+describe("planChunkRepairs (the flag-gated backfill for rows already in knowledge_entries)", () => {
+  it("returns only the rows it would rewrite, decoded, and leaves English rows out", () => {
+    const plan = planChunkRepairs([
+      { id: "a", content: encodeShift29(PLC5_PAGE) },
+      { id: "b", content: PLC5_PAGE },
+      { id: "c", content: PARTS_TABLE },
+    ]);
+    expect(plan.map((r) => r.id)).toEqual(["a"]);
+    expect(plan[0]).toEqual({ id: "a", content: PLC5_PAGE, repair: "shift29" });
+  });
+});
+
+// ── Review A (Grok 4.6 via Cursor, 2026-10-18) on #4486 ──
+// The reviewer reported a false-POSITIVE: an English header followed by a
+// cipher body supposedly got the whole page decoded, mangling the header.
+// Verified on 40626b375 — that does NOT reproduce; the page came back
+// `repair: null` with the header untouched. The real defect is the opposite
+// and the reviewer's second finding names it: the page is left GARBLED,
+// because the header's English words lift whole-page density above the gate.
+// That is the actual TQ-05/06 shape, so it is the shape that matters.
+//
+// Repairing block by block fixes the false negative AND makes the
+// false positive the reviewer feared structurally impossible: an English
+// block is never handed to the decoder.
+describe("Review A — a page that mixes English and cipher is repaired block by block", () => {
+  const BODY =
+    "In addition, the PLC-5 processor stores the program in battery-backed RAM. When the processor is in Program mode, the outputs are de-energized and the program is not scanned. Install the battery before you connect power to the chassis.";
+  const HEADER = "Chapter 4  Processor Status and Fault Handling";
+
+  it("decodes the cipher body and leaves the English header byte-identical", () => {
+    const out = repairExtractedPage(`${HEADER}\n\n${encodeShift29(BODY)}`);
+    expect(out.repair).toBe("shift29");
+    expect(out.text.split("\n")[0]).toBe(HEADER);
+    expect(out.text).toContain("battery-backed RAM");
+    expect(out.text).not.toContain(",QDGGLWLRQ");
+  });
+
+  it("a mostly-cipher page with a few real words is repaired, not skipped", () => {
+    const out = repairExtractedPage(`${encodeShift29(BODY)}\n\nWARNING Do not remove the cover.`);
+    expect(out.repair).toBe("shift29");
+    expect(out.text).toContain("WARNING Do not remove the cover.");
+    expect(out.text).toContain("battery-backed RAM");
+  });
+
+  it("control: an all-English page is still untouched, block by block", () => {
+    const page = `${HEADER}\n\n${BODY}`;
+    expect(repairExtractedPage(page)).toEqual({ text: page, repair: null, unrepaired: false });
+  });
+
+  it("control: a parts table beside an English header is untouched", () => {
+    const page = `${HEADER}\n\n1771-P7 120/220V AC 16A   1771-A1B 4-slot chassis   1785-L40E   1771-IBD 24V DC input`;
+    expect(repairExtractedPage(page).repair).toBeNull();
+  });
+});
+
+// Round-2 review (2026-10-18): the decoder was rewriting clean English. The
+// +29 map produces NO ASCII lowercase, so lowercase is the structural tell;
+// these pin the guard on the reviewer's own reproduction strings.
+describe("round 2 — English is never decoded (the lowercase guard)", () => {
+  const M172 = "Do not connect a power cable longer than 10 m (32.8 ft)";
+  const HEADING_AND_CIPHER =
+    "Using Relay-Type Instructions " +
+    encodeShift29("The examine-if-closed instruction tests the bit for an on condition and the output energizes when true");
+
+  it("the M172 line that was becoming 'ao not connect ~ power c~ble …' is untouched", () => {
+    // Precondition: this is exactly the shape that slipped through — under 40
+    // letters, so raw density reads 0, and the decode coins uppercase from the
+    // digits and punctuation.
+    expect((M172.match(/[A-Za-z]/g) ?? []).length).toBeLessThan(40);
+    expect(englishDensity(M172)).toBe(0);
+    expect(repairExtractedPage(M172)).toEqual({ text: M172, repair: null, unrepaired: false });
+  });
+
+  it("a heading sharing a LINE with cipher: cipher decoded, heading byte-identical (round 3 — was left garbled in round 2)", () => {
+    const out = repairExtractedPage(HEADING_AND_CIPHER);
+    expect(out.repair).toBe("shift29");
+    expect(out.text).toBe(
+      "Using Relay-Type Instructions The examine-if-closed instruction tests the bit for an on condition and the output energizes when true",
+    );
+  });
+
+  it("control: a pure-cipher block beside that heading on its OWN line is still decoded, heading byte-identical", () => {
+    const body = encodeShift29("The examine-if-closed instruction tests the bit for an on condition and the output energizes when true");
+    // This block's cipher happens to contain "FOR" ("closed" → "FORVHG"), so
+    // its raw density is 1.22 — above the old block ceiling of 1.0. It is
+    // genuine cipher and must still decode: the lowercase guard, not the
+    // density ceiling, is what keeps English out.
+    expect(englishDensity(body)).toBeGreaterThan(1);
+    const out = repairExtractedPage(`Using Relay-Type Instructions\n${body}`);
+    expect(out.repair).toBe("shift29");
+    expect(out.text.split("\n")[0]).toBe("Using Relay-Type Instructions");
+    expect(out.text).toContain("examine-if-closed instruction");
+  });
+
+  const SHORT_LINES = [
+    "Install the battery first.",
+    "Connect power to the chassis.",
+    "Check the fault table word.",
+    "Replace the module and set the mode.",
+  ].map(encodeShift29);
+
+  it("the whole-page fallback decodes a page of SHORT cipher lines (each under the block minimum)", () => {
+    for (const l of SHORT_LINES) expect((l.match(/[A-Za-z]/g) ?? []).length).toBeLessThan(40);
+    const out = repairExtractedPage(SHORT_LINES.join("\n"));
+    expect(out.repair).toBe("shift29");
+    expect(out.text).toContain("Install the battery first.");
+  });
+
+  it("…and never wholesale over a page that carries an English heading: each short line decoded on its own, heading byte-identical", () => {
+    const page = `Relay Ladder Logic\n${SHORT_LINES.join("\n")}`;
+    // Precondition: the page-level verdict alone WOULD decode this page wholesale.
+    expect(detectGarble(page)).toMatchObject({ garbled: true, method: "shift29" });
+    expect(repairExtractedPage(page)).toEqual({
+      text: "Relay Ladder Logic\nInstall the battery first.\nConnect power to the chassis.\nCheck the fault table word.\nReplace the module and set the mode.",
+      repair: "shift29",
+      unrepaired: false,
+    });
+  });
+
+  it("control: a page of short English CAPS lines beside a heading is untouched (no C0 control = not cipher)", () => {
+    const page = "Relay Ladder Logic\nWARNING 120V\nLOTO BEFORE SERVICE\nVFD LED STATUS\nPLC RAM BATT";
+    expect(repairExtractedPage(page)).toEqual({ text: page, repair: null, unrepaired: false });
+  });
+});
+
+// Codex round 1 on #4486, reproduced on the reviewer's exact strings. The
+// decoder now works token by token inside a cipher block, so an English prefix
+// sharing the line is never shifted; and a SHORT cipher block beside a long one
+// is decoded instead of being reported repaired while still garbled.
+describe("round 3 — token-level decode inside a cipher block (Codex r1 F1 / F3)", () => {
+  const PLC5_CIPHER = encodeShift29(PLC5_PAGE);
+
+  it.each(["WARNING 120V ", "Note ", "Caution ", "VFD LED ", "1771-P7 ", "DANGER NOTE OK ON "])(
+    "an English prefix %j on the cipher line survives byte-identical and the cipher still decodes",
+    (prefix) => {
+      const out = repairExtractedPage(prefix + PLC5_CIPHER);
+      expect(out.repair).toBe("shift29");
+      expect(out.text).toBe(prefix + PLC5_PAGE);
+    },
+  );
+
+  it("every token of the PLC-5 sentence decodes — capitalised words, PLC-5, RAM., S:12, BATT included", () => {
+    expect(decodeCipherTokens(PLC5_CIPHER)).toBe(PLC5_PAGE);
+  });
+
+  it("control: English caps / digit tokens fed straight to the token decoder come back unchanged", () => {
+    const e = "WARNING 120V DANGER NOTE VFD LED OK ON OFF 24VDC 1771-P7 S:12 PLC LOTO STOP POWER HMI PPE RPM";
+    expect(decodeCipherTokens(e)).toBe(e);
+  });
+
+  it("F3: a short cipher block beside a long one is decoded too, and the page is not reported fully repaired while cipher remains", () => {
+    const short = encodeShift29("Install the battery first.");
+    expect((short.match(/[A-Za-z]/g) ?? []).length).toBeLessThan(40);
+    const out = repairExtractedPage(`${PLC5_CIPHER}\n${short}`);
+    expect(out).toEqual({ text: `${PLC5_PAGE}\nInstall the battery first.`, repair: "shift29", unrepaired: false });
+    // A block that still looks like cipher after the pass (C0 controls, no
+    // lowercase, no decodable word) keeps the OCR cue raised.
+    const junk = "\u0001\u0002 QQQQ WWWW";
+    expect(repairExtractedPage(`${PLC5_CIPHER}\n${junk}`)).toMatchObject({ repair: "shift29", unrepaired: true });
+  });
+
+  it("F2 (the backfill script): a repaired row's stale embedding is dropped so the sweep re-embeds the decoded text", () => {
+    const src = readFileSync(join(__dirname, "../../../scripts/repair-garbled-chunks.ts"), "utf8");
+    const update = src.slice(src.indexOf("UPDATE knowledge_entries"), src.indexOf("[p.id, p.content"));
+    expect(update).toMatch(/embedding\s*=\s*NULL/);
+  });
+});
+
+// Codex round 2 on #4486, reproduced on the reviewer's exact strings.
+describe("round 4 — independent token evidence, residual cipher, partial markers (Codex r2 F1 / F3)", () => {
+  const PLC5_CIPHER = encodeShift29(PLC5_PAGE);
+
+  it.each([" RESET SYSTEM", " RESET", " POWER MOTOR DRIVE", " LOTO FIRST"])(
+    "F1: clean uppercase text %j AFTER the cipher sentence survives byte-identical (was 'obpbq SYSTEM')",
+    (suffix) => {
+      const out = repairExtractedPage(PLC5_CIPHER + suffix);
+      expect(out.repair).toBe("shift29");
+      expect(out.text).toBe(PLC5_PAGE + suffix);
+      expect(planChunkRepairs([{ id: "r1", content: PLC5_CIPHER + suffix }])[0].content).toBe(PLC5_PAGE + suffix);
+    },
+  );
+
+  const A = encodeShift29("Install the battery before you connect power to the chassis and replace it when the");
+  const B = encodeShift29("status indicator turns on and the fault table lists the major fault code");
+
+  it("F1: clean uppercase INSIDE the cipher (bounded by cipher on both sides) is kept — neighbours alone are not evidence", () => {
+    const out = repairExtractedPage(`${A} RESET SYSTEM ${B}`);
+    expect(out.repair).toBe("shift29");
+    expect(out.text).toContain(" RESET SYSTEM ");
+    expect(out.text.startsWith("Install the battery")).toBe(true);
+    expect(out.text.endsWith("major fault code")).toBe(true);
+    // control: a genuine cipher word in the same bounded position IS decoded, on its own vocabulary evidence
+    expect(repairExtractedPage(`${A} ${encodeShift29("timer")} ${B}`).text).toContain(" timer ");
+  });
+
+  // Codex r3 F1: pronounceability was not independent evidence either — HIGH → "efde".
+  it.each(["HIGH", "LEFT", "RIGHT", "SHUT", "SLOW", "FLOW", "HOLD", "TRIP", "LOWER", "DRIVE"])(
+    "F1 (r3): the pronounceable-looking caps word %j between cipher spans is kept byte-identical, by repairExtractedPage and planChunkRepairs alike",
+    (word) => {
+      const page = `${A} ${word} ${B}`;
+      const out = repairExtractedPage(page);
+      expect(out.text).toContain(` ${word} `);
+      expect(out.text.startsWith("Install the battery")).toBe(true);
+      expect(planChunkRepairs([{ id: "r1", content: page }])[0].content).toContain(` ${word} `);
+      // …and because a caps token with no evidence either way stayed in a decoded block, the
+      // page is reported partial rather than complete (the safe direction — flag, never mangle).
+      expect(out.unrepaired).toBe(true);
+      expect(planChunkRepairs([{ id: "r1", content: page }])[0].repair).toBe("shift29_partial");
+    },
+  );
+
+  // Codex r4 F1: ordinary punctuation was positive cipher evidence — "0.5" → "MKR", "-" → "J", "(1)" → "ENF".
+  it.each(["0.5", "-", "/", "(1)", "P2.04", "$5", "24V", "10%", "VFD,", "LED.", "(VFD)", "I/O", "<=", ">=", "[1]", "++", "<>", "**"])(
+    "F1 (r4): the clean number / punctuation token %j inside a cipher sentence is kept byte-identical",
+    (tok) => {
+      const a = encodeShift29("Set the input module current threshold to");
+      const b = encodeShift29("and connect the power before you install the processor in the chassis");
+      const page = `${a} ${tok} ${b}`;
+      expect(repairExtractedPage(page).text).toContain(` ${tok} `);
+      expect(planChunkRepairs([{ id: "r1", content: page }])[0].content).toContain(` ${tok} `);
+    },
+  );
+
+  it("F1 (r4) control: the cipher of an ALL-CAPS word is letterless too and still decodes (PLC-5, RAM., BATT, S:12)", () => {
+    expect(decodeCipherTokens(PLC5_CIPHER)).toBe(PLC5_PAGE);
+    // a plain number is neutral text, not an unresolved token: the sentence is complete
+    const a = encodeShift29("Set the input module current value to");
+    const b = encodeShift29("and connect the power before you install the processor in the chassis");
+    expect(repairExtractedPage(`${a} 0.5 ${b}`)).toMatchObject({
+      text: "Set the input module current value to 0.5 and connect the power before you install the processor in the chassis",
+      unrepaired: false,
+    });
+  });
+
+  // Codex r4 F3: a short cipher line sharing its line with an English prefix was never decoded and never counted.
+  it.each(["Note ", "WARNING ", "CAUTION: "])(
+    "F3 (r4): on a cipher page, the prefixed short line %j+cipher is decoded with the prefix byte-identical",
+    (prefix) => {
+      const out = repairExtractedPage(`${PLC5_CIPHER}\n${prefix}${encodeShift29("Turn the switch clockwise")}`);
+      expect(out.text.split("\n")[1]).toBe(`${prefix}Turn the switch clockwise`);
+      expect(out.unrepaired).toBe(false);
+    },
+  );
+
+  it("F3 (r4): …and when its words are unknown, the line stays garbled AND the page is reported partial", () => {
+    // "plonk" / "gromp" are not vocabulary.
+    const page = `${PLC5_CIPHER}\nNote ${encodeShift29("Plonk the gromp")}`;
+    const out = repairExtractedPage(page);
+    expect(out.text.split("\n")[1]).toBe(`Note ${encodeShift29("Plonk")} the ${encodeShift29("gromp")}`);
+    expect(out.unrepaired).toBe(true);
+    expect(planChunkRepairs([{ id: "r1", content: page }])[0].repair).toBe("shift29_partial");
+  });
+
+  // Codex r5 F3: a LONG prefixed instruction that misses the density gate was skipped by the
+  // short-block path (≥40 letters) and its residue hidden by the prefix.
+  it("F3 (r5): a long 'Note '-prefixed cipher instruction on a cipher page is decoded, prefix byte-identical", () => {
+    const sentence = "Rotate the knob clockwise and counterclockwise before energizing the equipment";
+    expect((encodeShift29(sentence).match(/[A-Za-z]/g) ?? []).length).toBeGreaterThanOrEqual(40);
+    const out = repairExtractedPage(`${PLC5_CIPHER}\nNote ${encodeShift29(sentence)}`);
+    expect(out.text.split("\n")[1]).toBe(`Note ${sentence}`);
+    expect(out.unrepaired).toBe(false);
+  });
+
+  it("F3 (r5): …and the same long line with unknown words is reported partial, not complete", () => {
+    const sentence = "Plonk the gromp clockwise and counterclockwise before energizing the equipment";
+    const page = `${PLC5_CIPHER}\nNote ${encodeShift29(sentence)}`;
+    const out = repairExtractedPage(page);
+    expect(out.text.split("\n")[1]).toContain("clockwise and counterclockwise before energizing the equipment");
+    expect(out.text.split("\n")[1]).toContain(encodeShift29("Plonk"));
+    expect(out.unrepaired).toBe(true);
+    expect(planChunkRepairs([{ id: "r1", content: page }])[0].repair).toBe("shift29_partial");
+  });
+
+  it("F1 (r3) control: a cipher word the vocabulary does NOT know is left garbled (false negative), and reported", () => {
+    // "plonk" / "gromp" are not vocabulary.
+    const out = repairExtractedPage(`${A} ${encodeShift29("plonk the gromp")} ${B}`);
+    expect(out.text).toContain(` ${encodeShift29("plonk")} the ${encodeShift29("gromp")} `);
+    expect(out.unrepaired).toBe(true);
+  });
+
+  it("F1: clean uppercase on BOTH sides of the cipher", () => {
+    const out = repairExtractedPage("WARNING 120V " + PLC5_CIPHER + " LOTO FIRST");
+    expect(out.text).toBe("WARNING 120V " + PLC5_PAGE + " LOTO FIRST");
+  });
+
+  it("F1 control: a trailing cipher word the vocabulary knows still decodes ('…when true')", () => {
+    const sentence = "The examine-if-closed instruction tests the bit for an on condition and the output energizes when true";
+    const line = "Using Relay-Type Instructions " + encodeShift29(sentence);
+    expect(repairExtractedPage(PLC5_CIPHER + "\n" + line).text.split("\n")[1]).toBe(`Using Relay-Type Instructions ${sentence}`);
+  });
+
+  it("F3: a punctuation-free short cipher line (no C0 control) beside a long block is decoded", () => {
+    const short = encodeShift29("Install the battery first");
+    expect(short).not.toMatch(/[\x01-\x1f]/);
+    const out = repairExtractedPage(`${PLC5_CIPHER}\n${short}`);
+    expect(out).toEqual({ text: `${PLC5_PAGE}\nInstall the battery first`, repair: "shift29", unrepaired: false });
+  });
+
+  it("F3 (r3): a trailing line that decodes only in part is reported partial, not complete — residue is tracked per token", () => {
+    // Codex's string: "Turn the switch clockwise" decodes fully now that "turn"/"clockwise" are vocabulary…
+    expect(repairExtractedPage(`${PLC5_CIPHER}\n${encodeShift29("Turn the switch clockwise")}`)).toMatchObject({
+      text: `${PLC5_PAGE}\nTurn the switch clockwise`,
+      unrepaired: false,
+    });
+    // …so the same shape with non-vocabulary words is the regression: the half-decoded line
+    // ("5RWDWH the HQRE clockwise") used to read as English once "the" appeared.
+    const page = `${PLC5_CIPHER}\n${encodeShift29("Plonk the gromp clockwise")}`;
+    const out = repairExtractedPage(page);
+    expect(out.text.split("\n")[1]).toBe(`${encodeShift29("Plonk")} the ${encodeShift29("gromp")} clockwise`);
+    expect(out).toMatchObject({ repair: "shift29", unrepaired: true });
+    expect(planChunkRepairs([{ id: "r1", content: page }])[0].repair).toBe("shift29_partial");
+  });
+
+  it("F3: cipher the decoder cannot reach keeps the page unrepaired:true, and the backfill plan marks the row partial", () => {
+    // A control-bearing block whose letters no evidence reaches: decoded C0 bytes are
+    // still C0 bytes, so the block still looks like cipher after the pass.
+    const junk = "\u0001\u0002 QQQQ WWWW";
+    const page = `${PLC5_CIPHER}\n${junk}`;
+    expect(repairExtractedPage(page)).toMatchObject({ repair: "shift29", unrepaired: true });
+    expect(planChunkRepairs([{ id: "r1", content: page }])).toEqual([
+      expect.objectContaining({ id: "r1", repair: "shift29_partial" }),
+    ]);
+    // control: a fully decoded row is marked complete
+    expect(planChunkRepairs([{ id: "r2", content: PLC5_CIPHER }])[0].repair).toBe("shift29");
+  });
+
+  it("F3 control: a page of English CAPS lines has no positive cipher evidence — untouched and not flagged", () => {
+    const page = "Relay Ladder Logic\nWARNING 120V\nLOTO BEFORE SERVICE\nVFD LED STATUS\nPLC RAM BATT\nRESET SYSTEM\nSee note (1), P2.04 = 0.5 A";
+    expect(repairExtractedPage(page)).toEqual({ text: page, repair: null, unrepaired: false });
+  });
+
+  it("F3 (the backfill script): partial rows stay eligible and the marker written is the plan's own", () => {
+    const src = readFileSync(join(__dirname, "../../../scripts/repair-garbled-chunks.ts"), "utf8");
+    const select = src.slice(src.indexOf("SELECT id::text AS id"), src.indexOf("ORDER BY"));
+    expect(select).toMatch(/text_repair'\) = 'shift29_partial'/);
+    const update = src.slice(src.indexOf("UPDATE knowledge_entries"), src.indexOf("[p.id, p.content"));
+    expect(update).toMatch(/jsonb_build_object\('text_repair', \$4::text\)/);
+    expect(update).toMatch(/text_repair'\) = 'shift29_partial'/);
+    expect(src).toMatch(/\[p\.id, p\.content, tenantId, p\.repair\]/);
+  });
+
+  it("F2 (the backfill script): a repaired row's stale embedding is dropped so the sweep re-embeds the decoded text", () => {
+    const src = readFileSync(join(__dirname, "../../../scripts/repair-garbled-chunks.ts"), "utf8");
+    const update = src.slice(src.indexOf("UPDATE knowledge_entries"), src.indexOf("WHERE id = $1::uuid"));
+    expect(update).toMatch(/embedding\s*=\s*NULL/);
+  });
+});
+
+// The 3-distinct-common-words floor in blockIsShift29, pinned at its boundary
+// so it cannot be quietly lowered. Both fixtures pass every OTHER gate
+// identically (42–45 letters, zero digits, raw density 0, decoded density 33):
+// the only difference is how many different common words the decode yields.
+describe("blockIsShift29 — the distinct-common-words floor is exactly three", () => {
+  const TWO_WORDS = encodeShift29("the and ".repeat(7).trim()); // decodes to {the, and}
+  const THREE_WORDS = encodeShift29("the and for ".repeat(5).trim()); // decodes to {the, and, for}
+
+  it("a block that decodes to only two distinct common words is NOT repaired", () => {
+    // Precondition: the fixture really is cipher that would decode to English.
+    expect(englishDensity(decodeShift29(TWO_WORDS))).toBeGreaterThanOrEqual(3);
+    expect(repairExtractedPage(TWO_WORDS)).toEqual({ text: TWO_WORDS, repair: null, unrepaired: false });
+  });
+
+  it("control: the same shape with three distinct common words IS repaired", () => {
+    const out = repairExtractedPage(THREE_WORDS);
+    expect(out.repair).toBe("shift29");
+    expect(out.text).toBe("the and for ".repeat(5).trim());
+  });
+});
