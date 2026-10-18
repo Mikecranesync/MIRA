@@ -65,6 +65,16 @@ Components are identified by **SerialNumber when present**, by **(UNS path, pare
 A component that does not carry a serial number — push buttons, selector switches, pilot lights, limit switches, photo eyes, pneumatic fittings, terminal blocks, fuses. Identified by the (`uns_path`, `asset_id`, `panel_id`) tuple. The UNS path becomes the human-facing identifier on the bench ("PB-7 on Panel 12 of Conveyor A's HMI"). `installed_component_instances.serial_number` is `NULL` for these rows; that's expected, not a data-quality issue.
 _Avoid_: bulk part, generic component, unidentified part.
 
+### Evidence in an answer
+
+**UNS (Unified Namespace)**:
+The single address space every piece of maintenance data is filed under — the backbone, not a detail. It has two branches: the **plant branch** (`enterprise.<site>.<area>.<line>.<machine>…` — where a thing physically is) and the **knowledge-base branch** (`enterprise.knowledge_base.<manufacturer>.<model>` — what a manual, fault code, or template is *about*). A manual excerpt is linked to the knowledge-base branch through its equipment entity.
+_Avoid_: tag tree, asset tree (those are views of the plant branch only), "the namespace" without saying which branch.
+
+**Excerpt applicability** (`model` | `family` | `unknown`):
+How far a manual excerpt is known to apply to the equipment being asked about. **Family, not exact model, is the line.** `model` = the excerpt is tagged for that exact model; `family` = it is tagged for another model *recorded* as belonging to the same product family; `unknown` = it carries no equipment tag, or nothing records whether its model shares a family with the one asked about — kept, but used only as general context, never as proof of a model-specific code, setting, or procedure (until the PowerFlex 520-series is recorded as a family, a 525-tagged page answering a 523 question is `unknown`, not dropped). Only an excerpt *recorded* as a different family (a V1000 page for an A1000 question) does not apply at all and is never used as evidence — doubt keeps an excerpt, proof drops it.
+_Avoid_: relevance, match score (those describe search ranking, not whether the page is about this machine).
+
 ### Drive Commander product (ADR-0025)
 
 **Drive Commander**:
