@@ -3,6 +3,7 @@ import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { embedQuery, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import {
   codeTokenMatcher,
   expandIndustrialQuery,
@@ -1483,8 +1484,12 @@ export async function retrieveNodeChunks(
   const requestedIdentities: Set<string> | null = questionScoped
     ? modelIdentitiesInText(opts.rawQuery ?? q)
     : null;
-  const add = (rs: Record<string, unknown>[]) => {
-    for (const r of rs) {
+  const keyOf = (r: Record<string, unknown>) =>
+    `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
+  // Admission is ONE predicate for every lane — lexical, exact-token and (item
+  // 4) vector — so a chunk the vector lane finds is held to exactly the same
+  // model-applicability rule as one BM25 found.
+  const admit = (r: Record<string, unknown>): boolean => {
       if (requestedIdentities || notebookScoped) {
         // F2 — affirmative title/heading applicability only (see
         // affirmativeModelIdentities): the heading's own title segment is
@@ -1498,7 +1503,7 @@ export async function retrieveNodeChunks(
           String(r.document_heading ?? ""),
         );
         if (requestedIdentities) {
-          if (!documentCoversRequest(requestedIdentities, titleIdentities)) continue;
+          if (!documentCoversRequest(requestedIdentities, titleIdentities)) return false;
         } else if (
           (titleIdentities.size > 0 &&
             !documentCoversNotebook(notebookIdentities, titleIdentities, opts.identity?.manufacturer?.trim() || null)) ||
@@ -1521,10 +1526,15 @@ export async function retrieveNodeChunks(
           // the Micro820 notebook — the prod-test miss) is rejected — and a
           // FAMILY manual (PowerFlex 520-Series for a 525) counts as covering
           // its members, not as a different model (FAMILY_ROOTS).
-          continue;
+          return false;
         }
       }
-      const key = `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
+      return true;
+  };
+  const add = (rs: Record<string, unknown>[]) => {
+    for (const r of rs) {
+      if (!admit(r)) continue;
+      const key = keyOf(r);
       if (seen.has(key)) continue;
       seen.add(key);
       pool.push(r);
@@ -1576,6 +1586,107 @@ export async function retrieveNodeChunks(
   // back to the original OR pass (a fully off-vocabulary conversational query).
   if (pool.length === 0) add(await runRetrieval(OR_TSQUERY, expanded.variants[0]));
 
+  // 2026-10-17 prod-test item 4 — the VECTOR lane, behind NOTEBOOK_HYBRID_RETRIEVAL
+  // (default off). node ingest already stores a nomic-embed-text vector on every
+  // v2 chunk; until now notebook chat never read it. One cosine pass over the
+  // SAME tenant / node / doc / approval predicates as the BM25 pass, ranked by
+  // `<=>`, LIMIT POOL. Rows go through the SAME `admit` filter; rows the lexical
+  // lanes never saw join the pool with rank 0 (like the exact lane — the
+  // cosine score is NOT a ts_rank and must not feed the lexical rerank). The
+  // vector ORDER is kept aside for the RRF merge below. Any failure — no
+  // embedder, HTTP error, no vectors in scope, SQL error — leaves the lexical
+  // result exactly as it was: this lane can add and re-order, never remove.
+  let vectorKeys: string[] | null = null;
+  // Rows ONLY the vector lane found. They join `pool` (so they can be cited)
+  // and therefore `lexicalRanked` — but they must not also earn a lexical RRF
+  // term there, or a vector-only row scores twice against a lexical-only row's
+  // once and displaces it (scope-pass finding on #4487).
+  const vectorOnlyKeys = new Set<string>();
+  if (hybridRetrievalEnabled()) {
+    const queryVec = await embedQuery(opts.rawQuery ?? q);
+    if (queryVec) {
+      // Codex r1 on #4487: a failing vector SELECT (a statement timeout, a
+      // missing pgvector operator) run on the CALLER's client inside
+      // withTenantContext's transaction leaves that transaction aborted, so the
+      // caller's NEXT query fails with 25P02 — the namespace route then dropped
+      // its node row and answered 404. The optional lane runs under a
+      // SAVEPOINT so its failure is rolled back to the point before it ran and
+      // the connection stays usable. A raw-pool caller has no transaction:
+      // SAVEPOINT itself fails there (25P01) and nothing needs recovering.
+      let savepoint = false;
+      try {
+        await client.query("SAVEPOINT hybrid_vector_lane");
+        savepoint = true;
+      } catch {
+        savepoint = false;
+      }
+      try {
+        // Same per-document candidate windows as the lexical lanes: when the
+        // ask is model-scoped, one LIMIT POOL over ALL docs lets a large
+        // sibling manual fill every vector slot before applicability filtering
+        // (the same hazard docWindows exists for in BM25). Rows from all
+        // windows are re-sorted by cosine so the RRF order stays one ranking.
+        const vectorRows: Array<Record<string, unknown>> = [];
+        for (const window of docWindows) {
+          const vectorParams: unknown[] = [tenantId, q, nodeIds, POOL, ...(window.length ? [window] : []), ...approvedParams, vectorLiteral(queryVec)];
+          const vecSlot = vectorParams.length;
+          const res = await client.query(
+            `SELECT
+                content,
+                doc_id::text AS doc_id,
+                source_url,
+                source_page,
+                page_start,
+                section_path,
+                metadata->>'filename' AS filename,
+                ${documentHeadingSql},
+                verified,
+                0::float4 AS rank,
+                (1 - (embedding <=> $${vecSlot}::vector))::float4 AS vscore
+              FROM knowledge_entries
+              WHERE tenant_id = $1
+                AND ($2::text IS NOT NULL)
+                AND ingest_route = 'v2'
+                ${approvalClauseMain}
+                ${nodeClauseMain}
+                ${docClause}
+                AND embedding IS NOT NULL
+              ORDER BY embedding <=> $${vecSlot}::vector, id
+              LIMIT $4`,
+            vectorParams,
+          );
+          vectorRows.push(...(res.rows as Record<string, unknown>[]));
+        }
+        if (docWindows.length > 1) {
+          vectorRows.sort((a, b) => Number(b.vscore ?? 0) - Number(a.vscore ?? 0));
+        }
+        vectorKeys = [];
+        for (const r of vectorRows) {
+          if (!admit(r)) continue;
+          const key = keyOf(r);
+          if (!vectorKeys.includes(key)) vectorKeys.push(key);
+          if (!seen.has(key)) {
+            seen.add(key);
+            pool.push(r);
+            vectorOnlyKeys.add(key);
+          }
+        }
+        if (savepoint) await client.query("RELEASE SAVEPOINT hybrid_vector_lane");
+      } catch (err) {
+        console.warn("[retrieveNodeChunks] vector lane failed (lexical result served):", err instanceof Error ? err.message : err);
+        vectorKeys = null;
+        vectorOnlyKeys.clear();
+        if (savepoint) {
+          try {
+            await client.query("ROLLBACK TO SAVEPOINT hybrid_vector_lane");
+          } catch (rollbackErr) {
+            console.warn("[retrieveNodeChunks] vector lane savepoint rollback failed:", rollbackErr instanceof Error ? rollbackErr.message : rollbackErr);
+          }
+        }
+      }
+    }
+  }
+
   // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank). For a
   // broad question, keep a bigger, page-DIVERSE slice so distinct facets survive
   // (no single page may fill the context); otherwise the tight topK.
@@ -1584,20 +1695,30 @@ export async function retrieveNodeChunks(
   // The code the technician JUST named leads the final cut; a code carried in
   // from the thread stays context and cannot exhaust the slots (Codex r2 on
   // #4360). No-op when the message named no code.
-  const rerankedAll = prioritizeCurrentCodeEvidence(
-    rerankChunks(
-      expanded,
-      pool.map((r) => ({
-        content: String(r.content ?? ""),
-        rank: Number(r.rank ?? 0),
-        sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
-        docId: r.doc_id == null ? null : String(r.doc_id),
-        _row: r,
-      })),
-      { intent, trace },
-    ),
-    expanded.currentCodeTokens,
+  const lexicalRanked = rerankChunks(
+    expanded,
+    pool.map((r) => ({
+      content: String(r.content ?? ""),
+      rank: Number(r.rank ?? 0),
+      sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
+      docId: r.doc_id == null ? null : String(r.doc_id),
+      _row: r,
+    })),
+    { intent, trace },
   );
+  // Item 4 — Reciprocal Rank Fusion of the lexical rerank and the vector order
+  // (hybrid-retrieval.ts). With no vector lane this IS lexicalRanked.
+  const byKey = new Map(lexicalRanked.map((c) => [keyOf(c._row), c] as const));
+  const hybridRanked =
+    vectorKeys && vectorKeys.length > 0
+      ? rrfMerge(
+          // A vector-only row has no lexical rank to contribute (see vectorOnlyKeys).
+          lexicalRanked.filter((c) => !vectorOnlyKeys.has(keyOf(c._row))),
+          vectorKeys.map((k) => byKey.get(k)).filter((c): c is (typeof lexicalRanked)[number] => c !== undefined),
+          (c) => keyOf(c._row),
+        )
+      : lexicalRanked;
+  const rerankedAll = prioritizeCurrentCodeEvidence(hybridRanked, expanded.currentCodeTokens);
   // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
   // overall, so one family (e.g. overload) can fill every slot while a planned
   // facet (overcurrent) sits uncovered in the pool. Every facet with pool

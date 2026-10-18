@@ -1910,3 +1910,168 @@ describe("retrieveNodeChunks — notebook identity scopes model-less questions",
     });
   });
 });
+
+// Overnight 2026-10-17 item 4 — hybrid retrieval: the vectors node ingest
+// already writes are CONNECTED to notebook chat behind NOTEBOOK_HYBRID_RETRIEVAL
+// (default off). Vector + lexical ranks merge by RRF; the #4469/#4484 model
+// filter still decides admission for every row; the embedder being down or the
+// scope holding no vectors leaves the lexical result byte for byte.
+describe("retrieveNodeChunks — hybrid (vector + lexical, RRF) behind NOTEBOOK_HYBRID_RETRIEVAL", () => {
+  const VEC = Array.from({ length: 768 }, (_, i) => (i % 5) / 10);
+  const lexRow = (page: number, content: string, extra: Partial<Record<string, unknown>> = {}) =>
+    nodeRow({ content, source_page: page, page_start: page, doc_id: "d-1", filename: "gs10.pdf", rank: 0.5 - page * 0.01, ...extra });
+
+  // One client, dispatching by SQL shape instead of by call order: every
+  // ts_rank pass sees the same lexical rows (dedup folds them), the exact
+  // lanes see nothing, and the vector pass sees its own ranked rows.
+  function hybridClient(lexical: Record<string, unknown>[], vector: Record<string, unknown>[]) {
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.includes("<=>")) return { rows: vector };
+      if (sql.includes("ts_rank_cd")) return { rows: lexical };
+      return { rows: [] };
+    });
+    return { client: { query } as unknown as PoolClient, calls };
+  }
+
+  const ask = (client: PoolClient, topK = 3) =>
+    retrieveNodeChunks(client, "t-1", "what carrier frequency should I use", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true, topK,
+      identity: { manufacturer: "AutomationDirect", model: "GS10" },
+      // #4484 (this branch's base): notebook scoping needs a confirmed identity.
+      identityStatus: "user_confirmed",
+    });
+
+  const LEXICAL = [
+    lexRow(10, "Carrier frequency P2.04 sets the PWM switching frequency of the output."),
+    lexRow(11, "Carrier frequency and audible motor noise: higher values reduce noise."),
+    lexRow(12, "Carrier frequency derating table for ambient temperature."),
+    lexRow(40, "Reduce the carrier frequency if the drive trips on overheat (oH) at high ambient."),
+  ];
+  // Vector lane: the oH-derating page is the best semantic match for a "should
+  // I use" ask, and page 55 is a vector-ONLY find the lexical lanes never saw.
+  const VECTOR = [
+    lexRow(40, "Reduce the carrier frequency if the drive trips on overheat (oH) at high ambient.", { rank: 0 }),
+    lexRow(55, "Recommended switching frequency by motor cable length and ambient.", { rank: 0 }),
+  ];
+
+  afterEach(() => {
+    delete process.env.NOTEBOOK_HYBRID_RETRIEVAL;
+    delete process.env.OLLAMA_BASE_URL;
+    vi.unstubAllGlobals();
+  });
+
+  it("flag OFF: no embedder call, no vector SQL, and the result is the lexical result", async () => {
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { client, calls } = hybridClient(LEXICAL, VECTOR);
+    const out = await ask(client);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.sql.includes("<=>"))).toBe(false);
+    expect(out.map((c) => c.sourcePage)).toEqual([10, 11, 12]);
+  });
+
+  it("flag ON: embeds the question, runs ONE vector pass in the same scope, and RRF lifts the vector-first page and admits the vector-only page", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const { client, calls } = hybridClient(LEXICAL, VECTOR);
+    // A 4-cut: with one RRF term each, the vector-only page 55 (vector #2 →
+    // 1/62) TIES the lexical #2 page 11 (1/62) and the tie breaks toward
+    // lexical, so it is 4th — admitted, behind the pages that earned a rank.
+    const out = await ask(client, 4);
+    const vectorCalls = calls.filter((c) => c.sql.includes("<=>"));
+    expect(vectorCalls).toHaveLength(1);
+    expect(vectorCalls[0].sql).toMatch(/embedding IS NOT NULL/);
+    expect(vectorCalls[0].sql).toMatch(/doc_id = ANY\(\$5::uuid\[\]\)/);
+    expect(vectorCalls[0].params).toContain(`[${VEC.join(",")}]`);
+    expect(vectorCalls[0].params[4]).toEqual(["d-1"]);
+    const pages = out.map((c) => c.sourcePage);
+    // page 40 is in BOTH lists (lexical 4th, vector 1st) → it now leads
+    expect(pages[0]).toBe(40);
+    // the vector-only page is admitted into the cut
+    expect(pages).toContain(55);
+    expect(out).toHaveLength(4);
+  });
+
+  // Scope-pass finding on #4487: a vector-only row was pushed into the pool and
+  // so appeared in the lexical rerank too (rank 0, at the bottom) — earning a
+  // lexical RRF term it had no right to. Page 55 (vector-only, 2nd by vector)
+  // then outscored BOTH page 10 (lexical #1) and page 11: 1/(k+5) + 1/(k+2)
+  // beats 1/(k+1). With one term each it scores 1/(k+2), ties page 11, and the
+  // tie breaks toward lexical — so the order is 40, 10, 11, 55, not 40, 55, 10, 11.
+  it("RRF double-count: a vector-only row scores once, so it cannot displace pages that earned a lexical rank", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const { client } = hybridClient(LEXICAL, VECTOR);
+    const out = await ask(client, 4);
+    expect(out.map((c) => c.sourcePage)).toEqual([40, 10, 11, 55]);
+  });
+
+  // Scope-pass finding on #4487: the vector lane ran ONE query over every
+  // attached manual while BM25 iterates docWindows per manual when the ask is
+  // model-scoped — so a large sibling manual could fill all POOL vector slots.
+  it("model-scoped ask: the vector lane runs once per attached manual and re-sorts across windows by cosine", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const d1 = lexRow(10, "Carrier frequency P2.04 sets the PWM switching frequency.", { rank: 0, vscore: 0.5, doc_id: "d-1" });
+    const d2 = lexRow(70, "Switching frequency and ambient derating for the GS10.", { rank: 0, vscore: 0.9, doc_id: "d-2", filename: "gs10_b.pdf" });
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.includes("<=>")) {
+        const window = params[4] as string[];
+        return { rows: window[0] === "d-1" ? [d1] : [d2] };
+      }
+      return { rows: [] };
+    });
+    const out = await retrieveNodeChunks({ query } as unknown as PoolClient, "t-1", "what carrier frequency should I use", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1", "d-2"], validatedDocScope: true, topK: 3,
+      identity: { manufacturer: "AutomationDirect", model: "GS10" },
+      identityStatus: "user_confirmed",
+    });
+    const vectorCalls = calls.filter((c) => c.sql.includes("<=>"));
+    expect(vectorCalls.map((c) => c.params[4])).toEqual([["d-1"], ["d-2"]]);
+    // d-2's row had the higher cosine even though its window ran second.
+    expect(out.map((c) => c.sourcePage)).toEqual([70, 10]);
+  });
+
+  it("flag ON but the embedder is down: the result is the flag-OFF result, byte for byte, and no vector SQL runs", async () => {
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    const { client: offClient } = hybridClient(LEXICAL, VECTOR);
+    const off = await ask(offClient);
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    const { client, calls } = hybridClient(LEXICAL, VECTOR);
+    const on = await ask(client);
+    expect(calls.some((c) => c.sql.includes("<=>"))).toBe(false);
+    expect(on).toEqual(off);
+  });
+
+  it("flag ON with no vectors in scope (vector pass returns nothing): the lexical result is unchanged", async () => {
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    const { client: offClient } = hybridClient(LEXICAL, []);
+    const off = await ask(offClient);
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const { client } = hybridClient(LEXICAL, []);
+    expect(await ask(client)).toEqual(off);
+  });
+
+  it("the #4469/#4484 model filter still rejects a sibling-manual chunk the vector lane found", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const sibling = lexRow(3, "GS20 carrier frequency recommendations.", {
+      rank: 0, doc_id: "d-2", filename: "gs20.pdf", document_heading: "GS20 Drive User Manual",
+    });
+    const { client } = hybridClient(LEXICAL, [sibling, ...VECTOR]);
+    const out = await ask(client);
+    expect(out.some((c) => c.docId === "d-2")).toBe(false);
+    expect(out.map((c) => c.sourcePage)[0]).toBe(40);
+  });
+});
