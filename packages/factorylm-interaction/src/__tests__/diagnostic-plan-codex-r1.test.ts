@@ -23,6 +23,7 @@ function pass(t: WorkflowTemplate, index: number): StepRecord {
     action: step.action,
     outcome: "PASS",
     verification: action.verification,
+    ...(action.requiresReport ? { observed: "reported" } : {}),
     ...(action.attestation ? { reportedBy: "J. Smith" } : {}),
   };
 }

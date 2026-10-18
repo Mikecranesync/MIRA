@@ -114,47 +114,26 @@ export function validateTemplate(
     }
   }
 
-  // R5: every next target exists, no unreachable step
+  // R5: every next target exists, and every step is reachable under the runner's own routing
   const stepIds = new Set(template.steps.map((s) => s.id));
-  const reachableIds = new Set<string>();
-  reachableIds.add(template.steps[0]?.id || "");
-
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const step of template.steps) {
-      if (reachableIds.has(step.id)) {
-        const stepIdx = template.steps.findIndex((s) => s.id === step.id);
-        const nextStepIdx = stepIdx + 1;
-        const hasNextStep = nextStepIdx < template.steps.length;
-
-        // Check explicit routes and default routing
-        const outcomes: ActionOutcome[] = ["PASS", "FAIL", "INCONCLUSIVE", "BLOCKED", "UNSAFE"];
-
-        for (const outcome of outcomes) {
-          if (step.on?.[outcome]) {
-            const route = step.on[outcome];
-            if ("next" in route) {
-              if (!stepIds.has(route.next)) {
-                errors.push({
-                  rule: "R5",
-                  stepId: step.id,
-                  message: `Route target '${route.next}' does not exist`,
-                });
-              } else if (!reachableIds.has(route.next)) {
-                reachableIds.add(route.next);
-                changed = true;
-              }
-            }
-          } else if ((outcome === "PASS" || outcome === "FAIL") && hasNextStep) {
-            // Default PASS/FAIL to next step if not explicitly routed
-            if (!reachableIds.has(template.steps[nextStepIdx].id)) {
-              reachableIds.add(template.steps[nextStepIdx].id);
-              changed = true;
-            }
-          }
-        }
+  for (const step of template.steps) {
+    for (const outcome of OUTCOMES) {
+      const route = step.on?.[outcome];
+      if (route && "next" in route && !stepIds.has(route.next)) {
+        errors.push({ rule: "R5", stepId: step.id, message: `Route target '${route.next}' does not exist` });
       }
+    }
+  }
+  const reachableIds = new Set<string>();
+  const pending = template.steps.length > 0 ? [0] : [];
+  while (pending.length > 0) {
+    const index = pending.pop()!;
+    const step = template.steps[index];
+    if (reachableIds.has(step.id)) continue;
+    reachableIds.add(step.id);
+    for (const outcome of OUTCOMES) {
+      const result = routeAfter(template, index, outcome, actionMap.get(step.action));
+      if (result.kind === "step") pending.push(template.steps.indexOf(result.step));
     }
   }
 
@@ -169,7 +148,8 @@ export function validateTemplate(
     }
   }
 
-  // R6: on every route, a technician field step comes after a passed hazard step. Observing
+  // R6: on every route, a technician field step comes after a passed ASSESS_HAZARDS (isolation is not
+  // a hazard assessment). Observing
   // (identify group) counts as well as measuring: both put the technician at the machine.
   // Walks the routing graph (shared with the runner), so a jump past the hazard step is caught.
   const flagged = new Set<string>();
@@ -198,21 +178,21 @@ export function validateTemplate(
       const result = routeAfter(template, index, outcome, action);
       if (result.kind !== "step") continue;
       const nextIndex = template.steps.indexOf(result.step);
-      const passedHere = action?.group === "safety" && outcome === "PASS";
+      const passedHere = action?.id === "ASSESS_HAZARDS" && outcome === "PASS";
       queue.push([nextIndex, hazardPassed || passedHere]);
     }
   }
 
-  // R9: a safety step's FAIL or INCONCLUSIVE outcome may only stop the run, never advance it
+  // R9: a safety step's FAIL or INCONCLUSIVE outcome may only stop the run, and never as "resolved"
   for (const step of template.steps) {
     if (actionMap.get(step.action)?.group !== "safety") continue;
     for (const outcome of ["FAIL", "INCONCLUSIVE"] as const) {
       const route = step.on?.[outcome];
-      if (route && "next" in route) {
+      if (route && ("next" in route || route.stop === "resolved")) {
         errors.push({
           rule: "R9",
           stepId: step.id,
-          message: `Safety step '${step.id}' cannot route ${outcome} to another step`,
+          message: `Safety step '${step.id}' cannot route ${outcome} to another step or to resolved`,
         });
       }
     }

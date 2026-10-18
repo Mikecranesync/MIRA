@@ -249,7 +249,7 @@ describe("Diagnostic Plan Runner (nextStep)", () => {
         records: [
           { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" },
           { stepId: "step2", action: "READ_FAULT", outcome: "PASS", verification: "machine" },
-          { stepId: "step3", action: "RECORD_FINDING", outcome: "PASS", verification: "self_reported" },
+          { stepId: "step3", action: "RECORD_FINDING", outcome: "PASS", verification: "self_reported", observed: "finding recorded" },
         ],
       };
 
@@ -316,7 +316,7 @@ describe("Diagnostic Plan Runner (nextStep)", () => {
         records: [
           { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" },
           { stepId: "step2", action: "READ_FAULT", outcome: "PASS", verification: "machine" },
-          { stepId: "step3", action: "RECORD_FINDING", outcome: "PASS", verification: "self_reported" },
+          { stepId: "step3", action: "RECORD_FINDING", outcome: "PASS", verification: "self_reported", observed: "finding recorded" },
         ],
       };
 

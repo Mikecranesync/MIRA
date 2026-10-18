@@ -11,7 +11,7 @@ const LOOP_LIMIT = 3;
 
 /**
  * Where a step's outcome leads. Shared with the validator so routing has one definition.
- * UNSAFE and BLOCKED always stop. A failed safety step stops (blocked) unless routed to a stop.
+ * UNSAFE and BLOCKED always stop. A failed or inconclusive safety step stops and is never "resolved".
  */
 export function routeAfter(
   template: WorkflowTemplate,
@@ -24,9 +24,13 @@ export function routeAfter(
 
   if (outcome === "UNSAFE") return stopOr(route, "unsafe");
   if (outcome === "BLOCKED") return stopOr(route, "blocked");
+  // A failed or inconclusive safety step only ever stops, and never as "resolved"
+  if (action?.group === "safety" && (outcome === "FAIL" || outcome === "INCONCLUSIVE")) {
+    if (route && "stop" in route && route.stop !== "resolved") return { kind: "stop", reason: route.stop };
+    return { kind: "stop", reason: outcome === "FAIL" ? "blocked" : "escalate" };
+  }
   if (route) return follow(template, route);
   if (outcome === "INCONCLUSIVE") return { kind: "stop", reason: "escalate" };
-  if (outcome === "FAIL" && action?.group === "safety") return { kind: "stop", reason: "blocked" };
 
   // PASS, or FAIL on a non-safety step: advance to the following step
   const next = template.steps[index + 1];
@@ -47,7 +51,7 @@ function follow(template: WorkflowTemplate, route: StepRoute): NextStepResult {
 
 /**
  * Determine the next step for a run. Every record must be the step the previous one routed to,
- * with the action, verification and (for named attestation) reporter its action declares.
+ * with the action, verification, report and (for named attestation) reporter its action declares.
  * Any mismatch stops the run rather than guessing.
  */
 export function nextStep(
@@ -81,6 +85,9 @@ export function nextStep(
     if (!action) return stop(`Action '${step.action}' is not in the library`);
     if (record.verification !== action.verification) {
       return stop(`Record verification '${record.verification}' does not match action '${action.id}' (${action.verification})`);
+    }
+    if (action.requiresReport && !record.observed?.trim()) {
+      return stop(`Step '${step.id}' needs the technician's report`);
     }
     if (action.attestation === "named_person" && !record.reportedBy?.trim()) {
       return stop(`Step '${step.id}' needs a named attester`);
