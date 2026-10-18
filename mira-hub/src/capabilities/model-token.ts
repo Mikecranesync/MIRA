@@ -89,6 +89,17 @@ const FAMILY_KEYS: readonly string[] = [
   "COMFORT", // comfort (capture already includes the letters — label unused)
 ];
 
+// The digit-only families whose siblings get listed after one family word.
+// Group 1 is the tail of joined numbers ("and 525", "/525", ", 525 and 527").
+// Bare numbers only: "PowerFlex 525 and 480V input" must not coin "PF480V",
+// so a trailing unit letter breaks the join.
+const JOINED = "(?:\\s*(?:,|and|&|or|/)\\s*\\d{2,4}\\b(?![a-z]))+";
+const CONJOINED_DIGIT_FAMILIES: ReadonlyArray<readonly [family: string, head: RegExp]> = [
+  ["PF", new RegExp(`\\b(?:powerflex|pf)\\s*\\d{2,4}[a-z]?(${JOINED})`, "gi")],
+  ["MICRO", new RegExp(`\\bmicro\\s*8\\d{2}(${JOINED})`, "gi")],
+  ["ACS", new RegExp(`\\bacs\\s*\\d{3,4}(${JOINED})`, "gi")],
+];
+
 /**
  * Family-qualified model identities named in `text` (#4469 F1), for document
  * APPLICABILITY checks only — never for `model_number ILIKE` matching (that
@@ -116,6 +127,20 @@ export function modelIdentitiesInText(text: string): Set<string> {
       }
     }
   });
+  // Round-2 review on #4484: a title that lists sibling numbers after ONE
+  // family word — "PowerFlex 523 and 525", "Micro810 and 820", "ACS580/880" —
+  // was credited to the first number only, so the 525 half of a "523 and 525"
+  // manual was invisible to a PowerFlex 525 notebook. Each trailing number
+  // joined by and/&/,/or/slash inherits the family of the number before it.
+  // Applicability only: resolveModelFromObservationText (the single ILIKE
+  // token) is deliberately untouched.
+  for (const [family, head] of CONJOINED_DIGIT_FAMILIES) {
+    for (const match of text.matchAll(head)) {
+      for (const tail of match[1].matchAll(/\d{2,4}/g)) {
+        identities.add(`${family}${tail[0]}`);
+      }
+    }
+  }
   // Mirror resolveModelFromObservationText's COMFORT-is-a-family-hint drop
   // (primary review, pass 2): "Comfort" alone names the PANEL FAMILY, not a
   // specific sibling model — a TP/KTP panel or 6AV order number is the

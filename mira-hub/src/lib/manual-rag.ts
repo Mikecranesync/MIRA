@@ -224,6 +224,7 @@ function documentCoversRequest(requested: Set<string>, title: Set<string>): bool
 // TP700-must-not-admit-KTP700 rule at familySqlTerms stands).
 const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp]> = [
   ["PF520", /^PF52\d$/], // PowerFlex 520-series: 523, 525, 527
+  ["PF750", /^PF75\d$/], // PowerFlex 750-series: 753, 755 (round-2 review)
   ["MICRO800", /^MICRO8\d0$/], // Micro800: 810, 820, 830, 850, 870
   ["COMFORT", /^TP\d{3,4}$/], // SIMATIC Comfort Panels: TP700, TP900, TP1200, …
 ];

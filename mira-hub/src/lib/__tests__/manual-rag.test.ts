@@ -1825,6 +1825,18 @@ describe("retrieveNodeChunks — notebook identity scopes model-less questions",
     it("control: a PowerFlex 755 manual is still hidden from a PowerFlex 525 notebook", async () => {
       expect(await ask("PowerFlex 755 AC Drives User Manual", "communication settings", "PowerFlex 525", "750-um001.pdf")).toEqual([]);
     });
+    // Round 2: the 750-Series manual covers the 753 and 755.
+    it("the PowerFlex 750-Series manual is citable from a PowerFlex 755 notebook (and a 753)", async () => {
+      expect(await ask("PowerFlex 750-Series AC Drives Programming Manual", "communication settings", "PowerFlex 755", "750-pm001.pdf")).toHaveLength(1);
+      expect(await ask("PowerFlex 750-Series AC Drives Programming Manual", "communication settings", "PowerFlex 753", "750-pm001.pdf")).toHaveLength(1);
+    });
+    it("control: the 750-Series manual is still hidden from a PowerFlex 525 notebook", async () => {
+      expect(await ask("PowerFlex 750-Series AC Drives Programming Manual", "communication settings", "PowerFlex 525", "750-pm001.pdf")).toEqual([]);
+    });
+    // Round 2: a "523 and 525" title covers BOTH siblings, not just the first.
+    it("a 'PowerFlex 523 and 525' manual is citable from a PowerFlex 525 notebook", async () => {
+      expect(await ask("PowerFlex 523 and 525 Adjustable Frequency AC Drives User Manual", "communication settings", "PowerFlex 525", "520-um001.pdf")).toHaveLength(1);
+    });
     it("the Micro800 family manual is citable from a Micro820 notebook", async () => {
       expect(await ask("Micro800 Programmable Controllers General Instructions", "communication settings", "Micro820", "2080-rm001.pdf")).toHaveLength(1);
     });

@@ -144,6 +144,18 @@ describe("binding must not widen retrieval", () => {
     expect(opts.docIds).toEqual([DOC_A]);
     expect(opts.validatedDocScope).toBe(true);
   });
+
+  // #4484 round 2: the route must hand the notebook's identity_status to
+  // retrieval, because retrieval scopes model-less questions to the notebook's
+  // machine ONLY when a person confirmed it. Without this line an OCR
+  // candidate would be scoped as if confirmed.
+  it.each(["candidate", "user_confirmed"] as const)("passes the notebook's identityStatus (%s) through to retrieval", async (status) => {
+    domainMock.getNotebook.mockResolvedValueOnce({ manufacturer: "Automation Direct", model: "GS10", displayName: "Bench rig", identityStatus: status } as never);
+    await POST(chatReq({ message: "what is the baud rate", sourceDocIds: [DOC_A] }), params);
+    const opts = (ragMock.retrieveNodeChunks.mock.calls[0] as unknown as unknown[])[3] as Record<string, unknown>;
+    expect(opts.identity).toEqual({ manufacturer: "Automation Direct", model: "GS10" });
+    expect(opts.identityStatus).toBe(status);
+  });
 });
 
 describe("turn snapshot", () => {
