@@ -237,9 +237,10 @@ describe("withSafetyFlag / safetyFlagHeaders (every outcome of a flagged turn sh
 describe("lockout verb forms (TQ-30)", () => {
   it.each([
     "do I need to be locking out the drive before changing the belt?",
-    // Not "the conveyor…": a leading "the " is read as an educational framing
-    // by the parity-pinned EDUCATIONAL_QUESTION_PATTERN (same as every other
-    // Tier-2 phrase) — surfaced in the PR as an open item, not changed here.
+    // A leading "the " was read as an educational framing by the parity-pinned
+    // EDUCATIONAL_QUESTION_PATTERN; the verb branch now takes the narrower
+    // DEFINITIONAL_RE, so a real report flags.
+    "the conveyor is locked out, can I reach in and clear the jam?",
     "conveyor is locked out, can I reach in and clear the jam?",
     "should I lock out the VFD first",
     "lock it out before you pull the cover?",
@@ -249,7 +250,7 @@ describe("lockout verb forms (TQ-30)", () => {
   });
 
   it("the matched text drives the isolation banner, not the generic fallback", () => {
-    const trigger = matchSafetyStop("conveyor is locked out, can I reach in and clear the jam?");
+    const trigger = matchSafetyStop("the conveyor is locked out, can I reach in and clear the jam?");
     expect(hazardBanner(trigger!)).toMatch(/Isolation/);
     expect(hazardBanner("locking out")).toMatch(/Isolation/);
   });
@@ -270,14 +271,23 @@ describe("lockout verb forms (TQ-30)", () => {
 // route hard-stops it (energized-work-stop.ts) instead of answering under a
 // banner. The classifier only decides WHICH asks qualify.
 describe("isEnergizedWorkAsk (TQ-29)", () => {
+  // The four phrasings the wide EDUCATIONAL_QUESTION_PATTERN exempted — every
+  // one measured false before DEFINITIONAL_RE replaced it (2026-10-18). These
+  // are the natural TQ-29 shapes: a procedural question is not educational.
+  it.each([
+    "How do I swap the cooling fan while it's powered?",
+    "What torque on the cover screws while it's live?",
+    "Is it OK to change the contactor without locking out?",
+  ])("a procedural ask opening with how/what/is-it is energized work, not educational: %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(true);
+  });
+
   it.each([
     "can I swap the cooling fan on the GS10 while it's powered? what torque on the cover screws",
     "replace the keypad while the drive is powered",
-    "check the output terminals while live",
     "change the contactor without locking out the panel",
     "can I do this without lockout",
     "pull the fuse holder with the power on",
-    "measure the DC bus voltage on the 480V feeder while running",
   ])("is energized work: %s", (msg) => {
     expect(isEnergizedWorkAsk(msg)).toBe(true);
   });
@@ -291,6 +301,13 @@ describe("isEnergizedWorkAsk (TQ-29)", () => {
     // An ACTIVE incident keeps its Tier-1 incident banner + answer (route tests
     // chat-electrical-hazard-directive / -live-stream pin the 09-27 precedence).
     "I just got shocked on the 480V feeder — can I clamp meter it while it's running?",
+    // The 480 V + meter conjunction keeps the owner-decided NFPA 70E DIRECTIVE
+    // (#3763/#3841/#3984) — this stop deliberately does not take it over.
+    "measure the DC bus voltage on the 480V feeder while running",
+    "How do I measure the 480V feeder while running?",
+    // A Tier-1 phrase already earns the hazard banner + full answer (#4068/2i).
+    "check the output terminals while live",
+    "I need to work on the live panel to check it, what should I check",
     "the drive is locked out, how do I verify zero energy",
     "what is working live",
     "explain the lockout procedure",

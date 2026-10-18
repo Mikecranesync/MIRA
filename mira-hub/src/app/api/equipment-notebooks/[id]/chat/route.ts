@@ -1559,7 +1559,12 @@ async function handleChatTurn(
   // not a flagged answer: the flag-and-answer shape still handed over the
   // removal steps and torques. Question text only — a photo hazard keeps the
   // banner path. Kill switch NOTEBOOK_ENERGIZED_HARD_STOP=0 (default on).
-  const energizedWorkAsk = !visualSafetyTrigger && energizedHardStopEnabled() && isEnergizedWorkAsk(message);
+  // `!electricalHazardDirective`: the 480 V + meter conjunction keeps the
+  // owner-decided NFPA 70E directive (answer streams, framed — #3763/#3841/
+  // #3984). This stop covers the shape that had NO treatment: hands-on work
+  // asked for on a powered machine, or an explicit "without locking out".
+  const energizedWorkAsk =
+    !visualSafetyTrigger && !electricalHazardDirective && energizedHardStopEnabled() && isEnergizedWorkAsk(message);
   // `observation_available`/`observation_in_context` are derived from
   // `lookRow`/its rendered section later (renderLookObservationSection), not
   // hardcoded — the LOOK observation DOES reach the prompt (buildManualUserContent

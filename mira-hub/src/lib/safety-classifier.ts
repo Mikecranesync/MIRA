@@ -214,12 +214,37 @@ export function matchSafetyStop(text: string): string | null {
   // transcription list, and the bot engine is out of this change's scope.
   const lockoutVerb = LOCKOUT_VERB_RE.exec(msg);
   if (lockoutVerb) {
-    return EDUCATIONAL_QUESTION_RE.test(msg) ? null : lockoutVerb[0];
+    // DEFINITIONAL_RE, not EDUCATIONAL_QUESTION_RE: the parity-pinned pattern
+    // exempts anything opening with "how|what|is it|the |a ", which swallows
+    // the real reports this rule exists to catch ("the conveyor is locked out,
+    // can I reach in and clear the jam?"). The verb forms are a Hub-side
+    // addition, so they take the narrower exemption — only a definition
+    // question ("what is locking out?") is educational.
+    return DEFINITIONAL_RE.test(msg) ? null : lockoutVerb[0];
   }
   return null;
 }
 
 const LOCKOUT_VERB_RE = /\block(?:ed|ing)?[- ]out\b|\block\s+(?:it|this|that|them|the\s+\w+)\s+out\b/;
+
+/**
+ * A DEFINITION question — "what is lockout?", "what does LOTO mean?",
+ * "explain arc flash". Deliberately much narrower than the parity-pinned
+ * `EDUCATIONAL_QUESTION_PATTERN`, which opens with
+ * `what|when|where|why|how|which|who|can you|is it|the |an |a ` and therefore
+ * exempts the procedural asks that matter most:
+ *
+ *   "How do I swap the cooling fan while it's powered?"   ← must STOP
+ *   "What torque on the cover screws while it's live?"     ← must STOP
+ *   "Is it OK to change the contactor without locking out?" ← must STOP
+ *
+ * All three returned `false` from `isEnergizedWorkAsk` under the wide pattern
+ * (measured 2026-10-18), which is the TQ-29 failure mode restated. Used ONLY
+ * by the Hub-side additions below — `matchSafetyStop`'s transcription-list
+ * branch keeps `EDUCATIONAL_QUESTION_RE` so guardrails.py parity is untouched.
+ */
+const DEFINITIONAL_RE =
+  /^\s*(?:what(?:'s|\s+is|\s+are|\s+does|\s+do)\b|define\b|describe\b|explain\b|tell me about\b|how does\b)/i;
 
 /**
  * TQ-29 (2026-10-17 prod test) — an ENERGIZED-WORK ask: the technician wants
@@ -254,6 +279,10 @@ const POWERED_STATE_RE = new RegExp(
     ")\\b",
   "i",
 );
+// A spec ask ABOUT doing the work ("what torque on the cover screws while
+// it's live?") names no verb at all — the object is the tell.
+const WORK_OBJECT_RE =
+  /\b(?:torque|screws?|bolts?|cover|panel\s+cover|fan|contactor|relay|fuse|terminals?|lugs?|wires?|gasket|belt|coupling|bearing|card|module|keypad|display\s+module)\b/i;
 // Hands-on work on the equipment: the verbs a technician uses for the job
 // itself, not for reading a display or resetting a fault.
 const HANDS_ON_VERB_RE =
@@ -278,16 +307,36 @@ const ACTIVE_INCIDENT_RE =
 export function isEnergizedWorkAsk(message: string): boolean {
   const msg = (message || "").toLowerCase().trim();
   if (!msg) return false;
-  if (EDUCATIONAL_QUESTION_RE.test(msg)) return false;
+  // Definitional only — see DEFINITIONAL_RE. The wide parity-pinned pattern
+  // exempted "How do I swap the fan while it's powered?" and every other
+  // procedural phrasing, which is the whole of TQ-29.
+  if (DEFINITIONAL_RE.test(msg)) return false;
   // An ACTIVE incident ("got shocked", "smoke coming", "just exploded") keeps
   // its incident banner + answer (get clear, isolate, call for help) — the
   // 2026-09-27 precedence the route tests pin. Whether an incident report
   // that ALSO asks for live work should stop instead is an open owner call;
   // this stop deliberately does not decide it.
   if (ACTIVE_INCIDENT_RE.test(msg)) return false;
-  if (detectEnergizedElectricalHazardIntent(msg)) return true;
+  // A phrase already on the Tier-1 transcription list ("live panel", "while
+  // live", "pull the cable") has an owner-decided treatment too: the hazard
+  // BANNER above a full answer (2026-09-27, "no answer blocking, just safety
+  // flags"), pinned by #4068/2i and the directive suites. This stop therefore
+  // claims only the shapes that had NO treatment — "while it's powered",
+  // "with the power on", "without locking out" — and leaves every
+  // already-classified turn exactly where the owner put it. The cost is
+  // explicit: a "…while live" hands-on ask still gets banner-plus-answer, not
+  // a stop. That is the open decision raised in the PR, not a silent gap.
+  if (SAFETY_PHRASES_IMMEDIATE.some((phrase) => msg.includes(phrase))) return false;
+  // NOTE the deliberate omission: `detectEnergizedElectricalHazardIntent`
+  // (480 V + meter) is NOT a trigger here. That conjunction already has an
+  // owner-decided answer — the NFPA 70E DIRECTIVE, which streams the answer
+  // under mandatory qualified-person/arc-flash framing (#3763, #3841, and
+  // #3984's "warn and keep troubleshooting"), pinned by four route tests.
+  // Taking those turns over would reverse a decision this item was not asked
+  // to revisit, so the route gates the stop on `!electricalHazardDirective`
+  // and the split is raised for Mike instead.
   if (SKIP_LOCKOUT_RE.test(msg)) return true;
-  return POWERED_STATE_RE.test(msg) && HANDS_ON_VERB_RE.test(msg);
+  return POWERED_STATE_RE.test(msg) && (HANDS_ON_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg));
 }
 
 /**
