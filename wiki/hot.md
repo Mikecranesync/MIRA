@@ -1,3 +1,30 @@
+# Hot Cache — 2026-10-18 — F004 grounding status (#4303) handoff
+
+**#4303 is in Foreman's hands, not Claude's.** Writer claim: [6233286121](https://github.com/Mikecranesync/MIRA/pull/4303#issuecomment-6233286121), approved by Mike on Oct 17. It replaces the Codex CHARLIE claim (6226938553), which replaced this Claude session (released in 6226949575). Don't push to `ccr-f4cd90c0-nrkkve` while Foreman's claim is active.
+
+**What the feature does** (flag `NOTEBOOK_GROUNDING_STATUS_ENABLED`, default `0`, listed in staging compose only): each notebook answer comes with an honest status. Either the answer cites the selected manual, or the status says what was searched and found nothing ("selected manual" vs "shared manual library"). General guidance appears only when the technician taps for it, and the status is unchanged after the app is reopened. Contract: [`docs/plans/2026-10-07-f004-grounding-status-contract.md`](../docs/plans/2026-10-07-f004-grounding-status-contract.md). §11 covers rollback and what isn't behind the flag. Risk R3.
+
+**State at head `57a60984` (Oct 17):**
+- Staging gate: PASS, 15/15, mean 4.61.
+- Codex r2 (on `b728640d`) left one MEDIUM, F6: a general-guidance turn that ends in a provider error used up the offer. Foreman's `57a60984` is the fix for it.
+- `Hub fidelity — classic notebook vs /v3`: was red because the clone sends `clientCapabilities: ["grounding_status_v1"]`. Agreed fix: allowlist that one field only, plus a control showing any other body difference still goes red. Don't edit the frozen classic notebook. Diagnosis: [6228706387](https://github.com/Mikecranesync/MIRA/pull/4303#issuecomment-6228706387).
+- `Legacy UI Lifecycle Guard` stays red until Codex records GREEN on the exact final head and body. The final Codex review waits for Mike's OK.
+
+**Release prerequisites (as of Oct 8; re-check):**
+- Migration 104 is missing on staging and prod (drift run 37619485161).
+- Staging runs `a0bd5fa` (v3.389.2). That is the rollback target, with receipt artifact 11381878111.
+- Prod runs `648896996` (v3.374.16).
+
+**Mike-only, in order:** final Codex review → merge → migration 104 on staging (dry-run, then apply) → staging Doppler flag = 1 → deploy-staging of the merge SHA → emulator + Pixel acceptance, including the reopen check. Prod and migration 104 on prod come separately.
+
+**Keep out:** #4255 (auto general answers). Items 2–4 of the owner split (phone reload caption, photo previewUrl, retry draft) go to the mira-e7 follow-up PR, which merges after #4303 ([6049146065](https://github.com/Mikecranesync/MIRA/pull/4303#issuecomment-6049146065)).
+
+**Lessons:**
+- A shared-package hook that returns `Promise<boolean>` must mean "a usable answer arrived", not "the stream closed". F6 was a completed HTTP-200 stream with `status='error'`.
+- New CI harnesses (#4441, Oct 15) can land on a long-lived PR mid-review. Merge main and re-read every check before calling a head green.
+
+---
+
 # Hot Cache — 2026-10-09 — field-maintenance intelligence qualification
 
 **Release status: BLOCKED; no merge/deployment from this session.** Production and staging health last checked at18:53Z: v3.392.4 / `d3129e82739e4cb0afd2eb714a943fb5d3a1d618`. This is health identity, not a fresh image-running receipt.
