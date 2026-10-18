@@ -1605,6 +1605,21 @@ export async function retrieveNodeChunks(
   if (hybridRetrievalEnabled()) {
     const queryVec = await embedQuery(opts.rawQuery ?? q);
     if (queryVec) {
+      // Codex r1 on #4487: a failing vector SELECT (a statement timeout, a
+      // missing pgvector operator) run on the CALLER's client inside
+      // withTenantContext's transaction leaves that transaction aborted, so the
+      // caller's NEXT query fails with 25P02 — the namespace route then dropped
+      // its node row and answered 404. The optional lane runs under a
+      // SAVEPOINT so its failure is rolled back to the point before it ran and
+      // the connection stays usable. A raw-pool caller has no transaction:
+      // SAVEPOINT itself fails there (25P01) and nothing needs recovering.
+      let savepoint = false;
+      try {
+        await client.query("SAVEPOINT hybrid_vector_lane");
+        savepoint = true;
+      } catch {
+        savepoint = false;
+      }
       try {
         // Same per-document candidate windows as the lexical lanes: when the
         // ask is model-scoped, one LIMIT POOL over ALL docs lets a large
@@ -1656,10 +1671,18 @@ export async function retrieveNodeChunks(
             vectorOnlyKeys.add(key);
           }
         }
+        if (savepoint) await client.query("RELEASE SAVEPOINT hybrid_vector_lane");
       } catch (err) {
         console.warn("[retrieveNodeChunks] vector lane failed (lexical result served):", err instanceof Error ? err.message : err);
         vectorKeys = null;
         vectorOnlyKeys.clear();
+        if (savepoint) {
+          try {
+            await client.query("ROLLBACK TO SAVEPOINT hybrid_vector_lane");
+          } catch (rollbackErr) {
+            console.warn("[retrieveNodeChunks] vector lane savepoint rollback failed:", rollbackErr instanceof Error ? rollbackErr.message : rollbackErr);
+          }
+        }
       }
     }
   }
