@@ -11,10 +11,13 @@
  *
  * Usage:
  *   bun run scripts/repair-garbled-chunks.ts --tenant-id <uuid> [--doc-id <uuid>] [--apply]
+ *   (--apply additionally REQUIRES --doc-id: writes are scoped to one document)
  *
  * Env required: NEON_DATABASE_URL. Rewrites `content` in place and stamps
- * `metadata.text_repair = 'shift29'` (the decoder is reversible with
- * `encodeShift29`, so a wrong call is recoverable from the marker). Never
+ * `metadata.text_repair = 'shift29'`. Reversal is approximate, not exact: the
+ * decoder runs block by block, so `encodeShift29` over a whole repaired row
+ * would re-encode any block that was left alone. Recover from a backup or
+ * re-ingest the document rather than trusting a round trip. Never
  * touches a row that already carries a text_repair marker, never touches
  * shared-OEM rows (node_attachment / v2 only), and re-runs are no-ops.
  */
@@ -41,6 +44,12 @@ if (!process.env.NEON_DATABASE_URL) {
 }
 if (process.argv.includes("--apply") && !apply) {
   console.error("--apply ignored: NOTEBOOK_GARBLE_REEXTRACT=1 is required to write (dry run only)");
+}
+if (apply && !docId) {
+  // Round-2 review: without --doc-id the write covers every v2 chunk in the
+  // tenant. One document per apply, so a wrong call is bounded and reversible.
+  console.error("--apply requires --doc-id: an apply is scoped to ONE document (dry-run across the tenant is fine)");
+  process.exit(1);
 }
 
 console.log(`[repair-garbled-chunks] tenant=${tenantId} doc=${docId ?? "*"} mode=${apply ? "APPLY" : "dry-run"}`);

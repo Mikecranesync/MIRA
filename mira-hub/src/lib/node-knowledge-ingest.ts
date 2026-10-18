@@ -470,9 +470,15 @@ export type TextRepair = "shift29" | "ocr";
  * the decode to read like English and the original not to). Returns the
  * index-aligned repair markers for `writeChunkRowsForNode`. Never throws:
  * a repair failure means the page is written exactly as extracted.
+ *
+ * Default OFF — `NOTEBOOK_GARBLE_DECODE=1` enables it. This rewrites stored
+ * manual text on every upload, and the round-2 review (2026-10-18) found the
+ * detector damaging clean English in 18 of 21 non-PLC-5 manuals before the
+ * lowercase guard existed. The guard is in; the flag is the second lock.
  */
 async function repairGarbledPages(pages: string[], opts: NodeChunkOpts): Promise<Array<TextRepair | null>> {
   const repairs: Array<TextRepair | null> = new Array(pages.length).fill(null);
+  if (process.env.NOTEBOOK_GARBLE_DECODE !== "1") return repairs;
   const ocrFallback = process.env.NOTEBOOK_GARBLE_OCR_FALLBACK === "1";
   let decoded = 0;
   let unrepaired = 0;

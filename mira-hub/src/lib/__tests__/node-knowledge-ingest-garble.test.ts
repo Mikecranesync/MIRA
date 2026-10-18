@@ -73,11 +73,29 @@ beforeEach(() => {
   captured.length = 0;
   vi.clearAllMocks();
   delete process.env.NOTEBOOK_GARBLE_OCR_FALLBACK;
+  // Round-2 review: the decoder is default-OFF at ingest. These suites test
+  // the decoder's behaviour, so they turn it on explicitly; the flag-off case
+  // has its own test below.
+  process.env.NOTEBOOK_GARBLE_DECODE = "1";
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
   vi.spyOn(console, "info").mockImplementation(() => undefined);
 });
 afterEach(() => {
   delete process.env.NOTEBOOK_GARBLE_OCR_FALLBACK;
+  delete process.env.NOTEBOOK_GARBLE_DECODE;
+});
+
+describe("NOTEBOOK_GARBLE_DECODE is default OFF", () => {
+  it("with the flag unset, a shifted page is written exactly as extracted and nothing is marked repaired", async () => {
+    delete process.env.NOTEBOOK_GARBLE_DECODE;
+    await ingest([encodeShift29(PLC5_PAGE), PLAIN_PAGE]);
+    const rows = insertedRows();
+    // "addition" encodes to DGGLWLRQ; the cipher must survive verbatim.
+    expect(rows.some((r) => r.content.includes("DGGLWLRQ"))).toBe(true);
+    expect(rows.some((r) => r.content.includes("battery-backed RAM"))).toBe(false);
+    expect(rows.every((r) => r.meta.text_repair === undefined)).toBe(true);
+    expect(ocrSeam.ocrExtractPage).not.toHaveBeenCalled();
+  });
 });
 
 describe("garbled extraction is decoded before chunking", () => {

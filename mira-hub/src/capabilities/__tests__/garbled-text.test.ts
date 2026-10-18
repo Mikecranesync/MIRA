@@ -152,6 +152,66 @@ describe("Review A — a page that mixes English and cipher is repaired block by
   });
 });
 
+// Round-2 review (2026-10-18): the decoder was rewriting clean English. The
+// +29 map produces NO ASCII lowercase, so lowercase is the structural tell;
+// these pin the guard on the reviewer's own reproduction strings.
+describe("round 2 — English is never decoded (the lowercase guard)", () => {
+  const M172 = "Do not connect a power cable longer than 10 m (32.8 ft)";
+  const HEADING_AND_CIPHER =
+    "Using Relay-Type Instructions " +
+    encodeShift29("The examine-if-closed instruction tests the bit for an on condition and the output energizes when true");
+
+  it("the M172 line that was becoming 'ao not connect ~ power c~ble …' is untouched", () => {
+    // Precondition: this is exactly the shape that slipped through — under 40
+    // letters, so raw density reads 0, and the decode coins uppercase from the
+    // digits and punctuation.
+    expect((M172.match(/[A-Za-z]/g) ?? []).length).toBeLessThan(40);
+    expect(englishDensity(M172)).toBe(0);
+    expect(repairExtractedPage(M172)).toEqual({ text: M172, repair: null, unrepaired: false });
+  });
+
+  it("a heading sharing a LINE with cipher is left alone, never mangled (false negative, the safe direction)", () => {
+    const out = repairExtractedPage(HEADING_AND_CIPHER);
+    expect(out.text).toBe(HEADING_AND_CIPHER);
+    expect(out.repair).toBeNull();
+    expect(out.text.startsWith("Using Relay-Type Instructions")).toBe(true);
+  });
+
+  it("control: a pure-cipher block beside that heading on its OWN line is still decoded, heading byte-identical", () => {
+    const body = encodeShift29("The examine-if-closed instruction tests the bit for an on condition and the output energizes when true");
+    // This block's cipher happens to contain "FOR" ("closed" → "FORVHG"), so
+    // its raw density is 1.22 — above the old block ceiling of 1.0. It is
+    // genuine cipher and must still decode: the lowercase guard, not the
+    // density ceiling, is what keeps English out.
+    expect(englishDensity(body)).toBeGreaterThan(1);
+    const out = repairExtractedPage(`Using Relay-Type Instructions\n${body}`);
+    expect(out.repair).toBe("shift29");
+    expect(out.text.split("\n")[0]).toBe("Using Relay-Type Instructions");
+    expect(out.text).toContain("examine-if-closed instruction");
+  });
+
+  const SHORT_LINES = [
+    "Install the battery first.",
+    "Connect power to the chassis.",
+    "Check the fault table word.",
+    "Replace the module and set the mode.",
+  ].map(encodeShift29);
+
+  it("the whole-page fallback decodes a page of SHORT cipher lines (each under the block minimum)", () => {
+    for (const l of SHORT_LINES) expect((l.match(/[A-Za-z]/g) ?? []).length).toBeLessThan(40);
+    const out = repairExtractedPage(SHORT_LINES.join("\n"));
+    expect(out.repair).toBe("shift29");
+    expect(out.text).toContain("Install the battery first.");
+  });
+
+  it("…but never wholesale over a page that carries an English heading (left garbled, flagged for OCR)", () => {
+    const page = `Relay Ladder Logic\n${SHORT_LINES.join("\n")}`;
+    // Precondition: the page-level verdict alone WOULD decode this page.
+    expect(detectGarble(page)).toMatchObject({ garbled: true, method: "shift29" });
+    expect(repairExtractedPage(page)).toEqual({ text: page, repair: null, unrepaired: true });
+  });
+});
+
 // The 3-distinct-common-words floor in blockIsShift29, pinned at its boundary
 // so it cannot be quietly lowered. Both fixtures pass every OTHER gate
 // identically (42–45 letters, zero digits, raw density 0, decoded density 33):

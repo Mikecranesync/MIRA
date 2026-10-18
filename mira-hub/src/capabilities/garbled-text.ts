@@ -135,16 +135,31 @@ export type PageRepair = { text: string; repair: "shift29" | null; unrepaired: b
  * the page-level gate: a block is short, so the density signal is noisier, and
  * rewriting a block that was already fine is the one outcome worth preventing.
  *
- * Why these three thresholds (measured 2026-10-18 on the test fixtures, which
- * are the real TQ-05/06 PLC-5 page shapes):
+ * Why these thresholds (measured 2026-10-18 on the test fixtures, which are
+ * the real TQ-05/06 PLC-5 page shapes; round-2 review corrected the first):
  *
- * - **24 letters** is an early exit, not the binding minimum. `englishDensity`
- *   returns 0 for anything under 40 letters, so a 24–39-letter block can never
- *   reach DECODED_FLOOR and is never repaired either way. That is what keeps
- *   the 38-letter "Chapter 4 Processor Status and Fault Handling" header and
- *   the 26-letter "WARNING Do not remove the cover." line untouched. Lowering
- *   24 changes nothing; raising it above 40 would start skipping real
- *   single-sentence cipher blocks.
+ * - **Zero lowercase letters — the structural test.** The +29 map sends every
+ *   original lowercase letter (0x61–0x7A) to 0x44–0x5D, i.e. uppercase and
+ *   `[\]`, and every original uppercase letter into punctuation. A shifted
+ *   block therefore contains NO ASCII lowercase at all (the PLC-5 fixture:
+ *   81 letters, 0 lowercase), while English prose is ~97% lowercase. This is
+ *   the guard that round 2 showed was missing: "Do not connect a power cable
+ *   longer than 10 m (32.8 ft)" (36 letters, 35 lowercase) was being
+ *   rewritten to "ao not connect ~ power c~ble …", and an English heading
+ *   sharing a line with cipher ("Using Relay-Type Instructions ,QDGG…") was
+ *   mangled along with it. A few stray lowercase letters are tolerated
+ *   (LOWERCASE_CEILING); a block over that is English-bearing and is never
+ *   handed to the decoder — a mixed heading+cipher LINE is therefore left
+ *   garbled rather than mangled (false negative, the safe direction).
+ * - **40 letters**, because `englishDensity` returns 0 under 40. The +29 map
+ *   preserves letter count for genuine cipher, so a block under 40 letters can
+ *   never reach DECODED_FLOOR *as cipher* — the only way a short block ever
+ *   decoded was real English whose digits/punctuation became uppercase letters
+ *   and lifted the decoded side past 40 (the M172 line: raw 0 → decoded 7.3).
+ *   The earlier 24-letter minimum therefore admitted only false positives, and
+ *   the comment claiming 24–39-letter blocks "can never be repaired" had it
+ *   backwards (round-2 review). Short cipher lines are handled by the
+ *   whole-page fallback, which carries the same lowercase guard.
  * - **0.15 digit ratio.** Prose is almost digit-free (the PLC-5 page: 291
  *   letters, 3 digits, ratio 0.01). A parts-table line is the opposite
  *   ("1771-P7 120/220V AC 16A …": 37 letters, 31 digits, ratio 0.456) — and its
@@ -157,9 +172,19 @@ export type PageRepair = { text: string; repair: "shift29" | null; unrepaired: b
  *   `__tests__/garbled-text.test.ts`, which pins that a block decoding to only
  *   `the`/`and` (density 33, every other gate passed) is left alone.
  */
+/** Lowercase share above which a block is English-bearing, not cipher. */
+const LOWERCASE_CEILING = 0.05;
+
+/** The +29 cipher has no ASCII lowercase (see the threshold notes above). */
+function hasEnglishLowercase(text: string, letters: number): boolean {
+  const lower = (text.match(/[a-z]/g) ?? []).length;
+  return lower / Math.max(letters, 1) > LOWERCASE_CEILING;
+}
+
 function blockIsShift29(block: string): boolean {
   const letters = (block.match(/[A-Za-z]/g) ?? []).length;
-  if (letters < 24) return false;
+  if (letters < 40) return false;
+  if (hasEnglishLowercase(block, letters)) return false;
   // A code/parts table is number-heavy and is NOT prose in any cipher. Deciding
   // per block made this necessary: at page scale the table's own density kept
   // it safe, but one table line in isolation is short enough that a decode can
@@ -168,7 +193,13 @@ function blockIsShift29(block: string): boolean {
   const digits = (block.match(/\d/g) ?? []).length;
   if (digits / Math.max(letters + digits, 1) > 0.15) return false;
   const raw = englishDensity(block);
-  if (raw >= RAW_CEILING) return false; // already reads as English — never touch it
+  // "Already reads as English" — but at PROSE density, not the page ceiling.
+  // The lowercase guard above is what actually keeps English out of the
+  // decoder; this check only backstops it. At the page ceiling (1.0) a single
+  // coincidental substring in a genuine cipher block ("closed" → "FORVHG"
+  // contains FOR: 82 letters, density 1.22) rejected real cipher — one of the
+  // reasons so many PLC-5 chunks stayed garbled (round-2 review).
+  if (raw >= DECODED_FLOOR) return false;
   const decodedText = decodeShift29(block);
   const decoded = englishDensity(decodedText);
   if (decoded < DECODED_FLOOR || decoded < raw * IMPROVEMENT) return false;
@@ -212,8 +243,15 @@ export function repairExtractedPage(text: string): PageRepair {
   // garbled by some OTHER map still raises the OCR cue.
   const verdict = detectGarble(text);
   if (verdict.garbled && verdict.method === "shift29") {
-    // The page-level check agrees but no single block did — decode wholesale.
-    return { text: verdict.decoded, repair: "shift29", unrepaired: false };
+    // The page-level check agrees but no single block did (short cipher
+    // lines) — decode wholesale, but ONLY if the page carries no English of
+    // its own: a wholesale decode would mangle any real heading on it
+    // (round-2 review). Such a page is left garbled and flagged instead.
+    const letters = (text.match(/[A-Za-z]/g) ?? []).length;
+    if (!hasEnglishLowercase(text, letters)) {
+      return { text: verdict.decoded, repair: "shift29", unrepaired: false };
+    }
+    return { text, repair: null, unrepaired: true };
   }
   return { text, repair: null, unrepaired: verdict.garbled };
 }
