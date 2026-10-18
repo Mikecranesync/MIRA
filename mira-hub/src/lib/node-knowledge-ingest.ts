@@ -23,6 +23,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { createUpload, updateUploadStatus } from "@/lib/uploads";
 import { proposeDocumentEdgesForNode } from "@/lib/node-document-proposals";
 import { extractText, getDocumentProxy } from "unpdf";
+import { endsMidPassage } from "@/lib/page-split";
 
 const CHUNK_CHARS = 1000;
 const CHUNK_OVERLAP = 120;
@@ -423,13 +424,23 @@ async function writeChunkRowsForNode(
       batch = [];
     };
 
+    // Cheap cross-page overlap for NEW ingests only (no re-ingest): if page N's
+    // last chunk ends mid-passage, prefix page N+1's first chunk with its tail
+    // so a page-break split is searchable without waiting for retrieval stitch.
+    let carry = "";
     for (let p = 0; p < pages.length; p++) {
       const pageText = pages[p];
       pages[p] = ""; // release each page's text once chunked — bounds peak memory
-      for (const piece of chunkText(pageText)) {
+      const pieces = chunkText(pageText);
+      if (carry && pieces.length > 0) {
+        pieces[0] = `${carry}\n${pieces[0]}`.trim();
+      }
+      for (const piece of pieces) {
         batch.push({ content: piece, page: p + 1, idx: idx++ });
         if (batch.length >= BATCH_ROWS) await flush();
       }
+      const last = pieces[pieces.length - 1];
+      carry = last && endsMidPassage(last) ? last.slice(-CHUNK_OVERLAP) : "";
     }
     await flush();
   });

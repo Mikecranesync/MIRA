@@ -447,6 +447,15 @@ approved:
       FROM asset_agent_status WHERE equipment_id = $1 LIMIT 1`,
                 [id],
               )
+  "mira-hub/src/lib/page-split.ts:121":
+    approved_classification: TENANT-ONLY
+    query_sha256: "ae4a072cab1d980144d70c6789f77fbf028a1083af0503e3685625288488f5b0"
+    reason: "NEW (page-split stitch, 2026-10-17): fetchPageSplitNeighbors is a follow-on read from retrieveNodeChunks after ranking. It is a pure-tenant surface — tenant_id=$1 AND ingest_route='v2' AND doc_id=ANY($2) where $2 is the already-ranked window's document ids (intersected with the validated notebook doc scope when that scope exists). Pages are further narrowed to the truncated hit's page and the next page. Node and approval predicates are the same clauses retrieveNodeChunks used on the parent pass (passed in as ${nodeClause}/${approvalClause}); they can only stay empty or tighten. The stitch can only return a chunk of a document already in the ranked, tenant-scoped window — never the shared OEM corpus, never another tenant, never another document. Same pinning pattern as #4469's per-doc candidate windows (a strict subset of already-validated ids, never wider)."
+    query_snippet: |
+      FROM knowledge_entries
+      WHERE tenant_id = $1
+        AND ingest_route = 'v2'
+        AND doc_id = ANY($2::uuid[])
   "mira-hub/src/lib/manual-rag.ts:754":
     approved_classification: TENANT-ONLY
     query_sha256: "4cc01280e95953cb1e2d9269e4b2b9592969f483fad0fc90dfac5de87c5510b8"
