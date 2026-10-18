@@ -1935,10 +1935,12 @@ describe("retrieveNodeChunks — hybrid (vector + lexical, RRF) behind NOTEBOOK_
     return { client: { query } as unknown as PoolClient, calls };
   }
 
-  const ask = (client: PoolClient) =>
+  const ask = (client: PoolClient, topK = 3) =>
     retrieveNodeChunks(client, "t-1", "what carrier frequency should I use", {
-      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true, topK: 3,
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true, topK,
       identity: { manufacturer: "AutomationDirect", model: "GS10" },
+      // #4484 (this branch's base): notebook scoping needs a confirmed identity.
+      identityStatus: "user_confirmed",
     });
 
   const LEXICAL = [
@@ -1976,7 +1978,10 @@ describe("retrieveNodeChunks — hybrid (vector + lexical, RRF) behind NOTEBOOK_
     process.env.OLLAMA_BASE_URL = "http://embedder.test";
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
     const { client, calls } = hybridClient(LEXICAL, VECTOR);
-    const out = await ask(client);
+    // A 4-cut: with one RRF term each, the vector-only page 55 (vector #2 →
+    // 1/62) TIES the lexical #2 page 11 (1/62) and the tie breaks toward
+    // lexical, so it is 4th — admitted, behind the pages that earned a rank.
+    const out = await ask(client, 4);
     const vectorCalls = calls.filter((c) => c.sql.includes("<=>"));
     expect(vectorCalls).toHaveLength(1);
     expect(vectorCalls[0].sql).toMatch(/embedding IS NOT NULL/);
@@ -1988,7 +1993,51 @@ describe("retrieveNodeChunks — hybrid (vector + lexical, RRF) behind NOTEBOOK_
     expect(pages[0]).toBe(40);
     // the vector-only page is admitted into the cut
     expect(pages).toContain(55);
-    expect(out).toHaveLength(3);
+    expect(out).toHaveLength(4);
+  });
+
+  // Scope-pass finding on #4487: a vector-only row was pushed into the pool and
+  // so appeared in the lexical rerank too (rank 0, at the bottom) — earning a
+  // lexical RRF term it had no right to. Page 55 (vector-only, 2nd by vector)
+  // then outscored BOTH page 10 (lexical #1) and page 11: 1/(k+5) + 1/(k+2)
+  // beats 1/(k+1). With one term each it scores 1/(k+2), ties page 11, and the
+  // tie breaks toward lexical — so the order is 40, 10, 11, 55, not 40, 55, 10, 11.
+  it("RRF double-count: a vector-only row scores once, so it cannot displace pages that earned a lexical rank", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const { client } = hybridClient(LEXICAL, VECTOR);
+    const out = await ask(client, 4);
+    expect(out.map((c) => c.sourcePage)).toEqual([40, 10, 11, 55]);
+  });
+
+  // Scope-pass finding on #4487: the vector lane ran ONE query over every
+  // attached manual while BM25 iterates docWindows per manual when the ask is
+  // model-scoped — so a large sibling manual could fill all POOL vector slots.
+  it("model-scoped ask: the vector lane runs once per attached manual and re-sorts across windows by cosine", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const d1 = lexRow(10, "Carrier frequency P2.04 sets the PWM switching frequency.", { rank: 0, vscore: 0.5, doc_id: "d-1" });
+    const d2 = lexRow(70, "Switching frequency and ambient derating for the GS10.", { rank: 0, vscore: 0.9, doc_id: "d-2", filename: "gs10_b.pdf" });
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.includes("<=>")) {
+        const window = params[4] as string[];
+        return { rows: window[0] === "d-1" ? [d1] : [d2] };
+      }
+      return { rows: [] };
+    });
+    const out = await retrieveNodeChunks({ query } as unknown as PoolClient, "t-1", "what carrier frequency should I use", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1", "d-2"], validatedDocScope: true, topK: 3,
+      identity: { manufacturer: "AutomationDirect", model: "GS10" },
+      identityStatus: "user_confirmed",
+    });
+    const vectorCalls = calls.filter((c) => c.sql.includes("<=>"));
+    expect(vectorCalls.map((c) => c.params[4])).toEqual([["d-1"], ["d-2"]]);
+    // d-2's row had the higher cosine even though its window ran second.
+    expect(out.map((c) => c.sourcePage)).toEqual([70, 10]);
   });
 
   it("flag ON but the embedder is down: the result is the flag-OFF result, byte for byte, and no vector SQL runs", async () => {

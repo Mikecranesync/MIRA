@@ -1597,50 +1597,69 @@ export async function retrieveNodeChunks(
   // embedder, HTTP error, no vectors in scope, SQL error — leaves the lexical
   // result exactly as it was: this lane can add and re-order, never remove.
   let vectorKeys: string[] | null = null;
+  // Rows ONLY the vector lane found. They join `pool` (so they can be cited)
+  // and therefore `lexicalRanked` — but they must not also earn a lexical RRF
+  // term there, or a vector-only row scores twice against a lexical-only row's
+  // once and displaces it (scope-pass finding on #4487).
+  const vectorOnlyKeys = new Set<string>();
   if (hybridRetrievalEnabled()) {
     const queryVec = await embedQuery(opts.rawQuery ?? q);
     if (queryVec) {
       try {
-        const vectorParams: unknown[] = [tenantId, q, nodeIds, POOL, ...docParams, ...approvedParams, vectorLiteral(queryVec)];
-        const vecSlot = vectorParams.length;
-        const res = await client.query(
-          `SELECT
-              content,
-              doc_id::text AS doc_id,
-              source_url,
-              source_page,
-              page_start,
-              section_path,
-              metadata->>'filename' AS filename,
-              ${documentHeadingSql},
-              verified,
-              0::float4 AS rank,
-              (1 - (embedding <=> $${vecSlot}::vector))::float4 AS vscore
-            FROM knowledge_entries
-            WHERE tenant_id = $1
-              AND ($2::text IS NOT NULL)
-              AND ingest_route = 'v2'
-              ${approvalClauseMain}
-              ${nodeClauseMain}
-              ${docClause}
-              AND embedding IS NOT NULL
-            ORDER BY embedding <=> $${vecSlot}::vector, id
-            LIMIT $4`,
-          vectorParams,
-        );
+        // Same per-document candidate windows as the lexical lanes: when the
+        // ask is model-scoped, one LIMIT POOL over ALL docs lets a large
+        // sibling manual fill every vector slot before applicability filtering
+        // (the same hazard docWindows exists for in BM25). Rows from all
+        // windows are re-sorted by cosine so the RRF order stays one ranking.
+        const vectorRows: Array<Record<string, unknown>> = [];
+        for (const window of docWindows) {
+          const vectorParams: unknown[] = [tenantId, q, nodeIds, POOL, ...(window.length ? [window] : []), ...approvedParams, vectorLiteral(queryVec)];
+          const vecSlot = vectorParams.length;
+          const res = await client.query(
+            `SELECT
+                content,
+                doc_id::text AS doc_id,
+                source_url,
+                source_page,
+                page_start,
+                section_path,
+                metadata->>'filename' AS filename,
+                ${documentHeadingSql},
+                verified,
+                0::float4 AS rank,
+                (1 - (embedding <=> $${vecSlot}::vector))::float4 AS vscore
+              FROM knowledge_entries
+              WHERE tenant_id = $1
+                AND ($2::text IS NOT NULL)
+                AND ingest_route = 'v2'
+                ${approvalClauseMain}
+                ${nodeClauseMain}
+                ${docClause}
+                AND embedding IS NOT NULL
+              ORDER BY embedding <=> $${vecSlot}::vector, id
+              LIMIT $4`,
+            vectorParams,
+          );
+          vectorRows.push(...(res.rows as Record<string, unknown>[]));
+        }
+        if (docWindows.length > 1) {
+          vectorRows.sort((a, b) => Number(b.vscore ?? 0) - Number(a.vscore ?? 0));
+        }
         vectorKeys = [];
-        for (const r of res.rows as Record<string, unknown>[]) {
+        for (const r of vectorRows) {
           if (!admit(r)) continue;
           const key = keyOf(r);
           if (!vectorKeys.includes(key)) vectorKeys.push(key);
           if (!seen.has(key)) {
             seen.add(key);
             pool.push(r);
+            vectorOnlyKeys.add(key);
           }
         }
       } catch (err) {
         console.warn("[retrieveNodeChunks] vector lane failed (lexical result served):", err instanceof Error ? err.message : err);
         vectorKeys = null;
+        vectorOnlyKeys.clear();
       }
     }
   }
@@ -1670,7 +1689,8 @@ export async function retrieveNodeChunks(
   const hybridRanked =
     vectorKeys && vectorKeys.length > 0
       ? rrfMerge(
-          lexicalRanked,
+          // A vector-only row has no lexical rank to contribute (see vectorOnlyKeys).
+          lexicalRanked.filter((c) => !vectorOnlyKeys.has(keyOf(c._row))),
           vectorKeys.map((k) => byKey.get(k)).filter((c): c is (typeof lexicalRanked)[number] => c !== undefined),
           (c) => keyOf(c._row),
         )
