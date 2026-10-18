@@ -92,6 +92,9 @@ def test_a_stale_resolver_family_cannot_drop_the_corrected_model():
     # while the model becomes V1000. The asked MODEL decides, so the correct
     # V1000 manual is never dropped by the stale family.
     assert evidence_applicability("V1000", "V1000", "A1000") == "model"
+    # And where the family check is reached: a V1000 catalog-style model with the
+    # stale A1000 family keeps the V1000 manual instead of dropping it.
+    assert evidence_applicability("V1000", "V1000-4A0018", "A1000") == "family"
 
 
 def test_powerflex_aliases_are_never_family_level():
@@ -230,6 +233,15 @@ async def test_no_named_model_leaves_retrieval_exactly_as_before():
     prompt = await _prompt_for([_row("V1000 oV procedure", "Yaskawa", "V1000")], s)
     assert "V1000 oV procedure" in prompt
     assert UNKNOWN_NOTE not in prompt
+    assert "evidence_applicability" not in s["_rag_last_chunks"][0]
+
+
+@pytest.mark.asyncio
+async def test_a_model_without_a_confident_vendor_scopes_nothing():
+    # The #2211 guard the vendor filter uses: no trusted vendor, no scoping.
+    s = _state(None, "A1000", "A1000", confidence=0.3)
+    prompt = await _prompt_for([_row("V1000 oV procedure", "Yaskawa", "V1000")], s)
+    assert "V1000 oV procedure" in prompt
     assert "evidence_applicability" not in s["_rag_last_chunks"][0]
 
 
