@@ -387,6 +387,49 @@ export function isWeakEvidenceEntry(e: unknown): e is WeakEvidenceEntry {
   );
 }
 
+/**
+ * Manual safety statement extracted from cited documentation.
+ *
+ * When an answer cites a chunk containing a manual safety statement (WARNING,
+ * CAUTION, etc., or a prose hazard pattern), this entry captures the marker
+ * and statement verbatim from the source, along with the document and page.
+ *
+ * Rides INSIDE the turn's existing `evidence[]` JSONB, discriminated by `kind`.
+ * It is NOT a citation itself: it complements an existing citation but carries
+ * no new `docId` (the same doc is cited in sources.citations). The marker and
+ * statement are DISPLAYED as a safety notice to the technician, BEFORE the
+ * answer text, and persisted for reload fidelity.
+ *
+ * The /v3 adapter maps this to a `safety_notice` part with
+ * `severity: "warning"`, preserving the marker and statement.
+ */
+export type ManualSafetyStatementEntry = {
+  kind: "manual_safety_statement";
+  /** The marker from the manual: WARNING, DANGER, CAUTION, ATTENTION,
+   * SHOCK HAZARD, BURN HAZARD, or "WARNING (manual text)" for prose fallback. */
+  marker: string;
+  /** Verbatim statement from the manual, whitespace collapsed, capped at ~400 chars. */
+  statement: string;
+  /** The doc this statement came from (matches a citation's docId). */
+  docId: string;
+  /** The physical page number in the source (1-based). */
+  page: number | null;
+};
+
+/** Type guard: an `evidence[]` entry that is a manual safety statement. */
+export function isManualSafetyStatementEntry(
+  e: unknown,
+): e is ManualSafetyStatementEntry {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { kind?: unknown }).kind === "manual_safety_statement" &&
+    typeof (e as { marker?: unknown }).marker === "string" &&
+    typeof (e as { statement?: unknown }).statement === "string" &&
+    typeof (e as { docId?: unknown }).docId === "string"
+  );
+}
+
 export type NotebookChatFrame =
   | NotebookSourcesFrame
   | NotebookContentFrame

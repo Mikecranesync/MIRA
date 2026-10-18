@@ -1,0 +1,213 @@
+/**
+ * Extract manual safety statements from chunk text.
+ *
+ * Grounded in the manual's own markers (WARNING, DANGER, CAUTION, ATTENTION,
+ * SHOCK HAZARD, BURN HAZARD) and narrow prose fallback patterns matched
+ * against MANUAL TEXT ONLY (never the user's question).
+ *
+ * Reference: Task #4508, Stranger Walk safety-notice integration.
+ */
+
+export interface ManualSafetyStatement {
+  marker: string;
+  statement: string;
+}
+
+const SAFETY_MARKERS = [
+  'WARNING',
+  'DANGER',
+  'CAUTION',
+  'ATTENTION',
+  'SHOCK HAZARD',
+  'BURN HAZARD',
+] as const;
+
+/**
+ * Check if a line starts with a safety marker (case-sensitive uppercase as printed).
+ * The marker must be followed by a colon or whitespace to disambiguate from mid-word matches.
+ */
+function findMarkerAndStatement(text: string): ManualSafetyStatement | null {
+  const lines = text.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    for (const marker of SAFETY_MARKERS) {
+      // Match marker at word boundary: "WARNING:" or "WARNING\s" but not "XWARNING"
+      const markerRegex = new RegExp(`\\b${marker}[:\\s]`);
+      if (markerRegex.test(line)) {
+        // Extract the statement following the marker
+        const markerIndex = line.indexOf(marker);
+        const afterMarker = line.substring(markerIndex + marker.length).trim();
+
+        // Collect sentences starting from the marker line
+        const statementLines: string[] = [];
+
+        // If marker line has content after the marker, include it
+        if (afterMarker) {
+          statementLines.push(afterMarker);
+        }
+
+        // Continue collecting lines until a sentence boundary or meaningful gap
+        let sentenceCount = afterMarker ? 1 : 0;
+        for (let j = i + 1; j < lines.length && statementLines.join(' ').length < 500; j++) {
+          const nextLine = lines[j].trim();
+          if (!nextLine) break; // Stop at blank lines
+          statementLines.push(nextLine);
+          // Count sentences (rough heuristic: ends with . ! or ?)
+          if (/[.!?]$/.test(nextLine)) {
+            sentenceCount++;
+            if (sentenceCount >= 2) break; // Collect up to ~2 sentences
+          }
+        }
+
+        let statement = statementLines.join(' ').trim();
+
+        // Collapse whitespace and cap at ~400 chars on sentence boundary
+        statement = statement.replace(/\s+/g, ' ');
+        if (statement.length > 400) {
+          // Find last sentence boundary within 400 chars
+          const truncated = statement.substring(0, 400);
+          const lastDot = Math.max(
+            truncated.lastIndexOf('.'),
+            truncated.lastIndexOf('!'),
+            truncated.lastIndexOf('?'),
+          );
+          if (lastDot > 200) {
+            // Reasonable sentence boundary found
+            statement = statement.substring(0, lastDot + 1);
+          } else {
+            statement = truncated + '...';
+          }
+        }
+
+        return { marker, statement };
+      }
+    }
+  }
+
+  // Prose fallback patterns (narrow, MANUAL TEXT ONLY)
+  return matchProseFallback(text);
+}
+
+/**
+ * Prose fallback for hazards stated without explicit markers.
+ *
+ * Patterns matched against MANUAL TEXT ONLY (never question text):
+ * 1. "hazardous voltage(s) ... present" (with variations)
+ * 2. Capacitor discharge context: "capacitors ... discharged ... voltage"
+ * 3. Wait-after-power-off: "wait (at least) N minutes"
+ */
+function matchProseFallback(text: string): ManualSafetyStatement | null {
+  // Pattern 1: Hazardous voltage(s) present
+  const hazardVoltageMatch = text.match(
+    /hazardous\s+voltages?\s+(?:are|remain)?\s*present/i,
+  );
+  if (hazardVoltageMatch) {
+    // Find the sentence containing this match
+    const idx = text.indexOf(hazardVoltageMatch[0]);
+    // Look backwards for sentence start
+    let sentenceStart = idx;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (/[.!?]\s/.test(text.substring(i, i + 2))) {
+        sentenceStart = i + 2;
+        break;
+      }
+    }
+    // Look forwards for sentence end
+    let sentenceEnd = text.length;
+    for (let i = idx; i < text.length; i++) {
+      if (/[.!?]/.test(text[i])) {
+        sentenceEnd = i + 1;
+        break;
+      }
+    }
+    const statement = text
+      .substring(sentenceStart, sentenceEnd)
+      .trim()
+      .replace(/\s+/g, ' ')
+      .substring(0, 400);
+    if (statement.length > 3) {
+      return {
+        marker: 'WARNING (manual text)',
+        statement,
+      };
+    }
+  }
+
+  // Pattern 2: Capacitor discharge
+  const capacitorMatch = text.match(
+    /capacitors?\s+(?:have\s+)?(?:been\s+)?discharged|discharged.*(?:voltage|V)/i,
+  );
+  if (capacitorMatch) {
+    const sentences = text.split(/[.!?]/);
+    for (const sentence of sentences) {
+      if (sentence.toLowerCase().includes('capacitor') && sentence.toLowerCase().includes('discharged')) {
+        const statement = (sentence.trim() + '.').replace(/\s+/g, ' ').substring(0, 400);
+        return {
+          marker: 'WARNING (manual text)',
+          statement,
+        };
+      }
+    }
+  }
+
+  // Pattern 3: Wait after power-off (flexible - can have power-off context OR in a maintenance/power-down section)
+  const waitMatch = text.match(
+    /wait\s+(?:at\s+least\s+)?(\d+)\s+(?:minutes?|min|mins?)/i,
+  );
+  if (waitMatch) {
+    // Look for power-off context anywhere in the text (not just the immediate context)
+    const hasContext =
+      /(?:turn\s+off|power\s+off|shut\s+down|de\s*-?energize|discharge)/i.test(text);
+    if (hasContext) {
+      // Find the sentence containing the wait match
+      const idx = text.indexOf(waitMatch[0]);
+      let sentenceStart = idx;
+      for (let i = idx - 1; i >= 0; i--) {
+        if (/[.!?]\s/.test(text.substring(i, i + 2))) {
+          sentenceStart = i + 2;
+          break;
+        }
+      }
+      let sentenceEnd = text.length;
+      for (let i = idx; i < text.length; i++) {
+        if (/[.!?]/.test(text[i])) {
+          sentenceEnd = i + 1;
+          break;
+        }
+      }
+      const statement = text
+        .substring(sentenceStart, sentenceEnd)
+        .trim()
+        .replace(/\s+/g, ' ')
+        .substring(0, 400);
+      if (statement.length > 3 && statement.toLowerCase().includes('wait')) {
+        return {
+          marker: 'WARNING (manual text)',
+          statement,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract a manual safety statement from chunk text.
+ *
+ * Returns the marker (WARNING, CAUTION, etc.) and verbatim statement,
+ * or null if no safety statement is found.
+ */
+export function extractManualSafetyStatement(text: string): ManualSafetyStatement | null {
+  if (!text || typeof text !== 'string') {
+    return null;
+  }
+
+  try {
+    return findMarkerAndStatement(text);
+  } catch {
+    return null;
+  }
+}
