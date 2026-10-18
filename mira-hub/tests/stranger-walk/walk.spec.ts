@@ -18,7 +18,7 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
-import { BUDGET, BudgetMeter, identity, manualBytes, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND } from "./staging";
+import { BUDGET, BudgetMeter, identity, manualBytes, pricesFromEnv, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd } from "./staging";
 
 const corpus = corpusJson as Corpus;
 const RUN_ID = process.env.STRANGER_WALK_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
@@ -161,7 +161,8 @@ test("stranger walk", async ({ page }) => {
   if (DRY) await page.route(/\/chat\/?$/, (r) => r.request().method() === "POST" ? r.abort() : r.fallback());
   const start = await identity(base);
   const obs: Observation[] = [];
-  const meter = new BudgetMeter();
+  // Priced from the deployed env before anything is sent; throws (no paid request) if unpriceable.
+  const meter = new BudgetMeter(BUDGET.usdPerRun, worstCaseTurnUsd(pricesFromEnv()));
   const notes: string[] = [];
   let tenantId: string | null = null;
   try {
@@ -218,7 +219,7 @@ test("stranger walk", async ({ page }) => {
       : tenantId ? teardownTenant(tenantId) : { ok: true, detail: "no tenant was created" };
     notes.push(`teardown: ${td.ok ? "OK" : "FAILED"} — ${td.detail}`);
     const asked = ONLY ? { ...corpus, questions: corpus.questions.filter((q) => ONLY.has(q.id)) } : corpus;
-    notes.unshift(`budget: $${meter.budget.toFixed(2)} hard stop; $${BUDGET.usdBookedPerTurn.toFixed(4)} booked per turn (answer + judge on every provider, ≤${TURN_BOUND.inputTokens} in / ≤${TURN_BOUND.answerOutputTokens} out tokens); booked $${meter.booked.toFixed(2)} over ${meter.turns} dispatched turns — an upper bound on true spend${meter.unbounded ? `; STOPPED: ${meter.unbounded} had unreadable or out-of-bound usage` : ""}`);
+    notes.unshift(`budget: $${meter.budget.toFixed(2)} hard stop; $${meter.perTurn.toFixed(4)} booked per turn (answer + judge on every provider, ≤${TURN_BOUND.inputTokens} in / ≤${TURN_BOUND.answerOutputTokens} out tokens); booked $${meter.booked.toFixed(2)} over ${meter.turns} dispatched turns — an upper bound on true spend${meter.unbounded ? `; STOPPED: ${meter.unbounded} had unreadable or out-of-bound usage` : ""}`);
     const aborted = notes.find((n) => n.startsWith("run aborted: "));
     const rows = scoreAll(asked, obs).map((r) => (aborted && !obs.some((o) => o.id === r.id) ? { ...r, reason: aborted } : r));
     const card = scorecard(rows, superseded);
