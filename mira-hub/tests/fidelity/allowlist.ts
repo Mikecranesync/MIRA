@@ -17,4 +17,11 @@ export const REQUEST_ALLOWLIST: Record<string, { reason: string; valid: (v: unkn
     reason: "Only the clone is thread-aware: the classic page never sends it, and on the legacy (thread-less) notebook the clone must send it as null.",
     valid: (v, present, surface) => (surface === "reference" ? !present : present && v === null),
   },
+  clientCapabilities: {
+    reason: "F004 (#4303): only the clone renders the grounding_status entry, so only it declares grounding_status_v1 (ignored by the server while the flag is off). The frozen classic page sends nothing. Exactly that one value is allowed: any other capability, an extra entry, or the reference starting to send it fails.",
+    valid: (v, present, surface) =>
+      surface === "reference"
+        ? !present
+        : present && Array.isArray(v) && v.length === 1 && v[0] === "grounding_status_v1",
+  },
 };

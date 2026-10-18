@@ -120,6 +120,18 @@ const MUTATIONS = {
     }],
     red: ["settle: follow-ups survive the post-turn refetch (clone, #4454)"],
   },
+  // #4303: clientCapabilities is allowlisted for exactly ["grounding_status_v1"]
+  // on the clone. Any other declared capability must still turn AC3 red.
+  M11: {
+    what: "clone declares a capability beyond grounding_status_v1",
+    edits: [{
+      file: LOGIC,
+      find: "    clientCapabilities: [GROUNDING_STATUS_CAPABILITY],\n",
+      replace: '    clientCapabilities: [GROUNDING_STATUS_CAPABILITY, "unvetted_capability_v1"],\n',
+      count: 1,
+    }],
+    red: ["request: G — normalized chat body equal (AC3)", "request: S — normalized chat body equal (AC3)"],
+  },
 };
 
 function apply(edits) {
