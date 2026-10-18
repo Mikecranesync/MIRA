@@ -15,7 +15,8 @@ name: Stranger Walk (staging, advisory)
 # debugging. Hard budget $4.50 per run: every turn books its worst case (the
 # answer and the safety judge on every cascade provider, from production
 # constants) at dispatch and nothing is released, so the booked total bounds
-# true spend (~$0.2) and never passes the cap (tests/stranger-walk/staging.ts).
+# true spend (~$0.2) while the deployed Hub bills at the prices the walk reads
+# (residual risk accepted: tests/stranger-walk/README.md Known limits, #4507).
 # Debug the walk with STRANGER_WALK_DRY=1 ($0) or the replay spec ($0), never
 # by re-running this.
 
@@ -71,8 +72,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging # inherits DOPPLER_TOKEN scoped to factorylm/stg
     # Its OWN group, never `staging-environment`: GitHub keeps one pending run per group, so joining
-    # the deploy/acceptance queue could cancel a pending staging deploy. A deploy that lands
-    # mid-walk is caught instead by the start/end identity check, and the run is NOT ASSESSED.
+    # the deploy/acceptance queue could cancel a pending staging deploy. A deploy that changes the
+    # build identity mid-walk is detected by the start/end identity check (NOT ASSESSED); same-image
+    # redeploys and A->B->A rollbacks are not (README Known limits, #4507).
     concurrency:
       group: stranger-walk
       cancel-in-progress: false
