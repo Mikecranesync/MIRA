@@ -260,11 +260,15 @@ function documentCoversRequest(requested: Set<string>, title: Set<string>): bool
 // member identities it covers; the table is deliberately small and literal.
 // KTP panels are Basic, not Comfort, so COMFORT does not reach them (the
 // TP700-must-not-admit-KTP700 rule at familySqlTerms stands).
-const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp]> = [
-  ["PF520", /^PF52\d$/], // PowerFlex 520-series: 523, 525, 527
-  ["PF750", /^PF75\d$/], // PowerFlex 750-series: 753, 755 (round-2 review)
-  ["MICRO800", /^MICRO8\d0$/], // Micro800: 810, 820, 830, 850, 870
-  ["COMFORT", /^TP\d{3,4}$/], // SIMATIC Comfort Panels: TP700, TP900, TP1200, …
+// Each root also names its vendor (Codex #4484 r2 F1): a bare-number identity
+// ("850") is resolved to a family ONLY through a root of the notebook's own
+// manufacturer, so an Allen-Bradley "850" reaches MICRO850 and never ACS850.
+const ROCKWELL = /rockwell|allen[\s-]*bradley/i;
+const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp, vendor: RegExp]> = [
+  ["PF520", /^PF52\d$/, ROCKWELL], // PowerFlex 520-series: 523, 525, 527
+  ["PF750", /^PF75\d$/, ROCKWELL], // PowerFlex 750-series: 753, 755 (round-2 review)
+  ["MICRO800", /^MICRO8\d0$/, ROCKWELL], // Micro800: 810, 820, 830, 850, 870
+  ["COMFORT", /^TP\d{3,4}$/, /siemens/i], // SIMATIC Comfort Panels: TP700, TP900, TP1200, …
 ];
 const isFamilyRoot = (id: string) => FAMILY_ROOTS.some(([root]) => root === id);
 const familyCovers = (root: string, model: string) =>
@@ -283,7 +287,7 @@ function identitiesAreFamilyOnly(ids: Set<string>): boolean {
 const BARE_MODEL_NUMBER_RE = /^\d{2,4}$/;
 const FAMILY_DIGITS_RE = /^([A-Z]+)(\d+)$/;
 
-function documentCoversNotebook(notebook: Set<string>, title: Set<string>): boolean {
+function documentCoversNotebook(notebook: Set<string>, title: Set<string>, manufacturer: string | null): boolean {
   // Codex #4484 F2: a catalog-only notebook identity (6AV2124-0GC01-0AX0) must
   // reach the family check AS its panel label, or the Comfort Panels manual is
   // lost to it — expand before both comparisons.
@@ -293,13 +297,24 @@ function documentCoversNotebook(notebook: Set<string>, title: Set<string>): bool
     for (const n of nb) {
       if (familyCovers(t, n)) return true;
       if (n.startsWith("#")) {
-        // Bare-number identity (F1): the title's own digits must agree, or its
-        // family root must cover <family><digits>. A title naming a different
-        // number (MICRO810 for "#820") is a different model, exactly as for a
-        // family-qualified identity.
+        // Bare-number identity (r1 F1, tightened in r2 F1): the digits alone
+        // name no family, so matching digits are NOT enough — "850" on an
+        // Allen-Bradley notebook was admitting an ABB ACS850 manual. The title
+        // must be <family><digits> (or that family's root) for a KNOWN family of
+        // the notebook's own manufacturer. With no manufacturer there is no
+        // grounded family, and no family manual is admitted (the generic
+        // no-model manual lenience above is unaffected).
         const digits = n.slice(1);
         const m = FAMILY_DIGITS_RE.exec(t);
-        if (m && (m[2] === digits || familyCovers(t, `${m[1]}${digits}`))) return true;
+        if (!m || !manufacturer) continue;
+        const member = `${m[1]}${digits}`;
+        if (
+          FAMILY_ROOTS.some(
+            ([root, members, vendor]) => vendor.test(manufacturer) && members.test(member) && (t === member || t === root),
+          )
+        ) {
+          return true;
+        }
       }
     }
   }
@@ -1414,7 +1429,10 @@ export async function retrieveNodeChunks(
         );
         if (requestedIdentities) {
           if (!documentCoversRequest(requestedIdentities, titleIdentities)) continue;
-        } else if (titleIdentities.size > 0 && !documentCoversNotebook(notebookIdentities, titleIdentities)) {
+        } else if (
+          titleIdentities.size > 0 &&
+          !documentCoversNotebook(notebookIdentities, titleIdentities, opts.identity?.manufacturer?.trim() || null)
+        ) {
           // Notebook-identity scope is deliberately one notch less strict than
           // a named ask: a manual that names NO model is kept, because the
           // technician attached it to this machine's notebook on purpose and
