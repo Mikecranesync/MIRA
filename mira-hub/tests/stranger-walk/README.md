@@ -16,7 +16,9 @@ first citation. One number, nightly: **CORRECT / 50**.
    `/v3` shows no readiness label; see Findings), ask, wait for the answer to settle, record the
    rendered turn, open the first citation and check the source viewer opened.
 4. **Teardown** — `scripts/provision-beta-gate.ts --cleanup <tenant>` (verifies auth + data rows
-   gone) in `finally`, and again in the workflow's `if: always()` step for a killed process.
+   gone) in `finally`, and again in the workflow's `if: always()` step (`teardown.ts`) for a killed
+   process. The run-unique email is written before registering, so a tenant whose register
+   response was unreadable is still found and swept.
 
 Extraction is the fidelity harness's `surfaces.ts` (`/v3` = the "clone" surface), so both
 harnesses read a turn the same way. The walk never retries a row: a row records what it settled
@@ -57,15 +59,18 @@ the question in its own reviewed commit.
 
 ## Spend (zero-token rule)
 
-Hard budget **$3.00 per run**, enforced by a meter (`staging.ts BudgetMeter`), not a call count.
-Each turn is charged from its own stream's `usage` frames at declared worst-case rates
-(input $2 / output $16 per Mtok, deliberately above gpt-5.4-mini list price), plus $0.02 per turn
-for calls the stream does not report (the safety judge, a cascade retry). Each dispatched turn is charged once, as soon as its response is in, before any UI step that could
-throw. Before every turn the meter reserves the most expensive turn seen so far (at least $0.05) and
-refuses the turn if spent + reserve would pass $3. It **fails closed**: a dispatched turn whose cost
-cannot be read (no response, no usage frame, null or malformed token counts) stops every later paid
-turn. Unasked rows are BROKEN ("budget stop"), never dropped. Run #1's recorded usage meters at about
-$1.39 under these rates.
+Hard budget **$3.00 per run** (`staging.ts BudgetMeter`). Before every turn the meter reserves a
+**declared per-turn bound** and refuses the turn unless spent + that bound fits the budget, so no
+sequence of in-bound turns can pass $3 (property-tested). The bound comes from the Hub's code, not
+from history: ≤ 4000 output tokens (`DEFAULT_MAX_OUTPUT_TOKENS`) and ≤ 32,000 input tokens (static
+system prompt + at most 6 chunks of ≤ 1200 chars + no history on a fresh chat; ~3k observed), priced
+at worst-case rates ($2 in / $16 out per Mtok, above gpt-5.4-mini list price) plus $0.02 for calls
+the stream does not report (the safety judge) — $0.148 reserved per turn. Each dispatched turn is
+charged once, right after its response, from its own `usage` frames, before any UI step that could
+throw. It **fails closed**: a turn whose cost cannot be read, or whose usage breaks the declared
+bound, stops every later paid turn. Residual risk, stated: only a single turn that breaks the bound
+(possible only if the Hub's caps change) could overspend, and it ends the run. Unasked rows are
+BROKEN ("budget stop"), never dropped. Run #1's recorded usage meters at about $1.39.
 
 Paid inference is validation only. Debug the walk at $0:
 

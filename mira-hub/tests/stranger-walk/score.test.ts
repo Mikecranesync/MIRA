@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import corpusJson from "./corpus.json";
-import { BUDGET, BudgetMeter, turnCostUsd } from "./staging";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { BUDGET, BudgetMeter, TURN_BOUND, turnCostUsd } from "./staging";
 import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
@@ -149,14 +151,16 @@ describe("scorecard, flakes, predictions", () => {
   });
 });
 
-describe("budget meter (hard $ stop from the stream's usage frames, fail closed)", () => {
+describe("budget meter (declared per-turn reservation, fail closed)", () => {
   const frame = (f: Record<string, unknown>) => `data: ${JSON.stringify({ kind: "usage", ...f })}\n\ndata: [DONE]\n`;
   const usage = (inputTokens: number, outputTokens: number) => frame({ inputTokens, cachedInputTokens: 0, outputTokens });
-  it("prices a turn from a fully numeric usage frame", () => {
+  it("prices an in-bound turn from a fully numeric usage frame, below the reservation", () => {
     const c = turnCostUsd(usage(3000, 250));
-    expect(c.metered).toBe(true);
+    expect([c.metered, c.inBound]).toEqual([true, true]);
     expect(c.usd).toBeGreaterThan(0);
-    expect(c.usd).toBeLessThan(BUDGET.usdCeilingPerTurn);
+    expect(c.usd).toBeLessThan(BUDGET.usdReservePerTurn);
+    // The declared bound's own cost is exactly the reservation: the reservation covers any in-bound turn.
+    expect(turnCostUsd(usage(TURN_BOUND.inputTokens, TURN_BOUND.outputTokens)).usd).toBeCloseTo(BUDGET.usdReservePerTurn, 9);
   });
   it("a turn whose cost cannot be read is unmetered: no response, no frame, null / negative / non-finite counts", () => {
     for (const sse of [
@@ -168,18 +172,32 @@ describe("budget meter (hard $ stop from the stream's usage frames, fail closed)
       'data: {"kind":"usage","inputTokens":1e999,"cachedInputTokens":0,"outputTokens":1}\n',
     ]) expect(turnCostUsd(sse).metered, String(sse)).toBe(false);
   });
-  it("an unmetered turn stops every later paid turn", () => {
-    const meter = new BudgetMeter(3);
-    meter.charge("a", usage(3000, 250));
-    expect(meter.canAfford()).toBe(true);
-    meter.charge("b", frame({ inputTokens: null, cachedInputTokens: null, outputTokens: null }));
-    expect([meter.canAfford(), meter.unbounded]).toEqual([false, "b"]);
+  it("an unmetered or out-of-bound turn stops every later paid turn", () => {
+    const a = new BudgetMeter(3);
+    a.charge("a", usage(3000, 250));
+    expect(a.canAfford()).toBe(true);
+    a.charge("b", frame({ inputTokens: null, cachedInputTokens: null, outputTokens: null }));
+    expect([a.canAfford(), a.unbounded]).toEqual([false, "b"]);
+    const b = new BudgetMeter(3);
+    b.charge("c", usage(TURN_BOUND.inputTokens + 1, 100)); // broke the declared bound
+    expect([b.canAfford(), b.unbounded]).toEqual([false, "c"]);
   });
-  it("refuses the next turn once an expensive turn makes the budget unsafe", () => {
-    const meter = new BudgetMeter(3);
-    meter.charge("a", usage(1_000_000, 50_000)); // $2 + $0.80 + allowance: one runaway turn
-    expect(meter.spent).toBeGreaterThan(2.8);
-    expect(meter.canAfford()).toBe(false);
+  it("refuses a dispatch BEFORE it could pass the budget: two $0.10 turns, then the reserve must fit", () => {
+    const meter = new BudgetMeter(0.2 + BUDGET.usdReservePerTurn - 0.001);
+    meter.spent = 0.2; // two earlier turns
+    expect(meter.canAfford()).toBe(false); // the next turn's declared worst case would not fit
+    expect(new BudgetMeter(0.2 + BUDGET.usdReservePerTurn).canAfford()).toBe(true); // control
+  });
+  it("no sequence of in-bound turns can leave spent above the budget", () => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    for (let trial = 0; trial < 200; trial++) {
+      const meter = new BudgetMeter(3);
+      for (let t = 0; t < 200 && meter.canAfford(); t++) {
+        meter.charge(`t${t}`, usage(Math.floor(rnd() * TURN_BOUND.inputTokens), Math.floor(rnd() * TURN_BOUND.outputTokens)));
+      }
+      expect(meter.spent).toBeLessThanOrEqual(3 + 1e-9);
+    }
   });
   it("control: 50 ordinary turns fit the $3 budget", () => {
     const meter = new BudgetMeter(3);
@@ -187,5 +205,17 @@ describe("budget meter (hard $ stop from the stream's usage frames, fail closed)
     for (let i = 0; i < 50 && meter.canAfford(); i++) { meter.charge(`q${i}`, usage(3200, 120)); asked++; }
     expect(asked).toBe(50);
     expect(meter.spent).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("workflow", () => {
+  const yml = readFileSync(path.join(__dirname, "../../../.github/workflows/stranger-walk.yml"), "utf8");
+  it("only the paid walk job joins the shared staging queue; the PR unit job never does", () => {
+    expect(yml).not.toMatch(/^concurrency:/m); // no workflow-level group: a PR run would enter it
+    const walk = yml.slice(yml.indexOf("\n  walk:"));
+    const unit = yml.slice(yml.indexOf("\n  unit:"), yml.indexOf("\n  walk:"));
+    expect(walk).toMatch(/\n {4}concurrency:\n {6}group: staging-environment/);
+    expect(unit).not.toMatch(/staging-environment/);
+    expect(walk).toMatch(/if: \$\{\{ github\.event_name != 'pull_request' && github\.ref == 'refs\/heads\/main' \}\}/);
   });
 });

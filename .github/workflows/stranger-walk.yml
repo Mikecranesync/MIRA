@@ -33,13 +33,6 @@ on:
 permissions:
   contents: read
 
-# Shared with deploy-staging.yml and retrieval-acceptance.yml: the staging
-# generation under audit cannot change mid-walk.
-# A full walk holds this group for ~40 min; a staging deploy queues behind it.
-concurrency:
-  group: staging-environment
-  cancel-in-progress: false
-
 jobs:
   unit:
     name: Stranger walk scorer + budget tests
@@ -67,14 +60,20 @@ jobs:
           r = json.load(open("/tmp/sw-vitest.json"))
           total, passed, failed = r["numTotalTests"], r["numPassedTests"], r["numFailedTests"]
           print(f"stranger-walk unit tests: {passed}/{total} passed, {failed} failed")
-          if failed or total < 23 or passed != total:
-              sys.exit(f"::error::expected >= 23 collected and all passing, got {passed}/{total} ({failed} failed)")
+          if failed or total < 25 or passed != total:
+              sys.exit(f"::error::expected >= 25 collected and all passing, got {passed}/{total} ({failed} failed)")
           PY
 
   walk:
     name: Stranger walk — 50 questions on staging /v3
     runs-on: ubuntu-latest
     environment: staging # inherits DOPPLER_TOKEN scoped to factorylm/stg
+    # Job-level, so only the paid walk joins the repo-wide staging queue shared with
+    # deploy-staging.yml and retrieval-acceptance.yml (the generation under audit cannot change
+    # mid-walk; a full walk holds it ~40 min). The PR-only unit job never enters that queue.
+    concurrency:
+      group: staging-environment
+      cancel-in-progress: false
     # The job holds the staging DOPPLER_TOKEN, so it only ever runs main's code: a dispatch on any
     # other ref is skipped before the job (and its secrets) start, and the step below proves the
     # exact SHA is on main before anything is checked out (retrieval-acceptance.yml precedent).
@@ -147,11 +146,8 @@ jobs:
         working-directory: mira-hub
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: |
-          f="$STRANGER_WALK_OUT/tenant.txt"
-          if [ ! -s "$f" ]; then echo "no tenant was created"; exit 0; fi
-          tenant="$(tr -d '[:space:]' < "$f")"
-          doppler run --project factorylm --config stg -- bun run scripts/provision-beta-gate.ts --cleanup "$tenant"
+        # tenant.txt, or — if the register response was unreadable — the run-unique email.txt.
+        run: doppler run --project factorylm --config stg -- bun run tests/stranger-walk/teardown.ts "$STRANGER_WALK_OUT"
 
       - name: Scorecard
         if: always()
@@ -170,5 +166,6 @@ jobs:
           path: |
             ${{ env.STRANGER_WALK_OUT }}/
             !${{ env.STRANGER_WALK_OUT }}/tenant.txt
+            !${{ env.STRANGER_WALK_OUT }}/email.txt
           if-no-files-found: ignore
           retention-days: 30

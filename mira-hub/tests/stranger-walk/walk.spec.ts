@@ -18,7 +18,7 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
-import { BudgetMeter, identity, manualBytes, RATES, UNMETERED_USD_PER_TURN, stagingBase, teardownTenant } from "./staging";
+import { BUDGET, BudgetMeter, identity, manualBytes, RATES, TURN_BOUND, UNMETERED_USD_PER_TURN, stagingBase, teardownTenant, tenantIdForEmail } from "./staging";
 
 const corpus = corpusJson as Corpus;
 const RUN_ID = process.env.STRANGER_WALK_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
@@ -43,9 +43,13 @@ const sseStatus = (sse: string | null) => {
 /** Persist the throwaway tenant id the moment it exists, so every later failure still tears it down. */
 const persistTenant = (id: string) => writeFileSync(path.join(OUT, "tenant.txt"), id);
 
+/** Run-unique, so the account can be found and swept even if the register response is unreadable. */
+const EMAIL = `strangerwalk-${RUN_ID.toLowerCase().replace(/[^a-z0-9-]/g, "-")}@factorylm.com`;
+
 async function signUp(page: Page, base: string): Promise<string> {
+  writeFileSync(path.join(OUT, "email.txt"), EMAIL); // before register: the fallback cleanup key
   await page.goto(`${base}/signup/`);
-  await page.locator("#signup-email").fill(`strangerwalk-${RUN_ID.toLowerCase()}@factorylm.com`);
+  await page.locator("#signup-email").fill(EMAIL);
   await page.locator("#signup-password").fill(`Sw!${crypto.randomUUID()}Aa1`);
   const register = page.waitForResponse((r) => /\/api\/auth\/register\/?$/.test(new URL(r.url()).pathname), { timeout: 60_000 });
   await page.getByRole("button", { name: /create|sign up/i }).first().click();
@@ -172,7 +176,7 @@ test("stranger walk", async ({ page }) => {
         continue;
       }
       for (const [i, q] of qs.entries()) {
-        if (!DRY && !meter.canAfford()) { obs.push(brokenObs(q.id, meter.unbounded ? `budget stop: ${meter.unbounded} had no readable cost` : "budget stop")); continue; }
+        if (!DRY && !meter.canAfford()) { obs.push(brokenObs(q.id, meter.unbounded ? `budget stop: ${meter.unbounded} had an unreadable or out-of-bound cost` : "budget stop")); continue; }
         try {
           if (i > 0) {
             await page.getByRole("button", { name: "New chat" }).click();
@@ -199,10 +203,16 @@ test("stranger walk", async ({ page }) => {
     // The persisted id, not the return value: signUp may have created a tenant and then failed.
     const persisted = existsSync(path.join(OUT, "tenant.txt")) ? readFileSync(path.join(OUT, "tenant.txt"), "utf8").trim() : null;
     tenantId = persisted || tenantId;
+    // Registration may have committed even though its response could not be read: look the
+    // run-unique email up on staging before concluding that no tenant exists.
+    if (!tenantId && existsSync(path.join(OUT, "email.txt"))) {
+      tenantId = await tenantIdForEmail(EMAIL).catch((e) => { notes.push(`teardown lookup by email failed: ${(e as Error).message}`); return null; });
+      if (tenantId) notes.push(`teardown: tenant found by its run email (register response unreadable)`);
+    }
     const td = tenantId ? teardownTenant(tenantId) : { ok: true, detail: "no tenant was created" };
     notes.push(`teardown: ${td.ok ? "OK" : "FAILED"} — ${td.detail}`);
     const asked = ONLY ? { ...corpus, questions: corpus.questions.filter((q) => ONLY.has(q.id)) } : corpus;
-    notes.unshift(`budget: $${meter.budget.toFixed(2)} hard stop; metered $${meter.spent.toFixed(2)} over ${meter.turns} dispatched turns at worst-case rates in $${RATES.inputPerMTok}/out $${RATES.outputPerMTok} per Mtok + $${UNMETERED_USD_PER_TURN}/turn allowance${meter.unbounded ? `; STOPPED: ${meter.unbounded} had no readable cost` : ""}`);
+    notes.unshift(`budget: $${meter.budget.toFixed(2)} hard stop, $${BUDGET.usdReservePerTurn.toFixed(3)} reserved before each turn (≤${TURN_BOUND.inputTokens} in / ≤${TURN_BOUND.outputTokens} out tokens at $${RATES.inputPerMTok}/$${RATES.outputPerMTok} per Mtok + $${UNMETERED_USD_PER_TURN} allowance); metered $${meter.spent.toFixed(2)} over ${meter.turns} dispatched turns${meter.unbounded ? `; STOPPED: ${meter.unbounded} had an unreadable or out-of-bound cost` : ""}`);
     const aborted = notes.find((n) => n.startsWith("run aborted: "));
     const rows = scoreAll(asked, obs).map((r) => (aborted && !obs.some((o) => o.id === r.id) ? { ...r, reason: aborted } : r));
     const card = scorecard(rows, superseded);
