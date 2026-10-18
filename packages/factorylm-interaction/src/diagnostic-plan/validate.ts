@@ -1,6 +1,6 @@
 /**
  * Validation rules for diagnostic plan templates.
- * Six validation rules ensure templates are well-formed and safe.
+ * Seven validation rules ensure templates are well-formed and safe.
  */
 
 import { ActionDefinition, ActionOutcome, WorkflowTemplate } from "./types";
@@ -31,6 +31,18 @@ export function validateTemplate(
         rule: "R1",
         stepId: step.id,
         message: `Action '${step.action}' not found in library`,
+      });
+    }
+  }
+
+  // R7: a step may not run under a different executor than its action declares
+  for (const step of template.steps) {
+    const action = actionMap.get(step.action);
+    if (action && step.executor !== undefined && step.executor !== action.executor) {
+      errors.push({
+        rule: "R7",
+        stepId: step.id,
+        message: `Step '${step.id}' executor '${step.executor}' does not match action '${action.id}' executor '${action.executor}'`,
       });
     }
   }

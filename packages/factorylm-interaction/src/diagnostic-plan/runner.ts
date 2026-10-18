@@ -10,20 +10,20 @@ import { WorkflowTemplate, TemplateStep, RunRecord, NextStepResult, ActionOutcom
  * Pure and deterministic: no I/O, Date, random, or external calls.
  */
 export function nextStep(template: WorkflowTemplate, run: RunRecord | null): NextStepResult {
+  // Check run is for this template (before the empty-run start, so a foreign run never starts)
+  if (run && run.templateId !== template.id) {
+    return {
+      kind: "stop",
+      reason: `Run templateId '${run.templateId}' does not match template '${template.id}'`,
+    };
+  }
+
   // Empty run: return first step
   if (!run || run.records.length === 0) {
     if (template.steps.length === 0) {
       return { kind: "done" };
     }
     return { kind: "step", step: template.steps[0] };
-  }
-
-  // Check run is for this template
-  if (run.templateId !== template.id) {
-    return {
-      kind: "stop",
-      reason: `Run templateId '${run.templateId}' does not match template '${template.id}'`,
-    };
   }
 
   const lastRecord = run.records[run.records.length - 1];
