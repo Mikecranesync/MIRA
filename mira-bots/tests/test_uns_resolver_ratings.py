@@ -39,7 +39,10 @@ def _offline(monkeypatch):
         ("GS10 VFD overcurrent fault on startup, motor 5 HP 460 V", "GS10"),
         ("GS10 trips on decel, 2 hp motor, 230 VAC supply", "GS10"),
         ("A1000 OV fault, 25HP fan, 60Hz", "A1000"),
+        ("GS10 VFD overcurrent fault, motor 12 A 460 V", "GS10"),
+        ("GS10 heater circuit 500 W", "GS10"),
         # Controls: real models next to ratings must survive.
+        ("PowerFlex 525 a few years old keeps tripping", "525"),
         ("PowerFlex 525 F004 undervoltage", "525"),
         ("PowerFlex 525 tripping on startup, motor 10HP 480V", "525"),
         ("Yaskawa GA500 ground fault, 25 HP fan", "GA500"),

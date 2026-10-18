@@ -602,8 +602,9 @@ def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:
 
 # A nameplate rating is a fact about the machine, never its model: "5HP",
 # "460V", "7.5kW", "60Hz", and a bare number written before its unit ("5 HP",
-# "460 V"). Single-letter units are attached-form only, so "PowerFlex 525 a
-# few years old" still resolves 525.
+# "460 V", "12 A"). A spaced single-letter unit counts only as a capital
+# ("12 A", "500 W"), so the article in "PowerFlex 525 a few years old" does
+# not turn 525 into a rating.
 _RATING_UNITS = r"hp|kw|kva|v|vac|vdc|amps?|hz|rpm|psi|bar|nm|ph|ms"
 _RATING_TOKEN_RE = re.compile(rf"^\d+(?:\.\d+)?(?:{_RATING_UNITS}|a|w)$", re.IGNORECASE)
 _RATING_UNIT_WORD_RE = re.compile(rf"^(?:{_RATING_UNITS})$", re.IGNORECASE)
@@ -613,11 +614,10 @@ def _is_rating(tokens: list[str], i: int) -> bool:
     tok = tokens[i]
     if _RATING_TOKEN_RE.match(tok):
         return True
-    return bool(
-        re.fullmatch(r"\d+(?:\.\d+)?", tok)
-        and i + 1 < len(tokens)
-        and _RATING_UNIT_WORD_RE.match(tokens[i + 1])
-    )
+    if not re.fullmatch(r"\d+(?:\.\d+)?", tok) or i + 1 >= len(tokens):
+        return False
+    unit = tokens[i + 1]
+    return bool(_RATING_UNIT_WORD_RE.match(unit)) or unit in ("A", "W")
 
 
 def _find_model_near_vendor(
