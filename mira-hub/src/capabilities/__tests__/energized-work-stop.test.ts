@@ -184,4 +184,12 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
   it("control: the full lockout procedure (more distinct signals) still outranks it", () => {
     expect(lockoutPageOf(pickLockoutChunk([RFI_WARNING, LOCKOUT_PAGE])!)).toBe("2-15");
   });
+
+  // Codex F4 (round 3): the powered-state phrase alone was a signal, so an
+  // operating-page sentence was cited as "the manual's lockout procedure".
+  it("operating text that merely mentions 'while power is applied' is NOT a lockout page (site-LOTO fallback instead)", () => {
+    const OPERATING = chunk({ content: "The RUN indicator is illuminated while power is applied. The display shows the output frequency.", sourcePage: 43, pageLabel: "4-3" });
+    expect(pickLockoutChunk([TORQUE_PAGE, OPERATING])).toBeNull();
+    expect(energizedWorkStop(null)).toMatch(/lockout/i);
+  });
 });

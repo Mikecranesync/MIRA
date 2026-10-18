@@ -272,6 +272,18 @@ export function notebookSafetyTrigger(text: string): string | null {
  */
 const DEFINITIONAL_RE =
   /^\s*(?:what(?:'s|\s+is|\s+are|\s+does|\s+do)\b|define\b|describe\b|explain\b|tell me about\b|how does\b)/i;
+// Codex F1 (round 3): a definitional OPENER does not make a definitional ASK.
+// "Explain how to pull the RFI jumper with it powered", "Describe how to
+// replace the fan without locking out" and "What is the torque on the cover
+// screws while it is powered?" all opened with an exempt word and reached
+// generation. An opener followed by "how to / how do I" or by a spec noun
+// ("the torque", "the steps", "the right way") is procedural, and the
+// exemption does not apply. "Explain the lockout procedure" and "what is
+// working live" stay definitional (controls).
+const PROCEDURAL_OPENER_RE =
+  /^\s*(?:explain|describe|tell\s+me|walk\s+me\s+through|show\s+me)\s+(?:how\s+(?:to|do|can|should|would)\b|the\s+(?:steps?|procedure|process|way)\s+(?:to|for)\b)/i;
+const SPEC_ASK_RE =
+  /^\s*what(?:'s|\s+is|\s+are)\s+the\s+(?:torque|tightening|setting|spec(?:ification)?s?|procedure|steps?|(?:right|proper|correct|safest|best)\s+way)\b/i;
 
 /**
  * TQ-29 (2026-10-17 prod test) — an ENERGIZED-WORK ask: the technician wants
@@ -305,12 +317,14 @@ const POWERED_STATE_RE = new RegExp(
       // "while it's powered", "while the drive is live", "while still hot"
       // "its" without the apostrophe is how technicians actually type it
       // (round-2 review: "pull the jumper while its powered" walked past).
-      "while\\s+(?:it(?:'s| is)\\s+|it's\\s+|its\\s+|the\\s+\\w+\\s+is\\s+|this\\s+is\\s+|still\\s+|it's\\s+still\\s+|its\\s+still\\s+|it\\s+is\\s+still\\s+)?(?:live|powered(?:\\s+up|\\s+on)?|energized|hot|running)",
+      // "powered off" / "powered down" is the SAFE state and must not match
+      // (Codex F3): the negative lookahead stops "powered" consuming the prefix.
+      "while\\s+(?:it(?:'s| is)\\s+|it's\\s+|its\\s+|the\\s+\\w+\\s+is\\s+|this\\s+is\\s+|still\\s+|it's\\s+still\\s+|its\\s+still\\s+|it\\s+is\\s+still\\s+)?(?:live|powered(?!\\s+(?:off|down))(?:\\s+up|\\s+on)?|energized|hot|running)",
       // "keep it running and swap the fan" — a running-only (weak) state, so
       // it still needs a PHYSICAL verb or a work object to stop.
       "keep\\s+(?:it|them|this|that|the\\s+\\w+(?:\\s+\\w+)?)\\s+running",
       // "with it powered", "with the drive powered", "with the unit energized"
-      "with\\s+(?:it|this|that|them|the\\s+\\w+)\\s+(?:still\\s+)?(?:powered(?:\\s+up|\\s+on)?|live|energized|hot|running)",
+      "with\\s+(?:it|this|that|them|the\\s+\\w+)\\s+(?:still\\s+)?(?:powered(?!\\s+(?:off|down))(?:\\s+up|\\s+on)?|live|energized|hot|running)",
       "with\\s+(?:the\\s+|it's\\s+|its\\s+)?power\\s+(?:still\\s+)?(?:on|applied|connected)",
       // "while the power is still on", "while power is applied" — the `while …
       // is` form of the line above; it fell through until the 2026-10-18
@@ -403,14 +417,21 @@ const ACTIVE_INCIDENT_RE =
 const RUNNING_ONLY_RE = /\brunning\b/i;
 const PHYSICAL_VERB_RE =
   /\b(?:swap(?:ping)?|replac(?:e|ing)|chang(?:e|ing)|pull(?:ing)?|remov(?:e|ing)|open(?:ing)?|touch(?:ing)?|rewir(?:e|ing)|tighten(?:ing)?|loosen(?:ing)?|clean(?:ing)?|servic(?:e|ing)|repair(?:ing)?|work(?:ing)? on|disconnect(?:ing)?|reconnect(?:ing)?|install(?:ing)?|unplug(?:ging)?|plug(?:ging)? in|tak(?:e|ing) off|put(?:ting)? on|reach(?:ing)? in)\b/i;
+// A reading verb aimed AT a work object is contact, not observation: "measure
+// the terminals", "probe the connector", "check the bus bar". "What do I
+// check?" and "check the fault log" name no object and stay diagnosis.
+const CONTACT_RE =
+  /\b(?:measur|prob|test|check|meter|touch)\w*\s+(?:the\s+|those\s+|these\s+|all\s+|each\s+)?(?:\w+\s+)?(?:terminals?|lugs?|bus(?:\s*bar)?|connectors?|wires?|contactor|relay|fuse|screws?|bolts?|cover|card|module|jumpers?|board|pins?|contacts?)\b/i;
 
 export function isEnergizedWorkAsk(message: string): boolean {
   const msg = (message || "").toLowerCase().trim();
   if (!msg) return false;
   // Definitional only — see DEFINITIONAL_RE. The wide parity-pinned pattern
   // exempted "How do I swap the fan while it's powered?" and every other
-  // procedural phrasing, which is the whole of TQ-29.
-  if (DEFINITIONAL_RE.test(msg)) return false;
+  // procedural phrasing, which is the whole of TQ-29. A procedural opener
+  // ("explain how to…") or a spec ask ("what is the torque…") is not
+  // definitional (Codex F1).
+  if (DEFINITIONAL_RE.test(msg) && !PROCEDURAL_OPENER_RE.test(msg) && !SPEC_ASK_RE.test(msg)) return false;
   // An ACTIVE incident ("got shocked", "smoke coming", "just exploded") keeps
   // its incident banner + answer (get clear, isolate, call for help) — the
   // 2026-09-27 precedence the route tests pin. Whether an incident report
@@ -438,8 +459,11 @@ export function isEnergizedWorkAsk(message: string): boolean {
   if (SKIP_LOCKOUT_RE.test(msg)) return true;
   if (!POWERED_STATE_RE.test(msg)) return false;
   // A status report / reading question with no hands-on verb is diagnosis,
-  // not energized work (round-2 review false positives).
-  if (DIAGNOSTIC_CONTEXT_RE.test(msg) && !PHYSICAL_VERB_RE.test(msg)) return false;
+  // not energized work (round-2 review false positives) — unless the message
+  // also asks to put a meter or probe ON a work object ("…can I measure the
+  // terminals with it powered?"): a symptom sentence in front of that request
+  // does not make it observation-only (Codex F2).
+  if (DIAGNOSTIC_CONTEXT_RE.test(msg) && !PHYSICAL_VERB_RE.test(msg) && !CONTACT_RE.test(msg)) return false;
   // A "running"-only powered state is too weak to pair with a reading verb.
   const strongState = POWERED_STATE_RE.test(msg.replace(RUNNING_ONLY_RE, ""));
   return strongState
