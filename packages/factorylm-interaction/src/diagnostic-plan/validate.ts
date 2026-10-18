@@ -1,9 +1,12 @@
 /**
  * Validation rules for diagnostic plan templates.
- * Eight validation rules ensure templates are well-formed and safe.
+ * Nine validation rules ensure templates are well-formed and safe.
  */
 
 import { ActionDefinition, ActionOutcome, WorkflowTemplate } from "./types";
+import { routeAfter } from "./runner";
+
+const OUTCOMES: ActionOutcome[] = ["PASS", "FAIL", "INCONCLUSIVE", "BLOCKED", "UNSAFE"];
 
 export interface ValidationError {
   rule: string;
@@ -166,25 +169,52 @@ export function validateTemplate(
     }
   }
 
-  // R6: hazard step before the first technician field step. Observing (identify group) counts as well
-  // as measuring: both put the technician at the machine, so the hazard step comes first on purpose.
-  let hazardFound = false;
-  let firstTechnicianMeasurement = false;
+  // R6: on every route, a technician field step comes after a passed hazard step. Observing
+  // (identify group) counts as well as measuring: both put the technician at the machine.
+  // Walks the routing graph (shared with the runner), so a jump past the hazard step is caught.
+  const flagged = new Set<string>();
+  const visited = new Set<string>();
+  const queue: Array<[number, boolean]> = template.steps.length > 0 ? [[0, false]] : [];
+  while (queue.length > 0) {
+    const [index, hazardPassed] = queue.shift()!;
+    const key = `${index}:${hazardPassed}`;
+    if (visited.has(key)) continue;
+    visited.add(key);
 
-  for (const step of template.steps) {
+    const step = template.steps[index];
     const action = actionMap.get(step.action);
-    if (action?.group === "safety") {
-      hazardFound = true;
+    const executor = step.executor ?? action?.executor;
+    const fieldStep = action && executor === "technician" && (action.group === "measure" || action.group === "identify");
+    if (fieldStep && !hazardPassed && !flagged.has(step.id)) {
+      flagged.add(step.id);
+      errors.push({
+        rule: "R6",
+        stepId: step.id,
+        message: `Technician field step (measure or observe) is reachable without a passed hazard assessment`,
+      });
     }
-    if (action && action.executor === "technician" && (action.group === "measure" || action.group === "identify")) {
-      if (!hazardFound) {
+
+    for (const outcome of OUTCOMES) {
+      const result = routeAfter(template, index, outcome, action);
+      if (result.kind !== "step") continue;
+      const nextIndex = template.steps.indexOf(result.step);
+      const passedHere = action?.group === "safety" && outcome === "PASS";
+      queue.push([nextIndex, hazardPassed || passedHere]);
+    }
+  }
+
+  // R9: a safety step's FAIL or INCONCLUSIVE outcome may only stop the run, never advance it
+  for (const step of template.steps) {
+    if (actionMap.get(step.action)?.group !== "safety") continue;
+    for (const outcome of ["FAIL", "INCONCLUSIVE"] as const) {
+      const route = step.on?.[outcome];
+      if (route && "next" in route) {
         errors.push({
-          rule: "R6",
+          rule: "R9",
           stepId: step.id,
-          message: `Technician field step (measure or observe) must come after hazard assessment`,
+          message: `Safety step '${step.id}' cannot route ${outcome} to another step`,
         });
       }
-      firstTechnicianMeasurement = true;
     }
   }
 

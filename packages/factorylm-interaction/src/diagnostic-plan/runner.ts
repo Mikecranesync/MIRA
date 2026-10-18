@@ -1,133 +1,99 @@
 /**
  * Pure, deterministic step runner for diagnostic workflows.
- * Routes through workflow templates based on action outcomes.
+ * Replays the whole run record against the template and routes on each outcome.
+ * No I/O, Date, random, or external calls.
  */
 
-import { WorkflowTemplate, TemplateStep, RunRecord, NextStepResult, ActionOutcome } from "./types";
+import { LIBRARY } from "./library";
+import type { ActionDefinition, ActionOutcome, NextStepResult, RunRecord, StepRoute, TemplateStep, WorkflowTemplate } from "./types";
+
+const LOOP_LIMIT = 3;
 
 /**
- * Determine the next step based on current run state.
- * Pure and deterministic: no I/O, Date, random, or external calls.
+ * Where a step's outcome leads. Shared with the validator so routing has one definition.
+ * UNSAFE and BLOCKED always stop. A failed safety step stops (blocked) unless routed to a stop.
  */
-export function nextStep(template: WorkflowTemplate, run: RunRecord | null): NextStepResult {
-  // Check run is for this template (before the empty-run start, so a foreign run never starts)
-  if (run && run.templateId !== template.id) {
-    return {
-      kind: "stop",
-      reason: `Run templateId '${run.templateId}' does not match template '${template.id}'`,
-    };
-  }
+export function routeAfter(
+  template: WorkflowTemplate,
+  index: number,
+  outcome: ActionOutcome,
+  action?: ActionDefinition,
+): NextStepResult {
+  const step = template.steps[index];
+  const route = step.on?.[outcome];
 
-  // Empty run: return first step
-  if (!run || run.records.length === 0) {
-    if (template.steps.length === 0) {
-      return { kind: "done" };
-    }
-    return { kind: "step", step: template.steps[0] };
-  }
+  if (outcome === "UNSAFE") return stopOr(route, "unsafe");
+  if (outcome === "BLOCKED") return stopOr(route, "blocked");
+  if (route) return follow(template, route);
+  if (outcome === "INCONCLUSIVE") return { kind: "stop", reason: "escalate" };
+  if (outcome === "FAIL" && action?.group === "safety") return { kind: "stop", reason: "blocked" };
 
-  const lastRecord = run.records[run.records.length - 1];
+  // PASS, or FAIL on a non-safety step: advance to the following step
+  const next = template.steps[index + 1];
+  return next ? { kind: "step", step: next } : { kind: "done" };
+}
 
-  // Find the current step in the template
-  const currentStepIndex = template.steps.findIndex((s) => s.id === lastRecord.stepId);
-  if (currentStepIndex === -1) {
-    return {
-      kind: "stop",
-      reason: `Step '${lastRecord.stepId}' not found in template`,
-      atStep: lastRecord.stepId,
-    };
-  }
+function stopOr(route: StepRoute | undefined, fallback: string): NextStepResult {
+  return { kind: "stop", reason: route && "stop" in route ? route.stop : fallback };
+}
 
-  const currentStep = template.steps[currentStepIndex];
-
-  // A record must describe the action its step declares; a mismatch is a foreign or corrupted record
-  if (lastRecord.action !== currentStep.action) {
-    return {
-      kind: "stop",
-      reason: `Record action '${lastRecord.action}' does not match step '${currentStep.id}' action '${currentStep.action}'`,
-      atStep: lastRecord.stepId,
-    };
-  }
-
-  // Loop guard: same step more than 3 times
-  const sameStepCount = run.records.filter((r) => r.stepId === lastRecord.stepId).length;
-  if (sameStepCount > 3) {
-    return {
-      kind: "stop",
-      reason: "Step executed more than 3 times, escalating",
-      atStep: lastRecord.stepId,
-    };
-  }
-
-  // Route by outcome
-  const outcome = lastRecord.outcome;
-
-  // UNSAFE always stops (explicit or default)
-  if (outcome === "UNSAFE") {
-    if (currentStep.on?.UNSAFE) {
-      const route = currentStep.on.UNSAFE;
-      if ("stop" in route) {
-        return { kind: "stop", reason: route.stop, atStep: lastRecord.stepId };
-      }
-    }
-    return { kind: "stop", reason: "unsafe", atStep: lastRecord.stepId };
-  }
-
-  // BLOCKED routes to stop (explicit or default)
-  if (outcome === "BLOCKED") {
-    if (currentStep.on?.BLOCKED) {
-      const route = currentStep.on.BLOCKED;
-      if ("stop" in route) {
-        return { kind: "stop", reason: route.stop, atStep: lastRecord.stepId };
-      }
-    }
-    return { kind: "stop", reason: "blocked", atStep: lastRecord.stepId };
-  }
-
-  // INCONCLUSIVE defaults to escalate
-  if (outcome === "INCONCLUSIVE") {
-    if (currentStep.on?.INCONCLUSIVE) {
-      const route = currentStep.on.INCONCLUSIVE;
-      return routeToNext(route, template, currentStepIndex, lastRecord.stepId);
-    }
-    return { kind: "stop", reason: "escalate", atStep: lastRecord.stepId };
-  }
-
-  // PASS or FAIL: check explicit route, then default to next step
-  if (currentStep.on?.[outcome]) {
-    const route = currentStep.on[outcome];
-    return routeToNext(route, template, currentStepIndex, lastRecord.stepId);
-  }
-
-  // Default: advance to next step
-  const nextIndex = currentStepIndex + 1;
-  if (nextIndex >= template.steps.length) {
-    return { kind: "done" };
-  }
-
-  return { kind: "step", step: template.steps[nextIndex] };
+function follow(template: WorkflowTemplate, route: StepRoute): NextStepResult {
+  if ("stop" in route) return { kind: "stop", reason: route.stop };
+  const target = template.steps.find((s) => s.id === route.next);
+  return target
+    ? { kind: "step", step: target }
+    : { kind: "stop", reason: `Route target '${route.next}' not found` };
 }
 
 /**
- * Helper to route based on a StepRoute.
+ * Determine the next step for a run. Every record must be the step the previous one routed to,
+ * with the action, verification and (for named attestation) reporter its action declares.
+ * Any mismatch stops the run rather than guessing.
  */
-function routeToNext(
-  route: { next: string } | { stop: string },
+export function nextStep(
   template: WorkflowTemplate,
-  currentIndex: number,
-  stepId: string,
+  run: RunRecord | null,
+  library: readonly ActionDefinition[] = LIBRARY,
 ): NextStepResult {
-  if ("next" in route) {
-    const nextStep = template.steps.find((s) => s.id === route.next);
-    if (!nextStep) {
-      return {
-        kind: "stop",
-        reason: `Route target '${route.next}' not found`,
-        atStep: stepId,
-      };
-    }
-    return { kind: "step", step: nextStep };
-  } else {
-    return { kind: "stop", reason: route.stop, atStep: stepId };
+  // Ownership first, so a foreign run never starts
+  if (run && run.templateId !== template.id) {
+    return { kind: "stop", reason: `Run templateId '${run.templateId}' does not match template '${template.id}'` };
   }
+
+  if (template.steps.length === 0) return { kind: "done" };
+  let expected: NextStepResult = { kind: "step", step: template.steps[0] };
+  if (!run || run.records.length === 0) return expected;
+
+  const actions = new Map<string, ActionDefinition>(library.map((a) => [a.id, a]));
+  const seen = new Map<string, number>();
+
+  for (const record of run.records) {
+    const stop = (reason: string): NextStepResult => ({ kind: "stop", reason, atStep: record.stepId });
+
+    if (expected.kind !== "step") return stop(`Record for '${record.stepId}' arrived after the run ended`);
+    const step: TemplateStep = expected.step;
+    if (record.stepId !== step.id) return stop(`Record '${record.stepId}' is out of sequence; expected '${step.id}'`);
+    if (record.action !== step.action) {
+      return stop(`Record action '${record.action}' does not match step '${step.id}' action '${step.action}'`);
+    }
+
+    const action = actions.get(step.action);
+    if (!action) return stop(`Action '${step.action}' is not in the library`);
+    if (record.verification !== action.verification) {
+      return stop(`Record verification '${record.verification}' does not match action '${action.id}' (${action.verification})`);
+    }
+    if (action.attestation === "named_person" && !record.reportedBy?.trim()) {
+      return stop(`Step '${step.id}' needs a named attester`);
+    }
+
+    const count = (seen.get(step.id) ?? 0) + 1;
+    seen.set(step.id, count);
+    if (count > LOOP_LIMIT) return stop("Step executed more than 3 times, escalating");
+
+    const index = template.steps.indexOf(step);
+    expected = routeAfter(template, index, record.outcome, action);
+    if (expected.kind === "stop") expected = { ...expected, atStep: record.stepId };
+  }
+
+  return expected;
 }

@@ -171,7 +171,10 @@ describe("Diagnostic Plan Runner (nextStep)", () => {
     it("should follow explicit UNSAFE route", () => {
       const run: RunRecord = {
         templateId: "routed",
-        records: [{ stepId: "step2", action: "READ_FAULT", outcome: "UNSAFE", verification: "machine" }],
+        records: [
+          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" },
+          { stepId: "step2", action: "READ_FAULT", outcome: "UNSAFE", verification: "machine" },
+        ],
       };
 
       const result = nextStep(routedTemplate, run);
@@ -184,7 +187,10 @@ describe("Diagnostic Plan Runner (nextStep)", () => {
     it("should follow explicit BLOCKED route to blocked", () => {
       const run: RunRecord = {
         templateId: "routed",
-        records: [{ stepId: "step2", action: "READ_FAULT", outcome: "BLOCKED", verification: "machine" }],
+        records: [
+          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" },
+          { stepId: "step2", action: "READ_FAULT", outcome: "BLOCKED", verification: "machine" },
+        ],
       };
 
       const result = nextStep(routedTemplate, run);
@@ -224,7 +230,10 @@ describe("Diagnostic Plan Runner (nextStep)", () => {
     it("should follow explicit INCONCLUSIVE route to escalate", () => {
       const run: RunRecord = {
         templateId: "routed",
-        records: [{ stepId: "step2", action: "READ_FAULT", outcome: "INCONCLUSIVE", verification: "machine" }],
+        records: [
+          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" },
+          { stepId: "step2", action: "READ_FAULT", outcome: "INCONCLUSIVE", verification: "machine" },
+        ],
       };
 
       const result = nextStep(routedTemplate, run);
@@ -240,7 +249,7 @@ describe("Diagnostic Plan Runner (nextStep)", () => {
         records: [
           { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" },
           { stepId: "step2", action: "READ_FAULT", outcome: "PASS", verification: "machine" },
-          { stepId: "step3", action: "RECORD_FINDING", outcome: "PASS", verification: "machine" },
+          { stepId: "step3", action: "RECORD_FINDING", outcome: "PASS", verification: "self_reported" },
         ],
       };
 
@@ -262,43 +271,37 @@ describe("Diagnostic Plan Runner (nextStep)", () => {
       const result = nextStep(simpleTemplate, run);
       expect(result.kind).toBe("stop");
       if (result.kind === "stop") {
-        expect(result.reason).toContain("not found");
+        expect(result.reason).toContain("unknown_step");
       }
     });
   });
 
   describe("Loop guard", () => {
-    it("should allow same step up to 3 times (continue on 3rd)", () => {
-      const run: RunRecord = {
-        templateId: "simple",
-        records: [
-          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" },
-          { stepId: "step2", action: "READ_FAULT", outcome: "FAIL", verification: "machine" },
-          { stepId: "step2", action: "READ_FAULT", outcome: "FAIL", verification: "machine" },
-          { stepId: "step2", action: "READ_FAULT", outcome: "FAIL", verification: "machine" },
-        ],
-      };
+    // A retry loop: step2 FAIL routes back to step2
+    const loopTemplate: WorkflowTemplate = {
+      id: "loop",
+      title: "Loop",
+      steps: [
+        { id: "step1", action: "IDENTIFY_ASSET" },
+        { id: "step2", action: "READ_FAULT", on: { FAIL: { next: "step2" } } },
+        { id: "step3", action: "RECORD_FINDING" },
+      ],
+    };
+    const identify = { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS" as const, verification: "machine" as const };
+    const readFail = { stepId: "step2", action: "READ_FAULT", outcome: "FAIL" as const, verification: "machine" as const };
 
-      const result = nextStep(simpleTemplate, run);
-      // step2 has been executed 3 times, should still allow continuation to next step
+    it("should allow the same step up to 3 times (retry offered after the 3rd)", () => {
+      const run: RunRecord = { templateId: "loop", records: [identify, readFail, readFail, readFail] };
+      const result = nextStep(loopTemplate, run);
       expect(result.kind).toBe("step");
       if (result.kind === "step") {
-        expect(result.step.id).toBe("step3");
+        expect(result.step.id).toBe("step2");
       }
     });
 
     it("should escalate on 4th occurrence of same step", () => {
-      const run: RunRecord = {
-        templateId: "simple",
-        records: [
-          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" },
-          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" },
-          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" },
-          { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "FAIL", verification: "machine" },
-        ],
-      };
-
-      const result = nextStep(simpleTemplate, run);
+      const run: RunRecord = { templateId: "loop", records: [identify, readFail, readFail, readFail, readFail] };
+      const result = nextStep(loopTemplate, run);
       expect(result.kind).toBe("stop");
       if (result.kind === "stop") {
         expect(result.reason).toContain("more than 3");
@@ -313,7 +316,7 @@ describe("Diagnostic Plan Runner (nextStep)", () => {
         records: [
           { stepId: "step1", action: "IDENTIFY_ASSET", outcome: "PASS", verification: "machine" },
           { stepId: "step2", action: "READ_FAULT", outcome: "PASS", verification: "machine" },
-          { stepId: "step3", action: "RECORD_FINDING", outcome: "PASS", verification: "machine" },
+          { stepId: "step3", action: "RECORD_FINDING", outcome: "PASS", verification: "self_reported" },
         ],
       };
 
