@@ -19,74 +19,96 @@ export function stagingBase(): string {
 
 /**
  * Hard $ budget, declared up front (zero-token rule: paid inference here is validation, never
- * debugging). Before EVERY turn the meter reserves a declared per-turn upper bound and refuses the
- * turn unless spent + that bound fits the budget, so no sequence of in-bound turns can pass it.
+ * debugging). Every dispatched turn BOOKS its worst case — every call it could cause, at the repo's
+ * own declared prices — before it is sent, and a turn is dispatched only if that booking still fits
+ * the budget. Nothing is released afterwards, because some calls (a timed-out attempt the Hub
+ * retried on the next provider, the safety judge) never reach the client's stream. So the recorded
+ * spend is an upper bound on the true spend, and it can never pass the budget.
  *
- * The bound comes from the Hub's own code, not from history: output is capped at
- * `DEFAULT_MAX_OUTPUT_TOKENS` = 4000 (`src/lib/inference/canonical-cascade.ts`); input is a static
- * system prompt + at most 6 retrieved chunks of ≤ 1200 chars (`manual-rag.ts MAX_CONTENT_CHARS`,
- * `topK: 6`) + no history (every question is a fresh chat) — about 3k tokens observed, so 32k is
- * declared with 10× headroom. Priced at worst-case RATES (above gpt-5.4-mini list price), plus an
- * allowance for calls the stream does not report (the safety judge).
+ * Worst case of one turn, from production constants:
+ *  - answer: every cascade provider may attempt it in full — ≤ TURN_BOUND.inputTokens in and
+ *    ≤ 1400 out (`requestCap` in api/equipment-notebooks/[id]/chat/route.ts);
+ *  - safety judge: every provider may attempt it — same input bound, ≤ 200 out
+ *    (`max_completion_tokens 200`, src/capabilities/answer-safety-check.ts).
+ * Input bound: static system prompt + ≤ 6 chunks of ≤ 1200 chars (`manual-rag.ts`) + no history
+ * (every question is a fresh chat) — ~3k tokens observed; 16k declared.
+ * Prices ($/Mtok): gpt-5.4-mini from tools/review_router/prices.json; the rest from
+ * `PRICE_PER_MTOK` in src/lib/inference/canonical-cascade.ts (Cerebras included though archived).
  *
- * FAILS CLOSED: a dispatched turn whose cost cannot be read (no response, no usage frame,
- * null / negative / non-finite counts) or whose usage breaks the declared bound stops every later
- * paid turn. Unasked rows are BROKEN ("budget stop"), never dropped.
+ * FAILS CLOSED: a turn whose final usage is unreadable or breaks the declared bound stops every
+ * later paid turn — the booking assumed a bound that no longer holds.
  */
-export const RATES = { inputPerMTok: 2.0, cachedInputPerMTok: 0.2, outputPerMTok: 16.0 };
-export const UNMETERED_USD_PER_TURN = 0.02;
-export const TURN_BOUND = { inputTokens: 32_000, outputTokens: 4_000 };
+export const PROVIDER_PRICES: Record<string, { input: number; output: number }> = {
+  OpenAI: { input: 0.75, output: 4.5 },
+  OpenRouter: { input: 0.2, output: 0.52 },
+  Groq: { input: 0.15, output: 0.75 },
+  Cerebras: { input: 0.1, output: 0.6 },
+  Together: { input: 0.88, output: 0.88 },
+};
+export const TURN_BOUND = { inputTokens: 16_000, answerOutputTokens: 1_400, judgeOutputTokens: 200 };
+
+/** $ upper bound of one turn: the answer and the judge, each attempted on every provider. */
+export function worstCaseTurnUsd(prices = PROVIDER_PRICES, b = TURN_BOUND): number {
+  let usd = 0;
+  for (const p of Object.values(prices)) {
+    usd += (b.inputTokens * p.input + b.answerOutputTokens * p.output) / 1e6; // answer attempt
+    usd += (b.inputTokens * p.input + b.judgeOutputTokens * p.output) / 1e6; // judge attempt
+  }
+  return usd;
+}
+
 export const BUDGET = {
-  usdPerRun: Number(process.env.STRANGER_WALK_BUDGET_USD ?? "3.00"),
-  /** The declared worst case of one in-bound turn — reserved before each dispatch. */
-  usdReservePerTurn: (TURN_BOUND.inputTokens * RATES.inputPerMTok + TURN_BOUND.outputTokens * RATES.outputPerMTok) / 1e6 + UNMETERED_USD_PER_TURN,
+  /** 50 questions × the booked worst case, rounded up. Real spend is a small fraction (≈ $0.2). */
+  usdPerRun: Number(process.env.STRANGER_WALK_BUDGET_USD ?? "4.50"),
+  usdBookedPerTurn: worstCaseTurnUsd(),
 };
 
 const count = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
 
-/** Worst-case $ for one dispatched turn, from its recorded stream. `metered: false` = unreadable;
- *  `inBound: false` = its usage broke the declared per-turn bound. */
-export function turnCostUsd(sse: string | null): { usd: number; metered: boolean; inBound: boolean } {
-  let usd = 0, frames = 0, input = 0, output = 0;
+/** Did the turn's visible usage stay inside the bound the booking assumed? `readable: false` = no
+ *  response, no usage frame, or null / negative / non-finite counts. */
+export function turnUsage(sse: string | null): { readable: boolean; inBound: boolean; inputTokens: number; outputTokens: number } {
+  let frames = 0, input = 0, output = 0;
   for (const line of (sse ?? "").split("\n")) {
     if (!line.startsWith("data: ")) continue;
     let f: Record<string, unknown>;
     try { f = JSON.parse(line.slice(6)); } catch { continue; }
     if (f?.kind !== "usage") continue;
     const i = count(f.inputTokens), c = count(f.cachedInputTokens ?? 0), o = count(f.outputTokens);
-    if (i === null || c === null || o === null) return { usd: 0, metered: false, inBound: false };
-    usd += (Math.max(i - c, 0) * RATES.inputPerMTok + c * RATES.cachedInputPerMTok + o * RATES.outputPerMTok) / 1e6;
-    input += i; output += o; frames++;
+    if (i === null || c === null || o === null) return { readable: false, inBound: false, inputTokens: 0, outputTokens: 0 };
+    input = Math.max(input, i); output = Math.max(output, o); frames++;
   }
-  if (!frames) return { usd: 0, metered: false, inBound: false };
-  return { usd: usd + UNMETERED_USD_PER_TURN, metered: true, inBound: input <= TURN_BOUND.inputTokens && output <= TURN_BOUND.outputTokens };
+  if (!frames) return { readable: false, inBound: false, inputTokens: 0, outputTokens: 0 };
+  return { readable: true, inBound: input <= TURN_BOUND.inputTokens && output <= TURN_BOUND.answerOutputTokens, inputTokens: input, outputTokens: output };
 }
 
 export class BudgetMeter {
-  spent = 0;
+  /** Booked (upper-bound) spend: turns × the worst case, never less than true spend. */
+  booked = 0;
   turns = 0;
-  /** Set by the first dispatched turn whose cost was unreadable or out of bound; nothing paid follows it. */
+  /** Set by the first turn whose usage was unreadable or out of bound; nothing paid follows it. */
   unbounded: string | null = null;
-  constructor(readonly budget = BUDGET.usdPerRun) {}
-  /** May the next paid turn go out? Only if its declared worst case still fits. */
-  canAfford(): boolean { return this.unbounded === null && this.spent + BUDGET.usdReservePerTurn <= this.budget + 1e-9; }
-  /** Charge one DISPATCHED turn exactly once, as soon as its response (or its absence) is known. */
-  charge(id: string, sse: string | null): number {
-    const c = turnCostUsd(sse);
-    this.turns++;
-    this.spent += c.usd;
-    if (!c.metered || !c.inBound) this.unbounded ??= id;
-    return c.usd;
+  constructor(readonly budget = BUDGET.usdPerRun, readonly perTurn = BUDGET.usdBookedPerTurn) {}
+  /** May the next paid turn go out? Only if its worst case still fits. */
+  canAfford(): boolean { return this.unbounded === null && this.booked + this.perTurn <= this.budget + 1e-9; }
+  /** Book a turn at dispatch — before the request leaves, so no later failure can skip it. */
+  book(): void { this.booked += this.perTurn; this.turns++; }
+  /** Check what the turn's stream showed against the bound the booking assumed. */
+  verify(id: string, sse: string | null): void {
+    const u = turnUsage(sse);
+    if (!u.readable || !u.inBound) this.unbounded ??= id;
   }
 }
 
 /**
  * Fallback teardown when the register response could not be read: find the throwaway account by its
- * exact, run-unique email on STAGING and sweep its tenant. Refuses anything but a strangerwalk email.
+ * exact, run-unique email on STAGING. null ONLY when a successful query found no account; throws when
+ * the lookup cannot run. Refuses anything but a strangerwalk email.
  */
 export async function tenantIdForEmail(email: string): Promise<string | null> {
   if (!/^strangerwalk-[a-z0-9-]+@factorylm\.com$/.test(email)) throw new Error(`refusing a non-walk email: ${email}`);
-  if (!process.env.NEON_DATABASE_URL) return null;
+  // No database is not proof of no tenant: fail, so the caller cannot report a clean teardown.
+  if (!process.env.NEON_DATABASE_URL) throw new Error("NEON_DATABASE_URL unset — cannot prove the run's tenant is gone");
   const { Client } = await import("pg");
   const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
   await c.connect();
