@@ -1530,7 +1530,20 @@ export async function retrieveNodeChunks(
           String(r.document_heading ?? ""),
         );
         if (requestedIdentities) {
-          if (!documentCoversRequest(requestedIdentities, titleIdentities)) return false;
+          // #4511 (Release 1 regression, Lane A replay 2026-10-18): the real
+          // Rockwell Micro810 cover is "User Manual Original Instructions\n
+          // Micro810 Programmable\nControllers…" — a generic opener with the
+          // model on line two. `affirmativeModelIdentities` returns an EMPTY set
+          // for such an ambiguous cover, and a named ask rejected on that empty
+          // set, so the Micro810 manual could not answer a single Micro810
+          // question. r3 F6 already resolves an ambiguous cover against what its
+          // heading DECLARES for the notebook branch; a named ask gets the same
+          // resolution. A prose cover still declares nothing (r5 F6) and a
+          // sibling's model still fails the coverage check.
+          const heading = String(r.document_heading ?? "");
+          const declared =
+            titleIdentities.size === 0 && coverIsAmbiguous(heading) ? ambiguousCoverIdentities(heading) : titleIdentities;
+          if (!documentCoversRequest(requestedIdentities, declared)) return false;
         } else if (
           (titleIdentities.size > 0 &&
             !documentCoversNotebook(notebookIdentities, titleIdentities, opts.identity?.manufacturer?.trim() || null)) ||
