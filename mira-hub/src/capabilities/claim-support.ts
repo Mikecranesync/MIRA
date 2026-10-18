@@ -50,7 +50,7 @@ export function claimSupportEnabled(): boolean {
  *  server-written, and candidate-independent — never the rejected draft's
  *  wording, and never a number from it. */
 export const CLAIM_NOT_STATED_TEXT =
-  "I can't point to that in the manual pages I have, so I won't state it as fact. The pages I retrieved for this question don't give that value. Add the page that covers it to this notebook, or ask me to search the manual again, and I'll answer from it and show you the page.";
+  "That isn't stated in the manual pages I retrieved for this question, so I won't state it as fact. Add the page that covers it to this notebook, or ask me to search the manual again, and I'll answer from it and show you the page.";
 
 export type ChunkForClaim = { sourceUrl: string; sourcePage: number | null; content: string };
 export type CitationForClaim = { citationId: string };

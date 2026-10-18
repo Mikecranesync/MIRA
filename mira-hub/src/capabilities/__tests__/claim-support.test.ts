@@ -165,6 +165,12 @@ describe("the served replacement and the redraft directive", () => {
     expect(CLAIM_NOT_STATED_TEXT).not.toMatch(/\d/);
     expect(CLAIM_NOT_STATED_TEXT).toMatch(/won't state it as fact/);
   });
+
+  // The goal names this wording for the fallback ("not stated in the manual"),
+  // so it is pinned rather than left to paraphrase drift.
+  it("uses the goal's own phrasing: isn't stated in the manual", () => {
+    expect(CLAIM_NOT_STATED_TEXT).toMatch(/isn't stated in the manual/);
+  });
   it("the redraft directive never carries the wrong value back into the prompt", () => {
     expect(REDRAFT_DIRECTIVE).not.toMatch(/\d/);
     expect(REDRAFT_DIRECTIVE).toMatch(/appear verbatim/);
