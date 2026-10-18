@@ -812,11 +812,37 @@ def _confidence(
     return 0.0
 
 
+def _strip_negated_equipment(message: str) -> str:
+    """Drop "not a GS10" references so a correction is not anchored by what it negates."""
+    out = message
+    for alias in sorted(VENDOR_ALIASES, key=len, reverse=True):
+        out = re.sub(
+            rf"\bnot\s+(?:an?\s+)?{_alias_pattern(alias)}"
+            r"(?:\s+[a-z0-9.-]*\d[a-z0-9.-]*)?",
+            " ",
+            out,
+            flags=re.IGNORECASE,
+        )
+    return out
+
+
+def negates_equipment(message: str | None) -> bool:
+    """True when the message explicitly rules out a named machine ("not a GS10")."""
+    return bool(message) and _strip_negated_equipment(message) != message
+
+
 def _same_model(a: str, b: str) -> bool:
-    """ "525" and "PowerFlex 525" name one model; "V1000" and "A1000" do not."""
+    """ "525" and "PowerFlex 525" name one model; "7525" and "525" do not.
+
+    Only a letters-only series prefix may differ — the bare-number rule
+    ``rag_worker.evidence_applicability`` uses for the same question.
+    """
     ka = re.sub(r"[^a-z0-9]", "", a.lower())
     kb = re.sub(r"[^a-z0-9]", "", b.lower())
-    return bool(ka and kb) and (ka == kb or ka.endswith(kb) or kb.endswith(ka))
+    if not ka or not kb:
+        return False
+    short, longer = sorted((ka, kb), key=len)
+    return ka == kb or re.fullmatch(rf"[a-z]+{re.escape(short)}", longer) is not None
 
 
 def _merge_with_prior(fresh: UNSContext, prior: UNSContext | None) -> UNSContext:
@@ -998,15 +1024,7 @@ def resolve_uns_path(
     # A corrected identity must not be anchored by its explicitly negated
     # predecessor ("GS20, not GS10"). Keep the original text for fault/symptom
     # extraction; exclude only known equipment references from identity parsing.
-    identity_message = message
-    for alias in sorted(VENDOR_ALIASES, key=len, reverse=True):
-        identity_message = re.sub(
-            rf"\bnot\s+(?:an?\s+)?{_alias_pattern(alias)}"
-            r"(?:\s+[a-z0-9.-]*\d[a-z0-9.-]*)?",
-            " ",
-            identity_message,
-            flags=re.IGNORECASE,
-        )
+    identity_message = _strip_negated_equipment(message)
 
     # Stage 1b: vendor match first — needed to find model position
     message_lower = identity_message.lower()

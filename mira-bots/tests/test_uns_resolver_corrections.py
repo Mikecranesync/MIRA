@@ -115,3 +115,18 @@ def test_same_model_followup_keeps_the_prior_family():
     ctx = resolve_uns_path("it trips again after a minute", prior_ctx=prior)
     assert ctx.model == prior.model
     assert ctx.product_family == prior.product_family
+
+
+def test_a_model_number_that_merely_ends_the_same_is_a_different_model():
+    # "7525" is not the 525. Only a series prefix ("PowerFlex 525") is the same model.
+    prior = resolve_uns_path("PowerFlex 525 F004")
+    ctx = resolve_uns_path("actually it's a Rockwell 7525", prior_ctx=prior)
+    assert ctx.model == "7525"
+    assert ctx.product_family != prior.product_family or prior.product_family is None
+    assert uns_resolver._same_model("PowerFlex 525", "525")
+    assert not uns_resolver._same_model("7525", "525")
+
+
+def test_negated_equipment_is_detectable():
+    assert uns_resolver.negates_equipment("it's a GS20 not a GS10, what's the difference?")
+    assert not uns_resolver.negates_equipment("Compare GS10 and GS20")

@@ -632,3 +632,11 @@ async def test_a_model_correction_does_not_inherit_the_old_machines_fault(sv):
     assert saved["asset_identified"] == "AutomationDirect, GS20"
     assert saved["context"]["uns_context"]["model"] == "GS20"
     assert saved["context"]["uns_context"].get("fault_code") != "CE10"
+
+
+def test_a_correction_that_mentions_a_difference_still_repins(sv):
+    # A comparison word does not turn an explicit correction into a comparison.
+    state = _dead_thread_state()
+    msg = "It's a GS20 not a GS10 - is there a difference in the comm settings?"
+    assert sv._maybe_repin_asset("diff-correction", state, msg, None)
+    assert state["asset_identified"] == "AutomationDirect, GS20"

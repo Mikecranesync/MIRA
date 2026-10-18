@@ -129,7 +129,12 @@ from .session_manager import (
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
-from .uns_resolver import UNSResolution, resolve_uns_path, resolve_uns_path_multi
+from .uns_resolver import (
+    UNSResolution,
+    negates_equipment,
+    resolve_uns_path,
+    resolve_uns_path_multi,
+)
 from .wo_evidence import recall_work_orders as _recall_work_orders
 from .workers.nameplate_worker import NameplateWorker
 from .workers.photo_ingest_worker import propose_from_nameplate
@@ -3123,7 +3128,9 @@ class Supervisor:
         # A comparison is not an asset selection, and chat text cannot replace
         # the identity supplied by a connected surface. Preserve retrieval scope
         # as well as the display pin; allow a connected asset's new fault code.
-        comparison = bool(_COMPARISON_RE.search(message))
+        # An explicit correction ("GS20, not GS10") is not a comparison even
+        # when it mentions a difference.
+        comparison = bool(_COMPARISON_RE.search(message)) and not negates_equipment(message)
         bound_identity = uns_source or (prior_uns or {}).get("source") == "direct_connection"
         if prior_uns and state.get("asset_identified") and (comparison or bound_identity):
             identity_query = state["asset_identified"]
@@ -8149,7 +8156,7 @@ class Supervisor:
             if fresh_vendor == pinned_vendor:
                 # A model correction within one manufacturer ("it's a GS20, not a
                 # GS10") is still a new machine. A comparison selects nothing.
-                if _COMPARISON_RE.search(message):
+                if _COMPARISON_RE.search(message) and not negates_equipment(message):
                     return False
                 prior_identity = resolve_uns_path(pinned.split(",", 1)[-1])
                 fresh_model = canonical_model(fresh.model, fresh.product_family)
