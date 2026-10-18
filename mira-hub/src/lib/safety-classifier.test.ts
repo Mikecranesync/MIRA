@@ -445,6 +445,21 @@ describe("Codex F1 — a definitional OPENER does not make a definitional ask", 
   ])("procedural, stops: %s", (msg) => {
     expect(isEnergizedWorkAsk(msg)).toBe(true);
   });
+
+  // Codex round 4 — the copula and the skip-isolation wording were enumerated.
+  it.each([
+    "Can I remove the cover while the drive remains energized?",
+    "Can I replace the fan while the VFD stays powered?",
+    "Can I pull the jumper with the machine turned on?",
+    "pull the card with the unit switched on",
+    "swap the belt when the motor is kept running",
+    "Can I pull the jumper before shutting the power off?",
+    "swap the relay without doing lockout",
+    "replace the fuse without performing LOTO",
+    "change the contactor before powering it down",
+  ])("round-4 wording, stops: %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(true);
+  });
   it.each([
     "explain the lockout procedure",
     "what is working live",
@@ -453,6 +468,11 @@ describe("Codex F1 — a definitional OPENER does not make a definitional ask", 
     "describe the keypad layout",
     "what is the carrier frequency parameter",
     "explain what powered means on the status screen",
+    // round-4 controls: state words in a diagnostic, not a work ask
+    "the drive remains energized after the stop command, is that normal",
+    "turn the machine on and check the display",
+    "is the VFD supposed to stay powered when the door opens",
+    "can I run it with the cover on",
   ])("control, definitional: %s", (msg) => {
     expect(isEnergizedWorkAsk(msg)).toBe(false);
   });

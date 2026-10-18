@@ -201,6 +201,10 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
     // round 3 — a declarative about relay behaviour, and a prohibition that is not about powered work
     "The fault relay de-energizes when an alarm occurs.",
     "Do not connect a low power sensor to this port.",
+    // round 4 — "power" as a modifier, not the thing being removed
+    "Turn off power saving mode to prevent the display from sleeping.",
+    "Remove the power module from the chassis.",
+    "Disconnect power output terminal T1 before wiring.",
   ])("a single keyword noun is NOT a lockout page: %s", (content) => {
     expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 43, pageLabel: "4-3" })])).toBeNull();
   });
@@ -209,6 +213,9 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
     "Disconnect power before changing the DIP switch.", // the imperative alone qualifies
     "WARNING! Do not remove the RFI jumper while power is applied.", // the prohibition alone qualifies
     "Lock out the disconnect and wait 5 minutes before servicing.", // two signals qualify
+    "Disconnect power.", // bare imperative at end of sentence
+    "Disconnect the power supply before servicing the unit.", // "power supply" is the thing removed
+    "Disconnect all power to the drive and wait 5 minutes before servicing.",
   ])("control: an instruction or two signals still qualify: %s", (content) => {
     expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 25, pageLabel: "2-15" })])).not.toBeNull();
   });

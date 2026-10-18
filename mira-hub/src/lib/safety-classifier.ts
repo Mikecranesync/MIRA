@@ -320,12 +320,16 @@ const POWERED_STATE_RE = new RegExp(
       // "while it's powered", "while the drive is live", "while still hot"
       // "its" without the apostrophe is how technicians actually type it
       // (round-2 review: "pull the jumper while its powered" walked past).
-      `while\\s+(?:it(?:'s| is)\\s+|it's\\s+|its\\s+|the\\s+\\w+\\s+is\\s+|this\\s+is\\s+|still\\s+|it's\\s+still\\s+|its\\s+still\\s+|it\\s+is\\s+still\\s+)?(?:live|${PW}(?:\\s+up|\\s+on)?|energized|hot|running)`,
+      // Codex round 4: the copula was enumerated ("is", "'s") and "remains
+      // energized", "stays powered", "is kept live", "turned on", "switched on"
+      // all walked past. One alternative, with an OPTIONAL copula drawn from a
+      // list of state verbs: <while|with|when> <subject> [copula] [still] <state>.
+      `(?:while|with|when)\\s+(?:it|its|this|that|them|the\\s+\\w+(?:\\s+\\w+)?)(?:'s|\\s+is|\\s+remains|\\s+stays|\\s+is\\s+kept|\\s+is\\s+left)?\\s+(?:still\\s+)?(?:live|${PW}(?:\\s+up|\\s+on)?|energi[sz]ed|hot|running|turned\\s+on|switched\\s+on)`,
+      // "while still hot", "while powered" — no subject at all
+      `while\\s+(?:still\\s+)?(?:live|${PW}(?:\\s+up|\\s+on)?|energi[sz]ed|hot|running)`,
       // "keep it running and swap the fan" — a running-only (weak) state, so
       // it still needs a PHYSICAL verb or a work object to stop.
       "keep\\s+(?:it|them|this|that|the\\s+\\w+(?:\\s+\\w+)?)\\s+running",
-      // "with it powered", "with the drive powered", "with the unit energized"
-      `with\\s+(?:it|this|that|them|the\\s+\\w+)\\s+(?:still\\s+)?(?:${PW}(?:\\s+up|\\s+on)?|live|energized|hot|running)`,
       "with\\s+(?:the\\s+|it's\\s+|its\\s+)?power\\s+(?:still\\s+)?(?:on|applied|connected)",
       // "while the power is still on", "while power is applied" — the `while …
       // is` form of the line above; it fell through until the 2026-10-18
@@ -380,6 +384,10 @@ const SKIP_LOCKOUT_RE = new RegExp(
       "without\\s+(?:powering|shutting|turning)\\s+(?:it|them|this|that|the\\s+\\w+(?:\\s+\\w+)?)?\\s*(?:down|off)",
       // "pull the card before I kill power" — the work is meant to come first
       "before\\s+(?:I|we|you)\\s+(?:kill|cut|drop|shut\\s+off|turn\\s+off|disconnect|remove)\\s+(?:the\\s+)?power",
+      // Codex round 4: "before shutting the power off", "before powering it
+      // down", "without doing lockout", "without performing LOTO"
+      "before\\s+(?:shutting|turning|switching|powering|cutting|killing)\\s+(?:the\\s+|it\\s+|them\\s+)?(?:power\\s+)?(?:off|down)",
+      "without\\s+(?:doing|performing|applying|completing|running|following)\\s+(?:a\\s+|the\\s+|any\\s+|proper\\s+)?(?:lock[- ]?out|loto|lockout\\s*/\\s*tagout)",
       // "I can't shut the line down. How do I pull the RFI jumper?"
       "can'?t\\s+(?:shut|take|bring|power)\\s+(?:it|this|that|the\\s+\\w+(?:\\s+\\w+)?)\\s+(?:down|off(?:line)?)",
     ].join("|") +
