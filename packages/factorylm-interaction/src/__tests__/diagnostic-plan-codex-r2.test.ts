@@ -94,3 +94,24 @@ describe("Codex r2 F5: reachability follows runtime routing", () => {
     expect(validateTemplate(t, LIBRARY).errors.some((e) => e.rule === "R5" && e.stepId === "s2")).toBe(true);
   });
 });
+
+describe("Codex r3 F2: UNSAFE and BLOCKED never end as resolved, even unvalidated", () => {
+  for (const outcome of ["UNSAFE", "BLOCKED"] as const) {
+    it(`runner ignores an ${outcome}→resolved route`, () => {
+      const t: WorkflowTemplate = {
+        id: `${outcome}_resolved`,
+        title: "Resolved",
+        steps: [{ id: "s1", action: "IDENTIFY_ASSET", on: { [outcome]: { stop: "resolved" } } }],
+      };
+      const result = nextStep(t, { templateId: t.id, records: [{ ...pass(t, 0), outcome }] });
+      expect(result.kind).toBe("stop");
+      if (result.kind === "stop") expect(result.reason).toBe(outcome === "UNSAFE" ? "unsafe" : "blocked");
+    });
+  }
+
+  it("control: BLOCKED→escalate is still honoured", () => {
+    const t: WorkflowTemplate = { id: "b_esc", title: "B", steps: [{ id: "s1", action: "IDENTIFY_ASSET", on: { BLOCKED: { stop: "escalate" } } }] };
+    const result = nextStep(t, { templateId: t.id, records: [{ ...pass(t, 0), outcome: "BLOCKED" }] });
+    expect(result.kind === "stop" && result.reason).toBe("escalate");
+  });
+});

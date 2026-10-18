@@ -22,8 +22,9 @@ export function routeAfter(
   const step = template.steps[index];
   const route = step.on?.[outcome];
 
-  if (outcome === "UNSAFE") return stopOr(route, "unsafe");
-  if (outcome === "BLOCKED") return stopOr(route, "blocked");
+  // UNSAFE always stops as unsafe; BLOCKED stops as blocked or escalate. Neither can be "resolved".
+  if (outcome === "UNSAFE") return { kind: "stop", reason: "unsafe" };
+  if (outcome === "BLOCKED") return { kind: "stop", reason: route && "stop" in route && route.stop === "escalate" ? "escalate" : "blocked" };
   // A failed or inconclusive safety step only ever stops, and never as "resolved"
   if (action?.group === "safety" && (outcome === "FAIL" || outcome === "INCONCLUSIVE")) {
     if (route && "stop" in route && route.stop !== "resolved") return { kind: "stop", reason: route.stop };
@@ -35,10 +36,6 @@ export function routeAfter(
   // PASS, or FAIL on a non-safety step: advance to the following step
   const next = template.steps[index + 1];
   return next ? { kind: "step", step: next } : { kind: "done" };
-}
-
-function stopOr(route: StepRoute | undefined, fallback: string): NextStepResult {
-  return { kind: "stop", reason: route && "stop" in route ? route.stop : fallback };
 }
 
 function follow(template: WorkflowTemplate, route: StepRoute): NextStepResult {
