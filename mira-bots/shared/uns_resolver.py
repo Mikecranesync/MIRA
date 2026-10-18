@@ -609,9 +609,10 @@ _RATING_UNITS = r"hp|kw|kva|v|vac|vdc|amps?|hz|rpm|psi|bar|nm|ph|ms"
 _RATING_TOKEN_RE = re.compile(rf"^\d+(?:\.\d+)?(?:{_RATING_UNITS}|a|w)$", re.IGNORECASE)
 _RATING_UNIT_WORD_RE = re.compile(rf"^(?:{_RATING_UNITS})$", re.IGNORECASE)
 # Real models that happen to look like ratings. Source: every rating-shaped
-# knowledge_entries.model_number on staging (2026-10-18 scan, 381 distinct
-# values) — only the Fluke 87V multimeter. Refresh with
-#   SELECT DISTINCT model_number FROM knowledge_entries WHERE model_number ~* '^\d+(\.\d+)?(hp|kw|kva|v|vac|vdc|a|amps?|w|hz|rpm|psi|bar|nm|ph|ms)$';
+# manual model_number on staging (2026-10-18 scan, 381 distinct values) and
+# every customer equipment model (71 distinct) — only the Fluke 87V
+# multimeter. To refresh, list the distinct manual model numbers that match
+# _RATING_TOKEN_RE (the scan is recorded on PR #4494).
 _RATING_SHAPED_MODELS = frozenset({"87v"})
 
 
