@@ -349,6 +349,12 @@ const POWERED_STATE_RE = new RegExp(
       // scope pass (measured false on 24abb8e8a).
       "while\\s+(?:the\\s+)?power\\s+(?:is\\s+)?(?:still\\s+)?(?:on|applied|connected)",
       "power\\s+still\\s+on",
+      // Codex round 6: "The drive is on. How do I remove the cover?" — the
+      // standalone machine-is-on assertion. Only a MACHINE / power subject
+      // ("The cover is on." names a cover) and only at a sentence start.
+      "(?:^|[.;!?]\\s+)(?:the\\s+)?(?:power|drive|unit|machine|panel|system|line|breaker|controller|vfd|plc|motor|inverter|supply|mains?)(?:'s|\\s+is|\\s+remains|\\s+stays)\\s+(?:still\\s+)?on\\b",
+      // Codex round 6: "while it has power", "if the drive still has power"
+      "(?:while|with|when|if)\\s+(?:it|this|that|they|the\\s+\\w+(?:\\s+\\w+)?)\\s+(?:still\\s+)?(?:has|have)\\s+power\\b",
       // not "under power-loss conditions" (round-2 review)
       "under\\s+power(?!-)",
       `still\\s+(?:energized|live|${PW}|hot)`,
@@ -442,8 +448,30 @@ const ACTIVE_INCIDENT_RE =
 // Every other powered-state phrase ("with it powered", "under power", "still
 // hot") is explicit enough to pair with any hands-on verb.
 const RUNNING_ONLY_RE = /\brunning\b/i;
+// Codex round 6: "connect" is hands-on too ("The LED blinks; can I connect
+// the jumper with it powered?" was exempted as a diagnostic prefix because
+// connect was missing here while present in HANDS_ON_VERB_RE).
 const PHYSICAL_VERB_RE =
-  /\b(?:swap(?:ping)?|replac(?:e|ing)|chang(?:e|ing)|pull(?:ing)?|remov(?:e|ing)|open(?:ing)?|touch(?:ing)?|rewir(?:e|ing)|tighten(?:ing)?|loosen(?:ing)?|clean(?:ing)?|servic(?:e|ing)|repair(?:ing)?|work(?:ing)? on|disconnect(?:ing)?|reconnect(?:ing)?|install(?:ing)?|unplug(?:ging)?|plug(?:ging)? in|tak(?:e|ing) off|put(?:ting)? on|reach(?:ing)? in)\b/i;
+  /\b(?:swap(?:ping)?|replac(?:e|ing)|chang(?:e|ing)|pull(?:ing)?|remov(?:e|ing)|open(?:ing)?|touch(?:ing)?|rewir(?:e|ing)|tighten(?:ing)?|loosen(?:ing)?|clean(?:ing)?|servic(?:e|ing)|repair(?:ing)?|work(?:ing)? on|connect(?:ing)?|disconnect(?:ing)?|reconnect(?:ing)?|install(?:ing)?|unplug(?:ging)?|plug(?:ging)? in|tak(?:e|ing) off|put(?:ting)? on|reach(?:ing)? in)\b/i;
+
+/**
+ * Codex round 6 F3: a skip/bypass phrase under NEGATION is the opposite intent
+ * — "How do I replace the fan safely without skipping lockout?", "I do not
+ * want to bypass the lockout" — and was being refused as energized work. A
+ * SKIP_LOCKOUT match counts only when the words right before it do not negate
+ * it. The "without lockout" alternatives START with their own "without" and
+ * are untouched (the text before them is not a negation).
+ */
+const NEGATION_BEFORE_RE =
+  /\b(?:without|not|never|avoid(?:ing)?|instead\s+of|rather\s+than|no\s+intention\s+of|(?:don't|do\s+not|won't|will\s+not|shouldn't|should\s+not)(?:\s+(?:want|plan|intend|need|have)\s+to)?)\s*$/i;
+const SKIP_LOCKOUT_G = new RegExp(SKIP_LOCKOUT_RE.source, "gi");
+function skipLockoutIntent(msg: string): boolean {
+  for (const m of msg.matchAll(SKIP_LOCKOUT_G)) {
+    const before = msg.slice(Math.max(0, m.index! - 40), m.index!);
+    if (!NEGATION_BEFORE_RE.test(before)) return true;
+  }
+  return false;
+}
 // A reading verb aimed AT a work object is contact, not observation. Rounds
 // 2–3 tried a proximity window between verb and object and lost to "measure
 // the voltage between the two output terminals"; there is no window now. A
@@ -474,7 +502,7 @@ const PURE_DEFINITION_RE =
 /** Energized-work INTENT, opener-agnostic: a powered or skip-lockout state
  *  together with a hands-on verb, a work object, or powered contact. */
 function hasEnergizedWorkIntent(msg: string): boolean {
-  const state = SKIP_LOCKOUT_RE.test(msg) || POWERED_STATE_RE.test(msg);
+  const state = skipLockoutIntent(msg) || POWERED_STATE_RE.test(msg);
   if (!state) return false;
   return HANDS_ON_VERB_RE.test(msg) || WORK_OBJECT_RE.test(msg) || isPoweredContact(msg);
 }
@@ -492,7 +520,7 @@ export function isEnergizedWorkAsk(message: string): boolean {
   if (
     DEFINITIONAL_RE.test(msg) &&
     !hasEnergizedWorkIntent(msg) &&
-    !(SKIP_LOCKOUT_RE.test(msg) && !PURE_DEFINITION_RE.test(msg))
+    !(skipLockoutIntent(msg) && !PURE_DEFINITION_RE.test(msg))
   )
     return false;
   // An ACTIVE incident ("got shocked", "smoke coming", "just exploded") keeps
@@ -519,7 +547,7 @@ export function isEnergizedWorkAsk(message: string): boolean {
   // Taking those turns over would reverse a decision this item was not asked
   // to revisit, so the route gates the stop on `!electricalHazardDirective`
   // and the split is raised for Mike instead.
-  if (SKIP_LOCKOUT_RE.test(msg)) return true;
+  if (skipLockoutIntent(msg)) return true;
   if (!POWERED_STATE_RE.test(msg)) return false;
   // A status report / reading question with no hands-on verb is diagnosis,
   // not energized work (round-2 review false positives) — unless the message

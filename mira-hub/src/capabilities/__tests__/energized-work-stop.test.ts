@@ -209,6 +209,11 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
     "Turn off power supply monitoring in the diagnostics menu.",
     "Disconnect the power supply status cable from the controller.",
     "Remove the power supply cover screws to access the fuse.",
+    // Codex round 6 — two unrelated keywords: a keypad lockout FEATURE plus a menu timeout
+    "The keypad lockout feature prevents parameter changes. Wait 5 seconds to exit the menu.",
+    "Parameter lockout is set in P9.07. Wait 10 seconds for the display to refresh.",
+    "Lock out the machine as required by site policy. Wait 5 seconds to exit the menu.", // a real lockout noun + a MENU countdown is still one signal
+    "The keypad lockout feature prevents parameter changes from the front panel. Verify no parameters were altered.", // a FEATURE lockout + a second keyword is still one signal
   ])("a single keyword noun is NOT a lockout page: %s", (content) => {
     expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 43, pageLabel: "4-3" })])).toBeNull();
   });
@@ -222,6 +227,8 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
     "Disconnect all power to the drive and wait 5 minutes before servicing.",
     "Isolate the main power supply from the drive and verify zero voltage.", // round 5 control: supply ends the clause
     "Turn off the power supply.", // round 5 control: bare, at end of sentence
+    "Lock out the disconnect and wait 5 minutes for the bus capacitors to discharge.", // round 6 control: an energy countdown
+    "Lockout/tagout the drive, then wait 10 minutes before opening the enclosure.", // round 6 control
   ])("control: an instruction or two signals still qualify: %s", (content) => {
     expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 25, pageLabel: "2-15" })])).not.toBeNull();
   });

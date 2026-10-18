@@ -45,7 +45,11 @@ export const LOCKOUT_PAGE_QUERY =
 // servicing." boilerplate box — Review A HIGH: the old "first chunk under a
 // WARNING heading" rule picked the boilerplate on p.2 over the real p.2-15.
 const LOCKOUT_SIGNALS: ReadonlyArray<RegExp> = [
-  /\block[- ]?out\b/i,
+  // Codex round 6: the keypad / parameter / menu "lockout" FEATURE is a
+  // setting, not energy isolation — it must not count toward the two-signal
+  // rule ("The keypad lockout feature prevents parameter changes. Wait 5
+  // seconds to exit the menu." was being cited as the isolation procedure).
+  /(?<!\b(?:keypad|parameter|menu|screen|display|hmi)\s)\block[- ]?out\b(?!\s+(?:feature|function|setting|mode|parameter|option)\b)/i,
   /\btag[- ]?out\b|\bloto\b/i,
   // The disconnect-power INSTRUCTION — imperative only (Codex F4 round 3: "The
   // fault relay de-energizes when an alarm occurs" is a declarative about relay
@@ -59,7 +63,10 @@ const LOCKOUT_SIGNALS: ReadonlyArray<RegExp> = [
   // power supply monitoring in the diagnostics menu" and "Disconnect the power
   // supply status cable" were being cited as the isolation procedure).
   /(?:^|[.;:!]\s*|\b(?:must|always|first|then)\s+)(?:disconnect|remove|turn\s+off|shut\s+off|isolate|de-?energi[sz]e)\s+(?:all\s+|the\s+)?(?:input\s+|incoming\s+|main\s+)?power(?:\s+supply)?(?=\s+(?:to|from|at|before|and|then|first)\b|\s*[.,;:]|\s*$)|\b(?:must|always)\s+be\s+de-?energi[sz]ed\b/im,
-  /\bverify\s+(?:zero|no)\b|\bwait\s+(?:at\s+least\s+)?\d+\s*(?:minute|min|second|sec)|\bdischarge\b/i,
+  // …and a countdown is an isolation signal only when it is ABOUT energy
+  // ("wait 5 minutes before servicing / for the capacitors to discharge"), not
+  // a menu timeout ("wait 5 seconds to exit the menu" — Codex round 6).
+  /\bverify\s+(?:zero|no)\b|\bwait\s+(?:at\s+least\s+)?\d+\s*(?:minute|min|second|sec)\w*[^.;]{0,60}\b(?:before|until|for|then)\b[^.;]{0,50}\b(?:servic\w*|open\w*|remov\w*|touch\w*|work\w*|capacitor\w*|discharg\w*|power|voltage|energy|bus)\b|\bdischarge\b/i,
   // The manual's own "not while powered" PROHIBITION — round-2 review: the real
   // GS10 TQ-29 passage is "Do not remove the RFI jumper while power is
   // applied" (p.2-17). The powered-state phrase alone is not a signal (round

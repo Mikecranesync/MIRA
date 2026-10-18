@@ -13,6 +13,16 @@
 import { describe, expect, it } from "vitest";
 import { isEnergizedWorkAsk } from "../../lib/safety-classifier";
 
+describe("isEnergizedWorkAsk — skip-lockout phrases still stop when NOT negated (Codex r6 F3 control)", () => {
+  it.each([
+    "How do I replace the fan while skipping lockout?",
+    "Can I bypass the lockout and swap the fan?",
+    "Replace the fan without locking it out.",
+  ])("STOP: %j", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(true);
+  });
+});
+
 describe("isEnergizedWorkAsk — Codex r5 F1: ordinary subject / particle orderings", () => {
   it.each([
     // affirmative state assertion as its own sentence, then the hands-on ask
@@ -29,6 +39,11 @@ describe("isEnergizedWorkAsk — Codex r5 F1: ordinary subject / particle orderi
     "How do I remove the cover before I turn it off?",
     "Swap the fan before we power the drive down.",
     "Can I open the panel before I shut the line down?",
+    // Codex round 6
+    "The drive is on. How do I remove the cover?",
+    "Can I pull the RFI jumper while it has power?",
+    "The LED blinks; can I connect the jumper with it powered?",
+    "If the drive still has power, can I swap the fan?",
   ])("STOP: %j", (msg) => {
     expect(isEnergizedWorkAsk(msg)).toBe(true);
   });
@@ -51,6 +66,13 @@ describe("isEnergizedWorkAsk — Codex r5 F1: ordinary subject / particle orderi
     // temperature, not electrical state (the existing TQ-29 control)
     "The bearing is hot to the touch, what causes that?",
     "The motor is hot. Is that normal after an hour?",
+    // Codex round 6 — F3: a skip/bypass phrase under negation is the opposite intent
+    "How do I replace the fan safely without skipping lockout?",
+    "I do not want to bypass the lockout. How do I replace the fan?",
+    "I'd rather not skip the lockout — what's the right order to replace the fan?",
+    // "The cover is on" names a cover; "the LED blinks" alone is observation
+    "The cover is on. Why does it still trip?",
+    "The LED blinks; what does that mean with it powered?",
   ])("control (no stop): %j", (msg) => {
     expect(isEnergizedWorkAsk(msg)).toBe(false);
   });
