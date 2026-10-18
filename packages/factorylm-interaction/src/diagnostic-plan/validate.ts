@@ -1,6 +1,6 @@
 /**
  * Validation rules for diagnostic plan templates.
- * Seven validation rules ensure templates are well-formed and safe.
+ * Eight validation rules ensure templates are well-formed and safe.
  */
 
 import { ActionDefinition, ActionOutcome, WorkflowTemplate } from "./types";
@@ -33,6 +33,15 @@ export function validateTemplate(
         message: `Action '${step.action}' not found in library`,
       });
     }
+  }
+
+  // R8: step ids are unique; the runner resolves a record to the first matching id
+  const seenStepIds = new Set<string>();
+  for (const step of template.steps) {
+    if (seenStepIds.has(step.id)) {
+      errors.push({ rule: "R8", stepId: step.id, message: `Duplicate step id '${step.id}'` });
+    }
+    seenStepIds.add(step.id);
   }
 
   // R7: a step may not run under a different executor than its action declares

@@ -108,3 +108,22 @@ describe("Gate-7 round 3: a record must match its step's action", () => {
     if (result.kind === "step") expect(result.step.id).toBe(VFD_FAULT.steps[1].id);
   });
 });
+
+describe("Gate-7 round 5: step ids are unique (R8)", () => {
+  it("rejects a template with two steps sharing an id", () => {
+    const t: WorkflowTemplate = {
+      id: "dup",
+      title: "Duplicate ids",
+      steps: [
+        { id: "s1", action: "IDENTIFY_ASSET" },
+        { id: "s2", action: "ASSESS_HAZARDS" },
+        { id: "s2", action: "READ_FAULT" },
+      ],
+    };
+    expect(validateTemplate(t, LIBRARY).errors.some((e) => e.rule === "R8" && e.stepId === "s2")).toBe(true);
+  });
+
+  it("control: unique ids raise no R8 error", () => {
+    expect(validateTemplate(VFD_FAULT, LIBRARY).errors.filter((e) => e.rule === "R8")).toEqual([]);
+  });
+});
