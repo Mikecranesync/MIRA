@@ -151,3 +151,24 @@ describe("Review A — a page that mixes English and cipher is repaired block by
     expect(repairExtractedPage(page).repair).toBeNull();
   });
 });
+
+// The 3-distinct-common-words floor in blockIsShift29, pinned at its boundary
+// so it cannot be quietly lowered. Both fixtures pass every OTHER gate
+// identically (42–45 letters, zero digits, raw density 0, decoded density 33):
+// the only difference is how many different common words the decode yields.
+describe("blockIsShift29 — the distinct-common-words floor is exactly three", () => {
+  const TWO_WORDS = encodeShift29("the and ".repeat(7).trim()); // decodes to {the, and}
+  const THREE_WORDS = encodeShift29("the and for ".repeat(5).trim()); // decodes to {the, and, for}
+
+  it("a block that decodes to only two distinct common words is NOT repaired", () => {
+    // Precondition: the fixture really is cipher that would decode to English.
+    expect(englishDensity(decodeShift29(TWO_WORDS))).toBeGreaterThanOrEqual(3);
+    expect(repairExtractedPage(TWO_WORDS)).toEqual({ text: TWO_WORDS, repair: null, unrepaired: false });
+  });
+
+  it("control: the same shape with three distinct common words IS repaired", () => {
+    const out = repairExtractedPage(THREE_WORDS);
+    expect(out.repair).toBe("shift29");
+    expect(out.text).toBe("the and for ".repeat(5).trim());
+  });
+});

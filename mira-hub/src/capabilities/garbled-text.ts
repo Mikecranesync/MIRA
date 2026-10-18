@@ -134,6 +134,28 @@ export type PageRepair = { text: string; repair: "shift29" | null; unrepaired: b
  * Is this ONE block cipher that decodes to English? Deliberately stricter than
  * the page-level gate: a block is short, so the density signal is noisier, and
  * rewriting a block that was already fine is the one outcome worth preventing.
+ *
+ * Why these three thresholds (measured 2026-10-18 on the test fixtures, which
+ * are the real TQ-05/06 PLC-5 page shapes):
+ *
+ * - **24 letters** is an early exit, not the binding minimum. `englishDensity`
+ *   returns 0 for anything under 40 letters, so a 24–39-letter block can never
+ *   reach DECODED_FLOOR and is never repaired either way. That is what keeps
+ *   the 38-letter "Chapter 4 Processor Status and Fault Handling" header and
+ *   the 26-letter "WARNING Do not remove the cover." line untouched. Lowering
+ *   24 changes nothing; raising it above 40 would start skipping real
+ *   single-sentence cipher blocks.
+ * - **0.15 digit ratio.** Prose is almost digit-free (the PLC-5 page: 291
+ *   letters, 3 digits, ratio 0.01). A parts-table line is the opposite
+ *   ("1771-P7 120/220V AC 16A …": 37 letters, 31 digits, ratio 0.456) — and its
+ *   decode lands at density 3.0, exactly on DECODED_FLOOR, so the density
+ *   gates alone would have rewritten it. 0.15 sits an order of magnitude above
+ *   prose and a factor of three below the table; nothing measured is near it.
+ * - **3 distinct common words.** A decode that coins one common-word substring
+ *   by accident, even repeated, is a coincidence; real prose decodes into
+ *   several different ones. Two is not enough — see the boundary test in
+ *   `__tests__/garbled-text.test.ts`, which pins that a block decoding to only
+ *   `the`/`and` (density 33, every other gate passed) is left alone.
  */
 function blockIsShift29(block: string): boolean {
   const letters = (block.match(/[A-Za-z]/g) ?? []).length;
