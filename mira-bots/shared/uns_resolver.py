@@ -813,11 +813,11 @@ def _confidence(
 
 
 def _strip_negated_equipment(message: str) -> str:
-    """Drop "not a GS10" references so a correction is not anchored by what it negates."""
+    """Drop "not a GS10" / "not the GS10" so a correction is not anchored by what it negates."""
     out = message
     for alias in sorted(VENDOR_ALIASES, key=len, reverse=True):
         out = re.sub(
-            rf"\bnot\s+(?:an?\s+)?{_alias_pattern(alias)}"
+            rf"\bnot\s+(?:(?:an?|the)\s+)?{_alias_pattern(alias)}"
             r"(?:\s+[a-z0-9.-]*\d[a-z0-9.-]*)?",
             " ",
             out,

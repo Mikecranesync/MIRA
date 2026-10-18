@@ -27,6 +27,8 @@ def _offline():
         "Actually sorry, it's a GS20 not a GS10. Same OC fault.",
         # today: model "GS20." (trailing period), family GS10
         "It's not a GS10, it's a GS20. Same OC fault.",
+        # "not the" is as common as "not a" (round-2 review)
+        "It's not the GS10, it's a GS20. Same OC fault.",
     ],
 )
 def test_a_negated_model_is_never_the_asked_model(message):
