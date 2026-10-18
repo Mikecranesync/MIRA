@@ -7,15 +7,15 @@
 **State at head `57a60984` (Oct 17):**
 - Staging gate: PASS, 15/15, mean 4.61.
 - Codex r2 (on `b728640d`) left one MEDIUM, F6: a general-guidance turn that ends in a provider error used up the offer. Foreman's `57a60984` is the fix for it.
-- `Hub fidelity — classic notebook vs /v3`: was red because the clone sends `clientCapabilities: ["grounding_status_v1"]`. Agreed fix: allowlist that one field only, plus a control showing any other body difference still goes red. Don't edit the frozen classic notebook. Diagnosis: [6228706387](https://github.com/Mikecranesync/MIRA/pull/4303#issuecomment-6228706387).
-- `Legacy UI Lifecycle Guard` stays red until Codex records GREEN on the exact final head and body. The final Codex review waits for Mike's OK.
+- `Hub fidelity — classic notebook vs /v3`: fixed, no longer red on `57a60984`. It failed on `b728640d` because the clone sends `clientCapabilities: ["grounding_status_v1"]`; diagnosis in [6228706387](https://github.com/Mikecranesync/MIRA/pull/4303#issuecomment-6228706387).
+- `Legacy UI Lifecycle Guard` is the **only** failing check on `57a60984` (re-checked 2026-10-18 15:15Z). It stays red until Codex records GREEN on the exact final head and body. The final Codex review waits for Mike's OK.
 
-**Release prerequisites (as of Oct 8; re-check):**
-- Migration 104 is missing on staging and prod (drift run 37619485161).
-- Staging runs `a0bd5fa` (v3.389.2). That is the rollback target, with receipt artifact 11381878111.
-- Prod runs `648896996` (v3.374.16).
+**Release prerequisites (re-checked 2026-10-18 ~15:20Z; re-check again before acting):**
+- Migration 104: **applied.** Migration Drift Check [run 39117671009](https://github.com/Mikecranesync/MIRA/actions/runs/39117671009) (10:02Z) reports 0 unapplied on staging and prod; prod ledger shows 123/123 recorded. (On Oct 8 it was missing on both, drift run 37619485161.)
+- Staging: `deploy-staging` ran `8ca0b52be` (Oct 17), then `eb6e2ed2b` (Oct 18 12:43Z, success); `8369f5c71` was in progress at 15:10Z. The old `a0bd5fa` rollback target is **stale**. Pick the rollback target from the latest successful deploy receipt before using it.
+- Prod: last successful `deploy-vps` ran `eb6e2ed2b` (Oct 18 12:52Z, run 39129096547). The Oct 8 `648896996` figure is stale.
 
-**Mike-only, in order:** final Codex review → merge → migration 104 on staging (dry-run, then apply) → staging Doppler flag = 1 → deploy-staging of the merge SHA → emulator + Pixel acceptance, including the reopen check. Prod and migration 104 on prod come separately.
+**Mike-only, in order:** final Codex review → merge → staging Doppler flag = 1 → deploy-staging of the merge SHA → emulator + Pixel acceptance, including the reopen check. Prod comes separately. Migration 104 is already applied on both environments, so that step is done.
 
 **Keep out:** #4255 (auto general answers). Items 2–4 of the owner split (phone reload caption, photo previewUrl, retry draft) go to the mira-e7 follow-up PR, which merges after #4303 ([6049146065](https://github.com/Mikecranesync/MIRA/pull/4303#issuecomment-6049146065)).
 
