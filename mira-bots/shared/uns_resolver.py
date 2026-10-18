@@ -380,6 +380,10 @@ def _extract_fault_codes(message: str) -> list[tuple[str, str, int]]:
             tok = m.group(0)
             if tok.lower() in _FAULT_FALSE_POSITIVES:
                 continue
+            # A drive family name (Yaskawa A1000, E1000) fits the alarm / E-code
+            # patterns but is the model — never the fault.
+            if tok.lower() in FAMILY_FROM_ALIAS:
+                continue
             out.append((_normalize_fault_code(tok), tok, idx))
     return out
 
@@ -727,7 +731,8 @@ def _find_model_near_vendor(
         search_order = list(range(len(tokens)))
 
     for i in search_order:
-        tok = tokens[i]
+        # "It's a GS20." — the full stop ends the sentence, not the model name.
+        tok = tokens[i].rstrip(".-_")
         if not _is_model_candidate(tok, fault_raw_tokens):
             continue
         if _is_rating(tokens, i):
@@ -807,6 +812,39 @@ def _confidence(
     return 0.0
 
 
+def _strip_negated_equipment(message: str) -> str:
+    """Drop "not a GS10" / "not the GS10" so a correction is not anchored by what it negates."""
+    out = message
+    for alias in sorted(VENDOR_ALIASES, key=len, reverse=True):
+        out = re.sub(
+            rf"\bnot\s+(?:(?:an?|the)\s+)?{_alias_pattern(alias)}"
+            r"(?:\s+[a-z0-9.-]*\d[a-z0-9.-]*)?",
+            " ",
+            out,
+            flags=re.IGNORECASE,
+        )
+    return out
+
+
+def negates_equipment(message: str | None) -> bool:
+    """True when the message explicitly rules out a named machine ("not a GS10")."""
+    return bool(message) and _strip_negated_equipment(message) != message
+
+
+def _same_model(a: str, b: str) -> bool:
+    """ "525" and "PowerFlex 525" name one model; "7525" and "525" do not.
+
+    Only a letters-only series prefix may differ — the bare-number rule
+    ``rag_worker.evidence_applicability`` uses for the same question.
+    """
+    ka = re.sub(r"[^a-z0-9]", "", a.lower())
+    kb = re.sub(r"[^a-z0-9]", "", b.lower())
+    if not ka or not kb:
+        return False
+    short, longer = sorted((ka, kb), key=len)
+    return ka == kb or re.fullmatch(rf"[a-z]+{re.escape(short)}", longer) is not None
+
+
 def _merge_with_prior(fresh: UNSContext, prior: UNSContext | None) -> UNSContext:
     """Carry forward prior fields where the fresh ctx has nothing. Confidence
     decays slightly each turn."""
@@ -823,6 +861,10 @@ def _merge_with_prior(fresh: UNSContext, prior: UNSContext | None) -> UNSContext
     merged_mfr = pick(fresh.manufacturer, prior.manufacturer)
     merged_alias = pick(fresh.manufacturer_alias, prior.manufacturer_alias)
     merged_family = pick(fresh.product_family, prior.product_family)
+    if fresh.model and prior.model and not _same_model(fresh.model, prior.model):
+        # "actually it's a Yaskawa V1000" after an A1000 turn: the old model's
+        # family must not be carried onto the new model.
+        merged_family = fresh.product_family
     merged_model = pick(fresh.model, prior.model)
     merged_fault = pick(fresh.fault_code, prior.fault_code)
     merged_fault_raw = pick(fresh.fault_code_raw, prior.fault_code_raw)
@@ -979,14 +1021,19 @@ def resolve_uns_path(
     # actual fault below, after we know the model position)
     fault_pairs = _extract_fault_codes(message)
 
+    # A corrected identity must not be anchored by its explicitly negated
+    # predecessor ("GS20, not GS10"). Keep the original text for fault/symptom
+    # extraction; exclude only known equipment references from identity parsing.
+    identity_message = _strip_negated_equipment(message)
+
     # Stage 1b: vendor match first — needed to find model position
-    message_lower = message.lower()
+    message_lower = identity_message.lower()
     mfr, alias_lower, family_token = _match_vendor(message_lower)
 
     # Stage 1c: find model-position token (the first reasonable candidate
     # adjacent to the vendor). For this pass we treat NO tokens as fault yet —
     # the model-position lookup tells the fault picker which token to avoid.
-    model_position = _find_model_near_vendor(message, alias_lower, frozenset())
+    model_position = _find_model_near_vendor(identity_message, alias_lower, frozenset())
 
     # Stage 1d: pick the fault, preferring strong patterns and avoiding the
     # model-position token when a better candidate exists.
@@ -995,7 +1042,7 @@ def resolve_uns_path(
     # Stage 2: now strip the chosen fault token(s) from the model candidate
     # pool and re-resolve the model. If the model-position token IS the chosen
     # fault, look further down the token stream.
-    model = _find_model_near_vendor(message, alias_lower, fault_raw_tokens)
+    model = _find_model_near_vendor(identity_message, alias_lower, fault_raw_tokens)
 
     # Strip the alias key itself out of the model if model accidentally
     # matched a sub-word inside the alias (defensive — _find_model_near_vendor
@@ -1019,6 +1066,10 @@ def resolve_uns_path(
 
     category = _detect_category(message, has_fault=fault_code is not None)
     product_family = family_token
+    if product_family is None and model and model.lower() in FAMILY_FROM_ALIAS:
+        # "Yaskawa V1000": the vendor alias won the match, but the model token is
+        # itself a family name — the same answer as a bare "V1000".
+        product_family = FAMILY_FROM_ALIAS[model.lower()]
     if product_family is None and alias_lower and mfr:
         # If the alias IS the manufacturer (e.g. "siemens"), no family. If
         # alias is a model token from FAMILY_FROM_ALIAS we already populated.

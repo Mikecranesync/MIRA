@@ -1027,9 +1027,9 @@ approved:
       """Add kg_entities matches, knowledge_entries count, and site_path when
           available. Falls back to ctx on any error or unavailable DB.
           """
-  "mira-bots/shared/uns_resolver.py:811":
+  "mira-bots/shared/uns_resolver.py:941":
     approved_classification: UNFILTERED
-    query_sha256: "93e2d5836a3ee9474dbeb8dc7924a8847102b886ac481a9fdf8d9a40168583be"
+    query_sha256: "caafd8d1814ef378b539b0a03f455dd835c47f2c352c140ebeb7d2801eddf0e7"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       from .neon_recall import get_pool  # type: ignore[attr-defined]
