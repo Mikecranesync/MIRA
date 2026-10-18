@@ -4,12 +4,17 @@
  * knowledge_entries rows hold searchable English and carry an audit marker;
  * an ordinary page is written byte-for-byte as before; a garbled page that is
  * NOT the fixed shift is written as-is and only reaches the OCR seam behind
- * NOTEBOOK_GARBLE_OCR_FALLBACK=1.
+ * NOTEBOOK_GARBLE_OCR_FALLBACK=1. The decoder is default ON; NOTEBOOK_GARBLE_DECODE=0
+ * is the kill switch.
  *
  * Run: npx vitest run src/lib/__tests__/node-knowledge-ingest-garble.test.ts
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeShift29 } from "@/capabilities/garbled-text";
+import realPage from "@/capabilities/__tests__/fixtures/plc5-1785-rm001-p238.json";
+
+/** PDF p.238 (printed 15-8) of Rockwell's public 1785-rm001, as unpdf extracts it. */
+const REAL_PLC5_P238 = (realPage as { page: string }).page;
 
 const PLC5_PAGE =
   "In addition, the PLC-5 processor stores the program in battery-backed RAM. " +
@@ -73,10 +78,10 @@ beforeEach(() => {
   captured.length = 0;
   vi.clearAllMocks();
   delete process.env.NOTEBOOK_GARBLE_OCR_FALLBACK;
-  // Round-2 review: the decoder is default-OFF at ingest. These suites test
-  // the decoder's behaviour, so they turn it on explicitly; the flag-off case
-  // has its own test below.
-  process.env.NOTEBOOK_GARBLE_DECODE = "1";
+  // Release 2 Lane B (2026-10-18): the decoder is default-ON at ingest, so
+  // every suite runs with the flag UNSET — the state staging and prod are in.
+  // The kill switch (=0) has its own test below.
+  delete process.env.NOTEBOOK_GARBLE_DECODE;
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
   vi.spyOn(console, "info").mockImplementation(() => undefined);
 });
@@ -85,9 +90,40 @@ afterEach(() => {
   delete process.env.NOTEBOOK_GARBLE_DECODE;
 });
 
-describe("NOTEBOOK_GARBLE_DECODE is default OFF", () => {
-  it("with the flag unset, a shifted page is written exactly as extracted and nothing is marked repaired", async () => {
-    delete process.env.NOTEBOOK_GARBLE_DECODE;
+describe("NOTEBOOK_GARBLE_DECODE is default ON, =0 is the kill switch", () => {
+  // Staging and prod never set the flag (Release 2 Lane B, traces
+  // ee1494fcc921d964c48b27c70eca5c06 / fce2e5796fff061f8781822942642d54), so a
+  // default-off decoder shipped inert: the real PLC-5 manual was stored as cipher.
+  it("with the flag unset, a shifted page is decoded and marked repaired", async () => {
+    expect(process.env.NOTEBOOK_GARBLE_DECODE).toBeUndefined();
+    await ingest([encodeShift29(PLC5_PAGE), PLAIN_PAGE]);
+    const rows = insertedRows();
+    expect(rows.some((r) => r.content.includes("battery-backed RAM"))).toBe(true);
+    expect(rows.some((r) => r.content.includes("DGGLWLRQ"))).toBe(false);
+    expect(rows.some((r) => r.meta.text_repair === "shift29")).toBe(true);
+  });
+
+  it("with the flag unset, the real PLC-5 page 15-8 is written as English carrying both TQ answers", async () => {
+    expect(process.env.NOTEBOOK_GARBLE_DECODE).toBeUndefined();
+    await ingest([REAL_PLC5_P238]);
+    const rows = insertedRows();
+    const text = rows.map((r) => r.content).join(" ");
+    expect(text).toContain("creates a default 64-word file");
+    expect(text).toMatch(/the processor sets the \.ER bit\s+bit 12/);
+    expect(rows.every((r) => r.meta.text_repair === "shift29")).toBe(true);
+  });
+
+  it("with the flag unset, a plain page is written byte-for-byte with no marker", async () => {
+    expect(process.env.NOTEBOOK_GARBLE_DECODE).toBeUndefined();
+    await ingest([PLAIN_PAGE]);
+    const rows = insertedRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].content).toBe(PLAIN_PAGE);
+    expect(rows[0].meta.text_repair).toBeUndefined();
+  });
+
+  it("NOTEBOOK_GARBLE_DECODE=0 writes a shifted page exactly as extracted and marks nothing", async () => {
+    process.env.NOTEBOOK_GARBLE_DECODE = "0";
     await ingest([encodeShift29(PLC5_PAGE), PLAIN_PAGE]);
     const rows = insertedRows();
     // "addition" encodes to DGGLWLRQ; the cipher must survive verbatim.
