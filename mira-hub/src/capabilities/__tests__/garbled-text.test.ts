@@ -312,7 +312,7 @@ describe("round 4 — independent token evidence, residual cipher, partial marke
   );
 
   // Codex r4 F1: ordinary punctuation was positive cipher evidence — "0.5" → "MKR", "-" → "J", "(1)" → "ENF".
-  it.each(["0.5", "-", "/", "(1)", "P2.04", "$5", "24V", "10%", "VFD,", "LED.", "(VFD)", "I/O"])(
+  it.each(["0.5", "-", "/", "(1)", "P2.04", "$5", "24V", "10%", "VFD,", "LED.", "(VFD)", "I/O", "<=", ">=", "[1]", "++", "<>", "**"])(
     "F1 (r4): the clean number / punctuation token %j inside a cipher sentence is kept byte-identical",
     (tok) => {
       const a = encodeShift29("Set the input module current threshold to");
@@ -345,17 +345,38 @@ describe("round 4 — independent token evidence, residual cipher, partial marke
   );
 
   it("F3 (r4): …and when its words are unknown, the line stays garbled AND the page is reported partial", () => {
-    const page = `${PLC5_CIPHER}\nNote ${encodeShift29("Rotate the knob")}`;
+    // "plonk" / "gromp" are not vocabulary.
+    const page = `${PLC5_CIPHER}\nNote ${encodeShift29("Plonk the gromp")}`;
     const out = repairExtractedPage(page);
-    expect(out.text.split("\n")[1]).toBe(`Note ${encodeShift29("Rotate")} the ${encodeShift29("knob")}`);
+    expect(out.text.split("\n")[1]).toBe(`Note ${encodeShift29("Plonk")} the ${encodeShift29("gromp")}`);
+    expect(out.unrepaired).toBe(true);
+    expect(planChunkRepairs([{ id: "r1", content: page }])[0].repair).toBe("shift29_partial");
+  });
+
+  // Codex r5 F3: a LONG prefixed instruction that misses the density gate was skipped by the
+  // short-block path (≥40 letters) and its residue hidden by the prefix.
+  it("F3 (r5): a long 'Note '-prefixed cipher instruction on a cipher page is decoded, prefix byte-identical", () => {
+    const sentence = "Rotate the knob clockwise and counterclockwise before energizing the equipment";
+    expect((encodeShift29(sentence).match(/[A-Za-z]/g) ?? []).length).toBeGreaterThanOrEqual(40);
+    const out = repairExtractedPage(`${PLC5_CIPHER}\nNote ${encodeShift29(sentence)}`);
+    expect(out.text.split("\n")[1]).toBe(`Note ${sentence}`);
+    expect(out.unrepaired).toBe(false);
+  });
+
+  it("F3 (r5): …and the same long line with unknown words is reported partial, not complete", () => {
+    const sentence = "Plonk the gromp clockwise and counterclockwise before energizing the equipment";
+    const page = `${PLC5_CIPHER}\nNote ${encodeShift29(sentence)}`;
+    const out = repairExtractedPage(page);
+    expect(out.text.split("\n")[1]).toContain("clockwise and counterclockwise before energizing the equipment");
+    expect(out.text.split("\n")[1]).toContain(encodeShift29("Plonk"));
     expect(out.unrepaired).toBe(true);
     expect(planChunkRepairs([{ id: "r1", content: page }])[0].repair).toBe("shift29_partial");
   });
 
   it("F1 (r3) control: a cipher word the vocabulary does NOT know is left garbled (false negative), and reported", () => {
-    // "rotate" / "knob" are deliberately absent from TOKEN_VOCAB.
-    const out = repairExtractedPage(`${A} ${encodeShift29("rotate the knob")} ${B}`);
-    expect(out.text).toContain(` ${encodeShift29("rotate")} the ${encodeShift29("knob")} `);
+    // "plonk" / "gromp" are not vocabulary.
+    const out = repairExtractedPage(`${A} ${encodeShift29("plonk the gromp")} ${B}`);
+    expect(out.text).toContain(` ${encodeShift29("plonk")} the ${encodeShift29("gromp")} `);
     expect(out.unrepaired).toBe(true);
   });
 
@@ -385,9 +406,9 @@ describe("round 4 — independent token evidence, residual cipher, partial marke
     });
     // …so the same shape with non-vocabulary words is the regression: the half-decoded line
     // ("5RWDWH the HQRE clockwise") used to read as English once "the" appeared.
-    const page = `${PLC5_CIPHER}\n${encodeShift29("Rotate the knob clockwise")}`;
+    const page = `${PLC5_CIPHER}\n${encodeShift29("Plonk the gromp clockwise")}`;
     const out = repairExtractedPage(page);
-    expect(out.text.split("\n")[1]).toBe(`${encodeShift29("Rotate")} the ${encodeShift29("knob")} clockwise`);
+    expect(out.text.split("\n")[1]).toBe(`${encodeShift29("Plonk")} the ${encodeShift29("gromp")} clockwise`);
     expect(out).toMatchObject({ repair: "shift29", unrepaired: true });
     expect(planChunkRepairs([{ id: "r1", content: page }])[0].repair).toBe("shift29_partial");
   });

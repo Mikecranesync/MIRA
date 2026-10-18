@@ -321,7 +321,7 @@ const TOKEN_VOCAB = new Set([
   "started", "starter", "starts", "state", "states", "station", "status", "stores", "stored", "supply", "switch",
   "switches", "table", "tables", "tag", "tags", "temperature", "terminal", "terminals", "test", "tests", "timer",
   "timers", "torque", "transducer", "transformer", "transmitter", "valve", "valves", "variable", "voltage", "warning",
-  "wire", "wired", "wires", "wiring", "word", "words",
+  "wire", "wired", "wires", "wiring", "word", "words", "batt", "rotate", "knob", "equipment", "energizing",
 ]);
 
 const C0_RE = /[\x01-\x08\x0b\x0c\x0e-\x1f]/;
@@ -348,7 +348,12 @@ function tokenIsEnglish(raw: string): boolean {
  *  A lone "$5" stays what it is. */
 const STRONG_CIPHER_CHAR_G = /[$%&*+;<=>@[\\\]]/g;
 function letterlessIsCipher(raw: string): boolean {
-  return C0_RE.test(raw) || (raw.match(STRONG_CIPHER_CHAR_G) ?? []).length >= 2;
+  if (C0_RE.test(raw)) return true;
+  // Codex r5 on #4486: two printable symbols are NOT evidence on their own —
+  // "<=" decoded to "YZ", "[1]" to "xNz", "++" to "HH". A strong character
+  // only ADMITS the token to the vocabulary test ("%$77" → "batt").
+  if ((raw.match(STRONG_CIPHER_CHAR_G) ?? []).length === 0) return false;
+  return TOKEN_VOCAB.has(decodeShift29(raw).toLowerCase().replace(/[^a-z]/g, ""));
 }
 
 function tokenIsCipher(raw: string): boolean {
@@ -419,14 +424,14 @@ function blockLooksCipher(block: string): boolean {
  *  the short one beside it stayed garbled and the page was reported fully
  *  repaired. Used only once the page is known to be cipher. */
 function blockIsShortCipher(block: string): boolean {
-  const letters = (block.match(/[A-Za-z]/g) ?? []).length;
-  if (letters >= 40) return false;
-  // Codex r4 F3 on #4486: a short block that SHARES its line with an English
-  // prefix ("Note 7XUQ WKH VZLWFK FORFNZLVH") was neither decoded nor counted
-  // as unrepaired, because blockLooksCipher rejects any English token. On a
-  // page already established as cipher, the English tokens are not a veto:
-  // every token is judged on its own, the prefix is kept byte-identical by
-  // the token decoder, and any leftover shows up as `unresolved`.
+  // Codex r4 F3 on #4486: a block that SHARES its line with an English prefix
+  // ("Note 7XUQ WKH VZLWFK FORFNZLVH") was neither decoded nor counted as
+  // unrepaired, because blockLooksCipher rejects any English token. On a page
+  // already established as cipher, the English tokens are not a veto: every
+  // token is judged on its own, the prefix is kept byte-identical by the token
+  // decoder, and any leftover shows up as `unresolved`. Codex r5 F3: no length
+  // cut either — a LONG prefixed instruction that misses the density gate
+  // ("Note " + 67 letters of cipher) goes through the same token path.
   return classifyTokens(block).verdict.includes("cipher");
 }
 
