@@ -49,6 +49,12 @@ const LOCKOUT_SIGNALS: ReadonlyArray<RegExp> = [
   /\btag[- ]?out\b|\bloto\b/i,
   /\b(?:disconnect|remove|turn off|shut off)\s+(?:all\s+|the\s+)?(?:input\s+|incoming\s+|main\s+)?power\b|\bde-?energi[sz]\w*/i,
   /\bverify\s+(?:zero|no)\b|\bwait\s+(?:at\s+least\s+)?\d+\s*(?:minute|min|second|sec)|\bdischarge\b/i,
+  // The manual's own "not while powered" warning — round-2 review: the real
+  // GS10 TQ-29 passage is "Do not remove the RFI jumper while power is
+  // applied" (p.2-17), and no signal above matched it, so that page could
+  // never be the one cited. Unverified against the real PDF; the shape is
+  // the reviewer's quote.
+  /\b(?:while|with|when)\s+(?:the\s+)?power\s+(?:is\s+)?(?:applied|on|connected)\b|\bdo\s+not\s+(?:remove|install|connect|disconnect|touch)\b[^.]{0,80}\bpower(?:ed)?\b/i,
 ];
 const HAZARD_HEADING_RE = /\b(?:WARNING|DANGER|CAUTION)\b/;
 

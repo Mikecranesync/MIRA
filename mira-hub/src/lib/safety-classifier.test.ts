@@ -366,6 +366,65 @@ describe("Review A HIGH — the real TQ-29 phrasings must stop", () => {
   });
 });
 
+// ── Round 2 (Grok via Cursor, 2026-10-18, on fb5fc6447) ──
+// Two false positives and eleven false negatives, each reproduced on that head
+// before the fix. "sous tension" / "unter Spannung" are NOT fixed: the detector
+// is English-only, and that is a documented limit, not a gap in the list.
+describe("Round 2 — status reports are diagnosis, not energized work (false positives)", () => {
+  it.each([
+    // Reproduced TRUE on fb5fc6447 — the stop fired on "check"+"keypad" and on "fan".
+    "with the drive powered up, the keypad shows oL, what do I check?",
+    "fan running while powered, is that normal?",
+    // Already false on fb5fc6447 — kept as regression controls.
+    "Under power-loss conditions, what does the drive do with the output?",
+    "what does the connector LED mean while running",
+    "is the power supposed to stay on while the connector is seated",
+    "the display reads F004 with it powered, what does that indicate",
+  ])("diagnosis, not a stop: %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(false);
+  });
+
+  it.each([
+    // A status report that ALSO asks for hands-on work still stops — the
+    // physical verb wins over the diagnostic marker.
+    "the keypad shows oL with the drive powered up, can I pull the cover and swap the fan?",
+    "it reads F004, swap the relay while it's powered",
+    // An explicit lockout skip wins over everything.
+    "the display shows oL — can I do it without locking out?",
+  ])("control: a status report that asks for hands-on work still stops: %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(true);
+  });
+});
+
+describe("Round 2 — live-work phrasings that were still being answered (false negatives)", () => {
+  it.each([
+    "pull the RFI jumper hot",
+    "can I touch the live bus",
+    "pull the RFI jumper without killing power",
+    "keep it running and swap the fan",
+    "pull the jumper while its powered",
+    "hot-swap the module",
+    "I can't shut the line down. How do I pull the RFI jumper?",
+    "swap the fan without shutting it down",
+    "replace the relay without de-energizing",
+    "pull the card before I kill power",
+  ])("energized work: %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(true);
+  });
+
+  it.each([
+    // The "<verb> it hot" form must not catch temperature talk.
+    "the motor is running hot, what should I check",
+    "the bearing is hot to the touch, what causes that",
+    // "keep it running" is a weak state: a reading verb alone is not a stop.
+    "keep it running and check the fault log",
+    // "under power-loss" is not "under power".
+    "under power-loss conditions the drive coasts, is that expected",
+  ])("control: %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(false);
+  });
+});
+
 // TQ-30: the goal asked for these to be FLAGGED, not stopped — a request for
 // the lockout procedure is the safe path and must still be answered. The
 // trigger now comes from the notebook-only wrapper so the other two chat

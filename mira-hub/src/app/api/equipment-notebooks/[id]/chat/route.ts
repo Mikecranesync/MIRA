@@ -2776,8 +2776,18 @@ async function handleChatTurn(
       }
     }
     const lockoutChunk = pickLockoutChunk([...lockoutChunks, ...chunks]);
+    // Round-2 review: the stop TEXT was clean, but the same turn's citation
+    // chip carried a claim-centred quote of the lockout chunk (which can hold
+    // removal steps and torques when the lockout box sits on a procedure
+    // page) and the upload filename as its title — a crafted filename reached
+    // the chip even after it was kept out of the stop text. On the stop path
+    // the chip is a POINTER to the page, nothing more: no quote, neutral title.
     const stopCitations = lockoutChunk
-      ? await releaseClaimOnFailure(() => buildCitations(ctx.tenantId, notebookId, [lockoutChunk], message))
+      ? (await releaseClaimOnFailure(() => buildCitations(ctx.tenantId, notebookId, [lockoutChunk], message))).map((c) => ({
+          ...c,
+          sourceTitle: "Lockout / disconnect-power procedure",
+          quote: null,
+        }))
       : [];
     const stopText = energizedWorkStop(
       lockoutChunk ? { title: citationTitle(lockoutChunk), page: lockoutPageOf(lockoutChunk) } : null,

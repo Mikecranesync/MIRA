@@ -163,3 +163,25 @@ describe("Review A HIGH — pickLockoutChunk must not prefer front matter", () =
     expect(lockoutPageOf(pickLockoutChunk([FRONT])!)).toBe("2");
   });
 });
+
+// Round 2 (2026-10-18): the reviewer, who has the real GS10 manual, reports
+// the actual TQ-29 passage is "Do not remove the RFI jumper while power is
+// applied" on p.2-17 — and no lockout signal matched it, so that page could
+// never be cited; the stop fell back to p.2-15. The "not while powered"
+// warning is now a signal. Unverified against the real PDF: the fixture is
+// the reviewer's quoted sentence.
+describe("Round 2 — the manual's own 'not while power is applied' warning is a lockout signal", () => {
+  const RFI_WARNING = chunk({
+    content: "WARNING! Do not remove the RFI jumper while power is applied. Hazardous voltage is present at the jumper terminals.",
+    sourcePage: 27,
+    pageLabel: "2-17",
+  });
+
+  it("a passage that only says 'do not remove … while power is applied' is a candidate, not excluded", () => {
+    expect(pickLockoutChunk([TORQUE_PAGE, RFI_WARNING])).toBe(RFI_WARNING);
+  });
+
+  it("control: the full lockout procedure (more distinct signals) still outranks it", () => {
+    expect(lockoutPageOf(pickLockoutChunk([RFI_WARNING, LOCKOUT_PAGE])!)).toBe("2-15");
+  });
+});

@@ -303,7 +303,12 @@ const POWERED_STATE_RE = new RegExp(
   "\\b(?:" +
     [
       // "while it's powered", "while the drive is live", "while still hot"
-      "while\\s+(?:it(?:'s| is)\\s+|it's\\s+|the\\s+\\w+\\s+is\\s+|this\\s+is\\s+|still\\s+|it's\\s+still\\s+|it\\s+is\\s+still\\s+)?(?:live|powered(?:\\s+up|\\s+on)?|energized|hot|running)",
+      // "its" without the apostrophe is how technicians actually type it
+      // (round-2 review: "pull the jumper while its powered" walked past).
+      "while\\s+(?:it(?:'s| is)\\s+|it's\\s+|its\\s+|the\\s+\\w+\\s+is\\s+|this\\s+is\\s+|still\\s+|it's\\s+still\\s+|its\\s+still\\s+|it\\s+is\\s+still\\s+)?(?:live|powered(?:\\s+up|\\s+on)?|energized|hot|running)",
+      // "keep it running and swap the fan" — a running-only (weak) state, so
+      // it still needs a PHYSICAL verb or a work object to stop.
+      "keep\\s+(?:it|them|this|that|the\\s+\\w+(?:\\s+\\w+)?)\\s+running",
       // "with it powered", "with the drive powered", "with the unit energized"
       "with\\s+(?:it|this|that|them|the\\s+\\w+)\\s+(?:still\\s+)?(?:powered(?:\\s+up|\\s+on)?|live|energized|hot|running)",
       "with\\s+(?:the\\s+|it's\\s+|its\\s+)?power\\s+(?:still\\s+)?(?:on|applied|connected)",
@@ -312,11 +317,13 @@ const POWERED_STATE_RE = new RegExp(
       // scope pass (measured false on 24abb8e8a).
       "while\\s+(?:the\\s+)?power\\s+(?:is\\s+)?(?:still\\s+)?(?:on|applied|connected)",
       "power\\s+still\\s+on",
-      "under\\s+power",
+      // not "under power-loss conditions" (round-2 review)
+      "under\\s+power(?!-)",
       "still\\s+(?:energized|live|powered|hot)",
       "live\\s+wire",
       "live\\s+circuit",
       "live\\s+panel",
+      "live\\s+bus(?:bar)?",
       "energized\\s+conductor",
     ].join("|") +
     ")\\b",
@@ -347,8 +354,39 @@ const SKIP_LOCKOUT_RE = new RegExp(
       // ("can I do it hot"). Review A: this returned false before.
       "(?:do|work|service|fix|run)\\s+it\\s+hot",
       "hot\\s+work\\s+it",
+      // Round-2 review — the live-work phrasings that still got answered:
+      // "pull the RFI jumper hot" (verb + object + hot; "is running hot" and
+      // "hot to the touch" carry no such verb and stay controls)
+      "(?:pull|swap|replac|chang|remov|servic|fix|work\\s+on)\\w*\\s+(?:it|them|this|that|the\\s+\\w+(?:\\s+\\w+)?)\\s+hot",
+      "hot[- ]?(?:swap|plug)\\w*",
+      // "without killing power", "without shutting it down", "without de-energizing"
+      "without\\s+(?:killing|cutting|dropping|removing|isolating|disconnecting)\\s+(?:the\\s+|all\\s+)?power",
+      "without\\s+de-?energi[sz]ing",
+      "without\\s+(?:powering|shutting|turning)\\s+(?:it|them|this|that|the\\s+\\w+(?:\\s+\\w+)?)?\\s*(?:down|off)",
+      // "pull the card before I kill power" — the work is meant to come first
+      "before\\s+(?:I|we|you)\\s+(?:kill|cut|drop|shut\\s+off|turn\\s+off|disconnect|remove)\\s+(?:the\\s+)?power",
+      // "I can't shut the line down. How do I pull the RFI jumper?"
+      "can'?t\\s+(?:shut|take|bring|power)\\s+(?:it|this|that|the\\s+\\w+(?:\\s+\\w+)?)\\s+(?:down|off(?:line)?)",
     ].join("|") +
     ")\\b",
+  "i",
+);
+
+// Round-2 review: a STATUS report or reading question is a diagnosis turn,
+// not a work ask, even when it names a powered machine and a part: "with the
+// drive powered up, the keypad shows oL, what do I check?" and "fan running
+// while powered, is that normal?" were both hard-stopping — the first on
+// "check" + "keypad", the second on "fan". Neither asks to put hands on
+// anything. So: a diagnostic marker with NO physical verb is not a stop. An
+// explicit lockout skip (SKIP_LOCKOUT_RE) is checked first and still wins.
+const DIAGNOSTIC_CONTEXT_RE = new RegExp(
+  [
+    "\\b(?:shows?|showing|displays?|displaying|reads?|reading|blink\\w*|flash\\w*|indicat\\w*|supposed\\s+to)\\b",
+    "\\bis\\s+(?:that|this|it)\\s+normal\\b",
+    "\\bnormal\\?", // "…, is that normal?" — no \b after '?' at end of string
+    "\\bwhat\\s+(?:do|should|can)\\s+I\\s+(?:check|look|verify|monitor|watch|expect)\\b",
+    "\\bwhat\\s+does\\s+.+\\s+(?:mean|indicate)\\b",
+  ].join("|"),
   "i",
 );
 
@@ -399,6 +437,9 @@ export function isEnergizedWorkAsk(message: string): boolean {
   // and the split is raised for Mike instead.
   if (SKIP_LOCKOUT_RE.test(msg)) return true;
   if (!POWERED_STATE_RE.test(msg)) return false;
+  // A status report / reading question with no hands-on verb is diagnosis,
+  // not energized work (round-2 review false positives).
+  if (DIAGNOSTIC_CONTEXT_RE.test(msg) && !PHYSICAL_VERB_RE.test(msg)) return false;
   // A "running"-only powered state is too weak to pair with a reading verb.
   const strongState = POWERED_STATE_RE.test(msg.replace(RUNNING_ONLY_RE, ""));
   return strongState

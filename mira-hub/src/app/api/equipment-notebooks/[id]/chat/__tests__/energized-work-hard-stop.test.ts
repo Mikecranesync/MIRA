@@ -171,11 +171,18 @@ describe("TQ-29 — energized-work ask hard-stops and cites the manual's lockout
     const status = out.find((f) => f.kind === "status") as { status: string };
     expect(status.status).toBe("answered");
 
-    // The lockout page is the only citation the stop carries.
-    const sources = out.find((f) => f.kind === "sources") as { citations: Array<{ page: number | null; docId: string }> };
+    // The lockout page is the only citation the stop carries — and it is a
+    // pointer only (round 2): no quote (the chunk's quote window can carry
+    // steps/torques), and never the upload filename as its title.
+    const sources = out.find((f) => f.kind === "sources") as {
+      citations: Array<{ page: number | null; docId: string; quote: string | null; sourceTitle: string }>;
+    };
     expect(sources.citations).toHaveLength(1);
     expect(sources.citations[0].docId).toBe(DOC_A);
     expect(sources.citations[0].page).toBe(25);
+    expect(sources.citations[0].quote).toBeNull();
+    expect(sources.citations[0].sourceTitle).not.toContain("GS10 User Manual.pdf");
+    expect(sources.citations[0].sourceTitle).not.toMatch(/torque|discharge|disconnect all power/i);
 
     expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
     const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as {
@@ -237,6 +244,12 @@ describe("Review A HIGH — the leak and the photo skip, through the real route"
     expect(content).toMatch(/SAFETY STOP/);
     expect(content).not.toMatch(/kg·cm|remove jumper|torque/i);
     expect(content).toContain("p.2-15");
+    // Round 2: the crafted filename was still reaching the citation CHIP as
+    // its title, and the chip quote could carry the chunk's steps.
+    const sources = out.find((f) => f.kind === "sources") as { citations: Array<{ sourceTitle: string; quote: string | null }> };
+    expect(sources.citations).toHaveLength(1);
+    expect(sources.citations[0].sourceTitle).not.toMatch(/kg·cm|remove jumper|torque|JP1/i);
+    expect(sources.citations[0].quote).toBeNull();
   });
 
   it("a photo attached to the ask no longer switches the stop off", async () => {
