@@ -107,4 +107,34 @@ describe("ambiguous covers are not model-free manuals (Codex r3 F6)", () => {
   it("control: a resolved Micro820 cover is retrievable as before", async () => {
     expect(await askNb("Micro820 Programmable Controllers User Manual", "2080-um001.pdf")).toHaveLength(1);
   });
+
+  // Codex r4 F6: resolving the WHOLE heading let a cross-reference count as coverage.
+  it.each([
+    "User Manual\nMicro810 Programmable Controllers\nMicro820 is not covered by this manual.",
+    "User Manual\nMicro810 Programmable Controllers\nFor Micro820 see the separate user manual.",
+    "\nMicro810 Programmable Controllers User Manual\nRelated documents: Micro820 user manual",
+  ])("F6 (r4): a Micro810 cover whose later prose mentions Micro820 is still rejected: %j", async (heading) => {
+    expect(await askNb(heading)).toEqual([]);
+  });
+  it("F6 (r4) control: the declared title is still what counts — 'User Manual\\nMicro820 …\\nSee also Micro810' is kept", async () => {
+    expect(await askNb("User Manual\nMicro820 Programmable Controllers\nSee also the Micro810 manual.")).toHaveLength(1);
+  });
+});
+
+// Codex r4 F7: the proposal flow stores a FAMILY ROOT as digits ("800" for a
+// Micro800); as "#800" it was scoped like a model and lost the Micro850 manual.
+describe("a bare number that is a family root's number is family-only, like its word form (Codex r4 F7)", () => {
+  it.each([
+    ["800", "Micro850 Programmable Controllers User Manual", "2080-um002.pdf"],
+    ["520", "PowerFlex 525 Adjustable Frequency AC Drive User Manual", "520-um001.pdf"],
+    ["750", "PowerFlex 755 AC Drives User Manual", "750-um001.pdf"],
+  ])("Allen-Bradley %j keeps the %s", async (model, heading, filename) => {
+    expect(await ask(heading, filename, "Allen-Bradley", model)).toHaveLength(1);
+  });
+  it("…but only for the root's own vendor (an ABB '800' is a model, not the Micro800 family)", async () => {
+    expect(await ask("Micro850 Programmable Controllers User Manual", "2080-um002.pdf", "ABB", "800")).toEqual([]);
+  });
+  it("control: a bare number that is NOT a root's number still scopes ('850' rejects Micro810)", async () => {
+    expect(await ask("Micro810 Programmable Controllers User Manual", "2080-um001.pdf", "Allen-Bradley", "850")).toEqual([]);
+  });
 });

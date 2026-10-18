@@ -205,6 +205,36 @@ function coverIsAmbiguous(heading: string): boolean {
   return modelIdentitiesInText(declaredTitle(titleSegment(heading))).size === 0 && modelIdentitiesInText(heading).size > 0;
 }
 
+/** What an ambiguous cover DECLARES: the first model-bearing line below the
+ *  generic opener, resolved as a title (declaredTitle), and nothing after it.
+ *  Codex #4484 r4 F6: resolving the WHOLE heading let a cross-reference or an
+ *  explicit exclusion ("Micro820 is not covered by this manual", "For Micro820
+ *  see the separate user manual") count as coverage. Prose below the declared
+ *  title is never applicability evidence. */
+function ambiguousCoverIdentities(heading: string): Set<string> {
+  for (const line of heading.split("\n")) {
+    const ids = modelIdentitiesInText(declaredTitle(line));
+    if (ids.size > 0) return ids;
+  }
+  return new Set();
+}
+
+/** Codex #4484 r4 F7: the proposal flow stores a FAMILY ROOT as digits too
+ *  ("800" for a Micro800, "520" / "750" for the PowerFlex series). As "#800"
+ *  it was scoped like a model and rejected the Micro850 manual, while the same
+ *  notebook storing "Micro800" applied no filter (identitiesAreFamilyOnly). A
+ *  bare number that IS a family root's number, for the notebook's own vendor,
+ *  becomes that root. */
+function bareNumberFamilyRoot(digits: string, manufacturer: string | null | undefined): string | null {
+  const mfr = manufacturer?.trim();
+  if (!mfr) return null;
+  for (const [root, , vendor] of FAMILY_ROOTS) {
+    const m = FAMILY_DIGITS_RE.exec(root);
+    if (m && m[2] === digits && vendor.test(mfr)) return root;
+  }
+  return null;
+}
+
 // Codex #4469 r2 F5: an exact catalog number is a stronger identity than a
 // shared panel label. When BOTH the question and the document name a catalog
 // number (6AV…), applicability requires a catalog match — a shared "TP700"
@@ -1310,7 +1340,7 @@ export async function retrieveNodeChunks(
   const notebookIdentities: Set<string> =
     !requestedModel.model && !requestedModel.ambiguous && identityConfirmed && notebookModel
       ? BARE_MODEL_NUMBER_RE.test(notebookModel)
-        ? new Set([`#${notebookModel}`])
+        ? new Set([bareNumberFamilyRoot(notebookModel, opts.identity?.manufacturer) ?? `#${notebookModel}`])
         : modelIdentitiesInText(notebookModel)
       : new Set<string>();
   const notebookScoped =
@@ -1464,7 +1494,7 @@ export async function retrieveNodeChunks(
             coverIsAmbiguous(String(r.document_heading ?? "")) &&
             !documentCoversNotebook(
               notebookIdentities,
-              modelIdentitiesInText(String(r.document_heading ?? "")),
+              ambiguousCoverIdentities(String(r.document_heading ?? "")),
               opts.identity?.manufacturer?.trim() || null,
             ))
         ) {
