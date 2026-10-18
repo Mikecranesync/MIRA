@@ -116,6 +116,26 @@ describe("ambiguous covers are not model-free manuals (Codex r3 F6)", () => {
   ])("F6 (r4): a Micro810 cover whose later prose mentions Micro820 is still rejected: %j", async (heading) => {
     expect(await askNb(heading)).toEqual([]);
   });
+  // Codex r5 F6: the FIRST model-bearing line can itself be the exclusion.
+  it.each([
+    "User Manual\nMicro820 is not covered by this manual.",
+    "User Manual\nFor Micro820 see the separate user manual.",
+    "User Manual\nMicro820 users should refer to publication 2080-UM005.",
+  ])("F6 (r5): a cover whose only model-bearing line is prose declares nothing and is rejected: %j", async (heading) => {
+    expect(await askNb(heading, "Micro810_User_Manual.pdf")).toEqual([]);
+  });
+
+  // Codex r5 F8: a wrapped dual-model title below a generic opener kept only the first half.
+  it.each(["User Manual\nMicro810 and\nMicro820 Programmable Controllers", "\nMicro810 and\nMicro820 Programmable Controllers User Manual"])(
+    "F8 (r5): a wrapped 'Micro810 and / Micro820' title below a generic opener still covers the Micro820 notebook: %j",
+    async (heading) => {
+      expect(await askNb(heading)).toHaveLength(1);
+    },
+  );
+  it("F8 (r5) control: the wrapped title's OTHER half alone does not cover ('Micro810 and\\nMicro830')", async () => {
+    expect(await askNb("User Manual\nMicro810 and\nMicro830 Programmable Controllers")).toEqual([]);
+  });
+
   it("F6 (r4) control: the declared title is still what counts — 'User Manual\\nMicro820 …\\nSee also Micro810' is kept", async () => {
     expect(await askNb("User Manual\nMicro820 Programmable Controllers\nSee also the Micro810 manual.")).toHaveLength(1);
   });

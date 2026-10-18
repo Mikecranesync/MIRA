@@ -212,12 +212,27 @@ function coverIsAmbiguous(heading: string): boolean {
  *  see the separate user manual") count as coverage. Prose below the declared
  *  title is never applicability evidence. */
 function ambiguousCoverIdentities(heading: string): Set<string> {
-  for (const line of heading.split("\n")) {
-    const ids = modelIdentitiesInText(declaredTitle(line));
-    if (ids.size > 0) return ids;
+  const lines = heading.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (modelIdentitiesInText(lines[i]).size === 0) continue;
+    // Codex #4484 r5 F8: resolve the title from this line ON with the same
+    // dangling-join rule as the primary path, so "Micro810 and\nMicro820
+    // Programmable Controllers" keeps both models.
+    const segment = titleSegment(lines.slice(i).join("\n"));
+    // Codex #4484 r5 F6: the first model-bearing line can itself be prose —
+    // "Micro820 is not covered by this manual.", "For Micro820 see the
+    // separate user manual." A title names a product; prose has a verb or a
+    // reference. Judged on the WHOLE segment (declaredTitle would trim "For
+    // Micro820 see …" down to "For Micro820"). Such a cover declares NOTHING
+    // affirmative and is rejected.
+    if (COVER_PROSE_RE.test(segment)) return new Set();
+    return modelIdentitiesInText(declaredTitle(segment));
   }
   return new Set();
 }
+/** Words a product TITLE never carries but exclusion / cross-reference prose does. */
+const COVER_PROSE_RE =
+  /\b(?:is|are|was|were|not|see|refer|refers|covered|covers|separate|also|related|documents?|instead|only|except|does|do|use|uses|for\s+the|this\s+manual)\b|[.!?]\s*$/i;
 
 /** Codex #4484 r4 F7: the proposal flow stores a FAMILY ROOT as digits too
  *  ("800" for a Micro800, "520" / "750" for the PowerFlex series). As "#800"
