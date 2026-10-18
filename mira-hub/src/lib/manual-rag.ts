@@ -190,8 +190,19 @@ function affirmativeModelIdentities(filename: string, heading: string): Set<stri
   const headingIdentities = modelIdentitiesInText(declaredTitle(titleSegment(heading)));
   if (headingIdentities.size > 0) return headingIdentities;
   // A generic cover with model-bearing prose is ambiguous; a renamed file cannot resolve it.
-  if (modelIdentitiesInText(heading).size > 0) return new Set();
+  if (coverIsAmbiguous(heading)) return new Set();
   return modelIdentitiesInText(declaredTitle(stripFileExtension(filename).replace(/_+/g, " ")));
+}
+
+/** The cover's title segment names no model but the heading below it does
+ *  ("User Manual\nMicro810 Programmable Controllers", or a leading blank line).
+ *  Codex #4484 r3 F6: the notebook branch read the empty affirmative set as a
+ *  genuinely model-free manual and admitted a sibling's instructions. Such a
+ *  cover is resolved against EVERYTHING the heading names (so a Micro810
+ *  manual is rejected for a Micro820 notebook while a Micro820 one is kept),
+ *  never treated as model-free. */
+function coverIsAmbiguous(heading: string): boolean {
+  return modelIdentitiesInText(declaredTitle(titleSegment(heading))).size === 0 && modelIdentitiesInText(heading).size > 0;
 }
 
 // Codex #4469 r2 F5: an exact catalog number is a stronger identity than a
@@ -286,6 +297,21 @@ function identitiesAreFamilyOnly(ids: Set<string>): boolean {
 /** A confirmed notebook model stored as digits only ("820", "525"). */
 const BARE_MODEL_NUMBER_RE = /^\d{2,4}$/;
 const FAMILY_DIGITS_RE = /^([A-Z]+)(\d+)$/;
+/** Which vendor each detector family prefix (model-token.ts FAMILY_KEYS and
+ *  letter-bearing captures) belongs to. Codex #4484 r3 F5: the r2 fix tied a
+ *  bare number to FAMILY_ROOTS alone, so an Allen-Bradley "40" lost its own
+ *  "PowerFlex 40 User Manual" (PF40 is in no root). Exact-model resolution is
+ *  now separate from family-manual coverage: a title naming exactly
+ *  <family><digits> is the same machine when its family is this vendor's. */
+const FAMILY_PREFIX_VENDORS: ReadonlyArray<readonly [prefix: string, vendor: RegExp]> = [
+  ["PF", ROCKWELL],
+  ["MICRO", ROCKWELL],
+  ["ACS", /\babb\b/i],
+  ["GS", /automation\s*direct|durapulse/i],
+  ["TP", /siemens/i],
+  ["KTP", /siemens/i],
+  ["V", /siemens/i],
+];
 
 function documentCoversNotebook(notebook: Set<string>, title: Set<string>, manufacturer: string | null): boolean {
   // Codex #4484 F2: a catalog-only notebook identity (6AV2124-0GC01-0AX0) must
@@ -297,24 +323,23 @@ function documentCoversNotebook(notebook: Set<string>, title: Set<string>, manuf
     for (const n of nb) {
       if (familyCovers(t, n)) return true;
       if (n.startsWith("#")) {
-        // Bare-number identity (r1 F1, tightened in r2 F1): the digits alone
-        // name no family, so matching digits are NOT enough — "850" on an
-        // Allen-Bradley notebook was admitting an ABB ACS850 manual. The title
-        // must be <family><digits> (or that family's root) for a KNOWN family of
-        // the notebook's own manufacturer. With no manufacturer there is no
-        // grounded family, and no family manual is admitted (the generic
-        // no-model manual lenience above is unaffected).
+        // Bare-number identity (r1 F1, tightened in r2 F1, split in r3 F5): the
+        // digits alone name no family, so matching digits are NOT enough —
+        // "850" on an Allen-Bradley notebook was admitting an ABB ACS850
+        // manual. The title's family must be one of the notebook's OWN
+        // vendor's (FAMILY_PREFIX_VENDORS); then an EXACT <family><digits>
+        // title is the same machine ("PowerFlex 40" for "40"), and a family
+        // ROOT title covers the member it would name ("Micro800" for "850").
+        // With no manufacturer there is no grounded family, and no family
+        // manual is admitted (the generic no-model lenience is unaffected).
         const digits = n.slice(1);
         const m = FAMILY_DIGITS_RE.exec(t);
         if (!m || !manufacturer) continue;
+        const vendor = FAMILY_PREFIX_VENDORS.find(([prefix]) => prefix === m[1])?.[1];
+        if (!vendor || !vendor.test(manufacturer)) continue;
+        if (m[2] === digits) return true;
         const member = `${m[1]}${digits}`;
-        if (
-          FAMILY_ROOTS.some(
-            ([root, members, vendor]) => vendor.test(manufacturer) && members.test(member) && (t === member || t === root),
-          )
-        ) {
-          return true;
-        }
+        if (FAMILY_ROOTS.some(([root, members]) => t === root && members.test(member))) return true;
       }
     }
   }
@@ -1430,8 +1455,18 @@ export async function retrieveNodeChunks(
         if (requestedIdentities) {
           if (!documentCoversRequest(requestedIdentities, titleIdentities)) continue;
         } else if (
-          titleIdentities.size > 0 &&
-          !documentCoversNotebook(notebookIdentities, titleIdentities, opts.identity?.manufacturer?.trim() || null)
+          (titleIdentities.size > 0 &&
+            !documentCoversNotebook(notebookIdentities, titleIdentities, opts.identity?.manufacturer?.trim() || null)) ||
+          // r3 F6 — an ambiguous cover (generic first line, model-bearing
+          // heading) is NOT a model-free manual: it must cover the notebook by
+          // everything its heading names, or it is a sibling's manual.
+          (titleIdentities.size === 0 &&
+            coverIsAmbiguous(String(r.document_heading ?? "")) &&
+            !documentCoversNotebook(
+              notebookIdentities,
+              modelIdentitiesInText(String(r.document_heading ?? "")),
+              opts.identity?.manufacturer?.trim() || null,
+            ))
         ) {
           // Notebook-identity scope is deliberately one notch less strict than
           // a named ask: a manual that names NO model is kept, because the

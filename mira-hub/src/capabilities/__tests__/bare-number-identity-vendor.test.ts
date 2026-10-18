@@ -69,3 +69,42 @@ describe("bare-number identity — matching digits in another vendor's family ar
     expect(await ask("Micro810 Programmable Controllers User Manual", "2080-um001.pdf", "Allen-Bradley")).toEqual([]);
   });
 });
+
+// Codex r3 F5: the r2 vendor tie went through FAMILY_ROOTS alone, so a valid
+// model OUTSIDE the small root table lost its own manual.
+describe("bare-number identity — exact-model resolution is separate from family coverage (Codex r3 F5)", () => {
+  it("an Allen-Bradley '40' keeps its own PowerFlex 40 manual (PF40 is in no family root)", async () => {
+    expect(await ask("PowerFlex 40 User Manual", "22b-um001.pdf", "Allen-Bradley", "40")).toHaveLength(1);
+  });
+  it("…and still rejects a PowerFlex 400 manual (different digits) and the cross-vendor ACS850 case", async () => {
+    expect(await ask("PowerFlex 400 User Manual", "22c-um001.pdf", "Allen-Bradley", "40")).toEqual([]);
+    expect(await ask("ACS850 Firmware Manual", "acs850-fw.pdf", "Allen-Bradley", "850")).toEqual([]);
+  });
+  it("an exact-digits title of ANOTHER vendor's family is still rejected (an ABB '40' does not get PowerFlex 40)", async () => {
+    expect(await ask("PowerFlex 40 User Manual", "22b-um001.pdf", "ABB", "40")).toEqual([]);
+  });
+  it("family-root coverage still works beside exact resolution ('850' keeps the Micro800 family manual)", async () => {
+    expect(await ask("Micro800 Programmable Controllers General Instructions", "2080-rm001.pdf", "Allen-Bradley")).toHaveLength(1);
+  });
+});
+
+// Codex r3 F6: a cover whose FIRST line is generic but whose heading names a
+// model was read as model-free and admitted a sibling's manual.
+describe("ambiguous covers are not model-free manuals (Codex r3 F6)", () => {
+  const askNb = (heading: string, filename = "manual.pdf") => ask(heading, filename, "Allen-Bradley", "Micro820");
+  it("'User Manual\\nMicro810 Programmable Controllers' is rejected for a Micro820 notebook", async () => {
+    expect(await askNb("User Manual\nMicro810 Programmable Controllers")).toEqual([]);
+  });
+  it("a leading blank line before the Micro810 title is rejected too", async () => {
+    expect(await askNb("\nMicro810 Programmable Controllers User Manual")).toEqual([]);
+  });
+  it("control: the same ambiguous cover naming the notebook's OWN model is kept", async () => {
+    expect(await askNb("User Manual\nMicro820 Programmable Controllers")).toHaveLength(1);
+  });
+  it("control: a genuinely model-free cover keeps the lenience", async () => {
+    expect(await askNb("Controller Manual")).toHaveLength(1);
+  });
+  it("control: a resolved Micro820 cover is retrievable as before", async () => {
+    expect(await askNb("Micro820 Programmable Controllers User Manual", "2080-um001.pdf")).toHaveLength(1);
+  });
+});
