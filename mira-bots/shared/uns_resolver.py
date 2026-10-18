@@ -608,10 +608,17 @@ def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:
 _RATING_UNITS = r"hp|kw|kva|v|vac|vdc|amps?|hz|rpm|psi|bar|nm|ph|ms"
 _RATING_TOKEN_RE = re.compile(rf"^\d+(?:\.\d+)?(?:{_RATING_UNITS}|a|w)$", re.IGNORECASE)
 _RATING_UNIT_WORD_RE = re.compile(rf"^(?:{_RATING_UNITS})$", re.IGNORECASE)
+# Real models that happen to look like ratings. Source: every rating-shaped
+# knowledge_entries.model_number on staging (2026-10-18 scan, 381 distinct
+# values) — only the Fluke 87V multimeter. Refresh with
+#   SELECT DISTINCT model_number FROM knowledge_entries WHERE model_number ~* '^\d+(\.\d+)?(hp|kw|kva|v|vac|vdc|a|amps?|w|hz|rpm|psi|bar|nm|ph|ms)$';
+_RATING_SHAPED_MODELS = frozenset({"87v"})
 
 
 def _is_rating(tokens: list[str], i: int) -> bool:
     tok = tokens[i]
+    if tok.lower() in _RATING_SHAPED_MODELS:
+        return False
     if _RATING_TOKEN_RE.match(tok):
         return True
     if not re.fullmatch(r"\d+(?:\.\d+)?", tok) or i + 1 >= len(tokens):

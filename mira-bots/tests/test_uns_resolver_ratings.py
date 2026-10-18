@@ -53,6 +53,11 @@ def test_rating_is_not_resolved_as_model(message, expected_model):
     assert resolve_uns_path(message).model == expected_model
 
 
+def test_real_model_shaped_like_a_rating_is_kept():
+    # Fluke 87V: the one rating-shaped model_number in the staging corpus.
+    assert resolve_uns_path("my Fluke 87V shows OL on the motor leads").model == "87V"
+
+
 def test_rating_follow_up_keeps_the_established_model():
     first = resolve_uns_path("A1000 faulting OV during decel, high-inertia fan application")
     assert first.model == "A1000"  # precondition
