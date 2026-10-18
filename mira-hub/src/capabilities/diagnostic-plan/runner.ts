@@ -38,6 +38,12 @@ export function routeAfter(
   return next ? { kind: "step", step: next } : { kind: "done" };
 }
 
+/** Outcomes that always stop the run: UNSAFE, BLOCKED, and a safety step's FAIL or INCONCLUSIVE. */
+function isTerminal(outcome: ActionOutcome, action: ActionDefinition): boolean {
+  if (outcome === "UNSAFE" || outcome === "BLOCKED") return true;
+  return action.group === "safety" && (outcome === "FAIL" || outcome === "INCONCLUSIVE");
+}
+
 function follow(template: WorkflowTemplate, route: StepRoute): NextStepResult {
   if ("stop" in route) return { kind: "stop", reason: route.stop };
   const target = template.steps.find((s) => s.id === route.next);
@@ -80,6 +86,12 @@ export function nextStep(
 
     const action = actions.get(step.action);
     if (!action) return stop(`Action '${step.action}' is not in the library`);
+    // A terminal outcome keeps its own stop reason even on an incomplete record, so a missing
+    // report or attester can never turn "unsafe" into a generic record error.
+    if (isTerminal(record.outcome, action)) {
+      const terminal = routeAfter(template, template.steps.indexOf(step), record.outcome, action);
+      if (terminal.kind === "stop") return { ...terminal, atStep: record.stepId };
+    }
     if (record.verification !== action.verification) {
       return stop(`Record verification '${record.verification}' does not match action '${action.id}' (${action.verification})`);
     }
