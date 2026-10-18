@@ -22,7 +22,7 @@ from ..agentic_retrieval import (
 from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
 from ..inference.router import InferenceRouter
 from ..langfuse_setup import trace_rag_query
-from ..uns_resolver import canonical_vendor
+from ..uns_resolver import canonical_model, canonical_vendor, product_families_in
 
 # CRA-11 / Unit 2 — citation infrastructure.
 #
@@ -199,6 +199,63 @@ def chunk_matches_vendor(chunk_manufacturer: str | None, query_vendor: str | Non
         return True
     cq, cm = canonical_vendor(query_vendor), canonical_vendor(chunk_manufacturer)
     return cq is not None and cq == cm
+
+
+def evidence_applicability(
+    excerpt_model: str | None, asked_model: str, asked_family: str | None = None
+) -> str | None:
+    """How a retrieved excerpt relates to the model the technician asked about.
+
+    Family, not exact model, is the line (owner decisions, 2026-10-18):
+
+    * ``"model"``  — the excerpt is labelled for the asked model.
+    * ``"family"`` — a shared label covers it, or it names the same product family.
+    * ``"unknown"`` — the family can't be decided (no label, or a model the alias
+      table doesn't place in a family, e.g. every PowerFlex). Kept, as general
+      context only — dropping on doubt would erase the 520-series manual
+      (tagged "PowerFlex 525") for every 523 and 527 owner.
+    * ``None``     — both sides name a product family and they differ (a V1000
+      page for an A1000 question). The only case that drops the excerpt.
+
+    The asked family is read from the asked MODEL, never the resolver's
+    ``product_family``, which can lag a correction ("actually it's a V1000").
+    """
+    labels = [
+        re.sub(r"\s+series$", "", tag.strip(), flags=re.I)
+        for tag in re.split(r"[/,;]", excerpt_model or "")
+    ]
+    labels = [label for label in labels if label]
+    if not labels:
+        return "unknown"
+    keys = {canonical_model(label) for label in labels}
+    if canonical_model(asked_model, asked_family) in keys:
+        return "model" if len(keys) == 1 else "family"
+    asked_families = product_families_in(asked_model)
+    excerpt_families = set().union(*(product_families_in(label) for label in labels))
+    if asked_families and excerpt_families:
+        return "family" if asked_families & excerpt_families else None
+    return "unknown"
+
+
+def _scoped_query_model(state: dict) -> tuple[str, str | None] | None:
+    """(model, product_family) when the asked model is trusted enough to scope by.
+
+    Same guard as the cross-vendor filter (#2211): no confident vendor, no scoping.
+    """
+    uns = (state.get("context") or {}).get("uns_context") or {}
+    model = uns.get("model")
+    if not model or not _confident_query_vendor(state):
+        return None
+    return model, uns.get("product_family")
+
+
+def _evidence_scope_note(chunk: dict) -> str:
+    if chunk.get("evidence_applicability") == "unknown":
+        return (
+            "Applicability unknown: general/context only; do not use this "
+            "passage to substantiate model-specific codes, settings or procedures.\n"
+        )
+    return ""
 
 
 # Max tokens to allocate for conversation history in the prompt.
@@ -886,6 +943,31 @@ class RAGWorker:
                         chunk_texts = []
                         neon_chunks = []
 
+            # Model applicability: family, not exact model, decides (see
+            # evidence_applicability). A provably different family is dropped;
+            # everything else is kept and labelled. Photo turns are left alone,
+            # as the vendor filter above leaves them. When nothing survives, the
+            # honesty directive fires exactly as for a full vendor suppress.
+            if chunk_texts and not photo_b64:
+                asked = _scoped_query_model(state)
+                if asked:
+                    scoped = []
+                    for c in neon_chunks:
+                        scope = evidence_applicability(c.get("model_number"), *asked)
+                        if scope is not None:
+                            scoped.append({**c, "evidence_applicability": scope})
+                    dropped = len(neon_chunks) - len(scoped)
+                    if dropped:
+                        logger.info(
+                            "MODEL_FAMILY_FILTER model=%r — dropped %d chunk(s) from a "
+                            "different product family, kept %d",
+                            asked[0],
+                            dropped,
+                            len(scoped),
+                        )
+                    neon_chunks = scoped
+                    chunk_texts = [c["content"] for c in neon_chunks]
+
             self._last_sources = chunk_texts
             self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
             # Snapshot before any await so concurrent sessions can't overwrite
@@ -1089,7 +1171,7 @@ class RAGWorker:
                 _pairs.append((_meta[i - 1] if i - 1 < len(_meta) else {}, chunk))
         ref_lines: list[str] = []
         for i, (nc, text) in enumerate(_pairs, 1):
-            text = _neutralize_chunk_text(text)
+            text = _evidence_scope_note(nc) + _neutralize_chunk_text(text)
             label = format_source_label(nc)
             if label:
                 ref_lines.append(f"--- [{i}] [Source: {label}] ---\n{text}\n---")
@@ -1266,7 +1348,9 @@ class RAGWorker:
                 label = format_source_label(chunk) or _sanitize_label_field(
                     chunk.get("equipment_type") or "unknown"
                 )
-                safe_content = _neutralize_chunk_text(chunk["content"])
+                safe_content = _evidence_scope_note(chunk) + _neutralize_chunk_text(
+                    chunk["content"]
+                )
                 ref_lines.append(
                     f"--- [{i}] [Source: {label}] (score={score:.3f}) ---\n{safe_content}\n---"
                 )

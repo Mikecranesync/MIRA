@@ -581,6 +581,62 @@ def vendors_in_text(text: str | None) -> set[str]:
     return {canonical for canonical, _alias, _family, _pos in _match_all_vendors(text.lower())}
 
 
+# The FAMILY_FROM_ALIAS keys that name a whole product family — one manual set
+# covers every model in it — as opposed to a brand line ("powerflex") or a
+# single model ("pf525", "pf527"). Only these can prove that two models belong
+# to DIFFERENT families, which is the one case where a retrieved excerpt is
+# dropped (owner decision, 2026-10-18: family, not exact model, decides
+# applicability; when the family can't be decided, keep the excerpt).
+# Interim: the UNS knowledge-base branch has no family level yet. When it
+# does, that level replaces this set.
+FAMILY_LEVEL_ALIASES: frozenset[str] = frozenset(
+    {
+        "a1000",
+        "v1000",
+        "j1000",
+        "ga500",
+        "ga700",
+        "p1000",
+        "e1000",
+        "gs10",
+        "gs20",
+        "fr-a",
+        "fr-d",
+        "fr-e",
+        "fr-f",
+        "movitrac",
+        "movidrive",
+    }
+)
+
+
+def product_families_in(text: str | None) -> set[str]:
+    """Family-level product aliases named in a model label or model string.
+
+    Uses the module's one boundary rule (``_alias_pattern``), so ``GS100`` is
+    not a ``GS10`` and an A1000 catalog code (``CIMR-AU4A0058``) names no
+    family. An empty set means "not decidable", never "different".
+    """
+    if not text:
+        return set()
+    low = text.lower()
+    return {alias for alias in FAMILY_LEVEL_ALIASES if re.search(_alias_pattern(alias), low)}
+
+
+def canonical_model(model: str | None, product_family: str | None = None) -> str:
+    """Compare model aliases without equating different models of one vendor."""
+    key = re.sub(r"[^a-z0-9]", "", (model or "").lower())
+    aliases = {
+        re.sub(r"[^a-z0-9]", "", alias.lower()): re.sub(r"[^a-z0-9]", "", family.lower())
+        for alias, family in FAMILY_FROM_ALIAS.items()
+    }
+    key = aliases.get(key, key)
+    family = re.sub(r"[^a-z0-9]", "", (product_family or "").lower())
+    if key.isdecimal() and family:
+        return family if family.endswith(key) else family + key
+    return key
+
+
 def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:
     """A token is a model candidate iff:
     - Not a fault code we already captured
