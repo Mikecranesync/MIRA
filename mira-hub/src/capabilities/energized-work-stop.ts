@@ -54,8 +54,11 @@ const LOCKOUT_SIGNALS: ReadonlyArray<RegExp> = [
   // …and "power" must END the clause (Codex round 4: "Turn off power saving
   // mode", "Remove the power module", "Disconnect power output terminal" are
   // not isolation instructions). What may follow: to/from/at/before/and/then/
-  // first/supply, punctuation, or end of line.
-  /(?:^|[.;:!]\s*|\b(?:must|always|first|then)\s+)(?:disconnect|remove|turn\s+off|shut\s+off|isolate|de-?energi[sz]e)\s+(?:all\s+|the\s+)?(?:input\s+|incoming\s+|main\s+)?power(?=\s+(?:to|from|at|before|and|then|first|supply)\b|\s*[.,;:]|\s*$)|\b(?:must|always)\s+be\s+de-?energi[sz]ed\b/im,
+  // first, punctuation, or end of line. "power supply" is the one two-word
+  // target, and it must end the clause the same way (Codex round 5: "Turn off
+  // power supply monitoring in the diagnostics menu" and "Disconnect the power
+  // supply status cable" were being cited as the isolation procedure).
+  /(?:^|[.;:!]\s*|\b(?:must|always|first|then)\s+)(?:disconnect|remove|turn\s+off|shut\s+off|isolate|de-?energi[sz]e)\s+(?:all\s+|the\s+)?(?:input\s+|incoming\s+|main\s+)?power(?:\s+supply)?(?=\s+(?:to|from|at|before|and|then|first)\b|\s*[.,;:]|\s*$)|\b(?:must|always)\s+be\s+de-?energi[sz]ed\b/im,
   /\bverify\s+(?:zero|no)\b|\bwait\s+(?:at\s+least\s+)?\d+\s*(?:minute|min|second|sec)|\bdischarge\b/i,
   // The manual's own "not while powered" PROHIBITION — round-2 review: the real
   // GS10 TQ-29 passage is "Do not remove the RFI jumper while power is

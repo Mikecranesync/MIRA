@@ -205,6 +205,10 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
     "Turn off power saving mode to prevent the display from sleeping.",
     "Remove the power module from the chassis.",
     "Disconnect power output terminal T1 before wiring.",
+    // Codex round 5 — "power supply" as a modifier of a setting or a signal cable
+    "Turn off power supply monitoring in the diagnostics menu.",
+    "Disconnect the power supply status cable from the controller.",
+    "Remove the power supply cover screws to access the fuse.",
   ])("a single keyword noun is NOT a lockout page: %s", (content) => {
     expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 43, pageLabel: "4-3" })])).toBeNull();
   });
@@ -216,6 +220,8 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
     "Disconnect power.", // bare imperative at end of sentence
     "Disconnect the power supply before servicing the unit.", // "power supply" is the thing removed
     "Disconnect all power to the drive and wait 5 minutes before servicing.",
+    "Isolate the main power supply from the drive and verify zero voltage.", // round 5 control: supply ends the clause
+    "Turn off the power supply.", // round 5 control: bare, at end of sentence
   ])("control: an instruction or two signals still qualify: %s", (content) => {
     expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 25, pageLabel: "2-15" })])).not.toBeNull();
   });

@@ -325,6 +325,19 @@ const POWERED_STATE_RE = new RegExp(
       // all walked past. One alternative, with an OPTIONAL copula drawn from a
       // list of state verbs: <while|with|when> <subject> [copula] [still] <state>.
       `(?:while|with|when)\\s+(?:it|its|this|that|them|the\\s+\\w+(?:\\s+\\w+)?)(?:'s|\\s+is|\\s+remains|\\s+stays|\\s+is\\s+kept|\\s+is\\s+left)?\\s+(?:still\\s+)?(?:live|${PW}(?:\\s+up|\\s+on)?|energi[sz]ed|hot|running|turned\\s+on|switched\\s+on)`,
+      // Codex round 5: "while the drive is on" — the plainest state of all.
+      // "on" needs the copula ("with the cover on" is a cover, not a state).
+      "(?:while|with|when)\\s+(?:it|this|that|they|the\\s+\\w+(?:\\s+\\w+)?)(?:'s|\\s+is|\\s+are|\\s+remains|\\s+stays)\\s+(?:still\\s+)?on\\b",
+      // …and without the copula ONLY when the subject is the machine or its
+      // power ("with the unit on"), never a part ("with the cover on").
+      "(?:while|with|when)\\s+(?:the\\s+)?(?:power|drive|unit|machine|panel|system|line|breaker|controller|vfd|plc|motor|inverter|supply|mains?)\\s+(?:still\\s+)?on\\b",
+      // Codex round 5: an affirmative state ASSERTION as its own sentence —
+      // "The drive is energized. How do I remove the cover?" — no while/with/
+      // when at all. Anchored to a sentence start so "the display is live"
+      // mid-sentence prose is not a state. "on" is excluded here ("The cover
+      // is on." names a cover) and so is "hot" ("the bearing is hot to the
+      // touch" is temperature — the existing control).
+      `(?:^|[.;!?]\\s+)(?:it|this|that|they|everything|the\\s+\\w+(?:\\s+\\w+)?)(?:'s|\\s+is|\\s+are|\\s+remains|\\s+stays)\\s+(?:still\\s+)?(?:live|energi[sz]ed|${PW}(?:\\s+up|\\s+on)?)\\b`,
       // "while still hot", "while powered" — no subject at all
       `while\\s+(?:still\\s+)?(?:live|${PW}(?:\\s+up|\\s+on)?|energi[sz]ed|hot|running)`,
       // "keep it running and swap the fan" — a running-only (weak) state, so
@@ -387,6 +400,11 @@ const SKIP_LOCKOUT_RE = new RegExp(
       // Codex round 4: "before shutting the power off", "before powering it
       // down", "without doing lockout", "without performing LOTO"
       "before\\s+(?:shutting|turning|switching|powering|cutting|killing)\\s+(?:the\\s+|it\\s+|them\\s+)?(?:power\\s+)?(?:off|down)",
+      // Codex round 5: the verb–object–particle order — "before I shut the
+      // power off", "before I turn it off", "before we power the drive down".
+      // The object is the power or the machine, never an arbitrary noun
+      // ("before I turn the speed down" is a setting, not isolation).
+      "before\\s+(?:I|we|you)\\s+(?:shut|turn|switch|power|cut|kill)\\s+(?:it|them|this|that|(?:the\\s+)?(?:power|supply|drive|machine|unit|line|panel|system|breaker|disconnect|main|mains|cell|conveyor))\\s+(?:off|down)",
       "without\\s+(?:doing|performing|applying|completing|running|following)\\s+(?:a\\s+|the\\s+|any\\s+|proper\\s+)?(?:lock[- ]?out|loto|lockout\\s*/\\s*tagout)",
       // "I can't shut the line down. How do I pull the RFI jumper?"
       "can'?t\\s+(?:shut|take|bring|power)\\s+(?:it|this|that|the\\s+\\w+(?:\\s+\\w+)?)\\s+(?:down|off(?:line)?)",
