@@ -2,6 +2,7 @@
  * Regression tests for the Gate-7 round 1 findings on PR #4500:
  * F1: an empty run belonging to another template must stop, never start.
  * F2: a step may not run under a different executor than its action declares.
+ * Round 2: R6 deliberately gates technician observation as well as measurement.
  */
 
 import { describe, it, expect } from "bun:test";
@@ -64,5 +65,25 @@ describe("Gate-7 F2: step executor must match the action's executor (R7)", () =>
   it("control: an omitted step executor inherits the action's and validates clean", () => {
     const inherit: WorkflowTemplate = { ...base, steps: base.steps.map(({ id, action }) => ({ id, action })) };
     expect(validateTemplate(inherit, LIBRARY).errors).toEqual([]);
+  });
+});
+
+describe("Gate-7 round 2: R6 gates technician observation, not only measurement", () => {
+  it("rejects a technician OBSERVE_STATE before the hazard step", () => {
+    const t: WorkflowTemplate = {
+      id: "observe_first",
+      title: "Observe first",
+      steps: [{ id: "s1", action: "OBSERVE_STATE" }, { id: "s2", action: "ASSESS_HAZARDS" }],
+    };
+    expect(validateTemplate(t, LIBRARY).errors.some((e) => e.rule === "R6" && e.stepId === "s1")).toBe(true);
+  });
+
+  it("control: a MIRA identify step before the hazard step is allowed", () => {
+    const t: WorkflowTemplate = {
+      id: "identify_first",
+      title: "Identify first",
+      steps: [{ id: "s1", action: "IDENTIFY_ASSET" }, { id: "s2", action: "ASSESS_HAZARDS" }],
+    };
+    expect(validateTemplate(t, LIBRARY).errors.filter((e) => e.rule === "R6")).toEqual([]);
   });
 });

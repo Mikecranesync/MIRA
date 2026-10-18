@@ -157,7 +157,8 @@ export function validateTemplate(
     }
   }
 
-  // R6: hazard step before first technician measurement
+  // R6: hazard step before the first technician field step. Observing (identify group) counts as well
+  // as measuring: both put the technician at the machine, so the hazard step comes first on purpose.
   let hazardFound = false;
   let firstTechnicianMeasurement = false;
 
@@ -171,7 +172,7 @@ export function validateTemplate(
         errors.push({
           rule: "R6",
           stepId: step.id,
-          message: `Technician measurement must come after hazard assessment`,
+          message: `Technician field step (measure or observe) must come after hazard assessment`,
         });
       }
       firstTechnicianMeasurement = true;
