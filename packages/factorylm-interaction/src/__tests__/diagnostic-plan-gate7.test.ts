@@ -87,3 +87,24 @@ describe("Gate-7 round 2: R6 gates technician observation, not only measurement"
     expect(validateTemplate(t, LIBRARY).errors.filter((e) => e.rule === "R6")).toEqual([]);
   });
 });
+
+describe("Gate-7 round 3: a record must match its step's action", () => {
+  const firstStep = VFD_FAULT.steps[0];
+
+  it("stops when the last record's action differs from the template step's action", () => {
+    const result = nextStep(VFD_FAULT, {
+      templateId: VFD_FAULT.id,
+      records: [{ stepId: firstStep.id, action: "MEASURE", outcome: "PASS", verification: "self_reported" }],
+    });
+    expect(result.kind).toBe("stop");
+  });
+
+  it("control: a record whose action matches advances to the next step", () => {
+    const result = nextStep(VFD_FAULT, {
+      templateId: VFD_FAULT.id,
+      records: [{ stepId: firstStep.id, action: firstStep.action, outcome: "PASS", verification: "machine" }],
+    });
+    expect(result.kind).toBe("step");
+    if (result.kind === "step") expect(result.step.id).toBe(VFD_FAULT.steps[1].id);
+  });
+});

@@ -40,6 +40,15 @@ export function nextStep(template: WorkflowTemplate, run: RunRecord | null): Nex
 
   const currentStep = template.steps[currentStepIndex];
 
+  // A record must describe the action its step declares; a mismatch is a foreign or corrupted record
+  if (lastRecord.action !== currentStep.action) {
+    return {
+      kind: "stop",
+      reason: `Record action '${lastRecord.action}' does not match step '${currentStep.id}' action '${currentStep.action}'`,
+      atStep: lastRecord.stepId,
+    };
+  }
+
   // Loop guard: same step more than 3 times
   const sameStepCount = run.records.filter((r) => r.stepId === lastRecord.stepId).length;
   if (sameStepCount > 3) {
