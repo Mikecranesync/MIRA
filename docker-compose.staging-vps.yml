@@ -948,6 +948,9 @@ services:
     container_name: stg-mira-reranker
     environment:
       - RERANKER_THREADS=3
+      # int8 (AVX2) model: same answers on the replay within 1 of 50/32, ~4x faster than
+      # fp32, which measured p95 4.1 s here. Rollback without a rebuild: RERANKER_MODEL=fp32.
+      - RERANKER_MODEL=${RERANKER_MODEL:-int8-avx2}
     networks:
       - staging-net
     restart: unless-stopped

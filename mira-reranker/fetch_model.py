@@ -20,7 +20,7 @@ from pathlib import Path
 
 MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 MODEL_REVISION = "233902d25c440f23af6f7d6e94d2946bac0bee0a"
-FILES = ("onnx/model.onnx", "tokenizer.json", "config.json")
+FILES = ("onnx/model.onnx", "onnx/model_quint8_avx2.onnx", "tokenizer.json", "config.json")
 BASE_URL = f"https://huggingface.co/{MODEL_NAME}/resolve/{MODEL_REVISION}"
 
 HERE = Path(__file__).resolve().parent
