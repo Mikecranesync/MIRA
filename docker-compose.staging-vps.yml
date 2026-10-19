@@ -928,6 +928,11 @@ services:
     restart: unless-stopped
     mem_limit: 2g
     memswap_limit: 2g
+    # CPU cap (Mike, 2026-10-19). Uncapped, this embedder used ~5.5 of the host's 6
+    # vCPUs while indexing uploads (557% during stranger walks), starving the
+    # reranker (2.3-4.1 s per question) and contending with production on the same
+    # host. Trade-off accepted: uploads become searchable more slowly.
+    cpus: 2
     healthcheck:
       test: ["CMD-SHELL", "ollama list | grep -E '^nomic-embed-text:v1.5[[:space:]]+0a109f422b47' && ollama list | grep -E '^nomic-embed-text:latest[[:space:]]+0a109f422b47'"]
       interval: 30s
