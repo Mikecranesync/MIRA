@@ -66,6 +66,32 @@ Recovery: abandon branch `feat/notebook-reranker`; R0 restores fully (no schema,
    visible@6. If the production pool loses the offline gain, widening the pool when rerank is on is decided here.
 4. Staging compose (limits, internal only) → deploy → p95 latency on staging.
 
+## Step 3 measurement (2026-10-19, real hook, zero-token replay)
+The production pool is **24**, not 50: the hook reranks `hybridRanked.slice(0, rerankPool())`, and
+`hybridRanked` holds only the retrieval pool, `max(4·topK, 24)` = 24 at the route's `topK = 6`.
+Measured at that pool, replay call `topK = 6` only, **0 reranker fallbacks** in every rerank-on run
+(the client timeout was raised locally for the measurement only, so latency could not contaminate quality).
+
+| corpus / mode | answer visible in the six (off → on) | right page in the six (off → on) |
+|---|---|---|
+| public-50 lexical (staging's mode) | 31 → **34** (0 lost) | 37 → 39 |
+| public-50 hybrid | 36 → **41** (0 lost) | 41 → 46 |
+| real-32 lexical | 15 → **21** (1 lost: tq-18) | 23 → 26 |
+| real-32 hybrid | 17 → **25** (0 lost) | 26 → 30 |
+
+Flag off reproduces Phase 0 exactly (public lexical: 50/50 identical top-six pages).
+
+**Service defect found and fixed (c46239d99):** OOM-killed under a 768 MiB cap — the ONNX arena grew
+481 MiB → 1.4 GiB over 20 requests, and one 24-pair batch spiked past the cap. Arena off + batches of 8:
+flat ~300 MiB over 50 pool-50 requests; scores within 6.2e-6, top-six order unchanged 25/25.
+
+**Latency risk (open):** ONNX fp32 on CHARLIE's ARM cores at 2 threads is p50 ≈ 1.6 s per pool-24
+request — above the Hub's 1.5 s timeout (offline 0.43 s was PyTorch with Apple matrix units, not
+comparable). The staging host is x86 with different kernels; its p95 must be measured before the walk
+is read. Host checked read-only: 6 vCPU Intel Haswell, AVX2, **no AVX-512 VNNI**, load ~0.1, 8 GB free — so the
+staging service gets `cpus: 3` with 3 threads. Fallback if over budget: the AVX2 int8 model file (not the
+VNNI one), pinned by sha256, re-measured for quality first.
+
 ## Shadow-validation plan (Gate 8)
 Staging with `NOTEBOOK_RERANK=1`, replay against staging + one stranger walk at a fixed configuration.
 
