@@ -86,8 +86,22 @@ describe("isRefusal", () => {
     expect(isRefusal("Don't remove the cover while powered. The manual shows the terminal layout on page 12 [1].")).toBe(false);
     expect(isRefusal("Do not touch the terminals until the charge LED is off; the documentation gives 5 minutes [1].")).toBe(false);
   });
-  it("an instruction sentence does not hide a real refusal in the same answer", () => {
+  it("an instruction does not hide a real refusal — in the next sentence or the same one (Codex F2 on #4532)", () => {
     expect(isRefusal("Don\u2019t guess at this one. The loaded excerpts do not say what fault 46 means.")).toBe(true);
+    expect(isRefusal("Do not guess; I cannot find this code in the supplied manual.")).toBe(true);
+    expect(isRefusal("Don't reset it yet, I can't find fault 46 in the provided excerpts.")).toBe(true);
+  });
+  it("diagnostic language with the new verbs is not a refusal (Codex F1 on #4532)", () => {
+    const cites = [{ citationId: "1", docId: "d", sourceTitle: "m.pdf", page: 7, fileId: null, quote: null }] as never[];
+    for (const answer of [
+      "A flashing red LED could indicate a communication fault according to the manual [1].",
+      "The manual confirms that this LED does not indicate a fault [1].",
+    ]) {
+      expect(isRefusal(answer), answer).toBe(false);
+      expect(refusalVerdict(answer, { docGrounded: true, citations: cites }), answer).toBe(false);
+    }
+    // Control: the walk's genuine refusals are still refusals with no shipped citation.
+    expect(refusalVerdict("The loaded excerpts do not define fault 39 for the SMC Flex.", { docGrounded: true, citations: [] })).toBe(true);
   });
   it("still does not flag a grounded answer that uses those verbs affirmatively", () => {
     expect(isRefusal("The manual specifies 24 VDC on page 12 [1] and lists the fault codes in section 7 [2].")).toBe(false);

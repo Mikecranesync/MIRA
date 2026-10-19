@@ -511,30 +511,40 @@ export function legacyCascadeUsage(
 
 // ONE copy of the refusal pattern, shared by isRefusal, sentenceIsRefusal and the
 // answer_gate span fields, so the three can never drift apart.
-// #4514 (2026-10-19 stranger walk): "The loaded excerpts do not SAY whether…",
-// "…do not DEFINE fault 39…" and "I can\u2019t find…" (typographic apostrophe, which
-// the model writes) were persisted as `answered` with no citation. Added: say /
-// define / identify / confirm / describe / explain / indicate, and apostrophe
-// normalization before matching (the same class #4032 fixed in isRefusalAnswer).
 const REFUSAL_PHRASE_RE =
-  /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover|say|define|identify|confirm|describe|explain|indicate)\b/;
+  /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/;
+// #4514 (2026-10-19 stranger walk): "The loaded excerpts do not SAY whether…" and
+// "…do not DEFINE fault 39…" were persisted as `answered`. These verbs are also
+// ordinary diagnostic language ("could indicate a fault", "this LED does not indicate
+// a fault"), so they count ONLY when the evidence itself is the subject of the
+// negation, or the assistant states it cannot (Codex F1 on #4532).
+const EVIDENCE_SUBJECT_REFUSAL_RE =
+  /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|pages?|data ?sheets?|materials?)\s+(?:[a-z'-]+\s+){0,2}(?:do(?:es)? not|don't|doesn't|did not|didn't)\s+(?:[a-z'-]+\s+){0,2}(?:say|define|identify|confirm|describe|explain|indicate)\b/;
+const FIRST_PERSON_REFUSAL_RE =
+  /\b(?:i|we)\s+(?:can't|cannot|could not|couldn't|am unable to|was unable to|'m unable to)\s+(?:[a-z'-]+\s+){0,2}(?:say|define|identify|confirm|describe|explain|indicate)\b/;
 const EVIDENCE_PHRASE_RE =
   /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/;
-/** Lowercase with typographic apostrophes folded to ASCII, for the refusal patterns. */
+/** Lowercase with typographic apostrophes folded to ASCII (#4032 class: the model
+ *  writes "can\u2019t"), for the refusal patterns. */
 function refusalText(text: string): string {
   return text.toLowerCase().replace(/[\u2018\u2019\u02bc]/g, "'");
 }
-/** A sentence that OPENS with "don't / do not / never" is an instruction to the
- *  technician ("Don't open the cover until the bus has discharged…"), never the
- *  model declining. Without this, "cover"/"show"/"see" in a safety instruction
- *  read as a refusal — a latent false positive the apostrophe fold would have
- *  spread to every typographic "Don\u2019t". */
-const IMPERATIVE_NEGATION_RE = /^(?:please\s+)?(?:do not|don't|never)\b/;
-/** REFUSAL_PHRASE_RE over each non-imperative sentence of already-folded text. */
+/** A sentence that OPENS with "don't / do not / never" starts with an instruction to
+ *  the technician ("Don't open the cover until the bus has discharged…"), not the model
+ *  declining — "cover"/"show"/"see" in it read as a refusal before this. Only that
+ *  leading clause (to the first ; or ,) is exempt: "Do not guess; I cannot find this
+ *  code in the supplied manual." is still a refusal (Codex F2 on #4532). */
+const IMPERATIVE_CLAUSE_RE = /^(?:please\s+)?(?:do not|don't|never)\b[^;,]*[;,]?/;
+/** Any refusal phrase in already-folded text, sentence by sentence. */
 function refusalPhraseIn(folded: string): boolean {
-  return folded
-    .split(/(?<=[.!?])\s+/)
-    .some((sentence) => !IMPERATIVE_NEGATION_RE.test(sentence.trim()) && REFUSAL_PHRASE_RE.test(sentence));
+  return folded.split(/(?<=[.!?])\s+/).some((raw) => {
+    const sentence = raw.trim().replace(IMPERATIVE_CLAUSE_RE, "");
+    return (
+      REFUSAL_PHRASE_RE.test(sentence) ||
+      EVIDENCE_SUBJECT_REFUSAL_RE.test(sentence) ||
+      FIRST_PERSON_REFUSAL_RE.test(sentence)
+    );
+  });
 }
 
 export function isRefusal(answer: string): boolean {
