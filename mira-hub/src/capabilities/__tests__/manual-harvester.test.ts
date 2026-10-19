@@ -56,6 +56,15 @@ describe("rankManualProposals", () => {
     expect(out.searched[0].lastSearch).toBe("no_manual_found");
   });
 
+  it("one notebook's search never hides an unsearched notebook of the same identity (Codex F6)", () => {
+    const out = rankManualProposals([
+      nb({ notebookId: "a", lastSearch: "candidate_review" }),
+      nb({ notebookId: "b" }),
+    ]);
+    expect(out.proposals.map((p) => p.notebookIds)).toEqual([["b"]]);
+    expect(out.searched.map((p) => p.notebookIds)).toEqual([["a"]]);
+  });
+
   it("groups by acquisition key: case/punctuation variants merge, different models do not", () => {
     const { proposals } = rankManualProposals([
       nb({ notebookId: "n2", manufacturer: "SIEMENS ", model: "3rv-20" }),

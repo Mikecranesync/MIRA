@@ -53,6 +53,9 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return NextResponse.json({ error: "invalid_body" }, { status: 400 });
+  }
   const notebookId = typeof body.notebookId === "string" ? body.notebookId : "";
   if (!UUID_RE.test(notebookId)) return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
 

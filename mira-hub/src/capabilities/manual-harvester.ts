@@ -87,8 +87,11 @@ export function rankManualProposals(
   const groups = new Map<string, HarvestNotebook[]>();
   for (const n of notebooks) {
     // Eligibility is EXACTLY what approval can act on: the pipeline's own key.
-    const k = keyOfNotebook(n);
-    if (!k || n.hasManual) continue;
+    const k0 = keyOfNotebook(n);
+    if (!k0 || n.hasManual) continue;
+    // Actionability is per NOTEBOOK (Codex #4542 F6): a search recorded on one
+    // notebook must not hide another unsearched notebook of the same identity.
+    const k = `${k0}\u0000${n.lastSearch ? "searched" : "open"}`;
     const g = groups.get(k);
     if (g) g.push(n);
     else groups.set(k, [n]);

@@ -118,6 +118,12 @@ describe("POST /api/manual-harvester (one-tap OK)", () => {
     expect(startManualAcquisition).toHaveBeenCalledTimes(1);
   });
 
+  it.each([null, [], "x", 7])("a non-object JSON body (%j) is a 400, never a server error (Codex F7)", async (b) => {
+    const res = await POST(post(b));
+    expect(res.status).toBe(400);
+    expect(queries).toHaveLength(0);
+  });
+
   it("rejects a malformed id without touching the database", async () => {
     expect((await POST(post({ notebookId: "nope" }))).status).toBe(404);
     expect(queries).toHaveLength(0);
