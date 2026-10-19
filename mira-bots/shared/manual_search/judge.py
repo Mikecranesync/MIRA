@@ -87,6 +87,35 @@ RETURN_RESERVE_S = 2.0
 # (doc_type=parts_list, conf 0.92) — a false positive by the owner's rule.
 MANUAL_DOC_TYPES = frozenset({"user_manual", "installation_manual"})
 
+# An OEM's own publication-type code is a fact about the document; the model's doc_type is
+# a guess. Staging 2026-10-19: the judge labelled Rockwell 520-PC001 (path /documents/pc/,
+# a product PROFILE) an installation manual at 0.97 and it outranked the Quick Start Guide.
+# Rockwell literature URLs carry the code as /documents/<code>/; these codes are never a
+# manual. Codes not listed here (um, in, qs, rm, pm, ...) leave the model's verdict alone.
+_ROCKWELL_NON_MANUAL_CODES = {
+    "pc": "product_profile",
+    "pp": "product_profile",
+    "td": "datasheet",
+    "ca": "catalog",
+    "sg": "selection_guide",
+    "br": "brochure",
+    "at": "application_technique",
+    "ap": "application_profile",
+    "wp": "white_paper",
+    "sp": "sales_promotion",
+}
+_ROCKWELL_LIT_RE = re.compile(
+    r"^https?://literature\.rockwellautomation\.com/idc/groups/literature/documents/([a-z]{2})/",
+    re.IGNORECASE,
+)
+
+
+def oem_non_manual_kind(url: str) -> str | None:
+    """The doc kind an OEM publication code proves is NOT a manual, else ``None``."""
+    m = _ROCKWELL_LIT_RE.match(url or "")
+    return _ROCKWELL_NON_MANUAL_CODES.get(m.group(1).lower()) if m else None
+
+
 # Verdict strings the caller can show verbatim.
 REASON_JUDGED_MATCH = "judged_manual_match"
 REASON_JUDGED_REJECTED = "judged_not_applicable"
@@ -366,6 +395,11 @@ async def _judge_text_once(
         conf = 0.0
     doc_type = str(verdict.get("doc_type") or "other")[:40]
     said_yes = bool(verdict.get("is_manual_for_model"))
+    # The OEM's own publication code outranks the model's classification (see
+    # oem_non_manual_kind): a "yes" on a coded profile/datasheet/catalog is downgraded.
+    oem_kind = oem_non_manual_kind(str(cand.get("url") or ""))
+    if oem_kind:
+        doc_type = oem_kind
     fault_codes = verdict.get("lists_fault_codes")
     language = str(verdict.get("language") or "").strip().lower()[:2] or None
     return {
