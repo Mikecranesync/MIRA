@@ -120,10 +120,15 @@ jobs:
             --description "LLM cascade provider coverage incident (canary)" 2>/dev/null || true
           gh label create incident --color B60205 \
             --description "Production failure record; SDLC v1 10.3 fixed fields, see docs/agents/issue-tracker.md" 2>/dev/null || true
-          # Dedup on a fixed body marker, not the title, so a hand-retitled incident is
-          # still found and updated instead of duplicated (Codex F1, PR #4531).
-          existing=$(gh issue list --state open --label provider-incident --search 'in:body "canary_marker: openai-down"' \
-            --json number --jq '[.[].number] | max // empty')
+          # Dedup on EITHER the fixed body marker OR the creation title, newest match wins: a
+          # hand-retitled issue is still found by its marker, and one whose marker line was
+          # edited away is still found by its title (Codex F1 r1 and r2, PR #4531). Only an
+          # issue that lost both is treated as gone.
+          by_marker=$(gh issue list --state open --label provider-incident --search 'in:body "canary_marker: openai-down"' \
+            --json number --jq '[.[].number]')
+          by_title=$(gh issue list --state open --label provider-incident --search 'in:title "OpenAI DOWN"' \
+            --json number --jq '[.[].number]')
+          existing=$(jq -rn --argjson a "${by_marker:-[]}" --argjson b "${by_title:-[]}" '($a + $b) | max // empty')
           if [ -n "$existing" ]; then
             gh issue edit "$existing" --add-label incident \
               || { echo "::error::could not add the incident label to #$existing; comment withheld"; exit 1; }
