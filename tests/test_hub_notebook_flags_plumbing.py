@@ -74,3 +74,9 @@ def test_reranker_is_not_in_production_compose() -> None:
     prod = yaml.safe_load(_PROD.read_text())["services"]
     assert "mira-reranker" not in prod
     assert "NOTEBOOK_RERANK" not in _hub_env(_PROD, "mira-hub")
+
+
+def test_staging_reranker_defaults_to_the_int8_model_with_a_rollback_knob() -> None:
+    services = yaml.safe_load(_STAGING.read_text())["services"]
+    env = dict(item.split("=", 1) for item in services["mira-reranker"]["environment"])
+    assert env.get("RERANKER_MODEL") == "${RERANKER_MODEL:-int8-avx2}"

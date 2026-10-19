@@ -13,7 +13,8 @@ from inside the compose network (no published port in the compose step).
 
 - `cross-encoder/ms-marco-MiniLM-L-6-v2`, Hugging Face revision
   `233902d25c440f23af6f7d6e94d2946bac0bee0a` (Apache-2.0).
-- Files: `onnx/model.onnx` (fp32), `tokenizer.json`, `config.json`.
+- Files: `onnx/model.onnx` (fp32), `onnx/model_quint8_avx2.onnx` (int8 for x86 AVX2), `tokenizer.json`, `config.json`.
+  `RERANKER_MODEL` selects `fp32` (default) or `int8-avx2`; any other value refuses to start.
 - **Downloaded and sha256-verified at Docker build time only** (`fetch_model.py`,
   run as a `RUN` step). The service never downloads at runtime — if
   `MODEL_SHA256` doesn't match, the build fails and the image is never

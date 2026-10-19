@@ -28,7 +28,15 @@ MODEL_REVISION = "233902d25c440f23af6f7d6e94d2946bac0bee0a"
 MODEL_TAG = f"{MODEL_NAME}@{MODEL_REVISION}"
 
 MODEL_DIR = Path(os.environ.get("MODEL_DIR", "/models/ms-marco-MiniLM-L-6-v2"))
-ONNX_PATH = MODEL_DIR / "onnx" / "model.onnx"
+# RERANKER_MODEL picks the ONNX file (both baked in and sha256-pinned at build):
+#   fp32       onnx/model.onnx               the reference model
+#   int8-avx2  onnx/model_quint8_avx2.onnx   ~4x smaller, built for x86 AVX2 hosts (CU-RR1 speed)
+# An unknown value refuses to start rather than silently picking one.
+MODEL_VARIANTS = {"fp32": "onnx/model.onnx", "int8-avx2": "onnx/model_quint8_avx2.onnx"}
+MODEL_VARIANT = os.environ.get("RERANKER_MODEL", "fp32").strip() or "fp32"
+if MODEL_VARIANT not in MODEL_VARIANTS:
+    raise SystemExit(f"RERANKER_MODEL={MODEL_VARIANT!r} is not one of {sorted(MODEL_VARIANTS)}")
+ONNX_PATH = MODEL_DIR / MODEL_VARIANTS[MODEL_VARIANT]
 TOKENIZER_PATH = MODEL_DIR / "tokenizer.json"
 
 MAX_QUERY_CHARS = 1000
@@ -97,7 +105,9 @@ class Reranker:
 
         self._tokenizer = tokenizer
         self._session = session
-        logger.info("model loaded: %s (threads=%d)", MODEL_TAG, RERANKER_THREADS)
+        logger.info(
+            "model loaded: %s variant=%s (threads=%d)", MODEL_TAG, MODEL_VARIANT, RERANKER_THREADS
+        )
 
     @property
     def is_loaded(self) -> bool:

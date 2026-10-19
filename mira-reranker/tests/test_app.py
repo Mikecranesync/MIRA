@@ -134,3 +134,31 @@ def test_rerank_refuses_a_second_concurrent_call_then_recovers(client, monkeypat
     assert first["r"].status_code == 200
     monkeypatch.setattr(app_module.reranker, "score", real_score)
     assert client.post("/rerank", json=body).status_code == 200, "admission must be released"
+
+
+def test_model_variants_are_pinned_files():
+    """CU-RR1 speed phase: RERANKER_MODEL picks one of two baked-in, sha256-pinned files."""
+    pinned = (Path(__file__).resolve().parent.parent / "MODEL_SHA256").read_text()
+    assert app_module.MODEL_VARIANTS == {
+        "fp32": "onnx/model.onnx",
+        "int8-avx2": "onnx/model_quint8_avx2.onnx",
+    }
+    for rel in app_module.MODEL_VARIANTS.values():
+        assert f"  {rel}\n" in pinned, f"{rel} is not sha256-pinned in MODEL_SHA256"
+
+
+def test_unknown_model_variant_refuses_to_start():
+    import os
+    import subprocess
+
+    env = {**os.environ, "RERANKER_MODEL": "int4-guess"}
+    r = subprocess.run(
+        [sys.executable, "-c", "import app"],
+        cwd=Path(__file__).resolve().parent.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert r.returncode != 0
+    assert "RERANKER_MODEL='int4-guess' is not one of" in (r.stderr + r.stdout)
