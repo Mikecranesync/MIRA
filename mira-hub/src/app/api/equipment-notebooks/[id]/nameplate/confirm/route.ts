@@ -47,7 +47,7 @@ import {
   mayBeNameplateAdopted,
 } from "@/capabilities/nameplate-identity-adoption";
 import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
-import { scrubReferenceDesignations } from "@/lib/nameplate/evidence";
+import { isReferenceDesignation, scrubReferenceDesignations } from "@/lib/nameplate/evidence";
 
 export const dynamic = "force-dynamic";
 
@@ -499,13 +499,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // server could not apply them" so the client can offer a retry instead of
   // reporting complete while the misread stays active.
   let visualCorrectionFailed = false;
-  if (submittedCorrections.length > 0) {
+  // A plant reference designation (=EQU+96 -A57) is never a nameplate value
+  // (#4540 Codex F3): refused here, BEFORE any stored observation is corrected,
+  // and reported explicitly so the client never reads it as saved. Field-agnostic
+  // on purpose — no nameplate field legitimately holds a designation.
+  const visualCorrectionRejected = submittedCorrections
+    .filter((c) => isReferenceDesignation(c.value))
+    .map((c) => ({ observationId: c.observationId, reason: "reference_designation" as const }));
+  const acceptedCorrections = submittedCorrections.filter((c) => !isReferenceDesignation(c.value));
+  if (acceptedCorrections.length > 0) {
     try {
       const res = await correctVisualObservations({
         tenantId: ctx.tenantId,
         boundEntityId: notebook.asset?.entityId ?? null,
         fileId,
-        corrections: submittedCorrections,
+        corrections: acceptedCorrections,
         correctedBy: ctx.userId ?? null,
         expected: identity,
       });
@@ -565,6 +573,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // confirmed by this same request. Explicit, never silently dropped — the client
       // can show the technician which field disagreed with itself.
       visualCorrectionMismatches,
+      visualCorrectionRejected,
       // Codex round 2 F1: true when corrections were submitted and the server
       // could not apply them (transient DB error, supersede race). The client
       // must treat this as "edits not saved, retry", never as complete.

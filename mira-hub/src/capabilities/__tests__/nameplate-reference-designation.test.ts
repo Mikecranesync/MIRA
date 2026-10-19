@@ -60,4 +60,11 @@ describe("route wiring", () => {
     const src = readFileSync(path.join(api, "confirm", "route.ts"), "utf8");
     expect(src).toMatch(/const identity = scrubReferenceDesignations\(readIdentity\(body\.identity\)\);/);
   });
+  it("confirm refuses a designation-valued visual correction before it is stored, and reports it (Codex F3)", () => {
+    const src = readFileSync(path.join(api, "confirm", "route.ts"), "utf8");
+    expect(src).toMatch(/const acceptedCorrections = submittedCorrections\.filter\(\(c\) => !isReferenceDesignation\(c\.value\)\);/);
+    expect(src).toMatch(/corrections: acceptedCorrections,/);
+    expect(src).not.toMatch(/corrections: submittedCorrections,/);
+    expect(src).toMatch(/visualCorrectionRejected,/);
+  });
 });
