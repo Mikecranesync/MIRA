@@ -19,6 +19,7 @@ import {
   threadFromPersisted,
   turnsFromPersisted,
   withManualSearchStatus,
+  withSettledFollowups,
   type HubNotebookMeta,
 } from "./to-interaction";
 
@@ -469,7 +470,8 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
       manufacturer: "SMC",
       model: "SS5Y3-DUW01302",
       running: false,
-      message: "I looked for the official SMC SS5Y3-DUW01302 manual and couldn't find one.",
+      message: "Download the manual first.",
+      manualUrl: "https://www.keyence.com/manual",
     });
     const lastAssistant = [...out].reverse().find((t) => t.role === "assistant")!;
     expect(lastAssistant.parts).toContainEqual({
@@ -477,7 +479,8 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
       manufacturer: "SMC",
       model: "SS5Y3-DUW01302",
       running: false,
-      message: "I looked for the official SMC SS5Y3-DUW01302 manual and couldn't find one.",
+      message: "Download the manual first.",
+      manualUrl: "https://www.keyence.com/manual",
     });
   });
 
@@ -491,6 +494,75 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
     const userOnly = [{ ...threadFromPersisted([row()], meta).turns[0]! }];
     const out = withManualSearchStatus(userOnly, { manufacturer: "SMC", model: "X", running: true });
     expect(out).toEqual(userOnly);
+  });
+});
+
+// #4454: saved rows never carry follow-up suggestions, so when the host reloads
+// the thread after a stream and drops the live turn, the chips the technician
+// just saw vanished (Pixel 9a Chrome, staging 78bab6e98: present for ~2 s, gone
+// at settle). The host keeps the just-finished answer's suggestions and this
+// overlay puts them back on that answer.
+describe("withSettledFollowups — follow-ups survive the post-stream reload (#4454)", () => {
+  // `answeredBefore`: the answers already in the thread when the send started.
+  const settled = { question: "what should I check first", suggestions: ["What does P9.02 do"], answeredBefore: [] as string[] };
+  const lastAssistant = (turns: readonly { role: string }[]) => [...turns].reverse().find((t) => t.role === "assistant")! as (typeof turns)[number] & { parts: readonly { type: string }[] };
+  const hasFollowups = (t: { parts: readonly { type: string }[] }) => t.parts.some((p) => p.type === "followups");
+  const sameQuestionTwice = () => threadFromPersisted(
+    [row({ question: "what should I check first" }), row({ id: "turn-2", question: "what should I check first", createdAt: "2026-09-17T12:05:00.000Z" })],
+    meta,
+  ).turns;
+
+  it("puts the finished answer's suggestions back on the reloaded answer", () => {
+    const turns = threadFromPersisted([row()], meta).turns;
+    // Precondition: the reloaded row itself has no follow-ups (the defect).
+    expect(hasFollowups(lastAssistant(turns))).toBe(false);
+    const out = withSettledFollowups(turns, settled);
+    expect(lastAssistant(out).parts).toContainEqual({ type: "followups", suggestions: ["What does P9.02 do"] });
+  });
+
+  it("an earlier answer to the same question, already there before the send, stays as it was", () => {
+    const turns = sameQuestionTwice();
+    const out = withSettledFollowups(turns, { ...settled, answeredBefore: [answerTurnId("turn-1")] });
+    const answers = out.filter((t) => t.role === "assistant");
+    expect(hasFollowups(answers[0]!)).toBe(false);
+    expect(hasFollowups(answers[1]!)).toBe(true);
+  });
+
+  // Cheap-lane finding on #4456: matching on the question alone let another
+  // device's answer to the SAME question inherit them. Two new answers to it
+  // cannot be told apart from here, so neither gets them.
+  it("another device answered the same question meanwhile: neither answer gets them", () => {
+    const turns = sameQuestionTwice();
+    expect(withSettledFollowups(turns, settled)).toEqual(turns);
+  });
+
+  it("does not attach them to a different question's answer (a newer turn from another device)", () => {
+    const turns = threadFromPersisted([row(), row({ id: "turn-2", question: "something else entirely", createdAt: "2026-09-17T12:05:00.000Z" })], meta).turns;
+    expect(withSettledFollowups(turns, settled)).toEqual(turns);
+  });
+
+  it("leaves a stopped or failed last answer alone", () => {
+    const stopped = threadFromPersisted([row({ answerStatus: "error", answerText: "partial" })], meta).turns;
+    const failed = threadFromPersisted([row({ answerStatus: "error", answerText: null })], meta).turns;
+    expect(withSettledFollowups(stopped, settled)).toEqual(stopped);
+    expect(withSettledFollowups(failed, settled)).toEqual(failed);
+  });
+
+  it("no settled suggestions, or none to show: unchanged", () => {
+    const turns = threadFromPersisted([row()], meta).turns;
+    expect(withSettledFollowups(turns, null)).toEqual(turns);
+    expect(withSettledFollowups(turns, { ...settled, suggestions: [] })).toEqual(turns);
+  });
+
+  it("renders in the same order as the live turn: follow-ups before the manual-search status", () => {
+    const turns = threadFromPersisted([row()], meta).turns;
+    const out = withManualSearchStatus(withSettledFollowups(turns, settled), { manufacturer: "SMC", model: "X", running: false });
+    const types = lastAssistant(out).parts.map((p) => p.type);
+    expect(types.indexOf("followups")).toBeGreaterThan(-1);
+    expect(types.indexOf("followups")).toBeLessThan(types.indexOf("manual_search_status"));
+    // Same placement partsFromStream gives the live turn: after sources and basis.
+    const live = partsFromStream(stream(), LIVE).map((p) => p.type);
+    expect(types.slice(0, types.indexOf("followups") + 1)).toEqual(live.slice(0, live.indexOf("followups") + 1));
   });
 });
 

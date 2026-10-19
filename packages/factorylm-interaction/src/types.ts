@@ -393,6 +393,8 @@ export interface ManualSearchStatus {
   readonly running: boolean;
   /** Human-readable outcome once the search is no longer running. Server copy — never invented client-side. */
   readonly message?: string;
+  /** Acquisition link only; never a citation or proof the manual was read. */
+  readonly manualUrl?: string;
   readonly startedAt?: string;
 }
 

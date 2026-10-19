@@ -67,6 +67,7 @@ import {
   acquisitionKey,
   candidateAcquisitionEnabled,
   acquisitionDeclineText,
+  acquisitionManualUrl,
   readAcquisition,
   reconcileAcquisition,
   startManualAcquisition,
@@ -107,11 +108,22 @@ import {
   ELECTRICAL_HAZARD_DIRECTIVE,
   ENERGIZED_ELECTRICAL_HAZARD,
   hazardBanner,
+  isEnergizedWorkAsk,
   matchSafetyStop,
+  notebookSafetyTrigger,
   safetyFlagDirective,
   safetyFlagHeaders,
   withSafetyFlag,
 } from "@/lib/safety-classifier";
+import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
+import {
+  ENERGIZED_WORK_TRIGGER,
+  LOCKOUT_PAGE_QUERY,
+  energizedHardStopEnabled,
+  energizedWorkStop,
+  lockoutPageOf,
+  pickLockoutChunk,
+} from "@/capabilities/energized-work-stop";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
@@ -501,28 +513,61 @@ export function legacyCascadeUsage(
   };
 }
 
+// ONE copy of the refusal pattern, shared by isRefusal, sentenceIsRefusal and the
+// answer_gate span fields, so the three can never drift apart.
+const REFUSAL_PHRASE_RE =
+  /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/;
+// #4514 (2026-10-19 stranger walk): "The loaded excerpts do not SAY whether…" and
+// "…do not DEFINE fault 39…" were persisted as `answered`. These verbs are also
+// ordinary diagnostic language ("could indicate a fault", "this LED does not indicate
+// a fault"), so they count ONLY when the evidence itself is the subject of the
+// negation, or the assistant states it cannot (Codex F1 on #4532).
+const EVIDENCE_SUBJECT_REFUSAL_RE =
+  /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|pages?|data ?sheets?|materials?)\s+(?:[a-z'-]+\s+){0,2}(?:do(?:es)? not|don't|doesn't|did not|didn't)\s+(?:[a-z'-]+\s+){0,2}(?:say|define|identify|confirm|describe|explain|indicate)\b/;
+const FIRST_PERSON_REFUSAL_RE =
+  /\b(?:i|we)\s+(?:can't|cannot|could not|couldn't|am unable to|was unable to|'m unable to)\s+(?:[a-z'-]+\s+){0,2}(?:say|define|identify|confirm|describe|explain|indicate)\b/;
+const EVIDENCE_PHRASE_RE =
+  /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/;
+/** Lowercase with typographic apostrophes folded to ASCII (#4032 class: the model
+ *  writes "can\u2019t"), for the refusal patterns. */
+function refusalText(text: string): string {
+  return text.toLowerCase().replace(/[\u2018\u2019\u02bc]/g, "'");
+}
+/** A sentence that OPENS with "don't / do not / never" is an instruction to the
+ *  technician ("Don't open the cover until the bus has discharged…"); that opening
+ *  negation is not the model declining, and "cover"/"show"/"see" after it read as a
+ *  refusal before this. Only the opening negation WORD is neutralized — everything
+ *  after it is still checked, so "Do not reset the drive because I cannot find the
+ *  procedure in the supplied manual" (any connector: ; , : because, dash) is still a
+ *  refusal (Codex F2 r1 and r2 on #4532). */
+const IMPERATIVE_NEGATION_RE = /^(?:please\s+)?(?:do not|don't|never)\b/;
+/** Any refusal phrase in already-folded text, sentence by sentence. */
+function refusalPhraseIn(folded: string): boolean {
+  return folded.split(/(?<=[.!?])\s+/).some((raw) => {
+    const sentence = raw.trim().replace(IMPERATIVE_NEGATION_RE, "");
+    return (
+      REFUSAL_PHRASE_RE.test(sentence) ||
+      EVIDENCE_SUBJECT_REFUSAL_RE.test(sentence) ||
+      FIRST_PERSON_REFUSAL_RE.test(sentence)
+    );
+  });
+}
+
 export function isRefusal(answer: string): boolean {
   // Verb list extended 2026-09-22 (staging trace d324d936…): "the supplied
   // references do not SPECIFY the supply voltage" is an honest refusal too,
   // and was persisted as `answered` with a general badge. The refusal regex
   // is the ONLY thing that turns a served refusal into insufficient_evidence.
-  const a = answer.toLowerCase();
-  return (
-    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
-    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a) &&
-    a.length < 400
-  );
+  const a = refusalText(answer);
+  return refusalPhraseIn(a) && EVIDENCE_PHRASE_RE.test(a) && a.length < 400;
 }
 
 /** The refusal pattern applied to ONE sentence, without `isRefusal`'s
  *  whole-answer length bound. Used to separate a limitation clause from the
  *  rest of an answer (#3953). */
 function sentenceIsRefusal(sentence: string): boolean {
-  const a = sentence.toLowerCase();
-  return (
-    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
-    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a)
-  );
+  const a = refusalText(sentence);
+  return refusalPhraseIn(a) && EVIDENCE_PHRASE_RE.test(a);
 }
 
 /** Minimum characters of cited, non-limitation prose before a turn counts as
@@ -865,6 +910,7 @@ function manualSearchStatusFrame(
   manualSearchRunning: "confirmed" | "candidate" | null,
   candidateAcquisitionText: string | null,
   candidateSearchStartedAt?: string,
+  candidateManualUrl?: string | null,
 ): Record<string, unknown> | null {
   if (!identityProposal) return null;
   const running = manualSearchRunning === "candidate";
@@ -876,6 +922,7 @@ function manualSearchStatusFrame(
     running,
     ...(!running && candidateAcquisitionText ? { message: candidateAcquisitionText } : {}),
     ...(candidateSearchStartedAt ? { startedAt: candidateSearchStartedAt } : {}),
+    ...(!running && candidateManualUrl ? { manualUrl: candidateManualUrl } : {}),
   };
 }
 
@@ -1379,7 +1426,17 @@ async function handleChatTurn(
   // reuses their classifier rather than adding a second policy, which keeps the
   // educational carve-out ("what is arc flash?" is a question, not a hazard
   // report) that a fresh keyword list would silently lose.
-  const questionSafetyTrigger = matchSafetyStop(message);
+  // Review A MEDIUM: TQ-30's lockout verb forms are NOTEBOOK-ONLY. They live
+  // in `notebookSafetyTrigger`, not in the shared `matchSafetyStop`, so
+  // NodeChat and asset chat stay byte-identical to base and do not newly
+  // banner "we locked out the MCC yesterday, what's Addr_CAN_OB?".
+  const questionSafetyTrigger = notebookSafetyTrigger(message);
+  // Codex F5 (round 3): the energized-work stop must pass BOTH zero-source
+  // gates below. A technician at a machine with nothing attached asking the
+  // real TQ-29 was getting `422 no_sources_selected` — a filing complaint
+  // instead of the stop and its site-LOTO fallback. Classified once, here;
+  // the stop itself is still decided later with the directive gate.
+  const energizedAskEarly = energizedHardStopEnabled() && isEnergizedWorkAsk(message);
   // #3763: the energized-electrical hazard sentinel is a DIRECTIVE, not a stop.
   // The answer still streams, framed by the NFPA 70E directive injected below,
   // and the turn persists a safety_notice evidence entry. Every other non-null
@@ -1511,7 +1568,12 @@ async function handleChatTurn(
     // branch above — it does NOT establish that this notebook belongs to the
     // caller. Letting it stand in for ownership would let any notebook id spend
     // this tenant's provider budget. getNotebook() is tenant-scoped.
-    if ((general || questionSafetyTrigger || visualClaimFileId) && validated.error === "no_sources_selected") {
+    // Codex F5 (round 3): the energized-work stop passes this gate too
+    // (energizedAskEarly). Ownership is already proven above.
+    if (
+      (general || questionSafetyTrigger || visualClaimFileId || energizedAskEarly) &&
+      validated.error === "no_sources_selected"
+    ) {
       // Ownership was proven above for every zero-source turn; a safety stop
       // needs neither sources nor general mode to be served.
     } else {
@@ -1625,6 +1687,24 @@ async function handleChatTurn(
   // non-terminal energized-work directive and therefore owns the turn.
   const safetyTrigger = visualSafetyTrigger ?? questionSafetyTrigger;
   const electricalHazardDirective = !visualSafetyTrigger && questionSafetyTrigger === ENERGIZED_ELECTRICAL_HAZARD;
+  // 2026-10-17 prod-test TQ-29 — a hands-on ask on a POWERED machine ("swap
+  // the fan while it's powered", "without locking out") is a terminal stop,
+  // not a flagged answer: the flag-and-answer shape still handed over the
+  // removal steps and torques. Question text only — a photo hazard keeps the
+  // banner path. Kill switch NOTEBOOK_ENERGIZED_HARD_STOP=0 (default on).
+  // `!electricalHazardDirective`: the 480 V + meter conjunction keeps the
+  // owner-decided NFPA 70E directive (answer streams, framed — #3763/#3841/
+  // #3984). This stop covers the shape that had NO treatment: hands-on work
+  // asked for on a powered machine, or an explicit "without locking out".
+  // Review A HIGH: `!visualSafetyTrigger` used to be here, which meant a photo
+  // hazard SKIPPED the stop — so attaching a picture to "can I pull the RFI
+  // jumper with it powered?" turned the stop off. The question's own intent is
+  // what this gate is about, and a photo cannot make energized work safe, so
+  // the photo no longer suppresses it. An ACTIVE incident is still excluded,
+  // but inside `isEnergizedWorkAsk` (ACTIVE_INCIDENT_RE), which is where that
+  // judgement belongs rather than keyed off whether an image was attached.
+  const energizedWorkAsk =
+    !electricalHazardDirective && energizedHardStopEnabled() && isEnergizedWorkAsk(message);
   // `observation_available`/`observation_in_context` are derived from
   // `lookRow`/its rendered section later (renderLookObservationSection), not
   // hardcoded — the LOOK observation DOES reach the prompt (buildManualUserContent
@@ -1655,7 +1735,7 @@ async function handleChatTurn(
   // A claimed photo is allowed past the early zero-source branch only so its
   // server record can be checked. If it is unverified/healthy and this is not a
   // general turn, preserve the original explicit no-sources refusal.
-  if (!validated.ok && !general && !safetyTrigger) {
+  if (!validated.ok && !general && !safetyTrigger && !energizedAskEarly) {
     await abandonRequestClaim();
     endRoot();
     return NextResponse.json({ error: validated.error }, { status: 422 });
@@ -1736,7 +1816,7 @@ async function handleChatTurn(
   // renders on every client and survives reload. It is not a structured
   // safety_notice because today's web/mobile chips label every non-terminal
   // notice "energized electrical work".
-  const flagBanner = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
+  const flagBannerBase = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -2114,6 +2194,9 @@ async function handleChatTurn(
             // The notebook's own machine name is never a fault code in the
             // whole-token lane ("GS10 oC" binds oC, not GS10 — Codex r6 on #4360).
             identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
+            // Model-less questions scope to that machine only once a person has
+            // confirmed it — an OCR `candidate` must not hide the right manual.
+            identityStatus: nb?.identityStatus ?? null,
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
             // document linked from another notebook's node stays retrievable here.
@@ -2129,6 +2212,12 @@ async function handleChatTurn(
           }),
         ),
       );
+  // Banner is classified before retrieval; the page citation can only be
+  // written now that chunks exist. Prefer the WARNING/CAUTION/DANGER chunk's
+  // printed label (TQ-29: p.2-15) over INTEGER source_page.
+  const flagBanner = flagBannerBase
+    ? withPageCitation(flagBannerBase, pageFromRetrievedChunks(chunks))
+    : null;
   {
     // Notebook chunks carry a doc id; shared-OEM chunks carry no doc id but a
     // source URL + page, which is their durable identity in knowledge_entries.
@@ -2549,6 +2638,7 @@ async function handleChatTurn(
   // follower can tell a genuinely NEW search apart from a replay of an old
   // one. Scoped to the candidate basis only, matching `manualSearchStatusFrame`.
   let candidateSearchStartedAt: string | undefined;
+  let candidateManualUrl: string | null = null;
   if (
     (missingModelManual || noEvidenceForMachine) &&
     !oemRetrievalFailed &&
@@ -2677,6 +2767,7 @@ async function handleChatTurn(
         if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
         if (cAcq && cAcq.key === candidateKey) {
           if (cAcq.state === "running") manualSearchRunning = "candidate";
+          candidateManualUrl = !cAcq.attached_indexed && !cAcq.source_removed ? acquisitionManualUrl(cAcq) : null;
           candidateAcquisitionText = acquisitionDeclineText(
             cAcq,
             candidateKey,
@@ -2780,6 +2871,153 @@ async function handleChatTurn(
       ? unidentifiedServiceDecline(message)
       : null;
 
+  // 2026-10-17 prod-test TQ-29 — energized-work hard stop. Runs AFTER retrieval
+  // (so the manual's own lockout page can be cited) and BEFORE Gate G and the
+  // provider (so no procedure is ever generated for a powered machine). The
+  // stop text is static + one citation line — never the chunk's words, never
+  // a step, never a torque (`@/capabilities/energized-work-stop`). Persisted
+  // as a terminal safety_stop so reload replays the same stop (same grammar as
+  // #4471's unsafe_answer path: sources → safety → content → status).
+  if (energizedWorkAsk) {
+    const stopTrigger = safetyTrigger ?? ENERGIZED_WORK_TRIGGER;
+    // The manual's lockout / disconnect-power page: a dedicated pass inside the
+    // SAME validated doc scope as the question's retrieval, plus whatever the
+    // question's own pass already surfaced. Best-effort — a failed lookup
+    // serves the stop without a page (site LOTO), never an answer.
+    let lockoutChunks: ManualChunk[] = [];
+    if (notebookRetrieval && nodeId !== null) {
+      try {
+        lockoutChunks = await withTenantContext(ctx.tenantId, (client) =>
+          retrieveNodeChunks(client, ctx.tenantId, LOCKOUT_PAGE_QUERY, {
+            nodeId,
+            unsPath: null,
+            topK: 8,
+            docIds,
+            rawQuery: LOCKOUT_PAGE_QUERY,
+            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
+            validatedDocScope: true,
+            approvedSourceDocIds: docIds,
+          }),
+        );
+      } catch (err) {
+        console.error("[notebook-chat] lockout-page retrieval failed (stop served without a page):", err instanceof Error ? err.message : err);
+      }
+    }
+    const lockoutChunk = pickLockoutChunk([...lockoutChunks, ...chunks]);
+    // Round-2 review: the stop TEXT was clean, but the same turn's citation
+    // chip carried a claim-centred quote of the lockout chunk (which can hold
+    // removal steps and torques when the lockout box sits on a procedure
+    // page) and the upload filename as its title — a crafted filename reached
+    // the chip even after it was kept out of the stop text. On the stop path
+    // the chip is a POINTER to the page, nothing more: no quote, neutral title.
+    const stopCitations = lockoutChunk
+      ? (await releaseClaimOnFailure(() => buildCitations(ctx.tenantId, notebookId, [lockoutChunk], message))).map((c) => ({
+          ...c,
+          sourceTitle: "Lockout / disconnect-power procedure",
+          quote: null,
+        }))
+      : [];
+    const stopText = energizedWorkStop(
+      lockoutChunk ? { title: citationTitle(lockoutChunk), page: lockoutPageOf(lockoutChunk) } : null,
+    );
+    console.warn(`[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"}`);
+    const stopGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
+    lifecycleOutcome = "safety_stop";
+    rec.stage("answer_gate", {
+      invoked: true,
+      decision: "blocked",
+      reason: "energized_work_ask",
+      answer_chars: stopText.length,
+      refusal_phrase_matched: false,
+      evidence_phrase_matched: false,
+      safety_classification: "safety_stop",
+      evidence_sufficient: false,
+      ungrounded_unit_claim: false,
+    });
+    setSpanAttrs(
+      {
+        "mira.answer_gate.invoked": true,
+        "mira.answer_gate.decision": "blocked",
+        "mira.answer_gate.reason": "energized_work_ask",
+        "mira.answer_gate.answer_chars": stopText.length,
+        "mira.safety.trigger": stopTrigger,
+        "mira.safety.lockout_page": lockoutChunk ? lockoutPageOf(lockoutChunk) : null,
+      },
+      stopGateSpan,
+    );
+    stopGateSpan.end();
+    const stopPersistSpan = startStage("turn.persist");
+    const stopTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
+      ownerUserId: ctx.userId,
+      threadId,
+      clientRequestId,
+      claimToken: requestClaimToken,
+      question: message,
+      answerStatus: "answered",
+      answerText: stopText,
+      enabledSourceDocIds: docIds,
+      evidence: [
+        ...disputeEntries,
+        ...(visualEntry ? [visualEntry] : []),
+        { kind: "safety_notice", trigger: stopTrigger } satisfies SafetyNoticeEntry,
+        { kind: "safety_stop", trigger: stopTrigger } satisfies SafetyStopEntry,
+        ...stopCitations,
+        ...proposalEntries,
+      ],
+      model: null,
+      basis: null,
+      ...assetSnapshot,
+    }));
+    const stopUsage: TurnUsage = {
+      provider: null,
+      model: null,
+      routeReason: "legacy_cascade",
+      inputTokens: null,
+      cachedInputTokens: null,
+      outputTokens: null,
+      costUsdEstimate: null,
+      status: "empty",
+      attempted: [],
+    };
+    await finishAndPersist(stopTurnRowId, stopUsage, {
+      answerText: stopText,
+      citationsPresent: stopCitations.length > 0,
+      latencyMs: null,
+    });
+    setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": stopTurnRowId }, stopPersistSpan);
+    endTimed(stopPersistSpan, "persist");
+    endRoot();
+    const stopStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        if (rootTraceId) {
+          const traceFrame: NotebookTraceFrame = { kind: "trace", traceId: rootTraceId, turnId };
+          controller.enqueue(enc.encode(sse(traceFrame)));
+        }
+        if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
+        const sources: NotebookSourcesFrame = { kind: "sources", citations: stopCitations, sourceSnapshot: docIds };
+        controller.enqueue(enc.encode(sse(sources)));
+        controller.enqueue(enc.encode(sse({ kind: "safety", trigger: stopTrigger } as NotebookSafetyFrame)));
+        if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
+        for (const piece of chunkForRelease(stopText)) {
+          controller.enqueue(enc.encode(sse({ kind: "content", content: piece })));
+        }
+        const status: NotebookStatusFrame = { kind: "status", status: "answered" };
+        controller.enqueue(enc.encode(sse(status)));
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    return new Response(stopStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        ...safetyFlagHeaders(stopTrigger),
+        ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
+      },
+    });
+  }
+
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
@@ -2811,6 +3049,8 @@ async function handleChatTurn(
         ? `I couldn't find anything about this in the ${noEvidenceForMachine} manuals I have${oemEquipmentType && oemEquipmentType !== "Other" ? ", or in related manuals from the same maker" : ""}, so I won't guess at a procedure for your machine. Upload the manual for the equipment this is about (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : visualEntry
         ? "I saw your photo, but I couldn't find anything about it in the selected sources."
+      : notebookRetrieval
+        ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "abstained";
@@ -2921,7 +3161,7 @@ async function handleChatTurn(
           controller.enqueue(enc.encode(sse(proposalFrame)));
         }
         // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
-        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt);
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl);
         if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
         if (photoPartLookup?.proposal) {
           const chips: NotebookFollowupsFrame = {
@@ -4005,7 +4245,7 @@ async function handleChatTurn(
         if (sv.verdict === "unsafe") {
           const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
           console.warn(`[notebook-chat] semantic FLAGGED ${cls}: ${sv.reason ?? ""}`);
-          answerText = `${hazardBanner(cls)}\n\n${answerText}`;
+          answerText = `${withPageCitation(hazardBanner(cls), pageFromRetrievedChunks(chunks))}\n\n${answerText}`;
         } else if (sv.verdict !== "safe") {
           console.warn(`[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): serving the answer (fail-open)`);
         }
@@ -4069,16 +4309,12 @@ async function handleChatTurn(
       let ungroundedClaimForBadge = false;
       {
         const finalAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
-        const answerLower = answerText.toLowerCase();
+        const answerLower = refusalText(answerText);
         // isRefusal's two clauses, split so each is independently observable
         // without changing isRefusal's own result (design §3 answer_gate
         // fields `refusal_phrase_matched` / `evidence_phrase_matched`).
-        const refusalPhraseMatched =
-          /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(
-            answerLower,
-          );
-        const evidencePhraseMatched =
-          /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(answerLower);
+        const refusalPhraseMatched = refusalPhraseIn(answerLower);
+        const evidencePhraseMatched = EVIDENCE_PHRASE_RE.test(answerLower);
         const gateReason = outputRejected
           ? outputRejected.violation
           : !served
@@ -4447,7 +4683,7 @@ async function handleChatTurn(
       }
       // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
       {
-        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt);
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl);
         if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
       }
       if (answerStatus === "answered" && !identityDisputed && !outputRejected) {

@@ -300,15 +300,26 @@ async function acquireInner(
     // A cap denial must NEVER look like "no manual exists" (PRD R5, #4160 S4).
     // The service's own reason stays on the payload for diagnostics; the
     // technician sees the approved sentence (#4160 gate NO-GO).
-    return outcome("search_limit_reached", { message: MANUAL_SEARCH_LIMIT_COPY, reason: discovery.reason });
+    return outcome("search_limit_reached", {
+      message: MANUAL_SEARCH_LIMIT_COPY,
+      oemRequestUrl: discovery.oemRequestUrl,
+      searchPageUrl: discovery.searchPageUrl,
+      reason: discovery.reason,
+    });
   }
   if (!discovery.serviceAvailable) {
-    return outcome("search_unavailable", { message: MANUAL_SEARCH_UNAVAILABLE_COPY, reason: discovery.reason });
+    return outcome("search_unavailable", {
+      message: MANUAL_SEARCH_UNAVAILABLE_COPY,
+      oemRequestUrl: discovery.oemRequestUrl,
+      searchPageUrl: discovery.searchPageUrl,
+      reason: discovery.reason,
+    });
   }
   if (!discovery.found || !discovery.candidate) {
     return outcome("no_manual_found", {
       message: discovery.reason,
       oemRequestUrl: discovery.oemRequestUrl,
+      searchPageUrl: discovery.searchPageUrl,
     });
   }
 
@@ -356,6 +367,7 @@ async function acquireInner(
       // brochure, no end-truck model"). The technician decides with that.
       discoveryReason: discovery.reason,
       oemRequestUrl: discovery.oemRequestUrl,
+      searchPageUrl: discovery.searchPageUrl,
       candidate: candidateView,
       message:
         "MIRA found a possible manual but could not confirm it is the official document. Review it before adding.",
@@ -384,6 +396,8 @@ async function acquireInner(
   });
   if (!download.ok) {
     return outcome("download_rejected", {
+      oemRequestUrl: discovery.oemRequestUrl,
+      searchPageUrl: discovery.searchPageUrl,
       candidate: candidateView,
       message: `MIRA would not download that file (${download.reason}). Nothing was added to this notebook.`,
       reason: download.reason,

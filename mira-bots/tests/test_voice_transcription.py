@@ -1,6 +1,7 @@
-"""Unit tests for voice_transcription.py — Groq Whisper integration.
+"""Unit tests for voice_transcription.py — OpenAI speech-to-text (#4438).
 
-All tests are offline (mock httpx). No real Groq API calls.
+Groq is deprecated (owner decision 2026-10-14), so transcription goes to
+OpenAI. All tests are offline (mock httpx). No real API calls.
 """
 
 from __future__ import annotations
@@ -12,11 +13,50 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
+# Ogg Opus fixtures: the hold is sized from the container's own sample counter
+# (granule position, 48 kHz), so every payload here is a well-formed Ogg Opus
+# byte stream. CRCs are zero; the parser does not check them.
+# ---------------------------------------------------------------------------
+
+
+def _ogg_page(granule: int, seq: int, body: bytes, header_type: int = 0) -> bytes:
+    segs = [255] * (len(body) // 255) + [len(body) % 255]
+    return (
+        b"OggS"
+        + bytes([0, header_type])
+        + granule.to_bytes(8, "little", signed=True)
+        + (7).to_bytes(4, "little")
+        + seq.to_bytes(4, "little")
+        + b"\x00\x00\x00\x00"
+        + bytes([len(segs)])
+        + bytes(segs)
+        + body
+    )
+
+
+def _ogg_opus(seconds: float, pad: int = 0) -> bytes:
+    head = b"OpusHead" + bytes([1, 1]) + (312).to_bytes(2, "little") + (48000).to_bytes(4, "little")
+    pages = [_ogg_page(0, 0, head + b"\x00\x00\x00", 0x02), _ogg_page(0, 1, b"OpusTags" + bytes(8))]
+    seq = 2
+    while pad > 0:
+        chunk = min(pad, 60_000)
+        pages.append(_ogg_page(-1, seq, bytes(chunk)))
+        seq += 1
+        pad -= chunk
+    pages.append(_ogg_page(int(seconds * 48_000), seq, bytes(10), 0x04))
+    return b"".join(pages)
+
+
+OGG_1S = _ogg_opus(1)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _mock_groq_response(text: str, status_code: int = 200):
-    """Build a mock httpx response with the Groq Whisper JSON shape."""
+
+def _mock_transcription_response(text: str, status_code: int = 200):
+    """Build a mock httpx response with the transcription JSON shape."""
     resp = MagicMock()
     resp.status_code = status_code
     resp.json.return_value = {"text": text}
@@ -27,6 +67,7 @@ def _mock_groq_response(text: str, status_code: int = 200):
 def _mock_http_error(status_code: int, body: str = "error"):
     """Build a mock httpx.HTTPStatusError."""
     import httpx
+
     request = MagicMock()
     response = MagicMock()
     response.status_code = status_code
@@ -38,15 +79,16 @@ def _mock_http_error(status_code: int, body: str = "error"):
 # Test: transcribe_voice
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_transcribe_returns_text_on_success():
-    """Happy path — Groq returns transcription text."""
+    """Happy path — the provider returns transcription text."""
     sys.path.insert(0, "mira-bots/telegram")
     from voice_transcription import transcribe_voice
 
-    mock_resp = _mock_groq_response("VFD-07 is showing fault F005, what should I check?")
+    mock_resp = _mock_transcription_response("VFD-07 is showing fault F005, what should I check?")
 
-    with patch.dict("os.environ", {"GROQ_API_KEY": "gsk_test"}):
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}):
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -54,33 +96,34 @@ async def test_transcribe_returns_text_on_success():
             mock_client.post = AsyncMock(return_value=mock_resp)
             mock_client_cls.return_value = mock_client
 
-            result = await transcribe_voice(b"fake_ogg_bytes")
+            result = await transcribe_voice(OGG_1S)
 
     assert result == "VFD-07 is showing fault F005, what should I check?"
 
 
 @pytest.mark.asyncio
 async def test_transcribe_returns_none_without_api_key():
-    """No GROQ_API_KEY → returns None without calling API."""
+    """No OPENAI_API_KEY → returns None without calling API."""
     sys.path.insert(0, "mira-bots/telegram")
     from voice_transcription import transcribe_voice
 
     with patch.dict("os.environ", {}, clear=True):
-        # Ensure GROQ_API_KEY is absent
+        # Ensure OPENAI_API_KEY is absent
         import os
-        os.environ.pop("GROQ_API_KEY", None)
-        result = await transcribe_voice(b"fake_ogg_bytes")
+
+        os.environ.pop("OPENAI_API_KEY", None)
+        result = await transcribe_voice(OGG_1S)
 
     assert result is None
 
 
 @pytest.mark.asyncio
 async def test_transcribe_returns_none_on_http_error():
-    """HTTP error from Groq → returns None (never raises)."""
+    """HTTP error from the provider → returns None (never raises)."""
     sys.path.insert(0, "mira-bots/telegram")
     from voice_transcription import transcribe_voice
 
-    with patch.dict("os.environ", {"GROQ_API_KEY": "gsk_test"}):
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}):
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -88,7 +131,7 @@ async def test_transcribe_returns_none_on_http_error():
             mock_client.post = AsyncMock(side_effect=_mock_http_error(429, "rate limit"))
             mock_client_cls.return_value = mock_client
 
-            result = await transcribe_voice(b"fake_ogg_bytes")
+            result = await transcribe_voice(OGG_1S)
 
     assert result is None
 
@@ -99,7 +142,7 @@ async def test_transcribe_returns_none_on_network_error():
     sys.path.insert(0, "mira-bots/telegram")
     from voice_transcription import transcribe_voice
 
-    with patch.dict("os.environ", {"GROQ_API_KEY": "gsk_test"}):
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}):
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -107,20 +150,20 @@ async def test_transcribe_returns_none_on_network_error():
             mock_client.post = AsyncMock(side_effect=ConnectionError("timeout"))
             mock_client_cls.return_value = mock_client
 
-            result = await transcribe_voice(b"fake_ogg_bytes")
+            result = await transcribe_voice(OGG_1S)
 
     assert result is None
 
 
 @pytest.mark.asyncio
 async def test_transcribe_returns_none_on_empty_response():
-    """Groq returns empty text field → returns None."""
+    """Provider returns an empty text field → returns None."""
     sys.path.insert(0, "mira-bots/telegram")
     from voice_transcription import transcribe_voice
 
-    mock_resp = _mock_groq_response("")
+    mock_resp = _mock_transcription_response("")
 
-    with patch.dict("os.environ", {"GROQ_API_KEY": "gsk_test"}):
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}):
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -128,7 +171,7 @@ async def test_transcribe_returns_none_on_empty_response():
             mock_client.post = AsyncMock(return_value=mock_resp)
             mock_client_cls.return_value = mock_client
 
-            result = await transcribe_voice(b"fake_ogg_bytes")
+            result = await transcribe_voice(OGG_1S)
 
     assert result is None
 
@@ -139,9 +182,9 @@ async def test_transcribe_accepts_bytearray():
     sys.path.insert(0, "mira-bots/telegram")
     from voice_transcription import transcribe_voice
 
-    mock_resp = _mock_groq_response("yes create the work order")
+    mock_resp = _mock_transcription_response("yes create the work order")
 
-    with patch.dict("os.environ", {"GROQ_API_KEY": "gsk_test"}):
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}):
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -149,38 +192,9 @@ async def test_transcribe_accepts_bytearray():
             mock_client.post = AsyncMock(return_value=mock_resp)
             mock_client_cls.return_value = mock_client
 
-            result = await transcribe_voice(bytearray(b"fake_ogg_bytes"))
+            result = await transcribe_voice(bytearray(OGG_1S))
 
     assert result == "yes create the work order"
-
-
-@pytest.mark.asyncio
-async def test_transcribe_sends_correct_model():
-    """Verify the correct Whisper model is sent in the request."""
-    sys.path.insert(0, "mira-bots/telegram")
-    from voice_transcription import transcribe_voice
-
-    mock_resp = _mock_groq_response("test")
-    captured_data = {}
-
-    async def _capture_post(url, **kwargs):
-        captured_data.update(kwargs)
-        return mock_resp
-
-    with patch.dict("os.environ", {
-        "GROQ_API_KEY": "gsk_test",
-        "GROQ_WHISPER_MODEL": "whisper-large-v3-turbo",
-    }):
-        with patch("httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client.post = AsyncMock(side_effect=_capture_post)
-            mock_client_cls.return_value = mock_client
-
-            await transcribe_voice(b"test_audio")
-
-    assert "model" in str(captured_data.get("data", ""))
 
 
 @pytest.mark.asyncio
@@ -189,14 +203,14 @@ async def test_transcribe_language_hint_passed_when_set():
     sys.path.insert(0, "mira-bots/telegram")
     from voice_transcription import transcribe_voice
 
-    mock_resp = _mock_groq_response("yes")
+    mock_resp = _mock_transcription_response("yes")
     captured_data = {}
 
     async def _capture_post(url, **kwargs):
         captured_data.update(kwargs)
         return mock_resp
 
-    with patch.dict("os.environ", {"GROQ_API_KEY": "gsk_test"}):
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}):
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -204,7 +218,321 @@ async def test_transcribe_language_hint_passed_when_set():
             mock_client.post = AsyncMock(side_effect=_capture_post)
             mock_client_cls.return_value = mock_client
 
-            await transcribe_voice(b"test_audio", language="en")
+            await transcribe_voice(OGG_1S, language="en")
 
     data = captured_data.get("data", {})
     assert data.get("language") == "en"
+
+
+# ---------------------------------------------------------------------------
+# #4438: OpenAI is the provider, Groq is never called
+# ---------------------------------------------------------------------------
+
+
+def _capturing_client(mock_client_cls, response, calls: list):
+    async def _post(url, **kwargs):
+        calls.append((url, kwargs))
+        return response
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.post = AsyncMock(side_effect=_post)
+    mock_client_cls.return_value = mock_client
+    return mock_client
+
+
+@pytest.mark.asyncio
+async def test_transcribe_posts_to_openai_with_default_model():
+    """The request goes to OpenAI's transcription endpoint with the OpenAI key
+    and the default model, as an ogg upload."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    calls: list = []
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(
+                mock_client_cls, _mock_transcription_response("check the fuse"), calls
+            )
+            result = await transcribe_voice(OGG_1S)
+
+    assert result == "check the fuse"
+    assert len(calls) == 1
+    url, kwargs = calls[0]
+    assert url == "https://api.openai.com/v1/audio/transcriptions"
+    assert kwargs["headers"] == {"Authorization": "Bearer sk-test"}
+    assert kwargs["data"]["model"] == "gpt-4o-mini-transcribe"
+    assert kwargs["files"]["file"] == ("voice.ogg", OGG_1S, "audio/ogg")
+
+
+@pytest.mark.asyncio
+async def test_transcribe_never_calls_groq_even_when_its_key_is_set():
+    """With both keys present, the only request is to OpenAI, carrying the
+    OpenAI key — never api.groq.com, never the Groq key."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    calls: list = []
+    env = {"OPENAI_API_KEY": "sk-test", "GROQ_API_KEY": "gsk_test"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+            await transcribe_voice(OGG_1S)
+
+    assert [url for url, _ in calls] == ["https://api.openai.com/v1/audio/transcriptions"]
+    assert all("gsk_test" not in str(kwargs) for _, kwargs in calls)
+
+
+@pytest.mark.asyncio
+async def test_transcribe_with_only_the_groq_key_sends_nothing():
+    """A leftover GROQ_API_KEY alone does not enable transcription: no request,
+    None returned. Control for the test above: Groq is not a fallback."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    calls: list = []
+    with patch.dict("os.environ", {"GROQ_API_KEY": "gsk_test"}, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+            result = await transcribe_voice(OGG_1S)
+
+    assert result is None
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_transcribe_model_override_and_empty_value_fallback():
+    """OPENAI_TRANSCRIBE_MODEL overrides the model; an empty value (what compose
+    delivers for an unset ${VAR:-}) falls back to the default."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    for value, expected in (("whisper-1", "whisper-1"), ("", "gpt-4o-mini-transcribe")):
+        calls: list = []
+        env = {"OPENAI_API_KEY": "sk-test", "OPENAI_TRANSCRIBE_MODEL": value}
+        with patch.dict("os.environ", env, clear=True):
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+                await transcribe_voice(OGG_1S)
+        assert calls[0][1]["data"]["model"] == expected, value
+
+
+# ---------------------------------------------------------------------------
+# #4451 cheap-lane r2/r3: transcription goes through the per-run OpenAI spend
+# stop, sized from the audio actually sent (never from caller metadata): the
+# larger of the Ogg granule duration and the 6 kbps size bound. At the default
+# 0.006 USD/min, 60 s of audio has a worst case of 0.006 USD.
+# ---------------------------------------------------------------------------
+
+SIXTY_SECONDS_OF_BYTES = _ogg_opus(60)
+
+
+@pytest.fixture
+def fresh_budget():
+    from shared.inference.run_budget import get_openai_run_budget, reset_openai_run_budget
+
+    reset_openai_run_budget()
+    yield get_openai_run_budget
+    reset_openai_run_budget()
+
+
+def _erroring_client(mock_client_cls, exc):
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.post = AsyncMock(side_effect=exc)
+    mock_client_cls.return_value = mock_client
+
+
+@pytest.mark.asyncio
+async def test_exhausted_budget_sends_nothing(fresh_budget):
+    """A cap below the size-bounded worst case refuses BEFORE any request."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    calls: list = []
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "0.005"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+            result = await transcribe_voice(SIXTY_SECONDS_OF_BYTES)
+
+    assert result is None
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_successful_transcription_books_its_size_bound(fresh_budget):
+    """Control for the test above: with room under the cap the request is sent
+    and the size-bounded 60 s is booked at the per-minute rate."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    calls: list = []
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "1"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+            result = await transcribe_voice(SIXTY_SECONDS_OF_BYTES)
+        budget = fresh_budget()
+        assert result == "ok" and len(calls) == 1
+        assert budget.spent_usd == pytest.approx(0.006, abs=1e-5)
+        assert budget.held_usd == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_client_error_releases_the_hold(fresh_budget):
+    """A 4xx is a rejection without billable work: the hold is released."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "1"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _erroring_client(mock_client_cls, _mock_http_error(429, "rate limit"))
+            result = await transcribe_voice(SIXTY_SECONDS_OF_BYTES)
+        budget = fresh_budget()
+        assert result is None
+        assert budget.spent_usd == pytest.approx(0.0)
+        assert budget.held_usd == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_server_error_books_the_worst_case(fresh_budget):
+    """A 5xx may come after billable work upstream: the worst case is booked."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "1"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _erroring_client(mock_client_cls, _mock_http_error(502, "bad gateway"))
+            result = await transcribe_voice(SIXTY_SECONDS_OF_BYTES)
+        budget = fresh_budget()
+        assert result is None
+        assert budget.spent_usd == pytest.approx(0.006, abs=1e-5)
+        assert budget.held_usd == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_unknown_outcome_books_the_worst_case(fresh_budget):
+    """A network failure after dispatch may have been billed: the worst case is booked."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "1"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _erroring_client(mock_client_cls, ConnectionError("dropped"))
+            result = await transcribe_voice(_ogg_opus(120))
+        budget = fresh_budget()
+        assert result is None
+        assert budget.spent_usd == pytest.approx(0.012, abs=1e-5)
+        assert budget.held_usd == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_budget_failure_never_raises(fresh_budget):
+    """The never-raises contract covers budget preparation too: nothing is sent."""
+    sys.path.insert(0, "mira-bots/telegram")
+    import voice_transcription
+    from voice_transcription import transcribe_voice
+
+    calls: list = []
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=True):
+        with patch.object(
+            voice_transcription, "get_openai_run_budget", side_effect=RuntimeError("boom")
+        ):
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+                result = await transcribe_voice(SIXTY_SECONDS_OF_BYTES)
+
+    assert result is None
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_tiny_file_claiming_an_hour_is_held_at_an_hour(fresh_budget):
+    """Cheap-lane r4 on #4451: Opus DTX encodes silence far below 6 kbps, so a
+    small file can carry an hour of audio. The container's granule duration
+    (3600 s = 0.36 USD) is held, not the size bound, so a 0.30 USD cap refuses."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    hour = _ogg_opus(3600)
+    assert len(hour) < 200  # the size bound alone would be well under a second
+    calls: list = []
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "0.30"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+            result = await transcribe_voice(hour)
+
+    assert result is None
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_size_bound_applies_when_it_is_larger(fresh_budget):
+    """A file claiming 1 s but carrying 450 kB is held at its size bound
+    (450,000 * 8 / 6000 = 600 s = 0.06 USD): a 0.05 USD cap refuses."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    calls: list = []
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "0.05"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+            result = await transcribe_voice(_ogg_opus(1, pad=450_000))
+
+    assert result is None
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [b"x" * 45_000, b"", _ogg_opus(60)[:-5], b"OggS" + bytes(30)],
+    ids=["not-ogg", "empty", "truncated-page", "no-opus-head"],
+)
+@pytest.mark.asyncio
+async def test_unparseable_audio_is_refused_with_nothing_sent(fresh_budget, payload):
+    """Telegram voice notes are always Ogg Opus. Anything that is not
+    well-formed Ogg Opus cannot be bounded, so it fails closed."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    calls: list = []
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, _mock_transcription_response("ok"), calls)
+            result = await transcribe_voice(payload)
+
+    assert result is None
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_malformed_success_body_is_booked_exactly_once(fresh_budget):
+    """Cheap-lane r5 on #4451 asked whether a 200 with a non-JSON body books the
+    hold twice (settle, then the error path's worst case). It does not: a
+    reservation decides once and later calls are no-ops. Pinned here."""
+    sys.path.insert(0, "mira-bots/telegram")
+    from voice_transcription import transcribe_voice
+
+    bad = MagicMock()
+    bad.status_code = 200
+    bad.raise_for_status = MagicMock(return_value=None)
+    bad.json = MagicMock(side_effect=ValueError("not json"))
+    calls: list = []
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_RUN_BUDGET_USD": "1"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            _capturing_client(mock_client_cls, bad, calls)
+            result = await transcribe_voice(SIXTY_SECONDS_OF_BYTES)
+        budget = fresh_budget()
+        assert result is None and len(calls) == 1
+        assert budget.spent_usd == pytest.approx(0.006, abs=1e-5)
+        assert budget.calls == 1
+        assert budget.held_usd == pytest.approx(0.0)
