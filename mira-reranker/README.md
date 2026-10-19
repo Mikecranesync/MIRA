@@ -31,7 +31,7 @@ from inside the compose network (no published port in the compose step).
 Scoring matches `sentence-transformers.CrossEncoder`: tokenizer pair encoding
 of `(query, passage[:2000])` as `[CLS] query [SEP] passage [SEP]` with
 `token_type_ids` 0/1, truncation to 512 tokens (passage side truncated first),
-batch size 32. The response score is the raw logit (no sigmoid) — order is
+batch size 8 (bounds peak memory; padding is masked, so scores match a batch of 32). The response score is the raw logit (no sigmoid) — order is
 what matters for reranking.
 
 ## Config

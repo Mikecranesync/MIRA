@@ -35,7 +35,9 @@ MAX_PASSAGE_CHARS = 2000
 MIN_PASSAGES = 1
 MAX_PASSAGES = 100
 MAX_SEQ_LEN = 512
-BATCH_SIZE = 32
+# Peak memory scales with batch x 512^2 attention: a batch of 24 full-length pairs spiked past a
+# 768 MiB cap. Batches of 8 bound the peak; padding is masked, so scores do not change.
+BATCH_SIZE = 8
 
 RERANKER_THREADS = int(os.environ.get("RERANKER_THREADS", "2"))
 
@@ -75,6 +77,12 @@ class Reranker:
 
         sess_options = ort.SessionOptions()
         sess_options.intra_op_num_threads = RERANKER_THREADS
+        # Every request has a different padded length, and the default CPU arena keeps the
+        # largest buffers it has ever seen: measured 481 MiB -> 1.4 GiB over 20 pool-24
+        # requests, OOM-killed under a 768 MiB cap. This service shares a host with
+        # production, so memory must stay flat; the arena's speed gain is not worth that.
+        sess_options.enable_cpu_mem_arena = False
+        sess_options.enable_mem_pattern = False
         session = ort.InferenceSession(
             str(ONNX_PATH),
             sess_options=sess_options,
