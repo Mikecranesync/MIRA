@@ -213,7 +213,10 @@ outputs, and required browser/device evidence. If peer messaging is unavailable,
 post the same packet to the PR with `[CODEX-REVIEW-REQUEST]` so GitHub remains the
 durable fallback. Only a `[CODEX-ADVERSARIAL-REVIEW]` envelope with `status: GREEN` whose
 `reviewed_sha` is that exact head (and whose `reviewed_body_sha256` matches the body) clears the
-gate; any new commit invalidates the verdict. Claude/subagent review output is
+gate, as does a CONVERGED verdict at that exact head and body (zero BLOCKER/HIGH, each MEDIUM filed as
+a follow-up issue, merge decided by the owner; `docs/architecture/mira-sdlc-v1.md` §4.3). The
+Lifecycle Guard itself still turns green only on GREEN (charter §3), so a CONVERGED PR merges with
+the advisory guard red until #4524 is decided. Any new commit invalidates the verdict. Claude/subagent review output is
 useful evidence but cannot substitute for or self-award the Codex PASS.
 
 ## Cross-references

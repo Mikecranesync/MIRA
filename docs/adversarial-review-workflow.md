@@ -2,7 +2,8 @@
 
 Automates the manual loop where Claude Code implements, Codex adversarially
 reviews, findings are persisted to the GitHub PR, Claude validates + fixes,
-and the cycle repeats until GREEN or a human decision is required. The human
+and the cycle repeats until GREEN, CONVERGED (zero BLOCKER/HIGH; see below),
+or a human decision is required. The human
 is removed from the copy/paste relay — not from the decisions that matter.
 
 ## Purpose — why two agents with separate roles

@@ -67,7 +67,7 @@ a live workflow disagree, the live workflow wins until changed through the proce
 ```
 Issue (+PRD for new behavior, +ADR if architectural) ─ Risk class on the issue/claim ─► G0 Ready to Build
   fetch + branch off origin/main ─ implement test-first ─ relevant suites + lint ─ cheap lane clean ─► G1 Ready for Review
-  required contexts green on head ─ [specialist findings] ─ [Codex exact-head GREEN] ─► G2 Ready to Merge
+  required contexts green on head ─ [specialist findings] ─ [Codex exact-head GREEN or CONVERGED, §4.3] ─► G2 Ready to Merge
   SHA-conditioned merge ─ version-tag.yml tags + rollback checkpoint (automatic)
             │ (only if the change ships)
   deploy-staging(approved_rc_sha) ─ staging receipt ─ acceptance receipt (capability-bound) ─ [migrations] ─► G3 Ready for Production
@@ -294,8 +294,8 @@ transitions. No agent may self-award a PASS on work it authored.
 
 Every round (including a crashed one) draws on the Codex allowance and consumes a ledger slot, and a
 GREEN goes stale the moment the head or body moves. These rules cut repeat rounds **without relaxing
-any gate**: R3 and guarded changes still need the exact-head, exact-body GREEN, and every post-cap
-pass still needs Mike's per-run authorization.
+any gate**: R3 and guarded changes still need an exact-head, exact-body GREEN, or a CONVERGED verdict
+with its follow-ups filed (§4.3), and every post-cap pass still needs Mike's per-run authorization.
 
 - **Preflight before reserving a round:**
   - the branch is current with main;
@@ -304,7 +304,8 @@ pass still needs Mike's per-run authorization.
   - the cheap lane has run at this head with no unresolved finding;
   - peers have been told a merge to main is coming;
   - any model passed via `CODEX_MODEL` is one the active Codex login actually offers.
-- **Merge on GREEN.** When the exact-head GREEN lands and the required contexts pass, merge at once
+- **Merge on GREEN.** When the exact-head GREEN lands (or the verdict is CONVERGED and its follow-ups
+  are filed) and the required contexts pass, merge at once
   under the existing merge authority, pinned with `--match-head-commit`.
   - Do not push or edit the PR body after GREEN.
   - The peer announcement is a courtesy, **not a lock**: it blocks no one. A peer that merges first
@@ -591,7 +592,7 @@ dispatch credential, or a provenance-model change) closes it. **No drill recorde
 |---|---|---|---|
 | Candidate code with credentials | Candidate-tree validators only for commits on `main`; trusted-base validators preferred (§5.2) | Any repo commit can be staged; validators from the candidate | Part B step 4 |
 | Privileged `pull_request_target` | **No job may check out and execute PR-head code with secrets or a write token.** The `auto-fix` job is **retired (D5)**; `ui-lifecycle-guard.yml`'s trusted-base evaluation is the permitted pattern | `code-review.yml` `auto-fix` exists (label-gated) | Part B step 2 |
-| Review producers/consumers and agent rules | Governance floor (R3): Codex GREEN required; lifecycle guard status (advisory today) | Guard not required | Part B step 11 |
+| Review producers/consumers and agent rules | Governance floor (R3): Codex GREEN or CONVERGED (§4.3) required; lifecycle guard status (advisory today) | Guard not required | Part B step 11 |
 | Attestation identity | Owner-account comment authentication; organizational independence (§4.4) | As stated | §13 (separate identity) |
 | Body-bound attestation | Any PR body edit invalidates GREEN by design; exceptions and closeouts are **comments**, not body edits | Enforced by the guard parser | — |
 | Direct push to `main` | Forbidden; `enforcement-audit.yml`'s nightly push attempt is removed or turned into a PR | Attempt exists, non-fatal | Part B step 2 |
@@ -731,7 +732,7 @@ tags; ingest-migration environment scope.
 ## B.3 REUSE / CONNECT / REPAIR / ADD and implementation sequence
 
 Every step is a normal PR through this document's gates (steps touching `.github/`, `tools/hooks/`,
-review producers, `.claude/` are R3 → Codex GREEN + Mike merge) or an explicit Mike settings action.
+review producers, `.claude/` are R3 → Codex GREEN or CONVERGED + Mike merge) or an explicit Mike settings action.
 Nothing below is implemented by this document.
 
 | Step | Type | Change | Files / systems | Prerequisite | Evidence of completion | Rollback | Mike |
