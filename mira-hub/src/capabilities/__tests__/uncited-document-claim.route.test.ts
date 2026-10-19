@@ -75,18 +75,21 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 vi.mock("@/lib/inference/persist-usage", () => ({ persistTurnUsage: vi.fn(async () => ({ persisted: true, traceId: "t" })) }));
-vi.mock("@/lib/workspace-files", () => ({ photoLinkedToTarget: vi.fn(async () => null) }));
+const workspaceFilesMock = vi.hoisted(() => ({
+  photoLinkedToTarget: vi.fn(async (): Promise<{ fileId: string; capturedAt: string } | null> => null),
+}));
+vi.mock("@/lib/workspace-files", () => workspaceFilesMock);
 const visualMock = vi.hoisted(() => ({
   loadVisualEvidenceForAsset: vi.fn(async () => [] as unknown[]),
   renderVisualEvidenceSection: vi.fn(() => ""),
+  loadVisualEvidenceForPhoto: vi.fn(async () => null as unknown),
+  loadRecentLookObservations: vi.fn(async () => [] as unknown[]),
+  renderLookObservationSection: vi.fn<(row: unknown) => string>(() => ""),
+  renderPriorLookObservationsSection: vi.fn<(rows: unknown) => string>(() => ""),
 }));
 vi.mock("@/lib/visual-evidence-context", () => ({
   blockingLookHazard: vi.fn(() => null),
   ...visualMock,
-  loadVisualEvidenceForPhoto: vi.fn(async () => null as unknown),
-  loadRecentLookObservations: vi.fn(async () => []),
-  renderLookObservationSection: vi.fn(() => ""),
-  renderPriorLookObservationsSection: vi.fn(() => ""),
   normalizeLookHazards: vi.fn(() => []),
   recordLookObservation: vi.fn(async () => ({})),
 }));
@@ -193,6 +196,11 @@ beforeEach(() => {
   domainMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
   visualMock.loadVisualEvidenceForAsset.mockResolvedValue([]);
   visualMock.renderVisualEvidenceSection.mockReturnValue("");
+  visualMock.loadVisualEvidenceForPhoto.mockResolvedValue(null);
+  visualMock.loadRecentLookObservations.mockResolvedValue([]);
+  visualMock.renderLookObservationSection.mockReturnValue("");
+  visualMock.renderPriorLookObservationsSection.mockReturnValue("");
+  workspaceFilesMock.photoLinkedToTarget.mockResolvedValue(null);
   ragMock.retrieveNodeChunks.mockResolvedValue([]);
   ragMock.retrieveManualChunks.mockResolvedValue([OEM_CHUNK]);
   manualDiscoveryMock.discoverManual.mockResolvedValue({
@@ -358,6 +366,123 @@ describe("#4426 — an uncited manufacturer-library answer abstains deterministi
     expect(visualMock.loadVisualEvidenceForAsset).toHaveBeenCalled();
     expect(r.status).toBe("insufficient_evidence");
     expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+  });
+
+  // #4442 (production, 2026-10-15): one photo early in a conversation exempted
+  // every later question in it from this floor, because the earlier photos ride
+  // in the same context block as this turn's photo and the exemption was
+  // presence-based. Same breadth defect #4432 fixed for stored nameplate readings.
+  describe("#4442 — an earlier photo in this conversation", () => {
+    const EARLIER_OBSERVATION = "Drive keypad showing fault F004 (undervoltage); nameplate reads GS10-20P2.";
+    const PRIOR_SECTION =
+      "## Photos the technician attached EARLIER in this conversation (visual observations)\n- Earlier photo 1: " +
+      EARLIER_OBSERVATION;
+
+    function earlierPhotoInThread() {
+      visualMock.loadRecentLookObservations.mockResolvedValue([
+        { text: EARLIER_OBSERVATION, trust: "candidate", fileId: "file-earlier", observedAt: "2026-10-15T11:33:46Z" },
+      ]);
+      visualMock.renderPriorLookObservationsSection.mockImplementation((rows: unknown) =>
+        Array.isArray(rows) && rows.length > 0 ? PRIOR_SECTION : "",
+      );
+    }
+
+    /** The photo block rides into the prompt as buildManualUserContent's third
+     *  argument (the user-data channel); that builder is stubbed here, so assert
+     *  what it was handed rather than the stub's output. */
+    function photoContextHanded(): string {
+      const call = ragMock.buildManualUserContent.mock.calls.at(-1) as unknown[] | undefined;
+      return String(call?.[2] ?? "");
+    }
+    function priorSectionReachedProvider() {
+      return photoContextHanded().includes("attached EARLIER in this conversation");
+    }
+
+    it("does NOT exempt an uncited library answer that never uses the photo", async () => {
+      earlierPhotoInThread();
+      const r = await ask(UNCITED);
+      // Preconditions: the OEM search ran and the earlier photo reached the model.
+      expect(ragMock.retrieveManualChunks).toHaveBeenCalled();
+      expect(visualMock.loadRecentLookObservations).toHaveBeenCalled();
+      expect(priorSectionReachedProvider()).toBe(true);
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.citations).toEqual([]);
+      expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+      expect(r.persisted?.answerStatus).toBe("insufficient_evidence");
+    });
+
+    it("a passing mention of the earlier photo does NOT exempt an unrelated uncited claim", async () => {
+      earlierPhotoInThread();
+      const r = await ask(`${UNCITED} Send another shot like your earlier photo if the screen changes.`);
+      expect(priorSectionReachedProvider()).toBe(true);
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+    });
+
+    it("a request for a NEW photo that names the earlier code does NOT exempt an uncited claim (Codex r1 F1)", async () => {
+      earlierPhotoInThread();
+      const r = await ask(`${UNCITED} Take the photo before checking F004 in the manual.`);
+      expect(priorSectionReachedProvider()).toBe(true);
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+    });
+
+    it("a longer model code that merely contains the photographed one does NOT exempt (Codex r1 F2)", async () => {
+      earlierPhotoInThread();
+      const r = await ask("Unlike your earlier photo, the GS10-20P20 has two Ethernet ports and a USB port.");
+      expect(priorSectionReachedProvider()).toBe(true);
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+    });
+
+    it("an instruction to check the earlier photo for its code does NOT exempt an uncited claim (Codex r2 F4)", async () => {
+      earlierPhotoInThread();
+      const r = await ask(`${UNCITED} Check your earlier photo to see whether F004 is visible.`);
+      expect(priorSectionReachedProvider()).toBe(true);
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+    });
+
+    // Strict (#4450 option a): an earlier photo never exempts the floor, however the
+    // answer refers to it. Three Codex rounds each found a new phrasing that slipped
+    // through a "does the answer use the photo" heuristic; the cost of strict is a
+    // false abstain here, on a library turn that retrieved passages and cited none.
+    it("strict: even an answer that uses the earlier photo abstains when it cites none of the retrieved passages", async () => {
+      earlierPhotoInThread();
+      const FROM_PHOTO = "From your earlier photo (an unconfirmed reading), the drive is showing fault F004, an undervoltage trip.";
+      const r = await ask(FROM_PHOTO, { message: "what was the fault on it", mode: "general" });
+      expect(ragMock.retrieveManualChunks).toHaveBeenCalled();
+      expect(priorSectionReachedProvider()).toBe(true);
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.citations).toEqual([]);
+      expect(r.content).toBe(UNCITED_OEM_CLAIM_TEXT);
+      expect(r.persisted?.answerStatus).toBe("insufficient_evidence");
+    });
+
+    it("control: a photo attached THIS turn still exempts the answer it was asked with", async () => {
+      workspaceFilesMock.photoLinkedToTarget.mockResolvedValue({ fileId: "file-now", capturedAt: "2026-10-15T11:35:00Z" });
+      visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        text: "HMI panel with a cracked touchscreen.",
+        trust: "candidate",
+        fileId: "file-now",
+        hazards: [],
+      });
+      visualMock.renderLookObservationSection.mockImplementation((row: unknown) =>
+        row ? "## Photo the technician attached this turn (visual observation)\n- HMI panel with a cracked touchscreen." : "",
+      );
+      const FROM_THIS_PHOTO = "The attached photo shows a cracked touchscreen on this panel.";
+      const r = await ask(FROM_THIS_PHOTO, {
+        message: "what is wrong with this screen",
+        mode: "general",
+        visualEvidence: { fileId: "file-now" },
+      });
+      // Preconditions: the photo was verified and its section reached the model.
+      expect(workspaceFilesMock.photoLinkedToTarget).toHaveBeenCalled();
+      expect(photoContextHanded()).toContain("attached this turn");
+      expect(photoContextHanded()).not.toContain("attached EARLIER");
+      expect(r.status).toBe("answered");
+      expect(r.content).toBe(FROM_THIS_PHOTO);
+    });
   });
 });
 
