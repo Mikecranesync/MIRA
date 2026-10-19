@@ -87,7 +87,11 @@ export function classify(q: Question, m: Manual, o: Observation, tolerance = 1):
       ? done("ABSTAINED", "no citation and no evidence basis rendered")
       : done("UNCITED", `answered without a citation (basis: ${r.evidence})`);
   }
-  if (!first!.title.toLowerCase().includes(stem(m.filename))) return done("WRONG_PAGE", `wrong_doc: first citation is "${first!.title}"`);
+  // The document is identified by the file the citation opened (the viewer's file id equals the
+  // manual's file id), not by the chip's title: the energized-work stop titles its chip "Lockout /
+  // disconnect-power procedure" while pointing at the manual's own lockout page.
+  const openedManual = o.viewerOpened === true && !!o.viewer?.fileId && o.viewer.fileId === o.viewer.manualFileId;
+  if (!openedManual && !first!.title.toLowerCase().includes(stem(m.filename))) return done("WRONG_PAGE", `wrong_doc: first citation is "${first!.title}"`);
   if (citedPage === null) return done("WRONG_PAGE", "first citation carries no page");
   // Opening the first citation is part of the journey: one that does not open is not a citation.
   if (o.viewerOpened === false) return done("BROKEN", `first citation did not open in the source viewer (cited p.${citedPage ?? "?"})`);

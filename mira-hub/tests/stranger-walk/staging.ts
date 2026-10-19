@@ -112,18 +112,25 @@ export const BUDGET = {
 const count = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
 
 /** Did the turn's visible usage stay inside the bound the booking assumed? `readable: false` = no
- *  response, no usage frame, or null / negative / non-finite counts. */
+ *  response, no usage frame (unless the turn is a deterministic safety stop), or null / negative /
+ *  non-finite counts. */
 export function turnUsage(sse: string | null): { readable: boolean; inBound: boolean; inputTokens: number; outputTokens: number } {
-  let frames = 0, input = 0, output = 0;
+  let frames = 0, input = 0, output = 0, safety = false, answered = false;
   for (const line of (sse ?? "").split("\n")) {
     if (!line.startsWith("data: ")) continue;
     let f: Record<string, unknown>;
     try { f = JSON.parse(line.slice(6)); } catch { continue; }
+    if (f?.kind === "safety" && typeof f.trigger === "string" && f.trigger) safety = true;
+    if (f?.kind === "status" && f.status === "answered") answered = true;
     if (f?.kind !== "usage") continue;
     const i = count(f.inputTokens), c = count(f.cachedInputTokens ?? 0), o = count(f.outputTokens);
     if (i === null || c === null || o === null) return { readable: false, inBound: false, inputTokens: 0, outputTokens: 0 };
     input = Math.max(input, i); output = Math.max(output, o); frames++;
   }
+  // A deterministic safety stop (energized-work hard stop, replayed terminal notice) answers with
+  // a `safety` frame and an `answered` status and never calls the model, so it has no usage frame.
+  // That turn cost $0; reading it as "unreadable" halted the whole walk at turn 24 on 2026-10-18.
+  if (!frames && safety && answered) return { readable: true, inBound: true, inputTokens: 0, outputTokens: 0 };
   if (!frames) return { readable: false, inBound: false, inputTokens: 0, outputTokens: 0 };
   return { readable: true, inBound: input <= TURN_BOUND.inputTokens && output <= TURN_BOUND.answerOutputTokens, inputTokens: input, outputTokens: output };
 }

@@ -46,6 +46,16 @@ describe("classify", () => {
     expect(other.classification).toBe("WRONG_PAGE");
     expect(other.reason).toMatch(/^wrong_doc/);
   });
+  it("identifies the document by the file the citation opened, not the chip title (2026-10-18 stop chip)", () => {
+    const viewer = { fileId: "f-pf40", page: "9", manualFileId: "f-pf40" };
+    const stopChip = chip("9", "Lockout / disconnect-power procedure");
+    expect(classify(q, m, obs({ firstChip: stopChip, viewer })).classification).toBe("CORRECT");
+    // Control: the same title opening a DIFFERENT file is still another document.
+    const wrong = classify(q, m, obs({ firstChip: stopChip, viewer: { ...viewer, fileId: "f-other" } }));
+    expect(wrong.classification).not.toBe("CORRECT");
+    // Control: without a captured viewer the title is all we have, and it does not match.
+    expect(classify(q, m, obs({ firstChip: stopChip })).reason).toMatch(/^wrong_doc/);
+  });
   it("scores the first chip in READING order, not the id-sorted record", () => {
     // Answer reads "... [6] ... [5]": the technician opens [6] (p.9); id order would pick [5] (p.40).
     const rendered = turn({ citations: [{ n: "5", title: "pf40.pdf", page: "40" }, { n: "6", title: "pf40.pdf", page: "9" }] });
@@ -222,6 +232,23 @@ describe("budget (worst case booked at dispatch, never released; fail closed)", 
       frame({ inputTokens: "3000", cachedInputTokens: 0, outputTokens: 250 }),
       'data: {"kind":"usage","inputTokens":1e999,"cachedInputTokens":0,"outputTokens":1}\n',
     ]) expect(turnUsage(sse).readable, String(sse)).toBe(false);
+  });
+  it("a deterministic safety stop (safety + answered status, no usage frame) is a readable $0 turn", () => {
+    const stop = [
+      'data: {"kind":"sources","citations":[]}',
+      'data: {"kind":"safety","trigger":"energized-work"}',
+      'data: {"kind":"content","content":"Stop. De-energize first."}',
+      'data: {"kind":"status","status":"answered"}',
+      "",
+    ].join("\n");
+    expect(turnUsage(stop)).toEqual({ readable: true, inBound: true, inputTokens: 0, outputTokens: 0 });
+    const meter = new BudgetMeter();
+    meter.book(); meter.verify("stop", stop);
+    expect(meter.canAfford()).toBe(true);
+    // Controls: a safety frame alone, or an answered status alone, is still unreadable usage.
+    expect(turnUsage('data: {"kind":"safety","trigger":"energized-work"}\n').readable).toBe(false);
+    expect(turnUsage('data: {"kind":"status","status":"answered"}\n').readable).toBe(false);
+    expect(turnUsage('data: {"kind":"safety","trigger":"x"}\ndata: {"kind":"status","status":"error"}\n').readable).toBe(false);
   });
   it("a turn with unreadable or out-of-bound usage stops every later paid turn", () => {
     for (const bad of [null, usage(TURN_BOUND.inputTokens + 1, 100), usage(3000, TURN_BOUND.answerOutputTokens + 1)]) {
