@@ -19,6 +19,7 @@ import {
   threadFromPersisted,
   turnsFromPersisted,
   withManualSearchStatus,
+  withSettledFollowups,
   type HubNotebookMeta,
 } from "./to-interaction";
 
@@ -127,12 +128,12 @@ describe("partsFromStream", () => {
     expect(me).toMatchObject({ type: "machine_evidence", evidence: { source: "live", reason: "unavailable" } });
   });
 
-  it("a live directive (hazardNotice) renders a WARNING notice after the evidence and stays completed (#3841)", () => {
+  it("a live directive (hazardNotice) renders a WARNING notice ahead of the answer, as the classic notebook does, and stays completed (#3841, #4439)", () => {
     const directive = { kind: "safety_notice" as const, trigger: ENERGIZED_ELECTRICAL_HAZARD };
     const live = stream({ hazardNotice: directive });
     const parts = partsFromStream(live, LIVE);
-    expect(parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "safety_notice", "followups"]);
-    expect(parts[3]).toMatchObject({ notice: { severity: "warning", trigger: ENERGIZED_ELECTRICAL_HAZARD, message: expect.stringContaining("NFPA 70E") } });
+    expect(parts.map((p) => p.type)).toEqual(["safety_notice", "text", "source", "evidence_basis", "followups"]);
+    expect(parts[0]).toMatchObject({ notice: { severity: "warning", trigger: ENERGIZED_ELECTRICAL_HAZARD, message: expect.stringContaining("NFPA 70E") } });
     expect(lifecycleFromStream(live)).toBe("completed");
   });
 
@@ -140,8 +141,8 @@ describe("partsFromStream", () => {
     const safety = stream({ citations: [], basis: null, followups: [], safetyNotice: { kind: "safety_notice", trigger: "bypass the interlock" } });
     const parts = partsFromStream(safety, LIVE);
     expect(parts).toEqual([
-      { type: "text", text: "Check the Modbus link first." },
       { type: "safety_notice", notice: { severity: "stop", message: expect.stringContaining("lockout/tagout"), trigger: "bypass the interlock" } },
+      { type: "text", text: "Check the Modbus link first." },
     ]);
     expect(lifecycleFromStream(safety)).toBe("safety_stop");
     // Precedence: stopped and failed still outrank safety_stop; an ordinary answered status does not.
@@ -168,8 +169,8 @@ describe("partsFromStream", () => {
       safetyNotice: { kind: "safety_notice", trigger: "bypass the interlock" },
       visualEvidence: visual,
     }), LIVE);
-    expect(parts.map((part) => part.type)).toEqual(["text", "safety_notice", "error"]);
-    expect(parts[1]).toMatchObject({
+    expect(parts.map((part) => part.type)).toEqual(["safety_notice", "text", "error"]);
+    expect(parts[0]).toMatchObject({
       type: "safety_notice",
       notice: { severity: "stop", trigger: "bypass the interlock" },
     });
@@ -188,8 +189,8 @@ describe("partsFromStream", () => {
       safetyNotice: { kind: "safety_notice", trigger: "smoke coming" },
       visualEvidence: visual,
     }), { stopped: true, ...LIVE });
-    expect(parts.map((part) => part.type)).toEqual(["text", "safety_notice", "error"]);
-    expect(parts[1]).toMatchObject({ type: "safety_notice", notice: { severity: "stop", trigger: "smoke coming" } });
+    expect(parts.map((part) => part.type)).toEqual(["safety_notice", "text", "error"]);
+    expect(parts[0]).toMatchObject({ type: "safety_notice", notice: { severity: "stop", trigger: "smoke coming" } });
     expect(parts.some((part) => part.type === "source" || part.type === "evidence_basis" || part.type === "visual_observation")).toBe(false);
   });
 
@@ -266,7 +267,7 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
         { kind: "identity_dispute", requestedAssetId: "x", boundAssetId: "asset-uuid-1", boundUnsPath: "enterprise.garage.cv_101" } as unknown as EvidenceCitation,
       ],
     }), meta);
-    expect(a.parts.map((p) => p.type)).toEqual(["text", "identity_dispute", "source", "evidence_basis", "machine_evidence", "visual_observation", "safety_notice"]);
+    expect(a.parts.map((p) => p.type)).toEqual(["safety_notice", "text", "identity_dispute", "source", "evidence_basis", "machine_evidence", "visual_observation"]);
     // A disputed turn is rendered with the machine identity downgraded.
     expect(a.context).toMatchObject({ machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
   });
@@ -291,8 +292,8 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
   it("a persisted safety refusal hydrates as safety_stop, not completed (Codex #3839 F2)", () => {
     const [, a] = turnsFromPersisted(row({ evidence: [citation, { kind: "safety_notice", trigger: "arc flash" }] }), meta);
     expect(a.lifecycle).toBe("safety_stop");
-    expect(a.parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "safety_notice"]);
-    expect(a.parts[3]).toMatchObject({ notice: { severity: "stop", trigger: "arc flash" } });
+    expect(a.parts.map((p) => p.type)).toEqual(["safety_notice", "text", "source", "evidence_basis"]);
+    expect(a.parts[0]).toMatchObject({ notice: { severity: "stop", trigger: "arc flash" } });
     // A stopped or failed row with a stale safety marker keeps its stronger lifecycle.
     const [, stoppedTurn] = turnsFromPersisted(row({ answerStatus: "error", answerText: "Ver", evidence: [{ kind: "safety_notice", trigger: "x" }] }), meta);
     expect(stoppedTurn.lifecycle).toBe("stopped");
@@ -306,8 +307,8 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
     // Persisted: a directive-framed answered row completes with its citations and a warning notice.
     const [, a] = turnsFromPersisted(row({ evidence: [directive, citation] }), meta);
     expect(a.lifecycle).toBe("completed");
-    expect(a.parts.map((p) => p.type)).toEqual(["text", "source", "evidence_basis", "safety_notice"]);
-    expect(a.parts[3]).toMatchObject({ notice: { severity: "warning", trigger: ENERGIZED_ELECTRICAL_HAZARD, message: expect.stringContaining("NFPA 70E") } });
+    expect(a.parts.map((p) => p.type)).toEqual(["safety_notice", "text", "source", "evidence_basis"]);
+    expect(a.parts[0]).toMatchObject({ notice: { severity: "warning", trigger: ENERGIZED_ELECTRICAL_HAZARD, message: expect.stringContaining("NFPA 70E") } });
     // Live: the directive turn streams an ordinary evidence frame (no safety frame), so it completes — identical lifecycle.
     expect(lifecycleFromStream(stream())).toBe("completed");
     // A rejected unsafe answer persists the directive AND the violation; the violation decides: safety_stop, both notices rendered.
@@ -469,7 +470,8 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
       manufacturer: "SMC",
       model: "SS5Y3-DUW01302",
       running: false,
-      message: "I looked for the official SMC SS5Y3-DUW01302 manual and couldn't find one.",
+      message: "Download the manual first.",
+      manualUrl: "https://www.keyence.com/manual",
     });
     const lastAssistant = [...out].reverse().find((t) => t.role === "assistant")!;
     expect(lastAssistant.parts).toContainEqual({
@@ -477,7 +479,8 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
       manufacturer: "SMC",
       model: "SS5Y3-DUW01302",
       running: false,
-      message: "I looked for the official SMC SS5Y3-DUW01302 manual and couldn't find one.",
+      message: "Download the manual first.",
+      manualUrl: "https://www.keyence.com/manual",
     });
   });
 
@@ -491,6 +494,75 @@ describe("withManualSearchStatus — the post-refresh render path (#4189 F6)", (
     const userOnly = [{ ...threadFromPersisted([row()], meta).turns[0]! }];
     const out = withManualSearchStatus(userOnly, { manufacturer: "SMC", model: "X", running: true });
     expect(out).toEqual(userOnly);
+  });
+});
+
+// #4454: saved rows never carry follow-up suggestions, so when the host reloads
+// the thread after a stream and drops the live turn, the chips the technician
+// just saw vanished (Pixel 9a Chrome, staging 78bab6e98: present for ~2 s, gone
+// at settle). The host keeps the just-finished answer's suggestions and this
+// overlay puts them back on that answer.
+describe("withSettledFollowups — follow-ups survive the post-stream reload (#4454)", () => {
+  // `answeredBefore`: the answers already in the thread when the send started.
+  const settled = { question: "what should I check first", suggestions: ["What does P9.02 do"], answeredBefore: [] as string[] };
+  const lastAssistant = (turns: readonly { role: string }[]) => [...turns].reverse().find((t) => t.role === "assistant")! as (typeof turns)[number] & { parts: readonly { type: string }[] };
+  const hasFollowups = (t: { parts: readonly { type: string }[] }) => t.parts.some((p) => p.type === "followups");
+  const sameQuestionTwice = () => threadFromPersisted(
+    [row({ question: "what should I check first" }), row({ id: "turn-2", question: "what should I check first", createdAt: "2026-09-17T12:05:00.000Z" })],
+    meta,
+  ).turns;
+
+  it("puts the finished answer's suggestions back on the reloaded answer", () => {
+    const turns = threadFromPersisted([row()], meta).turns;
+    // Precondition: the reloaded row itself has no follow-ups (the defect).
+    expect(hasFollowups(lastAssistant(turns))).toBe(false);
+    const out = withSettledFollowups(turns, settled);
+    expect(lastAssistant(out).parts).toContainEqual({ type: "followups", suggestions: ["What does P9.02 do"] });
+  });
+
+  it("an earlier answer to the same question, already there before the send, stays as it was", () => {
+    const turns = sameQuestionTwice();
+    const out = withSettledFollowups(turns, { ...settled, answeredBefore: [answerTurnId("turn-1")] });
+    const answers = out.filter((t) => t.role === "assistant");
+    expect(hasFollowups(answers[0]!)).toBe(false);
+    expect(hasFollowups(answers[1]!)).toBe(true);
+  });
+
+  // Cheap-lane finding on #4456: matching on the question alone let another
+  // device's answer to the SAME question inherit them. Two new answers to it
+  // cannot be told apart from here, so neither gets them.
+  it("another device answered the same question meanwhile: neither answer gets them", () => {
+    const turns = sameQuestionTwice();
+    expect(withSettledFollowups(turns, settled)).toEqual(turns);
+  });
+
+  it("does not attach them to a different question's answer (a newer turn from another device)", () => {
+    const turns = threadFromPersisted([row(), row({ id: "turn-2", question: "something else entirely", createdAt: "2026-09-17T12:05:00.000Z" })], meta).turns;
+    expect(withSettledFollowups(turns, settled)).toEqual(turns);
+  });
+
+  it("leaves a stopped or failed last answer alone", () => {
+    const stopped = threadFromPersisted([row({ answerStatus: "error", answerText: "partial" })], meta).turns;
+    const failed = threadFromPersisted([row({ answerStatus: "error", answerText: null })], meta).turns;
+    expect(withSettledFollowups(stopped, settled)).toEqual(stopped);
+    expect(withSettledFollowups(failed, settled)).toEqual(failed);
+  });
+
+  it("no settled suggestions, or none to show: unchanged", () => {
+    const turns = threadFromPersisted([row()], meta).turns;
+    expect(withSettledFollowups(turns, null)).toEqual(turns);
+    expect(withSettledFollowups(turns, { ...settled, suggestions: [] })).toEqual(turns);
+  });
+
+  it("renders in the same order as the live turn: follow-ups before the manual-search status", () => {
+    const turns = threadFromPersisted([row()], meta).turns;
+    const out = withManualSearchStatus(withSettledFollowups(turns, settled), { manufacturer: "SMC", model: "X", running: false });
+    const types = lastAssistant(out).parts.map((p) => p.type);
+    expect(types.indexOf("followups")).toBeGreaterThan(-1);
+    expect(types.indexOf("followups")).toBeLessThan(types.indexOf("manual_search_status"));
+    // Same placement partsFromStream gives the live turn: after sources and basis.
+    const live = partsFromStream(stream(), LIVE).map((p) => p.type);
+    expect(types.slice(0, types.indexOf("followups") + 1)).toEqual(live.slice(0, live.indexOf("followups") + 1));
   });
 });
 

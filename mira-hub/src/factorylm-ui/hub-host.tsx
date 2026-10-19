@@ -55,9 +55,8 @@ import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { HOME_THREAD, createOutgoingOwner, withOutgoing, type Outgoing } from "./outgoing-turn";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
-import { OnboardingGate } from "./onboarding-gate";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus } from "./to-interaction";
+import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
   EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
@@ -73,11 +72,11 @@ import {
   historyRows,
   homeSendPlan,
   initialHubShellState,
-  initialSelection,
   landingSelection,
   latestRequestGate,
   metaFor,
   newThreadId,
+  openNotebookSelection,
   retainedStreamInterruption,
   searchForSelection,
   selectionFromSearch,
@@ -140,7 +139,12 @@ export function HubShellHost() {
   const selectionRef = useRef<HubSelection | null>(null);
   useEffect(() => { selectionRef.current = selection; }, [selection]);
   const [detail, setDetail] = useState<Detail | null>(null);
+  const detailRef = useRef(detail);
+  useEffect(() => { detailRef.current = detail; }, [detail]);
   const [live, setLive] = useState<Live | null>(null);
+  // #4454: the finished answer's follow-up suggestions, kept past the reload
+  // that replaces the live turn (saved rows never carry them).
+  const [settledFollowups, setSettledFollowups] = useState<(SettledFollowups & HubSelection) | null>(null);
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
@@ -199,6 +203,9 @@ export function HubShellHost() {
       if (next) {
         syncThread(next);
         setSelection(next);
+        // A link without a thread opened a freshly minted one (#4444); name it
+        // in the URL so a reload returns to this chat, not another blank one.
+        writeSearch(searchForSelection(next));
       }
     }
     return data.notebooks;
@@ -362,8 +369,15 @@ export function HubShellHost() {
     // in-flight gap (a turn still streaming) is the documented BLOCKED note:
     // `notebook-chat-utils.ts` (guarded legacy presentation) carries no such
     // frame, so this appears only once `loadDetail` has re-fetched.
+    const settled =
+      settledFollowups && settledFollowups.notebookId === selection.notebookId && settledFollowups.threadId === selection.threadId
+        ? settledFollowups
+        : null;
     const turns = withManualSearchStatus(
-      withOutgoing(threadFromPersisted(detail.turns, meta).turns, { turns: liveTurns, outgoingId: live?.outgoingId ?? null }, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta)),
+      withSettledFollowups(
+        withOutgoing(threadFromPersisted(detail.turns, meta).turns, { turns: liveTurns, outgoingId: live?.outgoingId ?? null }, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta)),
+        settled,
+      ),
       // Codex #4195 round 2 F6: the FOLLOWED status (hydration/confirm-seeded,
       // ticking toward resolution) takes precedence over the raw per-render
       // read, so an idle Hub still updates once a backgrounded search settles.
@@ -371,7 +385,7 @@ export function HubShellHost() {
     );
     const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
-  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing]);
+  }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing, settledFollowups]);
 
   // The outgoing message owns its photo previews until it is dropped; leaving
   // the hub releases whatever it still holds (Codex #4289 F2).
@@ -390,6 +404,9 @@ export function HubShellHost() {
     const id = `live-${Date.now()}`;
     const outgoingId = outgoingOwner.current?.id ?? null;
     setFailedBody(null);
+    setSettledFollowups(null);
+    // #4454: which answers were already there, so the kept follow-ups land on the one this send produces.
+    const answeredBefore = (detailRef.current?.turns ?? []).map((row) => answerTurnId(row.id));
     dispatch({ type: "set-send-error", error: null });
     setLive({ id, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString(), outgoingId });
     setBusy(true);
@@ -412,6 +429,14 @@ export function HubShellHost() {
       // thread created by this first turn) and let the live turn go.
       await loadDetail(sel);
       await loadNotebooks();
+      // #4454: keep the follow-ups the live turn showed (same rule as the live
+      // render), for the reloaded answer to that same question.
+      const finished = partsFromStream(result, { turnId: `${id}-a` }).find((p) => p.type === "followups");
+      setSettledFollowups(
+        finished?.type === "followups"
+          ? { notebookId: sel.notebookId, threadId: sel.threadId, question: body.message, suggestions: finished.suggestions, answeredBefore }
+          : null,
+      );
       setLive((cur) => (cur && cur.id === id ? null : cur));
       dropOutgoing(outgoingId);
       // #4311: a failed send put the question back in the composer; a
@@ -647,8 +672,8 @@ export function HubShellHost() {
     const notebookId = notebookIdFromProject(projectId);
     if (!notebookId) return;
     const nb = notebooks?.find((n) => n.id === notebookId);
-    const sel = nb ? initialSelection([nb]) : null;
-    if (sel) select(sel);
+    // A fresh chat, not the notebook's last conversation (#4444).
+    if (nb) select(openNotebookSelection(nb));
   }, [notebooks, select]);
 
   /**
@@ -848,17 +873,15 @@ export function HubShellHost() {
 
   return (
     <div className="hub-shell-host" data-testid="hub-shell">
-      <OnboardingGate>
-        <FactoryLMShell
-          state={view}
-          dispatch={dispatch}
-          adapter={adapter}
-          hooks={hooks}
-          conversationSurface="assistant"
-          onOpenItem={onOpenItem}
-          onSelectProject={onSelectProject}
-        />
-      </OnboardingGate>
+      <FactoryLMShell
+        state={view}
+        dispatch={dispatch}
+        adapter={adapter}
+        hooks={hooks}
+        conversationSurface="assistant"
+        onOpenItem={onOpenItem}
+        onSelectProject={onSelectProject}
+      />
     </div>
   );
 }

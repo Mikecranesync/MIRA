@@ -1,6 +1,7 @@
 """MIRA Inference Router — Multi-provider LLM cascade.
 
-Cascade order: OpenAI → Groq → Cerebras → Together → (caller falls back to Open WebUI).
+Cascade order: OpenAI → OpenRouter → Groq → Cerebras → Together → (caller falls back
+to Open WebUI).
 
 Each provider is tried in sequence. On any failure (rate limit, billing,
 timeout, service error), the next provider is attempted. The caller
@@ -8,8 +9,8 @@ timeout, service error), the next provider is attempted. The caller
 providers failed" and falls through to the local Open WebUI/Ollama path.
 
 Provider enablement is key-based: if OPENAI_API_KEY is set, OpenAI leads the
-cascade; same for GROQ_API_KEY, CEREBRAS_API_KEY and TOGETHERAI_API_KEY. Order
-is fixed. OpenAI's gpt-5 family speaks a slightly different dialect
+cascade; same for OPENROUTER_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY and
+TOGETHERAI_API_KEY. Order is fixed. OpenAI's gpt-5 family speaks a slightly different dialect
 (`max_completion_tokens`, no `temperature`, `reasoning_effort`) — see
 `_Provider.request_style` / `_request_payload()`.
 
@@ -29,8 +30,9 @@ import os
 import re
 import sqlite3
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import unquote
 
 import httpx
 import yaml
@@ -49,7 +51,32 @@ logger = logging.getLogger("mira-gsd")
 # Providers billed per token. Their LLM_USAGE line must never read as free
 # (est_cost=$0.00000) — see InferenceRouter.log_usage. Groq / Cerebras /
 # Together are free-tier and stay out of this set.
-_METERED_PROVIDERS = frozenset({"openai"})
+_METERED_PROVIDERS = frozenset({"openai", "openrouter"})
+
+# OpenRouter backup tier (owner decision 2026-10-14). Non-reasoning Llama 3.3
+# 70B for text (gpt-oss burns small caps on hidden reasoning) and Qwen3-VL for
+# images, so photo turns have a live provider besides OpenAI.
+_OPENROUTER_TEXT_MODEL = "meta-llama/llama-3.3-70b-instruct"
+_OPENROUTER_VISION_MODEL = "qwen/qwen3-vl-30b-a3b-instruct"
+# Sent on every OpenRouter request: route only to hosts that neither train on
+# nor retain prompts. Verified live 2026-10-14 — both default models have such
+# hosts (AkashML / DeepInfra answered with this block set).
+_OPENROUTER_ROUTING = {"data_collection": "deny", "zdr": True}
+
+
+def _openrouter_model_refused(model: str) -> bool:
+    """True for a model OpenRouter could serve as Claude.
+
+    Anthropic is banned from this cascade (PR #610). OpenRouter serves it as
+    ``anthropic/...``, through ``~anthropic/...-latest`` aliases, and through its
+    ``openrouter/...`` auto-routers, which pick a model per request. A preset
+    reference (``@preset/x``, alone or as ``model@preset/x``) is refused too: the
+    preset chooses its models remotely and can be switched to Claude without any
+    change here (Codex r1 F1 on #4436).
+    """
+    m = model.strip().lower()
+    return "anthropic" in m or "claude" in m or m.startswith("openrouter/") or "@" in m
+
 
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
 _PROMPT_CACHE_TTL = float(os.getenv("MIRA_PROMPT_CACHE_TTL", "60"))
@@ -266,6 +293,9 @@ class _Provider:
     # (wants `max_completion_tokens`) and any non-default `temperature`; it
     # takes `reasoning_effort` instead. See _request_payload().
     request_style: str = "openai_compat"
+    # Provider-specific fields merged into every compat request body
+    # (OpenRouter's data-policy routing block). Empty for everyone else.
+    extra_body: dict = field(default_factory=dict)
 
     @property
     def enabled(self) -> bool:
@@ -313,16 +343,19 @@ def _request_payload(
         "max_tokens": max_tokens,
         "messages": messages,
         "temperature": 0.1,
+        # isinstance, not truthiness: a MagicMock test double is truthy.
+        **(provider.extra_body if isinstance(getattr(provider, "extra_body", None), dict) else {}),
     }
 
 
 def _build_providers() -> list[_Provider]:
     """Build the ordered provider list from environment variables.
 
-    Cascade order: OpenAI → Groq → Cerebras → Together.
+    Cascade order: OpenAI → OpenRouter → Groq → Cerebras → Together.
     OpenAI leads (owner directive 2026-10-11: Groq is billing-restricted and
     Cerebras archived), key-gated like every other member so an unset
-    OPENAI_API_KEY leaves the cascade exactly as before. Together AI is the
+    OPENAI_API_KEY leaves the cascade exactly as before. OpenRouter is the
+    backup tier (owner decision 2026-10-14), also key-gated. Together AI is the
     last provider (replaced Gemini, which was 403-blocked in Doppler) via
     its OpenAI-compatible serverless endpoint.
     """
@@ -347,6 +380,29 @@ def _build_providers() -> list[_Provider]:
                 request_style="openai_reasoning",
             )
         )
+
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
+    if openrouter_key:
+        # The `or` form is load-bearing: compose maps ${VAR:-} to "" in-container.
+        text_model = os.getenv("OPENROUTER_MODEL") or _OPENROUTER_TEXT_MODEL
+        vision_model = os.getenv("OPENROUTER_VISION_MODEL") or _OPENROUTER_VISION_MODEL
+        refused = [m for m in (text_model, vision_model) if _openrouter_model_refused(m)]
+        if refused:
+            # Fail closed: a misconfigured model drops the backup tier rather
+            # than letting it answer as Claude.
+            logger.error("OPENROUTER_MODEL_REFUSED models=%s — provider left out", refused)
+        else:
+            providers.append(
+                _Provider(
+                    name="openrouter",
+                    api_url="https://openrouter.ai/api/v1/chat/completions",
+                    api_key=openrouter_key,
+                    model=text_model,
+                    timeout=float(os.getenv("OPENROUTER_TIMEOUT") or "60"),
+                    vision_model=vision_model,
+                    extra_body={"provider": dict(_OPENROUTER_ROUTING)},
+                )
+            )
 
     groq_key = os.getenv("GROQ_API_KEY", "")
     if groq_key:
@@ -414,6 +470,21 @@ def _build_providers() -> list[_Provider]:
         )
 
     return providers
+
+
+class EncodedSessionId(str):
+    """A ``tenant_platform_rest`` session id whose tenant and platform are %-escaped.
+
+    Built only by ``conversation_router.accounting_session_id``. The TYPE is the
+    marker: `InferenceRouter.write_api_usage` decodes the parts of these ids and
+    of nothing else. A plain ``str`` is a legacy raw id from another caller and
+    is split exactly as before, never decoded, so a tenant whose name literally
+    contains ``%5F`` keeps it (Codex r4 F5 on #4391). The marker lives on the
+    object: ``str()``, ``.strip()``, slicing or an f-string return a plain
+    ``str`` and drop it, so hand the builder's result through unchanged.
+    """
+
+    __slots__ = ()
 
 
 class InferenceRouter:
@@ -551,12 +622,19 @@ class InferenceRouter:
         max_tokens: int = 1024,
         session_id: str = "unknown_unknown_unknown",
         sanitize: bool = True,
+        reasoning_retry: bool = True,
     ) -> tuple[str, dict]:
         """Try each provider in cascade order. Return first successful response.
 
         Messages are PII-sanitized by default (IPv4, MAC, serial numbers stripped).
         Pass `sanitize=False` only for offline evals that need to verify the
         sanitizer itself or test PII-detection paths.
+
+        `reasoning_retry=False` makes `max_tokens` a HARD per-attempt cap: the
+        one reasoning-burn retry with `LLM_REASONING_RETRY_MAX_TOKENS` headroom
+        is skipped. Bounded callers (the intent classifier's 300 tokens) use it
+        so a burn costs one capped attempt, not an unguarded 8,192-token one
+        (Codex r1 on #4359).
 
         Returns (content_str, usage_dict) on success.
         Returns ("", {}) when all providers fail.
@@ -608,6 +686,7 @@ class InferenceRouter:
                     max_tokens,
                     session_id,
                     has_image,
+                    reasoning_retry=reasoning_retry,
                     reservation=reservation,
                 )
                 if content:
@@ -650,6 +729,7 @@ class InferenceRouter:
         max_tokens: int,
         session_id: str,
         has_image: bool,
+        reasoning_retry: bool = True,
         reservation: BudgetReservation | None = None,
     ) -> tuple[str, dict]:
         """Call an OpenAI-compatible provider (OpenAI, Groq, Cerebras, Together).
@@ -782,7 +862,7 @@ class InferenceRouter:
                     or bool(message.get("reasoning_content"))
                     or "<think>" in raw_content.lower()
                 )
-                if attempt_idx == 0 and burned and retry_cap > attempt_cap:
+                if reasoning_retry and attempt_idx == 0 and burned and retry_cap > attempt_cap:
                     logger.warning(
                         "REASONING_BURN provider=%s model=%s output=%d cap=%d — "
                         "retrying once with max_tokens=%d",
@@ -898,9 +978,15 @@ class InferenceRouter:
         if not db_path or not os.path.exists(db_path):
             return
 
+        # tenant_platform_rest. An EncodedSessionId (conversation_router.
+        # accounting_session_id) carries %-escaped underscores in tenant and
+        # platform (Codex r3 F3 on #4359), so its parts are decoded. Any other
+        # id is a legacy raw id and is never decoded (Codex r4 F5 on #4391).
         parts = session_id.split("_", 2)
         tenant_id = parts[0] if len(parts) >= 1 else "unknown"
         platform = parts[1] if len(parts) >= 2 else "unknown"
+        if isinstance(session_id, EncodedSessionId):
+            tenant_id, platform = unquote(tenant_id), unquote(platform)
 
         try:
             con = sqlite3.connect(db_path, timeout=5)

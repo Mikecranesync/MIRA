@@ -168,9 +168,10 @@ def _with_trail(
     result: dict, trail: AcquisitionTrail | None, selected_url: str | None = None
 ) -> dict:
     """Attach the acquisition trail (additive, like `search_stats`) and log it
-    once. Observability only: the trail never changes the result."""
+    once. The browser handoff never changes candidate selection or trust."""
     if trail is None:
         return result
+    result["search_page_url"] = trail.search_page_url
     payload = trail.to_dict(selected_url)
     result["candidate_trail"] = payload
     logger.info("MANUAL_ACQUISITION_TRAIL %s", json.dumps(payload, default=str)[:20000])

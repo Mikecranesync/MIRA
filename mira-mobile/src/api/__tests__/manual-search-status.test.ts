@@ -65,6 +65,11 @@ describe("fetchManualSearchStatus", () => {
     expect(result).toEqual({ manufacturer: "SMC", model: "X", running: false, message: "Couldn't find one." });
   });
 
+  it("preserves the server's manual download link", async () => {
+    request.mockResolvedValue({ status: 200, data: { manualSearch: { manufacturer: "KEYENCE", model: "GL-R", running: false, manualUrl: "https://www.keyence.com/manual" } }, text: "" });
+    expect((await fetchManualSearchStatus("nb-1"))?.manualUrl).toBe("https://www.keyence.com/manual");
+  });
+
   it("returns null when the server has no manualSearch (older Hub, or nothing running)", async () => {
     request.mockResolvedValue({ status: 200, data: { manualSearch: null }, text: "" });
     expect(await fetchManualSearchStatus("nb-1")).toBeNull();

@@ -13,6 +13,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Bot, Send, AlertTriangle, RotateCcw, FileText, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
+import { nodeChatFailureMessage } from "@/factorylm-ui/onboarding-try-mira";
 
 interface Source {
   index: number;
@@ -286,6 +287,9 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
     }));
 
     let isSafety = false;
+    // A response the route sent (e.g. 412 approved_context) is not a network
+    // failure; it carries its own plain-language reason (#4417).
+    let failure: string | null = null;
 
     try {
       const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/chat/`, {
@@ -296,6 +300,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
       });
 
       if (!res.ok) {
+        failure = nodeChatFailureMessage(res.status, await res.json().catch(() => null));
         throw new Error(`Server error ${res.status}`);
       }
 
@@ -376,7 +381,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
         });
         return;
       }
-      setError("Connection lost. Check your network and try again.");
+      setError(failure ?? "Connection lost. Check your network and try again.");
       setMessages((prev) => {
         const next = [...prev];
         next.pop(); // remove empty assistant bubble

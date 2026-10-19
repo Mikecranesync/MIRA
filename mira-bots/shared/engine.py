@@ -26,7 +26,7 @@ from .citation_compliance import citation_enforce_enabled as _citation_enforce_e
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .citation_compliance import established_context_text as _established_context_text
 from .citation_compliance import trusted_uns_context as _trusted_uns_context
-from .conversation_router import route_intent
+from .conversation_router import accounting_session_id, route_intent
 from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .detection.recurring_fault import check_recurring_and_annotate
 from .dialogue_state import (
@@ -129,7 +129,12 @@ from .session_manager import (
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
-from .uns_resolver import UNSResolution, resolve_uns_path, resolve_uns_path_multi
+from .uns_resolver import (
+    UNSResolution,
+    negates_equipment,
+    resolve_uns_path,
+    resolve_uns_path_multi,
+)
 from .wo_evidence import recall_work_orders as _recall_work_orders
 from .workers.nameplate_worker import NameplateWorker
 from .workers.photo_ingest_worker import propose_from_nameplate
@@ -1424,6 +1429,10 @@ def _compact_pack_citation_tags(citations: list[dict]) -> list[str]:
     return tags
 
 
+# "Compare GS10 and GS20" names two machines and selects neither.
+_COMPARISON_RE = re.compile(r"\b(compare|comparison|versus|vs|difference)\b", re.IGNORECASE)
+
+
 class Supervisor:
     """Orchestrates MIRA workers with FSM state tracking."""
 
@@ -2356,6 +2365,7 @@ class Supervisor:
                     message,
                     photo_b64,
                     tenant_id=tenant_id,
+                    platform=platform,
                     uns_source=uns_source,
                     retrieval_query=retrieval_query,
                 ),
@@ -2977,6 +2987,7 @@ class Supervisor:
         photo_b64: str = None,
         *,
         tenant_id: str | None = None,
+        platform: str | None = None,
         uns_source: str | None = None,
         retrieval_query: str | None = None,
     ) -> dict:
@@ -2989,6 +3000,7 @@ class Supervisor:
                 message,
                 photo_b64,
                 tenant_id=tenant_id,
+                platform=platform,
                 uns_source=uns_source,
                 retrieval_query=retrieval_query,
             )
@@ -3007,10 +3019,15 @@ class Supervisor:
         photo_b64: str = None,
         *,
         tenant_id: str | None = None,
+        platform: str | None = None,
         uns_source: str | None = None,
         retrieval_query: str | None = None,
     ) -> dict:
         """Full entry point. Returns {"reply", "confidence", "trace_id", "next_state"}.
+
+        ``platform`` is the surface that delivered the turn (telegram, slack,
+        ignition, …). It is an accounting input only: the intent classifier's
+        usage row is attributed to ``tenant_platform_chat`` (Codex r2 on #4359).
 
         Same logic as process(), but preserves structured metadata for
         benchmark and telemetry consumers.
@@ -3108,6 +3125,20 @@ class Supervisor:
             tenant_id=resolved_tenant,
             prior_ctx=prior_uns,
         )
+        # A comparison is not an asset selection, and chat text cannot replace
+        # the identity supplied by a connected surface. Preserve retrieval scope
+        # as well as the display pin; allow a connected asset's new fault code.
+        # An explicit correction ("GS20, not GS10") is not a comparison even
+        # when it mentions a difference.
+        comparison = bool(_COMPARISON_RE.search(message)) and not negates_equipment(message)
+        bound_identity = uns_source or (prior_uns or {}).get("source") == "direct_connection"
+        if prior_uns and state.get("asset_identified") and (comparison or bound_identity):
+            identity_query = state["asset_identified"]
+            if not comparison and uns_ctx.fault_code_raw:
+                identity_query += f" {uns_ctx.fault_code_raw}"
+            uns_ctx = resolve_uns_path(
+                identity_query, tenant_id=resolved_tenant, prior_ctx=prior_uns
+            )
         _uns_ctx_dict = uns_ctx.as_dict()
         # Direct-connection provenance: a surface that already knows which
         # machine the technician is on (Ignition, MQTT, PLC bridge, Hub display,
@@ -3343,6 +3374,12 @@ class Supervisor:
                     conversation_history=(state.get("context") or {}).get("history", []),
                     current_fsm_state=state.get("state", "IDLE"),
                     asset_identified=state.get("asset_identified", ""),
+                    # Accounting identity, built from the RESOLVED tenant (the one
+                    # retrieval uses: explicit, else chat-mapped, else the RAG
+                    # default; Codex r3 F2 on #4359) and the surface — never the
+                    # FSM chat key, whose spelling is the surface's own
+                    # ("ignition:acme:press7"; Codex r2 on #4359).
+                    session_id=accounting_session_id(resolved_tenant, platform, chat_id),
                 )
                 _router_intent = _routing["intent"]
                 _router_conf = float(_routing.get("confidence", 0) or 0)
@@ -8107,15 +8144,25 @@ class Supervisor:
         if uns_source:
             return False
         try:
-            from .uns_resolver import canonical_vendor  # noqa: PLC0415
+            from .uns_resolver import canonical_model, canonical_vendor  # noqa: PLC0415
 
             fresh = resolve_uns_path(message)
             if not fresh.manufacturer or (fresh.confidence or 0.0) < 0.7:
                 return False
             fresh_vendor = canonical_vendor(fresh.manufacturer)
             pinned_vendor = canonical_vendor(pinned.split(",")[0].strip())
-            if not fresh_vendor or fresh_vendor == pinned_vendor:
+            if not fresh_vendor:
                 return False
+            if fresh_vendor == pinned_vendor:
+                # A model correction within one manufacturer ("it's a GS20, not a
+                # GS10") is still a new machine. A comparison selects nothing.
+                if _COMPARISON_RE.search(message) and not negates_equipment(message):
+                    return False
+                prior_identity = resolve_uns_path(pinned.split(",", 1)[-1])
+                fresh_model = canonical_model(fresh.model, fresh.product_family)
+                prior_model = canonical_model(prior_identity.model, prior_identity.product_family)
+                if not fresh_model or fresh_model == prior_model:
+                    return False
         except Exception as exc:  # noqa: BLE001 — a re-pin check must never break a turn
             logger.warning("CTX_ASSET_REPIN_CHECK_FAILED chat_id=%s err=%s", chat_id, exc)
             return False
@@ -8131,6 +8178,8 @@ class Supervisor:
         # turn — a re-pin always starts a fresh thread (rag_worker consumes).
         ctx_repin = state.get("context") or {}
         ctx_repin["fresh_thread_turn"] = True
+        # The new machine's identity, not a merge with the old one's.
+        ctx_repin["uns_context"] = fresh.as_dict()
         state["context"] = ctx_repin
         logger.info("CTX_ASSET_REPIN chat_id=%s new=%r (previous pin superseded)", chat_id, label)
         return True

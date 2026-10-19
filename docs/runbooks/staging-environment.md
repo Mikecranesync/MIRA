@@ -68,12 +68,16 @@ The staging gate runs in GitHub Actions; the secrets live on a `staging` environ
 # Create the environment (Settings → Environments → New environment: "staging")
 # Then set these secrets under that environment:
 gh secret set NEON_STG_DATABASE_URL --env staging --body "$NEON_STG_DATABASE_URL"
+# REQUIRED: the staging-gate judge is OpenAI only (2026-10-14). Without this
+# key the gate exits "no judge providers configured".
+gh secret set STAGING_OPENAI_API_KEY --env staging --body "$STAGING_OPENAI_API_KEY"
+# Legacy keys the staging-gate workflow still exports. Not used by the judge.
 gh secret set STAGING_GROQ_API_KEY  --env staging --body "$STAGING_GROQ_API_KEY"
 gh secret set STAGING_CEREBRAS_API_KEY --env staging --body "$STAGING_CEREBRAS_API_KEY"
 gh secret set STAGING_GEMINI_API_KEY --env staging --body "$STAGING_GEMINI_API_KEY"
 ```
 
-Use a Groq key dedicated to staging — it isolates the staging rate budget from prod. If you only have one key, reuse `GROQ_API_KEY`; the staging gate still works.
+`STAGING_OPENAI_API_KEY` is the only key the judge reads: Groq, Cerebras and Gemini were deprecated as judges on 2026-10-14 (`tools/staging_test.py`). The engine under test uses the key-gated `InferenceRouter` cascade (`mira-bots/shared/inference/router.py`: OpenAI → Groq → Cerebras → Together), so `STAGING_OPENAI_API_KEY` also serves its answers. Of the legacy keys only Groq (billing-restricted) and Cerebras (archived, 402) are read by that cascade; Gemini is read by nothing in the engine, and Together is not configured for staging. `build_supervisor()` still requires `GROQ_API_KEY` to be set.
 
 ### 5. Make Staging Gate a required check (branch protection)
 
@@ -191,7 +195,7 @@ There is no "promote" step. Staging is a **clone of prod**, not a different depl
 The flow is:
 
 1. Open a PR.
-2. Staging Gate (this workflow) runs against the NeonDB staging branch + Groq cascade.
+2. Staging Gate (this workflow) runs against the NeonDB staging branch + the engine's `InferenceRouter` cascade, graded by the OpenAI judge.
 3. PR merges only if Staging Gate (and Smoke Test, and DeepEval) pass.
 4. After merge, `deploy-vps.yml` triggers on `main` — first verifies the staging gate succeeded on this commit, then deploys to the production VPS.
 

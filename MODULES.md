@@ -29,6 +29,7 @@ fault-detective/pathb composes only), **CI** (exercised only by `.github/workflo
 | mira-pipeline | DEPLOYED | saas.yml builds `mira-pipeline/Dockerfile` | Active VPS chat path |
 | mira-plc-parser | DEPLOYED | `mira-core/mira-ingest/Dockerfile` COPYs `mira-plc-parser/mira_plc_parser/` (powers /ingest/plc-parse) | Ships inside mira-ingest-saas image; GUI itself is a desktop tool |
 | mira-relay | DEPLOYED | saas.yml builds `./mira-relay`; root CLAUDE.md: "Active SaaS infrastructure (NOT deferred)" | Ignition factory→cloud tag streaming |
+| mira-reranker | BENCH | built by `docker-compose.staging-vps.yml` only; not in `docker-compose.saas.yml` (guarded by `tests/test_hub_notebook_flags_plumbing.py`) | CU-RR1 cross-encoder reranker for notebook retrieval; production needs a separate GO |
 | mira-scan-monday | ORPHAN | no compose, workflow, or test reference found | |
 | mira-sidecar | LEGACY | root CLAUDE.md: sunset pending (ADR-0008/0014); saas.yml mentions are removal comments; only built by docker-compose.pathb.yml | Awaiting OEM migration before stop |
 | mira-trend-viewer | ORPHAN | no compose, workflow, or test reference found | |

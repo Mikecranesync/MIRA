@@ -517,3 +517,17 @@ describe("discoverManual — searchStats parsing (#4160 gate R15)", () => {
     expect(r.searchStats).toBeNull();
   });
 });
+
+
+describe("website handoff remains distinct from a manual", () => {
+  it.each(["no_result", "quota_exceeded", "search_unavailable", "judged_not_applicable"])("preserves a found site on %s", async (reason) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      found: false, candidate: null, reason,
+      search_page_url: "https://novel-controls.example/support/?language=en",
+    }), { status: 200 })));
+    const res = await discoverManual(IDENTITY, CTX);
+    expect(res.searchPageUrl).toBe("https://novel-controls.example/support/?language=en");
+    expect(res.found).toBe(false);
+    expect(res.candidate).toBeNull();
+  });
+});

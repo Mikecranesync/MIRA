@@ -98,7 +98,7 @@ def test_control_no_openai_key_is_the_pre_existing_groq_judge(
         "model": "openai/gpt-oss-120b",
         "messages": [{"role": "user", "content": PROMPT}],
         "temperature": 0.0,
-        "max_tokens": 1024,
+        "max_tokens": 2048,
         "reasoning_effort": "medium",
     }
 
@@ -112,7 +112,7 @@ def test_openai_leads_in_the_gpt5_dialect(monkeypatch: pytest.MonkeyPatch) -> No
     assert openai.url == "https://api.openai.com/v1/chat/completions"
     body = suite.judge_request_body(openai, PROMPT)
     assert body["model"] == "gpt-5.4-mini"
-    assert body["max_completion_tokens"] == 1024
+    assert body["max_completion_tokens"] == 2048
     assert body["reasoning_effort"] == "medium"
     # The gpt-5 family answers HTTP 400 to either of these.
     assert "max_tokens" not in body
@@ -163,7 +163,7 @@ def test_sync_openai_400_falls_through_to_groq(monkeypatch: pytest.MonkeyPatch) 
     assert [u.split("/")[2] for u, _, _ in seen] == ["api.openai.com", "api.groq.com"]
     assert seen[0][2] == "Bearer k0"
     assert "max_completion_tokens" in seen[0][1] and "temperature" not in seen[0][1]
-    assert seen[1][1]["max_tokens"] == 1024 and seen[1][1]["temperature"] == 0.0
+    assert seen[1][1]["max_tokens"] == 2048 and seen[1][1]["temperature"] == 0.0
 
 
 def test_sync_transport_error_falls_through(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -469,8 +469,8 @@ def test_budget_default_prices_equal_the_repo_declared_gpt54_mini_rate() -> None
 def test_budget_estimate_is_a_worst_case_and_settle_charges_actual_usage() -> None:
     b = suite.JudgeBudget()
     est = b.estimate_usd("x" * 1000, MINI)
-    # input bounded by bytes (+8 framing), output by the 1024-token cap, at 0.75/4.5 per Mtok
-    assert est == pytest.approx((1008 * 0.75 + 1024 * 4.5) / 1e6)
+    # input bounded by bytes (+8 framing), output by the 2048-token cap, at 0.75/4.5 per Mtok
+    assert est == pytest.approx((1008 * 0.75 + 2048 * 4.5) / 1e6)
     assert b.reserve(est) and b.held_usd == pytest.approx(est) and b.spent_usd == 0.0
     charged = b.settle(est, {"prompt_tokens": 100, "completion_tokens": 10}, MINI)
     assert charged == pytest.approx((100 * 0.75 + 10 * 4.5) / 1e6)
@@ -485,11 +485,11 @@ def test_budget_estimate_is_a_worst_case_and_settle_charges_actual_usage() -> No
 def test_budget_reserve_is_atomic_release_and_uncertain_charge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.01")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.025")
     b = suite.JudgeBudget()
     est = b.estimate_usd(PROMPT, MINI)
-    assert est is not None and est == pytest.approx((len(PROMPT) + 8) * 0.75e-6 + 1024 * 4.5e-6)
-    # Two holds fit under $0.01 (≈ $0.0046 each); a third does not — refused with nothing served.
+    assert est is not None and est == pytest.approx((len(PROMPT) + 8) * 0.75e-6 + 2048 * 4.5e-6)
+    # Two holds fit under $0.025 (≈ $0.0092 each); a third does not — refused with nothing served.
     assert b.reserve(est) and b.reserve(est)
     assert not b.reserve(est) and b.refusals == 1 and b.calls == 0
     # A rejected request (non-2xx) releases its hold; the third caller now fits.
@@ -506,7 +506,7 @@ def test_sync_read_timeouts_after_dispatch_are_charged_until_the_cap_refuses(
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "k0")
     monkeypatch.setenv("GROQ_API_KEY", "k1")
-    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.01")  # room for two worst cases
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.025")  # room for two worst cases
     urls: list[str] = []
 
     def fake_post(url: str, **kw: Any) -> httpx.Response:
@@ -532,7 +532,7 @@ async def test_async_read_timeouts_after_dispatch_are_charged_until_the_cap_refu
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "k0")
     monkeypatch.setenv("GROQ_API_KEY", "k1")
-    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.01")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.025")
     fake_async.script = {"api.openai.com": httpx.ReadTimeout("slow"), "api.groq.com": _ok("g")}
     judge = suite.CascadeJudge()
     for _ in range(4):
@@ -545,7 +545,7 @@ async def test_async_read_timeouts_after_dispatch_are_charged_until_the_cap_refu
 def test_sync_rejected_request_releases_the_hold(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "k0")
     monkeypatch.setenv("GROQ_API_KEY", "k1")
-    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.005")  # room for exactly one worst case
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.015")  # room for exactly one worst case
     monkeypatch.setattr(
         suite.httpx,
         "post",
@@ -575,7 +575,7 @@ async def test_concurrent_async_callers_share_one_reservation_pool(
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "k0")
     monkeypatch.setenv("GROQ_API_KEY", "k1")
-    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.005")  # room for exactly one worst case
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.015")  # room for exactly one worst case
     fake_async.script = {
         "api.openai.com": _ok("from openai", usage={"prompt_tokens": 5, "completion_tokens": 5}),
         "api.groq.com": _ok("from groq"),
@@ -625,7 +625,7 @@ def test_model_override_is_estimated_and_settled_at_its_own_rate(
     b = suite.JudgeBudget()
     est_mini = b.estimate_usd(PROMPT, MINI)
     est_big = b.estimate_usd(PROMPT, "gpt-5.4")
-    assert est_big == pytest.approx(((len(PROMPT) + 8) * 2.5 + 1024 * 15.0) / 1e6)
+    assert est_big == pytest.approx(((len(PROMPT) + 8) * 2.5 + 2048 * 15.0) / 1e6)
     assert est_mini is not None and est_big is not None and est_big > est_mini * 3
     monkeypatch.setattr(
         suite.httpx,
@@ -643,8 +643,8 @@ def test_a_cap_between_the_mini_and_the_selected_model_cost_blocks_dispatch(
     monkeypatch.setenv("GROQ_API_KEY", "k1")
     monkeypatch.setenv("DEEPEVAL_JUDGE_OPENAI_MODEL", "gpt-5.4")
     monkeypatch.setenv(
-        "DEEPEVAL_JUDGE_BUDGET_USD", "0.01"
-    )  # mini worst case ≈ $0.0046 fits; gpt-5.4 ≈ $0.0154 does not
+        "DEEPEVAL_JUDGE_BUDGET_USD", "0.015"
+    )  # mini worst case ≈ $0.0092 fits; gpt-5.4 ≈ $0.0308 does not
     urls: list[str] = []
     monkeypatch.setattr(
         suite.httpx, "post", lambda url, **kw: urls.append(url.split("/")[2]) or _ok("x")
@@ -818,7 +818,7 @@ def test_sync_budget_refuses_openai_before_the_request_and_falls_through(
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "k0")
     monkeypatch.setenv("GROQ_API_KEY", "k1")
-    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.01")
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.015")
     urls: list[str] = []
 
     def fake_post(url: str, **kw: Any) -> httpx.Response:
@@ -829,7 +829,7 @@ def test_sync_budget_refuses_openai_before_the_request_and_falls_through(
 
     monkeypatch.setattr(suite.httpx, "post", fake_post)
     judge = suite.CascadeJudge()
-    # Call 1 fits (worst case ≈ $0.0047 < $0.01) and is charged its actual ≈ $0.00975.
+    # Call 1 fits (worst case ≈ $0.0092 < $0.015) and is charged its actual ≈ $0.00975.
     assert judge.generate(PROMPT) == "from openai"
     budget = suite.judge_budget()
     assert budget.calls == 1 and budget.spent_usd == pytest.approx(0.00975)
@@ -955,7 +955,7 @@ def test_two_sync_threads_under_a_one_call_cap_dispatch_exactly_one_metered_requ
 
     monkeypatch.setenv("OPENAI_API_KEY", "k0")
     monkeypatch.setenv("GROQ_API_KEY", "k1")
-    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.005")  # room for exactly one worst case
+    monkeypatch.setenv("DEEPEVAL_JUDGE_BUDGET_USD", "0.015")  # room for exactly one worst case
     hosts: list[str] = []
     lock = threading.Lock()
 

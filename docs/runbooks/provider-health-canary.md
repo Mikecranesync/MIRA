@@ -13,7 +13,7 @@ went unnoticed for a while because Groq kept answering:
 - **Cerebras** model `llama3.1-8b` retired → 404 on every call → only caught by a manual benchmark.
 
 By the time a human noticed, coverage had quietly dropped from 3 providers to 1.
-This canary catches that within ~6h instead of at the next demo.
+This canary catches that within an hour instead of at the next demo.
 
 ## Pieces
 
@@ -29,7 +29,7 @@ sync (drift is precisely what hid the Cerebras death).
 
 ## How it runs
 
-- **Schedule:** every 6h (`cron: 23 */6 * * *`) + manual `workflow_dispatch` +
+- **Schedule:** hourly (`cron: 23 * * * *`; every 6h until 2026-10-19) + manual `workflow_dispatch` +
   on push to `router.py` / `docker-compose.saas.yml` / the probe / the workflow.
 - **Keys:** Doppler `factorylm/stg` via the shared `DOPPLER_TOKEN`. Provider keys
   are account-global, so stg validates the same Groq/Cerebras/Together accounts
@@ -48,7 +48,7 @@ sync (drift is precisely what hid the Cerebras death).
 
 Issue severity wording: 1 down = `DEGRADED`, ≥2 down = `CRITICAL`. The issue is
 deduplicated by the title marker `LLM provider coverage`, so a multi-cycle outage
-updates one issue instead of spawning one every 6h.
+updates one issue instead of spawning one every run.
 
 ## When the canary pages — what to do
 
@@ -85,3 +85,16 @@ Exit 0 + `N/N providers UP` = healthy. The probe never prints key values.
 - `.claude/rules/...` / memory `feedback_llm_cascade_default.md` — current models/keys.
 - Other canaries this is modeled on: `.github/workflows/oauth-redirect-canary.yml`,
   `proposal-state-canary.yml`.
+
+## OpenAI has its own alarm (2026-10-19)
+
+OpenAI leads the cascade and is the one provider the staging acceptance gate and the photo
+"look" route depend on. When the probe finds it DOWN, the canary opens (or comments on) a
+separate `provider-incident` issue titled **"OpenAI DOWN (lead provider + deploy gate
+dependency)"**, in addition to the coverage incident. It is deduplicated on the body line
+`canary_marker: openai-down`, not the title, so retitling the issue does not create a duplicate;
+keep that line in the body. The likeliest cause is an exhausted
+prepaid balance (`insufficient_quota` / `credit_balance_exhausted`) — the 2026-10-18 outage
+(#4519) ran 20:59Z–22:40Z, entirely between two 6-hourly runs, so the canary now runs hourly.
+The issue is not closed automatically: close it by hand once billing is restored and the next
+hourly run shows `openai UP`.

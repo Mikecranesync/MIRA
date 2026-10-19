@@ -204,6 +204,22 @@ describe("acquireManualForIdentity — R15 span tree", () => {
     expect(ingestMock.ingestPdfToNode).not.toHaveBeenCalled();
   });
 
+  it.each(["no_manual_found", "search_limit_reached", "search_unavailable", "download_rejected"])("retains website handoffs through %s", async (status) => {
+    discoveryMock.discoverManual.mockResolvedValue({
+      ...FOUND_DISCOVERY,
+      found: status === "download_rejected",
+      serviceAvailable: status !== "search_unavailable",
+      quotaExceeded: status === "search_limit_reached",
+      oemRequestUrl: "https://example-oem.test/",
+      searchPageUrl: "https://example-oem.test/support/",
+    });
+    downloadMock.safeDownloadPdf.mockResolvedValue({ ok: false, reason: "wrong_content_type" });
+    const outcome = await acquireManualForIdentity({ ...BASE_INPUT });
+    expect(outcome.status).toBe(status);
+    expect(outcome.payload).toMatchObject({ oemRequestUrl: "https://example-oem.test/", searchPageUrl: "https://example-oem.test/support/" });
+    expect(ingestMock.ingestPdfToNode).not.toHaveBeenCalled();
+  });
+
   it("no exported attribute value contains the test manufacturer, model or part string", async () => {
     const outcome = await acquireManualForIdentity({ ...BASE_INPUT });
     expect(outcome.status).toBe("complete");

@@ -78,7 +78,13 @@ vi.mock("@/lib/visual-evidence-context", async (importOriginal) => ({
 }));
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
-import { resetProviderHealthForTests } from "@/capabilities/provider-health";
+import {
+  ALL_PROVIDERS_FAILED_MESSAGE,
+  BUDGET_EXHAUSTED_MESSAGE,
+  NO_PROVIDER_CONFIGURED_MESSAGE,
+  resetProviderHealthForTests,
+} from "@/capabilities/provider-health";
+import { resetOpenAiRunBudgetForTests } from "@/capabilities/openai-run-budget";
 
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC_A = "33333333-3333-4333-8333-333333333333";
@@ -168,6 +174,7 @@ const ENV = { ...process.env };
 beforeEach(() => {
   vi.clearAllMocks();
   resetProviderHealthForTests();
+  resetOpenAiRunBudgetForTests();
   process.env.MIRA_CANONICAL_SEAM = "1";
   process.env.NOTEBOOK_ANSWER_GATE = "0";
   process.env.OPENAI_API_KEY = "k0";
@@ -337,5 +344,112 @@ describe("D6 — provider quarantine on 401/402/403", () => {
     await run(1);
     await run(2);
     expect(calls).toEqual({ openai: 2, groq: 1 });
+  });
+});
+
+// #4374 Codex R1 F1: the durable turn carries the exhaustion REASON, so a
+// reload renders the same technician copy the live frame did.
+describe("#4374 — the persisted turn carries the provider-failure reason", () => {
+  const markers = (turn: Record<string, unknown>) =>
+    ((turn.evidence as unknown[]) ?? []).filter((e) => (e as { kind?: unknown }).kind === "provider_failure");
+
+  it("every provider failing persists { kind: provider_failure, reason: all_providers_failed } and nothing operator-facing", async () => {
+    stubFetch({ openai: [{ status: 402 }], groq: [{ status: 401 }] });
+    const { text, turn } = await run();
+    expect(turn).toMatchObject({ answerStatus: "error", answerText: null });
+    expect(markers(turn)).toEqual([{ kind: "provider_failure", reason: "all_providers_failed" }]);
+    // Live and durable agree on the reason.
+    expect(statusFrame(text)).toMatchObject({ reason: "all_providers_failed" });
+  });
+
+  it("no provider configured persists reason no_provider_configured", async () => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GROQ_API_KEY;
+    stubFetch({});
+    const { turn } = await run();
+    expect(markers(turn)).toEqual([{ kind: "provider_failure", reason: "no_provider_configured" }]);
+  });
+
+  it("control: a served turn persists no provider-failure marker", async () => {
+    stubFetch({ openai: ["serve"] });
+    const { turn } = await run();
+    expect(turn).toMatchObject({ answerStatus: "answered" });
+    expect(markers(turn)).toEqual([]);
+  });
+
+  // #4374 Codex post-cap F1: a configured provider refused by its run-budget
+  // cap is not "no provider configured" — live, durable, and in the record.
+  it("a keyed OpenAI refused by its run budget persists reason budget_exhausted, not no_provider_configured", async () => {
+    delete process.env.GROQ_API_KEY;
+    process.env.OPENAI_RUN_BUDGET_USD = "0";
+    resetOpenAiRunBudgetForTests();
+    const calls = stubFetch({});
+    const { text, turn } = await run();
+    expect(calls).toEqual({ openai: 0, groq: 0 });
+    expect(markers(turn)).toEqual([{ kind: "provider_failure", reason: "budget_exhausted" }]);
+    expect(statusFrame(text)).toMatchObject({
+      status: "error",
+      reason: "budget_exhausted",
+      message: BUDGET_EXHAUSTED_MESSAGE,
+      providers: [{ provider: "OpenAI", httpStatus: null, reason: "budget_exhausted" }],
+    });
+    expect(String(statusFrame(text)?.message)).not.toContain("No AI answer provider is configured");
+  });
+
+  it("a budget refusal plus another provider's HTTP failure is all_providers_failed", async () => {
+    process.env.OPENAI_RUN_BUDGET_USD = "0";
+    resetOpenAiRunBudgetForTests();
+    stubFetch({ groq: [{ status: 401 }] });
+    const { text, turn } = await run();
+    expect(markers(turn)).toEqual([{ kind: "provider_failure", reason: "all_providers_failed" }]);
+    expect(statusFrame(text)).toMatchObject({ reason: "all_providers_failed", message: ALL_PROVIDERS_FAILED_MESSAGE });
+  });
+
+  it("control: with the canonical seam OFF nothing new is persisted (legacy path unchanged)", async () => {
+    process.env.MIRA_CANONICAL_SEAM = "0";
+    stubFetch({ openai: [{ status: 402 }], groq: [{ status: 401 }] });
+    const { turn } = await run();
+    expect(turn).toMatchObject({ answerStatus: "error" });
+    expect(markers(turn)).toEqual([]);
+  });
+});
+
+// #4374 Codex R3 F1: an idempotent replay of a saved exhaustion turn (the
+// stream broke before the status frame, the client retried with the same
+// clientRequestId) must say what the live frame said — not the legacy copy.
+describe("#4374 — replaying a saved exhaustion turn keeps its technician copy", () => {
+  async function replay(evidence: unknown[]) {
+    domainMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: {
+        id: "turn-r", question: "what is F004", answerStatus: "error", answerText: null,
+        enabledSourceDocIds: [DOC_A], evidence, model: null, basis: null,
+      },
+    } as never);
+    const res = await POST(
+      chatReq({ message: "what is F004", sourceDocIds: [DOC_A], clientRequestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }),
+      params,
+    );
+    expect(res.status).toBe(200);
+    return statusFrame(await res.text());
+  }
+
+  it("all_providers_failed marker → the technician message and reason", async () => {
+    const status = await replay([{ kind: "provider_failure", reason: "all_providers_failed" }]);
+    expect(status).toMatchObject({ kind: "status", status: "error", message: ALL_PROVIDERS_FAILED_MESSAGE, reason: "all_providers_failed" });
+  });
+
+  it("no_provider_configured marker → the admin message and reason", async () => {
+    const status = await replay([{ kind: "provider_failure", reason: "no_provider_configured" }]);
+    expect(status).toMatchObject({ status: "error", message: NO_PROVIDER_CONFIGURED_MESSAGE, reason: "no_provider_configured" });
+  });
+
+  it("budget_exhausted marker → the budget message and reason (#4374 post-cap F1)", async () => {
+    const status = await replay([{ kind: "provider_failure", reason: "budget_exhausted" }]);
+    expect(status).toMatchObject({ status: "error", message: BUDGET_EXHAUSTED_MESSAGE, reason: "budget_exhausted" });
+  });
+
+  it("control: a historical error row with no marker keeps the legacy frame byte-for-byte", async () => {
+    expect(await replay([])).toEqual({ kind: "status", status: "error", message: "No answer provider available." });
   });
 });

@@ -8,7 +8,6 @@ import { PROFILES, createShellState, shellReducer, type ManualSearchStatus, type
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
-import { shouldRedirectToOnboarding } from "@/lib/onboarding-flow";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
@@ -82,19 +81,22 @@ export function retainedStreamInterruption(
   return stopped || result.safetyNotice ? { result, stopped } : null;
 }
 
-/** First notebook, its most recently updated thread (or the legacy one). */
-export function initialSelection(notebooks: readonly HubNotebook[]): HubSelection | null {
-  const nb = notebooks[0];
-  if (!nb) return null;
-  const threads = [...(nb.threads ?? [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  return { notebookId: nb.id, threadId: threads[0]?.id ?? LEGACY_THREAD_ID };
+/**
+ * Opening a notebook without naming a thread (a sidebar project click, a
+ * `?notebook=` link) starts a fresh chat, minted exactly as New chat mints one.
+ * It used to resume the most recently updated thread, so a new question landed
+ * under an old, unrelated conversation (#4444). Earlier threads stay listed in
+ * the sidebar; a thread row or a link that names a thread opens that thread.
+ */
+export function openNotebookSelection(nb: Pick<HubNotebook, "id">, mint: () => string = newThreadId): HubSelection {
+  return { notebookId: nb.id, threadId: mint() };
 }
 
 /**
  * Where a fresh mount lands: HOME — no notebook, composer enabled. The 2026-09-07
  * stranger walk recorded "cold launch drops into the last thread" as a failure;
  * the ChatGPT-first lock's L0 is a composer home that answers immediately.
- * `initialSelection` remains the deep-link / project-click entry.
+ * `openNotebookSelection` is the deep-link / project-click entry.
  */
 export function landingSelection(notebooks: readonly HubNotebook[]): HubSelection | null {
   void notebooks; // HOME regardless of how many projects exist
@@ -147,19 +149,24 @@ const THREAD_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 
 /**
  * The selection a URL names, or null for HOME. Unknown notebook → HOME (never a
- * guess at another project); a notebook without a thread → its most recent
- * thread (`initialSelection`); a malformed thread id → the same fallback. A
- * well-formed thread id that is not (yet) in the list is kept: a fresh "New
- * chat" has no server row until its first turn, and a reload must return to it.
+ * guess at another project); a notebook without a thread → a fresh chat
+ * (`openNotebookSelection`, #4444); a malformed thread id → the same fallback.
+ * A well-formed thread id that is not (yet) in the list is kept: a fresh chat
+ * has no server row until its first turn, and a reload must return to it — so
+ * the host writes a minted thread back into the URL.
  */
-export function selectionFromSearch(search: string, notebooks: readonly HubNotebook[]): HubSelection | null {
+export function selectionFromSearch(
+  search: string,
+  notebooks: readonly HubNotebook[],
+  mint: () => string = newThreadId,
+): HubSelection | null {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const notebookId = (params.get(NOTEBOOK_PARAM) ?? "").trim();
   if (!notebookId) return null;
   const nb = notebooks.find((n) => n.id === notebookId);
   if (!nb) return null;
   const threadId = (params.get(THREAD_PARAM) ?? "").trim();
-  if (!threadId || (threadId !== LEGACY_THREAD_ID && !THREAD_ID_RE.test(threadId))) return initialSelection([nb]);
+  if (!threadId || (threadId !== LEGACY_THREAD_ID && !THREAD_ID_RE.test(threadId))) return openNotebookSelection(nb, mint);
   return { notebookId, threadId };
 }
 
@@ -499,23 +506,3 @@ export function createLatestLoadTracker(): {
   };
 }
 
-/**
- * #4284 Codex F1: on staging the shell is the landing page, so it must make the
- * same onboarding decision `/feed` makes (#1901) — a tenant whose setup wizard
- * is not started or still in progress is sent to `/onboarding`. Fail-safe like
- * `/feed`: a failed, non-OK or malformed read keeps the technician where they
- * are. Loop-safe: `/onboarding` never redirects back here.
- */
-export async function onboardingRedirect(
-  getJson: (path: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>,
-): Promise<"/onboarding" | null> {
-  try {
-    const res = await getJson("/api/wizard/company");
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => ({}));
-    const status = String((data as { status?: unknown } | null)?.status ?? "");
-    return shouldRedirectToOnboarding(status) ? "/onboarding" : null;
-  } catch {
-    return null;
-  }
-}

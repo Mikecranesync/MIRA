@@ -10,9 +10,9 @@ x-bot-common-env: &bot-common-env
   MIRA_TENANT_ID: ${MIRA_TENANT_ID:-}
   VISION_MODEL: ${VISION_MODEL:-qwen2.5vl:7b}
   INFERENCE_BACKEND: ${INFERENCE_BACKEND:-cloud}
+  # OpenRouter backup tier (2026-10-14). Key only: the model ids are the code
+  # defaults verified live; the old `:free` ids here no longer exist.
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
-  OPENROUTER_VISION_MODEL: ${OPENROUTER_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct:free}
   GROQ_API_KEY: ${GROQ_API_KEY:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
