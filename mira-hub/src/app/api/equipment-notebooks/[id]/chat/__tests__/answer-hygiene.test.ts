@@ -90,6 +90,15 @@ describe("isRefusal", () => {
     expect(isRefusal("Don\u2019t guess at this one. The loaded excerpts do not say what fault 46 means.")).toBe(true);
     expect(isRefusal("Do not guess; I cannot find this code in the supplied manual.")).toBe(true);
     expect(isRefusal("Don't reset it yet, I can't find fault 46 in the provided excerpts.")).toBe(true);
+    // Codex F2 r2: any connector after the instruction, not only ; and ,
+    for (const answer of [
+      "Do not reset the drive because I cannot find the reset procedure in the supplied manual.",
+      "Do not guess: I cannot find this code in the supplied manual.",
+      "Never jumper the input \u2014 the provided excerpts do not say which terminal is safe.",
+    ]) {
+      expect(isRefusal(answer), answer).toBe(true);
+      expect(refusalVerdict(answer, { docGrounded: true, citations: [] }), answer).toBe(true);
+    }
   });
   it("diagnostic language with the new verbs is not a refusal (Codex F1 on #4532)", () => {
     const cites = [{ citationId: "1", docId: "d", sourceTitle: "m.pdf", page: 7, fileId: null, quote: null }] as never[];

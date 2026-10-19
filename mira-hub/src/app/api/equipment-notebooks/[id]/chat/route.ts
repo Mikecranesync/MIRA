@@ -529,16 +529,18 @@ const EVIDENCE_PHRASE_RE =
 function refusalText(text: string): string {
   return text.toLowerCase().replace(/[\u2018\u2019\u02bc]/g, "'");
 }
-/** A sentence that OPENS with "don't / do not / never" starts with an instruction to
- *  the technician ("Don't open the cover until the bus has discharged…"), not the model
- *  declining — "cover"/"show"/"see" in it read as a refusal before this. Only that
- *  leading clause (to the first ; or ,) is exempt: "Do not guess; I cannot find this
- *  code in the supplied manual." is still a refusal (Codex F2 on #4532). */
-const IMPERATIVE_CLAUSE_RE = /^(?:please\s+)?(?:do not|don't|never)\b[^;,]*[;,]?/;
+/** A sentence that OPENS with "don't / do not / never" is an instruction to the
+ *  technician ("Don't open the cover until the bus has discharged…"); that opening
+ *  negation is not the model declining, and "cover"/"show"/"see" after it read as a
+ *  refusal before this. Only the opening negation WORD is neutralized — everything
+ *  after it is still checked, so "Do not reset the drive because I cannot find the
+ *  procedure in the supplied manual" (any connector: ; , : because, dash) is still a
+ *  refusal (Codex F2 r1 and r2 on #4532). */
+const IMPERATIVE_NEGATION_RE = /^(?:please\s+)?(?:do not|don't|never)\b/;
 /** Any refusal phrase in already-folded text, sentence by sentence. */
 function refusalPhraseIn(folded: string): boolean {
   return folded.split(/(?<=[.!?])\s+/).some((raw) => {
-    const sentence = raw.trim().replace(IMPERATIVE_CLAUSE_RE, "");
+    const sentence = raw.trim().replace(IMPERATIVE_NEGATION_RE, "");
     return (
       REFUSAL_PHRASE_RE.test(sentence) ||
       EVIDENCE_SUBJECT_REFUSAL_RE.test(sentence) ||
