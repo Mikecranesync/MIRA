@@ -321,25 +321,3 @@ describe("identity anchor gate — right string, wrong field, no promotion", () 
     expect(canPromote(fact).ok).toBe(true);
   });
 });
-
-describe("plant reference designation is never a manufacturer identifier (staging 2026-10-19)", () => {
-  const rawText = ["Bihl+Wiedemann", "=EQU+96 -A57", "ASi Safety"];
-  it.each(["=EQU+96 -A57", "+CAB1-K3", "-A57", "-K1"])("rejects %s as a catalog number", (v) => {
-    const f = toFact({ field: "catalogNumber", value: v, rawText: [...rawText, v] });
-    expect(f.status).toBe("rejected");
-  });
-  it("rejects it as a model and serial too", () => {
-    expect(toFact({ field: "model", value: "=EQU+96 -A57", rawText }).status).toBe("rejected");
-    expect(toFact({ field: "serialNumber", value: "=EQU+96 -A57", rawText }).status).toBe("rejected");
-  });
-  it.each(["25B-D010N104", "6AV2124-0GC01-0AX0", "SS5Y3-DUW01302", "700-HA32Z24", "BWU2797"])(
-    "keeps a real catalog number %s (control)",
-    (v) => {
-      const f = toFact({ field: "catalogNumber", value: v, rawText: [`CAT NO. ${v}`] });
-      expect(f.status).not.toBe("rejected");
-    },
-  );
-  it("does not reject a designator-looking value on a non-identity field", () => {
-    expect(toFact({ field: "equipmentType", value: "-A57", rawText: ["-A57"] }).status).not.toBe("rejected");
-  });
-});

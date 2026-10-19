@@ -47,6 +47,7 @@ import {
   mayBeNameplateAdopted,
 } from "@/capabilities/nameplate-identity-adoption";
 import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
+import { scrubReferenceDesignations } from "@/lib/nameplate/evidence";
 
 export const dynamic = "force-dynamic";
 
@@ -235,7 +236,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "file_not_found" }, { status: 404 });
   }
 
-  const identity = readIdentity(body.identity);
+  // Defense in depth: a confirm can never make a plant reference designation a
+  // confirmed identifier or a manual-search key, whatever the client sent.
+  const identity = scrubReferenceDesignations(readIdentity(body.identity));
   const confidence =
     typeof body.confidence === "number" && Number.isFinite(body.confidence)
       ? Math.min(1, Math.max(0, body.confidence))

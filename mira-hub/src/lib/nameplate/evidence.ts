@@ -137,6 +137,21 @@ export function isReferenceDesignation(value: string): boolean {
   return /^-[A-Z]{1,3}\d{1,4}$/i.test(v);
 }
 
+const DESIGNATION_FIELDS = ["model", "catalogNumber", "serialNumber"] as const;
+
+/** Copy of an identity with any reference-designation model/catalog/serial
+ *  removed. Applied to the candidate a client pre-fills AND to the identity a
+ *  confirm submits, so a plant tag can never become a confirmed identifier or a
+ *  manual-search key, whatever the client renders. */
+export function scrubReferenceDesignations<T extends Record<string, unknown>>(identity: T): T {
+  const out: Record<string, unknown> = { ...identity };
+  for (const f of DESIGNATION_FIELDS) {
+    const v = out[f];
+    if (typeof v === "string" && isReferenceDesignation(v)) delete out[f];
+  }
+  return out as T;
+}
+
 export function isIdentityField(field: string): boolean {
   return IDENTITY_FIELDS.has(field);
 }
