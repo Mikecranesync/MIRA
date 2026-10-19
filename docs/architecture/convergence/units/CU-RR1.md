@@ -117,6 +117,17 @@ public-50 lexical 34 → **34**; real-32 lexical 21 → **20** (lost tq-07); pub
 Gate written before measuring (within 1 of fp32 on both lexical sets): **PASS**.
 Speed on CHARLIE (ARM, 8 threads, pool 24): p50 955 → **243 ms**. The deciding number is staging p95 after deploy.
 
+## Speed phase — staging result (2026-10-19, `82d457a8b`)
+Three int8 walks on staging: CORRECT 31, 31, 29 (mean **30.3**), WRONG_PAGE 14, 13, 12 (mean **13.0**) — below
+fp32's 31.7 / 11.0 and just under the 30.6 bar. Staging speed did not improve either: during the walks the
+reranker logged p50 2.3 s, p95 3.3 s (n=41), the same as fp32, because staging's `mira-ollama` embedder was using
+~557% CPU (no `cpus` cap) on 4,616 embedding requests in the 40-minute window, starving the reranker. Steal time 0.
+
+**Decision (Mike, 2026-10-19):** staging runs fp32 (`RERANKER_MODEL=fp32` in Doppler stg); int8 stays baked in as an
+option. Staging's embedder is capped at `cpus: 2` (uploads index more slowly; the reranker and the co-located
+production services stop being starved). The latency gate is **unproven**, not failed: it must be re-measured with
+the cap in place. Production's `mira-ollama` is also uncapped on the same host — a separate change needing its own GO.
+
 ## License exception (owner-approved 2026-10-19)
 Root `CLAUDE.md` Hard Constraint 1 allows Apache-2.0 or MIT only. Codex review r2/r3 (#4535, F4) found the image
 ships packages outside that. The **complete installed tree of the built image** was audited with pip-licenses
