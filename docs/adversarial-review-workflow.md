@@ -226,6 +226,14 @@ inside its fenced block, so a post-cap review is visibly authorized in the
 durable ledger, never silent. An unreadable ledger is a tooling failure —
 unknown budget is never treated as budget available.
 
+**Converged (owner decision 2026-10-18).** A post-cap pass is for an open
+BLOCKER or HIGH. When the latest exact-head, exact-body verdict has zero of
+both, the PR is CONVERGED: do not request another pass. File each MEDIUM as a
+follow-up issue, list them in a PR comment, and hand the merge to the owner
+(`docs/architecture/mira-sdlc-v1.md` §4.3). The scripts do not yet stop on this
+state by themselves. That mechanization is tracked in #4524, and it must
+not change what GREEN means.
+
 ### Atomic round reservation (Codex iteration-4 F1, 2026-08-17)
 
 Reading the budget and then acting on it is racy: two invocations can both
