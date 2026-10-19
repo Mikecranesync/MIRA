@@ -509,28 +509,61 @@ export function legacyCascadeUsage(
   };
 }
 
+// ONE copy of the refusal pattern, shared by isRefusal, sentenceIsRefusal and the
+// answer_gate span fields, so the three can never drift apart.
+const REFUSAL_PHRASE_RE =
+  /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/;
+// #4514 (2026-10-19 stranger walk): "The loaded excerpts do not SAY whether…" and
+// "…do not DEFINE fault 39…" were persisted as `answered`. These verbs are also
+// ordinary diagnostic language ("could indicate a fault", "this LED does not indicate
+// a fault"), so they count ONLY when the evidence itself is the subject of the
+// negation, or the assistant states it cannot (Codex F1 on #4532).
+const EVIDENCE_SUBJECT_REFUSAL_RE =
+  /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|pages?|data ?sheets?|materials?)\s+(?:[a-z'-]+\s+){0,2}(?:do(?:es)? not|don't|doesn't|did not|didn't)\s+(?:[a-z'-]+\s+){0,2}(?:say|define|identify|confirm|describe|explain|indicate)\b/;
+const FIRST_PERSON_REFUSAL_RE =
+  /\b(?:i|we)\s+(?:can't|cannot|could not|couldn't|am unable to|was unable to|'m unable to)\s+(?:[a-z'-]+\s+){0,2}(?:say|define|identify|confirm|describe|explain|indicate)\b/;
+const EVIDENCE_PHRASE_RE =
+  /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/;
+/** Lowercase with typographic apostrophes folded to ASCII (#4032 class: the model
+ *  writes "can\u2019t"), for the refusal patterns. */
+function refusalText(text: string): string {
+  return text.toLowerCase().replace(/[\u2018\u2019\u02bc]/g, "'");
+}
+/** A sentence that OPENS with "don't / do not / never" is an instruction to the
+ *  technician ("Don't open the cover until the bus has discharged…"); that opening
+ *  negation is not the model declining, and "cover"/"show"/"see" after it read as a
+ *  refusal before this. Only the opening negation WORD is neutralized — everything
+ *  after it is still checked, so "Do not reset the drive because I cannot find the
+ *  procedure in the supplied manual" (any connector: ; , : because, dash) is still a
+ *  refusal (Codex F2 r1 and r2 on #4532). */
+const IMPERATIVE_NEGATION_RE = /^(?:please\s+)?(?:do not|don't|never)\b/;
+/** Any refusal phrase in already-folded text, sentence by sentence. */
+function refusalPhraseIn(folded: string): boolean {
+  return folded.split(/(?<=[.!?])\s+/).some((raw) => {
+    const sentence = raw.trim().replace(IMPERATIVE_NEGATION_RE, "");
+    return (
+      REFUSAL_PHRASE_RE.test(sentence) ||
+      EVIDENCE_SUBJECT_REFUSAL_RE.test(sentence) ||
+      FIRST_PERSON_REFUSAL_RE.test(sentence)
+    );
+  });
+}
+
 export function isRefusal(answer: string): boolean {
   // Verb list extended 2026-09-22 (staging trace d324d936…): "the supplied
   // references do not SPECIFY the supply voltage" is an honest refusal too,
   // and was persisted as `answered` with a general badge. The refusal regex
   // is the ONLY thing that turns a served refusal into insufficient_evidence.
-  const a = answer.toLowerCase();
-  return (
-    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
-    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a) &&
-    a.length < 400
-  );
+  const a = refusalText(answer);
+  return refusalPhraseIn(a) && EVIDENCE_PHRASE_RE.test(a) && a.length < 400;
 }
 
 /** The refusal pattern applied to ONE sentence, without `isRefusal`'s
  *  whole-answer length bound. Used to separate a limitation clause from the
  *  rest of an answer (#3953). */
 function sentenceIsRefusal(sentence: string): boolean {
-  const a = sentence.toLowerCase();
-  return (
-    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
-    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a)
-  );
+  const a = refusalText(sentence);
+  return refusalPhraseIn(a) && EVIDENCE_PHRASE_RE.test(a);
 }
 
 /** Minimum characters of cited, non-limitation prose before a turn counts as
@@ -4187,16 +4220,12 @@ async function handleChatTurn(
       let ungroundedClaimForBadge = false;
       {
         const finalAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
-        const answerLower = answerText.toLowerCase();
+        const answerLower = refusalText(answerText);
         // isRefusal's two clauses, split so each is independently observable
         // without changing isRefusal's own result (design §3 answer_gate
         // fields `refusal_phrase_matched` / `evidence_phrase_matched`).
-        const refusalPhraseMatched =
-          /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(
-            answerLower,
-          );
-        const evidencePhraseMatched =
-          /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(answerLower);
+        const refusalPhraseMatched = refusalPhraseIn(answerLower);
+        const evidencePhraseMatched = EVIDENCE_PHRASE_RE.test(answerLower);
         const gateReason = outputRejected
           ? outputRejected.violation
           : !served
