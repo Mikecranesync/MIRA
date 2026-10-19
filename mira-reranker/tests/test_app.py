@@ -100,3 +100,37 @@ def test_rerank_response_model_and_ms(client):
     assert body["model"] == app_module.MODEL_TAG
     assert isinstance(body["ms"], int)
     assert body["ms"] >= 0
+
+
+def test_rerank_refuses_a_second_concurrent_call_then_recovers(client, monkeypatch):
+    """CU-RR1 review F1: one inference at a time; excess calls get 503 at once (the Hub
+    then keeps today's order) instead of piling up tensors past the memory cap."""
+    import threading
+    import time
+
+    assert app_module.MAX_CONCURRENT == 1
+    started, release = threading.Event(), threading.Event()
+    real_score = app_module.reranker.score
+
+    def slow_score(query, passages):
+        started.set()
+        assert release.wait(5), "first call was never released"
+        return real_score(query, passages)
+
+    monkeypatch.setattr(app_module.reranker, "score", slow_score)
+    body = {"query": QUERY, "passages": [GOOD_PASSAGE]}
+    first: dict = {}
+    t = threading.Thread(target=lambda: first.update(r=client.post("/rerank", json=body)))
+    t.start()
+    assert started.wait(5), "first call never reached scoring"
+
+    t0 = time.monotonic()
+    busy = client.post("/rerank", json=body)
+    assert busy.status_code == 503
+    assert time.monotonic() - t0 < 1.0, "a refused call must not wait for the busy one"
+
+    release.set()
+    t.join(5)
+    assert first["r"].status_code == 200
+    monkeypatch.setattr(app_module.reranker, "score", real_score)
+    assert client.post("/rerank", json=body).status_code == 200, "admission must be released"

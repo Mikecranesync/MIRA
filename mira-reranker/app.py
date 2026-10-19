@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -40,6 +41,11 @@ MAX_SEQ_LEN = 512
 BATCH_SIZE = 8
 
 RERANKER_THREADS = int(os.environ.get("RERANKER_THREADS", "2"))
+# One inference at a time. Each one already uses every thread and its own tensors, so a
+# second concurrent call would only double memory and slow both past the Hub's 1.5 s
+# timeout. Excess calls are refused at once (503) and the Hub keeps today's order.
+MAX_CONCURRENT = int(os.environ.get("RERANKER_MAX_CONCURRENT", "1"))
+_admission = threading.BoundedSemaphore(MAX_CONCURRENT)
 
 
 class RerankRequest(BaseModel):
@@ -147,8 +153,14 @@ def health() -> HealthResponse:
 
 @app.post("/rerank", response_model=RerankResponse)
 def rerank(req: RerankRequest) -> RerankResponse:
-    t0 = time.monotonic()
-    scores = reranker.score(req.query, req.passages)
+    if not _admission.acquire(blocking=False):
+        logger.info("rerank: busy, refused passages=%d", len(req.passages))
+        raise HTTPException(status_code=503, detail="busy")
+    try:
+        t0 = time.monotonic()
+        scores = reranker.score(req.query, req.passages)
+    finally:
+        _admission.release()
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     logger.info("rerank: passages=%d ms=%d", len(req.passages), elapsed_ms)
     return RerankResponse(scores=scores, model=MODEL_TAG, ms=elapsed_ms)
