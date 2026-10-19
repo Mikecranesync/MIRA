@@ -35,6 +35,10 @@ from dataclasses import dataclass, field
 WARN_DAYS = 14
 CLOSE_GRACE_DAYS = 7
 EXEMPT_LABELS = frozenset({"keep"})
+# Writes per run. The first apply run faces a ~100-PR backlog; doing it all at once would
+# trip GitHub's secondary rate limit on content creation and flood notifications, so the
+# backlog drains over a few days instead. Closes go first, then the longest-idle warns.
+MAX_ACTIONS = 25
 STALE_LABEL = "stale"
 WARN_MARKER = "<!-- stale-pr-sweep:warn -->"
 CLOSE_MARKER = "<!-- stale-pr-sweep:close -->"
@@ -181,10 +185,20 @@ def apply(repo: str, pr: PR, action: str) -> None:
         _gh("pr", "close", n, "--repo", repo, "--comment", CLOSE_BODY)
 
 
+def select_actions(
+    plan: list[tuple[PR, str]], now: dt.datetime, limit: int
+) -> list[tuple[PR, str]]:
+    """The writes this run performs: every due close first, then warns, most idle first."""
+    due = [(pr, a) for pr, a in plan if a in ("warn", "close")]
+    due.sort(key=lambda p: (p[1] != "close", last_activity(p[0])))
+    return due[:limit]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--repo", required=True, help="owner/name")
     ap.add_argument("--mode", choices=("dry-run", "apply"), default="dry-run")
+    ap.add_argument("--max-actions", type=int, default=MAX_ACTIONS, help="writes per run")
     args = ap.parse_args(argv)
 
     now = dt.datetime.now(dt.timezone.utc)
@@ -192,11 +206,13 @@ def main(argv: list[str] | None = None) -> int:
     counts = {a: sum(1 for _, x in plan if x == a) for a in ("warn", "close", "keep", "none")}
     print(f"# Stale PR sweep ({args.mode}) — {now:%Y-%m-%d %H:%MZ}\n")
     print(f"open={len(plan)} " + " ".join(f"{k}={v}" for k, v in counts.items()) + "\n")
+    todo = select_actions(plan, now, args.max_actions)
+    deferred = counts["warn"] + counts["close"] - len(todo)
+    print(f"this run: {len(todo)} (cap {args.max_actions}); deferred to later runs: {deferred}\n")
     print("| PR | action | idle days | title |\n|---|---|---|---|")
-    for pr, action in sorted(plan, key=lambda p: p[0].number):
-        if action in ("warn", "close"):
-            idle = (now - last_activity(pr)).days
-            print(f"| #{pr.number} | {action} | {idle} | {pr.title[:90]} |")
+    for pr, action in todo:
+        idle = (now - last_activity(pr)).days
+        print(f"| #{pr.number} | {action} | {idle} | {pr.title[:90]} |")
 
     failures = 0
     if args.mode == "apply":
@@ -212,7 +228,19 @@ def main(argv: list[str] | None = None) -> int:
             "--description",
             "No activity for 14+ days; closes 7 days later (SDLC §1.5)",
         )
-        for pr, action in plan:
+        _gh(
+            "label",
+            "create",
+            "keep",
+            "--repo",
+            args.repo,
+            "--force",
+            "--color",
+            "0e8a16",
+            "--description",
+            "Exempt from the stale PR sweep (owner-preserved work)",
+        )
+        for pr, action in todo:
             try:
                 apply(args.repo, pr, action)
             except subprocess.CalledProcessError as exc:

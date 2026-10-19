@@ -143,3 +143,23 @@ def test_dry_run_makes_no_github_writes(monkeypatch) -> None:
     monkeypatch.setattr(sps, "fetch_open_prs", lambda repo: [make_pr()])
     assert sps.main(["--repo", "o/r"]) == 0
     assert calls == []
+
+
+def test_apply_writes_at_most_the_cap_closes_first(monkeypatch) -> None:
+    """The first apply run faces ~100 stale PRs; it must drain them over several runs."""
+    stale = [make_pr(created=60, commit=60 - i) for i in range(30)]
+    for i, pr in enumerate(stale):
+        pr.number = i + 1
+    due_close = make_pr(events=[warn_event(sps.CLOSE_GRACE_DAYS + 1)])
+    due_close.number = 99
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(sps, "_gh", lambda *a: calls.append(a))
+    monkeypatch.setattr(sps, "fetch_open_prs", lambda repo: [*stale, due_close])
+
+    assert sps.main(["--repo", "o/r", "--mode", "apply", "--max-actions", "5"]) == 0
+
+    touched = [c[2] for c in calls if c[0] == "pr"]
+    assert touched[0] == "99", "a due close must never wait behind new warnings"
+    assert len(set(touched)) == 5
+    # PR 1 has been idle longest (60 days), PR 30 shortest (31 days).
+    assert "1" in touched and "30" not in touched, "longest-idle PRs are warned first"
