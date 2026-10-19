@@ -98,6 +98,8 @@ async function main(): Promise<void> {
   }
 
   const rows: ReplayRow[] = [];
+  const delivered: { id: string; chunks: { page: number | null; text: string }[] }[] = [];
+  const dump: { id: string; question: string; expectedPage: number | null; acceptablePages: number[]; candidates: { page: number | null; text: string }[] }[] = [];
   const questions: ReplayQuestion[] = corpus.questions.filter((q) => !only || only.has(q.id));
   for (const q of questions) {
     const m = corpus.manuals.find((x) => x.id === q.manual)!;
@@ -130,7 +132,20 @@ async function main(): Promise<void> {
           }),
         );
       const pagesAt: Record<number, (number | null)[]> = {};
-      for (const k of KS) pagesAt[k] = (await run(k)).map((c) => c.sourcePage);
+      for (const k of KS) {
+        const got = await run(k);
+        pagesAt[k] = got.map((c) => c.sourcePage);
+        // REPLAY_DUMP=1: keep the widest call's candidates (text + page, in retrieval order) for
+        // offline experiments such as a reranker over the pool. Nothing here changes retrieval.
+        if (k === 6 && process.env.REPLAY_DUMP === "1") {
+          // Exactly what the model is given: each chunk's model-visible prefix (MAX_CONTENT_CHARS).
+          delivered.push({ id: q.id, chunks: got.map((c) => ({ page: c.sourcePage, text: c.content.slice(0, 1200) })) });
+        }
+        if (k === 100 && process.env.REPLAY_DUMP === "1") {
+          dump.push({ id: q.id, question: message, expectedPage: q.expectedPage, acceptablePages: q.acceptablePages ?? [],
+            candidates: got.slice(0, 100).map((c) => ({ page: c.sourcePage, text: c.content })) });
+        }
+      }
       const tol = corpus.tolerance;
       if (q.expectedPage === null) {
         rows.push({ ...base, top6Pages: pagesAt[6], modelInput: pagesAt[6].length, rankTop6: null, recallAt: {}, firstRankWithin100: null, missClass: "N", dup: false, anchorPages: [] });
@@ -177,6 +192,8 @@ async function main(): Promise<void> {
   mkdirSync(out, { recursive: true });
   writeFileSync(path.join(out, `replay-${mode}.json`), JSON.stringify({ mode, tenantId, provisionedOn: st.provisionedOn, summary, rows }, null, 2));
   writeFileSync(path.join(out, `replay-${mode}.md`), summary.markdown);
+  if (delivered.length) writeFileSync(path.join(out, `delivered-${mode}.json`), JSON.stringify(delivered));
+  if (dump.length) writeFileSync(path.join(out, `candidates-${mode}.json`), JSON.stringify({ tolerance: corpus.tolerance, questions: dump }));
   console.log(summary.markdown);
   if (errors.length) {
     console.error(`${errors.length} question(s) errored — the run is NOT a measurement`);
