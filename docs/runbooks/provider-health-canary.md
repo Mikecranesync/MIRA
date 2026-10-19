@@ -85,3 +85,14 @@ Exit 0 + `N/N providers UP` = healthy. The probe never prints key values.
 - `.claude/rules/...` / memory `feedback_llm_cascade_default.md` — current models/keys.
 - Other canaries this is modeled on: `.github/workflows/oauth-redirect-canary.yml`,
   `proposal-state-canary.yml`.
+
+## OpenAI has its own alarm (2026-10-19)
+
+OpenAI leads the cascade and is the one provider the staging acceptance gate and the photo
+"look" route depend on. When the probe finds it DOWN, the canary opens (or comments on) a
+separate `provider-incident` issue titled **"OpenAI DOWN (lead provider + deploy gate
+dependency)"**, in addition to the coverage incident. The likeliest cause is an exhausted
+prepaid balance (`insufficient_quota` / `credit_balance_exhausted`) — the 2026-10-18 outage
+(#4519) ran 20:59Z–22:40Z, entirely between two 6-hourly runs, so the canary now runs hourly.
+The issue is not closed automatically: close it by hand once billing is restored and the next
+hourly run shows `openai UP`.
