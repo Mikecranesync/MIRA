@@ -509,28 +509,49 @@ export function legacyCascadeUsage(
   };
 }
 
+// ONE copy of the refusal pattern, shared by isRefusal, sentenceIsRefusal and the
+// answer_gate span fields, so the three can never drift apart.
+// #4514 (2026-10-19 stranger walk): "The loaded excerpts do not SAY whether…",
+// "…do not DEFINE fault 39…" and "I can\u2019t find…" (typographic apostrophe, which
+// the model writes) were persisted as `answered` with no citation. Added: say /
+// define / identify / confirm / describe / explain / indicate, and apostrophe
+// normalization before matching (the same class #4032 fixed in isRefusalAnswer).
+const REFUSAL_PHRASE_RE =
+  /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover|say|define|identify|confirm|describe|explain|indicate)\b/;
+const EVIDENCE_PHRASE_RE =
+  /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/;
+/** Lowercase with typographic apostrophes folded to ASCII, for the refusal patterns. */
+function refusalText(text: string): string {
+  return text.toLowerCase().replace(/[\u2018\u2019\u02bc]/g, "'");
+}
+/** A sentence that OPENS with "don't / do not / never" is an instruction to the
+ *  technician ("Don't open the cover until the bus has discharged…"), never the
+ *  model declining. Without this, "cover"/"show"/"see" in a safety instruction
+ *  read as a refusal — a latent false positive the apostrophe fold would have
+ *  spread to every typographic "Don\u2019t". */
+const IMPERATIVE_NEGATION_RE = /^(?:please\s+)?(?:do not|don't|never)\b/;
+/** REFUSAL_PHRASE_RE over each non-imperative sentence of already-folded text. */
+function refusalPhraseIn(folded: string): boolean {
+  return folded
+    .split(/(?<=[.!?])\s+/)
+    .some((sentence) => !IMPERATIVE_NEGATION_RE.test(sentence.trim()) && REFUSAL_PHRASE_RE.test(sentence));
+}
+
 export function isRefusal(answer: string): boolean {
   // Verb list extended 2026-09-22 (staging trace d324d936…): "the supplied
   // references do not SPECIFY the supply voltage" is an honest refusal too,
   // and was persisted as `answered` with a general badge. The refusal regex
   // is the ONLY thing that turns a served refusal into insufficient_evidence.
-  const a = answer.toLowerCase();
-  return (
-    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
-    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a) &&
-    a.length < 400
-  );
+  const a = refusalText(answer);
+  return refusalPhraseIn(a) && EVIDENCE_PHRASE_RE.test(a) && a.length < 400;
 }
 
 /** The refusal pattern applied to ONE sentence, without `isRefusal`'s
  *  whole-answer length bound. Used to separate a limitation clause from the
  *  rest of an answer (#3953). */
 function sentenceIsRefusal(sentence: string): boolean {
-  const a = sentence.toLowerCase();
-  return (
-    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
-    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a)
-  );
+  const a = refusalText(sentence);
+  return refusalPhraseIn(a) && EVIDENCE_PHRASE_RE.test(a);
 }
 
 /** Minimum characters of cited, non-limitation prose before a turn counts as
@@ -4187,16 +4208,12 @@ async function handleChatTurn(
       let ungroundedClaimForBadge = false;
       {
         const finalAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
-        const answerLower = answerText.toLowerCase();
+        const answerLower = refusalText(answerText);
         // isRefusal's two clauses, split so each is independently observable
         // without changing isRefusal's own result (design §3 answer_gate
         // fields `refusal_phrase_matched` / `evidence_phrase_matched`).
-        const refusalPhraseMatched =
-          /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(
-            answerLower,
-          );
-        const evidencePhraseMatched =
-          /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(answerLower);
+        const refusalPhraseMatched = refusalPhraseIn(answerLower);
+        const evidencePhraseMatched = EVIDENCE_PHRASE_RE.test(answerLower);
         const gateReason = outputRejected
           ? outputRejected.violation
           : !served

@@ -71,6 +71,24 @@ describe("isRefusal", () => {
     expect(isRefusal("I'm sorry, but I don't have the specific rating for that unit. The exact outdoor operating temperature range is listed in the product data sheet.")).toBe(true);
     expect(isRefusal("I can't give an exact temperature rating without the machine's specific documentation.")).toBe(true);
   });
+  it("flags the 2026-10-19 stranger-walk refusals persisted as `answered` (#4514): say / define / curly apostrophes", () => {
+    // Verbatim from staging walk rows (eaa4de988 and a249da17b): each shipped status `answered`.
+    expect(isRefusal("The loaded excerpts do not say whether the MicroLogix 1100 detects duplicate IP addresses on the network.")).toBe(true);
+    expect(isRefusal("The loaded excerpts do not define fault 39 or \u201cNVS Error\u201d for the SMC Flex, so I can\u2019t confirm its meaning from this documentation.")).toBe(true);
+    expect(isRefusal("I can\u2019t find fault 46 \u201cOv Pwr Reac+\u201d in the loaded SMC-50 excerpts, so I can\u2019t identify its meaning from this document alone.")).toBe(true);
+    expect(isRefusal("The loaded excerpts do not define fault 46 \u201cOv Pwr Reac+\u201d; the full user manual or fault table is needed to identify that code.")).toBe(true);
+  });
+  it("still does not flag grounded answers that use the new verbs affirmatively or that quote the manual", () => {
+    expect(isRefusal("The manual says to wait 5 minutes after removing power before touching the terminals [1].")).toBe(false);
+    expect(isRefusal("Fault 46 is defined as Ov Pwr Reac+ (overpower, reactive) in the fault table [2].")).toBe(false);
+    expect(isRefusal("Don\u2019t open the cover until the DC bus has discharged; the manual confirms this takes 5 minutes [1].")).toBe(false);
+    // The same instruction with a straight apostrophe was ALREADY misread before #4514 ("cover").
+    expect(isRefusal("Don't remove the cover while powered. The manual shows the terminal layout on page 12 [1].")).toBe(false);
+    expect(isRefusal("Do not touch the terminals until the charge LED is off; the documentation gives 5 minutes [1].")).toBe(false);
+  });
+  it("an instruction sentence does not hide a real refusal in the same answer", () => {
+    expect(isRefusal("Don\u2019t guess at this one. The loaded excerpts do not say what fault 46 means.")).toBe(true);
+  });
   it("still does not flag a grounded answer that uses those verbs affirmatively", () => {
     expect(isRefusal("The manual specifies 24 VDC on page 12 [1] and lists the fault codes in section 7 [2].")).toBe(false);
     expect(isRefusal("The data sheet rates the supply at 24 VDC and the front face at IP65 [1].")).toBe(false);
