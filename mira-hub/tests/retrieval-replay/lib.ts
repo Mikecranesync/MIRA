@@ -7,14 +7,15 @@ export type ReplayRow = {
   id: string;
   manual: string;
   family: string;
-  expectedPage: number;
+  /** null = the manual does not contain the answer (class N, excluded from recall). */
+  expectedPage: number | null;
   /** Pages of every chunk the model receives (6, or a wider page-diverse slice for a broad question). */
   top6Pages: (number | null)[];
   modelInput?: number;
   rankTop6: number | null;
   recallAt: Record<string, boolean>;
   firstRankWithin100: number | null;
-  missClass: "A" | "B" | "C" | "D";
+  missClass: "A" | "B" | "C" | "D" | "N";
   dup: boolean;
   anchorPages: number[];
   walk?: string | null;
@@ -33,8 +34,9 @@ export function norm(s: string): string {
     .trim();
 }
 
-export function hitRank(pages: (number | null)[], expected: number, tol: number): number | null {
-  const i = pages.findIndex((p) => p !== null && Math.abs(p - expected) <= tol);
+export function hitRank(pages: (number | null)[], expected: number | readonly number[], tol: number): number | null {
+  const targets = typeof expected === "number" ? [expected] : expected;
+  const i = pages.findIndex((p) => p !== null && targets.some((t) => Math.abs(p - t) <= tol));
   return i < 0 ? null : i + 1;
 }
 
@@ -46,7 +48,8 @@ export function classify(anchorOnExpected: boolean, rankTop6: number | null, ran
 }
 
 export function summarize(rows: ReplayRow[], mode: Mode, sha: string | null): { recall: Record<string, number>; classes: Record<string, number>; markdown: string } {
-  const ok = rows.filter((r) => !r.error);
+  const ok = rows.filter((r) => !r.error && r.missClass !== "N");
+  const notInManual = rows.filter((r) => !r.error && r.missClass === "N").length;
   const recall = Object.fromEntries(KS.map((k) => [String(k), ok.filter((r) => r.recallAt[String(k)]).length]));
   const classes: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, dup: 0 };
   for (const r of ok) { classes[r.missClass]++; if (r.dup) classes.dup++; }
@@ -58,7 +61,7 @@ export function summarize(rows: ReplayRow[], mode: Mode, sha: string | null): { 
   const md = [
     `# Retrieval replay — ${mode} — corpus provisioned on ${sha?.slice(0, 9) ?? "?"}`,
     "",
-    `Questions: ${ok.length} measured, ${rows.length - ok.length} errored.`,
+    `Questions: ${ok.length} measured, ${notInManual} not in the manual (excluded), ${rows.filter((r) => r.error).length} errored.`,
     "",
     `| K | ${KS.join(" | ")} |`,
     `|---|${KS.map(() => "---").join("|")}|`,

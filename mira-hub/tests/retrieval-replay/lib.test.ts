@@ -11,6 +11,10 @@ describe("hitRank", () => {
     expect(hitRank([12, 8], 10, 2)).toBe(1);
     expect(hitRank([], 10, 1)).toBeNull();
   });
+  it("accepts any of several answer pages (control: a page outside all of them is still a miss)", () => {
+    expect(hitRank([30, 17, 9], [16, 17], 0)).toBe(2);
+    expect(hitRank([30, 18], [16, 17], 0)).toBeNull();
+  });
 });
 
 describe("classify", () => {
@@ -47,5 +51,10 @@ describe("summarize", () => {
     expect(s.recall["100"]).toBe(2);
     expect(s.classes).toMatchObject({ D: 1, C: 1, B: 0 });
     expect(s.markdown).toContain("1 errored");
+  });
+  it("a not-in-manual question is reported, never counted as a hit or a miss", () => {
+    const s = summarize([row("a", "D", { "6": true }), row("n", "N", {})], "lexical", null);
+    expect(s.recall["6"]).toBe(1);
+    expect(s.markdown).toContain("1 measured, 1 not in the manual");
   });
 });

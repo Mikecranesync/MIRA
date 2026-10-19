@@ -31,12 +31,11 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import corpusJson from "../stranger-walk/corpus.json";
-import type { Corpus, Question } from "../stranger-walk/score";
+import { loadCorpus, type ReplayQuestion } from "./corpus";
 import { classify, hitRank, KS, norm, summarize, type Mode, type ReplayRow } from "./lib";
 import { loadState, STATE_PATH } from "./provision";
 
-const corpus = corpusJson as Corpus;
+const corpus = loadCorpus();
 
 function parseArgs(): { mode: Mode; only: Set<string> | null; out: string } {
   const a = process.argv.slice(2);
@@ -99,7 +98,7 @@ async function main(): Promise<void> {
   }
 
   const rows: ReplayRow[] = [];
-  const questions: Question[] = corpus.questions.filter((q) => !only || only.has(q.id));
+  const questions: ReplayQuestion[] = corpus.questions.filter((q) => !only || only.has(q.id));
   for (const q of questions) {
     const m = corpus.manuals.find((x) => x.id === q.manual)!;
     const rm = st.manuals[m.id];
@@ -133,18 +132,25 @@ async function main(): Promise<void> {
       const pagesAt: Record<number, (number | null)[]> = {};
       for (const k of KS) pagesAt[k] = (await run(k)).map((c) => c.sourcePage);
       const tol = corpus.tolerance;
-      const rankTop6 = hitRank(pagesAt[6], q.expectedPage, tol);
+      if (q.expectedPage === null) {
+        rows.push({ ...base, top6Pages: pagesAt[6], modelInput: pagesAt[6].length, rankTop6: null, recallAt: {}, firstRankWithin100: null, missClass: "N", dup: false, anchorPages: [] });
+        console.log(`${q.id} N (not in manual) top6 pages=${JSON.stringify(pagesAt[6])}`);
+        continue;
+      }
+      const targets = [q.expectedPage, ...(q.acceptablePages ?? [])];
+      const rankTop6 = hitRank(pagesAt[6], targets, tol);
       // rankTop6 is over EVERYTHING the model receives (a broad question gets a page-diverse slice
       // of up to 12+ chunks). recall@K is capped at K so a broad question's longer list cannot
       // count a rank-173 page as "within 100".
-      const firstRankWithin100 = hitRank(pagesAt[100].slice(0, 100), q.expectedPage, tol);
-      const recallAt = Object.fromEntries(KS.map((k) => [String(k), hitRank(pagesAt[k].slice(0, k), q.expectedPage, tol) !== null]));
+      const firstRankWithin100 = hitRank(pagesAt[100].slice(0, 100), targets, tol);
+      const recallAt = Object.fromEntries(KS.map((k) => [String(k), hitRank(pagesAt[k].slice(0, k), targets, tol) !== null]));
       const modelInput = pagesAt[6].length;
       const anchor = norm(q.anchor);
       const chunks = chunksByDoc.get(rm.docId) ?? [];
       const anchorPages = [...new Set(chunks.filter((c) => c.page !== null && c.text.includes(anchor)).map((c) => c.page!))].sort((a, b) => a - b);
-      const onExpected = anchorPages.some((p) => Math.abs(p - q.expectedPage) <= tol);
-      const dup = anchorPages.some((p) => Math.abs(p - q.expectedPage) > tol);
+      const near = (p: number) => targets.some((t) => Math.abs(p - t) <= tol);
+      const onExpected = anchorPages.some(near);
+      const dup = anchorPages.some((p) => !near(p));
       rows.push({
         ...base,
         top6Pages: pagesAt[6],

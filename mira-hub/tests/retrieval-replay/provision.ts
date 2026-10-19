@@ -22,11 +22,10 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import corpusJson from "../stranger-walk/corpus.json";
-import type { Corpus } from "../stranger-walk/score";
+import { loadCorpus } from "./corpus";
 import { identity, manualBytes, stagingBase } from "../stranger-walk/staging";
 
-const corpus = corpusJson as Corpus;
+const corpus = loadCorpus();
 const BASE = stagingBase();
 export const STATE_PATH =
   process.env.REPLAY_STATE ?? path.resolve(__dirname, "../../../.planning/retrieval-phase0/replay-state.json");
