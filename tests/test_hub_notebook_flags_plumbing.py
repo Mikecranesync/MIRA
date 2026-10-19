@@ -54,6 +54,7 @@ _PROD = _ROOT / "docker-compose.saas.yml"
 def test_staging_hub_forwards_rerank_flag_default_off() -> None:
     env = _hub_env(_STAGING, "stg-mira-hub")
     assert env.get("NOTEBOOK_RERANK") == "${NOTEBOOK_RERANK:-0}"
+    assert env.get("NOTEBOOK_RERANK_TIMEOUT_MS") == "${NOTEBOOK_RERANK_TIMEOUT_MS:-}"
 
 
 def test_staging_reranker_url_names_a_service_in_the_same_file() -> None:

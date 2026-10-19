@@ -10,7 +10,7 @@
 import type { PoolClient } from "pg";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { retrieveNodeChunks } from "../../lib/manual-rag";
-import { orderByScores, rerankPool, rerankScores } from "../reranker";
+import { orderByScores, rerankPool, rerankScores, rerankTimeoutMs } from "../reranker";
 
 const mk = (page: number, content: string, rank: number) => ({
   content,
@@ -133,6 +133,26 @@ describe("reranker client", () => {
     expect(rerankPool()).toBe(100);
     vi.stubEnv("NOTEBOOK_RERANK_POOL", "2");
     expect(rerankPool()).toBe(6);
+  });
+  it("rerankTimeoutMs is bounded 200–5000 and defaults to 1500", () => {
+    vi.stubEnv("NOTEBOOK_RERANK_TIMEOUT_MS", "");
+    expect(rerankTimeoutMs()).toBe(1500);
+    vi.stubEnv("NOTEBOOK_RERANK_TIMEOUT_MS", "2500");
+    expect(rerankTimeoutMs()).toBe(2500);
+    vi.stubEnv("NOTEBOOK_RERANK_TIMEOUT_MS", "60000");
+    expect(rerankTimeoutMs()).toBe(5000);
+    vi.stubEnv("NOTEBOOK_RERANK_TIMEOUT_MS", "5");
+    expect(rerankTimeoutMs()).toBe(200);
+    vi.stubEnv("NOTEBOOK_RERANK_TIMEOUT_MS", "abc");
+    expect(rerankTimeoutMs()).toBe(1500);
+  });
+  it("the request waits exactly the configured timeout", async () => {
+    vi.stubEnv("NOTEBOOK_RERANK_TIMEOUT_MS", "2500");
+    const spy = vi.spyOn(AbortSignal, "timeout");
+    const f = vi.fn(async () => new Response(JSON.stringify({ scores: [1] }), { status: 200 }));
+    await rerankScores("q", ["p"], { fetch: f as unknown as typeof fetch, log: () => {} });
+    expect(spy).toHaveBeenCalledWith(2500);
+    spy.mockRestore();
   });
   it("sends only the query and trimmed passages — no tenant or identity", async () => {
     const svc = vi.fn(async (_u: string, _init: RequestInit) => new Response(JSON.stringify({ scores: [0.5] }), { status: 200 }));

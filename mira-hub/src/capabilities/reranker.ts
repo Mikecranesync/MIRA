@@ -28,7 +28,16 @@ export function rerankPool(): number {
 
 /** The service truncates too; trimming here keeps the request small. */
 export const RERANK_PASSAGE_CHARS = 2000;
-const RERANK_TIMEOUT_MS = 1500;
+/**
+ * How long the Hub waits for the service (env NOTEBOOK_RERANK_TIMEOUT_MS, 200–5000 ms,
+ * default 1500). A per-environment knob because CPU speed differs by host: a timeout below
+ * the host's real latency silently turns every turn into a fallback (CU-RR1 review r6).
+ */
+export function rerankTimeoutMs(): number {
+  const raw = (process.env.NOTEBOOK_RERANK_TIMEOUT_MS ?? "").trim();
+  const n = raw === "" ? 1500 : Number(raw);
+  return Number.isFinite(n) ? Math.min(5000, Math.max(200, Math.floor(n))) : 1500;
+}
 
 export type RerankFallback = "not_configured" | "http_error" | "timeout" | "malformed" | "network";
 
@@ -59,7 +68,7 @@ export async function rerankScores(
         query: query.slice(0, 1000),
         passages: passages.map((p) => p.slice(0, RERANK_PASSAGE_CHARS)),
       }),
-      signal: AbortSignal.timeout(RERANK_TIMEOUT_MS),
+      signal: AbortSignal.timeout(rerankTimeoutMs()),
     });
     if (!res.ok) {
       log("http_error", `status=${res.status}`);

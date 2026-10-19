@@ -342,6 +342,8 @@ services:
       # (internal network only); any failure or >1.5 s keeps today's order.
       - NOTEBOOK_RERANK=${NOTEBOOK_RERANK:-0}
       - NOTEBOOK_RERANK_POOL=${NOTEBOOK_RERANK_POOL:-}
+      # Client timeout, ms (default 1500): raise it if the host's measured p95 is higher.
+      - NOTEBOOK_RERANK_TIMEOUT_MS=${NOTEBOOK_RERANK_TIMEOUT_MS:-}
       - RERANKER_URL=http://mira-reranker:8088
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app-staging.factorylm.com}
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
