@@ -1,0 +1,59 @@
+name: Stale PR sweep
+
+# The mechanism behind the WIP policy in docs/architecture/mira-sdlc-v1.md §1.5
+# ("a draft older than 14 days is rebased and re-scoped or closed with a note").
+# That rule had no enforcement, and on 2026-10-18 the repo held 207 open PRs,
+# 127 of them untouched for more than a week.
+#
+# tools/stale_pr_sweep.py: 14 days with no commit/comment/review from a non-bot
+# account -> `stale` label + notice; 7 more idle days -> closed with a comment.
+# The branch is NEVER deleted (`gh pr reopen` restores it). `keep` exempts.
+#
+# DRY-RUN BY DEFAULT. The schedule only writes when the repository variable
+# STALE_PR_SWEEP_MODE is `apply`; a manual dispatch picks its own mode. The
+# plan (every PR that would be warned/closed) goes to the job summary either way.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run prints the plan; apply labels, comments and closes"
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, apply]
+  schedule:
+    - cron: "40 8 * * *" # daily, after the 06:00-07:41 UTC batch
+
+permissions:
+  contents: read
+  pull-requests: write # label, comment, close
+  issues: write # the `stale` label lives on the issues API
+
+concurrency:
+  group: stale-pr-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Sweep idle PRs (SDLC §1.5)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Sweep
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Inputs/vars reach the shell through env, never inline interpolation.
+          MODE: ${{ inputs.mode || vars.STALE_PR_SWEEP_MODE || 'dry-run' }}
+        run: |
+          set +e # keep the summary even when an apply step fails
+          case "$MODE" in dry-run|apply) ;; *) echo "::error::bad mode '$MODE'"; exit 2 ;; esac
+          python3 tools/stale_pr_sweep.py --repo "$GITHUB_REPOSITORY" --mode "$MODE" \
+            > sweep.md
+          rc=$?
+          cat sweep.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"

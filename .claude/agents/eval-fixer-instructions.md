@@ -298,7 +298,9 @@ rather than blocking: a retry is the *same* run, not a competing one.)
 **Leave the fragment in the working tree. Do not commit it, and above all do not commit
 it to `main`.** Publishing is not your job — the wrapper (`run-eval-fixer.sh`) runs
 `tools/eval_fixer_fragment.py --publish` after you exit, which pushes the fragment to its
-own branch (`docs/eval-fixer-<date>-<worker>`) and opens a draft PR.
+worker's rolling branch (`docs/eval-fixer-runs-<worker>`) and opens a draft PR — or,
+when that worker's PR is already open, adds the night to it. One open eval-fixer PR per
+worker, never one per night (eight per-night drafts were open at once on 2026-10-18).
 
 That step is code rather than an instruction here for a specific reason: this file has
 said "never push to main directly — always use a branch + PR" the whole time, and on
