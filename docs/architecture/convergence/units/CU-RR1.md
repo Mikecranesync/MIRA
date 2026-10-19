@@ -93,15 +93,22 @@ staging service gets `cpus: 3` with 3 threads. Fallback if over budget: the AVX2
 VNNI one), pinned by sha256, re-measured for quality first.
 
 ## License exception (owner-approved 2026-10-19)
-Root `CLAUDE.md` Hard Constraint 1 allows Apache-2.0 or MIT only. Mike approved a recorded exception for
-exactly two BSD-3-Clause runtime dependencies of `mira-reranker`, raised by Codex review r2 (#4535, F4):
+Root `CLAUDE.md` Hard Constraint 1 allows Apache-2.0 or MIT only. Codex review r2/r3 (#4535, F4) found the image
+ships packages outside that. The **complete installed tree of the built image** was audited with pip-licenses
+(34 distributions); Mike approved a recorded exception for exactly the 14 that are neither MIT nor Apache:
 
-| package | version | why it cannot be avoided |
+| license | packages | why they are here |
 |---|---|---|
-| numpy | 2.3.3 | a hard runtime dependency of onnxruntime (`numpy>=1.21.6`); every ONNX Runtime Python service ships it |
-| uvicorn | 0.54.0 | the ASGI server; already shipped to production by mira-pipeline, mira-mcp and mira-ingest |
+| BSD-3-Clause | numpy, sympy, mpmath, protobuf | onnxruntime's own runtime dependencies (numpy, sympy, protobuf) and sympy's (mpmath) |
+| BSD-3-Clause | uvicorn, starlette, click | the ASGI server and FastAPI's core; already shipped in production by mira-pipeline, mira-mcp, mira-ingest |
+| BSD-3-Clause | httpx, httpcore, idna, fsspec | pulled by tokenizers via huggingface_hub; httpx is the repo's mandated HTTP client |
+| MPL-2.0 | certifi, tqdm (MPL-2.0 AND MIT) | file-level copyleft; obligations arise only if those files are modified, which this service never does |
+| PSF-2.0 | typing-extensions | pydantic and FastAPI dependency |
 
-Scope: this service only, these two packages only. Any other non-Apache/MIT dependency needs its own approval.
+None is GPL or AGPL. **Enforced at build time:** `mira-reranker/check_licenses.py` runs as a Dockerfile step
+after every install and fails the image build if any installed distribution is neither MIT/Apache by its own
+metadata nor on this list (proved: removing `sympy` from the list fails the build at that step). Adding any
+package outside the list needs a new owner approval and an edit to that file.
 
 ## Shadow-validation plan (Gate 8)
 Staging with `NOTEBOOK_RERANK=1`, replay against staging + one stranger walk at a fixed configuration.

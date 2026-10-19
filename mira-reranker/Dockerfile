@@ -10,6 +10,11 @@ RUN pip install --no-cache-dir \
     fastapi==0.147.0 \
     uvicorn==0.54.0
 
+# License gate (CU-RR1): fails the build if any installed package is neither MIT/Apache
+# nor on the owner-approved exception list in check_licenses.py.
+COPY check_licenses.py ./
+RUN python check_licenses.py
+
 COPY app.py fetch_model.py MODEL_SHA256 ./
 
 # Build-time only: downloads the pinned model revision and verifies sha256.
