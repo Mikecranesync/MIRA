@@ -23,6 +23,8 @@
  * the caller tenant explicitly, so isolation never rests on RLS alone.
  */
 
+import { acquisitionKey } from "@/capabilities/notebook-manual-acquisition";
+
 export type QueryDb = {
   query(sql: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 };
@@ -36,6 +38,8 @@ export type HarvestNotebook = {
   lastSeenMs: number;
   hasManual: boolean;
   refusedTurns: number;
+  /** Outcome of the last automatic search for THIS identity, or null if never searched. */
+  lastSearch?: string | null;
 };
 
 export type ManualProposal = {
@@ -46,9 +50,9 @@ export type ManualProposal = {
   refusedTurns: number;
   lastSeenAt: string;
   alreadyInLibrary: boolean;
+  /** Last automatic-search outcome for this identity on any of its notebooks (e.g. no_manual_found). */
+  lastSearch: string | null;
 };
-
-const CONFIRMED = new Set(["user_confirmed", "verified"]);
 
 /** Conservative grouping key: trim, case-fold, collapse whitespace. No fuzzy merging. */
 export function normalizeIdentityPart(s: string): string {
@@ -66,10 +70,17 @@ export function rankManualProposals(
 ): ManualProposal[] {
   const groups = new Map<string, HarvestNotebook[]>();
   for (const n of notebooks) {
-    if (!CONFIRMED.has(n.identityStatus)) continue;
-    if (!n.manufacturer.trim() || !n.model.trim()) continue;
+    // Eligibility is EXACTLY what approval can act on: the acquisition pipeline's
+    // own key (user_confirmed + manufacturer + model-or-catalog). A proposal the
+    // approve button could not start is never shown.
+    const k = acquisitionKey({
+      identityStatus: n.identityStatus,
+      manufacturer: n.manufacturer,
+      model: n.model,
+      catalogNumber: n.catalogNumber,
+    });
+    if (!k) continue;
     if (n.hasManual) continue;
-    const k = keyOf(n.manufacturer, n.model);
     const g = groups.get(k);
     if (g) g.push(n);
     else groups.set(k, [n]);
@@ -86,7 +97,8 @@ export function rankManualProposals(
       notebookIds: sorted.map((m) => m.notebookId),
       refusedTurns: sorted.reduce((s, m) => s + m.refusedTurns, 0),
       lastSeenAt: new Date(last).toISOString(),
-      alreadyInLibrary: libraryKeys.has(k),
+      alreadyInLibrary: libraryKeys.has(keyOf(sorted[0].manufacturer, sorted[0].model)),
+      lastSearch: sorted.find((m) => m.lastSearch)?.lastSearch ?? null,
       _last: last,
     });
   }
@@ -110,12 +122,14 @@ const NOTEBOOKS_SQL = `
             WHERE s.tenant_id = $1::uuid AND s.notebook_id = n.id
               AND s.source_role = 'manual' AND s.match_state <> 'rejected'
               AND s.superseded_at IS NULL
-         ) AS has_manual
+         ) AS has_manual,
+         n.manual_acquisition->>'state' AS search_state,
+         n.manual_acquisition->>'key' AS search_key
     FROM equipment_notebooks n
    WHERE n.tenant_id = $1::uuid
-     AND n.identity_status IN ('user_confirmed', 'verified')
+     AND n.identity_status = 'user_confirmed'
      AND btrim(COALESCE(n.manufacturer, '')) <> ''
-     AND btrim(COALESCE(n.model, '')) <> ''`;
+     AND (btrim(COALESCE(n.model, '')) <> '' OR btrim(COALESCE(n.catalog_number, '')) <> '')`;
 
 const REFUSALS_SQL = `
   SELECT notebook_id::text AS notebook_id, COUNT(*)::int AS refused,
@@ -155,7 +169,14 @@ export async function loadManualProposals(
     lastSeenMs: ms(r.last_seen),
     hasManual: r.has_manual === true,
     refusedTurns: 0,
+    lastSearch: null as string | null,
   }));
+  // A recorded search outcome only describes the CURRENT identity when its key matches.
+  nb.rows.forEach((r, i) => {
+    const n = notebooks[i];
+    const k = acquisitionKey({ identityStatus: n.identityStatus, manufacturer: n.manufacturer, model: n.model, catalogNumber: n.catalogNumber });
+    if (k && r.search_key === k && typeof r.search_state === "string") n.lastSearch = r.search_state;
+  });
   const open = notebooks.filter((n) => !n.hasManual);
   if (open.length === 0) return [];
 

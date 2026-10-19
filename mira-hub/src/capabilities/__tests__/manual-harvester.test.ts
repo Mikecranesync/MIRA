@@ -36,9 +36,19 @@ describe("rankManualProposals", () => {
     expect(rankManualProposals([nb({ identityStatus: s })])).toEqual([]);
   });
 
-  it("requires both manufacturer and model", () => {
+  it("requires a manufacturer plus a model or catalog number (the acquisition key)", () => {
     expect(rankManualProposals([nb({ model: "  " })])).toEqual([]);
     expect(rankManualProposals([nb({ manufacturer: "" })])).toEqual([]);
+    // catalog-only qualifies, exactly as acquisitionKey does
+    expect(rankManualProposals([nb({ model: "", catalogNumber: "6AV2124-0GC01-0AX0" })])).toHaveLength(1);
+  });
+
+  it("never proposes what approval could not start (a 'verified' status has no acquisition key)", () => {
+    expect(rankManualProposals([nb({ identityStatus: "verified" })])).toEqual([]);
+  });
+
+  it("carries the last search outcome so a known dead end is visible", () => {
+    expect(rankManualProposals([nb({ lastSearch: "no_manual_found" })])[0].lastSearch).toBe("no_manual_found");
   });
 
   it("drops a notebook that already has a manual", () => {
@@ -93,7 +103,7 @@ const ROWS = {
     { tenant: A, notebook_id: "na", manufacturer: "Siemens", model: "3RV20", catalog_number: null,
       identity_status: "user_confirmed", last_seen: "2026-10-01T00:00:00Z", has_manual: false },
     { tenant: B, notebook_id: "nb", manufacturer: "SMC", model: "SS5Y3", catalog_number: null,
-      identity_status: "verified", last_seen: "2026-10-02T00:00:00Z", has_manual: false },
+      identity_status: "user_confirmed", last_seen: "2026-10-02T00:00:00Z", has_manual: false },
   ],
   refusals: [
     { tenant: A, notebook_id: "na", refused: 2, last_refused: "2026-10-05T00:00:00Z" },
