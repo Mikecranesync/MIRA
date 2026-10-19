@@ -2,11 +2,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  loadManualProposals,
+  loadHarvestNotebooks,
+  loadLibraryKeys,
   rankManualProposals,
   type HarvestNotebook,
   type QueryDb,
 } from "../manual-harvester";
+import { acquisitionKey } from "../notebook-manual-acquisition";
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
@@ -21,49 +23,49 @@ function nb(over: Partial<HarvestNotebook>): HarvestNotebook {
     lastSeenMs: Date.parse("2026-10-01T00:00:00Z"),
     hasManual: false,
     refusedTurns: 0,
+    lastSearch: null,
     ...over,
   };
 }
 
 describe("rankManualProposals", () => {
   it("proposes a confirmed identity (control)", () => {
-    const out = rankManualProposals([nb({})]);
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({ manufacturer: "Siemens", model: "3RV20", notebookIds: ["n1"] });
+    const { proposals } = rankManualProposals([nb({})]);
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({ manufacturer: "Siemens", model: "3RV20", notebookIds: ["n1"] });
   });
 
-  it.each(["candidate", "unknown"])("never proposes from an unconfirmed %s identity", (s) => {
-    expect(rankManualProposals([nb({ identityStatus: s })])).toEqual([]);
+  it.each(["candidate", "unknown", "verified"])("never proposes what approval could not start (%s)", (s) => {
+    expect(rankManualProposals([nb({ identityStatus: s })])).toEqual({ proposals: [], searched: [] });
   });
 
   it("requires a manufacturer plus a model or catalog number (the acquisition key)", () => {
-    expect(rankManualProposals([nb({ model: "  " })])).toEqual([]);
-    expect(rankManualProposals([nb({ manufacturer: "" })])).toEqual([]);
-    // catalog-only qualifies, exactly as acquisitionKey does
-    expect(rankManualProposals([nb({ model: "", catalogNumber: "6AV2124-0GC01-0AX0" })])).toHaveLength(1);
+    expect(rankManualProposals([nb({ model: "  " })]).proposals).toEqual([]);
+    expect(rankManualProposals([nb({ manufacturer: "" })]).proposals).toEqual([]);
+    expect(rankManualProposals([nb({ model: "", catalogNumber: "6AV2124-0GC01-0AX0" })]).proposals).toHaveLength(1);
   });
 
-  it("never proposes what approval could not start (a 'verified' status has no acquisition key)", () => {
-    expect(rankManualProposals([nb({ identityStatus: "verified" })])).toEqual([]);
+  it("drops a notebook that already has an applicable manual", () => {
+    expect(rankManualProposals([nb({ hasManual: true })]).proposals).toEqual([]);
   });
 
-  it("carries the last search outcome so a known dead end is visible", () => {
-    expect(rankManualProposals([nb({ lastSearch: "no_manual_found" })])[0].lastSearch).toBe("no_manual_found");
+  it("an identity already searched is shown under `searched`, never as an approvable proposal (Codex F3)", () => {
+    const out = rankManualProposals([nb({ lastSearch: "no_manual_found" })]);
+    expect(out.proposals).toEqual([]);
+    expect(out.searched).toHaveLength(1);
+    expect(out.searched[0].lastSearch).toBe("no_manual_found");
   });
 
-  it("drops a notebook that already has a manual", () => {
-    expect(rankManualProposals([nb({ hasManual: true })])).toEqual([]);
-  });
-
-  it("groups case/whitespace variants but never fuzzy-merges different models", () => {
-    const out = rankManualProposals([
-      nb({ notebookId: "n2", manufacturer: "SIEMENS ", model: "3rv20" }),
+  it("groups by acquisition key: case/punctuation variants merge, different models do not", () => {
+    const { proposals } = rankManualProposals([
+      nb({ notebookId: "n2", manufacturer: "SIEMENS ", model: "3rv-20" }),
       nb({ notebookId: "n1" }),
       nb({ notebookId: "n3", model: "3RV2" }),
     ]);
-    expect(out).toHaveLength(2);
-    const byModel = Object.fromEntries(out.map((p) => [p.model.toLowerCase(), p.notebookIds]));
-    expect(byModel).toEqual({ "3rv20": ["n1", "n2"], "3rv2": ["n3"] });
+    expect(proposals).toHaveLength(2);
+    const byKey = Object.fromEntries(proposals.map((p) => [p.model.toLowerCase(), p.notebookIds]));
+    expect(byKey["3rv2"]).toEqual(["n3"]);
+    expect(Object.values(byKey)).toContainEqual(["n1", "n2"]);
   });
 
   it("ranks by refused turns, then recency, then name; equal input gives equal output", () => {
@@ -73,14 +75,13 @@ describe("rankManualProposals", () => {
       nb({ notebookId: "c", manufacturer: "ABB", model: "X1", lastSeenMs: 3 }),
       nb({ notebookId: "d", manufacturer: "Turck", model: "NI8U", lastSeenMs: 9 }),
     ];
-    const order = rankManualProposals(rows).map((p) => p.manufacturer);
-    expect(order).toEqual(["SMC", "Turck", "ABB", "Bihl"]);
+    expect(rankManualProposals(rows).proposals.map((p) => p.manufacturer)).toEqual(["SMC", "Turck", "ABB", "Bihl"]);
     expect(rankManualProposals([...rows].reverse())).toEqual(rankManualProposals(rows));
   });
 
   it("flags but keeps a model the shared library already has", () => {
     const out = rankManualProposals([nb({})], new Set(["siemens\u00003rv20"]));
-    expect(out[0].alreadyInLibrary).toBe(true);
+    expect(out.proposals[0].alreadyInLibrary).toBe(true);
   });
 });
 
@@ -96,14 +97,17 @@ function fakeDb(handler: (sql: string, params: unknown[]) => Record<string, unkn
   return { db, calls };
 }
 
+const SIEMENS_KEY = acquisitionKey({ identityStatus: "user_confirmed", manufacturer: "Siemens", model: "3RV20", catalogNumber: null })!;
+
 // One fake database holding two tenants' rows; the handler honours only the
 // tenant the SQL actually binds, so a query that forgot to bind it leaks.
+let sources: Record<string, unknown>[] = [];
 const ROWS = {
   notebooks: [
     { tenant: A, notebook_id: "na", manufacturer: "Siemens", model: "3RV20", catalog_number: null,
-      identity_status: "user_confirmed", last_seen: "2026-10-01T00:00:00Z", has_manual: false },
+      identity_status: "user_confirmed", last_seen: "2026-10-01T00:00:00Z", search_state: null, search_key: null },
     { tenant: B, notebook_id: "nb", manufacturer: "SMC", model: "SS5Y3", catalog_number: null,
-      identity_status: "user_confirmed", last_seen: "2026-10-02T00:00:00Z", has_manual: false },
+      identity_status: "user_confirmed", last_seen: "2026-10-02T00:00:00Z", search_state: null, search_key: null },
   ],
   refusals: [
     { tenant: A, notebook_id: "na", refused: 2, last_refused: "2026-10-05T00:00:00Z" },
@@ -115,44 +119,77 @@ function tenantScoped(sql: string, params: unknown[]) {
   const bound = /tenant_id = \$1::(uuid|text)/.test(sql) ? params[0] : undefined;
   const pick = <T extends { tenant: string }>(rows: T[]) => rows.filter((r) => r.tenant === bound);
   if (sql.includes("FROM equipment_notebooks")) return pick(ROWS.notebooks);
+  if (sql.includes("FROM equipment_notebook_sources")) return pick(sources as never);
   if (sql.includes("FROM decision_traces")) return pick(ROWS.refusals);
   return [];
 }
 
-describe("loadManualProposals", () => {
+describe("loadHarvestNotebooks / loadLibraryKeys", () => {
   it("returns only the caller's machines (cross-tenant negative)", async () => {
+    sources = [];
     const t = fakeDb(tenantScoped);
-    const s = fakeDb(() => []);
-    const out = await loadManualProposals({ tenantDb: t.db, sharedDb: s.db }, A);
-    expect(out.map((p) => p.manufacturer)).toEqual(["Siemens"]);
-    expect(out[0].refusedTurns).toBe(2);
-    const outB = await loadManualProposals({ tenantDb: t.db, sharedDb: s.db }, B);
-    expect(outB.map((p) => p.manufacturer)).toEqual(["SMC"]);
+    const a = await loadHarvestNotebooks(t.db, A);
+    expect(a.map((n) => n.manufacturer)).toEqual(["Siemens"]);
+    expect(a[0].refusedTurns).toBe(2);
+    expect((await loadHarvestNotebooks(t.db, B)).map((n) => n.manufacturer)).toEqual(["SMC"]);
   });
 
-  it("binds the caller tenant on every query and uses the hybrid predicate for the library", async () => {
+  it("binds the caller tenant on every query; the library read uses the hybrid predicate", async () => {
+    sources = [];
     const t = fakeDb(tenantScoped);
     const s = fakeDb(() => [{ manufacturer: "siemens", model: "3rv20" }]);
-    const out = await loadManualProposals({ tenantDb: t.db, sharedDb: s.db }, A);
+    const notebooks = await loadHarvestNotebooks(t.db, A);
+    const lib = await loadLibraryKeys(s.db, A, notebooks);
     for (const c of [...t.calls, ...s.calls]) {
       expect(c.sql).toMatch(/tenant_id = \$1::(uuid|text)/);
       expect(c.params[0]).toBe(A);
     }
     // decision_traces.tenant_id is TEXT since migration 070; a ::uuid compare errors live.
-    const traces = t.calls.find((c) => c.sql.includes("FROM decision_traces"));
-    expect(traces?.sql).toMatch(/tenant_id = \$1::text/);
-    expect(s.calls).toHaveLength(1);
+    expect(t.calls.find((c) => c.sql.includes("FROM decision_traces"))?.sql).toMatch(/tenant_id = \$1::text/);
     expect(s.calls[0].sql).toMatch(/\(is_private = false OR tenant_id = \$1::uuid\)/);
-    expect(out[0].alreadyInLibrary).toBe(true);
+    expect(rankManualProposals(notebooks, lib).proposals[0].alreadyInLibrary).toBe(true);
   });
 
-  it("skips the trace and library reads when nothing needs a manual", async () => {
-    const t = fakeDb((sql) =>
-      sql.includes("FROM equipment_notebooks") ? [{ ...ROWS.notebooks[0], has_manual: true }] : [],
+  it("an enabled manual stamped for the CURRENT identity counts as having a manual", async () => {
+    sources = [{ tenant: A, notebook_id: "na", source_role: "manual", enabled_by_default: true,
+                 match_state: "verified", match_evidence: { autoAcquisitionKey: SIEMENS_KEY } }];
+    const n = await loadHarvestNotebooks(fakeDb(tenantScoped).db, A);
+    expect(n[0].hasManual).toBe(true);
+  });
+
+  it("a disabled leftover from a prior identity does NOT suppress the proposal (Codex F2)", async () => {
+    sources = [
+      { tenant: A, notebook_id: "na", source_role: "manual", enabled_by_default: false,
+        match_state: "candidate", match_evidence: { autoAcquisitionKey: "SIEMENS|3RV10|" } },
+      { tenant: A, notebook_id: "na", source_role: "manual", enabled_by_default: true,
+        match_state: "verified", match_evidence: { autoAcquisitionKey: "SIEMENS|3RV10|" } },
+    ];
+    const n = await loadHarvestNotebooks(fakeDb(tenantScoped).db, A);
+    expect(n[0].hasManual).toBe(false);
+  });
+
+  it("a recorded search for the current key marks it searched; a stale key does not", async () => {
+    sources = [];
+    const t = fakeDb((sql, params) =>
+      sql.includes("FROM equipment_notebooks")
+        ? [{ ...ROWS.notebooks[0], search_state: "no_manual_found", search_key: SIEMENS_KEY }]
+        : tenantScoped(sql, params),
     );
-    const s = fakeDb(() => []);
-    expect(await loadManualProposals({ tenantDb: t.db, sharedDb: s.db }, A)).toEqual([]);
+    expect((await loadHarvestNotebooks(t.db, A))[0].lastSearch).toBe("no_manual_found");
+    const stale = fakeDb((sql, params) =>
+      sql.includes("FROM equipment_notebooks")
+        ? [{ ...ROWS.notebooks[0], search_state: "no_manual_found", search_key: "SIEMENS|OLD|" }]
+        : tenantScoped(sql, params),
+    );
+    expect((await loadHarvestNotebooks(stale.db, A))[0].lastSearch).toBeNull();
+  });
+
+  it("skips the follow-up reads when nothing qualifies", async () => {
+    const t = fakeDb((sql) => (sql.includes("FROM equipment_notebooks") ? [] : []));
+    expect(await loadHarvestNotebooks(t.db, A)).toEqual([]);
     expect(t.calls).toHaveLength(1);
+    const s = fakeDb(() => []);
+    expect(await loadLibraryKeys(s.db, A, [])).toEqual(new Set());
     expect(s.calls).toHaveLength(0);
   });
 

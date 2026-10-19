@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
-import { loadManualProposals } from "@/capabilities/manual-harvester";
+import { loadHarvestNotebooks, loadLibraryKeys, rankManualProposals } from "@/capabilities/manual-harvester";
 import {
   acquisitionEnabled,
   acquisitionKey,
@@ -31,10 +31,11 @@ export async function GET() {
   if (ctx instanceof NextResponse) return ctx;
   if (!acquisitionEnabled()) return NextResponse.json(NOT_ENABLED, { status: 404 });
   try {
-    const proposals = await withTenantContext(ctx.tenantId, (c) =>
-      loadManualProposals({ tenantDb: c, sharedDb: pool }, ctx.tenantId),
-    );
-    return NextResponse.json({ proposals });
+    // Tenant reads finish (and release their connection) before the raw-pool
+    // library read starts — never two pool connections held at once.
+    const notebooks = await withTenantContext(ctx.tenantId, (c) => loadHarvestNotebooks(c, ctx.tenantId));
+    const libraryKeys = await loadLibraryKeys(pool, ctx.tenantId, notebooks);
+    return NextResponse.json(rankManualProposals(notebooks, libraryKeys));
   } catch (err) {
     console.error("[manual-harvester] list failed:", err instanceof Error ? err.message : err);
     return NextResponse.json({ error: "harvest_failed" }, { status: 500 });
@@ -59,7 +60,8 @@ export async function POST(req: NextRequest) {
   // RLS via withTenantContext and the explicit predicate.
   const nb = await withTenantContext(ctx.tenantId, async (c) => {
     const r = await c.query(
-      `SELECT id::text AS id, node_id::text AS node_id, manufacturer, model, catalog_number, identity_status
+      `SELECT id::text AS id, node_id::text AS node_id, manufacturer, model, catalog_number, identity_status,
+              manual_acquisition->>'key' AS search_key, manual_acquisition->>'state' AS search_state
          FROM equipment_notebooks
         WHERE tenant_id = $1::uuid AND id = $2::uuid`,
       [ctx.tenantId, notebookId],
@@ -74,8 +76,14 @@ export async function POST(req: NextRequest) {
     model: nb.model as string | null,
     catalogNumber: nb.catalog_number as string | null,
   };
-  if (!acquisitionKey(identity)) {
+  const key = acquisitionKey(identity);
+  if (!key) {
     return NextResponse.json({ error: "identity_not_confirmed" }, { status: 409 });
+  }
+  // Already searched for THIS identity: say so instead of a silent started=false.
+  // Retries of a failed search stay the pipeline's own job (claim's retry rules).
+  if (nb.search_key === key && typeof nb.search_state === "string") {
+    return NextResponse.json({ error: "already_searched", state: nb.search_state }, { status: 409 });
   }
 
   const started = await startManualAcquisition({
@@ -85,7 +93,6 @@ export async function POST(req: NextRequest) {
     nodeId: String(nb.node_id),
     identity,
   });
-  // started=false is not an error: a search for this exact identity already ran
-  // or is running — the notebook's manual_acquisition record holds its outcome.
+  // started=false here means a concurrent claim won the race for this key.
   return NextResponse.json({ started, notebookId });
 }
