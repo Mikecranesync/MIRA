@@ -25,7 +25,7 @@ import { defaultRecognizer, isRecognizerConfigured } from "@/lib/nameplate";
 import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 import { parseNameplateLines } from "@/lib/nameplate/passes";
-import { toFact, summarizeForReview, isComplianceMark } from "@/lib/nameplate/evidence";
+import { toFact, summarizeForReview, isComplianceMark, scrubReferenceDesignations } from "@/lib/nameplate/evidence";
 import { recordNameplateObservations } from "@/lib/visual-evidence-context";
 
 export const dynamic = "force-dynamic";
@@ -217,7 +217,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({
       fileId: parked.fileId,
-      candidate,
+      // A plant reference designation (=EQU+96 -A57) is never offered as a
+      // model/catalog/serial to pre-fill: clients confirm what they are given.
+      candidate: scrubReferenceDesignations(candidate),
       rawObservation: {
         provider: recognizer.name,
         filename,
