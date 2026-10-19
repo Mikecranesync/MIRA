@@ -127,6 +127,16 @@ export function isSafetyCritical(field: string): boolean {
   return SAFETY_CRITICAL_FIELDS.has(field);
 }
 
+/** IEC 81346 reference designation: aspects prefixed `=` (function), `+`
+ *  (location) or `-` (product), e.g. `=EQU+96 -A57`, `+CAB1-K3`, `-A57`.
+ *  A manufacturer identifier never starts with `=` or `+`; a lone `-` prefix
+ *  counts only for the short letter+digit product-aspect form. */
+export function isReferenceDesignation(value: string): boolean {
+  const v = value.trim();
+  if (/^[=+]\S/.test(v)) return true;
+  return /^-[A-Z]{1,3}\d{1,4}$/i.test(v);
+}
+
 export function isIdentityField(field: string): boolean {
   return IDENTITY_FIELDS.has(field);
 }
@@ -286,6 +296,22 @@ export function toFact(obs: ObservationInput): NameplateFact {
 
   if (value === null || value === "") {
     return { ...base, status: "candidate", reason: "not read from the plate" };
+  }
+
+  // A plant reference designation (IEC 81346: `=EQU+96 -A57`, `-K1`) is the
+  // customer's own location tag, never a manufacturer's model/catalog/serial.
+  // Staging 2026-10-19: a Bihl+Wiedemann gateway's panel tag was promoted as its
+  // catalog number and sent to manual discovery.
+  if (
+    (field === "model" || field === "catalogNumber" || field === "serialNumber") &&
+    isReferenceDesignation(value)
+  ) {
+    return {
+      ...base,
+      status: "rejected",
+      reason:
+        "this is a plant reference designation (equipment/location tag), not a manufacturer part number",
+    };
   }
 
   if (isComplianceMark(value)) {
