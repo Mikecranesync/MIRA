@@ -92,6 +92,17 @@ is read. Host checked read-only: 6 vCPU Intel Haswell, AVX2, **no AVX-512 VNNI**
 staging service gets `cpus: 3` with 3 threads. Fallback if over budget: the AVX2 int8 model file (not the
 VNNI one), pinned by sha256, re-measured for quality first.
 
+## License exception (owner-approved 2026-10-19)
+Root `CLAUDE.md` Hard Constraint 1 allows Apache-2.0 or MIT only. Mike approved a recorded exception for
+exactly two BSD-3-Clause runtime dependencies of `mira-reranker`, raised by Codex review r2 (#4535, F4):
+
+| package | version | why it cannot be avoided |
+|---|---|---|
+| numpy | 2.3.3 | a hard runtime dependency of onnxruntime (`numpy>=1.21.6`); every ONNX Runtime Python service ships it |
+| uvicorn | 0.54.0 | the ASGI server; already shipped to production by mira-pipeline, mira-mcp and mira-ingest |
+
+Scope: this service only, these two packages only. Any other non-Apache/MIT dependency needs its own approval.
+
 ## Shadow-validation plan (Gate 8)
 Staging with `NOTEBOOK_RERANK=1`, replay against staging + one stranger walk at a fixed configuration.
 
