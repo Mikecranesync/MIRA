@@ -279,12 +279,13 @@ transitions. No agent may self-award a PASS on work it authored.
   `base_sha`, `status GREEN|ISSUES_FOUND`, `review_iteration`, counts; the script re-verifies the head
   before review and before GREEN. **GREEN binds to the exact head and the exact PR body**: any push or
   body edit makes it stale. Maximum three autonomous rounds, then escalate to Mike with the open findings.
-- **CONVERGED** (owner decision 2026-10-18): an exact-head, exact-body verdict with `BLOCKER: 0` and `HIGH: 0` ends the review loop even when it reports MEDIUM or LOW findings. Do not request another round. File one follow-up issue per MEDIUM (LOWs may share one), list them
-  in a PR comment (never a body edit, which voids the verdict), and hand the merge to Mike. The Legacy UI
-  Lifecycle Guard keeps reporting red for this state, because its single authorization route is GREEN
-  (charter §3). It is advisory, not a required check
-  (`.claude/rules/factorylm-unified-ui-cutover.md`, #3657), so Mike's merge under this rule is the
-  authorization. A BLOCKER or HIGH still has to be fixed and re-reviewed.
+- **CONVERGED** (owner decision 2026-10-18): an exact-head, exact-body verdict with `BLOCKER: 0` and `HIGH: 0` ends the review loop even when it reports MEDIUM or LOW findings. Do not request another round. File one follow-up issue per MEDIUM (LOWs may share one), post the
+  owner-account `[REVIEW-FOLLOWUPS]` record that binds the reviewed head and body and lists them (format:
+  charter §3; a comment, never a body edit, which voids the verdict), dispatch a fresh guard run
+  (`gh workflow run ui-lifecycle-guard.yml --ref main -f pr_number=<N>`), and hand the merge to Mike. The
+  Lifecycle Guard accepts CONVERGED plus that record. A BLOCKER or HIGH is never CONVERGED; it is fixed and
+  re-reviewed. The full review loop does not yet stop on CONVERGED by itself (#4524), so run `--review-only`
+  passes; never start a remediation round on a CONVERGED verdict.
 - **Required (D1):** every **R3** change; every PR touching a guarded path (the lifecycle guard
   demands the body-bound GREEN regardless of class). **R2:** when Mike names it or a cheap-lane finding is
   disputed. R0/R1: not required.
@@ -318,7 +319,7 @@ with its follow-ups filed (§4.3), and every post-cap pass still needs Mike's pe
   - the options: (a) one more pass after fixing each open finding's whole class and re-running the
     cheap lane; (b) split the PR so the settled part can land; (c) stop and redesign.
   - When the latest exact-head verdict has no BLOCKER or HIGH, the PR is CONVERGED (§4.3). Do not ask
-    for a post-cap pass. File the follow-ups and ask for the merge. The evidence below is why: rounds
+    for a post-cap pass. File the follow-ups, post the record and ask for the merge. The evidence below is why: rounds
     past the second rarely find anything severe, and each fix opens new surface for the next round to find
     MEDIUMs in (#4461 reached iteration 10 and #4201 iteration 11, both at 0 BLOCKER/HIGH).
 
