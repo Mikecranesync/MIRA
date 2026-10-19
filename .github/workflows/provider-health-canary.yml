@@ -113,12 +113,16 @@ jobs:
             "Most likely cause: the prepaid credit balance is exhausted (insufficient_quota / credit_balance_exhausted), as on 2026-10-18 (#4519)." \
             "Check: platform.openai.com billing for the key in Doppler factorylm/stg and factorylm/prd (shared key)." \
             "" \
-            "Failing run (reason in the log): ${run_url}")
+            "Failing run (reason in the log): ${run_url}" \
+            "" \
+            "canary_marker: openai-down")
           gh label create provider-incident --color B60205 \
             --description "LLM cascade provider coverage incident (canary)" 2>/dev/null || true
           gh label create incident --color B60205 \
             --description "Production failure record; SDLC v1 10.3 fixed fields, see docs/agents/issue-tracker.md" 2>/dev/null || true
-          existing=$(gh issue list --state open --label provider-incident --search 'in:title "OpenAI DOWN"' \
+          # Dedup on a fixed body marker, not the title, so a hand-retitled incident is
+          # still found and updated instead of duplicated (Codex F1, PR #4531).
+          existing=$(gh issue list --state open --label provider-incident --search 'in:body "canary_marker: openai-down"' \
             --json number --jq '[.[].number] | max // empty')
           if [ -n "$existing" ]; then
             gh issue edit "$existing" --add-label incident \
