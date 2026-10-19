@@ -1,0 +1,32 @@
+[project]
+name = "mira-reranker"
+version = "0.1.0"
+description = "Cross-encoder reranker service (cross-encoder/ms-marco-MiniLM-L-6-v2, ONNX Runtime). Internal network only."
+requires-python = ">=3.12"
+dependencies = [
+    "onnxruntime==1.23.2",
+    "tokenizers==0.22.1",
+    "numpy==2.3.3",
+    "fastapi==0.147.0",
+    "uvicorn==0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+    "httpx==0.28.1",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["app", "fetch_model"]

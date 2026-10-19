@@ -5,6 +5,7 @@ import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { embedQuery, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
+import { orderByScores, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
 import {
   codeTokenMatcher,
   expandIndustrialQuery,
@@ -1758,7 +1759,17 @@ export async function retrieveNodeChunks(
           (c) => keyOf(c._row),
         )
       : lexicalRanked;
-  const rerankedAll = prioritizeCurrentCodeEvidence(hybridRanked, expanded.currentCodeTokens);
+  // CU-RR1 — cross-encoder rerank of the ordered pool's head (NOTEBOOK_RERANK=1, default off).
+  // Runs BEFORE prioritizeCurrentCodeEvidence so the code the technician just named still
+  // leads the final cut (#4360). Broad questions keep their page-diverse, facet-guaranteed
+  // shape and are not reranked. Any reranker failure returns null: today's order stands.
+  let modelRanked = hybridRanked;
+  if (!broad.broad && rerankEnabled() && hybridRanked.length > 1) {
+    const head = hybridRanked.slice(0, rerankPool());
+    const scores = await rerankScores(opts.rawQuery ?? q, head.map((c) => c.content));
+    if (scores) modelRanked = [...orderByScores(head, scores), ...hybridRanked.slice(head.length)];
+  }
+  const rerankedAll = prioritizeCurrentCodeEvidence(modelRanked, expanded.currentCodeTokens);
   // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
   // overall, so one family (e.g. overload) can fill every slot while a planned
   // facet (overcurrent) sits uncovered in the pool. Every facet with pool
