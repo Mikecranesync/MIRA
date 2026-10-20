@@ -6,7 +6,7 @@
  * the answer status, and it runs after the safety and answer gates (the caller's responsibility; it has no
  * way to see or override a safety stop). Any internal error becomes `verdict: "error"`, never a throw.
  *
- * Not wired into a route yet: wiring touches the guarded chat route and needs its own review.
+ * Wired into the notebook chat route's final answer-gate block via `shadowVerifyCitedTurn` (#4550).
  */
 
 import { verifyAnswer } from "./claim-verifier";
