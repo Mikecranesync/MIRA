@@ -335,7 +335,7 @@ No PR bumps a version file and no PR hand-writes a changelog line. `/VERSION` an
 
 ## Multi-Session Protocol
 
-Multiple sessions work this repo in parallel. **Before claiming, isolating, pushing, or closing out any work, follow `.claude/rules/multi-session-protocol.md`** — durable work claims, actual-overlap checks, worktree/branch isolation, the Claude-implements/Codex-reviews adversarial gate (GREEN is exact-SHA, fail-closed, max 3 rounds), human-gated merge/deploy, bounded continuation, and the required session closeout.
+Multiple sessions work this repo in parallel. **Before claiming, isolating, pushing, or closing out any work, follow `.claude/rules/multi-session-protocol.md`** — durable work claims, actual-overlap checks, worktree/branch isolation, the Claude-implements/Codex-reviews adversarial gate (GREEN is exact-SHA, fail-closed, max 3 rounds; a verdict with 0 BLOCKER/HIGH is CONVERGED and ends review once its follow-ups are filed — SDLC §4.3), human-gated merge/deploy, bounded continuation, and the required session closeout.
 
 ## Git Workflow
 
