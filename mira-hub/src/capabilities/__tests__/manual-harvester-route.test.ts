@@ -48,6 +48,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION;
+  delete process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS;
 });
 
 describe("GET /api/manual-harvester", () => {
@@ -133,5 +134,22 @@ describe("POST /api/manual-harvester (one-tap OK)", () => {
     process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION = "0";
     expect((await POST(post({ notebookId: NB }))).status).toBe(404);
     expect(startManualAcquisition).not.toHaveBeenCalled();
+  });
+});
+
+describe("tenant allowlist (production turns on for one customer first)", () => {
+  const OTHER = "22222222-2222-4222-8222-222222222222";
+  it("a tenant NOT on the list gets 404 on GET and POST, and nothing runs", async () => {
+    process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS = OTHER;
+    expect((await GET()).status).toBe(404);
+    expect((await POST(post({ notebookId: NB }))).status).toBe(404);
+    expect(loadHarvestNotebooks).not.toHaveBeenCalled();
+    expect(startManualAcquisition).not.toHaveBeenCalled();
+  });
+  it("the session's tenant on the list is served (control)", async () => {
+    process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS = `${OTHER},${TENANT}`;
+    vi.mocked(loadHarvestNotebooks).mockResolvedValue([]);
+    vi.mocked(loadLibraryKeys).mockResolvedValue(new Set());
+    expect((await GET()).status).toBe(200);
   });
 });

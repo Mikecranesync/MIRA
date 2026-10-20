@@ -2042,7 +2042,7 @@ async function handleChatTurn(
     // Codex r2 F4 / F13 (#4172): only when the candidate takeover can actually
     // run (both flags; #4175). Otherwise the turn stays exactly as before S6
     // (the explicit, confirm-first photo search below keeps the turn).
-    if (!candidateAcquisitionEnabled()) return null;
+    if (!candidateAcquisitionEnabled(ctx.tenantId)) return null;
     try {
       const candidate = extractCandidateIdentity(photoTextForOem, message);
       // #4172 Codex r3/post-cap: the ONE candidate validator (serials and
@@ -2219,7 +2219,7 @@ async function handleChatTurn(
     !(nb.manufacturer?.trim() || nb.model?.trim()) &&
     oemManufacturer !== null &&
     chunks.length === 0 &&
-    candidateAcquisitionEnabled()
+    candidateAcquisitionEnabled(ctx.tenantId)
   ) {
     // Codex r2 F2 (#4172): the OEM model parser knows a finite set of model
     // families, so a valid part it does not recognise (oemModel null) falls back
@@ -2324,7 +2324,7 @@ async function handleChatTurn(
   const candidateAcquisitionOwnsTurn =
     identityProposal !== null &&
     Boolean(nb) &&
-    candidateAcquisitionEnabled() &&
+    candidateAcquisitionEnabled(ctx.tenantId) &&
     acquisitionKey({
       identityStatus: "user_confirmed",
       manufacturer: identityProposal.manufacturer,
@@ -2561,7 +2561,7 @@ async function handleChatTurn(
     nb &&
     oemManufacturer?.source === "notebook" &&
     oemModel?.source === "notebook" &&
-    acquisitionEnabled()
+    acquisitionEnabled(ctx.tenantId)
   ) {
     const identity = {
       identityStatus: nb.identityStatus,
@@ -2730,7 +2730,7 @@ async function handleChatTurn(
   // NEW search, changes retrieval, or alters the reply — the turn stays
   // grounded in its selected sources; the packet records the recovery
   // (`manual_acquisition`) for the flight recorder.
-  if (manualAcquisition === null && nb && acquisitionEnabled()) {
+  if (manualAcquisition === null && nb && acquisitionEnabled(ctx.tenantId)) {
     const identity = {
       identityStatus: nb.identityStatus,
       manufacturer: nb.manufacturer,

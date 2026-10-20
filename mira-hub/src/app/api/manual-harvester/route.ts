@@ -29,7 +29,7 @@ const NOT_ENABLED = { error: "not_enabled" };
 export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
-  if (!acquisitionEnabled()) return NextResponse.json(NOT_ENABLED, { status: 404 });
+  if (!acquisitionEnabled(ctx.tenantId)) return NextResponse.json(NOT_ENABLED, { status: 404 });
   try {
     // Tenant reads finish (and release their connection) before the raw-pool
     // library read starts — never two pool connections held at once.
@@ -45,7 +45,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
-  if (!acquisitionEnabled()) return NextResponse.json(NOT_ENABLED, { status: 404 });
+  if (!acquisitionEnabled(ctx.tenantId)) return NextResponse.json(NOT_ENABLED, { status: 404 });
 
   let body: Record<string, unknown>;
   try {

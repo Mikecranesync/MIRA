@@ -672,7 +672,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     model: identity.model ?? null,
     catalogNumber: identity.catalogNumber ?? null,
   });
-  if (acquisitionEnabled() && ownKey !== null && ownKey === nameplateKey) {
+  if (acquisitionEnabled(ctx.tenantId) && ownKey !== null && ownKey === nameplateKey) {
     const run = await runManualAcquisition(acquireInput);
     if (run.started && run.outcome) return respond(run.outcome.status, run.outcome.payload);
   }
