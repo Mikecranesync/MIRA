@@ -600,8 +600,10 @@ capabilities:
     entrypoints:
       - "mira-hub/src/capabilities/notebook-manual-acquisition.ts"
       - "mira-hub/src/capabilities/manual-acquisition.ts   # moved verbatim from nameplate/confirm"
+      - "mira-hub/src/capabilities/manual-harvester.ts     # propose-only: which confirmed machines still need a manual"
     consumers:
       - "mira-hub/src/app/api/equipment-notebooks/route.ts          # create-time trigger"
+      - "mira-hub/src/app/api/manual-harvester/route.ts             # GET proposals + POST one-tap OK -> startManualAcquisition (same flag)"
       - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts # decline-time fallback + honest state"
     schema:
       - "mira-hub/db/migrations/100_notebook_manual_acquisition.sql"
@@ -624,6 +626,8 @@ capabilities:
       - mira-hub-unit        # notebook-manual-acquisition + chat-flight-recorder + create-starts-manual-acquisition suites
     required_checks: []
     evidence:
+      - "https://github.com/Mikecranesync/MIRA/pull/4539"   # staging walk 2026-10-19, 12 real Stardust nameplate photos via the Hub recognize->confirm routes (QA tenant): PF525 25B-D010N104 auto-enabled Rockwell 520-PC001 (a product profile) -> judge publication-code fix; Siemens 3RV20 + TP700 found exact OEM docs but 403 (#4541); A-B 700-HA32Z24 + SMC SS5Y3 honest no_manual_found; GS1-45P0 user manual held for confirmation
+      - "https://github.com/Mikecranesync/MIRA/pull/4540"   # same walk: Bihl+Wiedemann plant designator =EQU+96 -A57 read as catalog number -> rejected
       - "https://github.com/Mikecranesync/MIRA/issues/4406"   # staging probe 2026-10-13 (Hub a40eb52a0): GE Fanuc IC752DPA062A completed with a junk candidate (#4400); Emerson IC752DPA062A 'unavailable' 3/3 (#4401)
     rollback: >-
       Set MIRA_NOTEBOOK_MANUAL_ACQUISITION=0 (or unset) in Doppler and redeploy
