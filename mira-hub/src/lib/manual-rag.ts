@@ -1458,6 +1458,7 @@ export async function retrieveNodeChunks(
           verified,
           scored.score::float8 AS rank
         FROM scored JOIN knowledge_entries ON knowledge_entries.id = scored.id
+        WHERE knowledge_entries.tenant_id = $1
         ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', knowledge_entries.id
         LIMIT $4`;
 
