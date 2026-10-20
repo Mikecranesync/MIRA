@@ -9,10 +9,11 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 DATA = Path("/Users/charlienode/MIRA/.planning/evidence-runoff-data/bench")
+CAND = __import__("os").environ.get("BENCH_CANDIDATES", "candidates.json")
 
 
 def main(manual: str, start: int, n: int) -> None:
-    c = next(x for x in json.loads((DATA / "candidates.json").read_text()) if x["manual"] == manual)
+    c = next(x for x in json.loads((DATA / CAND).read_text()) if x["manual"] == manual)
     pages = c["candidates"][start : start + n]
     tiles = []
     with tempfile.TemporaryDirectory() as td:
@@ -47,7 +48,7 @@ def main(manual: str, start: int, n: int) -> None:
     sheet = Image.new("RGB", (cols * w, rows * h), "white")
     for i, t in enumerate(tiles):
         sheet.paste(t, ((i % cols) * w, (i // cols) * h))
-    dst = DATA / "sheets" / f"{manual}_{start}.png"
+    dst = DATA / ("sheets" if CAND == "candidates.json" else "sheets_h") / f"{manual}_{start}.png"
     sheet.save(dst)
     print(dst, pages)
 
