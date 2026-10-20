@@ -39,7 +39,7 @@ def make_pr(*, created: float = 60, commit: float | None = 60, labels=(), events
 
 
 def warn_event(age: float) -> sps.Event:
-    return sps.Event("github-actions", days_ago(age), sps.WARN_BODY)
+    return sps.Event("github-actions", days_ago(age), sps.WARN_BODY, "Bot")
 
 
 # --- warn ---------------------------------------------------------------------------
@@ -126,7 +126,7 @@ def test_an_exact_notice_from_a_human_account_is_activity() -> None:
     ],
 )
 def test_only_the_exact_notice_from_the_sweep_account_is_a_warning(author: str, body: str) -> None:
-    pr = make_pr(events=[sps.Event(author, days_ago(sps.CLOSE_GRACE_DAYS + 1), body)])
+    pr = make_pr(events=[sps.Event(author, days_ago(sps.CLOSE_GRACE_DAYS + 1), body, "Bot")])
     assert sps.last_warning(pr) is None
     assert sps.decide(pr, NOW) == "warn", "an unauthenticated notice must never lead to close"
 
@@ -134,7 +134,9 @@ def test_only_the_exact_notice_from_the_sweep_account_is_a_warning(author: str, 
 def test_the_authentic_notice_survives_crlf_and_trailing_whitespace() -> None:
     """Control: the real notice still counts when GitHub hands it back re-encoded."""
     body = sps.WARN_BODY.replace("\n", "\r\n") + "\r\n"
-    pr = make_pr(events=[sps.Event("github-actions", days_ago(sps.CLOSE_GRACE_DAYS + 1), body)])
+    pr = make_pr(
+        events=[sps.Event("github-actions", days_ago(sps.CLOSE_GRACE_DAYS + 1), body, "Bot")]
+    )
     assert sps.last_warning(pr) == days_ago(sps.CLOSE_GRACE_DAYS + 1)
     assert sps.decide(pr, NOW) == "close"
 
@@ -311,3 +313,38 @@ def test_a_connection_that_cannot_be_completed_fails_closed(monkeypatch) -> None
 
     assert sps.main(["--repo", "o/r", "--mode", "apply"]) == 0
     assert not [c for c in calls if c[0] == "pr"], "an incomplete PR must receive no write"
+
+
+# --- the sweep's own identity, as GitHub really reports it (#4558 Codex F1) ---------------
+
+
+def _graphql_notice(login: str, typename: str) -> dict:
+    """A comment node shaped like the live GraphQL response for a workflow-posted comment.
+
+    Captured 2026-10-20 from Mikecranesync/MIRA comment 6270104165, posted by GITHUB_TOKEN:
+    GraphQL reports ``{"login": "github-actions", "__typename": "Bot"}`` while the REST API
+    reports the same comment as ``github-actions[bot]``. Both spellings name one account.
+    """
+    at = (NOW - dt.timedelta(days=sps.CLOSE_GRACE_DAYS + 1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {
+        "author": {"login": login, "__typename": typename},
+        "createdAt": at,
+        "body": sps.WARN_BODY,
+    }
+
+
+@pytest.mark.parametrize("login", ["github-actions", "github-actions[bot]"])
+def test_a_notice_posted_by_the_workflow_token_leads_to_close(login: str) -> None:
+    [pr] = sps.fetch_open_prs(
+        "o/r", gql=FakeGraphQL(_node(comments=[_graphql_notice(login, "Bot")]))
+    )
+    assert sps.last_warning(pr) is not None
+    assert sps.decide(pr, NOW) == "close"
+
+
+def test_a_human_account_named_like_the_bot_is_not_the_sweep() -> None:
+    """Control: the login alone is not the identity; the account must be a Bot."""
+    node = _node(comments=[_graphql_notice("github-actions", "User")])
+    [pr] = sps.fetch_open_prs("o/r", gql=FakeGraphQL(node))
+    assert sps.last_warning(pr) is None
+    assert sps.decide(pr, NOW) != "close"

@@ -46,9 +46,10 @@ MAX_ACTIONS = 25
 STALE_LABEL = "stale"
 WARN_MARKER = "<!-- stale-pr-sweep:warn -->"
 CLOSE_MARKER = "<!-- stale-pr-sweep:close -->"
-# The account the workflow's GITHUB_TOKEN posts as. Notices from any other account,
-# including other bots, are not notices.
-SWEEP_AUTHOR = "github-actions"
+# The account the workflow's GITHUB_TOKEN posts as, which must also be a GraphQL `Bot`.
+# GraphQL spells its login `github-actions`; the REST API spells the same account
+# `github-actions[bot]`. Notices from any other account, including other bots, are not notices.
+SWEEP_AUTHORS = frozenset({"github-actions", "github-actions[bot]"})
 MAX_PAGES = 50  # per nested connection; past this the PR is treated as unreadable
 
 WARN_BODY = (
@@ -71,6 +72,7 @@ class Event:
     author: str
     at: dt.datetime
     body: str = ""
+    author_type: str = ""  # GraphQL __typename: "Bot", "User", ...
 
 
 @dataclass
@@ -89,7 +91,11 @@ def is_bot(login: str) -> bool:
 
 
 def _is_notice(e: Event, body: str) -> bool:
-    return e.author == SWEEP_AUTHOR and e.body.replace("\r\n", "\n").strip() == body
+    return (
+        e.author in SWEEP_AUTHORS
+        and e.author_type == "Bot"
+        and e.body.replace("\r\n", "\n").strip() == body
+    )
 
 
 def _is_sweep_notice(e: Event) -> bool:
@@ -129,7 +135,7 @@ query($owner:String!,$name:String!,$cursor:String){repository(owner:$owner,name:
  pullRequests(states:OPEN,first:50,after:$cursor){pageInfo{hasNextPage endCursor} nodes{
   number title createdAt labels(first:100){pageInfo{hasNextPage} nodes{name}}
   commits(last:1){nodes{commit{committedDate}}}
-  comments(last:100){pageInfo{hasPreviousPage} nodes{author{login} createdAt body}}
+  comments(last:100){pageInfo{hasPreviousPage} nodes{author{login __typename} createdAt body}}
   reviews(last:100){pageInfo{hasPreviousPage} nodes{author{login} submittedAt}}}}}}
 """
 
@@ -137,7 +143,7 @@ query($owner:String!,$name:String!,$cursor:String){repository(owner:$owner,name:
 # page; comments/reviews, read newest-first, have an earlier one) it is re-read whole.
 _CONNECTION_FIELDS = {
     "labels": "name",
-    "comments": "author{login} createdAt body",
+    "comments": "author{login __typename} createdAt body",
     "reviews": "author{login} submittedAt",
 }
 _CONNECTION_QUERY = """
@@ -155,9 +161,16 @@ def _login(node: dict) -> str:
     return (node.get("author") or {}).get("login", "")
 
 
+def _author_type(node: dict) -> str:
+    return (node.get("author") or {}).get("__typename", "")
+
+
 def parse_pr(node: dict) -> PR:
     commits = node["commits"]["nodes"]
-    events = [Event(_login(c), _ts(c["createdAt"]), c["body"]) for c in node["comments"]["nodes"]]
+    events = [
+        Event(_login(c), _ts(c["createdAt"]), c["body"], _author_type(c))
+        for c in node["comments"]["nodes"]
+    ]
     events += [
         Event(_login(r), _ts(r["submittedAt"]))
         for r in node["reviews"]["nodes"]
