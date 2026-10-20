@@ -117,3 +117,19 @@ pages contributes what it has, and the shortfall is reported.
 - **Matching ignores all whitespace.** `mm2` and `mm 2` are the same text; a superscript is not a fault.
 - Each gold row records its cells keyed by header index. The target is the cell at
   `1 + (i mod (ncols - 1))`. A row whose target was excluded is reported as unscored.
+
+## Amendment 3 (scorer, written before any extractor output was opened or scored)
+
+The header test's six-line window cannot work. In a 39-row table the middle and last rows sit far more
+than six lines below the header in every format, the markdown included. So the window would fail every
+method on deep rows and measure nothing.
+
+The replacement test:
+
+- **Flat text:** the headers appear in order anywhere above the row on the same page.
+- **Markdown:** the headers appear in order in the header line of the table the row belongs to.
+
+Secondary diagnostic, not used against the bar: **pair binding**, meaning the row's first recorded cell
+and its target value appear in the same line.
+
+MIRA-today is scored per stored chunk: a row counts only when it fits inside one line of one chunk.
