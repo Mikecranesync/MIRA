@@ -94,3 +94,14 @@ traffic on staging, which is what the shadow flag is for.
 - No paid inference: zero tokens, no staging writes.
 - No threshold or checker change after the gold is committed. Any fix found here goes into a follow-up
   and gets a new fresh set.
+
+## Amendment 1 (made before any labelling; the reason is the selection output, not any result)
+
+Seven manuals never caption a table `Table N`:
+
+- gs10-ch6, acs355, micro820-in, micro810, and the Schneider m171, x80, lxm32a and premium guides.
+
+So step 2 found no candidate pages in them. For a manual with fewer than two caption pages, the
+candidates become every page of the manual, with the same exclusions and the same sha ordering. Screen
+at most the first 20 on a low-resolution contact sheet. A manual that yields fewer than two qualifying
+pages contributes what it has, and the shortfall is reported.
