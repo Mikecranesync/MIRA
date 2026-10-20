@@ -69,3 +69,13 @@ To be filled in **before** the first evaluation:
 - **After adjudication,** a deterministic check verified every gold page against `pdftotext`. 16 items failed and were repaired by read-only agents: 11 page fixes, 4 value-and-page fixes, and 1 kept. Every repaired quote was re-verified on its page, and 3 were checked by hand.
 - **Dropped:** 3 questions judged genuinely ambiguous.
 - **Limits:** every labeller is Claude, so this is a same-family check.
+
+## 8. Baseline (aggregate only; the set is not burned)
+
+**Production retrieval on main `c646755bd`:**
+- MIRA-today text, `retrieveNodeChunks`, topK 6, doc-scoped, lexical; 60 answerable questions across 9 manuals.
+- Right page in the top 6: **36/60** (Wilson 95% 47.4–71.4%).
+- Right page first: **16/60**.
+- Latency p50 45 ms, p95 192 ms.
+
+No per-question result has been read.
