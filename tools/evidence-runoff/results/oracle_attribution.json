@@ -1,0 +1,2471 @@
+{
+ "summary": {
+  "prose_nomatch": {
+   "retrieval": 77,
+   "generation": 107,
+   "extraction": 1
+  },
+  "all": {
+   "retrieval": 186,
+   "generation": 115,
+   "extraction": 2
+  },
+  "abstain": {
+   "retrieval": 103,
+   "generation": 7
+  },
+  "wrong": {
+   "generation": 1,
+   "extraction": 1,
+   "retrieval": 6
+  },
+  "hard_failures_by_config": {
+   "lexical": {
+    "retrieval": 52,
+    "generation": 2
+   },
+   "hybrid": {
+    "generation": 2,
+    "retrieval": 11
+   },
+   "lexical+rerank_fp32": {
+    "retrieval": 19,
+    "generation": 2
+   },
+   "lexical+rerank_int8": {
+    "retrieval": 20,
+    "generation": 2,
+    "extraction": 1
+   },
+   "mixed": {
+    "retrieval": 7
+   }
+  }
+ },
+ "items": [
+  {
+   "item_id": "w1:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:pf4m-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:acs355-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:ml1100-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:smcflex-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:smcflex-q2",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:smc50-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:smc50-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:smc50-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w1:smc50-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:gs10-ch6-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:pf4m-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:ml1100-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:smcflex-q1",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:smcflex-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:smc50-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:smc50-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:smc50-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w2:smc50-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:pf4m-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:ml1100-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:smcflex-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:smcflex-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:smc50-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:smc50-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:smc50-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w3:smc50-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:pf4m-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:ml1100-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:smcflex-q1",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:smcflex-q2",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:smc50-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:smc50-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:smc50-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w4:smc50-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:gs10-ch6-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:pf4m-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:ml1100-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:smcflex-q1",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:smcflex-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:smc50-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:smc50-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:smc50-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "w5:smc50-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:pf4m-q5",
+   "label": "typed_incomplete",
+   "class": "wrong",
+   "cause": "generation",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:ml1100-q2",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:ml1100-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:smcflex-q1",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:smcflex-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "generation",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:smc50-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:smc50-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:smc50-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "p1:smc50-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:pf40-q2",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:ml1100-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:ml1100-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:smcflex-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:smcflex-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:smc50-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:smc50-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-1:smc50-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:pf40-q2",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:ml1100-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:smcflex-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:smcflex-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:smc50-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:smc50-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-2:smc50-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:pf40-q2",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:ml1100-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:smcflex-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:smcflex-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:smc50-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:smc50-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "rr1-3:smc50-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_fp32",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:pf40-q2",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:pf40-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:ml1100-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:smcflex-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:smcflex-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:smc50-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:smc50-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:smc50-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-1:smc50-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:pf40-q2",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:pf4m-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:ml1100-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:smcflex-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:smcflex-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:smc50-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:smc50-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:smc50-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-2:smc50-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:gs10-ch6-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:gs10-ch6-q4",
+   "label": "typed_incomplete",
+   "class": "wrong",
+   "cause": "extraction",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:pf40-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:pf40-q2",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:pf40-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:pf40-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:pf4m-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:acs355-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:acs355-q5",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:micro820-um-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:micro820-um-q3",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:ml1100-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:ml1100-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:ml1100-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:smcflex-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:smcflex-q2",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:smcflex-q4",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:smcflex-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:e3plus-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:smc50-q1",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:smc50-q2",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:smc50-q3",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:smc50-q4",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "int8-3:smc50-q5",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical+rerank_int8",
+   "source": "public-walk"
+  },
+  {
+   "item_id": "plc5:2026-10-18T21:06:34",
+   "label": "wrong_fact_unlisted",
+   "class": "wrong",
+   "cause": "retrieval",
+   "config": "mixed",
+   "source": "plc5-turn"
+  },
+  {
+   "item_id": "plc5:2026-10-20T02:34:23",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "mixed",
+   "source": "plc5-turn"
+  },
+  {
+   "item_id": "plc5:2026-10-20T05:45:35",
+   "label": "wrong_fact",
+   "class": "wrong",
+   "cause": "retrieval",
+   "config": "mixed",
+   "source": "plc5-turn"
+  },
+  {
+   "item_id": "plc5:2026-10-20T05:45:45",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "mixed",
+   "source": "plc5-turn"
+  },
+  {
+   "item_id": "plc5:2026-10-20T05:46:22",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "mixed",
+   "source": "plc5-turn"
+  },
+  {
+   "item_id": "plc5:2026-10-20T06:54:13",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "mixed",
+   "source": "plc5-turn"
+  },
+  {
+   "item_id": "plc5:2026-10-20T06:54:23",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "mixed",
+   "source": "plc5-turn"
+  },
+  {
+   "item_id": "realA:tq-12",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-15",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-18",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-19",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-20",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-21",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-22",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-23",
+   "label": "wrong_fact_unlisted",
+   "class": "wrong",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-29",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-30",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "generation",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-31",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-32",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-36",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-37",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-39",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-40",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-41",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-42",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "extraction",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-01",
+   "label": "wrong_fact_unlisted",
+   "class": "wrong",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-27",
+   "label": "wrong_fact_unlisted",
+   "class": "wrong",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "realA:tq-28",
+   "label": "wrong_fact_unlisted",
+   "class": "wrong",
+   "cause": "retrieval",
+   "config": "lexical",
+   "source": "real-laneA"
+  },
+  {
+   "item_id": "seH:tq-29",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "schneider-hybrid"
+  },
+  {
+   "item_id": "seH:tq-32",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "schneider-hybrid"
+  },
+  {
+   "item_id": "seH:tq-36",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "schneider-hybrid"
+  },
+  {
+   "item_id": "seH:tq-37",
+   "label": "abstain",
+   "class": "abstain",
+   "cause": "retrieval",
+   "config": "hybrid",
+   "source": "schneider-hybrid"
+  },
+  {
+   "item_id": "seH:tq-41",
+   "label": "prose_nomatch",
+   "class": "prose_nomatch",
+   "cause": "generation",
+   "config": "hybrid",
+   "source": "schneider-hybrid"
+  }
+ ]
+}
