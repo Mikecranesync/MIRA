@@ -6,8 +6,12 @@ import { EMBED_DIM, EMBED_MODEL } from "@/lib/node-knowledge-ingest";
 import {
   QUERY_EMBED_DIM,
   QUERY_EMBED_MODEL,
+  QUERY_EMBED_KEEP_ALIVE,
+  __resetQueryEmbedderWarmForTests,
   embedQuery,
+  embedQueryDetailed,
   hybridRetrievalEnabled,
+  warmQueryEmbedder,
   rrfMerge,
   vectorLiteral,
 } from "../hybrid-retrieval";
@@ -47,7 +51,11 @@ describe("embedQuery", () => {
     expect(await embedQuery("carrier frequency")).toEqual(vec);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("http://embedder.test/api/embeddings");
-    expect(JSON.parse(String(init.body))).toEqual({ model: "nomic-embed-text", prompt: "carrier frequency" });
+    expect(JSON.parse(String(init.body))).toEqual({
+      model: "nomic-embed-text",
+      prompt: "carrier frequency",
+      keep_alive: QUERY_EMBED_KEEP_ALIVE,
+    });
   });
 
   it("returns null (lexical only) when no embedder is configured, on HTTP error, on a wrong dimension, or on a thrown fetch", async () => {
@@ -104,5 +112,55 @@ describe("rrfMerge", () => {
     const out = rrfMerge(["a", "a", "b"], ["b", "b", "c"], key);
     expect(out).toEqual([...new Set(out)]);
     expect(out).toEqual(rrfMerge(["a", "a", "b"], ["b", "b", "c"], key));
+  });
+});
+
+// 2026-10-19 staging: after a deploy the embedder's first call loaded the model
+// cold, blew the 5 s timeout, and the turn silently fell back to BM25 (traces
+// bc2aac99…, 36a27118…); with the model warm the same TQ-06 ask cited p.238.
+describe("keeping the query embedder warm", () => {
+  const vec = Array.from({ length: 768 }, (_, i) => (i % 7) / 10);
+  beforeEach(() => {
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    __resetQueryEmbedderWarmForTests();
+  });
+
+  it("asks Ollama to keep the model loaded long enough to outlive idle gaps", () => {
+    expect(QUERY_EMBED_KEEP_ALIVE).toBe("24h");
+  });
+
+  it("names why an embed failed, so the caller can record it", async () => {
+    delete process.env.OLLAMA_BASE_URL;
+    expect(await embedQueryDetailed("x")).toEqual({ reason: "not_configured" });
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 503 })));
+    expect(await embedQueryDetailed("x")).toEqual({ reason: "http_error" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: [1, 2, 3] }), { status: 200 })));
+    expect(await embedQueryDetailed("x")).toEqual({ reason: "bad_dimension" });
+    vi.stubGlobal("fetch", vi.fn(async () => { throw Object.assign(new Error("aborted"), { name: "TimeoutError" }); }));
+    expect(await embedQueryDetailed("x")).toEqual({ reason: "timeout" });
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    expect(await embedQueryDetailed("x")).toEqual({ reason: "unreachable" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: vec }), { status: 200 })));
+    expect(await embedQueryDetailed("x")).toEqual({ vec });
+  });
+
+  it("warms once per process, and only when the vector lane is on", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ embedding: vec }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await warmQueryEmbedder()).toBe("off");
+    expect(fetchMock).not.toHaveBeenCalled();
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    expect(await warmQueryEmbedder()).toBe("ok");
+    expect(await warmQueryEmbedder()).toBe("already_started");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).keep_alive).toBe(QUERY_EMBED_KEEP_ALIVE);
+  });
+
+  it("a failed warm-up is reported, never thrown", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    await expect(warmQueryEmbedder()).resolves.toBe("unreachable");
   });
 });

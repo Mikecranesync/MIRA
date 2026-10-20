@@ -92,6 +92,42 @@ is read. Host checked read-only: 6 vCPU Intel Haswell, AVX2, **no AVX-512 VNNI**
 staging service gets `cpus: 3` with 3 threads. Fallback if over budget: the AVX2 int8 model file (not the
 VNNI one), pinned by sha256, re-measured for quality first.
 
+## Step 4 walk result (2026-10-19, staging `2aae7250d`, rerank on, hybrid off)
+Three stranger walks, public-50, `NOTEBOOK_RERANK_TIMEOUT_MS=4000` so latency could not mask quality.
+
+| | baseline (5 walks, no rerank) | reranker (3 walks) |
+|---|---|---|
+| CORRECT | 28.6 mean (28–30) | **31.7 mean** (32, 32, 31) |
+| WRONG_PAGE | 12–14 | **11.0 mean** (12, 10, 11) |
+| ABSTAINED | — | 7.3 mean |
+
+**Quality gate (CORRECT ≥ 30.6, WRONG_PAGE ≤ 14): PASS** — every rerank walk beat the best baseline walk.
+Fallbacks: 13 of 136 calls (9.6%, all timeouts at 4 s), under the 10% validity cutoff.
+
+**Latency gate (p95 added ≤ 1.5 s): FAIL** with the fp32 model on the staging host (6 vCPU Haswell, `cpus: 3`):
+p50 2.6 s, p95 4.1 s, max 5.6 s over 123 served calls. A first attempt at the 1.5 s timeout was aborted
+after 5 of 8 calls fell back. Next phase: the AVX2 int8 model file (speed), quality re-measured first.
+
+## Speed phase — int8 (AVX2) model (2026-10-19)
+`onnx/model_quint8_avx2.onnx` from the same pinned revision (sha256 `c80a8b34…61bf9`), baked in beside fp32 and
+selected by `RERANKER_MODEL` (staging compose default `int8-avx2`; rollback `RERANKER_MODEL=fp32`, no rebuild).
+
+Quality, zero-token replay at the production pool (24), 0 fallbacks, answer-visible-in-six (fp32 → int8):
+public-50 lexical 34 → **34**; real-32 lexical 21 → **20** (lost tq-07); public hybrid 41 → 40; real hybrid 25 → 26.
+Gate written before measuring (within 1 of fp32 on both lexical sets): **PASS**.
+Speed on CHARLIE (ARM, 8 threads, pool 24): p50 955 → **243 ms**. The deciding number is staging p95 after deploy.
+
+## Speed phase — staging result (2026-10-19, `82d457a8b`)
+Three int8 walks on staging: CORRECT 31, 31, 29 (mean **30.3**), WRONG_PAGE 14, 13, 12 (mean **13.0**) — below
+fp32's 31.7 / 11.0 and just under the 30.6 bar. Staging speed did not improve either: during the walks the
+reranker logged p50 2.3 s, p95 3.3 s (n=41), the same as fp32, because staging's `mira-ollama` embedder was using
+~557% CPU (no `cpus` cap) on 4,616 embedding requests in the 40-minute window, starving the reranker. Steal time 0.
+
+**Decision (Mike, 2026-10-19):** staging runs fp32 (`RERANKER_MODEL=fp32` in Doppler stg); int8 stays baked in as an
+option. Staging's embedder is capped at `cpus: 2` (uploads index more slowly; the reranker and the co-located
+production services stop being starved). The latency gate is **unproven**, not failed: it must be re-measured with
+the cap in place. Production's `mira-ollama` is also uncapped on the same host — a separate change needing its own GO.
+
 ## License exception (owner-approved 2026-10-19)
 Root `CLAUDE.md` Hard Constraint 1 allows Apache-2.0 or MIT only. Codex review r2/r3 (#4535, F4) found the image
 ships packages outside that. The **complete installed tree of the built image** was audited with pip-licenses

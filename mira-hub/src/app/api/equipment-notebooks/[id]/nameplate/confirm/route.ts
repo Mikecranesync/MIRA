@@ -47,6 +47,7 @@ import {
   mayBeNameplateAdopted,
 } from "@/capabilities/nameplate-identity-adoption";
 import { promoteVisualObservations, correctVisualObservations } from "@/lib/visual-evidence-context";
+import { isReferenceDesignation, scrubReferenceDesignations } from "@/lib/nameplate/evidence";
 
 export const dynamic = "force-dynamic";
 
@@ -235,7 +236,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "file_not_found" }, { status: 404 });
   }
 
-  const identity = readIdentity(body.identity);
+  // Defense in depth: a confirm can never make a plant reference designation a
+  // confirmed identifier or a manual-search key, whatever the client sent.
+  const identity = scrubReferenceDesignations(readIdentity(body.identity));
   const confidence =
     typeof body.confidence === "number" && Number.isFinite(body.confidence)
       ? Math.min(1, Math.max(0, body.confidence))
@@ -496,13 +499,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // server could not apply them" so the client can offer a retry instead of
   // reporting complete while the misread stays active.
   let visualCorrectionFailed = false;
-  if (submittedCorrections.length > 0) {
+  // A plant reference designation (=EQU+96 -A57) is never a nameplate value
+  // (#4540 Codex F3): refused here, BEFORE any stored observation is corrected,
+  // and reported explicitly so the client never reads it as saved. Field-agnostic
+  // on purpose — no nameplate field legitimately holds a designation.
+  const visualCorrectionRejected = submittedCorrections
+    .filter((c) => isReferenceDesignation(c.value))
+    .map((c) => ({ observationId: c.observationId, reason: "reference_designation" as const }));
+  const acceptedCorrections = submittedCorrections.filter((c) => !isReferenceDesignation(c.value));
+  if (acceptedCorrections.length > 0) {
     try {
       const res = await correctVisualObservations({
         tenantId: ctx.tenantId,
         boundEntityId: notebook.asset?.entityId ?? null,
         fileId,
-        corrections: submittedCorrections,
+        corrections: acceptedCorrections,
         correctedBy: ctx.userId ?? null,
         expected: identity,
       });
@@ -562,6 +573,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // confirmed by this same request. Explicit, never silently dropped — the client
       // can show the technician which field disagreed with itself.
       visualCorrectionMismatches,
+      visualCorrectionRejected,
       // Codex round 2 F1: true when corrections were submitted and the server
       // could not apply them (transient DB error, supersede race). The client
       // must treat this as "edits not saved, retry", never as complete.
@@ -660,7 +672,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     model: identity.model ?? null,
     catalogNumber: identity.catalogNumber ?? null,
   });
-  if (acquisitionEnabled() && ownKey !== null && ownKey === nameplateKey) {
+  if (acquisitionEnabled(ctx.tenantId) && ownKey !== null && ownKey === nameplateKey) {
     const run = await runManualAcquisition(acquireInput);
     if (run.started && run.outcome) return respond(run.outcome.status, run.outcome.payload);
   }

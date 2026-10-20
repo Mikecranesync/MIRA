@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **70** (12 dynamic) |
-| API routes | **187** (71 dynamic) |
+| API routes | **188** (71 dynamic) |
 
 ## Pages (70)
 
@@ -88,7 +88,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (187)
+## API routes (188)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -224,6 +224,7 @@
 | `/api/library/chunks` | static | `api/library/chunks/route.ts` |
 | `/api/library/documents` | static | `api/library/documents/route.ts` |
 | `/api/library/tree` | static | `api/library/tree/route.ts` |
+| `/api/manual-harvester` | static | `api/manual-harvester/route.ts` |
 | `/api/me` | static | `api/me/route.ts` |
 | `/api/mira/ask` | static | `api/mira/ask/route.ts` |
 | `/api/mobile/live-update/manifest` | static | `api/mobile/live-update/manifest/route.ts` |

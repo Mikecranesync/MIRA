@@ -4,7 +4,8 @@ import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
-import { embedQuery, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
+import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
+import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { orderByScores, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
 import {
   codeTokenMatcher,
@@ -1257,6 +1258,11 @@ export async function retrieveNodeChunks(
      *  alongside verified shared rows; the set is intersected with `docIds`
      *  (narrow only) and ignored when the gate is off. */
     approvedSourceDocIds?: string[];
+    /** Filled with what the vector lane did (off | ran | skipped_<why> |
+     *  failed) so the caller can put it on its own retrieval span: callers
+     *  start stage spans without activating them, so setSpanAttrs() on the
+     *  active span alone never reached the trace (#4548). */
+    diagnostics?: { vectorLane?: string };
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -1643,8 +1649,17 @@ export async function retrieveNodeChunks(
   // term there, or a vector-only row scores twice against a lexical-only row's
   // once and displaces it (scope-pass finding on #4487).
   const vectorOnlyKeys = new Set<string>();
+  // What the vector lane did on this turn, on the turn's trace: off | ran |
+  // skipped_<why> | failed. Without it, a lane that is ON but skipped (a cold
+  // embedder past its timeout, 2026-10-19 staging) looks identical to BM25.
+  let vectorLane = "off";
   if (hybridRetrievalEnabled()) {
-    const queryVec = await embedQuery(opts.rawQuery ?? q);
+    const embedded = await embedQueryDetailed(opts.rawQuery ?? q);
+    const queryVec = "vec" in embedded ? embedded.vec : null;
+    if (!("vec" in embedded)) {
+      vectorLane = `skipped_${embedded.reason}`;
+      console.warn(`[retrieveNodeChunks] vector lane skipped (${embedded.reason}); lexical result served`);
+    }
     if (queryVec) {
       // Codex r1 on #4487: a failing vector SELECT (a statement timeout, a
       // missing pgvector operator) run on the CALLER's client inside
@@ -1713,7 +1728,9 @@ export async function retrieveNodeChunks(
           }
         }
         if (savepoint) await client.query("RELEASE SAVEPOINT hybrid_vector_lane");
+        vectorLane = "ran";
       } catch (err) {
+        vectorLane = "failed";
         console.warn("[retrieveNodeChunks] vector lane failed (lexical result served):", err instanceof Error ? err.message : err);
         vectorKeys = null;
         vectorOnlyKeys.clear();
@@ -1727,6 +1744,8 @@ export async function retrieveNodeChunks(
       }
     }
   }
+  setSpanAttrs({ "mira.retrieval.vector_lane": vectorLane });
+  if (opts.diagnostics) opts.diagnostics.vectorLane = vectorLane;
 
   // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank). For a
   // broad question, keep a bigger, page-DIVERSE slice so distinct facets survive
