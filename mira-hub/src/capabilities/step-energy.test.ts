@@ -84,6 +84,12 @@ describe("#4146 Codex r1", () => {
   it("F1: a restore instructed while the lockout is stated in the same step is flagged", () => {
     expect(stepEnergyContradiction("With the machine locked out, reconnect power and press the start button.")).not.toBeNull();
   });
+  it("an inflected restore while lockout remains in force is flagged", () => {
+    expect(stepEnergyContradiction("A qualified person restores power under lockout.")).not.toBeNull();
+  });
+  it("removing a mechanical lock nut is not a LOTO removal", () => {
+    expect(stepEnergyContradiction("1. Lock out the panel.\n2. Remove the lock nut from the terminal cover.\n3. Inspect the terminals.")).toBeNull();
+  });
   it.each([
     ["do not press start", "With the lockout in place, do not press the start button."],
     ["never measure", "With the machine locked out, never measure the output voltage."],

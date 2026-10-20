@@ -30,7 +30,7 @@
 
 import { SAFETY_STOP } from "@/lib/safety-classifier";
 
-import { stepEnergyContradiction } from "./step-energy";
+import { STILL_ISOLATED, stepEnergyContradiction } from "./step-energy";
 import { firstUngovernedMatch } from "./hazard-modifiers";
 
 export type AnswerValidation =
@@ -1101,8 +1101,10 @@ const LOCKOUT_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + 
 // restore, so a coherent written restore-then-measure procedure was BLOCKED as
 // a no-restore contradiction. Local to this tracker on purpose: the shared
 // RESTORE_ENERGY_SRC (A4/A2 masking) is unchanged.
+// The object of a LOTO removal is lockout / LOTO / lock-and-tag / lock/tag —
+// never a bare mechanical "lock" ("Remove the lock nut …" is fastener work).
 const LOCKOUT_REMOVAL_SRC =
-  "(?:remov\\w*|lift\\w*|clear\\w*|releas\\w*|take[sn]?\\s+off|took\\s+off)\\s+(?:(?:the|your|all|their|his|her|its)\\s+){0,2}(?:lock[-\\s]?outs?|loto|locks?(?:\\s+and\\s+tags?)?|lock\\s*/\\s*tags?)\\b";
+  "(?:remov\\w*|lift\\w*|clear\\w*|releas\\w*|take[sn]?\\s+off|took\\s+off)\\s+(?:(?:the|your|all|their|his|her|its)\\s+){0,2}(?:lock[-\\s]?outs?|loto|locks?\\s+and\\s+tags?|lock\\s*/\\s*tags?)\\b";
 const RESTORE_VARIANT_SRC =
   "(?:restor(?:e|es|ed|ing)\\s+(?:(?:the|its)\\s+)?(?:power|energy|supply|voltage)|" +
   "reconnect\\w*\\s+(?:(?:the|its)\\s+)?(?:power|supply|mains)|" +
@@ -1123,6 +1125,16 @@ const ENDS_ISOLATION_PROHIBITION = new RegExp(
  *  the coherent #3984 restore-to-measure shape, which only warns (A4). */
 type LockoutMeasurement = { blocked: string | null; restored: string | null };
 
+function isLiveSupplyContactReading(step: string): boolean {
+  return (
+    MEASURE_VERB.test(step) &&
+    LIVE_SUPPLY_QUANTITY.test(step) &&
+    (CONTACT_POINT.test(step) || CONTACT_MEASUREMENT.test(step) || METER.test(step)) &&
+    !VERIFIES_ABSENCE.test(step) &&
+    !MEASURE_PROHIBITION.test(step)
+  );
+}
+
 function liveMeasurementAfterLockout(text: string): LockoutMeasurement {
   let isolated = false;
   let restoredAfterLockout = false;
@@ -1134,17 +1146,30 @@ function liveMeasurementAfterLockout(text: string): LockoutMeasurement {
       // prohibition ("do not probe and measure …") keeps governing its verbs.
       for (let step of clause.split(/\bthen\b/i)) {
         if (!step.trim()) continue;
-        // Only an affirmative restore ends isolation; "do not restore" does not.
-        // A prohibition anywhere in the step ("do not remove the lockout or
-        // restore power") keeps it isolated.
-        if (
-          ENDS_ISOLATION.test(step) &&
+        // Only an affirmative restore ends isolation; "do not restore" does
+        // not. A prohibition anywhere in the step ("do not remove the lockout
+        // or restore power") keeps it isolated. A restore in a step that
+        // still states isolation ("restores power under lockout") is the
+        // contradiction itself — reuse STILL_ISOLATED, do not end isolation.
+        // Do not `continue` after a real restore: "remove the lockout and
+        // measure …" is A4's coherent warn shape, and a live reading BEFORE
+        // the restore in the same unsplit step is still a contradiction.
+        const ended =
           !RESTORE_PROHIBITION.test(step) &&
-          !ENDS_ISOLATION_PROHIBITION.test(step)
-        ) {
+          !ENDS_ISOLATION_PROHIBITION.test(step) &&
+          !STILL_ISOLATED.test(step)
+            ? ENDS_ISOLATION.exec(step)
+            : null;
+        if (ended) {
+          const before = step.slice(0, ended.index);
+          if (isolated && isLiveSupplyContactReading(before)) {
+            return { blocked: before.trim(), restored: null };
+          }
           if (isolated) restoredAfterLockout = true;
           isolated = false;
-          continue;
+          // Consume the removal/restore match so "remove the lockout" is not
+          // re-read as a new isolation event, then scan the remainder.
+          step = step.slice(ended.index + ended[0].length);
         }
         // A lockout isolates, and the rest of the SAME step is still checked
         // ("lock out the drive and measure …", review round 3 F1).
@@ -1154,13 +1179,7 @@ function liveMeasurementAfterLockout(text: string): LockoutMeasurement {
           step = step.slice(lock.index + lock[0].length);
         }
         if (!isolated && !restoredAfterLockout) continue;
-        if (
-          MEASURE_VERB.test(step) &&
-          LIVE_SUPPLY_QUANTITY.test(step) &&
-          (CONTACT_POINT.test(step) || CONTACT_MEASUREMENT.test(step) || METER.test(step)) &&
-          !VERIFIES_ABSENCE.test(step) &&
-          !MEASURE_PROHIBITION.test(step)
-        ) {
+        if (isLiveSupplyContactReading(step)) {
           if (isolated) return { blocked: step.trim(), restored: null };
           restored ??= step.trim();
         }

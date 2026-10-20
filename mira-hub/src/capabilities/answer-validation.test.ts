@@ -1243,6 +1243,9 @@ describe("Codex #4471 r1 F1: a written lockout removal / power restore is the co
     "1. Lock out the panel and verify zero volts.\n2. A qualified person removes the lockout and restores power under the site energized-work procedure.\n3. Measure the supply voltage at the input terminals.",
     "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and turn the power on.\n3. Measure the supply voltage at the input terminals.",
     "1. Lock out the panel and verify zero volts.\n2. Reconnect the power.\n3. Measure the supply voltage at the input terminals.",
+    // same-step restore-then-measure joined by "and" (not "then") is still a
+    // written restore — warn, don't skip the measurement or withhold
+    "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and measure the supply voltage at the input terminals.",
   ];
   for (const [lane, run] of lanes) {
     it.each(coherent)(`${lane} lane: energized_warning, full candidate retained: %#`, (a) => {
@@ -1263,6 +1266,14 @@ describe("Codex #4471 r1 F1: a written lockout removal / power restore is the co
     "1. Lock out the panel and verify zero volts.\n2. Leave the lockout in place.\n3. Measure the supply voltage at the input terminals.",
     // restored, then locked out again, then a live reading
     "1. Lock out the panel.\n2. Remove the lockout and restore power.\n3. Lock out the panel again.\n4. Measure the supply voltage at the input terminals.",
+    // mechanical "lock" is not LOTO removal — isolation never ended
+    "1. Lock out the panel and verify zero volts.\n2. Remove the lock nut from the terminal cover.\n3. Measure the supply voltage at the input terminals.",
+    // inflected restore while lockout remains in force (prose: isolation must
+    // not drop on the next sentence the way a numbered list carries it)
+    "Lock out the panel and verify zero volts. A qualified person restores power under lockout. Measure the supply voltage at the input terminals.",
+    // live reading before the restore in the same unsplit step — isolation
+    // was still in force when the measurement was instructed
+    "1. Lock out the panel and verify zero volts.\n2. Measure the supply voltage at the input terminals and restore power.",
   ];
   for (const [lane, run] of lanes) {
     it.each(stillBlocked)(`${lane} lane: still blocked: %#`, (a) => {

@@ -2,9 +2,10 @@
  * #4122 — a step that is both isolated and energized. Two prompt rounds lowered
  * the rate but plateaued (23 -> 13 -> 12 of 35 answers); the #4101 technician
  * review confirmed the harm ("if you tighten it after the power's on that's a
- * dangerous situation"). This deterministic check finds the step and lets the
- * route put the energized-work banner above the full answer (owner rule: safety
- * flags never withhold the answer).
+ * dangerous situation"). This deterministic check finds the step.
+ * Owner decision 2026-10-16 (#4122/#3790): a lockout/energy contradiction is
+ * replaced with SAFETY_STOP (validateAnswer A2a). The coherent written
+ * restore-then-measure shape still warns without withholding (#3984).
  *
  * A step is a sentence, list item or heading line. A step is flagged when an
  * isolation state (locked out, isolated, de-energized, power off) is in force —
@@ -21,14 +22,17 @@
 const ISOLATED =
   /\b(?:lock(?:ed)?[\s-]?out|lockout(?:\/tagout)?|LOTO|isolated|de[\s-]?energi[sz]ed|power(?:ed)?\s+(?:off|down)|with (?:the )?power (?:removed|off))\b/i;
 const RESTORE =
-  /\b(?:remove (?:the )?lock(?:out)?|lock(?:out)? (?:is )?removed|restore (?:the )?power|power (?:is )?restored|re[\s-]?energi[sz](?:e|es|ed|ing)\b|re-?apply power|reconnect(?:ing)? (?:the )?power|turn (?:the )?power (?:back )?on|power (?:it|the \w+) (?:back )?(?:on|up)|bring (?:it|the \w+) back (?:up|on(?:line)?)|apply (?:main |the )?(?:power|voltage))\b/i;
+  /\b(?:remove (?:the )?(?:lock[\s-]?outs?|loto|lock\s*\/\s*tags?)|lock(?:out)? (?:is )?removed|restor(?:e|es|ed|ing) (?:the )?power|power (?:is )?restored|re[\s-]?energi[sz](?:e|es|ed|ing)\b|re-?apply power|reconnect(?:ing)? (?:the )?power|turn (?:the )?power (?:back )?on|power (?:it|the \w+) (?:back )?(?:on|up)|bring (?:it|the \w+) back (?:up|on(?:line)?)|apply (?:main |the )?(?:power|voltage))\b/i;
 const DEAD_CHECK =
   /\b(?:absence of voltage|zero (?:volts|voltage|energy)|0\s?V\b|no voltage|(?:voltage|power) is (?:absent|off|removed)|is de[\s-]?energi[sz]ed|are de[\s-]?energi[sz]ed|is dead|are dead|confirmed dead|verif\w* (?:it is |they are )?dead|continuity|resistance|insulation|megger|open[\s-]circuit|(?:voltage |non-contact )?tester|test meter|test[\s-]lead|(?:low|high)[\s-]voltage|voltage (?:class|rating)|rated voltage)\b/gi;
 /** The lockout is taken off in this very step — a correct later energized step. */
 const LOCKOUT_REMOVED =
   /\b(?:remov\w* (?:the )?lock[\s-]?out|lock[\s-]?out (?:has been |is )?removed|lock[\s-]?out removal|locked out removed)\b/i;
-/** Isolation stated as still in force — contradicts any restore in the same step. */
-const STILL_ISOLATED = /\b(?:still (?:locked[\s-]?out|isolated|de[\s-]?energi[sz]ed)|under (?:lock[\s-]?out|LOTO)(?![\s-]*(?:removal|removed))|with the lock[\s-]?out (?:still )?in place)\b/i;
+/** Isolation stated as still in force — contradicts any restore in the same step.
+ *  Exported so the isolation tracker in answer-validation.ts reuses this grammar
+ *  instead of duplicating a phrase list (a restore "under lockout" must not
+ *  end isolation). */
+export const STILL_ISOLATED = /\b(?:still (?:locked[\s-]?out|isolated|de[\s-]?energi[sz]ed)|under (?:lock[\s-]?out|LOTO)(?![\s-]*(?:removal|removed))|with the lock[\s-]?out (?:still )?in place)\b/i;
 /** "with the VFD powered and the motor terminals isolated" — powered, not isolated. */
 const EXPLICITLY_POWERED = /\b(?:with|while) (?:the )?\w+ (?:powered|energi[sz]ed|running)\b/i;
 const LIVE_READING =
