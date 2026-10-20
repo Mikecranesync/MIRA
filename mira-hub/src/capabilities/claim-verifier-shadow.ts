@@ -53,3 +53,29 @@ export function shadowVerifyTurn(input: {
     };
   }
 }
+
+type PageChunk = { content: string; sourceUrl: string; sourcePage: number | null };
+
+/**
+ * Route entry point. Groups chunks exactly as `withSupportingQuotes` / buildCitations number them —
+ * key `${sourceUrl}::${sourcePage ?? ""}`, citationId n ⇔ the n-th distinct key in chunk order — so each
+ * emitted `[n]` is judged against the page the model saw as `[n]`.
+ */
+export function shadowVerifyCitedTurn(input: {
+  question: string;
+  answer: string;
+  citationIds: readonly string[];
+  chunks: readonly PageChunk[];
+}): ShadowAttrs | null {
+  if (claimVerifierMode() !== "shadow") return null;
+  const byKey = new Map<string, { page: number | null; chunks: string[] }>();
+  for (const c of input.chunks) {
+    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
+    const g = byKey.get(key) ?? { page: c.sourcePage, chunks: [] };
+    g.chunks.push(c.content);
+    byKey.set(key, g);
+  }
+  const pages = [...byKey.values()];
+  const citations = input.citationIds.map((id) => pages[Number(id) - 1]).filter((g): g is ShadowCitation => Boolean(g));
+  return shadowVerifyTurn({ question: input.question, answer: input.answer, citations });
+}

@@ -54,6 +54,7 @@ import {
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
+import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
@@ -4432,6 +4433,20 @@ async function handleChatTurn(
           },
           finalAnswerGateSpan,
         );
+        // Evidence runoff (#4550): typed claim -> source verifier, SHADOW only. Off unless
+        // NOTEBOOK_CLAIM_VERIFIER=shadow; runs after the safety and answer gates have decided, judges
+        // only an answer that was actually served from the documents, and only adds trace attributes —
+        // the answer, its citations and its status are already final above and are never touched.
+        const claimShadow =
+          docGrounded && served && !refused && !outputRejected
+            ? shadowVerifyCitedTurn({
+                question: message,
+                answer: answerText,
+                citationIds: emittedCitations.map((c) => c.citationId),
+                chunks,
+              })
+            : null;
+        if (claimShadow) setSpanAttrs(claimShadow, finalAnswerGateSpan);
         finalAnswerGateSpan.end();
       }
 

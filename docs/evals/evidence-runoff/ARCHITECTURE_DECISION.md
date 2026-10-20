@@ -54,7 +54,10 @@ Status: **Proposed** (2026-10-20). Evidence: `RUNOFF_RESULTS.md`. Successor trac
 ## Effort
 
 - Shadow adapter + tests (unguarded `capabilities/`): done in the draft PoC.
-- Route wiring + trace fields: about 1 day, plus a full-tier Codex review (guarded chat route; a paid review,
-  so Mike's call).
+- Route wiring (approved by Mike 2026-10-20): done in #4550 — `answer_gate.evaluate` carries
+  `mira.claim_verifier.{verdict,reason,claim_count,claims}` when `NOTEBOOK_CLAIM_VERIFIER=shadow`; only for
+  answers served from the documents; the answer, citations and status are already final when it runs. Not
+  yet on the turn evidence packet (that is a packet-schema change). Turning it on in staging also needs the
+  flag forwarded in `docker-compose.staging-vps.yml` (a guarded file) — not done.
 - Fresh held-out set and failure fixes: 2–3 days.
 - Docling ingest experiment, if the licence is cleared: 3–5 days.

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { claimVerifierMode, shadowVerifyTurn } from "../claim-verifier-shadow";
+import { claimVerifierMode, shadowVerifyCitedTurn, shadowVerifyTurn } from "../claim-verifier-shadow";
 import * as verifier from "../claim-verifier";
 
 const Q = "PLC-5 block transfer: which bit is set when DLEN doesn't match RLEN?";
@@ -50,5 +50,23 @@ describe("claim-verifier shadow adapter", () => {
       "mira.claim_verifier.verdict": "error",
       "mira.claim_verifier.reason": "boom",
     });
+  });
+});
+
+describe("shadowVerifyCitedTurn: [n] maps to the n-th distinct (source, page), like withSupportingQuotes", () => {
+  it("judges [2] against the SECOND page, not the first", () => {
+    process.env.NOTEBOOK_CLAIM_VERIFIER = "shadow";
+    const chunks = [
+      { content: "Error .ER (bit 11) is set when the operation overflows.", sourceUrl: "doc", sourcePage: 240 },
+      { content: P238, sourceUrl: "doc", sourcePage: 238 },
+    ];
+    const good = shadowVerifyCitedTurn({ question: Q, answer: "The .ER bit, bit 12, when .DLEN ≠ .RLEN [2].", citationIds: ["2"], chunks });
+    expect(good?.["mira.claim_verifier.verdict"]).toBe("supported");
+    const wrongPage = shadowVerifyCitedTurn({ question: Q, answer: "The .ER bit, bit 12, when .DLEN ≠ .RLEN [1].", citationIds: ["1"], chunks });
+    expect(wrongPage?.["mira.claim_verifier.verdict"]).toBe("unsupported");
+  });
+
+  it("is off by default", () => {
+    expect(shadowVerifyCitedTurn({ question: Q, answer: "bit 12", citationIds: ["1"], chunks: [] })).toBeNull();
   });
 });
