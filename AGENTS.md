@@ -139,6 +139,12 @@ To restore an archived module: `git checkout archive/<branch> -- <module-dir>` t
 
 ---
 
+## PR lifecycle (every agent — Claude, Codex, Cursor)
+
+- One PR per slice. Superseding a PR? Close the old one in the same step, with a link to the new one.
+- **Idle PRs are swept** (`docs/architecture/mira-sdlc-v1.md` §1.5): 14 days with no commit, comment or review → `stale` notice; 7 more idle days → closed (branch kept, `gh pr reopen` restores). Label `keep` only for owner-preserved work.
+- Scheduled reports go to one rolling branch/PR per producer, never one PR per run (`tools/eval_fixer_fragment.py --publish` is the reference).
+
 ## AGENTS.md Maintenance
 
 This file targets **~120 lines** (map, not encyclopedia). Agent compliance drops past ~150.
