@@ -151,3 +151,50 @@ with real answers.
 `ch2` and `ch6` are the **GS4** installation and troubleshooting chapters (real-36 manuals `gs4-ch2` and
 `gs4-ch6`), not GS10. So `ch6` is not a duplicate, and it is **included** as a third new manual. The
 exclusion in T2 was wrong.
+
+## Amendment 2: decision rules (written before any held-out table, column, checker or Docling-v1 retrieval number)
+
+**What had been seen when this was written:**
+- T4 retrieval on Docling-off text (hit@6 53/77, hit@1 30/77, against MIRA-today 54/77 and 31/77).
+- Nothing else held-out.
+
+The T4 rule below was therefore written after one of its inputs was known. That is disclosed here.
+
+**1. Held-out extraction method.**
+- Round 1 converted one page at a time (`extract_docling.py`, `page_range=(p, p)`).
+- The headline held-out Docling-off and Docling-v1 columns use the same per-page conversion, OCR off.
+- Pages taken from the whole-manual T4 conversion are reported as a secondary column (`docling-*-whole`). They never replace the headline.
+- Per-page timings on held-out are contaminated: a whole-manual Docling process was running at the same time. Timings are quoted from round 1 and the T4 whole-manual logs instead.
+
+**2. B2-H (table extraction).**
+- Unchanged: 90% point estimate, Wilson lower bound ≥80%, and an interval that does not overlap MIRA-today's.
+- The frozen scorer is run unmodified, through `heldout_b2.py`, which redirects only its input and output paths and checks the scorer's sha256 first.
+
+**3. T3-H (column test, A versus C).**
+- A representation **supports a deterministic table checker** when column lookup on held-out reaches:
+  - at least 80% point estimate;
+  - a Wilson lower bound of at least 65%.
+- If v1 meets this and off cannot be tested (not applicable by construction), the data supports licence option A for a table-aware checker.
+- If v1 misses it, the A/C question is **inconclusive** for a checker. It then rests on retrieval and B2-H only.
+
+**4. V3 on B1-H (table-aware checker, once).**
+- **Candidate for shadow mode only, never for enforcement:**
+  - wrong-cell catch of at least 70%, with a Wilson lower bound of at least 50%;
+  - false-flag rate of at most 5%, with a Wilson upper bound of at most 12%.
+- V3 is compared with the current checker (V1b) by an exact two-sided McNemar test on paired items.
+- The V1b ∪ V3 union is reported against the same bars.
+- B1-H answers are templated, so a pass is an upper bound and does not establish live protection.
+
+**5. T4 (retrieval, Docling variants against MIRA-today).**
+- Exact two-sided McNemar on hit@6, on the 77 paired questions; hit@1 is secondary, same test.
+- "Better" requires p < 0.05 and a net gain.
+- Anything else is reported as "no detectable difference". MIRA-today, the simpler option, is then preferred for retrieval.
+
+**6. Combining into one recommendation.**
+- Recommend an extraction change only if it wins on a measure the product depends on (retrieval, or checker-usable tables) and loses on none.
+- Ingest cost is a tie-breaker. Ingest time per page more than 5× MIRA-today's is disclosed as an operating cost needing Mike's sign-off.
+- When nothing wins, the result is reported as **inconclusive** with the evidence, not forced into a winner.
+
+**7. End-to-end correctness.**
+- Measured only on the 653 frozen answers (T5a attribution).
+- No new generation is run without Mike's approval of the paid oracle.

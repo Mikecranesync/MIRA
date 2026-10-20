@@ -14,7 +14,9 @@ import time
 from pathlib import Path
 
 DATA = Path("/Users/charlienode/MIRA/.planning/evidence-runoff-data/bench")
-SEL = Path(__file__).resolve().parents[1] / "data/bench_pages.json"
+SEL = Path(__import__("os").environ.get("BENCH_SEL", str(Path(__file__).resolve().parents[1] / "data/bench_pages.json")))
+CANDS = __import__("os").environ.get("BENCH_CANDIDATES", "candidates.json")
+OCR_OFF = __import__("os").environ.get("BENCH_OCR_OFF") == "1"
 
 
 def main(variant: str, out: Path) -> None:
@@ -23,6 +25,8 @@ def main(variant: str, out: Path) -> None:
     from docling.document_converter import DocumentConverter, PdfFormatOption
 
     opts = PdfPipelineOptions()
+    if OCR_OFF:
+        opts.do_ocr = False
     if variant == "off":
         opts.do_table_structure = False
     elif variant == "v2":
@@ -30,7 +34,7 @@ def main(variant: str, out: Path) -> None:
     conv = DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)}
     )
-    pdfs = {c["manual"]: c["pdf"] for c in json.loads((DATA / "candidates.json").read_text())}
+    pdfs = {c["manual"]: c["pdf"] for c in json.loads((DATA / CANDS).read_text())}
     out.mkdir(parents=True, exist_ok=True)
     timing = {}
     for manual, pages in json.loads(SEL.read_text())["pages"].items():
