@@ -1,24 +1,6 @@
 import { head } from "../lib/head.js";
-import {
-  btnPrimary,
-  btnGhost,
-  trustBand,
-  compareBlock,
-  stateBadge,
-  stopCard,
-} from "../lib/components.js";
-import { navbar, footer } from "./_topbar.js";
-
-const OEMS = [
-  "Allen-Bradley",
-  "Siemens",
-  "ABB",
-  "Schneider Electric",
-  "Yaskawa",
-  "Mitsubishi",
-  "Rockwell",
-  "Honeywell",
-];
+import { btnPrimary } from "../lib/components.js";
+import { navbar, footer, TALK_TO_MIKE_HREF } from "./_topbar.js";
 
 const ORG_AND_SITE_LD = {
   "@context": "https://schema.org",
@@ -53,35 +35,9 @@ const ORG_AND_SITE_LD = {
       "@id": "https://factorylm.com/#app",
       name: "MIRA — Maintenance Intelligence & Resource Assistant",
       applicationCategory: "BusinessApplication",
-      operatingSystem: "Web, Telegram, Slack",
+      operatingSystem: "Web",
       url: "https://factorylm.com/",
-      description: "FactoryLM is a maintenance digital transformation firm. We map your assets, manuals, PLC context, and technician knowledge into a structured Maintenance Intelligence Namespace. MIRA — our AI execution layer — runs on top.",
-      offers: [
-        {
-          "@type": "Offer",
-          name: "Maintenance Assessment",
-          price: "500",
-          priceCurrency: "USD",
-          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "one-time" },
-          url: "https://factorylm.com/buy",
-        },
-        {
-          "@type": "Offer",
-          name: "Pilot — One-Line Transformation",
-          price: "2000",
-          priceCurrency: "USD",
-          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "per month, 3-month minimum" },
-          url: "https://factorylm.com/buy",
-        },
-        {
-          "@type": "Offer",
-          name: "Operating Layer",
-          price: "499",
-          priceCurrency: "USD",
-          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "per plant per month" },
-          url: "https://factorylm.com/buy",
-        },
-      ],
+      description: "FactoryLM is not a CMMS and does not replace yours. There is nothing to switch.",
       publisher: { "@id": "https://factorylm.com/#org" },
     },
   ],
@@ -90,179 +46,23 @@ const ORG_AND_SITE_LD = {
 function hero(): string {
   return `<section class="fl-hero" aria-labelledby="fl-hero-h1">
   <div class="fl-hero-inner">
-    <p class="fl-hero-eyebrow">The Maintenance Knowledge Layer</p>
     <h1 id="fl-hero-h1" class="fl-hero-h1">FactoryLM</h1>
-    <h2 class="fl-hero-h2">Cited troubleshooting answers from your manuals, assets, and fault history.</h2>
-    <h3 class="fl-hero-h3">Without rebuilding your CMMS.</h3>
-    <p class="fl-hero-sub">Your manuals are in filing cabinets. Your fault history is in someone's head. Your PLC tags don't match your asset names — so generic AI guesses. We structure all of it into a Maintenance Intelligence Namespace — the AI-ready infrastructure <strong>MIRA</strong> runs on — then MIRA answers technicians with citations.</p>
+    <h2 class="fl-hero-h2">It's not a CMMS and doesn't replace yours.</h2>
+    <h3 class="fl-hero-h3">There's nothing to switch.</h3>
+    <p class="fl-hero-sub">It doesn't connect to PLCs, doesn't use work-order history, and doesn't write work orders.</p>
     <div class="fl-hero-cta">
-      ${btnPrimary("Book $500 Assessment", { href: "/buy", cta: "hero-assessment" })}
-      ${btnGhost("See a sample answer ↓", { href: "#fl-compare-h", cta: "hero-demo" })}
+      ${btnPrimary("Talk to Mike", { href: TALK_TO_MIKE_HREF, cta: "hero-talk" })}
     </div>
-    <p class="fl-hero-cta-foot">Most plants start with the $500 on-site assessment — you leave with a written gap report and a namespace blueprint. Already a customer? <a href="/cmms" data-cta="hero-signin">Sign in</a>.</p>
-    <div class="fl-hero-screenshot" aria-hidden="true">
-      <img
-        src="/images/hero-fault-lookup-cartoon.jpg"
-        alt="Comic split-panel: on the left, a plant's maintenance world is chaos — manuals in filing cabinets, mismatched PLC tags, tribal knowledge on a whiteboard. On the right, the same plant after structuring — assets named, manuals indexed, MIRA answering a question with citations."
-        class="fl-hero-screenshot-img"
-        width="1400"
-        height="800"
-        loading="eager"
-        fetchpriority="high"
-        decoding="async"
-      >
-    </div>
+    <p class="fl-hero-cta-foot">Already using FactoryLM? <a href="/cmms" data-cta="hero-signin">Sign in</a>.</p>
   </div>
 </section>`;
 }
 
-function projectCardRow(): string {
-  const cards = [
-    {
-      kind: "Assessment",
-      title: "1. Assessment — $500",
-      body: "We walk your floor (in person or remote). Score your Maintenance AI Readiness. Deliver a written gap report and a namespace blueprint. Takes 1 day.",
-      glyph: "📋",
-    },
-    {
-      kind: "Pilot",
-      title: "2. Pilot — $2–5K/mo",
-      body: "We structure one line: nameplates scanned, manuals indexed, PLC tags mapped, PMs extracted, fault history captured. MIRA goes live on that scope. 3-month minimum.",
-      glyph: "🛠",
-    },
-    {
-      kind: "Operating Layer",
-      title: "3. Operating Layer — $499/mo",
-      body: "MIRA in production across the plant. Telegram + web + CMMS write-back. Quarterly namespace audits. Continuous structuring as new assets come online.",
-      glyph: "⚙️",
-    },
-  ];
-  const cardsHtml = cards
-    .map(
-      (c) => `<article class="fl-project-card" aria-label="${c.kind}">
-    <div class="fl-project-card-glyph" aria-hidden="true">${c.glyph}</div>
-    <h3 class="fl-project-card-h">${c.title}</h3>
-    <p class="fl-project-card-body">${c.body}</p>
-  </article>`
-    )
-    .join("\n  ");
-  return `<section class="fl-section" aria-labelledby="fl-projects-h">
-  <h2 id="fl-projects-h" class="fl-section-h">Three ways we work with you.</h2>
-  <p class="fl-section-sub">Start with the assessment. Most plants don't need everything at once.</p>
-  <div class="fl-project-row">
-  ${cardsHtml}
-  </div>
-</section>`;
-}
-
-function compareSection(): string {
-  return `<section class="fl-section" aria-labelledby="fl-compare-h">
-  <h2 id="fl-compare-h" class="fl-section-h">Why generic AI fails on the floor.</h2>
-  <p class="fl-section-sub">Same question. The difference is whether your maintenance world has been structured.</p>
-  ${compareBlock(
-    "Why is the Powerflex 755 tripping F005 at 1,200 RPM?",
-    "Generic AI (no namespace)",
-    "F005 is typically caused by undervoltage at the input or a brownout condition. Check incoming line voltage and confirm your PLC tag mapping.",
-    "No plant context. No manual citation. No history. Hallucination risk.",
-    "MIRA (on a structured namespace)",
-    "F005 on this drive (Asset POW-755-A12) means DC bus undervoltage. Last 7 days show 4 trips at the same RPM band, all overnight. Manual §6.2 says to check the bus capacitor bank — your 2024-12-14 PM noted bulging on cap 3.",
-    ["Manual §6.2 (PowerFlex 755)", "PM 2024-12-14", "Trips: last 7 d"]
-  )}
-</section>`;
-}
-
-function cartoonRow(): string {
-  // Three placeholder divs that feature-cartoons.js mounts SVG demos into.
-  // The script self-installs styles for `.cartoon-demo` and child classes.
-  // Lede copy is intentionally short — the cartoons carry the storytelling.
-  const cells = [
-    {
-      id: "cartoon-fd",
-      heading: "Structured asset hierarchy",
-      lede: "Machine → sub-component → motor → relay. Every nameplate scanned, every manual bound to the asset it serves.",
-      label: "Asset hierarchy demonstration",
-    },
-    {
-      id: "cartoon-cmms",
-      heading: "PLC tags reconciled to assets",
-      lede: "LINE3_VFD1_CURRENT now knows it lives on Asset POW-755-A12. AI can finally cross the IT/OT gap.",
-      label: "PLC tag reconciliation demonstration",
-    },
-    {
-      id: "cartoon-vv",
-      heading: "Tribal knowledge captured",
-      lede: "Senior tech's voice notes become structured RCA records. The 30-year fault history doesn't retire with them.",
-      label: "Tribal knowledge capture demonstration",
-    },
-  ];
-  const cellsHtml = cells
-    .map(
-      (c) => `<div class="fl-cartoon-cell">
-    <h3 class="fl-cartoon-h">${c.heading}</h3>
-    <p class="fl-cartoon-lede">${c.lede}</p>
-    <div id="${c.id}" class="cartoon-demo" role="region" aria-label="${c.label}" tabindex="0"></div>
-  </div>`
-    )
-    .join("\n  ");
-  return `<section class="fl-section fl-cartoons" aria-labelledby="fl-cartoons-h">
-  <h2 id="fl-cartoons-h" class="fl-section-h">What we structure during a pilot.</h2>
-  <p class="fl-section-sub">The Maintenance Intelligence Namespace — the foundation AI needs.</p>
-  <div class="fl-cartoon-row">
-  ${cellsHtml}
-  </div>
-</section>`;
-}
-
-function featureStrip(): string {
-  const stopHtml = stopCard(
-    "Voltage above safe range",
-    "MIRA detected 480 V on a 240 V branch via the photo you sent at 02:14. Do not energize. Verify with a meter before any next step.",
-    [
-      { label: "Acknowledge", href: "#" },
-      { label: "Call supervisor", href: "#" },
-    ]
-  );
-  return `<section class="fl-section fl-feature-strip" aria-labelledby="fl-feature-h">
-  <h2 id="fl-feature-h" class="fl-section-h">Built for the floor.</h2>
-  <p class="fl-section-sub">Every document gets a state. Every safety signal gets a warning.</p>
-  <div class="fl-feature-grid">
-    <div class="fl-state-row" role="group" aria-label="Document states">
-      ${stateBadge("indexed")}
-      ${stateBadge("partial")}
-      ${stateBadge("failed")}
-      ${stateBadge("superseded")}
-    </div>
-    <div class="fl-feature-stop">
-      ${stopHtml}
-    </div>
-  </div>
-</section>`;
-}
-
-function howItWorks(): string {
-  const steps = [
-    { n: "1", h: "Scan assets &amp; nameplates", b: "Every machine, sub-component, and motor — captured with its nameplate, in person or from a photo." },
-    { n: "2", h: "Bind manuals to assets", b: "OEM manuals, wiring diagrams, and datasheets indexed and attached to the asset they serve." },
-    { n: "3", h: "Map fault history, CMMS &amp; PLC tags", b: "Work-order history and PLC tag names reconciled to the right asset — the IT/OT gap, closed." },
-    { n: "4", h: "Ask MIRA", b: "A technician asks a fault-code or troubleshooting question in Slack, Telegram, or the web." },
-    { n: "5", h: "MIRA cites the source", b: "When the answer comes from a manual, MIRA points to the manual and the page that grounds it." },
-    { n: "6", h: "Draft PMs &amp; work orders", b: "Validated answers become PM suggestions and work-order drafts — synced to your CMMS." },
-  ];
-  const cards = steps
-    .map(
-      (s) => `<article class="fl-project-card" aria-label="Step ${s.n}">
-    <div class="fl-project-card-glyph" aria-hidden="true">${s.n}</div>
-    <h3 class="fl-project-card-h">${s.h}</h3>
-    <p class="fl-project-card-body">${s.b}</p>
-  </article>`
-    )
-    .join("\n  ");
-  return `<section class="fl-section" aria-labelledby="fl-how-h">
-  <h2 id="fl-how-h" class="fl-section-h">How it works.</h2>
-  <p class="fl-section-sub">Structure first, answers second. The namespace is what makes the AI trustworthy.</p>
-  <div class="fl-project-row">
-  ${cards}
-  </div>
+function honestLimits(): string {
+  return `<section class="fl-section" aria-labelledby="fl-limits-h">
+  <h2 id="fl-limits-h" class="fl-section-h">What it does not do.</h2>
+  <p class="fl-section-sub">For lockout, arc flash and confined space, follow your site procedure. Don't use any AI tool for those.</p>
+  <p class="fl-section-sub">We've tested Rockwell and Festo manuals so far, and we'll post our misses too.</p>
 </section>`;
 }
 
@@ -274,9 +74,8 @@ function buyerFit(): string {
     "Controls engineers &amp; integrators",
   ];
   const notList = [
-    "Teams with no manual or document access to structure",
-    "Buyers looking for a standalone CMMS replacement",
-    "Anyone expecting a safety system — MIRA flags hazards with a warning; follow your site procedures and qualified people",
+    "Looking for a CMMS? It's not a CMMS and doesn't replace yours.",
+    "Need PLC data or work-order automation? It doesn't connect to PLCs, doesn't use work-order history, and doesn't write work orders.",
   ];
   const li = (items: string[]) => items.map((i) => `<li>${i}</li>`).join("\n      ");
   return `<section class="fl-section" aria-labelledby="fl-fit-h">
@@ -299,13 +98,11 @@ function buyerFit(): string {
 </section>`;
 }
 
-function pricingTeaser(): string {
-  return `<section class="fl-section fl-pricing-teaser" aria-labelledby="fl-pricing-h">
-  <h2 id="fl-pricing-h" class="fl-section-h">Start with a $500 assessment.</h2>
-  <p class="fl-section-sub">We come to your floor. You leave with a gap report and a namespace blueprint. No software demo. No AI hype.</p>
+function aboutMike(): string {
+  return `<section class="fl-section fl-pricing-teaser" aria-labelledby="fl-about-h">
+  <h2 id="fl-about-h" class="fl-section-h">I'm Mike, I build FactoryLM, and I'm in Central Florida.</h2>
   <div class="fl-hero-cta">
-    ${btnPrimary("Book Your Assessment", { href: "/buy", cta: "pricing-teaser-primary" })}
-    ${btnGhost("Talk to Mike", { href: "mailto:mike@factorylm.com", cta: "pricing-teaser-secondary" })}
+    ${btnPrimary("Talk to Mike", { href: TALK_TO_MIKE_HREF, cta: "about-talk" })}
   </div>
 </section>`;
 }
@@ -558,9 +355,9 @@ const PAGE_STYLES = `
 export function renderHome(reqUrl?: string): string {
   const headHtml = head(
     {
-      title: "FactoryLM — Maintenance Digital Transformation",
+      title: "FactoryLM",
       description:
-        "We turn messy maintenance reality — manuals in filing cabinets, mismatched PLC tags, tribal knowledge — into a structured Maintenance Intelligence Namespace. Then MIRA, our AI execution layer, makes it actionable. $500 assessment to start.",
+        "It's not a CMMS and doesn't replace yours. There's nothing to switch. Talk to Mike — FactoryLM, Central Florida.",
       canonical: "https://factorylm.com/",
       ogImage: "https://factorylm.com/og-image.png",
       jsonLd: ORG_AND_SITE_LD,
@@ -579,19 +376,13 @@ export function renderHome(reqUrl?: string): string {
   ${navbar({ currentPath: "/" })}
   <main>
     ${hero()}
-    ${trustBand("68,000+ chunks of OEM documentation indexed", OEMS)}
-    ${projectCardRow()}
-    ${compareSection()}
-    ${howItWorks()}
-    ${cartoonRow()}
-    ${featureStrip()}
+    ${honestLimits()}
     ${buyerFit()}
-    ${pricingTeaser()}
+    ${aboutMike()}
   </main>
   ${footer()}
-  <a href="/buy" class="fl-mobile-cta" data-cta="mobile-sticky-assessment">Book $500 Assessment</a>
+  <a href="${TALK_TO_MIKE_HREF}" class="fl-mobile-cta" data-cta="mobile-sticky-talk">Talk to Mike</a>
   <script src="/sun-toggle.js"></script>
-  <script src="/feature-cartoons.js" defer></script>
 </body>
 </html>`;
 }
