@@ -198,3 +198,21 @@ The T4 rule below was therefore written after one of its inputs was known. That 
 **7. End-to-end correctness.**
 - Measured only on the 653 frozen answers (T5a attribution).
 - No new generation is run without Mike's approval of the paid oracle.
+
+## Amendment 3: measuring the open retrieval drafts (written before any of their numbers)
+
+**Why.** Retrieval is the dominant failure source (T5a: 81 of 118 hard failures). Three draft fixes from 2026-10-17 were never measured:
+- **#4481**, demote TOC and front-matter chunks;
+- **#4483**, boost exact matches of code-like identifiers;
+- **#4482**, stitch page-split passages. It conflicts with main, so it is out of scope here.
+
+**Method.**
+- Each draft's `mira-hub/src/lib/notebook-query.ts` diff is applied onto current main in a throwaway worktree.
+- T4 is then run unchanged: the MIRA-today corpus, 77 questions, `retrieveNodeChunks` topK 6.
+- Arms: main, main + #4481, main + #4483, and main + both. The baseline is re-run in the same worktree setup so all arms compare like with like.
+
+**Rule** (paired against main on the 77 questions; exact two-sided McNemar on hit@6):
+- **Recommend merging:** net hit@6 gain of at least 3, p < 0.05, and no net hit@1 loss.
+- **Promising, inconclusive:** a net hit@6 gain that misses that bar.
+- **Reject:** a net hit@6 loss.
+- Every changed question is listed. No tuning of the drafts. This is a measurement of the code as written.
