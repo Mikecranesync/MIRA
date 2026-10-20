@@ -145,3 +145,9 @@ with real answers.
 - Every number with its interval.
 - Every deviation listed.
 - The paid oracle run and the A/C choice are listed as Mike's decisions.
+
+## Amendment 1 (before any held-out selection)
+
+`ch2` and `ch6` are the **GS4** installation and troubleshooting chapters (real-36 manuals `gs4-ch2` and
+`gs4-ch6`), not GS10. So `ch6` is not a duplicate, and it is **included** as a third new manual. The
+exclusion in T2 was wrong.
