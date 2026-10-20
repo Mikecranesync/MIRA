@@ -5,6 +5,7 @@ Writes .planning/.../bench/b1_items.jsonl.
 """
 
 import json
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
@@ -15,12 +16,17 @@ def target_col(i: int, ncols: int) -> int:
     return 1 + (i % (ncols - 1))
 
 
+GOLD = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE / "data/bench_gold.jsonl"
+OUTDIR = sys.argv[2] if len(sys.argv) > 2 else "out"
+ITEMS = sys.argv[3] if len(sys.argv) > 3 else "b1_items.jsonl"
+
+
 def chunks(manual: str, page: int) -> list[str]:
-    return json.loads((OUT / "out/mira" / f"{manual}_p{page}.json").read_text())["chunks"]
+    return json.loads((OUT / OUTDIR / "mira" / f"{manual}_p{page}.json").read_text())["chunks"]
 
 
 def main() -> None:
-    gold = [json.loads(line) for line in (HERE / "data/bench_gold.jsonl").read_text().splitlines()]
+    gold = [json.loads(line) for line in GOLD.read_text().splitlines()]
     pages_of: dict[str, list[int]] = {}
     for g in gold:
         pages_of.setdefault(g["manual"], []).append(g["page"])
@@ -92,7 +98,7 @@ def main() -> None:
                         "citations": [{"page": other[0], "chunks": chunks(g["manual"], other[0])}],
                     }
                 )
-    (OUT / "b1_items.jsonl").write_text(
+    (OUT / ITEMS).write_text(
         "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in items)
     )
     by = {}
@@ -108,7 +114,7 @@ def main() -> None:
             }
         )
     )
-    (HERE / "data/b1_skips.json").write_text(json.dumps(skipped, indent=1))
+    (OUT / (ITEMS + ".skips.json")).write_text(json.dumps(skipped, indent=1))
 
 
 if __name__ == "__main__":
