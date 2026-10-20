@@ -1,0 +1,1402 @@
+{
+ "summary": {
+  "variant": "mira",
+  "rows": 7127,
+  "n": 77,
+  "hit1": 31,
+  "hit6": 54,
+  "p50_ms": 21,
+  "p95_ms": 171
+ },
+ "results": [
+  {
+   "id": "gs10-ch6-q1",
+   "set": "public-50",
+   "manual": "gs10-ch6",
+   "accepted": [
+    17
+   ],
+   "pages": [
+    17,
+    18,
+    19,
+    37,
+    17,
+    29
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "gs10-ch6-q2",
+   "set": "public-50",
+   "manual": "gs10-ch6",
+   "accepted": [
+    3,
+    4
+   ],
+   "pages": [
+    23,
+    23,
+    22,
+    22,
+    20,
+    3
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "gs10-ch6-q3",
+   "set": "public-50",
+   "manual": "gs10-ch6",
+   "accepted": [
+    19
+   ],
+   "pages": [
+    17,
+    37,
+    26,
+    27,
+    30,
+    36
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "gs10-ch6-q4",
+   "set": "public-50",
+   "manual": "gs10-ch6",
+   "accepted": [
+    24
+   ],
+   "pages": [
+    24,
+    17,
+    26,
+    27,
+    37,
+    30
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "gs10-ch6-q5",
+   "set": "public-50",
+   "manual": "gs10-ch6",
+   "accepted": [
+    3
+   ],
+   "pages": [
+    3
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "pf40-q1",
+   "set": "public-50",
+   "manual": "pf40",
+   "accepted": [
+    93
+   ],
+   "pages": [
+    152,
+    152,
+    93,
+    92,
+    91,
+    92
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "pf40-q2",
+   "set": "public-50",
+   "manual": "pf40",
+   "accepted": [
+    9,
+    12
+   ],
+   "pages": [
+    8,
+    123,
+    103,
+    37,
+    12,
+    127
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "pf40-q3",
+   "set": "public-50",
+   "manual": "pf40",
+   "accepted": [
+    73,
+    91,
+    92
+   ],
+   "pages": [
+    92,
+    92,
+    96,
+    73,
+    95,
+    62
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "pf40-q4",
+   "set": "public-50",
+   "manual": "pf40",
+   "accepted": [
+    97
+   ],
+   "pages": [
+    67,
+    97,
+    34,
+    56,
+    34,
+    69
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "pf40-q5",
+   "set": "public-50",
+   "manual": "pf40",
+   "accepted": [
+    94
+   ],
+   "pages": [
+    94,
+    151,
+    151,
+    92,
+    73,
+    91
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "pf4m-q1",
+   "set": "public-50",
+   "manual": "pf4m",
+   "accepted": [
+    73
+   ],
+   "pages": [
+    73,
+    15,
+    72,
+    110,
+    72,
+    66
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "pf4m-q2",
+   "set": "public-50",
+   "manual": "pf4m",
+   "accepted": [
+    9
+   ],
+   "pages": [
+    75,
+    33,
+    9,
+    73,
+    13,
+    73
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "pf4m-q3",
+   "set": "public-50",
+   "manual": "pf4m",
+   "accepted": [
+    76
+   ],
+   "pages": [
+    27,
+    76,
+    43,
+    24,
+    47,
+    75
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "pf4m-q4",
+   "set": "public-50",
+   "manual": "pf4m",
+   "accepted": [
+    74
+   ],
+   "pages": [
+    74,
+    110,
+    71,
+    104,
+    104,
+    110
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "pf4m-q5",
+   "set": "public-50",
+   "manual": "pf4m",
+   "accepted": [
+    12
+   ],
+   "pages": [
+    12,
+    90,
+    10,
+    85,
+    86,
+    88
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "acs355-q1",
+   "set": "public-50",
+   "manual": "acs355",
+   "accepted": [
+    359
+   ],
+   "pages": [
+    353,
+    363,
+    258,
+    257,
+    359,
+    30
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "acs355-q2",
+   "set": "public-50",
+   "manual": "acs355",
+   "accepted": [
+    18,
+    49
+   ],
+   "pages": [
+    18,
+    54,
+    60,
+    49,
+    19,
+    355
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "acs355-q3",
+   "set": "public-50",
+   "manual": "acs355",
+   "accepted": [
+    372
+   ],
+   "pages": [
+    372,
+    33,
+    35,
+    371,
+    247,
+    215
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "acs355-q4",
+   "set": "public-50",
+   "manual": "acs355",
+   "accepted": [
+    355
+   ],
+   "pages": [
+    256,
+    355,
+    351,
+    427,
+    190,
+    429
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "acs355-q5",
+   "set": "public-50",
+   "manual": "acs355",
+   "accepted": [
+    363
+   ],
+   "pages": [
+    363,
+    255,
+    99,
+    352,
+    109,
+    363
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "micro820-um-q1",
+   "set": "public-50",
+   "manual": "micro820-um",
+   "accepted": [
+    155
+   ],
+   "pages": [
+    155,
+    68,
+    169,
+    79,
+    100,
+    92
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "micro820-um-q3",
+   "set": "public-50",
+   "manual": "micro820-um",
+   "accepted": [
+    117,
+    118
+   ],
+   "pages": [
+    119,
+    13
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "micro820-um-q4",
+   "set": "public-50",
+   "manual": "micro820-um",
+   "accepted": [
+    35
+   ],
+   "pages": [
+    35,
+    53,
+    99,
+    58,
+    94,
+    108
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "micro820-um-q5",
+   "set": "public-50",
+   "manual": "micro820-um",
+   "accepted": [
+    126
+   ],
+   "pages": [
+    126,
+    126,
+    131,
+    131,
+    100,
+    93
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "micro820-in-q1",
+   "set": "public-50",
+   "manual": "micro820-in",
+   "accepted": [
+    17
+   ],
+   "pages": [
+    18,
+    16,
+    19,
+    15,
+    20,
+    17
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "micro820-in-q2",
+   "set": "public-50",
+   "manual": "micro820-in",
+   "accepted": [
+    19
+   ],
+   "pages": [
+    18,
+    19,
+    14,
+    4,
+    15,
+    1
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "micro820-in-q3",
+   "set": "public-50",
+   "manual": "micro820-in",
+   "accepted": [
+    13
+   ],
+   "pages": [
+    13
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "micro820-in-q4",
+   "set": "public-50",
+   "manual": "micro820-in",
+   "accepted": [
+    9
+   ],
+   "pages": [
+    10,
+    7,
+    9,
+    6,
+    8,
+    11
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "micro820-in-q5",
+   "set": "public-50",
+   "manual": "micro820-in",
+   "accepted": [
+    5
+   ],
+   "pages": [
+    5
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "ml1100-q2",
+   "set": "public-50",
+   "manual": "ml1100",
+   "accepted": [
+    102
+   ],
+   "pages": [
+    101,
+    101,
+    102,
+    129,
+    22,
+    22
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "ml1100-q3",
+   "set": "public-50",
+   "manual": "ml1100",
+   "accepted": [
+    141
+   ],
+   "pages": [
+    143
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "ml1100-q4",
+   "set": "public-50",
+   "manual": "ml1100",
+   "accepted": [
+    131
+   ],
+   "pages": [
+    22
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "ml1100-q5",
+   "set": "public-50",
+   "manual": "ml1100",
+   "accepted": [
+    159
+   ],
+   "pages": [
+    145,
+    152,
+    52,
+    14,
+    145,
+    154,
+    14,
+    58,
+    59,
+    148,
+    148,
+    151,
+    59
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "smcflex-q1",
+   "set": "public-50",
+   "manual": "smcflex",
+   "accepted": [
+    104
+   ],
+   "pages": [
+    100,
+    99,
+    101,
+    99,
+    21,
+    22
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "smcflex-q2",
+   "set": "public-50",
+   "manual": "smcflex",
+   "accepted": [
+    106
+   ],
+   "pages": [
+    106,
+    8,
+    14,
+    15,
+    82,
+    10
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "smcflex-q3",
+   "set": "public-50",
+   "manual": "smcflex",
+   "accepted": [
+    103
+   ],
+   "pages": [
+    103
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "smcflex-q4",
+   "set": "public-50",
+   "manual": "smcflex",
+   "accepted": [
+    17
+   ],
+   "pages": [
+    17
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "smcflex-q5",
+   "set": "public-50",
+   "manual": "smcflex",
+   "accepted": [
+    105
+   ],
+   "pages": [
+    100,
+    99,
+    99,
+    22,
+    22,
+    95
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "e3plus-q1",
+   "set": "public-50",
+   "manual": "e3plus",
+   "accepted": [
+    54,
+    214
+   ],
+   "pages": [
+    232,
+    215,
+    64,
+    217,
+    62,
+    54,
+    57,
+    61,
+    74,
+    213,
+    223,
+    214,
+    250,
+    89,
+    54
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "e3plus-q2",
+   "set": "public-50",
+   "manual": "e3plus",
+   "accepted": [
+    89,
+    113
+   ],
+   "pages": [
+    232,
+    128,
+    46,
+    51,
+    61,
+    143,
+    54,
+    64,
+    76,
+    217,
+    45,
+    57,
+    250,
+    89,
+    54
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "e3plus-q3",
+   "set": "public-50",
+   "manual": "e3plus",
+   "accepted": [
+    89,
+    115
+   ],
+   "pages": [
+    53,
+    55,
+    52,
+    55,
+    257,
+    4,
+    255,
+    256,
+    45,
+    257,
+    218,
+    37,
+    250,
+    89,
+    54
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "e3plus-q4",
+   "set": "public-50",
+   "manual": "e3plus",
+   "accepted": [
+    217
+   ],
+   "pages": [
+    232,
+    57,
+    64,
+    107,
+    249,
+    54,
+    61,
+    143,
+    256,
+    37,
+    257,
+    257,
+    250,
+    89,
+    54
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "e3plus-q5",
+   "set": "public-50",
+   "manual": "e3plus",
+   "accepted": [
+    16
+   ],
+   "pages": [
+    232,
+    15,
+    215,
+    137,
+    223,
+    257
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "smc50-q1",
+   "set": "public-50",
+   "manual": "smc50",
+   "accepted": [
+    211
+   ],
+   "pages": [
+    272,
+    272,
+    126,
+    126,
+    129,
+    224
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "smc50-q2",
+   "set": "public-50",
+   "manual": "smc50",
+   "accepted": [
+    210
+   ],
+   "pages": [
+    129,
+    127,
+    109,
+    130,
+    129,
+    199
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "smc50-q3",
+   "set": "public-50",
+   "manual": "smc50",
+   "accepted": [
+    104
+   ],
+   "pages": [
+    32,
+    32,
+    40,
+    217,
+    10,
+    211
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "smc50-q4",
+   "set": "public-50",
+   "manual": "smc50",
+   "accepted": [
+    212
+   ],
+   "pages": [
+    129,
+    109,
+    199,
+    213,
+    22,
+    32
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "smc50-q5",
+   "set": "public-50",
+   "manual": "smc50",
+   "accepted": [
+    215
+   ],
+   "pages": [
+    210,
+    210,
+    211,
+    211,
+    27,
+    211
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "tq-01",
+   "set": "real-36",
+   "manual": "micro810",
+   "accepted": [
+    64
+   ],
+   "pages": [
+    59,
+    58,
+    58,
+    64,
+    59
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "tq-02",
+   "set": "real-36",
+   "manual": "micro810",
+   "accepted": [
+    57
+   ],
+   "pages": [
+    58,
+    57,
+    59,
+    64,
+    23,
+    4
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "tq-04",
+   "set": "real-36",
+   "manual": "micro810",
+   "accepted": [
+    57
+   ],
+   "pages": [
+    57
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-06",
+   "set": "real-36",
+   "manual": "micro810",
+   "accepted": [
+    57
+   ],
+   "pages": [
+    57
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-07",
+   "set": "real-36",
+   "manual": "micro810",
+   "accepted": [
+    62
+   ],
+   "pages": [
+    57,
+    58,
+    62,
+    18,
+    78,
+    18
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "tq-12",
+   "set": "real-36",
+   "manual": "gs4-ch2",
+   "accepted": [
+    16
+   ],
+   "pages": [
+    2,
+    7,
+    6,
+    22,
+    14,
+    22
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "tq-13",
+   "set": "real-36",
+   "manual": "gs4-ch2",
+   "accepted": [
+    14
+   ],
+   "pages": [
+    14
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-14",
+   "set": "real-36",
+   "manual": "gs4-ch2",
+   "accepted": [
+    14,
+    15,
+    16,
+    17
+   ],
+   "pages": [
+    2,
+    7,
+    22,
+    6,
+    6,
+    14
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "tq-15",
+   "set": "real-36",
+   "manual": "gs4-ch2",
+   "accepted": [
+    14
+   ],
+   "pages": [
+    14,
+    16,
+    15,
+    15,
+    15,
+    1
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-16",
+   "set": "real-36",
+   "manual": "gs4-ch6",
+   "accepted": [
+    16,
+    17
+   ],
+   "pages": [
+    16,
+    16,
+    17,
+    1,
+    2,
+    2
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-17",
+   "set": "real-36",
+   "manual": "gs4-ch6",
+   "accepted": [
+    19
+   ],
+   "pages": [
+    19,
+    1,
+    2,
+    2,
+    3,
+    3
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-18",
+   "set": "real-36",
+   "manual": "gs4-ch6",
+   "accepted": [
+    16
+   ],
+   "pages": [
+    16,
+    16,
+    30,
+    8,
+    16,
+    27
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-19",
+   "set": "real-36",
+   "manual": "gs4-ch6",
+   "accepted": [
+    17
+   ],
+   "pages": [
+    17
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-20",
+   "set": "real-36",
+   "manual": "gs4-ch6",
+   "accepted": [
+    18
+   ],
+   "pages": [
+    18,
+    16,
+    21,
+    21,
+    24,
+    22
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-21",
+   "set": "real-36",
+   "manual": "gs4-ch6",
+   "accepted": [
+    9,
+    18
+   ],
+   "pages": [
+    18
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-22",
+   "set": "real-36",
+   "manual": "gs4-ch6",
+   "accepted": [
+    17
+   ],
+   "pages": [
+    17,
+    1,
+    2,
+    2,
+    3,
+    3
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-23",
+   "set": "real-36",
+   "manual": "gs4-ch6",
+   "accepted": [
+    8,
+    22
+   ],
+   "pages": [
+    15,
+    23,
+    25,
+    21,
+    11,
+    12
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "tq-29",
+   "set": "real-36",
+   "manual": "se-canopen-hw",
+   "accepted": [
+    47
+   ],
+   "pages": [
+    1,
+    3,
+    3,
+    3,
+    3,
+    4
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "tq-30",
+   "set": "real-36",
+   "manual": "se-canopen-hw",
+   "accepted": [
+    34
+   ],
+   "pages": [
+    61,
+    53,
+    34,
+    35,
+    1,
+    3,
+    3,
+    4,
+    7,
+    9,
+    10,
+    10
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "tq-31",
+   "set": "real-36",
+   "manual": "se-lxm32a-canopen",
+   "accepted": [
+    33,
+    59
+   ],
+   "pages": [
+    1,
+    3,
+    3,
+    4,
+    5,
+    6
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "tq-32",
+   "set": "real-36",
+   "manual": "se-lxm32a-canopen",
+   "accepted": [
+    17,
+    20,
+    21
+   ],
+   "pages": [
+    1,
+    3,
+    3,
+    4,
+    5,
+    6
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "tq-34",
+   "set": "real-36",
+   "manual": "se-m171",
+   "accepted": [
+    102
+   ],
+   "pages": [
+    96,
+    100,
+    97,
+    101,
+    102,
+    99
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "tq-35",
+   "set": "real-36",
+   "manual": "se-m172",
+   "accepted": [
+    94
+   ],
+   "pages": [
+    87,
+    85,
+    94,
+    84,
+    93,
+    42
+   ],
+   "hit1": false,
+   "hit6": true
+  },
+  {
+   "id": "tq-36",
+   "set": "real-36",
+   "manual": "se-m172",
+   "accepted": [
+    93,
+    94
+   ],
+   "pages": [
+    93
+   ],
+   "hit1": true,
+   "hit6": true
+  },
+  {
+   "id": "tq-37",
+   "set": "real-36",
+   "manual": "se-m172",
+   "accepted": [
+    94,
+    145,
+    158
+   ],
+   "pages": [
+    87,
+    85,
+    160,
+    84,
+    86,
+    148
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "tq-39",
+   "set": "real-36",
+   "manual": "se-premium-serial",
+   "accepted": [
+    184,
+    197
+   ],
+   "pages": [
+    210,
+    21,
+    190,
+    75,
+    198,
+    205
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "tq-40",
+   "set": "real-36",
+   "manual": "se-x80-analog",
+   "accepted": [
+    112
+   ],
+   "pages": [
+    272,
+    153,
+    165,
+    182,
+    224,
+    289
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "tq-41",
+   "set": "real-36",
+   "manual": "se-x80-analog",
+   "accepted": [
+    250
+   ],
+   "pages": [
+    22,
+    21,
+    65,
+    110,
+    133,
+    80
+   ],
+   "hit1": false,
+   "hit6": false
+  },
+  {
+   "id": "tq-42",
+   "set": "real-36",
+   "manual": "se-x80-analog",
+   "accepted": [
+    18,
+    19,
+    119
+   ],
+   "pages": [
+    20,
+    19,
+    167,
+    184,
+    64,
+    74
+   ],
+   "hit1": false,
+   "hit6": true
+  }
+ ]
+}

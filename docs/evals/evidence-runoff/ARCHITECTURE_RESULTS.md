@@ -11,7 +11,7 @@
 ## The answer in one paragraph
 
 Retrieval, not extraction, is what costs us right answers. Swapping MIRA's text extractor for Docling does not move retrieval at all:
-- right page in the top six: 53/77 with Docling against 54/77 today;
+- right page in the top six: 53/77 with Docling-off and 49/77 with Docling-v1, against 54/77 today;
 - this holds although Docling reads tables far better (89% against 41% of table rows intact on held-out pages).
 
 The two open retrieval drafts (#4481, #4483) make retrieval **worse**. Neither should merge as written.
@@ -74,9 +74,9 @@ The 77 real questions are real-36 Lane A plus public-50. Retrieval is `retrieveN
 |---|---|---|---|---|
 | MIRA today | 54/77 | 31/77 | 21–24 ms | n/a |
 | Docling off (whole manual) | 53/77 | 30/77 | 41 ms | top 6: lost gs10-ch6-q5 and micro820-in-q2, gained smc50-q3. No detectable difference |
-| Docling v1 (whole manual) | PENDING | | | |
+| Docling v1 (whole manual) | 49/77 | 28/77 | 46 ms | top 6: gained gs10-ch6-q3, smc50-q3, tq-12, tq-23; lost gs10-ch6-q5, pf4m-q3, micro820-in-q2, smcflex-q2, tq-02, tq-04, tq-06, tq-07, tq-34 (p=0.27). No detectable difference; the point estimate is worse |
 
-**Rule:** exact McNemar, p < 0.05 and a net gain to call it better. Docling off is no better.
+**Rule:** exact McNemar, p < 0.05 and a net gain to call it better. Neither Docling variant is better. v1 is 5 questions worse on the point estimate and twice as slow.
 
 ### The two open retrieval drafts (amendment 3), applied onto main
 
@@ -127,6 +127,7 @@ Checker cost: p50 0.75 ms, max 7.5 ms per answer.
 |---|---|---|
 | MIRA today (unpdf), 19 manuals / 3,301 pages | 0.0018 | 381 MB |
 | Docling off, whole manuals | 0.468 (about 260×) | 2.7 GB |
+| Docling v1, whole manuals | 0.729 (about 400×) | 2.8 GB |
 | Docling v1, per page (round 1, median) | 1.46 | 4.3 GB |
 
 Docling at either option is more than 5× MIRA-today. Under amendment 2 that is an operating cost needing your sign-off, on top of the licence.
