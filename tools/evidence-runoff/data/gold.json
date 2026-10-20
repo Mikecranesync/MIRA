@@ -1,0 +1,2039 @@
+[
+ {
+  "id": "gs10-ch6-q1",
+  "gold_pages": [
+   17
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "over-current during acceleration",
+    "output current exceeds three times of the rated current"
+   ],
+   [
+    "increase the acceleration time"
+   ]
+  ],
+  "lookalikes": [
+   "ocd"
+  ],
+  "quote": "Output current exceeds\nthree times of the\nrated current during\nacceleration.",
+  "quote_page": 17,
+  "notes": "ocA = output current >300% rated during accel; first corrective action listed is increasing accel time.",
+  "set": "public-50"
+ },
+ {
+  "id": "gs10-ch6-q2",
+  "gold_pages": [
+   4
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "10 minutes",
+    "ten minutes",
+    "5 minutes",
+    "five minutes"
+   ],
+   [
+    "25VDC",
+    "less than 25VDC"
+   ]
+  ],
+  "lookalikes": [
+   "FIVE minutes"
+  ],
+  "quote": "Wait at least\n10 minutes after all display lamps have gone out, and then confirm that the capacitors have\nfully discharged by measuring the voltage between DC+ and DC-. The voltage between DC+ and\nDC-should be less than 25VDC.",
+  "quote_page": 4,
+  "notes": "Page 4 general rule is 10 min/<25VDC; page 3's CAUTION box has a model-dependent 5/10-min variant flagged as lookalike. | AUDIT: p.3 states 5 min (<=30hp) / 10 min (>=40hp); either is supported.",
+  "set": "public-50",
+  "extra_pages": [
+   3
+  ]
+ },
+ {
+  "id": "gs10-ch6-q3",
+  "gold_pages": [
+   19
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "grounding short circuit on the output terminals",
+    "ground fault"
+   ],
+   [
+    "motor runs freely",
+    "closes the gate of the output"
+   ]
+  ],
+  "lookalikes": [
+   "ocn",
+   "ocS"
+  ],
+  "quote": "When the drive detects\ngrounding short circuit\non the output terminals\n(U/V/W), the drive\ncloses the gate of the\noutput immediately,\nthe motor runs freely, Corrective\nand the display shows a Actions\nGFF error.",
+  "quote_page": 19,
+  "notes": "GFF = grounding short circuit at output terminals; drive gates off, motor coasts.",
+  "set": "public-50"
+ },
+ {
+  "id": "gs10-ch6-q4",
+  "gold_pages": [
+   24
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "P06.15",
+    "P06-15"
+   ],
+   [
+    "IGBT overheating error occurs",
+    "IGBT overheating"
+   ]
+  ],
+  "lookalikes": [
+   "tH1o",
+   "oL"
+  ],
+  "quote": "Depending on the model power, model default of P06.15 +5°C.\nWhen the setting for P06.15 is higher than the oH1 level, oH1 error occurs\ninstead of oH1 warning. An IGBT overheating error occurs, and the drive\nstops.",
+  "quote_page": 24,
+  "notes": "oH1 triggers when IGBT temp exceeds protection level = P06.15 default +5C.",
+  "set": "public-50"
+ },
+ {
+  "id": "gs10-ch6-q5",
+  "gold_pages": [
+   3
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "disconnect the motor from the drive"
+   ],
+   [
+    "apply input power to the drive for 2 hours",
+    "2 hours"
+   ]
+  ],
+  "lookalikes": [
+   "once per year",
+   "once annually"
+  ],
+  "quote": "Recharge the DC link before using any drive that has not been operated within a year:\n1) Disconnect the motor from the drive.\n\n2) Apply input power to the drive for 2 hours.",
+  "quote_page": 3,
+  "notes": "Two-step procedure: disconnect motor, then apply power 2 hours to recharge DC link capacitors.",
+  "set": "public-50"
+ },
+ {
+  "id": "pf40-q1",
+  "gold_pages": [
+   93
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "DC bus voltage exceeded"
+   ],
+   [
+    "extend the decel time",
+    "install dynamic brake"
+   ]
+  ],
+  "lookalikes": [
+   "F4",
+   "UnderVoltage"
+  ],
+  "quote": "➀ DC bus voltage exceeded\n\nMonitor the AC line for high line\nvoltage or transient conditions. Bus\novervoltage can also be caused by\nmotor regeneration. Extend the decel\ntime or install dynamic brake option.",
+  "quote_page": 93,
+  "notes": "F5 OverVoltage: DC bus exceeded; fix = extend decel time or add dynamic brake.",
+  "set": "public-50"
+ },
+ {
+  "id": "pf40-q2",
+  "gold_pages": [
+   9
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "three minutes",
+    "3 minutes"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "Wait three minutes for capacitors to discharge to safe voltage\nlevels. Failure to do so may result in personal injury or death.",
+  "quote_page": 9,
+  "notes": "General Precautions: wait 3 minutes after removing mains power.",
+  "set": "public-50",
+  "extra_pages": [
+   12
+  ]
+ },
+ {
+  "id": "pf40-q3",
+  "gold_pages": [
+   73
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "A092",
+    "Auto Rstrt Tries"
+   ],
+   [
+    "A093",
+    "Auto Rstrt Delay"
+   ]
+  ],
+  "lookalikes": [
+   "A094",
+   "A090"
+  ],
+  "quote": "Clear a Type 1 fault and restart the drive.\n1. Set A092 [Auto Rstrt Tries] to a value other than “0”.\n2. Set A093 [Auto Rstrt Delay] to a value other than “0”.",
+  "quote_page": 73,
+  "notes": "Auto restart requires setting both A092 (tries) and A093 (delay) nonzero.",
+  "set": "public-50",
+  "extra_pages": [
+   91,
+   92
+  ]
+ },
+ {
+  "id": "pf40-q4",
+  "gold_pages": [
+   97
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "acceleration time is excessive"
+   ],
+   [
+    "excess load",
+    "current limit"
+   ]
+  ],
+  "lookalikes": [
+   "P035 [Maximum Freq]"
+  ],
+  "quote": "Acceleration time is excessive. None\nReprogram P039 [Accel Time 1] or\nA067 [Accel Time 2].\nNone\nCompare d003 [Output Current] with\nExcess load or short\nA089 [Current Limit 1].",
+  "quote_page": 97,
+  "notes": "Causes: excessive accel time, or excess load pushing drive into current limit; checked via P039/A067 and A089.",
+  "set": "public-50"
+ },
+ {
+  "id": "pf40-q5",
+  "gold_pages": [
+   94
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "unsuccessfully attempted to reset a fault and resume running"
+   ],
+   [
+    "correct the cause of the fault and manually clear"
+   ]
+  ],
+  "lookalikes": [
+   "F38",
+   "F48"
+  ],
+  "quote": "➁ Drive unsuccessfully attempted Correct the cause of the fault and\n\nmanually clear.\nto reset a fault and resume\nrunning for the programmed\nnumber of A092 [Auto Rstrt\nTries].",
+  "quote_page": 94,
+  "notes": "F33 = drive exhausted its programmed A092 auto-restart attempts; must correct cause and manually clear.",
+  "set": "public-50"
+ },
+ {
+  "id": "pf4m-q1",
+  "gold_pages": [
+   73
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "current path to earth ground has been detected"
+   ],
+   [
+    "check the motor and external wiring"
+   ]
+  ],
+  "lookalikes": [
+   "F12",
+   "HW OverCurrent"
+  ],
+  "quote": "Ground Fault\n➁ A current path to earth ground Check the motor and external wiring\nto the drive output terminals for a\nhas been detected at one or\ngrounded condition.\nmore of the drive output\nterminals.",
+  "quote_page": 73,
+  "notes": "F13 Ground Fault = current path to earth ground detected at output terminals; check motor/wiring for grounded condition.",
+  "set": "public-50"
+ },
+ {
+  "id": "pf4m-q2",
+  "gold_pages": [
+   9
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "-DC and +DC terminals",
+    "–DC and +DC"
+   ],
+   [
+    "voltage must be zero",
+    "zero"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "To avoid an electric shock hazard, verify that the\nvoltage on the bus capacitors has discharged before performing any\nwork on the drive. Measure the DC bus voltage at the –DC and +DC\nterminals on the Power Terminal Block (see Chapter 1 Power Terminal\ndescriptions). The voltage must be zero.",
+  "quote_page": 9,
+  "notes": "Verify by measuring -DC/+DC terminals; voltage must read zero.",
+  "set": "public-50"
+ },
+ {
+  "id": "pf4m-q3",
+  "gold_pages": [
+   76
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "drive is faulted"
+   ],
+   [
+    "incorrect input wiring",
+    "incorrect Sink/Source DIP switch setting",
+    "P106 [Start Source]"
+   ]
+  ],
+  "lookalikes": [
+   "Integral keypad is not enabled"
+  ],
+  "quote": "Drive is Faulted\n\nIndication\nFlashing red status light\n\nIncorrect programming.\nNone\n• P106 [Start Source] is set to\noption 0 “Keypad” or option 5\n“RS485 (DSI) Port”.\n• t201…t202 [Digital Inx Select] is\nset to option 5 “Local” and the\ninput is active.\nNone\nIncorrect input wiring.",
+  "quote_page": 76,
+  "notes": "Check: drive faulted, P106 Start Source/t201-202 programming, input wiring, Sink/Source DIP switch.",
+  "set": "public-50"
+ },
+ {
+  "id": "pf4m-q4",
+  "gold_pages": [
+   74
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "phase to ground fault has been detected between the drive and motor"
+   ],
+   [
+    "check the wiring between the drive and motor",
+    "check motor for grounded phase"
+   ]
+  ],
+  "lookalikes": [
+   "F39 Phase V to Gnd",
+   "F40 Phase W to Gnd"
+  ],
+  "quote": "F38 Phase U to Gnd ➁ A phase to ground fault has been 1. Check the wiring between the\ndetected between the drive and\ndrive and motor.\nF39 Phase V to Gnd\nmotor in this phase.\n2. Check motor for grounded phase.\nF40 Phase W to Gnd\n3. Replace drive if fault cannot be\ncleared.",
+  "quote_page": 74,
+  "notes": "F38 = phase-to-ground fault on phase U between drive and motor.",
+  "set": "public-50"
+ },
+ {
+  "id": "pf4m-q5",
+  "gold_pages": [
+   12
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "76.2 mm",
+    "3.0 in"
+   ],
+   [
+    "-10 °C",
+    "14 °F"
+   ],
+   [
+    "40 °C",
+    "50 °C"
+   ]
+  ],
+  "lookalikes": [
+   "-40…+85 °C"
+  ],
+  "quote": "76.2 mm (3.0 in.)\nAirflow\n\nAmbient Operating Temperatures\nTable 2 – Enclosure and Clearance Requirements\nHorizontal Clearance between drives\n0 mm (0 in.) and greater\n25 mm (0.08 in.) and greater\n\nAmbient Temperature\nMinimum\nMaximum\n-10 °C (14 °F)\n40 °C (104 °F)",
+  "quote_page": 12,
+  "notes": "Min clearance 76.2mm/3.0in all sides; ambient -10C min, max is 40C or 50C depending on horizontal drive-to-drive clearance. Storage temp range (-40..85C) on page13 is a different spec flagged as lookalike.",
+  "set": "public-50"
+ },
+ {
+  "id": "acs355-q1",
+  "gold_pages": [
+   359
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "output current has exceeded trip level"
+   ],
+   [
+    "check motor load and mechanics"
+   ]
+  ],
+  "lookalikes": [
+   "0002",
+   "DC OVERVOLT"
+  ],
+  "quote": "Output current has\nexceeded trip level.\n\nOVERCURRENT\n(2310)\n0305 bit 0\n\nWHAT TO DO\n\nSudden load change or\nstall.\n\nCheck motor load and mechanics.",
+  "quote_page": 359,
+  "notes": "0001 OVERCURRENT = output current exceeded trip level, e.g. from sudden load change/stall; fix = check motor load/mechanics.",
+  "set": "public-50"
+ },
+ {
+  "id": "acs355-q2",
+  "gold_pages": [
+   18
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "5 minutes",
+    "five minutes"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "Never work on the drive, motor cable or motor when input power is applied. After\ndisconnecting the input power, always wait for 5 minutes to let the intermediate\ncircuit capacitors discharge before you start working on the drive, motor or motor\ncable.",
+  "quote_page": 18,
+  "notes": "Wait 5 minutes after disconnecting input power before working on the drive.",
+  "set": "public-50",
+  "extra_pages": [
+   49
+  ]
+ },
+ {
+  "id": "acs355-q3",
+  "gold_pages": [
+   372
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "stop the drive and disconnect it from the AC power source"
+   ],
+   [
+    "remove the fan holder from the hinges",
+    "lever the fan holder off the drive frame"
+   ]
+  ],
+  "lookalikes": [
+   "frame size R0 has natural cooling",
+   "R0"
+  ],
+  "quote": "1. Stop the drive and disconnect it from the AC power source.\n2. Remove the hood if the drive has the NEMA 1 option.\n3. Lever the fan holder off the drive frame with, eg, a screwdriver and lift the hinged\nfan holder slightly upward from its front edge.\n4. Free the fan cable from the clip.",
+  "quote_page": 372,
+  "notes": "Fan replacement procedure for frame sizes R1-R4 (R0 has natural cooling, no fan - flagged as lookalike).",
+  "set": "public-50"
+ },
+ {
+  "id": "acs355-q4",
+  "gold_pages": [
+   355
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "STO (Safe torque off) requested and it functions correctly",
+    "Safe torque off"
+   ],
+   [
+    "parameter 3025 STO OPERATION"
+   ]
+  ],
+  "lookalikes": [
+   "2029",
+   "MOTOR BACK EMF"
+  ],
+  "quote": "STO (Safe torque off)\nrequested and it\nfunctions correctly.\nParameter 3025 STO\nOPERATION is set to\nreact with alarm.",
+  "quote_page": 355,
+  "notes": "2035 SAFE TORQUE OFF = STO requested and functioning correctly; governed by parameter 3025 STO OPERATION.",
+  "set": "public-50"
+ },
+ {
+  "id": "acs355-q5",
+  "gold_pages": [
+   363
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "drive has detected earth (ground) fault in motor or motor cable",
+    "earth fault"
+   ],
+   [
+    "check motor",
+    "check motor cable"
+   ]
+  ],
+  "lookalikes": [
+   "0017",
+   "UNDERLOAD"
+  ],
+  "quote": "Drive has detected earth\n(ground) fault in motor or\nmotor cable.\n\nCheck motor.\nCheck motor cable. Motor cable\nlength must not exceed maximum\nspecifications.",
+  "quote_page": 363,
+  "notes": "0016 EARTH FAULT = ground fault detected in motor or motor cable.",
+  "set": "public-50"
+ },
+ {
+  "id": "micro820-um-q1",
+  "gold_pages": [
+   155
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "program scan time exceeded the watchdog timeout"
+   ],
+   [
+    "correct the program to ensure that the upper limit is not reached"
+   ]
+  ],
+  "lookalikes": [
+   "0xD00F"
+  ],
+  "quote": "The program scan time exceeded the watchdog timeout 1. Correct the program to ensure that the upper limit is not reached. One\nvalue.\nmethod is to use a data type with a larger maximum value.",
+  "quote_page": 155,
+  "notes": "0xD011 = scan time exceeded watchdog timeout (often a For-loop running to the variable's max value); fix also includes increasing the _SYSVA_TCYWDG watchdog value if scans legitimately exceed 3s.",
+  "set": "public-50"
+ },
+ {
+  "id": "micro820-um-q2",
+  "gold_pages": [
+   152
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "embedded I/O configuration in the user program is invalid"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "The embedded I/O configuration in the user program is\ninvalid.",
+  "quote_page": 152,
+  "notes": "GOLD DOUBT: Table 64 on page152 flattens Error-Code/Description/Action columns across many rows into separate blocks; based on positional ordering (0xF050 is the 5th code in its block, and this description is the 3rd description text, after the 0xF023 and 0xF030-033 descriptions) this appears to be 0xF050's description, but the garbled table layout makes the exact row-to-description mapping unverifiable from the extracted text alone.",
+  "set": "public-50",
+  "doubt": true
+ },
+ {
+  "id": "micro820-um-q3",
+  "gold_pages": [
+   118,
+   117
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "Load Always",
+    "Load on Memory Error"
+   ]
+  ],
+  "lookalikes": [
+   "2080-REMLCD"
+  ],
+  "quote": "On controller\npower-up, restore automatically occurs if the Load Always or Load on Memory Error option has\nbeen configured in Connected Components Workbench software.",
+  "quote_page": 117,
+  "notes": "Automatic power-up restore from microSD requires Load Always or Load on Memory Error configured in CCW; Table 44 on page118 (ConfigMeFirst.txt row) corroborates restore support but its layout is visually garbled.",
+  "set": "public-50"
+ },
+ {
+  "id": "micro820-um-q4",
+  "gold_pages": [
+   35
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "power is removed or the area is nonhazardous"
+   ],
+   [
+    "electrical arc can occur",
+    "explosion in hazardous location installations"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "WARNING: If you connect or disconnect the communications cable with power\napplied to this module or any device on the network, an electrical arc can occur.\nThis could cause an explosion in hazardous location installations.\nBe sure that power is removed or the area is nonhazardous before proceeding.",
+  "quote_page": 35,
+  "notes": "No - not safe; must ensure power removed or area nonhazardous before connecting/disconnecting the USB cable.",
+  "set": "public-50"
+ },
+ {
+  "id": "micro820-um-q5",
+  "gold_pages": [
+   126
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "DLG_ERR_RTC"
+   ],
+   [
+    "real time clock is invalid",
+    "RTC is invalid"
+   ]
+  ],
+  "lookalikes": [
+   "DLG_ERR_CFG_FORMAT",
+   "DLG_ERR_UNKNOWN"
+  ],
+  "quote": "Datalog configuration file format is wrong\nReal time clock is invalid.\nAn unspecified error has occurred.\n\n5\n\nDLG_ERR_CFG_ID\n\n6\n\nDLG_ERR_RESOURCE_BUSY\n\n7\n8\n9\n\nDLG_ERR_CFG_FORMAT\nDLG_ERR_RTC\nDLG_ERR_UNKNOWN",
+  "quote_page": 126,
+  "notes": "Table 49 status code 8 = DLG_ERR_RTC, positionally paired with description 'Real time clock is invalid.'",
+  "set": "public-50"
+ },
+ {
+  "id": "micro820-in-q1",
+  "gold_pages": [
+   17
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "0…10V DC",
+    "0-10V DC",
+    "0...10V DC"
+   ]
+  ],
+  "lookalikes": [
+   "26.4V DC"
+  ],
+  "quote": "Input voltage range\n\n0…10V DC\n\nMaximum input\n\n26.4V DC",
+  "quote_page": 17,
+  "notes": "Analog input range for I-00...I-03 is 0-10V DC; max input before damage is 26.4V DC (lookalike).",
+  "set": "public-50"
+ },
+ {
+  "id": "micro820-in-q2",
+  "gold_pages": [
+   19
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "15 A"
+   ],
+   [
+    "1.5 A"
+   ]
+  ],
+  "lookalikes": [
+   "7.5 A",
+   "0.75 A",
+   "1.0 A",
+   "0.22 A"
+  ],
+  "quote": "Relay Contact Ratings\nMaximum\nVolts\n\nAmperes\nMake\n\nBreak\n\n120 V AC\n\n15 A\n\n1.5 A",
+  "quote_page": 19,
+  "notes": "At 120V AC: make=15A, break=1.5A. Other voltage rows (240VAC, 24VDC, 125VDC) are lookalikes.",
+  "set": "public-50"
+ },
+ {
+  "id": "micro820-in-q3",
+  "gold_pages": [
+   13
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "Belden #8761",
+    "Belden 8761"
+   ],
+   [
+    "grounded at one end of the cable",
+    "one end"
+   ]
+  ],
+  "lookalikes": [
+   "both ends of the cable"
+  ],
+  "quote": "Use shielded communication cable (Belden #8761). The Belden cable has two signal wires (black\nand clear), one drain wire, and a foil shield. The drain wire and foil shield must be grounded at\none end of the cable.",
+  "quote_page": 13,
+  "notes": "Cable = Belden #8761; drain wire/foil shield grounded at ONE end only (not both - lookalike).",
+  "set": "public-50"
+ },
+ {
+  "id": "micro820-in-q4",
+  "gold_pages": [
+   9
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "50.8 mm (2.0 in.)",
+    "50.8 mm",
+    "2.0 in"
+   ]
+  ],
+  "lookalikes": [
+   "86 mm\n(3.39 in.)",
+   "100 mm\n(3.94 in.)"
+  ],
+  "quote": "Module Spacing\nMaintain spacing from objects such as enclosure walls, wireways and adjacent equipment. Allow\n50.8 mm (2.0 in.) of space on all sides for adequate ventilation.",
+  "quote_page": 9,
+  "notes": "Allow 50.8mm (2.0in) clearance on all sides; panel mounting dims on page10 are a different spec (lookalike).",
+  "set": "public-50"
+ },
+ {
+  "id": "micro820-in-q5",
+  "gold_pages": [
+   5
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "electrical arc can occur",
+    "explosion in hazardous location installations"
+   ],
+   [
+    "power is removed or the area is nonhazardous"
+   ]
+  ],
+  "lookalikes": [
+   "communications cable"
+  ],
+  "quote": "If you connect or disconnect the serial cable with power applied to this\n\n•\n\n•\n•\n\n•\n\n•\n\nmodule or the serial device on the other end of the cable, an electrical arc\ncan occur. This could cause an explosion in hazardous location installations.",
+  "quote_page": 5,
+  "notes": "No - disconnecting serial cable with power applied in a hazardous location can cause an arc/explosion.",
+  "set": "public-50"
+ },
+ {
+  "id": "ml1100-q1",
+  "gold_pages": [
+   135
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "hardware/software major fault detected",
+    "hardware/software major fault"
+   ]
+  ],
+  "lookalikes": [
+   "Application fault",
+   "Hardware faulted",
+   "Operating system fault"
+  ],
+  "quote": "Power LED on and\nFAULT LED flashing\nRUN, FORCE, and\nFAULT LEDs all\nflashing\n\nApplication fault\n\nProcessor hardware error\nLoose wiring\nHardware/software major\nfault detected",
+  "quote_page": 135,
+  "notes": "GOLD DOUBT: the given anchor ('Hardware/software major') points to this phrase for the Power-LED-on/FAULT-flashing condition, but Table 34's flattened text order is also consistent with 'Application fault' being the error name for that LED pattern and 'Hardware/software major fault detected' belonging to the RUN/FORCE/FAULT-all-flashing row instead. Following the provided anchor as the intended answer.",
+  "set": "public-50",
+  "doubt": true
+ },
+ {
+  "id": "ml1100-q2",
+  "gold_pages": [
+   102
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "RTC data is lost"
+   ]
+  ],
+  "lookalikes": [
+   "RTC operates normally"
+  ],
+  "quote": "If the RTC battery is low and the controller is powered, the RTC operates normally. If the\ncontroller power is removed and the RTC battery is low, RTC data is lost.",
+  "quote_page": 102,
+  "notes": "If battery low AND power removed -> RTC data is lost (if powered, RTC still operates normally - lookalike contrast).",
+  "set": "public-50"
+ },
+ {
+  "id": "ml1100-q3",
+  "gold_pages": [
+   141
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "ControlFLASH Upgrade Kit",
+    "ControlFLASH"
+   ],
+   [
+    "through the communication port on the controller"
+   ]
+  ],
+  "lookalikes": [
+   "DMK Extraction Tool"
+  ],
+  "quote": "The operating system (OS) can be upgraded through the communication port on the controller.\nTo download a new operating system, you must have the ControlFLASH™ Upgrade Kit, which is\ndescribed in the ControlFLASH User Manual, publication 1756-UM105.",
+  "quote_page": 141,
+  "notes": "OS upgrade via ControlFLASH Upgrade Kit through the controller's communication port.",
+  "set": "public-50"
+ },
+ {
+  "id": "ml1100-q4",
+  "gold_pages": [
+   131
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "do not incinerate or dispose of lithium batteries in general trash collection"
+   ],
+   [
+    "packaged and shipped in accordance with transportation regulations to a proper disposal site"
+   ]
+  ],
+  "lookalikes": [
+   "Do not charge the batteries"
+  ],
+  "quote": "Disposal\nATTENTION: Do not incinerate or dispose of lithium batteries in general trash\ncollection. Explosion or violent rupture is possible. Batteries should be\ncollected for disposal in a manner to prevent against short-circuiting,\ncompacting, or destruction of case integrity and hermetic seal.",
+  "quote_page": 131,
+  "notes": "Never incinerate/general-trash lithium batteries; ship per transportation regulations to a proper disposal site.",
+  "set": "public-50"
+ },
+ {
+  "id": "ml1100-q5",
+  "gold_pages": [
+   159
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "supports duplicate IP address detection"
+   ],
+   [
+    "checks every 2 minutes"
+   ]
+  ],
+  "lookalikes": [
+   "series B firmware"
+  ],
+  "quote": "The MicroLogix 1100 controller series B firmware supports duplicate IP address detection.\nWhen you change the IP address or connect one of the MicroLogix controllers to an\nEtherNet/IP network, the MicroLogix 1100 controller checks to make sure that the IP addr",
+  "quote_page": 159,
+  "notes": "Yes (series B firmware) - checks every 2 minutes for a duplicate IP address conflict.",
+  "set": "public-50"
+ },
+ {
+  "id": "smcflex-q1",
+  "gold_pages": [
+   104
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "shorted power module",
+    "shorted SCR"
+   ],
+   [
+    "replace power module if necessary"
+   ]
+  ],
+  "lookalikes": [
+   "Open gate circuitry",
+   "Loose gate lead"
+  ],
+  "quote": "• Verify power quality\n• Check for shorted SCR, replace power module if necessary",
+  "quote_page": 104,
+  "notes": "Shorted SCR fault (4,5,6) cause = shorted power module; fix = check for shorted SCR, replace power module if necessary.",
+  "set": "public-50"
+ },
+ {
+  "id": "smcflex-q2",
+  "gold_pages": [
+   106
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "decrease current limit setting"
+   ],
+   [
+    "lower kickstart time or turn off"
+   ]
+  ],
+  "lookalikes": [
+   "Increase current limit setting",
+   "Increase kickstart time or turn off"
+  ],
+  "quote": "• Decrease current limit setting\nAccelerates too fast\n• Current limit setting\n• Lower kickstart time or turn off\n• Kickstart\n• Confirm Motor FLC (Parameter 46) is set properly",
+  "quote_page": 106,
+  "notes": "For 'Accelerates too fast': decrease current limit setting and/or lower (or turn off) kickstart time; confirm Motor FLC (Parameter 46).",
+  "set": "public-50"
+ },
+ {
+  "id": "smcflex-q3",
+  "gold_pages": [
+   103
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "hazardous voltage is present in the motor circuit even when the SMC Flex controller is off"
+   ],
+   [
+    "disconnect main power before working on the controller"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "SHOCK HAZARD: Hazardous voltage is present in the motor circuit even\nwhen the SMC Flex™ controller is off. To avoid shock hazard, disconnect\nmain power before working on the controller, motor, and control devices (for\nexample, Start-Stop push buttons).",
+  "quote_page": 103,
+  "notes": "Yes - hazardous voltage is present even when the SMC Flex controller is off.",
+  "set": "public-50"
+ },
+ {
+  "id": "smcflex-q4",
+  "gold_pages": [
+   17
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "Off, 10, 15, 20, 30"
+   ]
+  ],
+  "lookalikes": [
+   "Manual – Auto"
+  ],
+  "quote": "Parameter No.\n44\n47\n46\n45\n\nParameter\nOverload Class\nOverload Reset\nMotor FLC\nService Factor\n\nRange\nOff, 10, 15, 20, 30\nManual – Auto\n1.0…2200 A\n0.01…1.99",
+  "quote_page": 17,
+  "notes": "Overload Class (Parameter 44) range = Off, 10, 15, 20, 30. Overload Reset's Manual-Auto range is a different parameter (lookalike).",
+  "set": "public-50"
+ },
+ {
+  "id": "smcflex-q5",
+  "gold_pages": [
+   105
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "controller memory corrupted"
+   ],
+   [
+    "modify a parameter or load parameter defaults"
+   ]
+  ],
+  "lookalikes": [
+   "Hall ID",
+   "Incorrect power module has been installed"
+  ],
+  "quote": "NVS Error\n\n39\n\n• Controller memory corrupted",
+  "quote_page": 105,
+  "notes": "NVS Error (fault 39) cause = controller memory corrupted; solution (listed separately in the Possible Solutions column) = modify a parameter or load parameter defaults (preferred) and reload customer-specific parameters.",
+  "set": "public-50"
+ },
+ {
+  "id": "e3plus-q1",
+  "gold_pages": [
+   214
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "Ground Fault"
+   ],
+   [
+    "4"
+   ]
+  ],
+  "lookalikes": [
+   "Phase Loss",
+   "Stall"
+  ],
+  "quote": "Ground Fault\n\n—\n\n4\n\n—\n\n4\n\nYes\n\nYes",
+  "quote_page": 214,
+  "notes": "Trip code (short red flash) 4 = Ground Fault, per Table 9's sequential trip-code ordering.",
+  "set": "public-50",
+  "extra_pages": [
+   54
+  ]
+ },
+ {
+  "id": "e3plus-q2",
+  "gold_pages": [
+   113
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "5",
+    "30"
+   ]
+  ],
+  "lookalikes": [
+   "30",
+   "31",
+   "78"
+  ],
+  "quote": "29\nGet/Set\nUSINT\n2Chex-1-129\nOverload Setup\n—\n5\n30\n10",
+  "quote_page": 113,
+  "notes": "TRIP CLASS is Parameter Number 29 (first parameter block in Table 42); range is Min=5, Max=30 (Default=10), setting the max seconds for an overload trip at 6x rated current. | AUDIT: dropped ['29'] (parameter number, not asked).",
+  "set": "public-50",
+  "extra_pages": [
+   89
+  ]
+ },
+ {
+  "id": "e3plus-q3",
+  "gold_pages": [
+   115
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "1.0 seconds",
+    "1.0"
+   ]
+  ],
+  "lookalikes": [
+   "0",
+   "PL INHIBIT TIME"
+  ],
+  "quote": "34\nGet/Set\nUSINT\n2Chex-1-134\nAdvanced Setup\nSeconds\n0.1\n25.0\n1.0",
+  "quote_page": 115,
+  "notes": "PL TRIP DELAY (Parameter 34) default = 1.0 seconds. PL INHIBIT TIME (Parameter 33, default 0) is a different, adjacent parameter - lookalike.",
+  "set": "public-50",
+  "extra_pages": [
+   89
+  ]
+ },
+ {
+  "id": "e3plus-q4",
+  "gold_pages": [
+   217
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "actuating the TRIP/RESET button",
+    "TRIP/RESET button"
+   ],
+   [
+    "resetting a trip will not correct the cause for the trip"
+   ]
+  ],
+  "lookalikes": [
+   "Setting Parameter 30, OL/PTC ResetMode, to the “Automatic” selection"
+  ],
+  "quote": "Resetting a Trip\nATTENTION: Resetting a trip will not correct the cause\nfor the trip. Corrective action should be taken before\nresetting the trip.\n\nAn E3 Overload Relay trip condition can be reset by taking one of the following\nactions:\n1. Actuating the TRIP/RESET button on the E3 Overload Relay.",
+  "quote_page": 217,
+  "notes": "Reset by actuating the TRIP/RESET button (or other listed methods); resetting never corrects the trip's cause.",
+  "set": "public-50"
+ },
+ {
+  "id": "e3plus-q5",
+  "gold_pages": [
+   16
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "cause the starting contactor to drop out and stop motor operation"
+   ]
+  ],
+  "lookalikes": [
+   "the trip relay\ncontact will close"
+  ],
+  "quote": "ATTENTION: The Test function associated with the Test/Reset button is\nenabled by default. Activating the Test function while a motor is operating\nwill cause the starting contactor to drop out and stop motor operation.",
+  "quote_page": 16,
+  "notes": "Pressing Test/Reset (Test function, enabled by default) while motor runs drops out the starting contactor and stops the motor.",
+  "set": "public-50"
+ },
+ {
+  "id": "smc50-q1",
+  "gold_pages": [
+   211
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "wait for the hour to expire, then restart the motor"
+   ],
+   [
+    "reduce the actual number of starts per hour or increase the programmed start time"
+   ]
+  ],
+  "lookalikes": [
+   "Exp Removed",
+   "Exp Incompat"
+  ],
+  "quote": "Wait for the hour to expire, then restart the motor\n• The number of starts within the last hour has\n• Reduce the actual number of starts per hour or increase the\nexceeded the programmed value\nprogrammed start time (if allowed by the application) and",
+  "quote_page": 211,
+  "notes": "Starts per Hour fault 29: wait for the hour to expire then restart, or reduce starts/hr or increase programmed start time; can also disable the feature.",
+  "set": "public-50"
+ },
+ {
+  "id": "smc50-q2",
+  "gold_pages": [
+   210
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "controller ventilation blocked",
+    "fan failure",
+    "ambient temperature limit exceeded"
+   ],
+   [
+    "check for proper controller ventilation",
+    "wait for controller to cool"
+   ]
+  ],
+  "lookalikes": [
+   "Open Bypass",
+   "Control voltage is low"
+  ],
+  "quote": "SCR Overtemp or PTC\nPower Pole\n\n10 or 60\n\nIn All Modes\n\n• Controller ventilation blocked\n• Controller duty cycle exceeded\n• Fan failure\n• Ambient temperature limit exceeded\n• Failed thermistor",
+  "quote_page": 210,
+  "notes": "Fault 10/60 SCR Overtemp or PTC Power Pole: caused by blocked ventilation, excessive duty cycle, fan failure, high ambient temp, or failed thermistor; fix = check ventilation, duty cycle, fan, cool down, or replace module.",
+  "set": "public-50"
+ },
+ {
+  "id": "smc50-q3",
+  "gold_pages": [
+   104
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "hazardous voltages are present at the load terminals of the power module even when the controller is turned off"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "When an isolation contactor is\nnot used, hazardous voltages are present at the load terminals of the power module even when\nthe controller is turned off. you must attach warning labels that indicate this hazard to the\nmotor terminal box, the controller enclosure, and the control station.",
+  "quote_page": 104,
+  "notes": "Yes - without an isolation contactor, load terminals stay hazardous-live even with the controller off; warning labels are required.",
+  "set": "public-50"
+ },
+ {
+  "id": "smc50-q4",
+  "gold_pages": [
+   212
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "abnormally high reactive (+MVAR) power produced by the motor"
+   ],
+   [
+    "repair/replace the condition that caused the high +MVAR power draw"
+   ]
+  ],
+  "lookalikes": [
+   "Un Pwr Reac+",
+   "45",
+   "Abnormally reduced reactive (+MVAR) power"
+  ],
+  "quote": "Repair/replace the condition that caused the high +MVAR\n• Abnormally high reactive (+MVAR) power\npower draw\nproduced by the motor\n• Modify the programmed fault/alarm parameters to better suit\n• Programmed settings are incorrect for the\nthe application\napplication\n• Disable the fault/alarm feature",
+  "quote_page": 212,
+  "notes": "Fault 46 Ov Pwr Reac+ = abnormally high reactive (+MVAR) power produced by the motor; fix = repair/replace the cause, adjust fault/alarm parameters, or disable the feature. Fault 45 (Un Pwr Reac+) is the opposite-direction fault - lookalike.",
+  "set": "public-50"
+ },
+ {
+  "id": "smc50-q5",
+  "gold_pages": [
+   215
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "disconnect main and control power"
+   ],
+   [
+    "greater than 5,000 Ω",
+    "5,000 ohms"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "ATTENTION: To avoid shock hazard, disconnect main and control power\nbefore working on the controller, motor, or control devices such as Start/\nStop push buttons.",
+  "quote_page": 215,
+  "notes": "Must disconnect BOTH main and control power first. Then (Shorted SCR Test, later on same page): measure resistance between line and load terminals of each phase (L1-T1, L2-T2, L3-T3) - should read greater than 5,000 ohms.",
+  "set": "public-50"
+ },
+ {
+  "id": "tq-01",
+  "gold_pages": [
+   64
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "100V…120V AC, 1 A",
+    "100-120V AC, 1A",
+    "100…120V AC, 1 A"
+   ]
+  ],
+  "lookalikes": [
+   "200…240V AC, 0.5 A",
+   "24A @ 132V for 10 ms",
+   "40A @ 263V for 10 ms",
+   "24V DC, 1.6 A"
+  ],
+  "quote": "100V…120V AC, 1 A\n200…240V AC, 0.5 A",
+  "quote_page": 64,
+  "notes": "Follow-up to a prior voltage question; anchor pins the max current to the 100-120V AC line (1 A), vs 0.5A at 200-240V AC.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-02",
+  "gold_pages": [
+   57
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "20.4…26.4V DC",
+    "20.4-26.4V DC",
+    "20.4 to 26.4V DC"
+   ]
+  ],
+  "lookalikes": [
+   "85…263V",
+   "10.8V…13.2V DC",
+   "11.4V...26.4V DC"
+  ],
+  "quote": "Supply voltage range 85…263V 20.4…26.4V DC 10.8V…13.2V DC 11.4V...26.4V DC",
+  "quote_page": 57,
+  "notes": "2080-LC10-12QWB is the second column in the General table; 20.4…26.4V DC is directly under it.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-03",
+  "gold_pages": [],
+  "not_in_manual": true,
+  "fact_type": "abstain",
+  "key_values": [],
+  "lookalikes": [],
+  "quote": "",
+  "quote_page": null,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-04",
+  "gold_pages": [
+   57
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "85…263V",
+    "100…240V AC, 50/60 Hz",
+    "100…240V AC",
+    "20.4…26.4V DC",
+    "10.8V…13.2V DC",
+    "11.4V...26.4V DC"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "Voltage range 100…240V AC, 50/60 Hz 24V DC\nClass 2",
+  "quote_page": 57,
+  "notes": "Generic 'Micro810' question resolves to the AC-powered 2080-LC10-12AWA variant's nominal Voltage range row (as curated by the anchor), distinct from the 'Supply voltage range' row (85…263V) for the same column. | AUDIT (Docling): p.57 is a 4-column model table (AWA, QWB, DWD, QBB); plain text dropped the AWA header so values looked shifted. QWB = 20.4…26.4V DC. The question names no model, so any model's supply voltage stated correctly is correct.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-05",
+  "gold_pages": [],
+  "not_in_manual": true,
+  "fact_type": "abstain",
+  "key_values": [],
+  "lookalikes": [],
+  "quote": "",
+  "quote_page": null,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-06",
+  "gold_pages": [
+   57
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "85…263V",
+    "100…240V AC, 50/60 Hz",
+    "100…240V AC",
+    "20.4…26.4V DC",
+    "10.8V…13.2V DC",
+    "11.4V...26.4V DC"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "Voltage range 100…240V AC, 50/60 Hz 24V DC\nClass 2",
+  "quote_page": 57,
+  "notes": "Duplicate phrasing of tq-04. | AUDIT (Docling): p.57 is a 4-column model table (AWA, QWB, DWD, QBB); plain text dropped the AWA header so values looked shifted. QWB = 20.4…26.4V DC. The question names no model, so any model's supply voltage stated correctly is correct.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-07",
+  "gold_pages": [
+   62
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "0…55 °C (32…131 °F)",
+    "0-55°C (32-131°F)",
+    "0 to 55 °C"
+   ]
+  ],
+  "lookalikes": [
+   "-40…85 °C (-40…185 °F)",
+   "55 °C (131 °F)"
+  ],
+  "quote": "Temperature, operating IEC 60068-2-1 (Test Ad, Operating Cold),\nIEC 60068-2-2 (Test Bd, Operating Dry Heat),\nIEC 60068-2-14 (Test Nb, Operating Thermal Shock):\n0…55 °C (32…131 °F)",
+  "quote_page": 62,
+  "notes": "Storage temp (-40…85°C) and surrounding-air-max (55°C) are close lookalikes for the operating range.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-12",
+  "gold_pages": [
+   16
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "RFI Jumper Must Be Removed",
+    "must be removed"
+   ],
+   [
+    "Grounding at a Midpoint in a Polygonal Configuration"
+   ]
+  ],
+  "lookalikes": [
+   "The RFI jumper should be left in place for a symmetrically grounded system."
+  ],
+  "quote": "RFI Jumper Must Be Removed (Asymmetric Ground / Corner Grounded TN Systems)\n1) Grounding at a Corner of a Triangle Configuration 2) Grounding at a Midpoint in a Polygonal Configuration",
+  "quote_page": 16,
+  "notes": "A high-leg delta grounds at the midpoint of one winding, matching condition (2) which requires removal.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-13",
+  "gold_pages": [
+   14
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "Remove the MOV-PLATE by hand; no screws need to be loosened.",
+    "MOV-PLATE"
+   ]
+  ],
+  "lookalikes": [
+   "Frames a~c\nScrew Torque: 8~10 kg·cm [6.9~8.7 lb·in]\nLoosen the screw indicated in the view below"
+  ],
+  "quote": "Frames D0~g\nRemove the MOV-PLATE by hand; no screws need to be loosened.",
+  "quote_page": 14,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-14",
+  "gold_pages": [
+   15,
+   14,
+   16,
+   17
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "do not remove the rFi jumper while power is applied to the gs4 drive",
+    "Do not remove the RFI jumper while power is applied"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "warning: do not remove the rFi jumper while power is applied to the gs4 drive.",
+  "quote_page": 15,
+  "notes": "Safety-relevant: the manual directly forbids the premise of the question (removing it while powered); correct answer is to de-energize first and wait 5 minutes for DC bus caps to discharge (p.17 Danger notice).",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-15",
+  "gold_pages": [
+   14
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "RFI Jumper: The GS4 drive may emit electrical noise.",
+    "enables\nan internal filter to supress radio frequency interference on the power line."
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "RFI Jumper: The GS4 drive may emit electrical noise. The RFI jumper, when left in place, enables\nan internal filter to supress radio frequency interference on the power line.",
+  "quote_page": 14,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-16",
+  "gold_pages": [
+   16,
+   17
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "OC at Accel",
+    "ocA"
+   ]
+  ],
+  "lookalikes": [
+   "OC at decel",
+   "OC at Speed",
+   "OC at Stop"
+  ],
+  "quote": "OC at Accel\n1\nOver-current\nduring acceleration\n(Output current\nexceeds\ntriple rated\ncurrent during\nacceleration�)\n1) Short circuit at motor output: Check for\npossible poor insulation at the output�\n2) Acceleration Time too short: Increase the\nAcceleration Time",
+  "quote_page": 16,
+  "notes": "'GS4 oC' is not an exact fault abbreviation (real codes are ocA/ocd/ocn/ocS); curated anchor resolves it to ocA, OC at Accel.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-17",
+  "gold_pages": [
+   19
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "Check if the motor is overloaded.",
+    "motor is overloaded"
+   ]
+  ],
+  "lookalikes": [
+   "EoL1",
+   "EoL2",
+   "oH3",
+   "ot1",
+   "ot2"
+  ],
+  "quote": "LOCAL\nFault\noL\nOverload\n21\nOverload\nThe GS4 drive\ndetects excessive\ndrive output\ncurrent�\n1) Check if the motor is overloaded.\n2) Use the next higher HP drive model. no",
+  "quote_page": 19,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-18",
+  "gold_pages": [
+   16
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "Check the wiring connections between the\nGS4 drive and motor for possible short\ncircuits, also to ground",
+    "Check the wiring connections"
+   ]
+  ],
+  "lookalikes": [
+   "occ",
+   "IGBT Short Ckt",
+   "ocS"
+  ],
+  "quote": "1) Check the wiring connections between the\nGS4 drive and motor for possible short\ncircuits, also to ground�\n2) Check whether the IGBT power module is\ndamaged�\n3) Check for possible poor insulation at the\noutput",
+  "quote_page": 16,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-19",
+  "gold_pages": [
+   17
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "If DC BUS over-voltage due to regenerative\nvoltage, please increase the Deceleration\nTime or add an optional brake resistor",
+    "increase the Deceleration Time or add an optional brake resistor"
+   ]
+  ],
+  "lookalikes": [
+   "ovA",
+   "OV at Accel",
+   "ovn",
+   "OV at Speed",
+   "ovS",
+   "OV at Stop"
+  ],
+  "quote": "3) If DC BUS over-voltage due to regenerative\nvoltage, please increase the Deceleration\nTime or add an optional brake resistor",
+  "quote_page": 17,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-20",
+  "gold_pages": [
+   18
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "Check Power Source Input if all 3 input phases\nare connected without loose contacts",
+    "check if all 3 input phases are connected"
+   ]
+  ],
+  "lookalikes": [
+   "Lvn",
+   "LV at Speed",
+   "LvS",
+   "LV at Stop",
+   "oH1"
+  ],
+  "quote": "OrP\nInput Phase loss\n15 Output Ripple /\nPhase Loss\nCheck Power Source Input if all 3 input phases\nare connected without loose contacts� For\nmodels 40hp and above, please check if the fuse\nfor the AC input circuit is blown�",
+  "quote_page": 18,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-21",
+  "gold_pages": [
+   18,
+   9
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "Check the fan and clean it."
+   ],
+   [
+    "Make sure that the ventilation holes are\nnot obstructed."
+   ]
+  ],
+  "lookalikes": [
+   "oH2",
+   "Cap Over Heat",
+   "tH1o"
+  ],
+  "quote": "1) Ensure that the ambient temperature falls\nwithin the specified temperature range.\n2) Make sure that the ventilation holes are\nnot obstructed.\n3) Remove any foreign objects from the\nheatsinks and check for possible dirty heat\nsink fins.\n4) Check the fan and clean it.",
+  "quote_page": 18,
+  "notes": "Page 9 is the earlier WARNING-level oH1 entry; page 18 has the FAULT-level corrective actions the question asks for.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-22",
+  "gold_pages": [
+   17
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "DC BUS voltage\nis less than P6",
+    "less than P6"
+   ],
+   [
+    "Check for possible sudden load"
+   ]
+  ],
+  "lookalikes": [
+   "Lvd",
+   "LV at Decel",
+   "Lvn",
+   "LV at Speed",
+   "LvS",
+   "LV at Stop"
+  ],
+  "quote": "LvA\nLV at Accel\n11\nDC BUS voltage\nis less than P6�35\nduring acceleration\n1) Check if the input voltage is normal�\n2) Check for possible sudden load� no",
+  "quote_page": 17,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-23",
+  "gold_pages": [
+   22,
+   8
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "P9�05",
+    "P9.05",
+    "P9·05"
+   ],
+   [
+    "restore the\ncommunication between the host computer and\nthe drive with messaging set lower/faster",
+    "restore the communication"
+   ]
+  ],
+  "lookalikes": [
+   "P8�13",
+   "P8�14"
+  ],
+  "quote": "the drive will trigger the CE10\nfault�\nCorrective action is to restore the\ncommunication between the host computer and\nthe drive with messaging set lower/faster than\nthe time set in P9�05�",
+  "quote_page": 22,
+  "notes": "P8.13/P8.14 are the sibling CP10 (keypad) timeout parameters, a strong lookalike for the CE10 (host/PLC) timeout parameter P9.05.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-24",
+  "gold_pages": [],
+  "not_in_manual": true,
+  "fact_type": "abstain",
+  "key_values": [],
+  "lookalikes": [],
+  "quote": "",
+  "quote_page": null,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-27",
+  "gold_pages": [
+   235,
+   238
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "Reserves 64 words for block transfer data",
+    "64 words",
+    "default 64-word file"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "Reserves 64 words for block transfer data. The block transfer\nmodule transfers the maximum words it can handle.",
+  "quote_page": 235,
+  "notes": "Page 238 (not directly in this question's page map but same manual) also restates: 'If you specify a 0 ... the processor lets the block transfer module determine the number of words ... and creates a default 64-word file.' Both pages state the fact, so both are included.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-28",
+  "gold_pages": [
+   238
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "bit 12",
+    ".ER bit 12",
+    ".ER (bit 12)"
+   ]
+  ],
+  "lookalikes": [
+   "bit 11"
+  ],
+  "quote": "If these numbers do\nnot match, the processor sets the .ER bit  bit 12 .",
+  "quote_page": 238,
+  "notes": "Extraction lost the parentheses around '12'. 'bit 11' is .CO (Continue) in the same table (p.237) and a plausible lookalike; literal 'Error .ER (bit 11)' from other instructions' tables does not appear in the provided pages, so it is not used as a lookalike per the literal-match rule.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-29",
+  "gold_pages": [
+   47
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "4 CAN_H",
+    "pin 4 CAN_H",
+    "pin 4: CAN_H",
+    "pin 4 is CAN_H",
+    "4: CAN_H",
+    "4 = CAN_H",
+    "pin 4 = CAN_H",
+    "4 - CAN_H"
+   ],
+   [
+    "5 CAN_L",
+    "pin 5 CAN_L",
+    "pin 5: CAN_L",
+    "pin 5 is CAN_L",
+    "5: CAN_L",
+    "5 = CAN_L",
+    "pin 5 = CAN_L",
+    "5 - CAN_L"
+   ],
+   [
+    "3 CAN_GND",
+    "pin 3 CAN_GND",
+    "pin 3: CAN_GND",
+    "pin 3 is CAN_GND",
+    "3: CAN_GND",
+    "3 = CAN_GND",
+    "pin 3 = CAN_GND",
+    "3 - CAN_GND"
+   ]
+  ],
+  "lookalikes": [
+   "1 (CAN_SHLD) optional CAN shielding",
+   "2 (CAN_V+) optional positive power supply",
+   "3 CAN_GND 0 V"
+  ],
+  "quote": "3 CAN_GND 0 V\n4 CAN_H CAN_H bus line\n5 CAN_L CAN_L bus line",
+  "quote_page": 47,
+  "notes": " | AUDIT 2026-10-20 (orchestrator): a pinout answer must give pin numbers; CAN_H alone is not a pinout.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-30",
+  "gold_pages": [
+   34
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "R > 65 Ω",
+    "65 Ω",
+    "missing termination resistor or a broken wire"
+   ],
+   [
+    "R < 50 Ω",
+    "50 Ω",
+    "redundant termination resistor or a short\ncircuit between CAN signals"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "1 Verify the resistance between CAN_L and CAN_H:\n if R > 65 Ω the reason may be a missing termination resistor or a broken wire\n if R < 50 Ω the reason may be a redundant termination resistor or a short\ncircuit between CAN signals",
+  "quote_page": 34,
+  "notes": "120Ω (> 65Ω threshold) indicates a missing termination resistor/broken wire, not OK for a correctly terminated bus; 40Ω (< 50Ω threshold) indicates a redundant termination resistor or short circuit.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-31",
+  "gold_pages": [
+   33,
+   59
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "COB ID 700h + node ID",
+    "700 hex + node ID",
+    "700h + node ID"
+   ]
+  ],
+  "lookalikes": [
+   "128 (80 hex)",
+   "COB ID of the SYNC object is set to the value 128 (80 hex) by default",
+   "(80 hex) + node ID"
+  ],
+  "quote": "Boot-Up Message\nThe boot-up message is transmitted with the COB ID 700h + node ID and one\ndata byte (00h).",
+  "quote_page": 33,
+  "notes": "Page 59 restates the same fact in the Fieldbus Function Test section ('boot-up message (COB ID 700 hex + node ID and 1 data byte with the content 00 hex)').",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-32",
+  "gold_pages": [
+   17,
+   20,
+   21
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "1408 (580 hex) + node ID",
+    "580 hex + node ID"
+   ],
+   [
+    "1536 (600 hex) + node ID",
+    "600 hex + node ID"
+   ]
+  ],
+  "lookalikes": [
+   "128 (80 hex) + node ID",
+   "384 (180 hex) + node ID",
+   "512 (200 hex) + node ID",
+   "1792 (700 hex) + node ID"
+  ],
+  "quote": "T_SDO 1 0 1 1 x x x x x x x 1408 (580 hex) + node ID -\nR_SDO 1 1 0 0 x x x x x x x 1536 (600 hex) + node ID -",
+  "quote_page": 17,
+  "notes": "Pages 20/21 discuss the SDO message structure (COB ID + data frame, command codes) but the numeric COB-ID values themselves only appear in the page-17 table.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-33",
+  "gold_pages": [],
+  "not_in_manual": true,
+  "fact_type": "abstain",
+  "key_values": [],
+  "lookalikes": [],
+  "quote": "",
+  "quote_page": null,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-34",
+  "gold_pages": [
+   102
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "Addr_CAN_OB"
+   ],
+   [
+    "dip 1 and 2",
+    "dipswitches 1 and 2",
+    "dip switches 1 and 2",
+    "switches 1 and 2",
+    "dipswitches (only dip 1 and 2)",
+    "only\ndip 1 and 2"
+   ]
+  ],
+  "lookalikes": [
+   "The address is given by the sum of the value of the two 6 and 4-position dipswitches (255 addresses)."
+  ],
+  "quote": "The addressing comprises the sum of parameter Addr_CAN_OB plus the composite value of the 4-position dipswitches (only\ndip 1 and 2).",
+  "quote_page": 102,
+  "notes": "The 6-position DIP addressing scheme (DIP4-6) in the TM172 docs (tq-37) is a lookalike for a different expansion module family. | AUDIT: split the verbatim sentence into its two facts so a correct paraphrase matches.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-35",
+  "gold_pages": [
+   94
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "30 m (98.42 ft)",
+    "30 m",
+    "98.42 ft"
+   ]
+  ],
+  "lookalikes": [
+   "60 m (196.85 ft)"
+  ],
+  "quote": "500 kBd 30 m (98.42 ft) 60 m (196.85 ft)",
+  "quote_page": 94,
+  "notes": "60m (196.85ft) is the max length for the TM171ACAN module, not the embedded CAN bus asked about.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-36",
+  "gold_pages": [
+   93,
+   94
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "120 Ω 1/4 W\ntermination resistances between the CAN_H and CAN_L terminals on each of the\ntwo ends of the bus",
+    "120 Ω termination resistances at each end"
+   ],
+   [
+    "enable those embedded on the expansion modules",
+    "embedded on the expansion modules"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "The network must have a bus daisy chain topology and must have 120 Ω 1/4 W\ntermination resistances between the CAN_H and CAN_L terminals on each of the\ntwo ends of the bus or enable those embedded on the expansion modules.",
+  "quote_page": 93,
+  "notes": "Page 94 supplies the complementary detail (DIP switch asserts the 120Ω termination on an expansion module).",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-37",
+  "gold_pages": [
+   145,
+   94,
+   158
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "1…127",
+    "1 to 127",
+    "1-127"
+   ]
+  ],
+  "lookalikes": [
+   "Addr_RS485_OB 15774 WORD - Y On-board RS-485 serial address 0…255 1 Num"
+  ],
+  "quote": "Addr_CAN_OB 15780 WORD - Y On-board CAN Expansion bus serial\naddress\n1…127 1 Num",
+  "quote_page": 145,
+  "notes": "Page 158 repeats the identical parameter-table row (expansion module parameters); page 94 only mentions the parameter name/default conceptually without the range.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-38",
+  "gold_pages": [
+   55
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "connectors marked TER and AUX are 8-pin mini-DIN which can be locked",
+    "8-pin mini-DIN"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "The terminal port connectors marked TER and AUX are 8-pin mini-DIN which can be locked.",
+  "quote_page": 55,
+  "notes": "GOLD DOUBT: the page describes the connector TYPE (8-pin mini-DIN, lockable) and the /DTP signal mode table, but does not give a literal pin-by-pin signal table on this page as the question phrasing ('pinout') implies.",
+  "set": "real-36",
+  "doubt": true
+ },
+ {
+  "id": "tq-39",
+  "gold_pages": [
+   197,
+   184
+  ],
+  "not_in_manual": false,
+  "fact_type": "typed",
+  "key_values": [
+   [
+    "RTU only"
+   ],
+   [
+    "Master Yes Yes Yes Yes No"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "Master Yes Yes Yes Yes No\nSlave Yes Yes Yes Yes Yes\nCurrent loop (PSR) No Yes No No No\nTransmission speed Yes Yes Yes Yes Yes\nDelay between characters Yes Yes Yes Yes Yes\nData  ASCII\n RTU\n ASCII\n RTU\n ASCII\n RTU\n ASCII\n RTU\nRTU only",
+  "quote_page": 197,
+  "notes": "The Terminal Port column (last column) supports Modbus Slave only (Master=No), data format RTU only. Page 184 gives the general hardware/software compatibility context for Modbus on Premium PLCs.",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-40",
+  "gold_pages": [
+   112
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "there is a detected I/O error\nas if a wire is broken",
+    "detected I/O error as if a wire is broken"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "NOTE: If nothing is connected on a BMX AMI 0810 and BMX AMI 0810H analog module\nand if channels are configured (range 4...20 mA or 1...5 V), there is a detected I/O error\nas if a wire is broken.",
+  "quote_page": 112,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-41",
+  "gold_pages": [
+   250
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "the corresponding line is grayed out, the 0 value is sent back to the\napplication program",
+    "0 value is sent back"
+   ],
+   [
+    "status indications specified for this channel (range overflow, etc.)\nare inactive",
+    "status indications ... are inactive"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "If a channel is not in use, the corresponding line is grayed out, the 0 value is sent back to the\napplication program, and status indications specified for this channel (range overflow, etc.)\nare inactive.",
+  "quote_page": 250,
+  "notes": "",
+  "set": "real-36"
+ },
+ {
+  "id": "tq-42",
+  "gold_pages": [
+   119,
+   18,
+   19
+  ],
+  "not_in_manual": false,
+  "fact_type": "prose",
+  "key_values": [
+   [
+    "Disconnect voltage supplying sensors and pre-actuators",
+    "disconnect voltage"
+   ],
+   [
+    "terminal block is still connected to the shield bar"
+   ]
+  ],
+  "lookalikes": [],
+  "quote": "While mounting / removing the modules:\n• Make sure that each terminal block is still connected to the shield bar.\n• Disconnect voltage supplying sensors and pre-actuators.\nFailure to follow these instructions will result in death or serious injury.",
+  "quote_page": 119,
+  "notes": "Safety-relevant: rack power to the module does NOT need to be removed (p.18, modules can be installed/removed without turning off rack power); what must be locked out/disconnected is the field-side voltage to sensors/pre-actuators, while keeping the terminal block connected to the shield bar.",
+  "set": "real-36"
+ }
+]

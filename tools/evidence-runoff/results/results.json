@@ -1,0 +1,3149 @@
+{
+ "split_sizes": {
+  "dev": 31,
+  "heldout": 600,
+  "adv_heldout": 17
+ },
+ "label_counts": {
+  "dev": {
+   "prose_match": 4,
+   "prose_nomatch": 6,
+   "correct_supported": 5,
+   "abstain": 7,
+   "safety_stop": 1,
+   "wrong_fact_unlisted": 3,
+   "wrong_fact": 2,
+   "wrong_page": 3
+  },
+  "heldout": {
+   "correct_supported": 163,
+   "prose_nomatch": 179,
+   "prose_match": 110,
+   "safety_stop": 36,
+   "abstain": 103,
+   "typed_incomplete": 2,
+   "wrong_fact_unlisted": 2,
+   "correct_abstain": 5
+  }
+ },
+ "taus_dev_tuned": {
+  "cross-encoder_nli-MiniLM2-L6-H768": 0.01,
+  "cross-encoder_nli-deberta-v3-base": 0.0,
+  "cross-encoder_nli-deberta-v3-small": 0.0,
+  "emb": 0.62
+ },
+ "max_dev_false_flag": 0.1,
+ "validators": {
+  "V0 shipped gate": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 8,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.871,
+    "confusion": {
+     "abstain": {
+      "supported": 3,
+      "no_opinion": 4
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "supported": 4
+     },
+     "prose_nomatch": {
+      "supported": 6
+     },
+     "safety_stop": {
+      "supported": 1
+     },
+     "wrong_fact": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "supported": 3
+     },
+     "wrong_page": {
+      "supported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 2,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.908,
+    "confusion": {
+     "abstain": {
+      "supported": 52,
+      "no_opinion": 51
+     },
+     "correct_abstain": {
+      "supported": 1,
+      "no_opinion": 4
+     },
+     "correct_supported": {
+      "supported": 163
+     },
+     "prose_match": {
+      "supported": 110
+     },
+     "prose_nomatch": {
+      "supported": 179
+     },
+     "safety_stop": {
+      "supported": 36
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "supported": 2
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 17,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 9
+     },
+     "wrong_page": {
+      "supported": 8
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 19,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.911,
+    "confusion": {
+     "abstain": {
+      "supported": 52,
+      "no_opinion": 51
+     },
+     "correct_abstain": {
+      "supported": 1,
+      "no_opinion": 4
+     },
+     "correct_supported": {
+      "supported": 163
+     },
+     "prose_match": {
+      "supported": 110
+     },
+     "prose_nomatch": {
+      "supported": 179
+     },
+     "safety_stop": {
+      "supported": 36
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 9
+     },
+     "wrong_fact_unlisted": {
+      "supported": 2
+     },
+     "wrong_page": {
+      "supported": 8
+     }
+    }
+   }
+  },
+  "V1 typed": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 7,
+    "catch_rate": 0.875,
+    "bad_marked_supported": 0,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.484,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 6,
+      "unsupported": 1
+     },
+     "correct_supported": {
+      "supported": 4,
+      "no_opinion": 1
+     },
+     "prose_match": {
+      "unsupported": 1,
+      "supported": 1,
+      "no_opinion": 2
+     },
+     "prose_nomatch": {
+      "no_opinion": 5,
+      "supported": 1
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "unsupported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 2,
+      "no_opinion": 1
+     },
+     "wrong_page": {
+      "unsupported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 1,
+    "catch_rate": 0.5,
+    "bad_marked_supported": 1,
+    "false_flags": 17,
+    "false_flag_rate": 0.104,
+    "coverage": 0.295,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 97,
+      "supported": 6
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "unsupported": 17,
+      "supported": 105,
+      "no_opinion": 41
+     },
+     "prose_match": {
+      "no_opinion": 91,
+      "supported": 10,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "no_opinion": 152,
+      "unsupported": 4,
+      "supported": 23
+     },
+     "safety_stop": {
+      "no_opinion": 36
+     },
+     "typed_incomplete": {
+      "supported": 1,
+      "no_opinion": 1
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 11,
+    "catch_rate": 0.647,
+    "bad_marked_supported": 5,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 0.941,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_page": {
+      "no_opinion": 1,
+      "unsupported": 7
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 12,
+    "catch_rate": 0.632,
+    "bad_marked_supported": 6,
+    "false_flags": 17,
+    "false_flag_rate": 0.104,
+    "coverage": 0.313,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 97,
+      "supported": 6
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "unsupported": 17,
+      "supported": 105,
+      "no_opinion": 41
+     },
+     "prose_match": {
+      "no_opinion": 91,
+      "supported": 10,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "no_opinion": 152,
+      "unsupported": 4,
+      "supported": 23
+     },
+     "safety_stop": {
+      "no_opinion": 36
+     },
+     "typed_incomplete": {
+      "supported": 1,
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     },
+     "wrong_page": {
+      "no_opinion": 1,
+      "unsupported": 7
+     }
+    }
+   }
+  },
+  "V1b typed+join (post-hoc)": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 7,
+    "catch_rate": 0.875,
+    "bad_marked_supported": 0,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.484,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 6,
+      "unsupported": 1
+     },
+     "correct_supported": {
+      "supported": 4,
+      "no_opinion": 1
+     },
+     "prose_match": {
+      "unsupported": 1,
+      "supported": 1,
+      "no_opinion": 2
+     },
+     "prose_nomatch": {
+      "no_opinion": 5,
+      "supported": 1
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "unsupported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 2,
+      "no_opinion": 1
+     },
+     "wrong_page": {
+      "unsupported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 1,
+    "catch_rate": 0.5,
+    "bad_marked_supported": 1,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.295,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 97,
+      "supported": 6
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 110,
+      "no_opinion": 41,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "no_opinion": 91,
+      "supported": 10,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "no_opinion": 152,
+      "unsupported": 4,
+      "supported": 23
+     },
+     "safety_stop": {
+      "no_opinion": 36
+     },
+     "typed_incomplete": {
+      "supported": 1,
+      "no_opinion": 1
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 11,
+    "catch_rate": 0.647,
+    "bad_marked_supported": 5,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 0.941,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_page": {
+      "no_opinion": 1,
+      "unsupported": 7
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 12,
+    "catch_rate": 0.632,
+    "bad_marked_supported": 6,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.313,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 97,
+      "supported": 6
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 110,
+      "no_opinion": 41,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "no_opinion": 91,
+      "supported": 10,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "no_opinion": 152,
+      "unsupported": 4,
+      "supported": 23
+     },
+     "safety_stop": {
+      "no_opinion": 36
+     },
+     "typed_incomplete": {
+      "supported": 1,
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     },
+     "wrong_page": {
+      "no_opinion": 1,
+      "unsupported": 7
+     }
+    }
+   }
+  },
+  "V3 nli-MiniLM2-L6-H768": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 1,
+    "catch_rate": 0.125,
+    "bad_marked_supported": 7,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 2,
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "supported": 4
+     },
+     "prose_nomatch": {
+      "supported": 5,
+      "unsupported": 1
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "supported": 2,
+      "unsupported": 1
+     },
+     "wrong_page": {
+      "supported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 2,
+    "false_flags": 3,
+    "false_flag_rate": 0.018,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 30,
+      "unsupported": 1
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 160,
+      "unsupported": 3
+     },
+     "prose_match": {
+      "supported": 106,
+      "unsupported": 4
+     },
+     "prose_nomatch": {
+      "supported": 169,
+      "unsupported": 9,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "supported": 2
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 17,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 9
+     },
+     "wrong_page": {
+      "supported": 8
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 19,
+    "false_flags": 3,
+    "false_flag_rate": 0.018,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 30,
+      "unsupported": 1
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 160,
+      "unsupported": 3
+     },
+     "prose_match": {
+      "supported": 106,
+      "unsupported": 4
+     },
+     "prose_nomatch": {
+      "supported": 169,
+      "unsupported": 9,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 9
+     },
+     "wrong_fact_unlisted": {
+      "supported": 2
+     },
+     "wrong_page": {
+      "supported": 8
+     }
+    }
+   }
+  },
+  "V3 nli-deberta-v3-base": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 8,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 2,
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "supported": 4
+     },
+     "prose_nomatch": {
+      "supported": 6
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "supported": 3
+     },
+     "wrong_page": {
+      "supported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 2,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 163
+     },
+     "prose_match": {
+      "supported": 110
+     },
+     "prose_nomatch": {
+      "supported": 178,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "supported": 2
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 17,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 9
+     },
+     "wrong_page": {
+      "supported": 8
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 19,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 163
+     },
+     "prose_match": {
+      "supported": 110
+     },
+     "prose_nomatch": {
+      "supported": 178,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 9
+     },
+     "wrong_fact_unlisted": {
+      "supported": 2
+     },
+     "wrong_page": {
+      "supported": 8
+     }
+    }
+   }
+  },
+  "V3 nli-deberta-v3-small": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 8,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 2,
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "supported": 4
+     },
+     "prose_nomatch": {
+      "supported": 6
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "supported": 3
+     },
+     "wrong_page": {
+      "supported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 2,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 163
+     },
+     "prose_match": {
+      "supported": 110
+     },
+     "prose_nomatch": {
+      "supported": 178,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "supported": 2
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 17,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 9
+     },
+     "wrong_page": {
+      "supported": 8
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 19,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 163
+     },
+     "prose_match": {
+      "supported": 110
+     },
+     "prose_nomatch": {
+      "supported": 178,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 9
+     },
+     "wrong_fact_unlisted": {
+      "supported": 2
+     },
+     "wrong_page": {
+      "supported": 8
+     }
+    }
+   }
+  },
+  "V2 embedding": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 1,
+    "catch_rate": 0.125,
+    "bad_marked_supported": 7,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 2,
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "supported": 3,
+      "unsupported": 1
+     },
+     "prose_nomatch": {
+      "supported": 6
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "supported": 3
+     },
+     "wrong_page": {
+      "unsupported": 1,
+      "supported": 2
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 0,
+    "catch_rate": 0.0,
+    "bad_marked_supported": 2,
+    "false_flags": 9,
+    "false_flag_rate": 0.055,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "unsupported": 9,
+      "supported": 154
+     },
+     "prose_match": {
+      "supported": 99,
+      "unsupported": 11
+     },
+     "prose_nomatch": {
+      "supported": 171,
+      "unsupported": 7,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "supported": 2
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 3,
+    "catch_rate": 0.176,
+    "bad_marked_supported": 14,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 9
+     },
+     "wrong_page": {
+      "supported": 5,
+      "unsupported": 3
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 3,
+    "catch_rate": 0.158,
+    "bad_marked_supported": 16,
+    "false_flags": 9,
+    "false_flag_rate": 0.055,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "unsupported": 9,
+      "supported": 154
+     },
+     "prose_match": {
+      "supported": 99,
+      "unsupported": 11
+     },
+     "prose_nomatch": {
+      "supported": 171,
+      "unsupported": 7,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 9
+     },
+     "wrong_fact_unlisted": {
+      "supported": 2
+     },
+     "wrong_page": {
+      "supported": 5,
+      "unsupported": 3
+     }
+    }
+   }
+  },
+  "V1→V3 nli-MiniLM2-L6-H768": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 8,
+    "catch_rate": 1.0,
+    "bad_marked_supported": 0,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 1,
+      "no_opinion": 5,
+      "unsupported": 1
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "unsupported": 1,
+      "supported": 3
+     },
+     "prose_nomatch": {
+      "supported": 5,
+      "unsupported": 1
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "unsupported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 3
+     },
+     "wrong_page": {
+      "unsupported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 1,
+    "catch_rate": 0.5,
+    "bad_marked_supported": 1,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 97,
+      "unsupported": 13
+     },
+     "prose_nomatch": {
+      "supported": 166,
+      "unsupported": 12,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 11,
+    "catch_rate": 0.647,
+    "bad_marked_supported": 6,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 12,
+    "catch_rate": 0.632,
+    "bad_marked_supported": 7,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 97,
+      "unsupported": 13
+     },
+     "prose_nomatch": {
+      "supported": 166,
+      "unsupported": 12,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   }
+  },
+  "V1∨V3 nli-MiniLM2-L6-H768": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 8,
+    "catch_rate": 1.0,
+    "bad_marked_supported": 0,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 1,
+      "no_opinion": 5,
+      "unsupported": 1
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "unsupported": 1,
+      "supported": 3
+     },
+     "prose_nomatch": {
+      "supported": 5,
+      "unsupported": 1
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "unsupported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 3
+     },
+     "wrong_page": {
+      "unsupported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 1,
+    "catch_rate": 0.5,
+    "bad_marked_supported": 1,
+    "false_flags": 15,
+    "false_flag_rate": 0.092,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 30,
+      "unsupported": 1
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 148,
+      "unsupported": 15
+     },
+     "prose_match": {
+      "supported": 97,
+      "unsupported": 13
+     },
+     "prose_nomatch": {
+      "supported": 165,
+      "unsupported": 13,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 11,
+    "catch_rate": 0.647,
+    "bad_marked_supported": 6,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 12,
+    "catch_rate": 0.632,
+    "bad_marked_supported": 7,
+    "false_flags": 15,
+    "false_flag_rate": 0.092,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 30,
+      "unsupported": 1
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 148,
+      "unsupported": 15
+     },
+     "prose_match": {
+      "supported": 97,
+      "unsupported": 13
+     },
+     "prose_nomatch": {
+      "supported": 165,
+      "unsupported": 13,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   }
+  },
+  "V1→V3 nli-deberta-v3-base": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 7,
+    "catch_rate": 0.875,
+    "bad_marked_supported": 1,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 1,
+      "no_opinion": 5,
+      "unsupported": 1
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "unsupported": 1,
+      "supported": 3
+     },
+     "prose_nomatch": {
+      "supported": 6
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "unsupported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 2,
+      "supported": 1
+     },
+     "wrong_page": {
+      "unsupported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 1,
+    "catch_rate": 0.5,
+    "bad_marked_supported": 1,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 101,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "supported": 174,
+      "unsupported": 4,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 11,
+    "catch_rate": 0.647,
+    "bad_marked_supported": 6,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 12,
+    "catch_rate": 0.632,
+    "bad_marked_supported": 7,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 101,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "supported": 174,
+      "unsupported": 4,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   }
+  },
+  "V1∨V3 nli-deberta-v3-base": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 7,
+    "catch_rate": 0.875,
+    "bad_marked_supported": 1,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 1,
+      "no_opinion": 5,
+      "unsupported": 1
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "unsupported": 1,
+      "supported": 3
+     },
+     "prose_nomatch": {
+      "supported": 6
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "unsupported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 2,
+      "supported": 1
+     },
+     "wrong_page": {
+      "unsupported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 1,
+    "catch_rate": 0.5,
+    "bad_marked_supported": 1,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 101,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "supported": 174,
+      "unsupported": 4,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 11,
+    "catch_rate": 0.647,
+    "bad_marked_supported": 6,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 12,
+    "catch_rate": 0.632,
+    "bad_marked_supported": 7,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 101,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "supported": 174,
+      "unsupported": 4,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   }
+  },
+  "V1→V3 nli-deberta-v3-small": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 7,
+    "catch_rate": 0.875,
+    "bad_marked_supported": 1,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 1,
+      "no_opinion": 5,
+      "unsupported": 1
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "unsupported": 1,
+      "supported": 3
+     },
+     "prose_nomatch": {
+      "supported": 6
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "unsupported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 2,
+      "supported": 1
+     },
+     "wrong_page": {
+      "unsupported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 1,
+    "catch_rate": 0.5,
+    "bad_marked_supported": 1,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 101,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "supported": 174,
+      "unsupported": 4,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 11,
+    "catch_rate": 0.647,
+    "bad_marked_supported": 6,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 12,
+    "catch_rate": 0.632,
+    "bad_marked_supported": 7,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 101,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "supported": 174,
+      "unsupported": 4,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   }
+  },
+  "V1∨V3 nli-deberta-v3-small": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 7,
+    "catch_rate": 0.875,
+    "bad_marked_supported": 1,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 1,
+      "no_opinion": 5,
+      "unsupported": 1
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "unsupported": 1,
+      "supported": 3
+     },
+     "prose_nomatch": {
+      "supported": 6
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "unsupported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 2,
+      "supported": 1
+     },
+     "wrong_page": {
+      "unsupported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 1,
+    "catch_rate": 0.5,
+    "bad_marked_supported": 1,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 101,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "supported": 174,
+      "unsupported": 4,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 11,
+    "catch_rate": 0.647,
+    "bad_marked_supported": 6,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 12,
+    "catch_rate": 0.632,
+    "bad_marked_supported": 7,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 101,
+      "unsupported": 9
+     },
+     "prose_nomatch": {
+      "supported": 174,
+      "unsupported": 4,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "supported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   }
+  },
+  "V1→V2 embedding": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 7,
+    "catch_rate": 0.875,
+    "bad_marked_supported": 1,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 1,
+      "no_opinion": 5,
+      "unsupported": 1
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "unsupported": 2,
+      "supported": 2
+     },
+     "prose_nomatch": {
+      "supported": 6
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "unsupported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 2,
+      "supported": 1
+     },
+     "wrong_page": {
+      "unsupported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 1,
+    "catch_rate": 0.5,
+    "bad_marked_supported": 1,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 90,
+      "unsupported": 20
+     },
+     "prose_nomatch": {
+      "supported": 168,
+      "unsupported": 10,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 11,
+    "catch_rate": 0.647,
+    "bad_marked_supported": 6,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 12,
+    "catch_rate": 0.632,
+    "bad_marked_supported": 7,
+    "false_flags": 12,
+    "false_flag_rate": 0.074,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "supported": 151,
+      "unsupported": 12
+     },
+     "prose_match": {
+      "supported": 90,
+      "unsupported": 20
+     },
+     "prose_nomatch": {
+      "supported": 168,
+      "unsupported": 10,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   }
+  },
+  "V1∨V2 embedding": {
+   "dev": {
+    "n": 31,
+    "bad": 8,
+    "good": 5,
+    "caught": 7,
+    "catch_rate": 0.875,
+    "bad_marked_supported": 1,
+    "false_flags": 0,
+    "false_flag_rate": 0.0,
+    "coverage": 0.806,
+    "confusion": {
+     "abstain": {
+      "supported": 1,
+      "no_opinion": 5,
+      "unsupported": 1
+     },
+     "correct_supported": {
+      "supported": 5
+     },
+     "prose_match": {
+      "unsupported": 2,
+      "supported": 2
+     },
+     "prose_nomatch": {
+      "supported": 6
+     },
+     "safety_stop": {
+      "no_opinion": 1
+     },
+     "wrong_fact": {
+      "unsupported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 2,
+      "supported": 1
+     },
+     "wrong_page": {
+      "unsupported": 3
+     }
+    }
+   },
+   "heldout": {
+    "n": 600,
+    "bad": 2,
+    "good": 163,
+    "caught": 1,
+    "catch_rate": 0.5,
+    "bad_marked_supported": 1,
+    "false_flags": 21,
+    "false_flag_rate": 0.129,
+    "coverage": 0.812,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "unsupported": 21,
+      "supported": 142
+     },
+     "prose_match": {
+      "supported": 90,
+      "unsupported": 20
+     },
+     "prose_nomatch": {
+      "supported": 168,
+      "unsupported": 10,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     }
+    }
+   },
+   "adv_heldout": {
+    "n": 17,
+    "bad": 17,
+    "good": 0,
+    "caught": 11,
+    "catch_rate": 0.647,
+    "bad_marked_supported": 6,
+    "false_flags": 0,
+    "false_flag_rate": null,
+    "coverage": 1.0,
+    "confusion": {
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   },
+   "heldout_all": {
+    "n": 617,
+    "bad": 19,
+    "good": 163,
+    "caught": 12,
+    "catch_rate": 0.632,
+    "bad_marked_supported": 7,
+    "false_flags": 21,
+    "false_flag_rate": 0.129,
+    "coverage": 0.817,
+    "confusion": {
+     "abstain": {
+      "no_opinion": 72,
+      "supported": 31
+     },
+     "correct_abstain": {
+      "no_opinion": 5
+     },
+     "correct_supported": {
+      "unsupported": 21,
+      "supported": 142
+     },
+     "prose_match": {
+      "supported": 90,
+      "unsupported": 20
+     },
+     "prose_nomatch": {
+      "supported": 168,
+      "unsupported": 10,
+      "no_opinion": 1
+     },
+     "safety_stop": {
+      "no_opinion": 35,
+      "unsupported": 1
+     },
+     "typed_incomplete": {
+      "supported": 2
+     },
+     "wrong_fact": {
+      "supported": 5,
+      "unsupported": 4
+     },
+     "wrong_fact_unlisted": {
+      "unsupported": 1,
+      "supported": 1
+     },
+     "wrong_page": {
+      "supported": 1,
+      "unsupported": 7
+     }
+    }
+   }
+  }
+ },
+ "curves_heldout_descriptive": {
+  "V3 nli-MiniLM2-L6-H768": [
+   {
+    "tau": 0.05,
+    "caught": 5,
+    "bad": 19,
+    "false_flags": 47,
+    "good": 163
+   },
+   {
+    "tau": 0.1,
+    "caught": 9,
+    "bad": 19,
+    "false_flags": 69,
+    "good": 163
+   },
+   {
+    "tau": 0.15,
+    "caught": 12,
+    "bad": 19,
+    "false_flags": 82,
+    "good": 163
+   },
+   {
+    "tau": 0.2,
+    "caught": 12,
+    "bad": 19,
+    "false_flags": 100,
+    "good": 163
+   },
+   {
+    "tau": 0.25,
+    "caught": 12,
+    "bad": 19,
+    "false_flags": 107,
+    "good": 163
+   },
+   {
+    "tau": 0.3,
+    "caught": 12,
+    "bad": 19,
+    "false_flags": 117,
+    "good": 163
+   },
+   {
+    "tau": 0.35,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 126,
+    "good": 163
+   },
+   {
+    "tau": 0.4,
+    "caught": 16,
+    "bad": 19,
+    "false_flags": 132,
+    "good": 163
+   },
+   {
+    "tau": 0.45,
+    "caught": 16,
+    "bad": 19,
+    "false_flags": 137,
+    "good": 163
+   },
+   {
+    "tau": 0.5,
+    "caught": 16,
+    "bad": 19,
+    "false_flags": 146,
+    "good": 163
+   },
+   {
+    "tau": 0.55,
+    "caught": 16,
+    "bad": 19,
+    "false_flags": 146,
+    "good": 163
+   },
+   {
+    "tau": 0.6,
+    "caught": 18,
+    "bad": 19,
+    "false_flags": 154,
+    "good": 163
+   },
+   {
+    "tau": 0.65,
+    "caught": 19,
+    "bad": 19,
+    "false_flags": 159,
+    "good": 163
+   },
+   {
+    "tau": 0.7,
+    "caught": 19,
+    "bad": 19,
+    "false_flags": 160,
+    "good": 163
+   },
+   {
+    "tau": 0.75,
+    "caught": 19,
+    "bad": 19,
+    "false_flags": 162,
+    "good": 163
+   },
+   {
+    "tau": 0.8,
+    "caught": 19,
+    "bad": 19,
+    "false_flags": 162,
+    "good": 163
+   },
+   {
+    "tau": 0.85,
+    "caught": 19,
+    "bad": 19,
+    "false_flags": 162,
+    "good": 163
+   },
+   {
+    "tau": 0.9,
+    "caught": 19,
+    "bad": 19,
+    "false_flags": 162,
+    "good": 163
+   },
+   {
+    "tau": 0.95,
+    "caught": 19,
+    "bad": 19,
+    "false_flags": 162,
+    "good": 163
+   }
+  ],
+  "V3 nli-deberta-v3-base": [
+   {
+    "tau": 0.05,
+    "caught": 10,
+    "bad": 19,
+    "false_flags": 77,
+    "good": 163
+   },
+   {
+    "tau": 0.1,
+    "caught": 11,
+    "bad": 19,
+    "false_flags": 87,
+    "good": 163
+   },
+   {
+    "tau": 0.15,
+    "caught": 11,
+    "bad": 19,
+    "false_flags": 102,
+    "good": 163
+   },
+   {
+    "tau": 0.2,
+    "caught": 12,
+    "bad": 19,
+    "false_flags": 103,
+    "good": 163
+   },
+   {
+    "tau": 0.25,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 111,
+    "good": 163
+   },
+   {
+    "tau": 0.3,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 119,
+    "good": 163
+   },
+   {
+    "tau": 0.35,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 125,
+    "good": 163
+   },
+   {
+    "tau": 0.4,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 125,
+    "good": 163
+   },
+   {
+    "tau": 0.45,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 127,
+    "good": 163
+   },
+   {
+    "tau": 0.5,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 128,
+    "good": 163
+   },
+   {
+    "tau": 0.55,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 129,
+    "good": 163
+   },
+   {
+    "tau": 0.6,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 130,
+    "good": 163
+   },
+   {
+    "tau": 0.65,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 132,
+    "good": 163
+   },
+   {
+    "tau": 0.7,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 132,
+    "good": 163
+   },
+   {
+    "tau": 0.75,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 133,
+    "good": 163
+   },
+   {
+    "tau": 0.8,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 133,
+    "good": 163
+   },
+   {
+    "tau": 0.85,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 134,
+    "good": 163
+   },
+   {
+    "tau": 0.9,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 134,
+    "good": 163
+   },
+   {
+    "tau": 0.95,
+    "caught": 14,
+    "bad": 19,
+    "false_flags": 135,
+    "good": 163
+   }
+  ],
+  "V3 nli-deberta-v3-small": [
+   {
+    "tau": 0.05,
+    "caught": 9,
+    "bad": 19,
+    "false_flags": 89,
+    "good": 163
+   },
+   {
+    "tau": 0.1,
+    "caught": 10,
+    "bad": 19,
+    "false_flags": 108,
+    "good": 163
+   },
+   {
+    "tau": 0.15,
+    "caught": 11,
+    "bad": 19,
+    "false_flags": 115,
+    "good": 163
+   },
+   {
+    "tau": 0.2,
+    "caught": 11,
+    "bad": 19,
+    "false_flags": 116,
+    "good": 163
+   },
+   {
+    "tau": 0.25,
+    "caught": 11,
+    "bad": 19,
+    "false_flags": 121,
+    "good": 163
+   },
+   {
+    "tau": 0.3,
+    "caught": 11,
+    "bad": 19,
+    "false_flags": 123,
+    "good": 163
+   },
+   {
+    "tau": 0.35,
+    "caught": 12,
+    "bad": 19,
+    "false_flags": 124,
+    "good": 163
+   },
+   {
+    "tau": 0.4,
+    "caught": 12,
+    "bad": 19,
+    "false_flags": 127,
+    "good": 163
+   },
+   {
+    "tau": 0.45,
+    "caught": 12,
+    "bad": 19,
+    "false_flags": 128,
+    "good": 163
+   },
+   {
+    "tau": 0.5,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 134,
+    "good": 163
+   },
+   {
+    "tau": 0.55,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 136,
+    "good": 163
+   },
+   {
+    "tau": 0.6,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 137,
+    "good": 163
+   },
+   {
+    "tau": 0.65,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 139,
+    "good": 163
+   },
+   {
+    "tau": 0.7,
+    "caught": 14,
+    "bad": 19,
+    "false_flags": 140,
+    "good": 163
+   },
+   {
+    "tau": 0.75,
+    "caught": 14,
+    "bad": 19,
+    "false_flags": 143,
+    "good": 163
+   },
+   {
+    "tau": 0.8,
+    "caught": 14,
+    "bad": 19,
+    "false_flags": 143,
+    "good": 163
+   },
+   {
+    "tau": 0.85,
+    "caught": 14,
+    "bad": 19,
+    "false_flags": 143,
+    "good": 163
+   },
+   {
+    "tau": 0.9,
+    "caught": 15,
+    "bad": 19,
+    "false_flags": 144,
+    "good": 163
+   },
+   {
+    "tau": 0.95,
+    "caught": 15,
+    "bad": 19,
+    "false_flags": 145,
+    "good": 163
+   }
+  ],
+  "V2 embedding": [
+   {
+    "tau": 0.05,
+    "caught": 0,
+    "bad": 19,
+    "false_flags": 0,
+    "good": 163
+   },
+   {
+    "tau": 0.1,
+    "caught": 0,
+    "bad": 19,
+    "false_flags": 0,
+    "good": 163
+   },
+   {
+    "tau": 0.15,
+    "caught": 0,
+    "bad": 19,
+    "false_flags": 0,
+    "good": 163
+   },
+   {
+    "tau": 0.2,
+    "caught": 0,
+    "bad": 19,
+    "false_flags": 0,
+    "good": 163
+   },
+   {
+    "tau": 0.25,
+    "caught": 0,
+    "bad": 19,
+    "false_flags": 0,
+    "good": 163
+   },
+   {
+    "tau": 0.3,
+    "caught": 0,
+    "bad": 19,
+    "false_flags": 0,
+    "good": 163
+   },
+   {
+    "tau": 0.35,
+    "caught": 0,
+    "bad": 19,
+    "false_flags": 0,
+    "good": 163
+   },
+   {
+    "tau": 0.4,
+    "caught": 0,
+    "bad": 19,
+    "false_flags": 0,
+    "good": 163
+   },
+   {
+    "tau": 0.45,
+    "caught": 0,
+    "bad": 19,
+    "false_flags": 0,
+    "good": 163
+   },
+   {
+    "tau": 0.5,
+    "caught": 0,
+    "bad": 19,
+    "false_flags": 0,
+    "good": 163
+   },
+   {
+    "tau": 0.55,
+    "caught": 1,
+    "bad": 19,
+    "false_flags": 0,
+    "good": 163
+   },
+   {
+    "tau": 0.6,
+    "caught": 3,
+    "bad": 19,
+    "false_flags": 4,
+    "good": 163
+   },
+   {
+    "tau": 0.65,
+    "caught": 4,
+    "bad": 19,
+    "false_flags": 19,
+    "good": 163
+   },
+   {
+    "tau": 0.7,
+    "caught": 13,
+    "bad": 19,
+    "false_flags": 73,
+    "good": 163
+   },
+   {
+    "tau": 0.75,
+    "caught": 15,
+    "bad": 19,
+    "false_flags": 94,
+    "good": 163
+   },
+   {
+    "tau": 0.8,
+    "caught": 18,
+    "bad": 19,
+    "false_flags": 124,
+    "good": 163
+   },
+   {
+    "tau": 0.85,
+    "caught": 19,
+    "bad": 19,
+    "false_flags": 143,
+    "good": 163
+   },
+   {
+    "tau": 0.9,
+    "caught": 19,
+    "bad": 19,
+    "false_flags": 159,
+    "good": 163
+   },
+   {
+    "tau": 0.95,
+    "caught": 19,
+    "bad": 19,
+    "false_flags": 163,
+    "good": 163
+   }
+  ]
+ },
+ "combo_base": "V1b typed+join (post-hoc)",
+ "tq06": {
+  "plc5:2026-10-18T21:06:34": {
+   "label": "wrong_fact_unlisted",
+   "answer": "The bit that is set when DLEN doesn't match RLEN in a PLC-5 block transfer is S:3/10 [5]. This bit indicates a data leng",
+   "V0 shipped gate": "supported",
+   "V1 typed": "unsupported",
+   "V1b typed+join (post-hoc)": "unsupported",
+   "V3 nli-MiniLM2-L6-H768": "supported",
+   "V3 nli-deberta-v3-base": "supported",
+   "V3 nli-deberta-v3-small": "supported",
+   "V2 embedding": "supported",
+   "V1→V3 nli-MiniLM2-L6-H768": "unsupported",
+   "V1∨V3 nli-MiniLM2-L6-H768": "unsupported",
+   "V1→V3 nli-deberta-v3-base": "unsupported",
+   "V1∨V3 nli-deberta-v3-base": "unsupported",
+   "V1→V3 nli-deberta-v3-small": "unsupported",
+   "V1∨V3 nli-deberta-v3-small": "unsupported",
+   "V1→V2 embedding": "unsupported",
+   "V1∨V2 embedding": "unsupported"
+  },
+  "plc5:2026-10-20T02:34:23": {
+   "label": "abstain",
+   "answer": ".ER (bit 11) is set if an error occurs during the block transfer [3][5]. The excerpts do not name a specific DLEN/RLEN m",
+   "V0 shipped gate": "supported",
+   "V1 typed": "unsupported",
+   "V1b typed+join (post-hoc)": "unsupported",
+   "V3 nli-MiniLM2-L6-H768": "supported",
+   "V3 nli-deberta-v3-base": "supported",
+   "V3 nli-deberta-v3-small": "supported",
+   "V2 embedding": "supported",
+   "V1→V3 nli-MiniLM2-L6-H768": "unsupported",
+   "V1∨V3 nli-MiniLM2-L6-H768": "unsupported",
+   "V1→V3 nli-deberta-v3-base": "unsupported",
+   "V1∨V3 nli-deberta-v3-base": "unsupported",
+   "V1→V3 nli-deberta-v3-small": "unsupported",
+   "V1∨V3 nli-deberta-v3-small": "unsupported",
+   "V1→V2 embedding": "unsupported",
+   "V1∨V2 embedding": "unsupported"
+  },
+  "plc5:2026-10-20T02:36:05": {
+   "label": "correct_supported",
+   "answer": "The processor sets the **.ER bit, bit 12** when **.DLEN does not match .RLEN** [1]. If the transmitted word count is zer",
+   "V0 shipped gate": "supported",
+   "V1 typed": "supported",
+   "V1b typed+join (post-hoc)": "supported",
+   "V3 nli-MiniLM2-L6-H768": "supported",
+   "V3 nli-deberta-v3-base": "supported",
+   "V3 nli-deberta-v3-small": "supported",
+   "V2 embedding": "supported",
+   "V1→V3 nli-MiniLM2-L6-H768": "supported",
+   "V1∨V3 nli-MiniLM2-L6-H768": "supported",
+   "V1→V3 nli-deberta-v3-base": "supported",
+   "V1∨V3 nli-deberta-v3-base": "supported",
+   "V1→V3 nli-deberta-v3-small": "supported",
+   "V1∨V3 nli-deberta-v3-small": "supported",
+   "V1→V2 embedding": "supported",
+   "V1∨V2 embedding": "supported"
+  },
+  "plc5:2026-10-20T05:45:35": {
+   "label": "wrong_fact",
+   "answer": ".ER (bit 11) is set when the block transfer has an error, which is the bit to look for if DLEN does not match RLEN [3][5",
+   "V0 shipped gate": "supported",
+   "V1 typed": "unsupported",
+   "V1b typed+join (post-hoc)": "unsupported",
+   "V3 nli-MiniLM2-L6-H768": "supported",
+   "V3 nli-deberta-v3-base": "supported",
+   "V3 nli-deberta-v3-small": "supported",
+   "V2 embedding": "supported",
+   "V1→V3 nli-MiniLM2-L6-H768": "unsupported",
+   "V1∨V3 nli-MiniLM2-L6-H768": "unsupported",
+   "V1→V3 nli-deberta-v3-base": "unsupported",
+   "V1∨V3 nli-deberta-v3-base": "unsupported",
+   "V1→V3 nli-deberta-v3-small": "unsupported",
+   "V1∨V3 nli-deberta-v3-small": "unsupported",
+   "V1→V2 embedding": "unsupported",
+   "V1∨V2 embedding": "unsupported"
+  },
+  "plc5:2026-10-20T05:46:12": {
+   "label": "correct_supported",
+   "answer": "The processor sets the **.ER bit, bit 12**, when **.DLEN does not match .RLEN** [1][4]. If the transmitted word count do",
+   "V0 shipped gate": "supported",
+   "V1 typed": "supported",
+   "V1b typed+join (post-hoc)": "supported",
+   "V3 nli-MiniLM2-L6-H768": "supported",
+   "V3 nli-deberta-v3-base": "supported",
+   "V3 nli-deberta-v3-small": "supported",
+   "V2 embedding": "supported",
+   "V1→V3 nli-MiniLM2-L6-H768": "supported",
+   "V1∨V3 nli-MiniLM2-L6-H768": "supported",
+   "V1→V3 nli-deberta-v3-base": "supported",
+   "V1∨V3 nli-deberta-v3-base": "supported",
+   "V1→V3 nli-deberta-v3-small": "supported",
+   "V1∨V3 nli-deberta-v3-small": "supported",
+   "V1→V2 embedding": "supported",
+   "V1∨V2 embedding": "supported"
+  },
+  "plc5:2026-10-20T05:46:22": {
+   "label": "abstain",
+   "answer": "The excerpts do not say which bit is set for a DLEN/RLEN mismatch; they only state that the **.ER** bit is set if an err",
+   "V0 shipped gate": "no_opinion",
+   "V1 typed": "no_opinion",
+   "V1b typed+join (post-hoc)": "no_opinion",
+   "V3 nli-MiniLM2-L6-H768": "no_opinion",
+   "V3 nli-deberta-v3-base": "no_opinion",
+   "V3 nli-deberta-v3-small": "no_opinion",
+   "V2 embedding": "no_opinion",
+   "V1→V3 nli-MiniLM2-L6-H768": "no_opinion",
+   "V1∨V3 nli-MiniLM2-L6-H768": "no_opinion",
+   "V1→V3 nli-deberta-v3-base": "no_opinion",
+   "V1∨V3 nli-deberta-v3-base": "no_opinion",
+   "V1→V3 nli-deberta-v3-small": "no_opinion",
+   "V1∨V3 nli-deberta-v3-small": "no_opinion",
+   "V1→V2 embedding": "no_opinion",
+   "V1∨V2 embedding": "no_opinion"
+  },
+  "plc5:2026-10-20T06:54:13": {
+   "label": "abstain",
+   "answer": "The excerpts do not say which bit is set when DLEN does not match RLEN.",
+   "V0 shipped gate": "no_opinion",
+   "V1 typed": "no_opinion",
+   "V1b typed+join (post-hoc)": "no_opinion",
+   "V3 nli-MiniLM2-L6-H768": "no_opinion",
+   "V3 nli-deberta-v3-base": "no_opinion",
+   "V3 nli-deberta-v3-small": "no_opinion",
+   "V2 embedding": "no_opinion",
+   "V1→V3 nli-MiniLM2-L6-H768": "no_opinion",
+   "V1∨V3 nli-MiniLM2-L6-H768": "no_opinion",
+   "V1→V3 nli-deberta-v3-base": "no_opinion",
+   "V1∨V3 nli-deberta-v3-base": "no_opinion",
+   "V1→V3 nli-deberta-v3-small": "no_opinion",
+   "V1∨V3 nli-deberta-v3-small": "no_opinion",
+   "V1→V2 embedding": "no_opinion",
+   "V1∨V2 embedding": "no_opinion"
+  },
+  "realA:tq-28": {
+   "label": "wrong_fact_unlisted",
+   "answer": "The bit that is set when DLEN doesn't match RLEN in a PLC-5 block transfer is S:7/15, however, this is not accurate as S",
+   "V0 shipped gate": "supported",
+   "V1 typed": "unsupported",
+   "V1b typed+join (post-hoc)": "unsupported",
+   "V3 nli-MiniLM2-L6-H768": "supported",
+   "V3 nli-deberta-v3-base": "supported",
+   "V3 nli-deberta-v3-small": "supported",
+   "V2 embedding": "supported",
+   "V1→V3 nli-MiniLM2-L6-H768": "unsupported",
+   "V1∨V3 nli-MiniLM2-L6-H768": "unsupported",
+   "V1→V3 nli-deberta-v3-base": "unsupported",
+   "V1∨V3 nli-deberta-v3-base": "unsupported",
+   "V1→V3 nli-deberta-v3-small": "unsupported",
+   "V1∨V3 nli-deberta-v3-small": "unsupported",
+   "V1→V2 embedding": "unsupported",
+   "V1∨V2 embedding": "unsupported"
+  },
+  "adv:tq-28:0": {
+   "label": "wrong_fact",
+   "answer": "The processor sets the **.ER bit, bit 11** when **.DLEN does not match .RLEN** [1]. If the transmitted word count is zer",
+   "V0 shipped gate": "supported",
+   "V1 typed": "unsupported",
+   "V1b typed+join (post-hoc)": "unsupported",
+   "V3 nli-MiniLM2-L6-H768": "supported",
+   "V3 nli-deberta-v3-base": "supported",
+   "V3 nli-deberta-v3-small": "supported",
+   "V2 embedding": "supported",
+   "V1→V3 nli-MiniLM2-L6-H768": "unsupported",
+   "V1∨V3 nli-MiniLM2-L6-H768": "unsupported",
+   "V1→V3 nli-deberta-v3-base": "unsupported",
+   "V1∨V3 nli-deberta-v3-base": "unsupported",
+   "V1→V3 nli-deberta-v3-small": "unsupported",
+   "V1∨V3 nli-deberta-v3-small": "unsupported",
+   "V1→V2 embedding": "unsupported",
+   "V1∨V2 embedding": "unsupported"
+  }
+ },
+ "generation_variance_w1_w5": {
+  "questions": 48,
+  "label_changes_across_5_trials": 8,
+  "examples": {
+   "gs10-ch6-q1": {
+    "prose_match": 3,
+    "prose_nomatch": 2
+   },
+   "pf4m-q3": {
+    "prose_nomatch": 4,
+    "prose_match": 1
+   },
+   "pf4m-q5": {
+    "correct_supported": 4,
+    "abstain": 1
+   },
+   "acs355-q4": {
+    "prose_nomatch": 1,
+    "prose_match": 4
+   },
+   "ml1100-q3": {
+    "prose_nomatch": 4,
+    "abstain": 1
+   },
+   "smcflex-q1": {
+    "prose_nomatch": 2,
+    "abstain": 3
+   },
+   "smcflex-q2": {
+    "abstain": 2,
+    "prose_nomatch": 3
+   },
+   "smc50-q4": {
+    "abstain": 4,
+    "prose_nomatch": 1
+   }
+  }
+ }
+}

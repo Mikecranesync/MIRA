@@ -13,9 +13,9 @@ const lat: number[] = [];
 for (const line of lines) {
   const it = JSON.parse(line);
   const s = performance.now();
-  const v = verifyAnswer({ question: it.question, answer: it.answer, evidence: it.evidence });
+  const v = verifyAnswer({ question: it.question, answer: it.answer, evidence: it.evidence }, { joinWrappedLines: process.env.V1_JOIN === "1" });
   lat.push(performance.now() - s);
-  rows.push(JSON.stringify({ item_id: it.item_id, validator: "V1", verdict: v.verdict, reason: v.reason, subjects: v.subjects,
+  rows.push(JSON.stringify({ item_id: it.item_id, validator: process.env.V1_JOIN === "1" ? "V1b" : "V1", verdict: v.verdict, reason: v.reason, subjects: v.subjects,
     claims: v.claims.map((c) => ({ key: c.key, raw: c.raw, status: c.status, page: c.page })) }));
 }
 writeFileSync(out, rows.join("\n") + "\n");

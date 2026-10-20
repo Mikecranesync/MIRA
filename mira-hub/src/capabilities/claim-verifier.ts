@@ -171,7 +171,10 @@ function subjectOffsets(subjects: string[], text: string): number[] {
  * anywhere on the page); `unbound` when stated only away from them; `absent` when no cited page
  * states it.
  */
-export function verifyAnswer(input: { question: string; answer: string; evidence: Evidence[] }): Verdict {
+export function verifyAnswer(
+  input: { question: string; answer: string; evidence: Evidence[] },
+  opts: { joinWrappedLines?: boolean } = {},
+): Verdict {
   const subjects = questionSubjects(input.question);
   const claims = extractTypedClaims(input.answer, input.question);
   if (claims.length === 0) return { verdict: "no_opinion", reason: "no_typed_claim", claims: [], subjects };
@@ -184,8 +187,11 @@ export function verifyAnswer(input: { question: string; answer: string; evidence
   const results: ClaimResult[] = claims.map((c) => {
     let best: ClaimResult = { ...c, status: "absent", page: null };
     for (const ev of input.evidence) {
-      const t = flat(ev.text);
-      const vals = valueOffsets(c, t, ev.text);
+      // V1b (post-hoc, runoff 2026-10-20): PDF extraction wraps "10\nminutes"; the reused quantity
+      // extractor keeps a value and its unit on one line, so a wrapped value never matches its page.
+      const text = opts.joinWrappedLines ? ev.text.replace(/(?<=\S)[ \t]*\n[ \t]*(?=\S)/g, " ") : ev.text;
+      const t = flat(text);
+      const vals = valueOffsets(c, t, text);
       if (vals.length === 0) continue;
       // Strong subjects are required when the question has any: a page that never mentions
       // .DLEN cannot support "bit N is set when .DLEN ≠ .RLEN". Weak ones bind only if present.
