@@ -157,6 +157,12 @@ approved:
     query_snippet: |
       `delete from knowledge_entries where metadata->>'node_id' in
                (select id::text from kg_entities where (properties->>'mark') like $1)`, [`${MARK_PREFIX}%`]);
+  "tools/evidence-runoff/bench/t4_retrieval.ts:41":
+    approved_classification: TENANT-ONLY
+    query_sha256: "e1ee58489d471b7204579c1f16e8a9d170e74486a0cda7c8079e7351b5ff4958"
+    reason: "Offline benchmark cleanup on a throwaway local Postgres (T4_PG, localhost only): deletes the synthetic per-variant bench tenant's rows before reloading. Never runs against Neon; not a customer read surface, so the hybrid is_private filter does not apply."
+    query_snippet: |
+      await db.query("DELETE FROM knowledge_entries WHERE tenant_id = $1", [tenant]);
   "mira-hub/scripts/verify-node-subtree-retrieval.ts:63":
     approved_classification: TENANT-ONLY
     query_sha256: "4f900fc9727f6ab90320215b2199948d7fb3d4ec6633cf3abd6ee1cedb7e22cd"
