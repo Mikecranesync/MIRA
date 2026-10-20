@@ -65,6 +65,17 @@ const filesMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/workspace-files", () => filesMock);
 
+// The photo's stored LOOK descriptor. Real `blockingLookHazard` and renderers;
+// only the DB load is replaced, so a test can hand the route a photo that
+// actually carries a blocking hazard (null = no observation, the default).
+const lookMock = vi.hoisted(() => ({
+  loadVisualEvidenceForPhoto: vi.fn(async (): Promise<unknown> => null),
+}));
+vi.mock("@/lib/visual-evidence-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/visual-evidence-context")>()),
+  loadVisualEvidenceForPhoto: lookMock.loadVisualEvidenceForPhoto,
+}));
+
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
     fn({ query: vi.fn(async () => ({ rows: [] })) }),
@@ -142,6 +153,7 @@ beforeEach(() => {
     /lockout tagout/i.test(String(query)) ? [LOCKOUT_CHUNK] : [TORQUE_CHUNK],
   );
   filesMock.photoLinkedToTarget.mockResolvedValue(null);
+  lookMock.loadVisualEvidenceForPhoto.mockResolvedValue(null);
   providerAnswers("Remove the four cover screws and tighten to 10 in-lb on reassembly.");
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -313,13 +325,70 @@ describe("Review A HIGH — the leak and the photo skip, through the real route"
     expect(sources.citations[0].quote).toBeNull();
   });
 
-  it("a photo attached to the ask no longer switches the stop off", async () => {
-    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: "44444444-4444-4444-8444-444444444444", capturedAt: "2026-10-18T00:00:00.000Z" });
-    const out = await frames(
-      await POST(req({ message: ASK, sourceDocIds: [DOC_A], visualEvidence: { fileId: "44444444-4444-4444-8444-444444444444" } }), params),
+  it("prose smuggled into a chunk's page label never reaches the served stop or its chip", async () => {
+    // Review A HIGH (page-label half). Two layers validate the page —
+    // lockoutPageOf and energizedWorkStop — so this pins the served output,
+    // not either helper, and is proven red only with both layers removed.
+    const SMUGGLED = "2-15**\n\n1. Remove the cover screws (8 kg·cm)";
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) =>
+      /lockout tagout/i.test(String(query)) ? [{ ...LOCKOUT_CHUNK, pageLabel: SMUGGLED }] : [TORQUE_CHUNK],
     );
+    const out = await frames(await POST(req({ message: ASK, sourceDocIds: [DOC_A] }), params));
+    const content = contentOf(out);
+    expect(content).toMatch(/SAFETY STOP — energized work/);
+    expect(content).not.toMatch(/kg·cm|Remove the cover/i);
+    expect(JSON.stringify(out.find((f) => f.kind === "sources") ?? {})).not.toMatch(/kg·cm|Remove the cover/i);
+  });
+
+  it("a photo attached to the ask no longer switches the stop off", async () => {
+    // 2026-10-20: this test used to attach a photo with NO stored observation,
+    // so the route's visual hazard was always null and the removed
+    // `!visualSafetyTrigger` condition could be put back with all tests green.
+    // The photo now carries a blocking hazard, the precondition is asserted,
+    // and the assertion names the energized-work stop and its lockout page —
+    // a generic visual-hazard stop no longer satisfies it.
+    const PHOTO = "44444444-4444-4444-8444-444444444444";
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-10-18T00:00:00.000Z" });
+    lookMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "o1",
+      sessionId: "s1",
+      text: "exposed terminals on the drive's power board",
+      obsKind: "property",
+      trust: "candidate",
+      confidence: null,
+      fileId: PHOTO,
+      photoHash: "h",
+      observedAt: null,
+      hazards: [{ code: "exposed_conductor", confidence: 0.99 }],
+    });
+    const out = await frames(
+      await POST(req({ message: ASK, sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }), params),
+    );
+    expect(lookMock.loadVisualEvidenceForPhoto).toHaveBeenCalledWith(expect.anything(), TENANT, PHOTO);
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     expect(out.some((f) => f.kind === "safety")).toBe(true);
-    expect(contentOf(out)).toMatch(/SAFETY STOP/);
+    expect(contentOf(out)).toMatch(/SAFETY STOP — energized work/);
+    expect(contentOf(out)).toContain("p.2-15");
+  });
+
+  it("control: the same photo on a non-energized ask does not produce the energized-work stop", async () => {
+    const PHOTO = "44444444-4444-4444-8444-444444444444";
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-10-18T00:00:00.000Z" });
+    lookMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "o1",
+      sessionId: "s1",
+      text: "exposed terminals on the drive's power board",
+      obsKind: "property",
+      trust: "candidate",
+      confidence: null,
+      fileId: PHOTO,
+      photoHash: "h",
+      observedAt: null,
+      hazards: [{ code: "exposed_conductor", confidence: 0.99 }],
+    });
+    const out = await frames(
+      await POST(req({ message: "What does fault code oc mean on this drive?", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }), params),
+    );
+    expect(contentOf(out)).not.toMatch(/SAFETY STOP — energized work/);
   });
 });
