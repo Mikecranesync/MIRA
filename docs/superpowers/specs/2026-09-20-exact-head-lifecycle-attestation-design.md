@@ -57,6 +57,34 @@ absent, stale, malformed, or negative.
 
 For a PR that touches no guarded path, the guard passes without an attestation.
 
+**Marketing-site narrowing (owner-approved 2026-10-20):** a PR that only
+touches public factorylm.com marketing pages and docs also passes without an
+attestation. Removed from the guarded-path scope (path-scope only; not a
+phrase list):
+
+- `mira-web/public/**` HTML/txt pages
+- `mira-web/src/views/**` marketing views and their tests, plus
+  `mira-web/src/__tests__/` public-site tests
+- `mira-web/src/lib/blog-renderer.ts` and `mira-web/src/lib/feature-renderer.ts`
+
+`docs/**` was already open except control-plane files
+(`docs/architecture/convergence/REGISTRY.yaml`,
+`docs/architecture/convergence/UNIFIED_UI_CUTOVER.md`,
+`docs/adversarial-review-workflow.md`) and the preview surface
+`docs/preview/**`. Those stay guarded.
+
+Ambiguous product-adjacent paths kept guarded: `mira-web/src/views/scan-not-found.html`
+(QR-scan miss), `mira-web/src/lib/drive-commander-renderer.ts`,
+`mira-web/src/lib/head.ts`, `mira-web/src/lib/components.ts`,
+`mira-web/src/data/**`, `mira-web/emails/**`, and every non-HTML/txt file
+under `mira-web/public/**`. Hub/app screens, shared UI packages, and
+control-plane paths stay fail-closed exactly as before.
+
+The author-written `## Lifecycle guard rationale` check ignores the
+auto-injected Cursor agent footer HTML (the wrapper comments and the
+trailing `cursor_ref=pr_footer` block). HTML inside the author-written
+rationale still fails closed.
+
 For a PR that touches one or more guarded legacy or control-plane paths, all of
 the following are required:
 

@@ -130,14 +130,40 @@ CONTROL_PATTERNS: tuple[str, ...] = (
 # bypasses, while this trusted-base code keeps API/transport/domain paths
 # available for the canonical adapters to reuse.
 #
-# Public trees are blanket guarded. Images, fonts, PDFs, and manifests all
-# change the shipped legacy experience; "non-executable" never meant
-# "non-presentational". New canonical assets belong in the shared packages or
-# a bounded `src/factorylm-ui/**` adapter, not in an old public tree.
+# Public trees are blanket guarded except the marketing-site carve-out in
+# `_is_open_marketing_site_path`. Images, fonts, PDFs, manifests, and
+# executable public assets still change the shipped legacy experience;
+# "non-executable" never meant "non-presentational". New canonical assets
+# belong in the shared packages or a bounded `src/factorylm-ui/**` adapter,
+# not in an old public tree.
 # ---------------------------------------------------------------------------
 PUBLIC_STATIC_GUARDED_ROOTS: tuple[str, ...] = (
     "mira-web/public/",
     "mira-hub/public/",
+)
+
+# Owner-approved 2026-10-20: public marketing pages no longer require a
+# rationale + exact-head Codex GREEN. Path-scope only — not a phrase list.
+# Hub/app screens, shared UI packages, and control-plane paths stay guarded.
+_MARKETING_PUBLIC_PAGE_SUFFIXES: tuple[str, ...] = (
+    ".html",
+    ".htm",
+    ".txt",
+)
+
+_WEB_MARKETING_LIB_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/src/lib/blog-renderer.ts",
+        "mira-web/src/lib/feature-renderer.ts",
+    }
+)
+
+# Product consumption surface (QR-scan miss), not a marketing page. Keep
+# fail-closed and list as ambiguous in the narrowing PR.
+_AMBIGUOUS_PRODUCT_VIEW_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/src/views/scan-not-found.html",
+    }
 )
 
 # Production build, mount, native-wrapper, and release controls sit outside
@@ -362,10 +388,8 @@ _WEB_PRESERVED_ROUTE_PATHS: frozenset[str] = frozenset(
 
 _WEB_PRESENTATION_LIB_PATHS: frozenset[str] = frozenset(
     {
-        "mira-web/src/lib/blog-renderer.ts",
         "mira-web/src/lib/components.ts",
         "mira-web/src/lib/drive-commander-renderer.ts",
-        "mira-web/src/lib/feature-renderer.ts",
         "mira-web/src/lib/head.ts",
     }
 )
@@ -637,6 +661,21 @@ _MIN_SUBSTANTIVE_TOKENS = 3
 _MIN_SUBSTANTIVE_ALNUM_CHARS = 12
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _GITHUB_MARKDOWN = MarkdownIt("commonmark").enable(["table", "strikethrough"])
+# Cursor wraps agent-authored PR bodies in these comments and appends an
+# HTML footer after the end marker. That footer is not attestation text.
+_CURSOR_AGENT_BODY_BEGIN = "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->"
+_CURSOR_AGENT_BODY_END = "<!-- CURSOR_AGENT_PR_BODY_END -->"
+# Trailing Cursor cloud-agent footer only: a final <div> whose links are
+# cursor.com agents/background-agent URLs carrying cursor_ref=pr_footer.
+# Anything else, including HTML earlier in the author-written body, stays
+# subject to the unsafe-HTML check.
+_CURSOR_PR_FOOTER_RE = re.compile(
+    r"(?:\r?\n)*<div>(?:(?!</div>).)*"
+    r"https://cursor\.com/(?:agents/|background-agent\?)"
+    r"(?:(?!</div>).)*cursor_ref=pr_footer"
+    r"(?:(?!</div>).)*</div>(?:\r?\n)*\Z",
+    re.IGNORECASE | re.DOTALL,
+)
 # The Codex review ledger's comment envelope, byte-for-byte the shape
 # `scripts/adversarial-review-ledger.mjs` (V2_REVIEW_RE) accepts. Anything that
 # does not match from the first character is not an attestation — it cannot
@@ -986,6 +1025,9 @@ def _classify_web_source(path: str) -> bool:
         # escape hatch from the presentation freeze.
         return path not in _WEB_PRESERVED_LIB_PATHS
     if path.startswith("mira-web/src/views/") or path.startswith("mira-web/src/data/"):
+        # Marketing views are opened by `_is_open_marketing_site_path` before
+        # this classifier runs. Ambiguous product views and content data stay
+        # fail-closed here.
         return True
     if path == "mira-web/src/server.ts":
         return True
@@ -1059,7 +1101,26 @@ def _classify_source_path(path: str) -> Optional[bool]:
     return None
 
 
+def _is_open_marketing_site_path(path: str) -> bool:
+    """True for public factorylm.com marketing pages that no longer need attestation.
+
+    Path-scope only. Hub screens, shared UI packages, and control-plane
+    files never match. Ambiguous product views stay guarded.
+    """
+    if path in _WEB_MARKETING_LIB_PATHS:
+        return True
+    if path.startswith("mira-web/src/__tests__/"):
+        return True
+    if path.startswith("mira-web/src/views/"):
+        return path not in _AMBIGUOUS_PRODUCT_VIEW_PATHS
+    return path.startswith("mira-web/public/") and path.lower().endswith(
+        _MARKETING_PUBLIC_PAGE_SUFFIXES
+    )
+
+
 def path_is_guarded(path: str, policy: GuardPolicy) -> bool:
+    if _is_open_marketing_site_path(path):
+        return False
     surface_control = _classify_legacy_surface_control(path)
     if surface_control is not None:
         return surface_control
@@ -1585,7 +1646,8 @@ def _has_unsafe_html(tokens) -> bool:
     emitted as a level-zero heading token. HTML comment recovery also differs
     between Markdown renderers and HTML5 browsers. Permit only one strictly
     valid standalone comment per HTML token; reject tags, unclosed/malformed
-    comments, or combined comment/tag tokens anywhere in the PR body.
+    comments, or combined comment/tag tokens in the author-written PR body
+    (the Cursor agent wrapper and trailing footer are stripped first).
     """
     for token in tokens:
         for candidate in (token, *(token.children or ())):
@@ -1614,8 +1676,28 @@ def _has_renderer_specific_markup(source: str) -> bool:
     return _GITHUB_FOOTNOTE_RE.search(source) is not None or source.count("$") >= 2 or "~" in source
 
 
-def _find_exception_sections(pr_body: str) -> tuple[list[str], Optional[str]]:
+def _author_written_pr_body(pr_body: str) -> str:
+    """Return the author-written PR body, ignoring Cursor agent injection.
+
+    Cursor wraps agent-authored bodies in HTML comments and appends a
+    marketing footer after the end marker. Strip that wrapper and the
+    trailing footer so they cannot fail the unsafe-HTML check. The
+    author-written rationale remains subject to the full HTML/subset rules.
+    Content after the end marker is discarded even when it is not the
+    known footer — it is agent metadata, not attestation text.
+    """
     source = pr_body or ""
+    end_at = source.find(_CURSOR_AGENT_BODY_END)
+    if end_at != -1:
+        source = source[:end_at]
+    begin_at = source.find(_CURSOR_AGENT_BODY_BEGIN)
+    if begin_at != -1:
+        source = source[begin_at + len(_CURSOR_AGENT_BODY_BEGIN) :]
+    return _CURSOR_PR_FOOTER_RE.sub("", source)
+
+
+def _find_exception_sections(pr_body: str) -> tuple[list[str], Optional[str]]:
+    source = _author_written_pr_body(pr_body)
     tokens = _GITHUB_MARKDOWN.parse(source)
     if _has_unsafe_html(tokens):
         return [], "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale"

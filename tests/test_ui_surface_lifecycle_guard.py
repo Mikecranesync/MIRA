@@ -158,7 +158,7 @@ def test_unrelated_canonical_package_change_passes():
 def test_sibling_file_newly_created_under_each_guarded_directory_is_caught():
     real_policy = load_guard_policy(REAL_REGISTRY)
     siblings = [
-        "mira-web/src/views/__brand_new_sibling__.ts",
+        "mira-web/src/data/__brand_new_sibling__.ts",
         "mira-web/src/routes/__brand_new_sibling__.ts",
         "mira-hub/src/components/__brand_new_sibling__.tsx",
         "mira-hub/src/app/dashboard-copy/page.tsx",
@@ -1782,7 +1782,6 @@ def test_load_changed_files_rejects_unknown_or_missing_fields(tmp_path, line):
 def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
     policy = load_guard_policy(REAL_REGISTRY)
     expected = {
-        "mira-web/src/views/**",
         "mira-web/src/routes/**",
         "mira-web/src/server.ts",
         "compose.yaml",
@@ -1881,9 +1880,7 @@ def test_real_registry_supplies_public_hub_mobile_guarded_patterns():
         "mira-hub/src/widgets/nested/legacy-dashboard.svg",
         "mira-hub/src/lib/nested/NewLegacyPanel.tsx",
         "mira-hub/src/lib/nested/new-dashboard.css",
-        "mira-web/src/lib/feature-renderer.ts",
         "mira-web/src/lib/mailer.ts",
-        "mira-web/src/lib/blog-renderer.ts",
         "mira-web/src/lib/drive-commander-renderer.ts",
         "mira-web/src/lib/drive-pack-data.ts",
         "mira-web/src/lib/new-dashboard-renderer.ts",
@@ -2132,7 +2129,7 @@ def test_module_root_docs_test_configs_and_review_evidence_remain_unguarded(path
 @pytest.mark.parametrize(
     "path",
     [
-        "mira-web/src/views/__tests__/runtime-imported.test.ts",
+        "mira-web/src/data/__tests__/runtime-imported.test.ts",
         "mira-web/src/routes/runtime-imported.spec.ts",
         "mira-hub/src/components/__tests__/RuntimeImported.test.tsx",
         "mira-hub/src/app/runtime-imported.spec.tsx",
@@ -2264,8 +2261,11 @@ def test_every_existing_presentation_shaped_lib_file_is_guarded_non_vacuously(
         if path.is_file() and path.name.lower().endswith(presentation_suffixes)
     )
 
-    assert candidates, f"expected presentation-shaped fixtures below {relative_root}"
-    assert all(path_is_guarded(path, policy) for path in candidates), candidates
+    marketing_open = getattr(_guard, "_WEB_MARKETING_LIB_PATHS", frozenset())
+    guarded_candidates = [path for path in candidates if path not in marketing_open]
+    assert guarded_candidates, f"expected presentation-shaped fixtures below {relative_root}"
+    assert all(path_is_guarded(path, policy) for path in guarded_candidates), guarded_candidates
+    assert all(not path_is_guarded(path, policy) for path in candidates if path in marketing_open)
 
 
 def test_audited_capability_allowlists_only_name_real_unguarded_files():
@@ -2292,8 +2292,12 @@ def test_existing_production_lib_files_are_fully_partitioned():
         )
 
         assert production_files, f"expected production files below {relative_root}"
+        marketing_open = getattr(_guard, "_WEB_MARKETING_LIB_PATHS", frozenset())
         assert all(
-            path in preserved_paths or path_is_guarded(path, policy) for path in production_files
+            path in preserved_paths
+            or path in marketing_open
+            or path_is_guarded(path, policy)
+            for path in production_files
         ), production_files
 
 
@@ -2312,8 +2316,6 @@ def test_public_static_guarded_root_is_exposed_as_a_constant():
 @pytest.mark.parametrize(
     "path",
     [
-        "mira-web/public/index.html",
-        "mira-web/public/legacy.htm",
         "mira-web/public/app.css",
         "mira-web/public/bundle.js",
         "mira-web/public/module.mjs",
@@ -2400,6 +2402,199 @@ def test_public_static_unknown_suffix_fails_closed():
     real_policy = load_guard_policy(REAL_REGISTRY)
     assert path_is_guarded("mira-web/public/thing.zzz", real_policy)
     assert path_is_guarded("mira-web/public/thing", real_policy)
+
+
+# ---------------------------------------------------------------------------
+# Owner-approved 2026-10-20 marketing-site narrowing. Public factorylm.com
+# HTML/txt pages, marketing views + tests, and the blog/feature renderers
+# pass without attestation. Hub/app/control-plane paths stay fail-closed.
+# ---------------------------------------------------------------------------
+
+PR_4552_MARKETING_FILES = (
+    "mira-web/public/assess.html",
+    "mira-web/public/buy.html",
+    "mira-web/public/legal/dpa.html",
+    "mira-web/public/llms-full.txt",
+    "mira-web/public/llms.txt",
+    "mira-web/public/pricing.html",
+    "mira-web/public/privacy.html",
+    "mira-web/public/terms.html",
+    "mira-web/public/trust.html",
+    "mira-web/src/__tests__/site-wide-topbar.test.ts",
+    "mira-web/src/lib/blog-renderer.ts",
+    "mira-web/src/lib/feature-renderer.ts",
+    "mira-web/src/views/__tests__/cmms.test.ts",
+    "mira-web/src/views/__tests__/home.test.ts",
+    "mira-web/src/views/__tests__/honest-claims.test.ts",
+    "mira-web/src/views/__tests__/topbar.test.ts",
+    "mira-web/src/views/_topbar.ts",
+    "mira-web/src/views/cmms.ts",
+    "mira-web/src/views/home.ts",
+    "mira-web/src/views/limitations.ts",
+    "mira-web/src/views/security.ts",
+)
+
+
+@pytest.mark.parametrize("path", PR_4552_MARKETING_FILES)
+def test_marketing_site_paths_from_pr_4552_are_unguarded(path):
+    policy = load_guard_policy(REAL_REGISTRY)
+    assert not path_is_guarded(path, policy), path
+
+
+def test_marketing_only_pr_4552_file_list_passes_without_attestation():
+    policy = load_guard_policy(REAL_REGISTRY)
+    changes = [ChangedFile(status="modified", path=path) for path in PR_4552_MARKETING_FILES]
+    result = evaluate(changes, pr_body="", policy=policy)
+    assert result.allowed is True
+    assert result.guarded_paths == ()
+    assert result.missing_fields == ()
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-web/public/index.html",
+        "mira-web/public/legacy.htm",
+        "mira-web/public/robots.txt",
+        "mira-web/public/.well-known/security.txt",
+        "mira-web/public/printsense.html",
+        "mira-web/public/activated.html",
+        "mira-web/src/views/__brand_new_sibling__.ts",
+        "mira-web/src/views/__tests__/runtime-imported.test.ts",
+        "mira-web/src/__tests__/printsense-landing.test.ts",
+        "mira-web/src/lib/blog-renderer.ts",
+        "mira-web/src/lib/feature-renderer.ts",
+        "docs/plans/2026-06-01-mira-master-architecture-plan.md",
+        "docs/README.md",
+    ],
+)
+def test_marketing_pages_and_docs_remain_open(path):
+    policy = load_guard_policy(REAL_REGISTRY)
+    assert not path_is_guarded(path, policy), path
+    result = evaluate([ChangedFile(status="modified", path=path)], pr_body="", policy=policy)
+    assert result.allowed is True
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-hub/src/app/(hub)/feed/page.tsx",
+        "mira-hub/src/components/AssetChat.tsx",
+        "mira-hub/public/new-shell.js",
+        "mira-mobile/src/screens/NotebookScreen.tsx",
+        "mira-web/src/server.ts",
+        "mira-web/src/routes/m.ts",
+        "mira-web/src/views/scan-not-found.html",
+        "mira-web/src/lib/drive-commander-renderer.ts",
+        "mira-web/src/lib/head.ts",
+        "mira-web/src/lib/components.ts",
+        "mira-web/src/data/blog-posts.ts",
+        "mira-web/public/sw.js",
+        "mira-web/public/app.css",
+        "mira-web/public/og-image.png",
+        "mira-web/public/manifest.json",
+        "docs/preview/index.html",
+        "docs/architecture/convergence/REGISTRY.yaml",
+        "docs/architecture/convergence/UNIFIED_UI_CUTOVER.md",
+        "tools/ui_surface_lifecycle_guard.py",
+    ],
+)
+def test_legacy_app_hub_and_control_plane_paths_stay_guarded(path):
+    policy = load_guard_policy(REAL_REGISTRY)
+    assert path_is_guarded(path, policy), path
+    result = evaluate([ChangedFile(status="modified", path=path)], pr_body="", policy=policy)
+    assert result.allowed is False
+    assert "review:exact-head and exact-body Codex GREEN" in result.missing_fields
+
+
+def test_legacy_hub_screen_still_fails_without_exact_head_green():
+    policy = load_guard_policy(REAL_REGISTRY)
+    result = evaluate(
+        [ChangedFile(status="modified", path="mira-hub/src/app/(hub)/feed/page.tsx")],
+        pr_body="",
+        policy=policy,
+    )
+    assert result.allowed is False
+    assert "mira-hub/src/app/(hub)/feed/page.tsx" in result.guarded_paths
+    assert "review:exact-head and exact-body Codex GREEN" in result.missing_fields
+
+
+_CURSOR_AGENT_FOOTER = textwrap.dedent(
+    """\
+    <!-- CURSOR_AGENT_PR_BODY_END -->
+
+    <div><a href="https://cursor.com/agents/bc-test?cursor_ref=pr_footer&amp;cursor_cta=open_in_web"><img alt="Open in Web" width="114" height="28" src="https://cursor.com/assets/images/open-in-web-dark.png"></a>&nbsp;<a href="https://cursor.com/background-agent?bcId=bc-test&amp;cursor_ref=pr_footer&amp;cursor_cta=open_in_cursor"><img alt="Open in Cursor" width="131" height="28" src="https://cursor.com/assets/images/open-in-cursor-dark.png"></a></div>
+    """
+)
+
+
+def test_cursor_agent_footer_html_does_not_invalidate_author_rationale():
+    body = (
+        "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->\n"
+        + _VALID_BODY
+        + "\n"
+        + _CURSOR_AGENT_FOOTER
+    )
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
+    assert result.allowed is True
+
+
+def test_cursor_agent_footer_without_wrapper_comments_is_ignored():
+    body = _VALID_BODY + (
+        "\n<div><a href=\"https://cursor.com/agents/bc-test?cursor_ref=pr_footer\">"
+        "<img alt=\"Open in Web\" src=\"https://cursor.com/x.png\"></a></div>\n"
+    )
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
+    assert result.allowed is True
+
+
+def test_html_inside_author_written_rationale_still_fails_with_cursor_footer():
+    body = (
+        "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->\n"
+        + _VALID_BODY.replace(
+            "Reason: severity-1 production repair for a broken rollback route",
+            "Reason: <span>severity-1 production repair for a broken rollback route</span>",
+        )
+        + "\n"
+        + _CURSOR_AGENT_FOOTER
+    )
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
+    assert result.allowed is False
+    assert "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale" in (
+        result.missing_fields
+    )
+
+
+def test_rationale_only_after_cursor_body_end_cannot_authorize():
+    body = (
+        "Some PR description text.\n"
+        + _CURSOR_AGENT_FOOTER
+        + "\n"
+        + _VALID_BODY
+    )
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
+    assert result.allowed is False
+    assert "body:## Lifecycle guard rationale section" in result.missing_fields
 
 
 # ---------------------------------------------------------------------------
@@ -3136,7 +3331,7 @@ def test_pr_template_has_exactly_one_blank_rationale_section_that_fails_closed()
 
     real_policy = load_guard_policy(REAL_REGISTRY)
     result = evaluate(
-        [ChangedFile(status="modified", path="mira-web/src/views/home.ts")],
+        [ChangedFile(status="modified", path="mira-hub/src/app/(hub)/feed/page.tsx")],
         pr_body=body,
         policy=real_policy,
     )
@@ -3156,7 +3351,7 @@ def test_pr_template_rationale_cannot_authorize_without_exact_snapshot_green():
 
     real_policy = load_guard_policy(REAL_REGISTRY)
     result = evaluate(
-        [ChangedFile(status="modified", path="mira-web/src/views/home.ts")],
+        [ChangedFile(status="modified", path="mira-hub/src/app/(hub)/feed/page.tsx")],
         pr_body=filled,
         policy=real_policy,
     )

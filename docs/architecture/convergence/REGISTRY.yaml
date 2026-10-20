@@ -1751,17 +1751,14 @@ mira-web-legacy-ui:
     - tools/migration-drift-requirements.txt
     - tools/predeploy_log_capture.sh
     - well-known/**
-    - mira-web/src/views/**
     - mira-web/src/routes/**
     - mira-web/src/server.ts
-    - mira-web/src/lib/blog-renderer.ts
     - mira-web/src/lib/components.ts
     - mira-web/src/lib/drive-commander-renderer.ts
-    - mira-web/src/lib/feature-renderer.ts
     - mira-web/src/lib/head.ts
     - mira-web/src/lib/mailer.ts
     - mira-web/public/**
-  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2 (docs/architecture/convergence/UNIFIED_UI_CUTOVER.md). Parent module mira-web stays CANONICAL/deployed; code-owned classification in tools/ui_surface_lifecycle_guard.py preserves three named JSON/API routes, an exact audited backend library allowlist, TypeScript/JSON capability or seed files, and non-runtime docs/tests/tooling while guarding the mixed m.ts customer-routing journey, every other route, renderers, content data, server.ts, module-root and every root compose or docker-compose YAML build/mount control regardless of suffix, deployable root nginx/redirect controls, production-credential deploy helpers, the mixed outbound mailer, unknown production siblings, non-TypeScript/JSON capability files, and every file under mira-web/public/**. Static images, fonts, PDFs, manifests, and scripts all change the shipped legacy experience and are therefore guarded. Evaluated by .github/workflows/ui-lifecycle-guard.yml, which posts an advisory Legacy UI Lifecycle Guard status on every PR; non-spoofable protected-main binding remains tracked in #3657 — see charter §3.1."
+  declared_state: "FACTORYLM-UNIFIED-UI-CUTOVER-001 charter §2.2 (docs/architecture/convergence/UNIFIED_UI_CUTOVER.md), narrowed 2026-10-20. Parent module mira-web stays CANONICAL/deployed; code-owned classification in tools/ui_surface_lifecycle_guard.py preserves three named JSON/API routes, an exact audited backend library allowlist, TypeScript/JSON capability or seed files, non-runtime docs/tests/tooling, public marketing HTML/txt pages under mira-web/public/, marketing views under mira-web/src/views/ (except the QR-scan miss page), mira-web/src/__tests__/ public-site tests, and the blog/feature renderers, while guarding the mixed m.ts customer-routing journey, every other route, remaining renderers, content data, server.ts, module-root and every root compose or docker-compose YAML build/mount control regardless of suffix, deployable root nginx/redirect controls, production-credential deploy helpers, the mixed outbound mailer, unknown production siblings, non-TypeScript/JSON capability files, and every non-HTML/txt file under mira-web/public/**. Static images, fonts, PDFs, manifests, and scripts all change the shipped legacy experience and are therefore guarded. Evaluated by .github/workflows/ui-lifecycle-guard.yml, which posts an advisory Legacy UI Lifecycle Guard status on every PR; non-spoofable protected-main binding remains tracked in #3657 — see charter §3.1."
   known_drift:
     - "PR #3592 (open at charter approval) edits mira-web/src/views/home.ts inside this guarded tree — must merge, close, or use legacy-ui-exception at/around the freeze landing; this entry does not decide that PR."
 

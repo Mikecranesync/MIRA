@@ -61,7 +61,7 @@ this table explains the boundary.
 
 | Surface | Guarded paths | Why guarded |
 |---|---|---|
-| Public | production module-root and root-level nginx/deploy controls; `mira-web/src/views/**`; `mira-web/src/routes/**`; `mira-web/src/server.ts`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-web/public/**` | Old public-page/content tree, every customer-routing or HTML route mount/renderer and visible-output helper, every statically served public asset, and the files that select/package that entry point |
+| Public | production module-root and root-level nginx/deploy controls; `mira-web/src/routes/**`; `mira-web/src/server.ts`; all `src/lib/**` except the code-owned exact capability allowlist and the marketing blog/feature renderers; `mira-web/public/**` except HTML/txt marketing pages | Customer-routing or HTML route mounts, remaining visible-output helpers, and statically served non-page public assets (images, fonts, PDFs, manifests, scripts) plus the files that select/package that entry point. Owner-approved 2026-10-20: public marketing HTML/txt pages, `mira-web/src/views/**` marketing views and their tests, and the blog/feature renderers no longer require attestation. `mira-web/src/views/scan-not-found.html` stays guarded as a product QR-scan miss page. |
 | Hub | production module-root build/mount controls; root auth/middleware selectors; `mira-hub/src/app/**`; all production files under `mira-hub/src/components/**` and `providers/**`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-hub/src/messages/**`; `mira-hub/public/**` | Every legacy Next page/layout/style/component/provider/helper, render-ready view/data/copy/interaction module, locale catalog, public asset, root landing/capability/OTA selector, and the files that build/mount that surface; ordinary API route handlers and audited capability-shaped TypeScript helpers are classifier exclusions |
 | Mobile | production module-root build/mount controls; production files under `mira-mobile/android/**` and `mira-mobile/ios/**`; app/universal-link associations; OTA verify/select/publish/deploy/rollback/fingerprint controls; `mira-mobile/index.html`; production React/style/navigation and mixed presentation/view-model helpers under `mira-mobile/src/**` | Actual application/native/deep-link/OTA mount and packaging controls, separate shell/screen tree, styles, navigation, visible copy/interaction helpers, and duplicate chat presentation |
 
@@ -110,12 +110,14 @@ presentation-shaped:
   `src/messages/**` is rendered product copy and is guarded.
 - Public-web JSON/API routes `inbox.ts`, `mfa.ts`, and `probe-state.ts`, the
   exact code-owned allowlist of audited existing backend libraries (including
-  typed chat transport and QR generation), and TypeScript/JSON files in
-  `src/seed/**` and the explicit future `src/capabilities/**` root remain open.
+  typed chat transport and QR generation), TypeScript/JSON files in
+  `src/seed/**` and the explicit future `src/capabilities/**` root, marketing
+  views under `src/views/**` (except `scan-not-found.html`), public-site tests
+  under `src/__tests__/`, and the blog/feature renderers remain open.
   The mixed `m.ts` customer redirect journey is guarded. Every other suffix in
   the capability/seed roots, every other route, the mixed `server.ts` mount,
-  every non-allowlisted `src/lib/**` file, page content, and unknown production
-  siblings fail closed.
+  every non-allowlisted `src/lib/**` file, remaining page content, and unknown
+  production siblings fail closed.
   The mixed mailer stays guarded because it owns sender/subject/body copy and
   chooses the templates; reusable delivery transport should move to
   `src/capabilities/**` before changing independently.
@@ -153,12 +155,13 @@ new root `compose*.yml`, `compose*.yaml`, `docker-compose*.yml`, and
 with production credentials or on the production host before UI build/deploy
 are also guarded as transitive trusted inputs.
 
-Every file under `mira-web/public/**` or `mira-hub/public/**` is blanket
-guarded. Images, icons, fonts, PDFs, source maps, text, and manifests can all
-change the visible or installed legacy experience; "non-executable" is not
-the same as "non-presentational." New canonical assets belong with the shared
-shell or a bounded adapter. The classifiers apply to additions,
-modifications, deletions, and both rename directions.
+Every file under `mira-hub/public/**` is blanket guarded. Under
+`mira-web/public/**`, HTML/txt marketing pages are open; images, icons,
+fonts, PDFs, source maps, scripts, manifests, and unknown suffixes stay
+guarded. "Non-executable" is not the same as "non-presentational." New
+canonical assets belong with the shared shell or a bounded adapter. The
+classifiers apply to additions, modifications, deletions, and both rename
+directions.
 
 New bounded presentation adapters live outside those trees under
 `mira-web/src/factorylm-ui/**`, `mira-hub/src/factorylm-ui/**`, or
@@ -235,8 +238,11 @@ them at `[WORK-CLAIM]`; a character reference decoded inside a text token never
 becomes a structural line boundary.
 To prevent HTML DOM containers or malformed comment recovery from hiding an
 otherwise top-level Markdown token, tags and malformed/unclosed HTML comments
-anywhere in the PR body invalidate the rationale. Strictly valid standalone
-HTML comments remain allowed but cannot supply field text. Each value must
+in the author-written PR body invalidate the rationale. The auto-injected
+Cursor agent wrapper (`<!-- CURSOR_AGENT_PR_BODY_BEGIN/END -->`) and its
+trailing `cursor_ref=pr_footer` HTML block are stripped before that check;
+they cannot supply or hide a rationale. Strictly valid standalone HTML
+comments remain allowed but cannot supply field text. Each value must
 contain at least three alphanumeric tokens and at least twelve alphanumeric
 characters; one-character or long single-token filler is not approval evidence.
 The substantive rationale is the human-readable audit record of why the
