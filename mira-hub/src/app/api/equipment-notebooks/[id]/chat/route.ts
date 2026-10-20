@@ -2146,6 +2146,8 @@ async function handleChatTurn(
   // Codex #4069 F4: a failed OEM query is not a completed zero-hit search —
   // the decline below must never say "I couldn't find it" when nothing ran.
   let oemRetrievalFailed = false;
+  // Filled by retrieveNodeChunks: what the vector lane did this turn (#4548).
+  const retrievalDiagnostics: { vectorLane?: string } = {};
   const chunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
         // Raw pool on purpose (hybrid corpus law — see manual-rag.ts header):
@@ -2209,6 +2211,7 @@ async function handleChatTurn(
             // chunks of these docs are admitted without ever being marked globally
             // verified — confirmation is admission, not corpus promotion.
             approvedSourceDocIds: docIds,
+            diagnostics: retrievalDiagnostics,
           }),
         ),
       );
@@ -2278,6 +2281,7 @@ async function handleChatTurn(
         "mira.retrieval.oem_scope": oemScope,
         "mira.retrieval.zero_result_reason": zeroResultReason,
         "mira.retrieval.prior_visual_observations_considered": priorLookRows.length,
+        "mira.retrieval.vector_lane": retrievalDiagnostics.vectorLane ?? null,
         "mira.visual.prior_file_ids": priorLookFileIds,
       },
       retrievalSpan,

@@ -92,4 +92,19 @@ describe("mira.retrieval.vector_lane on the turn trace", () => {
     await ask(client({ vectorFails: true }));
     expect(lane()).toEqual(["failed"]);
   });
+
+  it("hands the same outcome back through opts.diagnostics, for the caller's own span (#4548)", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    vi.stubGlobal("fetch", vi.fn(async () => { throw Object.assign(new Error("aborted"), { name: "TimeoutError" }); }));
+    const diagnostics: { vectorLane?: string } = {};
+    await retrieveNodeChunks(client(), "t-1", "what carrier frequency should I use", {
+      nodeId: "n-1",
+      unsPath: null,
+      docIds: ["d-1"],
+      validatedDocScope: true,
+      topK: 3,
+      diagnostics,
+    });
+    expect(diagnostics.vectorLane).toBe("skipped_timeout");
+  });
 });

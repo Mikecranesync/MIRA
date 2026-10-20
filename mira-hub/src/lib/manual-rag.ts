@@ -1258,6 +1258,11 @@ export async function retrieveNodeChunks(
      *  alongside verified shared rows; the set is intersected with `docIds`
      *  (narrow only) and ignored when the gate is off. */
     approvedSourceDocIds?: string[];
+    /** Filled with what the vector lane did (off | ran | skipped_<why> |
+     *  failed) so the caller can put it on its own retrieval span: callers
+     *  start stage spans without activating them, so setSpanAttrs() on the
+     *  active span alone never reached the trace (#4548). */
+    diagnostics?: { vectorLane?: string };
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -1740,6 +1745,7 @@ export async function retrieveNodeChunks(
     }
   }
   setSpanAttrs({ "mira.retrieval.vector_lane": vectorLane });
+  if (opts.diagnostics) opts.diagnostics.vectorLane = vectorLane;
 
   // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank). For a
   // broad question, keep a bigger, page-DIVERSE slice so distinct facets survive

@@ -1638,6 +1638,22 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
   });
 
+  it("3b. the vector lane's outcome lands on the retrieval.execute span (#4548)", async () => {
+    // Staging 2026-10-20: retrieveNodeChunks set it on the ACTIVE span, but the
+    // route starts its stage spans without activating them, so it was dropped.
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    ragMock.retrieveNodeChunks.mockImplementationOnce((async (...args: unknown[]) => {
+      const opts = args[3] as { diagnostics?: { vectorLane?: string } };
+      if (opts.diagnostics) opts.diagnostics.vectorLane = "skipped_timeout";
+      return [chunk(DOC_A, "")];
+    }) as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("Rated 24 VDC [1].")));
+    await (await POST(chatReq({ message: "rated voltage?", sourceDocIds: [DOC_A] }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const retrieval = handle.finished().find((s) => s.name === "retrieval.execute");
+    expect(retrieval!.attributes["mira.retrieval.vector_lane"]).toBe("skipped_timeout");
+  });
+
   it("five concurrent historical recalls do not nest connections in the five-slot pool", async () => {
     const tenant = vi.mocked(withTenantContext);
     const original = tenant.getMockImplementation()!;
