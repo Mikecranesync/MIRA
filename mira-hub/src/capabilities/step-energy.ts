@@ -21,12 +21,15 @@
 
 const ISOLATED =
   /\b(?:lock(?:ed)?[\s-]?out|lockout(?:\/tagout)?|LOTO|isolated|de[\s-]?energi[sz]ed|power(?:ed)?\s+(?:off|down)|with (?:the )?power (?:removed|off))\b/i;
-const RESTORE =
+/** Written restore — verb-first and object-first ("the lockout is removed",
+ *  "power is restored"). Exported so the isolation tracker reuses this
+ *  grammar instead of a second phrase list. */
+export const RESTORE =
   /\b(?:remove (?:the )?(?:lock[\s-]?outs?|loto|lock\s*\/\s*tags?)|lock(?:out)? (?:is )?removed|restor(?:e|es|ed|ing) (?:the )?power|power (?:is )?restored|re[\s-]?energi[sz](?:e|es|ed|ing)\b|re-?apply power|reconnect(?:ing)? (?:the )?power|turn (?:the )?power (?:back )?on|power (?:it|the \w+) (?:back )?(?:on|up)|bring (?:it|the \w+) back (?:up|on(?:line)?)|apply (?:main |the )?(?:power|voltage))\b/i;
 const DEAD_CHECK =
   /\b(?:absence of voltage|zero (?:volts|voltage|energy)|0\s?V\b|no voltage|(?:voltage|power) is (?:absent|off|removed)|is de[\s-]?energi[sz]ed|are de[\s-]?energi[sz]ed|is dead|are dead|confirmed dead|verif\w* (?:it is |they are )?dead|continuity|resistance|insulation|megger|open[\s-]circuit|(?:voltage |non-contact )?tester|test meter|test[\s-]lead|(?:low|high)[\s-]voltage|voltage (?:class|rating)|rated voltage)\b/gi;
 /** The lockout is taken off in this very step — a correct later energized step. */
-const LOCKOUT_REMOVED =
+export const LOCKOUT_REMOVED =
   /\b(?:remov\w* (?:the )?lock[\s-]?out|lock[\s-]?out (?:has been |is )?removed|lock[\s-]?out removal|locked out removed)\b/i;
 /** Isolation stated as still in force — contradicts any restore in the same step.
  *  Exported so the isolation tracker in answer-validation.ts reuses this grammar

@@ -30,7 +30,7 @@
 
 import { SAFETY_STOP } from "@/lib/safety-classifier";
 
-import { STILL_ISOLATED, stepEnergyContradiction } from "./step-energy";
+import { LOCKOUT_REMOVED, RESTORE, STILL_ISOLATED, stepEnergyContradiction } from "./step-energy";
 import { firstUngovernedMatch } from "./hazard-modifiers";
 
 export type AnswerValidation =
@@ -1067,11 +1067,12 @@ function unsafeAnswerBlock(violation: string, detail: string): AnswerValidation 
 // restore that is never written, so the explicit restore-to-measure rule never
 // fired and the answer was served with no energized-work banner (2 of 5 turns).
 //
-// Design (#4111 review rounds 1-2): this rule only ADDS the banner and never
-// withholds the answer, so a miss costs more than an extra warning. Each
-// bolted-on exemption (display reading, dead check, splitting on "and") opened
-// a new bypass. The rule therefore fires on a positive shape and keeps only
-// two exemptions, both clause-scoped:
+// Design (#4111 review rounds 1-2) was warn-and-keep. Owner decision
+// 2026-10-16 (#4122/#3790): the same shape — a live supply reading at a
+// contact point after lockout with NO restore written — is A2a
+// `unsafe-answer:lockout-live-measurement` and replaces with SAFETY_STOP.
+// Detection still fires on a positive shape and keeps only two exemptions,
+// both clause-scoped:
 //   fire   = after an affirmative lockout, a clause with a measure verb, a live
 //            supply quantity, and a physical CONTACT point;
 //   exempt = that clause affirmatively verifies ABSENCE of voltage, or that
@@ -1104,7 +1105,7 @@ const LOCKOUT_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + 
 // The object of a LOTO removal is lockout / LOTO / lock-and-tag / lock/tag —
 // never a bare mechanical "lock" ("Remove the lock nut …" is fastener work).
 const LOCKOUT_REMOVAL_SRC =
-  "(?:remov\\w*|lift\\w*|clear\\w*|releas\\w*|take[sn]?\\s+off|took\\s+off)\\s+(?:(?:the|your|all|their|his|her|its)\\s+){0,2}(?:lock[-\\s]?outs?|loto|locks?\\s+and\\s+tags?|lock\\s*/\\s*tags?)\\b";
+  "(?:remov\\w*|lift\\w*|clear\\w*|releas\\w*|tak(?:e[sn]?|ing)\\s+off|took\\s+off)\\s+(?:(?:the|your|all|their|his|her|its)\\s+){0,2}(?:lock[-\\s]?outs?|loto|locks?\\s+and\\s+tags?|lock\\s*/\\s*tags?)\\b";
 const RESTORE_VARIANT_SRC =
   "(?:restor(?:e|es|ed|ing)\\s+(?:(?:the|its)\\s+)?(?:power|energy|supply|voltage)|" +
   "reconnect\\w*\\s+(?:(?:the|its)\\s+)?(?:power|supply|mains)|" +
@@ -1158,7 +1159,7 @@ function liveMeasurementAfterLockout(text: string): LockoutMeasurement {
           !RESTORE_PROHIBITION.test(step) &&
           !ENDS_ISOLATION_PROHIBITION.test(step) &&
           !STILL_ISOLATED.test(step)
-            ? ENDS_ISOLATION.exec(step)
+            ? (ENDS_ISOLATION.exec(step) ?? RESTORE.exec(step) ?? LOCKOUT_REMOVED.exec(step))
             : null;
         if (ended) {
           const before = step.slice(0, ended.index);

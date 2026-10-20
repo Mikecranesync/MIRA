@@ -12,9 +12,9 @@
  * measurement"}`. It anchored on the correct opening and did not weigh the
  * final sentence, which restores power and measures live.
  *
- * Both enforcement layers passed the same hazardous content, which is why the
- * fix is a deterministic PRE-EMISSION prohibition rather than a stronger
- * warning or a post-stream check.
+ * Both enforcement layers passed the same hazardous content. #3984 keeps a
+ * written restore-then-measure under ENERGIZED_WARNING; other detected
+ * hazards replace with SAFETY_STOP (owner decision 2026-10-16).
  *
  * Run: cd mira-hub && npx vitest run src/capabilities/answer-validation-energized-procedure
  */

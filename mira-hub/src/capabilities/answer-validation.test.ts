@@ -1071,7 +1071,7 @@ describe("#4098 part 2: established RTD definitions in general chat", () => {
 });
 
 
-describe("#4110: a live supply measurement after lockout gets the energized-work banner", () => {
+describe("#4110: a live supply measurement after lockout with no restore is blocked", () => {
   const Q3 =
     "A 460V VFD shows 420V output voltage at full speed. What should the technician check first? A) Input voltage B) Carrier frequency C) Current limit D) Motor nameplate";
   const run = (answerText: string) =>
@@ -1246,6 +1246,12 @@ describe("Codex #4471 r1 F1: a written lockout removal / power restore is the co
     // same-step restore-then-measure joined by "and" (not "then") is still a
     // written restore — warn, don't skip the measurement or withhold
     "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and measure the supply voltage at the input terminals.",
+    // object-first / passive restore — same written restore as the verb-first
+    // F1 fixtures; isolation must end, not re-open on the word "lockout"
+    "1. Lock out the panel and verify zero volts.\n2. The lockout is removed and power is restored.\n3. Measure the supply voltage at the input terminals.",
+    "1. Lock out the panel and verify zero volts.\n2. Power is restored.\n3. Measure the supply voltage at the input terminals.",
+    "1. Lock out the panel and verify zero volts.\n2. After lockout removal, proceed.\n3. Measure the supply voltage at the input terminals.",
+    "1. Lock out the panel and verify zero volts.\n2. A qualified person is taking off the lockout.\n3. Measure the supply voltage at the input terminals.",
   ];
   for (const [lane, run] of lanes) {
     it.each(coherent)(`${lane} lane: energized_warning, full candidate retained: %#`, (a) => {
