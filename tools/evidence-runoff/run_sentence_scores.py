@@ -38,6 +38,9 @@ def sentences(answer: str) -> list[str]:
     out = []
     for p in parts:
         p = re.sub(r"\s+", " ", p).strip(" -•\t")
+        # Walk answers render citation markers as bare digits before the period ("… motor heating 11.").
+        # Strip ONE trailing 1–2 digit token (or a run like "1114") so it never reaches the NLI hypothesis.
+        p = re.sub(r"\s\d{1,4}\s*([.!?]?)$", r"\1", p)
         if len(p.split()) < 4 or REFUSAL.search(p):
             continue
         out.append(p)

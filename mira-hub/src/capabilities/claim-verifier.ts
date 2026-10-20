@@ -131,7 +131,7 @@ function valueOffsets(claim: TypedClaim, text: string, raw: string): number[] {
   const push = (re: RegExp, ok: (m: RegExpMatchArray) => boolean) => {
     for (const m of text.matchAll(re)) if (ok(m)) hits.push(m.index ?? 0);
   };
-  const [, val] = claim.key.split(/:(.*)/s);
+  const val = claim.key.slice(claim.key.indexOf(":") + 1);
   switch (claim.kind) {
     case "bit":
       push(/\bbit\s*#?\s*(\d{1,2})\b/g, (m) => Number(m[1]) === Number(val));

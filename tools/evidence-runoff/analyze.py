@@ -17,6 +17,7 @@ Metrics: catch = unsupported ÷ bad (wrong_fact + wrong_page + answered_not_in_m
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -30,8 +31,12 @@ def load(p: Path) -> dict[str, dict]:
     return {r["item_id"]: r for r in (json.loads(x) for x in p.open())}
 
 
-def prob_verdict(rec: dict, key: str, tau: float) -> str:
+def prob_verdict(rec: dict, key: str, tau: float, claim_only: bool = False) -> str:
+    """min over the answer's factual sentences; `claim_only` keeps only sentences that carry a value
+    (a digit) — the sentence that states the claim, not the answer's other sentences."""
     s = rec.get("sentences") or []
+    if claim_only:
+        s = [x for x in s if re.search(r"\d", x["s"])]
     if not s:
         return "no_opinion"
     return "unsupported" if min(x[key] for x in s) < tau else "supported"
@@ -61,17 +66,31 @@ def metrics(ids: list[str], verdict: dict[str, str], labels: dict[str, str]) -> 
     }
 
 
-def tune(dev: list[str], recs: dict[str, dict], key: str, labels: dict[str, str]) -> float:
+def tune(
+    dev: list[str],
+    recs: dict[str, dict],
+    key: str,
+    labels: dict[str, str],
+    claim_only: bool = False,
+) -> float:
     """Largest-catch τ whose DEV false-flag rate stays ≤ MAX_DEV_FALSE_FLAG (ties → the smaller τ)."""
     best_tau, best_catch = 0.0, -1
     for t in [x / 100 for x in range(1, 100)]:
-        v = {i: prob_verdict(recs[i], key, t) for i in dev}
+        v = {i: prob_verdict(recs[i], key, t, claim_only) for i in dev}
         m = metrics(dev, v, labels)
         if m["good"] and m["false_flag_rate"] > MAX_DEV_FALSE_FLAG:
             continue
         if m["caught"] > best_catch:
             best_tau, best_catch = t, m["caught"]
     return best_tau
+
+
+def kind_of(i: str) -> str:
+    return (
+        "value_swap"
+        if i.startswith("adv:")
+        else ("page_swap" if i.startswith("advpage:") else "real")
+    )
 
 
 def main() -> int:
@@ -114,6 +133,9 @@ def main() -> int:
         taus[name] = tau
         label = "V2 embedding" if name == "emb" else f"V3 {name.split('_', 1)[-1]}"
         verdicts[label] = {i: prob_verdict(recs[i], key, tau) for i in ids}
+        tau_c = tune(dev, recs, key, labels, claim_only=True)
+        taus[name + " (claim sentences)"] = tau_c
+        verdicts[label + " claim-sent"] = {i: prob_verdict(recs[i], key, tau_c, True) for i in ids}
         # Descriptive only (NOT used for selection): what any τ could achieve on held-out + adversarial.
         hv = [i for i in ids if corpus[i]["split"] != "dev"]
         curves[label] = [
@@ -146,6 +168,21 @@ def main() -> int:
             "heldout": dict(Counter(labels[i] for i in held)),
         },
         "taus_dev_tuned": taus,
+        "by_kind": {
+            name: {
+                f"{kind}/{sp}": f"{sum(v[i] == 'unsupported' for i in grp if labels[i] in BAD)}/{sum(labels[i] in BAD for i in grp)}"
+                for kind in ("real", "value_swap", "page_swap")
+                for sp in ("dev", "heldout")
+                for grp in [
+                    [
+                        i
+                        for i in ids
+                        if kind_of(i) == kind and (corpus[i]["split"] == "dev") == (sp == "dev")
+                    ]
+                ]
+            }
+            for name, v in verdicts.items()
+        },
         "max_dev_false_flag": MAX_DEV_FALSE_FLAG,
         "validators": {
             name: {
