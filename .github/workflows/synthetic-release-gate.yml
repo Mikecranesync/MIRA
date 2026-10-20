@@ -71,7 +71,7 @@ jobs:
           echo "offline deepeval suite + CI lint/tests. Job will exit success."
           exit 0
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
