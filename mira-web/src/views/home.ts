@@ -1,86 +1,71 @@
 import { head } from "../lib/head.js";
 import { btnPrimary } from "../lib/components.js";
-import { navbar, footer, TALK_TO_MIKE_HREF } from "./_topbar.js";
+import {
+  generateJsonLd,
+  loadCapabilities,
+  provenByKind,
+  provenClaims,
+  type CapabilitiesFile,
+  type MarketingClaim,
+} from "../capabilities/marketing-claims/index.js";
+import { navbar, footer } from "./_topbar.js";
 
-const ORG_AND_SITE_LD = {
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "Organization",
-      "@id": "https://factorylm.com/#org",
-      name: "FactoryLM",
-      url: "https://factorylm.com/",
-      logo: "https://factorylm.com/icons/favicon.svg",
-      sameAs: [
-        "https://github.com/Mikecranesync",
-        "https://www.linkedin.com/company/factorylm",
-      ],
-      founder: {
-        "@type": "Person",
-        "@id": "https://factorylm.com/#mike",
-        name: "Mike Harper",
-        jobTitle: "Founder",
-        worksFor: { "@id": "https://factorylm.com/#org" },
-      },
-    },
-    {
-      "@type": "WebSite",
-      "@id": "https://factorylm.com/#website",
-      url: "https://factorylm.com/",
-      name: "FactoryLM",
-      publisher: { "@id": "https://factorylm.com/#org" },
-    },
-    {
-      "@type": "SoftwareApplication",
-      "@id": "https://factorylm.com/#app",
-      name: "MIRA — Maintenance Intelligence & Resource Assistant",
-      applicationCategory: "BusinessApplication",
-      operatingSystem: "Web",
-      url: "https://factorylm.com/",
-      description: "FactoryLM is not a CMMS and does not replace yours. There is nothing to switch.",
-      publisher: { "@id": "https://factorylm.com/#org" },
-    },
-  ],
-};
+function claim(data: CapabilitiesFile, id: string): MarketingClaim {
+  const row = data.claims.find((c) => c.id === id);
+  if (!row || row.status !== "proven") {
+    throw new Error(`homepage requires proven claim ${id}`);
+  }
+  return row;
+}
 
-function hero(): string {
+function hero(data: CapabilitiesFile): string {
+  const capabilities = provenByKind("capability", data);
+  const lead = capabilities[0];
+  const rest = capabilities.slice(1);
   return `<section class="fl-hero" aria-labelledby="fl-hero-h1">
   <div class="fl-hero-inner">
-    <h1 id="fl-hero-h1" class="fl-hero-h1">FactoryLM</h1>
-    <h2 class="fl-hero-h2">It's not a CMMS and doesn't replace yours.</h2>
-    <h3 class="fl-hero-h3">There's nothing to switch.</h3>
-    <p class="fl-hero-sub">It doesn't connect to PLCs, doesn't use work-order history, and doesn't write work orders.</p>
+    <p class="fl-hero-eyebrow">FactoryLM</p>
+    <h1 id="fl-hero-h1" class="fl-hero-h1">${data.positioning.headline}</h1>
+    <h2 class="fl-hero-h2">${data.positioning.subhead}</h2>
+    <p class="fl-hero-sub">${[lead, ...rest].map((c) => c.text).join(" ")}</p>
     <div class="fl-hero-cta">
-      ${btnPrimary("Talk to Mike", { href: TALK_TO_MIKE_HREF, cta: "hero-talk" })}
+      ${btnPrimary(data.contact.cta, { href: data.contact.href, cta: "hero-talk" })}
     </div>
     <p class="fl-hero-cta-foot">Already using FactoryLM? <a href="/cmms" data-cta="hero-signin">Sign in</a>.</p>
   </div>
 </section>`;
 }
 
-function honestLimits(): string {
+function honestLimits(data: CapabilitiesFile): string {
+  const limits = provenByKind("limit", data).filter(
+    (c) => c.id !== "mike-central-florida"
+  );
+  const paras = limits
+    .map((c) => `<p class="fl-section-sub">${c.text}</p>`)
+    .join("\n  ");
   return `<section class="fl-section" aria-labelledby="fl-limits-h">
   <h2 id="fl-limits-h" class="fl-section-h">What it does not do.</h2>
-  <p class="fl-section-sub">For lockout, arc flash and confined space, follow your site procedure. Don't use any AI tool for those.</p>
-  <p class="fl-section-sub">We've tested Rockwell and Festo manuals so far, and we'll post our misses too.</p>
+  ${paras}
 </section>`;
 }
 
-function buyerFit(): string {
+function buyerFit(data: CapabilitiesFile): string {
   const forList = [
+    "One maintenance crew",
     "Maintenance managers",
     "Plant managers",
     "Reliability engineers",
-    "Controls engineers &amp; integrators",
   ];
+  const notACmms = claim(data, "not-a-cmms").text;
+  const noPlc = claim(data, "no-plc-or-work-order-write").text;
   const notList = [
-    "Looking for a CMMS? It's not a CMMS and doesn't replace yours.",
-    "Need PLC data or work-order automation? It doesn't connect to PLCs, doesn't use work-order history, and doesn't write work orders.",
+    `Looking for a CMMS? ${notACmms}`,
+    `Need PLC data or work-order automation? ${noPlc}`,
   ];
   const li = (items: string[]) => items.map((i) => `<li>${i}</li>`).join("\n      ");
   return `<section class="fl-section" aria-labelledby="fl-fit-h">
   <h2 id="fl-fit-h" class="fl-section-h">Who it's for.</h2>
-  <p class="fl-section-sub">We'd rather tell you up front. See the full list on <a href="/limitations" data-cta="fit-limitations">Limitations</a>.</p>
+  <p class="fl-section-sub">${data.positioning.audience} See the full list on <a href="/limitations" data-cta="fit-limitations">Limitations</a>.</p>
   <div class="fl-fit-grid">
     <div class="fl-fit-col fl-fit-for">
       <h3 class="fl-fit-h3">Built for</h3>
@@ -98,11 +83,11 @@ function buyerFit(): string {
 </section>`;
 }
 
-function aboutMike(): string {
+function aboutMike(data: CapabilitiesFile): string {
   return `<section class="fl-section fl-pricing-teaser" aria-labelledby="fl-about-h">
-  <h2 id="fl-about-h" class="fl-section-h">I'm Mike, I build FactoryLM, and I'm in Central Florida.</h2>
+  <h2 id="fl-about-h" class="fl-section-h">${claim(data, "mike-central-florida").text}</h2>
   <div class="fl-hero-cta">
-    ${btnPrimary("Talk to Mike", { href: TALK_TO_MIKE_HREF, cta: "about-talk" })}
+    ${btnPrimary(data.contact.cta, { href: data.contact.href, cta: "about-talk" })}
   </div>
 </section>`;
 }
@@ -353,14 +338,18 @@ const PAGE_STYLES = `
 `;
 
 export function renderHome(reqUrl?: string): string {
+  const data = loadCapabilities();
+  // Touch the proven list so a future empty-filter cannot silently ship.
+  if (provenClaims(data).length === 0) {
+    throw new Error("homepage refuses to render without proven claims");
+  }
   const headHtml = head(
     {
-      title: "FactoryLM",
-      description:
-        "It's not a CMMS and doesn't replace yours. There's nothing to switch. Talk to Mike — FactoryLM, Central Florida.",
+      title: data.positioning.title,
+      description: data.positioning.meta_description,
       canonical: "https://factorylm.com/",
       ogImage: "https://factorylm.com/og-image.png",
-      jsonLd: ORG_AND_SITE_LD,
+      jsonLd: generateJsonLd(data),
     },
     reqUrl
   );
@@ -375,13 +364,13 @@ export function renderHome(reqUrl?: string): string {
 <body>
   ${navbar({ currentPath: "/" })}
   <main>
-    ${hero()}
-    ${honestLimits()}
-    ${buyerFit()}
-    ${aboutMike()}
+    ${hero(data)}
+    ${honestLimits(data)}
+    ${buyerFit(data)}
+    ${aboutMike(data)}
   </main>
   ${footer()}
-  <a href="${TALK_TO_MIKE_HREF}" class="fl-mobile-cta" data-cta="mobile-sticky-talk">Talk to Mike</a>
+  <a href="${data.contact.href}" class="fl-mobile-cta" data-cta="mobile-sticky-talk">${data.contact.cta}</a>
   <script src="/sun-toggle.js"></script>
 </body>
 </html>`;

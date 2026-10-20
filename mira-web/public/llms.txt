@@ -1,31 +1,36 @@
 # FactoryLM
 
-> FactoryLM is not a CMMS and does not replace yours. There is nothing to
-> switch. It does not connect to PLCs, does not use work-order history, and
-> does not write work orders.
+> Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it. Talk to Mike: mike@factorylm.com.
 
 ## Audience
 
-Maintenance managers, plant managers, reliability engineers, and controls
-engineers.
+One maintenance crew working on qualified machines and manuals.
 
-## Key Pages
+## What it does (proven)
 
-- [Homepage](https://factorylm.com/)
-- [Pricing](https://factorylm.com/pricing)
-- [Sign in](https://factorylm.com/cmms)
-- [Trust & Security](https://factorylm.com/trust)
-- [Limitations](https://factorylm.com/limitations)
-- [Blog](https://factorylm.com/blog)
+- MIRA is the equipment notebook for one maintenance crew.
+- Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it.
+- We've tested Rockwell and Festo manuals so far, and we'll post our misses too.
 
-## What we say today
+## What it does not do
 
 - It's not a CMMS and doesn't replace yours. There's nothing to switch.
 - It doesn't connect to PLCs, doesn't use work-order history, and doesn't write work orders.
 - For lockout, arc flash and confined space, follow your site procedure. Don't use any AI tool for those.
-- We've tested Rockwell and Festo manuals so far, and we'll post our misses too.
-- I'm Mike, I build FactoryLM, and I'm in Central Florida.
+- It works in a web browser only.
+- English manuals only. We don't translate manuals between languages.
 - We're not SOC 2 audited yet.
+- I'm Mike, I build FactoryLM, and I'm in Central Florida.
+- PLC connectivity, third-party maintenance-software integrations, autonomous workflows, and an any-manual promise are not offered today.
+
+## Key Pages
+
+- [Homepage](https://factorylm.com/)
+- [Sign in](https://factorylm.com/cmms)
+- [Talk to Mike](https://factorylm.com/buy)
+- [Trust & Security](https://factorylm.com/trust)
+- [Limitations](https://factorylm.com/limitations)
+- [Blog](https://factorylm.com/blog)
 
 ## Contact
 
