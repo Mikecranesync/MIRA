@@ -4,16 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pricing — FactoryLM</title>
-  <meta name="description" content="Talk to Mike about FactoryLM. It's not a CMMS and doesn't replace yours.">
+  <meta name="description" content="A $500 30-day pilot, credited to your first term, then $399/month or $3,990/year per site, up to 15 technicians. Talk to Mike.">
   <link rel="canonical" href="https://factorylm.com/pricing">
   <meta property="og:title" content="Pricing — FactoryLM">
-  <meta property="og:description" content="Talk to Mike about FactoryLM.">
+  <meta property="og:description" content="A $500 30-day pilot, then $399/month or $3,990/year per site. Talk to Mike.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://factorylm.com/pricing">
   <meta property="og:image" content="https://factorylm.com/og-image.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Pricing — FactoryLM">
-  <meta name="twitter:description" content="Talk to Mike about FactoryLM.">
+  <meta name="twitter:description" content="A $500 30-day pilot, then $399/month or $3,990/year per site. Talk to Mike.">
   <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -83,6 +83,16 @@
       background: var(--amber); color: #0a0a08;
       font-weight: 700; text-decoration: none;
     }
+    .price-card {
+      max-width: 520px; margin: 0 auto 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px 28px;
+      text-align: left;
+    }
+    .price-card h2 { font-size: 22px; font-weight: 500; margin-bottom: 12px; }
+    .price-card p { font-size: 16px; color: var(--text-dim); margin: 0; }
     .signin-note { margin-top: 16px; font-size: 14px; color: var(--text-faint); }
     .signin-note a { color: var(--text); }
     footer {
@@ -120,8 +130,12 @@
   <main id="main-content">
     <section class="hero">
       <div class="inner">
-        <h1>Talk to Mike</h1>
+        <h1>Pricing</h1>
         <p>It's not a CMMS and doesn't replace yours. There's nothing to switch.</p>
+        <div class="price-card">
+          <h2>One offer, per site</h2>
+          <p>$500 30-day pilot, credited to your first term, then $399/month or $3,990/year per site, up to 15 technicians.</p>
+        </div>
         <a href="mailto:mike@factorylm.com" class="talk" data-cta="pricing-talk">Talk to Mike</a>
         <p class="signin-note">Already using FactoryLM? <a href="/cmms">Sign in</a>.</p>
       </div>
