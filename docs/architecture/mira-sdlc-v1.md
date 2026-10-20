@@ -140,7 +140,9 @@ criterion is marked met with a pointer (test name, check run, screenshot path, r
 ### 1.5 Branch and WIP policy
 
 One branch per slice. Target: merged or closed within **5 working days**; a draft older than **14
-days** is rebased and re-scoped or closed with a note on its issue. Stacked PRs receive `ci.yml` but
+days** is rebased and re-scoped or closed with a note on its issue. **Enforced** by
+`.github/workflows/stale-pr-sweep.yml` (`tools/stale_pr_sweep.py`): 14 idle days → `stale` notice, 7 more →
+closed, branch kept, `keep` label exempts; dry-run until the repo variable `STALE_PR_SWEEP_MODE=apply`. Stacked PRs receive `ci.yml` but
 not every required context (`staging-gate.yml` and others filter on `branches: [main]`); they are not
 merge candidates until re-based on `main`. Rebase onto `origin/main` before requesting Codex review;
 strict up-to-date voids a GREEN otherwise. GitHub Merge Queue is **not used in v1** (§13).
