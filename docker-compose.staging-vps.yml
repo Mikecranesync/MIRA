@@ -337,6 +337,9 @@ services:
       # #4515 kill switch for the +29 decode at ingest: default ON in code;
       # NOTEBOOK_GARBLE_DECODE=0 disables it without a rebuild.
       - NOTEBOOK_GARBLE_DECODE=${NOTEBOOK_GARBLE_DECODE:-1}
+      # #4550 typed claim verifier, shadow only: writes mira.claim_verifier.* onto the
+      # answer-gate span and never changes the answer. OFF unless set to "shadow".
+      - NOTEBOOK_CLAIM_VERIFIER=${NOTEBOOK_CLAIM_VERIFIER:-off}
       # CU-RR1 cross-encoder rerank lane. OFF unless the environment sets
       # NOTEBOOK_RERANK=1. The service is the colocated mira-reranker below
       # (internal network only); any failure or >1.5 s keeps today's order.
