@@ -43,3 +43,47 @@ def test_hub_forwards_notebook_flag(compose: pathlib.Path, container: str, flag:
         f"{container} forwards {flag} as {env[flag]!r}; expected the environment value "
         f"with default {FLAGS[flag]!r} (the code's own default)"
     )
+
+
+# CU-RR1: the cross-encoder reranker is STAGING ONLY until its walk gate passes and
+# Mike gives a separate GO for production (docs/architecture/convergence/units/CU-RR1.md).
+_STAGING = _ROOT / "docker-compose.staging-vps.yml"
+_PROD = _ROOT / "docker-compose.saas.yml"
+
+
+def test_staging_hub_forwards_rerank_flag_default_off() -> None:
+    env = _hub_env(_STAGING, "stg-mira-hub")
+    assert env.get("NOTEBOOK_RERANK") == "${NOTEBOOK_RERANK:-0}"
+    assert env.get("NOTEBOOK_RERANK_TIMEOUT_MS") == "${NOTEBOOK_RERANK_TIMEOUT_MS:-}"
+
+
+def test_staging_reranker_url_names_a_service_in_the_same_file() -> None:
+    env = _hub_env(_STAGING, "stg-mira-hub")
+    url = env.get("RERANKER_URL", "")
+    services = yaml.safe_load(_STAGING.read_text())["services"]
+    host = url.removeprefix("http://").split(":", 1)[0]
+    assert host in services, f"RERANKER_URL {url!r} points at no service in {_STAGING.name}"
+    svc = services[host]
+    assert "ports" not in svc, "the reranker has no auth; it must not publish a port"
+    assert svc.get("cpus") and svc.get("mem_limit"), (
+        "shared prod host: CPU and memory must be capped"
+    )
+
+
+def test_reranker_is_not_in_production_compose() -> None:
+    prod = yaml.safe_load(_PROD.read_text())["services"]
+    assert "mira-reranker" not in prod
+    assert "NOTEBOOK_RERANK" not in _hub_env(_PROD, "mira-hub")
+
+
+def test_staging_reranker_defaults_to_the_int8_model_with_a_rollback_knob() -> None:
+    services = yaml.safe_load(_STAGING.read_text())["services"]
+    env = dict(item.split("=", 1) for item in services["mira-reranker"]["environment"])
+    assert env.get("RERANKER_MODEL") == "${RERANKER_MODEL:-int8-avx2}"
+
+
+def test_staging_embedder_is_cpu_capped() -> None:
+    """Mike, 2026-10-19: the uncapped staging embedder took ~5.5 of 6 shared vCPUs."""
+    services = yaml.safe_load(_STAGING.read_text())["services"]
+    cpus = services["mira-ollama"].get("cpus")
+    assert cpus is not None and float(cpus) <= 2, f"stg mira-ollama cpus={cpus!r}"

@@ -337,6 +337,17 @@ services:
       # #4515 kill switch for the +29 decode at ingest: default ON in code;
       # NOTEBOOK_GARBLE_DECODE=0 disables it without a rebuild.
       - NOTEBOOK_GARBLE_DECODE=${NOTEBOOK_GARBLE_DECODE:-1}
+      # #4550 typed claim verifier, shadow only: writes mira.claim_verifier.* onto the
+      # answer-gate span and never changes the answer. OFF unless set to "shadow".
+      - NOTEBOOK_CLAIM_VERIFIER=${NOTEBOOK_CLAIM_VERIFIER:-off}
+      # CU-RR1 cross-encoder rerank lane. OFF unless the environment sets
+      # NOTEBOOK_RERANK=1. The service is the colocated mira-reranker below
+      # (internal network only); any failure or >1.5 s keeps today's order.
+      - NOTEBOOK_RERANK=${NOTEBOOK_RERANK:-0}
+      - NOTEBOOK_RERANK_POOL=${NOTEBOOK_RERANK_POOL:-}
+      # Client timeout, ms (default 1500): raise it if the host's measured p95 is higher.
+      - NOTEBOOK_RERANK_TIMEOUT_MS=${NOTEBOOK_RERANK_TIMEOUT_MS:-}
+      - RERANKER_URL=http://mira-reranker:8088
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app-staging.factorylm.com}
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
       - AUTH_SECRET=${AUTH_SECRET:-}
@@ -920,12 +931,46 @@ services:
     restart: unless-stopped
     mem_limit: 2g
     memswap_limit: 2g
+    # CPU cap (Mike, 2026-10-19). Uncapped, this embedder used ~5.5 of the host's 6
+    # vCPUs while indexing uploads (557% during stranger walks), starving the
+    # reranker (2.3-4.1 s per question) and contending with production on the same
+    # host. Trade-off accepted: uploads become searchable more slowly.
+    cpus: 2
     healthcheck:
       test: ["CMD-SHELL", "ollama list | grep -E '^nomic-embed-text:v1.5[[:space:]]+0a109f422b47' && ollama list | grep -E '^nomic-embed-text:latest[[:space:]]+0a109f422b47'"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 300s
+
+  # CU-RR1: cross-encoder reranker for notebook retrieval (docs/architecture/
+  # convergence/units/CU-RR1.md). STAGING ONLY — not in docker-compose.saas.yml.
+  # This host also runs production, so CPU and memory are hard-capped and the
+  # thread count matches the CPU cap (host: 6 vCPU Haswell, load ~0.1 on 2026-10-19;
+  # 2 threads measured ~1.6 s per pool-24 request on CHARLIE, over the Hub's 1.5 s timeout). Model files are baked in and sha256-verified
+  # at build time; nothing downloads at runtime. No ports: no auth, internal only.
+  # Memory measured flat at ~300 MiB over 50 pool-50 requests (c46239d99).
+  mira-reranker:
+    build:
+      context: ./mira-reranker
+    container_name: stg-mira-reranker
+    environment:
+      - RERANKER_THREADS=3
+      # int8 (AVX2) model: same answers on the replay within 1 of 50/32, ~4x faster than
+      # fp32, which measured p95 4.1 s here. Rollback without a rebuild: RERANKER_MODEL=fp32.
+      - RERANKER_MODEL=${RERANKER_MODEL:-int8-avx2}
+    networks:
+      - staging-net
+    restart: unless-stopped
+    cpus: 3
+    mem_limit: 768m
+    memswap_limit: 768m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 networks:
   staging-net:

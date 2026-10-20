@@ -1,0 +1,27 @@
+{
+ "version": 1,
+ "audit_edits": [
+  "tq-29: key values tightened to pin-number+signal",
+  "e3plus-q2: dropped key group ['29'] (parameter number not asked)",
+  "micro820-um-q2, ml1100-q1, tq-38 marked doubt (excluded from scoring)",
+  "extra_pages (hand-read 2026-10-20, each page states the typed value for THIS question): acs355-q2 p49, e3plus-q1 p54, e3plus-q3 p89, pf40-q2 p12, pf40-q3 p91 p92",
+  "rejected extra pages: e3plus-q1 p250 (ODVA code table, not the LED code), tq-28 p240 (other instruction)",
+  "e3plus-q2 extra_pages [89] (Protective Trip Summary states trip class 5...30)",
+  "gs10-ch6-q2: '5 minutes' accepted + extra page 3 (model-dependent wait stated on p.3)",
+  "tq-34: key split into Addr_CAN_OB + dip 1 and 2 (paraphrase)",
+  "tq-04, tq-06: gold was wrong (flattened-table misread, by the drafting agent AND the first orchestrator audit); Docling's table shows 2080-LC10-12QWB = 20.4\u202626.4V DC. Any model's supply voltage accepted. Same mislabel in real-36.json anchor (#4534)."
+ ],
+ "doubts": [
+  "micro820-um-q2",
+  "ml1100-q1",
+  "tq-38"
+ ],
+ "label_overrides": {
+  "p1:pf4m-q5": "typed_incomplete",
+  "int8-3:gs10-ch6-q4": "typed_incomplete"
+ },
+ "label_override_reasons": {
+  "p1:pf4m-q5": "gives a horizontal 0 mm clearance option and the ambient ranges but omits 76.2 mm; nothing stated contradicts the page",
+  "int8-3:gs10-ch6-q4": "lists causes, omits P06.15; nothing wrong stated"
+ }
+}
