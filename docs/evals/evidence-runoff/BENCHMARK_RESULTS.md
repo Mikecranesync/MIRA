@@ -21,23 +21,25 @@ Everything is zero-token and frozen. The pieces:
 | **MIRA today** (unpdf → 1000-char chunks) | 28 (33%) | 24–44% | 79% | — | — |
 | pdftotext plain | 3 (4%) | 1–10% | 16% | — | — |
 | pdftotext -layout | 25 (30%) | 21–40% | 82% | — | — |
-| Docling, table structure off | 62 (74%) | 64–82% | 88% | 0.34 / 3.75 | 3.3 GB |
+| Docling, table structure off | 73 (87%) | 78–93% | 99% | 0.34 / 3.75 | 3.3 GB |
 | **Docling, TableFormer v1** | **77 (92%)** | **84–96%** | 99% | 1.46 / 4.51 | 4.3 GB |
 | Docling, TableFormerV2 (Apache-2.0) | 40 (48%) | 37–58% | 82% | 1.05 / 5.92 | 4.1 GB |
 
-- **TableFormer v1 is the only extractor that meets the bar**: point estimate at least 90%, lower bound
-  at least 80%, and an interval that doesn't overlap MIRA-today's.
-  - The pass is **provisional**: under the scorer as frozen before outputs were seen, it scored 78.6%.
-    The three later fixes are listed in amendment 4. Each was a confirmed scorer artefact and applied to
-    every method, but they were made after looking.
-  - Confirming it needs a fresh page set.
-- **MIRA today keeps a value next to its row label 79% of the time, but the whole row and its column
-  headers only 33% of the time.** The row label and the number survive; which column the number
-  belongs to does not. This is the "1800 vs 180 VA" failure class seen in the runoff.
-- **TableFormerV2 is not a substitute.** It collapses columns: one Schneider row came out as a single
-  description cell holding `15624 WORD -1 - 0…5 V…`.
-- **Docling with table structure off** scores 74%, but only because it writes each table as one
-  reading-order line. Rows stay intact; columns are not structural.
+- **TableFormer v1 meets the bar** (point estimate at least 90%, lower bound at least 80%, beating
+  MIRA-today's interval). Its pass is **provisional**: under the scorer as frozen before outputs were
+  seen, it scored 78.6%. The scorer fixes (amendment 4) were all confirmed artefacts and applied to
+  every method, but they were found after looking.
+- **Docling with table structure off comes close, at 87%.** On the cells where the two disagree, v1
+  wins 9 and table-off wins 5 (p = 0.42), three pages to two. On this sample **the two cannot be told
+  apart.**
+  - Table-off writes each table as one reading-order line. This test checks row integrity and header
+    order, and it cannot tell real column structure from adjacency. A column-specific test, such as
+    "which header owns this value", is the next measurement before choosing between them.
+- **MIRA today keeps a value next to its row label 79% of the time, but the whole row and its headers
+  only 33% of the time.** This is the "1800 vs 180 VA" failure class seen in the runoff. Both Docling
+  options fix most of it.
+- **TableFormerV2 is not a substitute.** It recovers 48% and collapses columns: one Schneider row came
+  out as a single description cell holding `15624 WORD -1 - 0…5 V…`.
 - **Cost on CHARLIE (M4).** Docling holds 3.3–4.3 GB of memory, and the first page includes model
   load. That memory profile is why Docling was removed from the VPS before (Tika replaced it), so a
   production parser would need its own sized host or an offline ingest job.
@@ -82,11 +84,13 @@ individual items (no checker change was made):
   - Keep it in **shadow** (#4550, off by default). Do not use it to block or relabel answers.
   - The fix it points to: verify values against the table row and column, not against page proximity.
     That needs a table-aware text layer first (B2).
-- **Reading tables:** structural parsing works. On these pages TableFormer v1 is 92% against 33% for
-  what MIRA stores today. The Apache-only alternatives are clearly worse: V2 scores 48%, and table-off
-  74% without real columns.
-  - The data supports licence option **A**: load the byte-identical v1 weights from the dual-licensed
-    revision. That is if policy accepts the dual licence; see `DOCLING_LICENCE.md`.
+- **Reading tables:** Docling's layout-aware text fixes most of it. On these pages it recovers 87–92% of
+  cells, against 33% for what MIRA stores today.
+  - **Option B is ruled out:** TableFormerV2, the Apache-licensed preview, scores 48%.
+  - **Options A and C are statistically tied here:** v1 weights from the dual-licensed revision score
+    92%; table structure off, which needs no TableFormer weights at all, scores 87%.
+    - C carries no licence question, so it is the cheaper default unless a column-specific test
+      shows A is needed.
 - **Licence items still open before any production use:**
   - On Linux there is no ocrmac. The default OCR is torch RapidOCR or EasyOCR, whose weights are not
     documented model-by-model. Pin the SHA-documented ONNX RapidOCR models, or turn OCR off.

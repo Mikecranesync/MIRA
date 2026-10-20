@@ -149,3 +149,15 @@ was confirmed by hand, and each fix applies equally to every method:
 
 Under the scorer as frozen at amendment 3, v1 scored 66/84 (78.6%). Because these fixes came after
 the outputs were seen, v1's pass of the bar is **provisional** until it is confirmed on a fresh page set.
+4. **Markdown escapes are removed for every method** (`Get\_Attribute\_Single`). This was found while
+   giving table-off's misses the same artefact hunt v1's misses got, which the review asked for.
+   Effect: table-off 62→73, other methods unchanged.
+
+Head-to-head on the same cells, v1 against table-off:
+
+| Scorer | Cells only v1 recovered | Cells only table-off recovered | Two-sided sign test |
+|---|---|---|---|
+| Frozen (amendment 3) | 17 | 6 | p = 0.035 |
+| Final | 9 | 5 | p = 0.42 |
+
+By page, v1 wins on three pages and table-off on two. **A against C is not settled.**

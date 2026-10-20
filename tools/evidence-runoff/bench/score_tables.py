@@ -31,6 +31,7 @@ FOLD = str.maketrans(
 
 def norm(s: str) -> str:
     s = unicodedata.normalize("NFKC", s).replace("...", "…").translate(FOLD).lower()
+    s = re.sub(r"\\([_*\[\]#<>])", r"\1", s)  # markdown escapes (amendment 4)
     s = re.sub(r"\(\d\)", "", s)  # footnote markers, dropped on both sides (amendment 2)
     return re.sub(r"\s+", "", s)
 
