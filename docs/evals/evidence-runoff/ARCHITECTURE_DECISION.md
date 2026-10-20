@@ -11,13 +11,20 @@ Status: **Proposed** (2026-10-20). Evidence: `RUNOFF_RESULTS.md`. Successor trac
    yes/no answers (the #4488 failure). It does **not** catch held-out lookalike values (1/9), so it must not
    be described as a hallucination stop.
 2. **Keep claim-sentence NLI as the follow-up experiment, not the shipped validator.** NLI on the sentence that
-   states the claim does separate lookalikes V1 cannot bind (TQ-06 bit 12 = 0.68/0.90 vs bit 11 = 0.02; tq-31
-   boot-up COB-ID), but flags 23–27 % of correct answers, and costs 0.08–0.37 s on an M4 GPU (staging x86 CPU
+   states the claim does separate lookalikes V1 cannot bind (TQ-06 bit 12 = 0.98/0.43 vs bit 11 = 0.013; tq-31
+   boot-up COB-ID), but flags 26–29 % of correct answers, and costs 0.08–0.37 s on an M4 GPU (staging x86 CPU
    will be several times slower). The `mira-reranker` sidecar is the natural host if it is ever adopted
    (same cross-encoder shape, already deployed on staging). Eligible models are Apache-2.0 MNLI/SNLI only.
 3. **Reject the Guardrails framework.** Its provenance validators are an LLM call (paid) or a cosine threshold
    (measured: 3/19 caught) behind an orchestration layer the PRD bans.
-4. **Docling: do not adopt yet; escalate the licence.** It is the only candidate that fixes the table failures
+4. **Docling: do not adopt yet; the licence question is now narrowed** (`DOCLING_LICENCE.md`, investigation
+   approved by Mike 2026-10-20). Code is MIT; the layout model (Heron) is Apache-2.0. Docling 2.140.0 pins
+   TableFormer to `docling-models@v2.3.0` (`table_structure_model.py:108`), whose card says
+   **CDLA-Permissive-2.0 only**. The identical weight bytes (same LFS sha256, verified) are on that repo's
+   `main` under **CDLA-Permissive-2.0 + Apache-2.0** since a Dec 2025 "dual licensing" change with no stated
+   rationale. Options: re-source the same bytes from the dual-licensed commit (no quality loss; whether the
+   Apache grant on `main` covers them is a policy/legal call for Mike), use the Apache-only `TableFormerV2`
+   (preview), or disable table structure. Why it still matters: It is the only candidate that fixes the table failures
    seen (Micro810 columns, Micro820 unit header, pin tables). But TableFormer's weight licence is unresolved, it
    costs 1–25 s and about 2 GB per page, and it does not fix the PLC-5 font cipher. If Mike clears the licence,
    the next experiment is Docling table cells as an *ingest-time* structured layer for table pages only. That

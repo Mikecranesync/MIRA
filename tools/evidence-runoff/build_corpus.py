@@ -131,6 +131,13 @@ def main() -> int:
                     "manual_sha256": m["sha256"],
                     "status": o.get("streamStatus"),
                     "answer": rendered.get("answer") or "",
+                    # The walk renders [n] markers as bare digits; keep the real numbers so the NLI
+                    # preprocessing can strip exactly those (Codex F2, #4550 r1).
+                    "markers": [
+                        str(c.get("n"))
+                        for c in rendered.get("citations", [])
+                        if c.get("n") is not None
+                    ],
                     "cited_pages": pages,
                     "evidence": [{"page": p, "text": pdf_page(pdf, p)} for p in pages],
                     "evidence_kind": "pdftotext_page",

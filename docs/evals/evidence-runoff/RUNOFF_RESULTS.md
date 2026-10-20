@@ -17,10 +17,10 @@ flags the *unswapped correct original*, so the catch says nothing about the swap
 | **V1 typed verifier, frozen (`ee6f8e0`)** | 1 | **1 genuine** + 3 incidental | **6 genuine** + 1 incidental | 17 (10.4 %) | 0.06 ms / 1.3 ms |
 | V1b = V1 + join wrapped lines (**post-hoc**) | 1 | 1 + 3 incidental | 6 + 1 incidental | 12 (7.4 %) | 0.06 ms / 1.3 ms |
 | V3 NLI `deberta-v3-base`, claim sentences only (τ 0.06, dev) | 1 | 1 genuine (tq-31) + 1 incidental | 7 | 44 (27 %) | 0.37 s / 2.9 s (M4 GPU) |
-| V3 NLI `MiniLM2-L6-H768`, claim sentences only (τ 0.17, dev) | 0 | 2 genuine (tq-31 ×2) + 1 | 8 | 38 (23 %) | 0.08 s / 0.41 s |
+| V3 NLI `MiniLM2-L6-H768`, claim sentences only (τ 0.20, dev) | 0 | 2 genuine (tq-31 ×2) + 1 | 8 | 42 (26 %) | 0.08 s / 0.41 s |
 | V3 NLI, all-sentence minimum (as first run) | 0 | 0 | 0 | 0–6 | (τ tuned to ≈0 → effectively off) |
 | V2 embedding provenance (nomic, τ 0.62) | 0 | 0 | 3 | 9 | 0.11 s / 0.34 s |
-| V1b → NLI-claim fallback (best combination) | 1 | ≤ 2 | 8 | 14–15 | V1 + NLI on ~70 % of answers |
+| V1b → NLI-claim fallback (best combination) | 1 | 1 + 3 incidental | 8 | 14–18 | V1 + NLI on the answers V1 has no opinion on |
 
 **Dev** (the TQ-06 / PLC-5 items the binding rule was tuned on): V1 catches 7 of 8 dev wrong answers with 0 of 5
 false flags — every TQ-06 failure. This is a **dev** result, not held-out evidence.
@@ -29,7 +29,7 @@ false flags — every TQ-06 failure. This is a **dev** result, not held-out evid
 - The typed verifier reliably catches **wrong-page citations** (6/8 genuine held-out page swaps) and the
   **bit / PLC-address lookalikes it was built on** (TQ-06, dev).
 - **No candidate reliably catches a held-out lookalike value.** The best genuine held-out lookalike catch is
-  2 of 9, by claim-sentence NLI, at a 23 % false-flag rate.
+  2 of 9, by claim-sentence NLI, at a 26 % false-flag rate.
 - V1's 3 Micro820 "catches" are artifacts of its Micro820 false flags (§5), not detection.
 
 ## 2. TQ-06 (PRD §6): every approach on the real staging answers (dev)
@@ -40,16 +40,17 @@ Trace IDs are Langfuse (US project, `deployment.environment.name=staging`).
 |---|---|---|---|---|---|
 | "S:3/10" cited p.234 (10-18) | `d9288682…` | wrong (fabricated) | served | **unsupported** (absent) | 0.00 → unsupported |
 | ".ER (bit 11) … no specific DLEN bit" (02:34) | `36a27118…` | hedged | served | **unsupported** | low → unsupported |
-| ".ER bit, bit 12 when .DLEN ≠ .RLEN" p.238 (02:36) | `4decaf9e…` | **correct** | served | **supported** (bound to `.DLEN`, p.238) | **0.68** → supported |
-| ".ER (bit 11) … if DLEN does not match" (05:45) | `4f1dbebc…` | wrong (lookalike) | served | **unsupported** | **0.02** → unsupported |
-| ".ER bit, bit 12 …" p.238/240 (05:46) | `34943e05…` | **correct** | served | **supported** | **0.90** → supported |
+| ".ER bit, bit 12 when .DLEN ≠ .RLEN" p.238 (02:36) | `4decaf9e…` | **correct** | served | **supported** (bound to `.DLEN`, p.238) | **0.98** → supported |
+| ".ER (bit 11) … if DLEN does not match" (05:45) | `4f1dbebc…` | wrong (lookalike) | served | **unsupported** | **0.013** → unsupported |
+| ".ER bit, bit 12 …" p.238/240 (05:46) | `34943e05…` | **correct** | served | **supported** | **0.43** → supported |
 | "excerpts do not say" ×2 | `d24cf41b…`, `f164982f…` | abstain | withheld | no opinion | — |
 | Real-36 Lane A "S:7/15" p.234 | in per_item | wrong (lookalike row) | served | **unsupported** (p.234 never mentions `.DLEN`) | unsupported |
-| Adversarial "bit 12"→"bit 11" | — | wrong | — | **unsupported** | 0.055 → unsupported |
+| Adversarial "bit 12"→"bit 11" | — | wrong | — | **unsupported** | 0.042 → unsupported |
 
 The first runoff reported NLI as unable to separate bit 11 from bit 12 ("0.00 vs 0.00"). That was **wrong**:
 the answer-level score took the minimum over *all* sentences, and an unrelated second sentence scored 0.00
-for both. On the claim sentence itself NLI separates them (0.68/0.90 vs 0.02/0.055). Corrected here.
+for both. On the claim sentence itself NLI separates them (0.98/0.43 vs 0.013/0.042; values after the Codex F2
+fix below). Corrected here.
 
 ## 3. Hypotheses
 
@@ -57,7 +58,7 @@ for both. On the claim sentence itself NLI separates them (0.68/0.90 vs 0.02/0.0
 |---|---|
 | **H1** typed verification eliminates wrong bit/parameter/code answers | **Not shown on held-out.** Catches wrong-page citations (held-out) and bit/address lookalikes (dev, TQ-06). On held-out quantity and phrase-subject lookalikes it caught 1 of 9 (a unit mismatch). |
 | **H2** structural table parsing beats flat text | **Supported on the pages tested; licence blocker.** Docling kept the Micro810 model columns, the Micro820 "Volt-Amperes" header, the E3 summary row and the M12 pin table; plain text lost each. `pdftotext -layout` kept most rows too. TableFormer's weight licence is unresolved. |
-| **H3** NLI/provenance beats exact rules without excessive false abstention | **Rejected as a gate, configuration-dependent.** Claim-sentence NLI catches lookalikes V1 cannot bind (tq-31 boot-up COB-ID) but flags 23–27 % of correct answers. All-sentence-minimum NLI is useless. Embedding provenance (the Guardrails mechanism) is weakest. Only the three MNLI/SNLI models were eligible; no larger or domain-tuned NLI model was tried. |
+| **H3** NLI/provenance beats exact rules without excessive false abstention | **Rejected as a gate, configuration-dependent.** Claim-sentence NLI catches lookalikes V1 cannot bind (tq-31 boot-up COB-ID) but flags 26–29 % of correct answers. All-sentence-minimum NLI is useless. Embedding provenance (the Guardrails mechanism) is weakest. Only the three MNLI/SNLI models were eligible; no larger or domain-tuned NLI model was tried. |
 | **H4** a combination beats the best single candidate | **Marginal.** V1b → NLI-claim fallback: +1 page-swap catch for +2–3 false flags. V1 ∨ NLI multiplies false flags. |
 
 ## 4. Baseline reproduction (PRD §6)
@@ -87,7 +88,10 @@ This reproduces the briefing's 28.6/50. The briefing's 31 / 36 / 39 / 46 are **z
 6. **Gold edits after verdicts were seen** (all in `data/gold-audit.json`): e3plus-q2 dropped a parameter-number
    key; gs10-ch6-q2 accepts the 5-minute value p.3 states; tq-34 split into two facts; tq-04/06 corrected
    (§7.2); 6 extra supporting pages hand-accepted, 2 rejected; 3 questions marked doubtful and excluded.
-7. **NLI rescored** with trailing citation digits stripped from hypotheses, plus the claim-sentence variant (§2).
+7. **NLI rescored**, plus the claim-sentence variant (§2). The first rescore stripped ANY trailing number as a
+   presumed citation digit and so deleted real values ("bit 12 [1]." → "bit."); Codex review #4550 r1 (F2) caught
+   it. Now only a trailing number made entirely of the answer's own recorded citation numbers is removed
+   (`test_sentences.py`). All NLI numbers in this document are from the corrected run.
 
 **Independence disclosure:** the gold audit, the hand labels and the verifier were all done by the same agent
 (Claude, this session). The PRD asks for independent label audit; that has **not** happened. The gold drafts

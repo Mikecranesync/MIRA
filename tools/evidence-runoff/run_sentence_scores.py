@@ -31,16 +31,35 @@ REFUSAL = re.compile(
 )
 
 
-def sentences(answer: str) -> list[str]:
-    a = re.sub(r"\[\d+\]", "", answer)
+def _is_marker_run(tok: str, markers: set[str]) -> bool:
+    """Can `tok` be split entirely into known citation numbers ("1114" = "11" + "14")?"""
+    if not markers:
+        return False
+    ok = [True] + [False] * len(tok)
+    for i in range(1, len(tok) + 1):
+        ok[i] = any(ok[i - len(m)] and tok[i - len(m) : i] == m for m in markers if len(m) <= i)
+    return ok[-1]
+
+
+def sentences(answer: str, markers: list[str] | None = None) -> list[str]:
+    """Factual sentences of an answer, citation markers removed.
+
+    Bracketed `[n]` markers are removed. Walk answers render markers as bare digits before the period
+    ("… motor heating 11."), so a trailing number is stripped ONLY when it is made entirely of this answer's
+    own citation numbers (`markers`, from the recorded citations). Any other trailing number is a value and
+    stays (Codex F2, #4550 r1: "bit 12 [1]." must stay "bit 12.").
+    """
+    known = {m for m in (markers or []) if m.isdigit()}
+    a = re.sub(r"\s*\[\d+\]", "", answer)
     a = re.sub(r"[*_`#>|]", " ", a)
     parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9(])|\n+", a)
     out = []
     for p in parts:
         p = re.sub(r"\s+", " ", p).strip(" -•\t")
-        # Walk answers render citation markers as bare digits before the period ("… motor heating 11.").
-        # Strip ONE trailing 1–2 digit token (or a run like "1114") so it never reaches the NLI hypothesis.
-        p = re.sub(r"\s\d{1,4}\s*([.!?]?)$", r"\1", p)
+        m = re.search(r"\s(\d{1,6})\s*([.!?]?)$", p)
+        if m and _is_marker_run(m.group(1), known):
+            p = p[: m.start()] + m.group(2)
+        p = re.sub(r"\s+([.!?,;])", r"\1", p)
         if len(p.split()) < 4 or REFUSAL.search(p):
             continue
         out.append(p)
@@ -87,7 +106,7 @@ def main() -> int:
     with open(out_path, "w") as fh:
         for it in items:
             t0 = time.perf_counter()
-            sents = sentences(it["answer"])
+            sents = sentences(it["answer"], it.get("markers"))
             wins = [w for ev in it["evidence"] for w in windows(ev["text"])]
             scored = []
             if sents and wins:

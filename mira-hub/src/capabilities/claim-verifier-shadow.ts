@@ -30,14 +30,12 @@ export function shadowVerifyTurn(input: {
 }): ShadowAttrs | null {
   if (claimVerifierMode() !== "shadow") return null;
   try {
-    const byPage = new Map<number, string[]>();
-    for (const c of input.citations) {
-      if (c.page == null) continue;
-      // Only what the model was shown: each chunk's model-visible prefix.
-      const visible = c.chunks.map((t) => t.slice(0, MODEL_VISIBLE_CHARS));
-      byPage.set(c.page, [...(byPage.get(c.page) ?? []), ...visible]);
-    }
-    const evidence = [...byPage].map(([page, texts]) => ({ page, text: texts.join("\n") }));
+    // One evidence record per cited page of one document, never merged by page number: two manuals
+    // that both happen to be "page 5" must not let one's value bind to the other's identifier
+    // (Codex F1, #4550 r1). Only what the model was shown: each chunk's model-visible prefix.
+    const evidence = input.citations
+      .filter((c) => c.page != null)
+      .map((c) => ({ page: c.page as number, text: c.chunks.map((t) => t.slice(0, MODEL_VISIBLE_CHARS)).join("\n") }));
     const v = verifyAnswer({ question: input.question, answer: input.answer, evidence }, { joinWrappedLines: true });
     const claims = JSON.stringify(v.claims.map((c) => [c.key, c.status, c.page]));
     return {

@@ -70,3 +70,16 @@ describe("shadowVerifyCitedTurn: [n] maps to the n-th distinct (source, page), l
     expect(shadowVerifyCitedTurn({ question: Q, answer: "bit 12", citationIds: ["1"], chunks: [] })).toBeNull();
   });
 });
+
+describe("Codex F1 (#4550 r1): two manuals that share a page number stay separate", () => {
+  it("manual B's bit 11 never binds to manual A's .DLEN just because both are page 5", () => {
+    process.env.NOTEBOOK_CLAIM_VERIFIER = "shadow";
+    const q = "Which bit signals a DLEN mismatch?";
+    const chunks = [
+      { content: "If .DLEN does not match .RLEN the processor sets bit 12.", sourceUrl: "manual-a", sourcePage: 5 },
+      { content: "Other operation errors set bit 11.", sourceUrl: "manual-b", sourcePage: 5 },
+    ];
+    const v = shadowVerifyCitedTurn({ question: q, answer: "It sets bit 11 [1][2].", citationIds: ["1", "2"], chunks });
+    expect(v?.["mira.claim_verifier.verdict"]).toBe("unsupported");
+  });
+});
