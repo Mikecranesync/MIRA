@@ -27,7 +27,9 @@ def main(variant: str, out: Path) -> None:
         opts.do_table_structure = False
     elif variant == "v2":
         opts.table_structure_options = TableStructureV2Options()
-    conv = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)})
+    conv = DocumentConverter(
+        format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)}
+    )
     pdfs = {c["manual"]: c["pdf"] for c in json.loads((DATA / "candidates.json").read_text())}
     out.mkdir(parents=True, exist_ok=True)
     timing = {}
@@ -40,7 +42,9 @@ def main(variant: str, out: Path) -> None:
             (out / f"{manual}_p{p}.md").write_text(md)
             print(variant, manual, p, timing[f"{manual}:{p}"], flush=True)
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20
-    (out / "timing.json").write_text(json.dumps({"variant": variant, "seconds": timing, "max_rss_mb": round(rss)}, indent=1))
+    (out / "timing.json").write_text(
+        json.dumps({"variant": variant, "seconds": timing, "max_rss_mb": round(rss)}, indent=1)
+    )
 
 
 if __name__ == "__main__":

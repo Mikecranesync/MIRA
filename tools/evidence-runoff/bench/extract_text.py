@@ -13,6 +13,10 @@ for mode, flags in (("plain", []), ("layout", ["-layout"])):
     out.mkdir(parents=True, exist_ok=True)
     for manual, pages in json.loads(SEL.read_text())["pages"].items():
         for p in pages:
-            t = subprocess.run(["pdftotext", "-q", *flags, "-f", str(p), "-l", str(p), pdfs[manual], "-"], capture_output=True, text=True).stdout
+            t = subprocess.run(
+                ["pdftotext", "-q", *flags, "-f", str(p), "-l", str(p), pdfs[manual], "-"],
+                capture_output=True,
+                text=True,
+            ).stdout
             (out / f"{manual}_p{p}.txt").write_text(t)
 print("ok")

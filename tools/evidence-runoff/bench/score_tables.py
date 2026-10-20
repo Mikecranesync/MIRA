@@ -10,23 +10,57 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
 OUT = Path("/Users/charlienode/MIRA/.planning/evidence-runoff-data/bench/out")
+GAP = 40  # amendment 4: max normalised chars between consecutive cells of one row
 METHODS = ["mira", "plain", "layout", "docling-off", "docling-v1", "docling-v2"]
-FOLD = str.maketrans({"–": "-", "—": "-", "−": "-", "‐": "-", "“": '"', "”": '"', "’": "'", "‘": "'", "|": "", "•": "", "●": ""})
+FOLD = str.maketrans(
+    {
+        "–": "-",
+        "—": "-",
+        "−": "-",
+        "‐": "-",
+        "“": '"',
+        "”": '"',
+        "’": "'",
+        "‘": "'",
+        "|": "",
+        "•": "",
+        "●": "",
+    }
+)
 
 
 def norm(s: str) -> str:
     s = unicodedata.normalize("NFKC", s).replace("...", "…").translate(FOLD).lower()
+    s = re.sub(r"\(\d\)", "", s)  # footnote markers, dropped on both sides (amendment 2)
     return re.sub(r"\s+", "", s)
 
 
-def ordered_in(line: str, parts: list[str]) -> bool:
-    pos = 0
-    for p in parts:
-        k = line.find(p, pos)
-        if k < 0:
-            return False
-        pos = k + len(p)
-    return True
+def ordered_in(line: str, parts: list[str], gap: int | None = None) -> bool:
+    """Parts appear left to right. With `gap`, each part must start within `gap` chars of the previous end
+    (amendment 4: a whole table emitted as one line must not let a row borrow cells from other rows)."""
+    if gap is None:
+        pos = 0
+        for p in parts:
+            k = line.find(p, pos)
+            if k < 0:
+                return False
+            pos = k + len(p)
+        return True
+    if not parts:
+        return True
+    start = line.find(parts[0])
+    while start >= 0:
+        pos, ok = start + len(parts[0]), True
+        for p in parts[1:]:
+            k = line.find(p, pos)
+            if k < 0 or k - pos > gap:
+                ok = False
+                break
+            pos = k + len(p)
+        if ok:
+            return True
+        start = line.find(parts[0], start + 1)
+    return False
 
 
 def units(method: str, manual: str, page: int) -> list[list[str]]:
@@ -39,14 +73,17 @@ def units(method: str, manual: str, page: int) -> list[list[str]]:
 
 
 def header_ok(method: str, lines: list[str], idx: int, headers: list[str]) -> bool:
-    hs = [norm(h) for h in headers if h.strip()]
+    # Hyphens ignored in the header test only, on both sides: Docling joins spanning header levels with
+    # " - " ("Frame - Size"), which is the same header (amendment 4).
+    dh = lambda x: x.replace("-", "")  # noqa: E731
+    hs = [dh(norm(h)) for h in headers if h.strip()]
     if method.startswith("docling"):
         j = idx
         while j > 0 and lines[j - 1].lstrip().startswith("|"):
             j -= 1
         block = norm(lines[j]) if lines[j].lstrip().startswith("|") else ""
-        return ordered_in(block, hs)
-    return ordered_in(norm("\n".join(lines[:idx])), hs)
+        return ordered_in(dh(block), hs)
+    return ordered_in(dh(norm("\n".join(lines[:idx]))), hs)
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -64,7 +101,7 @@ def target_col(i: int, ncols: int) -> int:
 
 
 def main() -> None:
-    gold = [json.loads(l) for l in (HERE / "data/bench_gold.jsonl").read_text().splitlines()]
+    gold = [json.loads(line) for line in (HERE / "data/bench_gold.jsonl").read_text().splitlines()]
     per_item = []
     for g in gold:
         ncols = len(g["headers"])
@@ -77,17 +114,26 @@ def main() -> None:
                 tcell = next((cells[s] for s, e in spans.items() if s <= t <= e), None)
             parts = [norm(cells[k]) for k in sorted(cells)]
             first = parts[0]
-            rec = {"manual": g["manual"], "page": g["page"], "i": row["i"], "target_col": t, "scored": tcell is not None}
+            rec = {
+                "manual": g["manual"],
+                "page": g["page"],
+                "i": row["i"],
+                "target_col": t,
+                "scored": tcell is not None,
+            }
             for m in METHODS:
-                hit = pair = False
+                hit = pair = loose = False
                 for blk in units(m, g["manual"], g["page"]):
                     nl = [norm(x) for x in blk]
                     for idx, ln in enumerate(nl):
                         if tcell is not None and first in ln and norm(tcell) in ln:
                             pair = True
                         if ordered_in(ln, parts) and header_ok(m, blk, idx, g["headers"]):
-                            hit = True
+                            loose = True
+                            if ordered_in(ln, parts, GAP):
+                                hit = True
                 rec[m] = hit
+                rec[m + ":loose"] = loose
                 rec[m + ":pair"] = pair
             per_item.append(rec)
     scored = [r for r in per_item if r["scored"]]
@@ -95,8 +141,16 @@ def main() -> None:
     for m in METHODS:
         k = sum(r[m] for r in scored)
         kp = sum(r[m + ":pair"] for r in scored)
-        summary["methods"][m] = {"recovered": k, "n": len(scored), "rate": round(k / len(scored), 3), "wilson95": wilson(k, len(scored)),
-                                 "pair_binding": kp, "pair_rate": round(kp / len(scored), 3)}
+        kl = sum(r[m + ":loose"] for r in scored)
+        summary["methods"][m] = {
+            "recovered": k,
+            "n": len(scored),
+            "rate": round(k / len(scored), 3),
+            "wilson95": wilson(k, len(scored)),
+            "pair_binding": kp,
+            "pair_rate": round(kp / len(scored), 3),
+            "recovered_without_gap_rule": kl,
+        }
     for m in METHODS:
         t = OUT / f"{m}" / "timing.json"
         if t.exists():
@@ -106,7 +160,9 @@ def main() -> None:
             summary["methods"][m]["sec_per_page_max"] = secs[-1]
             summary["methods"][m]["max_rss_mb"] = tj["max_rss_mb"]
     (HERE / "results").mkdir(exist_ok=True)
-    (HERE / "results/bench_tables.json").write_text(json.dumps({"summary": summary, "per_item": per_item}, indent=1))
+    (HERE / "results/bench_tables.json").write_text(
+        json.dumps({"summary": summary, "per_item": per_item}, indent=1)
+    )
     print(json.dumps(summary, indent=1))
 
 

@@ -133,3 +133,19 @@ Secondary diagnostic, not used against the bar: **pair binding**, meaning the ro
 and its target value appear in the same line.
 
 MIRA-today is scored per stored chunk: a row counts only when it fits inside one line of one chunk.
+
+## Amendment 4 (scorer fixes made AFTER extractor outputs were seen; disclosed with before/after)
+
+While spot-checking zero-score pages against the raw outputs, three scorer artefacts turned up. Each
+was confirmed by hand, and each fix applies equally to every method:
+
+1. **Compactness rule.** Consecutive cells of a row must lie within 40 normalised characters, so a
+   table emitted as one line cannot lend a row cells from other rows. Effect: Docling v1 66→65,
+   other methods unchanged.
+2. **Footnote markers `(n)` are stripped from extractor output**, as they already were from the gold.
+   Effect: v1 65→72, off 55→62, v2 37→40, MIRA 27→28, layout 24→25.
+3. **Hyphens are ignored in the header test only.** Docling joins two-level headers with ` - `
+   (`Frame - Size`). Effect: v1 72→77, other methods unchanged.
+
+Under the scorer as frozen at amendment 3, v1 scored 66/84 (78.6%). Because these fixes came after
+the outputs were seen, v1's pass of the bar is **provisional** until it is confirmed on a fresh page set.

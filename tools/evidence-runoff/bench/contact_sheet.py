@@ -18,7 +18,23 @@ def main(manual: str, start: int, n: int) -> None:
     with tempfile.TemporaryDirectory() as td:
         for p in pages:
             out = Path(td) / f"p{p}"
-            subprocess.run(["pdftoppm", "-q", "-r", "36", "-f", str(p), "-l", str(p), "-png", "-singlefile", c["pdf"], str(out)], check=True)
+            subprocess.run(
+                [
+                    "pdftoppm",
+                    "-q",
+                    "-r",
+                    "36",
+                    "-f",
+                    str(p),
+                    "-l",
+                    str(p),
+                    "-png",
+                    "-singlefile",
+                    c["pdf"],
+                    str(out),
+                ],
+                check=True,
+            )
             im = Image.open(f"{out}.png").convert("RGB")
             d = ImageDraw.Draw(im)
             d.rectangle([0, 0, 60, 16], fill="yellow")
