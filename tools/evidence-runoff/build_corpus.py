@@ -65,6 +65,33 @@ def sha256(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+def _demojibake(t: str) -> str:
+    """The recorded SSE is UTF-8 that was decoded as cp1252 ("â€™" for "’"). Re-encode char by char —
+    cp1252 where it has a byte, latin-1 for the five bytes cp1252 leaves undefined — then decode UTF-8."""
+    out = bytearray()
+    for ch in t:
+        try:
+            out += ch.encode("cp1252")
+        except UnicodeEncodeError:
+            if ord(ch) < 256:
+                out.append(ord(ch))
+            else:
+                out += ch.encode("utf-8")
+    try:
+        return out.decode("utf-8")
+    except UnicodeDecodeError:
+        return t
+
+
+def raw_answer(obs: dict) -> str:
+    """The answer exactly as streamed (content frames of the recorded SSE), with its [n] markers."""
+    parts = []
+    for line in (obs.get("sse") or "").split("\n"):
+        if line.startswith("data: {") and '"kind":"content"' in line:
+            parts.append(json.loads(line[6:]).get("content", ""))
+    return _demojibake("".join(parts))
+
+
 def split_of(qid: str) -> str:
     return "dev" if int(hashlib.sha256(qid.encode()).hexdigest(), 16) % 10 < 3 else "heldout"
 
@@ -130,14 +157,9 @@ def main() -> int:
                     "manual": m["id"],
                     "manual_sha256": m["sha256"],
                     "status": o.get("streamStatus"),
-                    "answer": rendered.get("answer") or "",
-                    # The walk renders [n] markers as bare digits; keep the real numbers so the NLI
-                    # preprocessing can strip exactly those (Codex F2, #4550 r1).
-                    "markers": [
-                        str(c.get("n"))
-                        for c in rendered.get("citations", [])
-                        if c.get("n") is not None
-                    ],
+                    # The raw streamed answer keeps its bracketed [n] markers; the rendered text turns
+                    # them into bare digits indistinguishable from real values (Codex F2 r2, #4550).
+                    "answer": raw_answer(o) or rendered.get("answer") or "",
                     "cited_pages": pages,
                     "evidence": [{"page": p, "text": pdf_page(pdf, p)} for p in pages],
                     "evidence_kind": "pdftotext_page",

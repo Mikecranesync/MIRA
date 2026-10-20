@@ -12,7 +12,7 @@ Status: **Proposed** (2026-10-20). Evidence: `RUNOFF_RESULTS.md`. Successor trac
    be described as a hallucination stop.
 2. **Keep claim-sentence NLI as the follow-up experiment, not the shipped validator.** NLI on the sentence that
    states the claim does separate lookalikes V1 cannot bind (TQ-06 bit 12 = 0.98/0.43 vs bit 11 = 0.013; tq-31
-   boot-up COB-ID), but flags 26–29 % of correct answers, and costs 0.08–0.37 s on an M4 GPU (staging x86 CPU
+   boot-up COB-ID), but flags 23–25 % of correct answers, and costs 0.08–0.37 s on an M4 GPU (staging x86 CPU
    will be several times slower). The `mira-reranker` sidecar is the natural host if it is ever adopted
    (same cross-encoder shape, already deployed on staging). Eligible models are Apache-2.0 MNLI/SNLI only.
 3. **Reject the Guardrails framework.** Its provenance validators are an LLM call (paid) or a cosine threshold

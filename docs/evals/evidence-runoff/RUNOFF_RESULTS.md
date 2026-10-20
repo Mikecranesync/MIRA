@@ -16,8 +16,8 @@ flags the *unswapped correct original*, so the catch says nothing about the swap
 | V0 shipped answer gate (control) | 0 | 0 | 0 | 0 | — |
 | **V1 typed verifier, frozen (`ee6f8e0`)** | 1 | **1 genuine** + 3 incidental | **6 genuine** + 1 incidental | 17 (10.4 %) | 0.06 ms / 1.3 ms |
 | V1b = V1 + join wrapped lines (**post-hoc**) | 1 | 1 + 3 incidental | 6 + 1 incidental | 12 (7.4 %) | 0.06 ms / 1.3 ms |
-| V3 NLI `deberta-v3-base`, claim sentences only (τ 0.06, dev) | 1 | 1 genuine (tq-31) + 1 incidental | 7 | 44 (27 %) | 0.37 s / 2.9 s (M4 GPU) |
-| V3 NLI `MiniLM2-L6-H768`, claim sentences only (τ 0.20, dev) | 0 | 2 genuine (tq-31 ×2) + 1 | 8 | 42 (26 %) | 0.08 s / 0.41 s |
+| V3 NLI `deberta-v3-base`, claim sentences only (τ 0.06, dev) | 1 | 1 genuine (tq-31) + 1 incidental | 6 | 39 (24 %) | 0.37 s / 2.9 s (M4 GPU) |
+| V3 NLI `MiniLM2-L6-H768`, claim sentences only (τ 0.20, dev) | 0 | 2 genuine (tq-31 ×2) + 1 | 8 | 40 (25 %) | 0.08 s / 0.41 s |
 | V3 NLI, all-sentence minimum (as first run) | 0 | 0 | 0 | 0–6 | (τ tuned to ≈0 → effectively off) |
 | V2 embedding provenance (nomic, τ 0.62) | 0 | 0 | 3 | 9 | 0.11 s / 0.34 s |
 | V1b → NLI-claim fallback (best combination) | 1 | 1 + 3 incidental | 8 | 14–18 | V1 + NLI on the answers V1 has no opinion on |
@@ -29,7 +29,7 @@ false flags — every TQ-06 failure. This is a **dev** result, not held-out evid
 - The typed verifier reliably catches **wrong-page citations** (6/8 genuine held-out page swaps) and the
   **bit / PLC-address lookalikes it was built on** (TQ-06, dev).
 - **No candidate reliably catches a held-out lookalike value.** The best genuine held-out lookalike catch is
-  2 of 9, by claim-sentence NLI, at a 26 % false-flag rate.
+  2 of 9, by claim-sentence NLI, at a 25 % false-flag rate.
 - V1's 3 Micro820 "catches" are artifacts of its Micro820 false flags (§5), not detection.
 
 ## 2. TQ-06 (PRD §6): every approach on the real staging answers (dev)
@@ -58,7 +58,7 @@ fix below). Corrected here.
 |---|---|
 | **H1** typed verification eliminates wrong bit/parameter/code answers | **Not shown on held-out.** Catches wrong-page citations (held-out) and bit/address lookalikes (dev, TQ-06). On held-out quantity and phrase-subject lookalikes it caught 1 of 9 (a unit mismatch). |
 | **H2** structural table parsing beats flat text | **Supported on the pages tested; licence blocker.** Docling kept the Micro810 model columns, the Micro820 "Volt-Amperes" header, the E3 summary row and the M12 pin table; plain text lost each. `pdftotext -layout` kept most rows too. TableFormer's weight licence is unresolved. |
-| **H3** NLI/provenance beats exact rules without excessive false abstention | **Rejected as a gate, configuration-dependent.** Claim-sentence NLI catches lookalikes V1 cannot bind (tq-31 boot-up COB-ID) but flags 26–29 % of correct answers. All-sentence-minimum NLI is useless. Embedding provenance (the Guardrails mechanism) is weakest. Only the three MNLI/SNLI models were eligible; no larger or domain-tuned NLI model was tried. |
+| **H3** NLI/provenance beats exact rules without excessive false abstention | **Rejected as a gate, configuration-dependent.** Claim-sentence NLI catches lookalikes V1 cannot bind (tq-31 boot-up COB-ID) but flags 23–25 % of correct answers. All-sentence-minimum NLI is useless. Embedding provenance (the Guardrails mechanism) is weakest. Only the three MNLI/SNLI models were eligible; no larger or domain-tuned NLI model was tried. |
 | **H4** a combination beats the best single candidate | **Marginal.** V1b → NLI-claim fallback: +1 page-swap catch for +2–3 false flags. V1 ∨ NLI multiplies false flags. |
 
 ## 4. Baseline reproduction (PRD §6)
@@ -90,8 +90,11 @@ This reproduces the briefing's 28.6/50. The briefing's 31 / 36 / 39 / 46 are **z
    (§7.2); 6 extra supporting pages hand-accepted, 2 rejected; 3 questions marked doubtful and excluded.
 7. **NLI rescored**, plus the claim-sentence variant (§2). The first rescore stripped ANY trailing number as a
    presumed citation digit and so deleted real values ("bit 12 [1]." → "bit."); Codex review #4550 r1 (F2) caught
-   it. Now only a trailing number made entirely of the answer's own recorded citation numbers is removed
-   (`test_sentences.py`). All NLI numbers in this document are from the corrected run.
+   it, and r2 showed the first fix (strip only numbers made of the answer's citation numbers) still deleted a
+   value that equals a citation number ("bit 11 [1]"). Final fix: the corpus now holds the RAW streamed answer
+   (bracketed `[n]` markers, recovered from the recorded SSE and un-mojibaked) and only bracketed markers are
+   removed — a bare number is never treated as a citation (`test_sentences.py`, red against the r1 logic). This
+   changed no answer label and no V1/V1b verdict. All NLI numbers in this document are from the final run.
 
 **Independence disclosure:** the gold audit, the hand labels and the verifier were all done by the same agent
 (Claude, this session). The PRD asks for independent label audit; that has **not** happened. The gold drafts
