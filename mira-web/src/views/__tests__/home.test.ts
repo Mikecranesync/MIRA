@@ -1,95 +1,34 @@
 import { describe, expect, test } from "bun:test";
 import { renderHome } from "../home.js";
+import { TALK_TO_MIKE_HREF } from "../_topbar.js";
 
-// Re-baselined 2026-06-13 for the assessment-led "Maintenance Knowledge
-// Layer" homepage. The prior assertions described a superseded "AI
-// Workspace / Projects" design (Asset/Crew/Investigation cards, ChatGPT
-// Projects compare, $97/$497 pricing) and had been failing for some time.
-// This suite now locks the live page + the assessment-led CTA spine.
-
-describe("renderHome — assessment-led homepage", () => {
+describe("renderHome — approved-claims homepage", () => {
   const html = renderHome("https://factorylm.com/");
 
-  test("hero: H1 'FactoryLM', concrete-outcome H2, 'no CMMS rebuild' H3", () => {
+  test("hero: H1 FactoryLM, A5 H2/H3, A6 sub, Talk to Mike CTA", () => {
     expect(html).toContain('id="fl-hero-h1"');
     expect(html).toMatch(/<h1[^>]*>FactoryLM<\/h1>/);
     expect(html).toMatch(
-      /<h2[^>]*>Cited troubleshooting answers from your manuals, assets, and fault history\.<\/h2>/
+      /<h2[^>]*>It's not a CMMS and doesn't replace yours\.<\/h2>/
     );
-    expect(html).toMatch(/<h3[^>]*>Without rebuilding your CMMS\.<\/h3>/);
-    // Namespace positioning kept as support copy, not the headline.
-    expect(html).toContain("Maintenance Intelligence Namespace");
-  });
-
-  test("hero CTAs: primary = Book $500 Assessment (/buy); secondary = in-page sample answer (#fl-compare-h)", () => {
-    expect(html).toMatch(
-      /<a href="\/buy"[^>]*class="fl-btn fl-btn-primary"[^>]*data-cta="hero-assessment"[^>]*>Book \$500 Assessment<\/a>/
-    );
-    expect(html).toMatch(
-      /<a href="#fl-compare-h"[^>]*class="fl-btn fl-btn-ghost"[^>]*data-cta="hero-demo"[^>]*>See a sample answer ↓<\/a>/
-    );
-    // Sign-in is for existing customers only, demoted to the foot line.
+    expect(html).toMatch(/<h3[^>]*>There's nothing to switch\.<\/h3>/);
+    expect(html).toContain("doesn't connect to PLCs");
+    expect(html).toContain("doesn't write work orders");
+    expect(html).toContain(TALK_TO_MIKE_HREF);
+    expect(html).toContain('data-cta="hero-talk"');
+    expect(html).toContain("Talk to Mike");
     expect(html).toContain('data-cta="hero-signin"');
   });
 
-  test("trust band with eyebrow + 8 OEM logos", () => {
-    expect(html).toContain('class="fl-trust-band"');
-    expect(html).toContain("68,000+ chunks of OEM documentation indexed");
-    for (const oem of [
-      "Allen-Bradley",
-      "Siemens",
-      "ABB",
-      "Schneider Electric",
-      "Yaskawa",
-      "Mitsubishi",
-      "Rockwell",
-      "Honeywell",
-    ]) {
-      expect(html).toContain(`<li>${oem}</li>`);
-    }
-  });
-
-  test("3-card offer row — Assessment / Pilot / Operating Layer", () => {
-    expect(html).toContain('class="fl-project-row"');
-    expect(html).toContain('aria-label="Assessment"');
-    expect(html).toContain('aria-label="Pilot"');
-    expect(html).toContain('aria-label="Operating Layer"');
-  });
-
-  test("single compareBlock — generic AI vs MIRA on a namespace", () => {
-    expect(html).toContain('class="fl-compare"');
-    expect(html).toContain("Generic AI");
-    expect(html).toContain("PowerFlex 755");
-    expect(html).toContain("F005");
-    const compareCount = (html.match(/class="fl-compare"/g) || []).length;
-    expect(compareCount).toBe(1);
-  });
-
-  test("how-it-works strip — linear scan→bind→map→ask→cite→draft", () => {
-    expect(html).toContain('id="fl-how-h"');
-    expect(html).toContain("How it works.");
-    expect(html).toContain("Scan assets");
-    expect(html).toContain("MIRA cites the source");
-    expect(html).toContain("Draft PMs");
-  });
-
-  test("cartoon row — three feature demos with mount IDs the script targets", () => {
-    expect(html).toContain('id="fl-cartoons-h"');
-    expect(html).toContain("What we structure during a pilot.");
-    expect(html).toContain('id="cartoon-fd"');
-    expect(html).toContain('id="cartoon-cmms"');
-    expect(html).toContain('id="cartoon-vv"');
-    expect(html).toContain('class="cartoon-demo"');
-    expect(html).toContain('<script src="/feature-cartoons.js" defer></script>');
-  });
-
-  test("feature strip — 4 state badges + stop card", () => {
-    expect(html).toContain('class="fl-state fl-state-indexed"');
-    expect(html).toContain('class="fl-state fl-state-partial"');
-    expect(html).toContain('class="fl-state fl-state-failed"');
-    expect(html).toContain('class="fl-state fl-state-superseded"');
-    expect(html).toContain('class="fl-stop-card"');
-    expect(html).toContain('role="alert"');
+  test("keeps A7, A8, A9 and drops unapproved sections", () => {
+    expect(html).toContain("For lockout, arc flash and confined space");
+    expect(html).toContain("We've tested Rockwell and Festo manuals so far");
+    expect(html).toContain("I'm Mike, I build FactoryLM, and I'm in Central Florida.");
+    expect(html).not.toContain("68,000+");
+    expect(html).not.toContain("F005");
+    expect(html).not.toContain("Operating Layer");
+    expect(html).not.toContain("Book $500");
+    expect(html).not.toContain("feature-cartoons.js");
   });
 
   test("buyer-fit section — Built for / Not the right fit", () => {
@@ -97,35 +36,27 @@ describe("renderHome — assessment-led homepage", () => {
     expect(html).toContain("Who it's for.");
     expect(html).toContain("Built for");
     expect(html).toContain("Not the right fit");
-    expect(html).toContain("standalone CMMS replacement");
+    expect(html).toContain("It's not a CMMS and doesn't replace yours.");
   });
 
-  test("pricing teaser leads with the $500 assessment → /buy", () => {
-    expect(html).toContain("fl-pricing-teaser");
-    expect(html).toContain("$500 assessment");
-    expect(html).toMatch(/href="\/buy"[^>]*data-cta="pricing-teaser-primary"/);
-  });
-
-  test("footer with /limitations, /trust, /privacy, /terms", () => {
+  test("footer with /limitations, /trust, /privacy, /terms, /status", () => {
     expect(html).toContain('data-cta="footer-limitations"');
     expect(html).toMatch(/href="[^"]*\/trust"/);
     expect(html).toMatch(/href="[^"]*\/privacy"/);
     expect(html).toMatch(/href="[^"]*\/terms"/);
+    expect(html).toMatch(/href="[^"]*\/status"/);
   });
 
   test("sun-readable toggle is visible in DOM", () => {
     expect(html).toContain('id="fl-sun-toggle"');
-    expect(html).toContain('class="fl-sun-toggle"');
     expect(html).toContain("Sun-readable");
     expect(html).toContain('<script src="/sun-toggle.js"></script>');
   });
 
-  test("every CTA carries a data-cta attribute (PostHog tracking)", () => {
+  test("every CTA carries a data-cta attribute", () => {
     const ctaAttrs = html.match(/data-cta="[^"]+"/g) ?? [];
-    expect(ctaAttrs.length).toBeGreaterThanOrEqual(8);
-    expect(html).toContain('data-cta="hero-assessment"');
-    expect(html).toContain('data-cta="hero-demo"');
-    expect(html).toContain('data-cta="nav-cmms"');
+    expect(ctaAttrs.length).toBeGreaterThanOrEqual(6);
+    expect(html).toContain('data-cta="hero-talk"');
     expect(html).toContain('data-cta="footer-privacy"');
   });
 
@@ -144,6 +75,7 @@ describe("renderHome — assessment-led homepage", () => {
     );
     expect(org.founder["@type"]).toBe("Person");
     expect(org.founder.name).toBe("Mike Harper");
+    expect(JSON.stringify(parsed)).not.toMatch(/"price":\s*"(499|500|2000)"/);
   });
 
   test("Accessibility: exactly one H1", () => {
@@ -165,10 +97,8 @@ describe("renderHome — assessment-led homepage", () => {
     expect(headings[0]).toBe(1);
   });
 
-  test("SEO: title, meta description, canonical match spec", () => {
-    expect(html).toContain(
-      "<title>FactoryLM — Maintenance Digital Transformation</title>"
-    );
+  test("SEO: title, meta description, canonical", () => {
+    expect(html).toContain("<title>FactoryLM</title>");
     expect(html).toMatch(/<meta name="description" content="[^"]+"/);
     expect(html).toContain('<link rel="canonical" href="https://factorylm.com/">');
   });

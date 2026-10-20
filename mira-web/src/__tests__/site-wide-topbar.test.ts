@@ -7,7 +7,7 @@
  *
  * This suite reads each rendered/served page and asserts:
  *   - No M-icon SVG in the topbar (wordmark only, per audit's recommended logo)
- *   - The standard 5-link nav set (CMMS, Pricing, Blog, Limitations, Security)
+ *   - The standard 4-link nav set (Pricing, Blog, Limitations, Security)
  *     OR — for blog renderer — the standard nav-link helper output
  *   - The "Sign in" CTA copy (no "Get Started", "Try free", "Join the Beta")
  *
@@ -119,11 +119,11 @@ describe("site-wide topbar coherence (v0.6.0)", () => {
       // TS-rendered views (home/cmms/limitations/security) use absolute URLs
       // since PR #996; static HTML pages still use root-relative until Phase 2.
       // Accept both: check that the path appears in the href.
-      expect(topbar).toMatch(/href="[^"]*\/cmms"/);
       expect(topbar).toMatch(/href="[^"]*\/pricing"/);
       expect(topbar).toMatch(/href="[^"]*\/blog"/);
       expect(topbar).toMatch(/href="[^"]*\/limitations"/);
       expect(topbar).toMatch(/href="[^"]*\/security"/);
+      expect(topbar).not.toContain(">CMMS<");
     });
 
     test(`${page.name}: topbar dropped the "Troubleshooter" / "Product" / "Fault Codes" labels`, () => {
