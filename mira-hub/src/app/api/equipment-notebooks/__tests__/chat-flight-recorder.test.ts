@@ -1638,6 +1638,56 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
   });
 
+  describe("3c. claim-verifier shadow (#4550) on the answer_gate.evaluate span", () => {
+    afterEach(() => {
+      delete process.env.NOTEBOOK_CLAIM_VERIFIER;
+    });
+    const ask = async (answer: string) => {
+      domainMock.getNotebook.mockResolvedValue(nb() as never);
+      ragMock.retrieveNodeChunks.mockResolvedValueOnce([chunk(DOC_A, "")] as never);
+      vi.stubGlobal("fetch", vi.fn(async () => providerStream(answer)));
+      const text = await (await POST(chatReq({ message: "rated voltage?", sourceDocIds: [DOC_A] }), params)).text();
+      await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+      const gate = handle.finished().filter((s) => s.name === "answer_gate.evaluate").at(-1);
+      return { text, gate };
+    };
+
+    it("flag on: a value the cited page states is `supported`", async () => {
+      process.env.NOTEBOOK_CLAIM_VERIFIER = "shadow";
+      const { gate } = await ask("Rated 24 VDC [1].");
+      expect(gate!.attributes["mira.claim_verifier.verdict"]).toBe("supported");
+    });
+
+    it("flag on: a value the cited page does not state is `unsupported` — and the answer still ships unchanged", async () => {
+      process.env.NOTEBOOK_CLAIM_VERIFIER = "shadow";
+      const { text, gate } = await ask("Rated 12 VDC [1].");
+      expect(gate!.attributes["mira.claim_verifier.verdict"]).toBe("unsupported");
+      expect(framesOf(text).filter((f) => f.kind === "content").map((f) => f.content).join("")).toContain("Rated 12 VDC");
+      expect(packetOf().answer_gate.decision).toBe("answered");
+    });
+
+    it("flag off (default): no claim-verifier attribute at all", async () => {
+      const { gate } = await ask("Rated 12 VDC [1].");
+      expect(gate!.attributes["mira.claim_verifier.verdict"]).toBeUndefined();
+    });
+  });
+
+  it("3b. the vector lane's outcome lands on the retrieval.execute span (#4548)", async () => {
+    // Staging 2026-10-20: retrieveNodeChunks set it on the ACTIVE span, but the
+    // route starts its stage spans without activating them, so it was dropped.
+    domainMock.getNotebook.mockResolvedValue(nb() as never);
+    ragMock.retrieveNodeChunks.mockImplementationOnce((async (...args: unknown[]) => {
+      const opts = args[3] as { diagnostics?: { vectorLane?: string } };
+      if (opts.diagnostics) opts.diagnostics.vectorLane = "skipped_timeout";
+      return [chunk(DOC_A, "")];
+    }) as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("Rated 24 VDC [1].")));
+    await (await POST(chatReq({ message: "rated voltage?", sourceDocIds: [DOC_A] }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const retrieval = handle.finished().find((s) => s.name === "retrieval.execute");
+    expect(retrieval!.attributes["mira.retrieval.vector_lane"]).toBe("skipped_timeout");
+  });
+
   it("five concurrent historical recalls do not nest connections in the five-slot pool", async () => {
     const tenant = vi.mocked(withTenantContext);
     const original = tenant.getMockImplementation()!;

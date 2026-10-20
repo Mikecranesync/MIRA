@@ -29,7 +29,11 @@ export interface ReviewQueueResponse {
 function repoRoot(): string {
   if (process.env.REVIEW_REPO_ROOT) return process.env.REVIEW_REPO_ROOT;
   if (process.env.NODE_ENV === "production") return "/app";
-  return path.resolve(process.cwd(), "..");
+  // PWD, not process.cwd(): Next's file tracer follows a literal process.cwd()
+  // path and copied the WHOLE REPO (docs, marketing, mira-bridge's DB) into
+  // .next/standalone on every local build. Same value at runtime: `npm run dev`
+  // runs from mira-hub/, and path.resolve falls back to the cwd if PWD is unset.
+  return path.resolve(process.env.PWD ?? "", "..");
 }
 
 const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".webp"]);
