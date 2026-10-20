@@ -105,3 +105,15 @@ So step 2 found no candidate pages in them. For a manual with fewer than two cap
 candidates become every page of the manual, with the same exclusions and the same sha ordering. Screen
 at most the first 20 on a low-resolution contact sheet. A manual that yields fewer than two qualifying
 pages contributes what it has, and the shortfall is reported.
+
+## Amendment 2 (gold conventions, fixed while labelling, before any extractor output is opened)
+
+- **Merged cells are excluded.** A cell that spans several rows (a voltage class, a shared `R/W`) is not
+  required in any row. Its position is a layout accident, and crediting it to one row would penalise
+  whichever extractor puts it on a different line.
+- **Drawn glyphs are excluded.** Button icons and similar marks are not text in the PDF.
+- **Nested lists inside a cell are excluded.** An example is SMC-50 parameter 231's enum list.
+- **Footnote markers are dropped.**
+- **Matching ignores all whitespace.** `mm2` and `mm 2` are the same text; a superscript is not a fault.
+- Each gold row records its cells keyed by header index. The target is the cell at
+  `1 + (i mod (ncols - 1))`. A row whose target was excluded is reported as unscored.
