@@ -312,7 +312,9 @@ async function searchYouTubeCorpus(
   manufacturer: string | null,
 ): Promise<YouTubeHit[]> {
   const corpusType = equipmentTypeToCorpus(equipmentType ?? "");
-  const corpusDir = path.join(process.cwd(), "..", "mira-bots", "benchmarks", "corpus", "youtube", "by_equipment");
+  // PWD, not process.cwd(): a literal process.cwd() path makes Next's file
+  // tracer copy the corpus into .next/standalone (see review-queue.ts repoRoot).
+  const corpusDir = path.join(path.resolve(process.env.PWD ?? ""), "..", "mira-bots", "benchmarks", "corpus", "youtube", "by_equipment");
   const corpusFile = path.join(corpusDir, `${corpusType}.json`);
 
   let entries: RawYoutubeEntry[] = [];

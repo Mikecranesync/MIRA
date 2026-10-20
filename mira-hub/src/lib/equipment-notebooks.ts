@@ -369,7 +369,27 @@ export async function updateNotebook(
     if (k in patch) fields[col] = (patch as Record<string, unknown>)[k];
   }
   if (Object.keys(fields).length === 0) return false;
-  const sets = Object.keys(fields).map((col, i) => `${col} = $${i + 3}`);
+  const cols = Object.keys(fields);
+  const sets = cols.map((col, i) => `${col} = $${i + 3}`);
+  // A CHANGED machine identity is a new identity. `model` and `identity_status`
+  // are independent columns here, so until 2026-10-18 a PATCH could rewrite the
+  // model while the row stayed `user_confirmed` — and retrieval (#4484) scopes a
+  // notebook's manuals to its model only because a person confirmed it. If the
+  // caller writes manufacturer or model without saying what the new status is,
+  // the status drops to `candidate` — but ONLY when the stored value actually
+  // differs (Codex #4484 F3: re-saving the same "GS10" used to revoke the
+  // confirmation, and migration 104's trigger then disabled the auto-acquired
+  // manuals). The comparison is done in the UPDATE itself, against the row's
+  // old values, so it is atomic with the write. The identity-confirm route sets
+  // the status explicitly and is untouched.
+  if (("model" in patch || "manufacturer" in patch) && !("identityStatus" in patch)) {
+    const changed: string[] = [];
+    for (const col of ["manufacturer", "model"] as const) {
+      const i = cols.indexOf(col);
+      if (i >= 0) changed.push(`${col} IS DISTINCT FROM $${i + 3}`);
+    }
+    sets.push(`identity_status = CASE WHEN ${changed.join(" OR ")} THEN 'candidate' ELSE identity_status END`);
+  }
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
       `UPDATE equipment_notebooks

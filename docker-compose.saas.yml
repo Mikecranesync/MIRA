@@ -852,6 +852,13 @@ services:
       # Embed retry sweep (#4293): backfill embed-on-write failures with an off switch.
       # Default ON (unset → 1); explicit 0 disables the sweep without rebuild.
       - NODE_EMBED_RETRY_SWEEP=${NODE_EMBED_RETRY_SWEEP:-1}
+      # #4487 vector lane for notebook retrieval (RRF with BM25). OFF unless the
+      # environment sets NOTEBOOK_HYBRID_RETRIEVAL=1; it was never passed through,
+      # so the Doppler value alone could not turn it on (#4513, 2026-10-18).
+      - NOTEBOOK_HYBRID_RETRIEVAL=${NOTEBOOK_HYBRID_RETRIEVAL:-0}
+      # #4515 kill switch for the +29 decode at ingest: default ON in code;
+      # NOTEBOOK_GARBLE_DECODE=0 disables it without a rebuild.
+      - NOTEBOOK_GARBLE_DECODE=${NOTEBOOK_GARBLE_DECODE:-1}
       # P0004G canonical inference seam. OFF unless explicitly set to "1" —
       # with it unset the notebook-chat route keeps using the pre-existing
       # inline cascade, so this line changes nothing until someone flips it.
@@ -932,6 +939,15 @@ services:
       - ASK_API_KEY=${ASK_API_KEY:-}
       # Sent as X-Mira-Key to /manual-discovery/search only (#4160 S2).
       - MANUAL_DISCOVERY_API_KEY=${MANUAL_DISCOVERY_API_KEY:-}
+      # #4406: background manual search for a technician-confirmed identity, plus the
+      # manual harvester (/api/manual-harvester) that shares this switch. Off unless
+      # set in Doppler prd; same shape as docker-compose.staging-vps.yml.
+      - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-0}
+      # Comma-separated tenant UUIDs that the switch above applies to. Blank = every
+      # tenant, so set this BEFORE turning the switch on in prd.
+      - MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS=${MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS:-}
+      # #4160 S6 candidate takeover: off until a client can confirm a candidate identity.
+      - MIRA_NOTEBOOK_CANDIDATE_ACQUISITION=${MIRA_NOTEBOOK_CANDIDATE_ACQUISITION:-0}
       # Nameplate crop-then-recognize (src/lib/nameplate/detect.ts): ONE shared
       # switch with the mira-ask endpoint above — the hub only calls
       # /nameplate/detect when this is "1", so a single Doppler flip turns the

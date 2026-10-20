@@ -97,8 +97,41 @@ describe("acquisitionKey — only a technician-confirmed, searchable identity", 
 describe("acquisitionEnabled — off unless explicitly '1'", () => {
   it.each([[{}, false], [{ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "0" }, false], [{ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "true" }, false], [ON, true]])(
     "%j → %s",
-    (env, want) => expect(acquisitionEnabled(env as Record<string, string>)).toBe(want),
+    (env, want) => expect(acquisitionEnabled("t", env as Record<string, string>)).toBe(want),
   );
+});
+
+// Production turns on for one customer first: a tenant allowlist narrows the switch.
+describe("acquisitionEnabled — MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS", () => {
+  const A = "11111111-1111-4111-8111-111111111111";
+  const B = "22222222-2222-4222-8222-222222222222";
+  const LIST = { ...ON, MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: ` ${A.toUpperCase()} , ` };
+  it("a listed tenant is on (case/whitespace-insensitive)", () => expect(acquisitionEnabled(A, LIST)).toBe(true));
+  it("an unlisted tenant is off", () => expect(acquisitionEnabled(B, LIST)).toBe(false));
+  it("no tenant is off when a list is set", () => {
+    expect(acquisitionEnabled(null, LIST)).toBe(false);
+    expect(acquisitionEnabled("", LIST)).toBe(false);
+  });
+  it("unset or blank list keeps the switch server-wide (control)", () => {
+    expect(acquisitionEnabled(B, ON)).toBe(true);
+    expect(acquisitionEnabled(B, { ...ON, MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: " , " })).toBe(true);
+  });
+  it("the list never turns on a switch that is off", () => {
+    expect(acquisitionEnabled(A, { MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: A })).toBe(false);
+  });
+  it("candidate takeover follows the same list", () => {
+    const both = { ...LIST, MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" };
+    expect(candidateAcquisitionEnabled(A, both)).toBe(true);
+    expect(candidateAcquisitionEnabled(B, both)).toBe(false);
+  });
+  it("start / run / status gate on the INPUT's tenant", async () => {
+    const acquire = vi.fn();
+    const onlyA = { ...ON, MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: A };
+    expect(await startManualAcquisition({ ...input, tenantId: B }, { acquire, env: onlyA })).toBe(false);
+    expect(await runManualAcquisition({ ...input, tenantId: B } as ManualAcquisitionInput, { acquire, env: onlyA })).toEqual({ started: false, outcome: null });
+    expect(await currentManualSearchStatus(B, "nb", confirmed, null, [], { env: onlyA })).toBeNull();
+    expect(acquire).not.toHaveBeenCalled();
+  });
 });
 
 describe("startManualAcquisition", () => {
@@ -867,11 +900,11 @@ describe("Codex #4118 r14 F18/F19 — attach gate: database errors retry, remova
 // #4172 F13 / #4175: candidate takeover has its own flag, and needs the base one.
 describe("candidateAcquisitionEnabled", () => {
   it("is on only when BOTH flags are exactly '1'", () => {
-    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(true);
-    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" })).toBe(false);
-    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(false);
-    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "true" })).toBe(false);
-    expect(candidateAcquisitionEnabled({})).toBe(false);
+    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(true);
+    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" })).toBe(false);
+    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(false);
+    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "true" })).toBe(false);
+    expect(candidateAcquisitionEnabled("t", {})).toBe(false);
   });
 });
 

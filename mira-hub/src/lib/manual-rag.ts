@@ -1,7 +1,12 @@
 import type { PoolClient } from "pg";
+import { citationPageLabel } from "@/lib/citation-page";
+import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
-import { MODEL_PATTERNS, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
+import { setSpanAttrs } from "@/capabilities/observability/tracing";
+import { orderByScores, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
 import {
   codeTokenMatcher,
   expandIndustrialQuery,
@@ -55,6 +60,12 @@ export interface ManualChunk {
   sourceUrl: string;
   sourcePage: number | null;
   /**
+   * Printed page label from chunk metadata (`page_label` / `page` / `page_num`).
+   * Chapter-section labels like "2-15" live here — INTEGER `source_page` cannot
+   * hold them, and `Number("2-15")` is NaN / `parseInt("2-15")` is 2.
+   */
+  pageLabel?: string | null;
+  /**
    * The chunk ordinal from ingest (`metadata->>'chunk_index'`), used only to
    * detect legacy rows that mis-stamped `source_page` with the chunk index
    * instead of the real PDF page (#2910). Optional: retrieval paths that source
@@ -95,6 +106,299 @@ export function neutralizeReferenceText(text: string): string {
 
 export function approvalGateEnabled(): boolean {
   return process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL === "true";
+}
+
+// #4469 F2 (primary review, pass 2 — the pass-1 keyword-stripping remediation
+// was REJECTED as incomplete) — an arbitrary mention anywhere in a document's
+// opening text is not affirmative applicability, and no finite keyword list
+// ("for/consult/refer/see/separate/another") can cover every way a document
+// points away from itself: "See the separate Micro820 manual.", "Related
+// documents: Micro820 user manual", "Micro820 is not covered by this
+// manual." all defeat a keyword strip, and stripping-then-reading-the-rest
+// is the ORIGINAL bug restated with one more regex.
+//
+// So this does the opposite: instead of trying to recognize and remove bad
+// prose, it reads ONLY the document's own declared title and ignores every
+// other word, structurally. `titleSegment` returns just the lead segment of
+// the heading — up to the first newline or ". " (period-space) — which is
+// where a real title/cross-reference boundary actually falls. Everything
+// after that boundary (a cross-reference, a "related documents" list, an
+// explicit exclusion) is prose the title never asserted and is never read
+// for coverage, regardless of phrasing. A title that genuinely names two
+// models in one breath ("Micro810 and Micro820 User Manual") has no boundary
+// before "Manual" and both survive intact.
+//
+// The heading is authoritative: when its title segment names ANY model, the
+// filename is not consulted at all — a renamed/mismatched filename can never
+// override what the document's own heading actually declares. The filename
+// is read ONLY as a fallback, when the heading's title segment names no
+// model at all (an opaque OEM publication-number filename with a real
+// heading, or the reverse). No LLM call; conservative abstention (an empty
+// identity set, maybe from both sides) is accepted over false grounding.
+//
+// Known limitation (not solved, surfaced for the parent): a cover page whose
+// first line is a generic "User Manual" with the actual model named two
+// lines down abstains under this rule — the title segment genuinely has no
+// model in it. That is the conservative failure mode this design accepts.
+function titleSegment(text: string): string {
+  // Codex #4469 r2 F6: a layout line break is not the end of a title. A first
+  // line that ends on a joining word or mark ("Micro810 and" / "Micro810 &" /
+  // "Micro810/" / "Micro810,") continues on the next line, so the wrapped
+  // dual-model title keeps both models. Only that dangling-join shape joins;
+  // any other newline still ends the title (the "Related documents" line).
+  let rest = text;
+  let head = "";
+  for (;;) {
+    const newline = rest.indexOf("\n");
+    if (newline < 0) {
+      head += rest;
+      break;
+    }
+    const line = rest.slice(0, newline);
+    if (/(?:\b(?:and|or)|[&/,+])\s*$/i.test(line) && !line.includes(". ")) {
+      head += line.replace(/\s*$/, " ");
+      rest = rest.slice(newline + 1).replace(/^\s+/, "");
+      continue;
+    }
+    head += line;
+    break;
+  }
+  const periodSpace = head.indexOf(". ");
+  return periodSpace >= 0 ? head.slice(0, periodSpace) : head;
+}
+
+// Codex #4469 r2 F2: a first-line cross-reference ("Micro810 User Manual — for
+// Micro820 consult the separate manual") has no newline or period before it,
+// so the whole line read as coverage. The declared title is the shortest
+// leading part of the title segment that already names a model and ends at a
+// title boundary: the end of a document-type noun ("… User Manual"), a dash,
+// colon, semicolon, bracket or pipe, or a pointing/excluding word ("for",
+// "see", "consult", "refer", "not", "except", "excluding", "unlike",
+// "replaces", "supersedes"). This only ever TRUNCATES — nothing after the
+// boundary is read — so an unrecognized phrasing can only cause abstention,
+// never admission. A boundary whose prefix names no model is skipped, so
+// "User Manual for Micro820" keeps Micro820, and a genuine multi-model title
+// ("Micro810 and Micro820 Programmable Controllers User Manual") keeps both.
+const TITLE_BOUNDARY_RE =
+  /\b(?:user\s+manual|manual|guide|instructions|handbook|reference|specifications?|data\s*sheet|datasheet)\b|\s[\u2014\u2013-]\s|[\u2014\u2013:;([|]|\s(?=(?:for|see|consult|refer|not|except|excluding|unlike|replaces|supersedes)\b)/gi;
+
+function declaredTitle(segment: string): string {
+  for (const m of segment.matchAll(TITLE_BOUNDARY_RE)) {
+    const isNoun = /^\w/.test(m[0]);
+    const end = isNoun ? m.index! + m[0].length : m.index!;
+    const prefix = segment.slice(0, end);
+    if (modelIdentitiesInText(prefix).size > 0) return prefix;
+  }
+  return segment;
+}
+
+function stripFileExtension(filename: string): string {
+  return filename.replace(/\.[a-z0-9]{1,6}$/i, "");
+}
+
+function affirmativeModelIdentities(filename: string, heading: string): Set<string> {
+  const headingIdentities = modelIdentitiesInText(declaredTitle(titleSegment(heading)));
+  if (headingIdentities.size > 0) return headingIdentities;
+  // A generic cover with model-bearing prose is ambiguous; a renamed file cannot resolve it.
+  if (coverIsAmbiguous(heading)) return new Set();
+  return modelIdentitiesInText(declaredTitle(stripFileExtension(filename).replace(/_+/g, " ")));
+}
+
+/** The cover's title segment names no model but the heading below it does
+ *  ("User Manual\nMicro810 Programmable Controllers", or a leading blank line).
+ *  Codex #4484 r3 F6: the notebook branch read the empty affirmative set as a
+ *  genuinely model-free manual and admitted a sibling's instructions. Such a
+ *  cover is resolved against EVERYTHING the heading names (so a Micro810
+ *  manual is rejected for a Micro820 notebook while a Micro820 one is kept),
+ *  never treated as model-free. */
+function coverIsAmbiguous(heading: string): boolean {
+  return modelIdentitiesInText(declaredTitle(titleSegment(heading))).size === 0 && modelIdentitiesInText(heading).size > 0;
+}
+
+/** What an ambiguous cover DECLARES: the first model-bearing line below the
+ *  generic opener, resolved as a title (declaredTitle), and nothing after it.
+ *  Codex #4484 r4 F6: resolving the WHOLE heading let a cross-reference or an
+ *  explicit exclusion ("Micro820 is not covered by this manual", "For Micro820
+ *  see the separate user manual") count as coverage. Prose below the declared
+ *  title is never applicability evidence. */
+function ambiguousCoverIdentities(heading: string): Set<string> {
+  const lines = heading.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (modelIdentitiesInText(lines[i]).size === 0) continue;
+    // Codex #4484 r5 F8: resolve the title from this line ON with the same
+    // dangling-join rule as the primary path, so "Micro810 and\nMicro820
+    // Programmable Controllers" keeps both models.
+    const segment = titleSegment(lines.slice(i).join("\n"));
+    // Codex #4484 r5 F6: the first model-bearing line can itself be prose —
+    // "Micro820 is not covered by this manual.", "For Micro820 see the
+    // separate user manual." A title names a product; prose has a verb or a
+    // reference. Judged on the WHOLE segment (declaredTitle would trim "For
+    // Micro820 see …" down to "For Micro820"). Such a cover declares NOTHING
+    // affirmative and is rejected.
+    if (COVER_PROSE_RE.test(segment)) return new Set();
+    return modelIdentitiesInText(declaredTitle(segment));
+  }
+  return new Set();
+}
+/** Words a product TITLE never carries but exclusion / cross-reference prose does. */
+const COVER_PROSE_RE =
+  /\b(?:is|are|was|were|not|see|refer|refers|covered|covers|separate|also|related|documents?|instead|only|except|does|do|use|uses|for\s+the|this\s+manual)\b|[.!?]\s*$/i;
+
+/** Codex #4484 r4 F7: the proposal flow stores a FAMILY ROOT as digits too
+ *  ("800" for a Micro800, "520" / "750" for the PowerFlex series). As "#800"
+ *  it was scoped like a model and rejected the Micro850 manual, while the same
+ *  notebook storing "Micro800" applied no filter (identitiesAreFamilyOnly). A
+ *  bare number that IS a family root's number, for the notebook's own vendor,
+ *  becomes that root. */
+function bareNumberFamilyRoot(digits: string, manufacturer: string | null | undefined): string | null {
+  const mfr = manufacturer?.trim();
+  if (!mfr) return null;
+  for (const [root, , vendor] of FAMILY_ROOTS) {
+    const m = FAMILY_DIGITS_RE.exec(root);
+    if (m && m[2] === digits && vendor.test(mfr)) return root;
+  }
+  return null;
+}
+
+// Codex #4469 r2 F5: an exact catalog number is a stronger identity than a
+// shared panel label. When BOTH the question and the document name a catalog
+// number (6AV…), applicability requires a catalog match — a shared "TP700"
+// can never admit "6AV2124-0GC01-9AX0" for a "6AV2124-0GC01-0AX0" question.
+// With a catalog on only one side, the label match still applies (the
+// technician did not name a variant, or the manual covers the whole panel).
+const isCatalogIdentity = (id: string) => /^6AV/.test(id);
+
+// Round-2 review on #4484: a catalog number and its panel label never met —
+// a TP700 notebook could not cite a manual titled by order number, and a
+// notebook identified by order number (the nameplate's "1P 6AV2124-0GC01-0AX0")
+// could not cite the "TP700 Comfort Operating Instructions". Siemens order
+// numbers encode the panel in their first 13 characters; this literal table
+// maps the ones FactoryLM has met to the label the manuals use. Add a row only
+// from a nameplate or the Siemens catalog page — never guess one.
+const CATALOG_PREFIX_TO_MODEL: ReadonlyArray<readonly [prefix: string, model: string]> = [
+  ["6AV2124-0GC01", "TP700"], // TP700 Comfort
+  ["6AV2124-0JC01", "TP900"], // TP900 Comfort
+  ["6AV2124-0MC01", "TP1200"], // TP1200 Comfort
+  ["6AV2124-0QC02", "TP1500"], // TP1500 Comfort
+  ["6AV2124-0UC02", "TP1900"], // TP1900 Comfort
+  ["6AV2124-0XC02", "TP2200"], // TP2200 Comfort
+  ["6AV2123-2DB03", "KTP400"], // KTP400 Basic
+  ["6AV2123-2GB03", "KTP700"], // KTP700 Basic
+  ["6AV2123-2JB03", "KTP900"], // KTP900 Basic
+  ["6AV2123-2MB03", "KTP1200"], // KTP1200 Basic
+];
+function panelModelOfCatalog(id: string): string | null {
+  const hit = CATALOG_PREFIX_TO_MODEL.find(([prefix]) => id.toUpperCase().startsWith(prefix));
+  return hit ? hit[1] : null;
+}
+/** The identities plus, for every catalog number, the panel label it names. */
+function withCatalogModels(ids: Set<string>): Set<string> {
+  const out = new Set(ids);
+  for (const id of ids) {
+    if (!isCatalogIdentity(id)) continue;
+    const model = panelModelOfCatalog(id);
+    if (model) out.add(model);
+  }
+  return out;
+}
+
+function documentCoversRequest(requested: Set<string>, title: Set<string>): boolean {
+  const requestedCatalogs = [...requested].filter(isCatalogIdentity);
+  const titleCatalogs = [...title].filter(isCatalogIdentity);
+  if (requestedCatalogs.length > 0 && titleCatalogs.length > 0) {
+    // Codex #4469 r2 F5 stands: catalog on BOTH sides needs a catalog match
+    // (a variant mismatch is a different panel). The table never relaxes it.
+    return titleCatalogs.some((id) => requested.has(id));
+  }
+  // Catalog on ONE side: it also names its panel, so the label match applies.
+  const req = withCatalogModels(requested);
+  for (const id of withCatalogModels(title)) if (req.has(id)) return true;
+  return false;
+}
+
+// 2026-10-18 scope pass on #4484: some identities the detector returns name a
+// product FAMILY, not one model, and a family manual covers every member.
+// Measured: "PowerFlex 520-Series … User Manual" → {PF520} while a PowerFlex
+// 525 notebook → {PF525}, so the series manual — the one Rockwell actually
+// publishes for the 523/525 — was hidden from the notebook by the identity
+// filter. Same shape for the Micro800 manual over Micro810/820/850/870, and
+// for the Comfort Panels manual over any TP panel. Each root maps to the
+// member identities it covers; the table is deliberately small and literal.
+// KTP panels are Basic, not Comfort, so COMFORT does not reach them (the
+// TP700-must-not-admit-KTP700 rule at familySqlTerms stands).
+// Each root also names its vendor (Codex #4484 r2 F1): a bare-number identity
+// ("850") is resolved to a family ONLY through a root of the notebook's own
+// manufacturer, so an Allen-Bradley "850" reaches MICRO850 and never ACS850.
+const ROCKWELL = /rockwell|allen[\s-]*bradley/i;
+const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp, vendor: RegExp]> = [
+  ["PF520", /^PF52\d$/, ROCKWELL], // PowerFlex 520-series: 523, 525, 527
+  ["PF750", /^PF75\d$/, ROCKWELL], // PowerFlex 750-series: 753, 755 (round-2 review)
+  ["MICRO800", /^MICRO8\d0$/, ROCKWELL], // Micro800: 810, 820, 830, 850, 870
+  ["COMFORT", /^TP\d{3,4}$/, /siemens/i], // SIMATIC Comfort Panels: TP700, TP900, TP1200, …
+];
+const isFamilyRoot = (id: string) => FAMILY_ROOTS.some(([root]) => root === id);
+const familyCovers = (root: string, model: string) =>
+  FAMILY_ROOTS.some(([r, members]) => r === root && members.test(model));
+
+/** A notebook identity made ONLY of family roots ("Comfort", "Micro800") does
+ *  not name a machine the filter could scope to — any TP or Micro8x0 manual
+ *  attached to it is plausibly right, so the filter is skipped. */
+function identitiesAreFamilyOnly(ids: Set<string>): boolean {
+  return ids.size > 0 && [...ids].every(isFamilyRoot);
+}
+
+/** Notebook-identity applicability: the exact-identity rule, plus a title
+ *  that names a family root covering the notebook's model. */
+/** A confirmed notebook model stored as digits only ("820", "525"). */
+const BARE_MODEL_NUMBER_RE = /^\d{2,4}$/;
+const FAMILY_DIGITS_RE = /^([A-Z]+)(\d+)$/;
+/** Which vendor each detector family prefix (model-token.ts FAMILY_KEYS and
+ *  letter-bearing captures) belongs to. Codex #4484 r3 F5: the r2 fix tied a
+ *  bare number to FAMILY_ROOTS alone, so an Allen-Bradley "40" lost its own
+ *  "PowerFlex 40 User Manual" (PF40 is in no root). Exact-model resolution is
+ *  now separate from family-manual coverage: a title naming exactly
+ *  <family><digits> is the same machine when its family is this vendor's. */
+const FAMILY_PREFIX_VENDORS: ReadonlyArray<readonly [prefix: string, vendor: RegExp]> = [
+  ["PF", ROCKWELL],
+  ["MICRO", ROCKWELL],
+  ["ACS", /\babb\b/i],
+  ["GS", /automation\s*direct|durapulse/i],
+  ["TP", /siemens/i],
+  ["KTP", /siemens/i],
+  ["V", /siemens/i],
+];
+
+function documentCoversNotebook(notebook: Set<string>, title: Set<string>, manufacturer: string | null): boolean {
+  // Codex #4484 F2: a catalog-only notebook identity (6AV2124-0GC01-0AX0) must
+  // reach the family check AS its panel label, or the Comfort Panels manual is
+  // lost to it — expand before both comparisons.
+  const nb = withCatalogModels(notebook);
+  if (documentCoversRequest(nb, title)) return true;
+  for (const t of title) {
+    for (const n of nb) {
+      if (familyCovers(t, n)) return true;
+      if (n.startsWith("#")) {
+        // Bare-number identity (r1 F1, tightened in r2 F1, split in r3 F5): the
+        // digits alone name no family, so matching digits are NOT enough —
+        // "850" on an Allen-Bradley notebook was admitting an ABB ACS850
+        // manual. The title's family must be one of the notebook's OWN
+        // vendor's (FAMILY_PREFIX_VENDORS); then an EXACT <family><digits>
+        // title is the same machine ("PowerFlex 40" for "40"), and a family
+        // ROOT title covers the member it would name ("Micro800" for "850").
+        // With no manufacturer there is no grounded family, and no family
+        // manual is admitted (the generic no-model lenience is unaffected).
+        const digits = n.slice(1);
+        const m = FAMILY_DIGITS_RE.exec(t);
+        if (!m || !manufacturer) continue;
+        const vendor = FAMILY_PREFIX_VENDORS.find(([prefix]) => prefix === m[1])?.[1];
+        if (!vendor || !vendor.test(manufacturer)) continue;
+        if (m[2] === digits) return true;
+        const member = `${m[1]}${digits}`;
+        if (FAMILY_ROOTS.some(([root, members]) => t === root && members.test(member))) return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**
@@ -622,6 +926,21 @@ const rowKey = (r: Record<string, unknown>): string =>
   `${r.source_url ?? ""}|${r.source_page ?? ""}|${r.content ?? ""}`;
 
 /**
+ * Printed page label from JSON metadata. INTEGER source_page/page_start cannot
+ * hold "2-15"; reading the text keys and never Number()-coercing them is what
+ * lets the safety banner cite p.2-15 (TQ-29).
+ */
+const PAGE_LABEL_SQL = `COALESCE(
+          NULLIF(BTRIM(metadata->>'page_label'), ''),
+          NULLIF(BTRIM(metadata->>'page'), ''),
+          NULLIF(BTRIM(metadata->>'page_num'), '')
+        ) AS page_label`;
+
+function pageLabelFromRow(r: Record<string, unknown>): string | null {
+  return citationPageLabel(r.page_label);
+}
+
+/**
  * Build the manufacturer / model / family SQL scoping clauses, appending their
  * parameters to `params` and returning the clause fragments with positions that
  * match. Shared by the BM25 passes and the #4224 code-token lane so both carry
@@ -745,6 +1064,7 @@ async function runBm25Query(
           model_number,
           source_url,
           source_page,
+          ${PAGE_LABEL_SQL},
           metadata->>'chunk_index' AS chunk_index,
           metadata->>'title' AS title,
           verified,
@@ -832,6 +1152,7 @@ async function runBm25Query(
           model_number,
           source_url,
           source_page,
+          ${PAGE_LABEL_SQL},
           metadata->>'chunk_index' AS chunk_index,
           metadata->>'title' AS title,
           verified,
@@ -866,6 +1187,7 @@ async function runBm25Query(
     modelNumber: String(r.model_number ?? ""),
     sourceUrl: String(r.source_url ?? ""),
     sourcePage: r.source_page == null ? null : Number(r.source_page),
+    pageLabel: pageLabelFromRow(r),
     chunkIndex: r.chunk_index == null ? null : Number(r.chunk_index),
     title: String(r.title ?? ""),
     rank: Number(r.rank ?? 0),
@@ -915,6 +1237,12 @@ export async function retrieveNodeChunks(
     /** The notebook's machine (manufacturer/model), so its own name is never
      *  read as a fault code by the whole-token lane (Codex r6 on #4360). */
     identity?: EquipmentIdentity | null;
+    /** How the notebook's identity was established. Model-less questions are
+     *  scoped to `identity.model` ONLY when this is `user_confirmed` or
+     *  `verified`: an OCR `candidate` can misread a nameplate, and scoping to a
+     *  misread hides the correct manual silently. Absent/unknown/candidate →
+     *  no notebook scoping (the fault-code suppression above still applies). */
+    identityStatus?: IdentityStatus | null;
     /** Canonical-files retrieval mode (workspace_file_links): scope by the
      *  validated docIds ALONE, without requiring the chunks' original
      *  metadata.node_id to equal this caller's node. A document ingested once
@@ -930,6 +1258,11 @@ export async function retrieveNodeChunks(
      *  alongside verified shared rows; the set is intersected with `docIds`
      *  (narrow only) and ignored when the gate is off. */
     approvedSourceDocIds?: string[];
+    /** Filled with what the vector lane did (off | ran | skipped_<why> |
+     *  failed) so the caller can put it on its own retrieval span: callers
+     *  start stage spans without activating them, so setSpanAttrs() on the
+     *  active span alone never reached the trace (#4548). */
+    diagnostics?: { vectorLane?: string };
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -1019,31 +1352,97 @@ export async function retrieveNodeChunks(
   // out-ranked). POOL is retrieved per pass; the final slice is topK.
   const POOL = Math.max(topK * 4, 24);
 
+  const requestedModel = resolveModelFromObservationText(opts.rawQuery ?? q);
+  // 2026-10-17 prod-test item 1 (stacked on #4469): the question is not the
+  // only source of model identity. The notebook is bound to ONE confirmed
+  // machine (`opts.identity.model`, from the notebook row), and most
+  // technician questions name no model at all ("communication settings",
+  // "what does oC mean") — under #4469 alone those asks fell through the
+  // filter and a Micro810-only sibling manual attached to a Micro820 notebook
+  // was cited as if it covered the machine. So:
+  //   - the question names one model → that model scopes (unchanged, and it
+  //     outranks the notebook: the technician may deliberately ask about a
+  //     sibling);
+  //   - the question names several models → no filter (unchanged);
+  //   - the question names none and the notebook identity resolves → the
+  //     notebook identity scopes;
+  //   - neither resolves (an unparseable asset name like "CV-101", or an
+  //     unbound notebook) → no filter, exactly as before.
+  const questionScoped = Boolean(requestedModel.model) && !requestedModel.ambiguous;
+  // 2026-10-18 scope pass: two more ways the notebook identity must NOT scope.
+  //   - It was never confirmed by a person. `equipment_notebooks.model` and
+  //     `identity_status` are independent columns (updateNotebook builds its
+  //     SET clause from a column map), so a `candidate` OCR read can sit in
+  //     `model` — and scoping to a misread hides the right manual silently.
+  //   - It names only a product family ("Comfort", "Micro800"): there is no
+  //     single machine to scope to, so every member manual stays citable.
+  const identityConfirmed = opts.identityStatus === "user_confirmed" || opts.identityStatus === "verified";
+  // Codex #4484 F1: the identity-proposal flow confirms models as bare numbers
+  // ("820", "525" — identity-proposal.test.ts pins that shape), which
+  // modelIdentitiesInText cannot read, so a confirmed Micro820 notebook was
+  // never scoped and cited the Micro810 manual. A bare number is carried as a
+  // marked identity (`#820`) that matches a title whose OWN digits agree
+  // (MICRO820, PF525) or whose family root covers them (MICRO800); no family is
+  // ever guessed from the number alone.
+  const notebookModel = opts.identity?.model?.trim() ?? "";
+  const notebookIdentities: Set<string> =
+    !requestedModel.model && !requestedModel.ambiguous && identityConfirmed && notebookModel
+      ? BARE_MODEL_NUMBER_RE.test(notebookModel)
+        ? new Set([bareNumberFamilyRoot(notebookModel, opts.identity?.manufacturer) ?? `#${notebookModel}`])
+        : modelIdentitiesInText(notebookModel)
+      : new Set<string>();
+  const notebookScoped =
+    !questionScoped && notebookIdentities.size > 0 && !identitiesAreFamilyOnly(notebookIdentities);
+  // Give each attached manual its own candidate window for a model-scoped ask.
+  // Otherwise a large sibling manual can consume LIMIT before applicability
+  // filtering, hiding the correct manual and making a supported ask abstain.
+  const docWindows = (questionScoped || notebookScoped) && allowedDocIds.length > 1
+    ? allowedDocIds.map((id) => [id])
+    : [allowedDocIds];
+
+  // Read the document's opening text, not just the retrieved page: later pages
+  // often omit the product name and OEM filenames are publication numbers.
+  // Match tenant AND doc id so another tenant's attachment cannot supply identity.
+  const documentHeadingSql = `(SELECT left(header.content, 2000)
+    FROM knowledge_entries header
+    WHERE header.tenant_id = knowledge_entries.tenant_id
+      AND header.doc_id = knowledge_entries.doc_id
+      AND header.ingest_route = 'v2'
+    ORDER BY header.page_start NULLS LAST, header.source_page NULLS LAST,
+      (header.metadata->>'chunk_index')::int NULLS LAST, header.id
+    LIMIT 1) AS document_heading`;
+
   // $2 is the tsquery text (per-pass), $6 the exact-token ILIKE patterns.
   const runRetrieval = async (tsquery: string, queryText: string) => {
-    const res = await client.query(
-      `SELECT
-          content,
-          doc_id::text AS doc_id,
-          source_url,
-          source_page,
-          page_start,
-          section_path,
-          metadata->>'filename' AS filename,
-          verified,
-          ts_rank_cd(content_tsv, ${tsquery}) AS rank
-        FROM knowledge_entries
-        WHERE tenant_id = $1
-          AND ingest_route = 'v2'
-          ${approvalClauseMain}
-          ${nodeClauseMain}
-          ${docClause}
-          AND content_tsv @@ ${tsquery}
-        ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
-        LIMIT $4`,
-      [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...docParams, ...approvedParams],
-    );
-    return res.rows;
+    const rows: Record<string, unknown>[] = [];
+    for (const window of docWindows) {
+      const res = await client.query(
+        `SELECT
+            content,
+            doc_id::text AS doc_id,
+            source_url,
+            source_page,
+            page_start,
+            ${PAGE_LABEL_SQL},
+            section_path,
+            metadata->>'filename' AS filename,
+            ${documentHeadingSql},
+            verified,
+            ts_rank_cd(content_tsv, ${tsquery}) AS rank
+          FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
+            ${approvalClauseMain}
+            ${nodeClauseMain}
+            ${docClause}
+            AND content_tsv @@ ${tsquery}
+          ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
+          LIMIT $4`,
+        [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...(window.length ? [window] : []), ...approvedParams],
+      );
+      rows.push(...res.rows);
+    }
+    return rows;
   };
 
   // Exact-token lane: a technician question naming P042 / F004 / terminal 07
@@ -1075,23 +1474,31 @@ export async function retrieveNodeChunks(
       exactParams.push(approvedSourceDocIds);
       approvalClauseExact = approvedSourceFilterSql(exactParams.length);
     }
-    const res = await client.query(
-      `SELECT
-          content, doc_id::text AS doc_id, source_url, source_page, page_start,
-          section_path, metadata->>'filename' AS filename, verified,
-          0::float4 AS rank
-        FROM knowledge_entries
-        WHERE tenant_id = $1
-          AND ingest_route = 'v2'
-          ${approvalClauseExact}
-          ${nodeClauseExact}
-          ${exactDocClause}
-          AND content ${match === "regex" ? "~*" : "ILIKE"} ANY($3::text[])
-        ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
-        LIMIT $4`,
-      exactParams,
-    );
-    return res.rows;
+    const rows: Record<string, unknown>[] = [];
+    for (const window of docWindows) {
+      const windowParams = [...exactParams];
+      if (window.length) windowParams[4] = window;
+      const res = await client.query(
+        `SELECT
+            content, doc_id::text AS doc_id, source_url, source_page, page_start,
+            ${PAGE_LABEL_SQL},
+            section_path, metadata->>'filename' AS filename, verified,
+            ${documentHeadingSql},
+            0::float4 AS rank
+          FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
+            ${approvalClauseExact}
+            ${nodeClauseExact}
+            ${exactDocClause}
+            AND content ${match === "regex" ? "~*" : "ILIKE"} ANY($3::text[])
+          ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
+          LIMIT $4`,
+        windowParams,
+      );
+      rows.push(...res.rows);
+    }
+    return rows;
   };
 
   // Collect a pooled candidate set across: original AND (precision), each
@@ -1099,9 +1506,82 @@ export async function retrieveNodeChunks(
   // lane. De-dupe by (doc_id, page, content prefix) so a chunk counts once.
   const pool: Record<string, unknown>[] = [];
   const seen = new Set<string>();
+  // A notebook is a document boundary, not proof that every attached manual
+  // covers the model in the current question. Reject an explicitly different
+  // model before ranking; a sibling manual must never become citation evidence.
+  // Use the raw message so a previous turn's model cannot override this one.
+  // #4469 F1 — family-qualified identities computed once per call, on the
+  // SAME text resolveModelFromObservationText used to resolve requestedModel
+  // (so "which model is this" and "which identities does that resolve to"
+  // never disagree). Null when the query named no single model — the filter
+  // below is then skipped entirely, same as before.
+  const requestedIdentities: Set<string> | null = questionScoped
+    ? modelIdentitiesInText(opts.rawQuery ?? q)
+    : null;
+  const keyOf = (r: Record<string, unknown>) =>
+    `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
+  // Admission is ONE predicate for every lane — lexical, exact-token and (item
+  // 4) vector — so a chunk the vector lane finds is held to exactly the same
+  // model-applicability rule as one BM25 found.
+  const admit = (r: Record<string, unknown>): boolean => {
+      if (requestedIdentities || notebookScoped) {
+        // F2 — affirmative title/heading applicability only (see
+        // affirmativeModelIdentities): the heading's own title segment is
+        // authoritative; the filename is consulted only as a fallback, and
+        // never overrides a heading that already named a model.
+        // F3 — only underscores are filename separators (and the file
+        // extension is stripped before matching); catalog hyphens
+        // (6AV2124-0GC01-0AX0) are left intact so the full number survives.
+        const titleIdentities = affirmativeModelIdentities(
+          String(r.filename ?? ""),
+          String(r.document_heading ?? ""),
+        );
+        if (requestedIdentities) {
+          // #4511 (Release 1 regression, Lane A replay 2026-10-18): the real
+          // Rockwell Micro810 cover is "User Manual Original Instructions\n
+          // Micro810 Programmable\nControllers…" — a generic opener with the
+          // model on line two. `affirmativeModelIdentities` returns an EMPTY set
+          // for such an ambiguous cover, and a named ask rejected on that empty
+          // set, so the Micro810 manual could not answer a single Micro810
+          // question. r3 F6 already resolves an ambiguous cover against what its
+          // heading DECLARES for the notebook branch; a named ask gets the same
+          // resolution. A prose cover still declares nothing (r5 F6) and a
+          // sibling's model still fails the coverage check.
+          const heading = String(r.document_heading ?? "");
+          const declared =
+            titleIdentities.size === 0 && coverIsAmbiguous(heading) ? ambiguousCoverIdentities(heading) : titleIdentities;
+          if (!documentCoversRequest(requestedIdentities, declared)) return false;
+        } else if (
+          (titleIdentities.size > 0 &&
+            !documentCoversNotebook(notebookIdentities, titleIdentities, opts.identity?.manufacturer?.trim() || null)) ||
+          // r3 F6 — an ambiguous cover (generic first line, model-bearing
+          // heading) is NOT a model-free manual: it must cover the notebook by
+          // everything its heading names, or it is a sibling's manual.
+          (titleIdentities.size === 0 &&
+            coverIsAmbiguous(String(r.document_heading ?? "")) &&
+            !documentCoversNotebook(
+              notebookIdentities,
+              ambiguousCoverIdentities(String(r.document_heading ?? "")),
+              opts.identity?.manufacturer?.trim() || null,
+            ))
+        ) {
+          // Notebook-identity scope is deliberately one notch less strict than
+          // a named ask: a manual that names NO model is kept, because the
+          // technician attached it to this machine's notebook on purpose and
+          // the question gave no reason to doubt that. Only a manual that
+          // affirmatively declares a DIFFERENT model (the Micro810 manual in
+          // the Micro820 notebook — the prod-test miss) is rejected — and a
+          // FAMILY manual (PowerFlex 520-Series for a 525) counts as covering
+          // its members, not as a different model (FAMILY_ROOTS).
+          return false;
+        }
+      }
+      return true;
+  };
   const add = (rs: Record<string, unknown>[]) => {
     for (const r of rs) {
-      const key = `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
+      if (!admit(r)) continue;
+      const key = keyOf(r);
       if (seen.has(key)) continue;
       seen.add(key);
       pool.push(r);
@@ -1153,6 +1633,120 @@ export async function retrieveNodeChunks(
   // back to the original OR pass (a fully off-vocabulary conversational query).
   if (pool.length === 0) add(await runRetrieval(OR_TSQUERY, expanded.variants[0]));
 
+  // 2026-10-17 prod-test item 4 — the VECTOR lane, behind NOTEBOOK_HYBRID_RETRIEVAL
+  // (default off). node ingest already stores a nomic-embed-text vector on every
+  // v2 chunk; until now notebook chat never read it. One cosine pass over the
+  // SAME tenant / node / doc / approval predicates as the BM25 pass, ranked by
+  // `<=>`, LIMIT POOL. Rows go through the SAME `admit` filter; rows the lexical
+  // lanes never saw join the pool with rank 0 (like the exact lane — the
+  // cosine score is NOT a ts_rank and must not feed the lexical rerank). The
+  // vector ORDER is kept aside for the RRF merge below. Any failure — no
+  // embedder, HTTP error, no vectors in scope, SQL error — leaves the lexical
+  // result exactly as it was: this lane can add and re-order, never remove.
+  let vectorKeys: string[] | null = null;
+  // Rows ONLY the vector lane found. They join `pool` (so they can be cited)
+  // and therefore `lexicalRanked` — but they must not also earn a lexical RRF
+  // term there, or a vector-only row scores twice against a lexical-only row's
+  // once and displaces it (scope-pass finding on #4487).
+  const vectorOnlyKeys = new Set<string>();
+  // What the vector lane did on this turn, on the turn's trace: off | ran |
+  // skipped_<why> | failed. Without it, a lane that is ON but skipped (a cold
+  // embedder past its timeout, 2026-10-19 staging) looks identical to BM25.
+  let vectorLane = "off";
+  if (hybridRetrievalEnabled()) {
+    const embedded = await embedQueryDetailed(opts.rawQuery ?? q);
+    const queryVec = "vec" in embedded ? embedded.vec : null;
+    if (!("vec" in embedded)) {
+      vectorLane = `skipped_${embedded.reason}`;
+      console.warn(`[retrieveNodeChunks] vector lane skipped (${embedded.reason}); lexical result served`);
+    }
+    if (queryVec) {
+      // Codex r1 on #4487: a failing vector SELECT (a statement timeout, a
+      // missing pgvector operator) run on the CALLER's client inside
+      // withTenantContext's transaction leaves that transaction aborted, so the
+      // caller's NEXT query fails with 25P02 — the namespace route then dropped
+      // its node row and answered 404. The optional lane runs under a
+      // SAVEPOINT so its failure is rolled back to the point before it ran and
+      // the connection stays usable. A raw-pool caller has no transaction:
+      // SAVEPOINT itself fails there (25P01) and nothing needs recovering.
+      let savepoint = false;
+      try {
+        await client.query("SAVEPOINT hybrid_vector_lane");
+        savepoint = true;
+      } catch {
+        savepoint = false;
+      }
+      try {
+        // Same per-document candidate windows as the lexical lanes: when the
+        // ask is model-scoped, one LIMIT POOL over ALL docs lets a large
+        // sibling manual fill every vector slot before applicability filtering
+        // (the same hazard docWindows exists for in BM25). Rows from all
+        // windows are re-sorted by cosine so the RRF order stays one ranking.
+        const vectorRows: Array<Record<string, unknown>> = [];
+        for (const window of docWindows) {
+          const vectorParams: unknown[] = [tenantId, q, nodeIds, POOL, ...(window.length ? [window] : []), ...approvedParams, vectorLiteral(queryVec)];
+          const vecSlot = vectorParams.length;
+          const res = await client.query(
+            `SELECT
+                content,
+                doc_id::text AS doc_id,
+                source_url,
+                source_page,
+                page_start,
+                section_path,
+                metadata->>'filename' AS filename,
+                ${documentHeadingSql},
+                verified,
+                0::float4 AS rank,
+                (1 - (embedding <=> $${vecSlot}::vector))::float4 AS vscore
+              FROM knowledge_entries
+              WHERE tenant_id = $1
+                AND ($2::text IS NOT NULL)
+                AND ingest_route = 'v2'
+                ${approvalClauseMain}
+                ${nodeClauseMain}
+                ${docClause}
+                AND embedding IS NOT NULL
+              ORDER BY embedding <=> $${vecSlot}::vector, id
+              LIMIT $4`,
+            vectorParams,
+          );
+          vectorRows.push(...(res.rows as Record<string, unknown>[]));
+        }
+        if (docWindows.length > 1) {
+          vectorRows.sort((a, b) => Number(b.vscore ?? 0) - Number(a.vscore ?? 0));
+        }
+        vectorKeys = [];
+        for (const r of vectorRows) {
+          if (!admit(r)) continue;
+          const key = keyOf(r);
+          if (!vectorKeys.includes(key)) vectorKeys.push(key);
+          if (!seen.has(key)) {
+            seen.add(key);
+            pool.push(r);
+            vectorOnlyKeys.add(key);
+          }
+        }
+        if (savepoint) await client.query("RELEASE SAVEPOINT hybrid_vector_lane");
+        vectorLane = "ran";
+      } catch (err) {
+        vectorLane = "failed";
+        console.warn("[retrieveNodeChunks] vector lane failed (lexical result served):", err instanceof Error ? err.message : err);
+        vectorKeys = null;
+        vectorOnlyKeys.clear();
+        if (savepoint) {
+          try {
+            await client.query("ROLLBACK TO SAVEPOINT hybrid_vector_lane");
+          } catch (rollbackErr) {
+            console.warn("[retrieveNodeChunks] vector lane savepoint rollback failed:", rollbackErr instanceof Error ? rollbackErr.message : rollbackErr);
+          }
+        }
+      }
+    }
+  }
+  setSpanAttrs({ "mira.retrieval.vector_lane": vectorLane });
+  if (opts.diagnostics) opts.diagnostics.vectorLane = vectorLane;
+
   // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank). For a
   // broad question, keep a bigger, page-DIVERSE slice so distinct facets survive
   // (no single page may fill the context); otherwise the tight topK.
@@ -1161,20 +1755,40 @@ export async function retrieveNodeChunks(
   // The code the technician JUST named leads the final cut; a code carried in
   // from the thread stays context and cannot exhaust the slots (Codex r2 on
   // #4360). No-op when the message named no code.
-  const rerankedAll = prioritizeCurrentCodeEvidence(
-    rerankChunks(
-      expanded,
-      pool.map((r) => ({
-        content: String(r.content ?? ""),
-        rank: Number(r.rank ?? 0),
-        sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
-        docId: r.doc_id == null ? null : String(r.doc_id),
-        _row: r,
-      })),
-      { intent, trace },
-    ),
-    expanded.currentCodeTokens,
+  const lexicalRanked = rerankChunks(
+    expanded,
+    pool.map((r) => ({
+      content: String(r.content ?? ""),
+      rank: Number(r.rank ?? 0),
+      sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
+      docId: r.doc_id == null ? null : String(r.doc_id),
+      _row: r,
+    })),
+    { intent, trace },
   );
+  // Item 4 — Reciprocal Rank Fusion of the lexical rerank and the vector order
+  // (hybrid-retrieval.ts). With no vector lane this IS lexicalRanked.
+  const byKey = new Map(lexicalRanked.map((c) => [keyOf(c._row), c] as const));
+  const hybridRanked =
+    vectorKeys && vectorKeys.length > 0
+      ? rrfMerge(
+          // A vector-only row has no lexical rank to contribute (see vectorOnlyKeys).
+          lexicalRanked.filter((c) => !vectorOnlyKeys.has(keyOf(c._row))),
+          vectorKeys.map((k) => byKey.get(k)).filter((c): c is (typeof lexicalRanked)[number] => c !== undefined),
+          (c) => keyOf(c._row),
+        )
+      : lexicalRanked;
+  // CU-RR1 — cross-encoder rerank of the ordered pool's head (NOTEBOOK_RERANK=1, default off).
+  // Runs BEFORE prioritizeCurrentCodeEvidence so the code the technician just named still
+  // leads the final cut (#4360). Broad questions keep their page-diverse, facet-guaranteed
+  // shape and are not reranked. Any reranker failure returns null: today's order stands.
+  let modelRanked = hybridRanked;
+  if (!broad.broad && rerankEnabled() && hybridRanked.length > 1) {
+    const head = hybridRanked.slice(0, rerankPool());
+    const scores = await rerankScores(opts.rawQuery ?? q, head.map((c) => c.content));
+    if (scores) modelRanked = [...orderByScores(head, scores), ...hybridRanked.slice(head.length)];
+  }
+  const rerankedAll = prioritizeCurrentCodeEvidence(modelRanked, expanded.currentCodeTokens);
   // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
   // overall, so one family (e.g. overload) can fill every slot while a planned
   // facet (overcurrent) sits uncovered in the pool. Every facet with pool
@@ -1211,6 +1825,7 @@ export async function retrieveNodeChunks(
         : r.source_page == null
           ? null
           : Number(r.source_page),
+    pageLabel: pageLabelFromRow(r),
     // Node/v2 path sources a real page from page_start — never a chunk ordinal —
     // so leave chunkIndex null and always render the page (the #2910 guard is a no-op here).
     chunkIndex: null,

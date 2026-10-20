@@ -11,7 +11,7 @@ import { loadLabeledSet, score } from "./step-energy-labeled-set";
 const rows = loadLabeledSet();
 const flagged = (answerText: string, question: string) => {
   const v = validateAnswer({ answerText, question, general: true, served: true, refused: false, evidenceSufficient: false });
-  return !v.ok && (v.kind === "energized_warning" || v.kind === "unsafe_answer" || v.kind === "hazard_warning");
+  return !v.ok && (v.kind === "energized_warning" || v.kind === "unsafe_answer");
 };
 
 describe("#4122 step-energy scorer", () => {
