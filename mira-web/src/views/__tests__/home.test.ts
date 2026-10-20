@@ -1,34 +1,36 @@
 import { describe, expect, test } from "bun:test";
 import { renderHome } from "../home.js";
 import { TALK_TO_MIKE_HREF } from "../_topbar.js";
+import {
+  generateJsonLd,
+  loadCapabilities,
+  provenClaims,
+} from "../../capabilities/marketing-claims/index.js";
 
-describe("renderHome — approved-claims homepage", () => {
+describe("renderHome — proven-claims homepage", () => {
+  const data = loadCapabilities();
   const html = renderHome("https://factorylm.com/");
 
-  test("hero: H1 FactoryLM, A5 H2/H3, A6 sub, Talk to Mike CTA", () => {
+  test("hero leads with the equipment notebook and Talk to Mike", () => {
     expect(html).toContain('id="fl-hero-h1"');
-    expect(html).toMatch(/<h1[^>]*>FactoryLM<\/h1>/);
-    expect(html).toMatch(
-      /<h2[^>]*>It's not a CMMS and doesn't replace yours\.<\/h2>/
-    );
-    expect(html).toMatch(/<h3[^>]*>There's nothing to switch\.<\/h3>/);
-    expect(html).toContain("doesn't connect to PLCs");
-    expect(html).toContain("doesn't write work orders");
+    expect(html).toContain(`<h1 id="fl-hero-h1" class="fl-hero-h1">${data.positioning.headline}</h1>`);
+    expect(html).toContain(data.positioning.subhead);
     expect(html).toContain(TALK_TO_MIKE_HREF);
     expect(html).toContain('data-cta="hero-talk"');
     expect(html).toContain("Talk to Mike");
     expect(html).toContain('data-cta="hero-signin"');
   });
 
-  test("keeps A7, A8, A9 and drops unapproved sections", () => {
-    expect(html).toContain("For lockout, arc flash and confined space");
-    expect(html).toContain("We've tested Rockwell and Festo manuals so far");
-    expect(html).toContain("I'm Mike, I build FactoryLM, and I'm in Central Florida.");
+  test("renders only proven claims from the capabilities file", () => {
+    for (const claim of provenClaims(data)) {
+      expect(html).toContain(claim.text);
+    }
     expect(html).not.toContain("68,000+");
     expect(html).not.toContain("F005");
     expect(html).not.toContain("Operating Layer");
     expect(html).not.toContain("Book $500");
     expect(html).not.toContain("feature-cartoons.js");
+    expect(html).not.toMatch(/\$\d/);
   });
 
   test("buyer-fit section — Built for / Not the right fit", () => {
@@ -60,22 +62,25 @@ describe("renderHome — approved-claims homepage", () => {
     expect(html).toContain('data-cta="footer-privacy"');
   });
 
-  test("JSON-LD includes Organization, WebSite, and Person (Mike Harper)", () => {
+  test("JSON-LD matches the capabilities generator and has no Offer/price", () => {
     const jsonLdMatch = html.match(
       /<script type="application\/ld\+json">([\s\S]*?)<\/script>/
     );
     expect(jsonLdMatch).not.toBeNull();
     const parsed = JSON.parse(jsonLdMatch![1]);
+    expect(parsed).toEqual(generateJsonLd(data));
     expect(parsed["@context"]).toBe("https://schema.org");
     const types = parsed["@graph"].map((n: { "@type": string }) => n["@type"]);
     expect(types).toContain("Organization");
     expect(types).toContain("WebSite");
+    expect(types).toContain("SoftwareApplication");
     const org = parsed["@graph"].find(
       (n: { "@type": string }) => n["@type"] === "Organization"
     );
     expect(org.founder["@type"]).toBe("Person");
     expect(org.founder.name).toBe("Mike Harper");
-    expect(JSON.stringify(parsed)).not.toMatch(/"price":\s*"(499|500|2000)"/);
+    expect(JSON.stringify(parsed)).not.toMatch(/"@type":"Offer"/);
+    expect(JSON.stringify(parsed)).not.toMatch(/"price"/);
   });
 
   test("Accessibility: exactly one H1", () => {
@@ -97,10 +102,11 @@ describe("renderHome — approved-claims homepage", () => {
     expect(headings[0]).toBe(1);
   });
 
-  test("SEO: title, meta description, canonical", () => {
-    expect(html).toContain("<title>FactoryLM</title>");
-    expect(html).toMatch(/<meta name="description" content="[^"]+"/);
+  test("SEO: title, meta description, canonical lead with the notebook", () => {
+    expect(html).toContain(`<title>${data.positioning.title}</title>`);
+    expect(html).toContain(`content="${data.positioning.meta_description}"`);
     expect(html).toContain('<link rel="canonical" href="https://factorylm.com/">');
+    expect(html).toMatch(/equipment notebook/i);
   });
 
   test("token, component, and dark-theme stylesheets are linked", () => {

@@ -1,5 +1,11 @@
 # MIRA — Maintenance Intelligence & Response Assistant
 
+> **Current public positioning (2026-10-20):** MIRA is an equipment notebook for one
+> maintenance crew on qualified machines and manuals. Talk to Mike —
+> [mike@factorylm.com](mailto:mike@factorylm.com). The claim list that the public site
+> may print lives in
+> [`mira-web/src/capabilities/marketing-claims/capabilities.json`](mira-web/src/capabilities/marketing-claims/capabilities.json).
+>
 > **⚠️ PRODUCT FRAMING UPDATE (2026-07-11):** This README describes the infrastructure layer. The **first
 > sellable product is Drive Commander**, a read-only VFD troubleshooting tool (issue #2577, PR #2504,
 > ADR-0025). The generic "AI-powered maintenance diagnostics" framing below is foundational but no
@@ -51,10 +57,10 @@ on a phone. Earlier framing (generic "copilot", whole-plant "signal difference e
 2. They scan a QR sticker on the equipment (or type in the asset tag, or upload a nameplate photo).
 3. MIRA opens a chat pre-loaded with the asset's vendor, model, service history, and recent faults.
 4. The technician describes the symptom — by voice or text.
-5. MIRA asks diagnostic questions, pulls the relevant page from the manual, and proposes a fix.
-6. When the fault is resolved, MIRA auto-generates the CMMS work order closeout. One tap to confirm.
+5. MIRA asks diagnostic questions and pulls the relevant page from the attached manual.
+6. When the fault is resolved, the crew records what fixed it in the notebook.
 
-Competitive differentiators: asset-scoped entry, industrial knowledge grounding (25K+ chunks across 100+ vendors), voice-first mobile UX, Atlas/MaintainX/Limble/Fiix CMMS integration.
+Public differentiators we will stand behind today: an equipment notebook for one crew, lookup against manuals we have actually tested, and cited answers only when the retrieval path supports them. We do not claim a 100-vendor corpus or third-party CMMS integrations on this README.
 
 ---
 

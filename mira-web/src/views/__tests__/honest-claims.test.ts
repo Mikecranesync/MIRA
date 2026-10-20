@@ -54,28 +54,16 @@ const DONT_SAY: Array<{ label: string; re: RegExp }> = [
   { label: "Book Your Maintenance Assessment", re: /Book Your Maintenance Assessment/i },
   { label: "IT/OT gap closed", re: /IT\/OT/ },
   { label: "Operating Layer", re: /Operating Layer/ },
+  { label: "MaintainX", re: /MaintainX/ },
+  { label: "Limble", re: /Limble/ },
+  { label: "UpKeep", re: /UpKeep/ },
+  { label: "Fiix", re: /\bFiix\b/ },
+  { label: "unlimited queries", re: /unlimited queries/i },
 ];
 
-const FORBIDDEN_PRICES = [
-  /\$497/,
-  /\$499/,
-  /\$97\b/,
-  /\$2[–-]5\s*K/i,
-  /\$2,000/,
-  /\$5,000/,
-];
+const PRICE_PAGES = pages.filter((p) => p.name !== "/terms");
 
-function lockedPriceOk(html: string): boolean {
-  const matches = html.match(/\$[\d,]+(?:\.\d+)?/g) ?? [];
-  return matches.every((token) => {
-    if (token === "$500") return /30-day pilot/i.test(html);
-    if (token === "$399") return /\/\s*mo|per month|\/month/i.test(html);
-    if (token === "$3,990" || token === "$3990") return /\/\s*yr|per year|\/year/i.test(html);
-    return false;
-  });
-}
-
-describe("public marketing copy — don't-say list and locked prices", () => {
+describe("public marketing copy — don't-say list and no published prices", () => {
   for (const page of pages) {
     test(`${page.name}: drops the don't-say list and removed claims`, () => {
       for (const rule of DONT_SAY) {
@@ -83,11 +71,14 @@ describe("public marketing copy — don't-say list and locked prices", () => {
       }
     });
 
-    test(`${page.name}: shows only the locked price, or no price`, () => {
-      for (const re of FORBIDDEN_PRICES) {
-        expect(page.html, `${page.name} still contains ${re}`).not.toMatch(re);
-      }
-      expect(lockedPriceOk(page.html), `${page.name} has a price that is not the locked offer`).toBe(true);
+  }
+
+  for (const page of PRICE_PAGES) {
+    test(`${page.name}: publishes no price`, () => {
+      expect(page.html, `${page.name} still contains a dollar price`).not.toMatch(
+        /\$[\d,]+/
+      );
+      expect(page.html).not.toMatch(/14-day money-back|money-back guarantee/i);
     });
   }
 

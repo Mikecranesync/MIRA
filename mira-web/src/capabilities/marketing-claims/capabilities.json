@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "updated": "2026-10-20",
+  "contact": {
+    "cta": "Talk to Mike",
+    "email": "mike@factorylm.com",
+    "href": "mailto:mike@factorylm.com"
+  },
+  "positioning": {
+    "title": "FactoryLM — The equipment notebook for your maintenance crew",
+    "headline": "The equipment notebook for your maintenance crew",
+    "subhead": "Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it.",
+    "meta_description": "Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it. Talk to Mike about a pilot.",
+    "audience": "One maintenance crew working on qualified machines and manuals."
+  },
+  "claims": [
+    {
+      "id": "notebook-for-one-crew",
+      "text": "MIRA is the equipment notebook for one maintenance crew.",
+      "status": "proven",
+      "kind": "capability",
+      "evidence": "docs/specs/mira-technician-app-dogfood-system.md",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "notebook-open-lookup-ask-record",
+      "text": "Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it.",
+      "status": "proven",
+      "kind": "capability",
+      "evidence": "mira-hub/src/app/api/equipment-notebooks/",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "qualified-manuals-only",
+      "text": "We've tested Rockwell and Festo manuals so far, and we'll post our misses too.",
+      "status": "proven",
+      "kind": "capability",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "not-a-cmms",
+      "text": "It's not a CMMS and doesn't replace yours. There's nothing to switch.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "no-plc-or-work-order-write",
+      "text": "It doesn't connect to PLCs, doesn't use work-order history, and doesn't write work orders.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "safety-site-procedure",
+      "text": "For lockout, arc flash and confined space, follow your site procedure. Don't use any AI tool for those.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "web-browser-only",
+      "text": "It works in a web browser only.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "english-manuals-only",
+      "text": "English manuals only. We don't translate manuals between languages.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "not-soc2",
+      "text": "We're not SOC 2 audited yet.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "mike-central-florida",
+      "text": "I'm Mike, I build FactoryLM, and I'm in Central Florida.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "cited-answers-with-page",
+      "text": "Every answer cites the exact manual page.",
+      "status": "partial",
+      "kind": "capability",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552 (A1–A4 HOLD)",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "stranger-upload-cited-answer",
+      "text": "A stranger can upload their own equipment manual and get a cited answer without help.",
+      "status": "partial",
+      "kind": "capability",
+      "evidence": "docs/plans/2026-06-07-path-to-beta.md",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "cmms-writeback",
+      "text": "CMMS write-back and automatic work orders.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "NORTH_STAR.md",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "plc-tag-mapping",
+      "text": "PLC tag mapping that closes the IT/OT gap.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "NORTH_STAR.md",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "oem-chunk-counts",
+      "text": "68,000+ chunks of OEM documentation across 100+ vendors.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "docs/seo-geo-strategy-2026-04-26.md",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "oem-logo-wall",
+      "text": "OEM logo wall covering Allen-Bradley, Siemens, ABB, Schneider, Yaskawa, Mitsubishi, and Honeywell.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "unlimited-queries",
+      "text": "Unlimited MIRA queries.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "photo-480v-demo",
+      "text": "MIRA detected 480 V via the photo.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "telegram-slack-answers",
+      "text": "Telegram and Slack as live answer surfaces.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "voice-note-rca",
+      "text": "Voice-note to root-cause analysis.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "third-party-cmms-integrations",
+      "text": "Integrates with MaintainX, Limble, UpKeep, and Fiix.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "NORTH_STAR.md",
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "any-manual-promise",
+      "text": "Works with any equipment manual.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "docs/plans/2026-06-07-path-to-beta.md",
+      "last_checked": "2026-10-20"
+    }
+  ]
+}
