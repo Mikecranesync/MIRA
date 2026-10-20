@@ -389,6 +389,9 @@ describe("Review A HIGH — the leak and the photo skip, through the real route"
     const out = await frames(
       await POST(req({ message: "What does fault code oc mean on this drive?", sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO } }), params),
     );
+    // Precondition: the hazard photo really was loaded, so the negative below
+    // is not vacuous (independent review, 2026-10-20).
+    expect(lookMock.loadVisualEvidenceForPhoto).toHaveBeenCalledWith(expect.anything(), TENANT, PHOTO);
     expect(contentOf(out)).not.toMatch(/SAFETY STOP — energized work/);
   });
 });
