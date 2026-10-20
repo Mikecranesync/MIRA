@@ -26,31 +26,77 @@ export function hybridRetrievalEnabled(): boolean {
   return process.env.NOTEBOOK_HYBRID_RETRIEVAL === "1";
 }
 
+/** Ollama unloads a model after 5 idle minutes by default; the next question
+ *  then pays a cold load that outlasts QUERY_EMBED_TIMEOUT_MS and the turn
+ *  silently falls back to BM25 (2026-10-19 staging). Every query embed asks
+ *  for the model to stay resident this long. */
+export const QUERY_EMBED_KEEP_ALIVE = "24h";
+/** One cold load at boot is allowed far longer than a technician's turn. */
+const WARM_UP_TIMEOUT_MS = 60_000;
+
+export type QueryEmbedFailure = "not_configured" | "timeout" | "unreachable" | "http_error" | "bad_dimension";
+
+/**
+ * Embed the technician's question with the write path's model, saying WHY when
+ * it cannot (no embedder configured, timeout, unreachable, HTTP error, wrong
+ * dimension). Never throws; the caller treats any failure as "lexical only".
+ */
+export async function embedQueryDetailed(
+  text: string,
+  timeoutMs: number = QUERY_EMBED_TIMEOUT_MS,
+): Promise<{ vec: number[] } | { reason: QueryEmbedFailure }> {
+  const base = process.env.OLLAMA_BASE_URL;
+  if (!base) return { reason: "not_configured" };
+  try {
+    const resp = await fetch(`${base}/api/embeddings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: QUERY_EMBED_MODEL, prompt: text, keep_alive: QUERY_EMBED_KEEP_ALIVE }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) return { reason: "http_error" };
+    const data = (await resp.json()) as { embedding?: unknown };
+    const vec = data.embedding;
+    if (!Array.isArray(vec) || vec.length !== QUERY_EMBED_DIM || !vec.every((v) => typeof v === "number" && Number.isFinite(v))) {
+      return { reason: "bad_dimension" };
+    }
+    return { vec: vec as number[] };
+  } catch (err) {
+    const name = err instanceof Error ? err.name : "";
+    return { reason: name === "TimeoutError" || name === "AbortError" ? "timeout" : "unreachable" };
+  }
+}
+
 /**
  * Embed the technician's question with the write path's model. Null on ANY
  * failure (no embedder configured, HTTP error, timeout, wrong dimension) —
  * the caller treats null as "lexical only", never as an error.
  */
 export async function embedQuery(text: string): Promise<number[] | null> {
-  const base = process.env.OLLAMA_BASE_URL;
-  if (!base || !text.trim()) return null;
-  try {
-    const resp = await fetch(`${base}/api/embeddings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: QUERY_EMBED_MODEL, prompt: text }),
-      signal: AbortSignal.timeout(QUERY_EMBED_TIMEOUT_MS),
-    });
-    if (!resp.ok) return null;
-    const data = (await resp.json()) as { embedding?: unknown };
-    const vec = data.embedding;
-    if (!Array.isArray(vec) || vec.length !== QUERY_EMBED_DIM || !vec.every((v) => typeof v === "number" && Number.isFinite(v))) {
-      return null;
-    }
-    return vec as number[];
-  } catch {
-    return null;
-  }
+  if (!text.trim()) return null;
+  const r = await embedQueryDetailed(text);
+  return "vec" in r ? r.vec : null;
+}
+
+let warmStarted = false;
+
+/**
+ * Load the query model once per process, with a boot-sized timeout, so the
+ * first technician turn after a deploy or restart does not pay the cold load.
+ * Only when the vector lane is on. Never throws; returns what happened.
+ */
+export async function warmQueryEmbedder(): Promise<"off" | "already_started" | "ok" | QueryEmbedFailure> {
+  if (!hybridRetrievalEnabled()) return "off";
+  if (warmStarted) return "already_started";
+  warmStarted = true;
+  const r = await embedQueryDetailed("query embedder warm-up", WARM_UP_TIMEOUT_MS);
+  const outcome = "vec" in r ? "ok" : r.reason;
+  console.log(JSON.stringify({ service: "mira-hub", component: "hybrid-retrieval", event: "query_embedder.warm", outcome }));
+  return outcome;
+}
+
+export function __resetQueryEmbedderWarmForTests(): void {
+  warmStarted = false;
 }
 
 /** pgvector text literal for a `$n::vector` parameter. */
