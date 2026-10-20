@@ -59,5 +59,13 @@ To be filled in **before** the first evaluation:
 
 | File | sha256 | Committed at |
 |---|---|---|
-| `manifest.json` | | |
-| `gold.jsonl` | | |
+| `manifest.json` (9 manuals, 8 vendors) | `2fb382e6b8edb9847359412c81cf0405586da8dff8f830db606044b7a8adebc5` | 2026-10-20, before any evaluation |
+| `gold.jsonl` (67 questions: 60 answerable, 7 unanswerable) | `3f19ba8dc1bf105eba4f461de10dd1a4c91bf3d0f5ee10310274d7fedcd93840` | 2026-10-20, before any evaluation |
+
+## 7. Labelling record (as built)
+
+- **Raw agreement** between writer A and blind answerer B: 39/70 (55.7%), before any adjudication.
+- **Most disagreements were page numbering.** One labeller used printed page labels instead of physical pages; Eaton and Omron scored 0/8 raw agreement although the values matched.
+- **After adjudication,** a deterministic check verified every gold page against `pdftotext`. 16 items failed and were repaired by read-only agents: 11 page fixes, 4 value-and-page fixes, and 1 kept. Every repaired quote was re-verified on its page, and 3 were checked by hand.
+- **Dropped:** 3 questions judged genuinely ambiguous.
+- **Limits:** every labeller is Claude, so this is a same-family check.
