@@ -25,6 +25,7 @@ import {
   parseStepInput,
   proceduresFor,
   viewSession,
+  supersededView,
   type NotebookManual,
 } from "@/capabilities/diagnostic-plan/guided";
 import {
@@ -86,7 +87,8 @@ function sessionPayload(session: GuidedSession | null) {
   if (!session) return null;
   const proc = MANUFACTURER_PROCEDURES.find((p) => p.template.id === session.templateId);
   if (!proc) return null;
-  const view = viewSession(proc.template, session.run);
+  const superseded = session.templateVersion !== (proc.template.version ?? "");
+  const view = superseded ? supersededView(proc.template, session.run, session.templateVersion) : viewSession(proc.template, session.run);
   return {
     sessionId: session.id,
     recordCount: session.run.records.length,
@@ -187,7 +189,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
   // A session started against one compiled version is never continued on another.
   if (latest.templateVersion !== (template.version ?? "")) {
-    return NextResponse.json({ error: "procedure_version_changed", message: "This procedure was updated. Start again." }, { status: 409 });
+    return NextResponse.json(
+      { error: "procedure_version_changed", message: "This procedure was updated. Start again.", session: sessionPayload(latest) },
+      { status: 409 },
+    );
   }
 
   const built = buildRecord(template, latest.run, parsed.input);

@@ -275,3 +275,59 @@ describe("one running session (Codex #4573 F8)", () => {
     expect(runs.map((r) => r.status)).toEqual(["restarted", "running"]);
   });
 });
+
+describe("a session saved on an earlier procedure version (Codex #4592 F1)", () => {
+  const toScrTest = [
+    { kind: "acknowledge", stepId: "hazards", acknowledged: true },
+    { kind: "choice", stepId: "fault_displayed", choice: "yes" },
+    { kind: "choice", stepId: "t44", choice: "shorted_scr" },
+    { kind: "isolation", stepId: "scr_isolate", confirmed: true, reportedBy: "M. Harper" },
+  ];
+  const failReadings = { kind: "measurement", stepId: "scr_test", readings: [
+    { point: "L1-T1", value: 12000, unit: "ohm" }, { point: "L2-T2", value: 5000, unit: "ohm" }, { point: "L3-T3", value: 8000, unit: "ohm" }] };
+
+  async function restartAndAnswer() {
+    const restarted = await post({ templateId: T.id, op: "restart" });
+    expect(restarted.status).toBe(201);
+    const s = (await restarted.json()).session;
+    expect(s.view.status).toBe("active");
+    expect(s.view.step.id).toBe("hazards");
+    expect(cur().template_version).toBe(T.version);
+    expect((await answer({ kind: "acknowledge", stepId: "hazards", acknowledged: true })).status).toBe(200);
+  }
+
+  it("a running 1.0.0 session is shown ended with its history, refuses answers, and restarts to the current version", async () => {
+    await post({ templateId: T.id, op: "start" });
+    expect((await answer({ kind: "acknowledge", stepId: "hazards", acknowledged: true })).status).toBe(200);
+    runs[0].template_version = "1.0.0";
+    expect(T.version).not.toBe("1.0.0");
+
+    const shown = (await (await get()).json()).procedures[0].session;
+    expect(shown.view.status).toBe("stopped");
+    expect(shown.view.endReason).toMatch(/updated/);
+    expect(shown.view.history).toHaveLength(1);
+
+    const refused = await answer({ kind: "choice", stepId: "fault_displayed", choice: "yes" });
+    expect(refused.status).toBe(409);
+    const body = await refused.json();
+    expect(body.error).toBe("procedure_version_changed");
+    expect(body.session.view.status).toBe("stopped");
+
+    await restartAndAnswer();
+    expect(runs.find((r) => r.id !== cur().id)?.status).toBe("restarted");
+  });
+
+  it("a finished 1.0.0 SCR-failure session is not replayed as an active step on 1.1.0", async () => {
+    await post({ templateId: T.id, op: "start" });
+    for (const input of [...toScrTest, failReadings]) expect((await answer(input)).status).toBe(200);
+    // What 1.0.0 stored for that run: ended as resolved.
+    runs[0].template_version = "1.0.0";
+    runs[0].status = "ok";
+
+    const shown = (await (await get()).json()).procedures[0].session;
+    expect(shown.view.status).toBe("stopped");
+    expect(shown.view.step).toBeUndefined();
+
+    await restartAndAnswer();
+  });
+});

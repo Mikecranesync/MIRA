@@ -308,6 +308,21 @@ export function viewSession(template: WorkflowTemplate, run: RunRecord): Session
 }
 
 /**
+ * A session saved against an earlier compiled version of the procedure is never replayed on the
+ * current one: its records may route differently now (1.1.0 changed where a failed SCR test goes).
+ * It is shown as ended, with its history, so the panel offers Start again (Codex #4592 F1).
+ */
+export function supersededView(template: WorkflowTemplate, run: RunRecord, savedVersion: string): SessionView {
+  const replay = viewSession(template, run);
+  return {
+    status: "stopped",
+    endReason: `This procedure was updated (version ${savedVersion || "unknown"} to ${template.version ?? ""}) after this session started. Start again to follow the current steps.`,
+    history: replay.history,
+    source: { ...replay.source, version: savedVersion },
+  };
+}
+
+/**
  * The evidence handed to MIRA's chat when the manual runs out: what was checked, on which pages,
  * and the readings — so the AI reasons from the session, labelled as beyond the manual.
  */
