@@ -21,7 +21,7 @@ import { navbar, footer } from "../_topbar.js";
 const APEX = "https://factorylm.com";
 
 const STANDARD_LINKS: ReadonlyArray<{ href: string; label: string }> = [
-  { href: `${APEX}/pricing`, label: "Pricing" },
+  { href: `${APEX}/pricing`, label: "Talk to Mike" },
   { href: `${APEX}/blog`, label: "Blog" },
   { href: `${APEX}/limitations`, label: "Limitations" },
   { href: `${APEX}/security`, label: "Security" },

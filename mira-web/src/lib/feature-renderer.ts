@@ -1325,7 +1325,7 @@ export function renderFeaturePage(feature: Feature): string {
       if (!token) return;
       document.querySelectorAll('a.nav-cta').forEach(function (el) {
         el.href = '/api/cmms/login?token=' + encodeURIComponent(token);
-        el.textContent = 'Open CMMS';
+        el.textContent = 'Open notebook';
       });
     })();
 

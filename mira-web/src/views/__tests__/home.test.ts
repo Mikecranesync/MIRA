@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { renderHome } from "../home.js";
 import { TALK_TO_MIKE_HREF } from "../_topbar.js";
-import { escHtml } from "../../lib/html.js";
+import { escHtml, serializeJsonLd } from "../../lib/html.js";
 import {
+  effectiveFeatureList,
+  effectiveJsonLdDescription,
   effectiveMetaDescription,
   effectiveSubhead,
   generateJsonLd,
@@ -126,10 +128,45 @@ describe("renderHome — proven-claims homepage", () => {
     expect(html).toContain('href="/_dark-theme.css"');
   });
 
+  test("interpolates every capabilities field used on the homepage", () => {
+    expect(html).toContain(`<title>${escHtml(data.positioning.title)}</title>`);
+    expect(html).toContain(
+      `content="${escHtml(effectiveMetaDescription(data))}"`
+    );
+    expect(html).toContain(escHtml(data.positioning.headline));
+    expect(html).toContain(escHtml(effectiveSubhead(data)));
+    expect(html).toContain(escHtml(data.positioning.audience));
+    expect(html).toContain(escHtml(data.contact.cta));
+    expect(html).toContain(`href="${escHtml(data.contact.href)}"`);
+    expect(html).toContain('data-cta="hero-talk"');
+    const jsonLdMatch = html.match(
+      /<script type="application\/ld\+json">([\s\S]*?)<\/script>/
+    );
+    expect(jsonLdMatch).not.toBeNull();
+    expect(jsonLdMatch![1]).toBe(serializeJsonLd(generateJsonLd(data)));
+    const parsed = JSON.parse(jsonLdMatch![1]);
+    expect(parsed).toEqual(generateJsonLd(data));
+    expect(parsed["@graph"][1].description).toBe(effectiveJsonLdDescription(data));
+    expect(parsed["@graph"][1].featureList).toEqual(effectiveFeatureList(data));
+    expect(parsed["@graph"][0].contactPoint.name).toBe(data.contact.cta);
+    expect(parsed["@graph"][0].email).toBe(data.contact.email);
+  });
+
   test("capabilities text with script/onerror markup renders escaped", () => {
     const poisoned: CapabilitiesFile = structuredClone(data);
+    poisoned.positioning.title =
+      `Title <script>alert(1)</script>`;
     poisoned.positioning.headline =
       `<script>alert(1)</script><img src=x onerror=alert(1)>`;
+    poisoned.positioning.subhead = `Sub <img src=x onerror=alert(1)>`;
+    poisoned.positioning.subhead_cited = poisoned.positioning.subhead;
+    poisoned.positioning.meta_description = `Meta <script>alert(1)</script>`;
+    poisoned.positioning.meta_description_cited = poisoned.positioning.meta_description;
+    poisoned.positioning.audience = `Audience <script>alert(1)</script>`;
+    poisoned.contact.cta = `Talk <script>alert(1)</script>`;
+    poisoned.contact.href = `mailto:mike@factorylm.com"><script>alert(1)</script>`;
+    poisoned.jsonld.description = `JSON <script>alert(1)</script> > &`;
+    poisoned.jsonld.description_cited = poisoned.jsonld.description;
     poisoned.claims.push({
       id: "xss-probe",
       text: `<script>alert(1)</script><img src=x onerror=alert(1)>`,
@@ -143,6 +180,17 @@ describe("renderHome — proven-claims homepage", () => {
     expect(out).not.toMatch(/<img src=x onerror=/);
     expect(out).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(out).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(out).toContain(`href="${escHtml(poisoned.contact.href)}"`);
+    expect(out).toContain(`<title>${escHtml(poisoned.positioning.title)}</title>`);
+    expect(out).toContain(`content="${escHtml(effectiveMetaDescription(poisoned))}"`);
+    const jsonLdMatch = out.match(
+      /<script type="application\/ld\+json">([\s\S]*?)<\/script>/
+    );
+    expect(jsonLdMatch).not.toBeNull();
+    expect(jsonLdMatch![1]).toBe(serializeJsonLd(generateJsonLd(poisoned)));
+    expect(jsonLdMatch![1]).toContain("\\u003c");
+    expect(jsonLdMatch![1]).toContain("\\u003e");
+    expect(jsonLdMatch![1]).toContain("\\u0026");
   });
 
   test("Document is well-formed HTML5", () => {

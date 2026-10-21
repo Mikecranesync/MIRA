@@ -251,6 +251,21 @@ ${stewardBody(data)}`;
 }
 
 export function generateLlmsFullTxt(data: CapabilitiesFile = loadCapabilities()): string {
+  const notYetClaimed = data.claims.filter((c) => c.status === "partial");
+  const limitations = data.claims.filter((c) => c.kind === "limit");
+  const notYetBlock =
+    notYetClaimed.length > 0
+      ? `## Not yet claimed
+
+These rows are in the capabilities file but are not published claims.
+
+${bullets(notYetClaimed.map((c) => `${c.id}: ${c.text}`))}
+`
+      : "";
+  const limitsBlock = `## Full limitations
+
+${bullets(limitations.map((c) => c.text))}
+`;
   return `# FactoryLM — Full Content Disclosure for AI Crawlers
 # Version: ${data.updated}
 # Generated from mira-web/src/capabilities/marketing-claims/capabilities.json
@@ -258,7 +273,9 @@ export function generateLlmsFullTxt(data: CapabilitiesFile = loadCapabilities())
 
 ---
 
-${stewardBody(data)}`;
+${stewardBody(data)}
+${notYetBlock}
+${limitsBlock}`;
 }
 
 export function assertCapabilities(data: CapabilitiesFile): void {

@@ -36,7 +36,7 @@ export const APEX = "https://factorylm.com";
 export const TALK_TO_MIKE_HREF = "mailto:mike@factorylm.com";
 
 const NAV_LINKS: NavLink[] = [
-  { href: `${APEX}/pricing`, label: "Pricing", ctaSlug: "pricing" },
+  { href: `${APEX}/pricing`, label: "Talk to Mike", ctaSlug: "pricing" },
   { href: `${APEX}/blog`, label: "Blog", ctaSlug: "blog" },
   { href: `${APEX}/limitations`, label: "Limitations", ctaSlug: "limitations" },
   { href: `${APEX}/security`, label: "Security", ctaSlug: "security" },

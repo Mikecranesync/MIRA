@@ -167,7 +167,7 @@ function buildRegisterPage(
     MIRA uses equipment records to give cited, asset-specific answers — manuals,
     fault history, PM schedules. Register once, ask forever.
   </p>
-  <a id="cmms-btn" class="cmms-link" href="/cmms">Open CMMS →</a>
+  <a id="cmms-btn" class="cmms-link" href="/cmms">Open notebook →</a>
   <script>
     (function () {
       var token = sessionStorage.getItem('flm_token');

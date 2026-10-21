@@ -110,7 +110,7 @@
     <div class="nav-inner">
       <a href="/" class="nav-logo" aria-label="FactoryLM home">FactoryLM</a>
       <ul class="nav-links">
-        <li><a href="/pricing">Pricing</a></li>
+        <li><a href="/pricing">Talk to Mike</a></li>
         <li><a href="/blog">Blog</a></li>
         <li><a href="/limitations">Limitations</a></li>
         <li><a href="/security">Security</a></li>
@@ -138,12 +138,12 @@
         <ul>
           <li><strong>Account info:</strong> to identify your account, send transactional emails (signup confirmation, payment receipts, Loom nurture sequence), and personalize MIRA's responses</li>
           <li><strong>Equipment manuals:</strong> indexed into your tenant's private knowledge base to power MIRA's diagnostic responses. Your manuals are never shared with other tenants.</li>
-          <li><strong>Diagnostic queries:</strong> processed by third-party inference APIs. We don't name providers here because the live cascade is key-gated and can change.</li>
+          <li><strong>Diagnostic queries:</strong> processed by the key-gated inference cascade (OpenAI, then OpenRouter, Groq, and Together). Anthropic is not used for chat or diagnosis (removed PR #610). Queries are not used to train those providers.</li>
           <li><strong>Usage data:</strong> to improve MIRA's response quality and monitor for abuse</li>
         </ul>
 
         <h2>3. Sub-processors</h2>
-        <p>We don't publish an inference-provider list here. Other processors that handle account or billing data:</p>
+        <p>The full and current list lives at <a href="/trust">/trust</a>. The most material processors are:</p>
         <table>
           <thead>
             <tr>
@@ -153,6 +153,11 @@
             </tr>
           </thead>
           <tbody>
+            <tr>
+              <td>OpenAI, OpenRouter, Groq, Together</td>
+              <td>AI inference cascade for chat, diagnosis, citations (key-gated). Anthropic is not in this cascade (removed PR #610).</td>
+              <td>USA</td>
+            </tr>
             <tr>
               <td>NeonDB (Neon Inc.)</td>
               <td>Tenant data, knowledge base, audit log</td>
