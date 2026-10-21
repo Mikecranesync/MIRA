@@ -99,6 +99,23 @@ describe("public marketing copy — don't-say list and no published prices", () 
     expect(trust).not.toMatch(/sessionStorage|expire in 7 days/);
   });
 
+  test("/pricing title, meta, and headline lead with the equipment notebook", () => {
+    const pricing = pages.find((p) => p.name === "/pricing")!.html;
+    expect(pricing).toContain(
+      "<title>FactoryLM — The equipment notebook for your maintenance crew</title>"
+    );
+    expect(pricing).toMatch(
+      /<meta name="description" content="[^"]*equipment notebook[^"]*Talk to Mike[^"]*"/i
+    );
+    expect(pricing).toMatch(
+      /<h1>\s*The equipment notebook for your maintenance crew\s*<\/h1>/
+    );
+    expect(pricing).toContain('data-cta="pricing-talk">Talk to Mike</a>');
+    expect(pricing).not.toContain("<title>Pricing — FactoryLM</title>");
+    expect(pricing).not.toMatch(/<h1>\s*Talk to Mike\s*<\/h1>/);
+    expect(pricing).not.toMatch(/<h1>\s*Pricing\s*<\/h1>/);
+  });
+
   test("primary CTA is Talk to Mike; self-signup is Sign in only", () => {
     const chrome = navbar() + footer();
     expect(chrome).toContain("Talk to Mike");
