@@ -12,7 +12,7 @@ export type Classification = "CORRECT" | "WRONG_PAGE" | "UNCITED" | "ABSTAINED" 
 export const CLASSES: Classification[] = ["CORRECT", "WRONG_PAGE", "UNCITED", "ABSTAINED", "BROKEN"];
 
 export type Manual = { id: string; oem: string; family: string; title: string; url: string; filename: string; sha256: string; bytes: number; pages: number };
-export type Question = { id: string; manual: string; question: string; expectedPage: number; safetyRelevant: boolean; anchor: string };
+export type Question = { id: string; manual: string; question: string; expectedPage: number | null; safetyRelevant: boolean; anchor: string };
 export type Corpus = { version: number; tolerance: number; manuals: Manual[]; questions: Question[] };
 
 /** What the walker saw for one question. `broken` is set only for a UI/infra failure. */
@@ -44,7 +44,7 @@ export type Observation = {
 export type Scored = {
   id: string;
   manual: string;
-  expectedPage: number;
+  expectedPage: number | null;
   safetyRelevant: boolean;
   classification: Classification;
   reason: string;
@@ -93,6 +93,9 @@ export function classify(q: Question, m: Manual, o: Observation, tolerance = 1):
   const openedManual = o.viewerOpened === true && !!o.viewer?.fileId && o.viewer.fileId === o.viewer.manualFileId;
   if (!openedManual && !first!.title.toLowerCase().includes(stem(m.filename))) return done("WRONG_PAGE", `wrong_doc: first citation is "${first!.title}"`);
   if (citedPage === null) return done("WRONG_PAGE", "first citation carries no page");
+  // An unanswerable question (#4584) has no expected page: any citation is a wrong page, and its
+  // refusal is judged by the answer text downstream (tools/retrieval_eval), not by the viewer.
+  if (q.expectedPage === null) return done("WRONG_PAGE", `unanswerable question cited p.${citedPage}`);
   // Opening the first citation is part of the journey: one that does not open is not a citation.
   if (o.viewerOpened === false) return done("BROKEN", `first citation did not open in the source viewer (cited p.${citedPage ?? "?"})`);
   // The viewer must open what the chip claims: the manual's own file, at the cited page.
@@ -160,7 +163,7 @@ export function predict(row: Scored, mutation: Mutation, tolerance = 1): Classif
   // document stays WRONG_PAGE (that check comes first); a pageless citation has no anchor to move.
   if (mutation === "viewer-page") return row.reason.startsWith("wrong_doc") || row.citedPage === null ? "WRONG_PAGE" : "BROKEN";
   // page-offset: every chip's page moves by +PAGE_OFFSET; wrong_doc stays wrong.
-  if (row.reason.startsWith("wrong_doc") || row.citedPage === null) return "WRONG_PAGE";
+  if (row.reason.startsWith("wrong_doc") || row.citedPage === null || row.expectedPage === null) return "WRONG_PAGE";
   return Math.abs(row.citedPage + PAGE_OFFSET - row.expectedPage) <= tolerance ? "CORRECT" : "WRONG_PAGE";
 }
 
@@ -174,7 +177,7 @@ export type FailureFixture = {
   message: string;
   sse: string | null;
   manual: Pick<Manual, "id" | "filename" | "sha256" | "url">;
-  expected: { page: number; tolerance: number; safetyRelevant: boolean; anchor: string };
+  expected: { page: number | null; tolerance: number; safetyRelevant: boolean; anchor: string };
   rendered: TurnRecord | null;
   classification: Classification;
   reason: string;
@@ -214,4 +217,9 @@ export function markdownScorecard(rows: Scored[], card: Scorecard, meta: { gitSh
     ...rows.map((r, i) => `| ${i + 1} | ${r.id} | ${r.classification} | p.${r.expectedPage} | ${r.citedPage === null ? "—" : `p.${r.citedPage}`} | ${r.safetyRelevant ? (r.safetyRedLine ?? "ok") : "—"} | ${r.reason.replace(/\|/g, "\\|")} |`),
   ];
   return lines.join("\n");
+}
+
+/** #4583: a source is fully indexed when it is askable and no longer "improving search". */
+export function fullyIndexed(r: { label?: string; canChat?: boolean } | null, mode: "indexed" | "chat" = "indexed"): boolean {
+  return !!r?.canChat && (mode === "chat" || !/improving search/i.test(r.label ?? ""));
 }

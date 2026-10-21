@@ -17,10 +17,18 @@ import { test, type Page, type Response } from "@playwright/test";
 import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
-import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
+import { fixtureFor, fullyIndexed, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import { BUDGET, BudgetMeter, identity, manualBytes, pricesFromEnv, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd } from "./staging";
 
-const corpus = corpusJson as Corpus;
+// STRANGER_WALK_CORPUS: an alternate question file (e.g. the unanswerable set, #4584). It walks the
+// same pinned manuals; its own "manuals" list, if present, must use the same ids and sha256.
+const corpus: Corpus = (() => {
+  const base = corpusJson as Corpus;
+  const alt = process.env.STRANGER_WALK_CORPUS;
+  if (!alt) return base;
+  const c = JSON.parse(readFileSync(alt, "utf8")) as Partial<Corpus> & { questions: Corpus["questions"] };
+  return { ...base, ...c, manuals: c.manuals ?? base.manuals, tolerance: c.tolerance ?? base.tolerance };
+})();
 const RUN_ID = process.env.STRANGER_WALK_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
 const OUT = path.resolve(process.env.STRANGER_WALK_OUT ?? path.join(__dirname, ".out", RUN_ID));
 const ONLY = process.env.STRANGER_WALK_ONLY ? new Set(process.env.STRANGER_WALK_ONLY.split(",")) : null;
@@ -82,17 +90,24 @@ async function sourceReadiness(page: Page, filename: string): Promise<{ label?: 
   return s ? { ...(s.readiness ?? {}), fileId: s.fileId ?? null } : null;
 }
 
-/** Wait until the manual's readiness label says it can be asked ("Ready to ask"). */
-async function waitReady(page: Page, filename: string): Promise<string> {
-  const deadline = Date.now() + 120_000;
+/**
+ * #4583: wait until the manual is FULLY indexed — askable AND no longer "improving search"
+ * (embeddings still being written) — so a hybrid arm is not silently measured as lexical-only.
+ * STRANGER_WALK_READY=chat restores the old "askable" wait. A manual that never finishes within
+ * STRANGER_WALK_INDEX_TIMEOUT_MS (default 10 min) throws, so the row is BROKEN, never silently asked.
+ */
+const READY_MODE = process.env.STRANGER_WALK_READY === "chat" ? "chat" : "indexed";
+const INDEX_TIMEOUT = Number(process.env.STRANGER_WALK_INDEX_TIMEOUT_MS ?? 600_000);
+async function waitIndexed(page: Page, filename: string): Promise<{ label: string; waitedMs: number }> {
+  const t0 = Date.now();
   let label = "no source yet";
-  while (Date.now() < deadline) {
+  while (Date.now() - t0 < INDEX_TIMEOUT) {
     const r = await sourceReadiness(page, filename);
     label = r?.label ?? label;
-    if (r?.canChat) return label;
+    if (fullyIndexed(r, READY_MODE)) return { label, waitedMs: Date.now() - t0 };
     await page.waitForTimeout(2_000);
   }
-  throw new Error(`source never became ready (last label: ${label})`);
+  throw new Error(`indexing not complete after ${INDEX_TIMEOUT} ms (last label: ${label})`);
 }
 
 async function ask(page: Page, q: Question, manualFilename: string, attach: { name: string; buffer: Buffer } | null, meter: BudgetMeter): Promise<Observation> {
@@ -185,10 +200,17 @@ test("stranger walk", async ({ page }) => {
             await page.waitForTimeout(1_000);
             // The upload rode the first question; whether it landed is the project's own source list.
             uploaded ||= (await sourceReadiness(page, m.filename)) !== null;
-            if (uploaded) notes.push(`${q.id}: readiness "${await waitReady(page, m.filename)}"`);
+            if (uploaded) {
+              const w = await waitIndexed(page, m.filename);
+              notes.push(`${q.id}: readiness "${w.label}" (${READY_MODE}, waited ${Math.round(w.waitedMs / 1000)} s)`);
+            }
           }
+          const uploadTurn = !uploaded;
           const o = await ask(page, q, m.filename, uploaded ? null : { name: m.filename, buffer: pdf.bytes }, meter);
           obs.push(o);
+          // The upload rides this turn, so the manual cannot be fully indexed before it is asked;
+          // record what readiness said once it was answered.
+          if (uploadTurn) notes.push(`${q.id}: upload turn; readiness after answer "${(await sourceReadiness(page, m.filename).catch(() => null))?.label ?? "unknown"}"`);
         } catch (e) {
           await page.screenshot({ path: path.join(OUT, "shots", `${q.id}.png`) }).catch(() => undefined);
           obs.push(brokenObs(q.id, `walker: ${(e as Error).message.split("\n")[0].slice(0, 200)}`));

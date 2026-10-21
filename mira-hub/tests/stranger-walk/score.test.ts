@@ -3,7 +3,7 @@ import corpusJson from "./corpus.json";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { BUDGET, BudgetMeter, budgetUsdFromEnv, PROVIDER_PRICES, pricesFromEnv, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
-import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
+import { classify, flakes, fullyIndexed, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
 const q = corpus.questions.find((x) => x.id === "pf40-q2")!; // p.9, safety-relevant
@@ -307,5 +307,22 @@ describe("workflow", () => {
     const walk = yml.slice(yml.indexOf("\n  walk:"));
     expect(walk).toMatch(/\n {4}concurrency:\n {6}group: stranger-walk/);
     expect(walk).toMatch(/if: \$\{\{ github\.event_name != 'pull_request' && github\.ref == 'refs\/heads\/main' \}\}/);
+  });
+});
+
+describe("#4583 readiness and #4584 unanswerable rows", () => {
+  it("is fully indexed only when askable AND no longer improving search", () => {
+    expect(fullyIndexed({ label: "Ready to ask", canChat: true })).toBe(true);
+    expect(fullyIndexed({ label: "Ready to ask · improving search…", canChat: true })).toBe(false);
+    expect(fullyIndexed({ label: "Reading…", canChat: false })).toBe(false);
+    expect(fullyIndexed(null)).toBe(false);
+    expect(fullyIndexed({ label: "Ready to ask · improving search…", canChat: true }, "chat")).toBe(true);
+  });
+  it("scores an unanswerable question's citation as WRONG_PAGE without the viewer checks", () => {
+    const u = { ...q, id: "pf40-u1", expectedPage: null, safetyRelevant: false };
+    const cited = classify(u, m, obs({ id: u.id, viewerOpened: false }));
+    expect([cited.classification, cited.reason]).toEqual(["WRONG_PAGE", "unanswerable question cited p.9"]);
+    const refused = classify(u, m, obs({ id: u.id, streamStatus: "insufficient_evidence", firstChip: null, cards: [] }));
+    expect(refused.classification).toBe("ABSTAINED");
   });
 });
