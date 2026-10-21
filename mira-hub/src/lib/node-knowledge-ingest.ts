@@ -481,14 +481,19 @@ export type TextRepair = "shift29" | "shift29_partial" | "ocr";
  * index-aligned repair markers for `writeChunkRowsForNode`. Never throws:
  * a repair failure means the page is written exactly as extracted.
  *
- * Default OFF — `NOTEBOOK_GARBLE_DECODE=1` enables it. This rewrites stored
- * manual text on every upload, and the round-2 review (2026-10-18) found the
+ * Default ON — `NOTEBOOK_GARBLE_DECODE=0` is the kill switch. It shipped
+ * default-off (#4486) as a second lock after the round-2 review found the
  * detector damaging clean English in 18 of 21 non-PLC-5 manuals before the
- * lowercase guard existed. The guard is in; the flag is the second lock.
+ * lowercase guard existed. But no environment ever set the flag, so the repair
+ * never ran: on staging the real 1785-rm001 manual was stored as cipher and
+ * TQ-05/06 found nothing (Release 2 Lane B, 2026-10-18, traces
+ * ee1494fcc921d964c48b27c70eca5c06 / fce2e5796fff061f8781822942642d54).
+ * Measured with the guard in, through unpdf as below: 0 pages rewritten across
+ * 9 clean OEM manuals (1,451 pages); 274 of 372 PLC-5 pages decoded.
  */
 async function repairGarbledPages(pages: string[], opts: NodeChunkOpts): Promise<Array<TextRepair | null>> {
   const repairs: Array<TextRepair | null> = new Array(pages.length).fill(null);
-  if (process.env.NOTEBOOK_GARBLE_DECODE !== "1") return repairs;
+  if (process.env.NOTEBOOK_GARBLE_DECODE === "0") return repairs;
   const ocrFallback = process.env.NOTEBOOK_GARBLE_OCR_FALLBACK === "1";
   const originalPages = [...pages];
   let decoded = 0;

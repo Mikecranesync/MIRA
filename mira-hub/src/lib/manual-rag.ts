@@ -4,7 +4,9 @@ import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
-import { embedQuery, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
+import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
+import { setSpanAttrs } from "@/capabilities/observability/tracing";
+import { orderByScores, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
 import {
   codeTokenMatcher,
   expandIndustrialQuery,
@@ -104,6 +106,11 @@ export function neutralizeReferenceText(text: string): string {
 
 export function approvalGateEnabled(): boolean {
   return process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL === "true";
+}
+
+/** #4513 — IDF-sum scoring of notebook lexical candidates. Default off. */
+export function lexicalV2Enabled(): boolean {
+  return process.env.NOTEBOOK_LEXICAL_V2 === "1";
 }
 
 // #4469 F2 (primary review, pass 2 — the pass-1 keyword-stripping remediation
@@ -1256,6 +1263,11 @@ export async function retrieveNodeChunks(
      *  alongside verified shared rows; the set is intersected with `docIds`
      *  (narrow only) and ignored when the gate is off. */
     approvedSourceDocIds?: string[];
+    /** Filled with what the vector lane did (off | ran | skipped_<why> |
+     *  failed) so the caller can put it on its own retrieval span: callers
+     *  start stage spans without activating them, so setSpanAttrs() on the
+     *  active span alone never reached the trace (#4548). */
+    diagnostics?: { vectorLane?: string };
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -1405,12 +1417,57 @@ export async function retrieveNodeChunks(
       (header.metadata->>'chunk_index')::int NULLS LAST, header.id
     LIMIT 1) AS document_heading`;
 
+  // #4513 — NOTEBOOK_LEXICAL_V2: every lexical pass scores candidates by IDF sum
+  // (Σ rarity of the question lexemes a chunk contains) and orders BEFORE the
+  // LIMIT, so neither an all-words match on a wrong page (the AND hijack) nor
+  // pages dense in common words can keep the answer page out of the pool. N and
+  // df come from the rows in THIS pass's scope only (same tenant/node/doc/
+  // approval predicates, same window), so no out-of-scope text shifts a score.
+  // Any-word match is implied by the join; `tsquery` is ignored on this path.
+  // Spec: docs/specs/notebook-retrieval-idf-scoring.md.
+  const lexicalV2 = lexicalV2Enabled();
+  const idfSql = `WITH qlex AS (
+        SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', $2))) AS lex
+      ), scope AS (
+        SELECT id, tsvector_to_array(content_tsv) AS lexemes
+          FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
+            ${approvalClauseMain}
+            ${nodeClauseMain}
+            ${docClause}
+      ), n AS (
+        SELECT count(*)::float8 AS n FROM scope
+      ), df AS (
+        SELECT q.lex, count(*)::float8 AS df FROM qlex q JOIN scope s ON q.lex = ANY(s.lexemes) GROUP BY q.lex
+      ), scored AS (
+        SELECT s.id, sum(ln((n.n - df.df + 0.5) / (df.df + 0.5) + 1)) AS score
+          FROM scope s CROSS JOIN n JOIN df ON df.lex = ANY(s.lexemes)
+          GROUP BY s.id
+      )
+      SELECT
+          content,
+          doc_id::text AS doc_id,
+          source_url,
+          source_page,
+          page_start,
+          ${PAGE_LABEL_SQL},
+          section_path,
+          metadata->>'filename' AS filename,
+          ${documentHeadingSql},
+          verified,
+          scored.score::float8 AS rank
+        FROM scored JOIN knowledge_entries ON knowledge_entries.id = scored.id
+        WHERE knowledge_entries.tenant_id = $1
+        ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', knowledge_entries.id
+        LIMIT $4`;
+
   // $2 is the tsquery text (per-pass), $6 the exact-token ILIKE patterns.
   const runRetrieval = async (tsquery: string, queryText: string) => {
     const rows: Record<string, unknown>[] = [];
     for (const window of docWindows) {
       const res = await client.query(
-        `SELECT
+        lexicalV2 ? idfSql : `SELECT
             content,
             doc_id::text AS doc_id,
             source_url,
@@ -1642,8 +1699,17 @@ export async function retrieveNodeChunks(
   // term there, or a vector-only row scores twice against a lexical-only row's
   // once and displaces it (scope-pass finding on #4487).
   const vectorOnlyKeys = new Set<string>();
+  // What the vector lane did on this turn, on the turn's trace: off | ran |
+  // skipped_<why> | failed. Without it, a lane that is ON but skipped (a cold
+  // embedder past its timeout, 2026-10-19 staging) looks identical to BM25.
+  let vectorLane = "off";
   if (hybridRetrievalEnabled()) {
-    const queryVec = await embedQuery(opts.rawQuery ?? q);
+    const embedded = await embedQueryDetailed(opts.rawQuery ?? q);
+    const queryVec = "vec" in embedded ? embedded.vec : null;
+    if (!("vec" in embedded)) {
+      vectorLane = `skipped_${embedded.reason}`;
+      console.warn(`[retrieveNodeChunks] vector lane skipped (${embedded.reason}); lexical result served`);
+    }
     if (queryVec) {
       // Codex r1 on #4487: a failing vector SELECT (a statement timeout, a
       // missing pgvector operator) run on the CALLER's client inside
@@ -1712,7 +1778,9 @@ export async function retrieveNodeChunks(
           }
         }
         if (savepoint) await client.query("RELEASE SAVEPOINT hybrid_vector_lane");
+        vectorLane = "ran";
       } catch (err) {
+        vectorLane = "failed";
         console.warn("[retrieveNodeChunks] vector lane failed (lexical result served):", err instanceof Error ? err.message : err);
         vectorKeys = null;
         vectorOnlyKeys.clear();
@@ -1726,6 +1794,8 @@ export async function retrieveNodeChunks(
       }
     }
   }
+  setSpanAttrs({ "mira.retrieval.vector_lane": vectorLane });
+  if (opts.diagnostics) opts.diagnostics.vectorLane = vectorLane;
 
   // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank). For a
   // broad question, keep a bigger, page-DIVERSE slice so distinct facets survive
@@ -1758,7 +1828,17 @@ export async function retrieveNodeChunks(
           (c) => keyOf(c._row),
         )
       : lexicalRanked;
-  const rerankedAll = prioritizeCurrentCodeEvidence(hybridRanked, expanded.currentCodeTokens);
+  // CU-RR1 — cross-encoder rerank of the ordered pool's head (NOTEBOOK_RERANK=1, default off).
+  // Runs BEFORE prioritizeCurrentCodeEvidence so the code the technician just named still
+  // leads the final cut (#4360). Broad questions keep their page-diverse, facet-guaranteed
+  // shape and are not reranked. Any reranker failure returns null: today's order stands.
+  let modelRanked = hybridRanked;
+  if (!broad.broad && rerankEnabled() && hybridRanked.length > 1) {
+    const head = hybridRanked.slice(0, rerankPool());
+    const scores = await rerankScores(opts.rawQuery ?? q, head.map((c) => c.content));
+    if (scores) modelRanked = [...orderByScores(head, scores), ...hybridRanked.slice(head.length)];
+  }
+  const rerankedAll = prioritizeCurrentCodeEvidence(modelRanked, expanded.currentCodeTokens);
   // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
   // overall, so one family (e.g. overload) can fill every slot while a planned
   // facet (overcurrent) sits uncovered in the pool. Every facet with pool

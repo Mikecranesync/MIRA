@@ -36,7 +36,7 @@ def _default_targets() -> list[str]:
     text = _WORKFLOW.read_text(encoding="utf-8")
     match = _DEFAULT_TARGETS_RE.search(text)
     assert match, (
-        "could not find the `TARGETS=\"${SERVICES:-...}\"` default line in "
+        'could not find the `TARGETS="${SERVICES:-...}"` default line in '
         f"{_WORKFLOW.relative_to(_ROOT).as_posix()} — did the deploy step change shape?"
     )
     return match.group(1).split()
@@ -68,3 +68,15 @@ def test_every_default_target_exists_in_staging_compose():
         f"deploy-staging.yml default TARGETS names services absent from "
         f"docker-compose.staging-vps.yml: {missing}. Available: {sorted(services)}"
     )
+
+
+def test_staging_deploy_rebuilds_and_accepts_the_reranker():
+    """CU-RR1 review F2: mira-reranker is built from source on staging. If it is not a
+    default target, `up -d` keeps the first image forever; if it is not allowlisted, an
+    operator cannot rebuild it explicitly."""
+    assert "mira-reranker" in _default_targets()
+    allowlist = re.search(
+        r"^\s*(atlas-api\|[a-z0-9|-]+)\)\s*$", _WORKFLOW.read_text(encoding="utf-8"), re.M
+    )
+    assert allowlist, "could not find the staging service allowlist case arm"
+    assert "mira-reranker" in allowlist.group(1).split("|")

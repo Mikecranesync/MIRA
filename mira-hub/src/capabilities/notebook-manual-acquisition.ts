@@ -99,9 +99,27 @@ export interface ConfirmedIdentity {
   catalogNumber: string | null | undefined;
 }
 
-/** Off unless explicitly enabled — eval harnesses create confirmed notebooks too. */
-export function acquisitionEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return (env.MIRA_NOTEBOOK_MANUAL_ACQUISITION ?? "").trim() === "1";
+/**
+ * Off unless explicitly enabled — eval harnesses create confirmed notebooks too.
+ *
+ * MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS (comma-separated tenant UUIDs) narrows
+ * the switch to those tenants — how production is turned on for one customer
+ * first. Unset or blank keeps the switch server-wide (staging today). Set the
+ * list BEFORE flipping the main switch on a server that should stay narrow.
+ * The tenant is required so every gate site states whose request it is.
+ */
+export function acquisitionEnabled(
+  tenantId: string | null | undefined,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if ((env.MIRA_NOTEBOOK_MANUAL_ACQUISITION ?? "").trim() !== "1") return false;
+  const allow = (env.MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS ?? "")
+    .split(",")
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+  if (allow.length === 0) return true;
+  const t = (tenantId ?? "").trim().toLowerCase();
+  return t !== "" && allow.includes(t);
 }
 
 /**
@@ -112,8 +130,11 @@ export function acquisitionEnabled(env: Record<string, string | undefined> = pro
  * flag too. Off (the default everywhere): the chat behaves exactly as before
  * S6. Only the exact value "1" enables it.
  */
-export function candidateAcquisitionEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return acquisitionEnabled(env) && (env.MIRA_NOTEBOOK_CANDIDATE_ACQUISITION ?? "").trim() === "1";
+export function candidateAcquisitionEnabled(
+  tenantId: string | null | undefined,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return acquisitionEnabled(tenantId, env) && (env.MIRA_NOTEBOOK_CANDIDATE_ACQUISITION ?? "").trim() === "1";
 }
 
 function clean(v: string | null | undefined): string {
@@ -734,7 +755,7 @@ export async function startManualAcquisition(
   input: StartInput,
   deps: { acquire?: typeof acquireManualForIdentity; env?: Record<string, string | undefined> } = {},
 ): Promise<boolean> {
-  if (!acquisitionEnabled(deps.env)) return false;
+  if (!acquisitionEnabled(input.tenantId, deps.env)) return false;
   const basis = input.basis ?? "confirmed";
   const key = acquisitionKey(input.identity);
   if (!key) return false;
@@ -800,7 +821,7 @@ export async function runManualAcquisition(
   input: ManualAcquisitionInput,
   deps: { acquire?: typeof acquireManualForIdentity; env?: Record<string, string | undefined> } = {},
 ): Promise<{ started: boolean; outcome: ManualAcquisitionOutcome | null }> {
-  if (!acquisitionEnabled(deps.env)) return { started: false, outcome: null };
+  if (!acquisitionEnabled(input.tenantId, deps.env)) return { started: false, outcome: null };
   const key = acquisitionKey({
     identityStatus: "user_confirmed",
     manufacturer: input.identity.manufacturer ?? null,
@@ -1071,7 +1092,7 @@ export async function currentManualSearchStatus(
   sources: readonly NotebookSource[],
   deps: { env?: Record<string, string | undefined> } = {},
 ): Promise<ManualSearchStatus | null> {
-  if (!acquisitionEnabled(deps.env)) return null;
+  if (!acquisitionEnabled(tenantId, deps.env)) return null;
   const rec = await readAcquisition(tenantId, notebookId);
   if (!rec) return null;
 
