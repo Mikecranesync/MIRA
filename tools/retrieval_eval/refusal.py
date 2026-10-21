@@ -67,7 +67,9 @@ def _phrase_in(folded: str) -> bool:
 
 def is_refusal(answer: str) -> bool:
     a = _fold(answer)
-    js_length = len(a.encode("utf-16-le")) // 2  # JavaScript's length: an emoji counts 2
+    js_length = (
+        len(a.encode("utf-16-le", errors="surrogatepass")) // 2
+    )  # JavaScript's length: an emoji counts 2
     return (
         _phrase_in(a)
         and bool(_RE["EVIDENCE_PHRASE_RE"].search(a))

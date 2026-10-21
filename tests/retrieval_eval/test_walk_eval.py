@@ -247,3 +247,12 @@ def test_v4_needs_lane_evidence_for_both_arms_once_checked():
     v = walk_eval.v4_check(one_sided, ["off", "on"], {"on"})
     assert v["v4_pass"] is False and "off: no lane evidence" in v["reasons"]
     assert walk_eval.v4_check(one_sided, ["off", "on"], set())["v4_pass"] is False
+
+
+def test_trace_id_tolerates_json_whitespace():
+    from retrieval_eval import lanes
+
+    tid = "0123456789abcdef0123456789abcdef"
+    assert lanes.trace_id({"sse": f'data: {{"kind":"trace","traceId":"{tid}"}}'}) == tid
+    assert lanes.trace_id({"sse": f'data: {{"kind": "trace", "traceId" : "{tid}"}}'}) == tid
+    assert lanes.trace_id({"sse": "data: {}"}) is None

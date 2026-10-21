@@ -26,7 +26,7 @@ from pathlib import Path
 import httpx
 
 log = logging.getLogger("retrieval-eval.lanes")
-TRACE_RE = re.compile(r'"traceId":"([0-9a-f]{32})"')
+TRACE_RE = re.compile(r'"traceId"\s*:\s*"([0-9a-f]{32})"')
 SPAN = "retrieval.execute"
 
 

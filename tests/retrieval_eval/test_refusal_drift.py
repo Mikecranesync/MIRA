@@ -124,3 +124,9 @@ def test_port_matches_production_isrefusal_executed_in_node():
     got = [refusal.is_refusal(t) for t in texts]
     diff = [(t, w) for t, w, g in zip(texts, want, got) if w != g]
     assert not diff, diff
+
+
+def test_lone_surrogate_does_not_crash_and_counts_like_javascript():
+    # JSON can carry a lone surrogate ("\ud800"); JavaScript gives it length 1.
+    text = json.loads('"The supplied manual does not cover that torque value. \\ud800"')
+    assert refusal.is_refusal(text)
