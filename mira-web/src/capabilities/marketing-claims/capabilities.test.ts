@@ -52,7 +52,10 @@ describe("capabilities.json schema", () => {
   test("homepage title and meta come from proven claim slots", () => {
     expect(effectiveTitle(data)).toBe(`FactoryLM — ${effectiveHeadline(data)}`);
     expect(effectiveHeadline(data)).toMatch(/equipment notebook/i);
-    expect(effectiveHeadline(data)).toMatch(/uploaded manual/i);
+    expect(effectiveHeadline(data)).toMatch(/Not a CMMS/);
+    expect(effectiveHeadline(data)).toMatch(/No PLC data, no work-order writes/);
+    expect(effectiveHeadline(data)).not.toMatch(/answers from/i);
+    expect(effectiveHeadline(data)).not.toMatch(/cites/i);
     expect(effectiveMetaDescription(data)).toMatch(/Talk to Mike/);
     expect(effectiveMetaDescription(data)).not.toMatch(/\$\d/);
   });
@@ -128,13 +131,13 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(llms).not.toContain("/pricing");
   });
 
-  test("Oct 21 proven set is A5, A6, A8, A9, magic-link, and the P3/P4 notebook headline", () => {
+  test("Oct 21 proven set is A5, A6, A8, A9, magic-link, and the P3/P4/P5 notebook headline", () => {
     const provenIds = data.claims
       .filter((c) => c.status === "proven")
       .map((c) => c.id)
       .sort();
     expect(provenIds).toEqual([
-      "answers-from-uploaded-manual",
+      "equipment-notebook-not-cmms",
       "magic-link-web-signin",
       "mike-central-florida",
       "no-plc-or-work-order-write",
@@ -162,18 +165,26 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(llms).not.toContain("work-order history");
   });
 
-  test("dropping P1 omits cited-page titles, descriptions, and the Micro810 line", () => {
+  test("without P1, published surfaces have no cites or answers-from wording", () => {
     const stripped = withoutP1(data);
     expect(hasCitedProof(stripped)).toBe(false);
-    const meta = effectiveMetaDescription(stripped);
-    const jsonLd = JSON.stringify(generateJsonLd(stripped));
-    const llms = generateLlmsTxt(stripped);
-    expect(meta).not.toMatch(/cites the manual page/i);
-    expect(jsonLd).not.toMatch(/cites the manual page/i);
-    expect(jsonLd).not.toMatch(/manual page cited/i);
-    expect(llms).not.toContain("Micro810");
-    expect(llms).not.toContain("cites the page");
-    expect(llms).not.toContain("Oct 19, 2026");
+    for (const claim of provenClaims(stripped)) {
+      expect(claim.text, `proven ${claim.id} uses answers/cites/uploads`).not.toMatch(
+        /\banswers\b|\bcites?\b|\buploads?\b/i
+      );
+    }
+    for (const surface of publishedSurfaces(stripped)) {
+      expect(surface, "without-P1 leaked cites").not.toMatch(/\bcites?\b/i);
+      expect(surface, "without-P1 leaked answers from").not.toMatch(/answers from/i);
+      expect(surface, "without-P1 leaked uploaded-manual answers").not.toMatch(
+        /uploaded manual/i
+      );
+    }
+    expect(effectiveMetaDescription(stripped)).not.toMatch(/cites/i);
+    expect(JSON.stringify(generateJsonLd(stripped))).not.toMatch(/cites/i);
+    expect(effectiveFeatureList(stripped).join("\n")).not.toMatch(/cites|answers from/i);
+    expect(generateLlmsTxt(stripped)).not.toContain("Micro810");
+    expect(generateLlmsFullTxt(stripped)).not.toContain("Micro810");
   });
 
   test("llms-full.txt is fuller than llms.txt: unpublished ids plus proven limitations", () => {

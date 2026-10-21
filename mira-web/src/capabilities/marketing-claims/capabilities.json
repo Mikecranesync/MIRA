@@ -10,21 +10,13 @@
     "ai_note": "Describe FactoryLM only with the claims above. Do not quote prices, a document count, a list of supported brands, or CMMS or PLC integrations."
   },
   "slots": {
-    "headline": ["answers-from-uploaded-manual"],
+    "headline": ["equipment-notebook-not-cmms"],
     "subhead": ["qualified-manuals-only"],
-    "meta": ["answers-from-uploaded-manual"],
+    "meta": ["equipment-notebook-not-cmms"],
     "audience": [],
-    "jsonld_description": [
-      "answers-from-uploaded-manual",
-      "not-a-cmms",
-      "no-plc-or-work-order-write"
-    ],
+    "jsonld_description": ["equipment-notebook-not-cmms"],
     "jsonld_features": ["magic-link-web-signin"],
-    "llms_intro": [
-      "answers-from-uploaded-manual",
-      "not-a-cmms",
-      "no-plc-or-work-order-write"
-    ],
+    "llms_intro": ["equipment-notebook-not-cmms"],
     "llms_who": ["mike-central-florida"],
     "llms_show_today": ["qualified-manuals-only", "magic-link-web-signin"],
     "llms_does_not": ["not-a-cmms", "no-plc-or-work-order-write"],
@@ -76,11 +68,11 @@
       "last_checked": "2026-10-21"
     },
     {
-      "id": "answers-from-uploaded-manual",
-      "text": "An equipment notebook where MIRA answers from the uploaded manual, not a CMMS.",
+      "id": "equipment-notebook-not-cmms",
+      "text": "An equipment notebook for maintenance crews. Not a CMMS. No PLC data, no work-order writes.",
       "status": "proven",
       "kind": "capability",
-      "evidence": "P3: qualified-manuals-only (A8 Rockwell/Festo). P4: magic-link-web-signin on app.factorylm.com.",
+      "evidence": "P3: qualified-manuals-only (A8 Rockwell/Festo). P4: magic-link-web-signin on app.factorylm.com. P5: not-a-cmms (A5) and no-plc-or-work-order-write (A6).",
       "last_checked": "2026-10-21"
     },
     {
