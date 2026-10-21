@@ -1,0 +1,53 @@
+diff --git a/mira-hub/src/lib/manual-rag.ts b/mira-hub/src/lib/manual-rag.ts
+index 8e3e0bc66..3dfaed3f0 100644
+--- a/mira-hub/src/lib/manual-rag.ts
++++ b/mira-hub/src/lib/manual-rag.ts
+@@ -113,6 +113,18 @@ export function lexicalV2Enabled(): boolean {
+   return process.env.NOTEBOOK_LEXICAL_V2 === "1";
+ }
+ 
++/** Evidence-sufficiency floor for the V2 lexical lane (default off). A candidate must
++ *  cover at least this share of the question's IDF mass; a question lexeme absent from
++ *  the scope counts at the maximum IDF, so a question whose distinguishing words the
++ *  manual never uses finds no candidate and the turn takes the existing no-coverage
++ *  path. Unset, empty, or outside (0, 1) → null (no floor). */
++export function lexicalV2MinCoverage(): number | null {
++  const raw = (process.env.NOTEBOOK_LEXICAL_V2_MIN_COVERAGE ?? "").trim();
++  if (!raw) return null;
++  const v = Number(raw);
++  return Number.isFinite(v) && v > 0 && v < 1 ? v : null;
++}
++
+ // #4469 F2 (primary review, pass 2 — the pass-1 keyword-stripping remediation
+ // was REJECTED as incomplete) — an arbitrary mention anywhere in a document's
+ // opening text is not affirmative applicability, and no finite keyword list
+@@ -1426,6 +1438,7 @@ export async function retrieveNodeChunks(
+   // Any-word match is implied by the join; `tsquery` is ignored on this path.
+   // Spec: docs/specs/notebook-retrieval-idf-scoring.md.
+   const lexicalV2 = lexicalV2Enabled();
++  const minCoverage = lexicalV2 ? lexicalV2MinCoverage() : null;
+   const idfSql = `WITH qlex AS (
+         SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', $2))) AS lex
+       ), scope AS (
+@@ -1449,6 +1462,10 @@ export async function retrieveNodeChunks(
+         SELECT s.id, sum(ln((n.n - df.df + 0.5) / (df.df + 0.5) + 1)::numeric) AS score
+           FROM scope s CROSS JOIN n JOIN df ON df.lex = ANY(s.lexemes)
+           GROUP BY s.id
++      ), mass AS (
++        -- The question's IDF mass in this scope; an absent lexeme (df 0) counts at the maximum.
++        SELECT sum(ln((n.n - coalesce(df.df, 0) + 0.5) / (coalesce(df.df, 0) + 0.5) + 1)::numeric) AS m
++          FROM qlex q CROSS JOIN n LEFT JOIN df ON df.lex = q.lex
+       )
+       SELECT
+           content,
+@@ -1462,8 +1479,9 @@ export async function retrieveNodeChunks(
+           ${documentHeadingSql},
+           verified,
+           scored.score::float8 AS rank
+-        FROM scored JOIN knowledge_entries ON knowledge_entries.id = scored.id
++        FROM scored JOIN knowledge_entries ON knowledge_entries.id = scored.id CROSS JOIN mass
+         WHERE knowledge_entries.tenant_id = $1
++          ${minCoverage === null ? "" : `AND (SELECT max(score) FROM scored) >= ${minCoverage.toFixed(4)} * mass.m`}
+         ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', knowledge_entries.id
+         LIMIT $4`;
+ 

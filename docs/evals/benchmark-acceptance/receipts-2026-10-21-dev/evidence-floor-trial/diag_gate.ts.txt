@@ -1,0 +1,54 @@
+/** Zero-token sweep of NOTEBOOK_LEXICAL_V2_MIN_COVERAGE on dev-77 (answerable) and cross-family
+ *  negatives (each question scoped to a manual from another product family — a PROXY for
+ *  unanswerable, not hand-verified). Same T4 load as the #4589 harness; production retrieveNodeChunks. */
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { Client } from "pg";
+import { extractText, getDocumentProxy } from "unpdf";
+import { retrieveNodeChunks } from "@/lib/manual-rag";
+import { chunkText } from "@/lib/node-knowledge-ingest";
+type Q = { id: string; manual: string; pdf: string; question: string; accepted: number[] };
+const [qPath, outPath] = process.argv.slice(2).filter((a) => a !== "--");
+const qs: Q[] = JSON.parse(readFileSync(qPath, "utf8"));
+const FAMILY: Record<string, string> = {
+  "gs4-ch6": "drive", "gs4-ch2": "drive", "gs10-ch6": "drive", pf40: "drive", pf4m: "drive", acs355: "drive",
+  "micro820-in": "plc", "micro820-um": "plc", micro810: "plc", ml1100: "plc", "se-m172": "plc", "se-m171": "plc",
+  smcflex: "starter", smc50: "starter", e3plus: "relay",
+  "se-x80-analog": "io", "se-canopen-hw": "io", "se-lxm32a-canopen": "io", "se-premium-serial": "io",
+};
+const NEG_TARGET: Record<string, string> = { drive: "se-x80-analog", plc: "smc50", starter: "micro810", relay: "gs10-ch6", io: "pf40" };
+const uuidOf = (s: string) => { const h = createHash("sha256").update(s).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`; };
+const tenant = uuidOf("diag-lexv2-gate"); const nodeId = uuidOf("bench-node");
+const db = new Client({ connectionString: process.env.BENCH_PG }); await db.connect();
+await db.query("DELETE FROM knowledge_entries WHERE tenant_id = $1", [tenant]);
+const docOf = new Map<string, string>();
+for (const [manual, pdf] of new Map(qs.map((q) => [q.manual, q.pdf]))) {
+  const doc = uuidOf(`bench-doc-${manual}`); docOf.set(manual, doc);
+  const { text } = await extractText(await getDocumentProxy(new Uint8Array(readFileSync(pdf))), { mergePages: false });
+  const pages = Array.isArray(text) ? text : [text]; let idx = 0;
+  for (let p = 0; p < pages.length; p++) for (const c of chunkText(pages[p] ?? "")) {
+    await db.query(`INSERT INTO knowledge_entries (id, tenant_id, source_type, content, is_private, verified, source_url, source_page, page_start, page_end, doc_id, ingest_route, metadata)
+      VALUES ($1,$2,'node_attachment',$3,true,true,$4,$5,$5,$5,$6,'v2',$7)`,
+      [randomUUID(), tenant, c, `node-doc/${doc}/${manual}.pdf`, p + 1, doc, JSON.stringify({ node_id: nodeId, chunk_index: idx++, filename: `${manual}.pdf` })]);
+  }
+}
+await db.query("ANALYZE knowledge_entries");
+const ask = async (q: Q, manual: string, flag: string, cov: string | null) => {
+  process.env.NOTEBOOK_LEXICAL_V2 = flag;
+  if (cov === null) delete process.env.NOTEBOOK_LEXICAL_V2_MIN_COVERAGE; else process.env.NOTEBOOK_LEXICAL_V2_MIN_COVERAGE = cov;
+  const t0 = performance.now();
+  const c = await retrieveNodeChunks(db as never, tenant, q.question, { nodeId, unsPath: null, topK: 6, docIds: [docOf.get(manual)!], rawQuery: q.question, validatedDocScope: true });
+  return { pages: c.map((x) => x.sourcePage), ms: performance.now() - t0 };
+};
+const arms: Array<[string, string, string | null]> = [["off", "0", null], ["on", "1", null], ...["0.3", "0.4", "0.5", "0.6", "0.7"].map((v) => [`on@${v}`, "1", v] as [string, string, string])];
+const lines: string[] = [];
+for (const q of qs) await ask(q, q.manual, "1", null); // warm-up
+for (const q of qs) {
+  const neg = NEG_TARGET[FAMILY[q.manual]];
+  for (const [arm, flag, cov] of arms) {
+    const pos = await ask(q, q.manual, flag, cov); const n = await ask(q, neg, flag, cov);
+    lines.push(JSON.stringify({ id: q.id, arm, accepted: q.accepted, pos_pages: pos.pages, pos_ms: pos.ms, neg_manual: neg, neg_pages: n.pages, neg_ms: n.ms }));
+  }
+}
+await db.query("DELETE FROM knowledge_entries WHERE tenant_id = $1", [tenant]); await db.end();
+writeFileSync(outPath, lines.join("\n") + "\n"); console.log(`wrote ${lines.length} rows to ${outPath}`);
