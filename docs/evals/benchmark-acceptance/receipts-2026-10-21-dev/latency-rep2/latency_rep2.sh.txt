@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Completes BRAVO's alternating-order latency replication: topK 6 (production call shape),
+# balanced ABBA x5 (off,on,on,off) = 10 runs per arm, same pin 9d22076c1, same t4 DB,
+# load average recorded at each start. Harness run unmodified from the pinned SHA.
+set -euo pipefail
+export PATH=/opt/homebrew/bin:$PATH
+REPO=/Users/charlienode/MIRA
+SHA=9d22076c13072327eef32997d727edac84b74d7c
+OUT=$REPO/.planning/bench-4589-dev/latency-rep2
+Q=$REPO/.planning/evidence-runoff-data/t4/questions.json
+WT="$(mktemp -d)/bench-wt"
+cleanup() { git -C "$REPO" worktree remove --force "$WT" 2>/dev/null || true; }
+trap cleanup EXIT
+git -C "$REPO" worktree add --detach "$WT" "$SHA" >/dev/null
+(cd "$WT/mira-hub" && npm ci --no-audit --no-fund >/dev/null 2>&1)
+unset NOTEBOOK_HYBRID_RETRIEVAL NOTEBOOK_RERANK NOTEBOOK_RETRIEVAL_DEBUG MIRA_ENFORCE_APPROVED_RETRIEVAL
+export BENCH_PG=postgres://bench@localhost:55432/t4
+env | grep -E '^(NOTEBOOK_|MIRA_ENFORCE)' > "$OUT/env-before.txt" || true
+i=0
+for blk in 1 2 3 4 5; do for arm in off on on off; do
+  i=$((i+1)); flag=0; [ "$arm" = on ] && flag=1
+  echo "rep$i $arm start $(date -u +%FT%TZ) uptime: $(uptime)" | tee -a "$OUT/uptime.log"
+  (cd "$WT/mira-hub" && NOTEBOOK_LEXICAL_V2="$flag" npx vite-node --config vitest.config.ts \
+    ../tools/benchmark-acceptance/retrieval_rank.ts -- "$arm" 6 "$Q" "$OUT/rep$(printf %02d $i)-$arm-k6.jsonl") 2>&1 | grep -v "TT: undefined" | tail -1
+done; done
+(cd "$OUT" && shasum -a 256 latency_rep2.sh rep*.jsonl uptime.log env-before.txt > SHA256SUMS)
+echo DONE
