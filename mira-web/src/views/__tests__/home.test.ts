@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { renderHome } from "../home.js";
 import { TALK_TO_MIKE_HREF } from "../_topbar.js";
+import { escHtml } from "../../lib/html.js";
 import {
   effectiveMetaDescription,
   effectiveSubhead,
   generateJsonLd,
   loadCapabilities,
   provenClaims,
+  type CapabilitiesFile,
 } from "../../capabilities/marketing-claims/index.js";
 
 describe("renderHome — proven-claims homepage", () => {
@@ -15,8 +17,10 @@ describe("renderHome — proven-claims homepage", () => {
 
   test("hero leads with the equipment notebook and Talk to Mike", () => {
     expect(html).toContain('id="fl-hero-h1"');
-    expect(html).toContain(`<h1 id="fl-hero-h1" class="fl-hero-h1">${data.positioning.headline}</h1>`);
-    expect(html).toContain(effectiveSubhead(data));
+    expect(html).toContain(
+      `<h1 id="fl-hero-h1" class="fl-hero-h1">${escHtml(data.positioning.headline)}</h1>`
+    );
+    expect(html).toContain(escHtml(effectiveSubhead(data)));
     expect(html).toContain(TALK_TO_MIKE_HREF);
     expect(html).toContain('data-cta="hero-talk"');
     expect(html).toContain("Talk to Mike");
@@ -25,7 +29,7 @@ describe("renderHome — proven-claims homepage", () => {
 
   test("renders only proven claims from the capabilities file", () => {
     for (const claim of provenClaims(data)) {
-      expect(html).toContain(claim.text);
+      expect(html).toContain(escHtml(claim.text));
     }
     expect(html).not.toContain("68,000+");
     expect(html).not.toContain("F005");
@@ -40,7 +44,7 @@ describe("renderHome — proven-claims homepage", () => {
     expect(html).toContain("Who it's for.");
     expect(html).toContain("Built for");
     expect(html).toContain("Not the right fit");
-    expect(html).toContain("It's not a CMMS and doesn't replace yours.");
+    expect(html).toContain(escHtml("It's not a CMMS and doesn't replace yours."));
   });
 
   test("footer with /limitations, /trust, /privacy, /terms, /status", () => {
@@ -111,7 +115,7 @@ describe("renderHome — proven-claims homepage", () => {
     expect(html).toContain(
       "<title>FactoryLM — An equipment notebook for your maintenance crew</title>"
     );
-    expect(html).toContain(`content="${effectiveMetaDescription(data)}"`);
+    expect(html).toContain(`content="${escHtml(effectiveMetaDescription(data))}"`);
     expect(html).toContain('<link rel="canonical" href="https://factorylm.com/">');
     expect(html).toMatch(/equipment notebook/i);
   });
@@ -120,6 +124,25 @@ describe("renderHome — proven-claims homepage", () => {
     expect(html).toContain('href="/_tokens.css"');
     expect(html).toContain('href="/_components.css"');
     expect(html).toContain('href="/_dark-theme.css"');
+  });
+
+  test("capabilities text with script/onerror markup renders escaped", () => {
+    const poisoned: CapabilitiesFile = structuredClone(data);
+    poisoned.positioning.headline =
+      `<script>alert(1)</script><img src=x onerror=alert(1)>`;
+    poisoned.claims.push({
+      id: "xss-probe",
+      text: `<script>alert(1)</script><img src=x onerror=alert(1)>`,
+      status: "proven",
+      kind: "capability",
+      evidence: "xss-test",
+      last_checked: "2026-10-21",
+    });
+    const out = renderHome("https://factorylm.com/", poisoned);
+    expect(out).not.toMatch(/<script>alert\(1\)<\/script>/);
+    expect(out).not.toMatch(/<img src=x onerror=/);
+    expect(out).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(out).toContain("&lt;img src=x onerror=alert(1)&gt;");
   });
 
   test("Document is well-formed HTML5", () => {

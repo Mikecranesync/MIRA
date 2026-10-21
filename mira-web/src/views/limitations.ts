@@ -1,5 +1,6 @@
 import { head } from "../lib/head.js";
 import { btnPrimary } from "../lib/components.js";
+import { escHtml } from "../lib/html.js";
 import { navbar, footer, TALK_TO_MIKE_HREF } from "./_topbar.js";
 
 const PAGE_STYLES = `
@@ -187,7 +188,7 @@ export function renderLimitations(reqUrl?: string): string {
 
   const limitItems = LIMITS.map(({ lead, body }) => `
     <li>
-      <strong>${lead}</strong> ${body}
+      <strong>${escHtml(lead)}</strong> ${escHtml(body)}
     </li>`).join("");
 
   return `<!DOCTYPE html>
