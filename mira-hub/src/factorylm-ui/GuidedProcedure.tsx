@@ -73,6 +73,17 @@ export function askMiraButton(chatBusy: boolean): { disabled: boolean; label: st
     : { disabled: false, label: "Ask MIRA about this (beyond the manual)" };
 }
 
+/**
+ * The escalation question with what the technician is actually seeing. The procedure's own record
+ * says which steps were checked but not the symptom (e.g. "none of these" at Table 48), and without
+ * it MIRA can only decline to guess. Returns null until there is a description, so the hand-off
+ * cannot be sent empty.
+ */
+export function askMiraQuestion(base: string, seeing: string): string | null {
+  const said = seeing.trim();
+  return said ? `${base}\nWhat I'm seeing: ${said}` : null;
+}
+
 export function draftsAfterSave(saved: boolean, drafts: Drafts): Drafts {
   return saved ? EMPTY_DRAFTS : drafts;
 }
@@ -107,6 +118,7 @@ export function GuidedProcedure({
   const [readings, setReadings] = useState<Record<string, string>>({});
   const [unit, setUnit] = useState("ohm");
   const [note, setNote] = useState("");
+  const [seeing, setSeeing] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
   const url = `${API_BASE}/api/equipment-notebooks/${encodeURIComponent(notebookId)}/procedure/`;
@@ -289,15 +301,33 @@ export function GuidedProcedure({
                 <div style={view.status === "resolved" ? S.ok : view.status === "escalate" ? S.warn : S.fault}>{view.endReason}</div>
                 {view.guidance && <Guidance g={view.guidance} />}
                 {view.status === "escalate" && session?.askMira && (
-                  <button
-                    type="button"
-                    data-testid="guided-ask-mira"
-                    disabled={askMiraButton(chatBusy).disabled}
-                    style={{ ...S.btn, ...S.primary, ...(chatBusy ? { opacity: 0.6 } : {}) }}
-                    onClick={() => { if (askMiraButton(chatBusy).disabled) return; setOpen(false); onAskMira(session.askMira!); }}
-                  >
-                    {askMiraButton(chatBusy).label}
-                  </button>
+                  <>
+                    <label style={{ display: "block", marginTop: 10, fontSize: "var(--fl-fs-sm)" }}>
+                      What are you seeing? MIRA needs this to help.
+                      <textarea
+                        data-testid="guided-seeing"
+                        rows={3}
+                        style={S.input}
+                        value={seeing}
+                        placeholder="e.g. motor hums at start, display says Stopped, bypass contactor clicks"
+                        onChange={(e) => setSeeing(e.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      data-testid="guided-ask-mira"
+                      disabled={askMiraButton(chatBusy).disabled || !askMiraQuestion(session.askMira, seeing)}
+                      style={{ ...S.btn, ...S.primary, ...(chatBusy || !seeing.trim() ? { opacity: 0.6 } : {}) }}
+                      onClick={() => {
+                        const question = askMiraQuestion(session.askMira!, seeing);
+                        if (askMiraButton(chatBusy).disabled || !question) return;
+                        setOpen(false);
+                        onAskMira(question);
+                      }}
+                    >
+                      {askMiraButton(chatBusy).label}
+                    </button>
+                  </>
                 )}
                 <button type="button" data-testid="guided-restart" disabled={busy} style={S.btn} onClick={() => call({ op: "restart" })}>Start again</button>
               </div>
