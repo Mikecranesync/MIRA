@@ -552,6 +552,13 @@ jobs:
         # reachable and its failure is asserted to be non-fatal. No network, no
         # tokens, no shared checkout touched.
         run: pytest tests/test_eval_fixer_fragment_helper.py tests/test_eval_fixer_fragments.py -v
+      - name: Stale PR sweep (SDLC §1.5 WIP policy)
+        # tools/stale_pr_sweep.py decides which open PRs get the 14-day stale notice and
+        # which close 7 days later; .github/workflows/stale-pr-sweep.yml runs it. Named here
+        # (inside the ci-gate needs list) so a regression in the decision rules — bot
+        # comments resetting the clock, a closed PR losing its branch, a dry run that
+        # writes — fails the merge instead of a nightly run. Hermetic: no gh, no network.
+        run: pytest tests/test_stale_pr_sweep.py -v
       - name: Answer Radar benchmark (rubric, rights gate, leakage split)
         # answer_radar/: the real-world maintenance-question benchmark (VCAD). Named
         # explicitly because root `tests/` is not collected wholesale in this job, and

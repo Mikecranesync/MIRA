@@ -107,7 +107,10 @@ twelve alphanumeric characters per field).
 There is one authorization route: the newest well-formed owner-account User
 `[CODEX-ADVERSARIAL-REVIEW]` ledger record must have `reviewed_sha` equal to
 the current head, `reviewed_body_sha256` equal to SHA-256 of the current PR
-body, and `status: GREEN`. Load `scripts/adversarial-review-trusted.sh` from
+body, and `status: GREEN` — or be CONVERGED (`ISSUES_FOUND` with zero BLOCKER
+and zero HIGH) with a newer owner `[REVIEW-FOLLOWUPS]` record for the same head
+and body listing one issue per MEDIUM (charter §3 has the format; dispatch a
+fresh guard run after posting it). Load `scripts/adversarial-review-trusted.sh` from
 the immutable captured `origin/<base>` object; never execute review producers
 from the PR worktree. Any push or body edit invalidates the reviewed snapshot and requires
 a fresh review. There is no label or manual bypass.
@@ -213,7 +216,9 @@ outputs, and required browser/device evidence. If peer messaging is unavailable,
 post the same packet to the PR with `[CODEX-REVIEW-REQUEST]` so GitHub remains the
 durable fallback. Only a `[CODEX-ADVERSARIAL-REVIEW]` envelope with `status: GREEN` whose
 `reviewed_sha` is that exact head (and whose `reviewed_body_sha256` matches the body) clears the
-gate; any new commit invalidates the verdict. Claude/subagent review output is
+gate, as does a CONVERGED verdict at that exact head and body (zero BLOCKER/HIGH, each MEDIUM filed as
+a follow-up issue and listed in the `[REVIEW-FOLLOWUPS]` record; `docs/architecture/mira-sdlc-v1.md`
+§4.3), which the Lifecycle Guard accepts too (charter §3). Any new commit invalidates the verdict. Claude/subagent review output is
 useful evidence but cannot substitute for or self-award the Codex PASS.
 
 ## Cross-references

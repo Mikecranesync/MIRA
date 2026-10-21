@@ -137,7 +137,7 @@ components:
     required: true
     expected:
       # The highest-numbered migration this release expects applied.
-      level: "104_notebook_manual_acquisition_confirm_promotes.sql"
+      level: "106_guided_procedure_sessions_one_running.sql"
     probe:
       kind: none
       why: >-

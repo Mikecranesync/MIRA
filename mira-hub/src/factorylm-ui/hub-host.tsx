@@ -55,6 +55,7 @@ import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { HOME_THREAD, createOutgoingOwner, withOutgoing, type Outgoing } from "./outgoing-turn";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
+import { GuidedProcedure } from "./GuidedProcedure";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -62,6 +63,7 @@ import {
   NO_PROJECT_ERROR,
   applyConfirmIdentityResult,
   chatBodyFor,
+  guidedDeadEndBody,
   createLatestLoadTracker,
   detailQueryFor,
   draftAfterSendSucceeded,
@@ -642,6 +644,14 @@ export function HubShellHost() {
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
   }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing]);
 
+  // WP-1 guided dead end: sent in general mode with the session id; the route confirms it.
+  const onGuidedDeadEnd = useCallback((question: string, sessionId: string) => {
+    const q = question.trim();
+    if (!q || busy || !selection || !detail) return;
+    putOutgoing({ id: `out-${Date.now()}`, threadId: shellThreadId(selection), question: q, attachments: [], startedAt: new Date().toISOString() });
+    void send(guidedDeadEndBody(q, sessionId, historyRows(detail.turns), selection), q);
+  }, [busy, selection, detail, send, putOutgoing]);
+
   const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
   const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);
 
@@ -882,6 +892,24 @@ export function HubShellHost() {
         onOpenItem={onOpenItem}
         onSelectProject={onSelectProject}
       />
+      {/* WP-1: shown only when the route is enabled and a manufacturer procedure applies. */}
+      {selection && detail && (
+        <GuidedProcedure
+          // Re-mount (and re-read availability) when the machine's identity or its manuals change
+          // in place — a confirm or an attach doesn't change the notebook id (Codex #4573 F4).
+          key={[
+            selection.notebookId,
+            detail.notebook.identityStatus,
+            detail.notebook.manufacturer ?? "",
+            detail.notebook.model ?? "",
+            detail.notebook.catalogNumber ?? "",
+            detail.sources.map((s) => s.docId).join(","),
+          ].join("|")}
+          notebookId={selection.notebookId}
+          onAskMira={onGuidedDeadEnd}
+          chatBusy={busy}
+        />
+      )}
     </div>
   );
 }
