@@ -24,7 +24,9 @@ WT="$(mktemp -d)/bench-wt"
 cleanup() { git -C "$REPO" worktree remove --force "$WT" 2>/dev/null || true; }
 trap cleanup EXIT
 git -C "$REPO" worktree add --detach "$WT" "$SHA" >/dev/null
-ln -s "$REPO/mira-hub/node_modules" "$WT/mira-hub/node_modules"
+# Dependencies come from the pinned commit itself, never the shared checkout (its lockfile can differ).
+(cd "$WT/mira-hub" && npm ci --no-audit --no-fund --loglevel=error)
+shasum -a 256 "$WT/mira-hub/package-lock.json" > "$OUT/$SET_NAME-lockfile.sha256"
 
 echo "$SHA" > "$OUT/$SET_NAME-sha.txt"
 shasum -a 256 "$QUESTIONS" > "$OUT/$SET_NAME-inputs.sha256"
