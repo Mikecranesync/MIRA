@@ -239,3 +239,16 @@ export function mergeAltCorpus(base: Corpus, alt: Partial<Corpus> & { questions:
   if (stray) throw new Error(`alternate corpus question ${stray.id} names unpinned manual ${stray.manual}`);
   return { ...base, questions: alt.questions, tolerance: alt.tolerance ?? base.tolerance };
 }
+
+/**
+ * #4593 Codex F1: a turn asked after its manual is attached must carry that manual in scope.
+ * The outgoing chat body is the proof. An empty `sourceDocIds` or `mode: "general"` means the UI
+ * sent from a stale empty scope, so the row is BROKEN, never scored as a refusal or an answer.
+ */
+export function scopeProblem(body: unknown, manualAttached: boolean): string | null {
+  if (!manualAttached) return null;
+  const b = (body ?? {}) as { sourceDocIds?: unknown; mode?: unknown };
+  if (b.mode === "general") return "chat sent in general mode: the attached manual was not in scope";
+  if (!Array.isArray(b.sourceDocIds) || b.sourceDocIds.length === 0) return "chat sent with no sourceDocIds: the attached manual was not in scope";
+  return null;
+}

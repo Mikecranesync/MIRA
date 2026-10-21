@@ -17,7 +17,7 @@ import { test, type Page, type Response } from "@playwright/test";
 import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
-import { fixtureFor, fullyIndexed, markdownScorecard, mergeAltCorpus, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
+import { fixtureFor, fullyIndexed, markdownScorecard, mergeAltCorpus, scopeProblem, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import { BUDGET, BudgetMeter, identity, manualBytes, pricesFromEnv, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd } from "./staging";
 
 // STRANGER_WALK_CORPUS: an alternate question file (e.g. the unanswerable set, #4584). It walks the
@@ -147,12 +147,16 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
   await UI.clone.composer(page).fill(q.question);
   if (!DRY) meter.book(); // booked at dispatch: no later failure can leave this turn uncounted
   const chat = page.waitForResponse((r: Response) => r.request().method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: ANSWER_TIMEOUT });
+  const chatReq = page.waitForRequest((r) => r.method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: ANSWER_TIMEOUT });
   await page.getByRole("button", { name: "Send" }).click();
   const broken = (why: string): Observation => {
     void page.screenshot({ path: path.join(OUT, "shots", `${q.id}.png`) }).catch(() => undefined);
     return brokenObs(q.id, why, Date.now() - t0);
   };
 
+  // #4593 Codex F1: an attachment-free turn must carry the manual in scope, or the row is BROKEN.
+  const scope = scopeProblem(await chatReq.then((r) => r.postDataJSON(), () => null), attach === null);
+  if (scope) return broken(scope);
   const res = await chat.catch(() => null);
   // Check the visible usage against the bound the booking assumed, before any UI step that could
   // throw. No response or a non-200 has no readable usage and stops later paid turns (fail closed).
@@ -219,7 +223,16 @@ test("stranger walk", async ({ page }) => {
         continue;
       }
       if (PREUPLOAD) {
-        try { await preUpload(page, m.filename, pdf.bytes); uploaded = true; } catch (e) {
+        try {
+          await preUpload(page, m.filename, pdf.bytes);
+          uploaded = true;
+          // The upload went around the UI, so its cached scope is still empty: wait for the index, then
+          // reload so the project re-reads its sources before the first question (#4593 Codex F1).
+          const w = await waitIndexed(page, m.filename);
+          notes.push(`${m.id}: pre-uploaded; readiness "${w.label}" (waited ${Math.round(w.waitedMs / 1000)} s); page reloaded`);
+          await page.reload();
+          await page.getByRole("heading", { level: 1, name: `${m.oem} ${m.id}` }).waitFor({ timeout: 30_000 });
+        } catch (e) {
           for (const q of qs) obs.push(brokenObs(q.id, (e as Error).message.split("\n")[0]));
           continue;
         }

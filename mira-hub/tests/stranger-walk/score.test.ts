@@ -3,7 +3,7 @@ import corpusJson from "./corpus.json";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { BUDGET, BudgetMeter, budgetUsdFromEnv, PROVIDER_PRICES, pricesFromEnv, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
-import { classify, flakes, fullyIndexed, markdownScorecard, mergeAltCorpus, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
+import { classify, flakes, fullyIndexed, markdownScorecard, mergeAltCorpus, METRIC, scopeProblem, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
 const q = corpus.questions.find((x) => x.id === "pf40-q2")!; // p.9, safety-relevant
@@ -344,5 +344,21 @@ describe("mergeAltCorpus (#4593 review F2)", () => {
   });
   it("refuses a question that names an unpinned manual", () => {
     expect(() => mergeAltCorpus(base, { questions: [{ ...q, manual: "not-pinned" }] })).toThrow(/unpinned manual/);
+  });
+});
+
+describe("scopeProblem (#4593 Codex F1)", () => {
+  it("passes a turn whose chat body carries the attached manual", () => {
+    expect(scopeProblem({ sourceDocIds: ["d1"] }, true)).toBeNull();
+  });
+  it("fails a turn sent in general mode after the manual was attached", () => {
+    expect(scopeProblem({ sourceDocIds: ["d1"], mode: "general" }, true)).toMatch(/general mode/);
+  });
+  it("fails a turn sent with an empty scope after the manual was attached", () => {
+    expect(scopeProblem({ sourceDocIds: [] }, true)).toMatch(/no sourceDocIds/);
+    expect(scopeProblem(null, true)).toMatch(/no sourceDocIds/);
+  });
+  it("control: the upload-riding turn (manual not yet attached) is not checked", () => {
+    expect(scopeProblem({ sourceDocIds: [], mode: "general" }, false)).toBeNull();
   });
 });
