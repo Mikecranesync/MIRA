@@ -161,7 +161,8 @@ export function predict(row: Scored, mutation: Mutation, tolerance = 1): Classif
   if (mutation === "strip-sources") return "UNCITED";
   // viewer-page: the viewer opens a different page than the chip shows. A citation to another
   // document stays WRONG_PAGE (that check comes first); a pageless citation has no anchor to move.
-  if (mutation === "viewer-page") return row.reason.startsWith("wrong_doc") || row.citedPage === null ? "WRONG_PAGE" : "BROKEN";
+  // An unanswerable row (expectedPage null) is WRONG_PAGE before any viewer check (#4593 Codex F3).
+  if (mutation === "viewer-page") return row.reason.startsWith("wrong_doc") || row.citedPage === null || row.expectedPage === null ? "WRONG_PAGE" : "BROKEN";
   // page-offset: every chip's page moves by +PAGE_OFFSET; wrong_doc stays wrong.
   if (row.reason.startsWith("wrong_doc") || row.citedPage === null || row.expectedPage === null) return "WRONG_PAGE";
   return Math.abs(row.citedPage + PAGE_OFFSET - row.expectedPage) <= tolerance ? "CORRECT" : "WRONG_PAGE";
@@ -250,5 +251,17 @@ export function scopeProblem(body: unknown, manualAttached: boolean): string | n
   const b = (body ?? {}) as { sourceDocIds?: unknown; mode?: unknown };
   if (b.mode === "general") return "chat sent in general mode: the attached manual was not in scope";
   if (!Array.isArray(b.sourceDocIds) || b.sourceDocIds.length === 0) return "chat sent with no sourceDocIds: the attached manual was not in scope";
+  return null;
+}
+
+/**
+ * #4593 Codex F4: why the next paid turn must not be dispatched, or null. Budget exhaustion and an
+ * unverified-usage stop come from the meter; a turn that went out of scope invalidates the run (V6),
+ * so it halts every later paid turn too — fail closed, never spend on a run already known invalid.
+ */
+export function dispatchBlock(m: { canAfford: boolean; unbounded: string | null }, scopeHalt: string | null): string | null {
+  if (m.unbounded) return `budget stop: ${m.unbounded} had unreadable or out-of-bound usage`;
+  if (scopeHalt) return `halted: ${scopeHalt}`;
+  if (!m.canAfford) return "budget stop";
   return null;
 }

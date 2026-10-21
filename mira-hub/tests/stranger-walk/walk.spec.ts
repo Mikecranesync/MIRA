@@ -17,7 +17,7 @@ import { test, type Page, type Response } from "@playwright/test";
 import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
-import { fixtureFor, fullyIndexed, markdownScorecard, mergeAltCorpus, scopeProblem, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
+import { dispatchBlock, fixtureFor, fullyIndexed, markdownScorecard, mergeAltCorpus, scopeProblem, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import { BUDGET, BudgetMeter, identity, manualBytes, pricesFromEnv, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd } from "./staging";
 
 // STRANGER_WALK_CORPUS: an alternate question file (e.g. the unanswerable set, #4584). It walks the
@@ -116,6 +116,8 @@ async function waitIndexed(page: Page, filename: string): Promise<{ label: strin
  * riding its upload. Default off: the stranger journey (upload rides the first question) is unchanged.
  */
 const PREUPLOAD = process.env.STRANGER_WALK_PREUPLOAD === "1";
+/** Codex F4: set when a turn went out of scope; halts every later paid turn (the run is invalid). */
+let scopeHalt: string | null = null;
 async function preUpload(page: Page, filename: string, bytes: Buffer): Promise<void> {
   const r = await page.evaluate(async ({ name, b64 }) => {
     const nb = new URL(location.href).searchParams.get("notebook");
@@ -156,12 +158,16 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
 
   // #4593 Codex F1: an attachment-free turn must carry the manual in scope, or the row is BROKEN.
   const scope = scopeProblem(await chatReq.then((r) => r.postDataJSON(), () => null), attach === null);
-  if (scope) return broken(scope);
   const res = await chat.catch(() => null);
   // Check the visible usage against the bound the booking assumed, before any UI step that could
   // throw. No response or a non-200 has no readable usage and stops later paid turns (fail closed).
+  // Codex F4: this runs BEFORE the scope verdict returns, so an out-of-scope turn's usage is verified too.
   const sse = res && res.status() === 200 ? await res.text().catch(() => null) : null;
   if (!DRY) meter.verify(q.id, sse);
+  if (scope) {
+    scopeHalt = `${q.id}: ${scope}`;
+    return broken(scope);
+  }
   if (!res) {
     const err = await page.getByRole("alert", { name: "Send error" }).innerText().catch(() => "");
     return broken(`no chat response${err ? `: ${err.replace(/\s+/g, " ").slice(0, 160)}` : ""}`);
@@ -238,7 +244,8 @@ test("stranger walk", async ({ page }) => {
         }
       }
       for (const [i, q] of qs.entries()) {
-        if (!DRY && !meter.canAfford()) { obs.push(brokenObs(q.id, meter.unbounded ? `budget stop: ${meter.unbounded} had unreadable or out-of-bound usage` : "budget stop")); continue; }
+        const block = DRY ? null : dispatchBlock({ canAfford: meter.canAfford(), unbounded: meter.unbounded }, scopeHalt);
+        if (block) { obs.push(brokenObs(q.id, block)); continue; }
         try {
           if (i > 0 || PREUPLOAD) {
             if (i > 0) {
