@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-20",
+  "updated": "2026-10-21",
   "contact": {
     "cta": "Talk to Mike",
     "email": "mike@factorylm.com",
@@ -10,97 +10,105 @@
     "title": "FactoryLM — The equipment notebook for your maintenance crew",
     "headline": "The equipment notebook for your maintenance crew",
     "subhead": "Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it.",
-    "meta_description": "Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it. Talk to Mike about a pilot.",
+    "meta_description": "The equipment notebook for your maintenance crew. Talk to Mike about a pilot.",
     "audience": "One maintenance crew working on qualified machines and manuals."
   },
   "claims": [
     {
-      "id": "notebook-for-one-crew",
-      "text": "MIRA is the equipment notebook for one maintenance crew.",
+      "id": "not-a-cmms",
+      "text": "It's not a CMMS and doesn't replace yours. There's nothing to switch.",
       "status": "proven",
-      "kind": "capability",
-      "evidence": "docs/specs/mira-technician-app-dogfood-system.md",
-      "last_checked": "2026-10-20"
+      "kind": "limit",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552 (A5)",
+      "last_checked": "2026-10-21"
     },
     {
-      "id": "notebook-open-lookup-ask-record",
-      "text": "Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it.",
+      "id": "no-plc-or-work-order-write",
+      "text": "It doesn't take PLC data and doesn't write work-order records.",
       "status": "proven",
-      "kind": "capability",
-      "evidence": "mira-hub/src/app/api/equipment-notebooks/",
-      "last_checked": "2026-10-20"
+      "kind": "limit",
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552 (A6)",
+      "last_checked": "2026-10-21"
     },
     {
       "id": "qualified-manuals-only",
       "text": "We've tested Rockwell and Festo manuals so far, and we'll post our misses too.",
       "status": "proven",
       "kind": "capability",
-      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552 (A8)",
+      "last_checked": "2026-10-21"
     },
     {
-      "id": "not-a-cmms",
-      "text": "It's not a CMMS and doesn't replace yours. There's nothing to switch.",
+      "id": "mike-central-florida",
+      "text": "Mike can come onsite in Central Florida or work remote.",
       "status": "proven",
       "kind": "limit",
-      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552 (A9)",
+      "last_checked": "2026-10-21"
     },
     {
-      "id": "no-plc-or-work-order-write",
-      "text": "It doesn't connect to PLCs, doesn't use work-order history, and doesn't write work orders.",
+      "id": "magic-link-web-signin",
+      "text": "Web sign-in uses a magic link.",
       "status": "proven",
-      "kind": "limit",
-      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "kind": "capability",
+      "evidence": "mira-hub magic-link auth on app.factorylm.com",
+      "last_checked": "2026-10-21"
+    },
+    {
+      "id": "notebook-for-one-crew",
+      "text": "MIRA is the equipment notebook for one maintenance crew.",
+      "status": "partial",
+      "kind": "capability",
+      "evidence": "Positioning only — not in the 2026-10-21 proven set",
+      "last_checked": "2026-10-21"
+    },
+    {
+      "id": "notebook-open-lookup-ask-record",
+      "text": "Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it.",
+      "status": "partial",
+      "kind": "capability",
+      "evidence": "Positioning only — not in the 2026-10-21 proven set",
+      "last_checked": "2026-10-21"
     },
     {
       "id": "safety-site-procedure",
       "text": "For lockout, arc flash and confined space, follow your site procedure. Don't use any AI tool for those.",
-      "status": "proven",
+      "status": "partial",
       "kind": "limit",
-      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552 — not in the 2026-10-21 proven set",
+      "last_checked": "2026-10-21"
     },
     {
       "id": "web-browser-only",
       "text": "It works in a web browser only.",
-      "status": "proven",
+      "status": "partial",
       "kind": "limit",
-      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "evidence": "Superseded as a published claim by magic-link-web-signin",
+      "last_checked": "2026-10-21"
     },
     {
       "id": "english-manuals-only",
       "text": "English manuals only. We don't translate manuals between languages.",
-      "status": "proven",
+      "status": "partial",
       "kind": "limit",
-      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552 — not in the 2026-10-21 proven set",
+      "last_checked": "2026-10-21"
     },
     {
       "id": "not-soc2",
       "text": "We're not SOC 2 audited yet.",
-      "status": "proven",
+      "status": "partial",
       "kind": "limit",
-      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
-    },
-    {
-      "id": "mike-central-florida",
-      "text": "I'm Mike, I build FactoryLM, and I'm in Central Florida.",
-      "status": "proven",
-      "kind": "limit",
-      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "evidence": "Hardcoded on /security and /trust; not in the 2026-10-21 proven set",
+      "last_checked": "2026-10-21"
     },
     {
       "id": "cited-answers-with-page",
       "text": "Every answer cites the exact manual page.",
       "status": "partial",
       "kind": "capability",
-      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552 (A1–A4 HOLD)",
-      "last_checked": "2026-10-20"
+      "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552 (A1 HOLD)",
+      "last_checked": "2026-10-21"
     },
     {
       "id": "stranger-upload-cited-answer",
@@ -108,7 +116,7 @@
       "status": "partial",
       "kind": "capability",
       "evidence": "docs/plans/2026-06-07-path-to-beta.md",
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-21"
     },
     {
       "id": "cmms-writeback",
@@ -116,7 +124,7 @@
       "status": "not-yet",
       "kind": "capability",
       "evidence": "NORTH_STAR.md",
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-21"
     },
     {
       "id": "plc-tag-mapping",
@@ -124,7 +132,7 @@
       "status": "not-yet",
       "kind": "capability",
       "evidence": "NORTH_STAR.md",
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-21"
     },
     {
       "id": "oem-chunk-counts",
@@ -132,7 +140,7 @@
       "status": "not-yet",
       "kind": "capability",
       "evidence": "docs/seo-geo-strategy-2026-04-26.md",
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-21"
     },
     {
       "id": "oem-logo-wall",
@@ -140,7 +148,7 @@
       "status": "not-yet",
       "kind": "capability",
       "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-21"
     },
     {
       "id": "unlimited-queries",
@@ -148,7 +156,7 @@
       "status": "not-yet",
       "kind": "capability",
       "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-21"
     },
     {
       "id": "photo-480v-demo",
@@ -156,7 +164,7 @@
       "status": "not-yet",
       "kind": "capability",
       "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-21"
     },
     {
       "id": "telegram-slack-answers",
@@ -164,7 +172,7 @@
       "status": "not-yet",
       "kind": "capability",
       "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-21"
     },
     {
       "id": "voice-note-rca",
@@ -172,7 +180,7 @@
       "status": "not-yet",
       "kind": "capability",
       "evidence": "https://github.com/Mikecranesync/MIRA/pull/4552",
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-21"
     },
     {
       "id": "third-party-cmms-integrations",
@@ -180,7 +188,7 @@
       "status": "not-yet",
       "kind": "capability",
       "evidence": "NORTH_STAR.md",
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-21"
     },
     {
       "id": "any-manual-promise",
@@ -188,7 +196,7 @@
       "status": "not-yet",
       "kind": "capability",
       "evidence": "docs/plans/2026-06-07-path-to-beta.md",
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-21"
     }
   ]
 }

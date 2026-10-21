@@ -6,6 +6,8 @@ The factorylm.com homepage, schema.org JSON-LD, `/llms.txt`, and `/llms-full.txt
 
 This JSON is the machine-readable registry that the 2026-10-20 Search Steward audit expected as `marketing/capabilities.md`. Do not create a second list.
 
+The 2026-10-21 steward check locked the published `proven` set to: not a CMMS (A5); no PLC data and no work-order writes (A6); tested Rockwell and Festo manuals so far (A8); Mike onsite in Central Florida or remote (A9); magic-link web sign-in. Positioning may still lead with the equipment notebook. A1 (cited answers in general) stays HOLD.
+
 ## Record shape
 
 | Field | Required | Notes |

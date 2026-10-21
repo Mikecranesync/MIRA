@@ -8,19 +8,14 @@ One maintenance crew working on qualified machines and manuals.
 
 ## What it does (proven)
 
-- MIRA is the equipment notebook for one maintenance crew.
-- Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it.
 - We've tested Rockwell and Festo manuals so far, and we'll post our misses too.
+- Web sign-in uses a magic link.
 
 ## What it does not do
 
 - It's not a CMMS and doesn't replace yours. There's nothing to switch.
-- It doesn't connect to PLCs, doesn't use work-order history, and doesn't write work orders.
-- For lockout, arc flash and confined space, follow your site procedure. Don't use any AI tool for those.
-- It works in a web browser only.
-- English manuals only. We don't translate manuals between languages.
-- We're not SOC 2 audited yet.
-- I'm Mike, I build FactoryLM, and I'm in Central Florida.
+- It doesn't take PLC data and doesn't write work-order records.
+- Mike can come onsite in Central Florida or work remote.
 - PLC connectivity, third-party maintenance-software integrations, autonomous workflows, and an any-manual promise are not offered today.
 
 ## Key Pages

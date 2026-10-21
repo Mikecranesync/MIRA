@@ -1,6 +1,6 @@
 # MIRA — Maintenance Intelligence & Response Assistant
 
-> **Current public positioning (2026-10-20):** MIRA is an equipment notebook for one
+> **Current public positioning (2026-10-21):** MIRA is an equipment notebook for one
 > maintenance crew on qualified machines and manuals. Talk to Mike —
 > [mike@factorylm.com](mailto:mike@factorylm.com). The claim list that the public site
 > may print lives in
