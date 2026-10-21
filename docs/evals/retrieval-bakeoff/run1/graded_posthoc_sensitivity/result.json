@@ -1,0 +1,223 @@
+{
+  "summary": {
+    "A": {
+      "turns": 139,
+      "excluded": 0,
+      "excluded_reasons": [],
+      "supported_correct": 0.4431818181818182,
+      "correct": 0.5113636363636364,
+      "supported": 0.5568181818181818,
+      "refusal_on_answerable": 0.2727272727272727,
+      "appropriate_refusal": 1.0,
+      "cited_refusal": 0.075,
+      "critical_safety": 2,
+      "safety_stop_miss": 9,
+      "p50_ms": 2071.006916999999,
+      "p95_ms": 3814.70550000004,
+      "usd_per_turn": 0.0031430287769784173,
+      "usd_total": 0.436881,
+      "by_kind": {
+        "fault_code": 0.5,
+        "safety_pass": 0.16666666666666666,
+        "spec_procedure": 0.75,
+        "troubleshooting": 0.4444444444444444,
+        "wiring": 0.3157894736842105
+      }
+    },
+    "B": {
+      "turns": 139,
+      "excluded": 0,
+      "excluded_reasons": [],
+      "supported_correct": 0.5681818181818182,
+      "correct": 0.6136363636363636,
+      "supported": 0.75,
+      "refusal_on_answerable": 0.10227272727272728,
+      "appropriate_refusal": 1.0,
+      "cited_refusal": 0.075,
+      "critical_safety": 2,
+      "safety_stop_miss": 9,
+      "p50_ms": 2074.779792000074,
+      "p95_ms": 4293.8254169999855,
+      "usd_per_turn": 0.0029780179856115107,
+      "usd_total": 0.4139445,
+      "by_kind": {
+        "fault_code": 0.7142857142857143,
+        "safety_pass": 0.3333333333333333,
+        "spec_procedure": 0.625,
+        "troubleshooting": 0.4444444444444444,
+        "wiring": 0.5789473684210527
+      }
+    },
+    "C": {
+      "turns": 139,
+      "excluded": 0,
+      "excluded_reasons": [],
+      "supported_correct": 0.48863636363636365,
+      "correct": 0.5454545454545454,
+      "supported": 0.7272727272727273,
+      "refusal_on_answerable": 0.1590909090909091,
+      "appropriate_refusal": 0.95,
+      "cited_refusal": 0.0,
+      "critical_safety": 3,
+      "safety_stop_miss": 9,
+      "p50_ms": 2184.2897920000833,
+      "p95_ms": 3420.7057920000516,
+      "usd_per_turn": 0.002999417266187051,
+      "usd_total": 0.4169190000000001,
+      "by_kind": {
+        "fault_code": 0.5,
+        "safety_pass": 0.5,
+        "spec_procedure": 0.875,
+        "troubleshooting": 0.4444444444444444,
+        "wiring": 0.3684210526315789
+      }
+    },
+    "D": {
+      "turns": 139,
+      "excluded": 0,
+      "excluded_reasons": [],
+      "supported_correct": 0.5681818181818182,
+      "correct": 0.6136363636363636,
+      "supported": 0.7613636363636364,
+      "refusal_on_answerable": 0.11363636363636363,
+      "appropriate_refusal": 1.0,
+      "cited_refusal": 0.025,
+      "critical_safety": 4,
+      "safety_stop_miss": 9,
+      "p50_ms": 3300.2648749999935,
+      "p95_ms": 5467.252916999976,
+      "usd_per_turn": 0.003059244604316547,
+      "usd_total": 0.42523500000000003,
+      "by_kind": {
+        "fault_code": 0.6428571428571429,
+        "safety_pass": 0.3333333333333333,
+        "spec_procedure": 0.875,
+        "troubleshooting": 0.4444444444444444,
+        "wiring": 0.5789473684210527
+      }
+    },
+    "E": {
+      "turns": 139,
+      "excluded": 0,
+      "excluded_reasons": [],
+      "supported_correct": 0.6477272727272727,
+      "correct": 0.6818181818181818,
+      "supported": 0.8181818181818182,
+      "refusal_on_answerable": 0.06818181818181818,
+      "appropriate_refusal": 0.975,
+      "cited_refusal": 0.025,
+      "critical_safety": 1,
+      "safety_stop_miss": 9,
+      "p50_ms": 3949.7848339999327,
+      "p95_ms": 6013.234583000012,
+      "usd_per_turn": 0.002938780575539569,
+      "usd_total": 0.4084905000000001,
+      "by_kind": {
+        "fault_code": 0.6428571428571429,
+        "safety_pass": 0.6666666666666666,
+        "spec_procedure": 0.75,
+        "troubleshooting": 0.6296296296296297,
+        "wiring": 0.631578947368421
+      }
+    }
+  },
+  "verdicts": {
+    "B": {
+      "primary": {
+        "diff": 0.125,
+        "lo": -0.011764705882352941,
+        "hi": 0.26436781609195403,
+        "n_pairs": 88
+      },
+      "refusal": {
+        "diff": 0.0,
+        "lo": 0.0,
+        "hi": 0.0,
+        "n_pairs": 40
+      },
+      "checks": {
+        "inconclusive_exclusions": false,
+        "primary_ci_lo_gt_0": false,
+        "refusal_noninferior": true,
+        "safety_ok": false,
+        "latency_ok": true,
+        "cost_ok": true,
+        "stopped_safety": true
+      },
+      "beats_baseline": false
+    },
+    "C": {
+      "primary": {
+        "diff": 0.045454545454545456,
+        "lo": -0.07777777777777778,
+        "hi": 0.16483516483516483,
+        "n_pairs": 88
+      },
+      "refusal": {
+        "diff": -0.05,
+        "lo": -0.15,
+        "hi": 0.0,
+        "n_pairs": 40
+      },
+      "checks": {
+        "inconclusive_exclusions": false,
+        "primary_ci_lo_gt_0": false,
+        "refusal_noninferior": false,
+        "safety_ok": false,
+        "latency_ok": true,
+        "cost_ok": true,
+        "stopped_safety": true
+      },
+      "beats_baseline": false
+    },
+    "D": {
+      "primary": {
+        "diff": 0.125,
+        "lo": 0.021739130434782608,
+        "hi": 0.23157894736842105,
+        "n_pairs": 88
+      },
+      "refusal": {
+        "diff": 0.0,
+        "lo": 0.0,
+        "hi": 0.0,
+        "n_pairs": 40
+      },
+      "checks": {
+        "inconclusive_exclusions": false,
+        "primary_ci_lo_gt_0": true,
+        "refusal_noninferior": true,
+        "safety_ok": false,
+        "latency_ok": false,
+        "cost_ok": true,
+        "stopped_safety": true
+      },
+      "beats_baseline": false
+    },
+    "E": {
+      "primary": {
+        "diff": 0.20454545454545456,
+        "lo": 0.06097560975609756,
+        "hi": 0.3409090909090909,
+        "n_pairs": 88
+      },
+      "refusal": {
+        "diff": -0.025,
+        "lo": -0.075,
+        "hi": 0.0,
+        "n_pairs": 40
+      },
+      "checks": {
+        "inconclusive_exclusions": false,
+        "primary_ci_lo_gt_0": true,
+        "refusal_noninferior": false,
+        "safety_ok": false,
+        "latency_ok": false,
+        "cost_ok": true,
+        "stopped_safety": true
+      },
+      "beats_baseline": false
+    }
+  },
+  "recommendation": "A"
+}

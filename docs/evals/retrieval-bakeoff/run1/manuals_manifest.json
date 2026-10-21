@@ -1,0 +1,123 @@
+[
+ {
+  "id": "abb-acs150",
+  "oem": "ABB",
+  "title": "ACS150 Drives User's Manual",
+  "doc_number": "3AFE68576032",
+  "url": "https://library.e.abb.com/public/dff8b3662110475cbbd5363575334004/EN_ACS150_Drives_UM_D_A4.pdf",
+  "filename": "abb-acs150.pdf",
+  "sha256": "b2d7011f41ef2c6987a986c615587967ef87652396bed2bfe64c2d4f8cac52c8",
+  "bytes": 2929800,
+  "pages": 172
+ },
+ {
+  "id": "abb-pst-softstarter",
+  "oem": "ABB",
+  "title": "Softstarters PST30...PSTB1050 Installation and Commissioning Manual",
+  "doc_number": "1SFC132003M0201",
+  "url": "https://library.e.abb.com/public/214bf8f2b32573e8c1256d09003d8106/1SFC132003M0201.pdf",
+  "filename": "abb-pst-softstarter.pdf",
+  "sha256": "c536115817ed3363cbf055deec3623a4d8d4b19bd136171e10ef8aa30a3eefb8",
+  "bytes": 4101349,
+  "pages": 200
+ },
+ {
+  "id": "automationdirect-gs2",
+  "oem": "AutomationDirect",
+  "title": "DURApulse GS2 Series Drives User Manual",
+  "doc_number": "GS2-M",
+  "url": "https://cdn.automationdirect.com/static/manuals/gs2m/gs2m.pdf",
+  "filename": "automationdirect-gs2.pdf",
+  "sha256": "c4b5626fc2d70e4421890e34bc00b4db9722444b28d87b464cf8db71e67bc59e",
+  "bytes": 5550251,
+  "pages": 190
+ },
+ {
+  "id": "danfoss-vlt-fc302",
+  "oem": "Danfoss",
+  "title": "VLT AutomationDrive FC 301/FC 302 Operating Guide (0.25-75 kW, Enclosure Sizes A-C)",
+  "doc_number": "AQ267037727118en-000101 (M0015908)",
+  "url": "https://assets.danfoss.com/documents/275726/AQ267037727118en-000101.pdf",
+  "filename": "danfoss-vlt-fc302.pdf",
+  "sha256": "2f560fa5d80ea1ed1efe82e582d6fc6fef67141705b24c78e6004606d6d2e566",
+  "bytes": 2849903,
+  "pages": 92
+ },
+ {
+  "id": "siemens-sinamics-g120c",
+  "oem": "Siemens",
+  "title": "SINAMICS G120C Converter Operating Instructions",
+  "doc_number": "G120C_op_instr_0917_en-US (Edition 09/2017)",
+  "url": "https://cache.industry.siemens.com/dl/files/317/109751317/att_931919/v1/G120C_op_instr_0917_en-US.pdf",
+  "filename": "siemens-sinamics-g120c.pdf",
+  "sha256": "0cc6212ae9e3e1f15d75216719607e4ef37b59a5f91403d2a5073924a6a21579",
+  "bytes": 12306163,
+  "pages": 470
+ },
+ {
+  "id": "omron-cp1e",
+  "oem": "Omron",
+  "title": "SYSMAC CP Series CP1E CPU Unit Software User's Manual",
+  "doc_number": "W480-E1",
+  "url": "https://files.omron.eu/downloads/latest/manual/en/w480_cp1e_users_manual_en.pdf",
+  "filename": "omron-cp1e.pdf",
+  "sha256": "f05153fbb5cbb3d16bfc7e1aaaaeb6abfd28fcbe636ae6fd4bc6c59231294851",
+  "bytes": 11368749,
+  "pages": 490
+ },
+ {
+  "id": "rockwell-1769-compactlogix",
+  "oem": "Rockwell Automation / Allen-Bradley",
+  "title": "1769 CompactLogix Controllers User Manual",
+  "doc_number": "1769-UM011",
+  "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/1769-um011_-en-p.pdf",
+  "filename": "rockwell-1769-compactlogix.pdf",
+  "sha256": "427085800b8d2cc57aace33b5ff05ba44a0946637e88a70f8d9059dc59d5e7f1",
+  "bytes": 7619396,
+  "pages": 150
+ },
+ {
+  "id": "siemens-sirius-3rw44",
+  "oem": "Siemens",
+  "title": "SIRIUS Soft Starter 3RW44 Manual",
+  "doc_number": "manual_soft_starter_3RW44_en (Edition 10/2010)",
+  "url": "https://cache.industry.siemens.com/dl/files/518/21772518/att_107541/v1/manual_soft_starter_3RW44_en.pdf",
+  "filename": "siemens-sirius-3rw44.pdf",
+  "sha256": "b361f4d92abf3dd444e5f8bc9c63ac583594cc060419af42d117fe56b5547fab",
+  "bytes": 7646170,
+  "pages": 262
+ },
+ {
+  "id": "pilz-pnoz-s4",
+  "oem": "Pilz",
+  "title": "PNOZ s4 Safety Relay Operating Manual",
+  "doc_number": "21396-EN-23",
+  "url": "https://www.pilz.com/download/open/OM_PNOZ_s4_21396-EN-23.pdf",
+  "filename": "pilz-pnoz-s4.pdf",
+  "sha256": "4b6e4768cefaedaf54f006347d32a8a04964b59a16f3616d8ac43698d3626bb4",
+  "bytes": 2428340,
+  "pages": 42
+ },
+ {
+  "id": "sick-wtb-multipulse",
+  "oem": "SICK",
+  "title": "MultiPulse WTB Photoelectric Sensor Operating Instructions",
+  "doc_number": "im0084415",
+  "url": "https://cdn.sick.com/media/docs/5/15/415/operating_instructions_multipulse_en_de_fr_it_pt_es_zh_ja_ru_im0084415.pdf",
+  "filename": "sick-wtb-multipulse.pdf",
+  "sha256": "78952b8af454c42fbdc42e9fd00fb1f232f19073498d2d94b133bcd4e4a83c3d",
+  "bytes": 2170619,
+  "pages": 37
+ },
+ {
+  "id": "rockwell-kinetix-300",
+  "oem": "Rockwell Automation / Allen-Bradley",
+  "title": "Kinetix 300 EtherNet/IP Indexing Servo Drives User Manual",
+  "doc_number": "2097-UM001",
+  "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/2097-um001_-en-p.pdf",
+  "filename": "rockwell-kinetix-300.pdf",
+  "sha256": "5a3cafa304926b9c9aa365dc23aec9e3b691c5deca85f3fe8eab0ecb4ae98e87",
+  "bytes": 9133265,
+  "pages": 234
+ }
+]

@@ -1,0 +1,235 @@
+{
+  "summary": {
+    "A": {
+      "turns": 139,
+      "excluded": 2,
+      "excluded_reasons": [
+        "answer model not pinned: None/None/legacy_cascade"
+      ],
+      "supported_correct": 0.4431818181818182,
+      "correct": 0.5113636363636364,
+      "supported": 0.5568181818181818,
+      "refusal_on_answerable": 0.2727272727272727,
+      "appropriate_refusal": 1.0,
+      "cited_refusal": 0.075,
+      "critical_safety": 2,
+      "safety_stop_miss": 11,
+      "p50_ms": 2073.17958299999,
+      "p95_ms": 3814.70550000004,
+      "usd_per_turn": 0.003188912408759124,
+      "usd_total": 0.436881,
+      "by_kind": {
+        "fault_code": 0.5,
+        "safety_pass": 0.16666666666666666,
+        "spec_procedure": 0.75,
+        "troubleshooting": 0.4444444444444444,
+        "wiring": 0.3157894736842105
+      }
+    },
+    "B": {
+      "turns": 139,
+      "excluded": 2,
+      "excluded_reasons": [
+        "answer model not pinned: None/None/legacy_cascade"
+      ],
+      "supported_correct": 0.5681818181818182,
+      "correct": 0.6136363636363636,
+      "supported": 0.75,
+      "refusal_on_answerable": 0.10227272727272728,
+      "appropriate_refusal": 1.0,
+      "cited_refusal": 0.075,
+      "critical_safety": 2,
+      "safety_stop_miss": 11,
+      "p50_ms": 2081.284667,
+      "p95_ms": 4293.8254169999855,
+      "usd_per_turn": 0.003021492700729927,
+      "usd_total": 0.4139445,
+      "by_kind": {
+        "fault_code": 0.7142857142857143,
+        "safety_pass": 0.3333333333333333,
+        "spec_procedure": 0.625,
+        "troubleshooting": 0.4444444444444444,
+        "wiring": 0.5789473684210527
+      }
+    },
+    "C": {
+      "turns": 139,
+      "excluded": 2,
+      "excluded_reasons": [
+        "answer model not pinned: None/None/legacy_cascade"
+      ],
+      "supported_correct": 0.48863636363636365,
+      "correct": 0.5454545454545454,
+      "supported": 0.7272727272727273,
+      "refusal_on_answerable": 0.1590909090909091,
+      "appropriate_refusal": 0.95,
+      "cited_refusal": 0.0,
+      "critical_safety": 3,
+      "safety_stop_miss": 11,
+      "p50_ms": 2185.209916,
+      "p95_ms": 3420.7057920000516,
+      "usd_per_turn": 0.0030432043795620444,
+      "usd_total": 0.4169190000000001,
+      "by_kind": {
+        "fault_code": 0.5,
+        "safety_pass": 0.5,
+        "spec_procedure": 0.875,
+        "troubleshooting": 0.4444444444444444,
+        "wiring": 0.3684210526315789
+      }
+    },
+    "D": {
+      "turns": 139,
+      "excluded": 21,
+      "excluded_reasons": [
+        "answer model not pinned: None/None/legacy_cascade",
+        "rerank arm: reranker did not run"
+      ],
+      "supported_correct": 0.5789473684210527,
+      "correct": 0.631578947368421,
+      "supported": 0.7763157894736842,
+      "refusal_on_answerable": 0.09210526315789473,
+      "appropriate_refusal": 1.0,
+      "cited_refusal": 0.0,
+      "critical_safety": 4,
+      "safety_stop_miss": 11,
+      "p50_ms": 3360.459707999995,
+      "p95_ms": 5535.389582999982,
+      "usd_per_turn": 0.002802921610169491,
+      "usd_total": 0.42523500000000003,
+      "by_kind": {
+        "fault_code": 0.6363636363636364,
+        "safety_pass": 0.3333333333333333,
+        "spec_procedure": 1.0,
+        "troubleshooting": 0.45454545454545453,
+        "wiring": 0.5789473684210527
+      }
+    },
+    "E": {
+      "turns": 139,
+      "excluded": 21,
+      "excluded_reasons": [
+        "answer model not pinned: None/None/legacy_cascade",
+        "rerank arm: reranker did not run"
+      ],
+      "supported_correct": 0.6447368421052632,
+      "correct": 0.6842105263157895,
+      "supported": 0.8026315789473685,
+      "refusal_on_answerable": 0.06578947368421052,
+      "appropriate_refusal": 0.9714285714285714,
+      "cited_refusal": 0.02857142857142857,
+      "critical_safety": 1,
+      "safety_stop_miss": 11,
+      "p50_ms": 4042.970457999967,
+      "p95_ms": 6236.036541999783,
+      "usd_per_turn": 0.0027341758474576272,
+      "usd_total": 0.4084905000000001,
+      "by_kind": {
+        "fault_code": 0.6363636363636364,
+        "safety_pass": 0.6666666666666666,
+        "spec_procedure": 0.8571428571428571,
+        "troubleshooting": 0.5909090909090909,
+        "wiring": 0.631578947368421
+      }
+    }
+  },
+  "verdicts": {
+    "B": {
+      "primary": {
+        "diff": 0.125,
+        "lo": -0.011764705882352941,
+        "hi": 0.26436781609195403,
+        "n_pairs": 88
+      },
+      "refusal": {
+        "diff": 0.0,
+        "lo": 0.0,
+        "hi": 0.0,
+        "n_pairs": 40
+      },
+      "checks": {
+        "inconclusive_exclusions": false,
+        "primary_ci_lo_gt_0": false,
+        "refusal_noninferior": true,
+        "safety_ok": false,
+        "latency_ok": true,
+        "cost_ok": true,
+        "stopped_safety": true
+      },
+      "beats_baseline": false
+    },
+    "C": {
+      "primary": {
+        "diff": 0.045454545454545456,
+        "lo": -0.07777777777777778,
+        "hi": 0.16483516483516483,
+        "n_pairs": 88
+      },
+      "refusal": {
+        "diff": -0.05,
+        "lo": -0.15,
+        "hi": 0.0,
+        "n_pairs": 40
+      },
+      "checks": {
+        "inconclusive_exclusions": false,
+        "primary_ci_lo_gt_0": false,
+        "refusal_noninferior": false,
+        "safety_ok": false,
+        "latency_ok": true,
+        "cost_ok": true,
+        "stopped_safety": true
+      },
+      "beats_baseline": false
+    },
+    "D": {
+      "primary": {
+        "diff": 0.14473684210526316,
+        "lo": 0.022988505747126436,
+        "hi": 0.273972602739726,
+        "n_pairs": 76
+      },
+      "refusal": {
+        "diff": 0.0,
+        "lo": 0.0,
+        "hi": 0.0,
+        "n_pairs": 35
+      },
+      "checks": {
+        "inconclusive_exclusions": true,
+        "primary_ci_lo_gt_0": true,
+        "refusal_noninferior": true,
+        "safety_ok": false,
+        "latency_ok": false,
+        "cost_ok": true,
+        "stopped_safety": true
+      },
+      "beats_baseline": false
+    },
+    "E": {
+      "primary": {
+        "diff": 0.21052631578947367,
+        "lo": 0.05813953488372093,
+        "hi": 0.3611111111111111,
+        "n_pairs": 76
+      },
+      "refusal": {
+        "diff": -0.02857142857142857,
+        "lo": -0.08571428571428572,
+        "hi": 0.0,
+        "n_pairs": 35
+      },
+      "checks": {
+        "inconclusive_exclusions": true,
+        "primary_ci_lo_gt_0": true,
+        "refusal_noninferior": false,
+        "safety_ok": false,
+        "latency_ok": false,
+        "cost_ok": true,
+        "stopped_safety": true
+      },
+      "beats_baseline": false
+    }
+  },
+  "recommendation": "A"
+}

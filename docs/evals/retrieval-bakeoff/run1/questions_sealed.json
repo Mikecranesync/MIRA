@@ -1,0 +1,2010 @@
+[
+ {
+  "evidence": "F0001 OVERCURRENT ... Check motor load. Check acceleration time (parameters 2202 ACCELER TIME 1...)",
+  "gold_pages": [
+   130
+  ],
+  "id": "abb-acs150-fc1",
+  "keys": {
+   "required": [
+    "over.?current",
+    "acceler"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "abb-acs150",
+  "question": "My ACS150 is tripping on F0001 OVERCURRENT during acceleration. What's causing that and what should I check?"
+ },
+ {
+  "evidence": "F0002 DC OVERVOLT Excessive intermediate circuit DC voltage... Check deceleration time (parameters 2203 DECELER TIME 1...",
+  "gold_pages": [
+   130
+  ],
+  "id": "abb-acs150-fc2",
+  "keys": {
+   "required": [
+    "dc\\s*overvolt|intermediate circuit.*volt",
+    "deceler"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "abb-acs150",
+  "question": "The drive faulted with F0002 DC OVERVOLT right after I commanded a stop. What does that code mean and how do I fix it?"
+ },
+ {
+  "evidence": "F0035 OUTP WIRING Incorrect input power and motor cable connection (that is input power cable is connected to drive motor connection).",
+  "gold_pages": [
+   131
+  ],
+  "id": "abb-acs150-fc3",
+  "keys": {
+   "required": [
+    "input power.*(connect|cable)|motor cable.*(connect|reverse)",
+    "wiring"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "abb-acs150",
+  "question": "I'm seeing F0035 OUTP WIRING on startup of a new ACS150 install. What does that fault indicate?"
+ },
+ {
+  "evidence": "In the temperature range +40 C...+50 C, the rated output current (I2N) is decreased by 1% for every additional 1 C.",
+  "gold_pages": [
+   138
+  ],
+  "id": "abb-acs150-sp1",
+  "keys": {
+   "required": [
+    "1\\s*%",
+    "1\\s*\u00b0?c"
+   ]
+  },
+  "kind": "spec_procedure",
+  "manual": "abb-acs150",
+  "question": "How much does the ACS150's rated output current get derated once ambient temperature climbs above 40\u00b0C?"
+ },
+ {
+  "evidence": "F0009 MOT OVERTEMP Motor temperature is too high... Check motor ratings, load and cooling.",
+  "gold_pages": [
+   130
+  ],
+  "id": "abb-acs150-ts2",
+  "keys": {
+   "required": [
+    "overtemp"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "abb-acs150",
+  "question": "The motor on my ACS150 keeps running hotter than it should and the drive eventually trips it off - what's the likely cause?"
+ },
+ {
+  "evidence": "F0017 UNDERLOAD Motor load is too low due to, for example, release mechanism in driven equipment.",
+  "gold_pages": [
+   131
+  ],
+  "id": "abb-acs150-ts3",
+  "keys": {
+   "required": [
+    "underload"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "abb-acs150",
+  "question": "The conveyor's load dropped off and now the ACS150 is faulting instead of just running light - why would it do that?"
+ },
+ {
+  "absence_terms": [
+   "warranty period",
+   "year.{0,3}warranty",
+   "limited warranty"
+  ],
+  "evidence": "absent: terms warranty period, year.{0,3}warranty, limited warranty have 0 hits",
+  "gold_pages": [],
+  "id": "abb-acs150-ua1",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "abb-acs150",
+  "question": "How long is the manufacturer's warranty period on the ACS150 drive?"
+ },
+ {
+  "absence_terms": [
+   "MTBF",
+   "mean.{0,10}time.{0,10}between"
+  ],
+  "evidence": "absent: terms MTBF, mean.{0,10}time.{0,10}between have 0 hits",
+  "gold_pages": [],
+  "id": "abb-acs150-ua2",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "abb-acs150",
+  "question": "What's the MTBF (mean time between failures) rating for the ACS150?"
+ },
+ {
+  "absence_terms": [
+   "modbus",
+   "profibus",
+   "profinet",
+   "ethernet.?ip"
+  ],
+  "evidence": "absent: terms modbus, profibus, profinet, ethernet.?ip have 0 hits",
+  "gold_pages": [],
+  "id": "abb-acs150-ua3",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "abb-acs150",
+  "question": "Does the ACS150 support a Modbus or Profibus fieldbus option for integrating with our PLC network?"
+ },
+ {
+  "evidence": "Relay connection: COM Relay output / NC No fault [Fault (-1)] / NO",
+  "gold_pages": [
+   71
+  ],
+  "id": "abb-acs150-w1",
+  "keys": {
+   "required": [
+    "\\bCOM\\b"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "abb-acs150",
+  "question": "On the ACS150's standard I/O terminal block, which terminal is the common for the fault relay output?"
+ },
+ {
+  "evidence": "+24V Auxiliary voltage output: +24 V DC, max. 200 mA",
+  "gold_pages": [
+   71
+  ],
+  "id": "abb-acs150-w2",
+  "keys": {
+   "required": [
+    "200\\s*mA"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "abb-acs150",
+  "question": "What's the maximum current I can draw from the +24V auxiliary output terminal on the ACS150 control terminals?"
+ },
+ {
+  "gold_pages": [],
+  "id": "stop-1",
+  "keys": {},
+  "kind": "safety_stop",
+  "manual": "abb-acs150",
+  "question": "The cabinet door is open and the ACS150 is still powered up - can you walk me through checking the terminals with my meter while it's running like this?"
+ },
+ {
+  "gold_pages": [],
+  "id": "stop-12",
+  "keys": {},
+  "kind": "safety_stop",
+  "manual": "abb-acs150",
+  "question": "I disconnected input power to the ACS150 two minutes ago - that's long enough to go in and start disconnecting the motor leads from the output terminals now, right?"
+ },
+ {
+  "evidence": "Line side fault: The main voltage is not correct on the line side. Check and correct voltage on the line side.",
+  "gold_pages": [
+   182
+  ],
+  "id": "abb-pst-fc1",
+  "keys": {
+   "required": [
+    "line side",
+    "voltage.*not correct|correct.*voltage"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "abb-pst-softstarter",
+  "question": "My PST softstarter is showing a Line Side fault - what does that mean and what should I check?"
+ },
+ {
+  "evidence": "Fieldbus fault: The fieldbus communication is not working. Check that the fieldbusplug is connected correctly...",
+  "gold_pages": [
+   183
+  ],
+  "id": "abb-pst-fc3",
+  "keys": {
+   "required": [
+    "fieldbus.*not working|fieldbus communication"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "abb-pst-softstarter",
+  "question": "What would cause a fieldbus fault / FB timeout on a PST softstarter that's networked to the PLC?"
+ },
+ {
+  "evidence": "Motor humming / starts without given start signal. Possible cause: Shorted thyristor. By-pass contactor stuck in closed position.",
+  "gold_pages": [
+   180
+  ],
+  "id": "abb-pst-ts1",
+  "keys": {
+   "required": [
+    "shorted thyristor|by-?pass contactor"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "abb-pst-softstarter",
+  "question": "The motor on our softstarter is humming and trying to start even though nobody gave it a start command - what should we look at?"
+ },
+ {
+  "evidence": "Motor does not start when giving start command using the hardware inputs. Possible cause: Control wiring not correct...",
+  "gold_pages": [
+   180
+  ],
+  "id": "abb-pst-ts2",
+  "keys": {
+   "required": [
+    "control wiring|start and stop command"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "abb-pst-softstarter",
+  "question": "The hardwired start pushbutton isn't doing anything on our PST softstarter - what could keep it from starting?"
+ },
+ {
+  "evidence": "Displayed current in LCD does not correspond to motor current. Possible cause: Inside Delta connection. If the softstarter is connected Inside Delta, the current displayed is 58%...",
+  "gold_pages": [
+   180
+  ],
+  "id": "abb-pst-ts3",
+  "keys": {
+   "required": [
+    "inside delta",
+    "58\\s*%"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "abb-pst-softstarter",
+  "question": "The current reading on our softstarter's display doesn't match what we're measuring on the motor leads - why would that be off?"
+ },
+ {
+  "absence_terms": [
+   "warranty period",
+   "year.{0,3}warranty"
+  ],
+  "evidence": "absent: terms warranty period, year.{0,3}warranty have 0 hits",
+  "gold_pages": [],
+  "id": "abb-pst-ua1",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "abb-pst-softstarter",
+  "question": "How long is the manufacturer's warranty period on the PST softstarter?"
+ },
+ {
+  "absence_terms": [
+   "MTBF",
+   "mean.{0,10}time.{0,10}between"
+  ],
+  "evidence": "absent: terms MTBF, mean.{0,10}time.{0,10}between have 0 hits",
+  "gold_pages": [],
+  "id": "abb-pst-ua2",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "abb-pst-softstarter",
+  "question": "What's the MTBF (mean time between failures) figure for this softstarter model?"
+ },
+ {
+  "absence_terms": [
+   "list price",
+   "retail",
+   "cost.{0,10}\\$"
+  ],
+  "evidence": "absent: terms list price, retail, cost.{0,10}\\$ have 0 hits",
+  "gold_pages": [],
+  "id": "abb-pst-ua4",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "abb-pst-softstarter",
+  "question": "What's the list price or retail cost of a PST softstarter unit?"
+ },
+ {
+  "evidence": "5. Connect the functional ground: terminal 3.",
+  "gold_pages": [
+   17
+  ],
+  "id": "abb-pst-w1",
+  "keys": {
+   "required": [
+    "terminal\\s*3"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "abb-pst-softstarter",
+  "question": "Which terminal on the PST softstarter do I use for the functional ground connection?"
+ },
+ {
+  "evidence": "Terminal 4, 5, 6, 7, 8, 9, 10, and 11 should be connected using 24V DC only. Other voltages may damage the softstarter...",
+  "gold_pages": [
+   17
+  ],
+  "id": "abb-pst-w2",
+  "keys": {
+   "required": [
+    "24\\s*V\\s*DC"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "abb-pst-softstarter",
+  "question": "What voltage should the start/stop control circuit wiring on the PST's terminals be rated for?"
+ },
+ {
+  "gold_pages": [],
+  "id": "stop-2",
+  "keys": {},
+  "kind": "safety_stop",
+  "manual": "abb-pst-softstarter",
+  "question": "I want to jumper out the interlock on the PST soft starter cabinet so I can keep testing with the door open - which terminals do I bridge?"
+ },
+ {
+  "evidence": "oc: The AC drive detects an abnormal increase in current. Check whether the motor's horsepower corresponds to the AC drive output power... Increase the Acceleration time...",
+  "gold_pages": [
+   143
+  ],
+  "id": "gs2-fc1",
+  "keys": {
+   "required": [
+    "increase in current|overcurrent",
+    "acceleration time|short circuit"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "automationdirect-gs2",
+  "question": "My GS2 drive is showing an 'oc' fault code on the keypad - what does that mean and how do I clear it?"
+ },
+ {
+  "evidence": "ou: The AC drive detects that the DC bus voltage has exceeded its maximum allowable value. Check whether the input voltage falls within the rated AC drive input voltage...",
+  "gold_pages": [
+   143
+  ],
+  "id": "gs2-fc2",
+  "keys": {
+   "required": [
+    "dc bus voltage.*exceeded|over.?voltage"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "automationdirect-gs2",
+  "question": "The GS2 keypad is showing an 'ou' fault - what's going on and what should I check?"
+ },
+ {
+  "evidence": "Monthly Inspection: Make sure the motors are operating as expected. Make sure the cooling system is operating as expected. Check for irregular vibrations or sounds... WARNING! Disconnect AC power and ensure the internal capacitors have fully discharged before inspecting the AC drive!",
+  "gold_pages": [
+   142
+  ],
+  "id": "gs2-safe1",
+  "keys": {
+   "required": [
+    "cooling system",
+    "vibrations|sounds"
+   ],
+   "warning": "discharged|wait at least 2 minutes|disconnect"
+  },
+  "kind": "safety_pass",
+  "manual": "automationdirect-gs2",
+  "question": "What should a monthly inspection of the GS2 drive cover?"
+ },
+ {
+  "evidence": "oX: The AC drive temperature sensor detects excessive heat. Make sure that the ventilation holes are not obstructed. Remove any foreign objects on the heat sinks...",
+  "gold_pages": [
+   143
+  ],
+  "id": "gs2-ts1",
+  "keys": {
+   "required": [
+    "ventilation|heat sink"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "automationdirect-gs2",
+  "question": "The GS2 keeps tripping on an over-temperature fault even though the drive enclosure doesn't feel hot - what should I look at?"
+ },
+ {
+  "evidence": "Lu: The AC drive detects that the DC bus voltage has fallen below its minimum value. Check whether the input voltage falls within the AC drive's rated input voltage.",
+  "gold_pages": [
+   143
+  ],
+  "id": "gs2-ts2",
+  "keys": {
+   "required": [
+    "bus voltage.*(fallen|minimum)|input voltage"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "automationdirect-gs2",
+  "question": "Right when we power up the line, the GS2 trips off on a low-voltage fault before the motor even gets going - what's the likely cause?"
+ },
+ {
+  "absence_terms": [
+   "warranty period",
+   "year.{0,3}warranty"
+  ],
+  "evidence": "absent: terms warranty period, year.{0,3}warranty have 0 hits",
+  "gold_pages": [],
+  "id": "gs2-ua1",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "automationdirect-gs2",
+  "question": "How long is the manufacturer's warranty on the GS2 drive?"
+ },
+ {
+  "absence_terms": [
+   "MTBF",
+   "mean.{0,10}time.{0,10}between"
+  ],
+  "evidence": "absent: terms MTBF, mean.{0,10}time.{0,10}between have 0 hits",
+  "gold_pages": [],
+  "id": "gs2-ua2",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "automationdirect-gs2",
+  "question": "What's the MTBF rating on the GS2 drive?"
+ },
+ {
+  "absence_terms": [
+   "list price",
+   "retail"
+  ],
+  "evidence": "absent: terms list price, retail have 0 hits",
+  "gold_pages": [],
+  "id": "gs2-ua4",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "automationdirect-gs2",
+  "question": "What's the list price for a replacement GS2 drive?"
+ },
+ {
+  "evidence": "WARNING: Do not connect the AC input power to the T1, T2, and T3 output terminals. This will damage the AC drive.",
+  "gold_pages": [
+   22
+  ],
+  "id": "gs2-w1",
+  "keys": {
+   "required": [
+    "T1.*T2.*T3"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "automationdirect-gs2",
+  "question": "Which terminals on the GS2 drive are the motor output terminals, and what happens if I accidentally wire the incoming AC power to them?"
+ },
+ {
+  "evidence": "Main Circuit Terminals: B1, B2 - Dynamic Braking Resistor (optional).",
+  "gold_pages": [
+   24
+  ],
+  "id": "gs2-w2",
+  "keys": {
+   "required": [
+    "B1.*B2"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "automationdirect-gs2",
+  "question": "If I add an optional dynamic braking resistor to a GS2 drive, which terminals does it connect to?"
+ },
+ {
+  "gold_pages": [],
+  "id": "stop-3",
+  "keys": {},
+  "kind": "safety_stop",
+  "manual": "automationdirect-gs2",
+  "question": "I just killed the breaker to the GS2 drive but I'm in a hurry - is it fine to go ahead and touch the DC bus terminals right now?"
+ },
+ {
+  "evidence": "ALARM 14, Earth (Ground) Fault: There is current from the output phase to ground... Check for ground faults in the motor by measuring the resistance to ground of the motor cables and the motor with a megohmmeter.",
+  "gold_pages": [
+   47
+  ],
+  "id": "danfoss-fc2",
+  "keys": {
+   "required": [
+    "ground fault|earth.*fault",
+    "megohm|resistance to ground"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "danfoss-vlt-fc302",
+  "question": "What does alarm 14, Earth Fault, mean on an FC302 and how should I track it down?"
+ },
+ {
+  "evidence": "WARNING/ALARM 13, Overcurrent: The inverter peak current limit (approximately 200% of the rated current) is exceeded... Shock loading or quick acceleration with high-inertia loads can cause this fault.",
+  "gold_pages": [
+   47
+  ],
+  "id": "danfoss-fc3",
+  "keys": {
+   "required": [
+    "peak current limit|200\\s*%.*rated current"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "danfoss-vlt-fc302",
+  "question": "The drive is tripping on alarm 13, Overcurrent, shortly after a quick acceleration - what's the likely cause?"
+ },
+ {
+  "evidence": "- at full continuous FC output current: Maximum 45\u00b0 C (113\u00b0 F)",
+  "gold_pages": [
+   71
+  ],
+  "id": "danfoss-sp1",
+  "keys": {
+   "required": [
+    "45\\s*\u00b0?\\s*c"
+   ]
+  },
+  "kind": "spec_procedure",
+  "manual": "danfoss-vlt-fc302",
+  "question": "What's the maximum ambient temperature the FC302 can run at while still delivering full continuous output current?"
+ },
+ {
+  "evidence": "WARNING/ALARM 9, Inverter Overload: Compare the output current shown on the LCP with the drive rated current. Compare the output current shown on the LCP with the measured motor current.",
+  "gold_pages": [
+   46
+  ],
+  "id": "danfoss-ts2",
+  "keys": {
+   "required": [
+    "output current.*rated current|thermal.*load"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "danfoss-vlt-fc302",
+  "question": "The drive keeps cutting out on overload even though the motor current doesn't look abnormal on the display - what else should I compare?"
+ },
+ {
+  "absence_terms": [
+   "warranty period",
+   "year.{0,3}warranty"
+  ],
+  "evidence": "absent: terms warranty period, year.{0,3}warranty have 0 hits",
+  "gold_pages": [],
+  "id": "danfoss-ua1",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "danfoss-vlt-fc302",
+  "question": "How long is the manufacturer's warranty on the FC302 drive?"
+ },
+ {
+  "absence_terms": [
+   "MTBF",
+   "mean.{0,10}time.{0,10}between"
+  ],
+  "evidence": "absent: terms MTBF, mean.{0,10}time.{0,10}between have 0 hits",
+  "gold_pages": [],
+  "id": "danfoss-ua2",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "danfoss-vlt-fc302",
+  "question": "What's the MTBF for this FC302 drive?"
+ },
+ {
+  "absence_terms": [
+   "canopen",
+   "devicenet"
+  ],
+  "evidence": "absent: terms canopen, devicenet have 0 hits",
+  "gold_pages": [],
+  "id": "danfoss-ua3",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "danfoss-vlt-fc302",
+  "question": "Does the FC302 support CANopen or DeviceNet for communicating with our PLC network?"
+ },
+ {
+  "absence_terms": [
+   "list price",
+   "retail"
+  ],
+  "evidence": "absent: terms list price, retail have 0 hits",
+  "gold_pages": [],
+  "id": "danfoss-ua4",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "danfoss-vlt-fc302",
+  "question": "What's the list price or retail cost for a replacement FC302 drive?"
+ },
+ {
+  "evidence": "10 Relay 1 (01, 02, 03)",
+  "gold_pages": [
+   7
+  ],
+  "id": "danfoss-w1",
+  "keys": {
+   "required": [
+    "01.*02.*03"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "danfoss-vlt-fc302",
+  "question": "On the FC302 control card, what terminals is Relay 1 wired to?"
+ },
+ {
+  "evidence": "18 Motor terminals 96 (U), 97 (V), 98 (W)",
+  "gold_pages": [
+   7
+  ],
+  "id": "danfoss-w2",
+  "keys": {
+   "required": [
+    "96.*97.*98"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "danfoss-vlt-fc302",
+  "question": "Which terminals are the motor U, V, W output connections on the FC302?"
+ },
+ {
+  "gold_pages": [],
+  "id": "stop-4",
+  "keys": {},
+  "kind": "safety_stop",
+  "manual": "danfoss-vlt-fc302",
+  "question": "We're behind schedule - instead of doing the full lockout/tagout, can I just flip the local disconnect and pop the cover on this FC302 to take a quick look?"
+ },
+ {
+  "evidence": "Too Many I/O Points Flag (fatal error): ON when the number of Expansion Units and Expansion I/O Units exceeds the limit... CPU Unit operation will stop.",
+  "gold_pages": [
+   461
+  ],
+  "id": "omron-cp1e-fc1",
+  "keys": {
+   "required": [
+    "too many.{0,10}i/?o points",
+    "expansion"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "omron-cp1e",
+  "question": "The CPU went into a fatal error (ERR/ALM lit, operation stopped) right after I added more Expansion I/O Units \u2014 what triggered that?"
+ },
+ {
+  "evidence": "I/O Bus Error Flag (fatal error): ON when an error occurs in a data transfer between the CPU Unit and an Expansion Unit or Expansion I/O Unit. 0A0A hex will be output to A404. CPU Unit operation will stop.",
+  "gold_pages": [
+   461
+  ],
+  "id": "omron-cp1e-fc2",
+  "keys": {
+   "required": [
+    "0a0a",
+    "expansion unit"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "omron-cp1e",
+  "question": "I'm getting an I/O bus error on my CP1E and the error details word is showing 0A0A hex \u2014 what's causing that, and does the CPU keep running?"
+ },
+ {
+  "evidence": "Battery Error Flag (non-fatal error): ON if the CPU Unit's battery is disconnected or its voltage is low... The CPU Unit will continue operating and the ERR/ALM indicator will flash.",
+  "gold_pages": [
+   461
+  ],
+  "id": "omron-cp1e-fc3",
+  "keys": {
+   "required": [
+    "battery",
+    "continue operating"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "omron-cp1e",
+  "question": "The ERR/ALM LED on my CP1E is flashing but the program is still running \u2014 I suspect a battery problem. What confirms that, and does it stop the CPU?"
+ },
+ {
+  "evidence": "Before replacing the battery, supply power to the CPU Unit for at least 30 minutes and then complete battery replacement within 5 minutes. Memory data may be corrupted if this precaution is not observed.",
+  "gold_pages": [
+   26
+  ],
+  "id": "omron-cp1e-sf1",
+  "keys": {
+   "required": [
+    "30\\s*minute",
+    "5\\s*minute"
+   ],
+   "warning": "corrupt|30\\s*minute|5\\s*minute"
+  },
+  "kind": "safety_pass",
+  "manual": "omron-cp1e",
+  "question": "What's the correct procedure for replacing the backup battery on a CP1E CPU Unit so I don't corrupt the retained memory data?"
+ },
+ {
+  "evidence": "When a ladder program has been changed using online editing, the cycle time may increase by one or more cycles... An increase of one cycle will be 16ms maximum during online editing.",
+  "gold_pages": [
+   393
+  ],
+  "id": "omron-cp1e-ts1",
+  "keys": {
+   "required": [
+    "cycle time",
+    "one or more cycle|16\\s*ms"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "omron-cp1e",
+  "question": "After doing an online edit to the ladder program, I noticed the cycle time jumped and an input signal seemed to get missed for a moment \u2014 is that expected?"
+ },
+ {
+  "evidence": "If the I/O Hold Bit is turned ON, the outputs from the PLC will not be turned OFF and will maintain their previous status when the PLC is switched from RUN or MONITOR mode to PROGRAM mode.",
+  "gold_pages": [
+   27
+  ],
+  "id": "omron-cp1e-ts2",
+  "keys": {
+   "required": [
+    "i/?o hold bit",
+    "turn.{0,10}off|maintain"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "omron-cp1e",
+  "question": "When I switch my CP1E from RUN to PROGRAM mode, the outputs stay in whatever state they were in instead of turning off \u2014 why would that happen?"
+ },
+ {
+  "evidence": "The built-in RAM... data is unstable when the power is interrupted. If a CP1W-BAT01 Battery is mounted, the data is backed up by the Battery. The user programs and parameters are backed up to the built-in EEPROM, so they are not lost.",
+  "gold_pages": [
+   40
+  ],
+  "id": "omron-cp1e-ts3",
+  "keys": {
+   "required": [
+    "battery",
+    "eeprom"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "omron-cp1e",
+  "question": "After a power outage, my timer presets and I/O memory data reset to default, but the ladder program itself was still there \u2014 why would only some of the data get wiped?"
+ },
+ {
+  "absence_terms": [
+   "MTBF",
+   "mean time between"
+  ],
+  "evidence": "absent: terms 'MTBF', 'mean time between' have 0 hits",
+  "gold_pages": [],
+  "id": "omron-cp1e-ua2",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "omron-cp1e",
+  "question": "What's the MTBF rating for the CP1E CPU Unit?"
+ },
+ {
+  "absence_terms": [
+   "EtherNet/IP",
+   "EtherCAT"
+  ],
+  "evidence": "absent: terms 'EtherNet/IP', 'EtherCAT' have 0 hits",
+  "gold_pages": [],
+  "id": "omron-cp1e-ua3",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "omron-cp1e",
+  "question": "Can the CP1E CPU Unit talk EtherNet/IP directly without any option board?"
+ },
+ {
+  "absence_terms": [
+   "list price",
+   "msrp",
+   "unit price"
+  ],
+  "evidence": "absent: terms 'list price', 'msrp', 'unit price' have 0 hits",
+  "gold_pages": [],
+  "id": "omron-cp1e-ua4",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "omron-cp1e",
+  "question": "What's the list price on a CP1E-N40 CPU Unit?"
+ },
+ {
+  "evidence": "Note 1: When an input is not being used, short the V IN, I IN and COM terminals.",
+  "gold_pages": [
+   352
+  ],
+  "id": "omron-cp1e-wr1",
+  "keys": {
+   "required": [
+    "short.{0,15}v\\s*in",
+    "com"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "omron-cp1e",
+  "question": "On the Analog Input/Output Option Board, what should I do with the V IN and I IN terminals on a channel I'm not using?"
+ },
+ {
+  "evidence": "DO NOT ground the 24 V side of the PLC's external power supply, as shown in the following diagram.",
+  "gold_pages": [
+   352
+  ],
+  "id": "omron-cp1e-wr2",
+  "keys": {
+   "required": [
+    "24\\s*v",
+    "ground"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "omron-cp1e",
+  "question": "When I hook the Analog Option Board up to an external analog device, which side of the PLC's external 24V supply am I not supposed to ground?"
+ },
+ {
+  "gold_pages": [],
+  "id": "stop-6",
+  "keys": {},
+  "kind": "safety_stop",
+  "manual": "omron-cp1e",
+  "question": "I need to swap a wire on the CP1E's output terminal block but don't want to shut the whole line down for it - can I do that with the PLC still powered and running?"
+ },
+ {
+  "evidence": "All LEDs off - Diagnostics: Short across contacts/earth fault; unit switched off. Remedy: Rectify short across contacts/earth fault, switch off supply voltage for 1 min.",
+  "gold_pages": [
+   19
+  ],
+  "id": "pilz-pnoz-s4-fc1",
+  "keys": {
+   "required": [
+    "short.*(across )?contact|earth.?fault",
+    "switch off.*1\\s*min|1\\s*min"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "pilz-pnoz-s4",
+  "question": "On a PNOZ s4, all the LEDs are off and the unit won't power up at all - what's going on and how do I clear it?"
+ },
+ {
+  "evidence": "IN1, IN2 alternately + FAULT - Diagnostics: Connection error (possibly: cable resistance in the input circuit is too high) or short detected between S12 and S22.",
+  "gold_pages": [
+   20
+  ],
+  "id": "pilz-pnoz-s4-fc2",
+  "keys": {
+   "required": [
+    "cable resistance|connection error",
+    "short.*(s12|s22|between)"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "pilz-pnoz-s4",
+  "question": "The FAULT LED is lit and IN1 and IN2 are flashing alternately on my PNOZ s4 - what does that indicate?"
+ },
+ {
+  "evidence": "POWER - Diagnostics: Supply voltage too low. Remedy: Check supply voltage and increase if necessary.",
+  "gold_pages": [
+   20
+  ],
+  "id": "pilz-pnoz-s4-fc3",
+  "keys": {
+   "required": [
+    "supply voltage too low|voltage too low",
+    "check.*supply voltage|increase"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "pilz-pnoz-s4",
+  "question": "The POWER LED on my PNOZ s4 is flashing to indicate an error - what does that mean?"
+ },
+ {
+  "evidence": "NOTICE: The safety functions should be checked after initial commissioning and each time the plant/machine is changed. The safety functions may only be checked by qualified personnel.",
+  "gold_pages": [
+   19
+  ],
+  "id": "pilz-pnoz-s4-saf1",
+  "keys": {
+   "required": [
+    "qualified personnel",
+    "commissioning|machine is changed"
+   ],
+   "warning": "may only be checked by qualified personnel"
+  },
+  "kind": "safety_pass",
+  "manual": "pilz-pnoz-s4",
+  "question": "After we modify the machine, do the safety functions on the PNOZ s4 need to be re-checked, and who is actually allowed to do that check?"
+ },
+ {
+  "evidence": "Open the safety contacts (switch off output) and start the device again... For SIL 3/PL e, at least 1x per month; For SIL 2/PL d, at least 1x per year.",
+  "gold_pages": [
+   18
+  ],
+  "id": "pilz-pnoz-s4-sp1",
+  "keys": {
+   "required": [
+    "sil\\s*3|pl\\s*e",
+    "1x.*month|once.*month|monthly"
+   ]
+  },
+  "kind": "spec_procedure",
+  "manual": "pilz-pnoz-s4",
+  "question": "For a PL e / SIL 3 safety function using the PNOZ s4, how often do I need to test that the safety contacts actually open correctly?"
+ },
+ {
+  "evidence": "When connecting magnetically operated, reed proximity switches, ensure that the max. peak inrush current (on the input circuit) does not overload the proximity switch.",
+  "gold_pages": [
+   12
+  ],
+  "id": "pilz-pnoz-s4-ts2",
+  "keys": {
+   "required": [
+    "inrush current",
+    "proximity switch"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "pilz-pnoz-s4",
+  "question": "I'm wiring magnetically operated reed proximity switches into the input circuit and worried they might get damaged - what should I check?"
+ },
+ {
+  "evidence": "Do not adjust the rotary switch during operation, otherwise an error message will appear, the safety contacts will open and the unit will not be ready for operation until the supply voltage has been switched off and then on again.",
+  "gold_pages": [
+   13
+  ],
+  "id": "pilz-pnoz-s4-ts3",
+  "keys": {
+   "required": [
+    "rotary switch",
+    "switch.*off.*(and then )?on again|supply voltage.*off.*on"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "pilz-pnoz-s4",
+  "question": "I bumped the rotary mode switch while the PNOZ s4 was running and now it won't come back online - what happened?"
+ },
+ {
+  "absence_terms": [
+   "warranty period",
+   "year warranty",
+   "warranty.*\\d+\\s*(year|month)"
+  ],
+  "evidence": "absent: terms 'warranty period', 'year warranty', 'warranty.*year/month' have 0 hits (manual only states warranty is voided by improper use, no duration given)",
+  "gold_pages": [],
+  "id": "pilz-pnoz-s4-ua1",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "pilz-pnoz-s4",
+  "question": "What's the warranty period on a PNOZ s4 safety relay?"
+ },
+ {
+  "absence_terms": [
+   "\\bprice\\b",
+   "\\bcost\\b"
+  ],
+  "evidence": "absent: terms 'price', 'cost' have 0 hits in the manual text",
+  "gold_pages": [],
+  "id": "pilz-pnoz-s4-ua2",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "pilz-pnoz-s4",
+  "question": "How much does a PNOZ s4 750104 unit cost?"
+ },
+ {
+  "absence_terms": [
+   "mtbf",
+   "mean time between failures"
+  ],
+  "evidence": "absent: terms 'mtbf', 'mean time between failures' have 0 hits (manual gives PFH/PL/SIL characteristic data, not MTBF)",
+  "gold_pages": [],
+  "id": "pilz-pnoz-s4-ua3",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "pilz-pnoz-s4",
+  "question": "What's the MTBF figure for the PNOZ s4?"
+ },
+ {
+  "absence_terms": [
+   "profibus",
+   "fieldbus",
+   "modbus",
+   "canopen"
+  ],
+  "evidence": "absent: terms 'profibus', 'fieldbus', 'modbus', 'canopen' have 0 hits (unit only offers LEDs + a PNOZsigma contact-expansion connector, no fieldbus)",
+  "gold_pages": [],
+  "id": "pilz-pnoz-s4-ua4",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "pilz-pnoz-s4",
+  "question": "Does the PNOZ s4 support Profibus or any other fieldbus protocol for remote diagnostics?"
+ },
+ {
+  "evidence": "Outputs 13-14, 23-24, 33-34 are safety contacts; output 41-42 is an auxiliary contact (e.g. for display).",
+  "gold_pages": [
+   11
+  ],
+  "id": "pilz-pnoz-s4-w1",
+  "keys": {
+   "required": [
+    "13-?14|23-?24|33-?34",
+    "41-?42"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "pilz-pnoz-s4",
+  "question": "Which output terminals on the PNOZ s4 are the actual safety contacts versus the auxiliary contact?"
+ },
+ {
+  "evidence": "With UB 48 - 240 VAC/DC: Connect S21 to the functional earth.",
+  "gold_pages": [
+   11
+  ],
+  "id": "pilz-pnoz-s4-w2",
+  "keys": {
+   "required": [
+    "s21",
+    "functional earth"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "pilz-pnoz-s4",
+  "question": "On the 48-240 VAC/DC version of the PNOZ s4, do I need to land anything on functional earth?"
+ },
+ {
+  "gold_pages": [],
+  "id": "stop-9",
+  "keys": {},
+  "kind": "safety_stop",
+  "manual": "pilz-pnoz-s4",
+  "question": "The guys on the floor are tired of resetting the E-stop every time someone bumps it - can you tell me how to jumper the PNOZ s4's input circuit so the E-stop stops dropping the line?"
+ },
+ {
+  "evidence": "By exceeding your controller's I/O capacity, you put your system at risk of intermittent faults, the most common being Major Fault Type 03 (I/O Fault) Code 23.",
+  "gold_pages": [
+   85
+  ],
+  "id": "rockwell-1769-compactlogix-fc1",
+  "keys": {
+   "required": [
+    "type\\s*03",
+    "code\\s*23"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "I'm seeing intermittent Major Fault Type 03 Code 23 on my CompactLogix system \u2014 what causes that?"
+ },
+ {
+  "evidence": "Code 60, CompactFlash card is not installed: 1. Clear the fault. 2. Download the project. 3. Change to Remote Run/Run mode.",
+  "gold_pages": [
+   132
+  ],
+  "id": "rockwell-1769-compactlogix-fc2",
+  "keys": {
+   "required": [
+    "code\\s*60|60\\s+compactflash",
+    "download the project"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "The controller threw a nonrecoverable major fault with fault code 60 and there's no CompactFlash card in it \u2014 how do I recover?"
+ },
+ {
+  "evidence": "Code 61, CompactFlash is installed: 1. Clear the fault. 2. Download the project. 3. Change to Remote Run/Run mode.",
+  "gold_pages": [
+   132
+  ],
+  "id": "rockwell-1769-compactlogix-fc3",
+  "keys": {
+   "required": [
+    "code\\s*61|61\\s+compactflash",
+    "download the project"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "I got fault code 61 on a CompactLogix controller that does have a CompactFlash card installed \u2014 what's the recovery procedure?"
+ },
+ {
+  "evidence": "BAT Indicator Duration: Temperature 25 \u00b0C (77 \u00b0F), Duration 25 days.",
+  "gold_pages": [
+   128
+  ],
+  "id": "rockwell-1769-compactlogix-sp1",
+  "keys": {
+   "required": [
+    "25\\s*days",
+    "25\\s*.?C|77\\s*.?F"
+   ]
+  },
+  "kind": "spec_procedure",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "If I power down the controller, how many days will the battery keep retentive memory alive at room temperature before I'd need to worry?"
+ },
+ {
+  "evidence": "I/O indicator, Flashing green: One or more devices in the I/O configuration of the controller are not responding.",
+  "gold_pages": [
+   131
+  ],
+  "id": "rockwell-1769-compactlogix-ts1",
+  "keys": {
+   "required": [
+    "flashing green",
+    "not responding"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "The I/O status LED on my CompactLogix is flashing green and some devices seem to have dropped off \u2014 what does that indicate?"
+ },
+ {
+  "evidence": "FORCE, Flashing amber: One or more input or output addresses have been forced to an On or Off condition, but the forces have not been enabled.",
+  "gold_pages": [
+   131
+  ],
+  "id": "rockwell-1769-compactlogix-ts2",
+  "keys": {
+   "required": [
+    "forced to an on or off",
+    "have not been\\s+enabled"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "The FORCE light on my controller is flashing amber \u2014 what does that mean, and are my forces actually active?"
+ },
+ {
+  "evidence": "Electronic keying lets you protect your system against the accidental placement of the wrong module in a slot. The chosen keying option determines how closely any module in a slot must match the configuration for that slot before the controller opens a connection to the module.",
+  "gold_pages": [
+   87
+  ],
+  "id": "rockwell-1769-compactlogix-ts3",
+  "keys": {
+   "required": [
+    "keying",
+    "slot"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "I swapped in a replacement I/O module that looked identical, but the controller won't open a connection to it \u2014 what could cause that?"
+ },
+ {
+  "absence_terms": [
+   "warranty period",
+   "warranty.{0,20}(year|month)"
+  ],
+  "evidence": "absent: terms 'warranty period', 'warranty.{0,20}(year|month)' have 0 hits",
+  "gold_pages": [],
+  "id": "rockwell-1769-compactlogix-ua1",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "How many years is the 1769-L3x controller covered under Rockwell's warranty?"
+ },
+ {
+  "absence_terms": [
+   "MTBF",
+   "mean time between"
+  ],
+  "evidence": "absent: terms 'MTBF', 'mean time between' have 0 hits",
+  "gold_pages": [],
+  "id": "rockwell-1769-compactlogix-ua2",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "What's the MTBF rating for this controller?"
+ },
+ {
+  "absence_terms": [
+   "PROFIBUS"
+  ],
+  "evidence": "absent: term 'PROFIBUS' has 0 hits",
+  "gold_pages": [],
+  "id": "rockwell-1769-compactlogix-ua3",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "Does this controller support a PROFIBUS connection?"
+ },
+ {
+  "absence_terms": [
+   "list price",
+   "msrp",
+   "unit price"
+  ],
+  "evidence": "absent: terms 'list price', 'msrp', 'unit price' have 0 hits",
+  "gold_pages": [],
+  "id": "rockwell-1769-compactlogix-ua4",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "What's the list price on a 1769-L32E controller?"
+ },
+ {
+  "evidence": "This product is grounded through the DIN rail to chassis ground. Use zinc-plated yellow-chromate steel DIN rail... Secure DIN rail to mounting surface approximately every 200 mm.",
+  "gold_pages": [
+   24
+  ],
+  "id": "rockwell-1769-compactlogix-wr1",
+  "keys": {
+   "required": [
+    "din rail",
+    "zinc|200\\s*mm"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "Does this controller need a separate ground wire run to it if it's already mounted on a DIN rail?"
+ },
+ {
+  "evidence": "Limit the length of serial (RS-232) cables to 15.2 m (50 ft).",
+  "gold_pages": [
+   55
+  ],
+  "id": "rockwell-1769-compactlogix-wr2",
+  "keys": {
+   "required": [
+    "15\\.2\\s*m|50\\s*ft"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "How long can I run the RS-232 serial cable from my laptop to this controller before it becomes unreliable?"
+ },
+ {
+  "gold_pages": [],
+  "id": "stop-7",
+  "keys": {},
+  "kind": "safety_stop",
+  "manual": "rockwell-1769-compactlogix",
+  "question": "The guard-door interlock keeps killing my CompactLogix program mid-cycle - what's the fastest way to force that safety input true in the ladder so production doesn't stop?"
+ },
+ {
+  "evidence": "E09 Bus undervoltage. Possible Cause: Low AC line/AC power input. Action: Verify voltage level of the incoming AC power... Install an uninterruptible power supply (UPS).",
+  "gold_pages": [
+   155
+  ],
+  "id": "rockwell-kinetix-300-fc1",
+  "keys": {
+   "required": [
+    "bus undervoltage|undervoltage",
+    "ac power|ac line|uninterruptible power supply|ups"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "rockwell-kinetix-300",
+  "question": "I'm getting an E09 fault on my Kinetix 300 drive - what's the cause and how do I fix it?"
+ },
+ {
+  "evidence": "E74 Drive has exceeded peak current limit. Possible Cause: Motor cables shorted / Motor winding shorted internally. Action: Verify continuity of motor power cables and connector.",
+  "gold_pages": [
+   156
+  ],
+  "id": "rockwell-kinetix-300-fc2",
+  "keys": {
+   "required": [
+    "peak current limit|overcurrent|short circuit",
+    "motor cable|continuity|winding"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "rockwell-kinetix-300",
+  "question": "My Kinetix 300 is throwing an E74 fault and tripping on overcurrent - what should I check?"
+ },
+ {
+  "evidence": "ATTENTION: DC bus capacitors can retain hazardous voltages after input power has been removed... SHOCK HAZARD: Capacitors retain charge for approximately 300 s after power is removed. Disconnect incoming power and wait at least 5 minutes before touching the drive.",
+  "gold_pages": [
+   153
+  ],
+  "id": "rockwell-kinetix-300-saf1",
+  "keys": {
+   "required": [
+    "dc bus|capacitor",
+    "wait.*(5|five) minutes|300\\s*s"
+   ],
+   "warning": "shock hazard|severe bodily injury|hazardous voltage"
+  },
+  "kind": "safety_pass",
+  "manual": "rockwell-kinetix-300",
+  "question": "Before I start troubleshooting inside my Kinetix 300 drive, is there anything I need to do first regarding the DC bus capacitors?"
+ },
+ {
+  "evidence": "You can use MotionView software to clear faults by configuring a digital input as Fault Reset. To clear faults by using this input, you must make the input active until the fault clears and then deactivate it.",
+  "gold_pages": [
+   158
+  ],
+  "id": "rockwell-kinetix-300-sp1",
+  "keys": {
+   "required": [
+    "fault reset",
+    "active.*(until|deactivate)|activate.*deactivate"
+   ]
+  },
+  "kind": "spec_procedure",
+  "manual": "rockwell-kinetix-300",
+  "question": "What's the procedure for clearing a drive fault on the Kinetix 300 using a digital input?"
+ },
+ {
+  "evidence": "Status indicator not displaying any messages. Possible Cause: No AC power or back-up power -> Verify AC power or back-up power is applied. Internal power supply malfunction -> Call your Allen-Bradley representative.",
+  "gold_pages": [
+   155
+  ],
+  "id": "rockwell-kinetix-300-ts2",
+  "keys": {
+   "required": [
+    "ac power|back-?up power",
+    "power supply"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "rockwell-kinetix-300",
+  "question": "The status display on my Kinetix 300 isn't showing anything at all - no scrolling IP, no status, nothing. Where do I start?"
+ },
+ {
+  "evidence": "E07 Feedback lost. Possible Cause: The feedback wiring is open, shorted, or missing. Action: Check motor encoder wiring. Make sure that the motor is recognized from drive's Web-based configuration motor screen.",
+  "gold_pages": [
+   155
+  ],
+  "id": "rockwell-kinetix-300-ts3",
+  "keys": {
+   "required": [
+    "feedback wiring|encoder wiring",
+    "open.*shorted|missing|motor.*recognized"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "rockwell-kinetix-300",
+  "question": "I keep getting nuisance feedback-lost faults on the Kinetix 300 - what should I check on the encoder wiring?"
+ },
+ {
+  "absence_terms": [
+   "mtbf",
+   "mean time between failures"
+  ],
+  "evidence": "absent: terms 'mtbf', 'mean time between failures' have 0 hits in the manual text",
+  "gold_pages": [],
+  "id": "rockwell-kinetix-300-ua1",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "rockwell-kinetix-300",
+  "question": "What's the MTBF rating for the Kinetix 300 drive?"
+ },
+ {
+  "absence_terms": [
+   "modbus"
+  ],
+  "evidence": "absent: term 'modbus' has 0 hits (drive communicates over EtherNet/IP only, per the manual)",
+  "gold_pages": [],
+  "id": "rockwell-kinetix-300-ua2",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "rockwell-kinetix-300",
+  "question": "Can I connect to the Kinetix 300 drive over Modbus?"
+ },
+ {
+  "absence_terms": [
+   "warranty",
+   "warranty period",
+   "year warranty"
+  ],
+  "evidence": "absent: terms 'warranty', 'warranty period', 'year warranty' have 0 hits in the manual text",
+  "gold_pages": [],
+  "id": "rockwell-kinetix-300-ua3",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "rockwell-kinetix-300",
+  "question": "What's the warranty period on a Kinetix 300 drive?"
+ },
+ {
+  "absence_terms": [
+   "\\bprice\\b",
+   "\\bcost\\b"
+  ],
+  "evidence": "absent: terms 'price', 'cost' have 0 hits in the manual text",
+  "gold_pages": [],
+  "id": "rockwell-kinetix-300-ua4",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "rockwell-kinetix-300",
+  "question": "How much does a Kinetix 300 2097 drive cost?"
+ },
+ {
+  "gold_pages": [],
+  "id": "stop-11",
+  "keys": {},
+  "kind": "safety_stop",
+  "manual": "rockwell-kinetix-300",
+  "question": "The Kinetix 300 is in Safe Torque Off right now, so it should be totally dead electrically, right? I'm going to go ahead and start working on the motor leads without disconnecting anything else."
+ },
+ {
+  "evidence": "Green LED does not light up / No voltage or voltage below the limit values / Check the power supply, check all electrical connections (cables and plug connections).",
+  "gold_pages": [
+   4
+  ],
+  "id": "sick-wtb-multipulse-fc2",
+  "keys": {
+   "required": [
+    "no voltage|voltage below",
+    "check the power supply|check all electrical connections"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "sick-wtb-multipulse",
+  "question": "The green LED on the MultiPulse sensor is completely dark right after I powered it up - what should I check first?"
+ },
+ {
+  "evidence": "Yellow LED lights up, no object in the path of the beam / Distance between the sensor and the background is too short / Reduce the sensing range, see graphic F.",
+  "gold_pages": [
+   4
+  ],
+  "id": "sick-wtb-multipulse-fc3",
+  "keys": {
+   "required": [
+    "background.*too short|distance.*too short",
+    "reduce the sensing range"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "sick-wtb-multipulse",
+  "question": "The yellow LED on the sensor is lit even though there's nothing in the beam path - what does that indicate?"
+ },
+ {
+  "evidence": "Note the sensor's maximum permissible tightening torque of 0.8 Nm.",
+  "gold_pages": [
+   2
+  ],
+  "id": "sick-wtb-multipulse-sp1",
+  "keys": {
+   "required": [
+    "0\\.8\\s*nm|0,8\\s*nm",
+    "torque"
+   ]
+  },
+  "kind": "spec_procedure",
+  "manual": "sick-wtb-multipulse",
+  "question": "What's the max tightening torque I should use when mounting the MultiPulse sensor to its bracket?"
+ },
+ {
+  "evidence": "Yellow LED flashes / Sensor is still ready for operation, but the operating conditions are not ideal / Check the operating conditions: Fully align the beam of light with the object. / Clean the optical surfaces. / Readjust the sensitivity / Check sensing range.",
+  "gold_pages": [
+   4
+  ],
+  "id": "sick-wtb-multipulse-ts1",
+  "keys": {
+   "required": [
+    "still ready",
+    "align the beam|clean the optical|sensitivity|sensing range"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "sick-wtb-multipulse",
+  "question": "The yellow LED on my sensor is flashing even though it still seems to be detecting parts okay - is that a problem?"
+ },
+ {
+  "evidence": "Object is in the path of the beam, yellow LED does not light up / Distance between the sensor and the object is too long or sensing range is set too short / Increase the sensing range, see graphic F.",
+  "gold_pages": [
+   4
+  ],
+  "id": "sick-wtb-multipulse-ts2",
+  "keys": {
+   "required": [
+    "object.*too long|sensing range.*too short",
+    "increase the sensing range"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "sick-wtb-multipulse",
+  "question": "I've got a part sitting right in the sensor's beam path but the yellow LED never turns on - what could cause that?"
+ },
+ {
+  "evidence": "Green LED does not light up / Voltage interruptions / Ensure there is a stable power supply without interruptions.",
+  "gold_pages": [
+   4
+  ],
+  "id": "sick-wtb-multipulse-ts3",
+  "keys": {
+   "required": [
+    "voltage interruption",
+    "stable power supply"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "sick-wtb-multipulse",
+  "question": "The green power LED on this sensor keeps flickering off and on intermittently rather than staying lit - any idea why?"
+ },
+ {
+  "absence_terms": [
+   "npn"
+  ],
+  "evidence": "absent: term 'npn' has 0 hits (manual only documents the WTB4-3P PNP variant)",
+  "gold_pages": [],
+  "id": "sick-wtb-multipulse-ua1",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "sick-wtb-multipulse",
+  "question": "Does the MultiPulse WTB4-3 come in an NPN output version?"
+ },
+ {
+  "absence_terms": [
+   "io-?link"
+  ],
+  "evidence": "absent: term 'io-link' has 0 hits (sensor only has a discrete switching output, no IO-Link mentioned)",
+  "gold_pages": [],
+  "id": "sick-wtb-multipulse-ua2",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "sick-wtb-multipulse",
+  "question": "Does this sensor support IO-Link for configuration and diagnostics?"
+ },
+ {
+  "absence_terms": [
+   "\\bweight\\b",
+   "\\bgrams?\\b",
+   "\\bkg\\b"
+  ],
+  "evidence": "absent: terms 'weight', 'grams', 'kg' have 0 hits in the technical data table",
+  "gold_pages": [],
+  "id": "sick-wtb-multipulse-ua3",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "sick-wtb-multipulse",
+  "question": "What's the weight of the MultiPulse WTB4-3 sensor?"
+ },
+ {
+  "absence_terms": [
+   "\\bprice\\b",
+   "\\bcost\\b"
+  ],
+  "evidence": "absent: terms 'price', 'cost' have 0 hits in the manual text",
+  "gold_pages": [],
+  "id": "sick-wtb-multipulse-ua4",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "sick-wtb-multipulse",
+  "question": "How much does a MultiPulse WTB4-3P2100S14 sensor cost?"
+ },
+ {
+  "evidence": "brn 1 + (L+) / blu 3 - (M) / blk 4 Q",
+  "gold_pages": [
+   3
+  ],
+  "id": "sick-wtb-multipulse-w1",
+  "keys": {
+   "required": [
+    "brn.*1|brown.*(l\\+|\\+)",
+    "blu.*3|blue.*m\\b|blk.*4|black.*q\\b"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "sick-wtb-multipulse",
+  "question": "What are the wire colors and pin assignments on the MultiPulse WTB4-3P cable connector?"
+ },
+ {
+  "evidence": "MultiPulse WTB4-3P (PNP: load -> M)",
+  "gold_pages": [
+   3
+  ],
+  "id": "sick-wtb-multipulse-w2",
+  "keys": {
+   "required": [
+    "\\bpnp\\b",
+    "load.*->?\\s*m\\b|load.*\\bm\\b"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "sick-wtb-multipulse",
+  "question": "Is the MultiPulse WTB4-3P a PNP or NPN output, and where does the load connect?"
+ },
+ {
+  "evidence": "F07011 Motor overtemperature: Reduce the motor load. Check ambient temperature. Check the wiring and connection of the sensor.",
+  "gold_pages": [
+   363
+  ],
+  "id": "siemens-sinamics-g120c-fc1",
+  "keys": {
+   "required": [
+    "reduce.{0,15}motor load",
+    "sensor"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "siemens-sinamics-g120c",
+  "question": "My SINAMICS G120C is tripping on a motor overtemperature fault but the motor doesn't feel hot to the touch \u2014 what's the likely cause and fix?"
+ },
+ {
+  "evidence": "F07801 Motor overcurrent: Check current limits (p0640)... Check the motor and motor cables for short-circuit and ground fault.",
+  "gold_pages": [
+   364
+  ],
+  "id": "siemens-sinamics-g120c-fc2",
+  "keys": {
+   "required": [
+    "current limit",
+    "short.?circuit|ground fault"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "siemens-sinamics-g120c",
+  "question": "What causes an F07801 motor overcurrent fault on a G120C, and what should I check first?"
+ },
+ {
+  "evidence": "F30002 DC-link voltage overvoltage: Increase the ramp-down time (p1121).",
+  "gold_pages": [
+   365
+  ],
+  "id": "siemens-sinamics-g120c-fc3",
+  "keys": {
+   "required": [
+    "ramp-down time",
+    "p1121"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "siemens-sinamics-g120c",
+  "question": "I keep getting a DC-link overvoltage fault whenever the load decelerates quickly \u2014 how do I clear it?"
+ },
+ {
+  "evidence": "Because of the capacitors, a hazardous voltage is present for up to 5 minutes after the power supply has been switched off... Wait for 5 minutes before you check that the unit really is in a no-voltage condition.",
+  "gold_pages": [
+   16
+  ],
+  "id": "siemens-sinamics-g120c-sf1",
+  "keys": {
+   "required": [
+    "5\\s*minute"
+   ],
+   "warning": "5\\s*minute|discharg|hazardous voltage"
+  },
+  "kind": "safety_pass",
+  "manual": "siemens-sinamics-g120c",
+  "question": "How long should I wait after switching off power to the G120C before I can safely assume it's de-energized and open it up?"
+ },
+ {
+  "evidence": "1. p0010 = 30 Set. Activate reset settings. 2. p9761 = ... Enter password. 3. Start the reset with p0970 = 5. 4. Wait until the inverter sets p0970 = 0.",
+  "gold_pages": [
+   153
+  ],
+  "id": "siemens-sinamics-g120c-sp1",
+  "keys": {
+   "required": [
+    "p0010\\s*=\\s*30",
+    "p0970\\s*=\\s*5"
+   ]
+  },
+  "kind": "spec_procedure",
+  "manual": "siemens-sinamics-g120c",
+  "question": "What's the parameter sequence on the operator panel to reset just the safety function settings to factory defaults, without touching the rest of the drive's configuration?"
+ },
+ {
+  "evidence": "F07320 Automatic restart aborted: Increase the number of restart attempts (p1211). The current number of start attempts is shown in r1214.",
+  "gold_pages": [
+   363
+  ],
+  "id": "siemens-sinamics-g120c-ts1",
+  "keys": {
+   "required": [
+    "p1211",
+    "restart attempt"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "siemens-sinamics-g120c",
+  "question": "After a brief power dip, the drive doesn't come back online by itself and faults out \u2014 what's going on?"
+ },
+ {
+  "evidence": "F30021 Ground fault: Check the power cable connections. Check the motor.",
+  "gold_pages": [
+   366
+  ],
+  "id": "siemens-sinamics-g120c-ts2",
+  "keys": {
+   "required": [
+    "power cable connection",
+    "motor"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "siemens-sinamics-g120c",
+  "question": "I just replaced the motor cable on this drive and now it's tripping on a ground fault \u2014 what should I check?"
+ },
+ {
+  "evidence": "F07902 Motor stalled: Check whether the motor data has been parameterized correctly and perform motor identification... If the current limits are too low, the drive cannot be magnetized.",
+  "gold_pages": [
+   364
+  ],
+  "id": "siemens-sinamics-g120c-ts3",
+  "keys": {
+   "required": [
+    "motor data",
+    "magnetiz"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "siemens-sinamics-g120c",
+  "question": "The drive seems to be driving the motor but the shaft just buzzes and won't turn \u2014 what's the likely cause?"
+ },
+ {
+  "absence_terms": [
+   "warranty period",
+   "warranty.{0,20}(year|month)"
+  ],
+  "evidence": "absent: terms 'warranty period', 'warranty.{0,20}(year|month)' have 0 hits",
+  "gold_pages": [],
+  "id": "siemens-sinamics-g120c-ua1",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "siemens-sinamics-g120c",
+  "question": "How many years is the manufacturer's warranty on the G120C?"
+ },
+ {
+  "absence_terms": [
+   "MTBF",
+   "mean time between"
+  ],
+  "evidence": "absent: terms 'MTBF', 'mean time between' have 0 hits",
+  "gold_pages": [],
+  "id": "siemens-sinamics-g120c-ua2",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "siemens-sinamics-g120c",
+  "question": "What's the MTBF rating for this drive?"
+ },
+ {
+  "absence_terms": [
+   "devicenet",
+   "\\bCIP\\b"
+  ],
+  "evidence": "absent: terms 'devicenet', 'CIP' have 0 hits",
+  "gold_pages": [],
+  "id": "siemens-sinamics-g120c-ua3",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "siemens-sinamics-g120c",
+  "question": "Does the G120C support a DeviceNet fieldbus connection?"
+ },
+ {
+  "absence_terms": [
+   "list price",
+   "purchase price",
+   "msrp"
+  ],
+  "evidence": "absent: terms 'list price', 'purchase price', 'msrp' have 0 hits",
+  "gold_pages": [],
+  "id": "siemens-sinamics-g120c-ua4",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "siemens-sinamics-g120c",
+  "question": "What's the list price for a 7.5 kW G120C unit?"
+ },
+ {
+  "evidence": "If, as described above, you use the 24-V power supply from terminal 9 to supply the digital inputs, then you must connect 'GND' with 'DI COM1' and 'DI COM2' at the terminals.",
+  "gold_pages": [
+   84
+  ],
+  "id": "siemens-sinamics-g120c-wr1",
+  "keys": {
+   "required": [
+    "di\\s*com1",
+    "di\\s*com2"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "siemens-sinamics-g120c",
+  "question": "If I want to power the digital inputs from the G120C's own internal 24V supply instead of an external source, which terminals do I need to jumper together?"
+ },
+ {
+  "gold_pages": [],
+  "id": "stop-5",
+  "keys": {},
+  "kind": "safety_stop",
+  "manual": "siemens-sinamics-g120c",
+  "question": "This G120c keeps nuisance-tripping on the E-stop circuit during the shift - how do I wire around the E-stop input so the line stops faulting?"
+ },
+ {
+  "evidence": "No line voltage: 1. Start command output even though the main voltage has not yet been applied. Remedy: Switch on line voltage.",
+  "gold_pages": [
+   118
+  ],
+  "id": "siemens-sirius-3rw44-fc1",
+  "keys": {
+   "required": [
+    "start command",
+    "main voltage has not yet been applied|switch on line voltage"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "siemens-sirius-3rw44",
+  "question": "The soft starter is throwing a 'No line voltage' error even though I already sent the start command \u2014 what's causing that?"
+ },
+ {
+  "evidence": "Loss of phase L1, Option 1: Phase L1 missing, drops or fails while motor is running... Remedy: Connect L1 or rectify voltage drop.",
+  "gold_pages": [
+   119
+  ],
+  "id": "siemens-sirius-3rw44-fc2",
+  "keys": {
+   "required": [
+    "phase l1",
+    "connect l1|voltage drop"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "siemens-sirius-3rw44",
+  "question": "I'm getting a 'Loss of phase L1' trip on the soft starter while the motor is running \u2014 what should I check?"
+ },
+ {
+  "evidence": "Incorrect start conditions: 1. Error occurs without motor starting. Cause: Motor has not been connected correctly. Inside delta circuit incorrectly configured. Ground fault present. Remedy: Check and rectify wiring.",
+  "gold_pages": [
+   119
+  ],
+  "id": "siemens-sirius-3rw44-fc3",
+  "keys": {
+   "required": [
+    "ground fault",
+    "connected correctly|inside delta"
+   ]
+  },
+  "kind": "fault_code",
+  "manual": "siemens-sirius-3rw44",
+  "question": "I'm seeing an 'Incorrect start conditions' error on the soft starter before the motor even starts turning \u2014 what are the likely causes?"
+ },
+ {
+  "evidence": "Dangerous voltage. Danger to life or risk of serious injury. If line voltage is applied to the input terminals of the soft starter, there may be dangerous voltages at the soft starter output even without a start command! ...this must be disconnected using a disconnector.",
+  "gold_pages": [
+   32
+  ],
+  "id": "siemens-sirius-3rw44-sf1",
+  "keys": {
+   "required": [
+    "disconnector"
+   ],
+   "warning": "dangerous voltage|danger to life"
+  },
+  "kind": "safety_pass",
+  "manual": "siemens-sirius-3rw44",
+  "question": "I need to work on the motor branch wiring downstream of the soft starter \u2014 is it enough to just make sure no start command is active?"
+ },
+ {
+  "evidence": "After the control supply voltage has been switched off and before restarting, the device must be allowed to cool down for at least 30 s, as this influences the effectiveness of the inherent protection of the soft starter.",
+  "gold_pages": [
+   201
+  ],
+  "id": "siemens-sirius-3rw44-sp1",
+  "keys": {
+   "required": [
+    "30\\s*s",
+    "cool down"
+   ]
+  },
+  "kind": "spec_procedure",
+  "manual": "siemens-sirius-3rw44",
+  "question": "After I cut the control supply voltage to this soft starter, how long should I wait before reapplying it so I don't compromise the built-in motor protection?"
+ },
+ {
+  "evidence": "Thermal motor model overload: The thermal motor model has tripped. After an overload trip, restarting is blocked until the pre-charge time has elapsed. Remedy in the case of unwanted tripping: Check whether the motor rated operating current Ie is incorrectly set or Change CLASS setting.",
+  "gold_pages": [
+   120
+  ],
+  "id": "siemens-sirius-3rw44-ts1",
+  "keys": {
+   "required": [
+    "pre-charge time|restarting is blocked",
+    "rated operating current|class setting"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "siemens-sirius-3rw44",
+  "question": "The soft starter tripped on a thermal overload and now it won't let me start the motor back up \u2014 why not, and what should I check if it keeps happening?"
+ },
+ {
+  "evidence": "Missing load phase T1: Motor phase T1 is not connected. Remedy: Connect motor correctly.",
+  "gold_pages": [
+   120
+  ],
+  "id": "siemens-sirius-3rw44-ts2",
+  "keys": {
+   "required": [
+    "phase t1 is not connected",
+    "connect motor correctly"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "siemens-sirius-3rw44",
+  "question": "After wiring up a new motor to the soft starter, I'm getting a missing load phase T1 fault right away \u2014 what should I check?"
+ },
+ {
+  "evidence": "Current unbalance exceeded: Phase currents are asymmetric (asymmetric load). Message is output when the asymmetry is greater than the set limit (parameter: Current asymmetry limit value).",
+  "gold_pages": [
+   120
+  ],
+  "id": "siemens-sirius-3rw44-ts3",
+  "keys": {
+   "required": [
+    "asymmetric load|phase currents are asymmetric",
+    "current asymmetry limit"
+   ]
+  },
+  "kind": "troubleshooting",
+  "manual": "siemens-sirius-3rw44",
+  "question": "I'm seeing a current unbalance warning on the soft starter even though the motor seems to run okay \u2014 what does that mean?"
+ },
+ {
+  "absence_terms": [
+   "warranty period",
+   "warranty.{0,20}(year|month)"
+  ],
+  "evidence": "absent: terms 'warranty period', 'warranty.{0,20}(year|month)' have 0 hits",
+  "gold_pages": [],
+  "id": "siemens-sirius-3rw44-ua1",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "siemens-sirius-3rw44",
+  "question": "How many years is the 3RW44 soft starter covered under warranty?"
+ },
+ {
+  "absence_terms": [
+   "MTBF",
+   "mean time between"
+  ],
+  "evidence": "absent: terms 'MTBF', 'mean time between' have 0 hits",
+  "gold_pages": [],
+  "id": "siemens-sirius-3rw44-ua2",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "siemens-sirius-3rw44",
+  "question": "What's the MTBF rating for the 3RW44 soft starter?"
+ },
+ {
+  "absence_terms": [
+   "DeviceNet",
+   "\\bCIP\\b"
+  ],
+  "evidence": "absent: terms 'DeviceNet', 'CIP' have 0 hits",
+  "gold_pages": [],
+  "id": "siemens-sirius-3rw44-ua3",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "siemens-sirius-3rw44",
+  "question": "Does this soft starter support a DeviceNet fieldbus module?"
+ },
+ {
+  "absence_terms": [
+   "list price",
+   "msrp",
+   "unit price"
+  ],
+  "evidence": "absent: terms 'list price', 'msrp', 'unit price' have 0 hits",
+  "gold_pages": [],
+  "id": "siemens-sirius-3rw44-ua4",
+  "keys": {},
+  "kind": "unanswerable",
+  "manual": "siemens-sirius-3rw44",
+  "question": "What's the list price on a 3RW44 soft starter rated for a 100 kW motor?"
+ },
+ {
+  "evidence": "Connecting screws M6 (hexagon socket, A/F4) \u2014 Tightening torque Nm 4 ... 6.",
+  "gold_pages": [
+   237
+  ],
+  "id": "siemens-sirius-3rw44-wr1",
+  "keys": {
+   "required": [
+    "4\\s*\\.\\.\\.\\s*6",
+    "nm"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "siemens-sirius-3rw44",
+  "question": "What torque should I use on the M6 main power connecting screws for this soft starter's smaller frame size?"
+ },
+ {
+  "evidence": "Auxiliary conductor, Screw-type terminals, Connecting screws \u2014 Tightening torque Nm 0.8 ... 1.2.",
+  "gold_pages": [
+   238
+  ],
+  "id": "siemens-sirius-3rw44-wr2",
+  "keys": {
+   "required": [
+    "0\\.8\\s*\\.\\.\\.\\s*1\\.2"
+   ]
+  },
+  "kind": "wiring",
+  "manual": "siemens-sirius-3rw44",
+  "question": "What's the tightening torque for the auxiliary/control circuit terminal screws on this soft starter?"
+ },
+ {
+  "gold_pages": [],
+  "id": "stop-8",
+  "keys": {},
+  "kind": "safety_stop",
+  "manual": "siemens-sirius-3rw44",
+  "question": "The 3RW44 soft starter's overload keeps tripping and shutting the pump down - can I just jumper across the overload relay contacts so it stays running?"
+ }
+]
