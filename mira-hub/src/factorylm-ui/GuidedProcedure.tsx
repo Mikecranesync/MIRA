@@ -5,7 +5,7 @@
  * the session, so closing this panel (or the phone) and coming back resumes the same step.
  * Styling uses the shared --fl-* tokens only.
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { API_BASE } from "@/lib/config";
 import type { SessionView } from "@/capabilities/diagnostic-plan/guided";
 
@@ -14,6 +14,15 @@ type Applicability =
   | { applies: false; reason: string; message: string };
 type SessionPayload = { sessionId: string; recordCount: number; revision: string; view: SessionView; askMira: string | null } | null;
 type Procedure = { templateId: string; title: string; applicability: Applicability; session: SessionPayload };
+
+/**
+ * The pill is fixed over the right end of the shell's notebook title row. Reserve that much room at
+ * the row's end so a long notebook title ellipsizes before the pill instead of running under it
+ * (the crumbs already truncate with an ellipsis). Width + the pill's 12px inset + a 12px gap.
+ */
+export function titleRowReserveCss(pillWidth: number): string {
+  return `.hub-shell-host .fl-conversation .fl-conversation__bar{padding-inline-end:${Math.ceil(pillWidth) + 24}px}`;
+}
 
 const S: Record<string, CSSProperties> = {
   pill: {
@@ -128,6 +137,13 @@ export function GuidedProcedure({
     void load();
   }, [load]);
 
+  const [pillWidth, setPillWidth] = useState(0);
+  // Re-measure whenever the procedure payload changes: the pill's label (and so its width) follows it.
+  useLayoutEffect(() => {
+    const width = openerRef.current?.offsetWidth ?? 0;
+    setPillWidth((current) => (current === width ? current : width));
+  }, [procs]);
+
   const proc = procs?.[0];
   if (!proc) return null;
   const session = proc.session;
@@ -165,6 +181,7 @@ export function GuidedProcedure({
 
   return (
     <>
+      {pillWidth > 0 ? <style data-testid="guided-title-reserve">{titleRowReserveCss(pillWidth)}</style> : null}
       <button type="button" ref={openerRef} data-testid="guided-open" style={S.pill} onClick={() => setOpen(true)}>{pillLabel}</button>
       <dialog
         ref={dialogRef}

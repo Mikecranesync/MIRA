@@ -261,7 +261,7 @@ export function currentGuidance(template: WorkflowTemplate, run: RunRecord): Ste
 }
 
 const END_REASON: Record<string, string> = {
-  resolved: "The manufacturer's procedure reached its documented action.",
+  resolved: "The manufacturer's action fixed the problem, as confirmed by the technician.",
   escalate: "The manual does not document what to do next for this case.",
   unsafe: "Stopped for safety: the safety notices were not acknowledged.",
   blocked: "Stopped: the isolation was not confirmed.",
@@ -305,6 +305,21 @@ export function viewSession(template: WorkflowTemplate, run: RunRecord): Session
   const reason = next.reason;
   const status: SessionView["status"] = reason === "resolved" ? "resolved" : reason === "escalate" ? "escalate" : "stopped";
   return { status, endReason: END_REASON[reason] ?? reason, history, source, guidance: currentGuidance(template, run) };
+}
+
+/**
+ * A session saved against an earlier compiled version of the procedure is never replayed on the
+ * current one: its records may route differently now (1.1.0 changed where a failed SCR test goes).
+ * It is shown as ended, with its history, so the panel offers Start again (Codex #4592 F1).
+ */
+export function supersededView(template: WorkflowTemplate, run: RunRecord, savedVersion: string): SessionView {
+  const replay = viewSession(template, run);
+  return {
+    status: "stopped",
+    endReason: `This procedure was updated (version ${savedVersion || "unknown"} to ${template.version ?? ""}) after this session started. Start again to follow the current steps.`,
+    history: replay.history,
+    source: { ...replay.source, version: savedVersion },
+  };
 }
 
 /**
