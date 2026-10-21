@@ -247,10 +247,13 @@ on the full raw PR body, footer included, so a fake `cursor_ref=pr_footer`
 `<div>` cannot hide `<script>` or other tags. The auto-injected Cursor
 agent wrapper (`<!-- CURSOR_AGENT_PR_BODY_BEGIN/END -->`) and its trailing
 footer are ignored only for rationale extraction, and only when that
-trailing block matches the genuine Cursor footer template (one anchored
-regex: two picture CTAs, `href`/`src`/`srcset` only on `https://cursor.com/`,
-fixed attributes, no `on*` / `style` / `javascript:` / `data:`). They
-cannot supply or hide a rationale.
+footer is the final trailing block and the end marker is the last
+occurrence followed by nothing but that footer or whitespace. Mid-body
+quotes of the marker or footer stay as author text. The trailing footer
+must match the genuine Cursor template (one anchored regex: two picture
+CTAs, `href`/`src`/`srcset` only on `https://cursor.com/`, fixed
+attributes, no `on*` / `style` / `javascript:` / `data:`). They cannot
+supply or hide a rationale.
 Strictly valid standalone HTML
 comments remain allowed but cannot supply field text. Each value must
 contain at least three alphanumeric tokens and at least twelve alphanumeric

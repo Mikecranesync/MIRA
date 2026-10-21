@@ -64,6 +64,7 @@ main = _guard.main
 path_is_guarded = _guard.path_is_guarded
 read_expected_change_count = _guard.read_expected_change_count
 validate_expected_change_count = _guard.validate_expected_change_count
+_author_written_pr_body = _guard._author_written_pr_body
 
 
 def _policy(*guarded_paths: str) -> GuardPolicy:
@@ -2735,6 +2736,9 @@ def test_real_cursor_pr_footer_copied_from_pr_4560_passes():
         + _REAL_CURSOR_PR_FOOTER
         + "\n"
     )
+    author = _author_written_pr_body(body)
+    assert _REAL_CURSOR_PR_FOOTER not in author
+    assert "Rollback: revert this commit; the legacy route is otherwise untouched" in author
     result = evaluate(
         _TOUCH,
         pr_body=body,
@@ -2793,21 +2797,75 @@ def test_fake_cursor_footer_event_or_javascript_attrs_fail(payload):
     )
 
 
-def test_rationale_only_after_cursor_body_end_cannot_authorize():
+def test_rationale_after_mid_body_end_marker_is_still_author_text():
+    """An end-marker that is not the trailing wrapper stays in the body."""
     body = (
         "Some PR description text.\n"
         + _CURSOR_AGENT_FOOTER
         + "\n"
         + _VALID_BODY
     )
+    author = _author_written_pr_body(body)
+    assert "## Lifecycle guard rationale" in author
+    assert "Rollback: revert this commit; the legacy route is otherwise untouched" in author
     result = evaluate(
         _TOUCH,
         pr_body=body,
         policy=_POLICY,
         codex_attestation=_VALID_CODEX_ATTESTATION,
     )
-    assert result.allowed is False
-    assert "body:## Lifecycle guard rationale section" in result.missing_fields
+    assert result.allowed is True
+
+
+def test_quoted_end_marker_mid_body_keeps_full_rationale_text():
+    body = (
+        "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->\n"
+        "Some PR description text.\n\n"
+        "## Lifecycle guard rationale\n\n"
+        "Reason: severity-1 production repair; keep "
+        "<!-- CURSOR_AGENT_PR_BODY_END --> visible in this field\n"
+        "Canonical replacement impact: none, this only touches the recovery route\n"
+        "Rollback: revert this commit; the legacy route is otherwise untouched\n"
+        "\n"
+        + _CURSOR_AGENT_FOOTER
+    )
+    author = _author_written_pr_body(body)
+    assert "<!-- CURSOR_AGENT_PR_BODY_END --> visible in this field" in author
+    assert "Rollback: revert this commit; the legacy route is otherwise untouched" in author
+    assert _REAL_CURSOR_PR_FOOTER not in author
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
+    assert result.allowed is True
+
+
+def test_quoted_footer_mid_body_keeps_full_rationale_text():
+    body = (
+        "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->\n"
+        "Some PR description text.\n\n"
+        "Quoted injection:\n\n"
+        f"{_REAL_CURSOR_PR_FOOTER}\n\n"
+        "## Lifecycle guard rationale\n\n"
+        "Reason: severity-1 production repair for a broken rollback route\n"
+        "Canonical replacement impact: none, this only touches the recovery route\n"
+        "Rollback: revert this commit; the legacy route is otherwise untouched\n"
+        "\n"
+        + _CURSOR_AGENT_FOOTER
+    )
+    author = _author_written_pr_body(body)
+    assert author.count(_REAL_CURSOR_PR_FOOTER) == 1
+    assert "Quoted injection:" in author
+    assert "Rollback: revert this commit; the legacy route is otherwise untouched" in author
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
+    assert result.allowed is True
 
 
 # ---------------------------------------------------------------------------

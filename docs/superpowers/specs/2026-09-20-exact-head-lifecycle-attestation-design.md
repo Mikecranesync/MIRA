@@ -86,9 +86,12 @@ control-plane paths stay fail-closed exactly as before.
 
 HTML-safety runs on the full raw PR body, footer included. The
 author-written `## Lifecycle guard rationale` check ignores the
-auto-injected Cursor agent wrapper comments and a trailing footer only
-when that block matches the genuine Cursor footer template (one anchored
-regex; `href`/`src`/`srcset` only on `https://cursor.com/`; no `on*` /
+auto-injected Cursor agent wrapper and a trailing footer only when that
+footer is the final trailing block and the end marker is the last
+occurrence followed by nothing but that footer or whitespace. Mid-body
+quotes of the marker or footer stay as author text. The trailing footer
+must match the genuine Cursor template (one anchored regex;
+`href`/`src`/`srcset` only on `https://cursor.com/`; no `on*` /
 `style` / `javascript:` / `data:` / extra attributes). A fake
 footer-shaped `<div>` that hides `<script>`, `onerror`, or other HTML
 fails closed. HTML inside the author-written rationale still fails

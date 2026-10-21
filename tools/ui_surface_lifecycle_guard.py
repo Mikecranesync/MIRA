@@ -725,12 +725,12 @@ _CURSOR_FOOTER_PICTURE = (
     f"{_CURSOR_FOOTER_IMG}</picture>"
 )
 _CURSOR_PR_FOOTER_RE = re.compile(
-    r"(?:\r?\n)*<div>"
+    r"\s*<div>"
     rf'<a href="{_CURSOR_FOOTER_AGENT_HREF}">{_CURSOR_FOOTER_PICTURE}</a>'
     r"(?:&nbsp;)?"
     rf'<a href="{_CURSOR_FOOTER_BG_HREF}">{_CURSOR_FOOTER_PICTURE}</a>'
     r"(?:&nbsp;)?"
-    r"</div>(?:\r?\n)*\Z"
+    r"</div>\s*\Z"
 )
 # The Codex review ledger's comment envelope, byte-for-byte the shape
 # `scripts/adversarial-review-ledger.mjs` (V2_REVIEW_RE) accepts. Anything that
@@ -1750,23 +1750,25 @@ def _author_written_pr_body(pr_body: str) -> str:
     """Return the author-written PR body, ignoring Cursor agent injection.
 
     Cursor wraps agent-authored bodies in HTML comments and appends a
-    marketing footer after the end marker. Strip the wrapper and, when
-    the trailing block matches the genuine Cursor footer template, that
-    footer. Those strips apply only to rationale extraction; HTML-safety
-    runs on the full raw body first. Content after the end marker is
-    discarded even when it is not the known footer — it is agent
-    metadata, not attestation text.
+    marketing footer after the end marker. Both strips are end-anchored:
+    the footer is removed only when it is the final trailing block
+    (optional surrounding whitespace), and the end marker is cut only
+    when it is the last occurrence and is followed by nothing but that
+    footer or whitespace. Mid-body quotes of the marker or footer stay
+    as author text. HTML-safety still runs on the full raw body first.
     """
     source = pr_body or ""
-    end_at = source.find(_CURSOR_AGENT_BODY_END)
+    footer = _CURSOR_PR_FOOTER_RE.search(source)
+    if footer is not None:
+        source = source[: footer.start()]
+    end_at = source.rfind(_CURSOR_AGENT_BODY_END)
     if end_at != -1:
-        source = source[:end_at]
+        after = source[end_at + len(_CURSOR_AGENT_BODY_END) :]
+        if after.strip() == "":
+            source = source[:end_at]
     begin_at = source.find(_CURSOR_AGENT_BODY_BEGIN)
     if begin_at != -1:
         source = source[begin_at + len(_CURSOR_AGENT_BODY_BEGIN) :]
-    match = _CURSOR_PR_FOOTER_RE.search(source)
-    if match is not None and _is_exact_cursor_pr_footer(match.group(0)):
-        return source[: match.start()] + source[match.end() :]
     return source
 
 
