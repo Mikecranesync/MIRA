@@ -885,7 +885,20 @@ export function HubShellHost() {
       />
       {/* WP-1: shown only when the route is enabled and a manufacturer procedure applies. */}
       {selection && detail && (
-        <GuidedProcedure key={selection.notebookId} notebookId={selection.notebookId} onAskMira={(q) => onSend(q)} />
+        <GuidedProcedure
+          // Re-mount (and re-read availability) when the machine's identity or its manuals change
+          // in place — a confirm or an attach doesn't change the notebook id (Codex #4573 F4).
+          key={[
+            selection.notebookId,
+            detail.notebook.identityStatus,
+            detail.notebook.manufacturer ?? "",
+            detail.notebook.model ?? "",
+            detail.notebook.catalogNumber ?? "",
+            detail.sources.map((s) => s.docId).join(","),
+          ].join("|")}
+          notebookId={selection.notebookId}
+          onAskMira={(q) => onSend(q)}
+        />
       )}
     </div>
   );

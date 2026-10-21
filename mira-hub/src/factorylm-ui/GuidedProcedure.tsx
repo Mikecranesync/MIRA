@@ -5,14 +5,14 @@
  * the session, so closing this panel (or the phone) and coming back resumes the same step.
  * Styling uses the shared --fl-* tokens only.
  */
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { API_BASE } from "@/lib/config";
 import type { SessionView } from "@/capabilities/diagnostic-plan/guided";
 
 type Applicability =
   | { applies: true; revision: "exact" | "not_attached"; notice: string }
   | { applies: false; reason: string; message: string };
-type SessionPayload = { runId: string; revision: string; view: SessionView; askMira: string | null } | null;
+type SessionPayload = { sessionId: string; recordCount: number; revision: string; view: SessionView; askMira: string | null } | null;
 type Procedure = { templateId: string; title: string; applicability: Applicability; session: SessionPayload };
 
 const S: Record<string, CSSProperties> = {
@@ -22,11 +22,11 @@ const S: Record<string, CSSProperties> = {
     borderRadius: "var(--fl-radius-pill, 999px)", padding: "8px 14px", fontSize: "var(--fl-fs-sm)",
     minHeight: 44, cursor: "pointer",
   },
-  scrim: { position: "fixed", inset: 0, zIndex: 50, background: "var(--fl-modal-scrim, var(--fl-scrim))", display: "flex", justifyContent: "center" },
-  sheet: {
-    background: "var(--fl-surface)", color: "var(--fl-ink)", width: "100%", maxWidth: 640, height: "100%",
-    overflowY: "auto", padding: "var(--fl-pad, 16px)", boxSizing: "border-box", fontFamily: "var(--fl-font)",
+  dialog: {
+    border: "none", padding: 0, margin: "0 auto", width: "100%", maxWidth: 640, height: "100%", maxHeight: "100%",
+    background: "var(--fl-surface)", color: "var(--fl-ink)",
   },
+  sheet: { height: "100%", overflowY: "auto", padding: "var(--fl-pad, 16px)", boxSizing: "border-box", fontFamily: "var(--fl-font)" },
   head: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 },
   title: { fontSize: "var(--fl-fs)", fontWeight: 600, margin: 0 },
   muted: { color: "var(--fl-muted)", fontSize: "var(--fl-fs-xs)" },
@@ -67,7 +67,19 @@ export function GuidedProcedure({ notebookId, onAskMira }: { notebookId: string;
   const [readings, setReadings] = useState<Record<string, string>>({});
   const [unit, setUnit] = useState("ohm");
   const [note, setNote] = useState("");
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
   const url = `${API_BASE}/api/equipment-notebooks/${encodeURIComponent(notebookId)}/procedure/`;
+
+  // A native modal <dialog> (Codex #4573 F5): the browser traps focus and closes it on Escape, and
+  // the shell's Back handler closes an open dialog before anything underneath. Focus returns to
+  // the button that opened it.
+  useEffect(() => {
+    const d = dialogRef.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    if (!open && d.open) d.close();
+  }, [open]);
 
   const load = useCallback(async () => {
     try {
@@ -112,7 +124,8 @@ export function GuidedProcedure({ notebookId, onAskMira }: { notebookId: string;
       setBusy(false);
     }
   }
-  const answer = (input: Record<string, unknown>) => call({ op: "answer", input: { stepId: step!.id, ...input } });
+  const answer = (input: Record<string, unknown>) =>
+    call({ op: "answer", sessionId: session!.sessionId, recordCount: session!.recordCount, input: { stepId: step!.id, ...input } });
 
   const pillLabel = !proc.applicability.applies
     ? "Guided troubleshooting unavailable"
@@ -120,9 +133,15 @@ export function GuidedProcedure({ notebookId, onAskMira }: { notebookId: string;
 
   return (
     <>
-      <button type="button" data-testid="guided-open" style={S.pill} onClick={() => setOpen(true)}>{pillLabel}</button>
-      {open && (
-        <div style={S.scrim} role="dialog" aria-modal="true" aria-label={proc.title}>
+      <button type="button" ref={openerRef} data-testid="guided-open" style={S.pill} onClick={() => setOpen(true)}>{pillLabel}</button>
+      <dialog
+        ref={dialogRef}
+        style={S.dialog}
+        aria-label={proc.title}
+        data-testid="guided-dialog"
+        onClose={() => { setOpen(false); openerRef.current?.focus(); }}
+      >
+        {open && (
           <div style={S.sheet} data-testid="guided-sheet">
             <div style={S.head}>
               <div>
@@ -231,8 +250,8 @@ export function GuidedProcedure({ notebookId, onAskMira }: { notebookId: string;
 
             {error && <div role="alert" style={{ ...S.fault, marginTop: 12 }} data-testid="guided-error">{error}</div>}
           </div>
-        </div>
-      )}
+        )}
+      </dialog>
     </>
   );
 }

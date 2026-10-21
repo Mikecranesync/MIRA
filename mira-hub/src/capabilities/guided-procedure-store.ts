@@ -1,22 +1,17 @@
 /**
- * WP-1 guided-procedure sessions, persisted in the shared durable run record (`workflow_runs`,
- * migration 044) — no new table. One row per session:
- *   workflow_name = 'guided_procedure'
- *   input         = { notebookId, templateId, version, sourceSha256, revision }
- *   step_artifacts = the append-only StepRecord list the runner replays
- *   status        = running | ok (resolved) | degraded (escalated) | failed (unsafe / blocked)
+ * WP-1 guided-procedure sessions in `guided_procedure_sessions` (migration 105): tenant-isolated
+ * with RLS, because the records hold customer plant data — observations, readings and the named
+ * person confirming isolation. Every query also binds the caller's tenant explicitly, and runs on
+ * a withTenantContext client (the caller passes one in).
  *
- * `workflow_runs.tenant_id` is TEXT and the table has no RLS, so EVERY query here binds the caller's
- * tenant explicitly. Appends are compare-and-set on the record count, so a double tap or a second
- * device can never interleave two answers into one session.
+ * Appends are compare-and-set on (session id, record count, running), so a double tap, a second
+ * device or an answer meant for an older session can never land in the wrong one.
  */
 import type { RunRecord, StepRecord } from "@/capabilities/diagnostic-plan/types";
 
 export type QueryDb = {
-  query(sql: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
+  query(sql: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 };
-
-export const GUIDED_WORKFLOW = "guided_procedure";
 
 /** The staging-only switch for the guided-procedure route (exact "1"). */
 export function guidedProcedureEnabled(env: Record<string, string | undefined> = process.env): boolean {
@@ -26,21 +21,26 @@ export function guidedProcedureEnabled(env: Record<string, string | undefined> =
 export type SessionStatus = "running" | "ok" | "degraded" | "failed";
 
 export interface GuidedSession {
-  runId: string;
+  id: string;
   status: SessionStatus;
-  input: { notebookId: string; templateId: string; version: string; sourceSha256: string; revision: string };
+  templateId: string;
+  templateVersion: string;
+  revision: "exact" | "not_attached";
   run: RunRecord;
   startedAt: string;
 }
 
+const COLS = `id::text AS id, status, template_id, template_version, revision, records, started_at`;
+
 function toSession(r: Record<string, unknown>): GuidedSession {
-  const input = (r.input ?? {}) as GuidedSession["input"];
-  const records = Array.isArray(r.step_artifacts) ? (r.step_artifacts as StepRecord[]) : [];
+  const templateId = String(r.template_id);
   return {
-    runId: String(r.run_id),
+    id: String(r.id),
     status: r.status as SessionStatus,
-    input,
-    run: { templateId: input.templateId, records },
+    templateId,
+    templateVersion: String(r.template_version),
+    revision: r.revision as GuidedSession["revision"],
+    run: { templateId, records: Array.isArray(r.records) ? (r.records as StepRecord[]) : [] },
     startedAt: r.started_at instanceof Date ? r.started_at.toISOString() : String(r.started_at ?? ""),
   };
 }
@@ -48,13 +48,9 @@ function toSession(r: Record<string, unknown>): GuidedSession {
 /** The most recent session for this notebook and procedure, whatever its status. */
 export async function latestSession(db: QueryDb, tenantId: string, notebookId: string, templateId: string): Promise<GuidedSession | null> {
   const res = await db.query(
-    `SELECT run_id::text AS run_id, status, input, step_artifacts, started_at
-       FROM workflow_runs
-      WHERE tenant_id = $1::text
-        AND workflow_name = '${GUIDED_WORKFLOW}'
-        AND input->>'notebookId' = $2
-        AND input->>'templateId' = $3
-      ORDER BY started_at DESC
+    `SELECT ${COLS} FROM guided_procedure_sessions
+      WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND template_id = $3
+      ORDER BY started_at DESC, id DESC
       LIMIT 1`,
     [tenantId, notebookId, templateId],
   );
@@ -64,41 +60,42 @@ export async function latestSession(db: QueryDb, tenantId: string, notebookId: s
 export async function createSession(
   db: QueryDb,
   tenantId: string,
-  input: GuidedSession["input"],
+  s: { notebookId: string; templateId: string; templateVersion: string; sourceSha256: string; revision: "exact" | "not_attached"; startedBy: string | null },
 ): Promise<GuidedSession> {
   const res = await db.query(
-    `INSERT INTO workflow_runs (workflow_name, workflow_version, tenant_id, status, input, step_artifacts)
-     VALUES ('${GUIDED_WORKFLOW}', $1, $2::text, 'running', $3::jsonb, '[]'::jsonb)
-     RETURNING run_id::text AS run_id, status, input, step_artifacts, started_at`,
-    [input.version || "1.0.0", tenantId, JSON.stringify(input)],
+    `INSERT INTO guided_procedure_sessions
+       (tenant_id, notebook_id, template_id, template_version, source_sha256, revision, started_by)
+     VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7)
+     RETURNING ${COLS}`,
+    [tenantId, s.notebookId, s.templateId, s.templateVersion, s.sourceSha256, s.revision, s.startedBy],
   );
   return toSession(res.rows[0]);
 }
 
 /**
- * Append one record if — and only if — the session still has `expectedCount` records and is
- * running. Returns null when it lost the race (the caller re-reads and shows the current step).
+ * Append one record if — and only if — this exact session still has `expectedCount` records and is
+ * running. Returns null when it did not (the caller re-reads and shows the current state).
  */
 export async function appendRecord(
   db: QueryDb,
   tenantId: string,
-  runId: string,
+  sessionId: string,
   expectedCount: number,
   record: StepRecord,
   status: SessionStatus,
 ): Promise<GuidedSession | null> {
   const res = await db.query(
-    `UPDATE workflow_runs
-        SET step_artifacts = step_artifacts || jsonb_build_array($4::jsonb),
+    `UPDATE guided_procedure_sessions
+        SET records = records || jsonb_build_array($4::jsonb),
             status = $5,
+            updated_at = now(),
             finished_at = CASE WHEN $5 = 'running' THEN NULL ELSE now() END
-      WHERE run_id = $1::uuid
-        AND tenant_id = $2::text
-        AND workflow_name = '${GUIDED_WORKFLOW}'
+      WHERE id = $1::uuid
+        AND tenant_id = $2::uuid
         AND status = 'running'
-        AND jsonb_array_length(step_artifacts) = $3
-      RETURNING run_id::text AS run_id, status, input, step_artifacts, started_at`,
-    [runId, tenantId, expectedCount, JSON.stringify(record), status],
+        AND jsonb_array_length(records) = $3
+      RETURNING ${COLS}`,
+    [sessionId, tenantId, expectedCount, JSON.stringify(record), status],
   );
   return res.rows[0] ? toSession(res.rows[0]) : null;
 }

@@ -3,26 +3,29 @@
  *
  * GET  → the manufacturer procedures that apply to this notebook's confirmed machine, each with its
  *        revision check and the latest session (so a technician resumes where they stopped).
- * POST → { templateId, op: "start" | "restart" } or { templateId, op: "answer", input: StepInput }.
- *        The outcome of every answer is derived server-side (guided.ts `buildRecord`) and appended
- *        compare-and-set, so a double tap or a second device cannot interleave answers.
+ * POST → { templateId, op: "start" | "restart" } or
+ *        { templateId, op: "answer", sessionId, recordCount, input: StepInput }.
+ *        The input is validated (guided.ts `parseStepInput`), its outcome derived server-side
+ *        (`buildRecord`), and appended compare-and-set on the exact session and record count the
+ *        technician was looking at — a double tap, a second device or an answer meant for an older
+ *        session gets 409 with the current state, never a write (Codex #4573 F3).
+ *        Sessions live in tenant-isolated `guided_procedure_sessions` (migration 105, RLS).
  *
  * Off unless NOTEBOOK_GUIDED_PROCEDURE=1 (404 otherwise). Read-only toward equipment: it records
  * what the technician observed; it never controls anything.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { listSources } from "@/lib/equipment-notebooks";
 import {
   buildRecord,
   escalationQuestion,
   MANUFACTURER_PROCEDURES,
+  parseStepInput,
   proceduresFor,
   viewSession,
   type NotebookManual,
-  type StepInput,
 } from "@/capabilities/diagnostic-plan/guided";
 import {
   appendRecord,
@@ -30,6 +33,7 @@ import {
   guidedProcedureEnabled,
   latestSession,
   type GuidedSession,
+  type QueryDb,
   type SessionStatus,
 } from "@/capabilities/guided-procedure-store";
 
@@ -79,16 +83,22 @@ async function loadMachine(tenantId: string, notebookId: string) {
 
 function sessionPayload(session: GuidedSession | null) {
   if (!session) return null;
-  const proc = MANUFACTURER_PROCEDURES.find((p) => p.template.id === session.input.templateId);
+  const proc = MANUFACTURER_PROCEDURES.find((p) => p.template.id === session.templateId);
   if (!proc) return null;
   const view = viewSession(proc.template, session.run);
   return {
-    runId: session.runId,
+    sessionId: session.id,
+    recordCount: session.run.records.length,
     startedAt: session.startedAt,
-    revision: session.input.revision,
+    revision: session.revision,
     view,
     askMira: view.status === "escalate" ? escalationQuestion(proc.template, session.run) : null,
   };
+}
+
+/** Run a store call on one tenant-scoped client (RLS + the explicit tenant predicate). */
+function inTenant<T>(tenantId: string, fn: (db: QueryDb) => Promise<T>): Promise<T> {
+  return withTenantContext(tenantId, (c) => fn(c as unknown as QueryDb));
 }
 
 function statusFor(view: ReturnType<typeof viewSession>): SessionStatus {
@@ -111,7 +121,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
       title: proc.template.title,
       source: proc.template.source,
       applicability,
-      session: applicability.applies ? sessionPayload(await latestSession(pool, ctx.tenantId, id, proc.template.id)) : null,
+      session: applicability.applies
+        ? sessionPayload(await inTenant(ctx.tenantId, (db) => latestSession(db, ctx.tenantId, id, proc.template.id)))
+        : null,
     })),
   );
   return NextResponse.json({ procedures });
@@ -143,36 +155,47 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "not_applicable", message }, { status: 409 });
   }
   const template = proc.template;
-  const latest = await latestSession(pool, ctx.tenantId, id, template.id);
+  const latest = await inTenant(ctx.tenantId, (db) => latestSession(db, ctx.tenantId, id, template.id));
 
   if (body.op === "start" || body.op === "restart") {
     if (body.op === "start" && latest && latest.status === "running") return NextResponse.json({ session: sessionPayload(latest) });
-    const created = await createSession(pool, ctx.tenantId, {
-      notebookId: id,
-      templateId: template.id,
-      version: template.version ?? "",
-      sourceSha256: template.source?.fileSha256 ?? "",
-      revision: offered.applicability.revision,
-    });
+    const created = await inTenant(ctx.tenantId, (db) =>
+      createSession(db, ctx.tenantId, {
+        notebookId: id,
+        templateId: template.id,
+        templateVersion: template.version ?? "",
+        sourceSha256: template.source?.fileSha256 ?? "",
+        revision: offered.applicability.applies ? offered.applicability.revision : "not_attached",
+        startedBy: ctx.userId ?? null,
+      }),
+    );
     return NextResponse.json({ session: sessionPayload(created) }, { status: 201 });
   }
 
   if (body.op !== "answer") return NextResponse.json({ error: "invalid_op" }, { status: 400 });
-  if (!latest || latest.status !== "running") return NextResponse.json({ error: "no_active_session" }, { status: 409 });
+  const parsed = parseStepInput(body.input);
+  if (!parsed.ok) return NextResponse.json({ error: "invalid_input", message: parsed.error }, { status: 400 });
+  if (typeof body.sessionId !== "string" || !UUID_RE.test(body.sessionId) || !Number.isInteger(body.recordCount)) {
+    return NextResponse.json({ error: "invalid_input", message: "An answer names its session and step count." }, { status: 400 });
+  }
+  // The answer must be for the session — and the exact step — the technician was looking at.
+  if (!latest || latest.status !== "running" || latest.id !== body.sessionId || latest.run.records.length !== body.recordCount) {
+    return NextResponse.json({ error: "stale_step", session: sessionPayload(latest) }, { status: 409 });
+  }
   // A session started against one compiled version is never continued on another.
-  if (latest.input.version !== (template.version ?? "")) {
+  if (latest.templateVersion !== (template.version ?? "")) {
     return NextResponse.json({ error: "procedure_version_changed", message: "This procedure was updated. Start again." }, { status: 409 });
   }
-  const input = body.input as StepInput | undefined;
-  if (!input || typeof input !== "object" || typeof input.stepId !== "string") return NextResponse.json({ error: "invalid_input" }, { status: 400 });
 
-  const built = buildRecord(template, latest.run, input);
+  const built = buildRecord(template, latest.run, parsed.input);
   if (!built.ok) return NextResponse.json({ error: "invalid_answer", message: built.error }, { status: 422 });
   const nextRun = { ...latest.run, records: [...latest.run.records, built.record] };
-  const saved = await appendRecord(pool, ctx.tenantId, latest.runId, latest.run.records.length, built.record, statusFor(viewSession(template, nextRun)));
+  const saved = await inTenant(ctx.tenantId, (db) =>
+    appendRecord(db, ctx.tenantId, latest.id, latest.run.records.length, built.record, statusFor(viewSession(template, nextRun))),
+  );
   if (!saved) {
-    // Lost a race (double tap / second device): show the session as it now is.
-    return NextResponse.json({ error: "stale_step", session: sessionPayload(await latestSession(pool, ctx.tenantId, id, template.id)) }, { status: 409 });
+    const now = await inTenant(ctx.tenantId, (db) => latestSession(db, ctx.tenantId, id, template.id));
+    return NextResponse.json({ error: "stale_step", session: sessionPayload(now) }, { status: 409 });
   }
   return NextResponse.json({ session: sessionPayload(saved) });
 }

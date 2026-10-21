@@ -732,7 +732,7 @@ capabilities:
       - "mira-hub/src/capabilities/__tests__/diagnostic-plan-guided-route.test.ts"
     rollback: >-
       Unset NOTEBOOK_GUIDED_PROCEDURE (or set anything other than 1) and redeploy mira-hub: the route
-      returns 404 and the panel renders nothing. Sessions already stored stay in workflow_runs.
+      returns 404 and the panel renders nothing. Sessions already stored stay in guided_procedure_sessions.
     blocker: >-
       Production: owner decision after the staging walks.
     acknowledged_rules: []

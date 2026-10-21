@@ -34,7 +34,7 @@ export function routeAfter(
   // WP-1: an option step's PASS goes where the manual's chosen branch goes. A choice that is not
   // one of the step's options is never guessed into a branch.
   if (step.options && outcome === "PASS") {
-    const option = choice !== undefined ? step.options[choice] : undefined;
+    const option = choice !== undefined && Object.prototype.hasOwnProperty.call(step.options, choice) ? step.options[choice] : undefined;
     if (!option) return { kind: "stop", reason: `Choice '${choice ?? ""}' is not an option of step '${step.id}'` };
     if (option.next) return follow(template, { next: option.next });
     return { kind: "stop", reason: option.stop ?? "escalate" };

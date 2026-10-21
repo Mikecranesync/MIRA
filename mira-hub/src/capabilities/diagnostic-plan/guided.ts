@@ -128,6 +128,50 @@ export type StepInput =
 export type BuildResult = { ok: true; record: StepRecord } | { ok: false; error: string };
 
 /**
+ * Validate an untrusted JSON body into a StepInput (Codex #4573 F2). Booleans must be real
+ * booleans — the string "false" is never a confirmation — and readings real numbers with string
+ * points and units. Anything else is rejected before a record can be built.
+ */
+export function parseStepInput(raw: unknown): { ok: true; input: StepInput } | { ok: false; error: string } {
+  const bad = (error: string) => ({ ok: false as const, error });
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return bad("Answer must be an object.");
+  const o = raw as Record<string, unknown>;
+  if (typeof o.stepId !== "string" || !o.stepId) return bad("Answer needs its step.");
+  const stepId = o.stepId;
+  switch (o.kind) {
+    case "acknowledge":
+      if (typeof o.acknowledged !== "boolean") return bad("acknowledged must be true or false.");
+      return { ok: true, input: { kind: "acknowledge", stepId, acknowledged: o.acknowledged } };
+    case "isolation":
+      if (typeof o.confirmed !== "boolean") return bad("confirmed must be true or false.");
+      if (typeof o.reportedBy !== "string") return bad("reportedBy must be a name.");
+      return { ok: true, input: { kind: "isolation", stepId, confirmed: o.confirmed, reportedBy: o.reportedBy } };
+    case "choice":
+      if (o.choice !== null && typeof o.choice !== "string") return bad("choice must be an option key or null.");
+      return { ok: true, input: { kind: "choice", stepId, choice: o.choice as string | null } };
+    case "measurement": {
+      if (!Array.isArray(o.readings) || o.readings.length === 0 || o.readings.length > 32) return bad("readings must be a list.");
+      const readings: Reading[] = [];
+      for (const r of o.readings) {
+        if (!r || typeof r !== "object") return bad("Each reading must be an object.");
+        const { point, value, unit } = r as Record<string, unknown>;
+        if (typeof point !== "string" || typeof unit !== "string" || typeof value !== "number") {
+          return bad("Each reading needs a point, a numeric value and a unit.");
+        }
+        readings.push({ point, value, unit });
+      }
+      return { ok: true, input: { kind: "measurement", stepId, readings } };
+    }
+    case "result":
+      if (typeof o.fixed !== "boolean") return bad("fixed must be true or false.");
+      if (o.note !== undefined && typeof o.note !== "string") return bad("note must be text.");
+      return { ok: true, input: { kind: "result", stepId, fixed: o.fixed, note: o.note as string | undefined } };
+    default:
+      return bad("Unknown answer kind.");
+  }
+}
+
+/**
  * Build the record for the CURRENT step from a technician's input. The outcome is derived here,
  * deterministically — never taken from the client.
  */
@@ -157,7 +201,7 @@ export function buildRecord(template: WorkflowTemplate, run: RunRecord, input: S
   if (step.options) {
     if (input.kind !== "choice") return { ok: false, error: "This step needs one of the manual's options." };
     if (input.choice === null) return { ok: true, record: { ...base, outcome: "INCONCLUSIVE", observed: "None of the documented options" } };
-    const option = step.options[input.choice];
+    const option = Object.prototype.hasOwnProperty.call(step.options, input.choice) ? step.options[input.choice] : undefined;
     if (!option) return { ok: false, error: "That is not one of this step's options." };
     return { ok: true, record: { ...base, outcome: "PASS", observed: option.label, choice: input.choice } };
   }
