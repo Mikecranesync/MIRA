@@ -486,14 +486,38 @@ const EXTERNAL_READING_INTRO = /\buse\s+(?:(?:the|an?|installed|external|remote|
 const MEASURE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + MEASURE_ACTION_SRC, "i");
 const RESTORE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + RESTORE_ENERGY_SRC, "i");
 
+/** A restore-to-measure excerpt plus the [start, end) span it covers in the
+ *  scanned text. Masking uses this span so a later identical sentence is not
+ *  treated as part of the pairing. */
+type RestoreSpan = { excerpt: string; start: number; end: number };
+
+function partsWithOffsets(text: string, re: RegExp): { text: string; start: number; end: number }[] {
+  const out: { text: string; start: number; end: number }[] = [];
+  const g = new RegExp(re.source, `${re.flags.replace("g", "")}g`);
+  let start = 0;
+  let m: RegExpExecArray | null;
+  while ((m = g.exec(text))) {
+    out.push({ text: text.slice(start, m.index), start, end: m.index });
+    start = m.index + m[0].length;
+  }
+  out.push({ text: text.slice(start), start, end: text.length });
+  return out;
+}
+
+function spansOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+  return aStart < bEnd && aEnd > bStart;
+}
+
 /** Carry an affirmative restoration across prose/list steps. Prohibitions
  * apply only to their own clause; a safe opening cannot excuse a later
  * instruction. An explicit isolate/lockout/verify step ends that interval.
  * Retain original answer text elsewhere: this scans detection-only text. */
-function restoreEnergyToMeasure(text: string): string | null {
+function restoreEnergyToMeasure(text: string): RestoreSpan | null {
   let restored: string | null = null;
+  let restoreStart = -1;
   let electrical = false;
-  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+  for (const sent of partsWithOffsets(text, /(?<=[.!?])\s+|\n+/)) {
+    const sentence = sent.text;
     // A completed affirmative isolation step ends the energized interval at
     // its verification, not at the end of the sentence. Keep scanning suffixes
     // such as "then re-energize" and never let a negated shutdown reset state.
@@ -554,6 +578,7 @@ function restoreEnergyToMeasure(text: string): string | null {
           if (event.prohibited) continue;
           if (event.kind === "restore") {
             restored = sentence;
+            restoreStart = sent.start;
             electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
             continue;
           }
@@ -585,7 +610,11 @@ function restoreEnergyToMeasure(text: string): string | null {
           });
           if (!CONTACT_MEASUREMENT.test(action) && readsDisplay && allSourcesExternal) continue;
           if (electrical || ELECTRICAL_MEASUREMENT_CONTEXT.test(action)) {
-            return restored === sentence ? sentence : `${restored}\n${sentence}`;
+            return {
+              excerpt: restored === sentence ? sentence : `${restored}\n${sentence}`,
+              start: restoreStart,
+              end: sent.end,
+            };
           }
         }
 
@@ -595,22 +624,13 @@ function restoreEnergyToMeasure(text: string): string | null {
   return null;
 }
 
-/** True when this sentence is part of the A4 restore-to-measure excerpt —
- *  the restore clause and the measurement it paired, not a later sibling. */
-function sentenceInRestoreScope(sentence: string, restoreScope: string): boolean {
-  const s = sentence.trim();
-  const r = restoreScope.trim();
-  if (!s || !r) return false;
-  return r.includes(s) || s.includes(r);
-}
-
 /** #3984: blank (length-preserving) every clause that is purely a live
  *  electrical MEASUREMENT — a measure action in an electrical context with no
  *  other hazard action and no pressurized/motion relation. Used only after A4
  *  has fired, so A2 does not re-impose a stop on the very measurement A4 now
  *  warns about, while every other hazard clause is still scanned.
- *  `restoreScope` is the A4 excerpt; only sentences in that excerpt are
- *  masked. A later live-measurement or hazard clause is judged on its own.
+ *  Only clauses whose offsets overlap the A4 span are masked. A later
+ *  identical sentence is a different span and is judged on its own.
  *  Decided, not inherited: a live measurement that also says "without
  *  de-energizing" (A2's no-isolation form) is masked too — it is the same
  *  energized-measurement category the owner put in the warn lane (#3984), and
@@ -618,14 +638,18 @@ function sentenceInRestoreScope(sentence: string, restoreScope: string): boolean
  *  A masked prohibited measurement ("never probe the live terminals, and …")
  *  no longer shields a sibling hazard clause: the prohibition only ever bound
  *  the probing, so the sibling is judged on its own (pinned in the wire test). */
-function maskLiveMeasurementClauses(text: string, restoreScope: string): string {
+function maskLiveMeasurementClauses(text: string, restoreScope: RestoreSpan): string {
   const measure = new RegExp("\\b" + MEASURE_ACTION_SRC, "gi");
   const otherRelations = HAZARD_RELATIONS.filter((r) => r.id !== "energized");
-  return text.replace(/[^.!?\n]+/g, (sentence) => {
-    const inRestore = sentenceInRestoreScope(sentence, restoreScope);
+  return text.replace(/[^.!?\n]+/g, (sentence, offset: number) => {
+    let rel = 0;
     return sentence
       .split(new RegExp(`(${CLAUSE_BOUNDARY.source})`, "i"))
       .map((clause) => {
+        const clauseStart = offset + rel;
+        const clauseEnd = clauseStart + clause.length;
+        rel += clause.length;
+        const inRestore = spansOverlap(clauseStart, clauseEnd, restoreScope.start, restoreScope.end);
         if (!new RegExp("\\b" + MEASURE_ACTION_SRC, "i").test(clause)) return clause;
         if (!ELECTRICAL_MEASUREMENT_CONTEXT.test(clause) && !CONTACT_MEASUREMENT.test(clause)) return clause;
         if (HAZARD_ACTION_ANY.test(clause.replace(measure, " "))) return clause;
@@ -1140,7 +1164,7 @@ const ENDS_ISOLATION_PROHIBITION = new RegExp(
  *  restore ever written (self-contradiction — A2a blocks it). `restored`: the
  *  same reading after an explicitly WRITTEN lockout removal / power restore —
  *  the coherent #3984 restore-to-measure shape, which only warns (A4). */
-type LockoutMeasurement = { blocked: string | null; restored: string | null };
+type LockoutMeasurement = { blocked: string | null; restored: RestoreSpan | null };
 
 function isLiveSupplyContactReading(step: string): boolean {
   return (
@@ -1155,13 +1179,15 @@ function isLiveSupplyContactReading(step: string): boolean {
 function liveMeasurementAfterLockout(text: string): LockoutMeasurement {
   let isolated = false;
   let restoredAfterLockout = false;
-  let restored: string | null = null;
-  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
-    for (const clause of sentence.split(CLAUSE_BOUNDARY)) {
+  let restored: RestoreSpan | null = null;
+  for (const sent of partsWithOffsets(text, /(?<=[.!?])\s+|\n+/)) {
+    for (const cl of partsWithOffsets(sent.text, CLAUSE_BOUNDARY)) {
       // #4111 review round 3: "then" starts a separate action, so an exemption
       // in one step cannot cover the next. "and" is NOT split, so a shared
       // prohibition ("do not probe and measure …") keeps governing its verbs.
-      for (let step of clause.split(/\bthen\b/i)) {
+      for (const rawStep of partsWithOffsets(cl.text, /\bthen\b/i)) {
+        let step = rawStep.text;
+        let stepStart = sent.start + cl.start + rawStep.start;
         if (!step.trim()) continue;
         // Only an affirmative restore ends isolation; "do not restore" does
         // not. A prohibition anywhere in the step ("do not remove the lockout
@@ -1186,6 +1212,7 @@ function liveMeasurementAfterLockout(text: string): LockoutMeasurement {
           isolated = false;
           // Consume the removal/restore match so "remove the lockout" is not
           // re-read as a new isolation event, then scan the remainder.
+          stepStart += ended.index + ended[0].length;
           step = step.slice(ended.index + ended[0].length);
         }
         // A lockout isolates, and the rest of the SAME step is still checked
@@ -1193,6 +1220,7 @@ function liveMeasurementAfterLockout(text: string): LockoutMeasurement {
         const lock = LOCKOUT_STEP.exec(step);
         if (lock && !LOCKOUT_PROHIBITION.test(step)) {
           isolated = true;
+          stepStart += lock.index + lock[0].length;
           step = step.slice(lock.index + lock[0].length);
         }
         if (!isolated && !restoredAfterLockout) continue;
@@ -1202,7 +1230,7 @@ function liveMeasurementAfterLockout(text: string): LockoutMeasurement {
           // the next list step — the #3984 coherent shape). It does not latch
           // for the rest of the answer: a later unrelated live reading is
           // again isolated and BLOCKS.
-          restored ??= step.trim();
+          restored ??= { excerpt: step.trim(), start: stepStart, end: stepStart + step.length };
           restoredAfterLockout = false;
           isolated = true;
         }
@@ -1465,7 +1493,7 @@ export function validateAnswer(opts: {
 
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.
-  if (!general || refused) return energizedWarningOr(restore, answerText);
+  if (!general || refused) return energizedWarningOr(restore?.excerpt ?? null, answerText);
 
   for (const p of FABRICATED_DOC_PATTERNS) {
     const m = p.re.exec(scanText);
@@ -1519,7 +1547,7 @@ export function validateAnswer(opts: {
     };
   }
 
-  return energizedWarningOr(restore, answerText);
+  return energizedWarningOr(restore?.excerpt ?? null, answerText);
 }
 
 /** Split accepted text into whitespace-boundary pieces (~≤120 chars) so the

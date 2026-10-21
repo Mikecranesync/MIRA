@@ -1285,6 +1285,9 @@ describe("Codex #4471 r1 F1: a written lockout removal / power restore is the co
     "1. Lock out the panel and verify zero volts.\n2. A qualified person removes the lockout and restores power.\n3. Measure the supply voltage at the input terminals.\n4. Measure the actual line voltage at the MCC input terminals.",
     // mixed: one coherent restore-then-measure, then a separate A2 hazard
     "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and restore power.\n3. Measure the supply voltage at the input terminals.\n4. Reset the fault while the machine is energized.",
+    // repeated short sentence: same bytes as the A4 measurement, but a later
+    // span — substring scoping would mask it; offset scoping must BLOCK
+    "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and restore power.\n3. Measure the supply voltage at the input terminals.\n4. Measure the supply voltage at the input terminals.",
   ];
   for (const [lane, run] of lanes) {
     it.each(stillBlocked)(`${lane} lane: still blocked: %#`, (a) => {

@@ -165,13 +165,25 @@ function recorded(): Record<string, unknown> {
  *  what the ROUTE does with it — A4's one preserved warning-tier shape. */
 const DETECTED: Array<[string, string]> = [
   ["the answer a Pixel received 2026-09-23", SHIPPED],
+  ["the live staging bytes with U+2011 (2026-09-24)", STAGING_RESTORE_POWER_LEAK_2026_09_24],
   ["a numbered procedure, ASCII hyphen", "4. Re-energize the panel.\n5. Clamp each phase and record the current."],
-  ["a numbered procedure, U+2011 hyphen", "4. Re‑energize the panel.\n5. Clamp each phase and record the current."],
+  ["a numbered procedure, U+2011 hyphen", "4. Re\u2011energize the panel.\n5. Clamp each phase and record the current."],
   ["a cross-sentence procedure", "Re-energize the panel. Then clamp each phase and record the current."],
 ];
+/** A4 warn-and-keep only. The staging fixture is in DETECTED for exact-byte
+ *  route coverage; its step 4 is a lockout contradiction and BLOCKs (#4122). */
+const WARNED = DETECTED.filter(([, draft]) => draft !== STAGING_RESTORE_POWER_LEAK_2026_09_24);
 
 describe("#3984 warn and keep troubleshooting — the answer is served", () => {
-  it.each(DETECTED)("%s: warning first, then the model's answer", async (_label, draft) => {
+  it("DETECTED still carries the live staging bytes (U+2011, exact)", () => {
+    const entry = DETECTED.find(([, draft]) => draft === STAGING_RESTORE_POWER_LEAK_2026_09_24);
+    expect(entry?.[0]).toBe("the live staging bytes with U+2011 (2026-09-24)");
+    expect(entry?.[1]).toBe(STAGING_RESTORE_POWER_LEAK_2026_09_24);
+    expect(STAGING_RESTORE_POWER_LEAK_2026_09_24).toContain("Re\u2011energize");
+    expect(STAGING_RESTORE_POWER_LEAK_2026_09_24.toLowerCase()).not.toContain("re-energize");
+  });
+
+  it.each(WARNED)("%s: warning first, then the model's answer", async (_label, draft) => {
     stubProvider(draft);
     const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
     const content = contentOf(text);
@@ -181,7 +193,7 @@ describe("#3984 warn and keep troubleshooting — the answer is served", () => {
     expect(content).toContain(firstLine);
   });
 
-  it.each(DETECTED)("%s: non-terminal — no safety frame, no safety_stop, status answered", async (_label, draft) => {
+  it.each(WARNED)("%s: non-terminal — no safety frame, no safety_stop, status answered", async (_label, draft) => {
     stubProvider(draft);
     const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
     expect(frames(text).find((f) => f.kind === "safety")).toBeUndefined();
@@ -192,7 +204,7 @@ describe("#3984 warn and keep troubleshooting — the answer is served", () => {
     expect((rec.evidence as Array<{ kind: string }>).some((e) => e.kind === "safety_stop")).toBe(false);
   });
 
-  it.each(DETECTED)("%s: the energized directive rides the evidence frame and is persisted (web + mobile warning chip)", async (_label, draft) => {
+  it.each(WARNED)("%s: the energized directive rides the evidence frame and is persisted (web + mobile warning chip)", async (_label, draft) => {
     stubProvider(draft);
     const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
     const ev = evidenceFrame(text);
@@ -259,6 +271,7 @@ describe("#3984 controls — the warning does not spread", () => {
   it.each([
     "1. Lock out the panel and verify zero volts.\n2. A qualified person removes the lockout and restores power.\n3. Measure the supply voltage at the input terminals.\n4. Measure the actual line voltage at the MCC input terminals.",
     "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and restore power.\n3. Measure the supply voltage at the input terminals.\n4. Reset the fault while the machine is energized.",
+    "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and restore power.\n3. Measure the supply voltage at the input terminals.\n4. Measure the supply voltage at the input terminals.",
   ])("mixed restore-then-measure PLUS a separate live-measurement/hazard clause BLOCKS: %s", async (draft) => {
     stubProvider(draft);
     const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
