@@ -1,117 +1,127 @@
-// Requires a disposable Postgres (any empty database works; the test creates
-// and drops its own schema).
-//
-//   TEST_DATABASE_URL=postgres://... MIRA_TEST_DB_CONFIRM=DISPOSABLE \
-//     npx vitest run --config vitest.integration.config.ts tests/integration/list-threads-by-notebook
-//
-// listThreadsByNotebook must return, for every notebook, exactly what
-// listThreads returns for that notebook alone: same threads, same order, same
-// owner rule, same per-notebook limit. Real SQL, because the window function
-// and the ANY(uuid[]) predicate are the whole change.
-
+/**
+ * listThreadsByNotebook against REAL Postgres: the integration schema
+ * (migrations 073 → 089, applied by scripts/setup-integration-db.mjs), the real
+ * withTenantContext (SET LOCAL ROLE factorylm_app + tenant settings + RLS), and
+ * only the pool swapped for the disposable database.
+ *
+ * For every notebook it must return exactly what listThreads returns for that
+ * notebook alone — same threads, order, owner rule, completed-only rows and
+ * per-notebook limit — and never another tenant's rows, even when handed that
+ * tenant's notebook id.
+ *
+ * Run: cd mira-hub && TEST_DATABASE_URL=… MIRA_TEST_DB_CONFIRM=DISPOSABLE node scripts/setup-integration-db.mjs \
+ *   && npx vitest run --config vitest.integration.config.ts tests/integration/list-threads-by-notebook
+ */
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { Pool, PoolClient } from "pg";
 
-const RUN = process.env.TEST_DATABASE_URL && process.env.MIRA_TEST_DB_CONFIRM === "DISPOSABLE";
-const SCHEMA = `ltbn_${process.pid}`;
+const RUN = Boolean(process.env.TEST_DATABASE_URL) && process.env.MIRA_TEST_DB_CONFIRM === "DISPOSABLE";
 
-const { testPool } = vi.hoisted(() => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Pool: PgPool } = require("pg");
-  return { testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 }) as Pool };
+// vi.mock factories are hoisted above every import, so the pool handed to
+// `@/lib/db` must itself be created in a hoisted block.
+const { pool } = await vi.hoisted(async () => {
+  const pg = await import("pg");
+  return { pool: new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL }) };
 });
-vi.mock("@/lib/db", () => ({ default: testPool }));
-vi.mock("@/lib/tenant-context", () => ({
-  withTenantContext: async (_tenantId: string, fn: (c: PoolClient) => unknown) => {
-    const client = await testPool.connect();
-    try {
-      await client.query(`SET search_path TO ${SCHEMA}`);
-      return await fn(client);
-    } finally {
-      client.release();
-    }
-  },
-}));
+vi.mock("@/lib/db", () => ({ default: pool }));
 
 import { listThreads, listThreadsByNotebook } from "@/lib/equipment-notebooks";
 
-const TENANT = "0000aaaa-0000-4000-8000-00000000aaaa";
-const OTHER_TENANT = "0000bbbb-0000-4000-8000-00000000bbbb";
-const NB = [
-  "00000001-0000-4000-8000-000000000001",
-  "00000002-0000-4000-8000-000000000002",
-  "00000003-0000-4000-8000-000000000003",
-  "00000004-0000-4000-8000-000000000004", // no turns at all
-];
+const TENANT = randomUUID();
+const OTHER_TENANT = randomUUID();
+const VIEWER = "viewer-ltbn";
+const OTHER_USER = "other-user-ltbn";
+const nb: string[] = []; // TENANT's notebooks; nb[3] has no turns
+let foreignNb = ""; // OTHER_TENANT's notebook
 
-describe.skipIf(!RUN)("listThreadsByNotebook (real Postgres)", () => {
+async function q(sql: string, values: unknown[] = []) {
+  const c = await pool.connect();
+  try {
+    return await c.query(sql, values);
+  } finally {
+    c.release();
+  }
+}
+
+async function notebook(tenant: string, name: string): Promise<string> {
+  const r = await q(
+    `INSERT INTO equipment_notebooks (tenant_id, display_name, node_id) VALUES ($1::uuid, $2, gen_random_uuid()) RETURNING id::text AS id`,
+    [tenant, name],
+  );
+  return r.rows[0].id;
+}
+
+async function turn(tenant: string, notebookId: string, thread: string | null, question: string, owner: string | null, state: "complete" | "pending", minutes: number) {
+  await q(
+    `INSERT INTO equipment_notebook_turns
+       (notebook_id, tenant_id, thread_id, question, answer_text, owner_user_id, client_request_state, created_at)
+     VALUES ($1::uuid, $2::uuid, $3, $4, 'a', $5, $6, timestamptz '2026-10-01T00:00:00Z' + make_interval(mins => $7))`,
+    [notebookId, tenant, thread, question, owner, state, minutes],
+  );
+}
+
+describe.skipIf(!RUN)("listThreadsByNotebook (real Postgres, RLS)", () => {
   beforeAll(async () => {
-    await testPool.query(`CREATE SCHEMA ${SCHEMA}`);
-    await testPool.query(`
-      CREATE TABLE ${SCHEMA}.equipment_notebook_turns (
-        tenant_id UUID NOT NULL,
-        notebook_id UUID NOT NULL,
-        thread_id TEXT NULL,
-        question TEXT NOT NULL,
-        owner_user_id TEXT NULL,
-        client_request_state TEXT NOT NULL DEFAULT 'complete',
-        created_at TIMESTAMPTZ NOT NULL
-      )`);
-    const rows: [string, string, string | null, string, string | null, string, number][] = [];
-    // nb1: 4 threads owned by viewer, one legacy (null thread, null owner),
-    // one by another user (hidden), one pending turn (hidden).
+    for (const name of ["ltbn-1", "ltbn-2", "ltbn-3", "ltbn-empty"]) nb.push(await notebook(TENANT, name));
+    foreignNb = await notebook(OTHER_TENANT, "ltbn-foreign");
+    // nb[0]: 4 viewer threads (2 turns each), one legacy turn (null thread,
+    // null owner), one other user's thread (hidden), one pending turn (hidden).
     for (let t = 0; t < 4; t++) {
-      rows.push([TENANT, NB[0], `thrd_${t}`, `first question of thread ${t} with many words in it`, "viewer", "complete", t * 10]);
-      rows.push([TENANT, NB[0], `thrd_${t}`, `follow up ${t}`, "viewer", "complete", t * 10 + 5]);
+      await turn(TENANT, nb[0], `thrd_${t}`, `first question of thread ${t} with many words in it`, VIEWER, "complete", t * 10);
+      await turn(TENANT, nb[0], `thrd_${t}`, `follow up ${t}`, VIEWER, "complete", t * 10 + 5);
     }
-    rows.push([TENANT, NB[0], null, "legacy turn", null, "complete", 7]);
-    rows.push([TENANT, NB[0], "thrd_other", "someone else", "other-user", "complete", 100]);
-    rows.push([TENANT, NB[0], "thrd_pending", "in flight", "viewer", "pending", 200]);
-    // nb2: legacy-only plus a mixed thread; nb3: one thread; another tenant's
-    // row on nb3's id must never show.
-    rows.push([TENANT, NB[1], null, "old legacy", null, "complete", 1]);
-    rows.push([TENANT, NB[1], "thrd_mix", "mixed", null, "complete", 2]);
-    rows.push([TENANT, NB[1], "thrd_mix", "mixed 2", "viewer", "complete", 3]);
-    rows.push([TENANT, NB[2], "thrd_x", "only one", "viewer", "complete", 50]);
-    rows.push([OTHER_TENANT, NB[2], "thrd_leak", "other tenant", "viewer", "complete", 60]);
-    for (const [tenant, nb, thread, q, owner, state, minutes] of rows) {
-      await testPool.query(
-        `INSERT INTO ${SCHEMA}.equipment_notebook_turns
-           (tenant_id, notebook_id, thread_id, question, owner_user_id, client_request_state, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, timestamptz '2026-10-01T00:00:00Z' + make_interval(mins => $7))`,
-        [tenant, nb, thread, q, owner, state, minutes],
-      );
-    }
+    await turn(TENANT, nb[0], null, "legacy turn", null, "complete", 7);
+    await turn(TENANT, nb[0], "thrd_other", "someone else", OTHER_USER, "complete", 100);
+    await turn(TENANT, nb[0], "thrd_pending", "in flight", VIEWER, "pending", 200);
+    // nb[1]: legacy-only plus a thread mixing legacy and owned turns.
+    await turn(TENANT, nb[1], null, "old legacy", null, "complete", 1);
+    await turn(TENANT, nb[1], "thrd_mix", "mixed", null, "complete", 2);
+    await turn(TENANT, nb[1], "thrd_mix", "mixed 2", VIEWER, "complete", 3);
+    // nb[2]: one thread. The other tenant's notebook has a viewer-owned thread.
+    await turn(TENANT, nb[2], "thrd_x", "only one", VIEWER, "complete", 50);
+    await turn(OTHER_TENANT, foreignNb, "thrd_leak", "other tenant", VIEWER, "complete", 60);
   });
 
   afterAll(async () => {
-    await testPool.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`);
-    await testPool.end();
+    await q(`DELETE FROM equipment_notebook_turns WHERE tenant_id IN ($1::uuid, $2::uuid)`, [TENANT, OTHER_TENANT]);
+    await q(`DELETE FROM equipment_notebooks WHERE tenant_id IN ($1::uuid, $2::uuid)`, [TENANT, OTHER_TENANT]);
+    await pool.end();
   });
 
-  for (const viewer of ["viewer", null] as const) {
+  for (const viewer of [VIEWER, null] as const) {
     for (const limit of [20, 2]) {
       it(`matches listThreads per notebook (viewer=${viewer ?? "none"}, limit=${limit})`, async () => {
-        const batched = await listThreadsByNotebook(TENANT, NB, limit, { viewerUserId: viewer });
-        for (const nb of NB) {
-          const single = await listThreads(TENANT, nb, limit, { viewerUserId: viewer });
-          expect(batched.get(nb) ?? [], nb).toEqual(single);
+        const batched = await listThreadsByNotebook(TENANT, nb, limit, { viewerUserId: viewer });
+        for (const id of nb) {
+          const single = await listThreads(TENANT, id, limit, { viewerUserId: viewer });
+          expect(batched.get(id) ?? [], id).toEqual(single);
         }
       });
     }
   }
 
-  it("covers the cases it claims to: limits bite, owners and pending turns are filtered", async () => {
-    const full = await listThreadsByNotebook(TENANT, NB, 20, { viewerUserId: "viewer" });
-    expect(full.get(NB[0])?.map((t) => t.id)).toEqual(["thrd_3", "thrd_2", "thrd_1", "legacy", "thrd_0"]);
-    expect(full.get(NB[2])?.map((t) => t.id)).toEqual(["thrd_x"]);
-    expect(full.has(NB[3])).toBe(false);
-    const capped = await listThreadsByNotebook(TENANT, NB, 2, { viewerUserId: "viewer" });
-    expect(capped.get(NB[0])?.map((t) => t.id)).toEqual(["thrd_3", "thrd_2"]);
+  it("orders by latest turn, keeps legacy, hides other owners and pending turns, and applies the limit per notebook", async () => {
+    const full = await listThreadsByNotebook(TENANT, nb, 20, { viewerUserId: VIEWER });
+    expect(full.get(nb[0])?.map((t) => t.id)).toEqual(["thrd_3", "thrd_2", "thrd_1", "legacy", "thrd_0"]);
+    expect(full.get(nb[0])?.map((t) => t.turnCount)).toEqual([2, 2, 2, 1, 2]);
+    expect(full.get(nb[1])?.map((t) => [t.id, t.sharedLegacy])).toEqual([["thrd_mix", true], ["legacy", true]]);
+    expect(full.get(nb[2])?.map((t) => t.id)).toEqual(["thrd_x"]);
+    expect(full.has(nb[3])).toBe(false);
+    const capped = await listThreadsByNotebook(TENANT, nb, 2, { viewerUserId: VIEWER });
+    expect(capped.get(nb[0])?.map((t) => t.id)).toEqual(["thrd_3", "thrd_2"]);
+    expect(capped.get(nb[1])?.map((t) => t.id)).toEqual(["thrd_mix", "legacy"]);
+  });
+
+  it("never returns another tenant's threads, even when given that tenant's notebook id", async () => {
+    // Precondition: the foreign rows exist and are visible to their own tenant.
+    expect((await listThreads(OTHER_TENANT, foreignNb, 20, { viewerUserId: VIEWER })).map((t) => t.id)).toEqual(["thrd_leak"]);
+    const out = await listThreadsByNotebook(TENANT, [...nb, foreignNb], 20, { viewerUserId: VIEWER });
+    expect(out.has(foreignNb)).toBe(false);
+    expect([...out.values()].flat().map((t) => t.id)).not.toContain("thrd_leak");
   });
 
   it("runs no query for an empty notebook list", async () => {
-    const spy = vi.spyOn(testPool, "connect");
+    const spy = vi.spyOn(pool, "connect");
     expect((await listThreadsByNotebook(TENANT, [], 20)).size).toBe(0);
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
