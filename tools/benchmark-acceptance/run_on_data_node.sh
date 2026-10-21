@@ -41,6 +41,6 @@ for k in 10 6; do
   cat "$OUT/$SET_NAME-off-k$k.jsonl" "$OUT/$SET_NAME-on-k$k.jsonl" > "$OUT/$SET_NAME-k$k.jsonl"
   ext_args=()
   [ -n "$EXTERNAL" ] && ext_args=(--external "$EXTERNAL")
-  python3 "$WT/tools/benchmark-acceptance/scorecard.py" "$OUT/$SET_NAME-k$k.jsonl" "${ext_args[@]}" \
+  python3 "$WT/tools/benchmark-acceptance/scorecard.py" "$OUT/$SET_NAME-k$k.jsonl" ${ext_args[@]+"${ext_args[@]}"} \
     --out "$OUT/$SET_NAME-k$k-scorecard.json" --md "$OUT/$SET_NAME-k$k-scorecard.md"
 done
