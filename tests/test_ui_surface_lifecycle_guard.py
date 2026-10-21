@@ -2461,6 +2461,8 @@ def test_marketing_only_pr_4552_file_list_passes_without_attestation():
         "mira-web/public/printsense.html",
         "mira-web/public/activated.html",
         "mira-web/src/__tests__/printsense-landing.test.ts",
+        "mira-web/src/__tests__/health-identity.test.ts",
+        "mira-web/src/__tests__/site-wide-topbar.test.ts",
         "mira-web/src/lib/blog-renderer.ts",
         "mira-web/src/lib/feature-renderer.ts",
         "docs/plans/2026-06-01-mira-master-architecture-plan.md",
@@ -2522,6 +2524,26 @@ def test_unlisted_views_stay_guarded_without_attestation(path):
     """Directory-wide views/ opening would skip admin/checkout and future pages."""
     policy = load_guard_policy(REAL_REGISTRY)
     assert path not in getattr(_guard, "_WEB_MARKETING_VIEW_PATHS", frozenset())
+    assert path_is_guarded(path, policy), path
+    result = evaluate([ChangedFile(status="added", path=path)], pr_body="", policy=policy)
+    assert result.allowed is False
+    assert path in result.guarded_paths
+    assert "review:exact-head and exact-body Codex GREEN" in result.missing_fields
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-web/src/__tests__/admin.test.ts",
+        "mira-web/src/__tests__/checkout.test.ts",
+        "mira-web/src/__tests__/runtime-imported.test.ts",
+        "mira-web/src/views/__tests__/admin.test.ts",
+    ],
+)
+def test_unlisted_public_site_tests_stay_guarded(path):
+    """Directory-wide __tests__/ opening would skip an unlisted public-site test."""
+    policy = load_guard_policy(REAL_REGISTRY)
+    assert path not in getattr(_guard, "_WEB_MARKETING_TEST_PATHS", frozenset())
     assert path_is_guarded(path, policy), path
     result = evaluate([ChangedFile(status="added", path=path)], pr_body="", policy=policy)
     assert result.allowed is False

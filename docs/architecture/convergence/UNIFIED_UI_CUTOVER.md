@@ -112,8 +112,8 @@ presentation-shaped:
   exact code-owned allowlist of audited existing backend libraries (including
   typed chat transport and QR generation), TypeScript/JSON files in
   `src/seed/**` and the explicit future `src/capabilities/**` root, marketing
-  an exact allowlist of marketing views and their tests (not the whole
-  `src/views/**` tree), public-site tests under `src/__tests__/`, and the
+  an exact allowlist of marketing views and their current public-site tests
+  (not the whole `src/views/**` or `src/__tests__/` trees), and the
   blog/feature renderers remain open.
   The mixed `m.ts` customer redirect journey is guarded. Every other suffix in
   the capability/seed roots, every other route, the mixed `server.ts` mount,

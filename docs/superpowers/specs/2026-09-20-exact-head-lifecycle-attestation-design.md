@@ -63,9 +63,9 @@ attestation. Removed from the guarded-path scope (path-scope only; not a
 phrase list):
 
 - `mira-web/public/**` HTML/txt pages
-- an exact allowlist of marketing views and their tests under
-  `mira-web/src/views/` (not the directory), plus
-  `mira-web/src/__tests__/` public-site tests
+- an exact allowlist of marketing views under `mira-web/src/views/` and
+  the current public-site tests under `mira-web/src/__tests__/` and
+  `mira-web/src/views/__tests__/` (not those directories)
 - `mira-web/src/lib/blog-renderer.ts` and `mira-web/src/lib/feature-renderer.ts`
 
 `docs/**` was already open except control-plane files

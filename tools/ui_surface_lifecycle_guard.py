@@ -158,9 +158,9 @@ _WEB_MARKETING_LIB_PATHS: frozenset[str] = frozenset(
     }
 )
 
-# Exact public marketing views and their current tests. Anything else under
-# `mira-web/src/views/` — including a future admin/checkout page — stays
-# fail-closed. The QR-scan miss page is omitted on purpose.
+# Exact public marketing views. Anything else under `mira-web/src/views/` —
+# including a future admin/checkout page — stays fail-closed. The QR-scan
+# miss page is omitted on purpose.
 _WEB_MARKETING_VIEW_PATHS: frozenset[str] = frozenset(
     {
         "mira-web/src/views/_topbar.ts",
@@ -168,6 +168,16 @@ _WEB_MARKETING_VIEW_PATHS: frozenset[str] = frozenset(
         "mira-web/src/views/home.ts",
         "mira-web/src/views/limitations.ts",
         "mira-web/src/views/security.ts",
+    }
+)
+
+# Exact public-site tests that currently live under the two marketing test
+# roots. Unlisted `__tests__/` files stay fail-closed.
+_WEB_MARKETING_TEST_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/src/__tests__/health-identity.test.ts",
+        "mira-web/src/__tests__/printsense-landing.test.ts",
+        "mira-web/src/__tests__/site-wide-topbar.test.ts",
         "mira-web/src/views/__tests__/cmms.test.ts",
         "mira-web/src/views/__tests__/home.test.ts",
         "mira-web/src/views/__tests__/honest-claims.test.ts",
@@ -1114,11 +1124,14 @@ def _is_open_marketing_site_path(path: str) -> bool:
     """True for public factorylm.com marketing pages that no longer need attestation.
 
     Path-scope only. Hub screens, shared UI packages, and control-plane
-    files never match. Unlisted `src/views/` files stay guarded.
+    files never match. Unlisted `src/views/` and `__tests__/` files stay
+    guarded.
     """
-    if path in _WEB_MARKETING_LIB_PATHS or path in _WEB_MARKETING_VIEW_PATHS:
-        return True
-    if path.startswith("mira-web/src/__tests__/"):
+    if (
+        path in _WEB_MARKETING_LIB_PATHS
+        or path in _WEB_MARKETING_VIEW_PATHS
+        or path in _WEB_MARKETING_TEST_PATHS
+    ):
         return True
     return path.startswith("mira-web/public/") and path.lower().endswith(
         _MARKETING_PUBLIC_PAGE_SUFFIXES
