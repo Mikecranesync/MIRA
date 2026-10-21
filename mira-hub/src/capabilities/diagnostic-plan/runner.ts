@@ -18,6 +18,7 @@ export function routeAfter(
   index: number,
   outcome: ActionOutcome,
   action?: ActionDefinition,
+  choice?: string,
 ): NextStepResult {
   const step = template.steps[index];
   const route = step.on?.[outcome];
@@ -30,6 +31,17 @@ export function routeAfter(
     if (route && "stop" in route && route.stop !== "resolved") return { kind: "stop", reason: route.stop };
     return { kind: "stop", reason: outcome === "FAIL" ? "blocked" : "escalate" };
   }
+  // WP-1: an option step's PASS goes where the manual's chosen branch goes. A choice that is not
+  // one of the step's options is never guessed into a branch.
+  if (step.options && outcome === "PASS") {
+    const option = choice !== undefined ? step.options[choice] : undefined;
+    if (!option) return { kind: "stop", reason: `Choice '${choice ?? ""}' is not an option of step '${step.id}'` };
+    if (option.next) return follow(template, { next: option.next });
+    return { kind: "stop", reason: option.stop ?? "escalate" };
+  }
+  // Any other answer at an option step ("none of these", "can't tell") is not one of the manual's
+  // branches: it never falls through to the next step in the list.
+  if (step.options && !route) return { kind: "stop", reason: "escalate" };
   if (route) return follow(template, route);
   if (outcome === "INCONCLUSIVE") return { kind: "stop", reason: "escalate" };
 
@@ -107,7 +119,7 @@ export function nextStep(
     if (count > LOOP_LIMIT) return stop("Step executed more than 3 times, escalating");
 
     const index = template.steps.indexOf(step);
-    expected = routeAfter(template, index, record.outcome, action);
+    expected = routeAfter(template, index, record.outcome, action, record.choice);
     if (expected.kind === "stop") expected = { ...expected, atStep: record.stepId };
   }
 
