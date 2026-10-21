@@ -695,6 +695,51 @@ capabilities:
       - "Production: owner decision after the staging walk."
     review_by: "2026-11-17"
 
+  - id: guided_troubleshooting
+    purpose: >-
+      Turn a manufacturer's troubleshooting chapter into a step-by-step, deterministic technician workflow on
+      the equipment notebook (WP-1), built on the #4498 diagnostic-plan runner: branching from the manual's own
+      flowchart and tables, technician measurements judged against the manual's criterion, quoted safety
+      acknowledgements, a manual-revision check, resumable sessions, and escalation to MIRA's chat with the
+      session as evidence when the manual runs out.
+    customer_outcome: >-
+      A technician on an SMC Flex opens its notebook, taps Guided troubleshooting, follows the manufacturer's
+      steps with the page for each, is stopped before anything unsafe, and comes back after an interruption to
+      the same step.
+    # The Hub reads NOTEBOOK_GUIDED_PROCEDURE (TypeScript). feature_flag is omitted
+    # because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/procedure/route.ts   # GET procedures + session, POST start/answer"
+      - "mira-hub/src/capabilities/diagnostic-plan/guided.ts   # applicability, measurement, records, view"
+      - "mira-hub/src/capabilities/diagnostic-plan/manufacturer/smc-flex.ts   # Rockwell 150-UM008J Ch.9"
+    consumers:
+      - "mira-hub/src/factorylm-ui/GuidedProcedure.tsx   # notebook panel, mounted by hub-host.tsx"
+    environments:
+      dev: unset
+      staging: unset
+      production: unset                     # not forwarded by docker-compose.saas.yml
+    state: deployed_disabled
+    reason: >-
+      WP-1. Template independently checked against the page images (371/372 units, the two gaps fixed).
+      Staging enablement and the phone-size walks follow merge; this record moves to staging_enabled with
+      that evidence.
+    owner: "Mike Harper"
+    ci_jobs:
+      - mira-hub-unit
+    required_checks: []
+    evidence:
+      - "mira-hub/src/capabilities/__tests__/diagnostic-plan-smc-flex.test.ts"
+      - "mira-hub/src/capabilities/__tests__/diagnostic-plan-guided-route.test.ts"
+    rollback: >-
+      Unset NOTEBOOK_GUIDED_PROCEDURE (or set anything other than 1) and redeploy mira-hub: the route
+      returns 404 and the panel renders nothing. Sessions already stored stay in workflow_runs.
+    blocker: >-
+      Production: owner decision after the staging walks.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Staging: three complete technician workflows at phone size on staging with screenshots."
+      - "Production: owner decision."
+    review_by: "2026-11-21"
   - id: unified_ui_shell
     purpose: >-
       Shared FactoryLM presentation shell (design tokens, interaction
