@@ -6,6 +6,7 @@ tool reports would silently disagree with production. This test fails first.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -61,3 +62,19 @@ def test_honest_refusals(text):
 )
 def test_not_refusals(text):
     assert not refusal.is_refusal(text)
+
+
+HUB_CASES = "mira-hub/src/app/api/equipment-notebooks/[id]/chat/__tests__/answer-hygiene.test.ts"
+_CASE_RE = re.compile(r'expect\(isRefusal\(("(?:[^"\\]|\\.)*")\)\)\.toBe\((true|false)\)')
+
+
+def _hub_cases() -> list[tuple[str, bool]]:
+    src = (ROOT / HUB_CASES).read_text()
+    return [(json.loads(lit), want == "true") for lit, want in _CASE_RE.findall(src)]
+
+
+def test_port_agrees_with_every_literal_isrefusal_case_in_the_hub_tests():
+    cases = _hub_cases()
+    assert len(cases) >= 20, f"expected the hub's literal isRefusal cases, found {len(cases)}"
+    wrong = [(t, want) for t, want in cases if refusal.is_refusal(t) != want]
+    assert not wrong, wrong

@@ -21,12 +21,13 @@ never a pass, and never a fail of the change.
 | V1 | Both arms ran the same build, recorded by `gitSha` and `builtAt` | `scored.json` `meta`, plus `/api/health` |
 | V2 | Both arms used the same corpus bytes | `corpus.json` sha256 per manual. A changed OEM PDF is BROKEN. |
 | V3 | The configuration matrix is captured at run time for both arms, and the only intended difference is the flag under test | `config-matrix.md` regenerate block |
-| V4 | **Lanes actually ran.** For any arm that claims the vector lane, `mira.retrieval.vector_lane=ran` on ≥ 90% of turns. Both arms are within 10 points of each other. | Trace join, `tools/retrieval_eval` `--lanes` |
+| V4 | **Lanes actually ran.** For any arm that claims the vector lane, `mira.retrieval.vector_lane=ran` on ≥ 90% of turns. Both arms are within 10 points of each other. | `tools/retrieval_eval/lanes.py`, then `walk_eval --lanes`. It uses the Langfuse v2 API; the v1 trace endpoint stops working on **2026-11-16**. |
 | V5 | Rerank outcome is known per turn | **Not possible today:** fallbacks only reach a log line. Until a trace attribute exists, a rerank claim is reported as "configured, outcome unverified". |
 | V6 | BROKEN = 0, and every question was asked in both arms | `walk_eval` `paired.n` equals the question count |
 
-By these rules, the #4571 staging A/B fails V4. Its result describes a mostly-lexical stack, not
-"lexical underneath hybrid + rerank" (`results-2026-10-21.md` §1).
+By these rules, the #4571 staging A/B fails V4 and V5. Its result describes lexical ranking plus
+an unverified rerank, not "lexical underneath hybrid + rerank", and not production's
+configuration either (`results-2026-10-21.md` §1).
 
 ## 1. Gates, in the order they run
 
@@ -34,12 +35,12 @@ By these rules, the #4571 staging A/B fails V4. Its result describes a mostly-le
 |---|---|---|---|
 | **R1 Retrieval, development** | Zero-token replay (#4534), 77 questions, top-6 | Paired McNemar p < 0.05 in favour, and **no top-1 loss** | The existing gate 1. Free. Run as often as needed. |
 | **R2 Retrieval, sealed** | Unseen set, 60 answerable, aggregate only | Top-6 discordant gained ≥ lost | The existing gate 2. Run **once** per change. Never read per-question. |
-| **A1 Answer, citation** | Staging Stranger Walk, 50 questions | Lower bound of the Newcombe 95% paired interval > −10 points, **and** lost ≤ 3 | 3 is the most rows a same-build repeat has flipped (#4460: 3 and 1 of 50). |
+| **A1 Answer, citation** | Staging Stranger Walk, 50 questions | Net loss (lost − gained) ≤ 3 rows (`gates.a1_citation`) | 3 is the worst net loss a same-build repeat has produced (#4460: 3 and 1 of 50). At n = 50 this catches a net loss of 4+ rows (8+ points), no finer. A Newcombe lower bound > −10 points was rejected: an unchanged build can fail it (worst no-op: −13.6). |
 | **A2 Per manual** | Same walk | No manual loses ≥ 2 of its 5 questions | The ten manuals are the clusters. Per-manufacturer numbers are anecdote at this n and are not gated. |
 | **S1 Refusal** | Unanswerable questions, by answer text (`isRefusal`) | Clean refusals: gained ≥ lost | See §2: at today's n = 7, this is "zero losses". |
 | **S2 Cited refusal** | Same | Refusals that carry a citation do not increase | A cited refusal is scored `answered` and looks grounded. |
 | **S3 Safety** | Same walk, 15 safety questions | Structured-notice red lines do not increase, **and** prose warnings do not decrease | The red-line count is 12 in both arms. It measures the notice system (#4508), not retrieval, so it can only guard against regressions. |
-| **P1 Cost and latency** | Same walk | p95 turn latency ≤ baseline × 1.2; booked $ per turn unchanged | Booked $ is a flat rate per turn today (#4522), not measured spend. |
+| **P1 Cost and latency** | `retrieval.execute` span latency (`lanes.py`) | Retrieval p95 ≤ baseline × 1.2; booked $ per turn unchanged | Whole-turn latency (~47 s) cannot see a retrieval regression. Gate 1 measured retrieval alone at 233 → 308 ms. Booked $ is a flat rate per turn today (#4522), not measured spend. |
 | **D1 Production parity** | Configuration matrix | The arm judged is the production configuration, or every difference is listed and accepted by the owner | Production also needs its compose to forward the flag (the matrix, point 1). |
 
 **Promotion to production** needs R1, R2, A1, A2, S1, S2, S3, P1 and D1 to pass on valid runs,
@@ -70,5 +71,7 @@ python3 tools/retrieval_eval/walk_eval.py \
   --arm base=<walk out dir> --arm change=<walk out dir>[,<resume dir>] \
   --corpus mira-hub/tests/stranger-walk/corpus.json \
   --lanes base=<lanes.jsonl> --lanes change=<lanes.jsonl> --json report.json
-# sealed set: add --sealed --key <id -> accepted pages>; aggregates only
+# sealed set: add --sealed --key .planning/unseen-set/gold.jsonl (only qid + accepted_pages
+# are read); aggregates only, no per-question or per-manual output
+doppler run --project factorylm --config stg -- python3 tools/retrieval_eval/lanes.py <walk out dir> <lanes.jsonl>
 ```

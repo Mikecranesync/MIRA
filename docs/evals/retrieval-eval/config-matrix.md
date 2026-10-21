@@ -10,7 +10,9 @@ Owner: retrieval evaluation (#4576). Read-only snapshot: Doppler values, compose
 | Hub build (`/api/health` `gitSha`) | `8bce49000` (built 2026-10-21 02:44Z) | `22164415a` (built 2026-10-20 05:30Z) |
 | Tracing | on (Langfuse OTLP) | **off** |
 
-Retrieval-path commits in staging but not production: #4546 and #4549 (vector-lane warm-up and
+`git diff --stat 22164415a 8bce49000 -- mira-hub/src` touches 8 production files. Two are path
+refactors (`process.cwd()` → `PWD` in `review-queue.ts` and `asset-intelligence.ts`). The
+retrieval-path commits in staging but not production are: #4546 and #4549 (vector-lane warm-up and
 telemetry), #4550 (claim verifier, shadow, off), and #4556 (lexical IDF behind its flag). With the
 flags off, all four are behaviour-neutral or trace-only. **A "production configuration" arm on
 staging is still not the production build.**
@@ -33,7 +35,7 @@ the compose file forwards it.
 | `NOTEBOOK_ENERGIZED_HARD_STOP` | on | unset | on | unset | n/a | on |
 | `NOTEBOOK_CLAIM_VERIFIER` | off | unset | off | unset | not forwarded | off |
 | `NOTEBOOK_GARBLE_DECODE` | on | unset | on | unset | yes (`:-1`) | on |
-| `NOTEBOOK_GUIDED_PROCEDURE` | — | `1` | **nothing reads it** | unset | — | — |
+| `NOTEBOOK_GUIDED_PROCEDURE` | — | `1` | **no consumer on this build** | unset | — | — |
 | Answer model | `OPENAI_MODEL` `gpt-5.4-mini` | unset → default | gpt-5.4-mini | unset → default | yes | gpt-5.4-mini |
 | Provider keys present | | OpenAI, Groq, Together | | OpenAI, Groq, Together | | |
 
@@ -53,8 +55,9 @@ the notebook chat path.
    p95 4.1 s against the 4000 ms timeout set in staging.
 4. **The answer model and the safety and answer gates are identical in both environments.** A
    refusal difference between them is therefore not a model difference.
-5. **`NOTEBOOK_GUIDED_PROCEDURE=1` in staging is dead configuration.** No consumer exists in
-   `mira-hub/src` or in either compose file on `023cd64c5`.
+5. **`NOTEBOOK_GUIDED_PROCEDURE=1` in staging has no consumer on the deployed build.** Nothing
+   in `mira-hub/src` or either compose file on `023cd64c5` reads it. An open branch
+   (`feat/wp1-guided-troubleshooting`) may be adding one.
 
 ## How to regenerate
 

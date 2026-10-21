@@ -148,3 +148,40 @@ def test_unanswerable_outcome_counts_text_refusals_with_or_without_a_citation():
     assert walk_eval.outcome(r("ABSTAINED", None, REFUSAL), [], 1) == 1
     assert walk_eval.outcome(r("WRONG_PAGE", 4, REFUSAL), [], 1) == 1
     assert walk_eval.outcome(r("WRONG_PAGE", 4, ANSWER), [], 1) == 0
+
+
+def test_lane_summary_later_file_wins_and_skips_unasked_rows():
+    rows = [
+        {"id": "m-q1", "lane": "no_trace"},
+        {"id": "m-q2", "lane": "skipped_timeout", "retrieval_latency_s": 7.0},
+        {"id": "m-q1", "lane": "ran", "retrieval_latency_s": 1.0},
+        {"id": "m-q2", "lane": "ran", "retrieval_latency_s": 2.0},
+        {"id": "other", "lane": "ran", "retrieval_latency_s": 9.0},
+    ]
+    s = walk_eval.lane_summary(rows, {"m-q1", "m-q2"})
+    assert s["lanes"] == {"ran": 2}
+    assert s["vector_ran_fraction"] == 1.0
+    assert s["retrieval_latency_s"]["p95"] == 2.0
+
+
+def test_lane_of_reads_expanded_and_flags_truncated_metadata():
+    from retrieval_eval import lanes
+
+    span = {"name": "retrieval.execute", "latency": 3.2}
+    expanded = {**span, "metadata": {"attributes": {"mira.retrieval.vector_lane": "ran"}}}
+    truncated = {**span, "metadata": {"attributes": '{"mira.retrieval.strategy":"notebook_sour'}}
+    assert lanes.lane_of([expanded]) == {"lane": "ran", "retrieval_latency_s": 3.2}
+    assert lanes.lane_of([truncated])["lane"] == "attrs_truncated"
+    assert lanes.lane_of([])["lane"] == "trace_not_found"
+    assert lanes.lane_of([{"name": "other"}])["lane"] == "no_retrieval_span"
+
+
+def test_key_can_be_read_from_gold_jsonl(tmp_path):
+    gold = tmp_path / "gold.jsonl"
+    gold.write_text(
+        json.dumps({"qid": "a", "accepted_pages": [3, 4], "question": "x"})
+        + "\n"
+        + json.dumps({"qid": "b", "accepted_pages": None})
+        + "\n"
+    )
+    assert walk_eval.load_key(str(gold)) == {"a": [3, 4], "b": []}

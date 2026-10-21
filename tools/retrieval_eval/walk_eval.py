@@ -31,6 +31,15 @@ from retrieval_eval.refusal import is_refusal  # noqa: E402
 ANSWERED_CLASSES = ("CORRECT", "WRONG_PAGE")
 
 
+def load_key(path: str) -> dict[str, list[int]]:
+    """Question id -> accepted pages. Accepts the id map, or the sealed set's gold.jsonl itself
+    (only ``qid`` and ``accepted_pages`` are read)."""
+    if path.endswith(".jsonl"):
+        rows = [json.loads(x) for x in Path(path).read_text().splitlines() if x.strip()]
+        return {r["qid"]: r["accepted_pages"] or [] for r in rows}
+    return json.loads(Path(path).read_text())
+
+
 def load_arm(dirs: list[str]) -> tuple[dict[str, dict], dict]:
     rows: dict[str, dict] = {}
     booked = 0.0
@@ -120,6 +129,30 @@ def arm_summary(rows: dict[str, dict], key: dict | None, tol: int) -> dict:
     return out
 
 
+def lane_summary(rows: list[dict], asked: set[str]) -> dict:
+    """Vector-lane outcome and retrieval-span latency for one arm (validity check V4, gate P1).
+
+    Only rows the arm actually scored count; a later resume directory's lane wins.
+    """
+    by_id: dict[str, dict] = {}
+    for r in rows:
+        if r["id"] in asked and r.get("lane") != "no_trace":
+            by_id[r["id"]] = r
+    lanes = Counter(r["lane"] for r in by_id.values())
+    lat = [
+        r["retrieval_latency_s"] for r in by_id.values() if r.get("retrieval_latency_s") is not None
+    ]
+    return {
+        "lanes": dict(lanes),
+        "vector_ran_fraction": round(lanes["ran"] / len(by_id), 3) if by_id else None,
+        "retrieval_latency_s": {
+            "p50": stats.percentile(lat, 50),
+            "p95": stats.percentile(lat, 95),
+            "n": len(lat),
+        },
+    }
+
+
 def paired(
     a: dict, b: dict, key: dict | None, tol: int, cluster_of: dict[str, str]
 ) -> tuple[dict, list[tuple[str, int, int]]]:
@@ -154,17 +187,22 @@ def main(argv: list[str] | None = None) -> int:
         help="NAME=DIR[,DIR...]; first --arm is the baseline",
     )
     ap.add_argument("--corpus", help="Stranger Walk corpus.json (manual, oem, family per question)")
-    ap.add_argument("--key", help="sealed key: question id -> accepted pages ([] = unanswerable)")
+    ap.add_argument(
+        "--key", help="question id -> accepted pages ([] = unanswerable), or gold.jsonl"
+    )
     ap.add_argument("--sealed", action="store_true", help="aggregates only; requires --key")
     ap.add_argument("--tolerance", type=int, default=1)
     ap.add_argument(
-        "--lanes", action="append", default=[], help="NAME=lanes.jsonl from the trace join"
+        "--lanes",
+        action="append",
+        default=[],
+        help="NAME=lanes.jsonl[,...] from lanes.py; later files win",
     )
     ap.add_argument("--json", help="write the full report here")
     args = ap.parse_args(argv)
     if args.sealed and not args.key:
         ap.error("--sealed needs --key")
-    key = json.loads(Path(args.key).read_text()) if args.key else None
+    key = load_key(args.key) if args.key else None
     arms = {}
     for spec in args.arm:
         name, _, dirs = spec.partition("=")
@@ -190,9 +228,8 @@ def main(argv: list[str] | None = None) -> int:
         report["arms"][name] = {**meta, **arm_summary(rows, key, args.tolerance)}
     for spec in args.lanes:
         name, _, f = spec.partition("=")
-        report["lanes"][name] = dict(
-            Counter(json.loads(x)["lane"] for x in Path(f).read_text().splitlines() if x)
-        )
+        lines = [x for part in f.split(",") for x in Path(part).read_text().splitlines() if x]
+        report["lanes"][name] = lane_summary([json.loads(x) for x in lines], set(arms[name][0]))
     names = list(arms)
     for other in names[1:]:
         res, xs = paired(arms[names[0]][0], arms[other][0], key, args.tolerance, cluster_of)
