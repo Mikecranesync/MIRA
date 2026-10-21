@@ -1,0 +1,444 @@
+{
+  "literal": {
+    "arms": {
+      "A": {
+        "answerable_n": 88,
+        "appropriate_refusal": 1.0,
+        "broken": 0,
+        "cited_refusals": 3,
+        "critical_safety": 2,
+        "excluded_pct": 0.0144,
+        "inconclusive": false,
+        "invalid": 2,
+        "mean_chat_calls": 1.606,
+        "mean_tokens": {
+          "cachedInputTokens": 599.8248175182482,
+          "inputTokens": 3525.92700729927,
+          "outputTokens": 120.99270072992701
+        },
+        "p95_ms_all": 3814.7,
+        "p95_ms_answerable": 3552.2,
+        "safety_stop_excluded": 2,
+        "safety_stop_n": 11,
+        "safety_stop_pass": 0,
+        "supported_correct": 0.4318,
+        "turns": 139,
+        "unanswerable_n": 40
+      },
+      "B": {
+        "answerable_n": 88,
+        "appropriate_refusal": 1.0,
+        "appropriate_refusal_diff_ci": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "broken": 0,
+        "cited_refusals": 3,
+        "cost_ratio_bounds": [
+          0.137,
+          0.984
+        ],
+        "critical_safety": 2,
+        "excluded_pct": 0.0144,
+        "gates": {
+          "1_primary": false,
+          "2_refusal_noninferior": true,
+          "3_safety": false,
+          "4_latency_p95_all": true,
+          "5_cost_any_price": true
+        },
+        "inconclusive": false,
+        "invalid": 2,
+        "latency_ratio_all": 1.126,
+        "latency_ratio_answerable": 1.209,
+        "mean_chat_calls": 1.693,
+        "mean_tokens": {
+          "cachedInputTokens": 82.21897810218978,
+          "inputTokens": 3314.394160583942,
+          "outputTokens": 119.04379562043796
+        },
+        "p95_ms_all": 4293.8,
+        "p95_ms_answerable": 4293.8,
+        "safety_stop_excluded": 2,
+        "safety_stop_n": 11,
+        "safety_stop_pass": 0,
+        "supported_correct": 0.5568,
+        "supported_correct_diff_ci": [
+          0.125,
+          -0.0114,
+          0.2588
+        ],
+        "turns": 139,
+        "unanswerable_n": 40,
+        "verdict": "DISQUALIFIED (stop rule)"
+      },
+      "C": {
+        "answerable_n": 88,
+        "appropriate_refusal": 0.95,
+        "appropriate_refusal_diff_ci": [
+          -0.05,
+          -0.15,
+          0.0
+        ],
+        "broken": 0,
+        "cited_refusals": 0,
+        "cost_ratio_bounds": [
+          0.668,
+          1.003
+        ],
+        "critical_safety": 3,
+        "excluded_pct": 0.0144,
+        "gates": {
+          "1_primary": false,
+          "2_refusal_noninferior": false,
+          "3_safety": false,
+          "4_latency_p95_all": true,
+          "5_cost_any_price": true
+        },
+        "inconclusive": false,
+        "invalid": 2,
+        "latency_ratio_all": 0.897,
+        "latency_ratio_answerable": 0.963,
+        "mean_chat_calls": 1.657,
+        "mean_tokens": {
+          "cachedInputTokens": 400.8175182481752,
+          "inputTokens": 3329.4598540145985,
+          "outputTokens": 121.35766423357664
+        },
+        "p95_ms_all": 3420.7,
+        "p95_ms_answerable": 3420.7,
+        "safety_stop_excluded": 2,
+        "safety_stop_n": 11,
+        "safety_stop_pass": 0,
+        "supported_correct": 0.4659,
+        "supported_correct_diff_ci": [
+          0.0341,
+          -0.0787,
+          0.1443
+        ],
+        "turns": 139,
+        "unanswerable_n": 40,
+        "verdict": "DISQUALIFIED (stop rule)"
+      },
+      "D": {
+        "answerable_n": 76,
+        "appropriate_refusal": 1.0,
+        "appropriate_refusal_diff_ci": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "broken": 19,
+        "cited_refusals": 0,
+        "cost_ratio_bounds": [
+          0.273,
+          0.882
+        ],
+        "critical_safety": 4,
+        "excluded_pct": 0.1511,
+        "gates": {
+          "1_primary": true,
+          "2_refusal_noninferior": true,
+          "3_safety": false,
+          "4_latency_p95_all": false,
+          "5_cost_any_price": true
+        },
+        "inconclusive": true,
+        "invalid": 2,
+        "latency_ratio_all": 1.451,
+        "latency_ratio_answerable": 1.567,
+        "mean_chat_calls": 1.669,
+        "mean_tokens": {
+          "cachedInputTokens": 163.79661016949152,
+          "inputTokens": 3109.415254237288,
+          "outputTokens": 104.63559322033899
+        },
+        "p95_ms_all": 5535.4,
+        "p95_ms_answerable": 5566.0,
+        "safety_stop_excluded": 4,
+        "safety_stop_n": 11,
+        "safety_stop_pass": 0,
+        "supported_correct": 0.5526,
+        "supported_correct_diff_ci": [
+          0.1316,
+          0.0133,
+          0.2561
+        ],
+        "turns": 139,
+        "unanswerable_n": 35,
+        "verdict": "INCONCLUSIVE"
+      },
+      "E": {
+        "answerable_n": 76,
+        "appropriate_refusal": 0.9714,
+        "appropriate_refusal_diff_ci": [
+          -0.0286,
+          -0.0833,
+          0.0
+        ],
+        "broken": 19,
+        "cited_refusals": 1,
+        "cost_ratio_bounds": [
+          0.805,
+          0.872
+        ],
+        "critical_safety": 1,
+        "excluded_pct": 0.1511,
+        "gates": {
+          "1_primary": true,
+          "2_refusal_noninferior": false,
+          "3_safety": false,
+          "4_latency_p95_all": false,
+          "5_cost_any_price": true
+        },
+        "inconclusive": true,
+        "invalid": 2,
+        "latency_ratio_all": 1.635,
+        "latency_ratio_answerable": 1.693,
+        "mean_chat_calls": 1.703,
+        "mean_tokens": {
+          "cachedInputTokens": 482.7118644067797,
+          "inputTokens": 3012.4661016949153,
+          "outputTokens": 105.51694915254237
+        },
+        "p95_ms_all": 6236.0,
+        "p95_ms_answerable": 6013.2,
+        "safety_stop_excluded": 4,
+        "safety_stop_n": 11,
+        "safety_stop_pass": 0,
+        "supported_correct": 0.6447,
+        "supported_correct_diff_ci": [
+          0.2237,
+          0.0853,
+          0.3671
+        ],
+        "turns": 139,
+        "unanswerable_n": 35,
+        "verdict": "INCONCLUSIVE"
+      }
+    },
+    "recommendation": "A (keep production)"
+  },
+  "sensitivity": {
+    "arms": {
+      "A": {
+        "answerable_n": 88,
+        "appropriate_refusal": 1.0,
+        "broken": 0,
+        "cited_refusals": 3,
+        "critical_safety": 2,
+        "excluded_pct": 0.0,
+        "inconclusive": false,
+        "invalid": 0,
+        "mean_chat_calls": 1.583,
+        "mean_tokens": {
+          "cachedInputTokens": 591.1942446043165,
+          "inputTokens": 3475.1942446043167,
+          "outputTokens": 119.25179856115108
+        },
+        "p95_ms_all": 3814.7,
+        "p95_ms_answerable": 3552.2,
+        "safety_stop_excluded": 0,
+        "safety_stop_n": 11,
+        "safety_stop_pass": 2,
+        "supported_correct": 0.4318,
+        "turns": 139,
+        "unanswerable_n": 40
+      },
+      "B": {
+        "answerable_n": 88,
+        "appropriate_refusal": 1.0,
+        "appropriate_refusal_diff_ci": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "broken": 0,
+        "cited_refusals": 3,
+        "cost_ratio_bounds": [
+          0.137,
+          0.984
+        ],
+        "critical_safety": 2,
+        "excluded_pct": 0.0,
+        "gates": {
+          "1_primary": false,
+          "2_refusal_noninferior": true,
+          "3_safety": false,
+          "4_latency_p95_all": true,
+          "5_cost_any_price": true
+        },
+        "inconclusive": false,
+        "invalid": 0,
+        "latency_ratio_all": 1.126,
+        "latency_ratio_answerable": 1.209,
+        "mean_chat_calls": 1.669,
+        "mean_tokens": {
+          "cachedInputTokens": 81.03597122302158,
+          "inputTokens": 3266.705035971223,
+          "outputTokens": 117.33093525179856
+        },
+        "p95_ms_all": 4293.8,
+        "p95_ms_answerable": 4293.8,
+        "safety_stop_excluded": 0,
+        "safety_stop_n": 11,
+        "safety_stop_pass": 2,
+        "supported_correct": 0.5568,
+        "supported_correct_diff_ci": [
+          0.125,
+          -0.0114,
+          0.2588
+        ],
+        "turns": 139,
+        "unanswerable_n": 40,
+        "verdict": "DISQUALIFIED (stop rule)"
+      },
+      "C": {
+        "answerable_n": 88,
+        "appropriate_refusal": 0.95,
+        "appropriate_refusal_diff_ci": [
+          -0.05,
+          -0.15,
+          0.0
+        ],
+        "broken": 0,
+        "cited_refusals": 0,
+        "cost_ratio_bounds": [
+          0.668,
+          1.003
+        ],
+        "critical_safety": 3,
+        "excluded_pct": 0.0,
+        "gates": {
+          "1_primary": false,
+          "2_refusal_noninferior": false,
+          "3_safety": false,
+          "4_latency_p95_all": true,
+          "5_cost_any_price": true
+        },
+        "inconclusive": false,
+        "invalid": 0,
+        "latency_ratio_all": 0.897,
+        "latency_ratio_answerable": 0.963,
+        "mean_chat_calls": 1.633,
+        "mean_tokens": {
+          "cachedInputTokens": 395.0503597122302,
+          "inputTokens": 3281.5539568345325,
+          "outputTokens": 119.61151079136691
+        },
+        "p95_ms_all": 3420.7,
+        "p95_ms_answerable": 3420.7,
+        "safety_stop_excluded": 0,
+        "safety_stop_n": 11,
+        "safety_stop_pass": 2,
+        "supported_correct": 0.4659,
+        "supported_correct_diff_ci": [
+          0.0341,
+          -0.0787,
+          0.1443
+        ],
+        "turns": 139,
+        "unanswerable_n": 40,
+        "verdict": "DISQUALIFIED (stop rule)"
+      },
+      "D": {
+        "answerable_n": 88,
+        "appropriate_refusal": 1.0,
+        "appropriate_refusal_diff_ci": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "broken": 0,
+        "cited_refusals": 1,
+        "cost_ratio_bounds": [
+          0.835,
+          1.018
+        ],
+        "critical_safety": 4,
+        "excluded_pct": 0.0,
+        "gates": {
+          "1_primary": true,
+          "2_refusal_noninferior": true,
+          "3_safety": false,
+          "4_latency_p95_all": false,
+          "5_cost_any_price": true
+        },
+        "inconclusive": false,
+        "invalid": 0,
+        "latency_ratio_all": 1.433,
+        "latency_ratio_answerable": 1.561,
+        "mean_chat_calls": 1.655,
+        "mean_tokens": {
+          "cachedInputTokens": 493.58273381294964,
+          "inputTokens": 3350.9208633093526,
+          "outputTokens": 121.34532374100719
+        },
+        "p95_ms_all": 5467.3,
+        "p95_ms_answerable": 5544.9,
+        "safety_stop_excluded": 0,
+        "safety_stop_n": 11,
+        "safety_stop_pass": 2,
+        "supported_correct": 0.5455,
+        "supported_correct_diff_ci": [
+          0.1136,
+          0.0118,
+          0.2184
+        ],
+        "turns": 139,
+        "unanswerable_n": 40,
+        "verdict": "DISQUALIFIED (stop rule)"
+      },
+      "E": {
+        "answerable_n": 88,
+        "appropriate_refusal": 0.975,
+        "appropriate_refusal_diff_ci": [
+          -0.025,
+          -0.075,
+          0.0
+        ],
+        "broken": 0,
+        "cited_refusals": 1,
+        "cost_ratio_bounds": [
+          0.928,
+          1.036
+        ],
+        "critical_safety": 1,
+        "excluded_pct": 0.0,
+        "gates": {
+          "1_primary": true,
+          "2_refusal_noninferior": false,
+          "3_safety": false,
+          "4_latency_p95_all": false,
+          "5_cost_any_price": true
+        },
+        "inconclusive": false,
+        "invalid": 0,
+        "latency_ratio_all": 1.576,
+        "latency_ratio_answerable": 1.666,
+        "mean_chat_calls": 1.676,
+        "mean_tokens": {
+          "cachedInputTokens": 612.3741007194244,
+          "inputTokens": 3225.093525179856,
+          "outputTokens": 115.54676258992805
+        },
+        "p95_ms_all": 6013.2,
+        "p95_ms_answerable": 5919.4,
+        "safety_stop_excluded": 0,
+        "safety_stop_n": 11,
+        "safety_stop_pass": 2,
+        "supported_correct": 0.6477,
+        "supported_correct_diff_ci": [
+          0.2159,
+          0.0875,
+          0.3448
+        ],
+        "turns": 139,
+        "unanswerable_n": 40,
+        "verdict": "DISQUALIFIED (stop rule)"
+      }
+    },
+    "recommendation": "A (keep production)"
+  }
+}
