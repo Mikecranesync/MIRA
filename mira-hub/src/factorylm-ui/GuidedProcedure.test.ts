@@ -1,6 +1,6 @@
 // WP-1 panel: unsent readings and notes survive a failed save (Codex #4573 F9).
 import { describe, expect, it } from "vitest";
-import { askMiraButton, draftsAfterSave, titleRowReserveCss } from "./GuidedProcedure";
+import { askMiraButton, askMiraQuestion, draftsAfterSave, titleRowReserveCss } from "./GuidedProcedure";
 
 const drafts = { readings: { "L1-T1": "12000", "L2-T2": "5000", "L3-T3": "8000" }, note: "fan was blocked" };
 
@@ -20,7 +20,7 @@ describe("askMiraButton (#4575)", () => {
     expect(b.label).toMatch(/still answering/);
   });
   it("is enabled when chat is idle (control)", () => {
-    expect(askMiraButton(false)).toEqual({ disabled: false, label: "Ask MIRA about this (beyond the manual)" });
+    expect(askMiraButton(false)).toEqual({ disabled: false, label: "Ask MIRA for general advice (beyond the manual)" });
   });
 });
 
@@ -31,5 +31,16 @@ describe("titleRowReserveCss (pill over a long notebook title)", () => {
   it("outranks the shell's own .fl-conversation--aui .fl-conversation__bar padding (3 classes vs 2)", () => {
     const selector = titleRowReserveCss(100).split("{")[0];
     expect(selector.split(".").length - 1).toBe(3);
+  });
+});
+
+describe("askMiraQuestion (the hand-off carries the symptom)", () => {
+  const base = "I followed the manufacturer's troubleshooting ... What else could cause this, and what should I check?";
+  it("adds what the technician is seeing to the procedure's history", () => {
+    expect(askMiraQuestion(base, "  bypass contactor chatters at up-to-speed  ")).toBe(`${base}\nWhat I'm seeing: bypass contactor chatters at up-to-speed`);
+  });
+  it("refuses an empty or blank description, so nothing is sent without the symptom", () => {
+    expect(askMiraQuestion(base, "")).toBeNull();
+    expect(askMiraQuestion(base, "   ")).toBeNull();
   });
 });

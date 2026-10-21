@@ -90,6 +90,7 @@ import { composeTimeout } from "@/lib/abort-helpers";
 import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { guidedProcedureEnabled, isGuidedDeadEnd, type QueryDb } from "@/capabilities/guided-procedure-store";
 import {
   abandonNotebookTurnRequest,
   claimNotebookTurnRequest,
@@ -337,6 +338,17 @@ HONESTY:
 - NEVER write bracketed numeric markers like [1] or [2]. You have no sources to cite. There is nothing for a bracket to point at.
 
 SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on 480 V-class equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized.`;
+
+/**
+ * WP-1 guided dead end (owner decision 2026-10-21). Appended to the general prompt ONLY for a turn
+ * whose guided session the server confirmed ended at a dead end. It corrects the general prompt's
+ * "no manual loaded" premise without letting the model claim anything came from that manual.
+ */
+const GUIDED_DEAD_END_DIRECTIVE = `GUIDED PROCEDURE DEAD END — this overrides ONLY the "no manual" premise above; every SAFETY instruction still applies in full. The technician DOES have this machine's manual and has already worked through its troubleshooting procedure step by step; the steps they checked, with their manual pages, are in their message. The procedure ended with no documented next step for what they are seeing. Now help from general knowledge:
+- Open with one short clause saying this is general guidance beyond the manual.
+- Do not repeat the checks they already did. Suggest the next most likely causes for the symptom they describe and the checks for them, cheapest and safest first.
+- Never say or imply that any of your advice comes from their manual, and never cite pages for it.
+- If their message gives no symptom, ask for one before suggesting anything.`;
 
 type CascadeProvider = { name: string; url: string; key?: string; model: string };
 
@@ -1099,6 +1111,9 @@ async function handleChatTurn(
      *  ignored. `capturedAt` is still accepted for client compatibility and is
      *  never read. */
     visualEvidence?: { fileId?: unknown; capturedAt?: unknown };
+    /** WP-1 guided dead end: the guided session whose manual procedure ran out. Only the id is
+     *  read; the server checks it against this tenant and notebook (isGuidedDeadEnd). */
+    guidedEscalation?: { sessionId?: unknown };
   };
   try {
     body = await req.json();
@@ -2142,7 +2157,28 @@ async function handleChatTurn(
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
-  const oemRetrieval = !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
+  // WP-1 guided dead end (owner decision 2026-10-21, a narrow exception to #4068): the technician
+  // worked through this machine's manual procedure in the guided panel and it ended with no
+  // documented next step. For that one general-mode turn, and only when the server confirms the
+  // named session is this notebook's latest and ended at a dead end, MIRA may answer from general
+  // knowledge — labelled general, never cited — instead of declining. Fails closed on any error.
+  // Resolved BEFORE retrieval (Codex #4598 F1): a dead-end turn skips the OEM search, so no
+  // excerpt can pull it back into the cited lane — the manual's procedure is already exhausted.
+  const guidedDeadEndId =
+    typeof body.guidedEscalation?.sessionId === "string" && /^[0-9a-f-]{36}$/i.test(body.guidedEscalation.sessionId)
+      ? body.guidedEscalation.sessionId
+      : null;
+  const guidedDeadEnd =
+    general && guidedDeadEndId !== null && guidedProcedureEnabled()
+      ? await withTenantContext(ctx.tenantId, (c) => isGuidedDeadEnd(c as unknown as QueryDb, ctx.tenantId, notebookId, guidedDeadEndId)).catch(
+          (err) => {
+            console.error("[notebook-chat] guided dead-end check failed", err);
+            return false;
+          },
+        )
+      : false;
+  const oemRetrieval =
+    !guidedDeadEnd && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   // Codex #4069 F4: a failed OEM query is not a completed zero-hit search —
   // the decline below must never say "I couldn't find it" when nothing ran.
@@ -2383,6 +2419,7 @@ async function handleChatTurn(
   // photo in this turn (or recalled from the conversation) or a machine window
   // is evidence of its own, so it keeps the lane.
   const boundAndEmpty =
+    !guidedDeadEnd &&
     oemRetrieval && oemModel !== null && chunks.length === 0 && !groundedMachineEntry &&
     !visualEntry && priorLookRows.length === 0;
   const missingModelManual =
@@ -3411,7 +3448,11 @@ async function handleChatTurn(
         `present a step-by-step procedure from them (reset, wiring, firmware, parameter steps) as the ${oemModel.value}'s procedure — ` +
         `describe it as how the related model does it and tell the technician to confirm the steps in the ${oemModel.value} manual.`
       : "";
-  const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
+  const basePrompt = docGrounded
+    ? BASE_SYSTEM_PROMPT
+    : guidedDeadEnd
+      ? `${GENERAL_SYSTEM_PROMPT}\n\n${GUIDED_DEAD_END_DIRECTIVE}`
+      : GENERAL_SYSTEM_PROMPT;
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective
