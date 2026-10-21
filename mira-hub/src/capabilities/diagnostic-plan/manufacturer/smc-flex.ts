@@ -53,7 +53,7 @@ export const SMC_FLEX_P106_SAFETY =
 export const SMC_FLEX_TROUBLESHOOTING: WorkflowTemplate = {
   id: "rockwell_smc_flex_ch9",
   title: "SMC Flex troubleshooting (Rockwell 150-UM008J, Chapter 9)",
-  version: "1.0.0",
+  version: "1.1.0",
   appliesTo: ["Soft_Starter", "SMC_Flex"],
   source: {
     manufacturer: "Rockwell Automation",
@@ -563,9 +563,11 @@ export const SMC_FLEX_TROUBLESHOOTING: WorkflowTemplate = {
         passIf: { op: ">", value: 5000 },
         failGuidance: g(104, T44, ["Shorted Power Module"], ["Check for shorted SCR, replace power module if necessary"]),
       },
-      // FAIL: the manual's own action for a shorted SCR (Table 44) — the run ends with that guidance.
+      // FAIL: a shorted SCR is FOUND, not fixed. Show the manual's own action for it (Table 44: replace
+      // the power module if necessary), then ask whether that fixed the problem — the same check every
+      // other row ends on. Ending here as "resolved" claimed a repair nobody had made (1.1.0).
       // PASS: no shorted SCR on any phase; the chapter documents nothing further, so it escalates.
-      on: { PASS: { stop: "escalate" }, FAIL: { stop: "resolved" } },
+      on: { PASS: { stop: "escalate" }, FAIL: { next: "checks" } },
     },
   ],
 };
