@@ -256,6 +256,20 @@ describe("#3984 controls — the warning does not spread", () => {
     expect(content.toLowerCase()).not.toMatch(/reach into the guard opening|loosen the fitting|reset the fault at the contactor/);
   });
 
+  it.each([
+    "1. Lock out the panel and verify zero volts.\n2. A qualified person removes the lockout and restores power.\n3. Measure the supply voltage at the input terminals.\n4. Measure the actual line voltage at the MCC input terminals.",
+    "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and restore power.\n3. Measure the supply voltage at the input terminals.\n4. Reset the fault while the machine is energized.",
+  ])("mixed restore-then-measure PLUS a separate live-measurement/hazard clause BLOCKS: %s", async (draft) => {
+    stubProvider(draft);
+    const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
+    expect(frames(text).find((f) => f.kind === "safety")).toBeDefined();
+    const content = contentOf(text);
+    expect(content).toBe(SAFETY_STOP);
+    expect(content).not.toContain("Measure the supply voltage");
+    expect(content).not.toContain("actual line voltage");
+    expect(content).not.toContain("Reset the fault");
+  });
+
   it("owner decision 2026-10-16 (#4122/#3790): a prohibited measurement does not shield a sibling hazard clause once A4 fired — the sibling hazard still BLOCKS", async () => {
     // Without A4, "Never probe …, and reset …" passes: the prohibition sits in
     // the same sentence's bearing clauses. With A4 fired the probe clause is

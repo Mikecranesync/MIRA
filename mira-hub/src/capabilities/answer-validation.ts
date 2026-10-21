@@ -595,11 +595,22 @@ function restoreEnergyToMeasure(text: string): string | null {
   return null;
 }
 
+/** True when this sentence is part of the A4 restore-to-measure excerpt —
+ *  the restore clause and the measurement it paired, not a later sibling. */
+function sentenceInRestoreScope(sentence: string, restoreScope: string): boolean {
+  const s = sentence.trim();
+  const r = restoreScope.trim();
+  if (!s || !r) return false;
+  return r.includes(s) || s.includes(r);
+}
+
 /** #3984: blank (length-preserving) every clause that is purely a live
  *  electrical MEASUREMENT — a measure action in an electrical context with no
  *  other hazard action and no pressurized/motion relation. Used only after A4
  *  has fired, so A2 does not re-impose a stop on the very measurement A4 now
  *  warns about, while every other hazard clause is still scanned.
+ *  `restoreScope` is the A4 excerpt; only sentences in that excerpt are
+ *  masked. A later live-measurement or hazard clause is judged on its own.
  *  Decided, not inherited: a live measurement that also says "without
  *  de-energizing" (A2's no-isolation form) is masked too — it is the same
  *  energized-measurement category the owner put in the warn lane (#3984), and
@@ -607,21 +618,26 @@ function restoreEnergyToMeasure(text: string): string | null {
  *  A masked prohibited measurement ("never probe the live terminals, and …")
  *  no longer shields a sibling hazard clause: the prohibition only ever bound
  *  the probing, so the sibling is judged on its own (pinned in the wire test). */
-function maskLiveMeasurementClauses(text: string): string {
+function maskLiveMeasurementClauses(text: string, restoreScope: string): string {
   const measure = new RegExp("\\b" + MEASURE_ACTION_SRC, "gi");
   const otherRelations = HAZARD_RELATIONS.filter((r) => r.id !== "energized");
-  return text.replace(/[^.!?\n]+/g, (sentence) =>
-    sentence
+  return text.replace(/[^.!?\n]+/g, (sentence) => {
+    const inRestore = sentenceInRestoreScope(sentence, restoreScope);
+    return sentence
       .split(new RegExp(`(${CLAUSE_BOUNDARY.source})`, "i"))
       .map((clause) => {
         if (!new RegExp("\\b" + MEASURE_ACTION_SRC, "i").test(clause)) return clause;
         if (!ELECTRICAL_MEASUREMENT_CONTEXT.test(clause) && !CONTACT_MEASUREMENT.test(clause)) return clause;
         if (HAZARD_ACTION_ANY.test(clause.replace(measure, " "))) return clause;
         if (otherRelations.some((r) => r.re.test(clause))) return clause;
+        // Restore-scoped measurement clauses are A4's warn shape. A
+        // prohibited measurement outside that excerpt is not an instruction
+        // and must not exempt a sibling hazard in the same sentence.
+        if (!inRestore && !MEASURE_PROHIBITION.test(clause)) return clause;
         return clause.replace(/[^\s]/g, " ");
       })
-      .join(""),
-  );
+      .join("");
+  });
 }
 
 /* ------------------------------------------------------------------------ *
@@ -1182,7 +1198,13 @@ function liveMeasurementAfterLockout(text: string): LockoutMeasurement {
         if (!isolated && !restoredAfterLockout) continue;
         if (isLiveSupplyContactReading(step)) {
           if (isolated) return { blocked: step.trim(), restored: null };
+          // A restore covers the first live reading after it (same clause or
+          // the next list step — the #3984 coherent shape). It does not latch
+          // for the rest of the answer: a later unrelated live reading is
+          // again isolated and BLOCKS.
           restored ??= step.trim();
+          restoredAfterLockout = false;
+          isolated = true;
         }
       }
     }
@@ -1402,15 +1424,16 @@ export function validateAnswer(opts: {
   // A2 — the clause-level inversion, both lanes, refusals included. Runs
   // AFTER the head grammars so their pinned violation ids are preserved.
   // #3984 + #4005 review: when A4 has already turned this answer into a
-  // warning, blank ONLY the clauses that are themselves live electrical
-  // measurements, then run A2 unchanged over the rest. Exempting A2's whole
+  // warning, blank ONLY the live-measurement clauses inside that A4 excerpt,
+  // then run A2 unchanged over the rest. A restore in one clause must not
+  // mask a later live-measurement or hazard clause. Exempting A2's whole
   // `energized` relation was wrong twice over: it is first-match (so it hid a
   // later motion step), and it also covers "while the conveyor is running"
   // (so it hid mechanical hazards in the SAME sentence). Any other hazard
   // clause — reaching into moving machinery, bleeding a pressurized line,
   // resetting a fault while energized — is still scanned and still BLOCKS.
   const hazard = clauseHazardViolation(
-    restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText,
+    restore ? maskLiveMeasurementClauses(affirmationScanText, restore) : affirmationScanText,
   );
   if (hazard) {
     return unsafeAnswerBlock(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence);

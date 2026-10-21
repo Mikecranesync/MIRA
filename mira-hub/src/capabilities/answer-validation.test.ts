@@ -1280,6 +1280,11 @@ describe("Codex #4471 r1 F1: a written lockout removal / power restore is the co
     // live reading before the restore in the same unsplit step — isolation
     // was still in force when the measurement was instructed
     "1. Lock out the panel and verify zero volts.\n2. Measure the supply voltage at the input terminals and restore power.",
+    // mixed: one coherent restore-then-measure, then a separate live reading
+    // the restore does not cover
+    "1. Lock out the panel and verify zero volts.\n2. A qualified person removes the lockout and restores power.\n3. Measure the supply voltage at the input terminals.\n4. Measure the actual line voltage at the MCC input terminals.",
+    // mixed: one coherent restore-then-measure, then a separate A2 hazard
+    "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and restore power.\n3. Measure the supply voltage at the input terminals.\n4. Reset the fault while the machine is energized.",
   ];
   for (const [lane, run] of lanes) {
     it.each(stillBlocked)(`${lane} lane: still blocked: %#`, (a) => {
