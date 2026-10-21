@@ -19,7 +19,7 @@ const S: Record<string, CSSProperties> = {
   pill: {
     // A length, not a token: --fl-header is a colour (Codex #4573 F7). Clears the shell header + safe area.
     position: "fixed", top: "calc(env(safe-area-inset-top, 0px) + 72px)", right: 12, zIndex: 40,
-    background: "var(--fl-accent)", color: "var(--fl-accent-ink)", border: "none",
+    background: "var(--fl-accent)", color: "var(--fl-surface)", border: "none",
     borderRadius: "var(--fl-radius-pill, 999px)", padding: "8px 14px", fontSize: "var(--fl-fs-sm)",
     minHeight: 44, cursor: "pointer",
   },
@@ -39,7 +39,7 @@ const S: Record<string, CSSProperties> = {
     border: "1px solid var(--fl-line-strong)", borderRadius: "var(--fl-radius, 8px)", background: "var(--fl-surface)",
     color: "var(--fl-ink)", fontSize: "var(--fl-fs-sm)", cursor: "pointer",
   },
-  primary: { background: "var(--fl-accent)", color: "var(--fl-accent-ink)", borderColor: "var(--fl-accent)" },
+  primary: { background: "var(--fl-accent)", color: "var(--fl-surface)", borderColor: "var(--fl-accent)" },
   input: { width: "100%", boxSizing: "border-box", padding: 10, minHeight: 44, border: "1px solid var(--fl-line-strong)", borderRadius: "var(--fl-radius-sm, 6px)", fontSize: "var(--fl-fs)" },
   ok: { background: "var(--fl-ok-bg)", border: "1px solid var(--fl-ok)", borderRadius: "var(--fl-radius-sm, 6px)", padding: 12 },
   fault: { background: "var(--fl-fault-bg)", border: "1px solid var(--fl-fault)", borderRadius: "var(--fl-radius-sm, 6px)", padding: 12 },
@@ -54,6 +54,16 @@ const EMPTY_DRAFTS: Drafts = { readings: {}, note: "" };
  * What the technician's unsent entries become after a save attempt: cleared only when the answer
  * was saved; kept for a retry on any failure or refusal (Codex #4573 F9).
  */
+/**
+ * The escalation hand-off while chat is busy (#4575): the host's send refuses silently while a
+ * reply streams, so the button is disabled and says why, and the dialog stays open.
+ */
+export function askMiraButton(chatBusy: boolean): { disabled: boolean; label: string } {
+  return chatBusy
+    ? { disabled: true, label: "MIRA is still answering — wait, then ask about this" }
+    : { disabled: false, label: "Ask MIRA about this (beyond the manual)" };
+}
+
 export function draftsAfterSave(saved: boolean, drafts: Drafts): Drafts {
   return saved ? EMPTY_DRAFTS : drafts;
 }
@@ -70,7 +80,16 @@ function Guidance({ g }: { g: NonNullable<SessionView["guidance"]> }) {
   );
 }
 
-export function GuidedProcedure({ notebookId, onAskMira }: { notebookId: string; onAskMira: (question: string) => void }) {
+export function GuidedProcedure({
+  notebookId,
+  onAskMira,
+  chatBusy = false,
+}: {
+  notebookId: string;
+  onAskMira: (question: string) => void;
+  /** True while a notebook chat reply is streaming: the host's send would refuse (#4575). */
+  chatBusy?: boolean;
+}) {
   const [procs, setProcs] = useState<Procedure[] | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -253,8 +272,14 @@ export function GuidedProcedure({ notebookId, onAskMira }: { notebookId: string;
                 <div style={view.status === "resolved" ? S.ok : view.status === "escalate" ? S.warn : S.fault}>{view.endReason}</div>
                 {view.guidance && <Guidance g={view.guidance} />}
                 {view.status === "escalate" && session?.askMira && (
-                  <button type="button" data-testid="guided-ask-mira" style={{ ...S.btn, ...S.primary }} onClick={() => { setOpen(false); onAskMira(session.askMira!); }}>
-                    Ask MIRA about this (beyond the manual)
+                  <button
+                    type="button"
+                    data-testid="guided-ask-mira"
+                    disabled={askMiraButton(chatBusy).disabled}
+                    style={{ ...S.btn, ...S.primary, ...(chatBusy ? { opacity: 0.6 } : {}) }}
+                    onClick={() => { if (askMiraButton(chatBusy).disabled) return; setOpen(false); onAskMira(session.askMira!); }}
+                  >
+                    {askMiraButton(chatBusy).label}
                   </button>
                 )}
                 <button type="button" data-testid="guided-restart" disabled={busy} style={S.btn} onClick={() => call({ op: "restart" })}>Start again</button>
