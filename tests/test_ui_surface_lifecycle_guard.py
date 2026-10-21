@@ -2842,6 +2842,20 @@ def test_quoted_end_marker_mid_body_keeps_full_rationale_text():
     assert result.allowed is True
 
 
+def test_quoted_genuine_footer_before_rationale_still_finds_rationale():
+    body = _REAL_CURSOR_PR_FOOTER + "\n\n" + _VALID_BODY
+    author = _author_written_pr_body(body)
+    assert "## Lifecycle guard rationale" in author
+    assert "Rollback: revert this commit; the legacy route is otherwise untouched" in author
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
+    assert result.allowed is True
+
+
 def test_quoted_footer_mid_body_keeps_full_rationale_text():
     body = (
         "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->\n"

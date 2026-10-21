@@ -1743,7 +1743,20 @@ def _is_exact_cursor_pr_footer(block: str) -> bool:
     ``javascript:`` / ``data:`` URLs, or any other deviation is not
     exempt and receives the full HTML-safety check.
     """
-    return _CURSOR_PR_FOOTER_RE.match(block) is not None
+    return _CURSOR_PR_FOOTER_RE.fullmatch(block) is not None
+
+
+def _strip_trailing_cursor_pr_footer(source: str) -> str:
+    """Remove the genuine footer only when it is the final trailing block."""
+    div_at = source.rfind("<div>")
+    if div_at == -1:
+        return source
+    start = div_at
+    while start > 0 and source[start - 1].isspace():
+        start -= 1
+    if _CURSOR_PR_FOOTER_RE.fullmatch(source[start:]):
+        return source[:start]
+    return source
 
 
 def _author_written_pr_body(pr_body: str) -> str:
@@ -1757,10 +1770,7 @@ def _author_written_pr_body(pr_body: str) -> str:
     footer or whitespace. Mid-body quotes of the marker or footer stay
     as author text. HTML-safety still runs on the full raw body first.
     """
-    source = pr_body or ""
-    footer = _CURSOR_PR_FOOTER_RE.search(source)
-    if footer is not None:
-        source = source[: footer.start()]
+    source = _strip_trailing_cursor_pr_footer(pr_body or "")
     end_at = source.rfind(_CURSOR_AGENT_BODY_END)
     if end_at != -1:
         after = source[end_at + len(_CURSOR_AGENT_BODY_END) :]
