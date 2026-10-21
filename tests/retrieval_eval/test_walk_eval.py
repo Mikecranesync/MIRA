@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -106,6 +107,7 @@ def test_sealed_mode_prints_no_question_ids(tmp_path, capsys):
             "--sealed",
             "--corpus",
             str(corpus),
+            "--diagnostic",
         ]
     )
     out = capsys.readouterr().out
@@ -131,7 +133,7 @@ def test_unsealed_mode_reports_changes_and_breakdowns(tmp_path, capsys):
             }
         )
     )
-    walk_eval.main(["--arm", f"a={a}", "--arm", f"b={b}", "--corpus", str(corpus)])
+    walk_eval.main(["--arm", f"a={a}", "--arm", f"b={b}", "--corpus", str(corpus), "--diagnostic"])
     report = json.loads(capsys.readouterr().out)
     p = report["paired"]["a->b"]
     assert (p["a_only"], p["b_only"]) == (1, 1)
@@ -256,3 +258,88 @@ def test_trace_id_tolerates_json_whitespace():
     assert lanes.trace_id({"sse": f'data: {{"kind":"trace","traceId":"{tid}"}}'}) == tid
     assert lanes.trace_id({"sse": f'data: {{"kind": "trace", "traceId" : "{tid}"}}'}) == tid
     assert lanes.trace_id({"sse": "data: {}"}) is None
+
+
+def _valid_setup(tmp_path, b_rows=None, cfg_b=None):
+    """Two arms that pass every validity check, plus the CLI args for them."""
+    rows = [_row("m-q1", "CORRECT", 3), _row("m-q2", "WRONG_PAGE", 9)]
+    a = _run(tmp_path, "a", rows, {})
+    b = _run(tmp_path, "b", b_rows or rows, {})
+    pdf = tmp_path / "m.pdf"
+    pdf.write_bytes(b"%PDF-test")
+    sha = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(
+        json.dumps(
+            {
+                "manuals": [
+                    {"id": "m", "oem": "Acme", "family": "vfd", "filename": "m.pdf", "sha256": sha}
+                ],
+                "questions": [{"id": "m-q1", "manual": "m"}, {"id": "m-q2", "manual": "m"}],
+            }
+        )
+    )
+    base = {"NOTEBOOK_HYBRID_RETRIEVAL": "0", "NOTEBOOK_RERANK": "0", "NOTEBOOK_LEXICAL_V2": "0"}
+    ca, cb = tmp_path / "ca.json", tmp_path / "cb.json"
+    ca.write_text(json.dumps(base))
+    cb.write_text(json.dumps(cfg_b or {**base, "NOTEBOOK_LEXICAL_V2": "1"}))
+    lanes = tmp_path / "lanes.jsonl"
+    lanes.write_text("".join(json.dumps({"id": i, "lane": "off"}) + "\n" for i in ("m-q1", "m-q2")))
+    return [
+        "--arm",
+        f"a={a}",
+        "--arm",
+        f"b={b}",
+        "--corpus",
+        str(corpus),
+        "--manual-dir",
+        str(tmp_path),
+        "--config",
+        f"a={ca}",
+        "--config",
+        f"b={cb}",
+        "--vary",
+        "NOTEBOOK_LEXICAL_V2",
+        "--lanes",
+        f"a={lanes}",
+        "--lanes",
+        f"b={lanes}",
+    ]
+
+
+def test_a_fully_valid_run_is_scored_and_exits_zero(tmp_path, capsys):
+    rc = walk_eval.main(_valid_setup(tmp_path))
+    p = json.loads(capsys.readouterr().out)["paired"]["a->b"]
+    assert rc == 0 and p["scoreable"] and p["invalid_checks"] == []
+    assert "mcnemar_p" in p
+
+
+def test_an_invalid_run_withholds_scores_and_exits_nonzero(tmp_path, capsys):
+    drift = {"NOTEBOOK_HYBRID_RETRIEVAL": "1", "NOTEBOOK_RERANK": "0", "NOTEBOOK_LEXICAL_V2": "1"}
+    rc = walk_eval.main(_valid_setup(tmp_path, cfg_b=drift))
+    p = json.loads(capsys.readouterr().out)["paired"]["a->b"]
+    assert rc == 3 and not p["scoreable"] and "V3" in p["invalid_checks"]
+    assert "mcnemar_p" not in p and "newcombe95" not in p
+
+
+def test_each_validity_check_fails_on_its_own_defect(tmp_path):
+    assert (
+        walk_eval.build_check({"a": {"gitShas": ["x"]}, "b": {"gitShas": ["y"]}})["status"]
+        == "FAIL"
+    )
+    assert (
+        walk_eval.build_check({"a": {"gitShas": ["x"]}, "b": {"gitShas": ["x"]}})["status"]
+        == "PASS"
+    )
+    corpus = {"manuals": [{"id": "m", "filename": "m.pdf", "sha256": "0" * 64}]}
+    (tmp_path / "m.pdf").write_bytes(b"other bytes")
+    assert walk_eval.corpus_check(corpus, str(tmp_path))["status"] == "FAIL"
+    assert walk_eval.corpus_check(corpus, None)["status"] == "UNVERIFIED"
+    on = {"a": {"NOTEBOOK_RERANK": "1"}, "b": {"NOTEBOOK_RERANK": "1"}}
+    assert walk_eval.rerank_check(on, ["a", "b"])["status"] == "UNVERIFIED"
+    lanes = {
+        "a": {"vector_ran_fraction": 0.1, "lanes": {"ran": 1, "off": 9}},
+        "b": {"vector_ran_fraction": 0.0, "lanes": {"off": 10}},
+    }
+    v4 = walk_eval.v4_check(lanes, ["a", "b"], set(), frozenset({"a", "b"}))
+    assert v4["v4_pass"] is False and "configured hybrid-off" in v4["reasons"][0]

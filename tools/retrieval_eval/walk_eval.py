@@ -17,6 +17,7 @@ reading a sealed set's individual results turns it into development data.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from collections import Counter
@@ -173,7 +174,9 @@ def validity(a: dict, b: dict, expected: set[str]) -> dict:
     }
 
 
-def v4_check(lanes: dict, arm_names: list[str], vector_arms: set[str]) -> dict:
+def v4_check(
+    lanes: dict, arm_names: list[str], vector_arms: set[str], hybrid_off: frozenset = frozenset()
+) -> dict:
     """Validity check V4.
 
     Checked whenever any arm is declared a vector arm or any lane file is supplied; then lane
@@ -182,17 +185,68 @@ def v4_check(lanes: dict, arm_names: list[str], vector_arms: set[str]) -> dict:
     fractions must be within 10 points. With no declaration and no lane files: not checked.
     """
     frac = {n: (lanes.get(n) or {}).get("vector_ran_fraction") for n in arm_names}
-    checked = bool(vector_arms & set(arm_names)) or any(f is not None for f in frac.values())
+    checked = bool((vector_arms | hybrid_off) & set(arm_names)) or any(
+        f is not None for f in frac.values()
+    )
     if not checked:
         return {"vector_ran": frac, "v4_pass": None, "reasons": []}
     reasons = [f"{n}: no lane evidence" for n in arm_names if frac[n] is None]
     for n in sorted(vector_arms & set(arm_names)):
         if frac[n] is not None and frac[n] < 0.9:
             reasons.append(f"{n}: vector lane ran on {frac[n]:.0%} of questions (< 90%)")
+    for n in sorted(hybrid_off & set(arm_names)):
+        ran = (lanes.get(n) or {}).get("lanes", {}).get("ran", 0)
+        if ran:
+            reasons.append(f"{n}: configured hybrid-off but the vector lane ran on {ran} questions")
     known = [f for f in frac.values() if f is not None]
     if len(known) == 2 and abs(known[0] - known[1]) > 0.10:
         reasons.append("arms' vector-lane ran fractions differ by more than 10 points")
     return {"vector_ran": frac, "v4_pass": not reasons, "reasons": reasons}
+
+
+def build_check(metas: dict[str, dict]) -> dict:
+    """V1: every arm ran exactly one build, and the same one."""
+    shas = {n: m["gitShas"] for n, m in metas.items()}
+    flat = {s for v in shas.values() for s in v}
+    ok = all(len(v) == 1 for v in shas.values()) and len(flat) == 1 and "?" not in flat
+    return {"status": "PASS" if ok else "FAIL", "gitShas": {n: sorted(v) for n, v in shas.items()}}
+
+
+def corpus_check(corpus: dict | None, manual_dir: str | None) -> dict:
+    """V2: every manual file the walk uploads hashes to the sha256 pinned in corpus.json.
+
+    The walk caches each PDF as ``<sha256>.pdf``; ``manual_dir`` is that cache (or a copy).
+    """
+    if not corpus or not manual_dir:
+        return {"status": "UNVERIFIED", "detail": "needs --corpus and --manual-dir"}
+    bad = []
+    for m in corpus["manuals"]:
+        cands = [Path(manual_dir, f"{m['sha256']}.pdf"), Path(manual_dir, m.get("filename", ""))]
+        f = next((c for c in cands if c.is_file()), None)
+        if f is None or hashlib.sha256(f.read_bytes()).hexdigest() != m["sha256"]:
+            bad.append(m["id"])
+    return {"status": "FAIL" if bad else "PASS", "mismatched_manuals": bad}
+
+
+def config_check(configs: dict[str, dict], names: list[str], vary: set[str]) -> dict:
+    """V3: a config snapshot per arm; the arms differ in exactly the declared keys."""
+    if any(n not in configs for n in names):
+        return {"status": "UNVERIFIED", "detail": "needs --config for every arm"}
+    a, b = configs[names[0]], configs[names[1]]
+    differ = sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
+    ok = set(differ) == vary
+    return {"status": "PASS" if ok else "FAIL", "differs": differ, "declared": sorted(vary)}
+
+
+def rerank_check(configs: dict[str, dict], names: list[str]) -> dict:
+    """V5: a rerank outcome must be known. Until it is on the trace (#4579), only a run
+    with rerank configured OFF in every arm passes."""
+    if any(n not in configs for n in names):
+        return {"status": "UNVERIFIED", "detail": "needs --config for every arm"}
+    on = [n for n in names if configs[n].get("NOTEBOOK_RERANK") == "1"]
+    if on:
+        return {"status": "UNVERIFIED", "detail": f"rerank on in {on}; outcome not traced (#4579)"}
+    return {"status": "PASS", "detail": "rerank off by configuration in every arm"}
 
 
 def paired(
@@ -246,6 +300,21 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="NAME of an arm that claims the vector lane (V4 then requires >= 90%% ran)",
     )
+    ap.add_argument("--manual-dir", help="the walk's PDF cache, for V2 (corpus bytes)")
+    ap.add_argument(
+        "--config",
+        action="append",
+        default=[],
+        help="NAME=snapshot.json (flag -> value), for V3/V5",
+    )
+    ap.add_argument(
+        "--vary", action="append", default=[], help="config KEY the arms are meant to differ in"
+    )
+    ap.add_argument(
+        "--diagnostic",
+        action="store_true",
+        help="print paired scores even for an invalid run, labelled DIAGNOSTIC (audits only)",
+    )
     ap.add_argument("--json", help="write the full report here")
     args = ap.parse_args(argv)
     if args.sealed and not args.key:
@@ -271,6 +340,14 @@ def main(argv: list[str] | None = None) -> int:
         if missing:
             ap.error(f"{len(missing)} question ids are not in --key")
 
+    configs = {}
+    for spec in args.config:
+        name, _, f = spec.partition("=")
+        configs[name] = {k: str(v) for k, v in json.loads(Path(f).read_text()).items()}
+    hybrid_off = frozenset(
+        n for n, c in configs.items() if c.get("NOTEBOOK_HYBRID_RETRIEVAL") != "1"
+    )
+    corpus = json.loads(Path(args.corpus).read_text()) if args.corpus else None
     report = {"sealed": args.sealed, "arms": {}, "paired": {}, "lanes": {}}
     for name, (rows, meta) in arms.items():
         report["arms"][name] = {**meta, **arm_summary(rows, key, args.tolerance)}
@@ -288,7 +365,27 @@ def main(argv: list[str] | None = None) -> int:
         if not args.sealed:
             v6["invalid_ids"] = ids
         res["validity"] = v6
-        res["validity"]["v4"] = v4_check(report["lanes"], [names[0], other], set(args.vector_arm))
+        pair = [names[0], other]
+        res["validity"]["v4"] = v4_check(report["lanes"], pair, set(args.vector_arm), hybrid_off)
+        res["validity"]["v1_build"] = build_check({k: arms[k][1] for k in pair})
+        res["validity"]["v2_corpus"] = corpus_check(corpus, args.manual_dir)
+        res["validity"]["v3_config"] = config_check(configs, pair, set(args.vary))
+        res["validity"]["v5_rerank"] = rerank_check(configs, pair)
+        v = res["validity"]
+        failing = [
+            k
+            for k, ok in (
+                ("V1", v["v1_build"]["status"] == "PASS"),
+                ("V2", v["v2_corpus"]["status"] == "PASS"),
+                ("V3", v["v3_config"]["status"] == "PASS"),
+                ("V4", v["v4"]["v4_pass"] is True),
+                ("V5", v["v5_rerank"]["status"] == "PASS"),
+                ("V6", v["v6_pass"]),
+            )
+            if not ok
+        ]
+        res["scoreable"] = not failing
+        res["invalid_checks"] = failing
         if not args.sealed and questions:
             for dim in ("oem", "family"):
                 g: dict[str, list[int]] = {}
@@ -302,13 +399,18 @@ def main(argv: list[str] | None = None) -> int:
                     k: {"n": n, names[0]: s1, other: s2} for k, (n, s1, s2) in sorted(g.items())
                 }
             res["changed"] = [{"id": i, names[0]: x1, other: x2} for i, x1, x2 in xs if x1 != x2]
+        if failing and not args.diagnostic:
+            res = {k: res[k] for k in ("validity", "scoreable", "invalid_checks")}
+            res["status"] = "INVALID: scores withheld; re-run, or pass --diagnostic for an audit"
+        elif failing:
+            res["status"] = "DIAGNOSTIC ONLY: invalid run, scores are not evidence"
         report["paired"][f"{names[0]}->{other}"] = res
 
     text = json.dumps(report, indent=2, default=lambda t: [round(x, 4) for x in t])
     if args.json:
         Path(args.json).write_text(text + "\n")
     print(text)
-    return 0
+    return 0 if all(p["scoreable"] for p in report["paired"].values()) else 3
 
 
 if __name__ == "__main__":

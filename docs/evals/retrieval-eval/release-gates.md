@@ -15,16 +15,19 @@ reported, not re-tuned against the set that judged it.
 
 ## 0. A run is only evidence if it is valid
 
-A run that fails any check below is **INVALID**: it is re-run, not scored. An invalid run is
+A run that fails any check below is **INVALID**: it is re-run, not scored. `walk_eval` enforces
+this. For an invalid pair it withholds the paired scores, prints which checks failed, and exits 3.
+`--diagnostic` prints the scores anyway, labelled as not evidence, for audits only. UNVERIFIED
+counts as a failure. An invalid run is
 never a pass, and never a fail of the change.
 
 | # | Check | How |
 |---|---|---|
-| V1 | Both arms ran the same build, recorded by `gitSha` and `builtAt` | `scored.json` `meta`, plus `/api/health` |
-| V2 | Both arms used the same corpus bytes | `corpus.json` sha256 per manual. A changed OEM PDF is BROKEN. |
-| V3 | The configuration matrix is captured at run time for both arms, and the only intended difference is the flag under test | `config-matrix.md` regenerate block |
-| V4 | **Lanes actually ran.** For any arm that claims the vector lane, `mira.retrieval.vector_lane=ran` on ≥ 90% of turns. Both arms are within 10 points of each other. | `tools/retrieval_eval/lanes.py`, then `walk_eval --lanes` → `paired.*.validity.v4_vector_ran`. An untraced question counts as missing, never as ran. It uses the Langfuse v2 API; the v1 trace endpoint stops working on **2026-11-16**. |
-| V5 | Rerank outcome is known per turn | **Not possible today:** fallbacks only reach a log line. Until a trace attribute exists, a rerank claim is reported as "configured, outcome unverified". |
+| V1 | Both arms ran the same build, recorded by `gitSha` and `builtAt` | `walk_eval` `validity.v1_build` (one `gitSha` per arm, identical across arms) |
+| V2 | Both arms used the same corpus bytes | `validity.v2_corpus`: each manual in `--manual-dir` must hash to its `corpus.json` sha256. A changed OEM PDF is BROKEN. |
+| V3 | The configuration is captured at run time for both arms, and the only difference is the flag under test | `validity.v3_config`: `--config` snapshot per arm; the differing keys must equal `--vary` |
+| V4 | **Lanes actually ran.** For any arm that claims the vector lane, `mira.retrieval.vector_lane=ran` on ≥ 90% of turns. An arm configured hybrid-off shows it ran on 0 turns. Both arms are within 10 points of each other. | `tools/retrieval_eval/lanes.py`, then `walk_eval --lanes` → `paired.*.validity.v4_vector_ran`. An untraced question counts as missing, never as ran. It uses the Langfuse v2 API; the v1 trace endpoint stops working on **2026-11-16**. |
+| V5 | Rerank outcome is known per turn | `validity.v5_rerank`: until #4579 adds a trace attribute, only rerank-off-by-configuration passes. A rerank-on arm is UNVERIFIED. |
 | V6 | BROKEN = 0, and every question was asked in both arms | `walk_eval` `paired.*.validity.v6_pass` (expected = the corpus, or both arms' union when sealed) |
 
 By these rules, the #4571 staging A/B fails V4 and V5. Its result describes lexical ranking plus
