@@ -162,7 +162,10 @@ def lane_summary(rows: list[dict], asked: set[str]) -> dict:
 def validity(a: dict, b: dict, expected: set[str]) -> dict:
     """Validity check V6: exactly the expected questions, asked and unbroken, in both arms."""
     broken = {i for rows in (a, b) for i, r in rows.items() if r["classification"] == "BROKEN"}
-    missing = expected - (set(a) & set(b))
+    # A scored row with no observation was never asked: it counts as missing, not as asked.
+    asked_a = {i for i, r in a.items() if r.get("_obs")}
+    asked_b = {i for i, r in b.items() if r.get("_obs")}
+    missing = expected - (asked_a & asked_b)
     unexpected = (set(a) | set(b)) - expected
     bad = missing | (broken & expected) | unexpected
     return {

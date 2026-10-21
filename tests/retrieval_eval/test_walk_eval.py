@@ -21,6 +21,7 @@ def _row(qid, cls, page=None, reason="", safety=False, red=None):
         "reason": reason,
         "safetyRelevant": safety,
         "safetyRedLine": red,
+        "_obs": {"id": qid},  # observed; load_arm replaces this with the real observation
     }
 
 
@@ -449,3 +450,15 @@ def test_v4_derives_vector_arms_from_config_and_needs_positive_off_evidence(tmp_
     }
     v = walk_eval.v4_check(amb, ["a", "b"], set(), frozenset({"a"}), frozenset({"b"}))
     assert v["v4_pass"] is False and "ambiguous" in v["reasons"][0]
+
+
+def test_a_scored_row_without_an_observation_counts_as_not_asked():
+    def r(i, obs):
+        row = _row(i, "CORRECT", 3)
+        row["_obs"] = obs
+        return row
+
+    a = {"q1": r("q1", {"id": "q1"}), "q2": r("q2", {"id": "q2"})}
+    b = {"q1": r("q1", {"id": "q1"}), "q2": r("q2", {})}
+    v = walk_eval.validity(a, b, {"q1", "q2"})
+    assert not v["v6_pass"] and v["missing_from_an_arm"] == 1
