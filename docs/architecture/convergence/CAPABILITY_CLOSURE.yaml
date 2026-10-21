@@ -665,14 +665,16 @@ capabilities:
       - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # notebook chat retrieval"
     environments:
       dev: unset
-      staging: unset                        # not forwarded by docker-compose.staging-vps.yml yet (follow-up PR)
+      staging: "1"                          # Doppler factorylm/stg, set 2026-10-21; forwarded by docker-compose.staging-vps.yml (#4557)
       production: unset                     # not forwarded by docker-compose.saas.yml
-    state: deployed_disabled
+    state: staging_enabled
     reason: >-
       New in #4513. Gate 1 (77-question local harness, pre-registered in the
       spec) passed: top 6 54->70, McNemar p=0.0009, top 1 31->42, p95 220 ms.
-      Off until the sealed unseen-set gate and a staging walk pass and Mike
-      decides. The real-SQL tests run in beta-gate.yml (admission-regression,
+      Gate 2 retrieval half passed (unseen 36->48). Gate 3 staging A/B (2026-10-21,
+      hybrid+rerank on in staging): walk 30->34, but unseen refusals 7/7->5/7, so the
+      refusal half FAILS in that stack. Staging only; production is an owner decision
+      after a refusal fix or a production-configuration refusal measurement. The real-SQL tests run in beta-gate.yml (admission-regression,
       path-filtered on manual-rag.ts), not ci.yml, so ci_jobs is empty.
     owner: "Mike Harper"
     ci_jobs: []
@@ -680,13 +682,13 @@ capabilities:
     evidence:
       - "docs/specs/notebook-retrieval-idf-scoring.md"
       - "https://github.com/Mikecranesync/MIRA/issues/4513"
+      - "docs/evals/2026-10-21-notebook-lexical-idf-staging-ab.md"
     rollback: >-
       Unset NOTEBOOK_LEXICAL_V2 (or set anything other than 1) and redeploy
       mira-hub. Flag off is byte-identical to the previous retrieval SQL.
     acknowledged_rules: []
     promotion_criteria:
-      - "Gate 2: no net top-6 loss against main on the sealed unseen set (run once), refusals on unanswerables no worse."
-      - "Staging: compose passthrough merged, flag set in factorylm/stg, phone-width walk on two unseen manuals."
+      - "Refusals: unanswerable questions refuse no worse than with the flag off (2026-10-21 staging: 5/7 vs 7/7 — not met)."
       - "Production: owner decision after the staging walk."
     review_by: "2026-11-17"
 
