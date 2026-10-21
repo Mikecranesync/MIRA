@@ -648,6 +648,48 @@ capabilities:
       an unrelated PDF (2026-09-29 probe: a bioRxiv paper for an MG17 gearbox);
       applicability keeps it disabled, but the judge keeps it off the screen.
 
+  - id: notebook_lexical_idf
+    purpose: >-
+      Order notebook lexical retrieval candidates by IDF sum (the summed rarity
+      of the question words a chunk contains) in SQL before the candidate LIMIT,
+      instead of an all-words pass first and ts_rank_cd. Retrieval-core-spec L2.
+    customer_outcome: >-
+      A technician's plain-language question ("what does the flashing red light
+      mean") reaches the manual page that holds its rare words, instead of a page
+      that merely repeats common ones.
+    # The Hub reads NOTEBOOK_LEXICAL_V2 (TypeScript). feature_flag is omitted
+    # because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/lib/manual-rag.ts   # lexicalV2Enabled() + idfSql inside retrieveNodeChunks"
+    consumers:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # notebook chat retrieval"
+    environments:
+      dev: unset
+      staging: unset                        # not forwarded by docker-compose.staging-vps.yml yet (follow-up PR)
+      production: unset                     # not forwarded by docker-compose.saas.yml
+    state: deployed_disabled
+    reason: >-
+      New in #4513. Gate 1 (77-question local harness, pre-registered in the
+      spec) passed: top 6 54->70, McNemar p=0.0009, top 1 31->42, p95 220 ms.
+      Off until the sealed unseen-set gate and a staging walk pass and Mike
+      decides. The real-SQL tests run in beta-gate.yml (admission-regression,
+      path-filtered on manual-rag.ts), not ci.yml, so ci_jobs is empty.
+    owner: "Mike Harper"
+    ci_jobs: []
+    required_checks: []
+    evidence:
+      - "docs/specs/notebook-retrieval-idf-scoring.md"
+      - "https://github.com/Mikecranesync/MIRA/issues/4513"
+    rollback: >-
+      Unset NOTEBOOK_LEXICAL_V2 (or set anything other than 1) and redeploy
+      mira-hub. Flag off is byte-identical to the previous retrieval SQL.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Gate 2: no net top-6 loss against main on the sealed unseen set (run once), refusals on unanswerables no worse."
+      - "Staging: compose passthrough merged, flag set in factorylm/stg, phone-width walk on two unseen manuals."
+      - "Production: owner decision after the staging walk."
+    review_by: "2026-11-17"
+
   - id: unified_ui_shell
     purpose: >-
       Shared FactoryLM presentation shell (design tokens, interaction
