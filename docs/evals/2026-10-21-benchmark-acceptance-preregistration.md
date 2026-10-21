@@ -1,5 +1,11 @@
 # Benchmark acceptance for `NOTEBOOK_LEXICAL_V2`: pre-registration (2026-10-21)
 
+> **Amendment A1 (2026-10-21, before any execution).** These changes withdraw instructions; no threshold changes:
+> 1. **The sealed unseen set is not run again.** #4578's `docs/evals/retrieval-eval/release-gates.md` (provisional policy, owner-accepted 2026-10-21) says R2 is run *once per change*, and gate 2 already ran it for this candidate. The "declared second read" below is **withdrawn**. The gate-2 aggregate (top-6 36→48 of 60, top-1 16→?) is cited as external evidence instead.
+> 2. **The S1 reading is not pre-registered.** The 6/7 answer-text choice was made after #4571's results were known. All three readings (5/7, 6/7, 4/7) are reported, and all fail S1's 100% rule, so the verdict does not depend on the choice.
+> 3. **#4578's gates are the established project gates.** They are R1/R2/A1/A2/S1–S3/P1/D1 (P1 there is p95 ≤ 1.2× baseline; here it is ≤ 10%, the stricter of the two). This document's criteria are reported alongside them, never instead of them.
+> 4. **Intervals assume independent questions.** Questions cluster by manual, so the Wilson and McNemar results here can be too narrow. #4578's manual-cluster bootstrap (`tools/retrieval_eval/stats.py`) is the interval of record for any "supported" claim.
+
 This document is frozen before any run on the candidate. The scorer, its definitions and the gate thresholds live in `tools/benchmark-acceptance/` (README there; the tests are mutation-proven).
 
 - **Do not change** the scoring rules, thresholds or expected answers after execution begins.
@@ -94,7 +100,7 @@ Answer text is what the technician reads, and it is the product's own classifier
 ```bash
 export BENCH_PG=postgres://bench@localhost:55432/bench   # throwaway Postgres, staging knowledge_entries schema (as T4)
 bash tools/benchmark-acceptance/run_on_data_node.sh dev    <dev-77 questions.json>   run/
-bash tools/benchmark-acceptance/run_on_data_node.sh unseen <unseen questions.json>   .planning/bench-unseen/ run/external.json
+# (unseen run withdrawn by amendment A1: R2 runs once per change)
 ```
 
 `run/external.json` is the JSON in "External evidence" above. Pass it to the unseen (qualification) run only.
