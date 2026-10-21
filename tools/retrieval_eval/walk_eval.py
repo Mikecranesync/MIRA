@@ -230,10 +230,45 @@ def corpus_check(corpus: dict | None, manual_dir: str | None, sealed: bool = Fal
     return {"status": "FAIL" if bad else "PASS", **detail}
 
 
+# Every switch that can change what notebook chat retrieves or answers (config-matrix.md). A snapshot
+# must list all of them, "" meaning unset, so an omitted setting can never hide a difference.
+REQUIRED_CONFIG = (
+    "NOTEBOOK_LEXICAL_V2",
+    "NOTEBOOK_HYBRID_RETRIEVAL",
+    "NOTEBOOK_RERANK",
+    "NOTEBOOK_RERANK_POOL",
+    "NOTEBOOK_RERANK_TIMEOUT_MS",
+    "RERANKER_MODEL",
+    "MIRA_ENFORCE_APPROVED_RETRIEVAL",
+    "NOTEBOOK_ANSWER_GATE",
+    "NOTEBOOK_SEMANTIC_CHECK",
+    "NOTEBOOK_ENERGIZED_HARD_STOP",
+    "NOTEBOOK_CLAIM_VERIFIER",
+    "NOTEBOOK_GARBLE_DECODE",
+    "OPENAI_MODEL",
+)
+# The hub enables these only on exactly "1" (reranker.ts, hybrid-retrieval.ts, manual-rag.ts).
+OFF_VALUES = ("", "0")
+
+
+def flag_state(value: str | None) -> str:
+    """'on' for exactly "1", 'off' for unset/""/"0", 'ambiguous' for anything else."""
+    if value == "1":
+        return "on"
+    return "off" if value in OFF_VALUES else "ambiguous"
+
+
 def config_check(configs: dict[str, dict], names: list[str], vary: set[str]) -> dict:
-    """V3: a config snapshot per arm; the arms differ in exactly the declared keys."""
+    """V3: a complete config snapshot per arm; the arms differ in exactly the declared keys."""
     if any(n not in configs for n in names):
         return {"status": "UNVERIFIED", "detail": "needs --config for every arm"}
+    missing = sorted({k for n in names for k in REQUIRED_CONFIG if k not in configs[n]})
+    if missing:
+        return {
+            "status": "UNVERIFIED",
+            "detail": "snapshot lacks required keys",
+            "missing": missing,
+        }
     a, b = configs[names[0]], configs[names[1]]
     differ = sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
     ok = set(differ) == vary
@@ -242,12 +277,12 @@ def config_check(configs: dict[str, dict], names: list[str], vary: set[str]) -> 
 
 def rerank_check(configs: dict[str, dict], names: list[str]) -> dict:
     """V5: a rerank outcome must be known. Until it is on the trace (#4579), only a run
-    with rerank configured OFF in every arm passes."""
-    if any(n not in configs for n in names):
-        return {"status": "UNVERIFIED", "detail": "needs --config for every arm"}
-    on = [n for n in names if configs[n].get("NOTEBOOK_RERANK") == "1"]
-    if on:
-        return {"status": "UNVERIFIED", "detail": f"rerank on in {on}; outcome not traced (#4579)"}
+    with rerank unambiguously OFF in every arm passes."""
+    if any(n not in configs or "NOTEBOOK_RERANK" not in configs[n] for n in names):
+        return {"status": "UNVERIFIED", "detail": "needs NOTEBOOK_RERANK in every arm's --config"}
+    states = {n: flag_state(configs[n]["NOTEBOOK_RERANK"]) for n in names}
+    if any(v != "off" for v in states.values()):
+        return {"status": "UNVERIFIED", "detail": f"rerank not unambiguously off: {states} (#4579)"}
     return {"status": "PASS", "detail": "rerank off by configuration in every arm"}
 
 
@@ -351,7 +386,7 @@ def main(argv: list[str] | None = None) -> int:
         name, _, f = spec.partition("=")
         configs[name] = {k: str(v) for k, v in json.loads(Path(f).read_text()).items()}
     hybrid_off = frozenset(
-        n for n, c in configs.items() if c.get("NOTEBOOK_HYBRID_RETRIEVAL") != "1"
+        n for n, c in configs.items() if flag_state(c.get("NOTEBOOK_HYBRID_RETRIEVAL", "")) == "off"
     )
     corpus = json.loads(Path(args.corpus).read_text()) if args.corpus else None
     report = {"sealed": args.sealed, "arms": {}, "paired": {}, "lanes": {}}

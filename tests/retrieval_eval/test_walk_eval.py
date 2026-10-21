@@ -283,7 +283,7 @@ def _valid_setup(tmp_path, b_rows=None, cfg_b=None):
             }
         )
     )
-    base = {"NOTEBOOK_HYBRID_RETRIEVAL": "0", "NOTEBOOK_RERANK": "0", "NOTEBOOK_LEXICAL_V2": "0"}
+    base = {k: "" for k in walk_eval.REQUIRED_CONFIG} | {"NOTEBOOK_LEXICAL_V2": "0"}
     ca, cb = tmp_path / "ca.json", tmp_path / "cb.json"
     ca.write_text(json.dumps(base))
     cb.write_text(json.dumps(cfg_b or {**base, "NOTEBOOK_LEXICAL_V2": "1"}))
@@ -319,7 +319,10 @@ def test_a_fully_valid_run_is_scored_and_exits_zero(tmp_path, capsys):
 
 
 def test_an_invalid_run_withholds_scores_and_exits_nonzero(tmp_path, capsys):
-    drift = {"NOTEBOOK_HYBRID_RETRIEVAL": "1", "NOTEBOOK_RERANK": "0", "NOTEBOOK_LEXICAL_V2": "1"}
+    drift = {k: "" for k in walk_eval.REQUIRED_CONFIG} | {
+        "NOTEBOOK_HYBRID_RETRIEVAL": "1",
+        "NOTEBOOK_LEXICAL_V2": "1",
+    }
     rc = walk_eval.main(_valid_setup(tmp_path, cfg_b=drift))
     p = json.loads(capsys.readouterr().out)["paired"]["a->b"]
     assert rc == 3 and not p["scoreable"] and "V3" in p["invalid_checks"]
@@ -380,3 +383,16 @@ def test_sealed_corpus_check_reports_a_count_not_manual_names(tmp_path):
     v = walk_eval.corpus_check(corpus, str(tmp_path), sealed=True)
     assert v == {"status": "FAIL", "mismatched": 1}
     assert walk_eval.corpus_check(corpus, str(tmp_path))["mismatched_manuals"] == ["secret-manual"]
+
+
+def test_v3_rejects_a_partial_snapshot_and_v5_an_ambiguous_rerank_value():
+    full = {k: "" for k in walk_eval.REQUIRED_CONFIG}
+    partial = {"a": {"NOTEBOOK_LEXICAL_V2": "0"}, "b": {"NOTEBOOK_LEXICAL_V2": "1"}}
+    v = walk_eval.config_check(partial, ["a", "b"], {"NOTEBOOK_LEXICAL_V2"})
+    assert v["status"] == "UNVERIFIED" and "NOTEBOOK_RERANK" in v["missing"]
+    ok = {"a": full | {"NOTEBOOK_LEXICAL_V2": "0"}, "b": full | {"NOTEBOOK_LEXICAL_V2": "1"}}
+    assert walk_eval.config_check(ok, ["a", "b"], {"NOTEBOOK_LEXICAL_V2"})["status"] == "PASS"
+    assert walk_eval.rerank_check(ok, ["a", "b"])["status"] == "PASS"
+    vague = {"a": full | {"NOTEBOOK_RERANK": "true"}, "b": full | {"NOTEBOOK_RERANK": "true"}}
+    assert walk_eval.rerank_check(vague, ["a", "b"])["status"] == "UNVERIFIED"
+    assert walk_eval.flag_state("TRUE") == "ambiguous" and walk_eval.flag_state("") == "off"
