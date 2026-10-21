@@ -1,7 +1,7 @@
 /**
- * #4498 Phase 1 is inert: nothing in the Hub may import the diagnostic-plan
- * module except the module itself and its own tests. Wiring it into a runtime
- * path (chat route, notebook routes, UI) is a later, separately reviewed slice.
+ * #4498 Phase 1 shipped inert. WP-1 (Mike, 2026-10-21) is the first, separately reviewed wiring:
+ * guided troubleshooting on the notebook. Exactly the files below may import the module; any other
+ * importer (the chat route above all) is still a new slice that must update this list in review.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -37,9 +37,16 @@ function importersOf(srcRoot: string): string[] {
     .filter((rel) => namesModule(readFileSync(join(srcRoot, rel), "utf8")));
 }
 
-describe("diagnostic-plan stays inert (#4498 Phase 1)", () => {
-  it("is imported by nothing outside its own directory and tests", () => {
-    expect(importersOf(SRC)).toEqual([]);
+// Relative to mira-hub/src. Adding a line here is the review signal for a new runtime consumer.
+const APPROVED_IMPORTERS = [
+  join("app", "api", "equipment-notebooks", "[id]", "procedure", "route.ts"),
+  join("capabilities", "guided-procedure-store.ts"),
+  join("factorylm-ui", "GuidedProcedure.tsx"),
+].sort();
+
+describe("diagnostic-plan importers are exactly the approved WP-1 wiring (#4498)", () => {
+  it("is imported only by the approved WP-1 files outside its own directory and tests", () => {
+    expect(importersOf(SRC).sort()).toEqual(APPROVED_IMPORTERS);
   });
 
   it("the import matcher catches a real import and ignores the unrelated wizard nextStep", () => {

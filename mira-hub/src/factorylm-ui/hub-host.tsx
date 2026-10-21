@@ -55,6 +55,7 @@ import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { HOME_THREAD, createOutgoingOwner, withOutgoing, type Outgoing } from "./outgoing-turn";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
+import { GuidedProcedure } from "./GuidedProcedure";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -882,6 +883,23 @@ export function HubShellHost() {
         onOpenItem={onOpenItem}
         onSelectProject={onSelectProject}
       />
+      {/* WP-1: shown only when the route is enabled and a manufacturer procedure applies. */}
+      {selection && detail && (
+        <GuidedProcedure
+          // Re-mount (and re-read availability) when the machine's identity or its manuals change
+          // in place — a confirm or an attach doesn't change the notebook id (Codex #4573 F4).
+          key={[
+            selection.notebookId,
+            detail.notebook.identityStatus,
+            detail.notebook.manufacturer ?? "",
+            detail.notebook.model ?? "",
+            detail.notebook.catalogNumber ?? "",
+            detail.sources.map((s) => s.docId).join(","),
+          ].join("|")}
+          notebookId={selection.notebookId}
+          onAskMira={(q) => onSend(q)}
+        />
+      )}
     </div>
   );
 }
