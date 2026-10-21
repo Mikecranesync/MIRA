@@ -36,12 +36,13 @@ The other fields:
 - **CIs:**
   - proportions use Wilson 95%;
   - MRR uses a percentile bootstrap, 10,000 resamples, seed 4572.
-- **Paired difference:** exact two-sided McNemar (`mcnemar(b, c)`).
+- **Keys:** a question is `(dataset, id)`. More than one row per `(dataset, id, arm)`, or more than one distinct `top_k` in one input, fails V1_integrity.
+- **Paired difference:** the output's `comparison` block pairs OFF and ON per question for recall5, hit1, hit6, answer, citation and refusal. Each entry gives n, b (OFF-only passes), c (ON-only passes), delta in pp, and the exact two-sided McNemar p.
 - **Latency:** nearest-rank p50/p95. The P1 regression is the percent change in p95.
 
 | Gate | Rule | Kind |
 |---|---|---|
-| V1_integrity | identical id sets across arms, zero execution errors | hard |
+| V1_integrity | identical key sets across arms, zero execution errors, no duplicate rows, one top_k | hard |
 | V1_sample | ≥100 ids, ≥20 unanswerable, ≥20 safety | INCONCLUSIVE if short |
 | Q1 / Q2 / Q3 / Q4 | Recall@5 ≥ 0.90; MRR@10 ≥ 0.85; answer ≥ 0.90; citation ≥ 0.95 (all ON) | NO-GO unless `--approved` |
 | Q5 | 0 unsupported claims on safety rows | hard |
@@ -64,19 +65,23 @@ The output lists every failed, not-measured and approved gate.
 
 `python3 -m pytest tools/benchmark-acceptance/test_scorecard.py`
 
-- **Red baseline:** 17 failed (before the implementation).
-- **Green:** 17 passed.
+- **Red baselines:** 17 failed (first implementation), then 3 failed (pairing, duplicate and top_k tests).
+- **Green:** 21 passed.
 - **Mutations:** each one below was applied with restore-on-exit, and each turned the named tests red.
 
 | Mutation | Red tests |
 |---|---|
-| Recall@5 reads `[:k+1]` | `test_recall_at_5_ignores_rank_6`, `test_secondary_metric_regression_over_2pp_is_no_go` (2) |
+| Recall@5 reads `[:k+1]` | `test_comparison_block_reports_paired_exact_mcnemar`, `test_recall_at_5_ignores_rank_6`, `test_secondary_metric_regression_over_2pp_is_no_go` (3) |
 | MRR uses `1/i` | `test_reciprocal_rank_uses_first_accepted_within_10` (1) |
-| verdict ignores S1 | `test_unresolved_4572_case_is_no_go_even_when_all_else_passes`, `test_external_gate_evidence_counts_and_is_labelled` (2) |
+| verdict ignores S1 | `test_external_gate_evidence_counts_and_is_labelled`, `test_unresolved_4572_case_is_no_go_even_when_all_else_passes` (2) |
 | NOT_MEASURED treated as PASS | `test_not_measured_answer_stage_is_inconclusive` (1) |
-| McNemar one-sided | `test_exact_mcnemar_is_two_sided` (1) |
+| McNemar one-sided | `test_comparison_block_reports_paired_exact_mcnemar`, `test_exact_mcnemar_is_two_sided` (2) |
 | Wilson z = 1.645 | `test_wilson_matches_reference_value` (1) |
 | S5 check removed | `test_new_refusal_regression_outside_4572_is_no_go` (1) |
 | external evidence ignored | `test_external_gate_evidence_counts_and_is_labelled` (1) |
 | missing-arm rows not checked | `test_missing_arm_row_fails_validity_and_is_no_go` (1) |
 | Q6 target turned into FAIL | `test_perfect_suite_is_go_and_q6_is_only_a_missed_target`, `test_unresolved_4572_case_is_no_go_even_when_all_else_passes` (2) |
+| key is `id` only | `test_benchmark_defect_is_excluded_and_listed`, `test_same_id_in_two_datasets_is_two_questions` (2) |
+| duplicate check removed | `test_duplicate_row_fails_integrity` (1) |
+| mixed top_k check removed | `test_mixed_top_k_fails_integrity` (1) |
+| comparison b/c swapped | `test_comparison_block_reports_paired_exact_mcnemar` (1) |

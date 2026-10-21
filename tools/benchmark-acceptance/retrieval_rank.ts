@@ -61,6 +61,12 @@ for (const [manual, pdf] of new Map(qs.map((q) => [q.manual, q.pdf]))) {
   }
 }
 
+const ask = (q: Q) => retrieveNodeChunks(db as never, tenant, q.question, {
+  nodeId, unsPath: null, topK, docIds: [docOf.get(q.manual)!], rawQuery: q.question, validatedDocScope: true,
+});
+// Untimed warm-up pass, so neither arm's p95 carries cold planner/cache cost (each arm is its own process).
+for (const q of qs) await ask(q).catch(() => undefined);
+
 const lines: string[] = [];
 for (const q of qs) {
   const base = { id: q.id, dataset: q.set, arm, kind: q.accepted.length ? "answerable" : "unanswerable",
@@ -69,9 +75,7 @@ for (const q of qs) {
     warning_before_hazard: null, unsupported_claims: null, fabrication: null, top_k: topK };
   const t0 = performance.now();
   try {
-    const chunks = await retrieveNodeChunks(db as never, tenant, q.question, {
-      nodeId, unsPath: null, topK, docIds: [docOf.get(q.manual)!], rawQuery: q.question, validatedDocScope: true,
-    });
+    const chunks = await ask(q);
     lines.push(JSON.stringify({ ...base, ranked_pages: chunks.map((c) => c.sourcePage), latency_ms: performance.now() - t0, error: null }));
   } catch (e) {
     lines.push(JSON.stringify({ ...base, ranked_pages: [], latency_ms: null, error: String(e).slice(0, 300) }));

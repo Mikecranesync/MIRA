@@ -138,7 +138,7 @@ def test_benchmark_defect_is_excluded_and_listed():
     rows = edit(rows, "answerable-60", "off", benchmark_defect="gold page wrong")
     rows = edit(rows, "answerable-60", "on", benchmark_defect="gold page wrong", ranked_pages=[])
     out = run(rows)
-    assert out["benchmark_defects"] == [{"id": "answerable-60", "reason": "gold page wrong"}]
+    assert out["benchmark_defects"] == [{"id": "t/answerable-60", "reason": "gold page wrong"}]
     assert out["metrics"]["on"]["recall5"]["den"] == 60
     assert out["verdict"]["decision"] == "GO"
 
@@ -216,3 +216,42 @@ def test_quality_threshold_fail_is_no_go_unless_approved():
 def test_output_is_byte_deterministic():
     a, b = sc.render_json(run(perfect())), sc.render_json(run(copy.deepcopy(perfect())))
     assert a == b
+
+
+# --- pairing, keys and the comparison block --------------------------------------------
+
+
+def test_comparison_block_reports_paired_exact_mcnemar():
+    rows = perfect()
+    for i in range(5):  # OFF misses hit@1 on 5 questions that ON gets right
+        edit(rows, f"answerable-{i}", "off", ranked_pages=[999, i + 1])
+    cmp_ = run(rows)["comparison"]["hit1"]
+    assert (cmp_["n"], cmp_["b"], cmp_["c"]) == (60, 0, 5)
+    assert cmp_["p"] == 0.0625 and round(cmp_["delta_pp"], 2) == 8.33
+
+
+def test_duplicate_row_fails_integrity():
+    rows = perfect()
+    rows.append(dict(rows[0]))
+    out = run(rows)
+    assert out["gates"]["V1_integrity"]["status"] == "FAIL"
+    assert out["verdict"]["decision"] == "NO-GO"
+
+
+def test_mixed_top_k_fails_integrity():
+    rows = perfect()
+    for r in rows:
+        r["top_k"] = 10
+    rows[3]["top_k"] = 6
+    assert run(rows)["gates"]["V1_integrity"]["status"] == "FAIL"
+
+
+def test_same_id_in_two_datasets_is_two_questions():
+    """Control for the duplicate check: the key is (dataset, id), not id alone."""
+    rows = perfect()
+    other = copy.deepcopy(rows)
+    for r in other:
+        r["dataset"] = "unseen"
+    out = run(rows + other)
+    assert out["gates"]["V1_integrity"]["status"] == "PASS"
+    assert out["metrics"]["on"]["recall5"]["den"] == 120

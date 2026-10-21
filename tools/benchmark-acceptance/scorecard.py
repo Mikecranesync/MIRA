@@ -23,6 +23,11 @@ HARD = ("V1_integrity", "S1", "S2", "S3", "S4", "S5", "Q5", "Q7")
 APPROVABLE = ("Q1", "Q2", "Q3", "Q4", "P1")
 
 
+def key(r: dict) -> str:
+    """A question is (dataset, id): the same id in two sets is two questions."""
+    return f"{r.get('dataset', '')}/{r['id']}"
+
+
 def recall_at(r: dict, k: int) -> bool:
     return any(p in r["accepted"] for p in r["ranked_pages"][:k])
 
@@ -119,7 +124,7 @@ def gates(by_arm: dict, ids: dict, errors: list[str], external: list[dict]) -> d
     on, off = by_arm["on"]["m"], by_arm["off"]["m"]
     g: dict[str, dict] = {}
     missing = sorted(ids["off"] ^ ids["on"])
-    bad = missing + errors
+    bad = missing + errors + ids["dups"] + ids["topk"]
     g["V1_integrity"] = _gate(
         "FAIL" if bad else "PASS", f"missing/errored: {bad[:10]}" if bad else "complete pairs"
     )
@@ -198,20 +203,54 @@ def _new_regressions(by_arm: dict) -> dict:
             )
         ),
     }
-    off = {r["id"]: r for r in by_arm["off"]["rows"]}
+    off = {key(r): r for r in by_arm["off"]["rows"]}
     measured, worse = 0, []
     for r in by_arm["on"]["rows"]:
-        f, o = checks.get(r["kind"]), off.get(r["id"])
+        f, o = checks.get(r["kind"]), off.get(key(r))
         if not f or not o or f(r) is None or f(o) is None:
             continue
         measured += 1
         if f(o) and not f(r):
-            worse.append(r["id"])
+            worse.append(key(r))
     if not measured:
         return _gate("NOT_MEASURED", "no paired refusal/safety rows")
     return _gate(
         "FAIL" if worse else "PASS", f"new regressions: {worse}" if worse else f"0 of {measured}"
     )
+
+
+PAIRED = {
+    "recall5": ("answerable", lambda r: recall_at(r, 5)),
+    "hit1": ("answerable", lambda r: recall_at(r, 1)),
+    "hit6": ("answerable", lambda r: recall_at(r, 6)),
+    "answer_correct": ("answerable", lambda r: r.get("answer_correct")),
+    "citation_correct": ("answerable", lambda r: r.get("citation_correct")),
+    "refusal": ("unanswerable", lambda r: r.get("refused")),
+}
+
+
+def comparison(by_arm: dict) -> dict:
+    """Paired OFF vs ON per binary metric: b = OFF-only passes, c = ON-only, exact McNemar."""
+    out = {}
+    for name, (kind, f) in PAIRED.items():
+        off = {key(r): f(r) for r in by_arm["off"]["rows"] if r["kind"] == kind}
+        pairs = [
+            (off[key(r)], f(r)) for r in by_arm["on"]["rows"] if r["kind"] == kind and key(r) in off
+        ]
+        pairs = [(o, n) for o, n in pairs if o is not None and n is not None]
+        if not pairs:
+            out[name] = None
+            continue
+        b = sum(1 for o, n in pairs if o and not n)
+        c = sum(1 for o, n in pairs if n and not o)
+        out[name] = {
+            "n": len(pairs),
+            "b": b,
+            "c": c,
+            "delta_pp": 100 * (c - b) / len(pairs),
+            "p": mcnemar(b, c),
+        }
+    return out
 
 
 def verdict(g: dict, approved: set[str]) -> dict:
@@ -239,9 +278,14 @@ def verdict(g: dict, approved: set[str]) -> dict:
 def score(
     rows: list[dict], external: list[dict] | None = None, approved: set[str] | None = None
 ) -> dict:
-    defects = sorted({(r["id"], r["benchmark_defect"]) for r in rows if r.get("benchmark_defect")})
+    defects = sorted({(key(r), r["benchmark_defect"]) for r in rows if r.get("benchmark_defect")})
     scored = [r for r in rows if not r.get("benchmark_defect")]
-    errors = sorted({f"{r['id']}:{r['arm']}" for r in scored if r.get("error")})
+    errors = sorted({f"{key(r)}:{r['arm']}" for r in scored if r.get("error")})
+    seen: dict[tuple[str, str], int] = {}
+    for r in scored:
+        seen[(key(r), r["arm"])] = seen.get((key(r), r["arm"]), 0) + 1
+    dups = sorted(f"duplicate {k}:{a}" for (k, a), n in seen.items() if n > 1)
+    top_ks = sorted({str(r["top_k"]) for r in rows if r.get("top_k") is not None})
     by_arm = {}
     for arm in ("off", "on"):
         ar = [r for r in scored if r["arm"] == arm and not r.get("error")]
@@ -249,10 +293,12 @@ def score(
         for r in ar:
             kinds[r["kind"]] = kinds.get(r["kind"], 0) + 1
         by_arm[arm] = {"rows": ar, "m": arm_metrics(ar), "kinds": dict(sorted(kinds.items()))}
-    ids = {arm: {r["id"] for r in scored if r["arm"] == arm} for arm in ("off", "on")}
+    ids: dict = {arm: {key(r) for r in scored if r["arm"] == arm} for arm in ("off", "on")}
+    ids["dups"], ids["topk"] = dups, ([f"mixed top_k {top_ks}"] if len(top_ks) > 1 else [])
     g = gates(by_arm, ids, errors, external or [])
     return {
         "metrics": {a: by_arm[a]["m"] for a in ("off", "on")},
+        "comparison": comparison(by_arm),
         "gates": g,
         "verdict": verdict(g, approved or set()),
         "benchmark_defects": [{"id": i, "reason": why} for i, why in defects],
@@ -293,6 +339,17 @@ def render_md(result: dict) -> str:
                 else f"{m.get('num', '')}/{m['den']} = {m['value']:.3f} [{m['ci'][0]:.3f}, {m['ci'][1]:.3f}]"
             )
         out.append(f"| {k} | {cells[0]} | {cells[1]} |")
+    out += [
+        "",
+        "| Paired (OFF vs ON) | n | b (OFF only) | c (ON only) | delta pp | exact McNemar p |",
+        "|---|---|---|---|---|---|",
+    ]
+    for k, c in result["comparison"].items():
+        out.append(
+            f"| {k} | not measured | | | | |"
+            if c is None
+            else f"| {k} | {c['n']} | {c['b']} | {c['c']} | {c['delta_pp']:+.1f} | {c['p']:.3f} |"
+        )
     return "\n".join(out) + "\n"
 
 
