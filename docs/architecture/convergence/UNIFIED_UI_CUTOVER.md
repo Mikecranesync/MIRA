@@ -61,7 +61,7 @@ this table explains the boundary.
 
 | Surface | Guarded paths | Why guarded |
 |---|---|---|
-| Public | production module-root and root-level nginx/deploy controls; `mira-web/src/routes/**`; `mira-web/src/server.ts`; all `src/lib/**` except the code-owned exact capability allowlist and the marketing blog/feature renderers; `mira-web/public/**` except HTML/txt marketing pages | Customer-routing or HTML route mounts, remaining visible-output helpers, and statically served non-page public assets (images, fonts, PDFs, manifests, scripts) plus the files that select/package that entry point. Owner-approved 2026-10-20: public marketing HTML/txt pages, an exact allowlist of marketing views and their tests, and the blog/feature renderers no longer require attestation. Unlisted `src/views/` files (including `scan-not-found.html` and any future admin/checkout page) stay guarded. |
+| Public | production module-root and root-level nginx/deploy controls; `mira-web/src/routes/**`; `mira-web/src/server.ts`; all `src/lib/**` except the code-owned exact capability allowlist and the marketing blog/feature renderers; `mira-web/public/**` except an exact allowlist of marketing pages plus `llms.txt` / `llms-full.txt` | Customer-routing or HTML route mounts, remaining visible-output helpers, and statically served non-page public assets (images, fonts, PDFs, manifests, scripts) plus the files that select/package that entry point. Owner-approved 2026-10-20: an exact allowlist of public marketing pages (plus `llms.txt` / `llms-full.txt`), marketing views and their tests, and the blog/feature renderers no longer require attestation. Unlisted `src/views/` files (including `scan-not-found.html` and any future admin/checkout page), `robots.txt`, `.well-known/**`, and any new public file stay guarded. |
 | Hub | production module-root build/mount controls; root auth/middleware selectors; `mira-hub/src/app/**`; all production files under `mira-hub/src/components/**` and `providers/**`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-hub/src/messages/**`; `mira-hub/public/**` | Every legacy Next page/layout/style/component/provider/helper, render-ready view/data/copy/interaction module, locale catalog, public asset, root landing/capability/OTA selector, and the files that build/mount that surface; ordinary API route handlers and audited capability-shaped TypeScript helpers are classifier exclusions |
 | Mobile | production module-root build/mount controls; production files under `mira-mobile/android/**` and `mira-mobile/ios/**`; app/universal-link associations; OTA verify/select/publish/deploy/rollback/fingerprint controls; `mira-mobile/index.html`; production React/style/navigation and mixed presentation/view-model helpers under `mira-mobile/src/**` | Actual application/native/deep-link/OTA mount and packaging controls, separate shell/screen tree, styles, navigation, visible copy/interaction helpers, and duplicate chat presentation |
 
@@ -111,10 +111,11 @@ presentation-shaped:
 - Public-web JSON/API routes `inbox.ts`, `mfa.ts`, and `probe-state.ts`, the
   exact code-owned allowlist of audited existing backend libraries (including
   typed chat transport and QR generation), TypeScript/JSON files in
-  `src/seed/**` and the explicit future `src/capabilities/**` root, marketing
-  an exact allowlist of marketing views and their current public-site tests
-  (not the whole `src/views/**` or `src/__tests__/` trees), and the
-  blog/feature renderers remain open.
+  `src/seed/**` and the explicit future `src/capabilities/**` root, an exact
+  allowlist of public marketing pages plus `llms.txt` / `llms-full.txt` (not
+  the whole `mira-web/public/**` tree), an exact allowlist of marketing views
+  and their current public-site tests (not the whole `src/views/**` or
+  `src/__tests__/` trees), and the blog/feature renderers remain open.
   The mixed `m.ts` customer redirect journey is guarded. Every other suffix in
   the capability/seed roots, every other route, the mixed `server.ts` mount,
   every non-allowlisted `src/lib/**` file, remaining page content, and unknown
@@ -157,10 +158,12 @@ with production credentials or on the production host before UI build/deploy
 are also guarded as transitive trusted inputs.
 
 Every file under `mira-hub/public/**` is blanket guarded. Under
-`mira-web/public/**`, HTML/txt marketing pages are open; images, icons,
-fonts, PDFs, source maps, scripts, manifests, and unknown suffixes stay
-guarded. "Non-executable" is not the same as "non-presentational." New
-canonical assets belong with the shared shell or a bounded adapter. The
+`mira-web/public/**`, only an exact allowlist of marketing pages plus
+`llms.txt` / `llms-full.txt` is open; `robots.txt`, `.well-known/**`,
+images, icons, fonts, PDFs, source maps, scripts, manifests, and any new
+public file stay guarded. "Non-executable" is not the same as
+"non-presentational." New canonical assets belong with the shared shell
+or a bounded adapter. The
 classifiers apply to additions, modifications, deletions, and both rename
 directions.
 

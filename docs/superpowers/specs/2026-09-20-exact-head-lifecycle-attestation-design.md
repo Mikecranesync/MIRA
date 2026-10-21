@@ -62,7 +62,8 @@ touches public factorylm.com marketing pages and docs also passes without an
 attestation. Removed from the guarded-path scope (path-scope only; not a
 phrase list):
 
-- `mira-web/public/**` HTML/txt pages
+- an exact allowlist of public marketing pages under `mira-web/public/`
+  plus `llms.txt` / `llms-full.txt` (not that directory)
 - an exact allowlist of marketing views under `mira-web/src/views/` and
   the current public-site tests under `mira-web/src/__tests__/` and
   `mira-web/src/views/__tests__/` (not those directories)
@@ -78,8 +79,9 @@ Ambiguous product-adjacent paths kept guarded: every unlisted
 `mira-web/src/views/` file (including `scan-not-found.html` and any future
 admin/checkout page), `mira-web/src/lib/drive-commander-renderer.ts`,
 `mira-web/src/lib/head.ts`, `mira-web/src/lib/components.ts`,
-`mira-web/src/data/**`, `mira-web/emails/**`, and every non-HTML/txt file
-under `mira-web/public/**`. Hub/app screens, shared UI packages, and
+`mira-web/src/data/**`, `mira-web/emails/**`, `mira-web/public/robots.txt`,
+`.well-known/**`, and every unlisted file under `mira-web/public/**`.
+Hub/app screens, shared UI packages, and
 control-plane paths stay fail-closed exactly as before.
 
 The author-written `## Lifecycle guard rationale` check ignores the

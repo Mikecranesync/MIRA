@@ -2406,8 +2406,8 @@ def test_public_static_unknown_suffix_fails_closed():
 
 
 # ---------------------------------------------------------------------------
-# Owner-approved 2026-10-20 marketing-site narrowing. Public factorylm.com
-# HTML/txt pages, marketing views + tests, and the blog/feature renderers
+# Owner-approved 2026-10-20 marketing-site narrowing. Exact public
+# marketing pages, marketing views + tests, and the blog/feature renderers
 # pass without attestation. Hub/app/control-plane paths stay fail-closed.
 # ---------------------------------------------------------------------------
 
@@ -2454,12 +2454,15 @@ def test_marketing_only_pr_4552_file_list_passes_without_attestation():
 @pytest.mark.parametrize(
     "path",
     [
-        "mira-web/public/index.html",
-        "mira-web/public/legacy.htm",
-        "mira-web/public/robots.txt",
-        "mira-web/public/.well-known/security.txt",
-        "mira-web/public/printsense.html",
-        "mira-web/public/activated.html",
+        "mira-web/public/assess.html",
+        "mira-web/public/buy.html",
+        "mira-web/public/legal/dpa.html",
+        "mira-web/public/llms-full.txt",
+        "mira-web/public/llms.txt",
+        "mira-web/public/pricing.html",
+        "mira-web/public/privacy.html",
+        "mira-web/public/terms.html",
+        "mira-web/public/trust.html",
         "mira-web/src/__tests__/printsense-landing.test.ts",
         "mira-web/src/__tests__/health-identity.test.ts",
         "mira-web/src/__tests__/site-wide-topbar.test.ts",
@@ -2494,6 +2497,10 @@ def test_marketing_pages_and_docs_remain_open(path):
         "mira-web/src/lib/head.ts",
         "mira-web/src/lib/components.ts",
         "mira-web/src/data/blog-posts.ts",
+        "mira-web/public/robots.txt",
+        "mira-web/public/.well-known/security.txt",
+        "mira-web/public/printsense.html",
+        "mira-web/public/activated.html",
         "mira-web/public/sw.js",
         "mira-web/public/app.css",
         "mira-web/public/og-image.png",
@@ -2544,6 +2551,32 @@ def test_unlisted_public_site_tests_stay_guarded(path):
     """Directory-wide __tests__/ opening would skip an unlisted public-site test."""
     policy = load_guard_policy(REAL_REGISTRY)
     assert path not in getattr(_guard, "_WEB_MARKETING_TEST_PATHS", frozenset())
+    assert path_is_guarded(path, policy), path
+    result = evaluate([ChangedFile(status="added", path=path)], pr_body="", policy=policy)
+    assert result.allowed is False
+    assert path in result.guarded_paths
+    assert "review:exact-head and exact-body Codex GREEN" in result.missing_fields
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-web/public/robots.txt",
+        "mira-web/public/.well-known/security.txt",
+        "mira-web/public/.well-known/new-policy.txt",
+        "mira-web/public/index.html",
+        "mira-web/public/legacy.htm",
+        "mira-web/public/printsense.html",
+        "mira-web/public/activated.html",
+        "mira-web/public/status.html",
+        "mira-web/public/__brand_new_page__.html",
+        "mira-web/public/legal/__new_legal__.html",
+    ],
+)
+def test_unlisted_public_pages_stay_guarded(path):
+    """Suffix-wide public/*.html/.txt opening would skip robots, well-known, and new pages."""
+    policy = load_guard_policy(REAL_REGISTRY)
+    assert path not in getattr(_guard, "_WEB_MARKETING_PUBLIC_PATHS", frozenset())
     assert path_is_guarded(path, policy), path
     result = evaluate([ChangedFile(status="added", path=path)], pr_body="", policy=policy)
     assert result.allowed is False

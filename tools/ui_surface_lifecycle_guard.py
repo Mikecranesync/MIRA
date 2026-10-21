@@ -144,11 +144,20 @@ PUBLIC_STATIC_GUARDED_ROOTS: tuple[str, ...] = (
 
 # Owner-approved 2026-10-20: public marketing pages no longer require a
 # rationale + exact-head Codex GREEN. Path-scope only — not a phrase list.
-# Hub/app screens, shared UI packages, and control-plane paths stay guarded.
-_MARKETING_PUBLIC_PAGE_SUFFIXES: tuple[str, ...] = (
-    ".html",
-    ".htm",
-    ".txt",
+# Exact public marketing pages plus the two marketing-generated llms files.
+# robots.txt, .well-known/**, and any new public file stay fail-closed.
+_WEB_MARKETING_PUBLIC_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/public/assess.html",
+        "mira-web/public/buy.html",
+        "mira-web/public/legal/dpa.html",
+        "mira-web/public/llms-full.txt",
+        "mira-web/public/llms.txt",
+        "mira-web/public/pricing.html",
+        "mira-web/public/privacy.html",
+        "mira-web/public/terms.html",
+        "mira-web/public/trust.html",
+    }
 )
 
 _WEB_MARKETING_LIB_PATHS: frozenset[str] = frozenset(
@@ -1124,17 +1133,14 @@ def _is_open_marketing_site_path(path: str) -> bool:
     """True for public factorylm.com marketing pages that no longer need attestation.
 
     Path-scope only. Hub screens, shared UI packages, and control-plane
-    files never match. Unlisted `src/views/` and `__tests__/` files stay
-    guarded.
+    files never match. Unlisted `src/views/`, `__tests__/`, and
+    `mira-web/public/` files stay guarded.
     """
-    if (
-        path in _WEB_MARKETING_LIB_PATHS
+    return (
+        path in _WEB_MARKETING_PUBLIC_PATHS
+        or path in _WEB_MARKETING_LIB_PATHS
         or path in _WEB_MARKETING_VIEW_PATHS
         or path in _WEB_MARKETING_TEST_PATHS
-    ):
-        return True
-    return path.startswith("mira-web/public/") and path.lower().endswith(
-        _MARKETING_PUBLIC_PAGE_SUFFIXES
     )
 
 
