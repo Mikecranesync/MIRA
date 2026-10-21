@@ -8,6 +8,12 @@
  * device or an answer meant for an older session can never land in the wrong one.
  */
 import type { RunRecord, StepRecord } from "@/capabilities/diagnostic-plan/types";
+import { MANUFACTURER_PROCEDURES } from "@/capabilities/diagnostic-plan/guided";
+
+/** The compiled version of every offered manufacturer procedure, by template id. */
+const CURRENT_VERSIONS: ReadonlyMap<string, string> = new Map(
+  MANUFACTURER_PROCEDURES.map((p) => [p.template.id, p.template.version ?? ""]),
+);
 
 export type QueryDb = {
   query(sql: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -61,11 +67,19 @@ export async function latestSession(db: QueryDb, tenantId: string, notebookId: s
  * Whether `sessionId` is this notebook's most recent guided session AND ended at a dead end the
  * manual does not cover (stored status "degraded" = view status "escalate"). The chat route only
  * lifts the #4068 "won't guess about this machine" decline for a turn that names such a session
- * (owner decision 2026-10-21); a restarted, resolved, running or superseded session never qualifies.
+ * (owner decision 2026-10-21); a restarted, resolved, running or superseded session — or one saved on
+ * a procedure version other than the current one (`currentVersions`: template id → version) — never
+ * qualifies.
  */
-export async function isGuidedDeadEnd(db: QueryDb, tenantId: string, notebookId: string, sessionId: string): Promise<boolean> {
+export async function isGuidedDeadEnd(
+  db: QueryDb,
+  tenantId: string,
+  notebookId: string,
+  sessionId: string,
+  currentVersions: ReadonlyMap<string, string> = CURRENT_VERSIONS,
+): Promise<boolean> {
   const res = await db.query(
-    `SELECT 1 FROM guided_procedure_sessions s
+    `SELECT s.template_id, s.template_version FROM guided_procedure_sessions s
       WHERE s.id = $3::uuid AND s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.status = 'degraded'
         AND NOT EXISTS (
           SELECT 1 FROM guided_procedure_sessions n
@@ -74,7 +88,10 @@ export async function isGuidedDeadEnd(db: QueryDb, tenantId: string, notebookId:
         )`,
     [tenantId, notebookId, sessionId],
   );
-  return res.rows.length > 0;
+  const row = res.rows[0];
+  // A session ended on an earlier compiled version is superseded (Codex #4598 F1 on #4592's
+  // version bump): the current procedure may have a step it lacked, so it never qualifies.
+  return !!row && currentVersions.get(String(row.template_id)) === String(row.template_version);
 }
 
 type NewSession = {

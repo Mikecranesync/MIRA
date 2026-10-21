@@ -344,7 +344,7 @@ SAFETY: assume the equipment may be energized. Where a check requires isolation,
  * whose guided session the server confirmed ended at a dead end. It corrects the general prompt's
  * "no manual loaded" premise without letting the model claim anything came from that manual.
  */
-const GUIDED_DEAD_END_DIRECTIVE = `GUIDED PROCEDURE DEAD END — this overrides the "no manual" premise above. The technician DOES have this machine's manual and has already worked through its troubleshooting procedure step by step; the steps they checked, with their manual pages, are in their message. The procedure ended with no documented next step for what they are seeing. Now help from general knowledge:
+const GUIDED_DEAD_END_DIRECTIVE = `GUIDED PROCEDURE DEAD END — this overrides ONLY the "no manual" premise above; every SAFETY instruction still applies in full. The technician DOES have this machine's manual and has already worked through its troubleshooting procedure step by step; the steps they checked, with their manual pages, are in their message. The procedure ended with no documented next step for what they are seeing. Now help from general knowledge:
 - Open with one short clause saying this is general guidance beyond the manual.
 - Do not repeat the checks they already did. Suggest the next most likely causes for the symptom they describe and the checks for them, cheapest and safest first.
 - Never say or imply that any of your advice comes from their manual, and never cite pages for it.
@@ -2157,7 +2157,28 @@ async function handleChatTurn(
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
-  const oemRetrieval = !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
+  // WP-1 guided dead end (owner decision 2026-10-21, a narrow exception to #4068): the technician
+  // worked through this machine's manual procedure in the guided panel and it ended with no
+  // documented next step. For that one general-mode turn, and only when the server confirms the
+  // named session is this notebook's latest and ended at a dead end, MIRA may answer from general
+  // knowledge — labelled general, never cited — instead of declining. Fails closed on any error.
+  // Resolved BEFORE retrieval (Codex #4598 F1): a dead-end turn skips the OEM search, so no
+  // excerpt can pull it back into the cited lane — the manual's procedure is already exhausted.
+  const guidedDeadEndId =
+    typeof body.guidedEscalation?.sessionId === "string" && /^[0-9a-f-]{36}$/i.test(body.guidedEscalation.sessionId)
+      ? body.guidedEscalation.sessionId
+      : null;
+  const guidedDeadEnd =
+    general && guidedDeadEndId !== null && guidedProcedureEnabled()
+      ? await withTenantContext(ctx.tenantId, (c) => isGuidedDeadEnd(c as unknown as QueryDb, ctx.tenantId, notebookId, guidedDeadEndId)).catch(
+          (err) => {
+            console.error("[notebook-chat] guided dead-end check failed", err);
+            return false;
+          },
+        )
+      : false;
+  const oemRetrieval =
+    !guidedDeadEnd && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   // Codex #4069 F4: a failed OEM query is not a completed zero-hit search —
   // the decline below must never say "I couldn't find it" when nothing ran.
@@ -2397,24 +2418,6 @@ async function handleChatTurn(
   // #4068 same-family fallback) that found nothing, and no other evidence — a
   // photo in this turn (or recalled from the conversation) or a machine window
   // is evidence of its own, so it keeps the lane.
-  // WP-1 guided dead end (owner decision 2026-10-21, a narrow exception to #4068): the technician
-  // worked through this machine's manual procedure in the guided panel and it ended with no
-  // documented next step. For that one general-mode turn, and only when the server confirms the
-  // named session is this notebook's latest and ended at a dead end, MIRA may answer from general
-  // knowledge — labelled general, never cited — instead of declining. Fails closed on any error.
-  const guidedDeadEndId =
-    typeof body.guidedEscalation?.sessionId === "string" && /^[0-9a-f-]{36}$/i.test(body.guidedEscalation.sessionId)
-      ? body.guidedEscalation.sessionId
-      : null;
-  const guidedDeadEnd =
-    general && guidedDeadEndId !== null && guidedProcedureEnabled()
-      ? await withTenantContext(ctx.tenantId, (c) => isGuidedDeadEnd(c as unknown as QueryDb, ctx.tenantId, notebookId, guidedDeadEndId)).catch(
-          (err) => {
-            console.error("[notebook-chat] guided dead-end check failed", err);
-            return false;
-          },
-        )
-      : false;
   const boundAndEmpty =
     !guidedDeadEnd &&
     oemRetrieval && oemModel !== null && chunks.length === 0 && !groundedMachineEntry &&

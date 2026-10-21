@@ -63,14 +63,14 @@ vi.mock("@/lib/manual-rag", () => ragMock);
 
 // The guided dead-end check is the only guided_procedure_sessions read; every other tenant-scoped
 // read returns no rows. `deadEnd` decides what the check finds.
-const tc = vi.hoisted(() => ({ deadEnd: false, sql: [] as { sql: string; params: unknown[] }[] }));
+const tc = vi.hoisted(() => ({ deadEnd: false, version: "" as string, sql: [] as { sql: string; params: unknown[] }[] }));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
     fn({
       query: vi.fn(async (sql: string, params: unknown[]) => {
         if (sql.includes("guided_procedure_sessions")) {
           tc.sql.push({ sql, params });
-          return { rows: tc.deadEnd ? [{ "?column?": 1 }] : [] };
+          return { rows: tc.deadEnd ? [{ template_id: T.id, template_version: tc.version }] : [] };
         }
         return { rows: [] };
       }),
@@ -140,6 +140,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async () => {
 
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { SMC_FLEX_TROUBLESHOOTING as T } from "@/capabilities/diagnostic-plan/manufacturer/smc-flex";
 
 const chatReq = (body: unknown) =>
   new NextRequest("http://test/api/equipment-notebooks/nb/chat", {
@@ -193,6 +194,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.clearAllMocks();
   tc.deadEnd = false;
+  tc.version = T.version ?? "";
   tc.sql.length = 0;
   acqMock.acquisitionEnabled.mockReturnValue(false);
   acqMock.candidateAcquisitionEnabled.mockImplementation(() => acqMock.acquisitionEnabled());
@@ -273,6 +275,35 @@ describe("guided dead end — the narrow exception to #4068", () => {
     await frames(await ask({ guidedEscalation: { sessionId: "1 OR 1=1" } }));
     expect(tc.sql).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Codex #4598 F1: a confirmed dead end never runs the OEM search, so no excerpt pulls it back to the cited lane", async () => {
+    tc.deadEnd = true;
+    ragMock.retrieveManualChunks.mockResolvedValue([
+      { id: "c1", content: "Table 48 Miscellaneous Situations", manufacturer: "Allen-Bradley", modelNumber: "SMC Flex", page: 106, docId: DOC_A, sourceTitle: "150-UM008J" },
+    ] as never);
+    const fr = await frames(await ask({ guidedEscalation: { sessionId: SESSION } }));
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+    expect(fr.find((f) => f.kind === "evidence")?.basis).toBe("general_reasoning");
+    expect(systemPromptOf()).toContain("GUIDED PROCEDURE DEAD END");
+  });
+
+  it("Codex #4598 F2: a dead end saved on an earlier procedure version does not qualify", async () => {
+    tc.deadEnd = true;
+    tc.version = "1.0.0";
+    expect(T.version).not.toBe("1.0.0");
+    const fr = await frames(await ask({ guidedEscalation: { sessionId: SESSION } }));
+    expect(tc.sql).toHaveLength(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fr.find((f) => f.kind === "status")?.status).toBe("insufficient_evidence");
+  });
+
+  it("the dead-end directive keeps every safety instruction in force", async () => {
+    tc.deadEnd = true;
+    await frames(await ask({ guidedEscalation: { sessionId: SESSION } }));
+    const prompt = systemPromptOf();
+    expect(prompt).toContain("overrides ONLY the \"no manual\" premise");
+    expect(prompt).toContain("NEVER provide an energized-measurement or live-work procedure");
   });
 
   it("an ordinary general-mode answer never carries the dead-end directive", async () => {
