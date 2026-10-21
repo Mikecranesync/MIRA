@@ -163,11 +163,21 @@ describe("Shorted SCR Test (p.106: > 5,000 Ω per phase)", () => {
   it("all phases above 5,000 Ω → no shorted SCR → manual silent → escalate", () => {
     expect(viewSession(T, play([...toTest, ohms(12000, 9000, 8000)]).run).status).toBe("escalate");
   });
-  it("exactly 5,000 Ω is not > 5,000 → FAIL → Table 44 action (replace power module if necessary)", () => {
-    const v = viewSession(T, play([...toTest, ohms(12000, 5000, 8000)]).run);
-    expect(v.status).toBe("resolved");
-    expect(v.guidance?.solutions).toEqual(["Check for shorted SCR, replace power module if necessary"]);
-    expect(v.guidance?.cite.page).toBe(104);
+  it("exactly 5,000 Ω is not > 5,000 → FAIL → Table 44 action, then the fix check — never resolved by the reading", () => {
+    const { run } = play([...toTest, ohms(12000, 5000, 8000)]);
+    const v = viewSession(T, run);
+    expect(v.status).toBe("active");
+    expect(v.step?.id).toBe("checks");
+    expect(v.step?.guidance?.solutions).toEqual(["Check for shorted SCR, replace power module if necessary"]);
+    expect(v.step?.guidance?.cite.page).toBe(104);
+  });
+  it("after a failed SCR test, only the technician's 'fixed' resolves; 'not fixed' escalates", () => {
+    const fixed = play([...toTest, ohms(12000, 5000, 8000), { kind: "result", stepId: "checks", fixed: true } as StepInput]);
+    const notFixed = play([...toTest, ohms(12000, 5000, 8000), { kind: "result", stepId: "checks", fixed: false } as StepInput]);
+    expect(fixed.error).toBeUndefined();
+    expect(notFixed.error).toBeUndefined();
+    expect(viewSession(T, fixed.run).status).toBe("resolved");
+    expect(viewSession(T, notFixed.run).status).toBe("escalate");
   });
   it("a reading in kΩ is not converted → INCONCLUSIVE → escalate", () => {
     expect(viewSession(T, play([...toTest, ohms(12, 9, 8, "kohm")]).run).status).toBe("escalate");

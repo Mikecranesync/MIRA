@@ -261,7 +261,7 @@ export function currentGuidance(template: WorkflowTemplate, run: RunRecord): Ste
 }
 
 const END_REASON: Record<string, string> = {
-  resolved: "The manufacturer's procedure reached its documented action.",
+  resolved: "The manufacturer's action fixed the problem, as confirmed by the technician.",
   escalate: "The manual does not document what to do next for this case.",
   unsafe: "Stopped for safety: the safety notices were not acknowledged.",
   blocked: "Stopped: the isolation was not confirmed.",
