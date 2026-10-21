@@ -1,0 +1,108 @@
+/**
+ * Zero-token diagnostic: why does NOTEBOOK_LEXICAL_V2 fill every retrieval slot? (#4589 BRAVO finding)
+ *
+ * Same load as tools/benchmark-acceptance/retrieval_rank.ts (T4 pattern: every manual chunked into a
+ * throwaway local Postgres, doc-scoped retrieveNodeChunks). For every question it records, per arm:
+ *   - the final pages retrieveNodeChunks returns (production code, unmodified);
+ *   - OFF's precision pass size: chunks matching ALL query lexemes (plainto_tsquery, the AND pass);
+ *   - chunks matching ANY query lexeme (what V2's idfSql admits — it ignores the tsquery);
+ *   - V2's full IDF ordering (no LIMIT): rank of the first accepted-page chunk, and per returned chunk the
+ *     share of the query's in-document IDF mass it covers.
+ *
+ *   cd mira-hub && BENCH_PG=... npx vite-node --config vitest.config.ts ../tools/retrieval_eval/diag_lexv2_fill.ts -- \
+ *     <topK> <questions.json> <out.jsonl>
+ */
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { Client } from "pg";
+import { extractText, getDocumentProxy } from "unpdf";
+import { retrieveNodeChunks } from "@/lib/manual-rag";
+import { chunkText } from "@/lib/node-knowledge-ingest";
+
+type Q = { id: string; manual: string; pdf: string; question: string; accepted: number[] };
+const [topKArg, qPath, outPath] = process.argv.slice(2).filter((a) => a !== "--");
+const topK = Number(topKArg);
+for (const v of ["NOTEBOOK_HYBRID_RETRIEVAL", "NOTEBOOK_RERANK"]) if (process.env[v] === "1") throw new Error(`${v}=1`);
+const qs: Q[] = JSON.parse(readFileSync(qPath, "utf8"));
+const uuidOf = (s: string) => {
+  const h = createHash("sha256").update(s).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+};
+const tenant = uuidOf("diag-lexv2-fill");
+const nodeId = uuidOf("bench-node");
+const db = new Client({ connectionString: process.env.BENCH_PG });
+await db.connect();
+await db.query("DELETE FROM knowledge_entries WHERE tenant_id = $1", [tenant]);
+const docOf = new Map<string, string>();
+for (const [manual, pdf] of new Map(qs.map((q) => [q.manual, q.pdf]))) {
+  const doc = uuidOf(`bench-doc-${manual}`);
+  docOf.set(manual, doc);
+  const { text } = await extractText(await getDocumentProxy(new Uint8Array(readFileSync(pdf))), { mergePages: false });
+  const pages = Array.isArray(text) ? text : [text];
+  let idx = 0;
+  for (let p = 0; p < pages.length; p++) {
+    for (const c of chunkText(pages[p] ?? "")) {
+      await db.query(
+        `INSERT INTO knowledge_entries (id, tenant_id, source_type, content, is_private, verified, source_url, source_page,
+           page_start, page_end, doc_id, ingest_route, metadata)
+         VALUES ($1,$2,'node_attachment',$3,true,true,$4,$5,$5,$5,$6,'v2',$7)`,
+        [randomUUID(), tenant, c, `node-doc/${doc}/${manual}.pdf`, p + 1, doc,
+          JSON.stringify({ node_id: nodeId, chunk_index: idx++, filename: `${manual}.pdf` })],
+      );
+    }
+  }
+}
+
+const retrieve = async (flag: "0" | "1", q: Q) => {
+  process.env.NOTEBOOK_LEXICAL_V2 = flag;
+  const chunks = await retrieveNodeChunks(db as never, tenant, q.question, {
+    nodeId, unsPath: null, topK, docIds: [docOf.get(q.manual)!], rawQuery: q.question, validatedDocScope: true,
+  });
+  return chunks.map((c) => ({ page: c.sourcePage, content: c.content }));
+};
+
+// V2's own scoring, without LIMIT, plus per-chunk coverage of the query's in-document IDF mass.
+const IDF_FULL = `WITH qlex AS (SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', $2))) AS lex),
+  scope AS (SELECT id, page_start, content, tsvector_to_array(content_tsv) AS lexemes FROM knowledge_entries
+            WHERE tenant_id = $1 AND ingest_route = 'v2' AND doc_id = $3::uuid),
+  n AS (SELECT count(*)::float8 AS n FROM scope),
+  df AS (SELECT q.lex, count(s.id)::float8 AS df FROM qlex q LEFT JOIN scope s ON q.lex = ANY(s.lexemes) GROUP BY q.lex),
+  w AS (SELECT df.lex, df.df, CASE WHEN df.df > 0 THEN ln((n.n - df.df + 0.5) / (df.df + 0.5) + 1) END AS idf FROM df CROSS JOIN n),
+  scored AS (SELECT s.id, s.page_start, left(s.content, 60) AS head, sum(w.idf::numeric) AS score, count(*) AS matched
+             FROM scope s JOIN w ON w.df > 0 AND w.lex = ANY(s.lexemes) GROUP BY s.id, s.page_start, s.content)
+  SELECT scored.*, (SELECT sum(idf::numeric) FROM w) AS mass, (SELECT count(*) FROM w) AS nlex,
+         (SELECT count(*) FROM w WHERE df = 0) AS absent, (SELECT string_agg(lex, ' ') FROM w WHERE df = 0) AS absent_lex
+  FROM scored ORDER BY score DESC, page_start, id`;
+
+const lines: string[] = [];
+for (const q of qs) {
+  const doc = docOf.get(q.manual)!;
+  const [off, on] = [await retrieve("0", q), await retrieve("1", q)];
+  const andN = Number((await db.query(
+    `SELECT count(*) FROM knowledge_entries WHERE tenant_id=$1 AND doc_id=$3::uuid AND content_tsv @@ plainto_tsquery('english',$2)`,
+    [tenant, q.question, doc])).rows[0].count);
+  const full = (await db.query(IDF_FULL, [tenant, q.question, doc])).rows as Record<string, unknown>[];
+  const mass = full.length ? Number(full[0].mass) : 0;
+  const acc = new Set(q.accepted);
+  const firstAccRank = full.findIndex((r) => acc.has(Number(r.page_start)));
+  const cov = (content: string) => {
+    const r = full.find((x) => content.startsWith(String(x.head)));
+    return r && mass > 0 ? +(Number(r.score) / mass).toFixed(3) : null;
+  };
+  lines.push(JSON.stringify({
+    id: q.id, accepted: q.accepted, topK,
+    off_pages: off.map((c) => c.page), on_pages: on.map((c) => c.page),
+    off_hit: off.some((c) => acc.has(c.page ?? -1)), on_hit: on.some((c) => acc.has(c.page ?? -1)),
+    and_pass_rows: andN, any_word_rows: full.length,
+    query_lexemes: full.length ? Number(full[0].nlex) : null,
+    absent_lexemes: full.length ? Number(full[0].absent) : null, absent_lex: full.length ? full[0].absent_lex : null,
+    v2_first_accepted_rank: firstAccRank < 0 ? null : firstAccRank + 1,
+    on_coverage: on.map((c) => cov(c.content)), off_coverage: off.map((c) => cov(c.content)),
+    v2_top_coverage: full.length && mass > 0 ? +(Number(full[0].score) / mass).toFixed(3) : null,
+  }));
+}
+if (process.env.DIAG_KEEP !== "1") await db.query("DELETE FROM knowledge_entries WHERE tenant_id = $1", [tenant]);
+else console.log(`kept tenant ${tenant} (DIAG_KEEP=1) — delete it when done`);
+await db.end();
+writeFileSync(outPath, lines.join("\n") + "\n");
+console.log(`wrote ${lines.length} diagnostic rows (topK ${topK}) to ${outPath}`);

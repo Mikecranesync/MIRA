@@ -1,0 +1,17 @@
+import hashlib,json,subprocess,sys
+def uuid(s):
+    h=hashlib.sha256(s.encode()).hexdigest(); return f"{h[:8]}-{h[8:12]}-4{h[13:16]}-8{h[17:20]}-{h[20:32]}"
+T=uuid("diag-lexv2-fill"); out={}
+qs={q["id"]:q for q in json.load(open("/Users/charlienode/MIRA/.planning/evidence-runoff-data/t4/questions.json"))}
+for qid in ["tq-21","micro820-in-q4","gs10-ch6-q1","tq-40"]:
+    q=qs[qid]; doc=uuid(f"bench-doc-{q['manual']}"); qt=q["question"].replace("'","''")
+    for name,agg in [("f8","sum(ln((n.n - df.df + 0.5) / (df.df + 0.5) + 1))"),("num","sum(ln((n.n - df.df + 0.5) / (df.df + 0.5) + 1)::numeric)::float8")]:
+        s=f"""SET extra_float_digits=3; WITH qlex AS (SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english','{qt}'))) AS lex),
+ scope AS (SELECT id, tsvector_to_array(content_tsv) AS lexemes FROM knowledge_entries WHERE tenant_id='{T}' AND ingest_route='v2' AND doc_id='{doc}'),
+ n AS (SELECT count(*)::float8 n FROM scope),
+ df AS (SELECT q.lex, count(*)::float8 df FROM qlex q JOIN scope s ON q.lex=ANY(s.lexemes) GROUP BY q.lex),
+ scored AS (SELECT s.id, {agg} AS score FROM scope s CROSS JOIN n JOIN df ON df.lex=ANY(s.lexemes) GROUP BY s.id)
+ SELECT k.page_start||':'||(k.metadata->>'chunk_index'), scored.score::float8 FROM scored JOIN knowledge_entries k ON k.id=scored.id ORDER BY scored.score DESC, k.page_start, (k.metadata->>'chunk_index')::int LIMIT 30;"""
+        r=subprocess.run(["psql","postgres://bench@localhost:55432/t4","-AtF|","-c",s],capture_output=True,text=True).stdout
+        out[f"{qid}/{name}"]=[l for l in r.strip().splitlines() if "|" in l]
+json.dump(out,open(sys.argv[1],"w"),indent=0)

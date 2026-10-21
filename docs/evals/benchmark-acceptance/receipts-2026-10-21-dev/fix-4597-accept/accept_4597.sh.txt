@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# #4597 acceptance: unmodified #4589 harness (retrieval_rank.ts @ 9d22076c1) against
+# BEFORE = pin 9d22076c1 and AFTER = fix worktree. ON k6 interleaved before/after x5,
+# AFTER ON k10 x5, AFTER OFF k6 x2 (control). Same t4 DB, same machine, $0.
+set -euo pipefail
+export PATH=/opt/homebrew/bin:$PATH
+REPO=/Users/charlienode/MIRA
+PIN=9d22076c13072327eef32997d727edac84b74d7c
+AFTER_WT=$REPO/.claude/worktrees/lexv2-4597
+OUT=$REPO/.planning/lexv2-4597-accept
+Q=$REPO/.planning/evidence-runoff-data/t4/questions.json
+BEFORE_WT="$(mktemp -d)/before-wt"
+cleanup() { git -C "$REPO" worktree remove --force "$BEFORE_WT" 2>/dev/null || true; rm -f "$AFTER_WT/tools/benchmark-acceptance/retrieval_rank.ts"; }
+trap cleanup EXIT
+git -C "$REPO" worktree add --detach "$BEFORE_WT" "$PIN" >/dev/null
+(cd "$BEFORE_WT/mira-hub" && npm ci --no-audit --no-fund >/dev/null 2>&1)
+mkdir -p "$AFTER_WT/tools/benchmark-acceptance"
+git -C "$REPO" show "$PIN:tools/benchmark-acceptance/retrieval_rank.ts" > "$AFTER_WT/tools/benchmark-acceptance/retrieval_rank.ts"
+unset NOTEBOOK_HYBRID_RETRIEVAL NOTEBOOK_RERANK NOTEBOOK_RETRIEVAL_DEBUG MIRA_ENFORCE_APPROVED_RETRIEVAL
+export BENCH_PG=postgres://bench@localhost:55432/t4
+git -C "$AFTER_WT" rev-parse HEAD > "$OUT/after-base.txt"; git -C "$AFTER_WT" diff -- mira-hub/src/lib/manual-rag.ts > "$OUT/after-fix.diff"
+go() { # $1 label $2 wt $3 arm $4 k
+  local flag=0; [ "$3" = on ] && flag=1
+  echo "$1 $3 k$4 start $(date -u +%FT%TZ) $(uptime)" | tee -a "$OUT/uptime.log"
+  (cd "$2/mira-hub" && NOTEBOOK_LEXICAL_V2="$flag" npx vite-node --config vitest.config.ts \
+    ../tools/benchmark-acceptance/retrieval_rank.ts -- "$3" "$4" "$Q" "$OUT/$1-$3-k$4.jsonl") 2>&1 | grep -v "TT: undefined" | tail -1
+}
+for i in 1 2 3 4 5; do go "before$i" "$BEFORE_WT" on 6; go "after$i" "$AFTER_WT" on 6; done
+for i in 1 2 3 4 5; do go "after$i" "$AFTER_WT" on 10; done
+for i in 1 2; do go "after$i" "$AFTER_WT" off 6; done
+(cd "$OUT" && shasum -a 256 accept_4597.sh after-fix.diff after-base.txt ./*.jsonl uptime.log > SHA256SUMS)
+echo DONE

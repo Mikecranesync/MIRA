@@ -1,0 +1,13 @@
+// One-question retrieval trace on the kept diag tenant (zero tokens). Not committed as product code.
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { Client } from "pg";
+import { retrieveNodeChunks } from "@/lib/manual-rag";
+const [id, topK, flag] = process.argv.slice(2).filter((a) => a !== "--");
+const q = (JSON.parse(readFileSync("/Users/charlienode/MIRA/.planning/evidence-runoff-data/t4/questions.json", "utf8")) as any[]).find((x) => x.id === id);
+const uuidOf = (s: string) => { const h = createHash("sha256").update(s).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`; };
+const db = new Client({ connectionString: process.env.BENCH_PG }); await db.connect();
+process.env.NOTEBOOK_LEXICAL_V2 = flag; process.env.NOTEBOOK_RETRIEVAL_DEBUG = "1";
+const c = await retrieveNodeChunks(db as never, uuidOf("diag-lexv2-fill"), q.question, { nodeId: uuidOf("bench-node"), unsPath: null, topK: Number(topK), docIds: [uuidOf(`bench-doc-${q.manual}`)], rawQuery: q.question, validatedDocScope: true });
+console.log("FINAL", JSON.stringify(c.map((x) => [x.sourcePage, +x.rank.toFixed(3)])), "accepted", q.accepted, "q=", q.question);
+await db.end();
