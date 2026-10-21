@@ -36,6 +36,14 @@ configuration either (`results-2026-10-21.md` §1).
 
 ## 1. Gates, in the order they run
 
+**Who decides what.**
+- `walk_eval` decides only whether a comparison is **valid**: V1–V6 above. Exit 0 means
+  "scoreable", never "GO".
+- The GO / NO-GO / INCONCLUSIVE verdict comes from one engine, `tools/benchmark-acceptance/scorecard.py`
+  (#4589), which implements the owner's acceptance criteria. Valid walk results are converted into its
+  row format, so there is no second verdict engine.
+- The table below is the project-level gate list those criteria sit beside.
+
 | Gate | Instrument | Pass rule | Notes |
 |---|---|---|---|
 | **R1 Retrieval, development** | Zero-token replay (#4534), 77 questions, top-6 | Paired McNemar p < 0.05 in favour, and **no top-1 loss** | The existing gate 1. Free. Run as often as needed. |

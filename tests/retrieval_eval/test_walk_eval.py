@@ -410,3 +410,13 @@ def test_every_answer_affecting_switch_in_the_config_matrix_is_required():
     assert switches and switches <= set(walk_eval.REQUIRED_CONFIG), switches - set(
         walk_eval.REQUIRED_CONFIG
     )
+
+
+def test_one_arm_or_duplicate_arm_names_are_rejected(tmp_path):
+    import pytest
+
+    a = _run(tmp_path, "a", [_row("m-q1", "CORRECT", 3)], {})
+    for args in (["--arm", f"a={a}"], ["--arm", f"a={a}", "--arm", f"a={a}"]):
+        with pytest.raises(SystemExit) as e:
+            walk_eval.main(args)
+        assert e.value.code == 2

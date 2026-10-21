@@ -361,6 +361,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.sealed and not args.key:
         ap.error("--sealed needs --key")
+    arm_names = [spec.partition("=")[0] for spec in args.arm]
+    if len(arm_names) < 2 or len(set(arm_names)) != len(arm_names):
+        ap.error("needs at least two --arm with distinct names (a baseline and a change)")
     key = load_key(args.key) if args.key else None
     arms = {}
     for spec in args.arm:
