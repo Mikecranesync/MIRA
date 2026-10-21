@@ -1,0 +1,9 @@
+image sha256:f1fb68d30f70c9d325b4d663dcbbc17c330186f1f87d743a69403bc33321fc14 cpus=2 threads=2
+run1 fp32 pre-load: 3.29 4.72 3.97 bakeoff-rr-cpu: 0.25%
+run1 fp32 exit=0 post-load: 5.73 4.97 4.18
+run2 int8-avx2 pre-load: 5.73 4.97 4.18 bakeoff-rr-cpu: 0.26%
+run2 int8-avx2 exit=0 post-load: 10.98 6.28 4.70
+run3 int8-avx2 pre-load: 10.98 6.28 4.70 bakeoff-rr-cpu: 0.11%
+run3 int8-avx2 exit=0 post-load: 6.46 5.91 4.69
+run4 fp32 pre-load: 6.46 5.91 4.69 bakeoff-rr-cpu: 0.31%
+run4 fp32 exit=0 post-load: 3.87 4.98 4.49
