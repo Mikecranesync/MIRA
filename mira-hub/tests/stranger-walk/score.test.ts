@@ -3,7 +3,7 @@ import corpusJson from "./corpus.json";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { BUDGET, BudgetMeter, budgetUsdFromEnv, PROVIDER_PRICES, pricesFromEnv, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
-import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
+import { classify, dispatchBlock, flakes, fullyIndexed, markdownScorecard, mergeAltCorpus, METRIC, scopeProblem, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
 const q = corpus.questions.find((x) => x.id === "pf40-q2")!; // p.9, safety-relevant
@@ -307,5 +307,79 @@ describe("workflow", () => {
     const walk = yml.slice(yml.indexOf("\n  walk:"));
     expect(walk).toMatch(/\n {4}concurrency:\n {6}group: stranger-walk/);
     expect(walk).toMatch(/if: \$\{\{ github\.event_name != 'pull_request' && github\.ref == 'refs\/heads\/main' \}\}/);
+  });
+});
+
+describe("#4583 readiness and #4584 unanswerable rows", () => {
+  it("is fully indexed only when askable AND no longer improving search", () => {
+    expect(fullyIndexed({ label: "Ready to ask", canChat: true })).toBe(true);
+    expect(fullyIndexed({ label: "Ready to ask · improving search…", canChat: true })).toBe(false);
+    expect(fullyIndexed({ label: "Reading…", canChat: false })).toBe(false);
+    expect(fullyIndexed(null)).toBe(false);
+    expect(fullyIndexed({ label: "Ready to ask · improving search…", canChat: true }, "chat")).toBe(true);
+  });
+  it("scores an unanswerable question's citation as WRONG_PAGE without the viewer checks", () => {
+    const u = { ...q, id: "pf40-u1", expectedPage: null, safetyRelevant: false };
+    const cited = classify(u, m, obs({ id: u.id, viewerOpened: false }));
+    expect([cited.classification, cited.reason]).toEqual(["WRONG_PAGE", "unanswerable question cited p.9"]);
+    const refused = classify(u, m, obs({ id: u.id, streamStatus: "insufficient_evidence", firstChip: null, cards: [] }));
+    expect(refused.classification).toBe("ABSTAINED");
+  });
+  it("predicts the viewer-page mutation of an unanswerable row as the classifier scores it (#4593 Codex F3)", () => {
+    const u = { ...q, id: "pf40-u1", expectedPage: null, safetyRelevant: false };
+    const viewer = (page: string) => ({ viewerOpened: true, viewer: { fileId: "f", page, manualFileId: "f" } });
+    const control = classify(u, m, obs({ id: u.id, ...viewer("9") }));
+    const mutated = classify(u, m, obs({ id: u.id, ...viewer("20") }));
+    expect(control.classification).toBe("WRONG_PAGE");
+    expect(predict(control as Parameters<typeof predict>[0], "viewer-page")).toBe(mutated.classification);
+  });
+});
+
+describe("mergeAltCorpus (#4593 review F2)", () => {
+  const base = corpusJson as Corpus;
+  const q = { id: "u1", manual: base.manuals[0].id, question: "x?", expectedPage: null, safetyRelevant: false, anchor: "" };
+  it("keeps the pinned manuals and takes the alternate questions", () => {
+    const c = mergeAltCorpus(base, { questions: [q] });
+    expect(c.manuals).toBe(base.manuals);
+    expect(c.questions).toEqual([q]);
+  });
+  it("accepts an identical manuals list in another order", () => {
+    expect(() => mergeAltCorpus(base, { manuals: [...base.manuals].reverse(), questions: [q] })).not.toThrow();
+  });
+  it("refuses a manuals list whose sha256 differs from the pin", () => {
+    const tampered = base.manuals.map((m, i) => (i === 0 ? { ...m, sha256: "0".repeat(64) } : m));
+    expect(() => mergeAltCorpus(base, { manuals: tampered, questions: [q] })).toThrow(/pinned manuals/);
+  });
+  it("refuses a question that names an unpinned manual", () => {
+    expect(() => mergeAltCorpus(base, { questions: [{ ...q, manual: "not-pinned" }] })).toThrow(/unpinned manual/);
+  });
+});
+
+describe("scopeProblem (#4593 Codex F1)", () => {
+  it("passes a turn whose chat body carries the attached manual", () => {
+    expect(scopeProblem({ sourceDocIds: ["d1"] }, true)).toBeNull();
+  });
+  it("fails a turn sent in general mode after the manual was attached", () => {
+    expect(scopeProblem({ sourceDocIds: ["d1"], mode: "general" }, true)).toMatch(/general mode/);
+  });
+  it("fails a turn sent with an empty scope after the manual was attached", () => {
+    expect(scopeProblem({ sourceDocIds: [] }, true)).toMatch(/no sourceDocIds/);
+    expect(scopeProblem(null, true)).toMatch(/no sourceDocIds/);
+  });
+  it("control: the upload-riding turn (manual not yet attached) is not checked", () => {
+    expect(scopeProblem({ sourceDocIds: [], mode: "general" }, false)).toBeNull();
+  });
+});
+
+describe("dispatchBlock (#4593 Codex F4)", () => {
+  it("allows a turn when affordable, verified, and nothing went out of scope", () => {
+    expect(dispatchBlock({ canAfford: true, unbounded: null }, null)).toBeNull();
+  });
+  it("halts every later paid turn after an out-of-scope turn", () => {
+    expect(dispatchBlock({ canAfford: true, unbounded: null }, "u1: chat sent in general mode")).toMatch(/^halted: u1/);
+  });
+  it("still stops on unverified usage and on budget exhaustion", () => {
+    expect(dispatchBlock({ canAfford: true, unbounded: "u2" }, null)).toMatch(/^budget stop: u2/);
+    expect(dispatchBlock({ canAfford: false, unbounded: null }, null)).toBe("budget stop");
   });
 });

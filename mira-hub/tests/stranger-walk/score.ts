@@ -12,7 +12,7 @@ export type Classification = "CORRECT" | "WRONG_PAGE" | "UNCITED" | "ABSTAINED" 
 export const CLASSES: Classification[] = ["CORRECT", "WRONG_PAGE", "UNCITED", "ABSTAINED", "BROKEN"];
 
 export type Manual = { id: string; oem: string; family: string; title: string; url: string; filename: string; sha256: string; bytes: number; pages: number };
-export type Question = { id: string; manual: string; question: string; expectedPage: number; safetyRelevant: boolean; anchor: string };
+export type Question = { id: string; manual: string; question: string; expectedPage: number | null; safetyRelevant: boolean; anchor: string };
 export type Corpus = { version: number; tolerance: number; manuals: Manual[]; questions: Question[] };
 
 /** What the walker saw for one question. `broken` is set only for a UI/infra failure. */
@@ -44,7 +44,7 @@ export type Observation = {
 export type Scored = {
   id: string;
   manual: string;
-  expectedPage: number;
+  expectedPage: number | null;
   safetyRelevant: boolean;
   classification: Classification;
   reason: string;
@@ -93,6 +93,9 @@ export function classify(q: Question, m: Manual, o: Observation, tolerance = 1):
   const openedManual = o.viewerOpened === true && !!o.viewer?.fileId && o.viewer.fileId === o.viewer.manualFileId;
   if (!openedManual && !first!.title.toLowerCase().includes(stem(m.filename))) return done("WRONG_PAGE", `wrong_doc: first citation is "${first!.title}"`);
   if (citedPage === null) return done("WRONG_PAGE", "first citation carries no page");
+  // An unanswerable question (#4584) has no expected page: any citation is a wrong page, and its
+  // refusal is judged by the answer text downstream (tools/retrieval_eval), not by the viewer.
+  if (q.expectedPage === null) return done("WRONG_PAGE", `unanswerable question cited p.${citedPage}`);
   // Opening the first citation is part of the journey: one that does not open is not a citation.
   if (o.viewerOpened === false) return done("BROKEN", `first citation did not open in the source viewer (cited p.${citedPage ?? "?"})`);
   // The viewer must open what the chip claims: the manual's own file, at the cited page.
@@ -158,9 +161,10 @@ export function predict(row: Scored, mutation: Mutation, tolerance = 1): Classif
   if (mutation === "strip-sources") return "UNCITED";
   // viewer-page: the viewer opens a different page than the chip shows. A citation to another
   // document stays WRONG_PAGE (that check comes first); a pageless citation has no anchor to move.
-  if (mutation === "viewer-page") return row.reason.startsWith("wrong_doc") || row.citedPage === null ? "WRONG_PAGE" : "BROKEN";
+  // An unanswerable row (expectedPage null) is WRONG_PAGE before any viewer check (#4593 Codex F3).
+  if (mutation === "viewer-page") return row.reason.startsWith("wrong_doc") || row.citedPage === null || row.expectedPage === null ? "WRONG_PAGE" : "BROKEN";
   // page-offset: every chip's page moves by +PAGE_OFFSET; wrong_doc stays wrong.
-  if (row.reason.startsWith("wrong_doc") || row.citedPage === null) return "WRONG_PAGE";
+  if (row.reason.startsWith("wrong_doc") || row.citedPage === null || row.expectedPage === null) return "WRONG_PAGE";
   return Math.abs(row.citedPage + PAGE_OFFSET - row.expectedPage) <= tolerance ? "CORRECT" : "WRONG_PAGE";
 }
 
@@ -174,7 +178,7 @@ export type FailureFixture = {
   message: string;
   sse: string | null;
   manual: Pick<Manual, "id" | "filename" | "sha256" | "url">;
-  expected: { page: number; tolerance: number; safetyRelevant: boolean; anchor: string };
+  expected: { page: number | null; tolerance: number; safetyRelevant: boolean; anchor: string };
   rendered: TurnRecord | null;
   classification: Classification;
   reason: string;
@@ -214,4 +218,50 @@ export function markdownScorecard(rows: Scored[], card: Scorecard, meta: { gitSh
     ...rows.map((r, i) => `| ${i + 1} | ${r.id} | ${r.classification} | p.${r.expectedPage} | ${r.citedPage === null ? "—" : `p.${r.citedPage}`} | ${r.safetyRelevant ? (r.safetyRedLine ?? "ok") : "—"} | ${r.reason.replace(/\|/g, "\\|")} |`),
   ];
   return lines.join("\n");
+}
+
+/** #4583: a source is fully indexed when it is askable and no longer "improving search". */
+export function fullyIndexed(r: { label?: string; canChat?: boolean } | null, mode: "indexed" | "chat" = "indexed"): boolean {
+  return !!r?.canChat && (mode === "chat" || !/improving search/i.test(r.label ?? ""));
+}
+
+/**
+ * #4593 review F2: an alternate question file (STRANGER_WALK_CORPUS) walks the SAME pinned manuals.
+ * Its own "manuals" list, if present, must equal the base list id-for-id and sha256-for-sha256, and
+ * every question must name a pinned manual — otherwise this throws before any paid turn.
+ */
+export function mergeAltCorpus(base: Corpus, alt: Partial<Corpus> & { questions: Question[] }): Corpus {
+  if (alt.manuals) {
+    const pin = (ms: Manual[]) => ms.map((m) => `${m.id}:${m.sha256}`).sort().join(",");
+    if (pin(alt.manuals) !== pin(base.manuals)) throw new Error("alternate corpus manuals differ from the pinned manuals (id/sha256)");
+  }
+  const ids = new Set(base.manuals.map((m) => m.id));
+  const stray = alt.questions.find((q) => !ids.has(q.manual));
+  if (stray) throw new Error(`alternate corpus question ${stray.id} names unpinned manual ${stray.manual}`);
+  return { ...base, questions: alt.questions, tolerance: alt.tolerance ?? base.tolerance };
+}
+
+/**
+ * #4593 Codex F1: a turn asked after its manual is attached must carry that manual in scope.
+ * The outgoing chat body is the proof. An empty `sourceDocIds` or `mode: "general"` means the UI
+ * sent from a stale empty scope, so the row is BROKEN, never scored as a refusal or an answer.
+ */
+export function scopeProblem(body: unknown, manualAttached: boolean): string | null {
+  if (!manualAttached) return null;
+  const b = (body ?? {}) as { sourceDocIds?: unknown; mode?: unknown };
+  if (b.mode === "general") return "chat sent in general mode: the attached manual was not in scope";
+  if (!Array.isArray(b.sourceDocIds) || b.sourceDocIds.length === 0) return "chat sent with no sourceDocIds: the attached manual was not in scope";
+  return null;
+}
+
+/**
+ * #4593 Codex F4: why the next paid turn must not be dispatched, or null. Budget exhaustion and an
+ * unverified-usage stop come from the meter; a turn that went out of scope invalidates the run (V6),
+ * so it halts every later paid turn too — fail closed, never spend on a run already known invalid.
+ */
+export function dispatchBlock(m: { canAfford: boolean; unbounded: string | null }, scopeHalt: string | null): string | null {
+  if (m.unbounded) return `budget stop: ${m.unbounded} had unreadable or out-of-bound usage`;
+  if (scopeHalt) return `halted: ${scopeHalt}`;
+  if (!m.canAfford) return "budget stop";
+  return null;
 }

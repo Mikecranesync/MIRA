@@ -17,10 +17,17 @@ import { test, type Page, type Response } from "@playwright/test";
 import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
-import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
+import { dispatchBlock, fixtureFor, fullyIndexed, markdownScorecard, mergeAltCorpus, scopeProblem, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import { BUDGET, BudgetMeter, identity, manualBytes, pricesFromEnv, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd } from "./staging";
 
-const corpus = corpusJson as Corpus;
+// STRANGER_WALK_CORPUS: an alternate question file (e.g. the unanswerable set, #4584). It walks the
+// same pinned manuals; its own "manuals" list, if present, must use the same ids and sha256.
+const corpus: Corpus = (() => {
+  const base = corpusJson as Corpus;
+  const alt = process.env.STRANGER_WALK_CORPUS;
+  if (!alt) return base;
+  return mergeAltCorpus(base, JSON.parse(readFileSync(alt, "utf8")) as Partial<Corpus> & { questions: Corpus["questions"] });
+})();
 const RUN_ID = process.env.STRANGER_WALK_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
 const OUT = path.resolve(process.env.STRANGER_WALK_OUT ?? path.join(__dirname, ".out", RUN_ID));
 const ONLY = process.env.STRANGER_WALK_ONLY ? new Set(process.env.STRANGER_WALK_ONLY.split(",")) : null;
@@ -82,17 +89,53 @@ async function sourceReadiness(page: Page, filename: string): Promise<{ label?: 
   return s ? { ...(s.readiness ?? {}), fileId: s.fileId ?? null } : null;
 }
 
-/** Wait until the manual's readiness label says it can be asked ("Ready to ask"). */
-async function waitReady(page: Page, filename: string): Promise<string> {
-  const deadline = Date.now() + 120_000;
+/**
+ * #4583: wait until the manual is FULLY indexed — askable AND no longer "improving search"
+ * (embeddings still being written) — so a hybrid arm is not silently measured as lexical-only.
+ * STRANGER_WALK_READY=chat restores the old "askable" wait. A manual that never finishes within
+ * STRANGER_WALK_INDEX_TIMEOUT_MS (default 10 min) throws, so the row is BROKEN, never silently asked.
+ */
+const READY_MODE = process.env.STRANGER_WALK_READY === "chat" ? "chat" : "indexed";
+const INDEX_TIMEOUT = Number(process.env.STRANGER_WALK_INDEX_TIMEOUT_MS ?? 600_000);
+async function waitIndexed(page: Page, filename: string): Promise<{ label: string; waitedMs: number }> {
+  const t0 = Date.now();
   let label = "no source yet";
-  while (Date.now() < deadline) {
+  while (Date.now() - t0 < INDEX_TIMEOUT) {
     const r = await sourceReadiness(page, filename);
     label = r?.label ?? label;
-    if (r?.canChat) return label;
+    if (fullyIndexed(r, READY_MODE)) return { label, waitedMs: Date.now() - t0 };
     await page.waitForTimeout(2_000);
   }
-  throw new Error(`source never became ready (last label: ${label})`);
+  throw new Error(`indexing not complete after ${INDEX_TIMEOUT} ms (last label: ${label})`);
+}
+
+/**
+ * #4593 review F1: STRANGER_WALK_PREUPLOAD=1 attaches the manual BEFORE any question, through the same
+ * two calls the composer makes (node files upload → notebook sources link, hub-attachments.ts), and then
+ * waits for full indexing — so the first question of each manual is gated like every other one instead of
+ * riding its upload. Default off: the stranger journey (upload rides the first question) is unchanged.
+ */
+const PREUPLOAD = process.env.STRANGER_WALK_PREUPLOAD === "1";
+/** Codex F4: set when a turn went out of scope; halts every later paid turn (the run is invalid). */
+let scopeHalt: string | null = null;
+async function preUpload(page: Page, filename: string, bytes: Buffer): Promise<void> {
+  const r = await page.evaluate(async ({ name, b64 }) => {
+    const nb = new URL(location.href).searchParams.get("notebook");
+    if (!nb) return { error: "no notebook in URL" };
+    const det = await fetch(`/api/equipment-notebooks/${nb}/`, { cache: "no-store" });
+    const nodeId = det.ok ? ((await det.json()) as { notebook?: { nodeId?: string } }).notebook?.nodeId : null;
+    if (!nodeId) return { error: `notebook ${det.status}: no nodeId` };
+    const fd = new FormData();
+    fd.append("file", new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], name, { type: "application/pdf" }));
+    const up = await fetch(`/api/namespace/node/${encodeURIComponent(nodeId)}/files/`, { method: "POST", body: fd });
+    const d = (await up.json().catch(() => ({}))) as { indexed?: boolean; uploadId?: string };
+    if (!up.ok || !d.indexed || !d.uploadId) return { error: `upload ${up.status} indexed=${d.indexed}` };
+    const src = await fetch(`/api/equipment-notebooks/${nb}/sources/`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ docId: d.uploadId, sourceRole: "manual" }),
+    });
+    return src.ok ? { error: null } : { error: `sources ${src.status}` };
+  }, { name: filename, b64: bytes.toString("base64") });
+  if (r.error) throw new Error(`pre-upload failed: ${r.error}`);
 }
 
 async function ask(page: Page, q: Question, manualFilename: string, attach: { name: string; buffer: Buffer } | null, meter: BudgetMeter): Promise<Observation> {
@@ -106,17 +149,25 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
   await UI.clone.composer(page).fill(q.question);
   if (!DRY) meter.book(); // booked at dispatch: no later failure can leave this turn uncounted
   const chat = page.waitForResponse((r: Response) => r.request().method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: ANSWER_TIMEOUT });
+  const chatReq = page.waitForRequest((r) => r.method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: ANSWER_TIMEOUT });
   await page.getByRole("button", { name: "Send" }).click();
   const broken = (why: string): Observation => {
     void page.screenshot({ path: path.join(OUT, "shots", `${q.id}.png`) }).catch(() => undefined);
     return brokenObs(q.id, why, Date.now() - t0);
   };
 
+  // #4593 Codex F1: an attachment-free turn must carry the manual in scope, or the row is BROKEN.
+  const scope = scopeProblem(await chatReq.then((r) => r.postDataJSON(), () => null), attach === null);
   const res = await chat.catch(() => null);
   // Check the visible usage against the bound the booking assumed, before any UI step that could
   // throw. No response or a non-200 has no readable usage and stops later paid turns (fail closed).
+  // Codex F4: this runs BEFORE the scope verdict returns, so an out-of-scope turn's usage is verified too.
   const sse = res && res.status() === 200 ? await res.text().catch(() => null) : null;
   if (!DRY) meter.verify(q.id, sse);
+  if (scope) {
+    scopeHalt = `${q.id}: ${scope}`;
+    return broken(scope);
+  }
   if (!res) {
     const err = await page.getByRole("alert", { name: "Send error" }).innerText().catch(() => "");
     return broken(`no chat response${err ? `: ${err.replace(/\s+/g, " ").slice(0, 160)}` : ""}`);
@@ -177,18 +228,43 @@ test("stranger walk", async ({ page }) => {
         for (const q of qs) obs.push(brokenObs(q.id, `project create failed: ${(e as Error).message.split("\n")[0]}`));
         continue;
       }
-      for (const [i, q] of qs.entries()) {
-        if (!DRY && !meter.canAfford()) { obs.push(brokenObs(q.id, meter.unbounded ? `budget stop: ${meter.unbounded} had unreadable or out-of-bound usage` : "budget stop")); continue; }
+      if (PREUPLOAD) {
         try {
-          if (i > 0) {
-            await page.getByRole("button", { name: "New chat" }).click();
-            await page.waitForTimeout(1_000);
+          await preUpload(page, m.filename, pdf.bytes);
+          uploaded = true;
+          // The upload went around the UI, so its cached scope is still empty: wait for the index, then
+          // reload so the project re-reads its sources before the first question (#4593 Codex F1).
+          const w = await waitIndexed(page, m.filename);
+          notes.push(`${m.id}: pre-uploaded; readiness "${w.label}" (waited ${Math.round(w.waitedMs / 1000)} s); page reloaded`);
+          await page.reload();
+          await page.getByRole("heading", { level: 1, name: `${m.oem} ${m.id}` }).waitFor({ timeout: 30_000 });
+        } catch (e) {
+          for (const q of qs) obs.push(brokenObs(q.id, (e as Error).message.split("\n")[0]));
+          continue;
+        }
+      }
+      for (const [i, q] of qs.entries()) {
+        const block = DRY ? null : dispatchBlock({ canAfford: meter.canAfford(), unbounded: meter.unbounded }, scopeHalt);
+        if (block) { obs.push(brokenObs(q.id, block)); continue; }
+        try {
+          if (i > 0 || PREUPLOAD) {
+            if (i > 0) {
+              await page.getByRole("button", { name: "New chat" }).click();
+              await page.waitForTimeout(1_000);
+            }
             // The upload rode the first question; whether it landed is the project's own source list.
             uploaded ||= (await sourceReadiness(page, m.filename)) !== null;
-            if (uploaded) notes.push(`${q.id}: readiness "${await waitReady(page, m.filename)}"`);
+            if (uploaded) {
+              const w = await waitIndexed(page, m.filename);
+              notes.push(`${q.id}: readiness "${w.label}" (${READY_MODE}, waited ${Math.round(w.waitedMs / 1000)} s)`);
+            }
           }
+          const uploadTurn = !uploaded;
           const o = await ask(page, q, m.filename, uploaded ? null : { name: m.filename, buffer: pdf.bytes }, meter);
           obs.push(o);
+          // The upload rides this turn, so the manual cannot be fully indexed before it is asked;
+          // record what readiness said once it was answered.
+          if (uploadTurn) notes.push(`${q.id}: upload turn; readiness after answer "${(await sourceReadiness(page, m.filename).catch(() => null))?.label ?? "unknown"}"`);
         } catch (e) {
           await page.screenshot({ path: path.join(OUT, "shots", `${q.id}.png`) }).catch(() => undefined);
           obs.push(brokenObs(q.id, `walker: ${(e as Error).message.split("\n")[0].slice(0, 200)}`));
