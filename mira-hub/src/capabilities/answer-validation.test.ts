@@ -1306,3 +1306,54 @@ describe("Codex #4471 r1 F1: a written lockout removal / power restore is the co
     });
   }
 });
+
+describe("Gate-7 r4: A4 mask offsets share A2's sentence/clause splits", () => {
+  const measure = "Restore power and measure the supply voltage at the input terminals";
+  // Motion, not energized-imperative: A1 would stop on "Reset … while
+  // energized" before the A4 mask / A2 scan this case is about.
+  const hazard = "Reach into the guard opening while the conveyor is running";
+  const splits: Array<[string, string]> = [
+    ["period", `${measure}. ${hazard}.`],
+    ["semicolon", `${measure}; ${hazard}.`],
+    ["newline", `${measure}.\n${hazard}.`],
+    ["bullet list item", `${measure}.\n- ${hazard}.`],
+    ["CRLF", `${measure}.\r\n${hazard}.`],
+    ["en dash (Unicode punctuation)", `${measure} – ${hazard}.`],
+    ["ideographic full stop", `${measure}。${hazard}.`],
+  ];
+  const warnOnly: Array<[string, string]> = [
+    ["period", `${measure}.`],
+    ["semicolon", `${measure};`],
+    ["newline", `${measure}.\n`],
+    ["bullet list item", `- ${measure}.`],
+    ["CRLF", `${measure}.\r\n`],
+    ["en dash (Unicode punctuation)", `${measure} –`],
+    ["ideographic full stop", `${measure}。`],
+  ];
+
+  it.each(splits)("%s: sibling A2 hazard still BLOCKS; measurement is not the served text", (_label, a) => {
+    for (const run of [
+      (answerText: string) => grounded(answerText, "how do I check the supply"),
+      (answerText: string) => general(answerText, "how do I check the supply"),
+    ]) {
+      const v = run(a);
+      expect(v.ok).toBe(false);
+      if (!v.ok) {
+        expect(v.kind).toBe("unsafe_answer");
+        expect(v.violation).toMatch(/^unsafe-answer:clause-hazard-/);
+        expect(v.replacement).toBe(SAFETY_STOP);
+        expect(v.replacement).not.toContain(measure);
+        expect(v.replacement).not.toContain(hazard);
+      }
+    }
+  });
+
+  it.each(warnOnly)("%s: restore excerpt alone still WARNS (not re-scanned as A2)", (_label, a) => {
+    const v = grounded(a, "how do I check the supply");
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("energized_warning");
+      expect(v.replacement).toContain(a.trim());
+    }
+  });
+});

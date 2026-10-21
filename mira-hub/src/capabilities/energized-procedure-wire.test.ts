@@ -273,6 +273,11 @@ describe("#3984 controls — the warning does not spread", () => {
     "1. Lock out the panel and verify zero volts.\n2. A qualified person removes the lockout and restores power.\n3. Measure the supply voltage at the input terminals.\n4. Measure the actual line voltage at the MCC input terminals.",
     "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and restore power.\n3. Measure the supply voltage at the input terminals.\n4. Reset the fault while the machine is energized.",
     "1. Lock out the panel and verify zero volts.\n2. Remove the lockout and restore power.\n3. Measure the supply voltage at the input terminals.\n4. Measure the supply voltage at the input terminals.",
+    "Restore power and measure the supply voltage at the input terminals. Reach into the guard opening while the conveyor is running.",
+    "Restore power and measure the supply voltage at the input terminals; reach into the guard opening while the conveyor is running.",
+    "Restore power and measure the supply voltage at the input terminals.\n- Reach into the guard opening while the conveyor is running.",
+    "Restore power and measure the supply voltage at the input terminals.\r\nReach into the guard opening while the conveyor is running.",
+    "Restore power and measure the supply voltage at the input terminals – reach into the guard opening while the conveyor is running.",
   ])("mixed restore-then-measure PLUS a separate live-measurement/hazard clause BLOCKS: %s", async (draft) => {
     stubProvider(draft);
     const text = await (await POST(chatReq({ message: SAFETY_03, sourceDocIds: [DOC_A] }), params)).text();
