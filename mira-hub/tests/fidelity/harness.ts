@@ -104,6 +104,11 @@ export async function installRoutes(page: Page, scenario: Scenario) {
       cap.fileRequests.push(req.url());
       return route.fulfill({ status: 200, contentType: "application/pdf", body: TINY_PDF });
     }
+    // WP-1 guided troubleshooting (#4573): the panel reads availability for the open notebook.
+    // Off in this harness, as the route is when NOTEBOOK_GUIDED_PROCEDURE is unset.
+    if (m === "GET" && p === `${nbPath}/procedure`) {
+      return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "not_enabled" }) });
+    }
     if (m === "GET" && p === "/api/assets") {
       return route.fulfill(json([]));
     }

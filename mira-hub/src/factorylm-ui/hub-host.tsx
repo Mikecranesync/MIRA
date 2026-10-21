@@ -898,6 +898,7 @@ export function HubShellHost() {
           ].join("|")}
           notebookId={selection.notebookId}
           onAskMira={(q) => onSend(q)}
+          chatBusy={busy}
         />
       )}
     </div>
