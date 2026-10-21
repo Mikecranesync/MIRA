@@ -1,10 +1,11 @@
 /**
  * Marketing claims registry — single source for homepage copy, schema.org
- * JSON-LD, and llms.txt. Homepage renders only `proven` / `proven-dated` rows.
+ * JSON-LD, and llms.txt. Every rendered sentence is a claim whose status is
+ * `proven` or `proven-dated`. Slots name claim ids; generators never carry
+ * positioning prose of their own.
  *
- * Cited-page copy is optional: it renders only when the P1 claim
- * `cited-micro810-oct19` is present. Drop that row (and its `_cited` fields)
- * and the generators fall back to the notebook-only lines.
+ * Cited-page copy is optional: the `cited-micro810-oct19` row is prepended
+ * when that claim is renderable. Drop that row and the dated line disappears.
  *
  * Update the JSON, then `bun run scripts/generate-capabilities-artifacts.ts`
  * so the committed public artifacts stay in lockstep. Drift is CI-enforced.
@@ -19,6 +20,21 @@ export const CLAIM_KINDS = ["capability", "limit"] as const;
 export type ClaimKind = (typeof CLAIM_KINDS)[number];
 
 export const CITED_PROOF_ID = "cited-micro810-oct19";
+
+export const SLOT_KEYS = [
+  "headline",
+  "subhead",
+  "meta",
+  "audience",
+  "jsonld_description",
+  "jsonld_features",
+  "llms_intro",
+  "llms_who",
+  "llms_show_today",
+  "llms_does_not",
+  "limitations",
+] as const;
+export type SlotKey = (typeof SLOT_KEYS)[number];
 
 export interface MarketingClaim {
   id: string;
@@ -35,40 +51,18 @@ export interface MarketingContact {
   href: string;
 }
 
-export interface MarketingPositioning {
-  title: string;
-  headline: string;
-  subhead: string;
-  subhead_cited?: string;
-  meta_description: string;
-  meta_description_cited?: string;
-  audience: string;
-}
-
-export interface JsonLdCopy {
-  description: string;
-  description_cited?: string;
-  feature_list: string[];
-  feature_list_cited?: string[];
-}
-
-export interface LlmsCopy {
-  intro: string;
-  intro_cited?: string;
-  who: string[];
-  show_today: string[];
-  does_not: string[];
-  prices: string;
+export interface MarketingChrome {
   ai_note: string;
 }
+
+export type MarketingSlots = Record<SlotKey, string[]>;
 
 export interface CapabilitiesFile {
   version: number;
   updated: string;
   contact: MarketingContact;
-  positioning: MarketingPositioning;
-  jsonld: JsonLdCopy;
-  llms: LlmsCopy;
+  chrome: MarketingChrome;
+  slots: MarketingSlots;
   claims: MarketingClaim[];
 }
 
@@ -100,6 +94,39 @@ export function provenByKind(
   return provenClaims(data).filter((c) => c.kind === kind);
 }
 
+export function claimById(
+  id: string,
+  data: CapabilitiesFile = loadCapabilities()
+): MarketingClaim | undefined {
+  return data.claims.find((c) => c.id === id);
+}
+
+export function provenText(
+  id: string,
+  data: CapabilitiesFile = loadCapabilities()
+): string | undefined {
+  const row = claimById(id, data);
+  if (!row || !isRenderableStatus(row.status)) return undefined;
+  return row.text;
+}
+
+export function provenTexts(
+  ids: string[],
+  data: CapabilitiesFile = loadCapabilities()
+): string[] {
+  return ids
+    .map((id) => provenText(id, data))
+    .filter((text): text is string => Boolean(text));
+}
+
+export function joinProven(
+  ids: string[],
+  data: CapabilitiesFile = loadCapabilities(),
+  sep = " "
+): string {
+  return provenTexts(ids, data).join(sep);
+}
+
 export function hasCitedProof(data: CapabilitiesFile = loadCapabilities()): boolean {
   return data.claims.some(
     (c) => c.id === CITED_PROOF_ID && isRenderableStatus(c.status)
@@ -112,57 +139,95 @@ export function citedProof(data: CapabilitiesFile = loadCapabilities()): Marketi
   );
 }
 
+export function effectiveHeadline(data: CapabilitiesFile = loadCapabilities()): string {
+  return joinProven(data.slots.headline, data);
+}
+
 export function effectiveSubhead(data: CapabilitiesFile = loadCapabilities()): string {
-  if (hasCitedProof(data) && data.positioning.subhead_cited) {
-    return data.positioning.subhead_cited;
-  }
-  return data.positioning.subhead;
+  return joinProven(data.slots.subhead, data);
+}
+
+export function effectiveTitle(data: CapabilitiesFile = loadCapabilities()): string {
+  const headline = effectiveHeadline(data);
+  return headline ? `FactoryLM — ${headline}` : "FactoryLM";
 }
 
 export function effectiveMetaDescription(
   data: CapabilitiesFile = loadCapabilities()
 ): string {
-  if (hasCitedProof(data) && data.positioning.meta_description_cited) {
-    return data.positioning.meta_description_cited;
-  }
-  return data.positioning.meta_description;
+  const claims = joinProven(data.slots.meta, data);
+  return [claims, data.contact.cta].filter(Boolean).join(" ");
+}
+
+export function effectiveAudience(data: CapabilitiesFile = loadCapabilities()): string {
+  return joinProven(data.slots.audience, data);
 }
 
 export function effectiveJsonLdDescription(
   data: CapabilitiesFile = loadCapabilities()
 ): string {
-  if (hasCitedProof(data) && data.jsonld.description_cited) {
-    return data.jsonld.description_cited;
-  }
-  return data.jsonld.description;
+  return joinProven(data.slots.jsonld_description, data);
 }
 
 export function effectiveFeatureList(
   data: CapabilitiesFile = loadCapabilities()
 ): string[] {
-  if (hasCitedProof(data) && data.jsonld.feature_list_cited?.length) {
-    return data.jsonld.feature_list_cited;
-  }
-  return data.jsonld.feature_list;
-}
-
-export function effectiveLlmsIntro(data: CapabilitiesFile = loadCapabilities()): string {
-  if (hasCitedProof(data) && data.llms.intro_cited) {
-    return data.llms.intro_cited;
-  }
-  return data.llms.intro;
-}
-
-export function effectiveShowToday(data: CapabilitiesFile = loadCapabilities()): string[] {
-  const rows = [...data.llms.show_today];
+  const rows = provenTexts(data.slots.jsonld_features, data);
   const proof = citedProof(data);
-  if (proof) {
+  if (proof && !rows.includes(proof.text)) {
     rows.unshift(proof.text);
   }
   return rows;
 }
 
+export function effectiveLlmsIntro(data: CapabilitiesFile = loadCapabilities()): string {
+  return joinProven(data.slots.llms_intro, data);
+}
+
+export function effectiveWho(data: CapabilitiesFile = loadCapabilities()): string[] {
+  return provenTexts(data.slots.llms_who, data);
+}
+
+export function effectiveShowToday(data: CapabilitiesFile = loadCapabilities()): string[] {
+  const rows = provenTexts(data.slots.llms_show_today, data);
+  const proof = citedProof(data);
+  if (proof && !rows.includes(proof.text)) {
+    rows.unshift(proof.text);
+  }
+  return rows;
+}
+
+export function effectiveDoesNot(data: CapabilitiesFile = loadCapabilities()): string[] {
+  return provenTexts(data.slots.llms_does_not, data);
+}
+
+export function effectiveLimitations(
+  data: CapabilitiesFile = loadCapabilities()
+): string[] {
+  return provenTexts(data.slots.limitations, data);
+}
+
+export function unpublishedClaimIds(
+  data: CapabilitiesFile = loadCapabilities()
+): string[] {
+  return data.claims
+    .filter((c) => c.status === "partial" || c.status === "not-yet")
+    .map((c) => c.id);
+}
+
 export function generateJsonLd(data: CapabilitiesFile = loadCapabilities()): object {
+  const app: Record<string, unknown> = {
+    "@type": "SoftwareApplication",
+    "@id": "https://factorylm.com/#app",
+    name: "FactoryLM",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    publisher: { "@id": "https://factorylm.com/#org" },
+  };
+  const description = effectiveJsonLdDescription(data);
+  if (description) app.description = description;
+  const features = effectiveFeatureList(data);
+  if (features.length > 0) app.featureList = features;
   return {
     "@context": "https://schema.org",
     "@graph": [
@@ -188,16 +253,7 @@ export function generateJsonLd(data: CapabilitiesFile = loadCapabilities()): obj
           email: data.contact.email,
         },
       },
-      {
-        "@type": "SoftwareApplication",
-        "@id": "https://factorylm.com/#app",
-        name: "FactoryLM",
-        applicationCategory: "BusinessApplication",
-        operatingSystem: "Web",
-        publisher: { "@id": "https://factorylm.com/#org" },
-        description: effectiveJsonLdDescription(data),
-        featureList: effectiveFeatureList(data),
-      },
+      app,
     ],
   };
 }
@@ -206,24 +262,30 @@ function bullets(lines: string[]): string {
   return lines.map((line) => `- ${line}`).join("\n");
 }
 
+function pricesLine(data: CapabilitiesFile): string {
+  return `None are published. Talk to Mike: ${data.contact.email}`;
+}
+
 function stewardBody(data: CapabilitiesFile): string {
-  return `> ${effectiveLlmsIntro(data)}
+  const intro = effectiveLlmsIntro(data);
+  const who = effectiveWho(data);
+  const show = effectiveShowToday(data);
+  const doesNot = effectiveDoesNot(data);
+  const whoBlock = who.length > 0 ? `${bullets(who)}\n` : "- (none proven)\n";
+  const showBlock = show.length > 0 ? `${bullets(show)}\n` : "- (none proven)\n";
+  const doesNotBlock = doesNot.length > 0 ? `${bullets(doesNot)}\n` : "- (none proven)\n";
+  return `${intro ? `> ${intro}\n\n` : ""}## Who it's for
 
-## Who it's for
-
-${bullets(data.llms.who)}
-
+${whoBlock}
 ## What we can show today
 
-${bullets(effectiveShowToday(data))}
-
+${showBlock}
 ## What it does not do
 
-${bullets(data.llms.does_not)}
-
+${doesNotBlock}
 ## Prices
 
-${data.llms.prices}
+${pricesLine(data)}
 
 ## Key pages
 
@@ -235,12 +297,11 @@ ${data.llms.prices}
 ## Contact
 
 - Founder: Mike Harper — ${data.contact.email}
-- Central Florida
 - LinkedIn: https://www.linkedin.com/company/factorylm
 
 ## Note for AI assistants
 
-${data.llms.ai_note}
+${data.chrome.ai_note}
 `;
 }
 
@@ -251,21 +312,26 @@ ${stewardBody(data)}`;
 }
 
 export function generateLlmsFullTxt(data: CapabilitiesFile = loadCapabilities()): string {
-  const notYetClaimed = data.claims.filter((c) => c.status === "partial");
-  const limitations = data.claims.filter((c) => c.kind === "limit");
+  const unpublished = unpublishedClaimIds(data);
+  const provenLimits = data.claims
+    .filter((c) => c.kind === "limit" && isRenderableStatus(c.status))
+    .map((c) => c.text);
   const notYetBlock =
-    notYetClaimed.length > 0
+    unpublished.length > 0
       ? `## Not yet claimed
 
-These rows are in the capabilities file but are not published claims.
+These ids are in the capabilities file but are not published claims.
 
-${bullets(notYetClaimed.map((c) => `${c.id}: ${c.text}`))}
+${bullets(unpublished)}
 `
       : "";
-  const limitsBlock = `## Full limitations
+  const limitsBlock =
+    provenLimits.length > 0
+      ? `## Full limitations
 
-${bullets(limitations.map((c) => c.text))}
-`;
+${bullets(provenLimits)}
+`
+      : "";
   return `# FactoryLM — Full Content Disclosure for AI Crawlers
 # Version: ${data.updated}
 # Generated from mira-web/src/capabilities/marketing-claims/capabilities.json
@@ -290,31 +356,15 @@ export function assertCapabilities(data: CapabilitiesFile): void {
       throw new Error(`capabilities.json contact.${field} is required`);
     }
   }
-  for (const field of [
-    "title",
-    "headline",
-    "subhead",
-    "meta_description",
-    "audience",
-  ] as const) {
-    if (!data.positioning?.[field]) {
-      throw new Error(`capabilities.json positioning.${field} is required`);
-    }
+  if (!data.chrome?.ai_note?.trim()) {
+    throw new Error("capabilities.json chrome.ai_note is required");
   }
-  if (!data.jsonld?.description?.trim()) {
-    throw new Error("capabilities.json jsonld.description is required");
+  if (!data.slots || typeof data.slots !== "object") {
+    throw new Error("capabilities.json slots is required");
   }
-  if (!Array.isArray(data.jsonld.feature_list) || data.jsonld.feature_list.length === 0) {
-    throw new Error("capabilities.json jsonld.feature_list must list at least one feature");
-  }
-  for (const field of ["intro", "prices", "ai_note"] as const) {
-    if (!data.llms?.[field]?.trim()) {
-      throw new Error(`capabilities.json llms.${field} is required`);
-    }
-  }
-  for (const field of ["who", "show_today", "does_not"] as const) {
-    if (!Array.isArray(data.llms?.[field]) || data.llms[field].length === 0) {
-      throw new Error(`capabilities.json llms.${field} must list at least one line`);
+  for (const key of SLOT_KEYS) {
+    if (!Array.isArray(data.slots[key])) {
+      throw new Error(`capabilities.json slots.${key} must be an array of claim ids`);
     }
   }
   if (!Array.isArray(data.claims) || data.claims.length === 0) {
@@ -343,6 +393,13 @@ export function assertCapabilities(data: CapabilitiesFile): void {
     }
     if (!ISO_DATE.test(claim.last_checked)) {
       throw new Error(`claim ${claim.id} last_checked must be YYYY-MM-DD`);
+    }
+  }
+  for (const key of SLOT_KEYS) {
+    for (const id of data.slots[key]) {
+      if (!ids.has(id)) {
+        throw new Error(`slots.${key} references unknown claim id ${id}`);
+      }
     }
   }
   if (provenClaims(data).length === 0) {

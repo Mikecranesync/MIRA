@@ -4,9 +4,11 @@ import { TALK_TO_MIKE_HREF } from "../_topbar.js";
 import { escHtml, serializeJsonLd } from "../../lib/html.js";
 import {
   effectiveFeatureList,
+  effectiveHeadline,
   effectiveJsonLdDescription,
   effectiveMetaDescription,
   effectiveSubhead,
+  effectiveTitle,
   generateJsonLd,
   loadCapabilities,
   provenClaims,
@@ -20,7 +22,7 @@ describe("renderHome — proven-claims homepage", () => {
   test("hero leads with the equipment notebook and Talk to Mike", () => {
     expect(html).toContain('id="fl-hero-h1"');
     expect(html).toContain(
-      `<h1 id="fl-hero-h1" class="fl-hero-h1">${escHtml(data.positioning.headline)}</h1>`
+      `<h1 id="fl-hero-h1" class="fl-hero-h1">${escHtml(effectiveHeadline(data))}</h1>`
     );
     expect(html).toContain(escHtml(effectiveSubhead(data)));
     expect(html).toContain(TALK_TO_MIKE_HREF);
@@ -44,7 +46,6 @@ describe("renderHome — proven-claims homepage", () => {
   test("buyer-fit section — Built for / Not the right fit", () => {
     expect(html).toContain('id="fl-fit-h"');
     expect(html).toContain("Who it's for.");
-    expect(html).toContain("Built for");
     expect(html).toContain("Not the right fit");
     expect(html).toContain(escHtml("It's not a CMMS and doesn't replace yours."));
   });
@@ -114,10 +115,10 @@ describe("renderHome — proven-claims homepage", () => {
   });
 
   test("SEO: title, meta description, canonical lead with the notebook", () => {
+    expect(html).toContain(`<title>${escHtml(effectiveTitle(data))}</title>`);
     expect(html).toContain(
-      "<title>FactoryLM — An equipment notebook for your maintenance crew</title>"
+      `<meta name="description" content="${escHtml(effectiveMetaDescription(data))}">`
     );
-    expect(html).toContain(`content="${escHtml(effectiveMetaDescription(data))}"`);
     expect(html).toContain('<link rel="canonical" href="https://factorylm.com/">');
     expect(html).toMatch(/equipment notebook/i);
   });
@@ -129,13 +130,12 @@ describe("renderHome — proven-claims homepage", () => {
   });
 
   test("interpolates every capabilities field used on the homepage", () => {
-    expect(html).toContain(`<title>${escHtml(data.positioning.title)}</title>`);
+    expect(html).toContain(`<title>${escHtml(effectiveTitle(data))}</title>`);
     expect(html).toContain(
-      `content="${escHtml(effectiveMetaDescription(data))}"`
+      `<meta name="description" content="${escHtml(effectiveMetaDescription(data))}">`
     );
-    expect(html).toContain(escHtml(data.positioning.headline));
+    expect(html).toContain(escHtml(effectiveHeadline(data)));
     expect(html).toContain(escHtml(effectiveSubhead(data)));
-    expect(html).toContain(escHtml(data.positioning.audience));
     expect(html).toContain(escHtml(data.contact.cta));
     expect(html).toContain(`href="${escHtml(data.contact.href)}"`);
     expect(html).toContain('data-cta="hero-talk"');
@@ -154,35 +154,30 @@ describe("renderHome — proven-claims homepage", () => {
 
   test("capabilities text with script/onerror markup renders escaped", () => {
     const poisoned: CapabilitiesFile = structuredClone(data);
-    poisoned.positioning.title =
-      `Title <script>alert(1)</script>`;
-    poisoned.positioning.headline =
-      `<script>alert(1)</script><img src=x onerror=alert(1)>`;
-    poisoned.positioning.subhead = `Sub <img src=x onerror=alert(1)>`;
-    poisoned.positioning.subhead_cited = poisoned.positioning.subhead;
-    poisoned.positioning.meta_description = `Meta <script>alert(1)</script>`;
-    poisoned.positioning.meta_description_cited = poisoned.positioning.meta_description;
-    poisoned.positioning.audience = `Audience <script>alert(1)</script>`;
+    const headline = poisoned.claims.find((c) => c.id === poisoned.slots.headline[0]);
+    expect(headline).toBeDefined();
+    headline!.text = `<script>alert(1)</script><img src=x onerror=alert(1)>`;
     poisoned.contact.cta = `Talk <script>alert(1)</script>`;
     poisoned.contact.href = `mailto:mike@factorylm.com"><script>alert(1)</script>`;
-    poisoned.jsonld.description = `JSON <script>alert(1)</script> > &`;
-    poisoned.jsonld.description_cited = poisoned.jsonld.description;
     poisoned.claims.push({
       id: "xss-probe",
-      text: `<script>alert(1)</script><img src=x onerror=alert(1)>`,
+      text: `JSON <script>alert(1)</script> > &`,
       status: "proven",
       kind: "capability",
       evidence: "xss-test",
       last_checked: "2026-10-21",
     });
+    poisoned.slots.jsonld_description = ["xss-probe"];
     const out = renderHome("https://factorylm.com/", poisoned);
     expect(out).not.toMatch(/<script>alert\(1\)<\/script>/);
     expect(out).not.toMatch(/<img src=x onerror=/);
     expect(out).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(out).toContain("&lt;img src=x onerror=alert(1)&gt;");
     expect(out).toContain(`href="${escHtml(poisoned.contact.href)}"`);
-    expect(out).toContain(`<title>${escHtml(poisoned.positioning.title)}</title>`);
-    expect(out).toContain(`content="${escHtml(effectiveMetaDescription(poisoned))}"`);
+    expect(out).toContain(`<title>${escHtml(effectiveTitle(poisoned))}</title>`);
+    expect(out).toContain(
+      `<meta name="description" content="${escHtml(effectiveMetaDescription(poisoned))}">`
+    );
     const jsonLdMatch = out.match(
       /<script type="application\/ld\+json">([\s\S]*?)<\/script>/
     );

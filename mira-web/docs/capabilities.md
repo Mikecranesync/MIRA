@@ -2,13 +2,13 @@
 
 Source of truth: `mira-web/src/capabilities/marketing-claims/capabilities.json`.
 
-The factorylm.com homepage, schema.org JSON-LD, `/llms.txt`, and `/llms-full.txt` all read this file. The homepage and `/llms.txt` render **only** claims whose `status` is `proven` or `proven-dated`. Partial and not-yet rows stay in the file so a daily steward can promote them later — they must not appear on the homepage. `/llms-full.txt` adds those `partial` rows under **Not yet claimed** and repeats every `kind: limit` row under **Full limitations**. It still publishes no prices.
+The factorylm.com homepage, `/limitations`, schema.org JSON-LD, `/llms.txt`, and `/llms-full.txt` all read this file. **Every rendered sentence is a claim.** Generators join `slots.*` claim ids and print a sentence only when that claim's `status` is `proven` or `proven-dated`. Partial and not-yet rows stay in the file so a daily steward can promote them later — they must not appear as published sentences. `/llms-full.txt` lists those unpublished **ids** under **Not yet claimed** and repeats every proven `kind: limit` row under **Full limitations**. It still publishes no prices.
 
-Cited-page titles, meta, JSON-LD `description` / `featureList`, and the Micro810 llms line live in optional `*_cited` fields plus the `cited-micro810-oct19` row. Drop that commit (or that row) and the generators fall back to the notebook-only copy.
+The headline slot is `answers-from-uploaded-manual` (P3 qualified-manuals-only / A8, P4 magic-link sign-in). The older `notebook-for-one-crew` line stays `partial`. The optional `cited-micro810-oct19` row is prepended when present; drop that commit (or that row) and the dated line disappears.
 
 This JSON is the machine-readable registry that the 2026-10-20 Search Steward audit expected as `marketing/capabilities.md`. Do not create a second list.
 
-The 2026-10-21 steward check locked the published `proven` set to: not a CMMS (A5); no PLC data and no work-order writes (A6); tested Rockwell and Festo manuals so far (A8); Mike onsite in Central Florida or remote (A9); magic-link web sign-in. Positioning may still lead with the equipment notebook. A1 (cited answers in general) stays HOLD.
+The 2026-10-21 steward check locked the published `proven` set to: the P3/P4 notebook headline; not a CMMS (A5); no PLC data and no work-order writes (A6); tested Rockwell and Festo manuals so far (A8); Mike onsite in Central Florida or remote (A9); magic-link web sign-in. A1 (cited answers in general) stays HOLD.
 
 ## Record shape
 
@@ -21,7 +21,7 @@ The 2026-10-21 steward check locked the published `proven` set to: not a CMMS (A
 | `evidence` | yes | repo path, PR URL, or spec. No empty strings |
 | `last_checked` | yes | `YYYY-MM-DD` |
 
-Positioning (`title`, `headline`, `subhead`, `meta_description`, `audience`) and the Talk-to-Mike contact live in the same file so title/meta/JSON-LD cannot drift from the claims.
+`slots` is a map of claim-id arrays (`headline`, `subhead`, `meta`, `audience`, `jsonld_description`, `jsonld_features`, `llms_intro`, `llms_who`, `llms_show_today`, `llms_does_not`, `limitations`). Contact (`cta`, `email`, `href`) and `chrome.ai_note` are not product claims.
 
 ## Daily update process
 
