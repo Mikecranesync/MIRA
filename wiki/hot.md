@@ -1,3 +1,13 @@
+# Hot Cache — 2026-10-21 — #4471 Gate-7 r7
+
+**Release status: draft; no merge/Codex/deploy from this session.** Branch `codex/pilot-safety-output`.
+
+- Gate-7 r7 HIGH: `energizedWarningOr` no longer returns `{ ok: true }` when the A4 restore detector is null. Existing `stepEnergyContradiction` fallback WARNs (`energized_warning`). Sequential "de-energized. Energize the circuit and measure …" is not A2a BLOCK so the fallback can fire; simultaneous lockout+energize still SAFETY_STOP.
+- Safety: 15 files / 1,146 pass. Full Hub: 424 files / 7,491 pass (53 skip).
+- No Codex, no ready, no merge.
+
+---
+
 # Hot Cache — 2026-10-09 — field-maintenance intelligence qualification
 
 **Release status: BLOCKED; no merge/deployment from this session.** Production and staging health last checked at18:53Z: v3.392.4 / `d3129e82739e4cb0afd2eb714a943fb5d3a1d618`. This is health identity, not a fresh image-running receipt.

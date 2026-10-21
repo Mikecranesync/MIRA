@@ -40,6 +40,10 @@ export const STILL_ISOLATED = /\b(?:still (?:locked[\s-]?out|isolated|de[\s-]?en
 const EXPLICITLY_POWERED = /\b(?:with|while) (?:the )?\w+ (?:powered|energi[sz]ed|running)\b/i;
 const LIVE_READING =
   /\b(?:measure|check|read|verify|confirm|test)\w*\b[^.;\n]{0,60}?\b(?:voltage|volts|current|amps?|frequency|(?:output|supply)(?! terminals? (?:are|is) tight| wiring| connections?| for (?:proper|loose|open|shorted)))\b/i;
+/** Existing OPERATE atom — bare "energize the circuit", not re-energize
+ *  (RESTORE already covers re-energize). */
+const ENERGIZE_CIRCUIT = /(?<!de[\s-])energi[sz]e (?:the )?(?:\w+ )?circuit/i;
+const SEQUENCE_WORD = /\b(?:then|after|afterwards|once|next|finally)\b/i;
 const OPERATE =
   /\b(?:press(?:ing)? (?:the )?(?:start|run)|commanded to run|re-?issue (?:a )?run|run command|start the (?:motor|machine|drive)|power (?:it|the \w+) (?:back )?(?:on|up)|power-?up|re[\s-]?energi[sz]e|restore (?:the )?power|reconnect(?:ing)? (?:the )?power|reset (?:it|the (?:breaker|overload|fault))|watch (?:for|the handle)|trips? again|display|LEDs?|status (?:screen|indicator)|fault (?:code|screen|display)|jog\w*|(?<!de[\s-])energi[sz]e (?:the )?(?:\w+ )?circuit|apply (?:main |the )?(?:power|voltage)|bring (?:it|the \w+) back (?:up|on(?:line)?))\b/i;
 
@@ -104,7 +108,7 @@ export function stepEnergyContradiction(answerText: string): string | null {
       // A sequence ("…isolated and locked out, then restore power") is not simultaneous.
       // r2 F1: a lockout stated as CONTINUING ("still in place") is never ended by "then";
       // a lockout stated as a condition followed by a sequence is ("…locked out, then restore").
-      if (!removed && (still || (STATE_ISOLATED.test(t) && !/\b(?:then|after|afterwards|once|next|finally)\b/i.test(t)))) return raw;
+      if (!removed && (still || (STATE_ISOLATED.test(t) && !SEQUENCE_WORD.test(t)))) return raw;
       // Otherwise it is the transition out of isolation: it closes every scope.
       scopeOpen = false; listScope = false; lineIso = -1;
       continue;
@@ -136,4 +140,14 @@ export function stepEnergyContradiction(answerText: string): string | null {
     if (isolatedHere && !inList) listScope = true;
   }
   return null;
+}
+
+/** Sequential "energize the circuit and measure …" using OPERATE's existing
+ *  energize-circuit atom plus LIVE_READING. Simultaneous isolation
+ *  (STILL_ISOLATED / STATE_ISOLATED without a sequence word) is not this
+ *  shape — those stay A2a BLOCK. No new phrase list. */
+export function sequentialEnergizeThenMeasure(step: string): boolean {
+  if (STILL_ISOLATED.test(step)) return false;
+  if (STATE_ISOLATED.test(step) && !SEQUENCE_WORD.test(step)) return false;
+  return ENERGIZE_CIRCUIT.test(step) && LIVE_READING.test(step);
 }

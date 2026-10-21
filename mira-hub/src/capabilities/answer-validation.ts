@@ -30,7 +30,7 @@
 
 import { SAFETY_STOP } from "@/lib/safety-classifier";
 
-import { LOCKOUT_REMOVED, RESTORE, STILL_ISOLATED, stepEnergyContradiction } from "./step-energy";
+import { LOCKOUT_REMOVED, RESTORE, STILL_ISOLATED, sequentialEnergizeThenMeasure, stepEnergyContradiction } from "./step-energy";
 import { firstUngovernedMatch } from "./hazard-modifiers";
 
 /** Fail kinds `validateAnswer` can emit. Hub-internal — not persisted, not
@@ -1356,10 +1356,23 @@ const toStandaloneSentence = (bulletLine: string) => bulletLine.replace(/^- If y
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
   // `restore` is A4 (RESTORE_ENERGY_SRC plus the existing RESTORE /
   // LOCKOUT_REMOVED grammars) or the isolation-tracker pairing. A null
-  // here means no existing restore grammar paired with a live measurement.
-  // A1 and A2 already ran on the same text; unmatched wording is not a
-  // bypass of those checks.
-  if (!restore) return { ok: true };
+  // here is not a silent pass: main's fallback still runs
+  // `stepEnergyContradiction` on the same folded text. When that existing
+  // detector finds isolation + needs-power, WARN (keep the candidate under
+  // ENERGIZED_WARNING) — never `{ ok: true }`. Simultaneous lockout+power
+  // already BLOCKed at A2a; this catch is the unmatched sequential
+  // restore-then-measure wording those restore grammars miss.
+  if (!restore) {
+    const step = stepEnergyContradiction(foldForDetection(answerText));
+    if (!step) return { ok: true };
+    return {
+      ok: false,
+      kind: "energized_warning",
+      violation: "energized-warning:energized-procedure",
+      detail: step.slice(0, 160),
+      replacement: `${ENERGIZED_WARNING}\n\n${answerText}`,
+    };
+  }
   return {
     ok: false,
     kind: "energized_warning",
@@ -1454,7 +1467,14 @@ export function validateAnswer(opts: {
   // contradiction down to A4's warning (an answer can contain both shapes).
   // Scans the same markdown/Unicode-folded copy as every other rule here.
   const lockoutStepContradiction = stepEnergyContradiction(scanText);
-  if (lockoutStepContradiction) {
+  // Sequential "de-energized. Energize the circuit and measure …" is the
+  // unmatched-restore warn shape (#3984 / Gate-7 r7), not a same-step
+  // contradiction. A2a would otherwise swallow it as SAFETY_STOP before
+  // `energizedWarningOr`'s existing stepEnergyContradiction fallback can
+  // WARN. Simultaneous isolation (under lockout / with … locked out)
+  // still BLOCKs. Uses OPERATE's existing energize-circuit atom — no new
+  // phrase list.
+  if (lockoutStepContradiction && !sequentialEnergizeThenMeasure(lockoutStepContradiction)) {
     return unsafeAnswerBlock("unsafe-answer:lockout-step-contradiction", lockoutStepContradiction);
   }
   const lockoutMeasurement = liveMeasurementAfterLockout(scanText);

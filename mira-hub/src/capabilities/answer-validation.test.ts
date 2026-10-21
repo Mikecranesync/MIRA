@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import { SAFETY_STOP } from "@/lib/safety-classifier";
-import { chunkForRelease, exactRatingMatch, specificityFallback, unsupportedExactRating, validateAnswer, type AnswerValidation, type AnswerValidationKind } from "./answer-validation";
+import { chunkForRelease, ENERGIZED_WARNING, exactRatingMatch, specificityFallback, unsupportedExactRating, validateAnswer, type AnswerValidation, type AnswerValidationKind } from "./answer-validation";
 
 const FAIL_KINDS = ["unsafe_answer", "unsupported_specificity", "energized_warning"] as const;
 type Listed = (typeof FAIL_KINDS)[number];
@@ -1382,6 +1382,40 @@ describe("Gate-7 r4: A4 mask offsets share A2's sentence/clause splits", () => {
     if (!v.ok) {
       expect(v.kind).toBe("energized_warning");
       expect(v.replacement).toContain(a.trim());
+    }
+  });
+});
+
+describe("Gate-7 r7: unmatched restore-then-measure still WARNS via the step-energy fallback", () => {
+  // A4's restore grammars (RESTORE_ENERGY_SRC / RESTORE / LOCKOUT_REMOVED)
+  // miss bare "energize the circuit". Isolation + that OPERATE atom + a
+  // live reading is still a written restore-then-measure: WARN, keep the
+  // candidate. Simultaneous "with … locked out, energize …" stays BLOCK.
+  const unmatched =
+    "The panel is de-energized. Energize the circuit and measure the output voltage.";
+  const simultaneous =
+    "With the circuit locked out, energize the circuit and measure the output voltage.";
+
+  it.each([
+    ["grounded", (answerText: string) => grounded(answerText, "how do I check the output")],
+    ["general", (answerText: string) => general(answerText, "how do I check the output")],
+  ] as const)("%s lane: unmatched wording is energized_warning, candidate retained", (_lane, run) => {
+    const v = run(unmatched);
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("energized_warning");
+      expect(v.violation).toBe("energized-warning:energized-procedure");
+      expect(v.replacement).toBe(`${ENERGIZED_WARNING}\n\n${unmatched}`);
+    }
+  });
+
+  it("simultaneous isolation + energize-then-measure still BLOCKs", () => {
+    const v = grounded(simultaneous, "how do I check the output");
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.violation).toBe("unsafe-answer:lockout-step-contradiction");
+      expect(v.replacement).toBe(SAFETY_STOP);
     }
   });
 });
