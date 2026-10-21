@@ -223,3 +223,19 @@ export function markdownScorecard(rows: Scored[], card: Scorecard, meta: { gitSh
 export function fullyIndexed(r: { label?: string; canChat?: boolean } | null, mode: "indexed" | "chat" = "indexed"): boolean {
   return !!r?.canChat && (mode === "chat" || !/improving search/i.test(r.label ?? ""));
 }
+
+/**
+ * #4593 review F2: an alternate question file (STRANGER_WALK_CORPUS) walks the SAME pinned manuals.
+ * Its own "manuals" list, if present, must equal the base list id-for-id and sha256-for-sha256, and
+ * every question must name a pinned manual — otherwise this throws before any paid turn.
+ */
+export function mergeAltCorpus(base: Corpus, alt: Partial<Corpus> & { questions: Question[] }): Corpus {
+  if (alt.manuals) {
+    const pin = (ms: Manual[]) => ms.map((m) => `${m.id}:${m.sha256}`).sort().join(",");
+    if (pin(alt.manuals) !== pin(base.manuals)) throw new Error("alternate corpus manuals differ from the pinned manuals (id/sha256)");
+  }
+  const ids = new Set(base.manuals.map((m) => m.id));
+  const stray = alt.questions.find((q) => !ids.has(q.manual));
+  if (stray) throw new Error(`alternate corpus question ${stray.id} names unpinned manual ${stray.manual}`);
+  return { ...base, questions: alt.questions, tolerance: alt.tolerance ?? base.tolerance };
+}

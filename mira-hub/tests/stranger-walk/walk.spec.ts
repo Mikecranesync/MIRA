@@ -17,7 +17,7 @@ import { test, type Page, type Response } from "@playwright/test";
 import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
-import { fixtureFor, fullyIndexed, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
+import { fixtureFor, fullyIndexed, markdownScorecard, mergeAltCorpus, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import { BUDGET, BudgetMeter, identity, manualBytes, pricesFromEnv, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd } from "./staging";
 
 // STRANGER_WALK_CORPUS: an alternate question file (e.g. the unanswerable set, #4584). It walks the
@@ -26,8 +26,7 @@ const corpus: Corpus = (() => {
   const base = corpusJson as Corpus;
   const alt = process.env.STRANGER_WALK_CORPUS;
   if (!alt) return base;
-  const c = JSON.parse(readFileSync(alt, "utf8")) as Partial<Corpus> & { questions: Corpus["questions"] };
-  return { ...base, ...c, manuals: c.manuals ?? base.manuals, tolerance: c.tolerance ?? base.tolerance };
+  return mergeAltCorpus(base, JSON.parse(readFileSync(alt, "utf8")) as Partial<Corpus> & { questions: Corpus["questions"] });
 })();
 const RUN_ID = process.env.STRANGER_WALK_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
 const OUT = path.resolve(process.env.STRANGER_WALK_OUT ?? path.join(__dirname, ".out", RUN_ID));
@@ -108,6 +107,33 @@ async function waitIndexed(page: Page, filename: string): Promise<{ label: strin
     await page.waitForTimeout(2_000);
   }
   throw new Error(`indexing not complete after ${INDEX_TIMEOUT} ms (last label: ${label})`);
+}
+
+/**
+ * #4593 review F1: STRANGER_WALK_PREUPLOAD=1 attaches the manual BEFORE any question, through the same
+ * two calls the composer makes (node files upload → notebook sources link, hub-attachments.ts), and then
+ * waits for full indexing — so the first question of each manual is gated like every other one instead of
+ * riding its upload. Default off: the stranger journey (upload rides the first question) is unchanged.
+ */
+const PREUPLOAD = process.env.STRANGER_WALK_PREUPLOAD === "1";
+async function preUpload(page: Page, filename: string, bytes: Buffer): Promise<void> {
+  const r = await page.evaluate(async ({ name, b64 }) => {
+    const nb = new URL(location.href).searchParams.get("notebook");
+    if (!nb) return { error: "no notebook in URL" };
+    const det = await fetch(`/api/equipment-notebooks/${nb}/`, { cache: "no-store" });
+    const nodeId = det.ok ? ((await det.json()) as { notebook?: { nodeId?: string } }).notebook?.nodeId : null;
+    if (!nodeId) return { error: `notebook ${det.status}: no nodeId` };
+    const fd = new FormData();
+    fd.append("file", new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], name, { type: "application/pdf" }));
+    const up = await fetch(`/api/namespace/node/${encodeURIComponent(nodeId)}/files/`, { method: "POST", body: fd });
+    const d = (await up.json().catch(() => ({}))) as { indexed?: boolean; uploadId?: string };
+    if (!up.ok || !d.indexed || !d.uploadId) return { error: `upload ${up.status} indexed=${d.indexed}` };
+    const src = await fetch(`/api/equipment-notebooks/${nb}/sources/`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ docId: d.uploadId, sourceRole: "manual" }),
+    });
+    return src.ok ? { error: null } : { error: `sources ${src.status}` };
+  }, { name: filename, b64: bytes.toString("base64") });
+  if (r.error) throw new Error(`pre-upload failed: ${r.error}`);
 }
 
 async function ask(page: Page, q: Question, manualFilename: string, attach: { name: string; buffer: Buffer } | null, meter: BudgetMeter): Promise<Observation> {
@@ -192,12 +218,20 @@ test("stranger walk", async ({ page }) => {
         for (const q of qs) obs.push(brokenObs(q.id, `project create failed: ${(e as Error).message.split("\n")[0]}`));
         continue;
       }
+      if (PREUPLOAD) {
+        try { await preUpload(page, m.filename, pdf.bytes); uploaded = true; } catch (e) {
+          for (const q of qs) obs.push(brokenObs(q.id, (e as Error).message.split("\n")[0]));
+          continue;
+        }
+      }
       for (const [i, q] of qs.entries()) {
         if (!DRY && !meter.canAfford()) { obs.push(brokenObs(q.id, meter.unbounded ? `budget stop: ${meter.unbounded} had unreadable or out-of-bound usage` : "budget stop")); continue; }
         try {
-          if (i > 0) {
-            await page.getByRole("button", { name: "New chat" }).click();
-            await page.waitForTimeout(1_000);
+          if (i > 0 || PREUPLOAD) {
+            if (i > 0) {
+              await page.getByRole("button", { name: "New chat" }).click();
+              await page.waitForTimeout(1_000);
+            }
             // The upload rode the first question; whether it landed is the project's own source list.
             uploaded ||= (await sourceReadiness(page, m.filename)) !== null;
             if (uploaded) {

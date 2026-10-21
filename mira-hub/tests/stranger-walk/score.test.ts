@@ -3,7 +3,7 @@ import corpusJson from "./corpus.json";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { BUDGET, BudgetMeter, budgetUsdFromEnv, PROVIDER_PRICES, pricesFromEnv, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
-import { classify, flakes, fullyIndexed, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
+import { classify, flakes, fullyIndexed, markdownScorecard, mergeAltCorpus, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
 const q = corpus.questions.find((x) => x.id === "pf40-q2")!; // p.9, safety-relevant
@@ -324,5 +324,25 @@ describe("#4583 readiness and #4584 unanswerable rows", () => {
     expect([cited.classification, cited.reason]).toEqual(["WRONG_PAGE", "unanswerable question cited p.9"]);
     const refused = classify(u, m, obs({ id: u.id, streamStatus: "insufficient_evidence", firstChip: null, cards: [] }));
     expect(refused.classification).toBe("ABSTAINED");
+  });
+});
+
+describe("mergeAltCorpus (#4593 review F2)", () => {
+  const base = corpusJson as Corpus;
+  const q = { id: "u1", manual: base.manuals[0].id, question: "x?", expectedPage: null, safetyRelevant: false, anchor: "" };
+  it("keeps the pinned manuals and takes the alternate questions", () => {
+    const c = mergeAltCorpus(base, { questions: [q] });
+    expect(c.manuals).toBe(base.manuals);
+    expect(c.questions).toEqual([q]);
+  });
+  it("accepts an identical manuals list in another order", () => {
+    expect(() => mergeAltCorpus(base, { manuals: [...base.manuals].reverse(), questions: [q] })).not.toThrow();
+  });
+  it("refuses a manuals list whose sha256 differs from the pin", () => {
+    const tampered = base.manuals.map((m, i) => (i === 0 ? { ...m, sha256: "0".repeat(64) } : m));
+    expect(() => mergeAltCorpus(base, { manuals: tampered, questions: [q] })).toThrow(/pinned manuals/);
+  });
+  it("refuses a question that names an unpinned manual", () => {
+    expect(() => mergeAltCorpus(base, { questions: [{ ...q, manual: "not-pinned" }] })).toThrow(/unpinned manual/);
   });
 });
