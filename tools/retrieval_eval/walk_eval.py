@@ -77,9 +77,13 @@ def right_page(row: dict, accepted: list[int] | None, tol: int) -> bool:
 
 
 def outcome(row: dict, accepted: list[int] | None, tol: int) -> int:
-    """1 = what a technician should get: the right page, or an honest refusal when unanswerable."""
+    """1 = what a technician should get: the right page, or an honest refusal when unanswerable.
+
+    A refusal is judged by its answer text with production's own classifier, so a refusal that
+    also shows a citation still counts here; ``refused_cited`` is reported and gated separately.
+    """
     if accepted == []:
-        return int(refusal_class(row) == "refused_clean")
+        return int(refusal_class(row) in ("refused_clean", "refused_cited"))
     return int(right_page(row, accepted, tol))
 
 
@@ -106,10 +110,12 @@ def arm_summary(rows: dict[str, dict], key: dict | None, tol: int) -> dict:
     }
     if una:
         rc = Counter(refusal_class(r) for r in una)
+        refused = rc["refused_clean"] + rc["refused_cited"]
         out["unanswerable"] = {
             "n": len(una),
             **rc,
-            "wilson95_clean": stats.wilson(rc["refused_clean"], len(una)),
+            "refused": refused,
+            "wilson95_refused": stats.wilson(refused, len(una)),
         }
     return out
 

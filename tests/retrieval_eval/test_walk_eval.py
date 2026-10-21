@@ -114,6 +114,8 @@ def test_sealed_mode_prints_no_question_ids(tmp_path, capsys):
     report = json.loads(out)
     assert report["arms"]["a"]["unanswerable"]["refused_clean"] == 1
     assert report["arms"]["b"]["unanswerable"]["answered"] == 1
+    assert report["arms"]["a"]["unanswerable"]["refused"] == 1
+    assert report["arms"]["b"]["unanswerable"]["refused"] == 0
     assert report["paired"]["a->b"]["a_only"] == 1
 
 
@@ -135,3 +137,14 @@ def test_unsealed_mode_reports_changes_and_breakdowns(tmp_path, capsys):
     assert (p["a_only"], p["b_only"]) == (1, 1)
     assert p["by_oem"]["Acme"] == {"n": 2, "a": 1, "b": 1}
     assert {c["id"] for c in p["changed"]} == {"m-q1", "m-q2"}
+
+
+def test_unanswerable_outcome_counts_text_refusals_with_or_without_a_citation():
+    def r(cls, page, text):
+        row = _row("m-q9", cls, page)
+        row["_obs"] = {"rendered": json.dumps({"answer": text})}
+        return row
+
+    assert walk_eval.outcome(r("ABSTAINED", None, REFUSAL), [], 1) == 1
+    assert walk_eval.outcome(r("WRONG_PAGE", 4, REFUSAL), [], 1) == 1
+    assert walk_eval.outcome(r("WRONG_PAGE", 4, ANSWER), [], 1) == 0
