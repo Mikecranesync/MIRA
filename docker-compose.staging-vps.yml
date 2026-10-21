@@ -344,6 +344,9 @@ services:
       # NOTEBOOK_RERANK=1. The service is the colocated mira-reranker below
       # (internal network only); any failure or >1.5 s keeps today's order.
       - NOTEBOOK_RERANK=${NOTEBOOK_RERANK:-0}
+      # #4513 IDF-sum lexical candidate scoring. OFF unless the environment sets
+      # NOTEBOOK_LEXICAL_V2=1. Staging only until its walk passes and Mike decides.
+      - NOTEBOOK_LEXICAL_V2=${NOTEBOOK_LEXICAL_V2:-0}
       - NOTEBOOK_RERANK_POOL=${NOTEBOOK_RERANK_POOL:-}
       # Client timeout, ms (default 1500): raise it if the host's measured p95 is higher.
       - NOTEBOOK_RERANK_TIMEOUT_MS=${NOTEBOOK_RERANK_TIMEOUT_MS:-}

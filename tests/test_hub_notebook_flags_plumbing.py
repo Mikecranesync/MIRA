@@ -87,3 +87,14 @@ def test_staging_embedder_is_cpu_capped() -> None:
     services = yaml.safe_load(_STAGING.read_text())["services"]
     cpus = services["mira-ollama"].get("cpus")
     assert cpus is not None and float(cpus) <= 2, f"stg mira-ollama cpus={cpus!r}"
+
+
+# #4513: IDF-sum lexical scoring is STAGING ONLY until its staging walk passes and
+# Mike decides production (docs/specs/notebook-retrieval-idf-scoring.md §7).
+def test_staging_hub_forwards_lexical_v2_default_off() -> None:
+    env = _hub_env(_STAGING, "stg-mira-hub")
+    assert env.get("NOTEBOOK_LEXICAL_V2") == "${NOTEBOOK_LEXICAL_V2:-0}"
+
+
+def test_lexical_v2_is_not_forwarded_to_production() -> None:
+    assert "NOTEBOOK_LEXICAL_V2" not in _hub_env(_PROD, "mira-hub")
