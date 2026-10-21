@@ -176,29 +176,47 @@ def validity(a: dict, b: dict, expected: set[str]) -> dict:
 
 
 def v4_check(
-    lanes: dict, arm_names: list[str], vector_arms: set[str], hybrid_off: frozenset = frozenset()
+    lanes: dict,
+    arm_names: list[str],
+    vector_arms: set[str],
+    hybrid_off: frozenset = frozenset(),
+    hybrid_ambiguous: frozenset = frozenset(),
 ) -> dict:
-    """Validity check V4.
+    """Validity check V4: the vector lane did what each arm's configuration says.
 
-    Checked whenever any arm is declared a vector arm or any lane file is supplied; then lane
-    evidence is required for BOTH arms (no evidence is never evidence of a pass), a declared
-    arm must show the vector lane ran on >= 90% of its questions, and the two arms' ran
-    fractions must be within 10 points. With no declaration and no lane files: not checked.
+    Checked whenever any arm is a vector arm (declared, or configured hybrid-on), configured
+    hybrid-off, or has a lane file. Then, for BOTH arms:
+      - lane evidence must exist, and no question may lack it ("missing" fails);
+      - a vector arm must show the lane ran on >= 90% of its questions;
+      - a hybrid-off arm must show the lane "off" on every question;
+      - an ambiguous hybrid value fails;
+      - the arms' ran fractions must be within 10 points.
+    No evidence is never evidence of a pass.
     """
+    names = set(arm_names)
     frac = {n: (lanes.get(n) or {}).get("vector_ran_fraction") for n in arm_names}
-    checked = bool((vector_arms | hybrid_off) & set(arm_names)) or any(
+    counts = {n: (lanes.get(n) or {}).get("lanes", {}) for n in arm_names}
+    checked = bool((vector_arms | hybrid_off | hybrid_ambiguous) & names) or any(
         f is not None for f in frac.values()
     )
     if not checked:
         return {"vector_ran": frac, "v4_pass": None, "reasons": []}
     reasons = [f"{n}: no lane evidence" for n in arm_names if frac[n] is None]
-    for n in sorted(vector_arms & set(arm_names)):
+    reasons += [
+        f"{n}: {counts[n]['missing']} questions without lane evidence"
+        for n in arm_names
+        if counts[n].get("missing")
+    ]
+    reasons += [
+        f"{n}: NOTEBOOK_HYBRID_RETRIEVAL is ambiguous" for n in sorted(hybrid_ambiguous & names)
+    ]
+    for n in sorted(vector_arms & names):
         if frac[n] is not None and frac[n] < 0.9:
             reasons.append(f"{n}: vector lane ran on {frac[n]:.0%} of questions (< 90%)")
-    for n in sorted(hybrid_off & set(arm_names)):
-        ran = (lanes.get(n) or {}).get("lanes", {}).get("ran", 0)
-        if ran:
-            reasons.append(f"{n}: configured hybrid-off but the vector lane ran on {ran} questions")
+    for n in sorted(hybrid_off & names):
+        not_off = {k: v for k, v in counts[n].items() if k not in ("off", "missing") and v}
+        if not_off:
+            reasons.append(f"{n}: configured hybrid-off but lanes were {not_off}")
     known = [f for f in frac.values() if f is not None]
     if len(known) == 2 and abs(known[0] - known[1]) > 0.10:
         reasons.append("arms' vector-lane ran fractions differ by more than 10 points")
@@ -389,9 +407,12 @@ def main(argv: list[str] | None = None) -> int:
     for spec in args.config:
         name, _, f = spec.partition("=")
         configs[name] = {k: str(v) for k, v in json.loads(Path(f).read_text()).items()}
-    hybrid_off = frozenset(
-        n for n, c in configs.items() if flag_state(c.get("NOTEBOOK_HYBRID_RETRIEVAL", "")) == "off"
-    )
+    hybrid_state = {
+        n: flag_state(c.get("NOTEBOOK_HYBRID_RETRIEVAL", "")) for n, c in configs.items()
+    }
+    hybrid_off = frozenset(n for n, v in hybrid_state.items() if v == "off")
+    hybrid_ambiguous = frozenset(n for n, v in hybrid_state.items() if v == "ambiguous")
+    vector_arms = set(args.vector_arm) | {n for n, v in hybrid_state.items() if v == "on"}
     corpus = json.loads(Path(args.corpus).read_text()) if args.corpus else None
     report = {"sealed": args.sealed, "arms": {}, "paired": {}, "lanes": {}}
     for name, (rows, meta) in arms.items():
@@ -426,7 +447,9 @@ def main(argv: list[str] | None = None) -> int:
             v6["invalid_ids"] = ids
         res["validity"] = v6
         pair = [names[0], other]
-        res["validity"]["v4"] = v4_check(report["lanes"], pair, set(args.vector_arm), hybrid_off)
+        res["validity"]["v4"] = v4_check(
+            report["lanes"], pair, vector_arms, hybrid_off, hybrid_ambiguous
+        )
         res["validity"]["v1_build"] = build_check({k: arms[k][1] for k in pair})
         res["validity"]["v2_corpus"] = corpus_check(corpus, args.manual_dir, args.sealed)
         res["validity"]["v3_config"] = config_check(configs, pair, set(args.vary))

@@ -420,3 +420,32 @@ def test_one_arm_or_duplicate_arm_names_are_rejected(tmp_path):
         with pytest.raises(SystemExit) as e:
             walk_eval.main(args)
         assert e.value.code == 2
+
+
+def test_v4_derives_vector_arms_from_config_and_needs_positive_off_evidence(tmp_path, capsys):
+    on_cfg = {k: "" for k in walk_eval.REQUIRED_CONFIG} | {"NOTEBOOK_HYBRID_RETRIEVAL": "1"}
+    args = _valid_setup(tmp_path)
+    ca, cb = tmp_path / "hy_a.json", tmp_path / "hy_b.json"
+    ca.write_text(json.dumps(on_cfg | {"NOTEBOOK_LEXICAL_V2": "0"}))
+    cb.write_text(json.dumps(on_cfg | {"NOTEBOOK_LEXICAL_V2": "1"}))
+    args[args.index(next(a for a in args if a.startswith("a=") and a.endswith("ca.json")))] = (
+        f"a={ca}"
+    )
+    args[args.index(next(a for a in args if a.startswith("b=") and a.endswith("cb.json")))] = (
+        f"b={cb}"
+    )
+    walk_eval.main(args)  # configured hybrid-on, lanes all "off", no --vector-arm given
+    v4 = json.loads(capsys.readouterr().out)["paired"]["a->b"]["validity"]["v4"]
+    assert v4["v4_pass"] is False and any("< 90%" in r for r in v4["reasons"])
+    missing = {
+        "a": {"vector_ran_fraction": 0.0, "lanes": {"missing": 2}},
+        "b": {"vector_ran_fraction": 0.0, "lanes": {"off": 2}},
+    }
+    v = walk_eval.v4_check(missing, ["a", "b"], set(), frozenset({"a", "b"}))
+    assert v["v4_pass"] is False and "without lane evidence" in v["reasons"][0]
+    amb = {
+        "a": {"vector_ran_fraction": 0.0, "lanes": {"off": 2}},
+        "b": {"vector_ran_fraction": 0.0, "lanes": {"off": 2}},
+    }
+    v = walk_eval.v4_check(amb, ["a", "b"], set(), frozenset({"a"}), frozenset({"b"}))
+    assert v["v4_pass"] is False and "ambiguous" in v["reasons"][0]
