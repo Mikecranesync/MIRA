@@ -185,3 +185,35 @@ def test_key_can_be_read_from_gold_jsonl(tmp_path):
         + "\n"
     )
     assert walk_eval.load_key(str(gold)) == {"a": [3, 4], "b": []}
+
+
+def test_lane_fraction_counts_untraced_questions_as_missing_not_absent():
+    rows = [{"id": "q1", "lane": "ran"}, {"id": "q2", "lane": "no_trace"}]
+    s = walk_eval.lane_summary(rows, {"q1", "q2", "q3", "q4"})
+    assert s["vector_ran_fraction"] == 0.25
+    assert s["lanes"] == {"ran": 1, "missing": 3}
+
+
+def test_validity_fails_on_a_missing_or_broken_question():
+    a = {"q1": _row("m-q1", "CORRECT", 3), "q2": _row("m-q2", "CORRECT", 3)}
+    b = {"q1": _row("m-q1", "CORRECT", 3)}
+    v = walk_eval.validity(a, b, {"q1", "q2"})
+    assert not v["v6_pass"] and v["missing_from_an_arm"] == 1
+    b["q2"] = _row("m-q2", "BROKEN")
+    v = walk_eval.validity(a, b, {"q1", "q2"})
+    assert not v["v6_pass"] and v["broken"] == 1
+    b["q2"] = _row("m-q2", "WRONG_PAGE", 9)
+    assert walk_eval.validity(a, b, {"q1", "q2"})["v6_pass"]
+
+
+def test_cli_reports_validity_and_hides_ids_when_sealed(tmp_path, capsys):
+    rows_a = [_row("sx-q1", "CORRECT", 7), _row("sx-q2", "CORRECT", 2)]
+    rows_b = [_row("sx-q1", "CORRECT", 7)]
+    kf = tmp_path / "key.json"
+    kf.write_text(json.dumps({"sx-q1": [7], "sx-q2": [2]}))
+    a, b = _run(tmp_path, "a", rows_a, {}), _run(tmp_path, "b", rows_b, {})
+    walk_eval.main(["--arm", f"a={a}", "--arm", f"b={b}", "--key", str(kf), "--sealed"])
+    out = capsys.readouterr().out
+    v = json.loads(out)["paired"]["a->b"]["validity"]
+    assert v["v6_pass"] is False and v["missing_from_an_arm"] == 1
+    assert "sx-q" not in out

@@ -132,24 +132,41 @@ def arm_summary(rows: dict[str, dict], key: dict | None, tol: int) -> dict:
 def lane_summary(rows: list[dict], asked: set[str]) -> dict:
     """Vector-lane outcome and retrieval-span latency for one arm (validity check V4, gate P1).
 
-    Only rows the arm actually scored count; a later resume directory's lane wins.
+    The denominator is every question the arm scored: a question with no lane record, or no
+    trace, counts as ``missing``, never as evidence either way. A later resume file wins.
     """
     by_id: dict[str, dict] = {}
     for r in rows:
         if r["id"] in asked and r.get("lane") != "no_trace":
             by_id[r["id"]] = r
     lanes = Counter(r["lane"] for r in by_id.values())
+    missing = len(asked - set(by_id))
+    if missing:
+        lanes["missing"] = missing
     lat = [
         r["retrieval_latency_s"] for r in by_id.values() if r.get("retrieval_latency_s") is not None
     ]
     return {
         "lanes": dict(lanes),
-        "vector_ran_fraction": round(lanes["ran"] / len(by_id), 3) if by_id else None,
+        "vector_ran_fraction": round(lanes["ran"] / len(asked), 3) if asked else None,
         "retrieval_latency_s": {
             "p50": stats.percentile(lat, 50),
             "p95": stats.percentile(lat, 95),
             "n": len(lat),
         },
+    }
+
+
+def validity(a: dict, b: dict, expected: set[str]) -> dict:
+    """Validity check V6: every expected question asked, unbroken, in both arms."""
+    broken = {i for rows in (a, b) for i, r in rows.items() if r["classification"] == "BROKEN"}
+    missing = expected - (set(a) & set(b))
+    return {
+        "expected": len(expected),
+        "missing_from_an_arm": len(missing),
+        "broken": len(broken & expected),
+        "v6_pass": not missing and not (broken & expected),
+        "_ids": sorted(missing | (broken & expected)),
     }
 
 
@@ -232,7 +249,22 @@ def main(argv: list[str] | None = None) -> int:
         report["lanes"][name] = lane_summary([json.loads(x) for x in lines], set(arms[name][0]))
     names = list(arms)
     for other in names[1:]:
-        res, xs = paired(arms[names[0]][0], arms[other][0], key, args.tolerance, cluster_of)
+        a_rows, b_rows = arms[names[0]][0], arms[other][0]
+        res, xs = paired(a_rows, b_rows, key, args.tolerance, cluster_of)
+        expected = set(questions) if questions and not args.sealed else set(a_rows) | set(b_rows)
+        v6 = validity(a_rows, b_rows, expected)
+        ids = v6.pop("_ids")
+        if not args.sealed:
+            v6["invalid_ids"] = ids
+        res["validity"] = v6
+        la, lb = report["lanes"].get(names[0]), report["lanes"].get(other)
+        if la and lb:
+            fa, fb = la["vector_ran_fraction"], lb["vector_ran_fraction"]
+            res["validity"]["v4_vector_ran"] = {
+                names[0]: fa,
+                other: fb,
+                "within_10_points": abs(fa - fb) <= 0.10,
+            }
         if not args.sealed and questions:
             for dim in ("oem", "family"):
                 g: dict[str, list[int]] = {}
