@@ -35,7 +35,7 @@ the compose file forwards it.
 | `NOTEBOOK_ENERGIZED_HARD_STOP` | on | unset | on | unset | n/a | on |
 | `NOTEBOOK_CLAIM_VERIFIER` | off | unset | off | unset | not forwarded | off |
 | `NOTEBOOK_GARBLE_DECODE` | on | unset | on | unset | yes (`:-1`) | on |
-| `NOTEBOOK_GUIDED_PROCEDURE` | — | `1` | **no consumer on this build** | unset | — | — |
+| `NOTEBOOK_GUIDED_PROCEDURE` (guided procedure, not retrieval) | off | `1` | **no consumer on the deployed build** | unset | no | off |
 | Answer model | `OPENAI_MODEL` `gpt-5.4-mini` | unset → default | gpt-5.4-mini | unset → default | yes | gpt-5.4-mini |
 | Provider keys present | | OpenAI, Groq, Together | | OpenAI, Groq, Together | | |
 
@@ -55,9 +55,10 @@ the notebook chat path.
    p95 4.1 s against the 4000 ms timeout set in staging.
 4. **The answer model and the safety and answer gates are identical in both environments.** A
    refusal difference between them is therefore not a model difference.
-5. **`NOTEBOOK_GUIDED_PROCEDURE=1` in staging has no consumer on the deployed build.** Nothing
-   in `mira-hub/src` or either compose file on `023cd64c5` reads it. An open branch
-   (`feat/wp1-guided-troubleshooting`) may be adding one.
+5. **`NOTEBOOK_GUIDED_PROCEDURE=1` in staging does nothing yet.** The deployed staging build
+   `8bce49000` has no consumer. The consumer and its staging compose passthrough landed on `main`
+   in #4573 (`cb5701077`), so the flag takes effect at the next staging deploy. It is not a
+   retrieval switch.
 
 ## How to regenerate
 
