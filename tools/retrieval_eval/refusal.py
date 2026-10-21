@@ -33,7 +33,18 @@ PATTERNS: dict[str, str] = {
     ),
     "IMPERATIVE_NEGATION_RE": r"^(?:please\s+)?(?:do not|don't|never)\b",
 }
-_RE = {k: re.compile(v) for k, v in PATTERNS.items()}
+# JavaScript regexes without the ``u`` flag treat only [A-Za-z0-9_] as word characters, so
+# their ``\b`` is an ASCII boundary; Python's is Unicode-aware ("écan't" has no boundary
+# before "c" in Python, one in JavaScript). Translate ``\b`` so the copy behaves like the
+# original. ``\s`` is Unicode in both and is left alone.
+_ASCII_B = r"(?:(?<![A-Za-z0-9_])(?=[A-Za-z0-9_])|(?<=[A-Za-z0-9_])(?![A-Za-z0-9_]))"
+
+
+def _js_to_py(pattern: str) -> str:
+    return pattern.replace(r"\b", _ASCII_B)
+
+
+_RE = {k: re.compile(_js_to_py(v)) for k, v in PATTERNS.items()}
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 MAX_REFUSAL_CHARS = 400
 
@@ -56,6 +67,9 @@ def _phrase_in(folded: str) -> bool:
 
 def is_refusal(answer: str) -> bool:
     a = _fold(answer)
+    js_length = len(a.encode("utf-16-le")) // 2  # JavaScript's length: an emoji counts 2
     return (
-        _phrase_in(a) and bool(_RE["EVIDENCE_PHRASE_RE"].search(a)) and len(a) < MAX_REFUSAL_CHARS
+        _phrase_in(a)
+        and bool(_RE["EVIDENCE_PHRASE_RE"].search(a))
+        and js_length < MAX_REFUSAL_CHARS
     )

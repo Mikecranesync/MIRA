@@ -174,21 +174,25 @@ def validity(a: dict, b: dict, expected: set[str]) -> dict:
 
 
 def v4_check(lanes: dict, arm_names: list[str], vector_arms: set[str]) -> dict:
-    """Validity check V4. An arm declared to run the vector lane must show it ran on >= 90% of
-    its questions; with lane files for both arms, their ran fractions must be within 10 points.
-    A declared arm without a lane file fails: no evidence is not evidence of a pass."""
+    """Validity check V4.
+
+    Checked whenever any arm is declared a vector arm or any lane file is supplied; then lane
+    evidence is required for BOTH arms (no evidence is never evidence of a pass), a declared
+    arm must show the vector lane ran on >= 90% of its questions, and the two arms' ran
+    fractions must be within 10 points. With no declaration and no lane files: not checked.
+    """
     frac = {n: (lanes.get(n) or {}).get("vector_ran_fraction") for n in arm_names}
-    reasons = []
+    checked = bool(vector_arms & set(arm_names)) or any(f is not None for f in frac.values())
+    if not checked:
+        return {"vector_ran": frac, "v4_pass": None, "reasons": []}
+    reasons = [f"{n}: no lane evidence" for n in arm_names if frac[n] is None]
     for n in sorted(vector_arms & set(arm_names)):
-        if frac[n] is None:
-            reasons.append(f"{n}: declared vector arm has no lane file")
-        elif frac[n] < 0.9:
+        if frac[n] is not None and frac[n] < 0.9:
             reasons.append(f"{n}: vector lane ran on {frac[n]:.0%} of questions (< 90%)")
     known = [f for f in frac.values() if f is not None]
     if len(known) == 2 and abs(known[0] - known[1]) > 0.10:
         reasons.append("arms' vector-lane ran fractions differ by more than 10 points")
-    checked = bool(vector_arms & set(arm_names)) or len(known) == 2
-    return {"vector_ran": frac, "v4_pass": (not reasons) if checked else None, "reasons": reasons}
+    return {"vector_ran": frac, "v4_pass": not reasons, "reasons": reasons}
 
 
 def paired(

@@ -240,3 +240,10 @@ def test_validity_fails_on_an_unexpected_question():
     b = {"q1": row, "extra": row}
     v = walk_eval.validity(a, b, {"q1"})
     assert not v["v6_pass"] and v["unexpected"] == 1
+
+
+def test_v4_needs_lane_evidence_for_both_arms_once_checked():
+    one_sided = {"on": {"vector_ran_fraction": 0.95}}
+    v = walk_eval.v4_check(one_sided, ["off", "on"], {"on"})
+    assert v["v4_pass"] is False and "off: no lane evidence" in v["reasons"]
+    assert walk_eval.v4_check(one_sided, ["off", "on"], set())["v4_pass"] is False
