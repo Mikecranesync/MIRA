@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { createNotebook, listNotebooks, listThreads } from "@/lib/equipment-notebooks";
+import { createNotebook, listNotebooks, listThreadsByNotebook } from "@/lib/equipment-notebooks";
 import { startManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
 
 export const dynamic = "force-dynamic";
@@ -14,12 +14,13 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
-  const notebooks = await Promise.all(
-    (await listNotebooks(ctx.tenantId)).map(async (notebook) => ({
-      ...notebook,
-      threads: await listThreads(ctx.tenantId, notebook.id, 20, { viewerUserId: ctx.userId }),
-    })),
-  );
+  const list = await listNotebooks(ctx.tenantId);
+  // One query for every notebook's threads, not one per notebook (2026-10-21:
+  // 63 notebooks took ~4.9 s, and /v3 showed an empty workspace meanwhile).
+  const threads = await listThreadsByNotebook(ctx.tenantId, list.map((notebook) => notebook.id), 20, {
+    viewerUserId: ctx.userId,
+  });
+  const notebooks = list.map((notebook) => ({ ...notebook, threads: threads.get(notebook.id) ?? [] }));
   return NextResponse.json({ notebooks });
 }
 
