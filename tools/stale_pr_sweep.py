@@ -17,6 +17,10 @@ The rule, applied to every open PR (draft or not):
 * Warned, still no activity, and >= ``CLOSE_GRACE_DAYS`` since the notice -> **close**,
   with a comment. The branch is never deleted, so ``gh pr reopen`` restores the PR.
 * A ``keep`` label exempts a PR entirely (governing standards, owner-preserved work).
+* A notice is authentic only when ``SWEEP_AUTHOR`` posted exactly ``WARN_BODY``. Anyone
+  else's comment carrying the marker (a quote, a reply, a forgery) is ordinary activity.
+* Every decision-bearing list (labels, comments, reviews) is read to the end. A PR whose
+  lists cannot be read completely is skipped, never warned or closed.
 
 Default mode is ``dry-run``: it prints the plan and changes nothing. ``--mode apply``
 performs it. The workflow runs dry-run unless the repository variable
@@ -42,6 +46,11 @@ MAX_ACTIONS = 25
 STALE_LABEL = "stale"
 WARN_MARKER = "<!-- stale-pr-sweep:warn -->"
 CLOSE_MARKER = "<!-- stale-pr-sweep:close -->"
+# The account the workflow's GITHUB_TOKEN posts as, which must also be a GraphQL `Bot`.
+# GraphQL spells its login `github-actions`; the REST API spells the same account
+# `github-actions[bot]`. Notices from any other account, including other bots, are not notices.
+SWEEP_AUTHORS = frozenset({"github-actions", "github-actions[bot]"})
+MAX_PAGES = 50  # per nested connection; past this the PR is treated as unreadable
 
 WARN_BODY = (
     f"{WARN_MARKER}\n"
@@ -63,6 +72,7 @@ class Event:
     author: str
     at: dt.datetime
     body: str = ""
+    author_type: str = ""  # GraphQL __typename: "Bot", "User", ...
 
 
 @dataclass
@@ -73,14 +83,23 @@ class PR:
     head_committed_at: dt.datetime | None
     labels: set[str] = field(default_factory=set)
     events: list[Event] = field(default_factory=list)
+    complete: bool = True  # False when a decision-bearing list could not be read in full
 
 
 def is_bot(login: str) -> bool:
     return login.endswith("[bot]") or login in {"github-actions", ""}
 
 
+def _is_notice(e: Event, body: str) -> bool:
+    return (
+        e.author in SWEEP_AUTHORS
+        and e.author_type == "Bot"
+        and e.body.replace("\r\n", "\n").strip() == body
+    )
+
+
 def _is_sweep_notice(e: Event) -> bool:
-    return WARN_MARKER in e.body or CLOSE_MARKER in e.body
+    return _is_notice(e, WARN_BODY) or _is_notice(e, CLOSE_BODY)
 
 
 def last_activity(pr: PR) -> dt.datetime:
@@ -92,12 +111,14 @@ def last_activity(pr: PR) -> dt.datetime:
 
 
 def last_warning(pr: PR) -> dt.datetime | None:
-    warns = [e.at for e in pr.events if WARN_MARKER in e.body]
+    warns = [e.at for e in pr.events if _is_notice(e, WARN_BODY)]
     return max(warns) if warns else None
 
 
 def decide(pr: PR, now: dt.datetime) -> str:
-    """Return one of ``keep`` | ``none`` | ``warn`` | ``close``."""
+    """Return one of ``skip`` | ``keep`` | ``none`` | ``warn`` | ``close``."""
+    if not pr.complete:
+        return "skip"
     if pr.labels & EXEMPT_LABELS:
         return "keep"
     active = last_activity(pr)
@@ -112,10 +133,23 @@ def decide(pr: PR, now: dt.datetime) -> str:
 _QUERY = """
 query($owner:String!,$name:String!,$cursor:String){repository(owner:$owner,name:$name){
  pullRequests(states:OPEN,first:50,after:$cursor){pageInfo{hasNextPage endCursor} nodes{
-  number title createdAt labels(first:30){nodes{name}}
+  number title createdAt labels(first:100){pageInfo{hasNextPage} nodes{name}}
   commits(last:1){nodes{commit{committedDate}}}
-  comments(last:50){nodes{author{login} createdAt body}}
-  reviews(last:20){nodes{author{login} submittedAt}}}}}}
+  comments(last:100){pageInfo{hasPreviousPage} nodes{author{login __typename} createdAt body}}
+  reviews(last:100){pageInfo{hasPreviousPage} nodes{author{login} submittedAt}}}}}}
+"""
+
+# The first page of each list is inline above. When one is truncated (labels have a next
+# page; comments/reviews, read newest-first, have an earlier one) it is re-read whole.
+_CONNECTION_FIELDS = {
+    "labels": "name",
+    "comments": "author{login __typename} createdAt body",
+    "reviews": "author{login} submittedAt",
+}
+_CONNECTION_QUERY = """
+query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){
+ pullRequest(number:$number){%s(first:100,after:$cursor){pageInfo{hasNextPage endCursor}
+  nodes{%s}}}}}
 """
 
 
@@ -127,9 +161,16 @@ def _login(node: dict) -> str:
     return (node.get("author") or {}).get("login", "")
 
 
+def _author_type(node: dict) -> str:
+    return (node.get("author") or {}).get("__typename", "")
+
+
 def parse_pr(node: dict) -> PR:
     commits = node["commits"]["nodes"]
-    events = [Event(_login(c), _ts(c["createdAt"]), c["body"]) for c in node["comments"]["nodes"]]
+    events = [
+        Event(_login(c), _ts(c["createdAt"]), c["body"], _author_type(c))
+        for c in node["comments"]["nodes"]
+    ]
     events += [
         Event(_login(r), _ts(r["submittedAt"]))
         for r in node["reviews"]["nodes"]
@@ -145,27 +186,63 @@ def parse_pr(node: dict) -> PR:
     )
 
 
-def fetch_open_prs(repo: str) -> list[PR]:
+def _graphql(query: str, **variables: object) -> dict:
+    args = ["gh", "api", "graphql", "-f", f"query={query}"]
+    for k, v in variables.items():
+        if v is not None:
+            args += ["-F", f"{k}={v}"]
+    return json.loads(subprocess.run(args, check=True, capture_output=True, text=True).stdout)
+
+
+def _truncated(node: dict, conn: str) -> bool:
+    info = node[conn].get("pageInfo") or {}
+    return bool(info.get("hasNextPage") or info.get("hasPreviousPage"))
+
+
+def _read_connection(gql, owner: str, name: str, number: int, conn: str) -> list[dict]:
+    query = _CONNECTION_QUERY % (conn, _CONNECTION_FIELDS[conn])
+    nodes: list[dict] = []
+    cursor = None
+    for _ in range(MAX_PAGES):
+        data = gql(query, owner=owner, name=name, number=number, cursor=cursor)
+        page = data["data"]["repository"]["pullRequest"][conn]
+        nodes += page["nodes"]
+        if not page["pageInfo"]["hasNextPage"]:
+            return nodes
+        cursor = page["pageInfo"]["endCursor"]
+        if not cursor:
+            break
+    raise ValueError(f"#{number} {conn}: could not read to the end")
+
+
+def _complete_node(gql, owner: str, name: str, node: dict) -> bool:
+    """Replace each truncated list on ``node`` with the whole list. False if one cannot be."""
+    for conn in _CONNECTION_FIELDS:
+        if not _truncated(node, conn):
+            continue
+        try:
+            node[conn] = {"nodes": _read_connection(gql, owner, name, node["number"], conn)}
+        except (subprocess.CalledProcessError, ValueError, KeyError, TypeError) as exc:
+            print(
+                f"::warning::#{node['number']} skipped, {conn} unreadable: {exc}", file=sys.stderr
+            )
+            return False
+    return True
+
+
+def fetch_open_prs(repo: str, gql=None) -> list[PR]:
+    gql = gql or _graphql
     owner, name = repo.split("/", 1)
     prs: list[PR] = []
     cursor = None
     while True:
-        args = [
-            "gh",
-            "api",
-            "graphql",
-            "-f",
-            f"query={_QUERY}",
-            "-F",
-            f"owner={owner}",
-            "-F",
-            f"name={name}",
-        ]
-        if cursor:
-            args += ["-F", f"cursor={cursor}"]
-        data = json.loads(subprocess.run(args, check=True, capture_output=True, text=True).stdout)
+        data = gql(_QUERY, owner=owner, name=name, cursor=cursor)
         page = data["data"]["repository"]["pullRequests"]
-        prs += [parse_pr(n) for n in page["nodes"]]
+        for n in page["nodes"]:
+            complete = _complete_node(gql, owner, name, n)
+            pr = parse_pr(n)
+            pr.complete = complete
+            prs.append(pr)
         if not page["pageInfo"]["hasNextPage"]:
             return prs
         cursor = page["pageInfo"]["endCursor"]
@@ -203,7 +280,9 @@ def main(argv: list[str] | None = None) -> int:
 
     now = dt.datetime.now(dt.timezone.utc)
     plan = [(pr, decide(pr, now)) for pr in fetch_open_prs(args.repo)]
-    counts = {a: sum(1 for _, x in plan if x == a) for a in ("warn", "close", "keep", "none")}
+    counts = {
+        a: sum(1 for _, x in plan if x == a) for a in ("warn", "close", "keep", "none", "skip")
+    }
     print(f"# Stale PR sweep ({args.mode}) — {now:%Y-%m-%d %H:%MZ}\n")
     print(f"open={len(plan)} " + " ".join(f"{k}={v}" for k, v in counts.items()) + "\n")
     todo = select_actions(plan, now, args.max_actions)
