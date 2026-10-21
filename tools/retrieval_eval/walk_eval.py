@@ -138,8 +138,9 @@ def lane_summary(rows: list[dict], asked: set[str]) -> dict:
     """
     by_id: dict[str, dict] = {}
     for r in rows:
-        if r["id"] in asked and r.get("lane") != "no_trace":
-            by_id[r["id"]] = r
+        if r["id"] in asked:
+            by_id[r["id"]] = r  # later rows win, even a later "no_trace"
+    by_id = {i: r for i, r in by_id.items() if r.get("lane") != "no_trace"}
     lanes = Counter(r["lane"] for r in by_id.values())
     missing = len(asked - set(by_id))
     if missing:
@@ -212,7 +213,7 @@ def build_check(metas: dict[str, dict]) -> dict:
     return {"status": "PASS" if ok else "FAIL", "gitShas": {n: sorted(v) for n, v in shas.items()}}
 
 
-def corpus_check(corpus: dict | None, manual_dir: str | None) -> dict:
+def corpus_check(corpus: dict | None, manual_dir: str | None, sealed: bool = False) -> dict:
     """V2: every manual file the walk uploads hashes to the sha256 pinned in corpus.json.
 
     The walk caches each PDF as ``<sha256>.pdf``; ``manual_dir`` is that cache (or a copy).
@@ -225,7 +226,8 @@ def corpus_check(corpus: dict | None, manual_dir: str | None) -> dict:
         f = next((c for c in cands if c.is_file()), None)
         if f is None or hashlib.sha256(f.read_bytes()).hexdigest() != m["sha256"]:
             bad.append(m["id"])
-    return {"status": "FAIL" if bad else "PASS", "mismatched_manuals": bad}
+    detail = {"mismatched": len(bad)} if sealed else {"mismatched_manuals": bad}
+    return {"status": "FAIL" if bad else "PASS", **detail}
 
 
 def config_check(configs: dict[str, dict], names: list[str], vary: set[str]) -> dict:
@@ -387,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
         pair = [names[0], other]
         res["validity"]["v4"] = v4_check(report["lanes"], pair, set(args.vector_arm), hybrid_off)
         res["validity"]["v1_build"] = build_check({k: arms[k][1] for k in pair})
-        res["validity"]["v2_corpus"] = corpus_check(corpus, args.manual_dir)
+        res["validity"]["v2_corpus"] = corpus_check(corpus, args.manual_dir, args.sealed)
         res["validity"]["v3_config"] = config_check(configs, pair, set(args.vary))
         res["validity"]["v5_rerank"] = rerank_check(configs, pair)
         v = res["validity"]

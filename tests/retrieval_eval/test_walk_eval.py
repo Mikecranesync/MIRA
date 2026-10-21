@@ -367,3 +367,16 @@ def test_sealed_run_needs_an_external_expected_set_and_catches_a_question_droppe
     v = json.loads(out)["paired"]["a->b"]["validity"]
     assert v["v6_pass"] is False and v["missing_from_an_arm"] == 1
     assert "sx-q2" not in out
+
+
+def test_a_later_no_trace_row_replaces_earlier_lane_evidence():
+    rows = [{"id": "q1", "lane": "ran"}, {"id": "q1", "lane": "no_trace"}]
+    s = walk_eval.lane_summary(rows, {"q1"})
+    assert s["lanes"] == {"missing": 1} and s["vector_ran_fraction"] == 0.0
+
+
+def test_sealed_corpus_check_reports_a_count_not_manual_names(tmp_path):
+    corpus = {"manuals": [{"id": "secret-manual", "filename": "x.pdf", "sha256": "0" * 64}]}
+    v = walk_eval.corpus_check(corpus, str(tmp_path), sealed=True)
+    assert v == {"status": "FAIL", "mismatched": 1}
+    assert walk_eval.corpus_check(corpus, str(tmp_path))["mismatched_manuals"] == ["secret-manual"]
