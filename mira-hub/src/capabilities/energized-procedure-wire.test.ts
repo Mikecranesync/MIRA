@@ -169,6 +169,7 @@ const DETECTED: Array<[string, string]> = [
   ["a numbered procedure, ASCII hyphen", "4. Re-energize the panel.\n5. Clamp each phase and record the current."],
   ["a numbered procedure, U+2011 hyphen", "4. Re\u2011energize the panel.\n5. Clamp each phase and record the current."],
   ["a cross-sentence procedure", "Re-energize the panel. Then clamp each phase and record the current."],
+  ["object-first restore A4 misses, no lockout", "Power is restored. Measure the supply voltage at the input terminals."],
 ];
 /** A4 warn-and-keep only. The staging fixture is in DETECTED for exact-byte
  *  route coverage; its step 4 is a lockout contradiction and BLOCKs (#4122). */

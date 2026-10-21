@@ -1252,6 +1252,12 @@ describe("Codex #4471 r1 F1: a written lockout removal / power restore is the co
     "1. Lock out the panel and verify zero volts.\n2. Power is restored.\n3. Measure the supply voltage at the input terminals.",
     "1. Lock out the panel and verify zero volts.\n2. After lockout removal, proceed.\n3. Measure the supply voltage at the input terminals.",
     "1. Lock out the panel and verify zero volts.\n2. A qualified person is taking off the lockout.\n3. Measure the supply voltage at the input terminals.",
+    // Gate-7 r3: A4's RESTORE_ENERGY_SRC misses object-first / inflected
+    // restore ("power is restored", "restores power"). The isolation
+    // tracker only feeds `restored` after a lockout. Existing RESTORE /
+    // LOCKOUT_REMOVED must still WARN — never a silent pass.
+    "Power is restored. Measure the supply voltage at the input terminals.",
+    "A qualified person restores power. Measure the supply voltage at the input terminals.",
   ];
   for (const [lane, run] of lanes) {
     it.each(coherent)(`${lane} lane: energized_warning, full candidate retained: %#`, (a) => {

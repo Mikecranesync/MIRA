@@ -508,6 +508,29 @@ function spansOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number
   return aStart < bEnd && aEnd > bStart;
 }
 
+/** Restore events already recognized elsewhere: A4's RESTORE_ENERGY_SRC plus
+ *  the isolation-tracker's RESTORE / LOCKOUT_REMOVED. No new phrase list —
+ *  object-first and inflected restores ("power is restored") must pair the
+ *  same way "restore power" does. */
+function restoreEventsIn(clause: string): RegExpExecArray[] {
+  const patterns = [
+    new RegExp("\\b" + RESTORE_ENERGY_SRC, "gi"),
+    new RegExp(RESTORE.source, "gi"),
+    new RegExp(LOCKOUT_REMOVED.source, "gi"),
+  ];
+  const out: RegExpExecArray[] = [];
+  const seen = new Set<string>();
+  for (const re of patterns) {
+    for (const m of clause.matchAll(re)) {
+      const key = `${m.index}:${m[0].length}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(m);
+    }
+  }
+  return out;
+}
+
 /** Carry an affirmative restoration across prose/list steps. Prohibitions
  * apply only to their own clause; a safe opening cannot excuse a later
  * instruction. An explicit isolate/lockout/verify step ends that interval.
@@ -534,7 +557,7 @@ function restoreEnergyToMeasure(text: string): RestoreSpan | null {
       }
       let frontedSource = "";
       for (const clause of segments[segmentIndex].split(CLAUSE_BOUNDARY)) {
-        const restorations = [...clause.matchAll(new RegExp("\\b" + RESTORE_ENERGY_SRC, "gi"))];
+        const restorations = restoreEventsIn(clause);
         const actions = [...clause.matchAll(new RegExp("\\b" + MEASURE_ACTION_SRC, "gi"))];
         if (actions.length === 0 && restorations.length === 0 && EXTERNAL_READING.test(clause)) {
           frontedSource = clause;
@@ -1323,6 +1346,9 @@ const toStandaloneSentence = (bulletLine: string) => bulletLine.replace(/^- If y
  *  a lockout with no restore ever written) are checked earlier, in
  *  `validateAnswer`, and BLOCK — see `unsafeAnswerBlock` above. */
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
+  // `restore` is A4 (RESTORE_ENERGY_SRC plus the existing RESTORE /
+  // LOCKOUT_REMOVED grammars) or the isolation-tracker pairing. A null
+  // here means no existing restore grammar paired with a live measurement.
   if (!restore) return { ok: true };
   return {
     ok: false,
