@@ -165,6 +165,28 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(llms).not.toContain("work-order history");
   });
 
+  test("optional P1 Micro810 citation is listed and scoped to that dated walk", () => {
+    expect(hasCitedProof(data)).toBe(true);
+    const dated = data.claims.filter((c) => c.status === "proven-dated");
+    expect(dated).toHaveLength(1);
+    expect(dated[0].id).toBe(CITED_PROOF_ID);
+    expect(dated[0].text).toContain("Rockwell Micro810");
+    expect(dated[0].text).toContain("Oct 19, 2026");
+    expect(dated[0].text).toContain("narrow test");
+    expect(dated[0].text).not.toMatch(/answers from the uploaded manual/i);
+    expect(dated[0].text).not.toMatch(/every answer cites/i);
+    const html = renderHome("https://factorylm.com/");
+    expect(html).toContain(escHtml(dated[0].text));
+    const llms = generateLlmsTxt(data);
+    expect(llms).toContain(dated[0].text);
+    const jsonLd = JSON.stringify(generateJsonLd(data));
+    expect(jsonLd).toContain(dated[0].text);
+    expect(effectiveFeatureList(data)[0]).toBe(dated[0].text);
+    expect(effectiveHeadline(data)).not.toMatch(/answers from|cites/i);
+    expect(effectiveMetaDescription(data)).not.toMatch(/answers from|cites/i);
+    expect(effectiveJsonLdDescription(data)).not.toMatch(/answers from|cites/i);
+  });
+
   test("without P1, published surfaces have no cites or answers-from wording", () => {
     const stripped = withoutP1(data);
     expect(hasCitedProof(stripped)).toBe(false);

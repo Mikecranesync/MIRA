@@ -76,6 +76,14 @@
       "last_checked": "2026-10-21"
     },
     {
+      "id": "cited-micro810-oct19",
+      "text": "Tested on a Rockwell Micro810 manual (same question 5 times, 5 correct answers citing the same page, Oct 19, 2026). That is a narrow test, not a general accuracy rate.",
+      "status": "proven-dated",
+      "kind": "capability",
+      "evidence": "Production cited-answer walk, 2026-10-19 — optional; Mike decides whether to keep. A1 remains HOLD.",
+      "last_checked": "2026-10-21"
+    },
+    {
       "id": "notebook-for-one-crew",
       "text": "MIRA is the equipment notebook for one maintenance crew.",
       "status": "partial",
