@@ -5,7 +5,7 @@
  * staging (2026-10-21), and /v3 showed "No projects in this workspace" for
  * that long, which read as a chat that would not load until a reload.
  *
- * Run: npx vitest run src/app/api/equipment-notebooks/__tests__/list-one-thread-query.test.ts
+ * Run: npx vitest run src/capabilities/__tests__/notebook-list-one-thread-query.test.ts
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -25,7 +25,7 @@ const domain = vi.hoisted(() => ({
 vi.mock("@/lib/equipment-notebooks", () => domain);
 vi.mock("@/capabilities/notebook-manual-acquisition", () => ({ startManualAcquisition: vi.fn() }));
 
-import { GET } from "../route";
+import { GET } from "@/app/api/equipment-notebooks/route";
 
 beforeEach(() => {
   vi.clearAllMocks();

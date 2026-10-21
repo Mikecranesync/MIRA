@@ -2,7 +2,7 @@
 // and drops its own schema).
 //
 //   TEST_DATABASE_URL=postgres://... MIRA_TEST_DB_CONFIRM=DISPOSABLE \
-//     npx vitest run --config vitest.integration.config.ts src/lib/__tests__/list-threads-by-notebook
+//     npx vitest run --config vitest.integration.config.ts tests/integration/list-threads-by-notebook
 //
 // listThreadsByNotebook must return, for every notebook, exactly what
 // listThreads returns for that notebook alone: same threads, same order, same
@@ -33,7 +33,7 @@ vi.mock("@/lib/tenant-context", () => ({
   },
 }));
 
-import { listThreads, listThreadsByNotebook } from "../equipment-notebooks";
+import { listThreads, listThreadsByNotebook } from "@/lib/equipment-notebooks";
 
 const TENANT = "0000aaaa-0000-4000-8000-00000000aaaa";
 const OTHER_TENANT = "0000bbbb-0000-4000-8000-00000000bbbb";
