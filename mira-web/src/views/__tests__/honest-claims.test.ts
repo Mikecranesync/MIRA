@@ -64,6 +64,10 @@ const DONT_SAY: Array<{ label: string; re: RegExp }> = [
   { label: "work-order history", re: /work-order history/i },
   { label: "locked $399", re: /\$399(?!\d)/ },
   { label: "locked $3,990", re: /\$3,990|\$3990/ },
+  // #4606: per-customer Atlas isolation is not shipped (one shared Atlas user).
+  { label: "dedicated Atlas container per customer", re: /own Atlas container|Physical isolation|no shared tables/i },
+  // #4606: no required CI check runs a real-DB Tenant A / Tenant B leak test.
+  { label: "CI cross-tenant build-fail claim", re: /fails the build if any row leaks|queries as Tenant B/i },
 ];
 
 function marketingSurface(name: string, html: string): string {
@@ -113,12 +117,14 @@ describe("public marketing copy — don't-say list and no published prices", () 
     expect(trust).not.toMatch(/sessionStorage|expire in 7 days/);
   });
 
-  test("/trust and /privacy restore tenant isolation and name inference subprocessors", () => {
+  test("/trust states the Atlas limit, /privacy keeps tenant isolation, both name inference subprocessors", () => {
     const trust = pages.find((p) => p.name === "/trust")!.html;
     const privacy = pages.find((p) => p.name === "/privacy")!.html;
-    expect(trust).toContain("every query is scoped by");
-    expect(trust).toContain("tenant_id");
-    expect(trust).toContain("Tenant A");
+    // #4606 owner wording: no dedicated-Atlas promise, and no replacement guarantee.
+    expect(trust).toContain(
+      "We do not promise a dedicated Atlas CMMS container, database or storage bucket for each customer."
+    );
+    expect(trust).not.toContain("every query is scoped by");
     expect(trust).toContain("Sub-processors");
     expect(trust).toMatch(/OpenAI/);
     expect(trust).toMatch(/OpenRouter/);
