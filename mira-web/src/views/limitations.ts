@@ -147,7 +147,7 @@ const LIMITS = [
   },
   {
     lead: "It doesn't connect to PLCs.",
-    body: "It doesn't use work-order history, and it doesn't write work orders.",
+    body: "It doesn't write work-order records.",
   },
   {
     lead: "For lockout, arc flash and confined space, follow your site procedure.",

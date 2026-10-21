@@ -59,9 +59,10 @@ const DONT_SAY: Array<{ label: string; re: RegExp }> = [
   { label: "UpKeep", re: /UpKeep/ },
   { label: "Fiix", re: /\bFiix\b/ },
   { label: "unlimited queries", re: /unlimited queries/i },
+  { label: "work-order history", re: /work-order history/i },
+  { label: "locked $399", re: /\$399(?!\d)/ },
+  { label: "locked $3,990", re: /\$3,990|\$3990/ },
 ];
-
-const PRICE_PAGES = pages.filter((p) => p.name !== "/terms");
 
 describe("public marketing copy — don't-say list and no published prices", () => {
   for (const page of pages) {
@@ -73,10 +74,14 @@ describe("public marketing copy — don't-say list and no published prices", () 
 
   }
 
-  for (const page of PRICE_PAGES) {
+  for (const page of pages) {
     test(`${page.name}: publishes no price`, () => {
       expect(page.html, `${page.name} still contains a dollar price`).not.toMatch(
         /\$[\d,]+/
+      );
+      expect(page.html, `${page.name} still contains $399`).not.toContain("$399");
+      expect(page.html, `${page.name} still contains $3,990`).not.toMatch(
+        /\$3,990|\$3990/
       );
       expect(page.html).not.toMatch(/14-day money-back|money-back guarantee/i);
     });

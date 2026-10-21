@@ -1,6 +1,8 @@
 import { head } from "../lib/head.js";
 import { btnPrimary } from "../lib/components.js";
 import {
+  effectiveMetaDescription,
+  effectiveSubhead,
   generateJsonLd,
   loadCapabilities,
   provenByKind,
@@ -26,7 +28,7 @@ function hero(data: CapabilitiesFile): string {
   <div class="fl-hero-inner">
     <p class="fl-hero-eyebrow">FactoryLM</p>
     <h1 id="fl-hero-h1" class="fl-hero-h1">${data.positioning.headline}</h1>
-    <h2 class="fl-hero-h2">${data.positioning.subhead}</h2>
+    <h2 class="fl-hero-h2">${effectiveSubhead(data)}</h2>
     <p class="fl-hero-sub">${[lead, ...rest].map((c) => c.text).join(" ")}</p>
     <div class="fl-hero-cta">
       ${btnPrimary(data.contact.cta, { href: data.contact.href, cta: "hero-talk" })}
@@ -346,7 +348,7 @@ export function renderHome(reqUrl?: string): string {
   const headHtml = head(
     {
       title: data.positioning.title,
-      description: data.positioning.meta_description,
+      description: effectiveMetaDescription(data),
       canonical: "https://factorylm.com/",
       ogImage: "https://factorylm.com/og-image.png",
       jsonLd: generateJsonLd(data),
