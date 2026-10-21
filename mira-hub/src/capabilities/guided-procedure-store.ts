@@ -57,6 +57,26 @@ export async function latestSession(db: QueryDb, tenantId: string, notebookId: s
   return res.rows[0] ? toSession(res.rows[0]) : null;
 }
 
+/**
+ * Whether `sessionId` is this notebook's most recent guided session AND ended at a dead end the
+ * manual does not cover (stored status "degraded" = view status "escalate"). The chat route only
+ * lifts the #4068 "won't guess about this machine" decline for a turn that names such a session
+ * (owner decision 2026-10-21); a restarted, resolved, running or superseded session never qualifies.
+ */
+export async function isGuidedDeadEnd(db: QueryDb, tenantId: string, notebookId: string, sessionId: string): Promise<boolean> {
+  const res = await db.query(
+    `SELECT 1 FROM guided_procedure_sessions s
+      WHERE s.id = $3::uuid AND s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.status = 'degraded'
+        AND NOT EXISTS (
+          SELECT 1 FROM guided_procedure_sessions n
+           WHERE n.tenant_id = s.tenant_id AND n.notebook_id = s.notebook_id AND n.template_id = s.template_id
+             AND (n.started_at, n.id) > (s.started_at, s.id)
+        )`,
+    [tenantId, notebookId, sessionId],
+  );
+  return res.rows.length > 0;
+}
+
 type NewSession = {
   notebookId: string;
   templateId: string;

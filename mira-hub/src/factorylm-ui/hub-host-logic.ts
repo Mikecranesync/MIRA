@@ -286,8 +286,13 @@ export function chatBodyFor(
   docIds: readonly string[],
   history: ReturnType<typeof historyRows>,
   sel: HubSelection,
-  rider?: { visualEvidence?: { fileId: string; capturedAt: string } },
-): ChatBody & { threadId: string | null; mode?: "general"; visualEvidence?: { fileId: string; capturedAt: string } } {
+  rider?: { visualEvidence?: { fileId: string; capturedAt: string }; guidedEscalation?: { sessionId: string } },
+): ChatBody & {
+  threadId: string | null;
+  mode?: "general";
+  visualEvidence?: { fileId: string; capturedAt: string };
+  guidedEscalation?: { sessionId: string };
+} {
   const base = buildChatBody(question, [...docIds], history);
   const visual = rider?.visualEvidence;
   return {
@@ -299,7 +304,22 @@ export function chatBodyFor(
     // no_sources_selected — caught by the live /v3 photo proof, #4024).
     ...(docIds.length === 0 ? { mode: "general" as const } : {}),
     ...(visual ? { visualEvidence: visual } : {}),
+    ...(rider?.guidedEscalation ? { guidedEscalation: rider.guidedEscalation } : {}),
   };
+}
+
+/**
+ * WP-1 guided dead end: the hand-off is a general-mode turn (no sources) that names the guided
+ * session, so the chat route can confirm the dead end and answer from general knowledge, labelled
+ * as such (owner decision 2026-10-21). The server, not this body, decides whether it qualifies.
+ */
+export function guidedDeadEndBody(
+  question: string,
+  sessionId: string,
+  history: ReturnType<typeof historyRows>,
+  sel: HubSelection,
+): ReturnType<typeof chatBodyFor> {
+  return chatBodyFor(question, [], history, sel, { guidedEscalation: { sessionId } });
 }
 
 /**

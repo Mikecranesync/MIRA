@@ -63,6 +63,7 @@ import {
   NO_PROJECT_ERROR,
   applyConfirmIdentityResult,
   chatBodyFor,
+  guidedDeadEndBody,
   createLatestLoadTracker,
   detailQueryFor,
   draftAfterSendSucceeded,
@@ -643,6 +644,14 @@ export function HubShellHost() {
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
   }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing]);
 
+  // WP-1 guided dead end: sent in general mode with the session id; the route confirms it.
+  const onGuidedDeadEnd = useCallback((question: string, sessionId: string) => {
+    const q = question.trim();
+    if (!q || busy || !selection || !detail) return;
+    putOutgoing({ id: `out-${Date.now()}`, threadId: shellThreadId(selection), question: q, attachments: [], startedAt: new Date().toISOString() });
+    void send(guidedDeadEndBody(q, sessionId, historyRows(detail.turns), selection), q);
+  }, [busy, selection, detail, send, putOutgoing]);
+
   const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
   const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);
 
@@ -897,7 +906,7 @@ export function HubShellHost() {
             detail.sources.map((s) => s.docId).join(","),
           ].join("|")}
           notebookId={selection.notebookId}
-          onAskMira={(q) => onSend(q)}
+          onAskMira={onGuidedDeadEnd}
           chatBusy={busy}
         />
       )}

@@ -20,7 +20,7 @@ describe("askMiraButton (#4575)", () => {
     expect(b.label).toMatch(/still answering/);
   });
   it("is enabled when chat is idle (control)", () => {
-    expect(askMiraButton(false)).toEqual({ disabled: false, label: "Ask MIRA about this (beyond the manual)" });
+    expect(askMiraButton(false)).toEqual({ disabled: false, label: "Ask MIRA for general advice (beyond the manual)" });
   });
 });
 

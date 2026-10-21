@@ -70,7 +70,7 @@ const EMPTY_DRAFTS: Drafts = { readings: {}, note: "" };
 export function askMiraButton(chatBusy: boolean): { disabled: boolean; label: string } {
   return chatBusy
     ? { disabled: true, label: "MIRA is still answering — wait, then ask about this" }
-    : { disabled: false, label: "Ask MIRA about this (beyond the manual)" };
+    : { disabled: false, label: "Ask MIRA for general advice (beyond the manual)" };
 }
 
 /**
@@ -106,7 +106,9 @@ export function GuidedProcedure({
   chatBusy = false,
 }: {
   notebookId: string;
-  onAskMira: (question: string) => void;
+  /** The dead-end hand-off: the question plus the guided session it came from (the chat route
+   *  confirms that session ended at a dead end before answering from general knowledge). */
+  onAskMira: (question: string, sessionId: string) => void;
   /** True while a notebook chat reply is streaming: the host's send would refuse (#4575). */
   chatBusy?: boolean;
 }) {
@@ -322,7 +324,7 @@ export function GuidedProcedure({
                         const question = askMiraQuestion(session.askMira!, seeing);
                         if (askMiraButton(chatBusy).disabled || !question) return;
                         setOpen(false);
-                        onAskMira(question);
+                        onAskMira(question, session.sessionId);
                       }}
                     >
                       {askMiraButton(chatBusy).label}
