@@ -29,7 +29,7 @@ export const SMC_FLEX_P103_SAFETY =
   "maintenance activities, follow the local safety related work practices (for example, NFPA 70E, Part II in the " +
   "United States). Maintenance personnel must be trained in the safety practices, procedures, and requirements that " +
   "pertain to their respective job assignments.\n\n" +
-  "SHOCK HAZARD: Hazardous voltage is present in the motor circuit even when the SMC Flex controller is off. To avoid " +
+  "SHOCK HAZARD: Hazardous voltage is present in the motor circuit even when the SMC Flex™ controller is off. To avoid " +
   "shock hazard, disconnect main power before working on the controller, motor, and control devices (for example, " +
   "Start-Stop push buttons). Procedures that require parts of the equipment to be energized during troubleshooting, " +
   "testing, etc., must be performed by properly qualified personnel using appropriate local safety work practices and " +
@@ -98,7 +98,7 @@ export const SMC_FLEX_TROUBLESHOOTING: WorkflowTemplate = {
       cite: { page: 104, ref: T44 },
       options: {
         line_loss: {
-          label: "Line Loss (with phase indication) — 1, 2, 3",
+          label: "Line Loss (with phase indication) — 1, 2, 3 (prestart fault indication)",
           next: "checks",
           guidance: g(104, T44, ["Missing supply phase", "Motor not connected properly"], [
             "Check for line and load loose connections",
@@ -279,7 +279,7 @@ export const SMC_FLEX_TROUBLESHOOTING: WorkflowTemplate = {
           ]),
         },
         power_loss: {
-          label: "Power Loss (with phase indication) — 35, 36, 37",
+          label: "Power Loss (with phase indication) — 35, 36, 37 (prestart fault indication)",
           next: "checks",
           guidance: g(104, T44, ["Missing supply phase (as indicated)"], ["Check for open line (blown line fuse)"]),
         },
