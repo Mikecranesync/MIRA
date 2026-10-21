@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { head } from "../head.js";
+import { serializeJsonLd } from "../html.js";
 
 describe("head()", () => {
   it("includes title and description", () => {
@@ -57,6 +58,30 @@ describe("head()", () => {
     const out = head({ title: "T", description: "D" });
     expect(out).toContain('href="/_tokens.css"');
     expect(out).toContain('href="/_components.css"');
+  });
+
+  it("escapes <, >, &, U+2028, and U+2029 in JSON-LD", () => {
+    const jsonLd = {
+      "@type": "SoftwareApplication",
+      name: "a > b & c",
+      description: "x < y\u2028z\u2029",
+    };
+    const out = head({ title: "T", description: "D", jsonLd });
+    const match = out.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+    expect(match).not.toBeNull();
+    const raw = match![1];
+    expect(raw).toBe(serializeJsonLd(jsonLd));
+    expect(raw).toContain("\\u003c");
+    expect(raw).toContain("\\u003e");
+    expect(raw).toContain("\\u0026");
+    expect(raw).toContain("\\u2028");
+    expect(raw).toContain("\\u2029");
+    expect(raw).not.toContain("<");
+    expect(raw).not.toContain(">");
+    expect(raw).not.toContain("&");
+    const parsed = JSON.parse(raw);
+    expect(parsed.name).toBe("a > b & c");
+    expect(parsed.description).toBe("x < y\u2028z\u2029");
   });
 
   it("includes anti-FOUC sun-mode script", () => {

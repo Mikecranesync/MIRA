@@ -101,6 +101,11 @@ describe("renderSamplePlaceholder — Phase-0 /sample destination", () => {
     expect(html).toMatch(/href="\/"[^>]*class="fl-btn fl-btn-ghost"/);
   });
 
+  test("does not show Open CMMS; the signed-in door is Open notebook", () => {
+    expect(html).not.toContain("Open CMMS");
+    expect(html).toContain("Open notebook");
+  });
+
   test("Does not claim OCR or citations", () => {
     expect(html).not.toContain("OCR");
     expect(html).not.toContain("citations");

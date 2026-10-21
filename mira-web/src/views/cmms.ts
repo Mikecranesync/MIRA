@@ -356,7 +356,7 @@ export function renderSamplePlaceholder(): string {
       <h1>You're signed in.</h1>
       <p>Your sample workspace will appear here once Phase 1 ships. For now, upload your first manual.</p>
       <div class="fl-sample-cta">
-        <a id="cmms-btn" href="#" class="fl-btn fl-btn-primary" data-cta="sample-cmms" style="display:none">Open CMMS</a>
+        <a id="cmms-btn" href="#" class="fl-btn fl-btn-primary" data-cta="sample-notebook" style="display:none">Open notebook</a>
         ${btnPrimary("Upload your first manual", { href: "/activated", cta: "sample-upload" })}
         ${btnGhost("Back to home", { href: "/", cta: "sample-home" })}
       </div>

@@ -170,6 +170,22 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(llms).not.toContain("Oct 19, 2026");
   });
 
+  test("llms-full.txt is fuller than llms.txt: partials as not-yet-claimed plus all limitations", () => {
+    const summary = generateLlmsTxt(data);
+    const full = generateLlmsFullTxt(data);
+    expect(full.length).toBeGreaterThan(summary.length);
+    expect(full).toContain("## Not yet claimed");
+    expect(full).toContain("## Full limitations");
+    expect(full).toContain(summary.replace(/^# FactoryLM\n\n/, ""));
+    for (const claim of data.claims.filter((c) => c.status === "partial")) {
+      expect(full, `llms-full missing partial ${claim.id}`).toContain(claim.text);
+    }
+    for (const claim of data.claims.filter((c) => c.kind === "limit")) {
+      expect(full, `llms-full missing limitation ${claim.id}`).toContain(claim.text);
+    }
+    expect(full).not.toMatch(/\$\d/);
+  });
+
   test("llms files omit sensors, work orders, and the banned marketing claims", () => {
     const llms = `${generateLlmsTxt(data)}\n${generateLlmsFullTxt(data)}`;
     expect(llms).not.toMatch(/\bsensors\b/i);

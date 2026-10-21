@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderHome } from "../home.js";
-import { renderCmms } from "../cmms.js";
+import { renderCmms, renderSamplePlaceholder } from "../cmms.js";
 import { renderLimitations } from "../limitations.js";
 import { renderSecurity } from "../security.js";
 import { navbar, footer } from "../_topbar.js";
@@ -21,6 +21,8 @@ const pages: Array<{ name: string; html: string }> = [
   { name: "/pricing", html: readPublic("pricing.html") },
   { name: "/buy", html: readPublic("buy.html") },
   { name: "/trust", html: readPublic("trust.html") },
+  { name: "/privacy", html: readPublic("privacy.html") },
+  { name: "/sample", html: renderSamplePlaceholder() },
   { name: "/assess", html: readPublic("assess.html") },
   { name: "/terms", html: readPublic("terms.html") },
   { name: "/llms.txt", html: readPublic("llms.txt") },
@@ -64,11 +66,20 @@ const DONT_SAY: Array<{ label: string; re: RegExp }> = [
   { label: "locked $3,990", re: /\$3,990|\$3990/ },
 ];
 
+function marketingSurface(name: string, html: string): string {
+  if (name !== "/llms-full.txt") return html;
+  return html.replace(
+    /## Not yet claimed[\s\S]*?(?=\n## Full limitations\b)/,
+    ""
+  );
+}
+
 describe("public marketing copy — don't-say list and no published prices", () => {
   for (const page of pages) {
     test(`${page.name}: drops the don't-say list and removed claims`, () => {
+      const surface = marketingSurface(page.name, page.html);
       for (const rule of DONT_SAY) {
-        expect(page.html, `${page.name} still contains: ${rule.label}`).not.toMatch(rule.re);
+        expect(surface, `${page.name} still contains: ${rule.label}`).not.toMatch(rule.re);
       }
     });
 
@@ -87,7 +98,7 @@ describe("public marketing copy — don't-say list and no published prices", () 
     });
   }
 
-  test("/security and /trust agree on providers, session, and SOC 2", () => {
+  test("/security and /trust agree on session and SOC 2", () => {
     const security = pages.find((p) => p.name === "/security")!.html;
     const trust = pages.find((p) => p.name === "/trust")!.html;
     for (const line of [
@@ -98,10 +109,38 @@ describe("public marketing copy — don't-say list and no published prices", () 
       expect(security).toContain(line);
       expect(trust).toContain(line);
     }
-    expect(security).not.toMatch(/Groq|Cerebras|Gemini|Anthropic|OpenAI|OpenRouter/);
-    expect(trust).not.toMatch(/Groq|Cerebras|Gemini|Anthropic|OpenAI|OpenRouter/);
     expect(security).not.toMatch(/sessionStorage|expire in 7 days/);
     expect(trust).not.toMatch(/sessionStorage|expire in 7 days/);
+  });
+
+  test("/trust and /privacy restore tenant isolation and name inference subprocessors", () => {
+    const trust = pages.find((p) => p.name === "/trust")!.html;
+    const privacy = pages.find((p) => p.name === "/privacy")!.html;
+    expect(trust).toContain("every query is scoped by");
+    expect(trust).toContain("tenant_id");
+    expect(trust).toContain("Tenant A");
+    expect(trust).toContain("Sub-processors");
+    expect(trust).toMatch(/OpenAI/);
+    expect(trust).toMatch(/OpenRouter/);
+    expect(trust).toMatch(/Groq/);
+    expect(trust).toMatch(/Together/);
+    expect(trust).toContain("Anthropic is not in that cascade");
+    expect(trust).not.toContain("We don't name providers");
+    expect(privacy).toContain("Tenant isolation");
+    expect(privacy).toContain("never shared with other tenants");
+    expect(privacy).toMatch(/OpenAI/);
+    expect(privacy).toContain("The full and current list lives at");
+    expect(privacy).not.toContain("We don't name providers");
+    expect(privacy).not.toContain("We don't publish an inference-provider list");
+  });
+
+  test("public pages show no Open CMMS text", () => {
+    for (const page of pages) {
+      expect(page.html, `${page.name} still says Open CMMS`).not.toContain(
+        "Open CMMS"
+      );
+    }
+    expect(renderSamplePlaceholder()).not.toContain("Open CMMS");
   });
 
   test("/pricing title, meta, and headline lead with the equipment notebook", () => {

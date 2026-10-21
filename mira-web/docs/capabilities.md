@@ -2,7 +2,7 @@
 
 Source of truth: `mira-web/src/capabilities/marketing-claims/capabilities.json`.
 
-The factorylm.com homepage, schema.org JSON-LD, `/llms.txt`, and `/llms-full.txt` all read this file. The homepage renders **only** claims whose `status` is `proven` or `proven-dated`. Partial and not-yet rows stay in the file so a daily steward can promote them later — they must not appear on the public marketing surface.
+The factorylm.com homepage, schema.org JSON-LD, `/llms.txt`, and `/llms-full.txt` all read this file. The homepage and `/llms.txt` render **only** claims whose `status` is `proven` or `proven-dated`. Partial and not-yet rows stay in the file so a daily steward can promote them later — they must not appear on the homepage. `/llms-full.txt` adds those `partial` rows under **Not yet claimed** and repeats every `kind: limit` row under **Full limitations**. It still publishes no prices.
 
 Cited-page titles, meta, JSON-LD `description` / `featureList`, and the Micro810 llms line live in optional `*_cited` fields plus the `cited-micro810-oct19` row. Drop that commit (or that row) and the generators fall back to the notebook-only copy.
 
