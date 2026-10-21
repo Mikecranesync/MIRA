@@ -300,6 +300,10 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="NAME of an arm that claims the vector lane (V4 then requires >= 90%% ran)",
     )
+    ap.add_argument(
+        "--expected",
+        help="JSON list of the question ids the run must contain (required when sealed)",
+    )
     ap.add_argument("--manual-dir", help="the walk's PDF cache, for V2 (corpus bytes)")
     ap.add_argument(
         "--config",
@@ -359,8 +363,23 @@ def main(argv: list[str] | None = None) -> int:
     for other in names[1:]:
         a_rows, b_rows = arms[names[0]][0], arms[other][0]
         res, xs = paired(a_rows, b_rows, key, args.tolerance, cluster_of)
-        expected = set(questions) if questions and not args.sealed else set(a_rows) | set(b_rows)
-        v6 = validity(a_rows, b_rows, expected)
+        # The expected set must come from outside the arms, or a question dropped from both arms
+        # would go unnoticed: the corpus for an open set, --expected for a sealed subset.
+        if args.expected:
+            expected = set(json.loads(Path(args.expected).read_text()))
+        elif questions and not args.sealed:
+            expected = set(questions)
+        else:
+            expected = None
+        v6 = (
+            validity(a_rows, b_rows, expected)
+            if expected is not None
+            else {
+                "v6_pass": False,
+                "detail": "no expected question set (--corpus or --expected)",
+                "_ids": [],
+            }
+        )
         ids = v6.pop("_ids")
         if not args.sealed:
             v6["invalid_ids"] = ids

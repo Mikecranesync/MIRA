@@ -214,7 +214,11 @@ def test_cli_reports_validity_and_hides_ids_when_sealed(tmp_path, capsys):
     kf = tmp_path / "key.json"
     kf.write_text(json.dumps({"sx-q1": [7], "sx-q2": [2]}))
     a, b = _run(tmp_path, "a", rows_a, {}), _run(tmp_path, "b", rows_b, {})
-    walk_eval.main(["--arm", f"a={a}", "--arm", f"b={b}", "--key", str(kf), "--sealed"])
+    exp = tmp_path / "expected.json"
+    exp.write_text(json.dumps(["sx-q1", "sx-q2"]))
+    walk_eval.main(
+        ["--arm", f"a={a}", "--arm", f"b={b}", "--key", str(kf), "--sealed", "--expected", str(exp)]
+    )
     out = capsys.readouterr().out
     v = json.loads(out)["paired"]["a->b"]["validity"]
     assert v["v6_pass"] is False and v["missing_from_an_arm"] == 1
@@ -343,3 +347,23 @@ def test_each_validity_check_fails_on_its_own_defect(tmp_path):
     }
     v4 = walk_eval.v4_check(lanes, ["a", "b"], set(), frozenset({"a", "b"}))
     assert v4["v4_pass"] is False and "configured hybrid-off" in v4["reasons"][0]
+
+
+def test_sealed_run_needs_an_external_expected_set_and_catches_a_question_dropped_from_both_arms(
+    tmp_path, capsys
+):
+    rows = [_row("sx-q1", "CORRECT", 7)]
+    kf = tmp_path / "key.json"
+    kf.write_text(json.dumps({"sx-q1": [7], "sx-q2": [2]}))
+    a, b = _run(tmp_path, "a", rows, {}), _run(tmp_path, "b", rows, {})
+    args = ["--arm", f"a={a}", "--arm", f"b={b}", "--key", str(kf), "--sealed"]
+    walk_eval.main(args)
+    v = json.loads(capsys.readouterr().out)["paired"]["a->b"]["validity"]
+    assert v["v6_pass"] is False and "expected" in v["detail"]
+    exp = tmp_path / "expected.json"
+    exp.write_text(json.dumps(["sx-q1", "sx-q2"]))
+    walk_eval.main([*args, "--expected", str(exp)])
+    out = capsys.readouterr().out
+    v = json.loads(out)["paired"]["a->b"]["validity"]
+    assert v["v6_pass"] is False and v["missing_from_an_arm"] == 1
+    assert "sx-q2" not in out
