@@ -41,6 +41,7 @@ function importersOf(srcRoot: string): string[] {
 const APPROVED_IMPORTERS = [
   join("app", "api", "equipment-notebooks", "[id]", "procedure", "route.ts"),
   join("capabilities", "guided-procedure-store.ts"),
+  join("factorylm-ui", "GuidedProcedure.tsx"),
 ].sort();
 
 describe("diagnostic-plan importers are exactly the approved WP-1 wiring (#4498)", () => {
