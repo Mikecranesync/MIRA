@@ -1,6 +1,6 @@
 # FactoryLM
 
-> An equipment notebook where MIRA answers from the uploaded manual, not a CMMS. It's not a CMMS and doesn't replace yours. There's nothing to switch. It doesn't take PLC data and doesn't write work-order records.
+> An equipment notebook for maintenance crews. Not a CMMS. No PLC data, no work-order writes.
 
 ## Who it's for
 
