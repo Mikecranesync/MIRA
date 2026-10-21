@@ -672,8 +672,8 @@ capabilities:
       New in #4513. Gate 1 (77-question local harness, pre-registered in the
       spec) passed: top 6 54->70, McNemar p=0.0009, top 1 31->42, p95 220 ms.
       Gate 2 retrieval half passed (unseen 36->48). Gate 3 staging A/B (2026-10-21,
-      hybrid+rerank on in staging): walk 30->34, but unseen refusals 7/7->5/7, so the
-      refusal half FAILS in that stack. Staging only; production is an owner decision
+      hybrid+rerank on in staging): walk 30->34, but unseen refusals 7/7->6/7 by answer
+      text (1 of 7, unconfirmed at n=7), so the refusal rule fails as pre-registered. Staging only; production is an owner decision
       after a refusal fix or a production-configuration refusal measurement. The real-SQL tests run in beta-gate.yml (admission-regression,
       path-filtered on manual-rag.ts), not ci.yml, so ci_jobs is empty.
     owner: "Mike Harper"
@@ -686,9 +686,12 @@ capabilities:
     rollback: >-
       Unset NOTEBOOK_LEXICAL_V2 (or set anything other than 1) and redeploy
       mira-hub. Flag off is byte-identical to the previous retrieval SQL.
+    blocker: >-
+      Production: refusal rule not met in the staging stack (#4572), and refusals in
+      production's lexical-only configuration not measured. Owner decision.
     acknowledged_rules: []
     promotion_criteria:
-      - "Refusals: unanswerable questions refuse no worse than with the flag off (2026-10-21 staging: 5/7 vs 7/7 — not met)."
+      - "Refusals: unanswerable questions refuse no worse than with the flag off (2026-10-21 staging: 6/7 vs 7/7 by answer text — not met; #4572)."
       - "Production: owner decision after the staging walk."
     review_by: "2026-11-17"
 

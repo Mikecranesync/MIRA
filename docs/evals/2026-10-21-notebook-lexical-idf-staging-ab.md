@@ -34,7 +34,15 @@ The 21 questions are the two complete manuals plus the unanswerable question fro
 | Switch on | 12/14 | **5/7** |
 
 - **Paired:** +1 / −2.
-- **The refusal half of gate 2 FAILS in the staging stack:** with the switch on, 2 of 7 unanswerable questions received a cited answer instead of an honest refusal.
+- **Refusal check on the answer text.** The walk's scorer calls a turn "refused" only when it has no citation. So the 7 unanswerable turns in each arm were re-checked with notebook chat's own refusal classifier (`isRefusal`, from `equipment-notebooks/[id]/chat/route.ts` on main), counts only:
+
+  | 7 unanswerable | Answer text is an honest refusal | Stream status `insufficient_evidence` |
+  |---|---|---|
+  | Switch off | 7 | 7 |
+  | Switch on | **6** | 4 |
+
+  The real difference is **one** question that got a substantive answer instead of a refusal. Two of the three "cited anyway" turns did say the manual does not cover it; they also attached a nearby citation, which keeps their status at `answered`.
+- **Verdict:** the pre-registered "refusals no worse" rule fails by 1 of 7. At n = 7 that cannot be distinguished from noise (exact McNemar p = 1.0), but the mechanism below makes it plausible. Tracked in #4572.
 - **Mechanism (consistent with the spec):** IDF ordering always returns the best partial matches, where the old AND-then-OR path sometimes returned nothing. More near-miss evidence reaches the model, and on an unanswerable question it occasionally answers from it.
 - **Not tuned.** Per the spec's stop rule, this is reported, not optimised against the sealed set.
 - **Harness limit:** at phone width the harness cannot open "New project" (the button sits behind a menu), so both arms ran at desktop size. Phone rendering was checked by hand separately.
@@ -53,7 +61,7 @@ A throwaway tenant (torn down, verified) uploaded the SMC Flex manual through th
 ## What it means
 
 - **Answerable questions:** the change finds the right page more often in both stacks. Development set 54 → 70 and unseen 36 → 48 with the lexical lane alone; staging 30 → 34.
-- **Unanswerable questions:** it costs some honest refusals in the hybrid + rerank stack (7/7 → 5/7). That is a safety-adjacent regression for a technician product: answering from the wrong passage is worse than saying "the manual doesn't cover that".
+- **Unanswerable questions:** it may cost an honest refusal in the hybrid + rerank stack (7/7 → 6/7 by answer text; 1 of 7, not statistically confirmed). A second symptom is that 3 refusals arrived carrying a citation, so their status reads `answered`. That is a safety-adjacent regression for a technician product: answering from the wrong passage is worse than saying "the manual doesn't cover that".
 - **Not measured:** refusals in production's lexical-only configuration. That would need staging with hybrid and rerank off, or the answer-stage refusal check.
 
 ## Status
