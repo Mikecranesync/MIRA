@@ -23,7 +23,7 @@ never a pass, and never a fail of the change.
 
 | # | Check | How |
 |---|---|---|
-| V1 | Both arms ran the same build, recorded by `gitSha` and `builtAt` | `walk_eval` `validity.v1_build` (one `gitSha` per arm, identical across arms) |
+| V1 | Both arms ran the same build: one identical `gitSha` | `walk_eval` `validity.v1_build`. `builtAt` is reported, not compared, because changing a flag means rebuilding the container from the same SHA. |
 | V2 | Both arms used the same corpus bytes | `validity.v2_corpus`: each manual in `--manual-dir` must hash to its `corpus.json` sha256. A changed OEM PDF is BROKEN. |
 | V3 | The configuration is captured at run time for both arms, and the only difference is the flag under test | `validity.v3_config`: a `--config` snapshot per arm containing every key in `walk_eval.REQUIRED_CONFIG` (`""` = unset); the differing keys must equal `--vary`. A partial snapshot is UNVERIFIED. |
 | V4 | **Lanes actually ran.** For any arm that claims the vector lane, `mira.retrieval.vector_lane=ran` on ≥ 90% of turns. An arm configured hybrid-off shows it ran on 0 turns. Both arms are within 10 points of each other. | `tools/retrieval_eval/lanes.py`, then `walk_eval --lanes` → `paired.*.validity.v4_vector_ran`. An untraced question counts as missing, never as ran. It uses the Langfuse v2 API; the v1 trace endpoint stops working on **2026-11-16**. |

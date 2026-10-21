@@ -245,6 +245,7 @@ REQUIRED_CONFIG = (
     "NOTEBOOK_ENERGIZED_HARD_STOP",
     "NOTEBOOK_CLAIM_VERIFIER",
     "NOTEBOOK_GARBLE_DECODE",
+    "NOTEBOOK_GUIDED_PROCEDURE",
     "OPENAI_MODEL",
 )
 # The hub enables these only on exactly "1" (reranker.ts, hybrid-retrieval.ts, manual-rag.ts).

@@ -396,3 +396,17 @@ def test_v3_rejects_a_partial_snapshot_and_v5_an_ambiguous_rerank_value():
     vague = {"a": full | {"NOTEBOOK_RERANK": "true"}, "b": full | {"NOTEBOOK_RERANK": "true"}}
     assert walk_eval.rerank_check(vague, ["a", "b"])["status"] == "UNVERIFIED"
     assert walk_eval.flag_state("TRUE") == "ambiguous" and walk_eval.flag_state("") == "off"
+
+
+def test_every_answer_affecting_switch_in_the_config_matrix_is_required():
+    matrix = (
+        Path(__file__).resolve().parents[2] / "docs/evals/retrieval-eval/config-matrix.md"
+    ).read_text()
+    import re
+
+    switches = set(
+        re.findall(r"^\| `((?:NOTEBOOK|MIRA|OPENAI|RERANKER)_[A-Z0-9_]+)`", matrix, re.M)
+    )
+    assert switches and switches <= set(walk_eval.REQUIRED_CONFIG), switches - set(
+        walk_eval.REQUIRED_CONFIG
+    )
