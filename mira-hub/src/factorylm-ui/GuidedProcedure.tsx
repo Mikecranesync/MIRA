@@ -17,7 +17,8 @@ type Procedure = { templateId: string; title: string; applicability: Applicabili
 
 const S: Record<string, CSSProperties> = {
   pill: {
-    position: "fixed", top: "calc(var(--fl-header, 56px) + 8px)", right: 12, zIndex: 40,
+    // A length, not a token: --fl-header is a colour (Codex #4573 F7). Clears the shell header + safe area.
+    position: "fixed", top: "calc(env(safe-area-inset-top, 0px) + 72px)", right: 12, zIndex: 40,
     background: "var(--fl-accent)", color: "var(--fl-accent-ink)", border: "none",
     borderRadius: "var(--fl-radius-pill, 999px)", padding: "8px 14px", fontSize: "var(--fl-fs-sm)",
     minHeight: 44, cursor: "pointer",
@@ -45,6 +46,17 @@ const S: Record<string, CSSProperties> = {
 };
 
 const UNIT_LABEL: Record<string, string> = { ohm: "Ω", kohm: "kΩ" };
+
+export type Drafts = { readings: Record<string, string>; note: string };
+const EMPTY_DRAFTS: Drafts = { readings: {}, note: "" };
+
+/**
+ * What the technician's unsent entries become after a save attempt: cleared only when the answer
+ * was saved; kept for a retry on any failure or refusal (Codex #4573 F9).
+ */
+export function draftsAfterSave(saved: boolean, drafts: Drafts): Drafts {
+  return saved ? EMPTY_DRAFTS : drafts;
+}
 
 function Guidance({ g }: { g: NonNullable<SessionView["guidance"]> }) {
   return (
@@ -116,8 +128,9 @@ export function GuidedProcedure({ notebookId, onAskMira }: { notebookId: string;
       if (data.session) setProcs((p) => (p ? [{ ...p[0], session: data.session ?? null }, ...p.slice(1)] : p));
       if (!res.ok && res.status !== 409) setError(data.message ?? "That answer could not be saved. Try again.");
       if (res.status === 409 && !data.session) setError(data.message ?? "This session changed. Reload to continue.");
-      setReadings({});
-      setNote("");
+      const next = draftsAfterSave(res.ok, { readings, note });
+      setReadings(next.readings);
+      setNote(next.note);
     } catch {
       setError("No connection. Your progress is saved; try again when you're back online.");
     } finally {

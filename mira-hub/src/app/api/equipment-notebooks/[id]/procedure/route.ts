@@ -29,7 +29,8 @@ import {
 } from "@/capabilities/diagnostic-plan/guided";
 import {
   appendRecord,
-  createSession,
+  restartSession,
+  startSession,
   guidedProcedureEnabled,
   latestSession,
   type GuidedSession,
@@ -158,18 +159,20 @@ export async function POST(req: NextRequest, { params }: Params) {
   const latest = await inTenant(ctx.tenantId, (db) => latestSession(db, ctx.tenantId, id, template.id));
 
   if (body.op === "start" || body.op === "restart") {
-    if (body.op === "start" && latest && latest.status === "running") return NextResponse.json({ session: sessionPayload(latest) });
-    const created = await inTenant(ctx.tenantId, (db) =>
-      createSession(db, ctx.tenantId, {
-        notebookId: id,
-        templateId: template.id,
-        templateVersion: template.version ?? "",
-        sourceSha256: template.source?.fileSha256 ?? "",
-        revision: offered.applicability.applies ? offered.applicability.revision : "not_attached",
-        startedBy: ctx.userId ?? null,
-      }),
-    );
-    return NextResponse.json({ session: sessionPayload(created) }, { status: 201 });
+    const fresh = {
+      notebookId: id,
+      templateId: template.id,
+      templateVersion: template.version ?? "",
+      sourceSha256: template.source?.fileSha256 ?? "",
+      revision: offered.applicability.applies ? offered.applicability.revision : ("not_attached" as const),
+      startedBy: ctx.userId ?? null,
+    };
+    if (body.op === "restart") {
+      const s = await inTenant(ctx.tenantId, (db) => restartSession(db, ctx.tenantId, fresh));
+      return NextResponse.json({ session: sessionPayload(s) }, { status: 201 });
+    }
+    const { session, created } = await inTenant(ctx.tenantId, (db) => startSession(db, ctx.tenantId, fresh));
+    return NextResponse.json({ session: sessionPayload(session) }, { status: created ? 201 : 200 });
   }
 
   if (body.op !== "answer") return NextResponse.json({ error: "invalid_op" }, { status: 400 });

@@ -21,6 +21,12 @@ const T45 = "Table 45 - Motor Will Not Start — No Output Voltage to the Motor"
 const T46 = "Table 46 - Motor Rotates (but does not accelerate to full speed)";
 const T47 = "Table 47 - Motor Stops While Running";
 const T48 = "Table 48 - Miscellaneous Situations";
+/** Table 44 p.105, V24 Recovery (F44). Rows F45 and F46 say "Same as F44", so they carry these too. */
+const F44_SOLUTIONS = [
+  "Check control power. Make sure it is within the operating parameters of the SMC Flex controller",
+  "Check control power connections, including ground, to the control module",
+  "Replace control module",
+];
 const SEE_44 = g(105, T45, ["See fault description"], ["See Table 44 addressing fault conditions"]);
 
 /** p.103 — the intro paragraph, the SHOCK HAZARD box and the IR-test ATTENTION box, verbatim. */
@@ -315,21 +321,17 @@ export const SMC_FLEX_TROUBLESHOOTING: WorkflowTemplate = {
           next: "checks",
           guidance: g(105, `${T44} (Continued)`, [
             "Control module internal 24V control power stays low after closing bypass contactor",
-          ], [
-            "Check control power. Make sure it is within the operating parameters of the SMC Flex controller",
-            "Check control power connections, including ground, to the control module",
-            "Replace control module",
-          ]),
+          ], F44_SOLUTIONS),
         },
         v24_loss: {
           label: "V24 Loss — F45",
           next: "checks",
-          guidance: g(105, `${T44} (Continued)`, ["Control module internal 24V supply out of normal range"], ["Same as F44"]),
+          guidance: g(105, `${T44} (Continued)`, ["Control module internal 24V supply out of normal range"], ["Same as F44", ...F44_SOLUTIONS]),
         },
         v_control: {
           label: "V Control — F46",
           next: "checks",
-          guidance: g(105, `${T44} (Continued)`, ["Sense of control voltage in error"], ["Same as F44"]),
+          guidance: g(105, `${T44} (Continued)`, ["Sense of control voltage in error"], ["Same as F44", ...F44_SOLUTIONS]),
         },
         option_input: {
           label: "Option Input 1, 2 — F48, F49",

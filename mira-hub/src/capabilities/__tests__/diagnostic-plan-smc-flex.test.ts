@@ -96,6 +96,16 @@ describe("branches of Figure 77 and Tables 45–48", () => {
   });
 });
 
+describe("cross-references are resolved (Codex #4573 F10)", () => {
+  it.each(["v24_loss", "v_control"])("%s shows F44's own solutions, not only 'Same as F44'", (row) => {
+    const { run } = play([ACK, choice("fault_displayed", "yes"), choice("t44", row)]);
+    const g = viewSession(T, run).step!.guidance!;
+    expect(g.solutions[0]).toBe("Same as F44");
+    expect(g.solutions).toContain("Check control power connections, including ground, to the control module");
+    expect(g.solutions).toContain("Replace control module");
+  });
+});
+
 describe("never invents a branch", () => {
   it("'none of these' at Figure 77 escalates", () => {
     expect(viewSession(T, play([ACK, choice("fault_displayed", "no"), choice("nature", null)]).run).status).toBe("escalate");

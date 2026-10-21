@@ -29,6 +29,10 @@ let seq = 0;
 function fakeSessions(sql: string, params: unknown[]) {
   sqls.push({ sql, params });
   if (sql.includes("INSERT INTO guided_procedure_sessions")) {
+    // Partial unique index (migration 106): one running session per tenant/notebook/template.
+    const clash = runs.some((r) => r.status === "running" && r.tenant_id === String(params[0]) && r.notebook_id === String(params[1]) && r.template_id === String(params[2]));
+    if (clash && sql.includes("ON CONFLICT")) return { rows: [] };
+    if (clash) throw new Error("duplicate key value violates unique constraint uq_guided_procedure_sessions_one_running");
     seq += 1;
     const row: Row = { id: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`, tenant_id: String(params[0]), notebook_id: String(params[1]),
       template_id: String(params[2]), template_version: String(params[3]), revision: String(params[5]), status: "running", records: [],
@@ -40,6 +44,10 @@ function fakeSessions(sql: string, params: unknown[]) {
     const byTenant = sql.includes("tenant_id = $1::uuid");
     const hits = runs.filter((r) => (!byTenant || r.tenant_id === params[0]) && r.notebook_id === params[1] && r.template_id === params[2]);
     return { rows: hits.sort((x, y) => y.started_at.localeCompare(x.started_at)).slice(0, 1) };
+  }
+  if (sql.includes("SET status = 'restarted'")) {
+    for (const r of runs) if (r.status === "running" && r.tenant_id === params[0] && r.notebook_id === params[1] && r.template_id === params[2]) r.status = "restarted";
+    return { rows: [] };
   }
   if (sql.includes("UPDATE guided_procedure_sessions")) {
     const byTenant = sql.includes("tenant_id = $2::uuid");
@@ -248,5 +256,22 @@ describe("answers bind to the session on screen (Codex #4573 F3)", () => {
     await answer({ kind: "acknowledge", stepId: "hazards", acknowledged: true });
     expect((await answer({ kind: "acknowledge", stepId: "hazards", acknowledged: true }, { sessionId: runs[0].id, recordCount: 0 })).status).toBe(409);
     expect(runs[0].records).toHaveLength(1);
+  });
+});
+
+describe("one running session (Codex #4573 F8)", () => {
+  it("two simultaneous starts share one session, and an answer from either is valid", async () => {
+    const [r1, r2] = await Promise.all([post({ templateId: T.id, op: "start" }), post({ templateId: T.id, op: "start" })]);
+    const [s1, s2] = [(await r1.json()).session, (await r2.json()).session];
+    expect(runs).toHaveLength(1);
+    expect(s1.sessionId).toBe(s2.sessionId);
+    expect([r1.status, r2.status].sort()).toEqual([200, 201]);
+    const res = await answer({ kind: "acknowledge", stepId: "hazards", acknowledged: true }, { sessionId: s2.sessionId, recordCount: s2.recordCount });
+    expect(res.status).toBe(200);
+  });
+  it("restart ends the running session as 'restarted' before opening the new one", async () => {
+    await post({ templateId: T.id, op: "start" });
+    await post({ templateId: T.id, op: "restart" });
+    expect(runs.map((r) => r.status)).toEqual(["restarted", "running"]);
   });
 });

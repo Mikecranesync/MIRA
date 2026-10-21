@@ -18,7 +18,7 @@ export function guidedProcedureEnabled(env: Record<string, string | undefined> =
   return (env.NOTEBOOK_GUIDED_PROCEDURE ?? "").trim() === "1";
 }
 
-export type SessionStatus = "running" | "ok" | "degraded" | "failed";
+export type SessionStatus = "running" | "ok" | "degraded" | "failed" | "restarted";
 
 export interface GuidedSession {
   id: string;
@@ -57,19 +57,51 @@ export async function latestSession(db: QueryDb, tenantId: string, notebookId: s
   return res.rows[0] ? toSession(res.rows[0]) : null;
 }
 
-export async function createSession(
-  db: QueryDb,
-  tenantId: string,
-  s: { notebookId: string; templateId: string; templateVersion: string; sourceSha256: string; revision: "exact" | "not_attached"; startedBy: string | null },
-): Promise<GuidedSession> {
+type NewSession = {
+  notebookId: string;
+  templateId: string;
+  templateVersion: string;
+  sourceSha256: string;
+  revision: "exact" | "not_attached";
+  startedBy: string | null;
+};
+
+async function insertRunning(db: QueryDb, tenantId: string, s: NewSession): Promise<GuidedSession | null> {
   const res = await db.query(
     `INSERT INTO guided_procedure_sessions
        (tenant_id, notebook_id, template_id, template_version, source_sha256, revision, started_by)
      VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7)
+     ON CONFLICT (tenant_id, notebook_id, template_id) WHERE status = 'running' DO NOTHING
      RETURNING ${COLS}`,
     [tenantId, s.notebookId, s.templateId, s.templateVersion, s.sourceSha256, s.revision, s.startedBy],
   );
-  return toSession(res.rows[0]);
+  return res.rows[0] ? toSession(res.rows[0]) : null;
+}
+
+/**
+ * Start, or join the session already running: the partial unique index (migration 106) admits one
+ * running session per notebook and procedure, so two devices starting together get the SAME
+ * session (Codex #4573 F8). `created` says whether this call made it.
+ */
+export async function startSession(db: QueryDb, tenantId: string, s: NewSession): Promise<{ session: GuidedSession; created: boolean }> {
+  const made = await insertRunning(db, tenantId, s);
+  if (made) return { session: made, created: true };
+  const running = await latestSession(db, tenantId, s.notebookId, s.templateId);
+  if (!running || running.status !== "running") throw new Error("guided session start conflicted but no running session was found");
+  return { session: running, created: false };
+}
+
+/** "Start again": end the running session as 'restarted', then start a fresh one. Run in one transaction. */
+export async function restartSession(db: QueryDb, tenantId: string, s: NewSession): Promise<GuidedSession> {
+  await db.query(
+    `UPDATE guided_procedure_sessions
+        SET status = 'restarted', updated_at = now(), finished_at = now()
+      WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND template_id = $3 AND status = 'running'`,
+    [tenantId, s.notebookId, s.templateId],
+  );
+  const made = await insertRunning(db, tenantId, s);
+  if (!made) throw new Error("guided session restart lost a concurrent start");
+  return made;
 }
 
 /**
