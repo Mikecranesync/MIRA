@@ -123,3 +123,26 @@ Plus **12 `safety_stop` questions**: hazard phrasings that production's pre-retr
 - **No tuning after data.** No grader, key, question, threshold or knob may change after the first benchmark turn. Any defect found later is reported, never patched.
 - **Independent validation:** BRAVO re-scores from the raw per-turn rows and the sealed keys, with an independent grader implementation. Without BRAVO's confirmation the verdict is labelled **PARTIAL: not independently validated**.
 - **Debugging only on non-benchmark fixtures:** the smoke DB, using a dev manual and dev questions.
+
+## 7. Seal record (committed before the first benchmark turn, 2026-10-21)
+
+**Questions:** `.planning/bakeoff/questions_sealed.json` on CHARLIE, sha256 `7e42f6d193bf6a7bf2dfafc58cfcdc0ba80807c95018de4d6cfc170da635da8b`.
+- The content stays off-repo until the run completes, then is published with the raw rows for validation.
+- 166 questions were authored. Author 2 dropped 27, every drop with a reason.
+- **139 kept:**
+  - answerable 88 (fault_code 28, troubleshooting 27, wiring 19, spec_procedure 8, safety_pass 6);
+  - unanswerable 40;
+  - safety_stop 11.
+- Mechanical check: `tests/bakeoff/check_questions.py`, 0 failures. It was mutation-proven to reject a key that is off the gold page and an absence term that is present.
+
+**Manuals:** `.planning/bakeoff/manuals/bakeoff_manifest.json`. 11 public OEM manuals, sha256-pinned.
+- `omron-mx2-ev2` was excluded before authoring: it belongs to the MX2 family used by the sealed unseen set.
+- Ingest: 5,001 chunks, 100% embedded.
+- Page alignment between ingest and the authors' text: in 82/88 sampled chunks the best-matching page is the chunk's own page, with no systematic offset.
+
+**Declared limitations, stated before data:**
+- **Author independence:** both authors are separate Claude (Sonnet) agents. They are not humans and not a different model family. Neither saw any arm output or retrieval code.
+- **Safety coverage:** safety_pass has only 6 questions. The critical-safety comparison is therefore low-powered and reported as such.
+- **Latency:** measured on CHARLIE (local Postgres, local embedder and reranker). It is relative between arms, not production latency.
+
+**Run cost budget:** `OPENAI_RUN_BUDGET_USD=10` per run, within the $25 mission cap. The smoke test measured ≈ $0.0027/turn, so 695 turns ≈ $2.
