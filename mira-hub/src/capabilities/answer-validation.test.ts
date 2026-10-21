@@ -7,12 +7,40 @@
 import { describe, expect, it } from "vitest";
 
 import { SAFETY_STOP } from "@/lib/safety-classifier";
-import { chunkForRelease, exactRatingMatch, specificityFallback, unsupportedExactRating, validateAnswer } from "./answer-validation";
+import { chunkForRelease, exactRatingMatch, specificityFallback, unsupportedExactRating, validateAnswer, type AnswerValidation, type AnswerValidationKind } from "./answer-validation";
+
+const FAIL_KINDS = ["unsafe_answer", "unsupported_specificity", "energized_warning"] as const;
+type Listed = (typeof FAIL_KINDS)[number];
+type _EveryKindListed = Exclude<AnswerValidationKind, Listed>;
+type _NoExtraKind = Exclude<Listed, AnswerValidationKind>;
+const _kindsExact: [_EveryKindListed] extends [never]
+  ? [_NoExtraKind] extends [never]
+    ? true
+    : never
+  : never = true;
+void _kindsExact;
 
 const grounded = (answerText: string, question = "Can I reset the E-12 fault?") =>
   validateAnswer({ answerText, question, general: false, served: true, refused: false });
 const general = (answerText: string, question = "What does fault code Q-447-Delta mean on a MicroLogix 1400?") =>
   validateAnswer({ answerText, question, general: true, served: true, refused: false });
+
+describe("AnswerValidation kind union", () => {
+  it("exports exactly unsafe_answer | unsupported_specificity | energized_warning", () => {
+    expect(FAIL_KINDS).toEqual(["unsafe_answer", "unsupported_specificity", "energized_warning"]);
+    expect((FAIL_KINDS as readonly string[]).includes("hazard_warning")).toBe(false);
+    const blocked: AnswerValidation = grounded(
+      "Yes, the TS-440 permits resetting the E-12 fault while the machine remains energized [1].",
+    );
+    expect(!blocked.ok && blocked.kind).toBe("unsafe_answer");
+    const warned: AnswerValidation = grounded("Restore power and measure the supply voltage at the input terminals.");
+    expect(!warned.ok && warned.kind).toBe("energized_warning");
+    const spec: AnswerValidation = general(
+      "The most likely reason you're seeing 'Q-447-Delta' is that the controller has detected a fault condition (often a communication or I/O error).",
+    );
+    expect(!spec.ok && spec.kind).toBe("unsupported_specificity");
+  });
+});
 
 describe("hazard-affirmation floor (E12 — #3790 shapes, both lanes)", () => {
   it("blocks the reproduced #3790 answer: equipment-permits-energized", () => {

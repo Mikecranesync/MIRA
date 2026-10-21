@@ -33,6 +33,14 @@ import { SAFETY_STOP } from "@/lib/safety-classifier";
 import { LOCKOUT_REMOVED, RESTORE, STILL_ISOLATED, stepEnergyContradiction } from "./step-energy";
 import { firstUngovernedMatch } from "./hazard-modifiers";
 
+/** Fail kinds `validateAnswer` can emit. Hub-internal — not persisted, not
+ *  an SSE frame kind. Mobile/web consume `safety` / `safety_notice` /
+ *  `safety_stop`, never this union. There is no `hazard_warning` alias. */
+export type AnswerValidationKind =
+  | "unsafe_answer"
+  | "unsupported_specificity"
+  | "energized_warning";
+
 export type AnswerValidation =
   | { ok: true }
   | {
@@ -44,7 +52,7 @@ export type AnswerValidation =
        *  (owner decision 2026-10-16, #4122/#3790) and `unsupported_specificity`
        *  (an accuracy rule, not a safety one) both replace with a fresh,
        *  candidate-independent answer — never the rejected text. */
-      kind: "unsafe_answer" | "unsupported_specificity" | "energized_warning";
+      kind: AnswerValidationKind;
       /** Machine-readable id, e.g. `unsafe-answer:permits-energized`. */
       violation: string;
       /** Bounded excerpt of the matched text, for server logs only. */
@@ -1349,6 +1357,8 @@ function energizedWarningOr(restore: string | null, answerText: string): AnswerV
   // `restore` is A4 (RESTORE_ENERGY_SRC plus the existing RESTORE /
   // LOCKOUT_REMOVED grammars) or the isolation-tracker pairing. A null
   // here means no existing restore grammar paired with a live measurement.
+  // A1 and A2 already ran on the same text; unmatched wording is not a
+  // bypass of those checks.
   if (!restore) return { ok: true };
   return {
     ok: false,
