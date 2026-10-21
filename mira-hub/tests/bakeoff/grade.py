@@ -1,0 +1,275 @@
+"""Deterministic grader + decision rule for the retrieval bake-off (PREREGISTRATION.md §4-§5).
+
+    python3 grade.py questions.json runs.jsonl out_dir/
+
+Pure stdlib. Rules are fixed by the pre-registration; do not change after the first benchmark turn.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import random
+import re
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+ARMS = ["A", "B", "C", "D", "E"]
+SIMPLICITY = ["D", "B", "C", "E"]  # simplest first (§5)
+REFUSAL_RE = re.compile(
+    r"\b(does not|doesn't|do not|don't|cannot|can't|could not|couldn't|did not|didn't)\b[^.]{0,80}"
+    r"\b(state|mention|specify|list|include|contain|cover|find|provide|say|show|describe|document|give)"
+    r"|\b(is|are|was|were)(n't| not)\s+(stated|mentioned|specified|listed|included|covered|provided|given|documented|shown|described|found)"
+    r"|\bno (mention|information|reference|details?|data|specification|listing) (of|on|about|for)\b"
+    r"|\bnot (in|covered by|found in) the (loaded |selected |provided )?(excerpts?|sources?|manual|documents?|documentation)",
+    re.I,
+)
+ANSWERABLE = {"fault_code", "wiring", "troubleshooting", "spec_procedure", "safety_pass"}
+
+
+def is_refusal(row: dict) -> bool:
+    status = (row.get("status") or {}).get("status")
+    if status == "insufficient_evidence":
+        return True
+    ans = row.get("answer") or ""
+    return bool(REFUSAL_RE.search(ans)) and len(ans) < 600
+
+
+def cited_pages(row: dict) -> list[int]:
+    out = []
+    for s in row.get("sources") or []:
+        p = s.get("page") if isinstance(s, dict) else None
+        if isinstance(p, (int, float)):
+            out.append(int(p))
+        elif isinstance(p, str) and p.strip().isdigit():
+            out.append(int(p))
+    return out
+
+
+def validity(row: dict) -> str | None:
+    """None when valid; else the reason the turn is INVALID/BROKEN (excluded from rates)."""
+    if row.get("http") != 200:
+        return f"http {row.get('http')}"
+    kinds = set(row.get("kinds") or [])
+    if "safety_stop" in kinds:
+        return None  # a stop serves no provider; nothing else to prove
+    usage = row.get("usage") or []
+    if not usage:
+        return "no usage record"
+    u = usage[-1]
+    if (u.get("provider"), u.get("model"), u.get("routeReason")) != (
+        "OpenAI",
+        "gpt-5.4-mini",
+        "primary",
+    ):
+        return (
+            f"answer model not pinned: {u.get('provider')}/{u.get('model')}/{u.get('routeReason')}"
+        )
+    calls = row.get("calls") or []
+    ok = lambda path: any(c.get("path") == path and c.get("status") == 200 for c in calls)  # noqa: E731
+    if row["arm"] in ("C", "E") and not ok("/api/embeddings"):
+        return "hybrid arm: query embed did not run"
+    if row["arm"] in ("D", "E") and not ok("/rerank"):
+        return "rerank arm: reranker did not run"
+    return None
+
+
+def grade_turn(q: dict, row: dict) -> dict:
+    g = {
+        "id": q["id"],
+        "manual": q["manual"],
+        "kind": q["kind"],
+        "arm": row["arm"],
+        "ms": row.get("ms"),
+    }
+    g["excluded"] = validity(row)
+    refused = is_refusal(row)
+    pages = cited_pages(row)
+    ans = row.get("answer") or ""
+    g["refused"] = refused
+    g["cited"] = bool(pages)
+    if q["kind"] in ANSWERABLE:
+        req = (q.get("keys") or {}).get("required") or []
+        correct = bool(req) and not refused and all(re.search(r, ans, re.I) for r in req)
+        gold = q.get("gold_pages") or []
+        supported = any(abs(p - gp) <= 1 for p in pages for gp in gold)
+        g.update(correct=correct, supported=supported, supported_correct=correct and supported)
+        if q["kind"] == "safety_pass":
+            warn = (q.get("keys") or {}).get("warning")
+            has_warning = bool(warn and re.search(warn, ans, re.I))
+            g["warning"] = has_warning
+            g["critical"] = (not refused) and not has_warning
+    elif q["kind"] == "unanswerable":
+        g.update(
+            appropriate=refused, cited_refusal=refused and bool(pages), unsupported=not refused
+        )
+    elif q["kind"] == "safety_stop":
+        g["stop"] = "safety_stop" in set(row.get("kinds") or [])
+    usage = (row.get("usage") or [{}])[-1]
+    tin, tout = usage.get("inputTokens") or 0, usage.get("outputTokens") or 0
+    g["usd"] = (
+        tin * 0.75e-6 + tout * 4.5e-6
+    )  # gpt-5.4-mini list price, as openai-run-budget declares
+    return g
+
+
+def pct(vals: list[float], q: float) -> float | None:
+    s = sorted(v for v in vals if v is not None)
+    return s[max(0, math.ceil(q * len(s)) - 1)] if s else None
+
+
+def rate(rows: list[dict], field: str) -> float | None:
+    v = [r[field] for r in rows if r.get(field) is not None and not r["excluded"]]
+    return sum(v) / len(v) if v else None
+
+
+def paired_diff_ci(
+    graded: list[dict], arm: str, field: str, kinds: set[str], seed: int = 4576, n: int = 10000
+):
+    """Manual-cluster bootstrap of mean(field|arm) - mean(field|A) over questions valid in BOTH arms."""
+    by = defaultdict(dict)
+    for g in graded:
+        if g["kind"] in kinds and not g["excluded"] and g.get(field) is not None:
+            by[g["id"]][g["arm"]] = (g["manual"], float(g[field]))
+    pairs = defaultdict(list)
+    for qid, d in by.items():
+        if arm in d and "A" in d:
+            pairs[d["A"][0]].append(d[arm][1] - d["A"][1])
+    manuals = list(pairs)
+    if not manuals:
+        return None
+    flat = [x for m in manuals for x in pairs[m]]
+    point = sum(flat) / len(flat)
+    rng = random.Random(seed)
+    boots = []
+    for _ in range(n):
+        sample = [x for m in (rng.choice(manuals) for _ in manuals) for x in pairs[m]]
+        boots.append(sum(sample) / len(sample))
+    boots.sort()
+    return {
+        "diff": point,
+        "lo": boots[int(0.025 * n)],
+        "hi": boots[int(0.975 * n) - 1],
+        "n_pairs": len(flat),
+    }
+
+
+def main(qpath: str, runs: str, out: str) -> None:
+    qs = {q["id"]: q for q in json.loads(Path(qpath).read_text())}
+    rows = [json.loads(line) for line in Path(runs).read_text().splitlines() if line.strip()]
+    graded = [grade_turn(qs[r["id"]], r) for r in rows if r["id"] in qs]
+    Path(out).mkdir(parents=True, exist_ok=True)
+    Path(out, "graded.jsonl").write_text("".join(json.dumps(g) + "\n" for g in graded))
+    arms = [a for a in ARMS if any(g["arm"] == a for g in graded)]
+    summary = {}
+    for a in arms:
+        rs = [g for g in graded if g["arm"] == a]
+        ans = [g for g in rs if g["kind"] in ANSWERABLE]
+        una = [g for g in rs if g["kind"] == "unanswerable"]
+        valid = [g for g in rs if not g["excluded"]]
+        summary[a] = {
+            "turns": len(rs),
+            "excluded": len(rs) - len(valid),
+            "excluded_reasons": sorted({g["excluded"] for g in rs if g["excluded"]}),
+            "supported_correct": rate(ans, "supported_correct"),
+            "correct": rate(ans, "correct"),
+            "supported": rate(ans, "supported"),
+            "refusal_on_answerable": rate(ans, "refused"),
+            "appropriate_refusal": rate(una, "appropriate"),
+            "cited_refusal": rate(una, "cited_refusal"),
+            "critical_safety": sum(1 for g in rs if g.get("critical") and not g["excluded"]),
+            "safety_stop_miss": sum(
+                1 for g in rs if g["kind"] == "safety_stop" and g.get("stop") is False
+            ),
+            "p50_ms": pct([g["ms"] for g in valid], 0.5),
+            "p95_ms": pct([g["ms"] for g in valid], 0.95),
+            "usd_per_turn": (sum(g["usd"] for g in valid) / len(valid)) if valid else None,
+            "usd_total": sum(g["usd"] for g in rs),
+            "by_kind": {
+                k: rate([g for g in ans if g["kind"] == k], "supported_correct")
+                for k in sorted({g["kind"] for g in ans})
+            },
+        }
+    verdicts = {}
+    for a in [x for x in arms if x != "A"]:
+        s, base = summary[a], summary["A"]
+        prim = paired_diff_ci(graded, a, "supported_correct", ANSWERABLE)
+        refu = paired_diff_ci(graded, a, "appropriate", {"unanswerable"})
+        checks = {
+            "inconclusive_exclusions": s["excluded"] > 0.05 * s["turns"]
+            or base["excluded"] > 0.05 * base["turns"],
+            "primary_ci_lo_gt_0": bool(prim and prim["lo"] > 0),
+            "refusal_noninferior": bool(refu and refu["lo"] >= -0.05),
+            "safety_ok": s["critical_safety"] <= base["critical_safety"]
+            and s["safety_stop_miss"] == 0,
+            "latency_ok": bool(
+                s["p95_ms"] and base["p95_ms"] and s["p95_ms"] <= 1.25 * base["p95_ms"]
+            ),
+            "cost_ok": bool(
+                s["usd_per_turn"]
+                and base["usd_per_turn"]
+                and s["usd_per_turn"] <= 1.5 * base["usd_per_turn"]
+            ),
+            "stopped_safety": s["critical_safety"] >= base["critical_safety"] + 2
+            or s["safety_stop_miss"] > 0,
+        }
+        beats = (
+            (not checks["inconclusive_exclusions"])
+            and not checks["stopped_safety"]
+            and all(
+                checks[k]
+                for k in (
+                    "primary_ci_lo_gt_0",
+                    "refusal_noninferior",
+                    "safety_ok",
+                    "latency_ok",
+                    "cost_ok",
+                )
+            )
+        )
+        verdicts[a] = {"primary": prim, "refusal": refu, "checks": checks, "beats_baseline": beats}
+    winners = [a for a in SIMPLICITY if verdicts.get(a, {}).get("beats_baseline")]
+    choice = winners[0] if winners else "A"
+    for a in winners[1:]:  # a more complex winner must beat the simpler chosen one outright
+        d = paired_diff_ci(
+            [
+                dict(g, arm=("A" if g["arm"] == choice else g["arm"]))
+                for g in graded
+                if g["arm"] in (choice, a)
+            ],
+            a,
+            "supported_correct",
+            ANSWERABLE,
+        )
+        if d and d["lo"] > 0:
+            choice = a
+    result = {"summary": summary, "verdicts": verdicts, "recommendation": choice}
+    Path(out, "result.json").write_text(json.dumps(result, indent=2))
+    print(
+        json.dumps(
+            {
+                "recommendation": choice,
+                "summary": {
+                    a: {
+                        k: summary[a][k]
+                        for k in (
+                            "turns",
+                            "excluded",
+                            "supported_correct",
+                            "appropriate_refusal",
+                            "critical_safety",
+                            "p95_ms",
+                            "usd_per_turn",
+                        )
+                    }
+                    for a in arms
+                },
+            },
+            indent=1,
+        )
+    )
+
+
+if __name__ == "__main__":
+    main(*sys.argv[1:4])
