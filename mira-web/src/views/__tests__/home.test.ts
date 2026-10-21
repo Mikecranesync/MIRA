@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { renderHome } from "../home.js";
 import { TALK_TO_MIKE_HREF } from "../_topbar.js";
 import {
+  effectiveMetaDescription,
+  effectiveSubhead,
   generateJsonLd,
   loadCapabilities,
   provenClaims,
@@ -14,7 +16,7 @@ describe("renderHome — proven-claims homepage", () => {
   test("hero leads with the equipment notebook and Talk to Mike", () => {
     expect(html).toContain('id="fl-hero-h1"');
     expect(html).toContain(`<h1 id="fl-hero-h1" class="fl-hero-h1">${data.positioning.headline}</h1>`);
-    expect(html).toContain(data.positioning.subhead);
+    expect(html).toContain(effectiveSubhead(data));
     expect(html).toContain(TALK_TO_MIKE_HREF);
     expect(html).toContain('data-cta="hero-talk"');
     expect(html).toContain("Talk to Mike");
@@ -71,16 +73,19 @@ describe("renderHome — proven-claims homepage", () => {
     expect(parsed).toEqual(generateJsonLd(data));
     expect(parsed["@context"]).toBe("https://schema.org");
     const types = parsed["@graph"].map((n: { "@type": string }) => n["@type"]);
-    expect(types).toContain("Organization");
-    expect(types).toContain("WebSite");
-    expect(types).toContain("SoftwareApplication");
+    expect(types).toEqual(["Organization", "SoftwareApplication"]);
     const org = parsed["@graph"].find(
       (n: { "@type": string }) => n["@type"] === "Organization"
     );
     expect(org.founder["@type"]).toBe("Person");
     expect(org.founder.name).toBe("Mike Harper");
-    expect(JSON.stringify(parsed)).not.toMatch(/"@type":"Offer"/);
-    expect(JSON.stringify(parsed)).not.toMatch(/"price"/);
+    expect(org.email).toBe("mike@factorylm.com");
+    expect(org.contactPoint.name).toBe("Talk to Mike");
+    const dumped = JSON.stringify(parsed);
+    expect(dumped).not.toMatch(/"@type":"Offer"/);
+    expect(dumped).not.toMatch(/"price"/);
+    expect(dumped).not.toMatch(/aggregateRating/i);
+    expect(dumped).not.toMatch(/"@type":"Review"/);
   });
 
   test("Accessibility: exactly one H1", () => {
@@ -103,8 +108,10 @@ describe("renderHome — proven-claims homepage", () => {
   });
 
   test("SEO: title, meta description, canonical lead with the notebook", () => {
-    expect(html).toContain(`<title>${data.positioning.title}</title>`);
-    expect(html).toContain(`content="${data.positioning.meta_description}"`);
+    expect(html).toContain(
+      "<title>FactoryLM — An equipment notebook for your maintenance crew</title>"
+    );
+    expect(html).toContain(`content="${effectiveMetaDescription(data)}"`);
     expect(html).toContain('<link rel="canonical" href="https://factorylm.com/">');
     expect(html).toMatch(/equipment notebook/i);
   });

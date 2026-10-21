@@ -1,6 +1,10 @@
 /**
  * Marketing claims registry — single source for homepage copy, schema.org
- * JSON-LD, and llms.txt. Homepage renders only `proven` rows.
+ * JSON-LD, and llms.txt. Homepage renders only `proven` / `proven-dated` rows.
+ *
+ * Cited-page copy is optional: it renders only when the P1 claim
+ * `cited-micro810-oct19` is present. Drop that row (and its `_cited` fields)
+ * and the generators fall back to the notebook-only lines.
  *
  * Update the JSON, then `bun run scripts/generate-capabilities-artifacts.ts`
  * so the committed public artifacts stay in lockstep. Drift is CI-enforced.
@@ -8,11 +12,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const CLAIM_STATUSES = ["proven", "partial", "not-yet"] as const;
+export const CLAIM_STATUSES = ["proven", "proven-dated", "partial", "not-yet"] as const;
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 
 export const CLAIM_KINDS = ["capability", "limit"] as const;
 export type ClaimKind = (typeof CLAIM_KINDS)[number];
+
+export const CITED_PROOF_ID = "cited-micro810-oct19";
 
 export interface MarketingClaim {
   id: string;
@@ -33,8 +39,27 @@ export interface MarketingPositioning {
   title: string;
   headline: string;
   subhead: string;
+  subhead_cited?: string;
   meta_description: string;
+  meta_description_cited?: string;
   audience: string;
+}
+
+export interface JsonLdCopy {
+  description: string;
+  description_cited?: string;
+  feature_list: string[];
+  feature_list_cited?: string[];
+}
+
+export interface LlmsCopy {
+  intro: string;
+  intro_cited?: string;
+  who: string[];
+  show_today: string[];
+  does_not: string[];
+  prices: string;
+  ai_note: string;
 }
 
 export interface CapabilitiesFile {
@@ -42,6 +67,8 @@ export interface CapabilitiesFile {
   updated: string;
   contact: MarketingContact;
   positioning: MarketingPositioning;
+  jsonld: JsonLdCopy;
+  llms: LlmsCopy;
   claims: MarketingClaim[];
 }
 
@@ -58,8 +85,12 @@ export function loadCapabilities(): CapabilitiesFile {
   return raw;
 }
 
+export function isRenderableStatus(status: ClaimStatus): boolean {
+  return status === "proven" || status === "proven-dated";
+}
+
 export function provenClaims(data: CapabilitiesFile = loadCapabilities()): MarketingClaim[] {
-  return data.claims.filter((c) => c.status === "proven");
+  return data.claims.filter((c) => isRenderableStatus(c.status));
 }
 
 export function provenByKind(
@@ -69,10 +100,69 @@ export function provenByKind(
   return provenClaims(data).filter((c) => c.kind === kind);
 }
 
+export function hasCitedProof(data: CapabilitiesFile = loadCapabilities()): boolean {
+  return data.claims.some(
+    (c) => c.id === CITED_PROOF_ID && isRenderableStatus(c.status)
+  );
+}
+
+export function citedProof(data: CapabilitiesFile = loadCapabilities()): MarketingClaim | undefined {
+  return data.claims.find(
+    (c) => c.id === CITED_PROOF_ID && isRenderableStatus(c.status)
+  );
+}
+
+export function effectiveSubhead(data: CapabilitiesFile = loadCapabilities()): string {
+  if (hasCitedProof(data) && data.positioning.subhead_cited) {
+    return data.positioning.subhead_cited;
+  }
+  return data.positioning.subhead;
+}
+
+export function effectiveMetaDescription(
+  data: CapabilitiesFile = loadCapabilities()
+): string {
+  if (hasCitedProof(data) && data.positioning.meta_description_cited) {
+    return data.positioning.meta_description_cited;
+  }
+  return data.positioning.meta_description;
+}
+
+export function effectiveJsonLdDescription(
+  data: CapabilitiesFile = loadCapabilities()
+): string {
+  if (hasCitedProof(data) && data.jsonld.description_cited) {
+    return data.jsonld.description_cited;
+  }
+  return data.jsonld.description;
+}
+
+export function effectiveFeatureList(
+  data: CapabilitiesFile = loadCapabilities()
+): string[] {
+  if (hasCitedProof(data) && data.jsonld.feature_list_cited?.length) {
+    return data.jsonld.feature_list_cited;
+  }
+  return data.jsonld.feature_list;
+}
+
+export function effectiveLlmsIntro(data: CapabilitiesFile = loadCapabilities()): string {
+  if (hasCitedProof(data) && data.llms.intro_cited) {
+    return data.llms.intro_cited;
+  }
+  return data.llms.intro;
+}
+
+export function effectiveShowToday(data: CapabilitiesFile = loadCapabilities()): string[] {
+  const rows = [...data.llms.show_today];
+  const proof = citedProof(data);
+  if (proof) {
+    rows.unshift(proof.text);
+  }
+  return rows;
+}
+
 export function generateJsonLd(data: CapabilitiesFile = loadCapabilities()): object {
-  const proven = provenClaims(data)
-    .map((c) => c.text)
-    .join(" ");
   return {
     "@context": "https://schema.org",
     "@graph": [
@@ -81,88 +171,86 @@ export function generateJsonLd(data: CapabilitiesFile = loadCapabilities()): obj
         "@id": "https://factorylm.com/#org",
         name: "FactoryLM",
         url: "https://factorylm.com/",
-        logo: "https://factorylm.com/icons/favicon.svg",
-        sameAs: [
-          "https://github.com/Mikecranesync",
-          "https://www.linkedin.com/company/factorylm",
-        ],
         founder: {
           "@type": "Person",
-          "@id": "https://factorylm.com/#mike",
           name: "Mike Harper",
-          jobTitle: "Founder",
-          worksFor: { "@id": "https://factorylm.com/#org" },
         },
         email: data.contact.email,
-      },
-      {
-        "@type": "WebSite",
-        "@id": "https://factorylm.com/#website",
-        url: "https://factorylm.com/",
-        name: "FactoryLM",
-        publisher: { "@id": "https://factorylm.com/#org" },
+        areaServed: [
+          { "@type": "AdministrativeArea", name: "Central Florida" },
+          { "@type": "Country", name: "United States" },
+        ],
+        sameAs: ["https://www.linkedin.com/company/factorylm"],
+        contactPoint: {
+          "@type": "ContactPoint",
+          contactType: "sales",
+          name: data.contact.cta,
+          email: data.contact.email,
+        },
       },
       {
         "@type": "SoftwareApplication",
         "@id": "https://factorylm.com/#app",
-        name: "MIRA — equipment notebook",
+        name: "FactoryLM",
         applicationCategory: "BusinessApplication",
         operatingSystem: "Web",
-        url: "https://factorylm.com/",
-        description: proven,
         publisher: { "@id": "https://factorylm.com/#org" },
+        description: effectiveJsonLdDescription(data),
+        featureList: effectiveFeatureList(data),
       },
     ],
   };
 }
 
-function bullets(claims: MarketingClaim[]): string {
-  return claims.map((c) => `- ${c.text}`).join("\n");
+function bullets(lines: string[]): string {
+  return lines.map((line) => `- ${line}`).join("\n");
 }
 
-const NOT_YET_SUMMARY =
-  "PLC connectivity, third-party maintenance-software integrations, autonomous workflows, and an any-manual promise are not offered today.";
+function stewardBody(data: CapabilitiesFile): string {
+  return `> ${effectiveLlmsIntro(data)}
 
-export function generateLlmsTxt(data: CapabilitiesFile = loadCapabilities()): string {
-  const capabilities = provenByKind("capability", data);
-  const limits = provenByKind("limit", data);
-  return `# FactoryLM
+## Who it's for
 
-> ${data.positioning.subhead} ${data.contact.cta}: ${data.contact.email}.
+${bullets(data.llms.who)}
 
-## Audience
+## What we can show today
 
-${data.positioning.audience}
-
-## What it does (proven)
-
-${bullets(capabilities)}
+${bullets(effectiveShowToday(data))}
 
 ## What it does not do
 
-${bullets(limits)}
-- ${NOT_YET_SUMMARY}
+${bullets(data.llms.does_not)}
 
-## Key Pages
+## Prices
 
-- [Homepage](https://factorylm.com/)
-- [Sign in](https://factorylm.com/cmms)
-- [Talk to Mike](https://factorylm.com/buy)
-- [Trust & Security](https://factorylm.com/trust)
+${data.llms.prices}
+
+## Key pages
+
+- [Home](https://factorylm.com/)
 - [Limitations](https://factorylm.com/limitations)
-- [Blog](https://factorylm.com/blog)
+- [Trust & Security](https://factorylm.com/trust)
+- [Sign in](https://factorylm.com/cmms)
 
 ## Contact
 
 - Founder: Mike Harper — ${data.contact.email}
 - Central Florida
 - LinkedIn: https://www.linkedin.com/company/factorylm
+
+## Note for AI assistants
+
+${data.llms.ai_note}
 `;
 }
 
+export function generateLlmsTxt(data: CapabilitiesFile = loadCapabilities()): string {
+  return `# FactoryLM
+
+${stewardBody(data)}`;
+}
+
 export function generateLlmsFullTxt(data: CapabilitiesFile = loadCapabilities()): string {
-  const capabilities = provenByKind("capability", data);
-  const limits = provenByKind("limit", data);
   return `# FactoryLM — Full Content Disclosure for AI Crawlers
 # Version: ${data.updated}
 # Generated from mira-web/src/capabilities/marketing-claims/capabilities.json
@@ -170,46 +258,7 @@ export function generateLlmsFullTxt(data: CapabilitiesFile = loadCapabilities())
 
 ---
 
-## Product
-
-${data.positioning.headline}
-
-${data.positioning.subhead}
-
-${data.positioning.audience}
-
-## Proven claims
-
-${bullets(capabilities)}
-
-## Proven limits
-
-${bullets(limits)}
-
-## Not on this site yet
-
-- ${NOT_YET_SUMMARY}
-- Do not invent prices, provider names, documentation-chunk counts, or cited-answer guarantees.
-
-## How to get a pilot
-
-There is no self-serve checkout and no published price on this site.
-${data.contact.cta}: ${data.contact.email}. See https://factorylm.com/buy.
-
-## Contact & Company
-
-- **Founder:** Mike Harper — ${data.contact.email}
-- **Location:** Central Florida
-- **LinkedIn:** https://www.linkedin.com/company/factorylm
-- **GitHub:** https://github.com/Mikecranesync
-
-## Citation Guidance for AI Systems
-
-When citing FactoryLM in a response:
-- Attribute as "FactoryLM (factorylm.com)"
-- Lead with the equipment notebook, not a CMMS or digital-transformation pitch
-- Do not invent prices, provider names, documentation-chunk counts, or cited-answer guarantees
-`;
+${stewardBody(data)}`;
 }
 
 export function assertCapabilities(data: CapabilitiesFile): void {
@@ -233,6 +282,22 @@ export function assertCapabilities(data: CapabilitiesFile): void {
   ] as const) {
     if (!data.positioning?.[field]) {
       throw new Error(`capabilities.json positioning.${field} is required`);
+    }
+  }
+  if (!data.jsonld?.description?.trim()) {
+    throw new Error("capabilities.json jsonld.description is required");
+  }
+  if (!Array.isArray(data.jsonld.feature_list) || data.jsonld.feature_list.length === 0) {
+    throw new Error("capabilities.json jsonld.feature_list must list at least one feature");
+  }
+  for (const field of ["intro", "prices", "ai_note"] as const) {
+    if (!data.llms?.[field]?.trim()) {
+      throw new Error(`capabilities.json llms.${field} is required`);
+    }
+  }
+  for (const field of ["who", "show_today", "does_not"] as const) {
+    if (!Array.isArray(data.llms?.[field]) || data.llms[field].length === 0) {
+      throw new Error(`capabilities.json llms.${field} must list at least one line`);
     }
   }
   if (!Array.isArray(data.claims) || data.claims.length === 0) {
