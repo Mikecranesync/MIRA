@@ -158,6 +158,7 @@ def test_unrelated_canonical_package_change_passes():
 def test_sibling_file_newly_created_under_each_guarded_directory_is_caught():
     real_policy = load_guard_policy(REAL_REGISTRY)
     siblings = [
+        "mira-web/src/views/__brand_new_sibling__.ts",
         "mira-web/src/data/__brand_new_sibling__.ts",
         "mira-web/src/routes/__brand_new_sibling__.ts",
         "mira-hub/src/components/__brand_new_sibling__.tsx",
@@ -2459,8 +2460,6 @@ def test_marketing_only_pr_4552_file_list_passes_without_attestation():
         "mira-web/public/.well-known/security.txt",
         "mira-web/public/printsense.html",
         "mira-web/public/activated.html",
-        "mira-web/src/views/__brand_new_sibling__.ts",
-        "mira-web/src/views/__tests__/runtime-imported.test.ts",
         "mira-web/src/__tests__/printsense-landing.test.ts",
         "mira-web/src/lib/blog-renderer.ts",
         "mira-web/src/lib/feature-renderer.ts",
@@ -2485,6 +2484,10 @@ def test_marketing_pages_and_docs_remain_open(path):
         "mira-web/src/server.ts",
         "mira-web/src/routes/m.ts",
         "mira-web/src/views/scan-not-found.html",
+        "mira-web/src/views/admin.ts",
+        "mira-web/src/views/checkout.ts",
+        "mira-web/src/views/__brand_new_sibling__.ts",
+        "mira-web/src/views/__tests__/runtime-imported.test.ts",
         "mira-web/src/lib/drive-commander-renderer.ts",
         "mira-web/src/lib/head.ts",
         "mira-web/src/lib/components.ts",
@@ -2504,6 +2507,25 @@ def test_legacy_app_hub_and_control_plane_paths_stay_guarded(path):
     assert path_is_guarded(path, policy), path
     result = evaluate([ChangedFile(status="modified", path=path)], pr_body="", policy=policy)
     assert result.allowed is False
+    assert "review:exact-head and exact-body Codex GREEN" in result.missing_fields
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-web/src/views/admin.ts",
+        "mira-web/src/views/checkout.ts",
+        "mira-web/src/views/__brand_new_sibling__.ts",
+    ],
+)
+def test_unlisted_views_stay_guarded_without_attestation(path):
+    """Directory-wide views/ opening would skip admin/checkout and future pages."""
+    policy = load_guard_policy(REAL_REGISTRY)
+    assert path not in getattr(_guard, "_WEB_MARKETING_VIEW_PATHS", frozenset())
+    assert path_is_guarded(path, policy), path
+    result = evaluate([ChangedFile(status="added", path=path)], pr_body="", policy=policy)
+    assert result.allowed is False
+    assert path in result.guarded_paths
     assert "review:exact-head and exact-body Codex GREEN" in result.missing_fields
 
 

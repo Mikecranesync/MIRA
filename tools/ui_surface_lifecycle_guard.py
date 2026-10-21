@@ -158,11 +158,20 @@ _WEB_MARKETING_LIB_PATHS: frozenset[str] = frozenset(
     }
 )
 
-# Product consumption surface (QR-scan miss), not a marketing page. Keep
-# fail-closed and list as ambiguous in the narrowing PR.
-_AMBIGUOUS_PRODUCT_VIEW_PATHS: frozenset[str] = frozenset(
+# Exact public marketing views and their current tests. Anything else under
+# `mira-web/src/views/` — including a future admin/checkout page — stays
+# fail-closed. The QR-scan miss page is omitted on purpose.
+_WEB_MARKETING_VIEW_PATHS: frozenset[str] = frozenset(
     {
-        "mira-web/src/views/scan-not-found.html",
+        "mira-web/src/views/_topbar.ts",
+        "mira-web/src/views/cmms.ts",
+        "mira-web/src/views/home.ts",
+        "mira-web/src/views/limitations.ts",
+        "mira-web/src/views/security.ts",
+        "mira-web/src/views/__tests__/cmms.test.ts",
+        "mira-web/src/views/__tests__/home.test.ts",
+        "mira-web/src/views/__tests__/honest-claims.test.ts",
+        "mira-web/src/views/__tests__/topbar.test.ts",
     }
 )
 
@@ -1025,8 +1034,8 @@ def _classify_web_source(path: str) -> bool:
         # escape hatch from the presentation freeze.
         return path not in _WEB_PRESERVED_LIB_PATHS
     if path.startswith("mira-web/src/views/") or path.startswith("mira-web/src/data/"):
-        # Marketing views are opened by `_is_open_marketing_site_path` before
-        # this classifier runs. Ambiguous product views and content data stay
+        # Allowlisted marketing views are opened by `_is_open_marketing_site_path`
+        # before this classifier runs. Unlisted views and content data stay
         # fail-closed here.
         return True
     if path == "mira-web/src/server.ts":
@@ -1105,14 +1114,12 @@ def _is_open_marketing_site_path(path: str) -> bool:
     """True for public factorylm.com marketing pages that no longer need attestation.
 
     Path-scope only. Hub screens, shared UI packages, and control-plane
-    files never match. Ambiguous product views stay guarded.
+    files never match. Unlisted `src/views/` files stay guarded.
     """
-    if path in _WEB_MARKETING_LIB_PATHS:
+    if path in _WEB_MARKETING_LIB_PATHS or path in _WEB_MARKETING_VIEW_PATHS:
         return True
     if path.startswith("mira-web/src/__tests__/"):
         return True
-    if path.startswith("mira-web/src/views/"):
-        return path not in _AMBIGUOUS_PRODUCT_VIEW_PATHS
     return path.startswith("mira-web/public/") and path.lower().endswith(
         _MARKETING_PUBLIC_PAGE_SUFFIXES
     )

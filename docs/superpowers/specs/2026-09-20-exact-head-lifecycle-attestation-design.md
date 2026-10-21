@@ -63,7 +63,8 @@ attestation. Removed from the guarded-path scope (path-scope only; not a
 phrase list):
 
 - `mira-web/public/**` HTML/txt pages
-- `mira-web/src/views/**` marketing views and their tests, plus
+- an exact allowlist of marketing views and their tests under
+  `mira-web/src/views/` (not the directory), plus
   `mira-web/src/__tests__/` public-site tests
 - `mira-web/src/lib/blog-renderer.ts` and `mira-web/src/lib/feature-renderer.ts`
 
@@ -73,8 +74,9 @@ phrase list):
 `docs/adversarial-review-workflow.md`) and the preview surface
 `docs/preview/**`. Those stay guarded.
 
-Ambiguous product-adjacent paths kept guarded: `mira-web/src/views/scan-not-found.html`
-(QR-scan miss), `mira-web/src/lib/drive-commander-renderer.ts`,
+Ambiguous product-adjacent paths kept guarded: every unlisted
+`mira-web/src/views/` file (including `scan-not-found.html` and any future
+admin/checkout page), `mira-web/src/lib/drive-commander-renderer.ts`,
 `mira-web/src/lib/head.ts`, `mira-web/src/lib/components.ts`,
 `mira-web/src/data/**`, `mira-web/emails/**`, and every non-HTML/txt file
 under `mira-web/public/**`. Hub/app screens, shared UI packages, and

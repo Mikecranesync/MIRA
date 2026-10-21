@@ -61,7 +61,7 @@ this table explains the boundary.
 
 | Surface | Guarded paths | Why guarded |
 |---|---|---|
-| Public | production module-root and root-level nginx/deploy controls; `mira-web/src/routes/**`; `mira-web/src/server.ts`; all `src/lib/**` except the code-owned exact capability allowlist and the marketing blog/feature renderers; `mira-web/public/**` except HTML/txt marketing pages | Customer-routing or HTML route mounts, remaining visible-output helpers, and statically served non-page public assets (images, fonts, PDFs, manifests, scripts) plus the files that select/package that entry point. Owner-approved 2026-10-20: public marketing HTML/txt pages, `mira-web/src/views/**` marketing views and their tests, and the blog/feature renderers no longer require attestation. `mira-web/src/views/scan-not-found.html` stays guarded as a product QR-scan miss page. |
+| Public | production module-root and root-level nginx/deploy controls; `mira-web/src/routes/**`; `mira-web/src/server.ts`; all `src/lib/**` except the code-owned exact capability allowlist and the marketing blog/feature renderers; `mira-web/public/**` except HTML/txt marketing pages | Customer-routing or HTML route mounts, remaining visible-output helpers, and statically served non-page public assets (images, fonts, PDFs, manifests, scripts) plus the files that select/package that entry point. Owner-approved 2026-10-20: public marketing HTML/txt pages, an exact allowlist of marketing views and their tests, and the blog/feature renderers no longer require attestation. Unlisted `src/views/` files (including `scan-not-found.html` and any future admin/checkout page) stay guarded. |
 | Hub | production module-root build/mount controls; root auth/middleware selectors; `mira-hub/src/app/**`; all production files under `mira-hub/src/components/**` and `providers/**`; all `src/lib/**` except the code-owned exact capability allowlist; `mira-hub/src/messages/**`; `mira-hub/public/**` | Every legacy Next page/layout/style/component/provider/helper, render-ready view/data/copy/interaction module, locale catalog, public asset, root landing/capability/OTA selector, and the files that build/mount that surface; ordinary API route handlers and audited capability-shaped TypeScript helpers are classifier exclusions |
 | Mobile | production module-root build/mount controls; production files under `mira-mobile/android/**` and `mira-mobile/ios/**`; app/universal-link associations; OTA verify/select/publish/deploy/rollback/fingerprint controls; `mira-mobile/index.html`; production React/style/navigation and mixed presentation/view-model helpers under `mira-mobile/src/**` | Actual application/native/deep-link/OTA mount and packaging controls, separate shell/screen tree, styles, navigation, visible copy/interaction helpers, and duplicate chat presentation |
 
@@ -112,8 +112,9 @@ presentation-shaped:
   exact code-owned allowlist of audited existing backend libraries (including
   typed chat transport and QR generation), TypeScript/JSON files in
   `src/seed/**` and the explicit future `src/capabilities/**` root, marketing
-  views under `src/views/**` (except `scan-not-found.html`), public-site tests
-  under `src/__tests__/`, and the blog/feature renderers remain open.
+  an exact allowlist of marketing views and their tests (not the whole
+  `src/views/**` tree), public-site tests under `src/__tests__/`, and the
+  blog/feature renderers remain open.
   The mixed `m.ts` customer redirect journey is guarded. Every other suffix in
   the capability/seed roots, every other route, the mixed `server.ts` mount,
   every non-allowlisted `src/lib/**` file, remaining page content, and unknown

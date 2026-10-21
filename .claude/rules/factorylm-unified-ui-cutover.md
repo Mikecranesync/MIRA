@@ -41,7 +41,7 @@ Mission coordination: [Mikecranesync/MIRA#3626](https://github.com/Mikecranesync
 
 | Surface | Guarded paths |
 |---|---|
-| Public | production module-root and root-level nginx/deploy controls, remaining page/content/render routes under `mira-web/src/**` (not marketing views, their tests, or the blog/feature renderers), the mixed `server.ts` mount and mailer, every historical `src/lib/**` file outside the guard's exact audited capability allowlist, and `mira-web/public/**` except HTML/txt marketing pages |
+| Public | production module-root and root-level nginx/deploy controls, remaining page/content/render routes under `mira-web/src/**` (not the exact marketing-view allowlist, those tests, or the blog/feature renderers), the mixed `server.ts` mount and mailer, every historical `src/lib/**` file outside the guard's exact audited capability allowlist, and `mira-web/public/**` except HTML/txt marketing pages |
 | Hub | production module-root build/mount controls, root auth/middleware selectors, the `/api/me` capability wrapper, the mobile live-update manifest selector, `mira-hub/src/app/**`, every production file under `components/**` and `providers/**`, every historical `src/lib/**` file outside the guard's exact audited capability allowlist, rendered `messages/**` locale catalogs, and `mira-hub/public/**` |
 | Mobile | production module-root build/mount controls, production native Android/iOS wrappers, app/universal-link associations, OTA verify/select/publish/deploy/rollback/fingerprint controls, the mixed `api/resources.ts` capability decoder, `mira-mobile/index.html`, and production React/style/navigation and mixed visible-copy/view-model helpers under `mira-mobile/src/**` |
 
@@ -85,8 +85,9 @@ manifests, scripts, and other non-page assets still change the shipped
 legacy experience and stay guarded. Direct production files at each legacy
 module root fail closed; docs, screenshot evidence, tests, and test-only
 configs/tooling stay open. Owner-approved 2026-10-20: public marketing
-HTML/txt pages, `mira-web/src/views/**` marketing views and their tests, and
-the blog/feature renderers no longer require attestation.
+HTML/txt pages, an exact allowlist of marketing views and their tests (not
+the whole `mira-web/src/views/**` tree), and the blog/feature renderers no
+longer require attestation. Unlisted views stay guarded.
 Mobile native production trees and every OTA workflow control require the audited
 cutover rationale; native tests and docs stay open. Root deployable nginx,
 automatic Compose, and redirect controls are guarded; backend-only deploy
