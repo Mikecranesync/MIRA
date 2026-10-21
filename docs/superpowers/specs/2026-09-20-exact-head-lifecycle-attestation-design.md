@@ -84,10 +84,13 @@ admin/checkout page), `mira-web/src/lib/drive-commander-renderer.ts`,
 Hub/app screens, shared UI packages, and
 control-plane paths stay fail-closed exactly as before.
 
-The author-written `## Lifecycle guard rationale` check ignores the
-auto-injected Cursor agent footer HTML (the wrapper comments and the
-trailing `cursor_ref=pr_footer` block). HTML inside the author-written
-rationale still fails closed.
+HTML-safety runs on the full raw PR body, footer included. The
+author-written `## Lifecycle guard rationale` check ignores the
+auto-injected Cursor agent wrapper comments and a trailing
+`cursor_ref=pr_footer` block only when that footer matches the exact
+Cursor shape with no other tags. A fake footer that hides `<script>` or
+other HTML fails closed. HTML inside the author-written rationale still
+fails closed.
 
 For a PR that touches one or more guarded legacy or control-plane paths, all of
 the following are required:

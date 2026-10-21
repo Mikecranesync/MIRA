@@ -2657,6 +2657,78 @@ def test_html_inside_author_written_rationale_still_fails_with_cursor_footer():
     )
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        (
+            '<div><a href="https://cursor.com/agents/x?cursor_ref=pr_footer">'
+            "<script>alert(1)</script></a></div>"
+        ),
+        (
+            '<div><a href="https://cursor.com/agents/x?cursor_ref=pr_footer">'
+            '<iframe src="https://evil.test"></iframe></a></div>'
+        ),
+        (
+            '<div><a href="https://cursor.com/agents/x?cursor_ref=pr_footer">'
+            "<span>hidden</span></a></div>"
+        ),
+    ],
+    ids=("script", "iframe", "span"),
+)
+def test_fake_cursor_footer_with_forbidden_html_fails(payload):
+    body = _VALID_BODY + "\n" + payload + "\n"
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
+    assert result.allowed is False
+    assert "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale" in (
+        result.missing_fields
+    )
+
+
+def test_fake_cursor_footer_script_after_end_marker_fails():
+    body = (
+        "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->\n"
+        + _VALID_BODY
+        + "\n<!-- CURSOR_AGENT_PR_BODY_END -->\n\n"
+        + '<div><a href="https://cursor.com/agents/x?cursor_ref=pr_footer">'
+        "<script>alert(1)</script></a></div>\n"
+    )
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
+    assert result.allowed is False
+    assert "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale" in (
+        result.missing_fields
+    )
+
+
+def test_genuine_picture_cursor_footer_still_passes():
+    body = (
+        "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->\n"
+        + _VALID_BODY
+        + "\n<!-- CURSOR_AGENT_PR_BODY_END -->\n\n"
+        + '<div><a href="https://cursor.com/agents/bc-test?cursor_ref=pr_footer'
+        '&amp;cursor_cta=open_in_web"><picture><source media="(prefers-color-scheme: dark)" '
+        'srcset="https://cursor.com/assets/images/open-in-web-dark.png">'
+        '<img alt="Open in Web" src="https://cursor.com/assets/images/open-in-web-dark.png">'
+        "</picture></a></div>\n"
+    )
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
+    assert result.allowed is True
+
+
 def test_rationale_only_after_cursor_body_end_cannot_authorize():
     body = (
         "Some PR description text.\n"

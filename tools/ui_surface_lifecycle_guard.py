@@ -695,8 +695,9 @@ _CURSOR_AGENT_BODY_BEGIN = "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->"
 _CURSOR_AGENT_BODY_END = "<!-- CURSOR_AGENT_PR_BODY_END -->"
 # Trailing Cursor cloud-agent footer only: a final <div> whose links are
 # cursor.com agents/background-agent URLs carrying cursor_ref=pr_footer.
-# Anything else, including HTML earlier in the author-written body, stays
-# subject to the unsafe-HTML check.
+# HTML-safety runs on the full raw PR body (footer included). This pattern
+# is used only to ignore an exact-shape footer during rationale extraction,
+# and only when it contains no tags beyond the allowlist below.
 _CURSOR_PR_FOOTER_RE = re.compile(
     r"(?:\r?\n)*<div>(?:(?!</div>).)*"
     r"https://cursor\.com/(?:agents/|background-agent\?)"
@@ -704,6 +705,8 @@ _CURSOR_PR_FOOTER_RE = re.compile(
     r"(?:(?!</div>).)*</div>(?:\r?\n)*\Z",
     re.IGNORECASE | re.DOTALL,
 )
+_HTML_TAG_NAME_RE = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b")
+_CURSOR_FOOTER_ALLOWED_TAGS = frozenset({"a", "div", "img", "picture", "source"})
 # The Codex review ledger's comment envelope, byte-for-byte the shape
 # `scripts/adversarial-review-ledger.mjs` (V2_REVIEW_RE) accepts. Anything that
 # does not match from the first character is not an attestation — it cannot
@@ -1672,15 +1675,20 @@ def _has_unsafe_html(tokens) -> bool:
     emitted as a level-zero heading token. HTML comment recovery also differs
     between Markdown renderers and HTML5 browsers. Permit only one strictly
     valid standalone comment per HTML token; reject tags, unclosed/malformed
-    comments, or combined comment/tag tokens in the author-written PR body
-    (the Cursor agent wrapper and trailing footer are stripped first).
+    comments, or combined comment/tag tokens. The check runs on the full
+    raw PR body, footer included. The exact Cursor cloud-agent footer
+    (allowed tags only) is the sole non-comment HTML exception.
     """
     for token in tokens:
         for candidate in (token, *(token.children or ())):
-            if candidate.type in {"html_block", "html_inline"} and not (
-                _is_safe_standalone_html_comment(candidate.content)
-            ):
-                return True
+            if candidate.type not in {"html_block", "html_inline"}:
+                continue
+            content = candidate.content
+            if _is_safe_standalone_html_comment(content):
+                continue
+            if _is_exact_cursor_pr_footer(content):
+                continue
+            return True
     return False
 
 
@@ -1702,15 +1710,33 @@ def _has_renderer_specific_markup(source: str) -> bool:
     return _GITHUB_FOOTNOTE_RE.search(source) is not None or source.count("$") >= 2 or "~" in source
 
 
+def _is_exact_cursor_pr_footer(block: str) -> bool:
+    """True only for the Cursor cloud-agent footer with no extra tags.
+
+    The block must be a trailing ``<div>`` whose links are cursor.com
+    agents/background-agent URLs carrying ``cursor_ref=pr_footer``, and
+    every tag must be in ``_CURSOR_FOOTER_ALLOWED_TAGS``. A fake footer
+    that hides ``<script>`` or any other tag is not stripped and is not
+    exempt from the unsafe-HTML check.
+    """
+    if _CURSOR_PR_FOOTER_RE.match(block) is None:
+        return False
+    if "<!--" in block or "<!" in block or "<?" in block:
+        return False
+    tags = {match.group(1).lower() for match in _HTML_TAG_NAME_RE.finditer(block)}
+    return bool(tags) and tags <= _CURSOR_FOOTER_ALLOWED_TAGS
+
+
 def _author_written_pr_body(pr_body: str) -> str:
     """Return the author-written PR body, ignoring Cursor agent injection.
 
     Cursor wraps agent-authored bodies in HTML comments and appends a
-    marketing footer after the end marker. Strip that wrapper and the
-    trailing footer so they cannot fail the unsafe-HTML check. The
-    author-written rationale remains subject to the full HTML/subset rules.
-    Content after the end marker is discarded even when it is not the
-    known footer — it is agent metadata, not attestation text.
+    marketing footer after the end marker. Strip the wrapper and, when it
+    matches the exact Cursor footer shape with no other tags, the trailing
+    footer. Those strips apply only to rationale extraction; HTML-safety
+    runs on the full raw body first. Content after the end marker is
+    discarded even when it is not the known footer — it is agent
+    metadata, not attestation text.
     """
     source = pr_body or ""
     end_at = source.find(_CURSOR_AGENT_BODY_END)
@@ -1719,11 +1745,17 @@ def _author_written_pr_body(pr_body: str) -> str:
     begin_at = source.find(_CURSOR_AGENT_BODY_BEGIN)
     if begin_at != -1:
         source = source[begin_at + len(_CURSOR_AGENT_BODY_BEGIN) :]
-    return _CURSOR_PR_FOOTER_RE.sub("", source)
+    match = _CURSOR_PR_FOOTER_RE.search(source)
+    if match is not None and _is_exact_cursor_pr_footer(match.group(0)):
+        return source[: match.start()] + source[match.end() :]
+    return source
 
 
 def _find_exception_sections(pr_body: str) -> tuple[list[str], Optional[str]]:
-    source = _author_written_pr_body(pr_body)
+    raw = pr_body or ""
+    if _has_unsafe_html(_GITHUB_MARKDOWN.parse(raw)):
+        return [], "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale"
+    source = _author_written_pr_body(raw)
     tokens = _GITHUB_MARKDOWN.parse(source)
     if _has_unsafe_html(tokens):
         return [], "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale"
