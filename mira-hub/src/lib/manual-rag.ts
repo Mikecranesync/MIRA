@@ -1441,12 +1441,7 @@ export async function retrieveNodeChunks(
       ), df AS (
         SELECT q.lex, count(*)::float8 AS df FROM qlex q JOIN scope s ON q.lex = ANY(s.lexemes) GROUP BY q.lex
       ), scored AS (
-        -- #4597: summed as numeric, not float8. float8 addition is not associative and
-        -- the aggregate's term order follows the physical row order, so the same
-        -- chunk scored differently in the last bits after a reload and the page order
-        -- changed between identical runs. numeric addition is exact, so the score is
-        -- order-independent and the deterministic tie-break below is always reached.
-        SELECT s.id, sum(ln((n.n - df.df + 0.5) / (df.df + 0.5) + 1)::numeric) AS score
+        SELECT s.id, sum(ln((n.n - df.df + 0.5) / (df.df + 0.5) + 1)::numeric) AS score -- #4597: exact sum, independent of physical row order
           FROM scope s CROSS JOIN n JOIN df ON df.lex = ANY(s.lexemes)
           GROUP BY s.id
       )
