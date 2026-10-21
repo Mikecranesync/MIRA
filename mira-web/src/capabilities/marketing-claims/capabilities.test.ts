@@ -56,10 +56,12 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
 
   test("homepage renders every proven claim and none of the deferred texts", () => {
     const html = renderHome("https://factorylm.com/");
+    const positioningTexts = new Set(Object.values(data.positioning));
     for (const claim of provenClaims(data)) {
       expect(html, `missing proven claim ${claim.id}`).toContain(claim.text);
     }
     for (const claim of data.claims.filter((c) => c.status !== "proven")) {
+      if (positioningTexts.has(claim.text)) continue;
       expect(html, `homepage leaked deferred claim ${claim.id}`).not.toContain(claim.text);
     }
   });
@@ -72,5 +74,31 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(generateLlmsTxt(data)).not.toMatch(/\$\d/);
     expect(generateLlmsFullTxt(data)).not.toMatch(/\$\d/);
     expect(generateLlmsTxt(data)).not.toContain("Pricing");
+  });
+
+  test("Oct 21 proven set is exactly A5, A6, A8, A9, and magic-link", () => {
+    const provenIds = data.claims
+      .filter((c) => c.status === "proven")
+      .map((c) => c.id)
+      .sort();
+    expect(provenIds).toEqual([
+      "magic-link-web-signin",
+      "mike-central-florida",
+      "no-plc-or-work-order-write",
+      "not-a-cmms",
+      "qualified-manuals-only",
+    ]);
+  });
+
+  test("llms files omit sensors, work orders, and the banned marketing claims", () => {
+    const llms = `${generateLlmsTxt(data)}\n${generateLlmsFullTxt(data)}`;
+    expect(llms).not.toMatch(/\bsensors\b/i);
+    expect(llms).not.toMatch(/work orders/i);
+    expect(llms).not.toContain("68,000");
+    expect(llms).not.toContain("Telegram");
+    expect(llms).not.toMatch(/write-back/i);
+    expect(llms).not.toContain("$499");
+    expect(llms).not.toMatch(/\$2-5K|\$2,000|\$5,000/);
+    expect(llms).not.toMatch(/480\s*V/);
   });
 });

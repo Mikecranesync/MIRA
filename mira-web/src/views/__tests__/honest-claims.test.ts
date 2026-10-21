@@ -116,6 +116,29 @@ describe("public marketing copy — don't-say list and no published prices", () 
     expect(pricing).not.toMatch(/<h1>\s*Pricing\s*<\/h1>/);
   });
 
+  test("/pricing and /buy are Talk to Mike only, with no Offer prices in JSON-LD or meta", () => {
+    for (const name of ["/pricing", "/buy"] as const) {
+      const html = pages.find((p) => p.name === name)!.html;
+      expect(html, `${name} is missing Talk to Mike`).toContain("Talk to Mike");
+      expect(html, `${name} still has an Offer block`).not.toMatch(
+        /"@type"\s*:\s*"Offer"/
+      );
+      expect(html, `${name} still has a schema price`).not.toMatch(/"price"/);
+      expect(html, `${name} still has a dollar price`).not.toMatch(/\$[\d,]+/);
+      expect(html, `${name} still has $499`).not.toContain("$499");
+      expect(html, `${name} still has $2-5K`).not.toMatch(/\$2-5K|\$2,\d{3}|\$5,\d{3}/);
+    }
+  });
+
+  test("/llms.txt omits sensors and work orders", () => {
+    const llms = pages.find((p) => p.name === "/llms.txt")!.html;
+    const full = pages.find((p) => p.name === "/llms-full.txt")!.html;
+    for (const body of [llms, full]) {
+      expect(body).not.toMatch(/\bsensors\b/i);
+      expect(body).not.toMatch(/work orders/i);
+    }
+  });
+
   test("primary CTA is Talk to Mike; self-signup is Sign in only", () => {
     const chrome = navbar() + footer();
     expect(chrome).toContain("Talk to Mike");
