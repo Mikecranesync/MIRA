@@ -70,7 +70,10 @@ S1 from a tripwire into a measurement. It should be a small extension of `corpus
 python3 tools/retrieval_eval/walk_eval.py \
   --arm base=<walk out dir> --arm change=<walk out dir>[,<resume dir>] \
   --corpus mira-hub/tests/stranger-walk/corpus.json \
-  --lanes base=<lanes.jsonl> --lanes change=<lanes.jsonl> --json report.json
+  --lanes base=<lanes.jsonl> --lanes change=<lanes.jsonl> \
+  [--vector-arm base --vector-arm change]   # arms that claim the vector lane (V4 >= 90%)
+  --json report.json
+# a run is scoreable only if paired.*.validity.v6_pass is true and v4.v4_pass is not false
 # sealed set: add --sealed --key .planning/unseen-set/gold.jsonl (only qid + accepted_pages
 # are read); aggregates only, no per-question or per-manual output
 doppler run --project factorylm --config stg -- python3 tools/retrieval_eval/lanes.py <walk out dir> <lanes.jsonl>

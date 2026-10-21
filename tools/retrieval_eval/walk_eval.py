@@ -158,16 +158,37 @@ def lane_summary(rows: list[dict], asked: set[str]) -> dict:
 
 
 def validity(a: dict, b: dict, expected: set[str]) -> dict:
-    """Validity check V6: every expected question asked, unbroken, in both arms."""
+    """Validity check V6: exactly the expected questions, asked and unbroken, in both arms."""
     broken = {i for rows in (a, b) for i, r in rows.items() if r["classification"] == "BROKEN"}
     missing = expected - (set(a) & set(b))
+    unexpected = (set(a) | set(b)) - expected
+    bad = missing | (broken & expected) | unexpected
     return {
         "expected": len(expected),
         "missing_from_an_arm": len(missing),
         "broken": len(broken & expected),
-        "v6_pass": not missing and not (broken & expected),
-        "_ids": sorted(missing | (broken & expected)),
+        "unexpected": len(unexpected),
+        "v6_pass": not bad,
+        "_ids": sorted(bad),
     }
+
+
+def v4_check(lanes: dict, arm_names: list[str], vector_arms: set[str]) -> dict:
+    """Validity check V4. An arm declared to run the vector lane must show it ran on >= 90% of
+    its questions; with lane files for both arms, their ran fractions must be within 10 points.
+    A declared arm without a lane file fails: no evidence is not evidence of a pass."""
+    frac = {n: (lanes.get(n) or {}).get("vector_ran_fraction") for n in arm_names}
+    reasons = []
+    for n in sorted(vector_arms & set(arm_names)):
+        if frac[n] is None:
+            reasons.append(f"{n}: declared vector arm has no lane file")
+        elif frac[n] < 0.9:
+            reasons.append(f"{n}: vector lane ran on {frac[n]:.0%} of questions (< 90%)")
+    known = [f for f in frac.values() if f is not None]
+    if len(known) == 2 and abs(known[0] - known[1]) > 0.10:
+        reasons.append("arms' vector-lane ran fractions differ by more than 10 points")
+    checked = bool(vector_arms & set(arm_names)) or len(known) == 2
+    return {"vector_ran": frac, "v4_pass": (not reasons) if checked else None, "reasons": reasons}
 
 
 def paired(
@@ -215,6 +236,12 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="NAME=lanes.jsonl[,...] from lanes.py; later files win",
     )
+    ap.add_argument(
+        "--vector-arm",
+        action="append",
+        default=[],
+        help="NAME of an arm that claims the vector lane (V4 then requires >= 90%% ran)",
+    )
     ap.add_argument("--json", help="write the full report here")
     args = ap.parse_args(argv)
     if args.sealed and not args.key:
@@ -257,14 +284,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.sealed:
             v6["invalid_ids"] = ids
         res["validity"] = v6
-        la, lb = report["lanes"].get(names[0]), report["lanes"].get(other)
-        if la and lb:
-            fa, fb = la["vector_ran_fraction"], lb["vector_ran_fraction"]
-            res["validity"]["v4_vector_ran"] = {
-                names[0]: fa,
-                other: fb,
-                "within_10_points": abs(fa - fb) <= 0.10,
-            }
+        res["validity"]["v4"] = v4_check(report["lanes"], [names[0], other], set(args.vector_arm))
         if not args.sealed and questions:
             for dim in ("oem", "family"):
                 g: dict[str, list[int]] = {}

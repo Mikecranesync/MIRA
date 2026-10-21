@@ -217,3 +217,26 @@ def test_cli_reports_validity_and_hides_ids_when_sealed(tmp_path, capsys):
     v = json.loads(out)["paired"]["a->b"]["validity"]
     assert v["v6_pass"] is False and v["missing_from_an_arm"] == 1
     assert "sx-q" not in out
+
+
+def test_v4_requires_90_percent_for_a_declared_vector_arm():
+    lanes = {"off": {"vector_ran_fraction": 0.3}, "on": {"vector_ran_fraction": 0.2}}
+    v = walk_eval.v4_check(lanes, ["off", "on"], {"on"})
+    assert v["v4_pass"] is False and "20%" in v["reasons"][0]
+    good = {"off": {"vector_ran_fraction": 0.95}, "on": {"vector_ran_fraction": 0.92}}
+    assert walk_eval.v4_check(good, ["off", "on"], {"off", "on"})["v4_pass"] is True
+
+
+def test_v4_fails_a_declared_arm_without_lane_evidence_and_a_lopsided_pair():
+    assert walk_eval.v4_check({}, ["off", "on"], {"on"})["v4_pass"] is False
+    lopsided = {"off": {"vector_ran_fraction": 0.95}, "on": {"vector_ran_fraction": 0.80}}
+    assert walk_eval.v4_check(lopsided, ["off", "on"], set())["v4_pass"] is False
+    assert walk_eval.v4_check({}, ["off", "on"], set())["v4_pass"] is None
+
+
+def test_validity_fails_on_an_unexpected_question():
+    row = _row("m-q1", "CORRECT", 3)
+    a = {"q1": row, "extra": row}
+    b = {"q1": row, "extra": row}
+    v = walk_eval.validity(a, b, {"q1"})
+    assert not v["v6_pass"] and v["unexpected"] == 1
