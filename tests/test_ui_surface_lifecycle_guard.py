@@ -2596,11 +2596,32 @@ def test_legacy_hub_screen_still_fails_without_exact_head_green():
     assert "review:exact-head and exact-body Codex GREEN" in result.missing_fields
 
 
+# Copied from the trailing HTML on PR #4560 (Cursor cloud-agent injection).
+_REAL_CURSOR_PR_FOOTER = (
+    '<div><a href="https://cursor.com/agents/bc-aaa639a0-cee7-53a4-99b9-2ef02792da43'
+    '?cursor_ref=pr_footer&cursor_cta=open_in_web"><picture>'
+    '<source media="(prefers-color-scheme: dark)" '
+    'srcset="https://cursor.com/assets/images/open-in-web-dark.png">'
+    '<source media="(prefers-color-scheme: light)" '
+    'srcset="https://cursor.com/assets/images/open-in-web-light.png">'
+    '<img alt="Open in Web" width="114" height="28" '
+    'src="https://cursor.com/assets/images/open-in-web-dark.png">'
+    "</picture></a>&nbsp;"
+    '<a href="https://cursor.com/background-agent?bcId=bc-aaa639a0-cee7-53a4-99b9-2ef02792da43'
+    '&cursor_ref=pr_footer&cursor_cta=open_in_cursor"><picture>'
+    '<source media="(prefers-color-scheme: dark)" '
+    'srcset="https://cursor.com/assets/images/open-in-cursor-dark.png">'
+    '<source media="(prefers-color-scheme: light)" '
+    'srcset="https://cursor.com/assets/images/open-in-cursor-light.png">'
+    '<img alt="Open in Cursor" width="131" height="28" '
+    'src="https://cursor.com/assets/images/open-in-cursor-dark.png">'
+    "</picture></a>&nbsp;</div>"
+)
 _CURSOR_AGENT_FOOTER = textwrap.dedent(
-    """\
+    f"""\
     <!-- CURSOR_AGENT_PR_BODY_END -->
 
-    <div><a href="https://cursor.com/agents/bc-test?cursor_ref=pr_footer&amp;cursor_cta=open_in_web"><img alt="Open in Web" width="114" height="28" src="https://cursor.com/assets/images/open-in-web-dark.png"></a>&nbsp;<a href="https://cursor.com/background-agent?bcId=bc-test&amp;cursor_ref=pr_footer&amp;cursor_cta=open_in_cursor"><img alt="Open in Cursor" width="131" height="28" src="https://cursor.com/assets/images/open-in-cursor-dark.png"></a></div>
+    {_REAL_CURSOR_PR_FOOTER}
     """
 )
 
@@ -2622,10 +2643,7 @@ def test_cursor_agent_footer_html_does_not_invalidate_author_rationale():
 
 
 def test_cursor_agent_footer_without_wrapper_comments_is_ignored():
-    body = _VALID_BODY + (
-        "\n<div><a href=\"https://cursor.com/agents/bc-test?cursor_ref=pr_footer\">"
-        "<img alt=\"Open in Web\" src=\"https://cursor.com/x.png\"></a></div>\n"
-    )
+    body = _VALID_BODY + "\n" + _REAL_CURSOR_PR_FOOTER + "\n"
     result = evaluate(
         _TOUCH,
         pr_body=body,
@@ -2709,16 +2727,13 @@ def test_fake_cursor_footer_script_after_end_marker_fails():
     )
 
 
-def test_genuine_picture_cursor_footer_still_passes():
+def test_real_cursor_pr_footer_copied_from_pr_4560_passes():
     body = (
         "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->\n"
         + _VALID_BODY
         + "\n<!-- CURSOR_AGENT_PR_BODY_END -->\n\n"
-        + '<div><a href="https://cursor.com/agents/bc-test?cursor_ref=pr_footer'
-        '&amp;cursor_cta=open_in_web"><picture><source media="(prefers-color-scheme: dark)" '
-        'srcset="https://cursor.com/assets/images/open-in-web-dark.png">'
-        '<img alt="Open in Web" src="https://cursor.com/assets/images/open-in-web-dark.png">'
-        "</picture></a></div>\n"
+        + _REAL_CURSOR_PR_FOOTER
+        + "\n"
     )
     result = evaluate(
         _TOUCH,
@@ -2727,6 +2742,55 @@ def test_genuine_picture_cursor_footer_still_passes():
         codex_attestation=_VALID_CODEX_ATTESTATION,
     )
     assert result.allowed is True
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        (
+            '<div><a href="https://cursor.com/agents/x?cursor_ref=pr_footer">'
+            "<img src=x onerror=alert(1)></a></div>"
+        ),
+        (
+            '<div><a href="https://cursor.com/agents/x?cursor_ref=pr_footer">'
+            '<img alt="Open in Web" src="https://cursor.com/x.png" '
+            'onload="alert(1)"></a></div>'
+        ),
+        (
+            '<div><a href="https://cursor.com/agents/x?cursor_ref=pr_footer">'
+            '<img style="x:y" alt="Open in Web" '
+            'src="https://cursor.com/x.png"></a></div>'
+        ),
+        (
+            '<div><a href="https://cursor.com/agents/x?cursor_ref=pr_footer">'
+            '<img alt="Open in Web" src="javascript:alert(1)"></a></div>'
+        ),
+        _REAL_CURSOR_PR_FOOTER.replace(
+            '<img alt="Open in Web" width="114" height="28" '
+            'src="https://cursor.com/assets/images/open-in-web-dark.png">',
+            '<img alt="Open in Web" width="114" height="28" '
+            'src="https://cursor.com/assets/images/open-in-web-dark.png" onerror="alert(1)">',
+        ),
+        _REAL_CURSOR_PR_FOOTER.replace(
+            '<img alt="Open in Web" width="114" height="28" '
+            'src="https://cursor.com/assets/images/open-in-web-dark.png">',
+            '<img alt="Open in Web" width="114" height="28" src="javascript:alert(1)">',
+        ),
+    ],
+    ids=("onerror", "onload", "style", "javascript", "real-plus-onerror", "real-plus-javascript"),
+)
+def test_fake_cursor_footer_event_or_javascript_attrs_fail(payload):
+    body = _VALID_BODY + "\n" + payload + "\n"
+    result = evaluate(
+        _TOUCH,
+        pr_body=body,
+        policy=_POLICY,
+        codex_attestation=_VALID_CODEX_ATTESTATION,
+    )
+    assert result.allowed is False
+    assert "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale" in (
+        result.missing_fields
+    )
 
 
 def test_rationale_only_after_cursor_body_end_cannot_authorize():

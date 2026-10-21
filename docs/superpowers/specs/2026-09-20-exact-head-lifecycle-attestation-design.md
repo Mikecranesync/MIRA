@@ -86,11 +86,13 @@ control-plane paths stay fail-closed exactly as before.
 
 HTML-safety runs on the full raw PR body, footer included. The
 author-written `## Lifecycle guard rationale` check ignores the
-auto-injected Cursor agent wrapper comments and a trailing
-`cursor_ref=pr_footer` block only when that footer matches the exact
-Cursor shape with no other tags. A fake footer that hides `<script>` or
-other HTML fails closed. HTML inside the author-written rationale still
-fails closed.
+auto-injected Cursor agent wrapper comments and a trailing footer only
+when that block matches the genuine Cursor footer template (one anchored
+regex; `href`/`src`/`srcset` only on `https://cursor.com/`; no `on*` /
+`style` / `javascript:` / `data:` / extra attributes). A fake
+footer-shaped `<div>` that hides `<script>`, `onerror`, or other HTML
+fails closed. HTML inside the author-written rationale still fails
+closed.
 
 For a PR that touches one or more guarded legacy or control-plane paths, all of
 the following are required:

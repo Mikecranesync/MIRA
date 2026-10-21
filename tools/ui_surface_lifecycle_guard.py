@@ -693,20 +693,45 @@ _GITHUB_MARKDOWN = MarkdownIt("commonmark").enable(["table", "strikethrough"])
 # HTML footer after the end marker. That footer is not attestation text.
 _CURSOR_AGENT_BODY_BEGIN = "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->"
 _CURSOR_AGENT_BODY_END = "<!-- CURSOR_AGENT_PR_BODY_END -->"
-# Trailing Cursor cloud-agent footer only: a final <div> whose links are
-# cursor.com agents/background-agent URLs carrying cursor_ref=pr_footer.
-# HTML-safety runs on the full raw PR body (footer included). This pattern
-# is used only to ignore an exact-shape footer during rationale extraction,
-# and only when it contains no tags beyond the allowlist below.
-_CURSOR_PR_FOOTER_RE = re.compile(
-    r"(?:\r?\n)*<div>(?:(?!</div>).)*"
-    r"https://cursor\.com/(?:agents/|background-agent\?)"
-    r"(?:(?!</div>).)*cursor_ref=pr_footer"
-    r"(?:(?!</div>).)*</div>(?:\r?\n)*\Z",
-    re.IGNORECASE | re.DOTALL,
+# Genuine Cursor cloud-agent footer template. HTML-safety runs on the full
+# raw PR body (footer included). Exemption and rationale-strip apply only
+# when the trailing block matches this anchored template exactly — one
+# <div> of two picture CTAs, href/src/srcset only on https://cursor.com/,
+# and only the listed attributes. on*/style/javascript:/data:/extra
+# attributes cannot match and therefore get the full HTML-safety check.
+_CURSOR_HTTPS_ASSET = r"https://cursor\.com/[A-Za-z0-9._~/-]+"
+_CURSOR_FOOTER_AGENT_HREF = (
+    r"https://cursor\.com/agents/[A-Za-z0-9._~-]+"
+    r"\?cursor_ref=pr_footer"
+    r"(?:(?:&|&amp;)cursor_cta=open_in_web)?"
 )
-_HTML_TAG_NAME_RE = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b")
-_CURSOR_FOOTER_ALLOWED_TAGS = frozenset({"a", "div", "img", "picture", "source"})
+_CURSOR_FOOTER_BG_HREF = (
+    r"https://cursor\.com/background-agent\?bcId=[A-Za-z0-9._~-]+"
+    r"(?:&|&amp;)cursor_ref=pr_footer"
+    r"(?:(?:&|&amp;)cursor_cta=open_in_cursor)?"
+)
+_CURSOR_FOOTER_SOURCE = (
+    r'<source media="\(prefers-color-scheme: (?:dark|light)\)" '
+    rf'srcset="{_CURSOR_HTTPS_ASSET}">'
+)
+_CURSOR_FOOTER_IMG = (
+    r'<img alt="Open in (?:Web|Cursor)"'
+    r'(?: width="[0-9]{1,4}")?'
+    r'(?: height="[0-9]{1,4}")?'
+    rf' src="{_CURSOR_HTTPS_ASSET}">'
+)
+_CURSOR_FOOTER_PICTURE = (
+    f"<picture>{_CURSOR_FOOTER_SOURCE}{_CURSOR_FOOTER_SOURCE}"
+    f"{_CURSOR_FOOTER_IMG}</picture>"
+)
+_CURSOR_PR_FOOTER_RE = re.compile(
+    r"(?:\r?\n)*<div>"
+    rf'<a href="{_CURSOR_FOOTER_AGENT_HREF}">{_CURSOR_FOOTER_PICTURE}</a>'
+    r"(?:&nbsp;)?"
+    rf'<a href="{_CURSOR_FOOTER_BG_HREF}">{_CURSOR_FOOTER_PICTURE}</a>'
+    r"(?:&nbsp;)?"
+    r"</div>(?:\r?\n)*\Z"
+)
 # The Codex review ledger's comment envelope, byte-for-byte the shape
 # `scripts/adversarial-review-ledger.mjs` (V2_REVIEW_RE) accepts. Anything that
 # does not match from the first character is not an attestation — it cannot
@@ -1676,8 +1701,8 @@ def _has_unsafe_html(tokens) -> bool:
     between Markdown renderers and HTML5 browsers. Permit only one strictly
     valid standalone comment per HTML token; reject tags, unclosed/malformed
     comments, or combined comment/tag tokens. The check runs on the full
-    raw PR body, footer included. The exact Cursor cloud-agent footer
-    (allowed tags only) is the sole non-comment HTML exception.
+    raw PR body, footer included. The genuine Cursor cloud-agent footer
+    template (anchored regex) is the sole non-comment HTML exception.
     """
     for token in tokens:
         for candidate in (token, *(token.children or ())):
@@ -1711,28 +1736,22 @@ def _has_renderer_specific_markup(source: str) -> bool:
 
 
 def _is_exact_cursor_pr_footer(block: str) -> bool:
-    """True only for the Cursor cloud-agent footer with no extra tags.
+    """True only when *block* is the genuine Cursor cloud-agent footer.
 
-    The block must be a trailing ``<div>`` whose links are cursor.com
-    agents/background-agent URLs carrying ``cursor_ref=pr_footer``, and
-    every tag must be in ``_CURSOR_FOOTER_ALLOWED_TAGS``. A fake footer
-    that hides ``<script>`` or any other tag is not stripped and is not
-    exempt from the unsafe-HTML check.
+    Exemption is the anchored template regex only. A footer-shaped
+    ``<div>`` with extra tags, ``on*`` / ``style`` attributes,
+    ``javascript:`` / ``data:`` URLs, or any other deviation is not
+    exempt and receives the full HTML-safety check.
     """
-    if _CURSOR_PR_FOOTER_RE.match(block) is None:
-        return False
-    if "<!--" in block or "<!" in block or "<?" in block:
-        return False
-    tags = {match.group(1).lower() for match in _HTML_TAG_NAME_RE.finditer(block)}
-    return bool(tags) and tags <= _CURSOR_FOOTER_ALLOWED_TAGS
+    return _CURSOR_PR_FOOTER_RE.match(block) is not None
 
 
 def _author_written_pr_body(pr_body: str) -> str:
     """Return the author-written PR body, ignoring Cursor agent injection.
 
     Cursor wraps agent-authored bodies in HTML comments and appends a
-    marketing footer after the end marker. Strip the wrapper and, when it
-    matches the exact Cursor footer shape with no other tags, the trailing
+    marketing footer after the end marker. Strip the wrapper and, when
+    the trailing block matches the genuine Cursor footer template, that
     footer. Those strips apply only to rationale extraction; HTML-safety
     runs on the full raw body first. Content after the end marker is
     discarded even when it is not the known footer — it is agent
