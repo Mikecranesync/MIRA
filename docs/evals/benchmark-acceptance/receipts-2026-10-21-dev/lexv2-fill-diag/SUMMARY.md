@@ -18,7 +18,13 @@
    - So ON keeps the precise chunk and adds 5 more.
    - Median coverage of non-first returned chunks: OFF 0.317, ON 0.503.
    - **Classification:** a candidate-selection change. It is not a topK filter: the slice is correct, and broad questions return up to max(2k, 12) by design.
-3. **Two ON losses are a ranking defect exposed by the wider pool:** `gs10-ch6-q5` and `ml1100-q3`.
-   - V2's SQL ranks the accepted page #1 and #2. `rerankChunks` normalises the lexical base to 0..1 but adds up to +2.5 for procedure/fault intent, so generic procedure prose outranks the full-coverage answer.
-   - The `probe_one` trace shows the accepted page with the highest base (8.33 / 9.38) losing on intent boost.
+3. **A ranking weakness that the wider pool exposes, on 2 questions.** *Corrected 2026-10-21: this item first said "two ON losses".*
+   - **`gs10-ch6-q5` is one OFF→ON regression.** OFF cited accepted p.3; ON did not.
+   - **`ml1100-q3` is a gain lost to the rerank, not a regression.** OFF `[143]` also missed accepted p.141. V2's SQL ranks p.141 second, but the rerank drops it from the final list.
+   - In both, `rerankChunks` normalises the lexical base to 0..1 but adds up to +2.5 for procedure/fault intent, so generic procedure prose outranks the full-coverage answer.
+   - The `probe_one` trace shows the accepted page with the highest base (8.33 / 9.38) losing on the intent boost.
 4. **#4597 root cause:** across two loads of identical data, float8 `sum()` produced last-bit-different scores for the same chunk, and the order flipped (tq-21, tq-40). Numeric summation gave 0/120 differences (`load1.json` / `load2.json`).
+
+**Negatives proxy (from `evidence-floor-trial/`; each question scoped to a manual of another product family, not hand-verified).**
+- At retrieval level, OFF and ON look the same: 41/77 return nothing in both arms (the model-applicability filter), and both average about 3.4 chunks.
+- On this proxy, the slot fill does not hand unanswerable questions more context than OFF does. That weakens "slot fill explains #4572" at the retrieval stage, and points at the answer stage.
