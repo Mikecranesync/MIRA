@@ -8,7 +8,6 @@
 
 ## What we can show today
 
-- Tested on a Rockwell Micro810 manual (same question 5 times, 5 correct answers citing the same page, Oct 19, 2026). That is a narrow test, not a general accuracy rate.
 - We've tested Rockwell and Festo manuals so far, and we'll post our misses too.
 - Sign in with an emailed link, no password.
 
