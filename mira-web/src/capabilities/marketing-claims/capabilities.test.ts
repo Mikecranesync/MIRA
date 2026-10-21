@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderHome } from "../../views/home.js";
+import { escHtml } from "../../lib/html.js";
 import {
   CITED_PROOF_ID,
   effectiveMetaDescription,
@@ -100,7 +101,7 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
       Object.values(data.positioning).filter((v): v is string => typeof v === "string")
     );
     for (const claim of provenClaims(data)) {
-      expect(html, `missing proven claim ${claim.id}`).toContain(claim.text);
+      expect(html, `missing proven claim ${claim.id}`).toContain(escHtml(claim.text));
     }
     for (const claim of data.claims.filter(
       (c) => c.status !== "proven" && c.status !== "proven-dated"

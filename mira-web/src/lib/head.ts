@@ -31,7 +31,7 @@ export function head(opts: HeadOpts, reqUrl?: string): string {
   const ogImage = opts.ogImage ?? DEFAULT_OG_IMAGE;
 
   const jsonLdBlock = opts.jsonLd
-    ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd)}</script>`
+    ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd).replace(/</g, "\\u003c")}</script>`
     : "";
 
   const gscTag = GOOGLE_VERIFY
