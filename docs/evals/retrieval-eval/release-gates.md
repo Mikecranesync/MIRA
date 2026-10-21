@@ -1,6 +1,8 @@
 # Proposed release gates for notebook retrieval changes (#4576)
 
-**Status:** proposal. It awaits the owner's decision and gates nothing yet.
+**Status:** provisional policy, accepted by the owner on 2026-10-21. It governs retrieval
+promotion decisions until revised. Threshold changes are made here, before the numbers they
+judge exist.
 
 This applies to any change that alters which passages notebook chat retrieves or how they are
 ordered: lexical scoring, the vector lane, rerank, chunking, admission, or the ingest that feeds
@@ -54,14 +56,15 @@ plus the owner's decision. "Observed better" is not "supported better":
 - At n = 7, **no** refusal regression is statistically detectable. An exact McNemar test needs
   at least 6 discordant pairs, all in one direction, to reach p < 0.05 (`mcnemar_min_discordant`).
 - Detecting a refusal rate falling from 95% to 85% (one-sided, α 0.05, power 0.8) needs
-  **44 unanswerable questions** (`n_to_detect_drop`).
+  **at least about 44 unanswerable questions** (`n_to_detect_drop`). That is a one-sample
+  approximation against a fixed baseline; the paired comparison S1 actually uses may need more.
 - So S1 is a **hold-and-review** rule at today's n, not a test. Any refusal lost stops promotion
   until a human reads why. That is what #4572 did, and it was correct.
 
 **Recommendation:** build a development unanswerable set of at least 44 questions on the ten
 public Stranger Walk manuals. Write the questions fresh, and hand-verify that the manual does not
 contain each answer. Do **not** draw them from the sealed set. This is the cheapest way to turn
-S1 from a tripwire into a measurement. It should be a small extension of `corpus.json` (an
+S1 from a tripwire into a measurement (#4584). It should be a small extension of `corpus.json` (an
 `expectedPage: null` row type), owned by the walk harness (#4461/#4534), not a new harness.
 
 ## 3. Reproducing a decision
