@@ -2,35 +2,36 @@ import { head } from "../lib/head.js";
 import { btnPrimary } from "../lib/components.js";
 import { escHtml } from "../lib/html.js";
 import {
+  effectiveHeadline,
   effectiveMetaDescription,
   effectiveSubhead,
+  effectiveTitle,
   generateJsonLd,
   loadCapabilities,
   provenByKind,
   provenClaims,
+  provenText,
   type CapabilitiesFile,
-  type MarketingClaim,
 } from "../capabilities/marketing-claims/index.js";
 import { navbar, footer } from "./_topbar.js";
 
-function claim(data: CapabilitiesFile, id: string): MarketingClaim {
-  const row = data.claims.find((c) => c.id === id);
-  if (!row || row.status !== "proven") {
-    throw new Error(`homepage requires proven claim ${id}`);
-  }
-  return row;
-}
-
 function hero(data: CapabilitiesFile): string {
+  const headline = effectiveHeadline(data) || "FactoryLM";
+  const subhead = effectiveSubhead(data);
   const capabilities = provenByKind("capability", data);
-  const lead = capabilities[0];
-  const rest = capabilities.slice(1);
+  const body = capabilities.map((c) => c.text).join(" ");
+  const sub = subhead
+    ? `<h2 class="fl-hero-h2">${escHtml(subhead)}</h2>`
+    : "";
+  const para = body
+    ? `<p class="fl-hero-sub">${escHtml(body)}</p>`
+    : "";
   return `<section class="fl-hero" aria-labelledby="fl-hero-h1">
   <div class="fl-hero-inner">
     <p class="fl-hero-eyebrow">FactoryLM</p>
-    <h1 id="fl-hero-h1" class="fl-hero-h1">${escHtml(data.positioning.headline)}</h1>
-    <h2 class="fl-hero-h2">${escHtml(effectiveSubhead(data))}</h2>
-    <p class="fl-hero-sub">${escHtml([lead, ...rest].map((c) => c.text).join(" "))}</p>
+    <h1 id="fl-hero-h1" class="fl-hero-h1">${escHtml(headline)}</h1>
+    ${sub}
+    ${para}
     <div class="fl-hero-cta">
       ${btnPrimary(escHtml(data.contact.cta), { href: escHtml(data.contact.href), cta: "hero-talk" })}
     </div>
@@ -53,29 +54,15 @@ function honestLimits(data: CapabilitiesFile): string {
 }
 
 function buyerFit(data: CapabilitiesFile): string {
-  const forList = [
-    "One maintenance crew",
-    "Maintenance managers",
-    "Plant managers",
-    "Reliability engineers",
-  ];
-  const notACmms = claim(data, "not-a-cmms").text;
-  const noPlc = claim(data, "no-plc-or-work-order-write").text;
-  const notList = [
-    `Looking for a CMMS? ${notACmms}`,
-    `Need PLC data or work-order automation? ${noPlc}`,
-  ];
+  const notACmms = provenText("not-a-cmms", data);
+  const noPlc = provenText("no-plc-or-work-order-write", data);
+  const notList = [notACmms, noPlc].filter((text): text is string => Boolean(text));
+  if (notList.length === 0) return "";
   const li = (items: string[]) => items.map((i) => `<li>${escHtml(i)}</li>`).join("\n      ");
   return `<section class="fl-section" aria-labelledby="fl-fit-h">
   <h2 id="fl-fit-h" class="fl-section-h">Who it's for.</h2>
-  <p class="fl-section-sub">${escHtml(data.positioning.audience)} See the full list on <a href="/limitations" data-cta="fit-limitations">Limitations</a>.</p>
+  <p class="fl-section-sub">See the full list on <a href="/limitations" data-cta="fit-limitations">Limitations</a>.</p>
   <div class="fl-fit-grid">
-    <div class="fl-fit-col fl-fit-for">
-      <h3 class="fl-fit-h3">Built for</h3>
-      <ul class="fl-fit-list">
-      ${li(forList)}
-      </ul>
-    </div>
     <div class="fl-fit-col fl-fit-not">
       <h3 class="fl-fit-h3">Not the right fit (yet)</h3>
       <ul class="fl-fit-list">
@@ -87,8 +74,10 @@ function buyerFit(data: CapabilitiesFile): string {
 }
 
 function aboutMike(data: CapabilitiesFile): string {
+  const mike = provenText("mike-central-florida", data);
+  if (!mike) return "";
   return `<section class="fl-section fl-pricing-teaser" aria-labelledby="fl-about-h">
-  <h2 id="fl-about-h" class="fl-section-h">${escHtml(claim(data, "mike-central-florida").text)}</h2>
+  <h2 id="fl-about-h" class="fl-section-h">${escHtml(mike)}</h2>
   <div class="fl-hero-cta">
     ${btnPrimary(escHtml(data.contact.cta), { href: escHtml(data.contact.href), cta: "about-talk" })}
   </div>
@@ -350,7 +339,7 @@ export function renderHome(
   }
   const headHtml = head(
     {
-      title: escHtml(data.positioning.title),
+      title: escHtml(effectiveTitle(data)),
       description: escHtml(effectiveMetaDescription(data)),
       canonical: "https://factorylm.com/",
       ogImage: "https://factorylm.com/og-image.png",

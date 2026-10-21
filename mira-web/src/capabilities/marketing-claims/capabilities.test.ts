@@ -2,10 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderHome } from "../../views/home.js";
+import { renderLimitations } from "../../views/limitations.js";
 import { escHtml } from "../../lib/html.js";
 import {
   CITED_PROOF_ID,
+  effectiveFeatureList,
+  effectiveHeadline,
+  effectiveJsonLdDescription,
   effectiveMetaDescription,
+  effectiveTitle,
   generateJsonLd,
   generateLlmsFullTxt,
   generateLlmsTxt,
@@ -20,12 +25,17 @@ const PUBLIC = join(import.meta.dir, "../../../public");
 function withoutP1(data: CapabilitiesFile): CapabilitiesFile {
   const clone = structuredClone(data);
   clone.claims = clone.claims.filter((c) => c.id !== CITED_PROOF_ID);
-  delete clone.positioning.subhead_cited;
-  delete clone.positioning.meta_description_cited;
-  delete clone.jsonld.description_cited;
-  delete clone.jsonld.feature_list_cited;
-  delete clone.llms.intro_cited;
   return clone;
+}
+
+function publishedSurfaces(data: CapabilitiesFile): string[] {
+  const home = renderHome("https://factorylm.com/", data);
+  const limitations = renderLimitations("https://factorylm.com/limitations", data);
+  const jsonLd = JSON.stringify(generateJsonLd(data));
+  const meta = effectiveMetaDescription(data);
+  const llms = generateLlmsTxt(data);
+  const full = generateLlmsFullTxt(data);
+  return [home, limitations, jsonLd, meta, llms, full];
 }
 
 describe("capabilities.json schema", () => {
@@ -39,11 +49,10 @@ describe("capabilities.json schema", () => {
     expect(provenClaims(data).length).toBeGreaterThan(0);
   });
 
-  test("homepage title and meta match the steward copy", () => {
-    expect(data.positioning.title).toBe(
-      "FactoryLM — An equipment notebook for your maintenance crew"
-    );
-    expect(data.positioning.headline).toMatch(/equipment notebook/i);
+  test("homepage title and meta come from proven claim slots", () => {
+    expect(effectiveTitle(data)).toBe(`FactoryLM — ${effectiveHeadline(data)}`);
+    expect(effectiveHeadline(data)).toMatch(/equipment notebook/i);
+    expect(effectiveHeadline(data)).toMatch(/uploaded manual/i);
     expect(effectiveMetaDescription(data)).toMatch(/Talk to Mike/);
     expect(effectiveMetaDescription(data)).not.toMatch(/\$\d/);
   });
@@ -97,16 +106,12 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
 
   test("homepage renders every proven claim and none of the deferred texts", () => {
     const html = renderHome("https://factorylm.com/");
-    const positioningTexts = new Set(
-      Object.values(data.positioning).filter((v): v is string => typeof v === "string")
-    );
     for (const claim of provenClaims(data)) {
       expect(html, `missing proven claim ${claim.id}`).toContain(escHtml(claim.text));
     }
     for (const claim of data.claims.filter(
       (c) => c.status !== "proven" && c.status !== "proven-dated"
     )) {
-      if (positioningTexts.has(claim.text)) continue;
       expect(html, `homepage leaked deferred claim ${claim.id}`).not.toContain(claim.text);
     }
   });
@@ -123,12 +128,13 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(llms).not.toContain("/pricing");
   });
 
-  test("Oct 21 proven set is exactly A5, A6, A8, A9, and magic-link", () => {
+  test("Oct 21 proven set is A5, A6, A8, A9, magic-link, and the P3/P4 notebook headline", () => {
     const provenIds = data.claims
       .filter((c) => c.status === "proven")
       .map((c) => c.id)
       .sort();
     expect(provenIds).toEqual([
+      "answers-from-uploaded-manual",
       "magic-link-web-signin",
       "mike-central-florida",
       "no-plc-or-work-order-write",
@@ -170,17 +176,26 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(llms).not.toContain("Oct 19, 2026");
   });
 
-  test("llms-full.txt is fuller than llms.txt: partials as not-yet-claimed plus all limitations", () => {
+  test("llms-full.txt is fuller than llms.txt: unpublished ids plus proven limitations", () => {
     const summary = generateLlmsTxt(data);
     const full = generateLlmsFullTxt(data);
     expect(full.length).toBeGreaterThan(summary.length);
     expect(full).toContain("## Not yet claimed");
     expect(full).toContain("## Full limitations");
     expect(full).toContain(summary.replace(/^# FactoryLM\n\n/, ""));
-    for (const claim of data.claims.filter((c) => c.status === "partial")) {
-      expect(full, `llms-full missing partial ${claim.id}`).toContain(claim.text);
+    for (const claim of data.claims.filter(
+      (c) => c.status === "partial" || c.status === "not-yet"
+    )) {
+      expect(full, `llms-full missing unpublished id ${claim.id}`).toContain(
+        `- ${claim.id}`
+      );
+      expect(full, `llms-full leaked unpublished text ${claim.id}`).not.toContain(
+        claim.text
+      );
     }
-    for (const claim of data.claims.filter((c) => c.kind === "limit")) {
+    for (const claim of data.claims.filter(
+      (c) => c.kind === "limit" && (c.status === "proven" || c.status === "proven-dated")
+    )) {
       expect(full, `llms-full missing limitation ${claim.id}`).toContain(claim.text);
     }
     expect(full).not.toMatch(/\$\d/);
@@ -200,4 +215,26 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(llms).not.toMatch(/\$2-5K|\$2,000|\$5,000/);
     expect(llms).not.toMatch(/480\s*V/);
   });
+});
+
+describe("flipping a claim to partial removes its sentence from every published surface", () => {
+  const data = loadCapabilities();
+
+  for (const claim of data.claims) {
+    test(`${claim.id} disappears from home, limitations, JSON-LD, meta, and llms when partial`, () => {
+      const flipped = structuredClone(data);
+      const row = flipped.claims.find((c) => c.id === claim.id);
+      expect(row).toBeDefined();
+      row!.status = "partial";
+      for (const surface of publishedSurfaces(flipped)) {
+        expect(surface, `${claim.id} still published after flip`).not.toContain(
+          claim.text
+        );
+      }
+      expect(effectiveHeadline(flipped)).not.toContain(claim.text);
+      expect(effectiveTitle(flipped)).not.toContain(claim.text);
+      expect(effectiveJsonLdDescription(flipped)).not.toContain(claim.text);
+      expect(effectiveFeatureList(flipped).join("\n")).not.toContain(claim.text);
+    });
+  }
 });

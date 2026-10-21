@@ -2,6 +2,11 @@ import { head } from "../lib/head.js";
 import { btnPrimary } from "../lib/components.js";
 import { escHtml } from "../lib/html.js";
 import { navbar, footer, TALK_TO_MIKE_HREF } from "./_topbar.js";
+import {
+  effectiveLimitations,
+  loadCapabilities,
+  type CapabilitiesFile,
+} from "../capabilities/marketing-claims/index.js";
 
 const PAGE_STYLES = `
 .fl-topbar {
@@ -141,38 +146,10 @@ const PAGE_STYLES = `
 }
 `;
 
-const LIMITS = [
-  {
-    lead: "It's not a CMMS and doesn't replace yours.",
-    body: "There's nothing to switch.",
-  },
-  {
-    lead: "It doesn't connect to PLCs.",
-    body: "It doesn't write work-order records.",
-  },
-  {
-    lead: "For lockout, arc flash and confined space, follow your site procedure.",
-    body: "Don't use any AI tool for those.",
-  },
-  {
-    lead: "We've tested Rockwell and Festo manuals so far.",
-    body: "We'll post our misses too.",
-  },
-  {
-    lead: "It works in a web browser only.",
-    body: "There is no native app claim on this site.",
-  },
-  {
-    lead: "English manuals only.",
-    body: "We don't translate manuals between languages.",
-  },
-  {
-    lead: "We're not SOC 2 audited yet.",
-    body: "",
-  },
-];
-
-export function renderLimitations(reqUrl?: string): string {
+export function renderLimitations(
+  reqUrl?: string,
+  data: CapabilitiesFile = loadCapabilities()
+): string {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "AboutPage",
@@ -186,10 +163,14 @@ export function renderLimitations(reqUrl?: string): string {
     },
   };
 
-  const limitItems = LIMITS.map(({ lead, body }) => `
+  const limitItems = effectiveLimitations(data)
+    .map(
+      (text) => `
     <li>
-      <strong>${escHtml(lead)}</strong> ${escHtml(body)}
-    </li>`).join("");
+      ${escHtml(text)}
+    </li>`
+    )
+    .join("");
 
   return `<!DOCTYPE html>
 <html lang="en">
