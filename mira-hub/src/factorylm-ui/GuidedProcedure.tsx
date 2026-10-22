@@ -16,7 +16,7 @@ type SessionPayload = { sessionId: string; recordCount: number; revision: string
 type Procedure = { templateId: string; title: string; applicability: Applicability; session: SessionPayload };
 
 /**
- * The pill is fixed over the right end of the shell's notebook title row. Reserve that much room at
+ * The pill sits over the right end of the shell's notebook title row. Reserve that much room at
  * the row's end so a long notebook title ellipsizes before the pill instead of running under it
  * (the crumbs already truncate with an ellipsis). Width + the pill's 12px inset + a 12px gap.
  */
@@ -24,14 +24,22 @@ export function titleRowReserveCss(pillWidth: number): string {
   return `.hub-shell-host .fl-conversation .fl-conversation__bar{padding-inline-end:${Math.ceil(pillWidth) + 24}px}`;
 }
 
+/**
+ * Anchored to the page, not the screen: the title row it sits on scrolls with the page, so the pill
+ * scrolls with it. As `position: fixed` it stayed put while the chat scrolled under it and hid the
+ * opening words of MIRA's answer — including the "general guidance beyond the manual" label
+ * (Pixel 9a walk, 2026-10-21). No ancestor of the host is positioned, so `top` is from the page top.
+ */
+export const PILL_STYLE: CSSProperties = {
+  // A length, not a token: --fl-header is a colour (Codex #4573 F7). Clears the shell header + safe area.
+  position: "absolute", top: "calc(env(safe-area-inset-top, 0px) + 72px)", right: 12, zIndex: 40,
+  background: "var(--fl-accent)", color: "var(--fl-surface)", border: "none",
+  borderRadius: "var(--fl-radius-pill, 999px)", padding: "8px 14px", fontSize: "var(--fl-fs-sm)",
+  minHeight: 44, cursor: "pointer",
+};
+
 const S: Record<string, CSSProperties> = {
-  pill: {
-    // A length, not a token: --fl-header is a colour (Codex #4573 F7). Clears the shell header + safe area.
-    position: "fixed", top: "calc(env(safe-area-inset-top, 0px) + 72px)", right: 12, zIndex: 40,
-    background: "var(--fl-accent)", color: "var(--fl-surface)", border: "none",
-    borderRadius: "var(--fl-radius-pill, 999px)", padding: "8px 14px", fontSize: "var(--fl-fs-sm)",
-    minHeight: 44, cursor: "pointer",
-  },
+  pill: PILL_STYLE,
   dialog: {
     border: "none", padding: 0, margin: "0 auto", width: "100%", maxWidth: 640, height: "100%", maxHeight: "100%",
     background: "var(--fl-surface)", color: "var(--fl-ink)",

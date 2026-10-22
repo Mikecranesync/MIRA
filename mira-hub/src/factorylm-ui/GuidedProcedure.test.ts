@@ -1,6 +1,6 @@
 // WP-1 panel: unsent readings and notes survive a failed save (Codex #4573 F9).
 import { describe, expect, it } from "vitest";
-import { askMiraButton, askMiraQuestion, draftsAfterSave, titleRowReserveCss } from "./GuidedProcedure";
+import { PILL_STYLE, askMiraButton, askMiraQuestion, draftsAfterSave, titleRowReserveCss } from "./GuidedProcedure";
 
 const drafts = { readings: { "L1-T1": "12000", "L2-T2": "5000", "L3-T3": "8000" }, note: "fan was blocked" };
 
@@ -31,6 +31,13 @@ describe("titleRowReserveCss (pill over a long notebook title)", () => {
   it("outranks the shell's own .fl-conversation--aui .fl-conversation__bar padding (3 classes vs 2)", () => {
     const selector = titleRowReserveCss(100).split("{")[0];
     expect(selector.split(".").length - 1).toBe(3);
+  });
+});
+
+describe("PILL_STYLE (pill must not cover the chat once it scrolls)", () => {
+  it("is anchored to the page so it scrolls away with the title row, not pinned to the screen", () => {
+    // Pixel 9a, 2026-10-21: a fixed pill hid the start of MIRA's labelled general answer.
+    expect(PILL_STYLE.position).toBe("absolute");
   });
 });
 
