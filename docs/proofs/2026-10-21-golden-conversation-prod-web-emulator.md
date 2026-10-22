@@ -1,0 +1,66 @@
+# Golden Conversation (PRD #3990) — prod web + Android emulator, 2026-10-21/22
+
+**Label: PARTIAL.** Web and Android emulator steps are proven against production. The **physical Pixel steps are NOT
+proven** here: the Pixel 9a was fingerprint-locked and only its owner can unlock it. This is not the #3882 / release
+acceptance.
+
+## Identities
+
+| item | value |
+|---|---|
+| Production hub | `app.factorylm.com` `/api/health/` gitSha `22164415af1a8e28925d096edf6bba44f2100683`, version 3.410.0, built 2026-10-20T05:30Z |
+| `origin/main` at run start / at write-up | `d1d1511de` / `7aed87e31` (prod is behind main; this proves prod, not main) |
+| Android artifact | `com.factorylm.mira` 1.2.0 (16), pulled from the Pixel 9a `55081JEBF07026` as installed (`base.apk` sha256 `c5f0e7c815dda8480f9918698c34e913ea67efd5958d75940da17154296346ed`), installed byte-identical on emulator `mira35` (API 35, arm64) |
+| Live-update bundle | About screen: native fingerprint `6263470a0205fa6b`, active bundle **packaged**, channel production |
+| Account | Doppler `factorylm/dev` `MOBILE_E2E_*` — tenant `e88bd0e8…`, role owner. Same tenant as the Pixel's 9-20 proof; it sees the Pixel's own threads (e.g. `thrd_71ce4a2d…`), so threads are tenant-visible |
+| Web driver | headless Chromium (Playwright 1.x from `mira-hub/node_modules`), 1440×900, `/v3` shared shell |
+| Android driver | uiautomator accessibility tree + `adb input` (release build, no CDP) |
+
+## Fixture and pre-registered expectation
+
+- Manual: ABB ACS150 user manual (`abb-acs150.pdf`, 172 pages, sha256 `b2d7011f41ef2c6987a986c615587967ef87652396bed2bfe64c2d4f8cac52c8`),
+  public OEM document, not previously in this project.
+- Read out of the PDF **before asking**: printed page 130 = PDF page 130, fault table — `F0003 DEV OVERTEMP … Fault trip
+  limit is 135 °C … Check ambient conditions … Check air flow and fan operation … Check motor power against drive power`;
+  `F0002 DC OVERVOLT … 840 V for 400 V drives`; `F0001 OVERCURRENT … 325% of drive nominal current`; `F0006 DC UNDERVOLT`
+  causes.
+- Photo: real bench photo of the garage AutomationDirect GS10 (`plc/conv_simple_electrical/review/photos/gs10_full.jpg`),
+  display `H0.00`. Deliberately NOT the manual's drive, to check that the photo is analyzed before use and that ABB
+  citations are not misapplied.
+
+## Result by step
+
+Project `GC 2026-10-21 ABB ACS150` = notebook `175411fb-7d36-48c0-a8e3-06ef6e393c56`, thread `4a6d18d5-e4d6-400e-a832-433d7b96fd23`.
+
+| # | step | surface | result | evidence |
+|---|---|---|---|---|
+| 1 | New project | web | **PASS** — `POST /api/equipment-notebooks/` 201 (New project uses `window.prompt`; the harness accepts it) | `web-03-created.png` |
+| 2 | attach real manual | web | **PASS** — File → `POST …/node/00a7b01d…/files/` 201 → `POST …/sources/` 201 | `web-06-answer1.png` |
+| 3 | known-answer question | web | **PASS** in 30 s incl. ingest — "F0003 DEV OVERTEMP trips at 135 °C. Check ambient conditions, air flow and fan operation, and motor power against drive power." | `web-06-answer1.png` |
+| 4 | grounded + cited | web | **PASS** — chip `abb-acs150.pdf p. 130`, "Grounded in this notebook's sources." | same |
+| 5 | citation opens the real passage | web | **PASS** — viewer iframes `/api/namespace/files/5ac80027-be74-40f2-a280-bfb7fc869d90/#page=130`; the served file is **byte-identical** to the upload (same sha256) and its page 130 contains `135 °C`, `air flow and fan`, `F0003` (pypdf) | `web-07b-citation.png` |
+| 6 | follow-up | web | **PASS** — "F0002 DC OVERVOLT trips at 840 V on a 400 V drive", p. 130 | `web-08-followup.png` |
+| 7 | persistence | web | **PASS** — fresh browser context on bare `/v3/` → sidebar row → both turns + chips restore; server turn ids `8de44841…`, `06561775…` | `web-09-persist-reopen.png` |
+| 8 | same thread on Android | emulator | **PASS** — drawer lists the project and thread; both web turns render with p. 130 chips | `emu-03-thread-from-web.png` |
+| 9 | citation on Android | emulator | **PASS** — passage sheet "…F0003 DEV OVERTEMP Drive IGBT temperature is excessive. Fault trip limit is 135 °C. Check ambient conditions.…", "Open original at cited page 130" | `emu-04-citation-open.png` |
+| 10 | follow-up on Android | emulator | **PASS** — "F0001 OVERCURRENT trips at 325% of the drive nominal current", p. 130 (turn `3fefee82…`) | `emu-06-android-followup-answer.png` |
+| 11 | cold restart | emulator | **PASS** — `am force-stop` (no pid) → relaunch lands on HOME → drawer → thread: all three turns and their citations restore | `emu-07…`, `emu-08…`, `emu-09-restored-top.png` |
+| 12 | continue on web | web | **PASS** — the Android turn renders once (count 1); WEB FOLLOW-UP 2 answered from p. 130 (F0006 causes), turn `3089d6e2…` | `web-10-sees-android-and-followup2.png` |
+| 13 | return to Android | emulator | **PASS** — after relaunch, WEB FOLLOW-UP 2 is in the thread with its p. 130 chip | `emu-10-android-sees-web-followup2.png` |
+| 14 | photo analyzed before evidence | web → emulator | **PASS** — `POST …/look/` before `POST …/chat/`; answer "AutomationDirect … display reads H0.00 … unconfirmed photo reading", **no ABB citation applied**, "Grounded in workspace evidence", observation card Verified **no**; same card on Android | `web-11-photo-turn.png`, `emu-11-photo-turn-on-android.png` |
+| 15–18 | the same on the **physical Pixel** (launch, open thread, citation, restart, phone↔web) | Pixel 9a | **NOT RUN** — device fingerprint-locked | — |
+
+Server truth at the end: 5 turns in thread `4a6d18d5…` with unique ids `8de44841`, `06561775`, `3fefee82`, `3089d6e2`, plus
+the photo turn. "Exactly once" relies on those unique ids plus the web count; the Android scan confirmed order and presence.
+
+## Findings (filed, not fixed — #4618)
+
+1. The photo card says **Provenance: phone photo** for a desktop file-picker upload. The shared type allows only `phone_photo`
+   and the server stores no capture origin.
+2. The same saved turn is captioned "Grounded in this notebook's sources." on web and "Grounded in the cited documentation."
+   on a reloaded Android turn. Android is the conservative one (#4025 / Codex #4301 F1); this is parity, not safety.
+
+## Not done / owed
+
+- Physical Pixel steps 15–18 (owner unlock needed; the Pixel's prod session is in the same tenant, so no account switch).
+- No code change: the journey exposed no failing step on prod web or the emulator.
