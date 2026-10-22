@@ -82,7 +82,7 @@
 .fl-card__actions { display: flex; align-items: center; gap: var(--fl-workspace-space-2); margin-block-start: var(--fl-workspace-space-2); }
 .fl-card__actions button { padding-inline: var(--fl-workspace-space-3); border-color: var(--fl-workspace-line); }
 
-.fl-pill { display: inline-flex; align-items: center; inline-size: fit-content; padding: var(--fl-workspace-space-1) var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-pill); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
+.fl-pill { display: inline-flex; align-items: center; inline-size: fit-content; padding: var(--fl-workspace-space-1) var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-pill); color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs-sm); }
 /* "authorized" is a STATE (accepted/grounded), so it wears the ok tokens — the accent is for actions and selection only. */
 .fl-pill--primary { border-color: var(--fl-workspace-ok-line); background: var(--fl-workspace-ok-tint); color: var(--fl-workspace-ok-ink); }
 

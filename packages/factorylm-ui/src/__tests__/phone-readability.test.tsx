@@ -43,6 +43,21 @@ describe("#4614 phone drawer width", () => {
   });
 });
 
+describe("#4562 sidebar search height", () => {
+  it("makes the search box a 44px control like its neighbours", () => {
+    expect(shellCss).toMatch(/\.fl-shell__search\s*\{[^}]*min-block-size:\s*max\(2\.75rem,\s*44px\)/s);
+  });
+});
+
+describe("#4564 grounding pill legibility", () => {
+  it("sets the pill at the secondary size in primary ink, not the label size in muted grey", () => {
+    const pill = conversationCss.match(/\.fl-pill\s*\{([^}]*)\}/s)?.[1] ?? "";
+    expect(pill).toMatch(/font-size:\s*var\(--fl-workspace-fs-sm\)/);
+    expect(pill).toMatch(/color:\s*var\(--fl-workspace-ink\)/);
+    expect(pill).not.toMatch(/--fl-workspace-muted/);
+  });
+});
+
 describe("#4615 manual link tap target", () => {
   it("renders the manual link with a class that is a 44px tap target", () => {
     expect(partsSource).toMatch(/className="fl-manual-link"[^>]*>Open website to find the manual/);
