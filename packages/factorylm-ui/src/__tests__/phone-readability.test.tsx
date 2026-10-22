@@ -68,10 +68,27 @@ describe("#4615 manual link tap target", () => {
   });
 });
 
-describe("#4616 composer focus ring", () => {
-  it("draws one focus ring on the composer row, not a second one on the textarea inside it", () => {
-    expect(conversationCss).toMatch(/\.fl-composer__row:focus-within\s*\{[^}]*outline:\s*2px solid/s);
-    expect(conversationCss).not.toMatch(/\.fl-composer__row textarea:focus-visible\s*\{[^}]*outline:\s*2px/s);
+describe("#4616 / #4621 composer focus ring", () => {
+  const supportsBlock = (() => {
+    const start = conversationCss.indexOf("@supports selector(:has(*))");
+    if (start < 0) return "";
+    let depth = 0;
+    for (let i = conversationCss.indexOf("{", start); i < conversationCss.length; i += 1) {
+      if (conversationCss[i] === "{") depth += 1;
+      if (conversationCss[i] === "}") { depth -= 1; if (depth === 0) return conversationCss.slice(start, i + 1); }
+    }
+    return "";
+  })();
+
+  it("rings the row only while the textarea itself has focus, never for a focused button (#4621)", () => {
+    expect(supportsBlock).toMatch(/\.fl-composer__row:has\(textarea:focus-visible\)\s*\{[^}]*outline:\s*2px solid/s);
+    expect(supportsBlock).toMatch(/\.fl-composer__row textarea:focus-visible\s*\{[^}]*outline:\s*none/s);
+    expect(conversationCss).not.toMatch(/\.fl-composer__row:focus-within\s*\{[^}]*outline/s);
+  });
+
+  it("keeps the textarea's own ring where :has() is unsupported (control: focus is never invisible)", () => {
+    const outside = conversationCss.replace(supportsBlock, "");
+    expect(outside).toMatch(/\.fl-composer__row textarea:focus-visible\s*\{[^}]*outline:\s*2px solid/s);
   });
 });
 
@@ -105,7 +122,7 @@ describe("#4616 follow the technician's new turn", () => {
   const assistantTurn = (id: string) => ({ ...base.turns[0], id, role: "assistant" as const, parts: [{ type: "text" as const, text: "Overcurrent." }] });
 
   it("stops the followed turn above the sticky composer", () => {
-    expect(conversationCss).toMatch(/\.fl-turn--aui\s*\{[^}]*scroll-margin-block-end:\s*8rem/s);
+    expect(conversationCss).toMatch(/\.fl-turn--aui\s*\{[^}]*scroll-margin-block-end:\s*calc\(var\(--fl-composer-block-size,\s*8rem\)/s);
   });
 
   it("does not scroll on first render (control)", async () => {

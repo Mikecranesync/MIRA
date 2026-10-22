@@ -58,6 +58,20 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   // previews. A sent attachment has already left `pending`, so its preview —
   // which the host's outgoing message may still show — is not touched.
   const pendingRef = useRef(pending);
+  // Publish the composer's real height on the shell (#4620): it grows with the
+  // sync banner, send errors, pending attachments and the safe-area inset, and a
+  // followed sent turn must stop above it, not under it.
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const form = formRef.current;
+    const shell = form?.closest<HTMLElement>(".fl-shell");
+    if (!form || !shell || typeof ResizeObserver === "undefined") return;
+    const publish = () => shell.style.setProperty("--fl-composer-block-size", `${Math.ceil(form.getBoundingClientRect().height)}px`);
+    const observer = new ResizeObserver(publish);
+    observer.observe(form);
+    publish();
+    return () => { observer.disconnect(); shell.style.removeProperty("--fl-composer-block-size"); };
+  }, []);
   pendingRef.current = pending;
   useEffect(() => () => {
     for (const item of pendingRef.current) adapter.release?.(item.attachment.id);
@@ -184,6 +198,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   };
 
   return <form
+    ref={formRef}
     className="fl-composer"
     aria-label="Composer"
     data-menu-open={state.attachmentMenuVisible}
