@@ -199,6 +199,8 @@ function FirstRun() {
   };
   return <div className="fl-conversation__first-run">
     <h2 className="fl-conversation__greeting">What can I help you with?</h2>
+    {/* FactoryLM is the platform; MIRA is its AI assistant (#4569, owner decision 2026-10-21). */}
+    <p className="fl-conversation__identity">MIRA is FactoryLM's AI maintenance assistant.</p>
     {grounding ? <p className="fl-conversation__grounding">{grounding}</p> : null}
     {chips && chips.length > 0 ? (
       <div className="fl-conversation__chips">

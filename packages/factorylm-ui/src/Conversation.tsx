@@ -101,7 +101,10 @@ function Turn({ turn, state, dispatch, adapter, hooks }: ConversationProps & { r
  */
 export function ConversationBar({ state }: { readonly state: ShellState }) {
   const machine = machineName(state, state.activeContext.machineId);
-  const context = [...breadcrumb(state), ...(machine ? [machine] : [])];
+  // The header already shows the thread title; a crumb with the same text read
+  // as the project name twice, the second copy tiny (#4568).
+  const title = state.thread.title.trim();
+  const context = [...breadcrumb(state), ...(machine ? [machine] : [])].filter((crumb) => crumb.trim() !== title);
   if (context.length === 0) return null;
   return <div className="fl-conversation__bar">
     <nav className="fl-conversation__crumbs" aria-label="Context">

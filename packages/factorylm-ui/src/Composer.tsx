@@ -292,7 +292,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         aria-busy={busy !== null}
         onClick={() => dispatch({ type: "set-attachment-menu-visible", visible: !state.attachmentMenuVisible })}
       >
-        ＋
+        <span aria-hidden="true">＋</span><span className="fl-composer__label">Attach</span>
       </button>
       <textarea
         aria-label="Ask MIRA"
@@ -306,8 +306,8 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         onPaste={onPaste}
       />
       {hooks?.busy && hooks.onStop
-        ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={hooks.onStop}>■</button>
-        : <button type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend || Boolean(hooks?.busy)}>↑</button>}
+        ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={hooks.onStop}><span aria-hidden="true">■</span><span className="fl-composer__label">Stop</span></button>
+        : <button type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend || Boolean(hooks?.busy)}><span aria-hidden="true">↑</span><span className="fl-composer__label">Send</span></button>}
     </div>
   </form>;
 }

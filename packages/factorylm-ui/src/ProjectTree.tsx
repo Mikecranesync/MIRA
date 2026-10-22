@@ -86,7 +86,9 @@ function subtreeMatches(node: ProjectNode, filter: string | undefined, keep: Rea
 }
 
 const ITEM_ICON = { thread: ChatIcon, run: RunIcon, file: DocumentIcon, finding: FindingIcon } as const;
-const ITEM_KIND_LABEL = { thread: "Chat", run: "Run", file: "File", finding: "Finding" } as const;
+// A chat row needs no tag: its icon already says chat, and the tag on every row
+// was noise (#4561). Runs, files and findings keep theirs to tell them apart.
+const ITEM_KIND_LABEL: Partial<Record<"thread" | "run" | "file" | "finding", string>> = { run: "Run", file: "File", finding: "Finding" };
 
 /** One row pattern for every object type: disclosure column, type icon, label, optional muted metadata. */
 function Row({ kind, current, onPath, disclosure, icon, label, meta, ...rest }: {
@@ -194,7 +196,7 @@ function Nodes({ nodes, state, dispatch, onOpenItem, filter, current, path, keep
           <span className="fl-tree__disclosure" aria-hidden="true" />
           <span className="fl-tree__icon" aria-hidden="true"><Icon /></span>
           <span className="fl-tree__label">{node.label}</span>
-          <span className="fl-tree__meta">{ITEM_KIND_LABEL[node.kind]}</span>
+          {ITEM_KIND_LABEL[node.kind] ? <span className="fl-tree__meta">{ITEM_KIND_LABEL[node.kind]}</span> : null}
         </li>;
       }
       return <li key={node.id}>
