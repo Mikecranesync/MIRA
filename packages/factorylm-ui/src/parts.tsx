@@ -401,7 +401,7 @@ function ManualSearchStatusPart({ part }: { readonly part: Extract<InteractionPa
     {part.running
       ? `Searching ${part.manufacturer}'s documentation for ${part.model}…`
       : part.message ?? `Finished searching for the ${part.manufacturer} ${part.model} manual.`}
-    {manualUrl && <> <a href={manualUrl} target="_blank" rel="noopener noreferrer">Open website to find the manual ↗</a></>}
+    {manualUrl && <> <a className="fl-manual-link" href={manualUrl} target="_blank" rel="noopener noreferrer">Open website to find the manual ↗</a></>}
   </p>;
 }
 
