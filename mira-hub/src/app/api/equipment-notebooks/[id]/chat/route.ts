@@ -90,7 +90,7 @@ import { composeTimeout } from "@/lib/abort-helpers";
 import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { guidedProcedureEnabled, isGuidedDeadEnd, type QueryDb } from "@/capabilities/guided-procedure-store";
+import { authorizeGuidedDeadEnd, guidedProcedureEnabled } from "@/capabilities/guided-procedure-store";
 import {
   abandonNotebookTurnRequest,
   claimNotebookTurnRequest,
@@ -1112,7 +1112,8 @@ async function handleChatTurn(
      *  never read. */
     visualEvidence?: { fileId?: unknown; capturedAt?: unknown };
     /** WP-1 guided dead end: the guided session whose manual procedure ran out. Only the id is
-     *  read; the server checks it against this tenant and notebook (isGuidedDeadEnd). */
+     *  read; the server checks it against this tenant and notebook, and that the procedure still applies
+     *  to the machine as it is now (authorizeGuidedDeadEnd, #4602). */
     guidedEscalation?: { sessionId?: unknown };
   };
   try {
@@ -2170,7 +2171,12 @@ async function handleChatTurn(
       : null;
   const guidedDeadEnd =
     general && guidedDeadEndId !== null && guidedProcedureEnabled()
-      ? await withTenantContext(ctx.tenantId, (c) => isGuidedDeadEnd(c as unknown as QueryDb, ctx.tenantId, notebookId, guidedDeadEndId)).catch(
+      ? await authorizeGuidedDeadEnd(ctx.tenantId, notebookId, guidedDeadEndId).then(
+          (d) => {
+            // #4602: a dead end whose machine or manual changed since (or can't be read) declines.
+            if (!d.ok) console.info("[notebook-chat] guided dead-end not honoured", { reason: d.reason });
+            return d.ok;
+          },
           (err) => {
             console.error("[notebook-chat] guided dead-end check failed", err);
             return false;

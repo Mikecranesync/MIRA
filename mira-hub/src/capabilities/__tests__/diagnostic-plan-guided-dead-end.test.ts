@@ -11,6 +11,7 @@ const NB = "22222222-2222-4222-8222-222222222222";
 const DOC_A = "33333333-3333-4333-8333-333333333333";
 const ROW_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const SESSION = "55555555-5555-4555-8555-555555555555";
+const MANUAL_FILE = "66666666-6666-4666-8666-666666666666";
 
 const sessionMock = vi.hoisted(() => ({
   sessionOr401: vi.fn(async () => ({ tenantId: "11111111-1111-4111-8111-111111111111", userId: "u1" })),
@@ -36,7 +37,7 @@ const domainMock = vi.hoisted(() => ({
     manufacturer: "Allen-Bradley",
     model: "PowerFlex 525",
   })),
-  listSources: vi.fn(async () => [{ filename: "PF525.pdf", docId: DOC_A }]),
+  listSources: vi.fn(async () => [{ filename: "PF525.pdf", docId: DOC_A }] as { filename: string; docId: string; fileId?: string }[]),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
 }));
 vi.mock("@/lib/equipment-notebooks", () => domainMock);
@@ -63,14 +64,36 @@ vi.mock("@/lib/manual-rag", () => ragMock);
 
 // The guided dead-end check is the only guided_procedure_sessions read; every other tenant-scoped
 // read returns no rows. `deadEnd` decides what the check finds.
-const tc = vi.hoisted(() => ({ deadEnd: false, version: "" as string, sql: [] as { sql: string; params: unknown[] }[] }));
+// #4602: the hand-off also re-reads the machine the procedure endpoint reads — the notebook's identity
+// row and the sha256 of each attached manual — so `nb` / `manualSha` model what is true NOW.
+const tc = vi.hoisted(() => ({
+  deadEnd: false,
+  version: "" as string,
+  sessionRevision: "exact" as string,
+  sessionSha: "" as string,
+  nb: null as Record<string, unknown> | null,
+  manualSha: null as string | null,
+  machineReadFails: false,
+  sql: [] as { sql: string; params: unknown[] }[],
+}));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
     fn({
       query: vi.fn(async (sql: string, params: unknown[]) => {
         if (sql.includes("guided_procedure_sessions")) {
           tc.sql.push({ sql, params });
-          return { rows: tc.deadEnd ? [{ template_id: T.id, template_version: tc.version }] : [] };
+          return {
+            rows: tc.deadEnd
+              ? [{ template_id: T.id, template_version: tc.version, revision: tc.sessionRevision, source_sha256: tc.sessionSha }]
+              : [],
+          };
+        }
+        if (/FROM equipment_notebooks\b/.test(sql) && sql.includes("identity_status")) {
+          if (tc.machineReadFails) throw new Error("db blip");
+          return { rows: tc.nb ? [tc.nb] : [] };
+        }
+        if (sql.includes("namespace_direct_uploads")) {
+          return { rows: tc.manualSha ? [{ id: MANUAL_FILE, content_sha256: tc.manualSha }] : [] };
         }
         return { rows: [] };
       }),
@@ -196,6 +219,13 @@ beforeEach(() => {
   tc.deadEnd = false;
   tc.version = T.version ?? "";
   tc.sql.length = 0;
+  // The machine as it was when the dead end was reached: confirmed SMC Flex, exact 150-UM008J attached.
+  tc.sessionRevision = "exact";
+  tc.sessionSha = T.source?.fileSha256 ?? "";
+  tc.nb = { manufacturer: "Allen-Bradley", model: "SMC Flex", catalog_number: "150-F135NBD", identity_status: "user_confirmed" };
+  tc.manualSha = T.source?.fileSha256 ?? null;
+  tc.machineReadFails = false;
+  domainMock.listSources.mockResolvedValue([{ filename: "150-um008_-en-p.pdf", docId: DOC_A, fileId: MANUAL_FILE }]);
   acqMock.acquisitionEnabled.mockReturnValue(false);
   acqMock.candidateAcquisitionEnabled.mockImplementation(() => acqMock.acquisitionEnabled());
   process.env.GROQ_API_KEY = "k1";
@@ -311,5 +341,67 @@ describe("guided dead end — the narrow exception to #4068", () => {
     await frames(await POST(chatReq({ message: "how does a soft starter bypass contactor work", mode: "general", sourceDocIds: [] }), params));
     expect(fetchMock).toHaveBeenCalled();
     expect(systemPromptOf()).not.toContain("GUIDED PROCEDURE DEAD END");
+  });
+});
+
+describe("guided dead end re-checks the machine and manual when Ask MIRA consumes it (#4602)", () => {
+  const declines = async () => {
+    tc.deadEnd = true;
+    const fr = await frames(await ask({ guidedEscalation: { sessionId: SESSION } }));
+    expect(tc.sql).toHaveLength(1); // the session itself still qualified
+    expect(fetchMock).not.toHaveBeenCalled();
+    const status = fr.find((f) => f.kind === "status");
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(String(status?.message)).toContain("won't guess");
+  };
+
+  it("control: an unchanged, applicable session still answers (labelled general)", async () => {
+    tc.deadEnd = true;
+    const fr = await frames(await ask({ guidedEscalation: { sessionId: SESSION } }));
+    expect(fetchMock).toHaveBeenCalled();
+    expect(fr.find((f) => f.kind === "status")?.status).toBe("answered");
+    expect(fr.find((f) => f.kind === "evidence")?.basis).toBe("general_reasoning");
+    expect(systemPromptOf()).toContain("GUIDED PROCEDURE DEAD END");
+  });
+
+  it("changed machine: the notebook now names other equipment → declines", async () => {
+    tc.nb = { manufacturer: "Siemens", model: "SINAMICS V20", catalog_number: null, identity_status: "user_confirmed" };
+    await declines();
+  });
+
+  it("changed machine: the identity is no longer confirmed → declines", async () => {
+    tc.nb = { ...tc.nb, identity_status: "candidate" };
+    await declines();
+  });
+
+  it("notebook gone (or not this tenant's) → declines", async () => {
+    tc.nb = null;
+    await declines();
+  });
+
+  it("changed manual SHA: the attached 150-UM008 is now a different revision → declines", async () => {
+    domainMock.listSources.mockResolvedValue([{ filename: "150-um008h-en-p.pdf", docId: DOC_A, fileId: MANUAL_FILE }]);
+    tc.manualSha = "0".repeat(64);
+    await declines();
+  });
+
+  it("changed manual: the exact manual the session ran on was removed → declines", async () => {
+    domainMock.listSources.mockResolvedValue([]);
+    await declines();
+  });
+
+  it("unknown applicability: the attached manual's sha cannot be read → declines", async () => {
+    tc.manualSha = null;
+    await declines();
+  });
+
+  it("unknown applicability: the machine read fails → declines (fail closed)", async () => {
+    tc.machineReadFails = true;
+    await declines();
+  });
+
+  it("a session started without the manual attached does not carry over once a manual is attached", async () => {
+    tc.sessionRevision = "not_attached";
+    await declines();
   });
 });
