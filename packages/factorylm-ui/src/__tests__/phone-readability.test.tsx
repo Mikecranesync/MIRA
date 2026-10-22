@@ -27,9 +27,12 @@ function phoneBlock(css: string): string {
 describe("#4613 phone type scale", () => {
   it("raises body to 16px and labels/chips to at least 13px on phones only", () => {
     const phone = phoneBlock(shellCss);
-    expect(phone).toMatch(/\.fl-shell\s*\{[^}]*--fl-workspace-fs-body:\s*1rem/s);
-    expect(phone).toMatch(/\.fl-shell\s*\{[^}]*--fl-workspace-fs-sm:\s*0\.875rem/s);
-    expect(phone).toMatch(/\.fl-shell\s*\{[^}]*--fl-workspace-fs-xs:\s*0\.8125rem/s);
+    expect(phone).toMatch(/\.fl-shell\s*\{[^}]*--fl-workspace-fs-body:\s*16px/s);
+    expect(phone).toMatch(/\.fl-shell\s*\{[^}]*--fl-workspace-fs-sm:\s*14px/s);
+    expect(phone).toMatch(/\.fl-shell\s*\{[^}]*--fl-workspace-fs-xs:\s*13px/s);
+    // Absolute px, never rem: the Hub sets a 14px root, so 1rem rendered body text at
+    // 14px on staging, smaller than the 15px it replaced (staging check of 13d4608d1).
+    expect(phone).not.toMatch(/--fl-workspace-fs-(body|sm|xs):\s*[0-9.]+rem/);
     // Control: the desktop rules outside the phone block do not override the scale.
     expect(shellCss.replace(phone, "")).not.toMatch(/--fl-workspace-fs-(body|sm|xs):/);
   });
@@ -38,7 +41,7 @@ describe("#4613 phone type scale", () => {
 describe("#4614 phone drawer width", () => {
   it("opens the drawer to ~85% of a phone screen, not 18rem", () => {
     const phone = phoneBlock(shellCss);
-    expect(phone).toMatch(/\.fl-shell__sidebar\s*\{[^}]*inline-size:\s*min\(22rem,\s*85vw\)/s);
+    expect(phone).toMatch(/\.fl-shell__sidebar\s*\{[^}]*inline-size:\s*min\(352px,\s*85vw\)/s);
     expect(phone).not.toMatch(/inline-size:\s*min\(18rem/);
   });
 });
