@@ -276,8 +276,11 @@ export function NotebookScreen({
     onInitialSensorStartConsumed?.();
   }, [initialSensorStart, onInitialSensorStartConsumed]);
 
+  // One fetch for the open view, shared by refresh and the resume reload so
+  // their request options cannot drift apart.
+  const fetchDetail = () => load(() => getNotebookDetail(id, { threadId }));
   const refresh = () => {
-    void load(() => getNotebookDetail(id, { threadId })).then(setDetail);
+    void fetchDetail().then(setDetail);
   };
   useEffect(() => {
     setDetail({ state: "loading" });
@@ -296,7 +299,7 @@ export function NotebookScreen({
   useForegroundRefresh(() => {
     if (inFlightRef.current || detail.state !== "ready") return;
     const previousRowIds = new Set(detail.data.turns.map((t) => t.id));
-    void load(() => getNotebookDetail(id, { threadId })).then((next) => {
+    void fetchDetail().then((next) => {
       if (next.state !== "ready" || viewKeyRef.current !== viewKey || inFlightRef.current) return;
       setDetail(next);
       setLiveTurns((live) => dropPersistedLiveTurns(previousRowIds, next.data.turns, live));

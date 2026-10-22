@@ -205,6 +205,39 @@ describe("NotebookScreen returns to the foreground (#3990)", () => {
   });
 });
 
+// Android runs the unified shell (UnifiedRoot → chromeless NotebookScreen →
+// UnifiedChat), not the classic list the cases above pin. Same contract there.
+describe("unified shell returns to the foreground (#3990)", () => {
+  const mountUnified = () =>
+    render(
+      <NotebookScreen
+        id="nb1"
+        threadId="th1"
+        backRef={{ current: null }}
+        onExit={() => {}}
+        chromeless
+        unifiedShell={{ projects: [], machines: [], onOpenItem: () => {} }}
+      />,
+    );
+
+  it("shows the web turn after resume, and a phone turn exactly once", async () => {
+    getNotebookDetail.mockResolvedValueOnce(detail([]));
+    askNotebook.mockResolvedValue({ answer: "F0003 trips at 135 C.", citations: [], status: "answered" });
+    mountUnified();
+    const ta = await screen.findByRole("textbox");
+    fireEvent.change(ta, { target: { value: "What trips F0003?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("F0003 trips at 135 C.");
+    expect(screen.queryByText("F0002 trips at 840 V.")).toBeNull();
+
+    getNotebookDetail.mockResolvedValue(detail([PHONE, WEB]));
+    await resume();
+
+    await screen.findByText("F0002 trips at 840 V.");
+    expect(screen.getAllByText("F0003 trips at 135 C.")).toHaveLength(1);
+  });
+});
+
 describe("dropPersistedLiveTurns", () => {
   it("each new row consumes at most one live turn; old rows consume none", async () => {
     const { dropPersistedLiveTurns } = await import("../live-turn-reconcile");
