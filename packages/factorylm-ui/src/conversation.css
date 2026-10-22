@@ -27,7 +27,10 @@
 .fl-conversation__empty { color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-sm); }
 
 /* First-run surface: greeting, grounding line, and optional suggestion chips. Centred and calm. */
-.fl-conversation__first-run { display: grid; place-items: center; min-block-size: max(100%, 600px); padding: var(--fl-workspace-space-6); }
+.fl-conversation__first-run { display: grid; place-items: center; align-content: center; min-block-size: max(100%, 600px); padding: var(--fl-workspace-space-6); }
+.fl-conversation__identity { margin: 0 0 var(--fl-workspace-space-4) 0; color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs-body); text-align: center; }
+/* Visible words beside the Attach / Send / Stop glyphs (issue 4567); the accessible names are unchanged. */
+.fl-composer__label { margin-inline-start: var(--fl-workspace-space-1); font-size: var(--fl-workspace-fs-sm); font-weight: 600; }
 .fl-conversation__greeting { margin: 0 0 var(--fl-workspace-space-4) 0; font-size: var(--fl-workspace-fs-lg); font-weight: 600; color: var(--fl-workspace-ink); max-inline-size: 28rem; text-align: center; }
 .fl-conversation__grounding { margin: 0 0 var(--fl-workspace-space-6) 0; color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-body); max-inline-size: 32rem; text-align: center; line-height: 1.6; }
 .fl-conversation__chips { display: flex; flex-direction: column; gap: var(--fl-workspace-space-3); max-inline-size: 28rem; }
