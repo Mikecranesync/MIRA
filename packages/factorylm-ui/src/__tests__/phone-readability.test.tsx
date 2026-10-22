@@ -3,8 +3,10 @@
  * (#4613, #4614, #4615, #4616). Desktop is untouched: every size change lives
  * inside the existing `max-width: 48rem` phone block.
  */
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { getFixture } from "@factorylm/interaction";
 import { readFileSync } from "node:fs";
+import { renderHarness, type HarnessView } from "./harness";
 
 const shellCss = readFileSync(new URL("../shell.css", import.meta.url), "utf8");
 const conversationCss = readFileSync(new URL("../conversation.css", import.meta.url), "utf8");
@@ -52,5 +54,68 @@ describe("#4616 composer focus ring", () => {
   it("draws one focus ring on the composer row, not a second one on the textarea inside it", () => {
     expect(conversationCss).toMatch(/\.fl-composer__row:focus-within\s*\{[^}]*outline:\s*2px solid/s);
     expect(conversationCss).not.toMatch(/\.fl-composer__row textarea:focus-visible\s*\{[^}]*outline:\s*2px/s);
+  });
+});
+
+/*
+ * #4616 follow-on-send. In a real browser the thread viewport grows to its
+ * content and the DOCUMENT scrolls (lab, 390x844: html scrollHeight 1736 vs
+ * 844; .fl-thread__viewport scrollHeight == clientHeight), so assistant-ui's
+ * viewport autoscroll has nothing to move. The thread therefore brings a newly
+ * sent technician turn into view itself, through every scrolling ancestor.
+ */
+describe("#4616 follow the technician's new turn", () => {
+  const views: HarnessView[] = [];
+  const scrolled: string[] = [];
+  const original = Element.prototype.scrollIntoView;
+  beforeEach(() => {
+    scrolled.length = 0;
+    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this.getAttribute("data-turn-id") ?? ""); };
+  });
+  afterEach(() => {
+    Element.prototype.scrollIntoView = original;
+    views.splice(0).forEach((view) => view.cleanup());
+  });
+
+  function setup() {
+    const view = renderHarness({ surface: "web", fixture: "grounded-answer", conversationSurface: "assistant" });
+    views.push(view);
+    return view;
+  }
+  const base = getFixture("grounded-answer").thread;
+  const userTurn = (id: string) => ({ ...base.turns[0], id, role: "user" as const, parts: [{ type: "text" as const, text: "What does F30001 mean?" }] });
+  const assistantTurn = (id: string) => ({ ...base.turns[0], id, role: "assistant" as const, parts: [{ type: "text" as const, text: "Overcurrent." }] });
+
+  it("stops the followed turn above the sticky composer", () => {
+    expect(conversationCss).toMatch(/\.fl-turn--aui\s*\{[^}]*scroll-margin-block-end:\s*8rem/s);
+  });
+
+  it("does not scroll on first render (control)", async () => {
+    setup();
+    await frames();
+    expect(scrolled).toEqual([]);
+  });
+
+  const frames = async (n = 12) => { for (let i = 0; i < n; i += 1) await new Promise((r) => requestAnimationFrame(() => r(null))); };
+
+  it("scrolls the new user turn into view when one is appended to the same thread", async () => {
+    const view = setup();
+    view.dispatch({ type: "hydrate", data: { thread: { ...base, turns: [...base.turns, userTurn("turn-sent-1")] } } });
+    await frames();
+    expect(scrolled).toContain("turn-sent-1");
+  });
+
+  it("does not yank the reader when only an assistant turn is appended (control)", async () => {
+    const view = setup();
+    view.dispatch({ type: "hydrate", data: { thread: { ...base, turns: [...base.turns, assistantTurn("turn-answer-1")] } } });
+    await frames();
+    expect(scrolled).toEqual([]);
+  });
+
+  it("does not treat opening a different thread as a send (control)", async () => {
+    const view = setup();
+    view.dispatch({ type: "hydrate", data: { thread: { ...base, id: "thread-other", turns: [userTurn("turn-other-1")] } } });
+    await frames();
+    expect(scrolled).toEqual([]);
   });
 });
