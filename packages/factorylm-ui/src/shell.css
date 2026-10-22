@@ -130,15 +130,16 @@
 
 @media (max-width: 48rem) {
   /* Phone type scale (issues 4613 and 4614): 16px body, 14px secondary, 13px labels
-     and chips. Scoped to the shell so desktop keeps the base scale. */
-  .fl-shell { grid-template-columns: minmax(0, 1fr); --fl-workspace-fs-body: 1rem; --fl-workspace-fs-sm: 0.875rem; --fl-workspace-fs-xs: 0.8125rem; }
+     and chips. Scoped to the shell so desktop keeps the base scale. Absolute px,
+     never rem: hosts set different root sizes (the Hub's is 14px). */
+  .fl-shell { grid-template-columns: minmax(0, 1fr); --fl-workspace-fs-body: 16px; --fl-workspace-fs-sm: 14px; --fl-workspace-fs-xs: 13px; }
   .fl-shell__header { padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); }
   .fl-shell__sidebar {
     position: fixed;
     inset-block: 0;
     inset-inline-start: 0;
     z-index: 1;
-    inline-size: min(22rem, 85vw);
+    inline-size: min(352px, 85vw);
     block-size: 100dvh;
     padding-block-start: calc(var(--fl-workspace-space-4) + env(safe-area-inset-top, 0px));
     padding-block-end: calc(var(--fl-workspace-space-4) + env(safe-area-inset-bottom, 0px));
