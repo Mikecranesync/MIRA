@@ -69,6 +69,8 @@ import { useChatUiChoice } from "../lib/chat-ui-pref";
 import { UnifiedChat, type UnifiedShellHost } from "./UnifiedChat";
 import { canCancelChatTransport } from "../lib/chat-transport-presentation";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
+import { dropPersistedLiveTurns } from "../unified/live-turn-reconcile";
+import { useForegroundRefresh } from "../unified/use-foreground-refresh";
 
 type Panel = "sources" | "chat" | "studio";
 
@@ -282,6 +284,24 @@ export function NotebookScreen({
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, threadId]);
+
+  // #3990: a thread continued on web while the app was backgrounded is current
+  // on return. Silent (no loading state), never over an in-flight answer, and
+  // dropped if the technician switched threads before it landed.
+  const viewKey = `${id}|${threadId ?? ""}`;
+  const viewKeyRef = useRef(viewKey);
+  viewKeyRef.current = viewKey;
+  const inFlightRef = useRef(false);
+  inFlightRef.current = busy || pending !== null;
+  useForegroundRefresh(() => {
+    if (inFlightRef.current || detail.state !== "ready") return;
+    const previousRowIds = new Set(detail.data.turns.map((t) => t.id));
+    void load(() => getNotebookDetail(id, { threadId })).then((next) => {
+      if (next.state !== "ready" || viewKeyRef.current !== viewKey || inFlightRef.current) return;
+      setDetail(next);
+      setLiveTurns((live) => dropPersistedLiveTurns(previousRowIds, next.data.turns, live));
+    });
+  });
 
   // `detail` belongs in these deps. Without it, opening a machine that already
   // has history landed on the OLDEST turn: on mount the component is still in
