@@ -130,7 +130,7 @@ make_dead_tool_shims() {
 run_hook() { bash "$HOOK" 2>&1; }
 
 stage_guarded_fixture() {
-  printf 'export const precommitLifecycleGuardFixture = %s;\n' "${1:-true}" > "$GUARDED_FIXTURE"
+  printf 'export const precommitLifecycleGuardFixture = true;\n' > "$GUARDED_FIXTURE"
   git add -- "$GUARDED_FIXTURE"
 }
 
