@@ -1,0 +1,516 @@
+{
+ "version": 1,
+ "tolerance": 1,
+ "about": "36 scorable real technician questions from 2026-10-17 (PR #4502; photo turns tq-08..11 and Fatek tq-25/26 excluded). Expected pages hand-labelled 2026-10-19 and each anchor verified verbatim on its physical page by pdftotext. expectedPage null = the manual does not contain the answer (correct behaviour is to abstain).",
+ "manuals": [
+  {
+   "id": "micro810",
+   "oem": "Rockwell Automation",
+   "family": "plc",
+   "title": "Micro810 user manual 2080-UM001",
+   "url": "",
+   "filename": "oem-manual-micro810.pdf",
+   "sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605",
+   "bytes": 3307987,
+   "pages": 126,
+   "source": "public OEM PDF, fetched 2026-10-18 (Lane A); bytes pinned by sha256"
+  },
+  {
+   "id": "gs4-ch2",
+   "oem": "AutomationDirect",
+   "family": "vfd",
+   "title": "DURApulse GS4 user manual, chapter 2",
+   "url": "",
+   "filename": "ch2.pdf",
+   "sha256": "82fff0d757339b4aa24ab8ae5ae1f58f5512d59def4abdbd0d72a786005f5546",
+   "bytes": 6664194,
+   "pages": 38,
+   "source": "public OEM PDF, fetched 2026-10-18 (Lane A); bytes pinned by sha256"
+  },
+  {
+   "id": "gs4-ch6",
+   "oem": "AutomationDirect",
+   "family": "vfd",
+   "title": "DURApulse GS4 user manual, chapter 6",
+   "url": "",
+   "filename": "ch6.pdf",
+   "sha256": "eb56fcf7c9154982ae3ce47d8fbebe545c92e3c1ee23b1b0275490aa8b0611d2",
+   "bytes": 2174759,
+   "pages": 32,
+   "source": "public OEM PDF, fetched 2026-10-18 (Lane A); bytes pinned by sha256"
+  },
+  {
+   "id": "plc5-rm001",
+   "oem": "Allen-Bradley",
+   "family": "plc",
+   "title": "PLC-5 instruction set reference 1785-RM001",
+   "url": "",
+   "filename": "1785-rm001_-en-p-rerun.pdf",
+   "sha256": "b0add993f60a09713a2d9609627e3a27553593bb248956f1a427e6af026e4dc4",
+   "bytes": 3194863,
+   "pages": 372,
+   "source": "public OEM PDF, fetched 2026-10-18 (Lane A); bytes pinned by sha256"
+  },
+  {
+   "id": "se-canopen-hw",
+   "oem": "Schneider Electric",
+   "family": "fieldbus",
+   "title": "CANopen hardware setup",
+   "url": "",
+   "filename": "se-canopen-hw-setup.pdf",
+   "sha256": "37cef51be2e199e41113017cc98fbb1bb03d9ec7c57aadf78d6b942e4e9b09ae",
+   "bytes": 576702,
+   "pages": 66,
+   "source": "public OEM PDF, fetched 2026-10-18 (Lane A); bytes pinned by sha256"
+  },
+  {
+   "id": "se-lxm32a-canopen",
+   "oem": "Schneider Electric",
+   "family": "servo",
+   "title": "Lexium 32A CANopen",
+   "url": "",
+   "filename": "se-lxm32a-canopen-0198441113779.pdf",
+   "sha256": "184215ad40c6d9d8caaa49c067912c9d9ede16de03b6bfba2515996a5e353706",
+   "bytes": 2775163,
+   "pages": 116,
+   "source": "public OEM PDF, fetched 2026-10-18 (Lane A); bytes pinned by sha256"
+  },
+  {
+   "id": "se-m171",
+   "oem": "Schneider Electric",
+   "family": "plc",
+   "title": "Modicon M171 Performance hardware guide",
+   "url": "",
+   "filename": "se-m171-performance-hardware-guide-EIO0000002030.pdf",
+   "sha256": "0960ac80367576997446b100bf56cc9a5dbb3f1ea2e047fc88f9d005acb8133b",
+   "bytes": 8988897,
+   "pages": 131,
+   "source": "public OEM PDF, fetched 2026-10-18 (Lane A); bytes pinned by sha256"
+  },
+  {
+   "id": "se-m172",
+   "oem": "Schneider Electric",
+   "family": "plc",
+   "title": "Modicon M172 hardware guide",
+   "url": "",
+   "filename": "se-m172-hardware-guide-EIO0000002015.pdf",
+   "sha256": "624c0605b759b2d49b0a2768d7ac5aba2cf9957e1802466a8e9ec045761e3d88",
+   "bytes": 9230847,
+   "pages": 198,
+   "source": "public OEM PDF, fetched 2026-10-18 (Lane A); bytes pinned by sha256"
+  },
+  {
+   "id": "se-premium-serial",
+   "oem": "Schneider Electric",
+   "family": "plc",
+   "title": "Premium asynchronous serial link",
+   "url": "",
+   "filename": "se-premium-async-serial-35006178.pdf",
+   "sha256": "291fff98121f76823502f042104379482c2d167cc7355da893275d7b7ea7d571",
+   "bytes": 3173747,
+   "pages": 368,
+   "source": "public OEM PDF, fetched 2026-10-18 (Lane A); bytes pinned by sha256"
+  },
+  {
+   "id": "se-x80-analog",
+   "oem": "Schneider Electric",
+   "family": "io",
+   "title": "Modicon X80 analog I/O",
+   "url": "",
+   "filename": "se-x80-analog-io-35011978.pdf",
+   "sha256": "c05c1fc15b43a8a42058615ac6cb528aa2c498877bce7f083dfa4c3e32e108fc",
+   "bytes": 11919360,
+   "pages": 376,
+   "source": "public OEM PDF, fetched 2026-10-18 (Lane A); bytes pinned by sha256"
+  }
+ ],
+ "questions": [
+  {
+   "id": "tq-01",
+   "manual": "micro810",
+   "question": "?And the max current?",
+   "expectedPage": 64,
+   "acceptablePages": [],
+   "anchor": "100V\u2026120V AC, 1 A",
+   "safetyRelevant": false,
+   "confidence": "medium"
+  },
+  {
+   "id": "tq-02",
+   "manual": "micro810",
+   "question": "What supply voltage range does the Micro810 2080-LC10-12QWB accept?",
+   "expectedPage": 57,
+   "acceptablePages": [],
+   "anchor": "20.4\u202626.4V DC",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-03",
+   "manual": "micro810",
+   "question": "What's the max number of embedded I/O points on a Micro820 20-point controller?",
+   "expectedPage": null,
+   "acceptablePages": [],
+   "anchor": "",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-04",
+   "manual": "micro810",
+   "question": "What supply voltage does the Micro810 use?",
+   "expectedPage": 57,
+   "acceptablePages": [],
+   "anchor": "100\u2026240V AC, 50/60 Hz",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-05",
+   "manual": "micro810",
+   "question": "What supply voltage does the Micro820 use",
+   "expectedPage": null,
+   "acceptablePages": [],
+   "anchor": "",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-06",
+   "manual": "micro810",
+   "question": "What supply voltage does the Micro810 use",
+   "expectedPage": 57,
+   "acceptablePages": [],
+   "anchor": "100\u2026240V AC, 50/60 Hz",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-07",
+   "manual": "micro810",
+   "question": "What is the operating temperature range of the Micro810",
+   "expectedPage": 62,
+   "acceptablePages": [],
+   "anchor": "0\u202655 \u00b0C (32\u2026131 \u00b0F)",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-12",
+   "manual": "gs4-ch2",
+   "question": "GS4 on a high-leg delta. Do I pull the RFI jumper?",
+   "expectedPage": 16,
+   "acceptablePages": [],
+   "anchor": "Grounding at a Midpoint in a Polygonal Configuration",
+   "safetyRelevant": false,
+   "confidence": "medium",
+   "note": "inferential: manual never says 'delta'; high-leg delta = midpoint-grounded polygon"
+  },
+  {
+   "id": "tq-13",
+   "manual": "gs4-ch2",
+   "question": "Where's the RFI jumper on a GS4 frame D0?",
+   "expectedPage": 14,
+   "acceptablePages": [],
+   "anchor": "Remove the MOV-PLATE by hand; no screws need to be loosened.",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-14",
+   "manual": "gs4-ch2",
+   "question": "GS4 is running on a high-leg delta and I can't shut the line down. How do I pull the RFI jumper with it powered?",
+   "expectedPage": 15,
+   "acceptablePages": [
+    14,
+    16,
+    17
+   ],
+   "anchor": "Do not remove the RFI jumper while power is applied to the GS4 drive.",
+   "safetyRelevant": true,
+   "confidence": "medium"
+  },
+  {
+   "id": "tq-15",
+   "manual": "gs4-ch2",
+   "question": "what is an rfi jumper",
+   "expectedPage": 14,
+   "acceptablePages": [],
+   "anchor": "RFI Jumper: The GS4 drive may emit electrical noise.",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-16",
+   "manual": "gs4-ch6",
+   "question": "GS4 oC",
+   "expectedPage": 16,
+   "acceptablePages": [
+    17
+   ],
+   "anchor": "OC at Accel",
+   "safetyRelevant": false,
+   "confidence": "low",
+   "note": "ambiguous: no bare oC row; ocA/ocd/ocn p.16, occ/ocS p.17"
+  },
+  {
+   "id": "tq-17",
+   "manual": "gs4-ch6",
+   "question": "GS4 oL",
+   "expectedPage": 19,
+   "acceptablePages": [],
+   "anchor": "Check if the motor is overloaded.",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-18",
+   "manual": "gs4-ch6",
+   "question": "GFF on a DURApulse GS4",
+   "expectedPage": 16,
+   "acceptablePages": [],
+   "anchor": "Check the wiring connections between the",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-19",
+   "manual": "gs4-ch6",
+   "question": "GS4 ovd",
+   "expectedPage": 17,
+   "acceptablePages": [],
+   "anchor": "DC BUS over-voltage due to regenerative",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-20",
+   "manual": "gs4-ch6",
+   "question": "OrP fault on GS4",
+   "expectedPage": 18,
+   "acceptablePages": [],
+   "anchor": "Check Power Source Input if all 3 input phases",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-21",
+   "manual": "gs4-ch6",
+   "question": "GS4 faulted oH1, IGBT Over Heat. What do I check?",
+   "expectedPage": 18,
+   "acceptablePages": [
+    9
+   ],
+   "anchor": "Check the fan and clean it.",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-22",
+   "manual": "gs4-ch6",
+   "question": "LvA GS4",
+   "expectedPage": 17,
+   "acceptablePages": [],
+   "anchor": "LV at Accel",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-23",
+   "manual": "gs4-ch6",
+   "question": "My GS4 keeps throwing CE10 when the PLC stops polling it. What sets that timeout and how do I fix it?",
+   "expectedPage": 22,
+   "acceptablePages": [
+    8
+   ],
+   "anchor": "For a CE10 Fault to be displayed, the User must",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-24",
+   "manual": "gs4-ch6",
+   "question": "What is the factory default value of P6.35 on the GS4?",
+   "expectedPage": null,
+   "acceptablePages": [],
+   "anchor": "",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-27",
+   "manual": "plc5-rm001",
+   "question": "PLC-5 BTR length 0. What does it do?",
+   "expectedPage": 235,
+   "acceptablePages": [],
+   "anchor": "Reserves 64 words for block transfer data",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-28",
+   "manual": "plc5-rm001",
+   "question": "PLC-5 block transfer: which bit is set when DLEN doesn't match RLEN?",
+   "expectedPage": 238,
+   "acceptablePages": [],
+   "anchor": "Transmitted Word Count (.DLEN)",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-29",
+   "manual": "se-canopen-hw",
+   "question": "Schneider 5-pin M12 CANopen connector pinout",
+   "expectedPage": 47,
+   "acceptablePages": [],
+   "anchor": "shows the pin assignments of the BUS IN and BUS OUT connector pins",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-30",
+   "manual": "se-canopen-hw",
+   "question": "With the CANopen network powered down I measure 120 ohms between CAN_H and CAN_L. Is that OK, and what would 40 ohms mean?",
+   "expectedPage": 34,
+   "acceptablePages": [],
+   "anchor": "the reason may be a missing termination resistor or a broken wire",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-31",
+   "manual": "se-lxm32a-canopen",
+   "question": "CANopen: what COB-ID does a node's boot-up message use?",
+   "expectedPage": 33,
+   "acceptablePages": [
+    59
+   ],
+   "anchor": "The boot-up message is transmitted with the COB ID 700h + node ID and one",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-32",
+   "manual": "se-lxm32a-canopen",
+   "question": "CANopen SDO COB-IDs",
+   "expectedPage": 17,
+   "acceptablePages": [
+    20,
+    21
+   ],
+   "anchor": "1408 (580 hex) + node ID",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-33",
+   "manual": "se-lxm32a-canopen",
+   "question": "What's the connector pinout of the LCA423-SCM-01 stepper?",
+   "expectedPage": null,
+   "acceptablePages": [],
+   "anchor": "",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-34",
+   "manual": "se-m171",
+   "question": "TM172 won't see my TM171EP14R expansion. How is the expansion's CAN address set?",
+   "expectedPage": 102,
+   "acceptablePages": [],
+   "anchor": "The addressing comprises the sum of parameter Addr_CAN_OB plus the composite",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-35",
+   "manual": "se-m172",
+   "question": "Max cable length on the TM172 embedded CAN expansion bus at 500 kBd?",
+   "expectedPage": 94,
+   "acceptablePages": [],
+   "anchor": "The maximum cable length depends on the communication speed set in baud",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-36",
+   "manual": "se-m172",
+   "question": "How do I terminate the CAN expansion bus between a TM172 controller and its expansions?",
+   "expectedPage": 93,
+   "acceptablePages": [
+    94
+   ],
+   "anchor": "termination resistances between the CAN_H and CAN_L terminals on each of the",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-37",
+   "manual": "se-m172",
+   "question": "TM172 Addr_CAN_OB default and range?",
+   "expectedPage": 145,
+   "acceptablePages": [
+    94,
+    158
+   ],
+   "anchor": "ON Board CAN Expansion Bus Folder",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-38",
+   "manual": "se-premium-serial",
+   "question": "TSX P57 TER port pinout?",
+   "expectedPage": 55,
+   "acceptablePages": [],
+   "anchor": "connectors marked TER and AUX are 8-pin mini-DIN which can be locked.",
+   "safetyRelevant": false,
+   "confidence": "medium"
+  },
+  {
+   "id": "tq-39",
+   "manual": "se-premium-serial",
+   "question": "Can I run Modbus RTU on a Premium's built-in terminal port?",
+   "expectedPage": 197,
+   "acceptablePages": [
+    184
+   ],
+   "anchor": "Depending on the communication media chosen, certain parameters cannot be",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-40",
+   "manual": "se-x80-analog",
+   "question": "BMXAMI0810, nothing wired, I/O error on the channels. Why?",
+   "expectedPage": 112,
+   "acceptablePages": [],
+   "anchor": "If nothing is connected on a BMX AMI 0810 and BMX AMI 0810H analog module",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-41",
+   "manual": "se-x80-analog",
+   "question": "What happens to a BMX AMI channel I mark as not in use?",
+   "expectedPage": 250,
+   "acceptablePages": [],
+   "anchor": "the corresponding line is grayed out, the 0 value is sent back to the",
+   "safetyRelevant": false,
+   "confidence": "high"
+  },
+  {
+   "id": "tq-42",
+   "manual": "se-x80-analog",
+   "question": "Walk me through locking out the M340 rack so I can swap the BMXAMI0810. What do I lock and in what order?",
+   "expectedPage": 119,
+   "acceptablePages": [
+    18,
+    19
+   ],
+   "anchor": "Disconnect voltage supplying sensors and pre-actuators.",
+   "safetyRelevant": true,
+   "confidence": "medium"
+  }
+ ]
+}
