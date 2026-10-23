@@ -159,6 +159,14 @@ The **invariants below bind in all cases, tooling or no tooling**:
 > (SDLC v1 step 1, drift item D8). The rule above governs unamended; a substitute reviewer is never
 > appointed by a session (#3653 for the history).
 
+**Intermediate self-review (owner decision, Mike, 2026-10-18).** Between Codex rounds, Claude may
+review its own fixes and attempts with the `code-review` skill at **low** effort. That keeps token
+cost down and catches obvious defects before a Codex round is spent. It never produces, substitutes
+for, or self-awards GREEN, and it never counts as one of the three rounds. The **final** review is
+always third-party: the exact-head Codex review loaded from the immutable base, as above. Loop:
+implement → `/code-review low` → fix what is real → repeat → one Codex round on the exact head →
+`[CLAUDE-REMEDIATION]`. A fourth or later Codex round still needs explicit human authorization.
+
 ## 7. Hard human gates
 
 Never merge, deploy production, bypass CI, weaken gates or tests, rewrite
