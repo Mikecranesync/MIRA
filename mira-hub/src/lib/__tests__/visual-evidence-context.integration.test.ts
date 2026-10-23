@@ -144,7 +144,7 @@ run("visual-evidence-context (integration)", () => {
     await q("DELETE FROM equipment_notebooks WHERE id='a55e7a11-0000-4000-8000-000000000077'");
     await q("DELETE FROM workspace_file_links WHERE file_id='f11e0000-0000-4000-8000-000000000077'");
     await q("DELETE FROM namespace_direct_uploads WHERE id='f11e0000-0000-4000-8000-000000000077'");
-    await q("DELETE FROM knowledge_entries WHERE doc_id='d4643000-0000-4000-8000-000000000077'");
+    await q("DELETE FROM knowledge_entries WHERE doc_id='d4643000-0000-4000-8000-000000000077' AND is_private = true AND tenant_id IN ($1,$2)", [TENANT_A,TENANT_B]);
     await q("DELETE FROM hub_uploads WHERE id='d4643000-0000-4000-8000-000000000077'");
     sessionA1 = await insertSession(TENANT_A, ASSET_A1);
     sessionA1Photo2 = await insertSession(TENANT_A, ASSET_A1);
@@ -188,7 +188,7 @@ run("visual-evidence-context (integration)", () => {
     await q("DELETE FROM equipment_notebooks WHERE id='a55e7a11-0000-4000-8000-000000000077'");
     await q("DELETE FROM workspace_file_links WHERE file_id='f11e0000-0000-4000-8000-000000000077'");
     await q("DELETE FROM namespace_direct_uploads WHERE id='f11e0000-0000-4000-8000-000000000077'");
-    await q("DELETE FROM knowledge_entries WHERE doc_id='d4643000-0000-4000-8000-000000000077'");
+    await q("DELETE FROM knowledge_entries WHERE doc_id='d4643000-0000-4000-8000-000000000077' AND is_private = true AND tenant_id IN ($1,$2)", [TENANT_A,TENANT_B]);
     await q("DELETE FROM hub_uploads WHERE id='d4643000-0000-4000-8000-000000000077'");
     await pool.end();
   });
@@ -645,7 +645,7 @@ describe("LOOK conversation association without completed chat turns", () => {
     vi.mocked(ingestTextToNode).mockResolvedValueOnce({ uploadId: docId, chunkCount: 1 } as never);
     const result = await keepPhotoAsSource({ ...opts, reviewed: { observationId: current!.observationId, text: editedText } });
     expect(result).toMatchObject({ ok: true, docId });
-    const chunks = (await q("SELECT tenant_id::text,verified FROM knowledge_entries WHERE doc_id=$1 ORDER BY tenant_id", [docId])).rows;
+    const chunks = (await q("SELECT tenant_id::text,verified FROM knowledge_entries WHERE doc_id=$1 AND is_private = true AND tenant_id IN ($2,$3) ORDER BY tenant_id", [docId,TENANT_A,TENANT_B])).rows;
     expect(chunks).toEqual([{tenant_id:TENANT_A,verified:true},{tenant_id:TENANT_B,verified:false}]);
     expect((await findVisibleOriginSource(TENANT_A, notebook.id, fileId))?.docId).toBe(docId);
     expect(await withTenantContext(TENANT_A, c => loadVisualEvidenceForPhoto(c,TENANT_A,fileId,scope))).toMatchObject({ text: editedText, trust: "verified" });
