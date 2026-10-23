@@ -84,6 +84,11 @@ vi.mock("../../unified/attachments", async (importOriginal) => {
 import { UnifiedChat } from "../UnifiedChat";
 import type { NotebookServerTurn } from "../../api/resources";
 
+const { keepRequest } = vi.hoisted(() => ({ keepRequest: vi.fn(async () => ({ data: { observationId: "obs-1", text: "-F53.3 /150", reviewed: false } })) }));
+vi.mock("../../api/client", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../api/client")>(), request: keepRequest,
+}));
+
 const NB = "nb-1";
 
 const PROPOSAL_TURN: NotebookServerTurn = {
@@ -224,3 +229,24 @@ describe("UnifiedChat — a confirm finishing after unmount never restarts follo
   });
 });
 
+
+describe("Keep photo conversation scope", () => {
+  it.each([null, undefined, "thread-1"])("sends explicit scope for attachment thread %s", async (attachmentThreadId) => {
+    keepRequest.mockClear();
+    render(<UnifiedChat
+      turns={[{ id: "photo-turn", question: "read this", answerStatus: "insufficient_evidence", answerText: null,
+        evidence: [{ kind: "visual_observation", fileId: "photo-1", capturedAt: "2026-10-23T00:00:00Z", provenance: "phone_photo" }], basis: null }]}
+      liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null}
+      handlers={{ onSend: vi.fn(), onStop: vi.fn(), onCitation: vi.fn() }}
+      attachmentThreadId={attachmentThreadId}
+      meta={{ notebookId: NB, threadId: "notebook-nb-1:thread-legacy", title: "CV-101", identityConfirmed: false }}
+    />);
+    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: "Keep on this machine" })); });
+    fireEvent.change(screen.getByRole("textbox", { name: "Photo reading" }), { target: { value: "-F55.3 /15.0" } });
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save reviewed reading" })); });
+    expect(keepRequest).toHaveBeenCalledWith("/api/equipment-notebooks/nb-1/photos/photo-1/source/", {
+      method: "POST", json: { threadId: attachmentThreadId ?? "legacy", reviewed: { observationId: "obs-1", text: "-F55.3 /15.0", confirmed: true } },
+    });
+  });
+});

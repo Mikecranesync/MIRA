@@ -700,3 +700,46 @@ describe("LOOK conversation-scoped descriptions", () => {
     expect((await loadVisualEvidenceForPhoto({ query } as never, base_tenant, FILE, { ...scope, allowLegacy: true }))?.text).toBe("thread A description");
   });
 });
+
+describe("conversation-scoped print corrections", () => {
+  const scope = { notebookId: UUID, ownerUserId: "tech-1", threadId: "thread-1" };
+  const opts = { tenantId: "tenant-1", boundEntityId: null, fileId: FILE, correctedBy: "tech-1", conversation: scope };
+  const value = ("-F55.3 /15.0\n" + "Reviewed print text. ".repeat(20)).trim();
+  const row = { id: UUID2, session_id: UUID, evidence_id: FILE, normalized_value: "-F53.3 /150", extractor: "inspection_vision", review_state: "unreviewed", evidence_state: "VISIBLE", superseded_by: null };
+  it("preserves the full corrected print instead of treating prose as a 200-character nameplate field", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] }).mockResolvedValueOnce({ rows: [{id:UUID}] }).mockResolvedValueOnce({ rows: [row] }).mockResolvedValueOnce({ rows: [{ id: "replacement" }] }).mockResolvedValueOnce({ rows: [{ id: UUID2 }] });
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    const result = await correctVisualObservations({ ...opts, corrections: [{ observationId: UUID2, value }] });
+    expect(result.corrected).toEqual([{ supersededId: UUID2, replacementId: "replacement" }]);
+    expect(query.mock.calls[2][1][3]).toBe(value);
+    expect(JSON.parse(query.mock.calls[2][1][4])).toMatchObject({ field: "photo_reading", corrected_by: "tech-1", corrected_from: UUID2 });
+    const [sql, params] = query.mock.calls[1];
+    expect(sql).toContain("vs.created_by = $5");
+    expect(sql).toContain("vs.metadata->>'thread_id' = $6");
+    expect(sql).toContain("workspace_file_links");
+    expect(params).toEqual([UUID2, "tenant-1", UUID, FILE, "tech-1", "thread-1"]);
+  });
+  it("does not use conversation scope for a different reviewer or silently truncate large corrections", async () => {
+    vi.mocked(withTenantContext).mockClear();
+    for (const change of [{ correctedBy: "other" }, { corrections: [{ observationId: UUID2, value: "x".repeat(20001) }] }]) {
+      expect((await correctVisualObservations({ ...opts, corrections: [{ observationId: UUID2, value }], ...change })).corrected).toEqual([]);
+    }
+    expect(withTenantContext).not.toHaveBeenCalled();
+  });
+  it("records explicit human review even when normalized print text is unchanged", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] }).mockResolvedValueOnce({ rows: [{id:UUID}] }).mockResolvedValueOnce({ rows: [{ ...row, normalized_value: value }] }).mockResolvedValueOnce({ rows: [{ id: "reviewed" }] }).mockResolvedValueOnce({ rows: [{ id: UUID2 }] });
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    expect((await correctVisualObservations({ ...opts, corrections: [{ observationId: UUID2, value }] })).corrected).toHaveLength(1);
+  });
+  it("allows a technician to revise their previously reviewed print", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] }).mockResolvedValueOnce({ rows: [{id:UUID}] }).mockResolvedValueOnce({ rows: [{ ...row, extractor: "technician", review_state: "corrected", normalized_value: "earlier reviewed text" }] }).mockResolvedValueOnce({ rows: [{ id: "revision-2" }] }).mockResolvedValueOnce({ rows: [{ id: UUID2 }] });
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    expect((await correctVisualObservations({ ...opts, corrections: [{ observationId: UUID2, value }] })).corrected).toHaveLength(1);
+  });
+  it("replays the same corrected prose without another insert", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] }).mockResolvedValueOnce({ rows: [{id:UUID}] }).mockResolvedValueOnce({ rows: [{ ...row, evidence_state: "SUPERSEDED", superseded_by: UUID }] }).mockResolvedValueOnce({ rows: [{ normalized_value: value }] });
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_t, fn) => fn({ query } as never));
+    expect((await correctVisualObservations({ ...opts, corrections: [{ observationId: UUID2, value }] })).corrected).toEqual([{ supersededId: UUID2, replacementId: UUID }]);
+    expect(query).toHaveBeenCalledTimes(3);
+  });
+});

@@ -4,7 +4,7 @@ vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({})),
 }));
 vi.mock("@/lib/equipment-notebooks", () => ({
-  attachSource: vi.fn(async () => ({ ok: true })),
+  attachSource: vi.fn<typeof import("@/lib/equipment-notebooks").attachSource>(async () => ({ ok: true })),
   findVisibleOriginSource: vi.fn(async () => null),
   supersedePriorOriginSources: vi.fn(async () => []),
   markNameplateDocVerified: vi.fn(async () => 0),
@@ -22,12 +22,14 @@ vi.mock("@/lib/node-knowledge-ingest", () => ({
 }));
 vi.mock("@/lib/visual-evidence-context", () => ({
   loadVisualEvidenceForPhoto: vi.fn(async () => READING),
+  correctVisualObservations: vi.fn(),
 }));
 
+import { withTenantContext } from "@/lib/tenant-context";
 import { attachSource, findVisibleOriginSource, markNameplateDocVerified, supersedePriorOriginSources } from "@/lib/equipment-notebooks";
 import { claimIngest, linkFileToUpload, parkOrReuseFile, photoLinkedToTarget } from "@/lib/workspace-files";
 import { deleteOrphanNodeIngest, ingestTextToNode } from "@/lib/node-knowledge-ingest";
-import { loadVisualEvidenceForPhoto } from "@/lib/visual-evidence-context";
+import { correctVisualObservations, loadVisualEvidenceForPhoto } from "@/lib/visual-evidence-context";
 import { buildPhotoSourceText, citesOnlyUnconfirmedPhotoReadings, keepPhotoAsSource, materializeDerivedTextDoc } from "./photo-source";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
@@ -46,7 +48,7 @@ const READING = {
   observedAt: "2026-10-23T08:44:41.003Z",
 };
 
-const keep = () => keepPhotoAsSource({ tenantId: TENANT, userId: "user-1", notebook: NOTEBOOK, fileId: PHOTO });
+const keep = () => keepPhotoAsSource({ tenantId: TENANT, userId: "user-1", notebook: NOTEBOOK, fileId: PHOTO, threadId: "legacy" });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -114,9 +116,11 @@ describe("keepPhotoAsSource", () => {
       sourceRole: "photo",
       addedBy: "user-1",
       originFileId: PHOTO,
+      reuseVisibleOrigin: true,
+      candidatePhoto: { observationId: "obs-1", threadId: "legacy" },
       matchEvidence: { kept_from_observation: "obs-1" },
     });
-    expect(supersedePriorOriginSources).toHaveBeenCalledWith(TENANT, NOTEBOOK.id, PHOTO, "doc-1");
+    expect(supersedePriorOriginSources).not.toHaveBeenCalled();
   });
 
   it("keeps the reading from the conversation the technician pressed Keep in", async () => {
@@ -128,14 +132,48 @@ describe("keepPhotoAsSource", () => {
     });
   });
 
-  it("falls back to the latest reading when no conversation is given", async () => {
-    await keep();
-    expect(vi.mocked(loadVisualEvidenceForPhoto).mock.calls[0][3]).toBeUndefined();
+  it.each([undefined, null, ""])("refuses missing conversation scope (%s) before any source lookup", async (threadId) => {
+    expect(await keepPhotoAsSource({ tenantId: TENANT, userId: "user-1", notebook: NOTEBOOK, fileId: PHOTO, threadId }))
+      .toEqual({ ok: false, status: 400, error: "conversation_scope_required" });
+    expect(findVisibleOriginSource).not.toHaveBeenCalled();
+    expect(loadVisualEvidenceForPhoto).not.toHaveBeenCalled();
+    expect(ingestTextToNode).not.toHaveBeenCalled();
+  });
+
+  it("refuses a reading lookup without an authenticated owner", async () => {
+    expect(await keepPhotoAsSource({ tenantId: TENANT, userId: null, notebook: NOTEBOOK, fileId: PHOTO, threadId: "legacy" }))
+      .toEqual({ ok: false, status: 400, error: "conversation_scope_required" });
+    expect(loadVisualEvidenceForPhoto).not.toHaveBeenCalled();
+    expect(attachSource).not.toHaveBeenCalled();
+  });
+
+  it("ingests the older legacy reading for this owner even when newer readings reuse the bytes", async () => {
+    const { loadVisualEvidenceForPhoto: realLoad } = await vi.importActual<typeof import("@/lib/visual-evidence-context")>("@/lib/visual-evidence-context");
+    const own = { observation_id: "own-legacy", session_id: "s1", text: "Legacy label Q17",
+      obs_kind: "entity", review_state: "unreviewed", file_id: PHOTO, notebook_id: NOTEBOOK.id,
+      owner_user_id: "user-1", thread_id: "legacy", hazards: [] };
+    const query = vi.fn(async () => ({ rows: [
+      { ...own, observation_id: "newer-thread", thread_id: "other-thread", text: "Other thread Q99" },
+      { ...own, observation_id: "newer-user", owner_user_id: "user-2", text: "Other owner Q88" }, own,
+    ] }));
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_tenant, fn) => fn({ query } as never));
+    vi.mocked(loadVisualEvidenceForPhoto).mockImplementationOnce(realLoad);
+    expect((await keep()).ok).toBe(true);
+    const text = vi.mocked(ingestTextToNode).mock.calls[0][0].buffer.toString("utf8");
+    expect(text).toContain("Legacy label Q17");
+    expect(text).not.toContain("Q99");
+    expect(text).not.toContain("Q88");
   });
 
   it("never marks the model's transcription verified", async () => {
     await keep();
     expect(markNameplateDocVerified).not.toHaveBeenCalled();
+  });
+
+  it("returns the source that won a concurrent Keep without superseding it", async () => {
+    vi.mocked(attachSource).mockResolvedValueOnce({ ok: true, docId: "winner-doc", alreadyAttached: true });
+    expect(await keep()).toEqual({ ok: true, docId: "winner-doc", alreadyKept: true, chunkCount: 0 });
+    expect(supersedePriorOriginSources).not.toHaveBeenCalled();
   });
 
   it("fails closed when the source row cannot be attached", async () => {
@@ -186,5 +224,43 @@ describe("citesOnlyUnconfirmedPhotoReadings", () => {
 
   it("is false with no citations", () => {
     expect(citesOnlyUnconfirmedPhotoReadings([], [])).toBe(false);
+  });
+});
+
+
+describe("human-reviewed print source", () => {
+  const reviewed = { observationId: "obs-1", text: "-F55.3 /15.0" };
+  it("replaces the unconfirmed source with only the reviewed correction and verifies its chunks", async () => {
+    vi.mocked(findVisibleOriginSource).mockResolvedValueOnce({ docId: "old-doc" } as never);
+    vi.mocked(correctVisualObservations).mockResolvedValueOnce({ corrected: [{ supersededId: "obs-1", replacementId: "obs-reviewed" }], mismatched: [] });
+    vi.mocked(loadVisualEvidenceForPhoto).mockResolvedValueOnce({ ...READING, observationId: "obs-reviewed", text: reviewed.text, trust: "verified" });
+    const result = await keepPhotoAsSource({ tenantId: TENANT, userId: "user-1", notebook: NOTEBOOK, fileId: PHOTO, threadId: "legacy", reviewed });
+    expect(result.ok).toBe(true);
+    expect(attachSource).toHaveBeenCalledWith(TENANT, NOTEBOOK.id, "doc-1", expect.objectContaining({
+      reviewedPhoto: { observationId: "obs-reviewed", threadId: "legacy" },
+    }));
+    expect(correctVisualObservations).toHaveBeenCalledWith(expect.objectContaining({ correctedBy: "user-1", conversation: { notebookId: NOTEBOOK.id, ownerUserId: "user-1", threadId: "legacy" }, corrections: [{ observationId: "obs-1", value: reviewed.text }] }));
+    const text = vi.mocked(ingestTextToNode).mock.calls[0][0].buffer.toString();
+    expect(text).toContain("technician-reviewed");
+    expect(text).toContain("-F55.3 /15.0");
+    expect(text).not.toContain("NOT technician-verified");
+    expect(markNameplateDocVerified).toHaveBeenCalledWith(TENANT, "doc-1");
+  });
+  it("refuses a stale correction instead of keeping a newer unseen reading", async () => {
+    vi.mocked(correctVisualObservations).mockResolvedValueOnce({ corrected: [], mismatched: [] });
+    const result = await keepPhotoAsSource({ tenantId: TENANT, userId: "user-1", notebook: NOTEBOOK, fileId: PHOTO, threadId: "legacy", reviewed });
+    expect(result).toEqual({ ok: false, status: 409, error: "photo_review_conflict" });
+    expect(ingestTextToNode).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("reviewed source must match the acknowledged observation", () => {
+  it("does not materialize a later reading after the correction committed", async () => {
+    vi.mocked(correctVisualObservations).mockResolvedValueOnce({ corrected: [{ supersededId: "obs-1", replacementId: "corrected-1" }], mismatched: [] });
+    vi.mocked(loadVisualEvidenceForPhoto).mockResolvedValueOnce({ ...READING, observationId: "newer-unseen", text: "different reading" });
+    expect(await keepPhotoAsSource({ tenantId: TENANT, userId: "user-1", notebook: NOTEBOOK, fileId: PHOTO, threadId: "legacy", reviewed: { observationId: "obs-1", text: "-F55.3 /15.0" } })).toEqual({ ok: false, status: 409, error: "photo_review_conflict" });
+    expect(ingestTextToNode).not.toHaveBeenCalled();
+    expect(markNameplateDocVerified).not.toHaveBeenCalled();
   });
 });

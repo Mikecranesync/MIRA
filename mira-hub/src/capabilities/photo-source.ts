@@ -16,14 +16,14 @@
  *   unconfirmed transcription: the chunks are NOT marked `verified` (unlike a
  *   nameplate the technician reviewed field by field), the document says so in
  *   its own header, and the observation row keeps `review_state='unreviewed'`.
- * - Nothing here interprets the photo. No new model call, no inferred machine
- *   facts: only what `/look` already observed.
+ * - An explicit human review creates a scoped retained correction. Only its
+ *   exact replacement text may become a technician-reviewed source. No new
+ *   model call is made, and review is not an equipment-operation authorization.
  *
  * Reuses the nameplate lane's seams: park + atomic ingest claim + text ingest
- * ({@link materializeDerivedTextDoc}), `attachSource` with `origin_file_id`, and
- * `supersedePriorOriginSources`. No new table.
+ * ({@link materializeDerivedTextDoc}), `attachSource` with atomic origin reuse/replacement. No new table.
  */
-import { attachSource, findVisibleOriginSource, supersedePriorOriginSources } from "@/lib/equipment-notebooks";
+import { attachSource, findVisibleOriginSource, markNameplateDocVerified } from "@/lib/equipment-notebooks";
 import { deleteOrphanNodeIngest, ingestTextToNode } from "@/lib/node-knowledge-ingest";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
@@ -33,7 +33,7 @@ import {
   photoLinkedToTarget,
   releaseIngestClaim,
 } from "@/lib/workspace-files";
-import { loadVisualEvidenceForPhoto } from "@/lib/visual-evidence-context";
+import { correctVisualObservations, loadVisualEvidenceForPhoto } from "@/lib/visual-evidence-context";
 
 /**
  * Park a generated text document and ingest it once, under the same canonical
@@ -100,11 +100,12 @@ export function buildPhotoSourceText(opts: {
   readonly photoSha256: string | null;
   readonly capturedAt: string | null;
   readonly observation: string;
+  readonly reviewed?: boolean;
 }): string {
   return [
     "Photo source: technician photo",
     `Machine: ${opts.machineName}`,
-    "Evidence: a vision model's transcription of a technician's photo. The technician confirmed this photo belongs to this machine; the transcription itself is NOT technician-verified. Check any identifier against the original photo before acting on it.",
+    opts.reviewed ? "Evidence: technician-reviewed transcription of this photo. Review confirms the text, not a diagnosis or authorization to operate equipment." : "Evidence: a vision model's transcription of a technician's photo. The technician confirmed this photo belongs to this machine; the transcription itself is NOT technician-verified. Check any identifier against the original photo before acting on it.",
     `Photo file: ${opts.fileId}`,
     ...(opts.photoSha256 ? [`Photo sha256: ${opts.photoSha256}`] : []),
     ...(opts.capturedAt ? [`Captured: ${opts.capturedAt}`] : []),
@@ -135,7 +136,7 @@ export function citesOnlyUnconfirmedPhotoReadings(
 
 export type KeepPhotoResult =
   | { readonly ok: true; readonly docId: string; readonly alreadyKept: boolean; readonly chunkCount: number }
-  | { readonly ok: false; readonly status: 404 | 409 | 503; readonly error: string };
+  | { readonly ok: false; readonly status: 400 | 404 | 409 | 503; readonly error: string };
 
 /**
  * Keep a photo already linked to this notebook as one of its sources.
@@ -149,55 +150,76 @@ export async function keepPhotoAsSource(opts: {
   readonly fileId: string;
   /** The conversation the technician pressed Keep in: keep the reading they saw there. */
   readonly threadId?: string | null;
+  readonly reviewed?: { readonly observationId: string; readonly text: string };
 }): Promise<KeepPhotoResult> {
   const { tenantId, notebook, fileId } = opts;
+  if (!opts.threadId || !opts.userId) return { ok: false, status: 400, error: "conversation_scope_required" };
   // The link is the server's proof the photo was attached to THIS machine; a
   // file id from another notebook or tenant is indistinguishable from none.
   const photo = await photoLinkedToTarget(tenantId, fileId, "equipment_notebook", notebook.id);
   if (!photo) return { ok: false, status: 404, error: "photo_not_found" };
 
   const existing = await findVisibleOriginSource(tenantId, notebook.id, fileId);
-  if (existing) return { ok: true, docId: existing.docId, alreadyKept: true, chunkCount: 0 };
+  if (existing && !opts.reviewed) return { ok: true, docId: existing.docId, alreadyKept: true, chunkCount: 0 };
 
-  // The same photo can be read more than once, and readings can disagree. Keep
-  // the one from the conversation the technician is looking at; without a
-  // conversation (or an owner to scope by) fall back to the latest reading.
-  const scope = opts.threadId !== undefined && opts.userId
-    ? { notebookId: notebook.id, ownerUserId: opts.userId, threadId: opts.threadId }
-    : undefined;
+  // Keep only this owner's explicit conversation, including "legacy".
+  // Never fall back to a newer reading from another conversation or owner.
+  const scope = { notebookId: notebook.id, ownerUserId: opts.userId, threadId: opts.threadId };
+  let correctedId: string | undefined;
+  if (opts.reviewed) {
+    if (!scope || !opts.reviewed.text.trim() || opts.reviewed.text.trim().length > 20000)
+      return { ok: false, status: 409, error: "photo_review_conflict" };
+    const correction = await correctVisualObservations({
+      tenantId, boundEntityId: null, fileId, correctedBy: opts.userId,
+      conversation: scope,
+      corrections: [{ observationId: opts.reviewed.observationId, value: opts.reviewed.text }],
+    });
+    correctedId = correction.corrected.find(r => r.supersededId === opts.reviewed!.observationId)?.replacementId;
+    if (!correctedId) return { ok: false, status: 409, error: "photo_review_conflict" };
+  }
   const reading = await withTenantContext(tenantId, (c) => loadVisualEvidenceForPhoto(c, tenantId, fileId, scope));
   // No stored reading means there is nothing citable to keep. Say so rather
   // than attach an empty document.
   if (!reading || reading.text.trim() === "") return { ok: false, status: 409, error: "no_photo_reading" };
 
+  if (opts.reviewed && (reading.observationId !== correctedId || reading.text !== opts.reviewed.text.trim() || reading.trust !== "verified"))
+    return { ok: false, status: 409, error: "photo_review_conflict" };
+  const reviewed = reading.trust === "verified";
   const text = buildPhotoSourceText({
     machineName: notebook.displayName,
     fileId,
     photoSha256: reading.photoHash,
     capturedAt: photo.capturedAt,
     observation: reading.text,
+    reviewed,
   });
   const materialized = await materializeDerivedTextDoc({
     tenantId,
     nodeId: notebook.nodeId,
     // The title rides on every chunk, so the trust state reaches the prompt and
     // the citation even when the header above lands in a different chunk.
-    filename: `Unconfirmed photo reading ${(photo.capturedAt ?? "").slice(0, 10) || fileId}.txt`,
+    filename: `${reviewed ? "Technician-reviewed" : "Unconfirmed"} photo reading ${(photo.capturedAt ?? "").slice(0, 10) || fileId}.txt`,
     text,
     createdBy: opts.userId,
     source: "photo_text",
   });
   if (!materialized.docId) return { ok: false, status: 503, error: "photo_source_in_progress" };
 
+  // Only this reviewed document may pass the retrieval approval gate.
+  if (reviewed) await markNameplateDocVerified(tenantId, materialized.docId);
   const att = await attachSource(tenantId, notebook.id, materialized.docId, {
     matchState: "user_confirmed",
     sourceRole: "photo",
     addedBy: opts.userId,
     originFileId: fileId,
+    ...(reviewed
+      ? { reviewedPhoto: { observationId: reading.observationId, threadId: opts.threadId } }
+      : { reuseVisibleOrigin: true, candidatePhoto: { observationId: reading.observationId, threadId: opts.threadId } }),
     matchEvidence: { kept_from_observation: reading.observationId },
   });
-  if (!att.ok) return { ok: false, status: 503, error: `attach_source_failed:${att.error}` };
-  // One photograph, one visible source (085 Invariant 1).
-  await supersedePriorOriginSources(tenantId, notebook.id, fileId, materialized.docId).catch(() => []);
-  return { ok: true, docId: materialized.docId, alreadyKept: false, chunkCount: materialized.chunkCount };
+  if (!att.ok) return att.error === "photo_review_conflict"
+    ? { ok: false, status: 409, error: att.error }
+    : { ok: false, status: 503, error: `attach_source_failed:${att.error}` };
+  return { ok: true, docId: att.docId ?? materialized.docId, alreadyKept: att.alreadyAttached ?? false,
+    chunkCount: att.alreadyAttached ? 0 : materialized.chunkCount };
 }
