@@ -59,8 +59,11 @@ export function schemaBehindNotice(sqlstate?: string): ReviewQueueNotice {
 
 // pg returns Date objects for timestamptz (no setTypeParser override here) —
 // same class as uploads.ts toIsoString. localeCompare must never see a Date.
+// Invalid Date is epoch, not a throw after RELEASE that would abort the txn.
 function toIsoString(value: Date | string | null | undefined): string {
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.toISOString() : EPOCH_ISO;
+  }
   if (typeof value === "string" && value) return value;
   return EPOCH_ISO;
 }
@@ -169,8 +172,10 @@ export async function fetchProposals(
       LIMIT 200`,
       [tenantId],
     );
+    // Map before RELEASE so a mapping throw still has a savepoint to roll back to.
+    const items = mapProposalRows(rows);
     if (savepoint) await client.query("RELEASE SAVEPOINT review_queue_proposals");
-    return { items: mapProposalRows(rows) };
+    return { items };
   } catch (err) {
     // Do not swallow ROLLBACK TO — same as pg-unique-retry.ts. A failed
     // rollback leaves the caller transaction aborted; getReviewQueue must not
@@ -181,8 +186,10 @@ export async function fetchProposals(
       console.warn("[review-queue] fetchProposals failed (schema behind)", sqlstate, err);
       return { items: [], notice: schemaBehindNotice(sqlstate) };
     }
+    // Same law as machine-memory.ts: permission / timeout / connection after a
+    // recovered savepoint must rethrow. Only undefined relation/column degrades.
     console.error("[review-queue] fetchProposals failed", err);
-    return { items: [] };
+    throw err;
   }
 }
 
@@ -244,7 +251,7 @@ export const fetchCartoons = () => fetchImageQueue("cartoon", "marketing/cartoon
 export const fetchScreenshots = () =>
   fetchImageQueue("screenshot", "docs/promo-screenshots");
 
-// ── web-review audit source ────────────────────
+// ── web-review audit source ──────────────────
 
 interface AuditFinding {
   url?: string;
