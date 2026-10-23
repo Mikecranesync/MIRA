@@ -34,7 +34,7 @@ concurrency:
 jobs:
   report:
     name: Collect + categorise Jev vs evidence_sufficient
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     environment: staging # DOPPLER_TOKEN scoped to factorylm/stg
     timeout-minutes: 15
     steps:

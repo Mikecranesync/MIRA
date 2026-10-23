@@ -46,7 +46,7 @@ concurrency:
 jobs:
   tag:
     name: Tag overall version + rollback checkpoint
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v6
         with:

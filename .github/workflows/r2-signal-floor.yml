@@ -44,7 +44,7 @@ env:
 jobs:
   snapshot:
     name: Capture current PR snapshot
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     permissions:
       contents: read
       pull-requests: read
@@ -95,7 +95,7 @@ jobs:
   pending:
     name: Post pending status
     needs: snapshot
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     permissions:
       statuses: write
     steps:
@@ -113,7 +113,7 @@ jobs:
   evaluate:
     name: R2 Signal Floor
     needs: [snapshot, pending]
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     # No statuses:write here — this job executes checked-out base code.
     permissions:
       contents: read
@@ -198,7 +198,7 @@ jobs:
     name: Post final status
     needs: [snapshot, pending, evaluate]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     permissions:
       statuses: write
     steps:

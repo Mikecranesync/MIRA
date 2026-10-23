@@ -21,7 +21,7 @@ permissions:
 jobs:
   # Pure unit test of the runner (no DB) — always runs.
   parse:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -32,7 +32,7 @@ jobs:
 
   # Drift check against staging — needs the staging DB secret.
   drift:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     if: github.event_name != 'pull_request'
     environment: staging
     steps:

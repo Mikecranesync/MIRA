@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- CHARLIE: every 30 min, mint a 1-hour runner registration token and hand it to Bravo.
+     Install: copy to ~/Library/LaunchAgents/, set REPO, `launchctl bootstrap gui/$(id -u) <file>`. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.factorylm.gha-regtoken</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/charlienode/orca/MIRA/tools/ci-runners/charlie-regtoken-refresh.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>REPO</key><string>Mikecranesync/MIRA</string>
+  </dict>
+  <key>StartInterval</key><integer>1800</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/charlienode/Library/Logs/gha-regtoken.log</string>
+  <key>StandardErrorPath</key><string>/Users/charlienode/Library/Logs/gha-regtoken.log</string>
+</dict>
+</plist>

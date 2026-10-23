@@ -44,7 +44,7 @@ jobs:
     # Short, stable job name — branch-protection required-check is composed
     # as "<workflow-name> / <job-name>" = "Staging Gate / staging-gate".
     name: staging-gate
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON_SERVICES || '"ubuntu-latest"') }}
     timeout-minutes: 20
 
     # Ollama sidecar — provides the nomic-embed-text embeddings the engine's

@@ -20,7 +20,7 @@ on:
 jobs:
   audit:
     name: Headless audit (Lighthouse + headers + edges)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     permissions:
       contents: read
     steps:

@@ -47,7 +47,7 @@ jobs:
     # red. CI lint/unit and the staging-gate dependabot-skip already gate the
     # dependency-bump risk. Skip the job-level run so the merge can proceed.
     if: github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 8
     environment: staging
 

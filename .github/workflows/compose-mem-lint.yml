@@ -32,7 +32,7 @@ permissions:
 jobs:
   lint:
     name: compose-mem-lint (advisory)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 3
     # ADVISORY: flip to `false` (or remove) once the 50+ backlog is fixed.
     continue-on-error: true
