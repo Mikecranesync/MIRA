@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-05",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-05",
+    "category": "troubleshooting",
+    "mode": "general",
+    "equipment": null,
+    "question": "Motor will not run after power is applied and the drive shows no fault code. What is the first check?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Verify control power (24 VDC or equivalent) is present and within specification",
+        "Confirm a valid run/start command is being sent to the drive input terminals",
+        "Check that safety interlocks and e-stop circuits are in the run permissive state",
+        "Verify that input wiring to the drive is connected per the manual diagram"
+      ],
+      "wrong_if": [
+        "Immediately recommends measuring DC bus voltage without checking control signal first",
+        "Assumes the motor winding is faulty without verifying the control path is active",
+        "Suggests resetting parameters before checking basic control wiring"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Motor will not run after power is applied and the drive shows no fault code. What is the first check?",
+      "answer": "The first thing to check is whether the drive is actually being given a RUN command and a speed reference, because no fault usually means the drive is healthy but not enabled to start.\n\n1. Check the control source and command status on the keypad or PLC/HMI.  \n2. If there is a start input circuit, with the drive de-energized and locked out, inspect the enable/run wiring, interlocks, and terminal tightness.  \n3. Verify the selected speed reference is not zero or inhibited.  \n4. If the drive is in local mode, try a local start command per your site procedure.\n\nIf you want, I can help you narrow it down by whether it\u2019s in local, remote, or PLC control.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 4.786217927932739,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:49:40.746773+00:00"
+}

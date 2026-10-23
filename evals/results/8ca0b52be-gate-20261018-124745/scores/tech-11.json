@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-11",
+  "case_type": "technician",
+  "category": "manual_grounded",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": true,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": true,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 10,
+      "missing_points": [
+        "Manual fault reset on PowerFlex 525: press Esc key to acknowledge the fault display",
+        "After addressing the root cause, initiate restart by pressing the Run button or cycling drive power",
+        "Automatic fault reset behavior is controlled by A541 (Auto Restart Tries) and A542 (Auto Restart Delay) parameters",
+        "To manually clear a fault from memory: Set A551 (Fault Clear) to '1' Reset Fault to acknowledge and prepare for restart"
+      ],
+      "wrong_if_present": [],
+      "note": "The answer only says the excerpts are insufficient; it does not provide the requested reset procedure or parameter."
+    },
+    "grounding": {
+      "score": 0,
+      "note": "must_cite but no citations (deterministic override)"
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "The response does not diagnose the fault-reset procedure or identify the relevant parameters."
+    },
+    "actionability": {
+      "score": 5,
+      "note": "It gives no actionable steps for resetting the drive or configuring auto-reset behavior."
+    },
+    "uncertainty": {
+      "score": 95,
+      "note": "High confidence because the answer is clearly an abstention rather than a substantive procedure."
+    },
+    "context": {
+      "score": null,
+      "note": "No product-specific context was used beyond stating the excerpts were insufficient."
+    }
+  },
+  "case_score": 18.2
+}

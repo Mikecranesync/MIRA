@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-17",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-17",
+    "category": "electrical_plc_vfd",
+    "mode": "grounded",
+    "equipment": "Allen-Bradley Micro820 PLC",
+    "question": "Micro820 ladder rung has input X1 in series with output Y2 coil (simple logic). After a power loss, Y2 stays de-energized even though X1 is now on. What's most likely?",
+    "turns": [],
+    "expected": {
+      "must_cite": true,
+      "key_points": [
+        "Micro820 retentive outputs require explicit programming (bit retention via parameters or latch/unlatch coils)",
+        "Default behavior: outputs de-energize on power loss and require re-scan to re-energize",
+        "Y2 will energize on next scan after X1 goes true, unless the logic or I/O module prevents it"
+      ],
+      "wrong_if": [
+        "Blames the PLC as broken when the logic simply requires manual restart",
+        "Claims Micro820 automatically retains all outputs (false\u2014requires config)",
+        "Suggests fault code without evidence"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Micro820 ladder rung has input X1 in series with output Y2 coil (simple logic). After a power loss, Y2 stays de-energized even though X1 is now on. What's most likely?",
+      "answer": "The loaded excerpts do not cover Micro820 ladder logic or this power-loss behavior, so I can\u2019t determine the most likely cause from these documents alone.",
+      "citations": [],
+      "status": "insufficient_evidence",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 4.671260833740234,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:47:55.262178+00:00"
+}

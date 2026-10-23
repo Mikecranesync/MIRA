@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-05",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 72,
+      "missing_points": [
+        "Verify control power (24 VDC or equivalent) is present and within specification",
+        "Check that safety interlocks and e-stop circuits are in the run permissive state",
+        "Verify that input wiring to the drive is connected per the manual diagram"
+      ],
+      "wrong_if_present": [],
+      "note": "It correctly focuses on a missing run command/speed reference, but it does not explicitly include the required first check of control power or the safety permissive/wiring checks."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided, so grounding cannot be assessed against source documents."
+    },
+    "diagnostic": {
+      "score": 78,
+      "note": "It starts with the most likely discriminating check for a no-fault/no-run condition: whether a run command and reference are present, though it broadens into a list rather than a single first check."
+    },
+    "actionability": {
+      "score": 74,
+      "note": "The answer gives concrete checks and where to look, but it lacks explicit expected values/conditions and does not clearly prioritize the first verification step."
+    },
+    "uncertainty": {
+      "score": 82,
+      "note": "The answer is plausible and aligned with common drive troubleshooting, but it is incomplete relative to the rubric and not grounded in machine-specific documentation."
+    },
+    "context": {
+      "score": null,
+      "note": "No product-specific context was provided beyond general guidance."
+    }
+  },
+  "case_score": 75.4
+}

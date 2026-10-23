@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-01",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-01",
+    "category": "general_industrial",
+    "mode": "general",
+    "equipment": null,
+    "question": "What is the primary function of an AC drive in a motor control system?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "AC drives convert incoming AC power to DC, then synthesize it back to variable-frequency AC output",
+        "The output frequency directly controls motor speed",
+        "AC drives provide soft-start capability, reducing inrush current compared to across-the-line starters",
+        "Provides motor protection functions including overload and thermal monitoring"
+      ],
+      "wrong_if": [
+        "Claims drives are only used for emergency stop or lock rotor protection",
+        "States that AC drives increase motor speed beyond nameplate rating without load reduction",
+        "Confuses AC drive output with a capacitor-based reactive power compensation device"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "What is the primary function of an AC drive in a motor control system?",
+      "answer": "The primary function of an AC drive is to control the speed and torque of an AC motor by varying the voltage and frequency supplied to it.\n\nIn simple terms, it lets a fixed-speed AC supply run the motor at the speed the process needs, instead of always at full line speed. Many drives also provide soft starting and stopping, which reduces mechanical stress and inrush current.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 5.120362997055054,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:49:19.166531+00:00"
+}

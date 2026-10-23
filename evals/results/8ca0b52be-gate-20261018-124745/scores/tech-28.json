@@ -1,0 +1,51 @@
+{
+  "case_id": "tech-28",
+  "case_type": "technician",
+  "category": "multi_turn",
+  "mode": "multi_turn",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 12,
+      "missing_points": [
+        "Multi-turn diagnosis narrowed from supply to contactor to wiring connection",
+        "Root cause identified as corroded lug connection causing voltage drop to zero at motor",
+        "Preventive action: scheduled lug inspection, anti-oxidant compound application, or replacement with rated connectors"
+      ],
+      "wrong_if_present": [
+        "Restarts the diagnosis from scratch in turn 4 instead of building on evidence from turns 1\u00133",
+        "Asks for information that was already provided (e.g., 'is the contactor pulling in' in turn 4)",
+        "Jumps to motor replacement without testing the connection"
+      ],
+      "note": "Provides generic troubleshooting for a non-starting motor, but does not identify the specific corroded/loose lug fault or the required narrowed conclusion."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided; the answer is generic and not grounded in machine-specific documents."
+    },
+    "diagnostic": {
+      "score": 28,
+      "note": "Lists several plausible checks, but it is an undifferentiated cause list rather than a highest-value, evidence-narrowed diagnostic path."
+    },
+    "actionability": {
+      "score": 55,
+      "note": "Gives concrete checks and expected items to inspect, but lacks the specific what/where/expected/implication sequence tied to the actual fault."
+    },
+    "uncertainty": {
+      "score": 35,
+      "note": "Reasonable generic maintenance advice, but low confidence for the target scenario because it does not converge on the known lug-connection issue."
+    },
+    "context": {
+      "score": 10,
+      "note": "Does not narrow to the target fault and effectively restarts the troubleshooting from a generic baseline."
+    }
+  },
+  "case_score": 25.6
+}

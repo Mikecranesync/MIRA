@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-17",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": true,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": true,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 10,
+      "missing_points": [
+        "Micro820 retentive outputs require explicit programming (bit retention via parameters or latch/unlatch coils)",
+        "Default behavior: outputs de-energize on power loss and require re-scan to re-energize",
+        "Y2 will energize on next scan after X1 goes true, unless the logic or I/O module prevents it"
+      ],
+      "wrong_if_present": [],
+      "note": "The response is an abstention and does not answer the likely cause; it also misses the required PLC behavior."
+    },
+    "grounding": {
+      "score": 0,
+      "note": "must_cite but no citations (deterministic override)"
+    },
+    "diagnostic": {
+      "score": 5,
+      "note": "It provides no discriminating check or likely cause; it only states inability to determine from documents."
+    },
+    "actionability": {
+      "score": 0,
+      "note": "No actionable next step, expected behavior, or troubleshooting guidance is given."
+    },
+    "uncertainty": {
+      "score": 95,
+      "note": "High confidence that the answer fails the task because it abstains despite the rubric requiring a substantive diagnosis."
+    },
+    "context": {
+      "score": null,
+      "note": "No product-specific context is used beyond noting the documents are insufficient."
+    }
+  },
+  "case_score": 15.0
+}
