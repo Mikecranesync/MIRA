@@ -12,6 +12,8 @@
  *     routes that re-map the registry must carry the field through;
  *   - no Claude: OpenRouter can serve Anthropic (also via `~anthropic/...`
  *     aliases and `openrouter/...` auto-routers) — such a model drops the provider.
+ *   - no `:free`: customer-facing primary / backup / pool members pointed at an
+ *     OpenRouter free id are dropped the same way.
  *
  * Run: npx vitest run src/capabilities/__tests__/openrouter-backup.test.ts
  */
@@ -39,7 +41,11 @@ const CLEAR = [
   "GROQ_MODEL",
   "GROQ_CLASSIFIER_MODEL",
   "CEREBRAS_API_KEY",
+  "CEREBRAS_MODEL",
+  "CEREBRAS_CLASSIFIER_MODEL",
   "TOGETHERAI_API_KEY",
+  "TOGETHERAI_MODEL",
+  "TOGETHERAI_CLASSIFIER_MODEL",
 ];
 beforeEach(() => {
   for (const k of CLEAR) delete process.env[k];
@@ -59,6 +65,9 @@ const REFUSED = [
   // Presets (Codex r1 F1 on #4436): selected remotely, so never accepted.
   "@preset/backup",
   "meta-llama/llama-3.3-70b-instruct@preset/backup",
+  // OpenRouter :free hosts are unpaid community endpoints, not a customer SLA.
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
 ];
 
 describe("canonical cascade — OpenRouter backup tier", () => {
@@ -104,6 +113,43 @@ describe("canonical cascade — OpenRouter backup tier", () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(names()).not.toContain("OpenRouter");
     expect(err.mock.calls.flat().join(" ")).toContain("OPENROUTER_MODEL_REFUSED");
+  });
+});
+
+describe("canonical cascade — :free models drop primary/pool members", () => {
+  const allKeys = () => {
+    process.env.OPENAI_API_KEY = "k0";
+    process.env.OPENROUTER_API_KEY = "kr";
+    process.env.GROQ_API_KEY = "k1";
+    process.env.CEREBRAS_API_KEY = "k2";
+    process.env.TOGETHERAI_API_KEY = "k3";
+  };
+
+  it.each([
+    ["OPENAI_MODEL", "OpenAI", "meta-llama/llama-3.3-70b-instruct:free"],
+    ["GROQ_MODEL", "Groq", "meta-llama/llama-3.3-70b-instruct:free"],
+    ["CEREBRAS_MODEL", "Cerebras", "gpt-oss-120b:free"],
+    ["TOGETHERAI_MODEL", "Together", "meta-llama/Llama-3.3-70B-Instruct-Turbo:free"],
+  ] as const)("%s=:free drops %s", (env, dropped, model) => {
+    allKeys();
+    process.env[env] = model;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(names()).not.toContain(dropped);
+    expect(err.mock.calls.flat().join(" ")).toContain("OPENROUTER_MODEL_REFUSED");
+  });
+
+  it("control: a paid llama id stays on backup and pool", () => {
+    process.env.OPENROUTER_API_KEY = "kr";
+    process.env.GROQ_API_KEY = "k1";
+    process.env.OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct";
+    process.env.GROQ_MODEL = "meta-llama/llama-3.3-70b-instruct";
+    expect(names()).toEqual(["OpenRouter", "Groq", "Cerebras", "Together"]);
+    expect(canonicalProviders().find((p) => p.name === "OpenRouter")?.model).toBe(
+      "meta-llama/llama-3.3-70b-instruct",
+    );
+    expect(canonicalProviders().find((p) => p.name === "Groq")?.model).toBe(
+      "meta-llama/llama-3.3-70b-instruct",
+    );
   });
 });
 
@@ -187,14 +233,28 @@ describe("lib/llm/cascade — OpenRouter backs up OpenAI", () => {
     });
   });
 
-  it.each(["anthropic/claude-haiku-4.5", "@preset/backup"])("a refused model (%s) leaves OpenRouter out of the classifier cascade too", async (model) => {
-    process.env.OPENROUTER_API_KEY = "kr";
-    process.env.OPENROUTER_MODEL = model;
+  it.each(["anthropic/claude-haiku-4.5", "@preset/backup", "meta-llama/llama-3.3-70b-instruct:free"])(
+    "a refused model (%s) leaves OpenRouter out of the classifier cascade too",
+    async (model) => {
+      process.env.OPENROUTER_API_KEY = "kr";
+      process.env.OPENROUTER_MODEL = model;
+      process.env.GROQ_API_KEY = "k1";
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const calls = stubFetch();
+      await cascadeComplete(MESSAGES, { maxTokens: 100 });
+      expect(calls.some((c) => c.url.includes("openrouter.ai"))).toBe(false);
+    },
+  );
+
+  it("classifier cascade skips a :free Groq member", async () => {
     process.env.GROQ_API_KEY = "k1";
+    process.env.CEREBRAS_API_KEY = "k2";
+    process.env.GROQ_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
     vi.spyOn(console, "error").mockImplementation(() => {});
     const calls = stubFetch();
     await cascadeComplete(MESSAGES, { maxTokens: 100 });
-    expect(calls.some((c) => c.url.includes("openrouter.ai"))).toBe(false);
+    expect(calls.some((c) => c.url.includes("api.groq.com"))).toBe(false);
+    expect(calls.some((c) => c.url.includes("api.cerebras.ai"))).toBe(true);
   });
 });
 
