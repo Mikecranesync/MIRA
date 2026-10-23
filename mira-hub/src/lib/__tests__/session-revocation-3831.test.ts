@@ -13,7 +13,7 @@ vi.mock("@/lib/users", async (orig) => ({
 
 import { cookies } from "next/headers";
 import { decode } from "next-auth/jwt";
-import { findUserById } from "@/lib/users";
+import { findUserById, sessionGeneration } from "@/lib/users";
 import { requireSession, UnauthorizedError } from "@/lib/session";
 
 const TID = "11111111-2222-4333-8444-555555555555";
@@ -48,6 +48,18 @@ function user(over: Record<string, unknown> = {}) {
     ...over,
   } as never;
 }
+
+describe("sessionGeneration", () => {
+  it("treats a missing or unreadable claim as generation 0 so pre-deploy tokens stay valid", () => {
+    expect(sessionGeneration(undefined)).toBe(0);
+    expect(sessionGeneration(null)).toBe(0);
+    expect(sessionGeneration("1")).toBe(0);
+    expect(sessionGeneration(1.5)).toBe(0);
+    expect(sessionGeneration(-1)).toBe(0);
+    expect(sessionGeneration(0)).toBe(0);
+    expect(sessionGeneration(4)).toBe(4);
+  });
+});
 
 describe("requireSession — per-user session revocation (#3831)", () => {
   beforeEach(() => {
