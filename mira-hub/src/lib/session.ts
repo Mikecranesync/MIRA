@@ -22,6 +22,15 @@ export interface SessionContext {
    * always sets it. An omitted role is treated identically to "" (least-priv).
    */
   role?: string;
+  /**
+   * Platform (cross-tenant, FactoryLM-staff) admin: `hub_users.status = 'admin'`, derived fresh
+   * from the DB on every request, exactly like `role` (#4591). This is the ONLY platform-admin
+   * authority: public registration creates `trial` rows, invites create `approved`, and only an
+   * existing platform admin (the admin users route) or an operator can set `admin`. Never the
+   * JWT's copy of `status` (stale/forgeable for this purpose) and never an email match.
+   * Absent/false = not a platform admin; a failed lookup resolves to false.
+   */
+  platformAdmin?: boolean;
 }
 
 export class UnauthorizedError extends Error {
@@ -85,11 +94,14 @@ export async function requireSession(): Promise<SessionContext> {
   // keep working while every role gate denies. One indexed PK SELECT per
   // authed request; hub_users is tiny.
   let role = "";
+  let platformAdmin = false;
   try {
     const user = await findUserById(token.uid as string);
     role = (user?.role ?? "").toLowerCase().trim();
+    platformAdmin = user?.status === "admin";
   } catch {
     role = "";
+    platformAdmin = false;
   }
 
   return {
@@ -99,6 +111,7 @@ export async function requireSession(): Promise<SessionContext> {
     status: (token.status as string) ?? "trial",
     trialExpiresAt: (token.trialExpiresAt as string) ?? null,
     role,
+    platformAdmin,
   };
 }
 
