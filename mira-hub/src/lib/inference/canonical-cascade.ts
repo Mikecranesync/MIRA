@@ -68,9 +68,10 @@ export const OPENROUTER_ROUTING = { data_collection: "deny", zdr: true } as cons
  * `model@preset/x`) is refused too: the preset chooses its models remotely and
  * can be switched to Claude without any change here (Codex r1 F1 on #4436).
  *
- * A model id ending in `:free` is also refused on the customer path. Those are
- * unpaid OpenRouter community hosts, not a production SLA; the same suffix is
- * honoured if a primary or pool provider is pointed at one.
+ * A model id ending in `:free` is also refused on the customer path. Those
+ * hosts may log or train on inputs, and the Security page promises manuals
+ * are never used for training. The same suffix is honoured if a primary or
+ * pool provider is pointed at one.
  */
 export function openRouterModelRefused(model: string): boolean {
   const m = model.trim().toLowerCase();
