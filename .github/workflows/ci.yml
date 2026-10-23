@@ -1671,6 +1671,94 @@ jobs:
           grep -qE "✓ tests/integration/lexical-v2-determinism\.integration\.test\.ts" /tmp/reconciliation.plain || {
             echo "::error::lexical-v2-determinism suite did not run and pass"; exit 1; }
 
+  notebook-list-threads-pg:
+    name: Notebook list threads (disposable Postgres, migrations 073-089)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # WHY THIS JOB EXISTS (#4609 / #4610)
+    # GET /api/equipment-notebooks reads every notebook's threads in ONE query
+    # (listThreadsByNotebook) instead of one tenant-context transaction per
+    # notebook. The only proof that the batched query returns exactly what
+    # listThreads returns per notebook — same owner rule, completed-only rows,
+    # order and per-notebook limit, and no other tenant's rows under the real
+    # factorylm_app role + RLS — is a real-Postgres test. Integration tests run
+    # in CI only when a step names them, and they self-skip without
+    # TEST_DATABASE_URL, which looks identical to passing. This job names it and
+    # fails on a skip.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpw
+          POSTGRES_DB: mira_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/mira_test
+      MIRA_TEST_DB_CONFIRM: DISPOSABLE
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        id: changes
+        with:
+          filters: |
+            threads:
+              - 'mira-hub/src/lib/equipment-notebooks.ts'
+              - 'mira-hub/src/lib/tenant-context.ts'
+              - 'mira-hub/src/app/api/equipment-notebooks/route.ts'
+              - 'mira-hub/db/migrations/07*.sql'
+              - 'mira-hub/db/migrations/08*.sql'
+              - 'mira-hub/tests/integration/list-threads-by-notebook.integration.test.ts'
+              - 'mira-hub/scripts/setup-integration-db.mjs'
+              - 'mira-hub/vitest.integration.config.ts'
+              - '.github/workflows/ci.yml'
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: steps.changes.outputs.threads == 'true'
+        with:
+          bun-version: latest
+
+      - name: Install mira-hub dependencies
+        if: steps.changes.outputs.threads == 'true'
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile
+
+      - name: Apply the integration schema (notebook lineage 073-089, factorylm_app role)
+        if: steps.changes.outputs.threads == 'true'
+        working-directory: mira-hub
+        run: node scripts/setup-integration-db.mjs
+
+      - name: List-threads equivalence suite (must RUN, not skip)
+        if: steps.changes.outputs.threads == 'true'
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          node node_modules/vitest/vitest.mjs run \
+            --config vitest.integration.config.ts \
+            tests/integration/list-threads-by-notebook.integration.test.ts \
+            2>&1 | tee /tmp/list-threads.out
+          # Same skip detection as the reconciliation suite above: strip ANSI
+          # first, then refuse "no test files", any skipped count, and anything
+          # short of a positive passing count.
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/list-threads.out > /tmp/list-threads.plain
+          if grep -qiE "no test files found" /tmp/list-threads.plain; then
+            echo "::error::no test file matched — the gate proved nothing"; exit 1
+          fi
+          if grep -qE "Tests +[0-9]+ skipped" /tmp/list-threads.plain; then
+            echo "::error::list-threads suite SKIPPED (TEST_DATABASE_URL unset?) — the gate proved nothing"; exit 1
+          fi
+          grep -qE "Tests +[1-9][0-9]* passed" /tmp/list-threads.plain || {
+            echo "::error::could not confirm a positive passing test count"; exit 1; }
+          # And the named file itself ran (not some other matched file).
+          grep -qE "list-threads-by-notebook\.integration\.test\.ts \([1-9][0-9]* tests?\)" /tmp/list-threads.plain || {
+            echo "::error::list-threads-by-notebook.integration.test.ts did not report a test count"; exit 1; }
+
   manual-search-quota-pg:
     name: Manual-search quota caps (disposable Postgres, migration 103)
     runs-on: ubuntu-latest
@@ -1751,6 +1839,7 @@ jobs:
       - test-unit
       - mira-hub-unit
       - turn-lifecycle-reconciliation
+      - notebook-list-threads-pg
       - manual-search-quota-pg
       - mobile-unit-tests
       - mira-web-pack-tests
@@ -1779,6 +1868,7 @@ jobs:
           TEST_UNIT_RESULT: ${{ needs.test-unit.result }}
           HUB_UNIT_RESULT: ${{ needs.mira-hub-unit.result }}
           LIFECYCLE_RECON_RESULT: ${{ needs.turn-lifecycle-reconciliation.result }}
+          LIST_THREADS_PG_RESULT: ${{ needs.notebook-list-threads-pg.result }}
           QUOTA_PG_RESULT: ${{ needs.manual-search-quota-pg.result }}
           MOBILE_UNIT_RESULT: ${{ needs.mobile-unit-tests.result }}
           WEB_PACK_RESULT: ${{ needs.mira-web-pack-tests.result }}
@@ -1821,6 +1911,8 @@ jobs:
           require_success turn-lifecycle-reconciliation "$LIFECYCLE_RECON_RESULT"
           # #4160 S4: same shape — step-level paths filter, never job-level skipped.
           require_success manual-search-quota-pg "$QUOTA_PG_RESULT"
+          # #4609/#4610: same shape — step-level paths filter, never job-level skipped.
+          require_success notebook-list-threads-pg "$LIST_THREADS_PG_RESULT"
           # Added 2026-09-19: mobile-unit-tests was never in `needs` NOR read
           # here, so a red mobile suite could not fail the merge (observed on
           # #3837: "Mobile Unit Tests" FAIL while CI Gate was green). Same shape
