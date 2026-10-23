@@ -29,6 +29,9 @@ describe("isFaultResetAsk — questions that must get restart-safety framing", (
     "the conveyor stopped on an e-stop, how do I get it running again",
     "fault reset procedure for the drive",
     "how do i clear the trip on the vfd",
+    // Codex #4652 r1 F1: a pronoun reset after the fault is named, and "start it again".
+    "The drive has fault F004. How do I reset it?",
+    "It tripped. How do I start it again?",
   ];
   for (const q of POSITIVE) it(`flags: "${q}"`, () => expect(isFaultResetAsk(q)).toBe(true));
 });
@@ -45,6 +48,7 @@ describe("isFaultResetAsk — opposite-direction controls stay unflagged", () =>
     "How do I clear the alarm buffer on the TP700?",
     "Restart my laptop",
     "What supply voltage does the TP700 Comfort use?",
+    "How do I reset my password after the error message?",
     "",
   ];
   for (const q of NEGATIVE) it(`does not flag: "${q}"`, () => expect(isFaultResetAsk(q)).toBe(false));

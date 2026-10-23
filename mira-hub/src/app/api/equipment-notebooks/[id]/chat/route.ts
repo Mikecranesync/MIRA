@@ -3645,6 +3645,10 @@ async function handleChatTurn(
       // #4068: with the gate off, content streams live — the related-manual
       // warning goes out as the first content, before any model text.
       let relatedWarningStreamed = false;
+      // #4645 (Codex #4652 r1 F2): the restart banner reaches the live stream in
+      // the unbuffered (gate-off) mode too, once, ahead of the related-manual
+      // warning — the same order the persisted answerText uses.
+      let restartBannerStreamed = false;
       let served = false;
       let servedModel: string | null = null;
       let internalError: unknown = null;
@@ -3872,6 +3876,12 @@ async function handleChatTurn(
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
                     if (!gate) {
+                      if (restartAdvisory && flagBanner && !restartBannerStreamed) {
+                        restartBannerStreamed = true;
+                        controller.enqueue(
+                          enc.encode(sse({ kind: "content", content: `${flagBanner}\n\n` } as NotebookContentFrame)),
+                        );
+                      }
                       if (relatedManualWarning && !relatedWarningStreamed) {
                         relatedWarningStreamed = true;
                         controller.enqueue(

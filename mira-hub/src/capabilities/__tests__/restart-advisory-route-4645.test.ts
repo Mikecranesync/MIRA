@@ -168,6 +168,28 @@ describe("#4645 — restart-safety framing on reset / restart-after-fault questi
     expect(turn?.answerText).toContain("pressing STOP/RESET");
   });
 
+  // Codex #4652 r1 F2: the banner must reach the LIVE stream in both answer-gate
+  // modes, exactly once, ahead of the answer — not only the persisted row.
+  for (const gateValue of ["1", "0"]) {
+    it(`NOTEBOOK_ANSWER_GATE=${gateValue}: the streamed answer starts with exactly one restart banner`, async () => {
+      process.env.NOTEBOOK_ANSWER_GATE = gateValue;
+      const { fetchMock } = capturingProvider("Clear fault F004 by pressing STOP/RESET [1].");
+      vi.stubGlobal("fetch", fetchMock);
+      const { text } = await ask("How do I reset fault F004 and get it running again?");
+      const streamed = text
+        .split("\n\n")
+        .map((l) => l.replace(/^data: /, "").trim())
+        .filter((l) => l && l !== "[DONE]")
+        .map((l) => JSON.parse(l) as { kind?: string; content?: string })
+        .filter((f) => f.kind === "content")
+        .map((f) => f.content ?? "")
+        .join("");
+      expect(streamed.startsWith(RESTART_BANNER)).toBe(true);
+      expect(streamed.split(RESTART_BANNER).length - 1).toBe(1);
+      expect(streamed).toContain("pressing STOP/RESET");
+    });
+  }
+
   it("opposite direction: an ordinary question gets no restart banner and no restart directive", async () => {
     const { fetchMock, prompts } = capturingProvider("F004 indicates DC bus undervoltage [1].");
     vi.stubGlobal("fetch", fetchMock);

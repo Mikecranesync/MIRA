@@ -36,15 +36,26 @@ const OBJECT_THEN_VERB = new RegExp(`\\b${FAULT_OBJECT}\\W+(?:\\w+\\W+){0,1}?(?:
 /** A restart phrase. On its own it is too broad ("restart my laptop"), so it
  *  only counts with a fault / stop context in the same message. */
 const RESTART_PHRASE =
-  /\b(?:re-?start(?:ing)?|start\s+(?:it|this|that|the\s+\w+)\s+(?:back\s+)?up|get(?:ting)?\s+(?:it|this|that|the\s+\w+(?:\s+\w+)?)\s+(?:running|going|started|moving)\s+again|back\s+up\s+and\s+running)\b/i;
+  /\b(?:re-?start(?:ing)?|start\s+(?:it|this|that|the\s+\w+)\s+(?:back\s+)?(?:up|again)|get(?:ting)?\s+(?:it|this|that|the\s+\w+(?:\s+\w+)?)\s+(?:running|going|started|moving)\s+again|back\s+up\s+and\s+running)\b/i;
 const STOP_CONTEXT = new RegExp(`\\b(?:${FAULT_OBJECT}|stopped|went\\s+down|shut\\s+down|tripped)\\b`, "i");
+
+/** A reset aimed at something that is not the machine — an account, a device, a
+ *  counter. Checked first, so a fault word elsewhere in the message ("reset my
+ *  password after the error") cannot pull it in. */
+const NON_MACHINE_RESET =
+  /\b(?:reset|re-set|clear)\s+(?:(?:my|the|your|a|an)\s+)?(?:password|passcode|account|login|pin|browser|cache|cookies|app|phone|laptop|hour\s+meter|counter)\b/i;
+
+/** "reset it" / "clear this" once the message has named a fault or a stop
+ *  (Codex #4652 r1 F1: "The drive has fault F004. How do I reset it?"). */
+const PRONOUN_RESET = /\b(?:reset|re-set|clear|acknowledge)\s+(?:it|this|that|them)\b/i;
 
 /** True when the message asks how to reset / clear / acknowledge a fault-type
  *  condition, or how to restart a machine that faulted or stopped. */
 export function isFaultResetAsk(message: string): boolean {
   const msg = (message || "").trim();
-  if (!msg) return false;
+  if (!msg || NON_MACHINE_RESET.test(msg)) return false;
   if (VERB_THEN_OBJECT.test(msg) || OBJECT_THEN_VERB.test(msg)) return true;
+  if (PRONOUN_RESET.test(msg) && STOP_CONTEXT.test(msg)) return true;
   return RESTART_PHRASE.test(msg) && STOP_CONTEXT.test(msg);
 }
 
