@@ -13,8 +13,7 @@ prepaid account in front of many hosts. These pin:
   banned from this cascade (PR #610), so such a configured model drops the
   provider instead of silently serving Claude;
 * the NO-:free GUARD — a model id ending in `:free` is refused because those
-  hosts may log or train on inputs, and the Security page promises manuals
-  are never used for training;
+  hosts may log or train on inputs;
 * the DATA POLICY — every request asks OpenRouter to route only to hosts that
   neither train on nor retain prompts (verified live 2026-10-14: both default
   models have such hosts).
