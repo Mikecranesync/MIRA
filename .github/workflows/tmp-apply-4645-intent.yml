@@ -1,0 +1,60 @@
+name: tmp-apply-4645-intent
+
+on:
+  push:
+    branches:
+      - cursor/fault-reset-factory-guard-00df
+    paths:
+      - ".github/workflows/tmp-apply-4645-intent.yml"
+      - "tools/tmp-apply-4645-intent.py"
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: tmp-apply-4645-intent
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: apply-4645-intent
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Gate acknowledge expansion on classifyIntent
+        run: python3 tools/tmp-apply-4645-intent.py
+      - name: Commit production files and remove trigger
+        run: |
+          set -euo pipefail
+          git config user.name "cursor-agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/tmp-apply-4645-intent.yml tools/tmp-apply-4645-intent.py
+          git add mira-hub/src/lib/notebook-query.ts
+          git add -u .github/workflows/tmp-apply-4645-intent.yml tools/tmp-apply-4645-intent.py
+          git commit -m "fix(hub): expand acknowledge vocabulary from fault intent, not ACK synonyms (#4645)"
+          git push
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run #4645 vitest
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx vitest run src/capabilities/notebook-query-fault-reset-4645 src/capabilities/answer-validation-fault-reset-4645 src/lib/__tests__/notebook-query.test.ts
+      - name: Comment vitest result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr comment 4672 --body "## #4645 structural intent-gated expansion
+
+Acknowledge vocabulary is added only when \`classifyIntent === fault\`. ACK/back synonym rows removed (not retuned).
+
+Test step conclusion: ${{ job.status }}"
