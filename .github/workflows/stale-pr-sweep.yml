@@ -37,7 +37,7 @@ concurrency:
 jobs:
   sweep:
     name: Sweep idle PRs (SDLC §1.5)
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6

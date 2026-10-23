@@ -77,7 +77,7 @@ env:
 jobs:
   snapshot:
     name: Capture current PR snapshot
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
@@ -128,7 +128,7 @@ jobs:
   pending:
     name: Post pending status
     needs: snapshot
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     permissions:
       statuses: write
     steps:
@@ -146,8 +146,6 @@ jobs:
   guard:
     name: Legacy UI Lifecycle Guard
     needs: [snapshot, pending]
-    # x86-only: installs a hash-locked tool set whose pins are x86_64 wheels; stays
-    # GitHub-hosted (on arm64 Bravo runners pip rejects the hash). See tools/ci-runners/README.md.
     runs-on: ubuntu-latest
     # Deliberately NO statuses:write here — this job executes checked-out
     # base-revision code (tests + the guard CLI); status-posting is isolated
@@ -278,7 +276,7 @@ jobs:
     name: Post final status
     needs: [snapshot, pending, guard]
     if: always()
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     permissions:
       statuses: write
     steps:

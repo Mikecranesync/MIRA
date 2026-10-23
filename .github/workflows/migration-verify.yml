@@ -46,7 +46,7 @@ jobs:
     # CI lint/unit and the staging-gate dependabot-skip already gate the
     # dependency-bump risk. Skip the job-level run so the merge can proceed.
     if: github.actor != 'dependabot[bot]'
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     # Uses the same `staging` environment as staging-gate.yml so we can read
     # NEON_STG_DATABASE_URL from secrets. No required reviewers on staging.

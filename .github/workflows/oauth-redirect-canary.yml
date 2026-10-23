@@ -44,7 +44,7 @@ on:
 jobs:
   probe:
     name: Probe Google authorize endpoint
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read

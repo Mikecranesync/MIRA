@@ -51,7 +51,7 @@ concurrency:
 jobs:
   benchmark:
     name: mira-bench (staging)
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON_SERVICES || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 45
 
     # Same environment + secret names as staging-gate.yml so the same Doppler

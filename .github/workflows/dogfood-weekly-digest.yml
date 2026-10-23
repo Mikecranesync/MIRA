@@ -18,7 +18,7 @@ permissions:
 jobs:
   digest:
     name: 7-day verdict rollup
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
       ISSUE: "2417"

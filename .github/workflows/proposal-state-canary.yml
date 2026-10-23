@@ -32,7 +32,7 @@ jobs:
 
   # Drift check against staging — needs the staging DB secret.
   drift:
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     environment: staging
     steps:

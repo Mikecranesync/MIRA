@@ -4,13 +4,12 @@
 # passwordless sudo for the `runner` user. On top we add what MIRA's workflows call WITHOUT a
 # setup step, because GitHub's hosted ubuntu image ships them preinstalled:
 #   gh (29 workflows), python3/pip (28/29), psql (12), jq (11), shellcheck (8), node/npm (13),
-#   ripgrep, zip/unzip, build tools for pip wheels, the Compose v2 plugin (3 workflows). setup-python / setup-node / setup-bun still
+#   ripgrep, zip/unzip, build tools for pip wheels, PyYAML/requests/markdown-it for system Python. setup-python / setup-node / setup-bun still
 #   install their own toolchains per job.
 #
-# Not supported here (kept on GitHub-hosted runners): Android SDK/emulator workflows.
+# Not supported here (kept on GitHub-hosted runners): anything needing Docker (runner containers
+# get no Docker socket, see bravo-runner-supervisor.sh), Android SDK/emulator workflows.
 FROM ghcr.io/actions/actions-runner:2.338.1
-# Locally built, never pulled: keep it out of the supervisor's image prune.
-LABEL mira.keep="true"
 
 USER root
 RUN apt-get update \
@@ -24,9 +23,6 @@ RUN apt-get update \
  && echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
  && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
  && apt-get install -y --no-install-recommends gh nodejs \
- && curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
-      https://github.com/docker/compose/releases/download/v5.6.1/docker-compose-linux-aarch64 \
- && chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose \
  && rm -rf /var/lib/apt/lists/*
 # GitHub's hosted image lets jobs write /usr/local/bin without sudo (e.g. `install trivy`).
 RUN chown runner:runner /usr/local/bin

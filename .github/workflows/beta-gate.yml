@@ -98,7 +98,7 @@ concurrency:
 jobs:
   beta-gate:
     name: Stranger upload → cited answer (staging Neon)
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     environment: staging # only to inherit DOPPLER_TOKEN; resolves the stg config
     timeout-minutes: 25
 
@@ -207,7 +207,7 @@ jobs:
   # ── Workstream B: production-equivalent notebook lane ─────────────────────
   notebook-gate:
     name: Stranger notebook → confirmed source → cited answer (production gate ON)
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     environment: staging # only to inherit DOPPLER_TOKEN; resolves the stg config
     timeout-minutes: 30
     env:
@@ -402,7 +402,7 @@ jobs:
   # suite would otherwise read as green.
   visual-evidence-regression:
     name: Visual-evidence isolation (disposable Postgres, migrations 063+069)
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON_SERVICES || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
       postgres:
@@ -505,7 +505,7 @@ jobs:
 
   admission-regression:
     name: Admission fix present (disposable Postgres, gate ON)
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON_SERVICES || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
       postgres:

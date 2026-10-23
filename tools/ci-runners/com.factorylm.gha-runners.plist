@@ -14,7 +14,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>REPO_URL</key><string>https://github.com/Mikecranesync/MIRA</string>
-    <key>GENERAL_SLOTS</key><string>4</string>
+    <key>SLOTS</key><string>5</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

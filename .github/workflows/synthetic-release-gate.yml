@@ -44,7 +44,7 @@ permissions:
 jobs:
   release-gate:
     name: release-gate
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 60
 
     # Secrets required (set under repo "staging" environment):

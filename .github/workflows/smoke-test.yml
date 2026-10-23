@@ -54,7 +54,7 @@ permissions:
 jobs:
   smoke:
     name: E2E smoke (factorylm.com + app.factorylm.com)
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:

@@ -7,6 +7,6 @@ set -euo pipefail
 cd /home/runner
 ./config.sh --unattended --ephemeral --replace --disableupdate \
   --url "$REPO_URL" --token "$RUNNER_TOKEN" \
-  --name "$RUNNER_NAME" --labels "$RUNNER_LABELS" --work "${RUNNER_WORKDIR:-_work}"
+  --name "$RUNNER_NAME" --labels "$RUNNER_LABELS" --work _work
 unset RUNNER_TOKEN
 exec ./run.sh

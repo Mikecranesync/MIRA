@@ -22,7 +22,7 @@ jobs:
   static-analysis:
     name: Static Analysis
     if: github.event_name == 'pull_request'
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
@@ -164,7 +164,7 @@ jobs:
   ai-review:
     name: AI Code Review
     if: github.event_name == 'pull_request'
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     needs: static-analysis
     steps:
       - uses: actions/checkout@v6

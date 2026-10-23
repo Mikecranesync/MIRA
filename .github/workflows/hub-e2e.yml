@@ -43,7 +43,7 @@ permissions:
 jobs:
   hub-e2e:
     name: Hub E2E (command-center + onboarding)
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: staging
 

@@ -8,7 +8,7 @@ on:
 jobs:
   audit:
     name: CVE Audit
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read  # private repo: actions/checkout needs it (public repos answer anonymously)
       issues: write
