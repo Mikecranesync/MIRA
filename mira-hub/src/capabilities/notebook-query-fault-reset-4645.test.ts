@@ -4,14 +4,14 @@
  * and demote factory-restore / OS-wipe chunks under fault intent.
  *
  * These fail on main: FAULT_ACTION misses acknowledge/alarm/ACK, ACK is not
- * in the synonym table, and rerank treats factory-reset pages as procedure
+ * bridged to the manual, and rerank treats factory-reset pages as procedure
  * material. Opposite-direction controls pin a true factory-reset question
  * (procedure intent) and existing param-lookup behavior.
  *
- * procedureScore is shared by fault AND procedure intent. Acknowledge
- * vocabulary therefore lives in SYNONYMS, FAULT_ACTION, and the fault-intent
- * rerank boost — not in PROC_SIGNALS. Putting it there lets Comfort p.74
- * beat factory-restore under a true factory-reset how-to.
+ * Acknowledge vocabulary is added when classifyIntent === "fault" — not by
+ * an ACK/back token synonym. procedureScore stays shared and must not score
+ * acknowledge, or Comfort p.74 beats factory-restore under a true factory-reset
+ * how-to.
  *
  * Lives in capabilities/ (open) rather than src/lib/__tests__/ (guarded).
  * Run: cd mira-hub && npx vitest run src/capabilities/notebook-query-fault-reset-4645
@@ -58,12 +58,20 @@ describe("#4645 classifyIntent — acknowledge / alarm / ACK are fault-clear", (
     expect(classifyIntent("what's the maximum frequency parameter?")).toBe("param_lookup");
     expect(classifyIntent("what's the maximum?")).toBe("spec");
   });
+
+  it.each([
+    "go back to the previous screen",
+    "use the back key",
+  ])("does not classify navigation %s as fault", (q) => {
+    expect(classifyIntent(q)).not.toBe("fault");
+  });
 });
 
-describe("#4645 expandIndustrialQuery — ACK / fault-clear → acknowledge vocabulary", () => {
-  it("bridges ACK key to the manual's acknowledge wording", () => {
+describe("#4645 expandIndustrialQuery — fault intent carries acknowledge vocabulary", () => {
+  it("bridges ACK key to the manual's acknowledge wording via fault intent", () => {
     const e = expandIndustrialQuery("What does the ACK key do?");
     const blob = e.variants.join(" ").toLowerCase();
+    expect(classifyIntent("What does the ACK key do?")).toBe("fault");
     expect(blob).toMatch(/acknowledge/);
     expect(blob).toMatch(/group acknowledgment|fault clear/);
   });
@@ -75,7 +83,15 @@ describe("#4645 expandIndustrialQuery — ACK / fault-clear → acknowledge voca
 
   it("does not flood a parameter-reset question with acknowledge pages", () => {
     const e = expandIndustrialQuery("reset the deceleration time");
+    expect(classifyIntent("reset the deceleration time")).not.toBe("fault");
     expect(e.variants.join(" ").toLowerCase()).not.toMatch(/acknowledge/);
+  });
+
+  it.each([
+    "go back to the previous screen",
+    "use the back key",
+  ])("does not expand acknowledge for navigation %s", (q) => {
+    expect(expandIndustrialQuery(q).variants.join(" ").toLowerCase()).not.toMatch(/acknowledge/);
   });
 });
 
