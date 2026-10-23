@@ -1,12 +1,16 @@
 /**
  * A turn that rests only on a kept photo reading is labelled as an unconfirmed
- * reading, not as documentation — through the REAL notebook-chat handler.
+ * reading, not as documentation -- through the REAL notebook-chat handler.
  *
  * Found on a branch build against staging data (2026-10-23): a fresh
  * conversation cited a kept print reading that carried a vision misread, and
  * the turn was labelled "Grounded in this notebook's sources" with no caveat,
  * because the document's own "not technician-verified" header had landed in a
  * different chunk from the one cited.
+ *
+ * After #4643 a reviewed Keep marks chunks verified and titles the document
+ * Technician-confirmed photo reading. Verified photo-derived chunks already
+ * take the documentation basis (this control).
  *
  * Harness copied from chat-answer-gate.test.ts (that file lives in the guarded
  * app tree).
@@ -132,18 +136,15 @@ describe("an answer resting only on a kept photo reading", () => {
     });
     expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({
       basis: "workspace_evidence",
-      label: "Grounded in a photo kept on this machine — an unconfirmed reading.",
+      label: "Grounded in a photo kept on this machine -- an unconfirmed reading.",
     });
     await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
     expect(lastTurn().basis).toBe("workspace_evidence");
   });
 
-  it("control: a confirmed (verified) photo-derived source uses the technician-confirmed label", async () => {
+  it("control: a confirmed (verified) photo-derived source keeps the documentation label", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([photoChunk(true)] as never);
     const frames = await ask();
-    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({
-      basis: "oem_documentation",
-      label: "Grounded in a technician-confirmed photo reading on this machine.",
-    });
+    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({ basis: "oem_documentation" });
   });
 });
