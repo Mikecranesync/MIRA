@@ -1611,6 +1611,9 @@ jobs:
               - 'mira-hub/scripts/setup-integration-db.mjs'
               - 'mira-hub/vitest.integration.config.ts'
               - '.github/workflows/ci.yml'
+              # #4597 LEXICAL_V2 determinism regression: the retrieval SQL and its test.
+              - 'mira-hub/src/lib/manual-rag.ts'
+              - 'mira-hub/tests/integration/lexical-v2-determinism.integration.test.ts'
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.lifecycle == 'true'
@@ -1636,6 +1639,7 @@ jobs:
             --config vitest.integration.config.ts \
             src/capabilities/observability/__tests__/turn-ingress.integration.test.ts \
             src/capabilities/__tests__/part-search-claim.integration.test.ts \
+            tests/integration/lexical-v2-determinism.integration.test.ts \
             2>&1 | tee /tmp/reconciliation.out
           # A skip here is the exact failure this job was added to prevent. The
           # suite self-skips when TEST_DATABASE_URL is unset, vitest then EXITS 0,
@@ -1662,6 +1666,10 @@ jobs:
           fi
           grep -qE "Tests +[1-9][0-9]* passed" /tmp/reconciliation.plain || {
             echo "::error::could not confirm a positive passing test count"; exit 1; }
+          # #4597: the passing count above is shared by every suite in this run, so it
+          # cannot show that the determinism file itself ran. Require its own line.
+          grep -qE "✓ tests/integration/lexical-v2-determinism\.integration\.test\.ts" /tmp/reconciliation.plain || {
+            echo "::error::lexical-v2-determinism suite did not run and pass"; exit 1; }
 
   manual-search-quota-pg:
     name: Manual-search quota caps (disposable Postgres, migration 103)

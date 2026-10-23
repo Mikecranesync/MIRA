@@ -1445,7 +1445,7 @@ export async function retrieveNodeChunks(
       ), df AS (
         SELECT q.lex, count(*)::float8 AS df FROM qlex q JOIN scope s ON q.lex = ANY(s.lexemes) GROUP BY q.lex
       ), scored AS (
-        SELECT s.id, sum(ln((n.n - df.df + 0.5) / (df.df + 0.5) + 1)) AS score
+        SELECT s.id, sum(ln((n.n - df.df + 0.5) / (df.df + 0.5) + 1)::numeric) AS score -- #4597: exact sum, independent of physical row order
           FROM scope s CROSS JOIN n JOIN df ON df.lex = ANY(s.lexemes)
           GROUP BY s.id
       )
