@@ -150,6 +150,7 @@ import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
   buildRequestBody,
   canonicalProviders,
+  withoutFreeOpenRouterModels,
   canonicalSeamEnabled,
   exhaustedUsage,
   logTurnUsage,
@@ -369,7 +370,7 @@ type CascadeProvider = { name: string; url: string; key?: string; model: string 
  * the flag-off path is provably unchanged. Delete when the seam is default-on.
  */
 function providers(): CascadeProvider[] {
-  return [
+  return withoutFreeOpenRouterModels([
     {
       name: "Groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
@@ -390,7 +391,7 @@ function providers(): CascadeProvider[] {
       key: process.env.GEMINI_API_KEY,
       model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
     },
-  ];
+  ]);
 }
 
 /** Build numbered, per-doc citations consistent with appendManualContext's [n]
