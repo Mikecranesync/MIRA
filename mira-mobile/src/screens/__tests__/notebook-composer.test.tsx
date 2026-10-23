@@ -440,3 +440,22 @@ describe("NotebookScreen composer", () => {
     expect(await screen.findByRole("button", { name: "← Notebooks" })).toBeTruthy();
   });
 });
+
+
+describe("notebook Sources navigation requests", () => {
+  it("opens Sources again after the previous request was consumed and closed", async () => {
+    const consumed = vi.fn();
+    const props = { id: "nb1", backRef: { current: null }, onExit: () => {}, onInitialAddSourcesConsumed: consumed };
+    const view = render(<NotebookScreen {...props} openAddSources={false} />);
+    await composer();
+    view.rerender(<NotebookScreen {...props} openAddSources />);
+    expect(await screen.findByRole("dialog", { name: "Add sources" })).toBeTruthy();
+    expect(consumed).toHaveBeenCalledTimes(1);
+    view.rerender(<NotebookScreen {...props} openAddSources={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog", { name: "Add sources" })).toBeNull();
+    view.rerender(<NotebookScreen {...props} openAddSources />);
+    expect(await screen.findByRole("dialog", { name: "Add sources" })).toBeTruthy();
+    expect(consumed).toHaveBeenCalledTimes(2);
+  });
+});
