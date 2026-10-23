@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
-import { inviteLinkExpiryCopy, PilotSeatCapError } from "@/lib/trial-access";
+import { inviteLinkExpiryCopy, PilotSeatCapError } from "@/capabilities/trial-access";
 import { assertPilotSeatAvailable, createMagicToken, ensureSchema } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
