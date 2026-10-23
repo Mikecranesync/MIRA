@@ -25,7 +25,7 @@ permissions:
 jobs:
   authorize-source:
     name: Authorize current main source
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
       source_sha: ${{ steps.authorize.outputs.source_sha }}
@@ -63,7 +63,7 @@ jobs:
   ocr-lane-health:
     name: OCR-lane health probe (staging bot)
     needs: authorize-source
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     environment: staging-observe
     timeout-minutes: 5
     steps:
