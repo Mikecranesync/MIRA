@@ -65,8 +65,7 @@ const REFUSED = [
   // Presets (Codex r1 F1 on #4436): selected remotely, so never accepted.
   "@preset/backup",
   "meta-llama/llama-3.3-70b-instruct@preset/backup",
-  // OpenRouter :free hosts may log or train on inputs; the Security page
-  // promises manuals are never used for training.
+  // OpenRouter :free hosts may log or train on inputs.
   "meta-llama/llama-3.3-70b-instruct:free",
   "nvidia/nemotron-3-super-120b-a12b:free",
 ];
@@ -192,6 +191,12 @@ describe("request body — the data policy rides on every consumer path", () => 
       expect(src).toContain("providerRouting: p.providerRouting");
     },
   );
+
+  it("legacy notebook providers() filters :free through withoutFreeOpenRouterModels", () => {
+    const src = readFileSync(resolve(HUB, "app/api/equipment-notebooks/[id]/chat/route.ts"), "utf8");
+    expect(src).toContain("withoutFreeOpenRouterModels");
+    expect(src).toMatch(/function providers\(\)[\s\S]*return withoutFreeOpenRouterModels/);
+  });
 });
 
 type Call = { url: string; body: Record<string, unknown>; auth: string | undefined };
@@ -257,6 +262,44 @@ describe("lib/llm/cascade — OpenRouter backs up OpenAI", () => {
     expect(calls.some((c) => c.url.includes("api.groq.com"))).toBe(false);
     expect(calls.some((c) => c.url.includes("api.cerebras.ai"))).toBe(true);
   });
+
+  it.each([
+    [
+      "OPENAI_CLASSIFIER_MODEL",
+      "api.openai.com",
+      "api.groq.com",
+      { OPENAI_API_KEY: "k0", GROQ_API_KEY: "k1" },
+    ],
+    [
+      "GROQ_CLASSIFIER_MODEL",
+      "api.groq.com",
+      "api.cerebras.ai",
+      { GROQ_API_KEY: "k1", CEREBRAS_API_KEY: "k2" },
+    ],
+    [
+      "CEREBRAS_CLASSIFIER_MODEL",
+      "api.cerebras.ai",
+      "api.together.xyz",
+      { CEREBRAS_API_KEY: "k2", TOGETHERAI_API_KEY: "k3" },
+    ],
+    [
+      "TOGETHERAI_CLASSIFIER_MODEL",
+      "api.together.xyz",
+      "api.openai.com",
+      { OPENAI_API_KEY: "k0", TOGETHERAI_API_KEY: "k3" },
+    ],
+  ] as const)(
+    "classifier cascade skips a :free %s member",
+    async (env, droppedHost, otherHost, keys) => {
+      Object.assign(process.env, keys);
+      process.env[env] = "meta-llama/llama-3.3-70b-instruct:free";
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const calls = stubFetch();
+      await cascadeComplete(MESSAGES, { maxTokens: 100 });
+      expect(calls.some((c) => c.url.includes(droppedHost))).toBe(false);
+      expect(calls.some((c) => c.url.includes(otherHost))).toBe(true);
+    },
+  );
 });
 
 describe("cost estimate", () => {
