@@ -65,7 +65,8 @@ const REFUSED = [
   // Presets (Codex r1 F1 on #4436): selected remotely, so never accepted.
   "@preset/backup",
   "meta-llama/llama-3.3-70b-instruct@preset/backup",
-  // OpenRouter :free hosts are unpaid community endpoints, not a customer SLA.
+  // OpenRouter :free hosts may log or train on inputs; the Security page
+  // promises manuals are never used for training.
   "meta-llama/llama-3.3-70b-instruct:free",
   "nvidia/nemotron-3-super-120b-a12b:free",
 ];
@@ -138,7 +139,7 @@ describe("canonical cascade — :free models drop primary/pool members", () => {
     expect(err.mock.calls.flat().join(" ")).toContain("OPENROUTER_MODEL_REFUSED");
   });
 
-  it("control: a paid llama id stays on backup and pool", () => {
+  it("control: a non-:free llama id stays on backup and pool", () => {
     process.env.OPENROUTER_API_KEY = "kr";
     process.env.GROQ_API_KEY = "k1";
     process.env.OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct";
