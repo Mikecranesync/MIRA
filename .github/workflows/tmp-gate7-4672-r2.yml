@@ -1,0 +1,131 @@
+name: tmp-gate7-4672-r2
+
+on:
+  push:
+    branches:
+      - cursor/tmp-gate7-4672-r2-00df
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: tmp-gate7-4672-r2
+  cancel-in-progress: false
+
+jobs:
+  fix-and-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: cursor/fault-reset-factory-guard-00df
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Bind ACK to a named control (Gate-7 r1)
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("mira-hub/src/lib/notebook-query.ts")
+          t = p.read_text()
+          old_syn = '''  // Technician "ACK" names a pictogram key; OEM manuals say "acknowledge" /
+  // "group acknowledgment" and never the token ACK (#4645 / Comfort p.74).
+  [/\\back\\b/i, ["acknowledge", "group acknowledgment", "fault clear"]],'''
+          new_syn = '''  // Technician ACK names a pictogram CONTROL (key/button), not English "back".
+  // OEM manuals say "acknowledge" / "group acknowledgment" (#4645 / Comfort p.74).
+  [/\\b(?:ack|acknowledges?|acknowledging|acknowledgment)\\s+(?:key|button|softkey)\\b/i, ["acknowledge", "group acknowledgment", "fault clear"]],'''
+          old_fault = "|\\\\back(?:nowledg\\\\w*)?\\\\s+key\\\\b/i;"
+          new_fault = "|\\\\b(?:ack|acknowledges?|acknowledging|acknowledgment)\\\\s+key\\\\b/i;"
+          if old_syn not in t:
+              raise SystemExit("synonym block not found")
+          if old_fault not in t:
+              raise SystemExit("FAULT_ACTION tail not found")
+          t = t.replace(old_syn, new_syn, 1).replace(old_fault, new_fault, 1)
+          p.write_text(t)
+          print("patched notebook-query.ts")
+          PY
+      - name: Pin opposite-direction navigation controls
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("mira-hub/src/capabilities/notebook-query-fault-reset-4645.test.ts")
+          t = p.read_text()
+          needle = '''  it("preserves param-ID vs spec (opposite direction)", () => {
+    expect(classifyIntent("what's the maximum frequency parameter?")).toBe("param_lookup");
+    expect(classifyIntent("what's the maximum?")).toBe("spec");
+  });
+});'''
+          insert = '''  it("preserves param-ID vs spec (opposite direction)", () => {
+    expect(classifyIntent("what's the maximum frequency parameter?")).toBe("param_lookup");
+    expect(classifyIntent("what's the maximum?")).toBe("spec");
+  });
+
+  it.each([
+    "go back to the previous screen",
+    "use the back key",
+  ])("does not classify navigation %s as fault", (q) => {
+    expect(classifyIntent(q)).not.toBe("fault");
+  });
+});'''
+          if needle not in t:
+              raise SystemExit("classify block not found")
+          t = t.replace(needle, insert, 1)
+          needle2 = '''  it("does not flood a parameter-reset question with acknowledge pages", () => {
+    const e = expandIndustrialQuery("reset the deceleration time");
+    expect(e.variants.join(" ").toLowerCase()).not.toMatch(/acknowledge/);
+  });
+});'''
+          insert2 = '''  it("does not flood a parameter-reset question with acknowledge pages", () => {
+    const e = expandIndustrialQuery("reset the deceleration time");
+    expect(e.variants.join(" ").toLowerCase()).not.toMatch(/acknowledge/);
+  });
+
+  it.each([
+    "go back to the previous screen",
+    "use the back key",
+  ])("does not expand acknowledge for navigation %s", (q) => {
+    expect(expandIndustrialQuery(q).variants.join(" ").toLowerCase()).not.toMatch(/acknowledge/);
+  });
+});'''
+          if needle2 not in t:
+              raise SystemExit("expand block not found")
+          t = t.replace(needle2, insert2, 1)
+          p.write_text(t)
+          print("patched tests")
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run #4645 vitest
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx vitest run src/capabilities/notebook-query-fault-reset-4645 src/capabilities/answer-validation-fault-reset-4645 src/lib/__tests__/notebook-query.test.ts
+      - name: Commit Gate-7 r1 fix
+        run: |
+          set -euo pipefail
+          git config user.name "cursor-agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mira-hub/src/lib/notebook-query.ts mira-hub/src/capabilities/notebook-query-fault-reset-4645.test.ts
+          git commit -m "fix(hub): bind ACK synonym to a named control, not English back (#4645)"
+          git push origin HEAD:cursor/fault-reset-factory-guard-00df
+      - name: Cheap Gate-7 r2
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet httpx
+          python3 tools/gate7_review.py 4672 --paid --post -o /tmp/g7.md
+          echo "----- gate7 r2 -----"
+          cat /tmp/g7.md
+      - name: Delete throwaway branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git push origin --delete cursor/tmp-gate7-4672-r2-00df || true
