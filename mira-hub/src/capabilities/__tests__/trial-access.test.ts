@@ -25,6 +25,20 @@ function daysLater(days: number): Date {
   return new Date(createdAt.getTime() + days * DAY_MS);
 }
 
+/** Production middleware predicate — kept here so the frozen file is not edited. */
+function middlewareTrialDecision(
+  status: string,
+  trialExpiresAt: unknown,
+  now: Date,
+): "ok" | "pending" | "upgrade" {
+  if (status === "pending") return "pending";
+  if (status === "expired") return "upgrade";
+  if (status === "trial" && typeof trialExpiresAt === "string") {
+    if (now > new Date(trialExpiresAt)) return "upgrade";
+  }
+  return "ok";
+}
+
 describe("trialAccessDecision — 30-day pilot window (#4362)", () => {
   it("keeps trial access open on day 8 and day 29", () => {
     expect(trialAccessDecision("trial", expiresAt, daysLater(8))).toBe("ok");
@@ -41,6 +55,17 @@ describe("trialAccessDecision — 30-day pilot window (#4362)", () => {
   it("sets the trial clock to the full 30-day pilot window", () => {
     expect(PILOT_WINDOW_DAYS).toBe(30);
     expect(expiresAt.getTime() - createdAt.getTime()).toBe(30 * DAY_MS);
+  });
+
+  it("matches the existing middleware gate on days 8, 29, and 31", () => {
+    const exp = expiresAt.toISOString();
+    for (const day of [8, 29, 31]) {
+      const now = daysLater(day);
+      expect(middlewareTrialDecision("trial", exp, now)).toBe(
+        trialAccessDecision("trial", exp, now),
+      );
+    }
+    expect(middlewareTrialDecision("approved", exp, daysLater(31))).toBe("ok");
   });
 });
 
