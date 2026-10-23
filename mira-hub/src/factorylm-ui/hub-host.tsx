@@ -861,7 +861,12 @@ export function HubShellHost() {
     if (!sel?.notebookId) throw new Error("no_notebook");
     const res = await fetch(
       `${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`,
-      { method: "POST", headers: { accept: "application/json" } },
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        // The conversation whose reading the technician is looking at.
+        body: JSON.stringify(sel.threadId ? { threadId: sel.threadId } : {}),
+      },
     );
     if (!res.ok) throw new Error(`keep_photo_${res.status}`);
     await loadDetail(sel);

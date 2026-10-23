@@ -115,6 +115,24 @@ export function buildPhotoSourceText(opts: {
   ].join("\n");
 }
 
+/**
+ * True when an answer's citations ALL point at kept photo readings: each one
+ * derives from a photo (`originFileId`) and none of its retrieved chunks is
+ * verified. Such an answer rests on an unconfirmed vision reading, not on
+ * documentation, and must be labelled that way. A confirmed nameplate also
+ * derives from a photo, but the technician reviewed it and its chunks are
+ * verified, so it keeps the documentation label.
+ */
+export function citesOnlyUnconfirmedPhotoReadings(
+  citations: readonly { readonly docId: string; readonly originFileId?: string | null }[],
+  chunks: readonly { readonly docId?: string | null; readonly verified?: boolean }[],
+): boolean {
+  if (citations.length === 0) return false;
+  return citations.every(
+    (c) => !!c.originFileId && !chunks.some((k) => k.docId === c.docId && k.verified === true),
+  );
+}
+
 export type KeepPhotoResult =
   | { readonly ok: true; readonly docId: string; readonly alreadyKept: boolean; readonly chunkCount: number }
   | { readonly ok: false; readonly status: 404 | 409 | 503; readonly error: string };
@@ -129,6 +147,8 @@ export async function keepPhotoAsSource(opts: {
   readonly userId: string | null;
   readonly notebook: { readonly id: string; readonly nodeId: string; readonly displayName: string };
   readonly fileId: string;
+  /** The conversation the technician pressed Keep in: keep the reading they saw there. */
+  readonly threadId?: string | null;
 }): Promise<KeepPhotoResult> {
   const { tenantId, notebook, fileId } = opts;
   // The link is the server's proof the photo was attached to THIS machine; a
@@ -139,7 +159,13 @@ export async function keepPhotoAsSource(opts: {
   const existing = await findVisibleOriginSource(tenantId, notebook.id, fileId);
   if (existing) return { ok: true, docId: existing.docId, alreadyKept: true, chunkCount: 0 };
 
-  const reading = await withTenantContext(tenantId, (c) => loadVisualEvidenceForPhoto(c, tenantId, fileId));
+  // The same photo can be read more than once, and readings can disagree. Keep
+  // the one from the conversation the technician is looking at; without a
+  // conversation (or an owner to scope by) fall back to the latest reading.
+  const scope = opts.threadId !== undefined && opts.userId
+    ? { notebookId: notebook.id, ownerUserId: opts.userId, threadId: opts.threadId }
+    : undefined;
+  const reading = await withTenantContext(tenantId, (c) => loadVisualEvidenceForPhoto(c, tenantId, fileId, scope));
   // No stored reading means there is nothing citable to keep. Say so rather
   // than attach an empty document.
   if (!reading || reading.text.trim() === "") return { ok: false, status: 409, error: "no_photo_reading" };
@@ -154,7 +180,9 @@ export async function keepPhotoAsSource(opts: {
   const materialized = await materializeDerivedTextDoc({
     tenantId,
     nodeId: notebook.nodeId,
-    filename: `photo-${fileId}.txt`,
+    // The title rides on every chunk, so the trust state reaches the prompt and
+    // the citation even when the header above lands in a different chunk.
+    filename: `Unconfirmed photo reading ${(photo.capturedAt ?? "").slice(0, 10) || fileId}.txt`,
     text,
     createdBy: opts.userId,
     source: "photo_text",

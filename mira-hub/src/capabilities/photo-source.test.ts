@@ -28,7 +28,7 @@ import { attachSource, findVisibleOriginSource, markNameplateDocVerified, supers
 import { claimIngest, linkFileToUpload, parkOrReuseFile, photoLinkedToTarget } from "@/lib/workspace-files";
 import { deleteOrphanNodeIngest, ingestTextToNode } from "@/lib/node-knowledge-ingest";
 import { loadVisualEvidenceForPhoto } from "@/lib/visual-evidence-context";
-import { buildPhotoSourceText, keepPhotoAsSource, materializeDerivedTextDoc } from "./photo-source";
+import { buildPhotoSourceText, citesOnlyUnconfirmedPhotoReadings, keepPhotoAsSource, materializeDerivedTextDoc } from "./photo-source";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const PHOTO = "f803bb1e-325e-46fd-a1a7-4421425c1f3e";
@@ -105,7 +105,8 @@ describe("keepPhotoAsSource", () => {
 
     const ingested = vi.mocked(ingestTextToNode).mock.calls[0][0];
     expect(ingested.nodeId).toBe(NOTEBOOK.nodeId);
-    expect(ingested.filename).toBe(`photo-${PHOTO}.txt`);
+    // The title reaches every chunk header and citation, so it carries the trust state.
+    expect(ingested.filename).toBe("Unconfirmed photo reading 2026-10-23.txt");
     expect(ingested.buffer.toString("utf8")).toContain(OBSERVATION);
 
     expect(attachSource).toHaveBeenCalledWith(TENANT, NOTEBOOK.id, "doc-1", {
@@ -116,6 +117,20 @@ describe("keepPhotoAsSource", () => {
       matchEvidence: { kept_from_observation: "obs-1" },
     });
     expect(supersedePriorOriginSources).toHaveBeenCalledWith(TENANT, NOTEBOOK.id, PHOTO, "doc-1");
+  });
+
+  it("keeps the reading from the conversation the technician pressed Keep in", async () => {
+    await keepPhotoAsSource({ tenantId: TENANT, userId: "user-1", notebook: NOTEBOOK, fileId: PHOTO, threadId: "thrd-1" });
+    expect(vi.mocked(loadVisualEvidenceForPhoto).mock.calls[0][3]).toEqual({
+      notebookId: NOTEBOOK.id,
+      ownerUserId: "user-1",
+      threadId: "thrd-1",
+    });
+  });
+
+  it("falls back to the latest reading when no conversation is given", async () => {
+    await keep();
+    expect(vi.mocked(loadVisualEvidenceForPhoto).mock.calls[0][3]).toBeUndefined();
   });
 
   it("never marks the model's transcription verified", async () => {
@@ -150,5 +165,26 @@ describe("materializeDerivedTextDoc", () => {
     vi.mocked(linkFileToUpload).mockResolvedValueOnce(false);
     expect(await materializeDerivedTextDoc(args)).toEqual({ docId: null, chunkCount: 0 });
     expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT, "doc-1");
+  });
+});
+
+describe("citesOnlyUnconfirmedPhotoReadings", () => {
+  const photoCite = { docId: "doc-photo", originFileId: PHOTO };
+  const manualCite = { docId: "doc-manual", originFileId: null };
+
+  it("is true when every citation is a kept photo reading with no verified chunk", () => {
+    expect(citesOnlyUnconfirmedPhotoReadings([photoCite], [{ docId: "doc-photo", verified: false }])).toBe(true);
+  });
+
+  it("is false for a confirmed nameplate, whose chunks the technician verified", () => {
+    expect(citesOnlyUnconfirmedPhotoReadings([photoCite], [{ docId: "doc-photo", verified: true }])).toBe(false);
+  });
+
+  it("is false when a manual is cited alongside the photo reading", () => {
+    expect(citesOnlyUnconfirmedPhotoReadings([photoCite, manualCite], [{ docId: "doc-photo", verified: false }])).toBe(false);
+  });
+
+  it("is false with no citations", () => {
+    expect(citesOnlyUnconfirmedPhotoReadings([], [])).toBe(false);
   });
 });

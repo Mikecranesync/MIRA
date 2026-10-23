@@ -17,14 +17,14 @@
  */
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { getNotebook } from "@/lib/equipment-notebooks";
+import { getNotebook, normalizeNotebookThreadId } from "@/lib/equipment-notebooks";
 import { keepPhotoAsSource } from "@/capabilities/photo-source";
 
 export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string; fileId: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string; fileId: string }> }) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
 
@@ -45,8 +45,20 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     );
   }
 
+  // Optional `{ threadId }`: the conversation whose reading the technician saw.
+  const body = (await req.json().catch(() => null)) as { threadId?: unknown } | null;
+  const rawThread = typeof body?.threadId === "string" ? body.threadId : null;
+  const threadId = rawThread === null ? undefined : normalizeNotebookThreadId(rawThread);
+  if (rawThread !== null && !threadId) return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
+
   try {
-    const result = await keepPhotoAsSource({ tenantId: ctx.tenantId, userId: ctx.userId ?? null, notebook, fileId });
+    const result = await keepPhotoAsSource({
+      tenantId: ctx.tenantId,
+      userId: ctx.userId ?? null,
+      notebook,
+      fileId,
+      ...(threadId ? { threadId } : {}),
+    });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
     return NextResponse.json({ docId: result.docId, alreadyKept: result.alreadyKept, chunkCount: result.chunkCount });
   } catch (err) {

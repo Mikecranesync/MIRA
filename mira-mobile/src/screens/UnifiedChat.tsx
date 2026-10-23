@@ -961,11 +961,12 @@ function UnifiedChatForNotebook({
     if (!meta.notebookId) throw new Error("no_notebook");
     await request(
       `/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`,
-      { method: "POST" },
+      // The conversation whose reading the technician is looking at.
+      { method: "POST", json: attachmentThreadId ? { threadId: attachmentThreadId } : {} },
     );
     setKeptPhotoIds((prev) => new Set(prev).add(fileId));
     await refreshPromotedScope();
-  }, [meta.notebookId, refreshPromotedScope]);
+  }, [meta.notebookId, attachmentThreadId, refreshPromotedScope]);
 
   const hooks: HostHooks = {
     onSend,

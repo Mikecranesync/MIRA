@@ -2,21 +2,27 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
-vi.mock("@/lib/equipment-notebooks", () => ({ getNotebook: vi.fn() }));
+vi.mock("@/lib/equipment-notebooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/equipment-notebooks")>();
+  return { getNotebook: vi.fn(), normalizeNotebookThreadId: actual.normalizeNotebookThreadId };
+});
 vi.mock("@/capabilities/photo-source", () => ({ keepPhotoAsSource: vi.fn() }));
 
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { keepPhotoAsSource } from "@/capabilities/photo-source";
-import { POST } from "./route";
+import { POST } from "@/app/api/equipment-notebooks/[id]/photos/[fileId]/source/route";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "dfe74725-a4ac-4c5f-8e8c-1f06002daf0f";
 const PHOTO = "f803bb1e-325e-46fd-a1a7-4421425c1f3e";
 const notebook = { id: NB, nodeId: "d400e0ae-218b-4dbc-8705-ad951ef0b80c", displayName: "Ride A", asset: null };
 
-const call = (id = NB, fileId = PHOTO) =>
-  POST(new Request(`http://x/api/equipment-notebooks/${id}/photos/${fileId}/source`, { method: "POST" }), {
+const call = (id = NB, fileId = PHOTO, body?: unknown) =>
+  POST(new Request(`http://x/api/equipment-notebooks/${id}/photos/${fileId}/source`, {
+    method: "POST",
+    ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { "content-type": "application/json" } }),
+  }), {
     params: Promise.resolve({ id, fileId }),
   });
 
@@ -66,6 +72,18 @@ describe("POST /api/equipment-notebooks/[id]/photos/[fileId]/source", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ docId: "doc-1", alreadyKept: false, chunkCount: 2 });
     expect(keepPhotoAsSource).toHaveBeenCalledWith({ tenantId: TENANT, userId: "user-1", notebook, fileId: PHOTO });
+  });
+
+  it("keeps the reading from the conversation named in the body", async () => {
+    const threadId = "3c28cc6a-897d-4a51-a665-640fbc8380e1";
+    expect((await call(NB, PHOTO, { threadId })).status).toBe(200);
+    expect(keepPhotoAsSource).toHaveBeenCalledWith({ tenantId: TENANT, userId: "user-1", notebook, fileId: PHOTO, threadId });
+  });
+
+  it("rejects a malformed conversation id", async () => {
+    const res = await call(NB, PHOTO, { threadId: "../../etc" });
+    expect(res.status).toBe(400);
+    expect(keepPhotoAsSource).not.toHaveBeenCalled();
   });
 
   it("passes the capability's refusal status through", async () => {
