@@ -1,6 +1,6 @@
 # Android foreground refresh, Golden Conversation "return to Android" leg (PRD #3990), 2026-10-22
 
-**Label: PARTIAL.** Proven on the Android emulator against **staging**, with before and after builds. Not proven: a physical Pixel, and production (no OTA or deploy was done).
+**Label: PARTIAL.** The fix is proven on the emulator and on the **physical Pixel 9a** against staging, with before and after builds. The defect is also reproduced on the Pixel's production build against production. Not proven: the fix on production, which needs an OTA or release that Mike gates. Codex review is outstanding.
 
 ## Gap
 
@@ -35,8 +35,34 @@
 
 Server order at the end: `729e691b, d31f685f, 9b4e4d14, 47fd1dd6, 1e3d5660, 7a9982c5`. These are one thread, alternating web and phone.
 
+## Physical Pixel 9a (`55081JEBF07026`), 2026-10-23
+
+The owner unlocked the phone and authorized the run. Stay-awake was set with `svc power stayon true` during the run and restored afterwards.
+
+**Production app 1.2.0 (16) against production** (hub gitSha `0e5bb3de7`, #4619 thread `4a6d18d5…`, account `MOBILE_E2E_*`)
+
+| # | step | result | evidence |
+|---|---|---|---|
+| 15 | open thread | PASS: every #4619 turn renders, with its p. 130 chips | `pixel-px-15-thread-open.png` |
+| 16 | citation | PASS: [2] opens abb-acs150.pdf p.130. The passage text "F0006 DC UNDERVOLT … missing input power line phase, blown fuse, rectifier bridge internal fault or too low input power" matches the answer | `pixel-px-16-citation.png` |
+| — | Home → web follow-up → return | **FAIL, defect reproduced on hardware.** pid 11489 is unchanged, and the web turn is still missing after 25 s | `pixel-px-18a-resume-stale-25s.png` |
+| 17 | cold restart | PASS: new pid 14035, and all turns, including the web turn, appear exactly once | `pixel-px-17-cold-restart.png` |
+| 18 | phone → web | PASS: a turn asked on the Pixel is saved and renders once on prod web `/v3` (14 turn nodes = 7 turns) | `pixel-px-18b-phone-turn.png`, `pixel-prod-web-sees-pixel-turn_desktop.png` |
+
+**Fixed build 3e245cdb6 (stagingDebug) against staging**
+
+To install it, MIRA Staging had to be uninstalled first: the previous copy was signed with CHARLIE's debug key. The owner approved this. Production MIRA was not touched.
+
+| step | result | evidence |
+|---|---|---|
+| open thread | PASS | `pixel-pxfix-01-thread-open.png` |
+| Home → web follow-up → return | **PASS:** pid 15121 is unchanged, and the web turn renders within 5 s | `pixel-pxfix-02-after-resume.png` |
+| cold restart | PASS: new pid 16510, and each of the 7 marker turns appears exactly once | `pixel-pxfix-04-cold-restart.png` |
+| live phone turn → Home → web follow-up → return | **PASS:** pid 16510 is unchanged. The phone turn appears once and the web turn once | `pixel-pxfix-05-phone-turn2.png`, `pixel-pxfix-06-resume-after-live-phone-turn.png` |
+
+A first attempt at the last row pressed BACK with the keyboard already closed, so the app left the thread for the project root. That was a driver error, not an app defect, and the row was rerun.
+
 ## Not covered here
 
-- **Physical Pixel.** It needs the owner to unlock it.
 - **Production.** The fix ships only through a mobile OTA or release, which Mike gates.
 - **The manual → citation passage legs.** #4619 already proved them on production and are unaffected by this change.
