@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { PoolClient } from "pg";
+import { isUndefinedRelationOrColumn } from "@/lib/machine-memory";
 
 // Unified review-queue aggregator. Each source contributes ReviewItem rows that
 // the /hub/admin/review page renders. Read-only — no approve/publish workflow
@@ -19,9 +20,49 @@ export interface ReviewItem {
   meta?: Record<string, string>;
 }
 
+export type ReviewQueueNotice = {
+  code: "schema_behind";
+  message: string;
+  sqlstate?: string;
+};
+
 export interface ReviewQueueResponse {
   items: ReviewItem[];
   counts: Record<ReviewItemType | "total", number>;
+  notice?: ReviewQueueNotice;
+}
+
+const SCHEMA_BEHIND_GRANT = "42501";
+const SCHEMA_BEHIND_ABORTED = "25P02";
+const SCHEMA_BEHIND_MISSING_ROLE = "42704";
+const EPOCH_ISO = new Date(0).toISOString();
+
+function sqlstateOf(err: unknown): string | undefined {
+  const code = (err as { code?: string } | null | undefined)?.code;
+  return typeof code === "string" && code ? code : undefined;
+}
+
+export function isReviewQueueSchemaBehind(err: unknown): boolean {
+  if (isUndefinedRelationOrColumn(err)) return true;
+  const code = sqlstateOf(err);
+  return code === SCHEMA_BEHIND_GRANT || code === SCHEMA_BEHIND_ABORTED || code === SCHEMA_BEHIND_MISSING_ROLE;
+}
+
+export function schemaBehindNotice(sqlstate?: string): ReviewQueueNotice {
+  return {
+    code: "schema_behind",
+    message:
+      "Review queue cannot load proposals because the database schema is behind (unapplied migrations). See #3355 (staging) and #3952 (prod).",
+    ...(sqlstate ? { sqlstate } : {}),
+  };
+}
+
+// pg returns Date objects for timestamptz (no setTypeParser override here) —
+// same class as uploads.ts toIsoString. localeCompare must never see a Date.
+function toIsoString(value: Date | string | null | undefined): string {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string" && value) return value;
+  return EPOCH_ISO;
 }
 
 // Where to find on-disk assets. Container deploy bind-mounts the repo root
@@ -56,7 +97,7 @@ export function isReviewAdmin(email: string | null | undefined): boolean {
   return ADMIN_EMAILS.includes(email.toLowerCase());
 }
 
-// ── proposal source ────────────────────────────────────────────────────────
+// ── proposal source ─────────────────────────────────────────
 
 interface ProposalRow {
   id: string;
@@ -69,15 +110,27 @@ interface ProposalRow {
   status: string;
   created_by: string;
   reasoning: string | null;
-  created_at: string;
+  created_at: Date | string | null;
 }
 
 export async function fetchProposals(
   client: PoolClient,
   tenantId: string,
 ): Promise<ReviewItem[]> {
-  const { rows } = await client.query<ProposalRow>(
-    `SELECT
+  // Same class as manual-rag.ts hybrid_vector_lane (#4487): a failing SELECT
+  // inside withTenantContext's transaction aborts it, so the later COMMIT
+  // raises 25P02. Fence the optional proposals query in a SAVEPOINT.
+  let savepoint = false;
+  try {
+    await client.query("SAVEPOINT review_queue_proposals");
+    savepoint = true;
+  } catch {
+    // 25P01 / not in a transaction — nothing to recover.
+    savepoint = false;
+  }
+  try {
+    const { rows } = await client.query<ProposalRow>(
+      `SELECT
         p.id,
         p.source_entity_type,
         p.target_entity_type,
@@ -94,26 +147,40 @@ export async function fetchProposals(
         AND p.status = 'proposed'
       ORDER BY p.created_at DESC
       LIMIT 200`,
-    [tenantId],
-  );
-  return rows.map((r) => ({
-    id: `prop:${r.id}`,
-    type: "proposal" as const,
-    title: `${r.source_name ?? r.source_entity_type} ─ ${r.relationship_type} ─ ${
-      r.target_name ?? r.target_entity_type
-    }`,
-    previewUrl: null,
-    body: r.reasoning ?? null,
-    source: `relationship_proposals`,
-    createdAt: r.created_at,
-    meta: {
-      confidence: `${Math.round(r.confidence * 100)}%`,
-      createdBy: r.created_by,
-    },
-  }));
+      [tenantId],
+    );
+    if (savepoint) await client.query("RELEASE SAVEPOINT review_queue_proposals");
+    return rows.map((r) => ({
+      id: `prop:${r.id}`,
+      type: "proposal" as const,
+      title: `${r.source_name ?? r.source_entity_type} ─ ${r.relationship_type} ─ ${
+        r.target_name ?? r.target_entity_type
+      }`,
+      previewUrl: null,
+      body: r.reasoning ?? null,
+      source: `relationship_proposals`,
+      createdAt: toIsoString(r.created_at),
+      meta: {
+        confidence: `${Math.round(r.confidence * 100)}%`,
+        createdBy: r.created_by,
+      },
+    }));
+  } catch (err) {
+    if (savepoint) {
+      try {
+        await client.query("ROLLBACK TO SAVEPOINT review_queue_proposals");
+      } catch (rollbackErr) {
+        console.warn(
+          "[review-queue] review_queue_proposals savepoint rollback failed:",
+          rollbackErr instanceof Error ? rollbackErr.message : rollbackErr,
+        );
+      }
+    }
+    throw err;
+  }
 }
 
-// ── filesystem image sources ───────────────────────────────────────────────
+// ── filesystem image sources ───────────────────────────────
 
 async function* walkImages(absDir: string, base: string): AsyncGenerator<{
   absPath: string;
@@ -164,14 +231,14 @@ async function fetchImageQueue(
       createdAt: f.mtime.toISOString(),
     });
   }
-  return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return items.sort((a, b) => toIsoString(b.createdAt).localeCompare(toIsoString(a.createdAt)));
 }
 
 export const fetchCartoons = () => fetchImageQueue("cartoon", "marketing/cartoons");
 export const fetchScreenshots = () =>
   fetchImageQueue("screenshot", "docs/promo-screenshots");
 
-// ── web-review audit source ────────────────────────────────────────────────
+// ── web-review audit source ────────────────────────────────
 
 interface AuditFinding {
   url?: string;
@@ -223,16 +290,23 @@ export async function fetchWebReviewFindings(): Promise<ReviewItem[]> {
   }));
 }
 
-// ── orchestrator ───────────────────────────────────────────────────────────
+// ── orchestrator ───────────────────────────────────────────
 
 export async function getReviewQueue(
   client: PoolClient,
   tenantId: string,
 ): Promise<ReviewQueueResponse> {
   // Fan-out fetch. Each source isolated so one failure doesn't bury the rest.
+  let notice: ReviewQueueNotice | undefined;
   const [proposals, cartoons, screenshots, audits] = await Promise.all([
     fetchProposals(client, tenantId).catch((e) => {
-      console.error("[review-queue] fetchProposals failed", e);
+      const sqlstate = sqlstateOf(e);
+      if (isReviewQueueSchemaBehind(e)) {
+        notice = schemaBehindNotice(sqlstate);
+        console.warn("[review-queue] fetchProposals failed (schema behind)", sqlstate, e);
+      } else {
+        console.error("[review-queue] fetchProposals failed", e);
+      }
       return [] as ReviewItem[];
     }),
     fetchCartoons().catch((e) => {
@@ -249,7 +323,7 @@ export async function getReviewQueue(
     }),
   ]);
   const items = [...proposals, ...cartoons, ...screenshots, ...audits].sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
+    toIsoString(b.createdAt).localeCompare(toIsoString(a.createdAt)),
   );
   const counts = {
     proposal: proposals.length,
@@ -258,7 +332,7 @@ export async function getReviewQueue(
     audit: audits.length,
     total: items.length,
   };
-  return { items, counts };
+  return notice ? { items, counts, notice } : { items, counts };
 }
 
 // Helper used by the asset route. Anchors a relative path inside one of the
