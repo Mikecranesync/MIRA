@@ -47,6 +47,7 @@ GUARDED_FIXTURE="$REPO_ROOT/mira-mobile/src/screens/.precommit lifecycle guard f
 CANONICAL_FIXTURE="$REPO_ROOT/mira-mobile/src/unified/.precommit-lifecycle-guard-fixture.ts"
 WORKFLOW_FIXTURE="$REPO_ROOT/.github/workflows/.precommit-guarded-workflow-fixture.yml"
 SHIM_DIR=""
+FAULT_DIR=""
 PASS=0
 FAIL=0
 
@@ -76,6 +77,7 @@ cleanup() {
   rm -rf "$FIXTURE_DIR"
   rm -f "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE" "$WORKFLOW_FIXTURE"
   [ -n "$SHIM_DIR" ] && rm -rf "$SHIM_DIR"
+  if [ -n "$FAULT_DIR" ]; then rm -rf "$FAULT_DIR"; FAULT_DIR=""; fi
 }
 on_exit() { cleanup; }
 trap on_exit EXIT
@@ -274,6 +276,52 @@ else
   echo "  SKIP actionlint not installed here (the CI gate is .github/workflows/actionlint.yml)"
 fi
 cleanup; trap on_exit EXIT
+echo
+
+# ---------------------------------------------------------------------------
+# 10. A lifecycle policy that cannot be evaluated must fail closed, never warn.
+#    Python exits 1 on an uncaught exception, the same code guard-check uses for
+#    "guarded paths found", so each fault below exits 1 from a crash, not from a
+#    verdict. The faults are injected through PYTHONPATH into the real helper;
+#    no tracked file is touched.
+# ---------------------------------------------------------------------------
+make_policy_fault() { # $1 = missing-dependency | missing-registry | malformed-registry
+  FAULT_DIR=$(mktemp -d)
+  if [ "$1" = missing-dependency ]; then
+    printf 'raise ImportError("precommit harness: PyYAML unavailable")\n' > "$FAULT_DIR/yaml.py"
+  else
+    cat > "$FAULT_DIR/sitecustomize.py" <<'PY'
+import os
+import pathlib
+
+_MODE = os.environ.get("PRECOMMIT_HARNESS_REGISTRY_FAULT", "")
+_read_text = pathlib.Path.read_text
+
+
+def _faulty_read_text(self, *args, **kwargs):
+    if self.name == "REGISTRY.yaml":
+        if _MODE == "missing-registry":
+            raise FileNotFoundError(2, "precommit harness: registry missing", str(self))
+        if _MODE == "malformed-registry":
+            return "[]\n"
+    return _read_text(self, *args, **kwargs)
+
+
+pathlib.Path.read_text = _faulty_read_text
+PY
+  fi
+}
+
+for FAULT in missing-dependency missing-registry malformed-registry; do
+  echo "[10] $FAULT: the lifecycle check fails closed with a guarded path staged"
+  make_policy_fault "$FAULT"
+  stage_guarded_fixture
+  OUT=$(PYTHONPATH="$FAULT_DIR" PRECOMMIT_HARNESS_REGISTRY_FAULT="$FAULT" run_hook); RC=$?
+  assert_eq "$RC" "1"                                            "$FAULT blocks the commit"
+  assert_contains "$OUT" "UI lifecycle policy errored"           "$FAULT is reported as a policy error"
+  assert_not_contains "$OUT" "Guarded legacy UI route or control staged" "$FAULT is not mistaken for a warning"
+  cleanup; trap on_exit EXIT
+done
 echo
 
 # ---------------------------------------------------------------------------
