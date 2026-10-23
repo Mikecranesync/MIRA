@@ -20,7 +20,7 @@ permissions:
 jobs:
   unseen-lane:
     name: unseen-lane (free path, $0)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6

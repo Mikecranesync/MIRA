@@ -15,6 +15,7 @@ jobs:
     name: Warn on active prompt change
     runs-on: ubuntu-latest
     permissions:
+      contents: read  # private repo: actions/checkout needs it (public repos answer anonymously)
       statuses: write
     steps:
       - uses: actions/checkout@v6

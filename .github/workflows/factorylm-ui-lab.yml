@@ -72,7 +72,7 @@ permissions:
 jobs:
   shared-ui:
     name: Shared UI contract (bun 1.4.0)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 10
     defaults:
       run:

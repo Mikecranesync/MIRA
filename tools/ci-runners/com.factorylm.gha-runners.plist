@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- BRAVO: keep the ephemeral runner slots alive (Colima profile "gha").
+     Install: copy bravo-runner-supervisor.sh to ~/gha-runners/, this file to ~/Library/LaunchAgents/,
+     `launchctl bootstrap gui/$(id -u) <file>`. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.factorylm.gha-runners</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/bravonode/gha-runners/bravo-runner-supervisor.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>REPO_URL</key><string>https://github.com/Mikecranesync/MIRA</string>
+    <key>SLOTS</key><string>5</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/bravonode/.gha/logs/supervisor.out</string>
+  <key>StandardErrorPath</key><string>/Users/bravonode/.gha/logs/supervisor.out</string>
+</dict>
+</plist>

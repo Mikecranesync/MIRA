@@ -26,7 +26,7 @@ on:
 jobs:
   deepeval:
     name: DeepEval Benchmark (offline)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
 
     steps:
       - uses: actions/checkout@v6

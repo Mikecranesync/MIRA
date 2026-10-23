@@ -31,7 +31,7 @@ on:
 jobs:
   e2e:
     name: 9-scenario E2E against prod
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 15
 
     steps:
