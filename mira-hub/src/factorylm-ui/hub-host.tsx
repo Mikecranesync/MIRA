@@ -134,6 +134,7 @@ export function HubShellHost() {
   const [capturedAt] = useState(() => new Date().toISOString());
   const [signedOut, setSignedOut] = useState(false);
   const [notebooks, setNotebooks] = useState<HubNotebook[] | null>(null);
+  const [notebookGate] = useState(() => latestRequestGate());
   const [selection, setSelection] = useState<HubSelection | null>(null);
   // Mirror for async callbacks that must know whether anything is open yet
   // without re-subscribing to the selection (the notebook list reloads after
@@ -191,7 +192,9 @@ export function HubShellHost() {
 
   // --- data: notebooks (projects/threads), then the selected notebook's detail ---
   const loadNotebooks = useCallback(async () => {
+    const token = notebookGate.begin();
     const { status, data } = await getJson<{ notebooks: HubNotebook[] }>("/api/equipment-notebooks/");
+    if (!notebookGate.isCurrent(token)) return;
     if (status === 401) { setSignedOut(true); return; }
     if (!data) return;
     setNotebooks(data.notebooks);
@@ -211,7 +214,8 @@ export function HubShellHost() {
       }
     }
     return data.notebooks;
-  }, [syncThread]);
+  }, [syncThread, notebookGate]);
+  useEffect(() => () => notebookGate.invalidate(), [notebookGate]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     void loadNotebooks();
@@ -258,6 +262,7 @@ export function HubShellHost() {
 
   /** Change what is open: abort any stream and any in-flight detail load, drop the previous notebook's data. */
   const select = useCallback((sel: HubSelection) => {
+    selectionRef.current = sel; // async list hydration must see this selection before React effects run
     abortRef.current?.abort();
     uploadAbortRef.current?.abort();
     detailGate.invalidate();
@@ -546,11 +551,16 @@ export function HubShellHost() {
     });
     if (res.status === 401) { setSignedOut(true); return null; }
     if (!res.ok) throw new Error(errorMessageFor("", res.status));
-    const created = (await res.json()) as { notebook?: { id?: string } };
-    const id = created.notebook?.id ?? null;
-    await loadNotebooks();
-    return id;
-  }, [loadNotebooks]);
+    const created = (await res.json()) as { notebook?: HubNotebook };
+    const notebook = created.notebook;
+    if (!notebook?.id) throw new Error("The project was created but could not be opened. Refresh projects before trying again.");
+    // POST already returned the authoritative notebook. Publish it immediately;
+    // a slow or failed sidebar refresh must not hold selection or fail creation.
+    notebookGate.invalidate();
+    setNotebooks(current => [notebook, ...(current ?? []).filter(item => item.id !== notebook.id)]);
+    void loadNotebooks().catch(error => console.warn("[hub-host] project list refresh failed", error));
+    return notebook.id;
+  }, [loadNotebooks, notebookGate]);
 
   /**
    * HOME send (L0): the question becomes a new thread in the preferred notebook
