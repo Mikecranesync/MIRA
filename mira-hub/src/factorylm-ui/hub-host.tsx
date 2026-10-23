@@ -891,7 +891,7 @@ export function HubShellHost() {
     onCreateProject,
     ...(busy ? { onStop } : {}),
     ...(failedBody ? { onRetry } : {}),
-    groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length),
+    groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length, !(selection && !detail)),
     busy,
   };
 
