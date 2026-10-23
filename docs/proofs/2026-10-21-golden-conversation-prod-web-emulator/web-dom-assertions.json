@@ -1,0 +1,66 @@
+{
+ "capturedAt": "2026-10-23T08:44:50.036Z",
+ "url": "https://app.factorylm.com/v3/?notebook=175411fb-7d36-48c0-a8e3-06ef6e393c56&thread=4a6d18d5-e4d6-400e-a832-433d7b96fd23",
+ "domCounts": {
+  "step12_android": 1,
+  "step12_web2": 1,
+  "step14_photo": 1,
+  "step19_pixel": 1,
+  "step19_web3": 1
+ },
+ "photoObservationCards": 1,
+ "serverTurns": [
+  {
+   "id": "8de44841-e83b-40f1-94bc-4834b2a3109f",
+   "createdAt": "Wed Oct 21 2026 23:57:54 GMT+0000 (Coordinated Universal Time)",
+   "question": "My ACS150 drive tripped on fault F0003 DEV OVERTEMP. What is"
+  },
+  {
+   "id": "06561775-2168-45d7-a501-28dc7a8289d2",
+   "createdAt": "Wed Oct 21 2026 23:59:28 GMT+0000 (Coordinated Universal Time)",
+   "question": "And for F0002 DC OVERVOLT, what is the trip limit on a 400 V"
+  },
+  {
+   "id": "3fefee82-6b3a-477b-8e36-9ce87cfe95c0",
+   "createdAt": "Thu Oct 22 2026 00:03:52 GMT+0000 (Coordinated Universal Time)",
+   "question": "ANDROID FOLLOW-UP: what is the F0001 OVERCURRENT trip level "
+  },
+  {
+   "id": "3089d6e2-b633-48ec-90a9-74570b75dd30",
+   "createdAt": "Thu Oct 22 2026 00:10:19 GMT+0000 (Coordinated Universal Time)",
+   "question": "WEB FOLLOW-UP 2: what is the F0006 DC UNDERVOLT cause on thi"
+  },
+  {
+   "id": "fcb776b3-04f7-4e78-b956-d3beca275051",
+   "createdAt": "Thu Oct 22 2026 00:13:16 GMT+0000 (Coordinated Universal Time)",
+   "question": "PHOTO TURN: this is the drive on my panel right now. What dr"
+  },
+  {
+   "id": "04aaaf86-b4c2-4518-a989-40f8c6455d18",
+   "createdAt": "Fri Oct 23 2026 05:25:21 GMT+0000 (Coordinated Universal Time)",
+   "question": "PIXEL RESUME CHECK: what is the F0003 fault trip limit"
+  },
+  {
+   "id": "968c5dc5-0765-4cbc-bb1a-bccbcab09eea",
+   "createdAt": "Fri Oct 23 2026 05:30:11 GMT+0000 (Coordinated Universal Time)",
+   "question": "PIXEL PHONE TURN: what does F0002 DC OVERVOLT mean"
+  },
+  {
+   "id": "d76ca61f-073c-4608-a5c9-18e29d84df5d",
+   "createdAt": "Fri Oct 23 2026 08:07:21 GMT+0000 (Coordinated Universal Time)",
+   "question": "PIXEL GC FOLLOW-UP: what does F0004 SHORT CIRC mean and what"
+  },
+  {
+   "id": "8d08335b-0365-4117-a61c-b4e322dcd6ff",
+   "createdAt": "Fri Oct 23 2026 08:08:47 GMT+0000 (Coordinated Universal Time)",
+   "question": "WEB AFTER PIXEL: what is the F0007 AI1 LOSS fault on this dr"
+  }
+ ],
+ "screenshots": {
+  "step12_android": "web-ev-step12_android.png",
+  "step12_web2": "web-ev-step12_web2.png",
+  "step14_photo": "web-ev-step14_photo.png",
+  "step19_pixel": "web-ev-step19_pixel.png",
+  "step19_web3": "web-ev-step19_web3.png"
+ }
+}
