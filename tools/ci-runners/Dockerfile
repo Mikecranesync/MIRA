@@ -9,6 +9,8 @@
 #
 # Not supported here (kept on GitHub-hosted runners): Android SDK/emulator workflows.
 FROM ghcr.io/actions/actions-runner:2.338.1
+# Locally built, never pulled: keep it out of the supervisor's image prune.
+LABEL mira.keep="true"
 
 USER root
 RUN apt-get update \

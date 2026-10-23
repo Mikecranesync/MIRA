@@ -47,6 +47,17 @@ slot() {
   done
 }
 
+# Jobs pull/build images into the CI VM; nothing else removes them. Every 6 h drop unused
+# images and build cache older than 3 days so the 100 GB VM disk does not fill.
+prune() {
+  while true; do
+    docker image prune -af --filter "until=72h" --filter "label!=mira.keep=true" >>"$LOG_DIR/prune.log" 2>&1
+    docker builder prune -af --filter "until=72h" >>"$LOG_DIR/prune.log" 2>&1
+    sleep 21600
+  done
+}
+prune &
+
 for i in $(seq 1 "$GENERAL_SLOTS"); do
   slot "gen-$i" "self-hosted,linux,arm64,mira-bravo" bridge &
 done
