@@ -590,6 +590,18 @@ export async function correctVisualObservations(opts: {
         // Lost the race after our INSERT — do not leave a dangling replacement.
         throw new Error(`visual correction race on observation ${row.id}`);
       }
+      if (scope) {
+        // Notebook lock serializes correction generations across independent
+        // conversation chains. Retain their readings, but fence delayed publish.
+        await c.query(`UPDATE observation o SET metadata = COALESCE(o.metadata, '{}'::jsonb)
+          || jsonb_build_object('publication_superseded_by', $4::text)
+          WHERE o.tenant_id = $1 AND o.observation_id <> $4::uuid
+            AND EXISTS (SELECT 1 FROM visual_session vs WHERE vs.session_id=o.session_id
+              AND vs.tenant_id=$1 AND vs.metadata->>'notebook_id'=$2)
+            AND EXISTS (SELECT 1 FROM evidence_item e WHERE e.evidence_id=o.evidence_id
+              AND e.tenant_id=$1 AND e.capture_meta->>'file_id'=$3)`,
+        [opts.tenantId, scope.notebookId, opts.fileId, replacementId]);
+      }
       if (scope) await c.query(`UPDATE equipment_notebook_sources SET superseded_at = now()
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND origin_file_id = $3::uuid
           AND superseded_at IS NULL`, [opts.tenantId, scope.notebookId, opts.fileId]);

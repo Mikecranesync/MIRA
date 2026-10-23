@@ -652,6 +652,46 @@ describe("LOOK conversation association without completed chat turns", () => {
     expect((await q("SELECT coalesce(normalized_value,raw_value) AS normalized_value FROM observation WHERE observation_id=$1", [original!.observationId])).rows[0].normalized_value).toBe("-F53.3 /150");
   });
 
+  it("rejects delayed publication from an older independent conversation correction", async () => {
+    const fileId = "f11e0000-0000-4000-8000-000000000066";
+    const nb = "a55e7a11-0000-4000-8000-000000000066";
+    const docs = ["d4643000-0000-4000-8000-000000000066", "d4643000-0000-4000-8000-000000000067"];
+    const a = { notebookId: nb, ownerUserId: "tech-a", threadId: "conversation-a" };
+    const b = { notebookId: nb, ownerUserId: "tech-b", threadId: "conversation-b" };
+    await q("INSERT INTO equipment_notebooks (id,tenant_id,display_name,node_id) VALUES ($1,$2,'independent chains',$1)", [nb,TENANT_A]);
+    await q("INSERT INTO namespace_direct_uploads (id,tenant_id,filename,mime_type) VALUES ($1,$2,'same-photo.jpg','image/jpeg')", [fileId,TENANT_A]);
+    await q("INSERT INTO workspace_file_links (tenant_id,file_id,target_type,target_id,role) VALUES ($1,$2,'equipment_notebook',$3,'photo')", [TENANT_A,fileId,nb]);
+    for (const doc of docs) await q("INSERT INTO hub_uploads (id,tenant_id,filename,status,provider) VALUES ($1,$2,'reading.txt','parsed','itest')", [doc,TENANT_A]);
+    try {
+      const observations = [];
+      for (const scope of [a,b]) observations.push(await recordLookObservation({ tenantId:TENANT_A,fileId,text:"-F53.3 /150",createdBy:scope.ownerUserId,notebookId:nb,threadId:scope.threadId }));
+      const correct = (scope: typeof a, observationId: string, value: string) => correctVisualObservations({ tenantId:TENANT_A,boundEntityId:null,fileId,correctedBy:scope.ownerUserId,conversation:scope,corrections:[{observationId,value}] });
+      const ra = await correct(a, observations[0]!.observationId, "-F55.3 /150");
+      const loadedA = await withTenantContext(TENANT_A,c=>loadVisualEvidenceForPhoto(c,TENANT_A,fileId,a));
+      expect(loadedA!.observationId).toBe(ra.corrected[0].replacementId);
+      // A is paused after reading load, before materialization/publication.
+      const rb = await correct(b, observations[1]!.observationId, "-F55.3 /15.0");
+      const publish = (scope: typeof a, id: string, doc: string) => attachSource(TENANT_A,nb,doc,{originFileId:fileId,addedBy:scope.ownerUserId,reviewedPhoto:{observationId:id,threadId:scope.threadId}});
+      // A later model LOOK must not replace a committed review while B's
+      // source materialization is pending, even though its observation is new.
+      const late = await recordLookObservation({tenantId:TENANT_A,fileId,text:"model reread",createdBy:"tech-c",notebookId:nb,threadId:"conversation-c"});
+      expect(await attachSource(TENANT_A,nb,docs[0],{originFileId:fileId,addedBy:"tech-c",candidatePhoto:{observationId:late!.observationId,threadId:"conversation-c"},reuseVisibleOrigin:true})).toEqual({ok:false,error:"photo_review_conflict"});
+      expect((await publish(b,rb.corrected[0].replacementId,docs[1])).ok).toBe(true);
+      expect(await publish(a,loadedA!.observationId,docs[0])).toEqual({ok:false,error:"photo_review_conflict"});
+      expect((await findVisibleOriginSource(TENANT_A,nb,fileId))?.docId).toBe(docs[1]);
+      expect(await validateChatSources(TENANT_A,nb,[docs[1]])).toMatchObject({ok:true,docIds:[docs[1]]});
+      expect((await validateChatSources(TENANT_A,nb,[docs[0]])).ok).toBe(false);
+      // A's conversation reading remains readable; only publication is obsolete.
+      expect((await withTenantContext(TENANT_A,c=>loadVisualEvidenceForPhoto(c,TENANT_A,fileId,a)))?.text).toBe("-F55.3 /150");
+    } finally {
+      await q("DELETE FROM equipment_notebook_sources WHERE notebook_id=$1",[nb]);
+      await q("DELETE FROM equipment_notebooks WHERE id=$1",[nb]);
+      await q("DELETE FROM workspace_file_links WHERE file_id=$1",[fileId]);
+      await q("DELETE FROM namespace_direct_uploads WHERE id=$1",[fileId]);
+      await q("DELETE FROM hub_uploads WHERE id=ANY($1::uuid[])",[docs]);
+    }
+  });
+
   it("print correction preserves original, rejects foreign scope, and recalls exact punctuation with hazards", async () => {
     const fileId = "f11e0000-0000-4000-8000-000000000088";
     const scope = { notebookId: ASSET_A1, ownerUserId: "print-tech", threadId: "print-thread" };

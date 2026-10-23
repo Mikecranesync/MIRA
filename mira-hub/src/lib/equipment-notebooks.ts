@@ -693,6 +693,18 @@ export async function attachSource(
               AND o.metadata->>'field' = 'photo_reading')
               OR (NOT $7::boolean AND o.extractor = 'inspection_vision' AND o.review_state = 'unreviewed'))
             AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED') AND o.superseded_by IS NULL
+            AND o.metadata->>'publication_superseded_by' IS NULL
+            -- A new model reading cannot publish over a committed review whose
+            -- materialization is still pending, even in a different conversation.
+            AND ($7::boolean OR NOT EXISTS (
+              SELECT 1 FROM observation r
+                JOIN visual_session rs ON rs.session_id=r.session_id AND rs.tenant_id=$2
+                JOIN evidence_item re ON re.evidence_id=r.evidence_id AND re.tenant_id=$2
+               WHERE r.tenant_id=$2 AND rs.metadata->>'notebook_id'=$4
+                 AND re.capture_meta->>'file_id'=$6 AND r.extractor='technician'
+                 AND r.review_state='corrected' AND r.metadata->>'field'='photo_reading'
+                 AND r.metadata->>'publication_superseded_by' IS NULL
+                 AND r.superseded_by IS NULL AND r.evidence_state NOT IN ('REJECTED','SUPERSEDED')))
             AND EXISTS (SELECT 1 FROM visual_session vs WHERE vs.session_id = o.session_id
               AND vs.tenant_id = $2 AND vs.created_by = $3
               AND vs.metadata->>'notebook_id' = $4 AND vs.metadata->>'thread_id' = $5)

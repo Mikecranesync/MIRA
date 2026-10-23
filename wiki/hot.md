@@ -1,3 +1,9 @@
+# Photo correction publication race — 2026-10-23
+
+PR #4662 merged as c7efdb007. PR #4663 now fences source publication across independent conversation correction chains sharing a notebook/photo. Older conversation readings remain available, but delayed publication cannot replace a newer correction; new model readings cannot publish over a pending committed technician review. Real PostgreSQL: 29 tests pass, including both controls. Hub: 9216 pass/53 skipped; production build passes. Component version 2.39.0. Exact-head review/CI and staging, production, and physical-device acceptance remain outstanding. Mike authorized finishing through deployment and testing; no gates bypassed. Pixel connected and charging stay-awake verified; private evidence retains original settings.
+
+---
+
 # Photo correction review repairs — 2026-10-23
 
 PR #4663: local repairs remove the canonical mobile dependency on frozen FilePreview presentation, preserve technician-reviewed attribution in chat, and recover a committed reading before an edited retry with renewed acknowledgement. Hub 9177 pass/53 skipped, mobile 968 pass, shared UI 310 pass plus final 13 retry tests, real-Postgres 28 pass on a fresh database; Hub/mobile builds pass. Fresh exact-head review and same-release physical acceptance remain required. No merge/deploy authorization inferred.
