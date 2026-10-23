@@ -28,7 +28,9 @@ export interface HostHooks {
    * optional so a host cannot silently drop a technician's evidence by writing
    * a one-argument handler and never noticing.
    */
-  readonly onSend?: (text: string, attachments: readonly Attachment[]) => void;
+  // Explicit retry intent lets attachment-owning hosts re-arm retained bytes
+  // even when the failed send never created a turn id. Ordinary sends omit it.
+  readonly onSend?: (text: string, attachments: readonly Attachment[], opts?: { retry?: boolean }) => void;
   /** Stop the in-flight answer; shown only while `busy`. */
   readonly onStop?: () => void;
   /**
@@ -132,6 +134,16 @@ export interface HostHooks {
    * always works, even without a host.
    */
   readonly onRejectIdentity?: (proposal: IdentityProposal) => void;
+  /**
+   * Keep a photo attached in this conversation as a source on its machine, so
+   * a later conversation on the same machine can use it without the photo
+   * being sent again. Resolves once the server has kept it; rejects on
+   * failure. The technician confirms the photo belongs to this machine; what
+   * MIRA read from it stays unconfirmed. Rendered only when provided.
+   */
+  readonly onKeepPhoto?: (fileId: string) => Promise<void>;
+  /** Whether this photo is already one of the machine's sources. */
+  readonly isPhotoKept?: (fileId: string) => boolean;
   readonly busy?: boolean;
 }
 
@@ -395,13 +407,58 @@ function IdentityProposalPart({
   </Card>;
 }
 
+function VisualObservationPart({
+  part,
+  hooks,
+}: {
+  readonly part: Extract<InteractionPart, { type: "visual_observation" }>;
+  readonly hooks?: HostHooks;
+}) {
+  const { observation } = part;
+  const [state, setState] = useState<"idle" | "busy" | "kept" | "failed">(
+    hooks?.isPhotoKept?.(observation.fileId) ? "kept" : "idle",
+  );
+  // The host learns about sources after mount (the notebook reloads), so follow
+  // it; never step back from a keep this card made itself.
+  const keptByHost = hooks?.isPhotoKept?.(observation.fileId) ?? false;
+  useEffect(() => {
+    if (keptByHost) setState("kept");
+  }, [keptByHost]);
+  const keep = () => {
+    if (!hooks?.onKeepPhoto || state === "busy" || state === "kept") return;
+    setState("busy");
+    hooks.onKeepPhoto(observation.fileId).then(() => setState("kept"), () => setState("failed"));
+  };
+  // The photo itself, when the host says where it lives: a thumbnail that
+  // opens the full-size image in an in-app (native <dialog>) viewer. The raw file id
+  // is only printed when there is no picture to show instead.
+  const preview = openableUrl(observation.previewUrl);
+  return <Card type="visual_observation" label="IMG · Photo observation" extra={{ "data-verified": String(observation.verified), "data-file-id": observation.fileId }}>
+    {preview ? <PhotoThumb className="fl-photo" src={preview} alt={`Photo captured ${observation.capturedAt}`} /> : null}
+    <dl className="fl-card__facts">
+      {preview ? null : <div><dt>File</dt><dd>{observation.fileId}</dd></div>}
+      <div><dt>Captured</dt><dd>{observation.capturedAt}</dd></div>
+      <div><dt>Provenance</dt><dd>{observation.provenance.replace("_", " ")}</dd></div>
+      <div><dt>Verified</dt><dd>{observation.verified ? "yes" : "no"}</dd></div>
+    </dl>
+    {hooks?.onKeepPhoto ? state === "kept"
+      ? <p role="status" className="fl-card__meta">Kept on this machine. New conversations here can use it. What MIRA read from it is still unconfirmed.</p>
+      : <>
+        {state === "failed" ? <p role="alert" className="fl-card__meta">Could not keep this photo. Try again.</p> : null}
+        <div className="fl-card__actions">
+          <button type="button" aria-busy={state === "busy"} disabled={state === "busy"} onClick={keep}>Keep on this machine</button>
+        </div>
+      </> : null}
+  </Card>;
+}
+
 function ManualSearchStatusPart({ part }: { readonly part: Extract<InteractionPart, { type: "manual_search_status" }> }) {
   const manualUrl = !part.running && part.manualUrl?.startsWith("https://") ? openableUrl(part.manualUrl) : null;
   return <p className="fl-part fl-status" role="status" data-part-type="manual_search_status">
     {part.running
       ? `Searching ${part.manufacturer}'s documentation for ${part.model}…`
       : part.message ?? `Finished searching for the ${part.manufacturer} ${part.model} manual.`}
-    {manualUrl && <> <a href={manualUrl} target="_blank" rel="noopener noreferrer">Open website to find the manual ↗</a></>}
+    {manualUrl && <> <a className="fl-manual-link" href={manualUrl} target="_blank" rel="noopener noreferrer">Open website to find the manual ↗</a></>}
   </p>;
 }
 
@@ -473,22 +530,8 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
       </Card>;
     }
 
-    case "visual_observation": {
-      const { observation } = part;
-      // The photo itself, when the host says where it lives: a thumbnail that
-      // opens the full-size image in an in-app (native <dialog>) viewer. The raw file id
-      // is only printed when there is no picture to show instead.
-      const preview = openableUrl(observation.previewUrl);
-      return <Card type="visual_observation" label="IMG · Photo observation" extra={{ "data-verified": String(observation.verified), "data-file-id": observation.fileId }}>
-        {preview ? <PhotoThumb className="fl-photo" src={preview} alt={`Photo captured ${observation.capturedAt}`} /> : null}
-        <dl className="fl-card__facts">
-          {preview ? null : <div><dt>File</dt><dd>{observation.fileId}</dd></div>}
-          <div><dt>Captured</dt><dd>{observation.capturedAt}</dd></div>
-          <div><dt>Provenance</dt><dd>{observation.provenance.replace("_", " ")}</dd></div>
-          <div><dt>Verified</dt><dd>{observation.verified ? "yes" : "no"}</dd></div>
-        </dl>
-      </Card>;
-    }
+    case "visual_observation":
+      return <VisualObservationPart part={part} hooks={hooks} />;
 
     case "safety_notice": {
       const { notice } = part;

@@ -8,7 +8,16 @@
  * device or an answer meant for an older session can never land in the wrong one.
  */
 import type { RunRecord, StepRecord } from "@/capabilities/diagnostic-plan/types";
-import { MANUFACTURER_PROCEDURES } from "@/capabilities/diagnostic-plan/guided";
+import {
+  checkApplicability,
+  MANUFACTURER_PROCEDURES,
+  type EquipmentIdentity,
+  type NotebookManual,
+} from "@/capabilities/diagnostic-plan/guided";
+import { withTenantContext } from "@/lib/tenant-context";
+import { listSources } from "@/lib/equipment-notebooks";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The compiled version of every offered manufacturer procedure, by template id. */
 const CURRENT_VERSIONS: ReadonlyMap<string, string> = new Map(
@@ -63,23 +72,29 @@ export async function latestSession(db: QueryDb, tenantId: string, notebookId: s
   return res.rows[0] ? toSession(res.rows[0]) : null;
 }
 
+/** What a dead end was reached on: the procedure and the exact manual match it ran against. */
+export interface DeadEndSession {
+  templateId: string;
+  revision: string;
+  sourceSha256: string | null;
+}
+
 /**
- * Whether `sessionId` is this notebook's most recent guided session AND ended at a dead end the
- * manual does not cover (stored status "degraded" = view status "escalate"). The chat route only
- * lifts the #4068 "won't guess about this machine" decline for a turn that names such a session
- * (owner decision 2026-10-21); a restarted, resolved, running or superseded session — or one saved on
- * a procedure version other than the current one (`currentVersions`: template id → version) — never
- * qualifies.
+ * `sessionId` if it is this notebook's most recent guided session AND ended at a dead end the
+ * manual does not cover (stored status "degraded" = view status "escalate"), saved on the procedure
+ * version offered today (`currentVersions`: template id → version). A restarted, resolved, running
+ * or superseded session — or one saved on an earlier compiled version (Codex #4598 F1 on #4592's
+ * version bump) — returns null.
  */
-export async function isGuidedDeadEnd(
+export async function guidedDeadEndSession(
   db: QueryDb,
   tenantId: string,
   notebookId: string,
   sessionId: string,
   currentVersions: ReadonlyMap<string, string> = CURRENT_VERSIONS,
-): Promise<boolean> {
+): Promise<DeadEndSession | null> {
   const res = await db.query(
-    `SELECT s.template_id, s.template_version FROM guided_procedure_sessions s
+    `SELECT s.template_id, s.template_version, s.revision, s.source_sha256 FROM guided_procedure_sessions s
       WHERE s.id = $3::uuid AND s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.status = 'degraded'
         AND NOT EXISTS (
           SELECT 1 FROM guided_procedure_sessions n
@@ -89,9 +104,106 @@ export async function isGuidedDeadEnd(
     [tenantId, notebookId, sessionId],
   );
   const row = res.rows[0];
-  // A session ended on an earlier compiled version is superseded (Codex #4598 F1 on #4592's
-  // version bump): the current procedure may have a step it lacked, so it never qualifies.
-  return !!row && currentVersions.get(String(row.template_id)) === String(row.template_version);
+  if (!row || currentVersions.get(String(row.template_id)) !== String(row.template_version)) return null;
+  return {
+    templateId: String(row.template_id),
+    revision: String(row.revision ?? ""),
+    sourceSha256: row.source_sha256 == null ? null : String(row.source_sha256),
+  };
+}
+
+/** The machine a notebook describes today: its confirmed identity and the sha256 of each manual. */
+export interface GuidedMachine {
+  confirmed: boolean;
+  identity: EquipmentIdentity;
+  manuals: NotebookManual[];
+}
+
+/**
+ * Read-only lookup of the notebook's identity and attached manuals — the ONE place the procedure
+ * endpoint and the dead-end hand-off both read the machine from (#4602). Null when the notebook is
+ * not this tenant's. (getNotebook is not used: it would bump last_opened_at.)
+ */
+export async function loadGuidedMachine(tenantId: string, notebookId: string): Promise<GuidedMachine | null> {
+  const nb = await withTenantContext(tenantId, async (c) => {
+    const r = await c.query(
+      `SELECT manufacturer, model, catalog_number, identity_status
+         FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      [tenantId, notebookId],
+    );
+    return r.rows[0] as Record<string, unknown> | undefined;
+  });
+  if (!nb) return null;
+  const sources = await listSources(tenantId, notebookId);
+  const fileIds = sources.map((s) => s.fileId).filter((v): v is string => !!v && UUID_RE.test(v));
+  const shaById = new Map<string, string>();
+  if (fileIds.length) {
+    const rows = await withTenantContext(tenantId, async (c) =>
+      (
+        await c.query(
+          `SELECT id::text AS id, content_sha256 FROM namespace_direct_uploads
+            WHERE tenant_id = $1::uuid AND id = ANY($2::uuid[])`,
+          [tenantId, fileIds],
+        )
+      ).rows,
+    );
+    for (const r of rows) if (r.content_sha256) shaById.set(String(r.id), String(r.content_sha256));
+  }
+  const manuals: NotebookManual[] = sources.map((s) => ({ filename: s.filename, sha256: s.fileId ? shaById.get(s.fileId) ?? null : null }));
+  return {
+    confirmed: nb.identity_status === "user_confirmed",
+    identity: {
+      manufacturer: (nb.manufacturer as string | null) ?? null,
+      model: (nb.model as string | null) ?? null,
+      catalogNumber: (nb.catalog_number as string | null) ?? null,
+    },
+    manuals,
+  };
+}
+
+export type DeadEndDecision =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | "no_dead_end"
+        | "notebook_not_found"
+        | "identity_not_confirmed"
+        | "procedure_unknown"
+        | "no_longer_applies"
+        | "revision_changed"
+        | "manual_changed";
+    };
+
+/**
+ * Does a dead end still describe this machine (#4602)? The same identity and manual-applicability
+ * check the procedure endpoint offers procedures by, plus: the revision match must be the one the
+ * session ran on, and an exact session's manual (by sha256) must still be attached. Anything that
+ * cannot be established fails closed.
+ */
+export function deadEndStillApplies(session: DeadEndSession, machine: GuidedMachine | null): DeadEndDecision {
+  if (!machine) return { ok: false, reason: "notebook_not_found" };
+  if (!machine.confirmed) return { ok: false, reason: "identity_not_confirmed" };
+  const proc = MANUFACTURER_PROCEDURES.find((p) => p.template.id === session.templateId);
+  if (!proc) return { ok: false, reason: "procedure_unknown" };
+  const now = checkApplicability(proc, machine.identity, machine.manuals);
+  if (!now.applies) return { ok: false, reason: "no_longer_applies" };
+  if (now.revision !== session.revision) return { ok: false, reason: "revision_changed" };
+  if (session.revision === "exact" && !(session.sourceSha256 && machine.manuals.some((m) => m.sha256 === session.sourceSha256))) {
+    return { ok: false, reason: "manual_changed" };
+  }
+  return { ok: true };
+}
+
+/**
+ * The chat route's single gate for the WP-1 dead-end exception to #4068: the named session is this
+ * notebook's latest dead end on the current procedure version (guidedDeadEndSession) AND it still
+ * applies to the machine as it is now (deadEndStillApplies). Errors propagate; the caller fails closed.
+ */
+export async function authorizeGuidedDeadEnd(tenantId: string, notebookId: string, sessionId: string): Promise<DeadEndDecision> {
+  const session = await withTenantContext(tenantId, (c) => guidedDeadEndSession(c as unknown as QueryDb, tenantId, notebookId, sessionId));
+  if (!session) return { ok: false, reason: "no_dead_end" };
+  return deadEndStillApplies(session, await loadGuidedMachine(tenantId, notebookId));
 }
 
 type NewSession = {

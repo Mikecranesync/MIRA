@@ -1248,6 +1248,10 @@ export async function retrieveNodeChunks(
      *  misread hides the correct manual silently. Absent/unknown/candidate →
      *  no notebook scoping (the fault-code suppression above still applies). */
     identityStatus?: IdentityStatus | null;
+    /** Server-derived current photo vocabulary must receive its own OR recall
+     * pass, even if the raw question happens to find an unrelated help page.
+     * Uses the same validated document/tenant boundary as every other pass. */
+    includeQueryRecall?: boolean;
     /** Canonical-files retrieval mode (workspace_file_links): scope by the
      *  validated docIds ALONE, without requiring the chunks' original
      *  metadata.node_id to equal this caller's node. A document ingested once
@@ -1660,6 +1664,7 @@ export async function retrieveNodeChunks(
   // navigation) never enters the pool.
   const rawQ = opts.rawQuery?.trim();
   if (rawQ && rawQ !== q) add(await runRetrieval(OR_TSQUERY, rawQ));
+  if (opts.includeQueryRecall === true) add(await runRetrieval(OR_TSQUERY, expanded.variants[0]));
 
   // Broad/enumeration questions ("what comm options?", "all the ways to command
   // speed?", "what protections?") fail single-cluster retrieval: the top section
@@ -1681,7 +1686,7 @@ export async function retrieveNodeChunks(
 
   // Last-resort recall: if precise + expanded + exact all found nothing, fall
   // back to the original OR pass (a fully off-vocabulary conversational query).
-  if (pool.length === 0) add(await runRetrieval(OR_TSQUERY, expanded.variants[0]));
+  if (pool.length === 0 && opts.includeQueryRecall !== true) add(await runRetrieval(OR_TSQUERY, expanded.variants[0]));
 
   // 2026-10-17 prod-test item 4 — the VECTOR lane, behind NOTEBOOK_HYBRID_RETRIEVAL
   // (default off). node ingest already stores a nomic-embed-text vector on every

@@ -17,7 +17,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { listSources } from "@/lib/equipment-notebooks";
 import {
   buildRecord,
   escalationQuestion,
@@ -26,7 +25,6 @@ import {
   proceduresFor,
   viewSession,
   supersededView,
-  type NotebookManual,
 } from "@/capabilities/diagnostic-plan/guided";
 import {
   appendRecord,
@@ -34,6 +32,7 @@ import {
   startSession,
   guidedProcedureEnabled,
   latestSession,
+  loadGuidedMachine,
   type GuidedSession,
   type QueryDb,
   type SessionStatus,
@@ -44,44 +43,6 @@ export const dynamic = "force-dynamic";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Params = { params: Promise<{ id: string }> };
-
-async function loadMachine(tenantId: string, notebookId: string) {
-  // Read-only lookup (getNotebook would bump last_opened_at).
-  const nb = await withTenantContext(tenantId, async (c) => {
-    const r = await c.query(
-      `SELECT manufacturer, model, catalog_number, identity_status
-         FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid`,
-      [tenantId, notebookId],
-    );
-    return r.rows[0] as Record<string, unknown> | undefined;
-  });
-  if (!nb) return null;
-  const sources = await listSources(tenantId, notebookId);
-  const fileIds = sources.map((s) => s.fileId).filter((v): v is string => !!v && UUID_RE.test(v));
-  const shaById = new Map<string, string>();
-  if (fileIds.length) {
-    const rows = await withTenantContext(tenantId, async (c) =>
-      (
-        await c.query(
-          `SELECT id::text AS id, content_sha256 FROM namespace_direct_uploads
-            WHERE tenant_id = $1::uuid AND id = ANY($2::uuid[])`,
-          [tenantId, fileIds],
-        )
-      ).rows,
-    );
-    for (const r of rows) if (r.content_sha256) shaById.set(String(r.id), String(r.content_sha256));
-  }
-  const manuals: NotebookManual[] = sources.map((s) => ({ filename: s.filename, sha256: s.fileId ? shaById.get(s.fileId) ?? null : null }));
-  return {
-    confirmed: nb.identity_status === "user_confirmed",
-    identity: {
-      manufacturer: (nb.manufacturer as string | null) ?? null,
-      model: (nb.model as string | null) ?? null,
-      catalogNumber: (nb.catalog_number as string | null) ?? null,
-    },
-    manuals,
-  };
-}
 
 function sessionPayload(session: GuidedSession | null) {
   if (!session) return null;
@@ -114,7 +75,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!guidedProcedureEnabled()) return NextResponse.json({ error: "not_enabled" }, { status: 404 });
   const { id } = await params;
   if (!UUID_RE.test(id)) return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
-  const machine = await loadMachine(ctx.tenantId, id);
+  const machine = await loadGuidedMachine(ctx.tenantId, id);
   if (!machine) return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
   if (!machine.confirmed) return NextResponse.json({ procedures: [], reason: "identity_not_confirmed" });
   const offered = proceduresFor(machine.identity, machine.manuals);
@@ -149,7 +110,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const proc = MANUFACTURER_PROCEDURES.find((p) => p.template.id === body.templateId);
   if (!proc) return NextResponse.json({ error: "unknown_procedure" }, { status: 404 });
 
-  const machine = await loadMachine(ctx.tenantId, id);
+  const machine = await loadGuidedMachine(ctx.tenantId, id);
   if (!machine) return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
   if (!machine.confirmed) return NextResponse.json({ error: "identity_not_confirmed" }, { status: 409 });
   const offered = proceduresFor(machine.identity, machine.manuals).find((p) => p.proc === proc);

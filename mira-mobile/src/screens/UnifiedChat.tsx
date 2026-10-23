@@ -595,6 +595,9 @@ function UnifiedChatForNotebook({
   // the next send falls back to the host's own eventually-refreshed scope.
   // Resolves `true` when the re-read scope was stored, `false` when the
   // re-read failed (#4219 Codex r2 F1), `null` when there was nothing to do.
+  // Photos already kept as this machine's sources (their origin file ids),
+  // learned from the same notebook re-read below.
+  const [keptPhotoIds, setKeptPhotoIds] = useState<ReadonlySet<string>>(() => new Set());
   const refreshPromotedScope = useCallback(async (): Promise<boolean | null> => {
     if (!notebookId || !aliveRef.current) return null;
     // The re-read is async; this instance can unmount before it returns (the
@@ -606,6 +609,7 @@ function UnifiedChatForNotebook({
       const after = await getNotebookDetail(fetchedFor, { threadId: attachmentThreadId ?? undefined });
       if (!aliveRef.current || notebookIdRef.current !== fetchedFor) return null;
       confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
+      setKeptPhotoIds(new Set(after.sources.map((src) => src.originFileId).filter((id): id is string => !!id)));
       return true;
     } catch {
       if (aliveRef.current && notebookIdRef.current === fetchedFor) confirmedScopeRef.current = null;
@@ -796,6 +800,14 @@ function UnifiedChatForNotebook({
     // A send made while the banner was up is the shell's Try again (or Send
     // with the restored draft): its banner clear is not a dismissal.
     flagOwnClear();
+    // Before the first persisted turn, SendError invokes onSend with retry
+    // intent. Replay the host's saved body for unchanged text, preserving its
+    // request id and scope without consuming a newly confirmed manual scope.
+    if (opts.retry && canRetry && handlers.onRetry && failedQuestion?.trim() === text.trim()
+      && pending.length === 0 && !attachments.hasRetained() && !attachments.hasCarried()) {
+      handlers.onRetry();
+      return;
+    }
     // Codex F1 (HIGH, #4175/#4189): a confirmed identity may have just
     // promoted a candidate manual into an enabled source (migration 104) —
     // `onConfirmIdentity` below re-reads detail and stashes the refreshed
@@ -885,7 +897,7 @@ function UnifiedChatForNotebook({
       // it was asked with, so the banner has a Try again that carries it.
       dispatch({ type: "set-draft", draft: text || attachments.retainedQuestion?.() || text });
     });
-  }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope]);
+  }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope, canRetry, failedQuestion]);
 
   // The question HOME queued for the thread it just created. It goes through
   // `onSend` (not straight to the host) so the attachments HOME stashed are
@@ -951,6 +963,19 @@ function UnifiedChatForNotebook({
     }
   }, [fixRequestIds, meta.notebookId, state.thread.turns]);
 
+  // Keep a photo from this conversation as one of the machine's sources; the
+  // re-read stores the new scope so the next question can cite it.
+  const onKeepPhoto = useCallback(async (fileId: string) => {
+    if (!meta.notebookId) throw new Error("no_notebook");
+    await request(
+      `/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`,
+      // The conversation whose reading the technician is looking at.
+      { method: "POST", json: attachmentThreadId ? { threadId: attachmentThreadId } : {} },
+    );
+    setKeptPhotoIds((prev) => new Set(prev).add(fileId));
+    await refreshPromotedScope();
+  }, [meta.notebookId, attachmentThreadId, refreshPromotedScope]);
+
   const hooks: HostHooks = {
     onSend,
     renderText,
@@ -959,6 +984,7 @@ function UnifiedChatForNotebook({
     ...(meta.notebookId
       ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
       : {}),
+    ...(meta.notebookId ? { onKeepPhoto, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
     ...(canStop ? { onStop: handlers.onStop } : {}),
     // The host retry re-sends the rendered turn as plain text. That is right for
     // a text turn and WRONG for one whose attachment never uploaded: it would
@@ -967,9 +993,17 @@ function UnifiedChatForNotebook({
     // the bytes, retry through the composed path so the photo rides the turn.
     ...(canRetry && handlers.onRetry
       ? { onRetry: () => {
-          if (attachments.hasRetained() || attachments.hasCarried()) {
-            flagOwnClear();
-            dispatch({ type: "set-send-error", error: null });
+          flagOwnClear();
+          const draft = state.draft.trim();
+          const priorQuestion = (failedQuestion ?? pending?.q ?? liveTurns.at(-1)?.q
+            ?? state.thread.turns.filter((turn) => turn.role === "user").at(-1)
+              ?.parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n"))?.trim();
+          // A changed question is a new send. An unchanged question must keep
+          // the host's original request id and source scope for deduplication.
+          const edited = Boolean(draft && draft !== priorQuestion);
+          dispatch({ type: "set-draft", draft: "" });
+          dispatch({ type: "set-send-error", error: null });
+          if (attachments.hasRetained() || attachments.hasCarried() || edited) {
             onSend(state.draft, [], { retry: true });
             return;
           }

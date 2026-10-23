@@ -15,8 +15,12 @@ import { isReviewAdmin } from "@/lib/review-queue";
 //
 // IMPORTANT — this does NOT expand who is authorized. Each capability maps to
 // the *exact* signal its surface already used:
-//   • review_queue.*      ← isReviewAdmin(email)  (matches /api/admin/review/*)
-//   • platform.users.read ← status === "admin"    (matches /hub/api/admin/users)
+//   • review_queue.*      ← platformAdmin AND isReviewAdmin(email)  (/api/admin/review/*)
+//   • platform.users.read ← platformAdmin                         (/hub/api/admin/users)
+//   platformAdmin = hub_users.status === 'admin', read fresh per request in lib/session.ts
+//   (#4591). An email match alone never grants a platform cap: Hub registration does not
+//   verify email ownership, so an allowlisted address could be claimed by whoever registers
+//   it first. The allowlist stays only as a second factor that narrows review access.
 //   • workspace.*         ← any authenticated tenant user, scoped to THEIR tenant
 //
 // "Workspace" caps are customer-facing (a tenant owner managing their own
@@ -122,12 +126,12 @@ export function getCapabilities(ctx: SessionContext): Capability[] {
   // flag from the Hub immediately removes the capability from /api/me, so a
   // bad mobile surface can be rolled back without an APK/store release.
   if (process.env.MIRA_CHAT_V2_ENABLED === "1") caps.push("chat_v2");
-  // Platform review surface — same email allowlist the review APIs already use.
-  if (isReviewAdmin(ctx.email)) {
+  // Platform caps (#4591): the DB admin flag is required; the review allowlist only narrows it.
+  const platformAdmin = ctx.platformAdmin === true;
+  if (platformAdmin && isReviewAdmin(ctx.email)) {
     caps.push("review_queue.read", "review_queue.decide");
   }
-  // Platform-wide (cross-tenant) user admin — same status gate it already used.
-  if (ctx.status === "admin") {
+  if (platformAdmin) {
     caps.push("platform.users.read");
   }
   // Intra-tenant role caps (issues #2360, #578) — gated on hub_users.role,
