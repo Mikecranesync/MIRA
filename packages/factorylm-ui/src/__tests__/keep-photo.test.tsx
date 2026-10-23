@@ -125,6 +125,56 @@ describe("saved photo with stale source scope", () => {
 });
 
 describe("review before keeping a print", () => {
+  it.each(["offline", "other-writer", "unreviewed"])("does not write over an unresolved recovery: %s", async (failure) => {
+    let reads = 0;
+    let writes = 0;
+    const view = render({
+      onReviewPhoto: async () => {
+        if (++reads === 1) return { observationId: "old", text: "F53", reviewed: false };
+        if (failure === "offline") throw new Error("offline");
+        return { observationId: "someone-else", text: failure === "unreviewed" ? "F55" : "different technician reading", reviewed: failure !== "unreviewed" };
+      },
+      onKeepPhoto: async () => { writes++; throw new Error("response lost"); },
+    });
+    view.click(keepButton(photoCard(view))!); await settle();
+    const text = photoCard(view).querySelector<HTMLTextAreaElement>("textarea")!;
+    const ack = () => photoCard(view).querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    const save = () => Array.from(photoCard(view).querySelectorAll("button")).find(b => b.textContent === "Save reviewed reading")!;
+    view.type(text, "F55"); view.click(ack()); view.click(save()); await settle();
+    view.type(text, "F55 /15.0"); view.click(ack()); view.click(save()); await settle();
+    expect(writes).toBe(1);
+    expect(text.value).toBe("F55 /15.0");
+    expect(photoCard(view).querySelector('[role="alert"]')).not.toBeNull();
+  });
+
+  it("recovers the committed observation before publishing an edited retry", async () => {
+    let reading = { observationId: "original", text: "F53", reviewed: false };
+    const writes: unknown[] = [];
+    const view = render({
+      onReviewPhoto: async () => reading,
+      onKeepPhoto: async (_file, reviewed) => {
+        writes.push(reviewed);
+        if (writes.length === 1) {
+          reading = { observationId: "committed-A", text: reviewed!.text, reviewed: true };
+          throw new Error("ingestion failed after correction committed");
+        }
+        if (reviewed!.observationId !== reading.observationId) throw new Error("photo_review_conflict");
+      },
+    });
+    view.click(keepButton(photoCard(view))!); await settle();
+    const text = photoCard(view).querySelector<HTMLTextAreaElement>("textarea")!;
+    const ack = () => photoCard(view).querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    const save = () => Array.from(photoCard(view).querySelectorAll("button")).find(b => b.textContent === "Save reviewed reading")!;
+    view.type(text, "F55 /150"); view.click(ack()); view.click(save()); await settle();
+    view.type(text, "F55 /15.0"); view.click(ack()); view.click(save()); await settle();
+    expect(text.value).toBe("F55 /15.0");
+    expect(writes).toHaveLength(1);
+    expect(ack().checked).toBe(false);
+    view.click(ack()); view.click(save()); await settle();
+    expect(writes[1]).toEqual({ observationId: "committed-A", text: "F55 /15.0", confirmed: true });
+    expect(photoCard(view).textContent).toContain("Technician-reviewed reading");
+  });
+
   it("loads exact text, requires acknowledgement, and retains corrections through a failed save", async () => {
     const writes: unknown[] = [];
     const view = render({

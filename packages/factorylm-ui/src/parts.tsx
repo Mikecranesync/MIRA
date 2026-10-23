@@ -14,7 +14,7 @@ import type {
   SourceReference,
 } from "@factorylm/interaction";
 import { IdentityAlreadyConfirmedError } from "@factorylm/interaction";
-import { useEffect, useState, type Dispatch, type ReactNode } from "react";
+import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { openableUrl } from "./links";
 import { PhotoThumb } from "./PhotoViewer";
 
@@ -425,10 +425,14 @@ function VisualObservationPart({
   );
   const [review, setReview] = useState<{ observationId: string; text: string } | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
+  const failedReview = useRef<{ observationId: string; text: string } | null>(null);
+  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
   const beginReview = () => {
     if (!hooks?.onReviewPhoto || state === "busy") return;
     setState("busy");
     hooks.onReviewPhoto(observation.fileId).then((reading) => {
+      failedReview.current = null;
+      setRecoveryMessage(null);
       setReview({ observationId: reading.observationId, text: reading.text });
       setAcknowledged(false);
       setState("idle");
@@ -441,15 +445,38 @@ function VisualObservationPart({
     if (keptByHost) setState((current) =>
       current === "refresh_pending" || current === "refreshing" || current === "busy" ? current : "kept");
   }, [keptByHost]);
-  const keep = () => {
+  const keep = async () => {
     if (!hooks?.onKeepPhoto || state === "busy" || state === "kept") return;
     if (!review && hooks.onReviewPhoto) { beginReview(); return; }
     if (review && (!acknowledged || !review.text.trim())) return;
     setState("busy");
-    hooks.onKeepPhoto(observation.fileId, review ? { ...review, confirmed: true } : undefined).then(
-      (result) => setState(result === "refresh_pending" ? "refresh_pending" : "kept"),
-      () => setState("failed"),
-    );
+    try {
+      if (review && failedReview.current && hooks.onReviewPhoto) {
+        const current = await hooks.onReviewPhoto(observation.fileId);
+        if (current.observationId !== review.observationId) {
+          // Recover only our own committed text, never rebase over a different
+          // writer. The POST still enforces the exact active observation ID.
+          if (!current.reviewed || current.text !== failedReview.current.text.trim()) {
+            setRecoveryMessage("The saved reading changed. Your edits are still here; reopen the review to compare the latest reading before replacing it.");
+            setState("failed");
+            return;
+          }
+          setReview({ ...review, observationId: current.observationId });
+          failedReview.current = null;
+          setAcknowledged(false);
+          setRecoveryMessage("Saved reading recovered. Your edits are still here; check them against the photo and acknowledge again before saving.");
+          setState("failed");
+          return;
+        }
+      }
+      failedReview.current = review;
+      setRecoveryMessage(null);
+      const result = await hooks.onKeepPhoto(observation.fileId, review ? { ...review, confirmed: true } : undefined);
+      failedReview.current = null;
+      setState(result === "refresh_pending" ? "refresh_pending" : "kept");
+    } catch {
+      setState("failed");
+    }
   };
   const refresh = () => {
     if (!hooks?.onRefreshPhotoScope || state === "refreshing") return;
@@ -477,7 +504,7 @@ function VisualObservationPart({
         <textarea aria-label="Photo reading" rows={8} maxLength={20000} value={review.text} disabled={state === "busy"}
           onChange={(event) => { setReview({ ...review, text: event.target.value }); setAcknowledged(false); }} />
         <label><input type="checkbox" checked={acknowledged} disabled={state === "busy"} onChange={(event) => setAcknowledged(event.target.checked)} /> I checked this reading against the photo.</label>
-        {state === "failed" ? <p role="alert">Could not save the reviewed reading. Your edits are still here; try again.</p> : null}
+        {state === "failed" ? <p role="alert">{recoveryMessage ?? "Could not save the reviewed reading. Your edits are still here; try again."}</p> : null}
         <button type="button" disabled={state === "busy" || !acknowledged || !review.text.trim()} onClick={keep}>Save reviewed reading</button>
         <button type="button" disabled={state === "busy"} onClick={() => { setReview(null); setAcknowledged(false); setState(state === "failed" ? "idle" : keptByHost ? "kept" : "idle"); }}>Cancel review</button>
       </div>

@@ -1,3 +1,9 @@
+# Photo correction review repairs — 2026-10-23
+
+PR #4663: local repairs remove the canonical mobile dependency on frozen FilePreview presentation, preserve technician-reviewed attribution in chat, and recover a committed reading before an edited retry with renewed acknowledgement. Hub 9177 pass/53 skipped, mobile 968 pass, shared UI 310 pass plus final 13 retry tests, real-Postgres 27 pass; Hub/mobile builds pass. Fresh exact-head review and same-release physical acceptance remain required. No merge/deploy authorization inferred.
+
+---
+
 # Hot Cache — 2026-10-23 — #4332 owner takeover
 
 Mike assigned #4332 to this CHARLIE Codex session. Current-main integration and Sources reopen repair are in the isolated `qualification-4332` workspace; see `PLAN.md`. Historical GREEN3 does not approve the changed candidate. Preserve source review caps. No physical Android device is connected; no merge, deployment or OTA acceptance is claimed.

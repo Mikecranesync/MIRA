@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import type { HostHooks } from "@factorylm/ui";
@@ -37,7 +38,14 @@ describe("real mobile Keep callback", () => {
     await act(async () => { await expect(mocks.hooks!.onKeepPhoto!("photo-1")).rejects.toThrow("save failed"); });
     expect(mocks.hooks!.isPhotoKept!("photo-1")).toBe(false);
   });
-  it("uses the existing authenticated FilePreview for the photo under review", async () => {
+  it("keeps the canonical photo path out of frozen screen presentation", () => {
+    const host = readFileSync("src/screens/UnifiedChat.tsx", "utf8");
+    expect(host).not.toMatch(/from ["']\.\/FilePreview["']/);
+    for (const file of ["src/unified/OriginalPhoto.tsx", "src/api/use-file-bytes.ts"]) {
+      expect(readFileSync(file, "utf8")).not.toMatch(/from ["'][^"']*screens\//);
+    }
+  });
+  it("uses authenticated bytes with shared photo presentation for the photo under review", async () => {
     vi.stubGlobal("URL", class extends URL { static createObjectURL() { return "blob:original-photo"; } static revokeObjectURL() {} });
     mocks.binary.mockResolvedValue({status:200,bytes:new Uint8Array([1,2,3]),contentType:"image/png"});
     mount();

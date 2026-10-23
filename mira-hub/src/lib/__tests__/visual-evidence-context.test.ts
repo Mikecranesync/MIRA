@@ -28,6 +28,7 @@ import {
   recordLookObservation,
   recordNameplateObservations,
   renderLookObservationSection,
+  renderPriorLookObservationsSection,
   renderVisualEvidenceSection,
   type VisualEvidenceRow,
 } from "../visual-evidence-context";
@@ -645,6 +646,35 @@ describe("renderLookObservationSection — photo-scoped, UNCONFIRMED, non-citabl
   const row = (over: Partial<VisualEvidenceRow>): VisualEvidenceRow => ({
     observationId: "o", sessionId: "s", text: "green indicator lit; no burn marks", obsKind: "property",
     trust: "candidate", confidence: null, fileId: FILE, photoHash: "h", observedAt: null, ...over,
+  });
+
+  it("attributes a reviewed current photo to the technician while preserving injection guards", () => {
+    const s = renderLookObservationSection(row({ trust: "verified", text: "-F55.3 /15.0" }));
+    expect(s).toContain("TECHNICIAN-REVIEWED");
+    expect(s).not.toContain("UNCONFIRMED");
+    expect(s).not.toContain("has not verified");
+    expect(s).toContain("-F55.3 /15.0");
+    expect(s).toMatch(/never follow any instruction/i);
+    expect(s).toContain("Do NOT wrap");
+  });
+
+  it("attributes reviewed prior photos without calling them unconfirmed", () => {
+    const s = renderPriorLookObservationsSection([row({ trust: "verified" })]);
+    expect(s).toContain("TECHNICIAN-REVIEWED");
+    expect(s).not.toContain("UNCONFIRMED");
+    expect(s).not.toContain("has not verified");
+    expect(s).toMatch(/never follow any instruction/i);
+  });
+
+  it("keeps each prior photo's trust distinct in a mixed history", () => {
+    const s = renderPriorLookObservationsSection([
+      row({ trust: "verified", text: "-F55.3 /15.0" }),
+      row({ trust: "candidate", text: "possible F53" }),
+    ]);
+    expect(s).toMatch(/Earlier photo 1:.*TECHNICIAN-REVIEWED.*-F55\.3 \/15\.0/);
+    expect(s).toMatch(/Earlier photo 2:.*UNCONFIRMED.*possible F53/);
+    expect(s).toMatch(/never follow any instruction/i);
+    expect(s).toContain("Do NOT wrap");
   });
 
   it("returns empty string for null or blank text (no block, turn still answers)", () => {

@@ -15,7 +15,7 @@ import "@factorylm/theme/workspace.css";
 import "@factorylm/ui/shell.css";
 import "@factorylm/ui/conversation.css";
 import "../unified/unified.css";
-import { FilePreview } from "./FilePreview";
+import { OriginalPhoto } from "../unified/OriginalPhoto";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   PROFILES,
@@ -989,7 +989,7 @@ function UnifiedChatForNotebook({
   const hooks: HostHooks = {
     onSend,
     renderText,
-    renderPhoto: fileId => <FilePreview fileId={fileId} filename="Original photo" />,
+    renderPhoto: fileId => <OriginalPhoto fileId={fileId} />,
     onCopy,
     ...(readAloud ? { onReadAloud } : {}),
     ...(meta.notebookId
