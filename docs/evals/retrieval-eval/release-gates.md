@@ -64,8 +64,9 @@ plus the owner's decision. "Observed better" is not "supported better":
 
 ## 2. Power: what n = 7 unanswerable questions can and cannot show
 
-- At n = 7, **no** refusal regression is statistically detectable. An exact McNemar test needs
-  at least 6 discordant pairs, all in one direction, to reach p < 0.05 (`mcnemar_min_discordant`).
+- At n = 7, only an **extreme** refusal regression is statistically detectable. An exact McNemar test
+  needs at least 6 one-way discordant pairs (`mcnemar_min_discordant`), so losing 6 or 7 of 7 reaches
+  p < 0.05, and losing 1 to 5 cannot.
 - Detecting a refusal rate falling from 95% to 85% (one-sided, α 0.05, power 0.8) needs
   **at least about 44 unanswerable questions** (`n_to_detect_drop`). That is a one-sample
   approximation against a fixed baseline; the paired comparison S1 actually uses may need more.
