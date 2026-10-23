@@ -138,9 +138,12 @@ describe("an answer resting only on a kept photo reading", () => {
     expect(lastTurn().basis).toBe("workspace_evidence");
   });
 
-  it("control: a confirmed (verified) photo-derived source keeps the documentation label", async () => {
+  it("control: a confirmed (verified) photo-derived source uses the technician-confirmed label", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([photoChunk(true)] as never);
     const frames = await ask();
-    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({ basis: "oem_documentation" });
+    expect(frames.find((f) => f.kind === "evidence" && "basis" in f)).toMatchObject({
+      basis: "oem_documentation",
+      label: "Grounded in a technician-confirmed photo reading on this machine.",
+    });
   });
 });
