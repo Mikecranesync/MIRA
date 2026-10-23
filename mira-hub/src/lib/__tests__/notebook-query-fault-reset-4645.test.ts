@@ -8,6 +8,11 @@
  * material. Opposite-direction controls pin a true factory-reset question
  * (procedure intent) and existing param-lookup behavior.
  *
+ * procedureScore is shared by fault AND procedure intent. Acknowledge
+ * vocabulary therefore lives in SYNONYMS, FAULT_ACTION, and the fault-intent
+ * rerank boost — not in PROC_SIGNALS. Putting it there lets Comfort p.74
+ * beat factory-restore under a true factory-reset how-to.
+ *
  * Run: cd mira-hub && npx vitest run src/lib/__tests__/notebook-query-fault-reset-4645
  */
 import { describe, expect, it } from "vitest";
