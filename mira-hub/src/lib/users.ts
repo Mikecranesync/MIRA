@@ -6,7 +6,7 @@ import {
   canInvitePilotSeat,
   magicTokenTtlMinutes,
   occupiedPilotSeats,
-} from "@/lib/trial-access";
+} from "@/capabilities/trial-access";
 
 export type UserStatus = "pending" | "trial" | "approved" | "expired" | "admin";
 
