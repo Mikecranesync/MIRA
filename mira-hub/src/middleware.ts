@@ -1,6 +1,7 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { jwtDecrypt } from "jose";
 import { landingRedirect } from "@/capabilities/hub-landing";
+import { trialAccessDecision } from "@/lib/trial-access";
 
 // Next.js 16 middleware runs in the edge runtime. We must NOT import
 // `node:crypto` or `next-auth/middleware` here — both pull native modules
@@ -71,25 +72,22 @@ async function decodeSessionJwt(
 }
 
 function gateRedirect(req: NextRequest, status: string, trialExpiresAt: unknown): URL | null {
-  if (status === "pending") {
+  const expires =
+    typeof trialExpiresAt === "string" || trialExpiresAt instanceof Date
+      ? trialExpiresAt
+      : null;
+  const decision = trialAccessDecision(status, expires);
+  if (decision === "pending") {
     const url = req.nextUrl.clone();
     url.pathname = "/pending-approval";
     url.search = "";
     return url;
   }
-  if (status === "expired") {
+  if (decision === "upgrade") {
     const url = req.nextUrl.clone();
     url.pathname = "/upgrade";
     url.search = "";
     return url;
-  }
-  if (status === "trial" && typeof trialExpiresAt === "string") {
-    if (new Date() > new Date(trialExpiresAt)) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/upgrade";
-      url.search = "";
-      return url;
-    }
   }
   return null;
 }

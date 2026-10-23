@@ -51,7 +51,7 @@ function MagicVerify() {
           <>
             <XCircle className="w-8 h-8 text-red-400 mx-auto mb-4" />
             <p className="text-white text-lg font-semibold">Link expired or already used</p>
-            <p className="text-slate-400 text-sm mt-2">Magic links expire after 15 minutes.</p>
+            <p className="text-slate-400 text-sm mt-2">Request a new sign-in link, or ask your workspace admin for a fresh invite.</p>
             <a
               href="/login"
               className="mt-6 inline-flex items-center justify-center min-h-[44px] px-6 rounded-lg text-sm font-semibold text-white"
