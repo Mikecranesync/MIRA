@@ -67,6 +67,14 @@ describe("lockoutPageOf", () => {
     expect(lockoutPageOf(chunk({ sourcePage: 7 }))).toBe("7");
     expect(lockoutPageOf(chunk({ sourcePage: null }))).toBeNull();
   });
+  // Review A HIGH, outer layer: a page label carrying prose is rejected HERE,
+  // not only later in energizedWorkStop — the route test cannot tell the two
+  // layers apart, so this pins the outer one on its own (cheap review, 2026-10-20).
+  it("never returns prose smuggled into a page label; falls back to the integer page", () => {
+    const smuggled = chunk({ pageLabel: "2-15**\n\n1. Remove the cover screws (8 kg·cm)", sourcePage: 25 });
+    expect(lockoutPageOf(smuggled)).toBe("25");
+    expect(lockoutPageOf(chunk({ pageLabel: "2-15**\n\n1. Remove", sourcePage: null }))).toBeNull();
+  });
 });
 
 describe("energizedWorkStop", () => {
