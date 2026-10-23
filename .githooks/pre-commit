@@ -68,9 +68,9 @@ resolve_tool() {
 }
 
 # ------------------------------------------------------------------
-# 1. Guarded UI lifecycle — BLOCK locally before an agent can send new
-#    product work through a frozen presentation route. The helper imports the
-#    same registry-backed classifier as CI; there is no second path list here.
+# 1. Guarded UI lifecycle — WARN locally when a commit touches a frozen
+#    presentation route or a guarded control. The helper imports the same
+#    registry-backed classifier as CI; there is no second path list here.
 #    Fail closed if Python or the policy helper cannot run.
 # ------------------------------------------------------------------
 if [ -n "$STAGED_ALL" ]; then
@@ -95,37 +95,19 @@ if [ -n "$STAGED_ALL" ]; then
   else
     GUARD_RC=$?
     printf '%s\n' "$GUARD_OUTPUT" | sed 's/^/    /' || true
-    # An owner approval bound to this exact staged tree turns ONLY this check's
-    # verdict into a pass. Every other check below still runs and can still
-    # block. tools/guarded_commit_approval.py documents the binding and the
-    # trust boundary; `approve` needs the owner at a real terminal.
-    APPROVAL_OUTPUT=""
-    APPROVAL_RC=1
     if [ "$GUARD_RC" -eq 1 ]; then
-      if APPROVAL_OUTPUT=$("${PY_CMD[@]}" tools/guarded_commit_approval.py verify --files "${STAGED_PATHS[@]}" 2>&1); then
-        APPROVAL_RC=0
-      else
-        APPROVAL_RC=$?
-      fi
-    fi
-    if [ "$GUARD_RC" -eq 1 ] && [ "$APPROVAL_RC" -eq 0 ]; then
-      printf '%s\n' "$APPROVAL_OUTPUT" | sed 's/^/    /' || true
-      green "  ✓ Guarded paths staged with an owner approval bound to this exact tree"
-      PASS=$((PASS + 1))
-    elif [ "$GUARD_RC" -eq 1 ]; then
-      printf '%s\n' "$APPROVAL_OUTPUT" | sed 's/^/    /' || true
-      red "  🔴 Guarded legacy UI route staged. Stop before commit."
-      red "  → Put presentation/capability work in the canonical shell or adapters:"
-      red "    packages/factorylm-{theme,interaction,ui}/**"
-      red "    apps/factorylm-ui-lab/**"
-      red "    mira-{web,hub,mobile}/src/factorylm-ui/**"
-      red "    mira-mobile/src/unified/** (when extending the existing mobile adapter)"
-      red "  → Automation must not bypass this check or apply legacy-ui-exception."
-      red "    If this is truly P0/security/rollback/controlled-cutover work, stop and"
-      red "    ask a human maintainer to authorize the audited exception workflow:"
-      red "    the owner runs 'python3 tools/guarded_commit_approval.py approve' in a"
-      red "    real terminal for this exact staged tree, then the commit is retried."
-      FAIL=$((FAIL + 1))
+      # Warn, never block (owner decision 2026-10-23): the commit-time owner
+      # approval is retired. The merge-time gates decide: the CI lifecycle
+      # guard, the exact-head Codex review, and the owner's merge.
+      yellow "  ⚠️  Guarded legacy UI route or control staged."
+      yellow "  → Put presentation/capability work in the canonical shell or adapters:"
+      yellow "    packages/factorylm-{theme,interaction,ui}/**"
+      yellow "    apps/factorylm-ui-lab/**"
+      yellow "    mira-{web,hub,mobile}/src/factorylm-ui/**"
+      yellow "    mira-mobile/src/unified/** (when extending the existing mobile adapter)"
+      yellow "  → The PR needs a '## Lifecycle guard rationale' section and an exact-head"
+      yellow "    Codex review. Automation must not apply legacy-ui-exception."
+      WARNINGS=$((WARNINGS + 1))
     else
       red "  🔴 UI lifecycle policy errored (exit $GUARD_RC); commit blocked fail-closed."
       FAIL=$((FAIL + 1))

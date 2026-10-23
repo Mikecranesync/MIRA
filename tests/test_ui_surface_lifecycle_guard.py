@@ -2071,8 +2071,6 @@ def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
         "tools/hooks/prod-guard.sh",
         ".githooks/pre-commit",
         "tools/guard-check.py",
-        "tools/guarded_commit_approval.py",
-        "tools/hooks/guarded_approval_guard.py",
         "tests/hooks/test_precommit_hook.sh",
         "tools/migration_drift.py",
         "tools/migration-drift-requirements.txt",
