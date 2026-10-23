@@ -8,6 +8,11 @@ export function sessionGeneration(value: unknown): number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
+function sessionVersionFromRow(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return sessionGeneration(Number.isInteger(n) ? n : undefined);
+}
+
 export interface HubUser {
   id: string;
   email: string;
@@ -112,7 +117,7 @@ function rowToUser(r: Record<string, unknown>): HubUser {
     trialExpiresAt: r.trial_expires_at ? new Date(r.trial_expires_at as string) : null,
     plan: (r.plan as string) ?? null,
     preferences: (r.preferences as Record<string, unknown>) ?? {},
-    sessionVersion: sessionGeneration(r.session_version),
+    sessionVersion: sessionVersionFromRow(r.session_version),
   };
 }
 
@@ -140,7 +145,6 @@ export async function listAllUsers(): Promise<HubUser[]> {
   await ensureSchema();
   const { rows } = await pool.query(
     `SELECT ${USER_COLS}, created_at FROM hub_users ORDER BY created_at DESC`,
-    [],
   );
   return rows.map(rowToUser);
 }
@@ -201,11 +205,10 @@ export async function revokeUserSessions(
     [userId],
   );
   if (!rows[0]) return { found: false, sessionVersion: null };
-  const n = Number(rows[0].session_version);
-  return { found: true, sessionVersion: Number.isInteger(n) && n >= 0 ? n : 0 };
+  return { found: true, sessionVersion: sessionVersionFromRow(rows[0].session_version) };
 }
 
-// ── Magic link tokens ──────────────────────────────────────────
+// ── Magic link tokens ──────────────────────────
 
 let magicSchemaReady: Promise<void> | null = null;
 
@@ -391,7 +394,7 @@ export async function ensureInvitedUser(input: {
   };
 }
 
-// ── User preferences ─────────────────────────────────────────
+// ── User preferences ─────────────────────────
 
 export async function getUserPreferences(userId: string): Promise<Record<string, unknown>> {
   await ensureSchema();
