@@ -65,6 +65,38 @@ jobs:
           echo "::add-mask::$DATABASE_URL"
           echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
 
+      - name: Platform-admin provisioning probe (#4591) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # READ-ONLY. Before #4591 ships (platform caps need hub_users.status='admin'
+          # read fresh, never an email match), show which allowlisted addresses hold an
+          # account and its status, and how many rows are platform admins. The three
+          # addresses below are the code defaults already public in the repo
+          # (review-queue.ts ADMIN_EMAILS, users.ts ADMIN_EMAIL); any OTHER admin row is
+          # shown masked. No password hashes, no tokens.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === #4591 platform-admin provisioning probe ===
+          \echo '--- allowlisted defaults: account present? status / role / sign-in method ---'
+          SELECT a.email,
+                 (u.id IS NOT NULL)            AS has_account,
+                 u.status, u.role,
+                 (u.password_hash IS NOT NULL) AS has_password,
+                 (u.google_sub IS NOT NULL)    AS has_google,
+                 u.created_at::date            AS created
+            FROM (VALUES ('harperhousebuyers@gmail.com'), ('mike@cranesync.com'), ('mike@factorylm.com')) AS a(email)
+            LEFT JOIN hub_users u ON u.email_lower = a.email
+           ORDER BY a.email;
+          \echo
+          \echo '--- every status=admin row (non-default addresses masked) ---'
+          SELECT CASE WHEN email_lower IN ('harperhousebuyers@gmail.com','mike@cranesync.com','mike@factorylm.com')
+                      THEN email_lower
+                      ELSE left(email_lower, 1) || '***@' || split_part(email_lower, '@', 2) END AS email,
+                 role, (google_sub IS NOT NULL) AS has_google, created_at::date AS created
+            FROM hub_users WHERE status = 'admin' ORDER BY created_at;
+          SQL
+
       - name: 085 canonical-provenance probe (nameplate origin + duplicates) — READ-ONLY
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
