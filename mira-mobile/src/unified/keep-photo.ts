@@ -3,6 +3,7 @@
  * cannot import from mira-hub. Same review-before-store and failed-refresh
  * honesty contract as Hub `keep-photo-review.ts`.
  */
+import { Alert } from "react-native";
 
 export type PhotoKeepReview = {
   readonly observationId: string;
@@ -97,6 +98,34 @@ function asPostResult(res: { status: number; data: unknown }): PhotoKeepPostResu
       ...(typeof body.docId === "string" ? { docId: body.docId } : {}),
     },
   };
+}
+
+/** iOS can edit via Alert.prompt; Android shows the full reading with Cancel / Keep. */
+export function reviewMobilePhotoReading(proposed: PhotoKeepReview): Promise<string | null> {
+  return new Promise((resolve) => {
+    const title = "Check this reading against the photo. Edit any wrong tags before keeping.";
+    if (typeof Alert.prompt === "function") {
+      Alert.prompt(
+        title,
+        undefined,
+        [
+          { text: "Cancel", style: "cancel", onPress: () => resolve(null) },
+          { text: "Keep", onPress: (text?: string) => resolve(text == null ? proposed.reading : text) },
+        ],
+        "plain-text",
+        proposed.reading,
+      );
+      return;
+    }
+    Alert.alert(
+      title,
+      proposed.reading,
+      [
+        { text: "Cancel", style: "cancel", onPress: () => resolve(null) },
+        { text: "Keep", onPress: () => resolve(proposed.reading) },
+      ],
+    );
+  });
 }
 
 export async function keepMobilePhoto(fileId: string, deps: MobileKeepPhotoDeps): Promise<void> {
