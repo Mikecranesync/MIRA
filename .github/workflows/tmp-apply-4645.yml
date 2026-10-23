@@ -1,4 +1,5 @@
 name: tmp-apply-4645
+
 on:
   push:
     branches:
@@ -10,15 +11,20 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: tmp-apply-4645
+  cancel-in-progress: false
+
 jobs:
   apply:
+    name: apply-4645
     runs-on: ubuntu-latest
-    if: contains(github.event.head_commit.message, 'trigger #4645 production patch apply')
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Apply #4645 production edits
+      - name: Apply 4645 production edits
         run: python3 tools/tmp-apply-4645.py
       - name: Commit production files and remove trigger
         run: |
