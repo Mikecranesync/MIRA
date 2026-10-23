@@ -20,10 +20,9 @@
  *   facts: only what `/look` already observed.
  *
  * Reuses the nameplate lane's seams: park + atomic ingest claim + text ingest
- * ({@link materializeDerivedTextDoc}), `attachSource` with `origin_file_id`, and
- * `supersedePriorOriginSources`. No new table.
+ * ({@link materializeDerivedTextDoc}), `attachSource` with atomic origin reuse. No new table.
  */
-import { attachSource, findVisibleOriginSource, supersedePriorOriginSources } from "@/lib/equipment-notebooks";
+import { attachSource, findVisibleOriginSource } from "@/lib/equipment-notebooks";
 import { deleteOrphanNodeIngest, ingestTextToNode } from "@/lib/node-knowledge-ingest";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
@@ -192,10 +191,10 @@ export async function keepPhotoAsSource(opts: {
     sourceRole: "photo",
     addedBy: opts.userId,
     originFileId: fileId,
+    reuseVisibleOrigin: true,
     matchEvidence: { kept_from_observation: reading.observationId },
   });
   if (!att.ok) return { ok: false, status: 503, error: `attach_source_failed:${att.error}` };
-  // One photograph, one visible source (085 Invariant 1).
-  await supersedePriorOriginSources(tenantId, notebook.id, fileId, materialized.docId).catch(() => []);
-  return { ok: true, docId: materialized.docId, alreadyKept: false, chunkCount: materialized.chunkCount };
+  return { ok: true, docId: att.docId ?? materialized.docId, alreadyKept: att.alreadyAttached ?? false,
+    chunkCount: att.alreadyAttached ? 0 : materialized.chunkCount };
 }

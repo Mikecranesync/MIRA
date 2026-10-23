@@ -4,7 +4,7 @@ vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({})),
 }));
 vi.mock("@/lib/equipment-notebooks", () => ({
-  attachSource: vi.fn(async () => ({ ok: true })),
+  attachSource: vi.fn<typeof import("@/lib/equipment-notebooks").attachSource>(async () => ({ ok: true })),
   findVisibleOriginSource: vi.fn(async () => null),
   supersedePriorOriginSources: vi.fn(async () => []),
   markNameplateDocVerified: vi.fn(async () => 0),
@@ -115,9 +115,10 @@ describe("keepPhotoAsSource", () => {
       sourceRole: "photo",
       addedBy: "user-1",
       originFileId: PHOTO,
+      reuseVisibleOrigin: true,
       matchEvidence: { kept_from_observation: "obs-1" },
     });
-    expect(supersedePriorOriginSources).toHaveBeenCalledWith(TENANT, NOTEBOOK.id, PHOTO, "doc-1");
+    expect(supersedePriorOriginSources).not.toHaveBeenCalled();
   });
 
   it("keeps the reading from the conversation the technician pressed Keep in", async () => {
@@ -165,6 +166,12 @@ describe("keepPhotoAsSource", () => {
   it("never marks the model's transcription verified", async () => {
     await keep();
     expect(markNameplateDocVerified).not.toHaveBeenCalled();
+  });
+
+  it("returns the source that won a concurrent Keep without superseding it", async () => {
+    vi.mocked(attachSource).mockResolvedValueOnce({ ok: true, docId: "winner-doc", alreadyAttached: true });
+    expect(await keep()).toEqual({ ok: true, docId: "winner-doc", alreadyKept: true, chunkCount: 0 });
+    expect(supersedePriorOriginSources).not.toHaveBeenCalled();
   });
 
   it("fails closed when the source row cannot be attached", async () => {

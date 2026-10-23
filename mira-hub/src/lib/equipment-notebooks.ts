@@ -647,8 +647,10 @@ export async function attachSource(
     /** Audit metadata (085) — e.g. { confirm_client_key } from the confirm
      *  route's idempotency contract. Set-if-provided in the upsert. */
     matchEvidence?: unknown;
+    /** Keep is idempotent by origin, even when concurrent readings differ. */
+    reuseVisibleOrigin?: boolean;
   } = {},
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; docId?: string; alreadyAttached?: boolean }> {
   // hub_uploads: raw pool + explicit tenant predicate (TEXT column vs UUID session).
   const doc = await pool.query(
     `SELECT id FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid LIMIT 1`,
@@ -658,10 +660,23 @@ export async function attachSource(
 
   return withTenantContext(tenantId, async (c) => {
     const nb = await c.query(
-      `SELECT id FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      `SELECT id FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid${opts.originFileId ? " FOR UPDATE" : ""}`,
       [tenantId, notebookId],
     );
     if (nb.rows.length === 0) return { ok: false, error: "notebook_not_found" };
+    // All origin attachments use this parent lock, including nameplates. The
+    // Keep check and insert share one transaction, so two Keep requests cannot
+    // create separate visible readings and then supersede each other.
+    if (opts.reuseVisibleOrigin && opts.originFileId) {
+      const existing = await c.query(
+        `SELECT doc_id::text AS doc_id FROM equipment_notebook_sources
+          WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+            AND origin_file_id = $3::uuid AND superseded_at IS NULL
+          ORDER BY created_at DESC, doc_id DESC LIMIT 1`,
+        [tenantId, notebookId, opts.originFileId],
+      );
+      if (existing.rows.length) return { ok: true, docId: String(existing.rows[0].doc_id), alreadyAttached: true };
+    }
     await upsertNotebookSourceTx(c, {
       tenantId,
       notebookId,
@@ -672,7 +687,12 @@ export async function attachSource(
       originFileId: opts.originFileId ?? null,
       matchEvidence: opts.matchEvidence,
     });
-    return { ok: true };
+    if (opts.reuseVisibleOrigin && opts.originFileId) {
+      await c.query(`UPDATE equipment_notebook_sources SET superseded_at = NULL
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+      [tenantId, notebookId, docId]);
+    }
+    return opts.reuseVisibleOrigin ? { ok: true, docId, alreadyAttached: false } : { ok: true };
   });
 }
 

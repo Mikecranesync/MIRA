@@ -42,6 +42,7 @@ const { testPool } = vi.hoisted(() => {
 vi.mock("@/lib/db", () => ({ default: testPool }));
 
 import {
+  attachSource,
   findVisibleOriginSource,
   getSourceResolution,
   listSources,
@@ -306,4 +307,48 @@ describe("citation → canonical original stays resolvable (Invariant 3, Tests A
     expect(current?.originFileId).toBeNull();
     expect(await getSourceResolution(TENANT, NB, PHOTO)).toBeNull(); // never a source itself
   });
+});
+
+describe("concurrent Keep source attachment (#4646)", () => {
+  it("returns the same winner and retains one visible source for competing readings", async () => {
+    const nb = "e5000000-3333-4000-8000-000000000032";
+    await testPool.query(`INSERT INTO equipment_notebooks (id, tenant_id, display_name, node_id)
+      VALUES ($1, $2, 'Concurrent Keep test', $3)`, [nb, TENANT, NODE]);
+    const barrier = await testPool.connect();
+    await barrier.query("BEGIN");
+    await barrier.query("SELECT id FROM equipment_notebooks WHERE id = $1 FOR UPDATE", [nb]);
+    const pending = Promise.all([D1, D2].map(doc => attachSource(TENANT, nb, doc, {
+      originFileId: PHOTO, sourceRole: "photo", reuseVisibleOrigin: true,
+    })));
+    let waiting = 0;
+    try {
+      for (let attempt = 0; attempt < 100 && waiting < 2; attempt++) {
+        const blocked = await testPool.query(`SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND query LIKE 'SELECT id FROM equipment_notebooks WHERE tenant_id%'`);
+        waiting = blocked.rows[0].n;
+        if (waiting < 2) await new Promise(resolve => setTimeout(resolve, 10));
+      }
+    } finally {
+      await barrier.query("COMMIT");
+      barrier.release();
+    }
+    const results = await pending;
+    expect(waiting).toBe(2);
+    const visible = await testPool.query(`SELECT doc_id::text FROM equipment_notebook_sources
+      WHERE notebook_id = $1 AND origin_file_id = $2 AND superseded_at IS NULL`, [nb, PHOTO]);
+    expect(visible.rows).toHaveLength(1);
+    expect(results.every(r => r.ok)).toBe(true);
+    expect(results.map(r => r.docId)).toEqual([visible.rows[0].doc_id, visible.rows[0].doc_id]);
+    expect(results.filter(r => r.alreadyAttached)).toHaveLength(1);
+    expect(await getSourceResolution(OTHER_TENANT, nb, visible.rows[0].doc_id)).toBeNull();
+  });
+  it("restores a reused document when an earlier race left no visible source", async () => {
+    await testPool.query(`UPDATE equipment_notebook_sources SET origin_file_id = $2, superseded_at = now()
+      WHERE notebook_id = $1 AND (origin_file_id = $2 OR doc_id = $3)`, [NB, PHOTO, D1]);
+    const result = await attachSource(TENANT, NB, D1, { originFileId: PHOTO, reuseVisibleOrigin: true });
+    expect(result.ok).toBe(true);
+    expect((await findVisibleOriginSource(TENANT, NB, PHOTO))?.docId).toBe(D1);
+  });
+
 });
