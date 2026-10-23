@@ -67,8 +67,8 @@ _OPENROUTER_ROUTING = {"data_collection": "deny", "zdr": True}
 def _is_free_openrouter_model(model: str) -> bool:
     """True iff the stripped lowercased model id ends with ``:free``.
 
-    Those hosts may log or train on inputs; the Security page promises
-    manuals are never used for training.
+    Those hosts may log or train on inputs; manuals must not be sent
+    to a host that may train on them.
     """
     return model.strip().lower().endswith(":free")
 
@@ -84,8 +84,8 @@ def _openrouter_model_refused(model: str) -> bool:
     change here (Codex r1 F1 on #4436).
 
     A model id ending in ``:free`` is also refused: those hosts may log or
-    train on inputs, and the Security page promises manuals are never used
-    for training.
+    train on inputs, so manuals must not be sent to a host that may train
+    on them.
     """
     m = model.strip().lower()
     return (
