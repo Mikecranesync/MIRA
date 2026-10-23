@@ -36,8 +36,8 @@ import {
   markNameplateDocVerified,
   supersedePriorOriginSources,
 } from "@/lib/equipment-notebooks";
-import { getFile, parkOrReuseFile, linkFileToUpload, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
-import { ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
+import { getFile } from "@/lib/workspace-files";
+import { materializeDerivedTextDoc } from "@/capabilities/photo-source";
 import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
 import { acquisitionEnabled, acquisitionKey, runManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
 import {
@@ -284,7 +284,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     confidence,
     rawObservation: body.rawObservation ?? null,
   });
-  const textBuffer = Buffer.from(text, "utf8");
   const nameplateFilename = `nameplate-${fileId}.txt`;
 
   // Idempotent + raced-safe (Codex P1, 2026-08-16): the nameplate text is
@@ -317,55 +316,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     nameplateDocId = existingOrigin!.docId;
   } else
   try {
-    const parkedText = await parkOrReuseFile({
+    // Park + atomic ingest claim + text ingest, shared with the photo-source
+    // lane. Identical bytes reuse the existing doc; a concurrent confirm of the
+    // same bytes yields null (ingest_in_progress) and reports partial below.
+    const materialized = await materializeDerivedTextDoc({
       tenantId: ctx.tenantId,
-      filename: nameplateFilename,
-      mimeType: "text/plain",
-      sizeBytes: textBuffer.length,
-      buffer: textBuffer,
-      createdBy: ctx.userId ?? null,
       nodeId: notebook.nodeId,
+      filename: nameplateFilename,
+      text,
+      createdBy: ctx.userId ?? null,
       source: "nameplate_text",
     });
-    nameplateDocId = parkedText.uploadId;
-    if (nameplateDocId === null) {
-      const claim = await claimIngest(ctx.tenantId, parkedText.fileId);
-      if (claim.claimed) {
-        try {
-          const ingested = await ingestTextToNode({
-            tenantId: ctx.tenantId,
-            nodeId: notebook.nodeId,
-            unsPath: null,
-            filename: nameplateFilename,
-            mimeType: "text/plain",
-            sizeBytes: textBuffer.length,
-            buffer: textBuffer,
-          });
-          nameplateChunks = ingested.chunkCount;
-          // Token-fenced finalize: only claim the pointer if we still own the
-          // claim. If ownership was lost (stale-window takeover), our ingest is
-          // orphaned — do NOT treat the doc as ours.
-          const won = await linkFileToUpload(
-            ctx.tenantId,
-            parkedText.fileId,
-            ingested.uploadId,
-            claim.claimToken,
-          );
-          nameplateDocId = won ? ingested.uploadId : null;
-          // Fence lost: our fully-ingested doc duplicates the winner's chunk
-          // set. Remove it — leaving it would recreate the duplicate-corpus
-          // bug the claim exists to prevent (best-effort, never throws).
-          if (!won) await deleteOrphanNodeIngest(ctx.tenantId, ingested.uploadId);
-        } catch (err) {
-          await releaseIngestClaim(ctx.tenantId, parkedText.fileId, claim.claimToken).catch(() => {});
-          throw err;
-        }
-      } else if (claim.reason === "already_ingested" && claim.uploadId) {
-        nameplateDocId = claim.uploadId;
-      }
-      // ingest_in_progress: a concurrent confirm is materializing the same
-      // bytes right now — do not double-ingest; report partial below.
-    }
+    nameplateDocId = materialized.docId;
+    nameplateChunks = materialized.chunkCount;
     if (nameplateDocId !== null) {
       // Attached by DOC id, not by file link: the generated nameplate text has
       // no meaningful byte record for the user (the canonical PHOTO is the

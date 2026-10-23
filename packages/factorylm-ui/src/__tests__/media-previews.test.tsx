@@ -93,6 +93,15 @@ describe("photo observation", () => {
 });
 
 describe("source viewer", () => {
+  it("shows a cited photograph as a whole, fitted image rather than a native-size frame", () => {
+    const href = "/api/namespace/files/photo-9/";
+    const viewer = openFirstSource(render("grounded-answer", (p) =>
+      p.type === "source" ? { ...p, source: { ...p.source, href, media: "image" } } : p));
+    const img = viewer.querySelector("img.fl-source-viewer__image");
+    expect(img?.getAttribute("src")).toBe(href);
+    expect(viewer.querySelector("iframe")).toBeNull();
+  });
+
   it("opens a same-site document inline at the cited page, with a link to open it in a new tab", () => {
     const href = "/api/namespace/files/doc-1/#page=47";
     const viewer = openFirstSource(render("grounded-answer", sourceWith(href)));

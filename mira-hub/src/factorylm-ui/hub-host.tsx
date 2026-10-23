@@ -854,6 +854,28 @@ export function HubShellHost() {
     }
   }, [fixRequestIds, view.thread.turns]);
 
+  // Keep a photo from this conversation as one of the machine's sources, then
+  // reload the notebook so the next question's source scope includes it.
+  const onKeepPhoto = useCallback(async (fileId: string) => {
+    const sel = selectionRef.current;
+    if (!sel?.notebookId) throw new Error("no_notebook");
+    const res = await fetch(
+      `${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        // The conversation whose reading the technician is looking at.
+        body: JSON.stringify(sel.threadId ? { threadId: sel.threadId } : {}),
+      },
+    );
+    if (!res.ok) throw new Error(`keep_photo_${res.status}`);
+    await loadDetail(sel);
+  }, [loadDetail]);
+  const keptPhotoIds = useMemo(
+    () => new Set((detail?.sources ?? []).map((s) => s.originFileId).filter((id): id is string => !!id)),
+    [detail],
+  );
+
   const hooks: HostHooks = {
     onSend,
     renderText,
@@ -863,6 +885,7 @@ export function HubShellHost() {
       ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
       : {}),
     ...(selection?.notebookId ? { onConfirmIdentity: onConfirmIdentity } : {}),
+    ...(selection?.notebookId ? { onKeepPhoto, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
     onSource: (source) => openSource(source.id),
     onNewChat,
     onCreateProject,

@@ -43,6 +43,7 @@ import { context, SpanStatusCode, trace, type Context, type Span } from "@opente
 import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
 import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observability/turn-recorder";
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
+import { citesOnlyUnconfirmedPhotoReadings } from "@/capabilities/photo-source";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { finishedAfterChunk } from "@/capabilities/stream-stop";
@@ -4521,6 +4522,15 @@ async function handleChatTurn(
                 : oemRetrieval
                   ? "Grounded in recorded machine history and the manufacturer's documentation — not live."
                   : "Grounded in recorded machine history and this notebook's sources — not live.",
+            }
+        : docGrounded && citesOnlyUnconfirmedPhotoReadings(emittedCitations, chunks)
+          ? {
+              // A kept photo reading is the tenant's own captured evidence read
+              // by a vision model, not documentation — same basis and caveat as
+              // a photo attached in the conversation.
+              kind: "evidence",
+              basis: "workspace_evidence",
+              label: "Grounded in a photo kept on this machine — an unconfirmed reading.",
             }
         : docGrounded && emittedCitations.length > 0
           ? {
