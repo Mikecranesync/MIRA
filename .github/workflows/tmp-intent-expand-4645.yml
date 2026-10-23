@@ -1,0 +1,98 @@
+name: tmp-intent-expand-4645
+
+on:
+  push:
+    branches:
+      - cursor/tmp-intent-expand-4645-00df
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: tmp-intent-expand-4645
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: cursor/fault-reset-factory-guard-00df
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Gate acknowledge expansion on classifyIntent, drop ACK token synonyms
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("mira-hub/src/lib/notebook-query.ts")
+          t = p.read_text()
+          old = '''  [/\\bfault\\b|\\btrip\\b|\\balarm\\b|\\berror\\s*code\\b/i, ["fault"]],
+  // Technician "ACK" names a pictogram key; OEM manuals say "acknowledge" /
+  // "group acknowledgment" and never the token ACK (#4645 / Comfort p.74).
+  [/\\back\\b/i, ["acknowledge", "group acknowledgment", "fault clear"]],
+  // Fault-clear and acknowledge are the same operator-action class. Expand
+  // only when the object is a fault/alarm so a parameter-reset is not flooded.
+  [/\\b(?:reset|clear)\\b[^.?!]*\\b(?:fault|trip|alarm)|\\b(?:fault|trip|alarm)\\b[^.?!]*\\b(?:reset|clear)\\b/i, ["acknowledge", "group acknowledgment", "fault clear"]],
+  [/\\breset\\b|\\bclear\\b/i, ["fault clear"]],'''
+          new = '''  [/\\bfault\\b|\\btrip\\b|\\balarm\\b|\\berror\\s*code\\b/i, ["fault"]],
+  [/\\breset\\b|\\bclear\\b/i, ["fault clear"]],'''
+          if old not in t:
+              raise SystemExit("synonym ACK block not found — aborting rather than tuning")
+          t = t.replace(old, new, 1)
+          old_exp = '''  const synTerms = new Set<string>();
+  for (const [re, terms] of SYNONYMS) {
+    if (re.test(q)) for (const t of terms) synTerms.add(t);
+  }'''
+          new_exp = '''  const synTerms = new Set<string>();
+  for (const [re, terms] of SYNONYMS) {
+    if (re.test(q)) for (const t of terms) synTerms.add(t);
+  }
+  // #4645: OEM manuals say "acknowledge", not ACK. Add that vocabulary when
+  // the existing classifier already decided this is a fault-clear, not by
+  // matching the token ACK/back. Navigation ("go back", "back key") is not fault.
+  if (classifyIntent(q) === "fault") {
+    for (const term of ["acknowledge", "group acknowledgment", "fault clear"]) synTerms.add(term);
+  }'''
+          if old_exp not in t:
+              raise SystemExit("expandIndustrialQuery synonym loop not found")
+          t = t.replace(old_exp, new_exp, 1)
+          p.write_text(t)
+          print("structural patch applied")
+          PY
+      - name: Commit production patch immediately
+        run: |
+          set -euo pipefail
+          git config user.name "cursor-agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mira-hub/src/lib/notebook-query.ts
+          git commit -m "fix(hub): expand acknowledge vocabulary from fault intent, not ACK synonyms (#4645)"
+          git push origin HEAD:cursor/fault-reset-factory-guard-00df
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run #4645 vitest
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx vitest run src/capabilities/notebook-query-fault-reset-4645 src/capabilities/answer-validation-fault-reset-4645 src/lib/__tests__/notebook-query.test.ts
+      - name: Cheap Gate-7 after structural fix
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet httpx
+          python3 tools/gate7_review.py 4672 --paid --post -o /tmp/g7.md
+          echo "----- gate7 after structural fix -----"
+          cat /tmp/g7.md
+      - name: Delete throwaway branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git push origin --delete cursor/tmp-intent-expand-4645-00df || true
