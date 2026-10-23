@@ -51,6 +51,8 @@ describe("#4645 factory-reset must not be served as a fault-clear", () => {
     expect(v.replacement).toBe(FACTORY_RESET_AS_FAULT_REPLACEMENT);
     expect(v.replacement).toMatch(/deletes project data and license keys/i);
     expect(v.replacement).toMatch(/acknowledge/i);
+    // The floor names the action class, not a specific OEM pictogram.
+    expect(v.replacement).not.toMatch(/\bACK key\b/i);
   });
 
   it("rejects the same leak in the general lane", () => {

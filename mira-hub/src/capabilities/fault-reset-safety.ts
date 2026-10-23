@@ -15,7 +15,7 @@ import { firstUngovernedMatch } from "./hazard-modifiers";
 
 export const FACTORY_RESET_AS_FAULT_REPLACEMENT = `A factory reset or operating-system update is a destructive maintenance action. It deletes project data and license keys on the device. It is not how you clear or acknowledge a fault.
 
-Find and correct the cause first. Use the panel's acknowledge / fault-reset control — the ACK key acknowledges the currently displayed fault or an alarm group. Keep people clear before restarting a stopped machine, and lock out before any hands-in work.`;
+Find and correct the cause first. Use this machine's acknowledge or fault-reset control — not a factory restore. Keep people clear before restarting a stopped machine, and lock out before any hands-in work.`;
 
 /** Reuses the existing industrial intent classifier — no parallel detector. */
 export function isFaultResetAsk(question: string): boolean {
