@@ -595,6 +595,9 @@ function UnifiedChatForNotebook({
   // the next send falls back to the host's own eventually-refreshed scope.
   // Resolves `true` when the re-read scope was stored, `false` when the
   // re-read failed (#4219 Codex r2 F1), `null` when there was nothing to do.
+  // Photos already kept as this machine's sources (their origin file ids),
+  // learned from the same notebook re-read below.
+  const [keptPhotoIds, setKeptPhotoIds] = useState<ReadonlySet<string>>(() => new Set());
   const refreshPromotedScope = useCallback(async (): Promise<boolean | null> => {
     if (!notebookId || !aliveRef.current) return null;
     // The re-read is async; this instance can unmount before it returns (the
@@ -606,6 +609,7 @@ function UnifiedChatForNotebook({
       const after = await getNotebookDetail(fetchedFor, { threadId: attachmentThreadId ?? undefined });
       if (!aliveRef.current || notebookIdRef.current !== fetchedFor) return null;
       confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
+      setKeptPhotoIds(new Set(after.sources.map((src) => src.originFileId).filter((id): id is string => !!id)));
       return true;
     } catch {
       if (aliveRef.current && notebookIdRef.current === fetchedFor) confirmedScopeRef.current = null;
@@ -951,6 +955,18 @@ function UnifiedChatForNotebook({
     }
   }, [fixRequestIds, meta.notebookId, state.thread.turns]);
 
+  // Keep a photo from this conversation as one of the machine's sources; the
+  // re-read stores the new scope so the next question can cite it.
+  const onKeepPhoto = useCallback(async (fileId: string) => {
+    if (!meta.notebookId) throw new Error("no_notebook");
+    await request(
+      `/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`,
+      { method: "POST" },
+    );
+    setKeptPhotoIds((prev) => new Set(prev).add(fileId));
+    await refreshPromotedScope();
+  }, [meta.notebookId, refreshPromotedScope]);
+
   const hooks: HostHooks = {
     onSend,
     renderText,
@@ -959,6 +975,7 @@ function UnifiedChatForNotebook({
     ...(meta.notebookId
       ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
       : {}),
+    ...(meta.notebookId ? { onKeepPhoto, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
     ...(canStop ? { onStop: handlers.onStop } : {}),
     // The host retry re-sends the rendered turn as plain text. That is right for
     // a text turn and WRONG for one whose attachment never uploaded: it would
