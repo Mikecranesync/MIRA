@@ -626,7 +626,7 @@ describe("LOOK conversation association without completed chat turns", () => {
     await q("INSERT INTO namespace_direct_uploads (id,tenant_id,filename,mime_type) VALUES ($1,$2,'retry.jpg','image/jpeg')", [fileId,TENANT_A]);
     await q("INSERT INTO workspace_file_links (tenant_id,file_id,target_type,target_id,role) VALUES ($1,$2,'equipment_notebook',$3,'photo')", [TENANT_A,fileId,notebook.id]);
     await q("INSERT INTO hub_uploads (id,tenant_id,filename,status,provider) VALUES ($1,$2,'review.txt','parsed','itest')", [docId,TENANT_A]);
-    await q("INSERT INTO knowledge_entries (tenant_id,doc_id,content,verified) VALUES ($1,$3,'reviewed chunk',false),($2,$3,'foreign chunk',false)", [TENANT_A,TENANT_B,docId]);
+    await q("INSERT INTO knowledge_entries (tenant_id,doc_id,content,verified,is_private) VALUES ($1,$3,'reviewed chunk',false,true),($2,$3,'foreign chunk',false,true)", [TENANT_A,TENANT_B,docId]);
     vi.mocked(parkOrReuseFile).mockResolvedValue({ fileId, uploadId: null } as never);
     vi.mocked(claimIngest).mockResolvedValue({ claimed: true, claimToken: "test-claim" } as never);
     vi.mocked(linkFileToUpload).mockResolvedValue(true);
