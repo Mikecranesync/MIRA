@@ -12,18 +12,18 @@
  * Evidence classes stay separate (materialized-evidence rules 3 and 9):
  * - What the technician confirms by pressing Keep is the ASSOCIATION: this
  *   photo belongs to this machine. That is recorded as `user_confirmed`.
- * - The text is the vision model's reading of the photo. It stays an
- *   unconfirmed transcription: the chunks are NOT marked `verified` (unlike a
- *   nameplate the technician reviewed field by field), the document says so in
- *   its own header, and the observation row keeps `review_state='unreviewed'`.
- * - Nothing here interprets the photo. No new model call, no inferred machine
- *   facts: only what `/look` already observed.
+ * - The text is the vision model's reading of the photo unless the technician
+ *   reviews it. A Keep without the reviewed text is refused (`reading_required`)
+ *   so a misread cannot be stored silently (#4643).
+ * - A technician edit goes through the existing `correctVisualObservations`
+ *   seam (original retained, `superseded_by`). Only that reviewed text is
+ *   marked verified. An as-is keep stays an unconfirmed transcription.
  *
  * Reuses the nameplate lane's seams: park + atomic ingest claim + text ingest
- * ({@link materializeDerivedTextDoc}), `attachSource` with `origin_file_id`, and
- * `supersedePriorOriginSources`. No new table.
+ * ({@link materializeDerivedTextDoc}), `attachSource` with `origin_file_id`,
+ * `correctVisualObservations`, and `markNameplateDocVerified`. No new table.
  */
-import { attachSource, findVisibleOriginSource, supersedePriorOriginSources } from "@/lib/equipment-notebooks";
+import { attachSource, findVisibleOriginSource, markNameplateDocVerified, supersedePriorOriginSources } from "@/lib/equipment-notebooks";
 import { deleteOrphanNodeIngest, ingestTextToNode } from "@/lib/node-knowledge-ingest";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
@@ -33,7 +33,12 @@ import {
   photoLinkedToTarget,
   releaseIngestClaim,
 } from "@/lib/workspace-files";
-import { loadVisualEvidenceForPhoto } from "@/lib/visual-evidence-context";
+import { loadScreenTextLines } from "@/capabilities/screen-text";
+import {
+  correctVisualObservations,
+  loadVisualEvidenceForPhoto,
+  MAX_LOOK_CORRECTION_VALUE_CHARS,
+} from "@/lib/visual-evidence-context";
 
 /**
  * Park a generated text document and ingest it once, under the same canonical
@@ -93,6 +98,16 @@ export async function materializeDerivedTextDoc(opts: {
   }
 }
 
+/** The lines printed on a sheet or screen, stored beside the LOOK observation. */
+export function composePhotoReadingForReview(
+  observation: string,
+  screenLines: readonly string[] | null | undefined,
+): string {
+  const body = observation.trim();
+  if (!screenLines?.length) return body;
+  return `${body}\n\nText on the sheet:\n${screenLines.map((line) => `- ${line}`).join("\n")}`;
+}
+
 /** The header states, inside the document, what kind of evidence it is. */
 export function buildPhotoSourceText(opts: {
   readonly machineName: string;
@@ -100,11 +115,15 @@ export function buildPhotoSourceText(opts: {
   readonly photoSha256: string | null;
   readonly capturedAt: string | null;
   readonly observation: string;
+  readonly technicianConfirmed?: boolean;
 }): string {
+  const evidence = opts.technicianConfirmed
+    ? "Evidence: a technician reviewed this photo reading and confirmed the text below. The original vision reading is retained as history."
+    : "Evidence: a vision model's transcription of a technician's photo. The technician confirmed this photo belongs to this machine; the transcription itself is NOT technician-verified. Check any identifier against the original photo before acting on it.";
   return [
     "Photo source: technician photo",
     `Machine: ${opts.machineName}`,
-    "Evidence: a vision model's transcription of a technician's photo. The technician confirmed this photo belongs to this machine; the transcription itself is NOT technician-verified. Check any identifier against the original photo before acting on it.",
+    evidence,
     `Photo file: ${opts.fileId}`,
     ...(opts.photoSha256 ? [`Photo sha256: ${opts.photoSha256}`] : []),
     ...(opts.capturedAt ? [`Captured: ${opts.capturedAt}`] : []),
@@ -133,14 +152,28 @@ export function citesOnlyUnconfirmedPhotoReadings(
   );
 }
 
+/** True when every citation is a photo reading whose chunks a technician verified. */
+export function citesOnlyTechnicianConfirmedPhotoReadings(
+  citations: readonly { readonly docId: string; readonly originFileId?: string | null }[],
+  chunks: readonly { readonly docId?: string | null; readonly verified?: boolean }[],
+): boolean {
+  if (citations.length === 0) return false;
+  return citations.every(
+    (c) => !!c.originFileId && chunks.some((k) => k.docId === c.docId && k.verified === true),
+  );
+}
+
 export type KeepPhotoResult =
   | { readonly ok: true; readonly docId: string; readonly alreadyKept: boolean; readonly chunkCount: number }
+  | { readonly ok: false; readonly status: 409; readonly error: "reading_required"; readonly reading: string; readonly observationId: string }
   | { readonly ok: false; readonly status: 404 | 409 | 503; readonly error: string };
 
 /**
  * Keep a photo already linked to this notebook as one of its sources.
  * Idempotent: a photo that already has a visible derived source (kept earlier,
  * or confirmed as a nameplate) returns that source and changes nothing.
+ * A first keep requires the technician-reviewed reading so a vision misread
+ * cannot be stored silently (#4643).
  */
 export async function keepPhotoAsSource(opts: {
   readonly tenantId: string;
@@ -149,6 +182,8 @@ export async function keepPhotoAsSource(opts: {
   readonly fileId: string;
   /** The conversation the technician pressed Keep in: keep the reading they saw there. */
   readonly threadId?: string | null;
+  /** The text the technician reviewed (and possibly corrected) in the Keep step. */
+  readonly reviewedReading?: string | null;
 }): Promise<KeepPhotoResult> {
   const { tenantId, notebook, fileId } = opts;
   // The link is the server's proof the photo was attached to THIS machine; a
@@ -170,31 +205,77 @@ export async function keepPhotoAsSource(opts: {
   // than attach an empty document.
   if (!reading || reading.text.trim() === "") return { ok: false, status: 409, error: "no_photo_reading" };
 
+  let screenLines: string[] | null = null;
+  try {
+    screenLines = await withTenantContext(tenantId, (c) =>
+      loadScreenTextLines(c, tenantId, reading.sessionId, fileId),
+    );
+  } catch {
+    screenLines = null;
+  }
+  const proposed = composePhotoReadingForReview(reading.text, screenLines);
+  if (opts.reviewedReading == null) {
+    return {
+      ok: false,
+      status: 409,
+      error: "reading_required",
+      reading: proposed,
+      observationId: reading.observationId,
+    };
+  }
+  const reviewed = opts.reviewedReading.trim().slice(0, MAX_LOOK_CORRECTION_VALUE_CHARS);
+  if (!reviewed) return { ok: false, status: 409, error: "no_photo_reading" };
+
+  let observationId = reading.observationId;
+  let technicianConfirmed = false;
+  if (reviewed !== proposed) {
+    const corr = await correctVisualObservations({
+      tenantId,
+      boundEntityId: null,
+      fileId,
+      corrections: [{ observationId: reading.observationId, value: reviewed }],
+      correctedBy: opts.userId,
+    });
+    if (corr.corrected.length === 0) {
+      return { ok: false, status: 409, error: "correction_not_applied" };
+    }
+    observationId = corr.corrected[0].replacementId;
+    technicianConfirmed = true;
+  }
+
   const text = buildPhotoSourceText({
     machineName: notebook.displayName,
     fileId,
     photoSha256: reading.photoHash,
     capturedAt: photo.capturedAt,
-    observation: reading.text,
+    observation: reviewed,
+    technicianConfirmed,
   });
+  const day = (photo.capturedAt ?? "").slice(0, 10) || fileId;
   const materialized = await materializeDerivedTextDoc({
     tenantId,
     nodeId: notebook.nodeId,
     // The title rides on every chunk, so the trust state reaches the prompt and
     // the citation even when the header above lands in a different chunk.
-    filename: `Unconfirmed photo reading ${(photo.capturedAt ?? "").slice(0, 10) || fileId}.txt`,
+    filename: technicianConfirmed
+      ? `Technician-confirmed photo reading ${day}.txt`
+      : `Unconfirmed photo reading ${day}.txt`,
     text,
     createdBy: opts.userId,
     source: "photo_text",
   });
   if (!materialized.docId) return { ok: false, status: 503, error: "photo_source_in_progress" };
 
+  if (technicianConfirmed) {
+    await markNameplateDocVerified(tenantId, materialized.docId);
+  }
+
   const att = await attachSource(tenantId, notebook.id, materialized.docId, {
     matchState: "user_confirmed",
     sourceRole: "photo",
     addedBy: opts.userId,
     originFileId: fileId,
-    matchEvidence: { kept_from_observation: reading.observationId },
+    matchEvidence: { kept_from_observation: observationId },
   });
   if (!att.ok) return { ok: false, status: 503, error: `attach_source_failed:${att.error}` };
   // One photograph, one visible source (085 Invariant 1).
