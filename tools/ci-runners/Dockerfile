@@ -16,7 +16,7 @@ USER root
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg git jq unzip zip xz-utils \
-      python3 python3-pip python3-venv python-is-python3 \
+      python3 python3-pip python3-venv python-is-python3 python3-yaml python3-requests \
       build-essential libpq-dev postgresql-client \
       shellcheck ripgrep \
  && install -d -m 0755 /etc/apt/keyrings \
