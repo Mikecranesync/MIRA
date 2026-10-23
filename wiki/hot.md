@@ -1,6 +1,6 @@
 # Photo correction review repairs — 2026-10-23
 
-PR #4663: local repairs remove the canonical mobile dependency on frozen FilePreview presentation, preserve technician-reviewed attribution in chat, and recover a committed reading before an edited retry with renewed acknowledgement. Hub 9177 pass/53 skipped, mobile 968 pass, shared UI 310 pass plus final 13 retry tests, real-Postgres 27 pass; Hub/mobile builds pass. Fresh exact-head review and same-release physical acceptance remain required. No merge/deploy authorization inferred.
+PR #4663: local repairs remove the canonical mobile dependency on frozen FilePreview presentation, preserve technician-reviewed attribution in chat, and recover a committed reading before an edited retry with renewed acknowledgement. Hub 9177 pass/53 skipped, mobile 968 pass, shared UI 310 pass plus final 13 retry tests, real-Postgres 28 pass on a fresh database; Hub/mobile builds pass. Fresh exact-head review and same-release physical acceptance remain required. No merge/deploy authorization inferred.
 
 ---
 
