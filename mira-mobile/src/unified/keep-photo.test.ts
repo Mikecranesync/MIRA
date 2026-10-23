@@ -1,42 +1,48 @@
-import { describe, expect, it } from "vitest";
-import {
-  KEEP_PHOTO_REVIEW_PROMPT,
-  mergeKeptDocIntoScope,
-  nextKeepPhotoStep,
-  reviewedReadingFromPrompt,
-} from "./keep-photo";
+import { describe, expect, it, vi } from "vitest";
+import { keepMobilePhoto } from "./keep-photo";
 
-describe("nextKeepPhotoStep — a wrong reading cannot be kept silently (#4643)", () => {
-  it("asks the host to show the stored reading when Keep has no review", () => {
-    expect(nextKeepPhotoStep(409, {
-      error: "reading_required",
-      reading: "Protected by -F53.3",
-      observationId: "obs-1",
-    })).toEqual({ action: "review", reading: "Protected by -F53.3" });
+const NB = "dfe74725-a4ac-4c5f-8e8c-1f06002daf0f";
+const PHOTO = "f803bb1e-325e-46fd-a1a7-4421425c1f3e";
+const OBS = "64a24de7-0000-4000-8000-000000000002";
+
+describe("keepMobilePhoto", () => {
+  it("sends the reviewed reading and does not mark success when refresh fails", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({
+        status: 409,
+        data: { error: "reading_required", reading: "-F53.3 /150", observationId: OBS },
+      })
+      .mockResolvedValueOnce({ status: 200, data: { docId: "doc-1" } });
+    const refresh = vi.fn(async () => false);
+    await expect(keepMobilePhoto(PHOTO, {
+      notebookId: NB,
+      threadId: "legacy",
+      request,
+      refresh,
+      review: async () => "-F55.3 /15.0",
+    })).rejects.toThrow("keep_photo_refresh_failed");
+    expect(request).toHaveBeenNthCalledWith(1, `/api/equipment-notebooks/${NB}/photos/${PHOTO}/source/`, expect.objectContaining({
+      method: "POST",
+      acceptStatuses: [409],
+      json: { threadId: "legacy" },
+    }));
+    expect(request).toHaveBeenNthCalledWith(2, `/api/equipment-notebooks/${NB}/photos/${PHOTO}/source/`, expect.objectContaining({
+      json: { threadId: "legacy", reviewedReading: "-F55.3 /15.0" },
+    }));
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("treats a 200 with a docId as kept", () => {
-    expect(nextKeepPhotoStep(200, { docId: "doc-1", alreadyKept: false, chunkCount: 2 })).toEqual({
-      action: "done", docId: "doc-1", alreadyKept: false,
+  it("a refresh-only retry is a second Keep of an already-stored source, never a silent rewrite", async () => {
+    const request = vi.fn().mockResolvedValue({ status: 200, data: { docId: "doc-1", alreadyKept: true } });
+    const review = vi.fn(async () => "should-not-run");
+    await keepMobilePhoto(PHOTO, {
+      notebookId: NB,
+      threadId: null,
+      request,
+      refresh: async () => true,
+      review,
     });
-  });
-});
-
-describe("reviewedReadingFromPrompt", () => {
-  it("returns the technician's edit and treats cancel as no keep", () => {
-    expect(reviewedReadingFromPrompt("F53.3", (msg, value) => {
-      expect(msg).toBe(KEEP_PHOTO_REVIEW_PROMPT);
-      expect(value).toBe("F53.3");
-      return "F55.3";
-    })).toBe("F55.3");
-    expect(reviewedReadingFromPrompt("F53.3", () => null)).toBeNull();
-  });
-});
-
-describe("mergeKeptDocIntoScope — a failed refresh must not drop the kept doc (#4648)", () => {
-  it("adds the returned docId so the next send can use it without a successful re-read", () => {
-    expect(mergeKeptDocIntoScope(null, "doc-1")).toEqual(["doc-1"]);
-    expect(mergeKeptDocIntoScope(["doc-a"], "doc-1")).toEqual(["doc-a", "doc-1"]);
-    expect(mergeKeptDocIntoScope(["doc-1"], "doc-1")).toEqual(["doc-1"]);
+    expect(review).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledTimes(1);
   });
 });
