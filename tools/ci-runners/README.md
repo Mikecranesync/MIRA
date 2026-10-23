@@ -42,15 +42,21 @@ request whose code would then run on Bravo, inside the plant network.
 - **The services slot uses host networking inside the dedicated CI VM**, not on Bravo itself and
   not in any product container. This is a deliberate exception to the "no `network_mode: host`"
   container rule in `.claude/rules/security-boundaries.md`, which governs MIRA services.
-- Jobs can reach the Docker socket of the CI VM (needed for `docker build`/`compose`). A job can
-  therefore affect other CI jobs on that VM, never Bravo's own processes or Ollama.
+- Jobs can reach the Docker socket of the CI VM (needed for `docker build`/`compose`), so a job can
+  start a container with any VM path mounted. **The VM therefore must not share Bravo's home folder**
+  (Colima's default does): the `gha` profile mounts only `~/.gha/vm-share`, read-only. Verified on
+  2026-10-23: before the fix a job could read `~/.ssh` and `~/factorylm/.env`; after it, neither is
+  visible. A job can still affect other CI jobs on that VM, never Bravo's own files or Ollama.
 
 ## Install (after the repo is private)
 
 ```bash
 # Bravo
 brew install colima docker docker-buildx
-colima start gha --cpu 6 --memory 8 --disk 100 --vm-type vz --arch aarch64 --runtime docker
+mkdir -p ~/.gha/vm-share   # the ONLY host folder the CI VM may see (Colima's default shares all of $HOME)
+colima start gha --cpu 6 --memory 8 --disk 100 --vm-type vz --arch aarch64 --runtime docker --mount $HOME/.gha/vm-share
+# verify: must print NOT-READABLE
+DOCKER_HOST=unix://$HOME/.colima/gha/docker.sock docker run --rm -v $HOME:/h alpine:3.20 sh -c 'test -d /h/.ssh && echo READABLE || echo NOT-READABLE'
 mkdir -p ~/gha-runners ~/.gha/logs && cp Dockerfile entrypoint.sh bravo-runner-supervisor.sh ~/gha-runners/
 (cd ~/gha-runners && DOCKER_HOST=unix://$HOME/.colima/gha/docker.sock DOCKER_CONFIG=$HOME/.gha/docker-config docker build -t mira-gha-runner:2.338.1 .)
 cp com.factorylm.gha-runners.plist ~/Library/LaunchAgents/ && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.factorylm.gha-runners.plist

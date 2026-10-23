@@ -45,6 +45,12 @@ on:
       - '.claude/**'
   workflow_dispatch: {}
 
+# Private repo: `gh run list` (recent deploy-vps runs) needs actions: read; a public repo
+# answers that call without it.
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   smoke:
     name: E2E smoke (factorylm.com + app.factorylm.com)
