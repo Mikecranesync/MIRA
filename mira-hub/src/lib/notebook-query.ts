@@ -38,12 +38,6 @@ const SYNONYMS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
   // must NOT be flooded with navigation chunks.
   [/\b(?:on|from|via|with|using)\s+the\s+keypad\b|\bfront panel\b/i, ["viewing and editing parameters", "programming menu", "navigation keys"]],
   [/\bfault\b|\btrip\b|\balarm\b|\berror\s*code\b/i, ["fault"]],
-  // Technician "ACK" names a pictogram key; OEM manuals say "acknowledge" /
-  // "group acknowledgment" and never the token ACK (#4645 / Comfort p.74).
-  [/\back\b/i, ["acknowledge", "group acknowledgment", "fault clear"]],
-  // Fault-clear and acknowledge are the same operator-action class. Expand
-  // only when the object is a fault/alarm so a parameter-reset is not flooded.
-  [/\b(?:reset|clear)\b[^.?!]*\b(?:fault|trip|alarm)|\b(?:fault|trip|alarm)\b[^.?!]*\b(?:reset|clear)\b/i, ["acknowledge", "group acknowledgment", "fault clear"]],
   [/\breset\b|\bclear\b/i, ["fault clear"]],
   [/\btorque\b/i, ["torque"]],
   [/\bmax(?:imum)?\s+freq\w*\b/i, ["maximum freq"]],
@@ -276,6 +270,12 @@ export function expandIndustrialQuery(query: string): ExpandedQuery {
   const synTerms = new Set<string>();
   for (const [re, terms] of SYNONYMS) {
     if (re.test(q)) for (const t of terms) synTerms.add(t);
+  }
+  // #4645: OEM manuals say "acknowledge", not ACK. Add that vocabulary when
+  // the existing classifier already decided this is a fault-clear, not by
+  // matching the token ACK/back. Navigation ("go back", "back key") is not fault.
+  if (classifyIntent(q) === "fault") {
+    for (const term of ["acknowledge", "group acknowledgment", "fault clear"]) synTerms.add(term);
   }
 
   const exact = new Set<string>();
