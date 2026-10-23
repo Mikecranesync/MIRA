@@ -118,6 +118,7 @@ import {
   safetyFlagHeaders,
   withSafetyFlag,
 } from "@/lib/safety-classifier";
+import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
 import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import {
   ENERGIZED_WORK_TRIGGER,
@@ -1848,7 +1849,15 @@ async function handleChatTurn(
   // renders on every client and survives reload. It is not a structured
   // safety_notice because today's web/mobile chips label every non-terminal
   // notice "energized electrical work".
-  const flagBannerBase = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
+  // #4645: a reset / restart-after-fault ask gets the fixed restart banner. It is
+  // an ADVISORY, never a safetyTrigger — a trigger lets a turn be answered with
+  // no evidence, and an invented reset procedure is the #4645 failure itself.
+  const restartAdvisory = !safetyTrigger && !electricalHazardDirective && isFaultResetAsk(message);
+  const flagBannerBase = safetyTrigger && !electricalHazardDirective
+    ? hazardBanner(safetyTrigger)
+    : restartAdvisory
+      ? RESTART_BANNER
+      : null;
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -2277,8 +2286,11 @@ async function handleChatTurn(
   // Banner is classified before retrieval; the page citation can only be
   // written now that chunks exist. Prefer the WARNING/CAUTION/DANGER chunk's
   // printed label (TQ-29: p.2-15) over INTEGER source_page.
+  // The restart banner is site safety practice, not a manual claim: no page.
   const flagBanner = flagBannerBase
-    ? withPageCitation(flagBannerBase, pageFromRetrievedChunks(chunks))
+    ? restartAdvisory
+      ? flagBannerBase
+      : withPageCitation(flagBannerBase, pageFromRetrievedChunks(chunks))
     : null;
   {
     // Notebook chunks carry a doc id; shared-OEM chunks carry no doc id but a
@@ -3482,7 +3494,9 @@ async function handleChatTurn(
     ? `${basePrompt}\n\n${ELECTRICAL_HAZARD_DIRECTIVE}`
     : safetyTrigger
       ? `${basePrompt}\n\n${safetyFlagDirective(safetyTrigger)}`
-      : basePrompt;
+      : restartAdvisory
+        ? `${basePrompt}\n\n${RESTART_DIRECTIVE}`
+        : basePrompt;
   const withMachine = machineSection ? `${withHazard}\n\n${machineSection}` : withHazard;
   // Visual (photographed nameplate) evidence rides after machine evidence; with
   // none the string is byte-identical to before.
@@ -3668,6 +3682,10 @@ async function handleChatTurn(
       // #4068: with the gate off, content streams live — the related-manual
       // warning goes out as the first content, before any model text.
       let relatedWarningStreamed = false;
+      // #4645 (Codex #4652 r1 F2): the restart banner reaches the live stream in
+      // the unbuffered (gate-off) mode too, once, ahead of the related-manual
+      // warning — the same order the persisted answerText uses.
+      let restartBannerStreamed = false;
       let served = false;
       let servedModel: string | null = null;
       let internalError: unknown = null;
@@ -3895,6 +3913,12 @@ async function handleChatTurn(
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
                     if (!gate) {
+                      if (restartAdvisory && flagBanner && !restartBannerStreamed) {
+                        restartBannerStreamed = true;
+                        controller.enqueue(
+                          enc.encode(sse({ kind: "content", content: `${flagBanner}\n\n` } as NotebookContentFrame)),
+                        );
+                      }
                       if (relatedManualWarning && !relatedWarningStreamed) {
                         relatedWarningStreamed = true;
                         controller.enqueue(
