@@ -135,7 +135,7 @@ export function citesOnlyUnconfirmedPhotoReadings(
 
 export type KeepPhotoResult =
   | { readonly ok: true; readonly docId: string; readonly alreadyKept: boolean; readonly chunkCount: number }
-  | { readonly ok: false; readonly status: 404 | 409 | 503; readonly error: string };
+  | { readonly ok: false; readonly status: 400 | 404 | 409 | 503; readonly error: string };
 
 /**
  * Keep a photo already linked to this notebook as one of its sources.
@@ -151,6 +151,7 @@ export async function keepPhotoAsSource(opts: {
   readonly threadId?: string | null;
 }): Promise<KeepPhotoResult> {
   const { tenantId, notebook, fileId } = opts;
+  if (!opts.threadId || !opts.userId) return { ok: false, status: 400, error: "conversation_scope_required" };
   // The link is the server's proof the photo was attached to THIS machine; a
   // file id from another notebook or tenant is indistinguishable from none.
   const photo = await photoLinkedToTarget(tenantId, fileId, "equipment_notebook", notebook.id);
@@ -159,12 +160,9 @@ export async function keepPhotoAsSource(opts: {
   const existing = await findVisibleOriginSource(tenantId, notebook.id, fileId);
   if (existing) return { ok: true, docId: existing.docId, alreadyKept: true, chunkCount: 0 };
 
-  // The same photo can be read more than once, and readings can disagree. Keep
-  // the one from the conversation the technician is looking at; without a
-  // conversation (or an owner to scope by) fall back to the latest reading.
-  const scope = opts.threadId !== undefined && opts.userId
-    ? { notebookId: notebook.id, ownerUserId: opts.userId, threadId: opts.threadId }
-    : undefined;
+  // Keep only the reading from this owner's explicit conversation, including
+  // the canonical "legacy" conversation. Never fall back to another reading.
+  const scope = { notebookId: notebook.id, ownerUserId: opts.userId, threadId: opts.threadId };
   const reading = await withTenantContext(tenantId, (c) => loadVisualEvidenceForPhoto(c, tenantId, fileId, scope));
   // No stored reading means there is nothing citable to keep. Say so rather
   // than attach an empty document.

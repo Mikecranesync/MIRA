@@ -18,7 +18,7 @@ const NB = "dfe74725-a4ac-4c5f-8e8c-1f06002daf0f";
 const PHOTO = "f803bb1e-325e-46fd-a1a7-4421425c1f3e";
 const notebook = { id: NB, nodeId: "d400e0ae-218b-4dbc-8705-ad951ef0b80c", displayName: "Ride A", asset: null };
 
-const call = (id = NB, fileId = PHOTO, body?: unknown) =>
+const call = (id = NB, fileId = PHOTO, body: unknown = { threadId: "legacy" }) =>
   POST(new Request(`http://x/api/equipment-notebooks/${id}/photos/${fileId}/source`, {
     method: "POST",
     ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { "content-type": "application/json" } }),
@@ -71,13 +71,18 @@ describe("POST /api/equipment-notebooks/[id]/photos/[fileId]/source", () => {
     const res = await call();
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ docId: "doc-1", alreadyKept: false, chunkCount: 2 });
-    expect(keepPhotoAsSource).toHaveBeenCalledWith({ tenantId: TENANT, userId: "user-1", notebook, fileId: PHOTO });
+    expect(keepPhotoAsSource).toHaveBeenCalledWith({ tenantId: TENANT, userId: "user-1", notebook, fileId: PHOTO, threadId: "legacy" });
   });
 
   it("keeps the reading from the conversation named in the body", async () => {
     const threadId = "3c28cc6a-897d-4a51-a665-640fbc8380e1";
     expect((await call(NB, PHOTO, { threadId })).status).toBe(200);
     expect(keepPhotoAsSource).toHaveBeenCalledWith({ tenantId: TENANT, userId: "user-1", notebook, fileId: PHOTO, threadId });
+  });
+
+  it.each([{}, { threadId: null }, { threadId: 7 }])("rejects missing or non-string conversation scope: %j", async (body) => {
+    expect((await call(NB, PHOTO, body)).status).toBe(400);
+    expect(keepPhotoAsSource).not.toHaveBeenCalled();
   });
 
   it("rejects a malformed conversation id", async () => {

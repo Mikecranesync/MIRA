@@ -962,7 +962,7 @@ function UnifiedChatForNotebook({
     await request(
       `/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`,
       // The conversation whose reading the technician is looking at.
-      { method: "POST", json: attachmentThreadId ? { threadId: attachmentThreadId } : {} },
+      { method: "POST", json: { threadId: attachmentThreadId ?? "legacy" } },
     );
     setKeptPhotoIds((prev) => new Set(prev).add(fileId));
     await refreshPromotedScope();

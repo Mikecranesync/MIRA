@@ -11,6 +11,7 @@
  * `@/capabilities/photo-source` for the evidence rules.
  *
  *   200 { docId, alreadyKept, chunkCount }
+ *   400 invalid_thread_id | conversation_scope_required
  *   404 notebook_not_found | photo_not_found
  *   409 asset_not_confirmed | no_photo_reading
  *   503 photo_source_in_progress | attach_source_failed:<reason>
@@ -45,11 +46,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     );
   }
 
-  // Optional `{ threadId }`: the conversation whose reading the technician saw.
+  // Required `{ threadId }` (including "legacy"): the conversation whose reading the technician saw.
   const body = (await req.json().catch(() => null)) as { threadId?: unknown } | null;
   const rawThread = typeof body?.threadId === "string" ? body.threadId : null;
-  const threadId = rawThread === null ? undefined : normalizeNotebookThreadId(rawThread);
-  if (rawThread !== null && !threadId) return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
+  const threadId = rawThread === null ? null : normalizeNotebookThreadId(rawThread);
+  if (!threadId) return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
 
   try {
     const result = await keepPhotoAsSource({
@@ -57,7 +58,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       userId: ctx.userId ?? null,
       notebook,
       fileId,
-      ...(threadId ? { threadId } : {}),
+      threadId,
     });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
     return NextResponse.json({ docId: result.docId, alreadyKept: result.alreadyKept, chunkCount: result.chunkCount });

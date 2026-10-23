@@ -24,6 +24,7 @@ vi.mock("@/lib/visual-evidence-context", () => ({
   loadVisualEvidenceForPhoto: vi.fn(async () => READING),
 }));
 
+import { withTenantContext } from "@/lib/tenant-context";
 import { attachSource, findVisibleOriginSource, markNameplateDocVerified, supersedePriorOriginSources } from "@/lib/equipment-notebooks";
 import { claimIngest, linkFileToUpload, parkOrReuseFile, photoLinkedToTarget } from "@/lib/workspace-files";
 import { deleteOrphanNodeIngest, ingestTextToNode } from "@/lib/node-knowledge-ingest";
@@ -46,7 +47,7 @@ const READING = {
   observedAt: "2026-10-23T08:44:41.003Z",
 };
 
-const keep = () => keepPhotoAsSource({ tenantId: TENANT, userId: "user-1", notebook: NOTEBOOK, fileId: PHOTO });
+const keep = () => keepPhotoAsSource({ tenantId: TENANT, userId: "user-1", notebook: NOTEBOOK, fileId: PHOTO, threadId: "legacy" });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -128,9 +129,37 @@ describe("keepPhotoAsSource", () => {
     });
   });
 
-  it("falls back to the latest reading when no conversation is given", async () => {
-    await keep();
-    expect(vi.mocked(loadVisualEvidenceForPhoto).mock.calls[0][3]).toBeUndefined();
+  it.each([undefined, null, ""])("refuses missing conversation scope (%s) before any source lookup", async (threadId) => {
+    expect(await keepPhotoAsSource({ tenantId: TENANT, userId: "user-1", notebook: NOTEBOOK, fileId: PHOTO, threadId }))
+      .toEqual({ ok: false, status: 400, error: "conversation_scope_required" });
+    expect(findVisibleOriginSource).not.toHaveBeenCalled();
+    expect(loadVisualEvidenceForPhoto).not.toHaveBeenCalled();
+    expect(ingestTextToNode).not.toHaveBeenCalled();
+  });
+
+  it("refuses a reading lookup without an authenticated owner", async () => {
+    expect(await keepPhotoAsSource({ tenantId: TENANT, userId: null, notebook: NOTEBOOK, fileId: PHOTO, threadId: "legacy" }))
+      .toEqual({ ok: false, status: 400, error: "conversation_scope_required" });
+    expect(loadVisualEvidenceForPhoto).not.toHaveBeenCalled();
+    expect(attachSource).not.toHaveBeenCalled();
+  });
+
+  it("ingests the older legacy reading for this owner even when newer readings reuse the bytes", async () => {
+    const { loadVisualEvidenceForPhoto: realLoad } = await vi.importActual<typeof import("@/lib/visual-evidence-context")>("@/lib/visual-evidence-context");
+    const own = { observation_id: "own-legacy", session_id: "s1", text: "Legacy label Q17",
+      obs_kind: "entity", review_state: "unreviewed", file_id: PHOTO, notebook_id: NOTEBOOK.id,
+      owner_user_id: "user-1", thread_id: "legacy", hazards: [] };
+    const query = vi.fn(async () => ({ rows: [
+      { ...own, observation_id: "newer-thread", thread_id: "other-thread", text: "Other thread Q99" },
+      { ...own, observation_id: "newer-user", owner_user_id: "user-2", text: "Other owner Q88" }, own,
+    ] }));
+    vi.mocked(withTenantContext).mockImplementationOnce(async (_tenant, fn) => fn({ query } as never));
+    vi.mocked(loadVisualEvidenceForPhoto).mockImplementationOnce(realLoad);
+    expect((await keep()).ok).toBe(true);
+    const text = vi.mocked(ingestTextToNode).mock.calls[0][0].buffer.toString("utf8");
+    expect(text).toContain("Legacy label Q17");
+    expect(text).not.toContain("Q99");
+    expect(text).not.toContain("Q88");
   });
 
   it("never marks the model's transcription verified", async () => {
