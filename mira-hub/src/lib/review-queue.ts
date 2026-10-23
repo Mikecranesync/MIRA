@@ -32,9 +32,7 @@ export interface ReviewQueueResponse {
   notice?: ReviewQueueNotice;
 }
 
-const SCHEMA_BEHIND_GRANT = "42501";
-const SCHEMA_BEHIND_ABORTED = "25P02";
-const SCHEMA_BEHIND_MISSING_ROLE = "42704";
+const NOT_IN_TRANSACTION = "25P01";
 const EPOCH_ISO = new Date(0).toISOString();
 
 function sqlstateOf(err: unknown): string | undefined {
@@ -42,10 +40,12 @@ function sqlstateOf(err: unknown): string | undefined {
   return typeof code === "string" && code ? code : undefined;
 }
 
+// Same law as machine-memory.ts / GET /api/work-orders: only undefined_table
+// (42P01) and undefined_column (42703) mean "migration not applied". An aborted
+// transaction (25P02), GRANT miss (42501), or missing role (42704) must not be
+// reported as #3355/#3952 — those are recovery or tenant-preamble failures.
 export function isReviewQueueSchemaBehind(err: unknown): boolean {
-  if (isUndefinedRelationOrColumn(err)) return true;
-  const code = sqlstateOf(err);
-  return code === SCHEMA_BEHIND_GRANT || code === SCHEMA_BEHIND_ABORTED || code === SCHEMA_BEHIND_MISSING_ROLE;
+  return isUndefinedRelationOrColumn(err);
 }
 
 export function schemaBehindNotice(sqlstate?: string): ReviewQueueNotice {
@@ -97,7 +97,7 @@ export function isReviewAdmin(email: string | null | undefined): boolean {
   return ADMIN_EMAILS.includes(email.toLowerCase());
 }
 
-// ── proposal source ─────────────────────────────────────────
+// ── proposal source ─────────────────────────────
 
 interface ProposalRow {
   id: string;
@@ -113,20 +113,40 @@ interface ProposalRow {
   created_at: Date | string | null;
 }
 
+function mapProposalRows(rows: ProposalRow[]): ReviewItem[] {
+  return rows.map((r) => ({
+    id: `prop:${r.id}`,
+    type: "proposal" as const,
+    title: `${r.source_name ?? r.source_entity_type} ─ ${r.relationship_type} ─ ${
+      r.target_name ?? r.target_entity_type
+    }`,
+    previewUrl: null,
+    body: r.reasoning ?? null,
+    source: `relationship_proposals`,
+    createdAt: toIsoString(r.created_at),
+    meta: {
+      confidence: `${Math.round(r.confidence * 100)}%`,
+      createdBy: r.created_by,
+    },
+  }));
+}
+
 export async function fetchProposals(
   client: PoolClient,
   tenantId: string,
-): Promise<ReviewItem[]> {
+): Promise<{ items: ReviewItem[]; notice?: ReviewQueueNotice }> {
   // Same class as manual-rag.ts hybrid_vector_lane (#4487): a failing SELECT
   // inside withTenantContext's transaction aborts it, so the later COMMIT
   // raises 25P02. Fence the optional proposals query in a SAVEPOINT.
+  // 25P01 is the only SAVEPOINT miss that means "no transaction to recover".
+  // Any other SAVEPOINT error (including 25P02 already-aborted) propagates so
+  // withTenantContext rolls back instead of reporting schema_behind.
   let savepoint = false;
   try {
     await client.query("SAVEPOINT review_queue_proposals");
     savepoint = true;
-  } catch {
-    // 25P01 / not in a transaction — nothing to recover.
-    savepoint = false;
+  } catch (err) {
+    if (sqlstateOf(err) !== NOT_IN_TRANSACTION) throw err;
   }
   try {
     const { rows } = await client.query<ProposalRow>(
@@ -150,37 +170,23 @@ export async function fetchProposals(
       [tenantId],
     );
     if (savepoint) await client.query("RELEASE SAVEPOINT review_queue_proposals");
-    return rows.map((r) => ({
-      id: `prop:${r.id}`,
-      type: "proposal" as const,
-      title: `${r.source_name ?? r.source_entity_type} ─ ${r.relationship_type} ─ ${
-        r.target_name ?? r.target_entity_type
-      }`,
-      previewUrl: null,
-      body: r.reasoning ?? null,
-      source: `relationship_proposals`,
-      createdAt: toIsoString(r.created_at),
-      meta: {
-        confidence: `${Math.round(r.confidence * 100)}%`,
-        createdBy: r.created_by,
-      },
-    }));
+    return { items: mapProposalRows(rows) };
   } catch (err) {
-    if (savepoint) {
-      try {
-        await client.query("ROLLBACK TO SAVEPOINT review_queue_proposals");
-      } catch (rollbackErr) {
-        console.warn(
-          "[review-queue] review_queue_proposals savepoint rollback failed:",
-          rollbackErr instanceof Error ? rollbackErr.message : rollbackErr,
-        );
-      }
+    // Do not swallow ROLLBACK TO — same as pg-unique-retry.ts. A failed
+    // rollback leaves the caller transaction aborted; getReviewQueue must not
+    // turn that into a successful empty page + schema_behind notice.
+    if (savepoint) await client.query("ROLLBACK TO SAVEPOINT review_queue_proposals");
+    if (isReviewQueueSchemaBehind(err)) {
+      const sqlstate = sqlstateOf(err);
+      console.warn("[review-queue] fetchProposals failed (schema behind)", sqlstate, err);
+      return { items: [], notice: schemaBehindNotice(sqlstate) };
     }
-    throw err;
+    console.error("[review-queue] fetchProposals failed", err);
+    return { items: [] };
   }
 }
 
-// ── filesystem image sources ───────────────────────────────
+// ── filesystem image sources ───────────────
 
 async function* walkImages(absDir: string, base: string): AsyncGenerator<{
   absPath: string;
@@ -238,7 +244,7 @@ export const fetchCartoons = () => fetchImageQueue("cartoon", "marketing/cartoon
 export const fetchScreenshots = () =>
   fetchImageQueue("screenshot", "docs/promo-screenshots");
 
-// ── web-review audit source ────────────────────────────────
+// ── web-review audit source ────────────────────
 
 interface AuditFinding {
   url?: string;
@@ -290,25 +296,17 @@ export async function fetchWebReviewFindings(): Promise<ReviewItem[]> {
   }));
 }
 
-// ── orchestrator ───────────────────────────────────────────
+// ── orchestrator ───────────────────────
 
 export async function getReviewQueue(
   client: PoolClient,
   tenantId: string,
 ): Promise<ReviewQueueResponse> {
-  // Fan-out fetch. Each source isolated so one failure doesn't bury the rest.
-  let notice: ReviewQueueNotice | undefined;
-  const [proposals, cartoons, screenshots, audits] = await Promise.all([
-    fetchProposals(client, tenantId).catch((e) => {
-      const sqlstate = sqlstateOf(e);
-      if (isReviewQueueSchemaBehind(e)) {
-        notice = schemaBehindNotice(sqlstate);
-        console.warn("[review-queue] fetchProposals failed (schema behind)", sqlstate, e);
-      } else {
-        console.error("[review-queue] fetchProposals failed", e);
-      }
-      return [] as ReviewItem[];
-    }),
+  // Proposals are fenced by SAVEPOINT and must not be swallowed: a failed
+  // rollback leaves the caller transaction aborted, and withTenantContext's
+  // COMMIT would then raise 25P02. Filesystem sources do not use the client.
+  const [proposalFetch, cartoons, screenshots, audits] = await Promise.all([
+    fetchProposals(client, tenantId),
     fetchCartoons().catch((e) => {
       console.error("[review-queue] fetchCartoons failed", e);
       return [] as ReviewItem[];
@@ -322,6 +320,7 @@ export async function getReviewQueue(
       return [] as ReviewItem[];
     }),
   ]);
+  const proposals = proposalFetch.items;
   const items = [...proposals, ...cartoons, ...screenshots, ...audits].sort((a, b) =>
     toIsoString(b.createdAt).localeCompare(toIsoString(a.createdAt)),
   );
@@ -332,7 +331,9 @@ export async function getReviewQueue(
     audit: audits.length,
     total: items.length,
   };
-  return notice ? { items, counts, notice } : { items, counts };
+  return proposalFetch.notice
+    ? { items, counts, notice: proposalFetch.notice }
+    : { items, counts };
 }
 
 // Helper used by the asset route. Anchors a relative path inside one of the

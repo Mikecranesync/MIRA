@@ -32,6 +32,9 @@ export async function GET() {
     const data = await withTenantContext(ctx.tenantId, (c) => getReviewQueue(c, ctx.tenantId));
     return NextResponse.json(data);
   } catch (err) {
+    // Same law as GET /api/work-orders: degrade ONLY on 42P01 / 42703.
+    // 25P02 (aborted txn), 42501 (GRANT), 42704 (missing role) stay 500 — they
+    // are not evidence that relationship_proposals is unmigrated.
     if (isReviewQueueSchemaBehind(err)) {
       const sqlstate = (err as { code?: string } | null | undefined)?.code;
       console.warn("[api/admin/review/queue] schema behind", sqlstate, err);

@@ -5,7 +5,7 @@
  * Same class as the hybrid-vector-lane SAVEPOINT in manual-rag.ts (#4487):
  * a swallowed query error inside withTenantContext aborts the transaction,
  * then COMMIT raises 25P02. Fence fetchProposals in SAVEPOINT
- * review_queue_proposals; report schema_behind instead of 500.
+ * review_queue_proposals; report schema_behind only for 42P01 / 42703.
  *
  * Lives under capabilities/__tests__ (ungated). Do not put this under
  * src/lib/__tests__ or src/app/** — those buckets fail closed in the
@@ -27,6 +27,8 @@ function txnClient(opts: {
   inTransaction: boolean;
   proposalError?: string;
   proposalRows?: Array<Record<string, unknown>>;
+  savepointError?: string;
+  rollbackFails?: boolean;
 }) {
   const calls: string[] = [];
   let aborted = false;
@@ -35,12 +37,16 @@ function txnClient(opts: {
   const query = vi.fn(async (sql: string) => {
     calls.push(sql.trim().split(/\s+/).slice(0, 3).join(" "));
     if (/^\s*SAVEPOINT/i.test(sql)) {
+      if (opts.savepointError) throw pgError(opts.savepointError, `SAVEPOINT failed (${opts.savepointError})`);
       if (!opts.inTransaction) throw pgError("25P01", "SAVEPOINT can only be used in transaction blocks");
       savepointTaken = true;
       return { rows: [] };
     }
     if (/^\s*ROLLBACK TO SAVEPOINT/i.test(sql)) {
       if (!savepointTaken) throw pgError("3B001", "savepoint does not exist");
+      if (opts.rollbackFails) {
+        throw pgError("25P02", "current transaction is aborted, commands ignored until end of transaction block");
+      }
       aborted = false;
       return { rows: [] };
     }
@@ -106,6 +112,34 @@ describe("review queue — schema-behind proposals must not abort the caller tra
     expect(out.notice).toBeUndefined();
     expect(isAborted()).toBe(false);
     await expect(client.query("COMMIT")).resolves.toEqual({ rows: [] });
+  });
+
+  it("42501 GRANT miss after SAVEPOINT → empty proposals, no schema_behind notice, COMMIT succeeds", async () => {
+    const { client, isAborted } = txnClient({ inTransaction: true, proposalError: "42501" });
+    const out = await getReviewQueue(client, TENANT);
+    expect(out.items.filter((i) => i.type === "proposal")).toEqual([]);
+    expect(out.notice).toBeUndefined();
+    expect(isAborted()).toBe(false);
+    await expect(client.query("COMMIT")).resolves.toEqual({ rows: [] });
+  });
+
+  it("ROLLBACK TO failure → getReviewQueue throws, COMMIT still 25P02 (not schema_behind)", async () => {
+    const { client, isAborted } = txnClient({
+      inTransaction: true,
+      proposalError: "42P01",
+      rollbackFails: true,
+    });
+    await expect(getReviewQueue(client, TENANT)).rejects.toMatchObject({ code: "25P02" });
+    expect(isAborted()).toBe(true);
+    await expect(client.query("COMMIT")).rejects.toMatchObject({ code: "25P02" });
+  });
+
+  it("SAVEPOINT 25P02 (already aborted) → getReviewQueue throws, does not claim schema_behind", async () => {
+    const { client } = txnClient({
+      inTransaction: true,
+      savepointError: "25P02",
+    });
+    await expect(getReviewQueue(client, TENANT)).rejects.toMatchObject({ code: "25P02" });
   });
 
   it("successful proposal with Date created_at → ISO string, no throw, no notice, counts.proposal=1", async () => {

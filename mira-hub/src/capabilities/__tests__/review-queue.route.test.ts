@@ -1,7 +1,8 @@
 // #1932: the review-queue route must reject callers who lack review_queue.read
 // (403) and serve those who have it (200) — via the shared requireCapability
 // guard, so the gate matches what the nav shows.
-// #4649: schema-behind (42P01 / 25P02) is a 200 + notice, not 500.
+// #4649: only 42P01 / 42703 degrade to 200 + schema_behind. 25P02 / 42501 /
+// 42704 and generic errors stay 500 — they are not unapplied-migration evidence.
 // Lives under capabilities/__tests__ (ungated). The historical
 // src/app/api/admin/review/queue/__tests__/route.test.ts stays on main unchanged.
 
@@ -67,8 +68,22 @@ it("200 + schema_behind notice when withTenantContext rejects 42P01 (#4649)", as
   expect(body.error).toBeUndefined();
 });
 
-it("200 + schema_behind notice when withTenantContext rejects 25P02 (#4649)", async () => {
+it("200 + schema_behind notice when withTenantContext rejects 42703 (#4649)", async () => {
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  vi.mocked(sessionOr401).mockResolvedValue({ ...base, email: "admin@allow", status: "admin", platformAdmin: true } as never);
+  vi.mocked(withTenantContext).mockRejectedValue(
+    Object.assign(new Error('column "tenant_id" does not exist'), { code: "42703" }),
+  );
+  const res = await GET();
+  expect(res.status).toBe(200);
+  const body = await res.json();
+  expect(body.notice?.code).toBe("schema_behind");
+  expect(body.notice?.sqlstate).toBe("42703");
+  expect(body.items).toEqual([]);
+});
+
+it("500 Queue load failed when withTenantContext rejects 25P02 (aborted txn is not schema-behind)", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.mocked(sessionOr401).mockResolvedValue({ ...base, email: "admin@allow", status: "admin", platformAdmin: true } as never);
   vi.mocked(withTenantContext).mockRejectedValue(
     Object.assign(new Error("current transaction is aborted, commands ignored until end of transaction block"), {
@@ -76,12 +91,36 @@ it("200 + schema_behind notice when withTenantContext rejects 25P02 (#4649)", as
     }),
   );
   const res = await GET();
-  expect(res.status).toBe(200);
+  expect(res.status).toBe(500);
   const body = await res.json();
-  expect(body.notice?.code).toBe("schema_behind");
-  expect(body.notice?.sqlstate).toBe("25P02");
-  expect(body.items).toEqual([]);
-  expect(body.error).toBeUndefined();
+  expect(body.error).toBe("Queue load failed");
+  expect(body.notice).toBeUndefined();
+});
+
+it("500 Queue load failed when withTenantContext rejects 42501 (GRANT is not schema-behind)", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.mocked(sessionOr401).mockResolvedValue({ ...base, email: "admin@allow", status: "admin", platformAdmin: true } as never);
+  vi.mocked(withTenantContext).mockRejectedValue(
+    Object.assign(new Error("permission denied for table relationship_proposals"), { code: "42501" }),
+  );
+  const res = await GET();
+  expect(res.status).toBe(500);
+  const body = await res.json();
+  expect(body.error).toBe("Queue load failed");
+  expect(body.notice).toBeUndefined();
+});
+
+it("500 Queue load failed when withTenantContext rejects 42704 (missing role is not schema-behind)", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.mocked(sessionOr401).mockResolvedValue({ ...base, email: "admin@allow", status: "admin", platformAdmin: true } as never);
+  vi.mocked(withTenantContext).mockRejectedValue(
+    Object.assign(new Error('role "factorylm_app" does not exist'), { code: "42704" }),
+  );
+  const res = await GET();
+  expect(res.status).toBe(500);
+  const body = await res.json();
+  expect(body.error).toBe("Queue load failed");
+  expect(body.notice).toBeUndefined();
 });
 
 it("500 Queue load failed when withTenantContext rejects a generic Error", async () => {
