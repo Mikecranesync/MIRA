@@ -191,9 +191,10 @@ export async function recordNameplateObservations(opts: {
  *    flow and never sweep by asset/tenant. It is surfaced ONLY by
  *    {@link loadVisualEvidenceForPhoto}, on a turn whose rider carries this photo.
  *  - **ONE observation, in `raw_value`** (not `normalized_value`). The vision text
- *    is a free-form field description, not a `"<field>: <value>"` nameplate fact,
- *    so it stays OUTSIDE the confirm/correct path
- *    ({@link fieldOfNormalizedValue} returns null for it). The read path uses
+ *    is a free-form field description, not a `"<field>: <value>"` nameplate fact.
+ *    A conversation-scoped call to {@link correctVisualObservations} can now
+ *    replace the raw reading; nameplate-shaped {@link fieldOfNormalizedValue}
+ *    still does not apply to the original `raw_value` row. The read path uses
  *    `coalesce(normalized_value, raw_value)`, so `raw_value` renders.
  *  - **`source_type='unknown'`** — a general inspection photo is not a
  *    `'nameplate'`; `'unknown'` is in the existing CHECK enum, so no schema ALTER
@@ -348,6 +349,13 @@ export type VisualCorrection = {
 
 /** Matches the confirm route's identity-field cap (`readIdentity` slices to 200). */
 const MAX_CORRECTION_VALUE_CHARS = 200;
+export const MAX_LOOK_CORRECTION_VALUE_CHARS = 20_000;
+export type LookConversationScope = {
+  readonly notebookId: string;
+  readonly ownerUserId: string;
+  readonly threadId: string | null;
+  readonly allowLegacy?: boolean;
+};
 
 /**
  * Split a persisted `normalized_value` (`"<field>: <value>"`, as written by
@@ -402,6 +410,12 @@ export function fieldOfNormalizedValue(normalized: string | null | undefined): s
  * `withTenantContext` transaction so two concurrent confirms cannot both
  * supersede the same reading.
  *
+ * A conversation-scoped LOOK/print call (`opts.conversation`) reuses this same
+ * writer: it keys the session on notebook/owner/thread instead of `asset_id`,
+ * stores the reviewed prose as `photo_reading`, and allows a later technician
+ * edit to replace a prior correction. Omitting `conversation` keeps the
+ * nameplate path identical (200-char cap, field:value rows, same-value skip).
+ *
  * ONE technician truth per field (Codex F1, 2026-09-17): a confirm request also
  * carries the identity the technician just confirmed, and that identity becomes
  * a trusted nameplate document. A correction whose SERVER-DERIVED field is one
@@ -437,15 +451,20 @@ export async function correctVisualObservations(opts: {
   readonly correctedBy: string | null;
   /** The identity confirmed by the SAME request, keyed by nameplate field. */
   readonly expected?: Readonly<Record<string, string | undefined>>;
+  readonly conversation?: LookConversationScope;
 }): Promise<{
   corrected: { supersededId: string; replacementId: string }[];
   mismatched: VisualCorrectionMismatch[];
 }> {
-  if (!isUuidKey(opts.boundEntityId)) return { corrected: [], mismatched: [] };
+  const scope = opts.conversation;
+  if (scope) {
+    if (!isUuidKey(scope.notebookId) || !scope.ownerUserId) return { corrected: [], mismatched: [] };
+  } else if (!isUuidKey(opts.boundEntityId)) return { corrected: [], mismatched: [] };
   if (!isUuidKey(opts.fileId)) return { corrected: [], mismatched: [] };
+  const valueCap = scope ? MAX_LOOK_CORRECTION_VALUE_CHARS : MAX_CORRECTION_VALUE_CHARS;
   const wanted = opts.corrections
     .filter((c) => isUuidKey(c.observationId) && typeof c.value === "string" && c.value.trim() !== "")
-    .map((c) => ({ observationId: c.observationId, value: c.value.trim().slice(0, MAX_CORRECTION_VALUE_CHARS) }));
+    .map((c) => ({ observationId: c.observationId, value: c.value.trim().slice(0, valueCap) }));
   if (wanted.length === 0) return { corrected: [], mismatched: [] };
   const expected = opts.expected ?? {};
 
@@ -458,29 +477,36 @@ export async function correctVisualObservations(opts: {
       // is applied in code below rather than in the WHERE, because an already-
       // superseded target is not "not ours" — it may be this very correction
       // replayed (Codex round 3 F1), which must read as satisfied, not as lost.
+      const sessionPredicate = scope
+        ? `vs.asset_id IS NULL AND vs.metadata->>'notebook_id' = $3 AND vs.created_by = $5 AND vs.metadata->>'thread_id' = $6`
+        : `vs.asset_id = $3::uuid`;
+      const targetParams = scope
+        ? [w.observationId, opts.tenantId, scope.notebookId, opts.fileId, scope.ownerUserId, scope.threadId ?? "legacy"]
+        : [w.observationId, opts.tenantId, opts.boundEntityId, opts.fileId];
       const target = await c.query(
         `SELECT o.observation_id::text AS id, o.session_id::text AS session_id,
                 o.evidence_id::text AS evidence_id, o.normalized_value,
-                o.review_state, o.evidence_state, o.superseded_by::text AS superseded_by
+                o.review_state, o.evidence_state, o.superseded_by::text AS superseded_by,
+                o.extractor
            FROM observation o
           WHERE o.observation_id = $1::uuid
             AND o.tenant_id = $2
             AND o.session_id IN (
               SELECT vs.session_id FROM visual_session vs
-               WHERE vs.tenant_id = $2 AND vs.asset_id = $3::uuid
+               WHERE vs.tenant_id = $2 AND ${sessionPredicate}
             )
             AND o.evidence_id IN (
               SELECT e.evidence_id FROM evidence_item e
                WHERE e.tenant_id = $2 AND e.capture_meta->>'file_id' = $4
             )
           FOR UPDATE`,
-        [w.observationId, opts.tenantId, opts.boundEntityId, opts.fileId],
+        targetParams,
       );
       const row = target.rows[0];
       if (!row) continue; // not ours / not this capture → nothing
-      const field = fieldOfNormalizedValue(row.normalized_value as string | null);
+      const field = scope ? "photo_reading" : fieldOfNormalizedValue(row.normalized_value as string | null);
       if (!field) continue; // not a "<field>: <value>" row → cannot correct safely
-      const wantedValue = `${field}: ${w.value}`;
+      const wantedValue = scope ? w.value : `${field}: ${w.value}`;
 
       // ONE technician truth per field — checked BEFORE both the replay and the
       // fresh-write branches (Codex F1): a replayed correction that disagrees
@@ -526,10 +552,13 @@ export async function correctVisualObservations(opts: {
       }
 
       // Liveness: only an unreviewed, active, not-superseded candidate can be corrected.
-      if (row.review_state !== "unreviewed") continue;
+      // LOOK/print also allows a prior technician correction so a later edit can replace it.
+      const liveUnreviewed = row.review_state === "unreviewed";
+      const liveLookEdit = Boolean(scope) && row.review_state === "corrected" && row.extractor === "technician";
+      if (!liveUnreviewed && !liveLookEdit) continue;
       if (row.evidence_state === "REJECTED" || row.evidence_state === "SUPERSEDED") continue;
       if (row.superseded_by) continue;
-      if (wantedValue === row.normalized_value) continue; // same value = a confirm, not a correction
+      if (!scope && wantedValue === row.normalized_value) continue; // same value = a confirm, not a correction
 
       const ins = await c.query(
         `INSERT INTO observation
@@ -541,7 +570,7 @@ export async function correctVisualObservations(opts: {
           row.session_id,
           opts.tenantId,
           row.evidence_id,
-          `${field}: ${w.value}`,
+          wantedValue,
           JSON.stringify({ corrected_from: row.id, corrected_by: opts.correctedBy, field }),
         ],
       );
@@ -637,14 +666,15 @@ export async function loadVisualEvidenceForAsset(
  * the whole key.
  *
  * F1 (IR #3907, sticky-MAX remediation): restricts to LOOK-provenance rows ONLY
- * (`extractor='inspection_vision'`) so a later nameplate row for the same file
- * cannot erase a stored hazard. Returns the **MAX-confidence blocking hazard**
- * across ALL active (non-rejected, non-superseded) LOOK rows for this fileId, plus
- * the latest LOOK observation text. A re-LOOK with `hazards: []` (model variance or
- * follow-up) does NOT un-stop an older LOOK with a high-confidence hazard — the
- * hazard is **sticky until a human rejects the observation** (director default on
- * #3626). This aggregates the stop decision across all LOOK rows while surfacing
- * one description (the latest) to avoid duplicate lines in context.
+ * (`extractor='inspection_vision'` or a technician-corrected `photo_reading`)
+ * so a later nameplate row for the same file cannot erase a stored hazard.
+ * Returns the **MAX-confidence blocking hazard** across ALL active (non-rejected,
+ * non-superseded) LOOK rows for this fileId, plus the latest LOOK observation
+ * text. A re-LOOK with `hazards: []` (model variance or follow-up) does NOT
+ * un-stop an older LOOK with a high-confidence hazard — the hazard is **sticky
+ * until a human rejects the observation** (director default on #3626). This
+ * aggregates the stop decision across all LOOK rows while surfacing one
+ * description (the latest) to avoid duplicate lines in context.
  *
  * Returns null for a non-UUID id or when nothing is stored. `c` is a tenant-scoped
  * client (called inside the route's `withTenantContext`).
@@ -654,14 +684,6 @@ export async function loadVisualEvidenceForAsset(
  * `(tenant_id, (capture_meta->>'file_id'))` would be the scale follow-up (its own
  * migration), not part of this change.
  */
-export type LookConversationScope = {
-  readonly notebookId: string;
-  readonly ownerUserId: string;
-  readonly threadId: string | null;
-  /** Only for a verified reference on an already persisted historical turn. */
-  readonly allowLegacy?: boolean;
-};
-
 export async function loadVisualEvidenceForPhoto(
   c: QueryClient,
   tenantId: string,
@@ -682,7 +704,7 @@ export async function loadVisualEvidenceForPhoto(
        JOIN evidence_item e ON e.evidence_id = o.evidence_id AND e.tenant_id = o.tenant_id
       WHERE o.tenant_id = $1
         AND e.capture_meta->>'file_id' = $2
-        AND o.extractor = 'inspection_vision'
+        AND (o.extractor = 'inspection_vision' OR (o.extractor = 'technician' AND o.review_state = 'corrected' AND o.metadata->>'field' = 'photo_reading'))
         AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
         AND o.review_state <> 'rejected'
         AND o.superseded_by IS NULL
@@ -751,7 +773,7 @@ export async function loadRecentLookObservations(
              AND l.target_type = 'equipment_notebook' AND l.target_id::text = $3
              AND l.role = 'photo'
         )
-        AND o.extractor = 'inspection_vision'
+        AND (o.extractor = 'inspection_vision' OR (o.extractor = 'technician' AND o.review_state = 'corrected' AND o.metadata->>'field' = 'photo_reading'))
         AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED')
         AND o.review_state <> 'rejected' AND o.superseded_by IS NULL
         AND coalesce(o.normalized_value, o.raw_value, '') <> ''
