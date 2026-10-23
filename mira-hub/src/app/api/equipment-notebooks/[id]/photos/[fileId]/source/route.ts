@@ -6,13 +6,13 @@
  * and cite it without the technician re-sending the photo. The citation opens
  * the original photograph.
  *
- * The technician's action confirms that the photo belongs to this machine; the
- * stored vision reading stays an unconfirmed transcription. See
- * `@/capabilities/photo-source` for the evidence rules.
+ * Keep stores only a technician-reviewed reading. A request without
+ * `reviewedReading` is refused as `reading_required` so a vision misread cannot
+ * be stored silently. See `@/capabilities/photo-source` for the evidence rules.
  *
  *   200 { docId, alreadyKept, chunkCount }
  *   404 notebook_not_found | photo_not_found
- *   409 asset_not_confirmed | no_photo_reading
+ *   409 asset_not_confirmed | no_photo_reading | reading_required | correction_not_applied
  *   503 photo_source_in_progress | attach_source_failed:<reason>
  */
 import { NextResponse } from "next/server";
@@ -45,11 +45,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     );
   }
 
-  // Optional `{ threadId }`: the conversation whose reading the technician saw.
-  const body = (await req.json().catch(() => null)) as { threadId?: unknown } | null;
+  // Optional `{ threadId, reviewedReading }`: the conversation whose reading the
+  // technician saw, and the text they reviewed (or corrected) before Keep.
+  const body = (await req.json().catch(() => null)) as {
+    threadId?: unknown;
+    reviewedReading?: unknown;
+  } | null;
   const rawThread = typeof body?.threadId === "string" ? body.threadId : null;
   const threadId = rawThread === null ? undefined : normalizeNotebookThreadId(rawThread);
   if (rawThread !== null && !threadId) return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
+  const reviewedReading = typeof body?.reviewedReading === "string" ? body.reviewedReading : undefined;
 
   try {
     const result = await keepPhotoAsSource({
@@ -58,8 +63,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       notebook,
       fileId,
       ...(threadId ? { threadId } : {}),
+      ...(reviewedReading !== undefined ? { reviewedReading } : {}),
     });
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    if (!result.ok) {
+      if (result.error === "reading_required" && "reading" in result && "observationId" in result) {
+        return NextResponse.json(
+          { error: result.error, reading: result.reading, observationId: result.observationId },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
     return NextResponse.json({ docId: result.docId, alreadyKept: result.alreadyKept, chunkCount: result.chunkCount });
   } catch (err) {
     console.error("[photo-source] keep failed:", err instanceof Error ? err.message : err);

@@ -80,6 +80,17 @@ describe("POST /api/equipment-notebooks/[id]/photos/[fileId]/source", () => {
     expect(keepPhotoAsSource).toHaveBeenCalledWith({ tenantId: TENANT, userId: "user-1", notebook, fileId: PHOTO, threadId });
   });
 
+  it("passes the reviewed reading from the body through to Keep", async () => {
+    expect((await call(NB, PHOTO, { reviewedReading: "-F55.3 /15.0" })).status).toBe(200);
+    expect(keepPhotoAsSource).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      userId: "user-1",
+      notebook,
+      fileId: PHOTO,
+      reviewedReading: "-F55.3 /15.0",
+    });
+  });
+
   it("rejects a malformed conversation id", async () => {
     const res = await call(NB, PHOTO, { threadId: "../../etc" });
     expect(res.status).toBe(400);
@@ -91,6 +102,23 @@ describe("POST /api/equipment-notebooks/[id]/photos/[fileId]/source", () => {
     const res = await call();
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("no_photo_reading");
+  });
+
+  it("forwards a reading_required refusal with the proposed reading and observation id", async () => {
+    vi.mocked(keepPhotoAsSource).mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      error: "reading_required",
+      reading: "-F53 /150",
+      observationId: "obs-1",
+    });
+    const res = await call();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "reading_required",
+      reading: "-F53 /150",
+      observationId: "obs-1",
+    });
   });
 
   it("answers 500 rather than throwing when the capability fails", async () => {

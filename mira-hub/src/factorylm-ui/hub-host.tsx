@@ -87,6 +87,7 @@ import {
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
+import { keepPhotoWithReview } from "./keep-photo-review";
 
 type Detail = {
   notebook: EquipmentNotebook;
@@ -135,50 +136,25 @@ export function HubShellHost() {
   const [signedOut, setSignedOut] = useState(false);
   const [notebooks, setNotebooks] = useState<HubNotebook[] | null>(null);
   const [selection, setSelection] = useState<HubSelection | null>(null);
-  // Mirror for async callbacks that must know whether anything is open yet
-  // without re-subscribing to the selection (the notebook list reloads after
-  // every send).
   const selectionRef = useRef<HubSelection | null>(null);
   useEffect(() => { selectionRef.current = selection; }, [selection]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const detailRef = useRef(detail);
   useEffect(() => { detailRef.current = detail; }, [detail]);
   const [live, setLive] = useState<Live | null>(null);
-  // #4454: the finished answer's follow-up suggestions, kept past the reload
-  // that replaces the live turn (saved rows never carry them).
   const [settledFollowups, setSettledFollowups] = useState<(SettledFollowups & HubSelection) | null>(null);
-  // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  // The upload half of an attached send (#4019 round 2 F2): Stop and thread
-  // changes abort it too, so a slow upload can never post afterwards.
   const uploadAbortRef = useRef<AbortController | null>(null);
-  // Detail loads are independent of the chat stream: their own abort handle and
-  // a latest-request gate so a slow, superseded GET can never overwrite the
-  // detail of the selection that replaced it (Codex #3839 F3).
   const detailAbortRef = useRef<AbortController | null>(null);
   const [detailGate] = useState(() => latestRequestGate());
   const [detailLoads] = useState(() => createLatestLoadTracker());
-
-  // The web adapter holds the picked bytes until onSend uploads them (#4019).
   const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
-
   const [state, dispatch] = useReducer(shellReducer, undefined, initialHubShellState);
-  // #4311: the send path finishes long after the render that started it; a
-  // successful retry needs the composer's CURRENT draft to decide whether the
-  // question it put back is still sitting there.
   const draftRef = useRef(state.draft);
   useEffect(() => { draftRef.current = state.draft; }, [state.draft]);
-
-  /**
-   * Tell the reducer WHICH thread is open, from event handlers (never effects).
-   * The live turns are projected onto the state at render time via `hydrate`
-   * (see `view`); that reducer case resets the draft whenever the thread id
-   * differs from the one it holds, so the id must be kept in sync here or every
-   * keystroke would be wiped by the next render.
-   */
   const syncThread = useCallback((sel: HubSelection) => {
     const at = new Date().toISOString();
     dispatch({
@@ -188,40 +164,24 @@ export function HubShellHost() {
       },
     });
   }, []);
-
-  // --- data: notebooks (projects/threads), then the selected notebook's detail ---
   const loadNotebooks = useCallback(async () => {
     const { status, data } = await getJson<{ notebooks: HubNotebook[] }>("/api/equipment-notebooks/");
     if (status === 401) { setSignedOut(true); return; }
     if (!data) return;
     setNotebooks(data.notebooks);
-    // A deep link / reload names its conversation (#3922); otherwise HOME (L0).
-    // Opening from the URL goes through the same two steps as a click: the
-    // reducer is told the thread id FIRST (`syncThread`), or its hydrate case
-    // would reset the draft on every render and the composer could not be
-    // typed into (the e2e deep-link follow-up caught exactly that).
     if (!selectionRef.current) {
       const next = selectionFromSearch(readSearch(), data.notebooks) ?? landingSelection(data.notebooks);
       if (next) {
         syncThread(next);
         setSelection(next);
-        // A link without a thread opened a freshly minted one (#4444); name it
-        // in the URL so a reload returns to this chat, not another blank one.
         writeSearch(searchForSelection(next));
       }
     }
     return data.notebooks;
   }, [syncThread]);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     void loadNotebooks();
   }, [loadNotebooks]);
-
-  // Codex r15–r16 F30: the ONE gate for starting manual-search following. Every
-  // seed (hydration in loadDetail, confirm) goes through seedManualSearch, so
-  // work that completes after unmount can never restart polling. The ref is
-  // set true in effect SETUP (see the unmount effect below), so StrictMode's
-  // dev-only cleanup/re-setup replay leaves it true (the round-7 F20 lesson).
   const hostMountedRef = useRef(false);
   const seedManualSearch = (notebookId: string, status: ManualSearchStatus): void => {
     if (hostMountedRef.current) manualSearchDriverRef.current?.seed(notebookId, status);
@@ -233,30 +193,22 @@ export function HubShellHost() {
     detailAbortRef.current = ctrl;
     let res: { status: number; data: Detail | null };
     try {
-      // Always names the thread (legacy included) — an omitted threadId returns EVERY thread's turns.
       res = await getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/${detailQueryFor(sel)}`, ctrl.signal);
     } catch (err) {
-      // Superseded by a newer load: report THAT load's outcome, not this abort (#4219 Codex r3 F1).
       if (isAbortError(err)) return follow();
       throw err;
     }
-    // Commit only if no newer load or selection change happened while this one was in flight.
     if (!detailGate.isCurrent(token)) return follow();
     if (res.status === 401) { setSignedOut(true); return false; }
     if (!res.data) return false;
     setDetail(res.data);
-    // Codex #4195 round 2 F6: hydration follows a running search to completion —
-    // seed the SAME driver a confirm uses, keyed on this notebook's status.
     if (res.data.manualSearch) seedManualSearch(sel.notebookId, res.data.manualSearch);
     return true;
   }), [detailGate, detailLoads]);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     if (selection) void loadDetail(selection);
   }, [selection, loadDetail]);
   useEffect(() => () => { detailGate.invalidate(); detailAbortRef.current?.abort(); }, [detailGate]);
-
-  /** Change what is open: abort any stream and any in-flight detail load, drop the previous notebook's data. */
   const select = useCallback((sel: HubSelection) => {
     abortRef.current?.abort();
     uploadAbortRef.current?.abort();
@@ -271,19 +223,6 @@ export function HubShellHost() {
     setSelection(sel);
     writeSearch(searchForSelection(sel));
   }, [syncThread, detailGate]);
-
-  // Codex #4195 round 2 (F4/F6/F8/F9): the Hub side of the ONE shared,
-  // framework-free follower (`manual-search-follow.ts`, packages/factorylm-interaction).
-  // Mobile wires the same state machine directly inside UnifiedChat.tsx's own
-  // effects; the Hub's timer-scheduling is extracted into `manual-search-driver.ts`
-  // (see its header for why — no jsdom/@testing-library/react here). `fetchStatus`
-  // reuses the SAME notebook-detail GET `loadDetail` uses — never a second endpoint.
-  // No `HubShellHost` mount test is attempted for this wiring: this file has no
-  // jsdom/@testing-library/react test here either, so the timer-scheduling
-  // behaviour is proven once, framework-free, in `manual-search-driver.test.ts`;
-  // this block's job is only to plumb that proven driver into useState/loadDetail
-  // (lazy `useRef` init, reset-on-select, seed-on-hydrate, seed-on-confirm),
-  // which `tsc --noEmit` + the driver's own tests cover between them.
   const [follow, setFollow] = useState<ManualSearchFollowState | null>(null);
   const manualSearchDriverRef = useRef<ManualSearchDriver | null>(null);
   if (!manualSearchDriverRef.current) {
@@ -301,9 +240,6 @@ export function HubShellHost() {
       },
     });
   }
-  // Codex r14 F29 / r15–r16 F30: stop following when the host unmounts, and
-  // keep it stopped. reset() clears the pending timer and invalidates in-flight
-  // tick continuations (driver epoch).
   useEffect(() => {
     hostMountedRef.current = true;
     return () => {
@@ -311,8 +247,6 @@ export function HubShellHost() {
       manualSearchDriverRef.current?.reset();
     };
   }, []);
-
-  // --- derived shell inputs ---
   const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
   const machines = useMemo(() => notebookMachines(notebooks ?? []), [notebooks]);
   const meta = useMemo(
@@ -320,13 +254,10 @@ export function HubShellHost() {
     [detail, selection, capturedAt],
   );
   const docIds = useMemo(() => enabledDocIds(detail?.sources ?? []), [detail]);
-  // Turn-scoped keys (Codex #3839 F1): every answer numbers its citations from
-  // "[1]", so the index is keyed by (assistant turn id, citation number).
   const citations = useMemo(
     () => citationIndex(detail?.turns ?? [], live?.result?.citations ?? live?.citations ?? [], live ? `${live.id}-a` : null),
     [detail, live],
   );
-
   const liveTurns = useMemo<InteractionTurn[]>(() => {
     if (!live || !meta) return [];
     const context = contextFor(meta);
@@ -351,26 +282,14 @@ export function HubShellHost() {
     };
     return [q, a];
   }, [live, meta, selection]);
-
-  // Live data is a pure projection over the UI state: the reducer's `hydrate`
-  // replaces thread/projects/machines/context and keeps drawer, draft, mode and
-  // the open source. Applying it in render (not an effect) means no cascading
-  // re-render and no moment where the shell shows stale turns.
   const view = useMemo<ShellState>(() => {
     if (!detail || !meta || !selection) {
-      // HOME, or a thread whose detail is still loading: the outgoing message
-      // still shows (a first send creates its project before anything else).
       const openId = selection ? shellThreadId(selection) : HOME_THREAD;
       const turns = withOutgoing([], { turns: [], outgoingId: null }, outgoing, openId, EMPTY_FIXTURE.thread.id, state.activeContext);
       const thread = turns.length ? { ...EMPTY_FIXTURE.thread, turns } : EMPTY_FIXTURE.thread;
       return notebooks ? shellReducer(state, { type: "hydrate", data: { thread, projects, machines } }) : state;
     }
     const base = fixtureFor(detail.notebook, selection, detail.turns, meta, projects, machines);
-    // T2 (#4189 F6): the post-turn-refresh render path — `withManualSearchStatus`
-    // overlays the CURRENT status onto the last assistant turn. The live
-    // in-flight gap (a turn still streaming) is the documented BLOCKED note:
-    // `notebook-chat-utils.ts` (guarded legacy presentation) carries no such
-    // frame, so this appears only once `loadDetail` has re-fetched.
     const settled =
       settledFollowups && settledFollowups.notebookId === selection.notebookId && settledFollowups.threadId === selection.threadId
         ? settledFollowups
@@ -380,24 +299,15 @@ export function HubShellHost() {
         withOutgoing(threadFromPersisted(detail.turns, meta).turns, { turns: liveTurns, outgoingId: live?.outgoingId ?? null }, outgoing, shellThreadId(selection), shellThreadId(selection), contextFor(meta)),
         settled,
       ),
-      // Codex #4195 round 2 F6: the FOLLOWED status (hydration/confirm-seeded,
-      // ticking toward resolution) takes precedence over the raw per-render
-      // read, so an idle Hub still updates once a backgrounded search settles.
       follow?.status ?? detail.manualSearch ?? null,
     );
     const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
   }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing, settledFollowups]);
-
-  // The outgoing message owns its photo previews until it is dropped; leaving
-  // the hub releases whatever it still holds (Codex #4289 F2).
   const outgoingOwner = useMemo(() => createOutgoingOwner((id) => adapter.release?.(id), setOutgoing), [adapter]);
   useEffect(() => () => outgoingOwner.dispose(), [outgoingOwner]);
   const putOutgoing = outgoingOwner.put;
-  /** The outgoing message is done: the server's row (or the restored draft) takes over. */
   const dropOutgoing = outgoingOwner.drop;
-
-  // --- the send path: the canonical notebook-chat route, streamed ---
   const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection) => {
     if (!sel) return;
     abortRef.current?.abort();
@@ -407,7 +317,6 @@ export function HubShellHost() {
     const outgoingId = outgoingOwner.current?.id ?? null;
     setFailedBody(null);
     setSettledFollowups(null);
-    // #4454: which answers were already there, so the kept follow-ups land on the one this send produces.
     const answeredBefore = (detailRef.current?.turns ?? []).map((row) => answerTurnId(row.id));
     dispatch({ type: "set-send-error", error: null });
     setLive({ id, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString(), outgoingId });
@@ -418,7 +327,6 @@ export function HubShellHost() {
       });
       if (res.status === 401) { setSignedOut(true); return; }
       if (!res.ok || !res.body) {
-        // The route's own error codes, in plain language; never a bare status code.
         let code = "";
         try { code = String(((await res.json()) as { error?: unknown }).error ?? ""); } catch { /* no JSON body */ }
         throw new Error(errorMessageFor(code, res.status));
@@ -427,12 +335,8 @@ export function HubShellHost() {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
       });
       setLive((cur) => (cur && cur.id === id ? { ...cur, result } : cur));
-      // The server row is the source of truth; refresh it (also picks up a
-      // thread created by this first turn) and let the live turn go.
       await loadDetail(sel);
       await loadNotebooks();
-      // #4454: keep the follow-ups the live turn showed (same rule as the live
-      // render), for the reloaded answer to that same question.
       const finished = partsFromStream(result, { turnId: `${id}-a` }).find((p) => p.type === "followups");
       setSettledFollowups(
         finished?.type === "followups"
@@ -441,8 +345,6 @@ export function HubShellHost() {
       );
       setLive((cur) => (cur && cur.id === id ? null : cur));
       dropOutgoing(outgoingId);
-      // #4311: a failed send put the question back in the composer; a
-      // successful retry takes it away again (never a newer draft).
       const draft = draftAfterSendSucceeded(draftRef.current, question);
       if (draft !== null) dispatch({ type: "set-draft", draft });
     } catch (err) {
@@ -470,15 +372,6 @@ export function HubShellHost() {
       if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
     }
   }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner]);
-
-  /**
-   * #4019 — attachments ride the turn they were attached to. Upload through the
-   * existing doors (hub-attachments.ts), then ONE canonical send with the
-   * re-read scope and/or the photo rider. A failed upload never lets the
-   * question go out alone: the draft comes back with a plain-language error.
-   * The bytes are released either way — the Composer already dropped the chip,
-   * so keeping them would re-attach an invisible file to a later send (#3863).
-   */
   const composeAndSend = useCallback(async (
     text: string,
     files: readonly HeldFile[],
@@ -490,8 +383,6 @@ export function HubShellHost() {
   ) => {
     setBusy(true);
     dispatch({ type: "set-send-error", error: null });
-    // A HOME send created its controller before the node read (round 3 F2);
-    // reuse it so a Stop or navigation during that read already counts.
     const ctrl = existing ?? new AbortController();
     if (!existing) {
       uploadAbortRef.current?.abort();
@@ -524,8 +415,6 @@ export function HubShellHost() {
     if (outcome === "sent") return;
     setBusy(false);
     dropOutgoing();
-    // Stopped or navigated away: nothing was posted; the question goes back
-    // only if the technician is still on the thread it was typed in.
     if (outcome === "cancelled") {
       if (selectionRef.current?.notebookId === sel.notebookId && selectionRef.current?.threadId === sel.threadId) {
         dispatch({ type: "set-draft", draft: text });
@@ -538,8 +427,6 @@ export function HubShellHost() {
     });
     dispatch({ type: "set-draft", draft: text });
   }, [adapter, send, dropOutgoing]);
-
-  /** Create a project through the same contract as the legacy "New notebook" button. */
   const createNotebook = useCallback(async (body: { displayName: string; identitySourceType?: "user" }): Promise<string | null> => {
     const res = await fetch(`${API_BASE}/api/equipment-notebooks/`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -551,13 +438,6 @@ export function HubShellHost() {
     await loadNotebooks();
     return id;
   }, [loadNotebooks]);
-
-  /**
-   * HOME send (L0): the question becomes a new thread in the preferred notebook
-   * — created first when the workspace has none — and goes out on the canonical
-   * route in general mode (no sources selected), so it persists, streams and
-   * lands under Recent like every other conversation.
-   */
   const sendFromHome = useCallback(async (plan: Exclude<ReturnType<typeof homeSendPlan>, { kind: "loading" }>, q: string, files: readonly HeldFile[] = []) => {
     let notebookId: string | null = plan.kind === "existing" ? plan.notebookId : null;
     if (plan.kind === "create") {
@@ -566,25 +446,18 @@ export function HubShellHost() {
       catch (err) { dropOutgoing(); dispatch({ type: "set-send-error", error: sendFailureMessage(err) }); dispatch({ type: "set-draft", draft: q }); return; }
       finally { setBusy(false); }
     }
-    // No id means the create was refused (401 → signed-out screen) — hand the
-    // technician their question back rather than dropping it.
     if (!notebookId) { dropOutgoing(); dispatch({ type: "set-draft", draft: q }); return; }
     const sel: HubSelection = { notebookId, threadId: newThreadId() };
     select(sel);
-    // The message typed on HOME now belongs to the thread just created for it.
     const home = outgoingOwner.current;
     if (home && home.threadId === HOME_THREAD) putOutgoing({ ...home, threadId: shellThreadId(sel) });
     if (files.length === 0) {
       await send(chatBodyFor(q, [], [], sel), q, sel);
       return;
     }
-    // Round 3 F2: own the operation from here, so Stop or opening another
-    // thread during the node read cancels it before anything uploads.
     const ctrl = new AbortController();
     uploadAbortRef.current = ctrl;
     setBusy(true);
-    // The upload door needs the notebook's own namespace node (every notebook
-    // has one); a HOME send knows only the id, so read it first.
     const target = await resolveUploadNode(() =>
       getJson<Detail>(`/api/equipment-notebooks/${encodeURIComponent(notebookId)}/${detailQueryFor(sel)}`, ctrl.signal),
     );
@@ -601,7 +474,6 @@ export function HubShellHost() {
     }
     if (target.kind === "signed_out") { dropOutgoing(); setSignedOut(true); return; }
     if (target.kind === "failed") {
-      // Codex #4024 F4: the Composer already cleared the draft — hand it back.
       for (const f of files) adapter.forget(f.attachment.id);
       dropOutgoing();
       dispatch({ type: "set-send-error", error: "Couldn't open the project to upload into. Attach the file again, then send." });
@@ -610,21 +482,10 @@ export function HubShellHost() {
     }
     await composeAndSend(q, files, sel, target.nodeId, [], [], ctrl);
   }, [adapter, createNotebook, select, send, composeAndSend, dropOutgoing, putOutgoing, outgoingOwner]);
-
   const onSend = useCallback((text: string, attachments: readonly Attachment[] = []) => {
     const q = text.trim();
-    // #4019: pair each chip with the bytes the adapter held for it. Throws
-    // (Composer keeps the draft AND the chips) on a missing file or a second
-    // photo, before anything uploads (Codex #4024 F1/F3).
     const files = pairAttachments(attachments, (id) => adapter.heldFile(id));
     if ((!q && files.length === 0) || busy) return;
-    // Codex #3839 Spec P1: the Composer clears the draft after a hook that
-    // RETURNS, so a send before the data loaded used to discard the
-    // technician's question. Throwing is the Composer's documented contract
-    // for "keep the draft, show this plain-language error". On HOME that is
-    // the guard against creating a duplicate "General" before the list is
-    // known (#3875 F2); inside a notebook, against sending before its detail.
-    // Shown at once, before any upload, project creation or stream (outgoing-turn.ts).
     const beginOutgoing = (threadId: string) => putOutgoing(
       { id: `out-${Date.now()}`, threadId, question: q, attachments: files.map((f) => f.attachment), startedAt: new Date().toISOString() },
     );
@@ -643,24 +504,17 @@ export function HubShellHost() {
     }
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
   }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing]);
-
-  // WP-1 guided dead end: sent in general mode with the session id; the route confirms it.
   const onGuidedDeadEnd = useCallback((question: string, sessionId: string) => {
     const q = question.trim();
     if (!q || busy || !selection || !detail) return;
     putOutgoing({ id: `out-${Date.now()}`, threadId: shellThreadId(selection), question: q, attachments: [], startedAt: new Date().toISOString() });
     void send(guidedDeadEndBody(q, sessionId, historyRows(detail.turns), selection), q);
   }, [busy, selection, detail, send, putOutgoing]);
-
   const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
   const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);
-
-  /** New chat: a fresh thread in the open notebook; from HOME, HOME is already the blank chat. */
   const onNewChat = useCallback(() => {
     if (selection) select({ notebookId: selection.notebookId, threadId: newThreadId() });
   }, [selection, select]);
-
-  /** New project: the legacy button's exact flow (prompt for a name, POST, open it). */
   const onCreateProject = useCallback(() => {
     const name = window.prompt("Name this machine or project (e.g. Conveyor 4)")?.trim();
     if (!name) return;
@@ -673,7 +527,6 @@ export function HubShellHost() {
       }
     })();
   }, [createNotebook, select]);
-
   const onOpenItem = useCallback((item: ProjectItem) => {
     const ref = threadRefFromItem(item.id);
     if (ref) select(ref);
@@ -682,26 +535,12 @@ export function HubShellHost() {
     const notebookId = notebookIdFromProject(projectId);
     if (!notebookId) return;
     const nb = notebooks?.find((n) => n.id === notebookId);
-    // A fresh chat, not the notebook's last conversation (#4444).
     if (nb) select(openNotebookSelection(nb));
   }, [notebooks, select]);
-
-  /**
-   * Open a source in the shell's viewer. The reducer's OWN thread is the empty
-   * stub (`syncThread`); the real turns exist only in the render-time projection
-   * `view`. `select-source` resolves the id against the reducer's thread, so a
-   * bare dispatch was a silent no-op (found by the live click proof, 2026-09-18).
-   * Hand the reducer the projected thread first — same thread id, so the draft
-   * is untouched — then select. The next render's projection re-hydrates over a
-   * thread that now contains the source, so the selection survives.
-   */
   const openSource = useCallback((sourceId: string) => {
     dispatch({ type: "hydrate", data: { thread: view.thread, projects: view.projects, machines: view.machines, activeContext: view.activeContext } });
     dispatch({ type: "select-source", sourceId });
   }, [view]);
-
-  // Answer text renders through the classic notebook's markdown + inline
-  // citation marks, gated on the turn's own source parts.
   const renderText = useCallback((text: string, turn: InteractionTurn): ReactNode => {
     if (turn.role === "user") return text;
     const own: EvidenceCitation[] = [];
@@ -710,10 +549,8 @@ export function HubShellHost() {
       const c = citations.get(part.source.id);
       if (c) own.push(c);
     }
-    // The marker the reader clicks is this turn's "[n]"; the shell source it opens is this turn's.
     return <AnswerMarkdown content={text} citations={own} onCite={(c) => openSource(sourceIdFor(turn.id, c.citationId))} />;
   }, [citations, openSource]);
-
   const onCopy = useCallback((turnId: string) => {
     const turn = view.thread.turns.find((t) => t.id === turnId);
     if (!turn) return;
@@ -723,21 +560,15 @@ export function HubShellHost() {
     const text = sources.length ? `${body}\n\nSources:\n${sources.join("\n")}` : body;
     if (text && typeof navigator !== "undefined" && navigator.clipboard) void navigator.clipboard.writeText(text);
   }, [view.thread.turns, citations]);
-
-  // Read-aloud: created once; null where the browser has no Web Speech, in which
-  // case the hook is omitted and the shell renders no button. Stopped on unmount.
   const readAloud = useMemo(() => createReadAloud(), []);
   const fixRequestIds = useMemo(() => createFixRequestIds(), []);
   useEffect(() => () => readAloud?.stop(), [readAloud]);
-  // Switching notebook or thread stops an answer that is still being read.
   useEffect(() => {
     readAloud?.scope(`${selection?.notebookId ?? ""}:${selection?.threadId ?? ""}`);
   }, [readAloud, selection?.notebookId, selection?.threadId]);
   const onReadAloud = useCallback((turnId: string) => {
     const turn = view.thread.turns.find((t) => t.id === turnId);
     if (!turn) return;
-    // The same citation ids renderText turns into chips: only those "[n]" are
-    // citation marks; any other bracketed number is spoken.
     const ids = new Set<string>();
     for (const part of turn.parts) {
       const c = part.type === "source" ? citations.get(part.source.id) : undefined;
@@ -745,13 +576,6 @@ export function HubShellHost() {
     }
     readAloud?.toggle(turnId, spokenAnswerText(turn, ids));
   }, [readAloud, view.thread.turns, citations]);
-
-  // T2 (#4175): confirm a machine MIRA proposed from free text (#4120).
-  // Posts to the Hub's own confirm route (which reuses `updateNotebook` — not
-  // a second identity-write path) and relays its outcome verbatim; the shell
-  // renders the server's own `manualReady`/`message`, never a client guess.
-  // Refresh afterward so a promoted candidate manual (migration 104) shows
-  // up in Sources/the answer the next time the technician asks.
   const onConfirmIdentity = useCallback(async (proposal: IdentityProposal): Promise<ConfirmIdentityResult> => {
     const notebookId = selectionRef.current?.notebookId;
     if (!notebookId) throw new Error("no notebook selected");
@@ -765,31 +589,14 @@ export function HubShellHost() {
     const data = (await res.json().catch(() => null)) as
       | { ok?: unknown; manualReady?: unknown; message?: unknown; searching?: unknown; startedAt?: unknown; error?: unknown; manufacturer?: unknown; model?: unknown }
       | null;
-    // Light-review fix (PR #4195): a stale proposal card (or a race the
-    // adapter's own `priorOutcome` missed) can still try to confirm an
-    // identity the notebook has since moved past. The server's 409 names the
-    // CURRENT confirmed machine; relay it as a typed, `instanceof`-checkable
-    // error so the card renders a terminal refusal, never the generic
-    // retryable "Could not confirm."
     if (res.status === 409 && data?.error === "identity_already_confirmed") {
       const mfr = typeof data.manufacturer === "string" && data.manufacturer ? data.manufacturer : null;
       const mdl = typeof data.model === "string" && data.model ? data.model : null;
       throw new IdentityAlreadyConfirmedError(mfr && mdl ? `This machine is already confirmed as ${mfr} ${mdl}.` : undefined);
     }
     if (!res.ok || !data || data.ok !== true) throw new Error("could not confirm identity");
-    // Codex #4195 round 2 F4 + round 3 F4: a confirm that STARTED a search is
-    // followed the same way hydration is (F6) — seed the SAME driver, no
-    // second timer. `startedAt`, when the server sends it, is that search's
-    // own generation — seeding with it (rather than an optimistic,
-    // generation-less read) means the first poll never has to "adopt" it.
     const searching = data.searching === true;
     const startedAt = typeof data.startedAt === "string" && data.startedAt ? data.startedAt : undefined;
-    // Codex round 5 F16 (#4195): bind completion to `notebookId` — the
-    // notebook THIS confirm was for, captured BEFORE the await — never to
-    // whatever `selectionRef.current` is NOW. A technician who navigated to
-    // a different notebook while this POST was in flight must get neither a
-    // `loadDetail` refresh nor a follower seed under A's identity; see
-    // `applyConfirmIdentityResult`'s own header for the full race.
     const refresh = await applyConfirmIdentityResult(
       notebookId,
       proposal,
@@ -797,14 +604,9 @@ export function HubShellHost() {
       {
         loadDetail,
         seedDriver: seedManualSearch,
-        // Once unmounted there is no selection to refresh: the helper reports
-        // "skipped" and never starts a detail GET for an abandoned host.
         currentSelection: () => (hostMountedRef.current ? selectionRef.current : null),
       },
     );
-    // #4219 Codex r2 F1: the identity is saved, but if the scope refresh did
-    // not apply, the next question would still use the old sources. Say so
-    // instead of claiming the manual is ready to answer from.
     if (refresh === "failed" && data.manualReady === true) {
       return {
         manualReady: false,
@@ -819,16 +621,9 @@ export function HubShellHost() {
       ...(typeof data.message === "string" && data.message ? { message: data.message } : {}),
     };
   }, [loadDetail]);
-
-  // Plant memory (migration 095): record what fixed the machine, filed under
-  // the question this answer replied to. The platform prompt/alert dialogs are
-  // the capture UI (commodity-before-custom); the next answer on this notebook
-  // is grounded on the record.
   const onRecordFix = useCallback(async (turnId: string) => {
     const notebookId = selectionRef.current?.notebookId;
     const symptom = fixSymptomFor(view.thread.turns, turnId);
-    // The server files the fix under the machine THIS answer was served for
-    // (Codex #4058 post-cap F1), so the answer's server turn id travels with it.
     const sourceTurnId = serverTurnIdFor(turnId);
     if (!notebookId || !symptom || !sourceTurnId || typeof window === "undefined") return;
     const fix = window.prompt(`What fixed it?\n\nProblem: ${symptom}`)?.trim();
@@ -853,29 +648,39 @@ export function HubShellHost() {
       window.alert("Could not save the fix. Check the connection and try again.");
     }
   }, [fixRequestIds, view.thread.turns]);
-
-  // Keep a photo from this conversation as one of the machine's sources, then
-  // reload the notebook so the next question's source scope includes it.
   const onKeepPhoto = useCallback(async (fileId: string) => {
     const sel = selectionRef.current;
     if (!sel?.notebookId) throw new Error("no_notebook");
-    const res = await fetch(
-      `${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
-        // The conversation whose reading the technician is looking at.
-        body: JSON.stringify(sel.threadId ? { threadId: sel.threadId } : {}),
+    const url = `${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`;
+    await keepPhotoWithReview(sel.threadId === "legacy" ? "legacy" : sel.threadId, {
+      post: async (body) => {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify(body),
+        });
+        const parsed = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+        const data = parsed && typeof parsed === "object" ? parsed : {};
+        return {
+          ok: res.ok,
+          status: res.status,
+          body: {
+            ...(typeof data.error === "string" ? { error: data.error } : {}),
+            ...(typeof data.reading === "string" ? { reading: data.reading } : {}),
+            ...(typeof data.observationId === "string" ? { observationId: data.observationId } : {}),
+            ...(typeof data.docId === "string" ? { docId: data.docId } : {}),
+          },
+        };
       },
-    );
-    if (!res.ok) throw new Error(`keep_photo_${res.status}`);
-    await loadDetail(sel);
+      refresh: async () => (await loadDetail(sel)) === true,
+      review: async (proposed) =>
+        window.prompt("Check this reading against the photo. Edit any wrong tags before keeping.", proposed.reading),
+    });
   }, [loadDetail]);
   const keptPhotoIds = useMemo(
     () => new Set((detail?.sources ?? []).map((s) => s.originFileId).filter((id): id is string => !!id)),
     [detail],
   );
-
   const hooks: HostHooks = {
     onSend,
     renderText,
@@ -894,7 +699,6 @@ export function HubShellHost() {
     groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length),
     busy,
   };
-
   if (signedOut) {
     return (
       <main style={{ padding: "var(--fl-space-8)", fontFamily: "var(--fl-font)" }}>
@@ -903,7 +707,6 @@ export function HubShellHost() {
       </main>
     );
   }
-
   return (
     <div className="hub-shell-host" data-testid="hub-shell">
       <FactoryLMShell
@@ -915,11 +718,8 @@ export function HubShellHost() {
         onOpenItem={onOpenItem}
         onSelectProject={onSelectProject}
       />
-      {/* WP-1: shown only when the route is enabled and a manufacturer procedure applies. */}
       {selection && detail && (
         <GuidedProcedure
-          // Re-mount (and re-read availability) when the machine's identity or its manuals change
-          // in place — a confirm or an attach doesn't change the notebook id (Codex #4573 F4).
           key={[
             selection.notebookId,
             detail.notebook.identityStatus,
