@@ -15,9 +15,9 @@
  * - The text is the vision model's reading of the photo unless the technician
  *   reviews it. A Keep without the reviewed text is refused (`reading_required`)
  *   so a misread cannot be stored silently (#4643).
- * - A technician edit goes through the existing `correctVisualObservations`
- *   seam (original retained, `superseded_by`). Only that reviewed text is
- *   marked verified. An as-is keep stays an unconfirmed transcription.
+ * - Every Keep (including as-is) goes through `correctVisualObservations` so the
+ *   original vision reading is retained as history (`superseded_by`) and only
+ *   the technician-reviewed text is marked verified.
  *
  * Reuses the nameplate lane's seams: park + atomic ingest claim + text ingest
  * ({@link materializeDerivedTextDoc}), `attachSource` with `origin_file_id`,
@@ -195,10 +195,11 @@ export async function keepPhotoAsSource(opts: {
   if (existing) return { ok: true, docId: existing.docId, alreadyKept: true, chunkCount: 0 };
 
   // The same photo can be read more than once, and readings can disagree. Keep
-  // the one from the conversation the technician is looking at; without a
-  // conversation (or an owner to scope by) fall back to the latest reading.
-  const scope = opts.threadId !== undefined && opts.userId
-    ? { notebookId: notebook.id, ownerUserId: opts.userId, threadId: opts.threadId }
+  // the one from the conversation the technician is looking at. An owner always
+  // scopes the load; without one, fall back to the latest reading so Keep can
+  // still propose it in the 409.
+  const scope = opts.userId
+    ? { notebookId: notebook.id, ownerUserId: opts.userId, threadId: opts.threadId ?? "legacy" }
     : undefined;
   const reading = await withTenantContext(tenantId, (c) => loadVisualEvidenceForPhoto(c, tenantId, fileId, scope));
   // No stored reading means there is nothing citable to keep. Say so rather
@@ -226,21 +227,35 @@ export async function keepPhotoAsSource(opts: {
   const reviewed = opts.reviewedReading.trim().slice(0, MAX_LOOK_CORRECTION_VALUE_CHARS);
   if (!reviewed) return { ok: false, status: 409, error: "no_photo_reading" };
 
-  let observationId = reading.observationId;
-  let technicianConfirmed = false;
-  if (reviewed !== proposed) {
-    const corr = await correctVisualObservations({
-      tenantId,
-      boundEntityId: null,
-      fileId,
-      corrections: [{ observationId: reading.observationId, value: reviewed }],
-      correctedBy: opts.userId,
-    });
-    if (corr.corrected.length === 0) {
-      return { ok: false, status: 409, error: "correction_not_applied" };
-    }
-    observationId = corr.corrected[0].replacementId;
-    technicianConfirmed = true;
+  // A review is a human attestation. Without an owner there is nobody to
+  // attribute the correction to, so Keep cannot store the text.
+  if (!opts.userId) {
+    return {
+      ok: false,
+      status: 409,
+      error: "reading_required",
+      reading: proposed,
+      observationId: reading.observationId,
+    };
+  }
+
+  // As-is is still a human review: write the reviewed text through the
+  // correction seam so the original vision reading stays history.
+  const corr = await correctVisualObservations({
+    tenantId,
+    boundEntityId: null,
+    fileId,
+    corrections: [{ observationId: reading.observationId, value: reviewed }],
+    correctedBy: opts.userId,
+    conversation: {
+      notebookId: notebook.id,
+      ownerUserId: opts.userId,
+      threadId: opts.threadId ?? "legacy",
+    },
+  });
+  const applied = corr.corrected[0];
+  if (!applied) {
+    return { ok: false, status: 409, error: "correction_not_applied" };
   }
 
   const text = buildPhotoSourceText({
@@ -249,7 +264,7 @@ export async function keepPhotoAsSource(opts: {
     photoSha256: reading.photoHash,
     capturedAt: photo.capturedAt,
     observation: reviewed,
-    technicianConfirmed,
+    technicianConfirmed: true,
   });
   const day = (photo.capturedAt ?? "").slice(0, 10) || fileId;
   const materialized = await materializeDerivedTextDoc({
@@ -257,25 +272,21 @@ export async function keepPhotoAsSource(opts: {
     nodeId: notebook.nodeId,
     // The title rides on every chunk, so the trust state reaches the prompt and
     // the citation even when the header above lands in a different chunk.
-    filename: technicianConfirmed
-      ? `Technician-confirmed photo reading ${day}.txt`
-      : `Unconfirmed photo reading ${day}.txt`,
+    filename: `Technician-confirmed photo reading ${day}.txt`,
     text,
     createdBy: opts.userId,
     source: "photo_text",
   });
   if (!materialized.docId) return { ok: false, status: 503, error: "photo_source_in_progress" };
 
-  if (technicianConfirmed) {
-    await markNameplateDocVerified(tenantId, materialized.docId);
-  }
+  await markNameplateDocVerified(tenantId, materialized.docId);
 
   const att = await attachSource(tenantId, notebook.id, materialized.docId, {
     matchState: "user_confirmed",
     sourceRole: "photo",
     addedBy: opts.userId,
     originFileId: fileId,
-    matchEvidence: { kept_from_observation: observationId },
+    matchEvidence: { kept_from_observation: applied.replacementId },
   });
   if (!att.ok) return { ok: false, status: 503, error: `attach_source_failed:${att.error}` };
   // One photograph, one visible source (085 Invariant 1).
