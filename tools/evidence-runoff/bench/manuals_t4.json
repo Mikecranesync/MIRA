@@ -1,0 +1,5 @@
+{"about": "T4 retrieval corpora: every manual with real-36 or public-50 questions (PLC-5 excluded, cipher text)",
+ "real": {"micro810": "manuals-real/oem-manual-micro810.pdf", "gs4-ch6": "manuals-real/ch6.pdf", "gs4-ch2": "manuals-real/ch2.pdf",
+          "se-lxm32a-canopen": "manuals-real/se-lxm32a-canopen-0198441113779.pdf", "se-m172": "manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+          "se-x80-analog": "manuals-real/se-x80-analog-io-35011978.pdf", "se-canopen-hw": "manuals-real/se-canopen-hw-setup.pdf",
+          "se-premium-serial": "manuals-real/se-premium-async-serial-35006178.pdf", "se-m171": "manuals-real/se-m171-performance-hardware-guide-EIO0000002030.pdf"}}
