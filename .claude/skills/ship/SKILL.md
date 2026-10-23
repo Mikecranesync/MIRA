@@ -1,53 +1,103 @@
 ---
 name: ship
-description: Use when taking a merged-or-ready feature branch live end-to-end — rebase on main, merge the PR, deploy the affected VPS service, and verify the live endpoint before reporting success. The cross-service ship loop. For visible mira-web changes delegate to design-ship-routine; for mira-ask/kiosk follow the kiosk runbook. Triggers on "ship it", "deploy this", "take it live", "merge and deploy".
+description: Use when taking a merged-or-ready fix live end-to-end and PROVING it — merge on an exact-head GREEN, deploy the exact SHA to staging, retest the behaviour with a real question, let acceptance authorize, deploy that same SHA to production, confirm build identity, retest on prod. Triggers on "ship it", "deploy this", "take it live", "merge and deploy", "deploy and retest", "prove it on prod". For visible mira-web changes delegate to design-ship-routine; for mira-ask/kiosk follow the kiosk runbook.
 ---
 
-# ship
+# ship — merge → staging → retest → prod → retest
 
-The end-to-end loop for taking a change live: rebase → merge → deploy → verify-200. Thin wrapper — it delegates the surface-specific parts to the skills/runbooks that already own them, and adds the cross-service deploy + live-verify discipline plus the branch-safety guard.
+Proven path (2026-10-23, #4652 restart-safety banner: merge to prod-proven in ~45 min).
+"Deployed" is not "done". **Done = the new behaviour observed on production for the exact SHA.**
 
-## First: route to the right owner
+## Route first
 
-- **Visible mira-web change** (`/`, `/cmms`, `/pricing`, views, CSS) → use `design-ship-routine` instead. It owns snapshot→PR→deploy→`verify:live`. Don't reimplement it here.
-- **mira-ask / kiosk / `ask_api` / engine kiosk fast-path** → follow `docs/runbooks/kiosk-askmira-deploy-and-verify.md`. Critical: `mira-ask` is NOT in the deploy-vps default targets — dispatch explicitly.
-- **Engine / RAG / FSM / classifier change** → must pass the staging gate (`smoke-test.yml` + relevant `tests/eval/` regime) BEFORE merge. No exceptions.
-- **Anything else (backend service, infra)** → continue below.
+- Visible mira-web change → `design-ship-routine`.
+- mira-ask / kiosk / `ask_api` → `docs/runbooks/kiosk-askmira-deploy-and-verify.md` (`services=mira-ask`).
+- Hub chat / retrieval / safety-wording fix → this skill, end to end.
 
-## Branch safety (non-negotiable — see issue #1810)
+## 1. Merge (owner says "merge")
 
-- **Never auto-switch branches mid-sequence.** Print `git rev-parse --abbrev-ref HEAD` before any write and confirm it's the branch you intend.
-- **Never force-push a branch with an open PR** without explicit OK (rewrite invalidates in-progress reviews).
-- A git hook that auto-commits/auto-branches during this loop is a known hazard — if HEAD moves unexpectedly, STOP and re-orient, don't push.
+```bash
+bash tools/pr-merge-blocker.sh <n>          # must print CLEAN — never trust a bare BEHIND/BLOCKED
+gh pr view <n> --json headRefOid -q .headRefOid   # must equal the Codex GREEN reviewed_sha
+gh pr merge <n> --squash --match-head-commit <that sha>
+```
+- main protection has `strict=false` since 2026-10-23 (owner, A2). A GREEN, all-required-pass PR merges
+  as-is, so **don't update the branch**: that moves the head and voids the exact-head GREEN.
+- R0 (eval data / docs) needs no Codex. R1+ needs GREEN, or CONVERGED + `[REVIEW-FOLLOWUPS]`, at the exact head.
+- Several merges in a row cancel each other's main `CI`. Read the **last** main SHA's checks.
 
-## The loop
+## 2. Staging deploy of the exact SHA
 
-1. **Pre-flight.** `git fetch origin`. Confirm HEAD branch. `git log origin/main..HEAD --oneline` — know exactly what's shipping.
-2. **Rebase on main.** `git rebase origin/main`. Resolve conflicts; if a conflict is non-trivial, surface it — don't guess a merge.
-3. **Gate.** Engine/RAG/retrieval change? Confirm the staging gate passed. UI? screenshots committed. Otherwise the merge is premature.
-4. **Merge** (only with explicit user approval — merges + deploys each need their own one-word OK). **Before pressing merge, re-verify the PR state once more** — GitHub API cache lag is real (up to ~5 seconds on status changes; see the `ship-pr` skill for the double-read pattern). If `gh pr view <PR#>` shows mergeable and matches what the user just said, proceed. If it conflicts with expectation, re-fetch: `sleep 2 && gh pr view <PR#> --json state,mergeable`. Trust only when two reads agree. Then squash, conventional title, delete branch after.
-5. **Deploy** the affected service via `deploy-vps.yml`:
-   ```
-   gh workflow run deploy-vps.yml --repo Mikecranesync/MIRA -f services="<service>"
-   ```
-   Default targets: `mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync mira-bot-telegram mira-bot-slack`. **`mira-ask` and `mira-web` are NOT defaults** — name them explicitly. Never `docker compose` the VPS directly (prod-guard blocks it).
-6. **Verify live — 200 + behaviour, not "deploy ran".** Confirm the new commit is actually live (image age / behavioural probe), then:
-   ```
-   bash install/smoke_test.sh        # affected routes
-   curl -sS -o /dev/null -w '%{http_code}' https://<host>/<route>   # expect 200
-   ```
-   "No error from the deploy step" is NOT verification (see verify-before-done feedback). Read back the live state.
-7. **If verify fails** → rollback to prev sha, fix on a new branch, re-run the loop. Don't paper over.
-8. **If verify passes** → close the issue with the live evidence (status code / screenshot / probe output).
+```bash
+SHA=$(git rev-parse origin/main)            # 40-hex, the commit you mean to ship
+gh workflow run deploy-staging.yml -f approved_rc_sha=$SHA -f services=mira-hub
+curl -sL https://app-staging.factorylm.com/api/version/   # gitSha must == $SHA before any retest
+```
+The staging deploy auto-triggers `retrieval-acceptance.yml`, which writes `acceptance-receipt-<SHA>`.
+Production refuses without it.
 
-## Done-when
+## 3. Behavioural retest on staging (the proof, not "deploy succeeded")
 
-Live endpoint returns 200 AND the new behaviour is observed on prod — not on merge alone.
+`tools/qa/notebook_ask_probe.py` asks real questions through the same APIs the apps use, and
+asserts on the answer text.
 
-## What NOT to do
+- **Self-contained mode** (`--manual-page`): creates a throwaway notebook, uploads a tiny manual,
+  waits until it is chat-ready, asks, then deletes everything it made.
+- **Fresh staging login, no stored password:**
 
-- ❌ Report "shipped" on merge. Not shipped until verified live (completion-vocabulary feedback).
-- ❌ Auto-switch/force-push a branch with an open PR.
-- ❌ Rely on the auto-deploy default targets for `mira-ask` / `mira-web`.
-- ❌ Skip the staging gate for engine/RAG/FSM/classifier changes.
-- ❌ Duplicate the mira-web ship steps here — delegate to `design-ship-routine`.
+```bash
+( cd mira-hub && doppler run -p factorylm -c stg -- bun run scripts/provision-beta-gate.ts ) > $SCRATCH/env.out
+export BETA_PROBE_COOKIE="$(grep '^ENV:BETA_PROBE_COOKIE=' $SCRATCH/env.out | cut -d= -f2-)"
+python3 tools/qa/notebook_ask_probe.py --base https://app-staging.factorylm.com \
+  --manual-page "<page text that answers the question>" \
+  --ask "<question that must show the fix>" --control "<similar question that must NOT>" \
+  --expect "<exact text the fix produces>" --out $SCRATCH/retest-staging.json
+# cleanup the stranger afterwards:
+( cd mira-hub && doppler run -p factorylm -c stg -- bun run scripts/provision-beta-gate.ts --cleanup <BETA_GATE_TENANT> )
+```
+
+Rules (`.claude/rules/prove-the-test-fails.md`):
+- **Every run needs at least one `--control`.** Without one, an always-on change also "passes".
+- **Prove the probe can go red once.** Put a control question under `--ask`; it must FAIL, with exit 1.
+- **Before/after:** run the probe against staging **before** you dispatch the deploy, or against prod
+  while it is still on the old build. That gives a real "before". Missed it? Say so, and cite the
+  issue's original repro.
+- An `--ask` that is refused fails by design: the fix was not exercised.
+
+## 4. Production deploy of the SAME SHA (owner says "deploy")
+
+Wait until the auto `retrieval-acceptance` run for this deploy **completes** with
+`overall=PASS authorizes=True identity_end=<SHA>`. A prod dispatch before then is refused.
+
+```bash
+gh workflow run deploy-vps.yml -f approved_rc_sha=$SHA -f approved_release_tag=vX.Y.Z -f services=mira-hub
+curl -sL https://app.factorylm.com/api/version/      # gitSha == $SHA, version == tag
+```
+- Prod runs only `mira-hub`, `mira-web`, `mira-ask-saas` (+ `mira-ollama`). Name the service.
+- If main moved during the run (another session merged), still ship the SHA staging proved. Never
+  substitute the newer head.
+
+## 5. Behavioural retest on production
+
+The same probe and arguments, `--base https://app.factorylm.com`, using the prod QA tenant
+(Doppler `factorylm/prd` `BETA_PROBE_QA_EMAIL` / `BETA_PROBE_QA_PASSWORD`).
+- The prod-guard hook blocks an agent from reading prd secrets. That is correct, so don't route
+  around it.
+- Hand the owner one short command, a gitignored wrapper under `.planning/`:
+  `! MIRA_ALLOW_PROD=1 bash .planning/prod-retest.sh`
+- Or dispatch a CI workflow that reads them, the `beta-probe-prod.yml` pattern.
+- Until the prod probe runs, report prod as "same build as the staging-proven SHA (identity
+  checked)". Do not call it "behaviour proven on prod".
+
+## Report (plain terms)
+
+PR → merge SHA → staging SHA plus probe result (N/N, controls) → acceptance receipt → prod SHA plus
+version → prod probe result. Name every gap honestly (no before-baseline, prod probe pending, …).
+
+## Don'ts
+
+- ❌ Calling it "shipped" on merge or on a green deploy job.
+- ❌ Retesting before `/api/version/` shows the new SHA. A 502 mid-restart is not a result.
+- ❌ A probe with no control, or one never seen to fail.
+- ❌ Updating a GREEN PR's branch "to be safe". That voids its review.
+- ❌ `docker compose` on the VPS, or reading prd secrets from an agent shell.
