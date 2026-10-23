@@ -33,8 +33,14 @@ it("403 when caller lacks review_queue.read (plain owner/trial)", async () => {
   expect(res.status).toBe(403);
 });
 
-it("200 for a platform review admin (allowlist email)", async () => {
-  vi.mocked(sessionOr401).mockResolvedValue({ ...base, email: "admin@allow", status: "trial" } as never);
+it("403 for an allowlisted email WITHOUT the DB platform-admin flag (#4591: a self-registered claim)", async () => {
+  vi.mocked(sessionOr401).mockResolvedValue({ ...base, email: "admin@allow", status: "admin", platformAdmin: false } as never);
+  const res = await GET();
+  expect(res.status).toBe(403);
+});
+
+it("200 for a provisioned platform review admin (DB flag + allowlist email)", async () => {
+  vi.mocked(sessionOr401).mockResolvedValue({ ...base, email: "admin@allow", status: "admin", platformAdmin: true } as never);
   const res = await GET();
   expect(res.status).toBe(200);
 });

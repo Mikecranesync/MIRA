@@ -40,7 +40,9 @@ const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 // Admin-email allowlist. Comma-separated env var; defaults to the two seats
 // Mike currently uses. Keep this tight — the review surface bypasses normal
-// tenant scoping for filesystem reads.
+// tenant scoping for filesystem reads. NOT an authority on its own (#4591):
+// registration does not verify email ownership, so capabilities.ts requires the
+// DB platform-admin flag (hub_users.status='admin') AND this match.
 const ADMIN_EMAILS = (
   process.env.ADMIN_EMAILS ??
   "harperhousebuyers@gmail.com,mike@cranesync.com"

@@ -75,12 +75,10 @@ export function ensureSchema(): Promise<void> {
     await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS slug TEXT`);
     await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_hub_tenants_slug ON hub_tenants (slug) WHERE slug IS NOT NULL`);
-    // Promote admin (configurable via ADMIN_EMAIL env, fallback to mike@factorylm.com)
-    const adminEmail = process.env.ADMIN_EMAIL ?? "mike@factorylm.com";
-    await pool.query(
-      `UPDATE hub_users SET status = 'admin' WHERE email_lower = LOWER($1) AND status != 'admin'`,
-      [adminEmail],
-    );
+    // No email-based admin promotion here (#4591): registration does not verify email
+    // ownership, so promoting whatever row carries ADMIN_EMAIL at boot let anyone who
+    // registered that address first become a platform admin. status='admin' is set only by
+    // an existing platform admin (admin users route) or an operator.
     await pool.query(`
       UPDATE hub_users SET trial_expires_at = created_at + INTERVAL '7 days'
       WHERE status = 'trial' AND trial_expires_at IS NULL
