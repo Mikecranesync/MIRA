@@ -2,7 +2,7 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken } from "@/lib/users";
+import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, sessionGeneration, validateMagicToken } from "@/lib/users";
 import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
 
 declare module "next-auth" {
@@ -34,6 +34,8 @@ declare module "next-auth/jwt" {
     tid?: string;
     status?: string;
     trialExpiresAt?: string | null;
+    /** hub_users.session_version at issuance (#3831). Compared in requireSession. */
+    sv?: number;
   }
 }
 
@@ -148,6 +150,14 @@ export const authOptions: NextAuthOptions = {
         token.tid = user.tenantId;
         token.status = user.status ?? "trial";
         token.trialExpiresAt = user.trialExpiresAt ?? null;
+        // Stamp generation only at issuance. Refreshing it on later jwt calls
+        // (no `user`) would resurrect a stolen cookie after revoke (#3831).
+        try {
+          const row = await findUserById(user.id);
+          token.sv = sessionGeneration(row?.sessionVersion);
+        } catch {
+          token.sv = 0;
+        }
       }
       return token;
     },
