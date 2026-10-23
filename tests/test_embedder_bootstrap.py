@@ -202,6 +202,48 @@ def _check_processes_alive(state_dir: Path, process_names: list[str]) -> list[in
     return alive
 
 
+def _run_completed_bootstrap(command: str, env: dict[str, str], tmp_path: Path,
+                             state_dir: Path) -> tuple[int, str]:
+    """Run a positive-path fixture, then stop fake serve after observed completion.
+
+    These cases measure cached/pull/fast-query behavior. Readiness scheduling is
+    exercised by the separate deadline fixtures, not these success-path fakes.
+    """
+    (state_dir / "serving").touch()
+    (state_dir / "ready").touch()
+    stderr_log = tmp_path / "bootstrap.stderr"
+    complete = False
+    with stderr_log.open("w") as stderr_stream:
+        proc = subprocess.Popen(
+            ["dash", "-c", command], env=env, stdout=subprocess.PIPE,
+            stderr=stderr_stream, text=True, cwd=str(tmp_path),
+        )
+        try:
+            deadline = time.monotonic() + 10
+            while proc.poll() is None and time.monotonic() < deadline:
+                if "Bootstrap complete" in stderr_log.read_text():
+                    complete = True
+                    break
+                time.sleep(0.02)
+        finally:
+            (state_dir / "stop").touch()
+            try:
+                proc.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.terminate()
+                try:
+                    proc.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.communicate(timeout=5)
+                raise
+    stderr = stderr_log.read_text()
+    assert complete, f"bootstrap completion not observed before teardown: {stderr}"
+    assert _check_processes_alive(state_dir, ["serve"]) == []
+    assert proc.returncode is not None
+    return proc.returncode, stderr
+
+
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
 def test_prod_command_extracts_and_decodes():
     """Verify rendered command extraction and $$ decoding."""
@@ -225,7 +267,7 @@ def test_staging_command_extracts_and_decodes():
 
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
 def test_cold_start_success_under_2s():
-    """Cold start succeeds with 2s caps, waits for bootstrap-complete."""
+    """Uncached models bootstrap with 2s operation caps on a ready fake server."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
     
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -265,42 +307,14 @@ def test_cold_start_success_under_2s():
             "OLLAMA_READY_CAP": "2",
         }
         
-        proc = subprocess.Popen(
-            ["dash", "-c", command],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=str(tmp_path),
-        )
-        
-        # Wait for bootstrap complete message
-        max_wait = 10
-        for _ in range(max_wait * 10):
-            if (state_dir / "stop").exists():
-                break
-            # Check if process wrote anything indicating completion
-            try:
-                # Non-blocking check if complete message appeared
-                if proc.poll() is None:
-                    time.sleep(0.1)
-                else:
-                    break
-            except:
-                time.sleep(0.1)
-        
-        # Now stop serve
-        (state_dir / "stop").touch()
-        
-        stdout, stderr = proc.communicate(timeout=5)
-        
-        assert proc.returncode == 0, f"stderr: {stderr}"
+        returncode, stderr = _run_completed_bootstrap(command, env, tmp_path, state_dir)
+        assert returncode == 0, f"stderr: {stderr}"
         assert "Bootstrap complete" in stderr
 
 
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
 def test_cached_offline_success_under_2s():
-    """Cached offline startup succeeds with 2s caps."""
+    """Already-ready cached bootstrap succeeds with unchanged 2s caps."""
     command = _render_ollama_command([PROD_BASE, PROD_OVERLAY])
     
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -321,6 +335,7 @@ def test_cached_offline_success_under_2s():
                 echo "nomic-embed-text:v1.5    0a109f422b47    128 MB"
                 echo "nomic-embed-text:latest   0a109f422b47    128 MB"
             elif [ "$1" = "pull" ]; then
+                touch "$STATE_DIR/pull_called"
                 exit 1  # Registry down
             fi
         ''')
@@ -333,22 +348,10 @@ def test_cached_offline_success_under_2s():
             "OLLAMA_READY_CAP": "2",
         }
         
-        proc = subprocess.Popen(
-            ["dash", "-c", command],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=str(tmp_path),
-        )
-        
-        time.sleep(1)
-        (state_dir / "stop").touch()
-        
-        stdout, stderr = proc.communicate(timeout=10)
-        
-        assert proc.returncode == 0, f"stderr: {stderr}"
+        returncode, stderr = _run_completed_bootstrap(command, env, tmp_path, state_dir)
+        assert returncode == 0, f"stderr: {stderr}"
         assert "cached with digest" in stderr
+        assert not (state_dir / "pull_called").exists()
 
 
 @pytest.mark.skipif(not _has_docker_compose(), reason="docker compose not available")
@@ -537,21 +540,8 @@ def test_fast_success_not_misreported_as_timeout():
             "OLLAMA_READY_CAP": "1",
         }
         
-        proc = subprocess.Popen(
-            ["dash", "-c", command],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=str(tmp_path),
-        )
-        
-        time.sleep(0.5)
-        (state_dir / "stop").touch()
-        
-        stdout, stderr = proc.communicate(timeout=10)
-        
-        assert proc.returncode == 0, f"stderr: {stderr}"
+        returncode, stderr = _run_completed_bootstrap(command, env, tmp_path, state_dir)
+        assert returncode == 0, f"stderr: {stderr}"
         assert "timed out" not in stderr
         assert "Bootstrap complete" in stderr
 
