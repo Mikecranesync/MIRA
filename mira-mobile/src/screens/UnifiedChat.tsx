@@ -800,6 +800,14 @@ function UnifiedChatForNotebook({
     // A send made while the banner was up is the shell's Try again (or Send
     // with the restored draft): its banner clear is not a dismissal.
     flagOwnClear();
+    // Before the first persisted turn, SendError invokes onSend with retry
+    // intent. Replay the host's saved body for unchanged text, preserving its
+    // request id and scope without consuming a newly confirmed manual scope.
+    if (opts.retry && canRetry && handlers.onRetry && failedQuestion?.trim() === text.trim()
+      && pending.length === 0 && !attachments.hasRetained() && !attachments.hasCarried()) {
+      handlers.onRetry();
+      return;
+    }
     // Codex F1 (HIGH, #4175/#4189): a confirmed identity may have just
     // promoted a candidate manual into an enabled source (migration 104) —
     // `onConfirmIdentity` below re-reads detail and stashes the refreshed
@@ -889,7 +897,7 @@ function UnifiedChatForNotebook({
       // it was asked with, so the banner has a Try again that carries it.
       dispatch({ type: "set-draft", draft: text || attachments.retainedQuestion?.() || text });
     });
-  }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope]);
+  }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope, canRetry, failedQuestion]);
 
   // The question HOME queued for the thread it just created. It goes through
   // `onSend` (not straight to the host) so the attachments HOME stashed are
@@ -985,9 +993,17 @@ function UnifiedChatForNotebook({
     // the bytes, retry through the composed path so the photo rides the turn.
     ...(canRetry && handlers.onRetry
       ? { onRetry: () => {
-          if (attachments.hasRetained() || attachments.hasCarried()) {
-            flagOwnClear();
-            dispatch({ type: "set-send-error", error: null });
+          flagOwnClear();
+          const draft = state.draft.trim();
+          const priorQuestion = (failedQuestion ?? pending?.q ?? liveTurns.at(-1)?.q
+            ?? state.thread.turns.filter((turn) => turn.role === "user").at(-1)
+              ?.parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n"))?.trim();
+          // A changed question is a new send. An unchanged question must keep
+          // the host's original request id and source scope for deduplication.
+          const edited = Boolean(draft && draft !== priorQuestion);
+          dispatch({ type: "set-draft", draft: "" });
+          dispatch({ type: "set-send-error", error: null });
+          if (attachments.hasRetained() || attachments.hasCarried() || edited) {
             onSend(state.draft, [], { retry: true });
             return;
           }

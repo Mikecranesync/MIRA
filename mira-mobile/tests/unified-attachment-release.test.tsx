@@ -197,4 +197,52 @@ describe("unified attachment previews are released", () => {
     await expect(result).resolves.toBeNull();
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
+  it("retains every preview through a refused batch and revokes all on a superseding plain send", async () => {
+    let controller: ReturnType<typeof useUnifiedAttachments> | undefined;
+    function Probe() {
+      controller = useUnifiedAttachments("nb-1");
+      return null;
+    }
+    const { unmount } = render(<Probe />);
+    const chips = [];
+    for (let i = 0; i < 5; i++) {
+      nativePick.pickPhoto.mockResolvedValueOnce(new File(["x"], `mode-${i}.jpg`, { type: "image/jpeg" }));
+      chips.push(await controller!.attachPhoto());
+    }
+    const descriptors = chips.filter((chip): chip is NonNullable<typeof chip> => chip !== null);
+    const refused = await controller!.compose("Does this help?", descriptors);
+    expect(refused.failure).toBe("Attach one photo per question.");
+    expect(revoke).not.toHaveBeenCalled();
+    const retry = await controller!.compose("Does this help?", [], { retry: true });
+    expect(retry.failure).toBe("Attach one photo per question.");
+    expect(revoke).not.toHaveBeenCalled();
+    await controller!.compose("What is still unknown?", []);
+    expect(new Set(revoke.mock.calls.map(call => call[0]))).toEqual(new Set(created));
+    expect(revoke).toHaveBeenCalledTimes(5);
+    expect(resources.lookAtPhoto).not.toHaveBeenCalled();
+    unmount();
+    expect(revoke).toHaveBeenCalledTimes(5);
+  });
+
+  it("preserves a retained chip's bytes and preview when explicitly resubmitted", async () => {
+    let controller: ReturnType<typeof useUnifiedAttachments> | undefined;
+    function Probe() {
+      controller = useUnifiedAttachments("nb-1");
+      return null;
+    }
+    const { unmount } = render(<Probe />);
+    nativePick.pickPhoto.mockResolvedValueOnce(new File(["x"], "seat.jpg", { type: "image/jpeg" }));
+    const chip = await controller!.attachPhoto();
+    resources.lookAtPhoto.mockRejectedValueOnce(new Error("offline"));
+    await expect(controller!.compose("What does this show?", [chip!])).rejects.toThrow("offline");
+    expect(revoke).not.toHaveBeenCalled();
+    resources.lookAtPhoto.mockResolvedValueOnce(LOOK_OK);
+    const result = await controller!.compose("What does this show?", [chip!]);
+    expect(result.failure).toBeUndefined();
+    expect(result.rider?.visualEvidence.fileId).toBe("file-1");
+    expect(revoke).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(revoke).toHaveBeenCalledTimes(1);
+  });
+
 });
