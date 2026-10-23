@@ -16,7 +16,7 @@ USER root
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg git jq unzip zip xz-utils \
-      python3 python3-pip python3-venv python-is-python3 python3-yaml python3-requests \
+      python3 python3-pip python3-venv python-is-python3 python3-yaml python3-requests python3-markdown-it \
       build-essential libpq-dev postgresql-client \
       shellcheck ripgrep \
  && install -d -m 0755 /etc/apt/keyrings \
@@ -28,6 +28,8 @@ RUN apt-get update \
       https://github.com/docker/compose/releases/download/v5.6.1/docker-compose-linux-aarch64 \
  && chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose \
  && rm -rf /var/lib/apt/lists/*
+# GitHub's hosted image lets jobs write /usr/local/bin without sudo (e.g. `install trivy`).
+RUN chown runner:runner /usr/local/bin
 
 COPY entrypoint.sh /home/runner/entrypoint.sh
 RUN chmod 0755 /home/runner/entrypoint.sh

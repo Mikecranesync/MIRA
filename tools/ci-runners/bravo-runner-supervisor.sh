@@ -37,11 +37,12 @@ slot() {
     tok="$(cat "$TOKEN_FILE" 2>/dev/null || true)"
     if [ -z "$tok" ]; then echo "$(date -u +%FT%TZ) $name no registration token yet" >>"$LOG_DIR/$name.log"; sleep 60; continue; fi
     gid="$(sock_gid)"
-    # Job folder at the SAME path in the VM and in the runner container: container actions
+    # Job folder at the SAME path in the VM and in the runner container (and under the runner's
+    # home, which SARIF upload requires): container actions
     # (docker://...) and `docker run -v $PWD:...` in jobs bind-mount VM paths, so the job's files
     # must exist there too. Wiped before every job (ephemeral). uid 1001 = runner user.
-    local work="/tmp/gha-work/$name"
-    docker run --rm -v /tmp/gha-work:/w alpine:3.20 sh -c "rm -rf /w/$name && mkdir -p /w/$name && chown 1001:1001 /w/$name" >/dev/null 2>&1
+    local work="/home/runner/gha-work/$name"
+    docker run --rm -v /home/runner/gha-work:/w alpine:3.20 sh -c "rm -rf /w/$name && mkdir -p /w/$name && chown 1001:1001 /w/$name" >/dev/null 2>&1
     docker run --rm --name "gha-$name" --network "$net" --group-add "$gid" \
       -v /var/run/docker.sock:/var/run/docker.sock -v "$work:$work" -e RUNNER_WORKDIR="$work" \
       -e REPO_URL="$REPO_URL" -e RUNNER_TOKEN="$tok" \

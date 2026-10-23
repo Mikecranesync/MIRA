@@ -146,7 +146,9 @@ jobs:
   guard:
     name: Legacy UI Lifecycle Guard
     needs: [snapshot, pending]
-    runs-on: ${{ fromJSON(vars.MIRA_RUNS_ON || '"ubuntu-latest"') }}
+    # x86-only: installs a hash-locked tool set whose pins are x86_64 wheels; stays
+    # GitHub-hosted (on arm64 Bravo runners pip rejects the hash). See tools/ci-runners/README.md.
+    runs-on: ubuntu-latest
     # Deliberately NO statuses:write here — this job executes checked-out
     # base-revision code (tests + the guard CLI); status-posting is isolated
     # to `pending` and `final-status`, neither of which ever runs repo code.
