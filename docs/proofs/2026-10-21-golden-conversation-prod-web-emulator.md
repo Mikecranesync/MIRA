@@ -1,14 +1,15 @@
 # Golden Conversation (PRD #3990) — prod web + Android emulator, 2026-10-21/22
 
-**Label: PARTIAL.** Web and Android emulator steps are proven against production. The **physical Pixel steps are NOT
-proven** here: the Pixel 9a was fingerprint-locked and only its owner can unlock it. This is not the #3882 / release
-acceptance.
+**Label: journey PASS on prod web, Android emulator AND the physical Pixel 9a** (Pixel leg added 2026-10-23 after the
+owner unlocked the device). Not the #3882 / release acceptance: it proves the shipped prod app + prod hub, not main or an RC.
+Production was redeployed between the legs (see identities); both builds served the same thread without loss.
 
 ## Identities
 
 | item | value |
 |---|---|
-| Production hub | `app.factorylm.com` `/api/health/` gitSha `22164415af1a8e28925d096edf6bba44f2100683`, version 3.410.0, built 2026-10-20T05:30Z |
+| Production hub | web + emulator legs (2026-10-21/22): gitSha `22164415af1a8e28925d096edf6bba44f2100683` (3.410.0, built 2026-10-20T05:30Z). Pixel leg (2026-10-23): gitSha `0e5bb3de7ee6f1ee4d4cd38a32404f3b4a0ecfba`, built 2026-10-22T02:50Z |
+| Physical device | Pixel 9a `55081JEBF07026`, Android 16, AC powered, owner-unlocked; installed `base.apk` sha256 `c5f0e7c8…` (same as the emulator), owner's prod session = same user (`02808f0e…`) and tenant as the web/emulator account |
 | `origin/main` at run start / at write-up | `d1d1511de` / `7aed87e31` (prod is behind main; this proves prod, not main) |
 | Android artifact | `com.factorylm.mira` 1.2.0 (16), pulled from the Pixel 9a `55081JEBF07026` as installed (`base.apk` sha256 `c5f0e7c815dda8480f9918698c34e913ea67efd5958d75940da17154296346ed`), installed byte-identical on emulator `mira35` (API 35, arm64) |
 | Live-update bundle | About screen: native fingerprint `6263470a0205fa6b`, active bundle **packaged**, channel production |
@@ -48,7 +49,12 @@ Project `GC 2026-10-21 ABB ACS150` = notebook `175411fb-7d36-48c0-a8e3-06ef6e393
 | 12 | continue on web | web | **PASS** — the Android turn renders once (count 1); WEB FOLLOW-UP 2 answered from p. 130 (F0006 causes), turn `3089d6e2…` | `web-10-sees-android-and-followup2.png` |
 | 13 | return to Android | emulator | **PASS** — after relaunch, WEB FOLLOW-UP 2 is in the thread with its p. 130 chip | `emu-10-android-sees-web-followup2.png` |
 | 14 | photo analyzed before evidence | web → emulator | **PASS** — `POST …/look/` before `POST …/chat/`; answer "AutomationDirect … display reads H0.00 … unconfirmed photo reading", **no ABB citation applied**, "Grounded in workspace evidence", observation card Verified **no**; same card on Android | `web-11-photo-turn.png`, `emu-11-photo-turn-on-android.png` |
-| 15–18 | the same on the **physical Pixel** (launch, open thread, citation, restart, phone↔web) | Pixel 9a | **NOT RUN** — device fingerprint-locked | — |
+| 15 | open the same thread on the phone | Pixel 9a | **PASS** — drawer → thread; every turn renders in server order (web, emulator, web, photo turn + observation card) | `px-02-thread.png` |
+| 16 | citation on the phone | Pixel 9a | **PASS** — passage sheet "…F0003 DEV OVERTEMP Drive IGBT temperature is excessive. Fault trip limit is 135 °C. Check ambient conditions.…", "Open original at cited page 130" | `px-04-citation-passage.png` |
+| 17 | follow-up on the phone | Pixel 9a | **PASS** in 9 s — "F0004 SHORT CIRC means a short circuit in the motor cable(s) or motor. Check the motor and motor cable", p. 130 (turn `d76ca61f…`) | `px-06-pixel-followup-answer.png` |
+| 18 | cold restart on the phone | Pixel 9a | **PASS** — `am force-stop` (pidof empty) → relaunch (new pid 8602) lands on HOME in 6 s → drawer → thread: the phone turn, its answer and the p. 130 chip restore | `px-07…`, `px-08-cold-restart-thread-restored.png` |
+| 19 | phone → web | web | **PASS** — the phone turn renders once (count 1); "WEB AFTER PIXEL" answered (F0007 AI1 LOSS, cited p. 130 + p. 111 — both verified in the PDF), turn `8d08335b…` | `web-15-sees-pixel-and-followup3.png` |
+| 20 | web → phone | Pixel 9a | **PASS** — after force-stop + relaunch the web turn appears exactly once with both chips | `px-09-pixel-sees-web-after-pixel.png` |
 
 Server truth at the end: 5 turns in thread `4a6d18d5…` with unique ids `8de44841`, `06561775`, `3fefee82`, `3089d6e2`, plus
 the photo turn. "Exactly once" relies on those unique ids plus the web count; the Android scan confirmed order and presence.
@@ -60,7 +66,15 @@ the photo turn. "Exactly once" relies on those unique ids plus the web count; th
 2. The same saved turn is captioned "Grounded in this notebook's sources." on web and "Grounded in the cited documentation."
    on a reloaded Android turn. Android is the conservative one (#4025 / Codex #4301 F1); this is parity, not safety.
 
+## Foreign turns in the test thread
+
+Two turns not written by this run appear at 2026-10-23 05:25Z and 05:30Z ("PIXEL RESUME CHECK…", "PIXEL PHONE TURN…"),
+same user id. No Claude/Codex transcript on CHARLIE contains them; origin unattributed. They were left untouched and render
+correctly on every surface. Final server truth: 9 unique turn ids in thread `4a6d18d5…`.
+
 ## Not done / owed
 
-- Physical Pixel steps 15–18 (owner unlock needed; the Pixel's prod session is in the same tenant, so no account switch).
-- No code change: the journey exposed no failing step on prod web or the emulator.
+- Phone **camera** capture was not exercised on hardware in this run (the photo turn came from a web upload and rendered on
+  the phone). The 9-20 pre-read covered camera → chip → photo card on this phone.
+- "Open original at cited page 130" was not tapped on the phone (Android opens PDFs via download → Files/Drive, owner-accepted).
+- No code change: the journey exposed no failing step on any surface. Two P3 parity items are filed as #4618.
