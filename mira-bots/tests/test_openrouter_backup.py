@@ -12,6 +12,8 @@ prepaid account in front of many hosts. These pin:
   `~anthropic/...` aliases and the `openrouter/...` auto-routers). Anthropic is
   banned from this cascade (PR #610), so such a configured model drops the
   provider instead of silently serving Claude;
+* the NO-:free GUARD — a model id ending in `:free` is an unpaid OpenRouter
+  community host and is refused on the customer path for every cascade member;
 * the DATA POLICY — every request asks OpenRouter to route only to hosts that
   neither train on nor retain prompts (verified live 2026-10-14: both default
   models have such hosts).
@@ -42,6 +44,11 @@ MODELS = (
     "OPENROUTER_MODEL",
     "OPENROUTER_VISION_MODEL",
     "OPENROUTER_TIMEOUT",
+    "GROQ_MODEL",
+    "GROQ_VISION_MODEL",
+    "CEREBRAS_MODEL",
+    "TOGETHERAI_MODEL",
+    "TOGETHERAI_VISION_MODEL",
 )
 MSGS = [{"role": "user", "content": "hi"}]
 
@@ -127,6 +134,9 @@ def test_env_can_choose_other_allowed_models(monkeypatch):
         ("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct@preset/backup"),
         ("OPENROUTER_VISION_MODEL", "@preset/vision"),
         ("OPENROUTER_VISION_MODEL", "qwen/qwen3-vl-30b-a3b-instruct@preset/vision"),
+        ("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
+        ("OPENROUTER_MODEL", "nvidia/nemotron-3-super-120b-a12b:free"),
+        ("OPENROUTER_VISION_MODEL", "qwen/qwen3-vl-30b-a3b-instruct:free"),
     ],
 )
 def test_a_claude_or_auto_routed_model_drops_the_provider(monkeypatch, caplog, var, model):
@@ -137,6 +147,42 @@ def test_a_claude_or_auto_routed_model_drops_the_provider(monkeypatch, caplog, v
         names = [p.name for p in _build_providers()]
     assert names == ["groq"]
     assert any("OPENROUTER_MODEL_REFUSED" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "var,model,dropped",
+    [
+        ("OPENAI_MODEL", "meta-llama/llama-3.3-70b-instruct:free", "openai"),
+        ("OPENAI_VISION_MODEL", "qwen/qwen3-vl-30b-a3b-instruct:free", "openai"),
+        ("GROQ_MODEL", "meta-llama/llama-3.3-70b-instruct:free", "groq"),
+        ("GROQ_VISION_MODEL", "qwen/qwen3-vl-30b-a3b-instruct:free", "groq"),
+        ("CEREBRAS_MODEL", "gpt-oss-120b:free", "cerebras"),
+        ("TOGETHERAI_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo:free", "together"),
+        ("TOGETHERAI_VISION_MODEL", "MiniMaxAI/MiniMax-M3:free", "together"),
+    ],
+)
+def test_free_openrouter_model_drops_that_cascade_member(monkeypatch, caplog, var, model, dropped):
+    for key in KEYS:
+        monkeypatch.setenv(key, "k")
+    monkeypatch.setenv(var, model)
+    with caplog.at_level("ERROR", logger="mira-gsd"):
+        names = [p.name for p in _build_providers()]
+    assert dropped not in names
+    expected = [n for n in ("openai", "openrouter", "groq", "cerebras", "together") if n != dropped]
+    assert names == expected
+    assert any("OPENROUTER_MODEL_REFUSED" in r.getMessage() for r in caplog.records)
+
+
+def test_paid_llama_id_stays_on_backup_and_pool(monkeypatch):
+    for key in KEYS:
+        monkeypatch.setenv(key, "k")
+    monkeypatch.setenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
+    monkeypatch.setenv("GROQ_MODEL", "meta-llama/llama-3.3-70b-instruct")
+    providers = _build_providers()
+    assert [p.name for p in providers] == ["openai", "openrouter", "groq", "cerebras", "together"]
+    by_name = {p.name: p.model for p in providers}
+    assert by_name["openrouter"] == "meta-llama/llama-3.3-70b-instruct"
+    assert by_name["groq"] == "meta-llama/llama-3.3-70b-instruct"
 
 
 def test_request_payload_asks_for_no_training_and_no_retention():
