@@ -80,5 +80,14 @@ gh variable set MIRA_RUNS_ON_SERVICES --body '["self-hosted","linux","arm64","mi
 ## Known limits
 
 - arm64 Linux: workflows that need x86-only binaries or the Android SDK stay GitHub-hosted.
+- **Three jobs stay GitHub-hosted on purpose:** `ci.yml` `license-check`, `ui-lifecycle-guard.yml`
+  `guard`, `r2-signal-floor.yml` `evaluate`. They install hash-locked tool sets
+  (`tools/migration-drift-requirements.txt`, `requirements/ui-lifecycle-guard.txt`) pinned to x86_64
+  wheels; pip rejects the arm64 wheel's hash. Those pins are governance controls and are not
+  loosened for runner convenience. Measured cost of all hosted jobs on GitHub Pro: ~10,000
+  min/month, ~7,000 over the included 3,000, about $42/month at $0.006/min.
+- Private-repo token permissions: a public repo serves clones, PR files and run lists to anyone;
+  a private one only to a token with `contents`/`pull-requests`/`actions` read. Jobs that declare
+  `permissions:` must list what they read.
 - Capacity: 4 + 1 slots vs. GitHub's ~20 concurrent hosted jobs, so busy PR bursts queue longer.
 - Bravo also serves Ollama; CI load competes with local inference.

@@ -13,3 +13,9 @@ tok="$(gh api -X POST "repos/$REPO/actions/runners/registration-token" --jq .tok
 printf '%s' "$tok" | ssh -o BatchMode=yes -o ConnectTimeout=10 "$BRAVO" \
   'umask 077; mkdir -p ~/.gha; cat > ~/.gha/regtoken.tmp && mv ~/.gha/regtoken.tmp ~/.gha/regtoken'
 echo "$(date -u +%FT%TZ) registration token refreshed for $REPO"
+
+# Ephemeral runners deregister themselves after their job; a container killed mid-job (VM
+# restart, supervisor restart) leaves an OFFLINE registration behind. Remove those.
+for id in $(gh api "repos/$REPO/actions/runners?per_page=100" --jq '.runners[] | select(.status=="offline" and (.name|startswith("bravo-"))) | .id'); do
+  gh api -X DELETE "repos/$REPO/actions/runners/$id" >/dev/null 2>&1 && echo "removed offline runner $id"
+done
