@@ -69,6 +69,7 @@ import {
   type UnifiedNotebookMeta,
 } from "../unified/to-interaction";
 import type { ChatV2Handlers } from "./ChatV2";
+import { keepMobilePhoto, reviewMobilePhotoReading } from "../unified/keep-photo";
 
 /**
  * The notebook's manual-search progress — ONE owned state machine instead of
@@ -967,13 +968,13 @@ function UnifiedChatForNotebook({
   // re-read stores the new scope so the next question can cite it.
   const onKeepPhoto = useCallback(async (fileId: string) => {
     if (!meta.notebookId) throw new Error("no_notebook");
-    await request(
-      `/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`,
-      // The conversation whose reading the technician is looking at.
-      { method: "POST", json: attachmentThreadId ? { threadId: attachmentThreadId } : {} },
-    );
-    setKeptPhotoIds((prev) => new Set(prev).add(fileId));
-    await refreshPromotedScope();
+    await keepMobilePhoto(fileId, {
+      notebookId: meta.notebookId,
+      threadId: attachmentThreadId,
+      request,
+      refresh: refreshPromotedScope,
+      review: reviewMobilePhotoReading,
+    });
   }, [meta.notebookId, attachmentThreadId, refreshPromotedScope]);
 
   const hooks: HostHooks = {
