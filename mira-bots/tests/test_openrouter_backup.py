@@ -12,8 +12,9 @@ prepaid account in front of many hosts. These pin:
   `~anthropic/...` aliases and the `openrouter/...` auto-routers). Anthropic is
   banned from this cascade (PR #610), so such a configured model drops the
   provider instead of silently serving Claude;
-* the NO-:free GUARD — a model id ending in `:free` is an unpaid OpenRouter
-  community host and is refused on the customer path for every cascade member;
+* the NO-:free GUARD — a model id ending in `:free` is refused because those
+  hosts may log or train on inputs, and the Security page promises manuals
+  are never used for training;
 * the DATA POLICY — every request asks OpenRouter to route only to hosts that
   neither train on nor retain prompts (verified live 2026-10-14: both default
   models have such hosts).
@@ -28,7 +29,13 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from shared.inference.router import InferenceRouter, _Provider, _build_providers, _request_payload
+from shared.inference.router import (
+    InferenceRouter,
+    _Provider,
+    _build_providers,
+    _openrouter_model_refused,
+    _request_payload,
+)
 
 KEYS = (
     "OPENAI_API_KEY",
@@ -173,7 +180,7 @@ def test_free_openrouter_model_drops_that_cascade_member(monkeypatch, caplog, va
     assert any("OPENROUTER_MODEL_REFUSED" in r.getMessage() for r in caplog.records)
 
 
-def test_paid_llama_id_stays_on_backup_and_pool(monkeypatch):
+def test_non_free_llama_id_stays_on_backup_and_pool(monkeypatch):
     for key in KEYS:
         monkeypatch.setenv(key, "k")
     monkeypatch.setenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
@@ -183,6 +190,22 @@ def test_paid_llama_id_stays_on_backup_and_pool(monkeypatch):
     by_name = {p.name: p.model for p in providers}
     assert by_name["openrouter"] == "meta-llama/llama-3.3-70b-instruct"
     assert by_name["groq"] == "meta-llama/llama-3.3-70b-instruct"
+
+
+def test_free_suffix_is_not_a_substring_match(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.setenv("OPENROUTER_MODEL", "acme/free-not-a-suffix")
+    monkeypatch.setenv("OPENROUTER_VISION_MODEL", "acme/model:freebie")
+    p = _openrouter(_build_providers())
+    assert p.model == "acme/free-not-a-suffix"
+    assert p.vision_model == "acme/model:freebie"
+
+
+def test_existing_refuse_predicate_covers_free_suffix():
+    assert _openrouter_model_refused("meta-llama/llama-3.3-70b-instruct:free")
+    assert _openrouter_model_refused("NVIDIA/Nemotron:FREE")
+    assert not _openrouter_model_refused("meta-llama/llama-3.3-70b-instruct")
+    assert not _openrouter_model_refused("acme/model:freebie")
 
 
 def test_request_payload_asks_for_no_training_and_no_retention():
