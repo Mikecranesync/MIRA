@@ -8,61 +8,64 @@ from __future__ import annotations
 
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-NQ = ROOT / "mira-hub/src/lib/notebook-query.ts"
-
-
-def must_replace(text: str, old: str, new: str, label: str) -> str:
-    n = text.count(old)
-    if n != 1:
-        raise SystemExit(f"{label}: expected 1 occurrence, found {n}")
-    return text.replace(old, new, 1)
+NQ = Path(__file__).resolve().parents[1] / "mira-hub/src/lib/notebook-query.ts"
 
 
 def main() -> None:
-    nq = NQ.read_text()
-    nq = must_replace(
-        nq,
-        """  [/\\bfault\\b|\\btrip\\b|\\balarm\\b|\\berror\\s*code\\b/i, [\"fault\"]],
-  // Technician \"ACK\" names a pictogram key; OEM manuals say \"acknowledge\" /
-  // \"group acknowledgment\" and never the token ACK (#4645 / Comfort p.74).
-  [/\\back\\b/i, [\"acknowledge\", \"group acknowledgment\", \"fault clear\"]],
-  // Fault-clear and acknowledge are the same operator-action class. Expand
-  // only when the object is a fault/alarm so a parameter-reset is not flooded.
-  [/\\b(?:reset|clear)\\b[^.?!]*\\b(?:fault|trip|alarm)|\\b(?:fault|trip|alarm)\\b[^.?!]*\\b(?:reset|clear)\\b/i, [\"acknowledge\", \"group acknowledgment\", \"fault clear\"]],
-  [/\\breset\\b|\\bclear\\b/i, [\"fault clear\"]],
-""",
-        """  [/\\bfault\\b|\\btrip\\b|\\balarm\\b|\\berror\\s*code\\b/i, [\"fault\"]],
-  [/\\breset\\b|\\bclear\\b/i, [\"fault clear\"]],
-""",
-        "ACK synonym rows",
-    )
-    nq = must_replace(
-        nq,
-        """  const synTerms = new Set<string>();
-  for (const [re, terms] of SYNONYMS) {
-    if (re.test(q)) for (const t of terms) synTerms.add(t);
-  }
-""",
-        """  const synTerms = new Set<string>();
-  for (const [re, terms] of SYNONYMS) {
-    if (re.test(q)) for (const t of terms) synTerms.add(t);
-  }
-  // #4645: OEM manuals say \"acknowledge\", not ACK. Add that vocabulary when
-  // the existing classifier already decided this is a fault-clear, not by
-  // matching the token ACK/back. Navigation (\"go back\", \"back key\") is not fault.
-  if (classifyIntent(q) === \"fault\") {
-    for (const term of [\"acknowledge\", \"group acknowledgment\", \"fault clear\"]) synTerms.add(term);
-  }
-""",
-        "intent-gated expansion",
-    )
-    if "[/\\back\\b/i, [\"acknowledge\"" in nq:
-        raise SystemExit("ACK synonym row still present")
-    if 'classifyIntent(q) === "fault"' not in nq:
+    text = NQ.read_text()
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    skip_ack_block = False
+    ack_rows_removed = 0
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if 'Technician "ACK" names a pictogram key' in line:
+            skip_ack_block = True
+        if skip_ack_block:
+            if '["acknowledge"' in line or 'group acknowledgment' in line or line.lstrip().startswith("//"):
+                if '["acknowledge"' in line:
+                    ack_rows_removed += 1
+                i += 1
+                if ack_rows_removed >= 2 and not (i < len(lines) and (lines[i].lstrip().startswith("//") or '["acknowledge"' in lines[i])):
+                    skip_ack_block = False
+                continue
+            skip_ack_block = False
+        if (
+            "const synTerms = new Set<string>();" in line
+            and i + 3 < len(lines)
+            and "for (const [re, terms] of SYNONYMS)" in lines[i + 1]
+            and "classifyIntent(q)" not in "".join(lines[i : i + 12])
+        ):
+            out.append(line)
+            out.append(lines[i + 1])
+            out.append(lines[i + 2])
+            out.append(lines[i + 3])
+            out.append(
+                "  // #4645: OEM manuals say \"acknowledge\", not ACK. Add that vocabulary when\n"
+                "  // the existing classifier already decided this is a fault-clear, not by\n"
+                "  // matching the token ACK/back. Navigation (\"go back\", \"back key\") is not fault.\n"
+                "  if (classifyIntent(q) === \"fault\") {\n"
+                "    for (const term of [\"acknowledge\", \"group acknowledgment\", \"fault clear\"]) synTerms.add(term);\n"
+                "  }\n"
+            )
+            i += 4
+            continue
+        out.append(line)
+        i += 1
+    patched = "".join(out)
+    if ack_rows_removed < 2:
+        raise SystemExit(f"expected to remove 2 ACK synonym rows, removed {ack_rows_removed}")
+    if 'classifyIntent(q) === "fault"' not in patched:
         raise SystemExit("intent gate missing")
-    NQ.write_text(nq)
-    print("structural intent-gated expansion applied")
+    if any('["acknowledge", "group acknowledgment", "fault clear"]' in ln and "synTerms" not in ln for ln in patched.splitlines() if "SYNONYMS" in patched[: patched.find(ln) + 1] if False):
+        pass
+    syn_end = patched.find("const EXACT_PATTERNS")
+    syn = patched[:syn_end]
+    if '["acknowledge", "group acknowledgment", "fault clear"]' in syn:
+        raise SystemExit("ACK synonym row still in SYNONYMS")
+    NQ.write_text(patched)
+    print(f"structural intent-gated expansion applied; removed {ack_rows_removed} synonym rows")
 
 
 if __name__ == "__main__":

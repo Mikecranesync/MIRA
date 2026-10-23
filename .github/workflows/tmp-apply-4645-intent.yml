@@ -53,8 +53,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh pr comment 4672 --body "## #4645 structural intent-gated expansion
+          gh pr comment 4672 --body-file -
+          <<'EOF'
+          ## #4645 structural intent-gated expansion
 
-Acknowledge vocabulary is added only when \`classifyIntent === fault\`. ACK/back synonym rows removed (not retuned).
+          Acknowledge vocabulary is added only when `classifyIntent === fault`. ACK/back synonym rows removed (not retuned).
 
-Test step conclusion: ${{ job.status }}"
+          Test step conclusion: ${{ job.status }}
+          EOF
