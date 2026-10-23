@@ -81,6 +81,9 @@ describe("sourceFor / basisKind", () => {
     expect(sourceFor(citation, "turn-1-a")).toEqual({ id: "turn-1-a:1", title: "GS10 User Manual", kind: "oem_documentation", locator: "p. 47" });
     expect(sourceFor({ ...citation, page: null, fileId: "file-9" }, "t")).toMatchObject({ kind: "workspace_file", locator: "Set P9.01 to 2 for Modbus control." });
     expect(sourceFor({ ...citation, page: null, quote: null }, "t")).toMatchObject({ locator: "cited passage" });
+    // A source read from a photo opens the photo, and says so, so the viewer fits the image.
+    expect(sourceFor({ ...citation, fileId: "text-1", originFileId: "photo-9" }, "t")).toMatchObject({ media: "image" });
+    expect(sourceFor({ ...citation, fileId: "file-9" }, "t")).not.toHaveProperty("media");
     expect(sourceIdFor("turn-2-a", "1")).toBe("turn-2-a:1");
     expect(answerTurnId("turn-2")).toBe("turn-2-a");
   });
