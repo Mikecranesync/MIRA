@@ -543,7 +543,7 @@ def test_publish_is_opt_in_and_a_written_fragment_is_not_pushed_by_default(
     monkeypatch.setenv(efp.WORKER_ENV, "charlie")
     monkeypatch.delenv("EVAL_FIXER_PUBLISH_WIKI", raising=False)
     _write_fragment(clone, "2026-08-30", "charlie")
-    branch = efp.publish_branch("2026-08-30", "charlie")
+    branch = efp.publish_branch("charlie")
 
     assert efp.main(["--date", "2026-08-30", "--publish", "--repo", str(clone)]) == 5
     assert "opt-in" in capsys.readouterr().err
