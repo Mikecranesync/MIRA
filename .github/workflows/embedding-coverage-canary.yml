@@ -55,7 +55,9 @@ jobs:
     name: Embedding coverage (${{ inputs.target || 'prod' }})
     # Pinned: ubuntu-26.04 has no postgresql-client-16 (#4697).
     runs-on: ubuntu-24.04
-    environment: ${{ (inputs.target || 'prod') == 'prod' && 'production' || 'staging' }}
+    # No `environment:`: this job only SELECTs, and every secret it uses is a repo
+    # secret. The production environment carries the owner's approval gate, which
+    # must stand in front of changes, not a daily read-only check (#4696).
     timeout-minutes: 6
 
     steps:
