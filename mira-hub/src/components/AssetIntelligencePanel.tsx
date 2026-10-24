@@ -6,6 +6,7 @@ import {
   Play, ExternalLink, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { API_BASE } from "@/lib/config";
 import type { EnrichmentReport, KBHit, KGEntityHit, WebResult, YouTubeHit } from "@/lib/agents/asset-intelligence";
 
 interface Props { assetId: string }
@@ -18,7 +19,7 @@ export function AssetIntelligencePanel({ assetId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const resp = await fetch(`/hub/api/assets/${assetId}/enrich/`);
+      const resp = await fetch(`${API_BASE}/api/assets/${assetId}/enrich/`);
       if (resp.ok) setReport(await resp.json());
     } finally {
       setLoading(false);
@@ -35,7 +36,7 @@ export function AssetIntelligencePanel({ assetId }: Props) {
   const runEnrichment = async () => {
     setRunning(true);
     try {
-      const resp = await fetch(`/hub/api/assets/${assetId}/enrich/`, { method: "POST" });
+      const resp = await fetch(`${API_BASE}/api/assets/${assetId}/enrich/`, { method: "POST" });
       if (resp.ok) setReport(await resp.json());
     } finally {
       setRunning(false);
