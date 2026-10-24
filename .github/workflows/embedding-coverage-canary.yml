@@ -53,7 +53,8 @@ concurrency:
 jobs:
   canary:
     name: Embedding coverage (${{ inputs.target || 'prod' }})
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no postgresql-client-16 (#4697).
+    runs-on: ubuntu-24.04
     environment: ${{ (inputs.target || 'prod') == 'prod' && 'production' || 'staging' }}
     timeout-minutes: 6
 

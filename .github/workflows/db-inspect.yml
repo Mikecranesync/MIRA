@@ -26,7 +26,8 @@ concurrency:
 jobs:
   inspect:
     name: Inspect ${{ inputs.target }}
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no postgresql-client-16 (#4697).
+    runs-on: ubuntu-24.04
     environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
     timeout-minutes: 5
 

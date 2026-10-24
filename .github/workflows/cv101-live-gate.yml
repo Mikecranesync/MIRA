@@ -51,7 +51,8 @@ permissions:
 jobs:
   gate:
     name: CV-101 GO/NO-GO
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no postgresql-client-16 (#4697).
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     environment: production
 
