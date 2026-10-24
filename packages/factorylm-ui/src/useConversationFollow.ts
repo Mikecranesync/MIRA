@@ -67,22 +67,25 @@ export function useConversationFollow<T extends HTMLElement = HTMLElement>(threa
     let composerObserved: HTMLElement | undefined;
     const resize = new ResizeObserver(() => schedule());
     const follow = () => {
+      // The composer grows with pending attachments, send errors and the
+      // sync banner (#4620's --fl-composer-block-size), which can clip the
+      // latest turn without the turn, the thread or the window changing
+      // size (#4710). It is outside the mutation-observed subtree, so it
+      // needs its own resize watch. Re-query every call, like the turn node
+      // below: a remount (route/shell swap) would otherwise leave this
+      // watching a detached element until the next turn/thread change (#4714).
+      // Checked unconditionally — not gated on the turn node below — so a
+      // composer remount is still picked up even while the latest turn is
+      // transiently absent from the DOM (#4714 cheap-review follow-up).
+      const composer = rootRef.current?.closest<HTMLElement>(".fl-shell")?.querySelector<HTMLElement>(".fl-composer") ?? undefined;
+      if (composer !== composerObserved) {
+        if (composerObserved) resize.unobserve(composerObserved);
+        if (composer) resize.observe(composer);
+        composerObserved = composer;
+      }
       const node = rootRef.current?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(last.id)}"]`);
       if (node) {
         if (observed !== node) { if (observed) resize.unobserve(observed); resize.observe(node); observed = node; }
-        // The composer grows with pending attachments, send errors and the
-        // sync banner (#4620's --fl-composer-block-size), which can clip the
-        // latest turn without the turn, the thread or the window changing
-        // size (#4710). It is outside the mutation-observed subtree, so it
-        // needs its own resize watch. Re-query every call, like the turn node
-        // above: a remount (route/shell swap) would otherwise leave this
-        // watching a detached element until the next turn/thread change (#4714).
-        const composer = rootRef.current?.closest<HTMLElement>(".fl-shell")?.querySelector<HTMLElement>(".fl-composer") ?? undefined;
-        if (composer !== composerObserved) {
-          if (composerObserved) resize.unobserve(composerObserved);
-          if (composer) resize.observe(composer);
-          composerObserved = composer;
-        }
         if (following.current) {
           node.scrollIntoView({ block: "end", behavior: "instant" });
           // Seed even when already at latest: no browser scroll event is then
