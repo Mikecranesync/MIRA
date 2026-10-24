@@ -1,7 +1,7 @@
 fastapi==0.136.*
 uvicorn[standard]==0.48.*
 httpx==0.28.*
-Pillow>=13.0.0
+Pillow>=12.3.0,<13  # 13 is a major upgrade; take it as a planned change, not a Dependabot patch (#4263)
 pillow-heif>=1.4.0
 python-multipart==0.0.30
 pytest==9.*
