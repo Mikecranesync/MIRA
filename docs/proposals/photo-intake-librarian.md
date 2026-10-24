@@ -1,10 +1,25 @@
 # Photo Intake Librarian: turn every equipment photo into growing machine knowledge
 
-Status: PROPOSAL (investigation only, not committed). Baseline: `origin/main` `b6e972589` (2026-10-24).
+Status: PROPOSAL. Owner decisions recorded 2026-10-24 (§0); nothing is implemented. Baseline: `origin/main` `b6e972589` (2026-10-24).
 The brief's baseline `fbaf346d` and the prod tag `c2d69e87` (= `446131f82`) are both ancestors of it.
 The latest prod deploy-vps run was at `db5e49097` (#4663), 2026-10-24 00:46Z. Prod itself was not accessed.
 The reference Librarian files (`/workspace/manuals/*`, the archaeology note) were not present on this
 machine; the Librarian's behavior is taken from the brief.
+
+## 0. Owner decisions (Mike, 2026-10-24)
+
+Mike answered the §9 questions on 2026-10-24: Q1 as written below, Q2–Q8 "concur with your recommendations".
+
+| # | Decision |
+|---|---|
+| 1 | **ADR-0036 Hub vision ACCEPTED, with OpenAI `gpt-5.4-mini` as primary and OpenRouter required as the fallback.** Gap: OpenRouter is wired for text only (`lib/inference/canonical-cascade.ts:55-95`, routing `{data_collection:"deny", zdr:true}`). The vision path (`lib/nameplate/index.ts:435`, `look/route.ts:433`) still falls back OpenAI → Together → Groq. Closing this is PR P1.0. |
+| 2 | One extra vision pass per non-scene photo is approved (about $0.01 per photo, worst case). |
+| 3 | The parts list goes in new `machine_parts*` tables, not `installed_component_instances`. |
+| 4 | The plant-tag decoder is ported to TypeScript in the Hub. |
+| 5 | A second agreeing photo may mark a part VERIFIED without the technician, **except safety parts**, which always need technician confirmation. |
+| 6 | After Phase 1, turn on `MIRA_NOTEBOOK_MANUAL_ACQUISITION` on prod for one tenant (#4406). |
+| 7 | `nameplate/confirm` must obey the flag (P1.7). |
+| 8 | **Sequencing:** Phase 1 starts only after the pilot blockers #4362, #4364 and #4369 close. |
 
 ## 1. Executive summary
 
@@ -139,11 +154,13 @@ flowchart LR
 
 | PR | Scope / files | Tests | Acceptance on the sellable path |
 |---|---|---|---|
+| P1.0 OpenRouter vision fallback (decision 1) | `lib/nameplate/index.ts defaultRecognizer`, `look/route.ts`, reusing `openRouterProviders()` + `OPENROUTER_ROUTING` (ZDR, no data collection, `openRouterModelRefused` keeps Claude out). New verified per-image cost bound in `openai-run-budget.ts`-style budget for the OpenRouter vision model. Order: OpenAI, then OpenRouter, then Together/Groq. | Unit: OpenAI 5xx/timeout/budget-refused falls to OpenRouter. No key means the step is skipped. A Claude model id is refused. The routing block is on every request. | With OpenAI forced down on staging, a LOOK photo is answered by OpenRouter and the trace names the provider |
 | P1.1 Finish #4673 print review | Existing draft | Its suite | A print kept from UnifiedChat goes through the review sheet. The F55/F53 case can't save unreviewed. |
 | P1.2 `photo_kind` on LOOK | `look/route.ts` prompt + schema, `to-interaction.ts` | Route test per kind, plus a fixture for each of 5 synthetic photos | Mobile LOOK card shows the kind. No extra vision call (budget log shows 1 call). |
 | P1.3 Wire the screen-text reader | `screen-text.ts` caller in `chat/route.ts` | Route test: the second turn sees the first photo's screen lines | A follow-up question about a display photo cites the copied lines. |
 | P1.4 Wire `oem-corroboration` into Keep | `photo-source.ts`: match the reading against attached manual identifiers, then mark it corroborated (still unconfirmed until reviewed) | Unit + route, including the coaster probe (must stay null) | A kept nameplate whose number matches the manual shows "matches manual p.N". |
-| P1.5 Flags parity | `docker-compose.staging-vps.yml`: forward `PHOTO_OCR_ENABLED`, `NAMEPLATE_DETECT_ENABLED` to the staging hub. Fix the stale #4406 line in `CAPABILITY_CLOSURE.yaml`. | Compose lint | Staging hub env shows both. The closure record matches compose. |
+| P1.5 Flags parity | `docker-compose.staging-vps.yml`: forward `PHOTO_OCR_ENABLED`, `NAMEPLATE_DETECT_ENABLED` to the staging hub. Fix the stale #4406 line and the "ADR-0036 is PROPOSED" block (`:393-409`) in `CAPABILITY_CLOSURE.yaml`. | Compose lint | Staging hub env shows both. The closure record matches compose. |
+| P1.7 Confirm obeys the flag (decision 7) | `nameplate/confirm/route.ts:~638-645`: skip inline `acquireManualForIdentity` when acquisition is disabled for the tenant | Route test, flag off: 0 discovery calls. Control, flag on: 1 call. | Prod confirm with the flag off makes no Serper call |
 | P1.6 Siemens fallback link | Land #4678, plus a 403 path that shows the official page link and asks the technician to upload | Route test with a mocked 403 | A blocked vendor yields "download here, then attach", never a scrape |
 
 **Phase 2: multi-item extraction and BOM core (2–3 weeks)**
@@ -173,7 +190,7 @@ flowchart LR
 | Safety systems (safety PLCs, F-modules, burner and ride controls) | A `safety_class` flag set from the grammar and vendor family (e.g. Siemens F-modules), from tags, or by the technician. Those parts get catalog manuals only. MIRA never produces lockout, reset or restart steps from photos. The existing judge-every-answer safety gate (#3792 lineage) still runs on every answer. |
 | Vendor blocks (Siemens 403, login walls) | Official routes only (#4678). On a 403 show the official link and accept the technician's upload. Never scrape, bypass or rehost. Cache by sha256, private to the tenant. |
 | Cost per photo | Defaults in `openai-run-budget.ts`: $0.75/M in, $4.5/M out, worst-case 3,000 image tokens per call on `gpt-5.4-mini`. Roughly ≤$0.01 per vision call, and Phase 2 adds at most one call per non-scene photo. The run budget cap (default $10/day) still applies. Scene photos pay nothing extra. |
-| Privacy / third-party models | Photos already go to OpenAI then Together, while ADR-0036 vision is unaccepted (Q1). Plant photos can show site names, so nothing goes to free or third-party models without Mike's explicit acceptance. No customer or site names in the repo or fixtures. |
+| Privacy / third-party models | ADR-0036 vision is now accepted: OpenAI primary, OpenRouter fallback with zero data retention (ZDR) and data collection denied (§0). Plant photos can show site names, so any other free or third-party vision provider needs Mike's explicit acceptance. No customer or site names in the repo or fixtures. |
 | Re-processing debt | `extractor_version` on every derived row, and jobs keyed on the sha256 of the stored original. Re-derivation is automatic. |
 
 ## 8. Acceptance test plan (synthetic photos only)
@@ -194,7 +211,7 @@ flowchart LR
 7. **Isolation:** tenant B reads 0 parts, alerts or requests (RLS integration test).
 8. **Re-derive:** bump `extractor_version` and the rows regenerate from stored originals with no new upload.
 
-## 9. Open questions for Mike
+## 9. Open questions for Mike (ANSWERED 2026-10-24, see §0)
 
 1. Accept ADR-0036 Hub vision with OpenAI `gpt-5.4-mini` as primary, so photo extraction may keep sending photos there? (yes/no)
 2. May a second vision pass run on every non-scene photo (about $0.01 per photo, worst case)? (yes/no)
