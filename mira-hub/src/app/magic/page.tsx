@@ -51,7 +51,11 @@ function MagicVerify() {
           <>
             <XCircle className="w-8 h-8 text-red-400 mx-auto mb-4" />
             <p className="text-white text-lg font-semibold">Link expired or already used</p>
-            <p className="text-slate-400 text-sm mt-2">Magic links expire after 15 minutes.</p>
+            {/* Invitation links now live 24 hours (#4370) while ordinary
+                sign-in links stay at 15 minutes — this page can't tell which
+                kind an already-invalid token was, so it must not claim one
+                fixed duration for both. */}
+            <p className="text-slate-400 text-sm mt-2">This link may have expired or already been used.</p>
             <a
               href="/login"
               className="mt-6 inline-flex items-center justify-center min-h-[44px] px-6 rounded-lg text-sm font-semibold text-white"
