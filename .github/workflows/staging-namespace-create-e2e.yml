@@ -31,7 +31,8 @@ on:
 jobs:
   e2e:
     name: 9-scenario E2E against prod
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no Playwright chromium build (#4697).
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:

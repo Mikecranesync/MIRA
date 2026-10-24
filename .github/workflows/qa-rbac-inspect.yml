@@ -62,7 +62,8 @@ concurrency:
 jobs:
   rbac-inspect:
     name: rbac deny-grid + isolation (staging)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no Playwright chromium build (#4697).
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     environment: staging
