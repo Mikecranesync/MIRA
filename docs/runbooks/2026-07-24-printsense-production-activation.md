@@ -34,15 +34,17 @@ activation profile. Secrets remain runtime-only in Doppler.
 
 ## Deployment
 
-`.github/workflows/printsense-production-activation.yml` runs:
+`.github/workflows/printsense-production-activation.yml` runs **only by manual
+dispatch** (#3709 / #3727). It used to also run on the activation merge and after
+every successful `Deploy to VPS`, which force-recreated the production Telegram and
+Slack bots on every merge. Re-applying the overlay after a deploy is now a human
+decision: dispatch the workflow.
 
-1. on the activation merge,
-2. after every successful `Deploy to VPS` run, and
-3. by manual dispatch.
-
-The post-deploy enforcement is temporary but intentional: the base SaaS compose
-still contains legacy OpenAI defaults. Until that deeper cleanup lands, a normal
-full deploy would otherwise recreate the bots with the old provider profile.
+The SSH target is the OVH production host (`ubuntu@40.160.141.61`, `sudo`),
+matching `deploy-vps.yml`; the DigitalOcean host `165.245.138.91` is gone.
+Note: the minimal OVH production overlay (`docker-compose.production.yml`) does
+not run the Telegram/Slack bots yet, so dispatching this workflow builds and
+starts them there. Confirm that is intended before dispatching.
 
 The workflow shares the `deploy-vps` concurrency group, verifies the source PR's
 Staging Gate, rebuilds only Telegram and Slack, applies the production overlay,
@@ -86,4 +88,4 @@ After production is confirmed stable:
 2. remove the legacy provider/model duplication from the bot router,
 3. make the scheduled canary and typed interpreter resolve the same model source,
 4. expose PrintSense-specific degraded status without taking down general MIRA chat, and
-5. retire this temporary post-deploy enforcement workflow once the base deployment path is canonical.
+5. retire this temporary dispatch-only activation workflow once the base deployment path is canonical.

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 
 REPO = Path(__file__).resolve().parents[2]
 OVERLAY = REPO / "docker-compose.printsense-production.yml"
@@ -58,15 +60,31 @@ def test_production_overlay_never_touches_the_general_vision_lane() -> None:
         )
 
 
-def test_activation_is_durable_after_normal_vps_deploys() -> None:
+def test_activation_runs_only_on_explicit_dispatch() -> None:
+    """#3709 / #3727: no push / workflow_run trigger — production bots are never
+    recreated as a side effect of a merge. Re-applying the overlay is a human
+    dispatch."""
     text = WORKFLOW.read_text(encoding="utf-8")
-
-    assert 'workflows: ["Deploy to VPS"]' in text
-    assert "github.event.workflow_run.conclusion == 'success'" in text
+    doc = yaml.safe_load(text)
+    triggers = doc.get("on", doc.get(True))  # PyYAML parses a bare `on:` key as True
+    assert set(triggers) == {"workflow_dispatch"}, triggers
+    assert "workflow_run" not in text
+    assert "github.event.workflow_run" not in text
     assert "group: deploy-vps" in text
     assert "docker-compose.printsense-production.yml" in text
     assert "$COMPOSE build mira-bot-telegram mira-bot-slack" in text
     assert "$COMPOSE up -d --no-deps --force-recreate mira-bot-telegram mira-bot-slack" in text
+
+
+def test_activation_sshes_current_ovh_prod_not_dead_digitalocean() -> None:
+    """#3727 remount addendum: activation must hit OVH, not 165.245.138.91."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "ubuntu@40.160.141.61" in text
+    assert "sudo bash -s --" in text
+    assert "165.245.138.91" not in text
+    assert "root@" not in text
+    assert "StrictHostKeyChecking=yes" in text
+    assert "deployment/known_hosts.factorylm-prod" in text
 
 
 def test_activation_fails_closed_and_proves_live_vision_and_ocr() -> None:
