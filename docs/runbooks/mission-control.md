@@ -1,6 +1,6 @@
 # Mission Control: private Project #4 overview
 
-**Status, 2026-10-24:** built and tested as a **local preview only**. It is **not hosted anywhere**, and
+**Status, 2026-10-24:** deployed on CHARLIE, reachable on the owner's Tailscale network only (see below).
 **Send is disabled**. Tracking: #4737. Background and the dispatch contract: PR #4736,
 `docs/proposals/project4-mission-control.md`.
 
@@ -38,22 +38,55 @@ Health check: `GET /healthz` returns `{"items": N, "ok": true}`.
 - the disabled Send button
 - not mutating the shared cached snapshot
 
-## Hosting: needs owner approval before anything is set up
+## Where it runs (deployed 2026-10-24)
 
-Nothing below has been done. Each step needs explicit approval.
+The owner chose **CHARLIE on Tailscale**: the OVH VPS has no Tailscale (#4741), and this keeps the page off the internet.
 
-1. **A server credential.**
-   - The Project is owned by a personal account. GitHub Apps and fine-grained tokens **cannot** read user-owned Projects v2.
-   - The only working option is a **classic** token with `read:project` plus `repo`. `repo` is broad (read *and write* on every repository), so store it in Doppler and only on the host that runs this.
-2. **Where it runs:**
-   - **(A, recommended) Tailscale-only on the VPS.** Bind to the VPS tailnet address only. No public DNS or certificate, nothing reachable from the internet. Your phone and computer need the Tailscale app signed in.
-   - **(B) Public subdomain.** Needs a DNS record, a TLS certificate, a web-server site and an authentication layer in front. All four are security or DNS changes.
-3. **How it runs.**
-   - Production changes go through `deploy-vps.yml` only (no hand-run services on the VPS).
-   - That means a compose entry, which sits in a guarded path. It needs one Codex review or an explicit owner exception, then a merge, staging and acceptance receipts, and your production approval.
-4. **Entry points, after hosting exists:**
-   - a browser homepage or startup tab on your computer;
-   - an Android home-screen shortcut (Chrome → ⋮ → Add to Home screen).
+| | |
+|---|---|
+| **URL** | CHARLIE's MagicDNS name on port 8443 (tailnet only). Get it on CHARLIE with `tailscale serve status`; it is deliberately not written here because this repo is public |
+| **Code** | `~/Services/mission-control/current`, a `git archive` of the deployed commit; see `DEPLOYED_SHA` in that folder |
+| **Process** | LaunchAgent `com.factorylm.mission-control` runs `tools/mission-control/charlie/run.sh`, which binds `127.0.0.1:8787` |
+| **HTTPS** | `tailscale serve --bg --https=8443 http://127.0.0.1:8787`. This is Tailscale *serve*, not *funnel*, so it reaches tailnet devices only |
+| **Token** | Doppler `factorylm/prd` `GITHUB_PAT`, fetched at start. The owner chose this key and accepted its broad scopes on 2026-10-24; a `read:project`-only token would be enough |
+| **Logs** | `~/Services/mission-control/logs/` |
+
+### Install or upgrade to a newer commit
+
+```bash
+SHA=<commit>; B=~/Services/mission-control; REL=$B/releases/${SHA:0:8}
+mkdir -p "$REL" "$B/logs"
+git archive "$SHA" tools/mission-control | tar -x -C "$REL" --strip-components=2
+echo "$SHA" > "$REL/DEPLOYED_SHA"
+ln -sfn "$REL" "$B/current"
+cp tools/mission-control/charlie/run.sh "$B/run.sh"; chmod 700 "$B/run.sh"
+sed "s#__HOME__#$HOME#g" tools/mission-control/charlie/com.factorylm.mission-control.plist \
+  > ~/Library/LaunchAgents/com.factorylm.mission-control.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.factorylm.mission-control.plist 2>/dev/null \
+  || launchctl kickstart -k gui/$(id -u)/com.factorylm.mission-control
+```
+
+**Rollback:** point `current` at the previous release and run `launchctl kickstart -k gui/$(id -u)/com.factorylm.mission-control`.
+
+**Remove completely:** run `tailscale serve --https=8443 off`, then `launchctl bootout gui/$(id -u)/com.factorylm.mission-control`.
+
+## Verified on 2026-10-24 (deployed commit `1df50644`)
+
+**From BRAVO, a different tailnet machine:**
+- page 200 over HTTPS with a valid certificate;
+- 1,938 cards read;
+- all 74 Send buttons disabled;
+- `POST` returns 405;
+- plain HTTP on 8443 returns 400.
+
+**Negative and recovery checks:**
+- **Direct access to `:8787`** from the tailnet and from the LAN is refused.
+- **From the VPS (off-tailnet):** the name does not resolve and no connection is made.
+- **Killing the process:** launchd restarts it.
+
+## Not yet done
+
+The browser homepage and Android shortcut have to be set up on the owner's own devices. Those devices need the Tailscale app signed in with MagicDNS on. BRAVO could not resolve MagicDNS names, so check that setting first.
 
 ## Not built (by design)
 
