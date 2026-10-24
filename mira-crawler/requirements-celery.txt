@@ -6,7 +6,7 @@ redis==5.2.1
 httpx>=0.28.1
 pdfplumber>=0.11.9
 beautifulsoup4>=4.15.0
-lxml>=6.1.1
+lxml>=6.1.3
 
 # NeonDB
 # 2.1 defaults PostgreSQL URLs to psycopg 3; these services use psycopg2.
