@@ -4278,11 +4278,14 @@ async function handleChatTurn(
       // contract, exactly like a notebook-grounded one).
       // #4718: the claim above only reserved the search; the cap is checked in
       // the background run, which usually settles while the answer is being
-      // generated. Re-read once so a refused search is not described as running.
+      // generated. Re-read once so a refused search is not described as running
+      // in the fallback copy. Only the copy uses this: the live status frame
+      // keeps `manualSearchRunning`, so the app still follows and settles it.
+      let fallbackSearchRunning = manualSearchRunning;
       if (manualSearchRunning !== null && manualSearchKey !== null) {
         try {
           const settled = await readAcquisition(ctx.tenantId, notebookId);
-          if (settled && settled.key === manualSearchKey && settled.state !== "running") manualSearchRunning = null;
+          if (settled && settled.key === manualSearchKey && settled.state !== "running") fallbackSearchRunning = null;
         } catch (err) {
           console.error("[notebook-chat] manual-search re-read failed:", err instanceof Error ? err.message : err);
         }
@@ -4294,7 +4297,7 @@ async function handleChatTurn(
         served,
         refused,
         evidenceSufficient,
-        manualSearchRunning,
+        manualSearchRunning: fallbackSearchRunning,
       });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
       // #4098: which quantity word + unit the exact-rating rule matched —

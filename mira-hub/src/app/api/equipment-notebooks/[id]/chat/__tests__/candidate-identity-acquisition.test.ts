@@ -453,11 +453,22 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
         return new Response(providerStream(UNSUPPORTED), { status: 200 });
       }),
     );
-    const text = await answerText();
+    const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    const text = f
+      .filter((x) => x.kind === "content" || x.kind === "replace")
+      .map((x) => String(x.content ?? x.text ?? ""))
+      .join("");
     expect(acqMock.startManualAcquisition).toHaveBeenCalled();
     expect(text).not.toContain("I'm already searching");
     expect(text).not.toContain("turned off until you check it");
     expect(text).toContain("manufacturer's support");
+    // Codex #4719 F1: the status frame must never say "not running" while still
+    // promising a search is underway (the app does not re-check a settled frame).
+    const status = f.filter((x) => x.kind === "manual_search_status");
+    expect(status.length).toBeGreaterThan(0);
+    for (const frame of status) {
+      if (frame.running === false) expect(String(frame.message ?? "")).not.toMatch(/looking for the official/i);
+    }
   });
 
   it("control: no search running (flags off) → the self-serve advice stays", async () => {
