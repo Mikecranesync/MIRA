@@ -146,6 +146,8 @@ import {
 } from "@/capabilities/photo-part-lookup";
 import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
 import { citationTitle } from "@/capabilities/citation-title";
+import { alarmCardForTurn, alarmReadingEntry } from "@/capabilities/alarm-fast-path";
+import { loadScreenTextLines } from "@/capabilities/screen-text";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import {
@@ -1383,14 +1385,15 @@ async function handleChatTurn(
     //
     // WHY THIS CANNOT DELAY DELIVERY — the precise version.
     // `finishAndPersist` has FIVE call sites and they are NOT all post-close:
-    // the safety-stop path awaits it and only then returns its Response, and
-    // the gate-abstain path runs before its `controller.close()`. The guarantee
-    // is narrower than "the helper is always late": `decisionState` is assigned
-    // at exactly ONE place — inside the final answer-gate block — and the only
-    // two call sites downstream of that assignment (the recordTurn-failure path
-    // and the final path) both sit after a `controller.close()`. The three
-    // earlier call sites reach this line with `decisionState` still null and
-    // make no call at all.
+    // the alarm-card fast path and the gate-abstain path await it before their
+    // stream is built, and the client-stop path runs before the final close. (The
+    // terminal safety-stop branch that used to be one of them was removed
+    // 2026-09-27.) The guarantee is narrower than "the helper is always late":
+    // `decisionState` is assigned at exactly ONE place — inside the final
+    // answer-gate block — and the only two call sites downstream of that
+    // assignment (the recordTurn-failure path and the final path) both sit after
+    // a `controller.close()`. The three earlier call sites reach this line with
+    // `decisionState` still null and make no call at all.
     //
     // That invariant is load-bearing and easy to break by populating
     // `decisionState` earlier, which would silently put a ~280 ms vendor call
@@ -1897,6 +1900,112 @@ async function handleChatTurn(
       },
       { status: 422 },
     );
+  }
+
+  // Alarm card fast path (spec docs/superpowers/specs/2026-10-12-alarm-reasoning-design.md §8;
+  // .claude/rules/fast-path-optimization.md). A verified photo whose stored screen text
+  // produces a card, asked about as an alarm, is answered from the deterministic card:
+  // no retrieval, no provider. Read-only. Any miss or error falls through unchanged.
+  // A flagged hazard turn never takes this path (its banner + normal answer own it).
+  if (visualEntry && lookRow && !safetyTrigger && !identityDisputed) {
+    let alarmCard: ReturnType<typeof alarmCardForTurn> = null;
+    try {
+      const sessionId = lookRow.sessionId;
+      // Bound to THIS photo (verified file id), not just its LOOK session.
+      const photoFileId = visualEntry.fileId;
+      const lines = await withTenantContext(ctx.tenantId, (c) =>
+        loadScreenTextLines(c, ctx.tenantId, sessionId, photoFileId),
+      );
+      alarmCard = alarmCardForTurn({ question: message, lines });
+    } catch (err) {
+      console.error("[notebook-chat] alarm card skipped (falling through):", err instanceof Error ? err.message : err);
+    }
+    if (alarmCard) {
+      const cardText = alarmCard.text;
+      // `enc` (TextEncoder) is declared later in this function (~line 2089);
+      // this path runs before that point, so it gets its own encoder rather
+      // than moving the existing declaration.
+      const cardEnc = new TextEncoder();
+      lifecycleOutcome = "answered";
+      // Record what grounded the card the same way the model path does (visual_evidence
+      // ~L2949, context ~L3137): the photo's stored screen text IS the evidence. Without
+      // these the turn recorder flags PHOTO_WITH_NO_OBSERVATIONS and
+      // EQUIPMENT_ANSWER_WITH_NO_EVIDENCE on every card turn (false alarms).
+      rec.stage("visual_evidence", {
+        observation_available: true,
+        observation_in_context: true,
+        prior_turn_observation_count: 0,
+        prior_file_ids: [],
+      });
+      rec.stage("context", {
+        evidence_doc_ids: [],
+        chunk_count: 0,
+        visual_evidence_count: 1,
+        identity_included: boundAsset.state === "resolved",
+        history_turns: 0,
+        prompt_chars: 0,
+        system_prompt_kind: null,
+      });
+      // "alarm_card" is not a StageKey — answer_gate is the closest existing
+      // stage, and `decision` is a closed union (AnswerGateDecision) that does
+      // not include "alarm_card" either. Record it in `reason` instead of
+      // widening either shared observability type (materialized-evidence.md).
+      rec.stage("answer_gate", {
+        invoked: true,
+        decision: "answered",
+        reason: "alarm_card",
+        answer_chars: cardText.length,
+        refusal_phrase_matched: false,
+        evidence_phrase_matched: false,
+        safety_classification: "none",
+        evidence_sufficient: true,
+        ungrounded_unit_claim: false,
+      });
+      const cardTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
+        ownerUserId: ctx.userId,
+        threadId,
+        clientRequestId,
+        claimToken: requestClaimToken,
+        question: message,
+        answerStatus: "answered",
+        answerText: cardText,
+        enabledSourceDocIds: docIds,
+        evidence: [visualEntry, alarmReadingEntry(visualEntry.fileId, alarmCard)],
+        model: null,
+        ...assetSnapshot,
+      }));
+      await finishAndPersist(cardTurnRowId, {
+        provider: null, model: null, routeReason: "alarm_card", inputTokens: null, cachedInputTokens: null,
+        outputTokens: null, costUsdEstimate: null, status: "empty", attempted: [],
+      }, { answerText: cardText, citationsPresent: false, latencyMs: null });
+      endRoot();
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          if (rootTraceId) {
+            const traceFrame: NotebookTraceFrame = { kind: "trace", traceId: rootTraceId, turnId };
+            controller.enqueue(cardEnc.encode(sse(traceFrame)));
+          }
+          for (const piece of chunkForRelease(cardText)) {
+            controller.enqueue(cardEnc.encode(sse({ kind: "content", content: piece } as NotebookContentFrame)));
+          }
+          const sources: NotebookSourcesFrame = { kind: "sources", citations: [], sourceSnapshot: docIds };
+          controller.enqueue(cardEnc.encode(sse(sources)));
+          controller.enqueue(cardEnc.encode(sse(visualEvidenceMarker(visualEntry))));
+          const status: NotebookStatusFrame = { kind: "status", status: "answered" };
+          controller.enqueue(cardEnc.encode(sse(status)));
+          controller.enqueue(cardEnc.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Accel-Buffering": "no",
+          ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
+        },
+      });
+    }
   }
 
   // Sensor REPLAY grounding (contract §4.4). The server re-fetches the selected
