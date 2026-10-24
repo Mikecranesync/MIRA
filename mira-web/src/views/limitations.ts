@@ -1,6 +1,6 @@
 import { head } from "../lib/head.js";
 import { btnPrimary } from "../lib/components.js";
-import { navbar, footer } from "./_topbar.js";
+import { navbar, footer, TALK_TO_MIKE_HREF } from "./_topbar.js";
 
 const PAGE_STYLES = `
 .fl-topbar {
@@ -142,57 +142,32 @@ const PAGE_STYLES = `
 
 const LIMITS = [
   {
-    lead: "Not a CMMS replacement.",
-    body: "MIRA sits on top of your existing work order system. It reads context and suggests actions — it does not replace MaintainX, Limble, UpKeep, or your in-house CMMS. Atlas (our own CMMS) is included if you have nothing, not as a mandate.",
+    lead: "It's not a CMMS and doesn't replace yours.",
+    body: "There's nothing to switch.",
   },
   {
-    lead: "MIRA cannot diagnose what it doesn't know.",
-    body: "If you haven't uploaded an OEM manual, fault history, or equipment notes for an asset, MIRA has no context to reason from. Answers improve linearly with what you feed it. \"I don't have enough context\" is an honest answer, not a bug.",
+    lead: "It doesn't connect to PLCs.",
+    body: "It doesn't use work-order history, and it doesn't write work orders.",
   },
   {
-    lead: "Answer quality depends on document quality.",
-    body: "Hand-drawn diagrams, severely degraded scans, and machine-translated PDFs reduce accuracy. We tell you when OCR confidence is low. Properly structured OEM manuals in English produce the best results.",
+    lead: "For lockout, arc flash and confined space, follow your site procedure.",
+    body: "Don't use any AI tool for those.",
   },
   {
-    lead: "Safety-critical questions get a warning, not a safety procedure.",
-    body: "Questions about LOTO, arc flash, confined space, and similar high-consequence work are answered with a safety warning. They are not routed to a person. MIRA does not replace your site's procedures or professional judgment where lives are at risk.",
+    lead: "We've tested Rockwell and Festo manuals so far.",
+    body: "We'll post our misses too.",
   },
   {
-    lead: "No PLC tag streaming yet.",
-    body: "Modbus TCP, OPC UA, and EtherNet-IP integration is on the post-MVP roadmap (Config 4). Today, MIRA works from uploaded documents and typed context — not live sensor feeds.",
-    roadmap: true,
+    lead: "It works in a web browser only.",
+    body: "There is no native app claim on this site.",
   },
   {
-    lead: "No native mobile apps.",
-    body: "The progressive web app (PWA) and Telegram/Slack bots cover the vast majority of plant-floor use today. A native iOS/Android app is planned but not yet available.",
-    roadmap: true,
+    lead: "English manuals only.",
+    body: "We don't translate manuals between languages.",
   },
   {
-    lead: "English-language manuals only.",
-    body: "We don't translate manuals between languages yet. OCR and RAG pipelines are optimized for English. Multi-language support is on the roadmap.",
-    roadmap: true,
-  },
-  {
-    lead: "Multi-tenant isolation is enforced in code — not yet SOC 2 audited.",
-    body: "Row-level security via PostgreSQL RLS isolates tenant data. We have not yet had a third-party SOC 2 audit. We are pre-revenue and pre-audit. Enterprise compliance packages are planned for 2026 Q3.",
-  },
-  {
-    lead: "Knowledge Cooperative data is anonymized — but requires Community tier.",
-    body: "Participating in the shared fault pattern network requires opt-in on Community tier or above. Data is anonymized before contribution. Free-tier tenants benefit from the cooperative but do not contribute.",
-  },
-  {
-    lead: "RCA workflow is in private alpha.",
-    body: "FactoryLM Investigations (root cause analysis timelines) exists in design and private alpha as of April 2026. It is not available in the standard product yet.",
-    roadmap: true,
-  },
-  {
-    lead: "Voice input degrades in high-noise environments.",
-    body: "Voice capture works via phone microphone. Quality drops significantly above 100 dB. Typed input is always available as a fallback.",
-  },
-  {
-    lead: "Dashboards are limited.",
-    body: "Today MIRA surfaces chat answers, cited documents, and work-order summaries. Full analytics dashboards, trend charts, and KPI reporting are on the product roadmap but not yet shipped.",
-    roadmap: true,
+    lead: "We're not SOC 2 audited yet.",
+    body: "",
   },
 ];
 
@@ -210,9 +185,9 @@ export function renderLimitations(reqUrl?: string): string {
     },
   };
 
-  const limitItems = LIMITS.map(({ lead, body, roadmap }) => `
+  const limitItems = LIMITS.map(({ lead, body }) => `
     <li>
-      <strong>${lead}</strong>${roadmap ? ' <span class="fl-roadmap-pill">On roadmap</span>' : ''} ${body}
+      <strong>${lead}</strong> ${body}
     </li>`).join("");
 
   return `<!DOCTYPE html>
@@ -251,7 +226,7 @@ export function renderLimitations(reqUrl?: string): string {
   </div>
 
   <div class="fl-lim-cta">
-    ${btnPrimary("See if we're a fit — book a $500 assessment", { href: "/buy", cta: "lim-cta-assessment" })}
+    ${btnPrimary("Talk to Mike", { href: TALK_TO_MIKE_HREF, cta: "lim-cta-talk" })}
     <p>
       Spotted something we're not honest about?
       <a href="mailto:mike@factorylm.com">Email mike@factorylm.com</a> — we'll add it.
