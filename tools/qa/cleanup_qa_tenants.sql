@@ -20,6 +20,7 @@
 --   * a user email matches the disposable-QA prefix @factorylm.com, OR has a
 --     synthetic local part on factorylm.com / a reserved test domain, OR is on a
 --     reserved test domain (example.com/.org/.net, *.test, factorylm-test.com)
+--   * EVERY user in the tenant matches the above (one real person protects it)
 --   * NO user in the tenant is a long-lived QA account (:exempt_emails)
 --   * EVERY user in the tenant has status='trial' and plan IS NULL
 --     (an upgraded/admin/approved user protects the whole tenant)
@@ -35,22 +36,32 @@ BEGIN;
 SET LOCAL qa.max_tenants = :'max_tenants';
 
 CREATE TEMP TABLE qa_tenants ON COMMIT DROP AS
+WITH classified AS (
+  SELECT u.tenant_id, u.created_at,
+         (
+                  -- Disposable prod-verification accounts (original selector).
+                  u.email_lower ~ '^(notebook-qa-|notebook-live-|adversarial-)[a-z0-9._+-]*@factorylm\.com$'
+                  -- Synthetic local part (mirrors isSystemAccount + the census classes),
+                  -- but ONLY on our own or a reserved test domain - never a customer domain.
+               OR (u.email_lower ~ '(playwright|\me2e[-_]|\mprobe\M|stranger|(^|[-_.+])test[-_.@])'
+                   AND u.email_lower ~ '@(factorylm\.com|example\.(com|org|net)|[a-z0-9-]+\.test|factorylm-test\.com)$')
+                  -- Any account on a reserved test domain (RFC 2606 / our test domain).
+               OR u.email_lower ~ '@(example\.(com|org|net)|[a-z0-9-]+\.test|factorylm-test\.com)$'
+                ) AS is_synthetic
+  FROM hub_users u
+)
 SELECT t.id AS tid
 FROM hub_tenants t
 WHERE EXISTS (
-        SELECT 1 FROM hub_users u
-        WHERE u.tenant_id = t.id
-          AND (
-                -- Disposable prod-verification accounts (original selector).
-                u.email_lower ~ '^(notebook-qa-|notebook-live-|adversarial-)[a-z0-9._+-]*@factorylm\.com$'
-                -- Synthetic local part (mirrors isSystemAccount + the census classes),
-                -- but ONLY on our own or a reserved test domain - never a customer domain.
-             OR (u.email_lower ~ '(playwright|\me2e[-_]|\mprobe\M|stranger|(^|[-_.+])test[-_.@])'
-                 AND u.email_lower ~ '@(factorylm\.com|example\.(com|org|net)|[a-z0-9-]+\.test|factorylm-test\.com)$')
-                -- Any account on a reserved test domain (RFC 2606 / our test domain).
-             OR u.email_lower ~ '@(example\.(com|org|net)|[a-z0-9-]+\.test|factorylm-test\.com)$'
-              )
-          AND u.created_at < NOW() - (:'age_days' || ' days')::interval
+        SELECT 1 FROM classified c
+        WHERE c.tenant_id = t.id AND c.is_synthetic
+          AND c.created_at < NOW() - (:'age_days' || ' days')::interval
+      )
+  -- EVERY user must be synthetic: one real person in the tenant (e.g. a customer
+  -- whose trial a staff test account was added to) protects the whole tenant.
+  AND NOT EXISTS (
+        SELECT 1 FROM classified c2
+        WHERE c2.tenant_id = t.id AND NOT c2.is_synthetic
       )
   AND NOT EXISTS (
         SELECT 1 FROM hub_users u2
@@ -63,7 +74,9 @@ WHERE EXISTS (
   AND NOT EXISTS (
         SELECT 1 FROM hub_users u3
         WHERE u3.tenant_id = t.id
-          AND u3.email_lower = ANY (string_to_array(lower(:'exempt_emails'), ','))
+          AND u3.email_lower IN (
+                SELECT lower(trim(x)) FROM unnest(string_to_array(:'exempt_emails', ',')) AS x
+                WHERE trim(x) <> '')
       )
   AND NOT EXISTS (
         SELECT 1 FROM knowledge_entries ke

@@ -90,17 +90,24 @@ jobs:
           # Long-lived QA accounts are exempt by construction (same discovery as
           # qa-accounts-census.yml). An empty or malformed value aborts rather than
           # silently dropping the exemption.
-          KEYS="$(doppler secrets --project factorylm --config "${DOPPLER_CFG}" --only-names --json \
-                  | jq -r 'keys[]' \
-                  | grep -E '^(BETA_PROBE_QA[A-Z0-9_]*|SYNTHETIC_[A-Z0-9_]+)_EMAIL$' || true)"
+          # Listing and parsing must each succeed (set -e): a Doppler outage may never
+          # turn into "no exemptions". Only grep's no-match is allowed to be empty.
+          NAMES_JSON="$(doppler secrets --project factorylm --config "${DOPPLER_CFG}" --only-names --json)"
+          ALL_KEYS="$(jq -er 'keys[]' <<<"$NAMES_JSON")"
+          KEYS="$(grep -E '^(BETA_PROBE_QA[A-Z0-9_]*|SYNTHETIC_[A-Z0-9_]+)_EMAIL$' <<<"$ALL_KEYS" || true)"
           EXEMPT=""
           for k in $KEYS; do
             v="$(doppler secrets get "$k" --project factorylm --config "${DOPPLER_CFG}" --plain)"
-            case "$v" in (*,*|'') echo "::error::$k is empty or contains a comma — refusing to run without its exemption"; exit 1 ;; esac
+            # Normalise exactly as registration does (trim + lowercase), then require
+            # one plain address; anything else aborts rather than weakening the exemption.
+            v="$(printf '%s' "$v" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+            if ! [[ "$v" =~ ^[^@,]+@[^@,]+\.[^@,]+$ ]]; then
+              echo "::error::$k is not a single email address — refusing to run without its exemption"; exit 1
+            fi
             echo "::add-mask::$v"
             EXEMPT="${EXEMPT:+$EXEMPT,}$v"
           done
-          if [ "${{ inputs.target }}" = prod ] && [ -z "$EXEMPT" ]; then
+          if [ "${DOPPLER_CFG}" = prd ] && [ -z "$EXEMPT" ]; then
             echo "::error::No long-lived QA account keys found in factorylm/prd — refusing to run without exemptions"; exit 1
           fi
           echo "Exempt long-lived keys: ${KEYS//$'\n'/ }"
