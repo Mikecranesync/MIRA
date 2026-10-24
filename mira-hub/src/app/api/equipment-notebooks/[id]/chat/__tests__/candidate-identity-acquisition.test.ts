@@ -428,6 +428,38 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
     expect(text).toContain("turn it on there");
   });
 
+  it("#4718: the search is refused by the cap while the answer is generated → no 'already searching' claim", async () => {
+    // The claim succeeds, then the background search hits the manual-search
+    // cap and records search_limit_reached before the answer is chosen
+    // (staging, 2026-10-24: global monthly cap exhausted).
+    const { acquisitionKey } = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
+      "@/capabilities/notebook-manual-acquisition",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const started = (acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as {
+          identity: Parameters<typeof acquisitionKey>[0];
+        };
+        acqMock.readAcquisition.mockResolvedValue({
+          key: acquisitionKey(started.identity),
+          state: "search_limit_reached",
+          started_at: new Date().toISOString(),
+          finished_at: new Date().toISOString(),
+          candidate_host: null,
+          match_state: null,
+          oem_request_url: null,
+        });
+        return new Response(providerStream(UNSUPPORTED), { status: 200 });
+      }),
+    );
+    const text = await answerText();
+    expect(acqMock.startManualAcquisition).toHaveBeenCalled();
+    expect(text).not.toContain("I'm already searching");
+    expect(text).not.toContain("turned off until you check it");
+    expect(text).toContain("manufacturer's support");
+  });
+
   it("control: no search running (flags off) → the self-serve advice stays", async () => {
     acqMock.acquisitionEnabled.mockReturnValue(false);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(UNSUPPORTED), { status: 200 })));
