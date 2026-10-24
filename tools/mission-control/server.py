@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import html
+import importlib.util
 import logging
 import os
 import string
@@ -26,8 +27,20 @@ from typing import Callable, List, Optional
 
 import httpx
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import board  # noqa: E402
+
+def _load_board():
+    # Loaded by file path under a unique name: a bare "import board" could pick up
+    # another module of that name elsewhere on sys.path (this broke the full CI suite).
+    spec = importlib.util.spec_from_file_location(
+        "mission_control_board", Path(__file__).resolve().parent / "board.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+board = _load_board()
 
 log = logging.getLogger("mission-control")
 HERE = Path(__file__).resolve().parent

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 import http.client
+import importlib.util
 import sys
 import threading
 from http.server import ThreadingHTTPServer
@@ -15,10 +16,19 @@ from pathlib import Path
 import pytest
 
 MC = Path(__file__).resolve().parents[1] / "tools" / "mission-control"
-sys.path.insert(0, str(MC))
 
-import board  # noqa: E402
-import server  # noqa: E402
+
+def _load(name, path):
+    # Unique module names: the full suite already imports other modules called "server".
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+server = _load("mission_control_server", MC / "server.py")
+board = server.board
 
 NOW = dt.datetime(2026, 10, 24, 12, 0, tzinfo=dt.timezone.utc)
 
