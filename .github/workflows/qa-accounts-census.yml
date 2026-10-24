@@ -1,0 +1,171 @@
+name: QA Accounts Census
+
+# READ-ONLY daily health check + inventory of synthetic (test/QA/probe) accounts (#4696).
+#
+# Why: on 2026-10-24 the long-lived prod QA probe account silently lapsed to an
+# expired trial and every prod behavioural probe 307'd to /upgrade (#4676).
+# Nothing was watching. This job watches, and tells a human on a GitHub issue.
+#
+# What it does:
+#   1. Discovers the long-lived QA accounts from Doppler KEY NAMES
+#      (BETA_PROBE_QA*_EMAIL, SYNTHETIC_*_EMAIL) — the same credentials the probes
+#      and synthetic-dogfood use, so the list can never drift from them.
+#   2. Runs tools/qa/synthetic_account_census.sql with the session forced read-only,
+#      after first proving that a write is refused.
+#   3. Opens (or updates) ONE issue when any long-lived account is missing, pending,
+#      on a trial, or lapsed — and closes it once all are healthy again.
+#
+# What it never does: write to any database, delete an account, or print an email.
+# Deletion stays with qa-cleanup.yml (manual dispatch, dry-run by default).
+#
+# No `environment:` on purpose — DOPPLER_TOKEN is a repo secret, and a reviewer
+# gate later added to `production` must not leave a read-only daily check hanging.
+
+on:
+  schedule:
+    - cron: '17 11 * * *'   # daily 11:17 UTC (~7am ET), before the workday
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'DB target. staging = factorylm/stg, prod = factorylm/prd.'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - staging
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: qa-accounts-census-${{ inputs.target || 'prod' }}
+  cancel-in-progress: false
+
+jobs:
+  census:
+    name: census (${{ inputs.target || 'prod' }})
+    # Pinned: ubuntu-26.04 has no postgresql-client-16 (#4697).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TARGET: ${{ inputs.target || 'prod' }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v4
+
+      - name: Install psql
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+          psql --version
+
+      - name: Resolve DATABASE_URL + long-lived QA accounts (names only)
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOPPLER_TOKEN:-}" ]; then echo "::error::DOPPLER_TOKEN secret not set."; exit 1; fi
+          case "$TARGET" in
+            staging) CFG=stg ;;
+            prod)    CFG=prd ;;
+            *) echo "::error::Unknown target $TARGET"; exit 1 ;;
+          esac
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "$CFG" --plain)"
+          [ -n "$DATABASE_URL" ] || { echo "::error::NEON_DATABASE_URL empty (factorylm/$CFG)"; exit 1; }
+          echo "::add-mask::$DATABASE_URL"
+          echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+
+          # Key NAMES only — values are fetched one at a time and masked.
+          KEYS="$(doppler secrets --project factorylm --config "$CFG" --only-names --json \
+                  | jq -r 'keys[]' \
+                  | grep -E '^(BETA_PROBE_QA[A-Z0-9_]*|SYNTHETIC_[A-Z0-9_]+)_EMAIL$' || true)"
+          LL_KEYS=""; LL_EMAILS=""
+          for k in $KEYS; do
+            v="$(doppler secrets get "$k" --project factorylm --config "$CFG" --plain)"
+            case "$v" in (*,*|'') echo "::warning::$k is empty or contains a comma — skipped"; continue ;; esac
+            echo "::add-mask::$v"
+            LL_KEYS="${LL_KEYS:+$LL_KEYS,}$k"; LL_EMAILS="${LL_EMAILS:+$LL_EMAILS,}$v"
+          done
+          echo "Long-lived keys: ${LL_KEYS:-<none>}"
+          { echo "LL_KEYS=$LL_KEYS"; echo "LL_EMAILS=$LL_EMAILS"; } >> "$GITHUB_ENV"
+
+      - name: Prove the session refuses writes (must fail)
+        env:
+          PGOPTIONS: '-c default_transaction_read_only=on'
+        run: |
+          set -uo pipefail
+          # WHERE false: even if the guard were broken, no row could change.
+          if out="$(psql "$DATABASE_URL" --no-psqlrc -q -c 'UPDATE hub_users SET updated_at = updated_at WHERE false' 2>&1)"; then
+            echo "::error::Read-only guard is NOT in effect — refusing to run the census."; exit 1
+          fi
+          echo "$out" | grep -q 'read-only transaction' || { echo "::error::Unexpected error: $out"; exit 1; }
+          echo "Write refused as expected: $out"
+
+      - name: Run census (read-only)
+        env:
+          PGOPTIONS: '-c default_transaction_read_only=on'
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -q \
+            -v ll_keys="$LL_KEYS" -v ll_emails="$LL_EMAILS" \
+            -f tools/qa/synthetic_account_census.sql > /tmp/census.txt
+          cat /tmp/census.txt
+          sed -n '/=== LONG_LIVED ===/,/=== END_LONG_LIVED ===/p' /tmp/census.txt \
+            | grep -v '^===' > /tmp/longlived.txt || true
+          ALERTS="$(grep -v '|OK|' /tmp/longlived.txt || true)"
+          if [ -z "$LL_KEYS" ] && [ "$TARGET" = prod ]; then
+            ALERTS="(no BETA_PROBE_QA*/SYNTHETIC_* email keys found in Doppler factorylm/prd)|MISSING|-|-"
+          fi
+          printf '%s\n' "$ALERTS" | sed '/^$/d' > /tmp/alerts.txt
+          {
+            echo "## QA accounts census — $TARGET"
+            echo
+            echo "| Doppler key | verdict | status | trial days left |"
+            echo "|---|---|---|---|"
+            sed 's/|/ | /g; s/^/| /; s/$/ |/' /tmp/longlived.txt
+            echo
+            echo '```'
+            sed -n '/=== SYNTHETIC INVENTORY/,$p' /tmp/census.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Raise or clear the alert issue
+        if: env.TARGET == 'prod'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="QA account census: a long-lived prod test account needs attention"
+          OPEN="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$TITLE\" in:title" \
+                   --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)"
+          if [ -s /tmp/alerts.txt ]; then
+            {
+              echo "The daily read-only census found long-lived QA accounts that the Hub gate will block (or soon will)."
+              echo "Probes that sign in as them will hit \`/upgrade\` or \`/pending-approval\` instead of testing the product (#4676)."
+              echo
+              echo "| Doppler key | verdict | status | trial days left |"
+              echo "|---|---|---|---|"
+              sed 's/|/ | /g; s/^/| /; s/$/ |/' /tmp/alerts.txt
+              echo
+              echo "**Fix:** set each account to \`approved\` on \`/admin/users\` (show system accounts), then sign the probe in again — status lives in the session token."
+              echo "\`MISSING\` means the Doppler key points at an email with no account: sign it up, or fix the key."
+              echo
+              echo "Run: $RUN_URL · tracking #4696"
+            } > /tmp/body.md
+            if [ -n "$OPEN" ]; then
+              gh issue comment "$OPEN" --repo "$GITHUB_REPOSITORY" --body-file /tmp/body.md
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file /tmp/body.md
+            fi
+          elif [ -n "$OPEN" ]; then
+            gh issue close "$OPEN" --repo "$GITHUB_REPOSITORY" \
+              --comment "All long-lived QA accounts are healthy as of $RUN_URL — closing."
+          else
+            echo "All long-lived QA accounts healthy; no open alert."
+          fi
