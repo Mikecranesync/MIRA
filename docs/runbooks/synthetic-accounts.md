@@ -11,7 +11,7 @@ Agents create, use and retire test accounts. A human only signs off on deletions
 | Kind | Examples | Lives | Who renews / retires it |
 |---|---|---|---|
 | **Long-lived QA** | Doppler `BETA_PROBE_QA*_EMAIL`, `SYNTHETIC_*_EMAIL` (prd) | indefinitely | Must be `approved`, never `trial`. The **census** alerts if one is not. |
-| **Disposable prod verification** | `notebook-qa-*`, `notebook-live-*`, `adversarial-*@factorylm.com` | days | `qa-cleanup.yml` (manual dispatch, dry-run first) |
+| **Disposable / synthetic** | `notebook-qa-*`, `notebook-live-*`, `adversarial-*@factorylm.com`; `playwright`/`e2e`/`probe`/`stranger`/`test` on factorylm.com or a test domain; anything on `example.*`, `*.test`, `factorylm-test.com` | days | `qa-cleanup.yml` (manual dispatch, dry-run first). Skips a tenant when **any** user is real, long-lived (Doppler), verified-document-owning, or not on a no-plan trial. |
 | **Staging strangers / e2e** | beta-gate stranger, `e2e-*`, `playwright*` | one run | `mira-hub/scripts/provision-beta-gate.ts --cleanup <tenant>` in the same job |
 
 ## Daily census — `.github/workflows/qa-accounts-census.yml`
@@ -38,13 +38,13 @@ Then sign the probe in again: status is baked into the session token, so an old 
   prod accounts are created once, by a human, and stored in Doppler `factorylm/prd`.
 - **A login outlives its account.** Hub sessions are stateless JWTs, and a deleted account's token still
   worked on staging. Per-user revocation is #4665.
-- **Approve/Revoke on `/admin/users` was broken on prod** because the button posted to a hard-coded
-  `/hub/api` (#4698). Until that fix deploys, change status with a console
-  `fetch('/api/admin/users/<id>/', {method:'PATCH', …})`.
+- **Approve/Revoke on `/admin/users` was broken on prod until 2026-10-24.** The button posted to a hard-coded
+  `/hub/api` (#4698). It was fixed by #4702, deployed to prod in v3.417.13.
 - **psql jobs need `ubuntu-24.04`**: `ubuntu-26.04` has no `postgresql-client-16` (#4697).
 
 ## What is still a human decision
 
-- Widening `tools/qa/cleanup_qa_tenants.sql` to the classes the census shows are uncovered. That is a separate
-  PR with security review, sized from real census counts.
-- Every `qa-cleanup.yml` run with `mode=apply` against prod.
+- Every `qa-cleanup.yml` run with `mode=apply` against prod. Run a dry-run first and compare the counts.
+  First prod apply: 2026-10-24, 45 tenants removed (run 40088089602). The next dry-run selected 0.
+- Synthetic-looking accounts the cleanup deliberately skips: outside domains, mixed tenants, or verified documents.
+  Review them on `/admin/users` with "show system accounts" ticked.
