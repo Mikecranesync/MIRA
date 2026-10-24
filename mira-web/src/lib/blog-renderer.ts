@@ -100,8 +100,7 @@ function nav(opts: BlogNavOpts = {}): string {
   <div class="nav-inner">
     <a href="/" class="nav-logo" aria-label="FactoryLM home">FactoryLM</a>
     <ul class="nav-links" role="list">
-      ${navLink("/cmms", "CMMS", opts.currentPath)}
-      ${navLink("/pricing", "Pricing", opts.currentPath)}
+      ${navLink("/pricing", "Talk to Mike", opts.currentPath)}
       ${navLink("/blog", "Blog", opts.currentPath)}
       ${navLink("/limitations", "Limitations", opts.currentPath)}
       ${navLink("/security", "Security", opts.currentPath)}

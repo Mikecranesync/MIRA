@@ -21,15 +21,14 @@ import { navbar, footer } from "../_topbar.js";
 const APEX = "https://factorylm.com";
 
 const STANDARD_LINKS: ReadonlyArray<{ href: string; label: string }> = [
-  { href: `${APEX}/cmms`, label: "CMMS" },
-  { href: `${APEX}/pricing`, label: "Pricing" },
+  { href: `${APEX}/pricing`, label: "Talk to Mike" },
   { href: `${APEX}/blog`, label: "Blog" },
   { href: `${APEX}/limitations`, label: "Limitations" },
   { href: `${APEX}/security`, label: "Security" },
 ];
 
 describe("shared topbar partial — contract", () => {
-  test("renders all five standard nav links in order", () => {
+  test("renders the standard nav links in order", () => {
     const html = navbar();
     const positions = STANDARD_LINKS.map((l) => html.indexOf(`href="${l.href}"`));
     for (let i = 1; i < positions.length; i++) {
@@ -62,14 +61,13 @@ describe("shared topbar partial — contract", () => {
 
   test("ctaPrefix scopes data-cta attributes for analytics", () => {
     const html = navbar({ ctaPrefix: "lim" });
-    expect(html).toContain('data-cta="lim-nav-cmms"');
     expect(html).toContain('data-cta="lim-nav-pricing"');
     expect(html).toContain('data-cta="lim-nav-signin"');
   });
 
   test("default (no prefix) uses bare 'nav-' data-cta names", () => {
     const html = navbar();
-    expect(html).toContain('data-cta="nav-cmms"');
+    expect(html).toContain('data-cta="nav-pricing"');
     expect(html).toContain('data-cta="nav-signin"');
   });
 
@@ -99,7 +97,7 @@ describe("topbar parity — all four TS views render identical link sets", () =>
   ];
 
   for (const page of pages) {
-    test(`${page.name}: contains all five standard nav links in topbar`, () => {
+    test(`${page.name}: contains the standard nav links in topbar`, () => {
       // Extract just the topbar region so footer/body links don't pollute.
       const headerMatch = page.html.match(/<header[^>]*class="fl-topbar"[\s\S]*?<\/header>/);
       expect(headerMatch).not.toBeNull();
@@ -134,12 +132,12 @@ describe("topbar parity — all four TS views render identical link sets", () =>
     expect(headerMatch[0]).toMatch(/aria-current="page"/);
   });
 
-  test("cmms marks the CMMS link as current (not Home)", () => {
+  test("cmms keeps Sign in and does not put CMMS in the nav", () => {
     const headerMatch = cmmsHtml.match(/<header[^>]*class="fl-topbar"[\s\S]*?<\/header>/)!;
+    expect(headerMatch[0]).toContain("Sign in");
     expect(headerMatch[0]).toContain(`href="${APEX}/cmms"`);
-    expect(headerMatch[0]).toMatch(/aria-current="page"/);
-    // The pre-fix cmms.ts had a "Home" link; the standard topbar drops it.
-    expect(headerMatch[0]).not.toMatch(/data-cta="cmms-nav-home"/);
+    expect(headerMatch[0]).not.toContain(">CMMS</a>");
+    expect(headerMatch[0]).toContain("Talk to Mike");
   });
 });
 

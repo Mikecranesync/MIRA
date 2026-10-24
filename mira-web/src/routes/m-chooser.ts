@@ -182,7 +182,7 @@ mChooser.get("/:asset_tag/choose", async (c) => {
     <h1>How would you like to connect?</h1>
     <p>Asset <span class="asset-tag">${escapeHtml(assetTag)}</span> — choose your preferred channel.</p>
     ${buttons}
-    <a id="cmms-btn" class="btn btn-cmms" href="/cmms">Open CMMS</a>
+    <a id="cmms-btn" class="btn btn-cmms" href="/cmms">Open notebook</a>
     <div class="footer">Your choice is remembered for 30 days on this device.</div>
     <div class="footer" style="margin-top: 0.75rem;">
       Powered by FactoryLM — <a href="/buy" style="color:#b0aca2;text-decoration:underline;">Book Your Assessment</a>

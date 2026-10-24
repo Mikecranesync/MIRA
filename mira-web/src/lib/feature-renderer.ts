@@ -1275,7 +1275,7 @@ export function renderFeaturePage(feature: Feature): string {
               <span class="cta-start-action">Start Here &rarr;</span>
             </span>
           </a>
-          <p class="cta-note">$500 Maintenance Assessment. We come to your floor. You leave with a written gap report.</p>
+          <p class="cta-note">Talk to Mike — FactoryLM, Central Florida.</p>
         </div>
       </div>
     </section>
@@ -1325,7 +1325,7 @@ export function renderFeaturePage(feature: Feature): string {
       if (!token) return;
       document.querySelectorAll('a.nav-cta').forEach(function (el) {
         el.href = '/api/cmms/login?token=' + encodeURIComponent(token);
-        el.textContent = 'Open CMMS';
+        el.textContent = 'Open notebook';
       });
     })();
 
