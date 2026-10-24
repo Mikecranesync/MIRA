@@ -1,3 +1,9 @@
+# Project #4 and Orca findings — 2026-10-24
+
+[Investigation and proposed handoff](../docs/proposals/project4-mission-control.md): reuse Project #4 and its saved focused view. Native Orca connection is distinct from the custom snapshot UI; Send remains disabled. Dispatcher, authorization, receipts and private hosting are proposals, not implemented capabilities. No merge or deployment.
+
+---
+
 # Conversation follow repair — 2026-10-24
 
 PR #4703 / #4680 incorporates merged runner fix #4700 without force-push. Follow now re-arms from an accepted Composer send, not changing message IDs, preserving scroll-away through live-to-persisted replacement. Focused regression red: 6 failures; green: 38 tests; shared suite: 440 pass; TypeScript/build pass. Exact-head review, CI and same-release deployed behavior remain gates. Watcher continuation and proof: `~/.factorylm/issue-repair-watch/queue.json`; worktree `conversation-continuity`. Foreman send/persistence and Notebook Prover answer ownership unchanged.
