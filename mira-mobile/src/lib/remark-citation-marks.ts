@@ -14,11 +14,15 @@ import { splitCitationMarks } from "./citation-marks";
 export function remarkCitationMarks(opts: { knownIds: ReadonlySet<string> }) {
   const { knownIds } = opts;
   return (tree: Root) => {
-    if (knownIds.size === 0) return;
     visit(tree, "text", (node: Text, index, parent) => {
       if (!parent || typeof index !== "number" || !node.value.includes("[")) return;
       const segs = splitCitationMarks(node.value, knownIds);
-      if (!segs.some((s) => s.kind === "cite")) return;
+      // Untouched node: no known chip and no unknown marker was stripped.
+      // (A node whose ONLY marks are unknown must still be rewritten, or the
+      // bare `[n]` the splitter removed would render anyway — same rule as the
+      // Hub's remarkCitationChips, which also strips with an empty id set.)
+      const unchanged = segs.length === 1 && segs[0].kind === "text" && segs[0].text === node.value;
+      if (unchanged) return;
       const replacement: PhrasingContent[] = segs.map((s) =>
         s.kind === "text"
           ? ({ type: "text", value: s.text } as Text)
