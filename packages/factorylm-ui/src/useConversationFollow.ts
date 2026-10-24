@@ -74,10 +74,14 @@ export function useConversationFollow<T extends HTMLElement = HTMLElement>(threa
         // sync banner (#4620's --fl-composer-block-size), which can clip the
         // latest turn without the turn, the thread or the window changing
         // size (#4710). It is outside the mutation-observed subtree, so it
-        // needs its own resize watch.
-        if (!composerObserved) {
-          const composer = rootRef.current?.closest<HTMLElement>(".fl-shell")?.querySelector<HTMLElement>(".fl-composer");
-          if (composer) { resize.observe(composer); composerObserved = composer; }
+        // needs its own resize watch. Re-query every call, like the turn node
+        // above: a remount (route/shell swap) would otherwise leave this
+        // watching a detached element until the next turn/thread change (#4714).
+        const composer = rootRef.current?.closest<HTMLElement>(".fl-shell")?.querySelector<HTMLElement>(".fl-composer") ?? undefined;
+        if (composer !== composerObserved) {
+          if (composerObserved) resize.unobserve(composerObserved);
+          if (composer) resize.observe(composer);
+          composerObserved = composer;
         }
         if (following.current) {
           node.scrollIntoView({ block: "end", behavior: "instant" });

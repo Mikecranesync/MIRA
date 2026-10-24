@@ -240,6 +240,20 @@ for (const surface of ["classic", "assistant"] as const) {
         await frames();
         expect(scrolled).toEqual([]); expect(position).toBe(100);
       });
+      it("#4714 re-observes the composer after it is replaced (remount) without a new turn", async () => {
+        await setup();
+        const lastId = base.turns.at(-1)!.id;
+        const observer = composerGrowthObserver(lastId);
+        expect(observer).toBeDefined();
+        const oldComposer = view!.container.querySelector(".fl-composer")!;
+        const newComposer = oldComposer.cloneNode(true) as HTMLElement;
+        oldComposer.replaceWith(newComposer);
+        // No thread/turns/sendRevision change — only a window resize re-runs
+        // follow(), the same trigger a composer-swapping re-render would emit.
+        window.dispatchEvent(new Event("resize"));
+        await frames();
+        expect(observer!.targets).toContain(newComposer);
+      });
     });
   });
 }
