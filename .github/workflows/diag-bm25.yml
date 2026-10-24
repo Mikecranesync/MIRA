@@ -25,7 +25,8 @@ concurrency:
 jobs:
   probe:
     name: Run BM25 + tenant probes
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no postgresql-client-16 (#4697).
+    runs-on: ubuntu-24.04
     environment: production
     timeout-minutes: 10
 
