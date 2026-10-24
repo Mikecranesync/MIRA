@@ -22,6 +22,7 @@
 --     reserved test domain (example.com/.org/.net, *.test, factorylm-test.com)
 --   * EVERY user in the tenant matches the above (one real person protects it)
 --   * NO user in the tenant is a long-lived QA account (:exempt_emails)
+--   * the tenant owns NO verified document (retained forever, migration 059)
 --   * EVERY user in the tenant has status='trial' and plan IS NULL
 --     (an upgraded/admin/approved user protects the whole tenant)
 --   * tenant owns ZERO shared/public knowledge (is_private=false rows) —
@@ -77,6 +78,12 @@ WHERE EXISTS (
           AND u3.email_lower IN (
                 SELECT lower(trim(x)) FROM unnest(string_to_array(:'exempt_emails', ',')) AS x
                 WHERE trim(x) <> '')
+      )
+  -- A verified document is one a human vouched for; migration 059 retains it
+  -- forever (BEFORE DELETE trigger). Never un-verify to clean up: skip the tenant.
+  AND NOT EXISTS (
+        SELECT 1 FROM namespace_direct_uploads nd
+        WHERE nd.tenant_id::text = t.id AND nd.verified
       )
   AND NOT EXISTS (
         SELECT 1 FROM knowledge_entries ke
