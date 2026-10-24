@@ -47,6 +47,10 @@ try {
     await page.setViewportSize({ width, height: height - 80 });
     await page.waitForTimeout(200);
     stages.resize = await geometry();
+    // Remove the externally inserted media probe before rekeying React turns:
+    // otherwise remount drops this non-React child and changes document height.
+    await page.evaluate(() => document.querySelector("[data-proof-media]")?.remove());
+    await page.waitForTimeout(200);
     await page.evaluate((nested) => { const node = nested ? document.querySelector(".fl-conversation")! : document.scrollingElement!; node.scrollTop = Math.max(0, node.scrollTop - 300); }, nested);
     await page.waitForTimeout(150);
     const away = await geometry();
