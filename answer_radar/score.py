@@ -146,6 +146,13 @@ def _verdict_from(
     )
 
 
+def _identity(value: object) -> str | None:
+    """A recorded grader identity, normalized; blank or non-string is no identity (#4109 r2 F4)."""
+    if not isinstance(value, str):
+        return None
+    return " ".join(value.split()).lower() or None
+
+
 def _independence(grades_dir: Path, sid: str, answer_hash: str | None = None) -> IndependenceClass:
     """The strongest class the recorded grader identities actually prove.
 
@@ -159,7 +166,7 @@ def _independence(grades_dir: Path, sid: str, answer_hash: str | None = None) ->
             raw = json.loads((grades_dir / f"{prefix}{sid}.json").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return IndependenceClass.SAME_MODEL_DIFFERENT_RUN
-        ids.append((raw.get("grader_provider"), raw.get("grader_model")))
+        ids.append((_identity(raw.get("grader_provider")), _identity(raw.get("grader_model"))))
         # A promoting class needs BOTH grades bound to this exact answer; a grade
         # without an answer hash could have judged a different answer (#4092 r3 F1).
         if answer_hash is not None and raw.get("answer_sha256") != answer_hash:
