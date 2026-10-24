@@ -264,8 +264,8 @@
 }
 
 /* ── assistant-ui surface (conversationSurface="assistant") ─────────────────
-   Same bar, cards and parts as the classic list; the library owns the
-   scrolling viewport, so the section itself no longer scrolls. Tokens only. */
+   Same bar, cards and parts as the classic list; the inner viewport owns
+   overflow, so the section itself no longer scrolls. Tokens only. */
 .fl-conversation--aui { display: flex; flex-direction: column; overflow: hidden; padding: 0; position: relative; }
 .fl-conversation--aui .fl-conversation__bar { margin: 0; padding: var(--fl-workspace-space-3) var(--fl-workspace-space-4); }
 /* Thread viewport: grid of turns with calm, generous spacing. Breathing room
@@ -288,6 +288,7 @@
 .fl-turn--aui > .fl-turn__head { margin-block-end: 0; }
 /* Following a sent turn (issue 4616) must stop above the sticky composer, not under it.
    The composer publishes its measured height (issue 4620); 8rem is only the fallback. */
+.fl-turn { scroll-margin-block-end: calc(var(--fl-composer-block-size, 8rem) + var(--fl-workspace-space-2)); }
 .fl-turn--aui { scroll-margin-block-end: calc(var(--fl-composer-block-size, 8rem) + var(--fl-workspace-space-2)); }
 .fl-turn--aui[data-role="user"] { justify-items: end; }
 .fl-turn--aui[data-role="user"] > .fl-part { justify-self: end; }

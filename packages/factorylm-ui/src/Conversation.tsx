@@ -7,6 +7,7 @@ import type {
   ShellState,
 } from "@factorylm/interaction";
 import type { Dispatch } from "react";
+import { useConversationFollow } from "./useConversationFollow";
 import { PartRenderer, contextDiffers, describeContext, lifecycleLabel, machineName, type HostHooks } from "./parts";
 
 export interface ConversationProps {
@@ -114,7 +115,8 @@ export function ConversationBar({ state }: { readonly state: ShellState }) {
 }
 
 export function Conversation({ state, dispatch, adapter, hooks }: ConversationProps) {
-  return <section className="fl-conversation" aria-label="Conversation" data-mode={state.mode} data-conversation-surface="classic">
+  const rootRef = useConversationFollow(state.thread);
+  return <section ref={rootRef} className="fl-conversation" aria-label="Conversation" data-mode={state.mode} data-conversation-surface="classic">
     <ConversationBar state={state} />
 
     {state.mode === "work"

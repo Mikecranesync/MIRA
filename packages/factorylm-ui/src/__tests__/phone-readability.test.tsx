@@ -125,12 +125,6 @@ describe("#4616 follow the technician's new turn", () => {
     expect(conversationCss).toMatch(/\.fl-turn--aui\s*\{[^}]*scroll-margin-block-end:\s*calc\(var\(--fl-composer-block-size,\s*8rem\)/s);
   });
 
-  it("does not scroll on first render (control)", async () => {
-    setup();
-    await frames();
-    expect(scrolled).toEqual([]);
-  });
-
   const frames = async (n = 12) => { for (let i = 0; i < n; i += 1) await new Promise((r) => requestAnimationFrame(() => r(null))); };
 
   it("scrolls the new user turn into view when one is appended to the same thread", async () => {
@@ -140,17 +134,6 @@ describe("#4616 follow the technician's new turn", () => {
     expect(scrolled).toContain("turn-sent-1");
   });
 
-  it("does not yank the reader when only an assistant turn is appended (control)", async () => {
-    const view = setup();
-    view.dispatch({ type: "hydrate", data: { thread: { ...base, turns: [...base.turns, assistantTurn("turn-answer-1")] } } });
-    await frames();
-    expect(scrolled).toEqual([]);
-  });
-
-  it("does not treat opening a different thread as a send (control)", async () => {
-    const view = setup();
-    view.dispatch({ type: "hydrate", data: { thread: { ...base, id: "thread-other", turns: [userTurn("turn-other-1")] } } });
-    await frames();
-    expect(scrolled).toEqual([]);
-  });
+  // Mount, answer, thread-switch and deliberate-scroll controls live in
+  // conversation-follow.test.tsx for both shared renderers (#4680).
 });

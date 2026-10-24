@@ -1,8 +1,8 @@
 /**
  * The conversation surface on assistant-ui primitives (blueprint Phase 3).
  *
- * assistant-ui owns: the thread viewport, stick-to-bottom autoscroll,
- * jump-to-latest, and the message list keyed by stable turn ids. FactoryLM
+ * assistant-ui owns the thread viewport, jump control, and message list keyed
+ * by stable turn IDs. Shared follow logic handles document and nested scrolling. FactoryLM
  * owns everything that carries meaning: the bar (breadcrumb, Ask/Work,
  * machine chip), the run card, the head line per turn, and every part — all
  * rendered by the same components the classic `Conversation` uses, so the two
@@ -21,7 +21,8 @@ import {
   type DataMessagePartComponent,
 } from "@assistant-ui/react";
 import type { InteractionTurn, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
-import { createContext, useContext, useEffect, useMemo, useRef, type Dispatch } from "react";
+import { createContext, useContext, useMemo, type Dispatch } from "react";
+import { useConversationFollow } from "../useConversationFollow";
 import { ConversationBar, RunCard } from "../Conversation";
 import { CopyIcon, RecordFixIcon, RegenerateIcon, SpeakerIcon, ThumbDownIcon, ThumbUpIcon } from "../icons";
 import { PartRenderer, contextDiffers, describeContext, type HostHooks } from "../parts";
@@ -227,30 +228,7 @@ export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantTh
     [state, dispatch, adapter, hooks, turns],
   );
 
-  // Follow a newly sent technician turn (#4616). On a phone the document, not
-  // the thread viewport, is what scrolls, so the viewport's own autoscroll has
-  // nothing to move; scrollIntoView reaches every scrolling ancestor. Only an
-  // append to the same thread counts: first render, opening another thread and
-  // an arriving answer never move the reader.
-  const rootRef = useRef<HTMLDivElement>(null);
-  const lastSeen = useRef({ threadId: state.thread.id, lastTurnId: state.thread.turns.at(-1)?.id });
-  useEffect(() => {
-    const last = state.thread.turns.at(-1);
-    const previous = lastSeen.current;
-    lastSeen.current = { threadId: state.thread.id, lastTurnId: last?.id };
-    if (!last || last.role !== "user" || previous.threadId !== state.thread.id || previous.lastTurnId === last.id) return;
-    // assistant-ui renders the new message after this commit, so wait a few
-    // frames for its node rather than scrolling to nothing.
-    let frame = 0;
-    let attempts = 0;
-    const follow = () => {
-      const node = rootRef.current?.querySelector(`[data-turn-id="${CSS.escape(last.id)}"]`);
-      if (node) node.scrollIntoView({ block: "end" });
-      else if (++attempts < 10) frame = requestAnimationFrame(follow);
-    };
-    frame = requestAnimationFrame(follow);
-    return () => cancelAnimationFrame(frame);
-  }, [state.thread.id, state.thread.turns]);
+  const rootRef = useConversationFollow<HTMLDivElement>(state.thread);
 
   return <AssistantRuntimeProvider runtime={runtime}>
     <EnvironmentContext.Provider value={environment}>
@@ -263,7 +241,8 @@ export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantTh
         data-conversation-surface="assistant"
       >
         <ConversationBar state={state} />
-        <ThreadPrimitive.Viewport className="fl-thread__viewport" autoScroll>
+        <ThreadPrimitive.Viewport className="fl-thread__viewport" autoScroll={false}
+          scrollToBottomOnInitialize={false} scrollToBottomOnRunStart={false} scrollToBottomOnThreadSwitch={false}>
           {state.mode === "work"
             ? (state.run
               ? <RunCard run={state.run} state={state} />
