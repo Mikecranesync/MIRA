@@ -87,6 +87,25 @@ jobs:
           echo "::add-mask::$DATABASE_URL"
           echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
 
+          # Long-lived QA accounts are exempt by construction (same discovery as
+          # qa-accounts-census.yml). An empty or malformed value aborts rather than
+          # silently dropping the exemption.
+          KEYS="$(doppler secrets --project factorylm --config "${DOPPLER_CFG}" --only-names --json \
+                  | jq -r 'keys[]' \
+                  | grep -E '^(BETA_PROBE_QA[A-Z0-9_]*|SYNTHETIC_[A-Z0-9_]+)_EMAIL$' || true)"
+          EXEMPT=""
+          for k in $KEYS; do
+            v="$(doppler secrets get "$k" --project factorylm --config "${DOPPLER_CFG}" --plain)"
+            case "$v" in (*,*|'') echo "::error::$k is empty or contains a comma — refusing to run without its exemption"; exit 1 ;; esac
+            echo "::add-mask::$v"
+            EXEMPT="${EXEMPT:+$EXEMPT,}$v"
+          done
+          if [ "${{ inputs.target }}" = prod ] && [ -z "$EXEMPT" ]; then
+            echo "::error::No long-lived QA account keys found in factorylm/prd — refusing to run without exemptions"; exit 1
+          fi
+          echo "Exempt long-lived keys: ${KEYS//$'\n'/ }"
+          echo "EXEMPT_EMAILS=$EXEMPT" >> "$GITHUB_ENV"
+
       - name: Run cleanup (${{ inputs.mode }})
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -101,4 +120,5 @@ jobs:
             -v age_days="${{ inputs.age_days }}" \
             -v max_tenants="${{ inputs.max_tenants }}" \
             -v apply="$APPLY" \
+            -v exempt_emails="$EXEMPT_EMAILS" \
             -f tools/qa/cleanup_qa_tenants.sql

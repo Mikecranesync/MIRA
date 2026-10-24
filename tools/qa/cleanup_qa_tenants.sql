@@ -14,9 +14,13 @@
 --   :age_days     only tenants whose owner signed up more than N days ago
 --   :max_tenants  abort if the selector matches more than this many tenants
 --   :apply        'true' commits, anything else rolls back (dry-run)
+--   :exempt_emails comma-separated long-lived QA emails whose tenants are never selected
 --
 -- Selector guards (ALL must hold for a tenant to be selected):
---   * owner email matches the QA prefix regex AND ends @factorylm.com
+--   * a user email matches the disposable-QA prefix @factorylm.com, OR has a
+--     synthetic local part on factorylm.com / a reserved test domain, OR is on a
+--     reserved test domain (example.com/.org/.net, *.test, factorylm-test.com)
+--   * NO user in the tenant is a long-lived QA account (:exempt_emails)
 --   * EVERY user in the tenant has status='trial' and plan IS NULL
 --     (an upgraded/admin/approved user protects the whole tenant)
 --   * tenant owns ZERO shared/public knowledge (is_private=false rows) —
@@ -36,13 +40,30 @@ FROM hub_tenants t
 WHERE EXISTS (
         SELECT 1 FROM hub_users u
         WHERE u.tenant_id = t.id
-          AND u.email_lower ~ '^(notebook-qa-|notebook-live-|adversarial-)[a-z0-9._+-]*@factorylm\.com$'
+          AND (
+                -- Disposable prod-verification accounts (original selector).
+                u.email_lower ~ '^(notebook-qa-|notebook-live-|adversarial-)[a-z0-9._+-]*@factorylm\.com$'
+                -- Synthetic local part (mirrors isSystemAccount + the census classes),
+                -- but ONLY on our own or a reserved test domain - never a customer domain.
+             OR (u.email_lower ~ '(playwright|\me2e[-_]|\mprobe\M|stranger|(^|[-_.+])test[-_.@])'
+                 AND u.email_lower ~ '@(factorylm\.com|example\.(com|org|net)|[a-z0-9-]+\.test|factorylm-test\.com)$')
+                -- Any account on a reserved test domain (RFC 2606 / our test domain).
+             OR u.email_lower ~ '@(example\.(com|org|net)|[a-z0-9-]+\.test|factorylm-test\.com)$'
+              )
           AND u.created_at < NOW() - (:'age_days' || ' days')::interval
       )
   AND NOT EXISTS (
         SELECT 1 FROM hub_users u2
         WHERE u2.tenant_id = t.id
           AND (u2.status IS DISTINCT FROM 'trial' OR u2.plan IS NOT NULL)
+      )
+  -- Long-lived QA accounts (Doppler BETA_PROBE_QA*/SYNTHETIC_*_EMAIL, passed in by
+  -- the workflow) protect their whole tenant even when they have lapsed to an
+  -- expired trial - which is exactly what happened to the prod probe on 2026-10-24.
+  AND NOT EXISTS (
+        SELECT 1 FROM hub_users u3
+        WHERE u3.tenant_id = t.id
+          AND u3.email_lower = ANY (string_to_array(lower(:'exempt_emails'), ','))
       )
   AND NOT EXISTS (
         SELECT 1 FROM knowledge_entries ke
