@@ -866,7 +866,7 @@ export function HubShellHost() {
 
   // Keep a photo from this conversation as one of the machine's sources, then
   // reload the notebook so the next question's source scope includes it.
-  const onKeepPhoto = useCallback(async (fileId: string) => {
+  const onKeepPhoto = useCallback(async (fileId: string, reviewed?: Parameters<NonNullable<HostHooks["onKeepPhoto"]>>[1]) => {
     const sel = selectionRef.current;
     if (!sel?.notebookId) throw new Error("no_notebook");
     const res = await fetch(
@@ -875,12 +875,29 @@ export function HubShellHost() {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         // The conversation whose reading the technician is looking at.
-        body: JSON.stringify(sel.threadId ? { threadId: sel.threadId } : {}),
+        body: JSON.stringify({ threadId: sel.threadId ?? "legacy", ...(reviewed ? { reviewed } : {}) }),
       },
     );
     if (!res.ok) throw new Error(`keep_photo_${res.status}`);
-    await loadDetail(sel);
+    try {
+      if (!await loadDetail(sel)) return "refresh_pending" as const;
+    } catch {
+      return "refresh_pending" as const;
+    }
   }, [loadDetail]);
+  const onRefreshPhotoScope = useCallback(async () => {
+    const sel = selectionRef.current;
+    if (!sel?.notebookId) return false;
+    return loadDetail(sel);
+  }, [loadDetail]);
+  const onReviewPhoto = useCallback(async (fileId: string) => {
+    const sel = selectionRef.current;
+    if (!sel?.notebookId) throw new Error("no_notebook");
+    const query = sel.threadId ? `?threadId=${encodeURIComponent(sel.threadId)}` : "";
+    const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/photos/${encodeURIComponent(fileId)}/source/${query}`);
+    if (!res.ok) throw new Error(`photo_review_${res.status}`);
+    return await res.json() as { observationId: string; text: string; reviewed: boolean };
+  }, []);
   const keptPhotoIds = useMemo(
     () => new Set((detail?.sources ?? []).map((s) => s.originFileId).filter((id): id is string => !!id)),
     [detail],
@@ -895,7 +912,7 @@ export function HubShellHost() {
       ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
       : {}),
     ...(selection?.notebookId ? { onConfirmIdentity: onConfirmIdentity } : {}),
-    ...(selection?.notebookId ? { onKeepPhoto, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
+    ...(selection?.notebookId ? { onKeepPhoto, onReviewPhoto, onRefreshPhotoScope, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
     onSource: (source) => openSource(source.id),
     onNewChat,
     onCreateProject,

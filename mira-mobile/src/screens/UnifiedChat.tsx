@@ -15,6 +15,7 @@ import "@factorylm/theme/workspace.css";
 import "@factorylm/ui/shell.css";
 import "@factorylm/ui/conversation.css";
 import "../unified/unified.css";
+import { OriginalPhoto } from "../unified/OriginalPhoto";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   PROFILES,
@@ -965,26 +966,36 @@ function UnifiedChatForNotebook({
 
   // Keep a photo from this conversation as one of the machine's sources; the
   // re-read stores the new scope so the next question can cite it.
-  const onKeepPhoto = useCallback(async (fileId: string) => {
+  const onKeepPhoto = useCallback(async (fileId: string, reviewed?: Parameters<NonNullable<HostHooks["onKeepPhoto"]>>[1]) => {
     if (!meta.notebookId) throw new Error("no_notebook");
     await request(
       `/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`,
       // The conversation whose reading the technician is looking at.
-      { method: "POST", json: attachmentThreadId ? { threadId: attachmentThreadId } : {} },
+      { method: "POST", json: { threadId: attachmentThreadId ?? "legacy", ...(reviewed ? { reviewed } : {}) } },
     );
     setKeptPhotoIds((prev) => new Set(prev).add(fileId));
-    await refreshPromotedScope();
+    if (await refreshPromotedScope() !== true) return "refresh_pending" as const;
   }, [meta.notebookId, attachmentThreadId, refreshPromotedScope]);
+
+  const onReviewPhoto = useCallback(async (fileId: string) => {
+    if (!meta.notebookId) throw new Error("no_notebook");
+    const query = attachmentThreadId ? `?threadId=${encodeURIComponent(attachmentThreadId)}` : "";
+    const response = await request(
+      `/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/photos/${encodeURIComponent(fileId)}/source/${query}`,
+    );
+    return response.data as { observationId: string; text: string; reviewed: boolean };
+  }, [meta.notebookId, attachmentThreadId]);
 
   const hooks: HostHooks = {
     onSend,
     renderText,
+    renderPhoto: fileId => <OriginalPhoto fileId={fileId} />,
     onCopy,
     ...(readAloud ? { onReadAloud } : {}),
     ...(meta.notebookId
       ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
       : {}),
-    ...(meta.notebookId ? { onKeepPhoto, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
+    ...(meta.notebookId ? { onKeepPhoto, onReviewPhoto, onRefreshPhotoScope: async () => await refreshPromotedScope() === true, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
     ...(canStop ? { onStop: handlers.onStop } : {}),
     // The host retry re-sends the rendered turn as plain text. That is right for
     // a text turn and WRONG for one whose attachment never uploaded: it would
