@@ -277,6 +277,8 @@ export interface UnifiedShellHost {
   readonly navigationFooter?: ReactNode;
 }
 
+const COMPOSING_TURN: ChatTurn = { answer: "", citations: [], status: "" };
+
 export interface UnifiedChatProps {
   readonly turns: NotebookServerTurn[];
   readonly liveTurns: { q: string; a: ChatTurn }[];
@@ -421,7 +423,15 @@ function UnifiedChatForNotebook({
     };
   }, []);
   const fullMeta = useMemo<UnifiedNotebookMeta>(() => ({ ...meta, capturedAt: capturedAt.current }), [meta]);
-  const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
+  // #3996: a photo send reaches the host only after its upload resolves. Until
+  // then the question shows as this screen's own pending turn; the host's
+  // pending turn takes over as soon as it exists.
+  const [composingQuestion, setComposingQuestion] = useState<string | null>(null);
+  const shownPending = useMemo(
+    () => pending ?? (composingQuestion !== null ? { q: composingQuestion, a: COMPOSING_TURN } : null),
+    [pending, composingQuestion],
+  );
+  const messages = useMemo(() => threadMessages(turns, liveTurns, shownPending), [turns, liveTurns, shownPending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
   const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
   // Whether the shell's send-error banner is still up, as of the last render.
@@ -854,6 +864,12 @@ function UnifiedChatForNotebook({
       else handlers.onSend(text);
       return;
     }
+    // An attachment-only send has no typed question yet — `compose` resolves
+    // one (the default photo/document question) only after the upload runs.
+    // Showing the raw (empty) `text` here left the temporary turn blank for
+    // the whole upload (Codex #4721 F1); `effectiveQuestion` previews the same
+    // default synchronously, without uploading anything itself.
+    setComposingQuestion(attachments.effectiveQuestion(text, pending, { retry }));
     void attachments.compose(text, pending, { ...opts, retry }).then((composed) => {
       // Light review (#4195, HIGH, notebook-switch class): `confirmedScope`
       // was captured BEFORE this await, on THIS notebook. If the technician
@@ -864,6 +880,7 @@ function UnifiedChatForNotebook({
       // callback as bound to. There is no safe notebook to deliver this
       // send to, so it is DROPPED entirely (not sent to A, not sent to B).
       if (!aliveRef.current) return;
+      setComposingQuestion(null);
       if (composed.failure) {
         // Codex round 7 F22 (#4195): no send is actually handed to the parent
         // on this path, so the promoted scope captured above must not be
@@ -888,6 +905,7 @@ function UnifiedChatForNotebook({
       if (composed.warning) dispatch({ type: "set-send-error", error: composed.warning });
     }).catch((error: unknown) => {
       if (!aliveRef.current) return;
+      setComposingQuestion(null);
       // Codex round 7 F22 (#4195), same reasoning as the `composed.failure`
       // branch above: a rejected compose never reaches `handlers.onSend`
       // either, so the scope it would have ridden must survive for retry.
