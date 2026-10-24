@@ -43,6 +43,10 @@ class ResizeObserverStub {
 if (!("scrollTo" in Element.prototype)) {
   Object.defineProperty(Element.prototype, "scrollTo", { value: () => {}, writable: true });
 }
+// jsdom has no scrollIntoView; useConversationFollow calls it when following latest (#4703).
+if (!("scrollIntoView" in Element.prototype)) {
+  Object.defineProperty(Element.prototype, "scrollIntoView", { value: () => {}, writable: true });
+}
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => false, convertFileSrc: (p: string) => p },

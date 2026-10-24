@@ -2708,6 +2708,9 @@ async function handleChatTurn(
   // "candidate" wins over "confirmed": its manual lands turned off, so the
   // fallback must also say to turn it on (Codex #4183 F1).
   let manualSearchRunning: "confirmed" | "candidate" | null = null;
+  // #4718: the acquisition key `manualSearchRunning` describes, so the copy
+  // can be re-checked against the stored record just before it is chosen.
+  let manualSearchKey: string | null = null;
   // Codex round 5 F15 (#4195) — the candidate search's own generation (the
   // DB's `started_at`, never this route's local clock), threaded onto the
   // LIVE `manual_search_status` SSE frame below so the shared mobile/Hub
@@ -2777,7 +2780,10 @@ async function handleChatTurn(
       if (acq && acq.key === key) {
         manualAcquisition = { state: acq.state, started_this_turn: started, candidate_host: acq.candidate_host };
         acquisitionText = acquisitionDeclineText(acq, key, `${oemManufacturer.name} ${oemModel.value}`);
-        if (acq.state === "running" && manualSearchRunning === null) manualSearchRunning = "confirmed";
+        if (acq.state === "running" && manualSearchRunning === null) {
+          manualSearchRunning = "confirmed";
+          manualSearchKey = key;
+        }
       }
     }
   }
@@ -2842,7 +2848,10 @@ async function handleChatTurn(
         }
         if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
         if (cAcq && cAcq.key === candidateKey) {
-          if (cAcq.state === "running") manualSearchRunning = "candidate";
+          if (cAcq.state === "running") {
+            manualSearchRunning = "candidate";
+            manualSearchKey = candidateKey;
+          }
           candidateManualUrl = !cAcq.attached_indexed && !cAcq.source_removed ? acquisitionManualUrl(cAcq) : null;
           candidateAcquisitionText = acquisitionDeclineText(
             cAcq,
@@ -2915,6 +2924,7 @@ async function handleChatTurn(
           manualAcquisition = started
             ? { state: "running", started_this_turn: true, candidate_host: null }
             : { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };
+          if (manualAcquisition.state === "running" && manualSearchRunning === null) manualSearchKey = key;
         }
       }
     }
@@ -4266,6 +4276,20 @@ async function handleChatTurn(
       // The specificity lane keys on "no documents behind the answer", which
       // is `!docGrounded` (an OEM-grounded turn is held to the citation
       // contract, exactly like a notebook-grounded one).
+      // #4718: the claim above only reserved the search; the cap is checked in
+      // the background run, which usually settles while the answer is being
+      // generated. Re-read once so a refused search is not described as running
+      // in the fallback copy. Only the copy uses this: the live status frame
+      // keeps `manualSearchRunning`, so the app still follows and settles it.
+      let fallbackSearchRunning = manualSearchRunning;
+      if (manualSearchRunning !== null && manualSearchKey !== null) {
+        try {
+          const settled = await readAcquisition(ctx.tenantId, notebookId);
+          if (settled && settled.key === manualSearchKey && settled.state !== "running") fallbackSearchRunning = null;
+        } catch (err) {
+          console.error("[notebook-chat] manual-search re-read failed:", err instanceof Error ? err.message : err);
+        }
+      }
       const validation = validateAnswer({
         answerText,
         question: message,
@@ -4273,7 +4297,7 @@ async function handleChatTurn(
         served,
         refused,
         evidenceSufficient,
-        manualSearchRunning,
+        manualSearchRunning: fallbackSearchRunning,
       });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
       // #4098: which quantity word + unit the exact-rating rule matched —
