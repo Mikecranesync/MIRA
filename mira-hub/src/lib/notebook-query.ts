@@ -271,6 +271,12 @@ export function expandIndustrialQuery(query: string): ExpandedQuery {
   for (const [re, terms] of SYNONYMS) {
     if (re.test(q)) for (const t of terms) synTerms.add(t);
   }
+  // #4645: OEM manuals say "acknowledge", not ACK. Add that vocabulary when
+  // the existing classifier already decided this is a fault-clear, not by
+  // matching the token ACK/back. Navigation ("go back", "back key") is not fault.
+  if (classifyIntent(q) === "fault") {
+    for (const term of ["acknowledge", "group acknowledgment", "fault clear"]) synTerms.add(term);
+  }
 
   const exact = new Set<string>();
   for (const re of EXACT_PATTERNS) {
@@ -408,7 +414,7 @@ function specScore(text: string): number {
 // mechanism"). Order matters: fault-action beats generic procedure beats comm
 // beats spec beats param-lookup.
 const FAULT_ACTION =
-  /\b(clear|reset|recover|clears|resets|recovers|clearing|resetting)\b[^.?!]*\b(fault|trip)|\b(fault|trip)\b[^.?!]*\b(clear|reset|recover)|after (?:it|the drive|this) (?:faults|trips)|get (?:it|the drive) running again/i;
+  /\b(?:clears?|reset(?:s|ting)?|recovers?|acknowledg(?:e|es|ed|ing)|acks?)\b[^.?!]*\b(?:fault|trip|alarm)s?|\b(?:fault|trip|alarm)s?\b[^.?!]*\b(?:clear|reset|recover|acknowledge|ack)|after (?:it|the drive|this) (?:faults|trips)|get (?:it|the drive) running again|\back(?:nowledg\w*)?\s+key\b/i;
 const PROCEDURE_LEAD =
   /^(how (?:do|can|to)|how do i|how does one|walk me through|steps to|what(?:'s| is) the (?:procedure|process|sequence))\b|\b(procedure|commission|set ?up|wire|wiring|autotune|navigate|on the keypad)\b/i;
 const COMM_TOPIC =
@@ -435,6 +441,20 @@ export function classifyIntent(query: string): Intent {
   if (classifyBroad(q).broad) return "broad";
   if (/\b[PpAaBbCcHhLdtUu]\d{2,4}\b|\bparameter\b|\bwhat does\b/i.test(q)) return "param_lookup";
   return "generic";
+}
+
+/**
+ * Content signature of destructive factory-restore / OS-wipe material.
+ * Measured on Siemens Comfort Panel Operating Instructions (pp. 141, 169–171):
+ * factory-settings restore and OS update delete project data and license keys.
+ * This is a document-content signature, not a list of technician questions.
+ */
+const FACTORY_RESTORE_MATERIAL =
+  /\bfactory[\s-]+(?:reset|settings|defaults?)\b|\breset\b[^.!?]{0,40}\bfactory\b|\brestore\b[^.!?]{0,40}\bfactory\b|\boperating\s+system\s+(?:update|upgrade|image)\b|\bupdat(?:e|ing)\s+the\s+operating\s+system\b/i;
+
+export function isFactoryResetMaterial(text: string): boolean {
+  FACTORY_RESTORE_MATERIAL.lastIndex = 0;
+  return FACTORY_RESTORE_MATERIAL.test(text);
 }
 
 export type RerankTraceRow = {
@@ -520,6 +540,17 @@ export function rerankChunks<T extends Rerankable>(
       // not the parameter name-list page — no index penalty (a value-dense
       // parameter table IS spec material), just a value-material boost.
       score += specScore(c.content) * 1.5;
+    }
+    if (intent === "fault") {
+      if (isFactoryResetMaterial(c.content)) {
+        // Factory-restore pages share the token "reset" with fault-clear
+        // questions and also read as procedure (imperatives). Demote them
+        // below acknowledge / fault-clear prose. A true factory-reset
+        // question classifies as procedure and is not demoted.
+        score -= 6.0;
+      } else if (/\backnowledg/i.test(c.content)) {
+        score += 2.0;
+      }
     }
     // broad / param_lookup / spec / generic: no index penalty. (Broad already has
     // facet fan-out + page diversity; an index penalty here MEASURABLY regressed

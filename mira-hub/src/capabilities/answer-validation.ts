@@ -30,6 +30,7 @@
 
 import { stepEnergyContradiction } from "./step-energy";
 import { firstUngovernedMatch } from "./hazard-modifiers";
+import { factoryResetAsFaultClear, FACTORY_RESET_AS_FAULT_REPLACEMENT } from "./fault-reset-safety";
 
 export type AnswerValidation =
   | { ok: true }
@@ -1356,6 +1357,19 @@ export function validateAnswer(opts: {
         ),
       };
     }
+  }
+
+  // #4645: a factory-restore / OS-wipe procedure is never a fault-clear
+  // answer. Both lanes — the reproduced leak was grounded in the OEM manual.
+  const factoryReset = factoryResetAsFaultClear(scanQuestion, scanText);
+  if (factoryReset) {
+    return {
+      ok: false,
+      kind: "unsupported_specificity",
+      violation: "unsupported-specificity:factory-reset-as-fault-clear",
+      detail: factoryReset,
+      replacement: FACTORY_RESET_AS_FAULT_REPLACEMENT,
+    };
   }
 
   // B — general lane only. The grounded lane's specificity discipline is the
