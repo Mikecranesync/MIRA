@@ -73,3 +73,32 @@ describe("alarm packs", () => {
     expect(() => validatePack(dup)).toThrow("alarm_pack_invalid:duplicate_key");
   });
 });
+
+// rtd v2 (2026-10-13): generic lessons from a real stator-temperature night, approved by Mike
+// pending safety review. v1 stays on disk so older cards' packVersions still resolve.
+describe("rtd pack v2", () => {
+  const shipped = ALARM_PACKS.find((p) => p.pack_id === "rtd")!;
+  const high = packFor("measurement_limit:temperature:high")!.entry;
+  it("ships version 2, and v1 is kept on disk", () => {
+    expect(shipped.version).toBe(2);
+    expect(rtd.version).toBe(1);
+  });
+  it("separates real heat from a bad loop, and says a believable reading is not an open wire", () => {
+    expect(high.hypotheses).toEqual([
+      "The measured point really is above its limit, for example after heavy use or because its cooling is not working.",
+      "The sensor loop has extra resistance at a lead, terminal, or joint. On most RTD input modules, a fully open loop pegs at the top of the input's range, far above any real temperature — so a believable reading rules out a fully open wire, but not a high-resistance connection or a genuine over-temperature; confirm with a second reading before trusting it.",
+    ]);
+  });
+  it("checks: does it follow load, compare the twin (and the shared input), confirm with a second reading", () => {
+    expect(high.checks).toEqual([
+      "Read the value and time of each occurrence from the alarm history, and note whether the readings rise after heavy use.",
+      "Compare the sensor that does the same work, such as the other side of a left/right pair. If several sensors that share one input alarm together, suspect the shared input; one alone points at that point.",
+      "Confirm with a second reading of the same point: its separate over-temperature switch status on the HMI — or, only if your site's procedures let you approach this equipment running and without crossing any guard or barrier, an infrared thermometer read from outside it.",
+    ]);
+  });
+  it("control: the low-temperature and wire-break entries are unchanged from v1", () => {
+    for (const key of ["measurement_limit:temperature:low", "io_diagnostic:wire_break:input"]) {
+      expect(shipped.entries.find((e) => e.key === key)).toEqual(rtd.entries.find((e) => e.key === key));
+    }
+  });
+});
