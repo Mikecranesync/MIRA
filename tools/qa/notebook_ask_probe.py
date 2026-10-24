@@ -163,9 +163,11 @@ def main(argv: list[str] | None = None) -> int:
     with httpx.Client(base_url=cfg.hub_base, timeout=180, follow_redirects=True) as client:
         try:
             cookie = cfg.cookie or _sign_in(client, cfg)
-            if not cookie.startswith(("next-auth", "__Secure")):
-                cookie = f"next-auth.session-token={cookie}"
-            h = {"cookie": cookie}
+            token = cookie.split("session-token=", 1)[-1]
+            # Production over HTTPS reads the __Secure- prefixed name; send both.
+            h = {
+                "cookie": f"next-auth.session-token={token}; __Secure-next-auth.session-token={token}"
+            }
             health = client.get("/api/health/").json()
             if a.manual_page:
                 fixture = Fixture(client, h, a.manual_page)
