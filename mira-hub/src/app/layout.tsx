@@ -15,6 +15,7 @@ const inter = Inter({
 });
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://app.factorylm.com";
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "/hub";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -23,7 +24,15 @@ export const metadata: Metadata = {
     template: "%s · FactoryLM Hub",
   },
   description: "AI-powered industrial maintenance platform",
-  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  // Next does not prefix basePath onto metadata icon URLs, so add it here —
+  // otherwise prod links /favicon.svg at the origin root, outside /hub (#4363).
+  icons: {
+    icon: `${BASE_PATH}/favicon.svg`,
+    shortcut: `${BASE_PATH}/favicon.svg`,
+    apple: `${BASE_PATH}/apple-touch-icon.png`,
+  },
+  // iOS add-to-home-screen (#4363): launch full-screen with a short name.
+  appleWebApp: { capable: true, title: "MIRA", statusBarStyle: "default" },
   alternates: {
     canonical: "/",
   },
