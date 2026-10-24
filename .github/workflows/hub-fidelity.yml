@@ -41,7 +41,8 @@ concurrency:
 jobs:
   fidelity:
     name: Hub fidelity — classic notebook vs /v3 (advisory)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no Playwright chromium build (#4697).
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:
