@@ -169,5 +169,20 @@ for (const thread of ["classic", "assistant"]) {
         .filter(el => ["auto", "scroll"].includes(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1)
         .map(el => `${el.className}: ${el.scrollWidth} > ${el.clientWidth}`));
     expect(overflow).toEqual([]);
+    const geometry = await page.locator('[data-role="user"] [data-part-type="text"]').last().evaluate(el => {
+      const box = el.getBoundingClientRect();
+      return {
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: document.documentElement.clientWidth,
+        bodyWidth: document.body.scrollWidth,
+        left: box.left, right: box.right,
+        textWidth: el.scrollWidth, boxWidth: el.clientWidth,
+      };
+    });
+    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    expect(geometry.left).toBeGreaterThanOrEqual(0);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
+    expect(geometry.textWidth).toBeLessThanOrEqual(geometry.boxWidth + 1);
   });
 }
