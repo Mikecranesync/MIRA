@@ -121,12 +121,19 @@ jobs:
       - name: Run pre-commit hook tests
         run: bash tests/hooks/test_precommit_hook.sh
 
+      # #4554: the .claude/settings.json guard hooks must still decide when the
+      # session's cwd is not the repo root (a relative path exited 127 there,
+      # a non-blocking error, so commands ran unguarded).
+      - name: Run settings.json guard-hook path tests
+        run: bash tests/hooks/test_settings_hook_paths.sh
+
       # The harness itself is a .sh file the hook would lint, so hold it to the
       # same bar rather than exempting the tester from the test.
       - name: shellcheck the harness and the hook
         run: |
           set -euo pipefail
           shellcheck -S warning -f gcc tests/hooks/test_precommit_hook.sh
+          shellcheck -S warning -f gcc tests/hooks/test_settings_hook_paths.sh
           shellcheck -S warning -f gcc .githooks/pre-commit
 
   shared-line-guard:
