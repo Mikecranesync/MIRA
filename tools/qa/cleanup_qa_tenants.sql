@@ -82,11 +82,32 @@ UNION ALL SELECT 'hub_uploads', count(*) FROM hub_uploads
           WHERE tenant_id IN (SELECT tid FROM qa_tenants)
 UNION ALL SELECT 'hub_magic_tokens', count(*) FROM hub_magic_tokens
           WHERE tenant_id IN (SELECT tid FROM qa_tenants)
+UNION ALL SELECT 'workspace_file_links', count(*) FROM workspace_file_links
+          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
+UNION ALL SELECT 'diagnosis_pairs', count(*) FROM diagnosis_pairs
+          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
+-- Removed by ON DELETE CASCADE from the rows above; counted so a dry-run shows them.
+UNION ALL SELECT 'cascade:asset_fix_records', count(*) FROM asset_fix_records
+          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
+UNION ALL SELECT 'cascade:guided_procedure_sessions', count(*) FROM guided_procedure_sessions
+          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
+UNION ALL SELECT 'cascade:storage_file_nodes', count(*) FROM storage_file_nodes
+          WHERE tenant_id IN (SELECT tid FROM qa_tenants)
+UNION ALL SELECT 'cascade:link_tokens', count(*) FROM link_tokens
+          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
+UNION ALL SELECT 'cascade:users', count(*) FROM users
+          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
 UNION ALL SELECT 'tenants(mirror)', count(*) FROM tenants WHERE id::text IN (SELECT tid FROM qa_tenants);
 
 -- Children before parents; knowledge_entries first (FKs tenants), tenants last.
 -- is_private=true only — belt-and-braces on top of the selector's public-rows
 -- exclusion (.claude/rules/knowledge-entries-tenant-scoping.md).
+-- Rows that block the deletes below (RESTRICT / NO ACTION FKs onto
+-- namespace_direct_uploads and knowledge_entries). Deleted by the QA tenant's
+-- own id ONLY: a row of another tenant pointing at QA data makes the FK fail
+-- and the whole run abort, rather than this script reaching outside QA tenants.
+DELETE FROM workspace_file_links WHERE tenant_id::text IN (SELECT tid FROM qa_tenants);
+DELETE FROM diagnosis_pairs WHERE tenant_id::text IN (SELECT tid FROM qa_tenants);
 DELETE FROM knowledge_entries
   WHERE tenant_id::text IN (SELECT tid FROM qa_tenants) AND is_private = true;
 DELETE FROM namespace_direct_uploads WHERE tenant_id::text IN (SELECT tid FROM qa_tenants);
