@@ -11,22 +11,23 @@ held hostage again.
 What it covers (same chain as the physical run)
     install -> sign in -> create notebook -> upload PDF -> ingest+embed
     -> ask -> grounded cited answer -> citation resolves to a real passage
+    -> cold restart -> same project/thread/question/citation
     -> (optional) nameplate image -> structured extraction
 
 What it deliberately CANNOT cover -- and reports as SKIP, never as PASS:
     * cellular behaviour (emulator is always on the host network)
     * true camera hardware capture
     * Play-installed, release-signed identity
-Those three are the only reasons to ever touch a physical device again.
+Emulator proof does not replace a signed staging build or physical-device acceptance.
 
 Safety
 ------
 Refuses to run against a physical device unless --allow-physical is passed. The whole
 point is to leave real phones alone.
 
-Element lookup is by TEXT via `uiautomator dump`, never by hardcoded pixel coordinates,
-so it is resolution-independent -- the physical run wasted time on coordinate math that
-broke between the Pixel (1080x2424) and the emulator.
+Most journey controls use `uiautomator dump`. Cold-restart identity and citation
+proof requires the debug WebView DOM through the existing CDP driver; it fails
+closed when that observation is unavailable.
 
 Usage
 -----
@@ -42,8 +43,11 @@ Usage
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
+import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -51,7 +55,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
-PKG = "com.factorylm.mira"
+PKG = os.environ.get("MIRA_PKG", "com.factorylm.mira")
+ACTIVITY = f"{PKG}/com.factorylm.mira.MainActivity"
 DEVICE_TMP = "/sdcard/Download"
 UI_XML = "/sdcard/window_dump.xml"
 
@@ -254,7 +259,7 @@ class Device:
         """
         top = self.top_package()
         if top and top != PKG and "packageinstaller" not in top and "permission" not in top:
-            self.shell("monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+            self.shell("am", "start", "-n", ACTIVITY)
             time.sleep(5)
             return True
         return False
@@ -471,12 +476,20 @@ def pick_device(adb: str, allow_physical: bool) -> str:
 
 def install(dev: Device, apk: Path) -> None:
     log("install", f"{apk.name}")
-    # A signature mismatch (debug vs release) makes -r fail with
-    # INSTALL_FAILED_UPDATE_INCOMPATIBLE. Uninstall first: a fresh install is also the
-    # more honest starting state, since it re-exercises the permission grant.
-    dev._run(["uninstall", PKG])
-    r = dev._run(["install", str(apk)])
-    if "Success" not in (r.stdout or "") + (r.stderr or ""):
+    # Never uninstall the accepted app/session to work around a signature mismatch.
+    # Confirm the artifact's application ID before asking adb to install it.
+    sdk = os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME")
+    candidates = sorted((Path(sdk) / "build-tools").glob("*/aapt*"), reverse=True) if sdk else []
+    aapt = shutil.which("aapt") or next((str(p) for p in candidates if p.name in ("aapt", "aapt.exe")), None)
+    if not aapt:
+        raise Fail("aapt is required to verify the APK package before install")
+    badge = subprocess.run([aapt, "dump", "badging", str(apk)], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace")
+    match = re.search(r"^package: name='([^']+)'", badge.stdout, re.MULTILINE)
+    if badge.returncode != 0 or not match or match.group(1) != PKG:
+        raise Fail(f"APK package {match.group(1) if match else 'unreadable'} does not match MIRA_PKG={PKG}")
+    r = dev._run(["install", "-r", str(apk)])
+    if r.returncode != 0 or "Success" not in (r.stdout or "") + (r.stderr or ""):
         raise Fail(f"install failed: {r.stdout} {r.stderr}")
     dev.shell("svc", "power", "stayon", "usb")
 
@@ -494,17 +507,28 @@ def install(dev: Device, apk: Path) -> None:
 
 def launch(dev: Device) -> None:
     dev.shell("am", "force-stop", PKG)
-    dev.shell("monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+    dev.shell("am", "start", "-n", ACTIVITY)
     time.sleep(6)
     dev.dismiss_anr()
 
 
 def sign_in(dev: Device, email: str, password: str) -> None:
     log("signin", email)
-    # Generous: a cold emulator on swiftshader takes far longer to paint the WebView
-    # than a real device, and will throw ANR dialogs while doing it -- dismissing one
-    # drops you on the launcher, hence keep_foreground.
-    dev.wait_for("Sign in", timeout=240, keep_foreground=True)
+    # An update install preserves the existing session. A warm session is an
+    # explicit SKIP of sign-in proof, not a claim that credentials were tested.
+    # Generous: a cold emulator can take time to paint the WebView. Poll both
+    # outcomes: update installs may legitimately preserve an accepted session.
+    deadline = time.time() + 240
+    while time.time() < deadline:
+        if dev.find("Open navigation") is not None or dev.find("New project") is not None:
+            log("signin", "SKIP -- existing session preserved by update install")
+            return
+        if dev.find("Sign in") is not None:
+            break
+        dev.ensure_foreground()
+        time.sleep(2)
+    else:
+        raise Fail("neither sign-in nor the shared shell appeared")
     dev.type_into("Email", email)
     # Password is masked, so read-back cannot verify the value. Assert on the outcome.
     pw = dev.input_for("Password")
@@ -515,7 +539,7 @@ def sign_in(dev: Device, email: str, password: str) -> None:
 
     deadline = time.time() + 60
     while time.time() < deadline:
-        if any(email in t for t in dev.texts()):
+        if dev.find("Open navigation") is not None or dev.find("New project") is not None:
             dev.screenshot("signed-in")
             log("signin", "OK")
             return
@@ -526,9 +550,10 @@ def sign_in(dev: Device, email: str, password: str) -> None:
 
 def create_notebook(dev: Device, name: str, mfr: str, model: str) -> None:
     log("notebook", name)
-    dev.tap_text("Notebook")
-    dev.tap_text("Create new")
-    dev.wait_for("New machine notebook")
+    if dev.find("New project") is None:
+        dev.tap_button("Open navigation")
+    dev.tap_button("New project")
+    dev.wait_for("Name the machine")
     dev.type_into("Name", name)
     dev.hide_keyboard()  # conditional: a bare BACK would leave the form
     dev.type_into("Manufacturer", mfr)
@@ -536,8 +561,8 @@ def create_notebook(dev: Device, name: str, mfr: str, model: str) -> None:
     dev.type_into("Model", model)
     dev.hide_keyboard()
     dev.screenshot("notebook-form")
-    dev.tap_text("Create notebook")
-    dev.wait_for("Add sources", timeout=60)
+    dev.tap_button("Create project")
+    dev.wait_for("Send", timeout=60)
     log("notebook", "created")
 
 
@@ -556,8 +581,12 @@ def upload_pdf(dev: Device, pdf: Path) -> None:
         "-d", f"file://{remote}",
     )
 
-    if dev.find("Add sources") is None:
-        dev.tap_text("Add sources")
+    # The unified conversation does not expose the legacy Add sources tab.
+    # Open the current notebook's exact Sources item through its shared tree ID.
+    opened = history_dom(dev, "sources", "")
+    if not opened.get("notebookId"):
+        raise Fail("could not open current project's Sources destination")
+    dev.wait_for("Upload a PDF manual", timeout=30)
     dev.tap_text("Upload a PDF manual")
     dev.tap_text(pdf.stem[:24], timeout=60)  # SAF picker row
 
@@ -567,6 +596,8 @@ def upload_pdf(dev: Device, pdf: Path) -> None:
     # OUT an "Uploading" that happens to be visible.
     if dev.find("Uploading") is not None:
         dev.wait_for("Uploading", timeout=900, absent=True)
+    dev.wait_for("Source added. Ask away.", timeout=600)
+    dev.tap_button("Done", timeout=20)
     dev.wait_for("Searchable source", timeout=600)
     dev.screenshot("source-added")
     log("upload", "source added and marked searchable")
@@ -576,10 +607,9 @@ def ask(dev: Device, question: str, expect_page: int | None) -> str:
     log("ask", question)
     if dev.find("Done") is not None:
         dev.tap_button("Done", timeout=20)
-    # tap_button, not tap_text: the Sources pane carries the sentence "...include this
-    # source in notebook chat", which matches "Chat" case-insensitively. Only the tab
-    # is clickable.
-    dev.tap_button("Chat")
+    if dev.find("Back to chat") is not None:
+        dev.tap_button("Back to chat", timeout=20)
+    # The unified shell has no legacy Chat tab.
     dev.wait_for("Send", timeout=90, keep_foreground=True)
     box = dev.bottom_edit_text()
     dev.tap(*box.center)
@@ -606,7 +636,7 @@ def ask(dev: Device, question: str, expect_page: int | None) -> str:
     log("ask", f"cited: {cites}")
 
     if expect_page is not None:
-        if not any(f"p.{expect_page}" in c for c in cites):
+        if not any(re.search(rf"\bp\.\s*{expect_page}(?!\d)", c) for c in cites):
             raise Fail(f"expected a citation to p.{expect_page}, got {cites}")
         log("ask", f"expected page p.{expect_page} cited")
     return answer
@@ -615,7 +645,8 @@ def ask(dev: Device, question: str, expect_page: int | None) -> str:
 def verify_citation(dev: Device, expect_page: int | None) -> str:
     log("citation", "opening sheet")
     target = f"p.{expect_page}" if expect_page else ".pdf"
-    node = dev.find(target)
+    node = dev.find(f"p. {expect_page}") if expect_page else None
+    node = node or dev.find(target)
     if node is None:
         raise Fail(f"no citation chip matching {target!r}")
     dev.tap(*node.center)
@@ -637,6 +668,163 @@ def verify_citation(dev: Device, expect_page: int | None) -> str:
     return passage
 
 
+def history_dom(dev: Device, action: str, question: str, project_id: str = "") -> dict:
+    """Read the shared shell through the existing debug-WebView CDP seam.
+
+    A release WebView has no CDP endpoint. That is an explicit unavailable proof,
+    never a successful text-only fallback.
+    """
+    pids = dev.shell("pidof", PKG).split()
+    if not pids:
+        raise Fail(f"{PKG} is not running for history DOM proof")
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    forward = f"tcp:{port}"
+    r = dev._run(["forward", forward, f"localabstract:webview_devtools_remote_{pids[0]}"])
+    if r.returncode:
+        raise Fail(f"cannot forward debug WebView: {r.stderr}")
+    try:
+        script = Path(__file__).with_name("history-dom.mjs")
+        env = {**os.environ, "CDP_PORT": str(port)}
+        r = subprocess.run(["node", str(script), action, question, project_id],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", env=env, timeout=120)
+        if r.returncode:
+            raise Fail(f"history DOM unavailable (debug WebView required): {r.stderr[-400:]}")
+        return json.loads(r.stdout)
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        raise Fail(f"history DOM proof unavailable: {exc}") from exc
+    finally:
+        dev._run(["forward", "--remove", forward])
+
+
+def assert_history_state(state: dict, question: str, expected: dict | None,
+                         expect_page: int | None, *, require_persisted: bool = False,
+                         compare_turn: bool = True) -> dict:
+    """Require one exact user turn and a real citation in its paired answer."""
+    notebook_id = state.get("notebookId")
+    item_id = state.get("threadItemId")
+    prefix = f"notebook-{notebook_id}:thread-"
+    if (not notebook_id or state.get("threadItemCount") != 1 or
+            not isinstance(item_id, str) or not item_id.startswith(prefix) or
+            not item_id[len(prefix):]):
+        raise Fail("history has no identifiable active project/thread")
+    if expected and (notebook_id != expected["notebookId"] or item_id != expected["threadItemId"]):
+        raise Fail("cold restart reopened the wrong project/thread")
+    if state.get("questionCount") != 1:
+        raise Fail(f"restored thread does not show the exact question once: {question!r}")
+    answers = state.get("answers") or []
+    answer = answers[0] if len(answers) == 1 else None
+    if not answer or answer.get("pairedAssistantCount") != 1:
+        raise Fail("history has ambiguous or missing paired assistant identity")
+    user_id = answer.get("userTurnId")
+    assistant_id = answer.get("assistantTurnId")
+    if (not isinstance(user_id, str) or not user_id.endswith("-q") or
+            not user_id[:-2].strip() or
+            not isinstance(assistant_id, str) or assistant_id != f"{user_id[:-2]}-a"):
+        raise Fail("history has ambiguous or missing turn identity")
+    if require_persisted and user_id.startswith(("live-", "pending-")):
+        raise Fail("history has no persisted turn identity before restart")
+    if not answer or answer.get("lifecycle") not in ("completed", "safety_stop"):
+        raise Fail("the matching answer was not completed and persisted")
+    answer_text = answer.get("answerText")
+    if not isinstance(answer_text, str) or not answer_text.strip():
+        raise Fail("history has no answer text on the matching turn")
+    if expected and compare_turn and (user_id != expected["userTurnId"] or
+                                      assistant_id != expected["assistantTurnId"]):
+        raise Fail("cold restart changed the persisted turn identity")
+    if expected and answer_text != expected["answerText"]:
+        raise Fail("cold restart changed the answer text")
+    sources = answer.get("sources") or []
+    citations = set(answer.get("citationIds") or [])
+    matched = [source for source in sources if source.get("id") in citations]
+    if expect_page is not None:
+        matched = [source for source in matched if re.search(
+            rf"\bp\.\s*{expect_page}(?!\d)", source.get("text", ""))]
+    if expected:
+        matched = [source for source in matched if source.get("id") == expected["citationId"]
+                   and source.get("text") == expected["sourceText"]]
+    if not matched:
+        raise Fail("answer citation evidence was lost on reload")
+    return {"notebookId": notebook_id, "threadItemId": item_id,
+            "projectId": f"project-{notebook_id}", "citationId": matched[0]["id"],
+            "sourceText": matched[0]["text"], "userTurnId": user_id,
+            "assistantTurnId": assistant_id, "answerText": answer_text}
+
+
+def observed_pids(dev: Device) -> list[str]:
+    """Keep a missing app process distinct from a failed adb observation."""
+    result = dev._run(["shell", "pidof", PKG])
+    out = (result.stdout or "").strip()
+    err = (result.stderr or "").strip()
+    if result.returncode == 1 and not out and not err:
+        return []  # Android pidof: no matching process.
+    pids = out.split()
+    if (result.returncode != 0 or err or not pids or
+            any(re.fullmatch(r"[1-9][0-9]*", pid) is None for pid in pids)):
+        raise Fail(f"pidof observation failed (exit {result.returncode}): {err or out or 'no output'}")
+    return pids
+
+
+def verify_history(dev: Device, question: str, expect_page: int | None = None) -> None:
+    log("history", "capturing the live answer, then reloading its persisted row")
+    live = assert_history_state(history_dom(dev, "capture", question), question, None, expect_page)
+    # A just-sent answer is rendered as live-N-q/a. Navigate to HOME and back
+    # before force-stop so NotebookScreen re-fetches the real server turn ID.
+    back = dev._run(["shell", "input", "keyevent", "4"])
+    if back.returncode != 0:
+        raise Fail(f"could not leave conversation to prove persisted turn: {back.stderr}")
+    before = assert_history_state(
+        history_dom(dev, "restore", question, live["projectId"]), question, live,
+        expect_page, require_persisted=True, compare_turn=False,
+    )
+    dev.screenshot("history-persisted-before-restart")
+
+    old_pids = observed_pids(dev)
+    if not old_pids:
+        raise Fail("app process was unavailable before force-stop")
+    stopped = dev._run(["shell", "am", "force-stop", PKG])
+    stop_output = f"{stopped.stdout or ''}\n{stopped.stderr or ''}"
+    if stopped.returncode != 0 or re.search(r"(?im)^(error|exception):", stop_output):
+        raise Fail(f"force-stop failed: {stop_output.strip()}")
+    deadline = time.time() + 15
+    stopped_pids = observed_pids(dev)
+    while time.time() < deadline and stopped_pids:
+        time.sleep(0.5)
+        stopped_pids = observed_pids(dev)
+    if stopped_pids:
+        raise Fail("force-stop did not remove the app process")
+    started = dev._run(["shell", "am", "start", "-n", ACTIVITY])
+    start_output = f"{started.stdout or ''}\n{started.stderr or ''}"
+    if started.returncode != 0 or re.search(r"(?im)^(error|exception):|activity not started", start_output):
+        raise Fail(f"start failed: {start_output.strip()}")
+    deadline = time.time() + 30
+    new_pids: list[str] = []
+    while time.time() < deadline:
+        new_pids = observed_pids(dev)
+        if new_pids and dev.top_package() == PKG:
+            break
+        time.sleep(1)
+    if not new_pids or dev.top_package() != PKG:
+        raise Fail("app did not return to the foreground after cold restart")
+    if set(old_pids) & set(new_pids):
+        raise Fail("app process identity did not change after force-stop/start")
+    try:
+        after = history_dom(dev, "restore", question, before["projectId"])
+    except Fail as exc:
+        if dev.find("Sign in") is not None:
+            raise Fail("session did not persist after cold restart") from exc
+        raise
+    try:
+        assert_history_state(after, question, before, expect_page, require_persisted=True)
+    except Fail:
+        dev.screenshot("history-rejected")
+        raise
+    dev.screenshot("history-restored")
+    log("history", "exact project, thread, question, and citation restored")
+
+
 def nameplate(dev: Device, image: Path | None) -> None:
     if image is None:
         log("nameplate", "SKIP -- no --nameplate given. A synthetic image would not "
@@ -648,8 +836,8 @@ def nameplate(dev: Device, image: Path | None) -> None:
     dev.shell("am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
               "-d", f"file://{remote}")
 
-    dev.tap_button("Sources")
-    dev.tap_button("Add sources")
+    history_dom(dev, "sources", "")
+    dev.wait_for("Photograph a component nameplate", timeout=30)
     dev.tap_button("Photograph a component nameplate")
     time.sleep(4)
 
@@ -701,14 +889,14 @@ def main() -> int:
     ap.add_argument("--allow-physical", action="store_true")
     ap.add_argument(
         "--stop-after",
-        choices=["signin", "notebook", "upload", "ask", "citation", "nameplate"],
+        choices=["signin", "notebook", "upload", "ask", "citation", "history", "nameplate"],
         default="nameplate",
         help="Stop early. Use 'signin' to smoke-test the harness itself without "
              "writing a notebook or uploading anything to a real tenant.",
     )
     args = ap.parse_args()
 
-    stages = ["signin", "notebook", "upload", "ask", "citation", "nameplate"]
+    stages = ["signin", "notebook", "upload", "ask", "citation", "history", "nameplate"]
     last = stages.index(args.stop_after)
 
     def wanted(stage: str) -> bool:
@@ -740,6 +928,8 @@ def main() -> int:
             ask(dev, args.question, args.expect_page)
         if wanted("citation"):
             verify_citation(dev, args.expect_page)
+        if wanted("history"):
+            verify_history(dev, args.question, args.expect_page)
         if wanted("nameplate"):
             nameplate(dev, args.nameplate)
     except Fail as exc:
