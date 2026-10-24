@@ -416,7 +416,7 @@ export default function KnowledgePage() {
   }
 
   async function handleDeleteUpload(id: string) {
-    await fetch(`/hub/api/uploads/${id}/`, { method: "DELETE" });
+    await fetch(`${API_BASE}/api/uploads/${id}/`, { method: "DELETE" });
     await fetchUploads();
   }
 
