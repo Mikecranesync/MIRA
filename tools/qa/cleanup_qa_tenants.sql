@@ -82,22 +82,31 @@ UNION ALL SELECT 'hub_uploads', count(*) FROM hub_uploads
           WHERE tenant_id IN (SELECT tid FROM qa_tenants)
 UNION ALL SELECT 'hub_magic_tokens', count(*) FROM hub_magic_tokens
           WHERE tenant_id IN (SELECT tid FROM qa_tenants)
-UNION ALL SELECT 'workspace_file_links', count(*) FROM workspace_file_links
-          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
-UNION ALL SELECT 'diagnosis_pairs', count(*) FROM diagnosis_pairs
-          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
--- Removed by ON DELETE CASCADE from the rows above; counted so a dry-run shows them.
-UNION ALL SELECT 'cascade:asset_fix_records', count(*) FROM asset_fix_records
-          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
-UNION ALL SELECT 'cascade:guided_procedure_sessions', count(*) FROM guided_procedure_sessions
-          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
-UNION ALL SELECT 'cascade:storage_file_nodes', count(*) FROM storage_file_nodes
-          WHERE tenant_id IN (SELECT tid FROM qa_tenants)
-UNION ALL SELECT 'cascade:link_tokens', count(*) FROM link_tokens
-          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
-UNION ALL SELECT 'cascade:users', count(*) FROM users
-          WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)
 UNION ALL SELECT 'tenants(mirror)', count(*) FROM tenants WHERE id::text IN (SELECT tid FROM qa_tenants);
+
+-- Dependent tables (blocking FKs + ON DELETE CASCADE side effects). Schemas
+-- drift between environments, so each is counted only if it exists here.
+SELECT t AS dependent_tbl,
+       CASE WHEN to_regclass(t) IS NULL THEN NULL
+            ELSE (xpath('/row/c/text()', query_to_xml(
+                   format('SELECT count(*) AS c FROM %I WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)', t),
+                   false, true, '')))[1]::text::int
+       END AS rows_for_qa_tenants
+FROM unnest(ARRAY['workspace_file_links','diagnosis_pairs','asset_fix_records',
+                  'guided_procedure_sessions','storage_file_nodes','link_tokens','users']) AS t;
+
+-- Every FK in THIS database that points at a table this script deletes from,
+-- so a dry-run surfaces a new blocker before an apply ever meets it.
+SELECT c.conrelid::regclass::text AS referencing_tbl,
+       c.confrelid::regclass::text AS referenced_tbl,
+       CASE c.confdeltype WHEN 'c' THEN 'cascade' WHEN 'n' THEN 'set null'
+            WHEN 'r' THEN 'RESTRICT' WHEN 'a' THEN 'NO ACTION' ELSE c.confdeltype::text END AS on_delete
+FROM pg_constraint c
+WHERE c.contype = 'f'
+  AND c.confrelid::regclass::text IN ('hub_tenants','hub_users','knowledge_entries','namespace_direct_uploads',
+        'equipment_notebook_turns','equipment_notebook_sources','equipment_notebooks','kg_relationships',
+        'kg_entities','hub_uploads','hub_magic_tokens','tenants')
+ORDER BY 3, 1;
 
 -- Children before parents; knowledge_entries first (FKs tenants), tenants last.
 -- is_private=true only — belt-and-braces on top of the selector's public-rows
@@ -106,8 +115,15 @@ UNION ALL SELECT 'tenants(mirror)', count(*) FROM tenants WHERE id::text IN (SEL
 -- namespace_direct_uploads and knowledge_entries). Deleted by the QA tenant's
 -- own id ONLY: a row of another tenant pointing at QA data makes the FK fail
 -- and the whole run abort, rather than this script reaching outside QA tenants.
-DELETE FROM workspace_file_links WHERE tenant_id::text IN (SELECT tid FROM qa_tenants);
-DELETE FROM diagnosis_pairs WHERE tenant_id::text IN (SELECT tid FROM qa_tenants);
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['workspace_file_links','diagnosis_pairs'] LOOP
+    IF to_regclass(t) IS NOT NULL THEN
+      EXECUTE format('DELETE FROM %I WHERE tenant_id::text IN (SELECT tid FROM qa_tenants)', t);
+    END IF;
+  END LOOP;
+END $$;
 DELETE FROM knowledge_entries
   WHERE tenant_id::text IN (SELECT tid FROM qa_tenants) AND is_private = true;
 DELETE FROM namespace_direct_uploads WHERE tenant_id::text IN (SELECT tid FROM qa_tenants);
