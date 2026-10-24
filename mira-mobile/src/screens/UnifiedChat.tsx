@@ -864,7 +864,12 @@ function UnifiedChatForNotebook({
       else handlers.onSend(text);
       return;
     }
-    setComposingQuestion(text);
+    // An attachment-only send has no typed question yet — `compose` resolves
+    // one (the default photo/document question) only after the upload runs.
+    // Showing the raw (empty) `text` here left the temporary turn blank for
+    // the whole upload (Codex #4721 F1); `effectiveQuestion` previews the same
+    // default synchronously, without uploading anything itself.
+    setComposingQuestion(attachments.effectiveQuestion(text, pending, { retry }));
     void attachments.compose(text, pending, { ...opts, retry }).then((composed) => {
       // Light review (#4195, HIGH, notebook-switch class): `confirmedScope`
       // was captured BEFORE this await, on THIS notebook. If the technician

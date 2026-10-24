@@ -72,6 +72,7 @@ vi.mock("../../unified/attachments", async (importOriginal) => {
       attachCamera: vi.fn(),
       attachFile: vi.fn(),
       compose: composeMock,
+      effectiveQuestion: (text: string) => text,
       stashForHandoff: stashForHandoffMock,
       hasCarried: hasCarriedMock,
       hasRetained: hasRetainedMock,

@@ -35,19 +35,24 @@ vi.mock("@capacitor/preferences", () => ({
 vi.mock("../../api/manual-search-status", () => ({ fetchManualSearchStatus: vi.fn(async () => null) }));
 
 type Composed = { question: string; rider?: unknown; failure?: string };
-const { composeMock, hasCarriedMock } = vi.hoisted(() => ({
+const { composeMock, hasCarriedMock, effectiveQuestionMock, attachPhotoMock } = vi.hoisted(() => ({
   composeMock: vi.fn(async (text: string) => ({ question: text }) as Composed),
   hasCarriedMock: vi.fn(() => true),
+  // Mirrors the real default: typed text wins, otherwise the test arms a
+  // specific default per case via mockImplementationOnce.
+  effectiveQuestionMock: vi.fn((text: string) => text),
+  attachPhotoMock: vi.fn(),
 }));
 vi.mock("../../unified/attachments", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../unified/attachments")>();
   return {
     ...real,
     useUnifiedAttachments: () => ({
-      attachPhoto: vi.fn(),
+      attachPhoto: attachPhotoMock,
       attachCamera: vi.fn(),
       attachFile: vi.fn(),
       compose: composeMock,
+      effectiveQuestion: effectiveQuestionMock,
       stashForHandoff: vi.fn(),
       hasCarried: hasCarriedMock,
       hasRetained: vi.fn(() => false),
@@ -56,6 +61,7 @@ vi.mock("../../unified/attachments", async (importOriginal) => {
 });
 
 import { UnifiedChat } from "../UnifiedChat";
+import { defaultQuestionFor } from "../../unified/attachments";
 import type { ChatTurn } from "../../lib/sse";
 
 const NB = "nb-1";
@@ -79,12 +85,29 @@ function element(pending: { q: string; a: ChatTurn } | null, onSend: (...args: u
   );
 }
 
-/** The question rendered as a conversation turn (the composer's restored draft does not count). */
-const questionsShown = () => screen.queryAllByText(QUESTION).filter((e) => e.closest("[data-turn-id]")).length;
+/** A question rendered as a conversation turn (the composer's restored draft does not count). */
+const turnsShown = (text: string) => screen.queryAllByText(text).filter((e) => e.closest("[data-turn-id]")).length;
+const questionsShown = () => turnsShown(QUESTION);
 
 async function send() {
   const input = (await screen.findByRole("textbox")) as HTMLTextAreaElement;
   fireEvent.change(input, { target: { value: QUESTION } });
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "Enter" });
+    await Promise.resolve();
+  });
+  return input;
+}
+
+/** Attach a photo through the real menu (no typed text) and press Send. */
+async function sendAttachmentOnly() {
+  fireEvent.click(await screen.findByRole("button", { name: "Add attachment" }));
+  await act(async () => {
+    fireEvent.click(await screen.findByRole("button", { name: "Photo" }));
+    await Promise.resolve();
+  });
+  const input = (await screen.findByRole("textbox")) as HTMLTextAreaElement;
+  expect(input.value).toBe("");
   await act(async () => {
     fireEvent.keyDown(input, { key: "Enter" });
     await Promise.resolve();
@@ -98,6 +121,9 @@ afterEach(() => {
   composeMock.mockImplementation(async (text: string) => ({ question: text }));
   hasCarriedMock.mockReset();
   hasCarriedMock.mockReturnValue(true);
+  effectiveQuestionMock.mockReset();
+  effectiveQuestionMock.mockImplementation((text: string) => text);
+  attachPhotoMock.mockReset();
 });
 
 describe("UnifiedChat — a photo send shows the question while the photo uploads (#3996)", () => {
@@ -158,5 +184,33 @@ describe("UnifiedChat — a photo send shows the question while the photo upload
     await send();
     expect(composeMock).not.toHaveBeenCalled();
     expect(onSend).toHaveBeenCalledWith(QUESTION);
+  });
+
+  // Codex #4721 F1: an attachment-only send (no typed draft) used to show the
+  // temporary turn with a blank question, because `onSend` passed the raw
+  // (empty) text straight to `setComposingQuestion` — the real default is
+  // computed only inside `compose`, after the upload. `effectiveQuestion`
+  // previews that same default synchronously; this proves the host-screen
+  // wiring calls it and renders what it returns.
+  it("an attachment-only send with no typed draft shows the default question, not blank, while the upload is in flight", async () => {
+    const DEFAULT_QUESTION = defaultQuestionFor([{ attachment: { kind: "photo" } }]);
+    effectiveQuestionMock.mockImplementation((text: string) => text || DEFAULT_QUESTION);
+    attachPhotoMock.mockResolvedValue({ id: "a1", name: "photo.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" });
+    let finish!: (c: Composed) => void;
+    composeMock.mockImplementationOnce(() => new Promise<Composed>((resolve) => { finish = resolve; }));
+    const onSend = vi.fn();
+    render(element(null, onSend));
+    expect(turnsShown(DEFAULT_QUESTION)).toBe(0);
+
+    await sendAttachmentOnly();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(turnsShown(DEFAULT_QUESTION)).toBe(1);
+
+    await act(async () => {
+      finish({ question: DEFAULT_QUESTION, rider: RIDER });
+      await Promise.resolve();
+    });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith(DEFAULT_QUESTION, RIDER);
   });
 });

@@ -182,6 +182,29 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
   }, [drop]);
 
   /**
+   * The question THIS send will actually ask, without doing any upload.
+   * Mirrors `compose`'s `text || defaultQuestionFor(items)` against the same
+   * carried/retained/picked attachments, purely as a read — it must not
+   * mutate `carried`/`retained`, since `compose` is the one that consumes
+   * them. Lets the caller show the real default on the temporary turn while
+   * the upload is still in flight, instead of a blank question for an
+   * attachment-only send (Codex #4721 F1).
+   */
+  const effectiveQuestion = useCallback((
+    raw: string,
+    attachments: readonly Attachment[],
+    opts: { retry?: boolean } = {},
+  ): string => {
+    const text = raw.trim();
+    if (text) return text;
+    const retrying = opts.retry === true ? retained.current : [];
+    const requested = [...new Map([...carried.current.map((c) => c.attachment), ...retrying, ...attachments]
+      .map((attachment) => [attachment.id, attachment])).values()];
+    if (requested.length === 0) return text;
+    return defaultQuestionFor(requested.map((attachment) => ({ attachment })));
+  }, []);
+
+  /**
    * Upload what was held and compose the send. Returns the question plus the
    * rider, so the caller performs exactly one send through its own path.
    */
@@ -292,6 +315,7 @@ export function useUnifiedAttachments(notebookId: string | null, threadId?: stri
     attachCamera,
     attachFile,
     compose,
+    effectiveQuestion,
     stashForHandoff,
     hasCarried,
     hasRetained,
