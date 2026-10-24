@@ -84,7 +84,13 @@ WITH census AS (
       WHEN status = 'trial' AND trial_expires_at < NOW() THEN 'lapsed'
       ELSE status
     END AS state,
-    email_lower ~ '^(notebook-qa-|notebook-live-|adversarial-)[a-z0-9._+-]*@factorylm\.com$' AS cleanup_covered,
+    -- Same email predicate as tools/qa/cleanup_qa_tenants.sql (is_synthetic). The
+  -- cleanup's tenant-level guards (all-trial, exemptions, verified docs) still apply.
+  (    email_lower ~ '^(notebook-qa-|notebook-live-|adversarial-)[a-z0-9._+-]*@factorylm\.com$'
+    OR (email_lower ~ '(playwright|\me2e[-_]|\mprobe\M|stranger|(^|[-_.+])test[-_.@])'
+        AND email_lower ~ '@(factorylm\.com|example\.(com|org|net)|[a-z0-9-]+\.test|factorylm-test\.com)$')
+    OR email_lower ~ '@(example\.(com|org|net)|[a-z0-9-]+\.test|factorylm-test\.com)$'
+  ) AS cleanup_covered,
     created_at
   FROM hub_users
 )
