@@ -64,8 +64,17 @@ _OPENROUTER_VISION_MODEL = "qwen/qwen3-vl-30b-a3b-instruct"
 _OPENROUTER_ROUTING = {"data_collection": "deny", "zdr": True}
 
 
+def _is_free_openrouter_model(model: str) -> bool:
+    """True iff the stripped lowercased model id ends with ``:free``.
+
+    Those hosts may log or train on inputs; manuals must not be sent
+    to a host that may train on them.
+    """
+    return model.strip().lower().endswith(":free")
+
+
 def _openrouter_model_refused(model: str) -> bool:
-    """True for a model OpenRouter could serve as Claude.
+    """True for a model OpenRouter could serve as Claude, or a ``:free`` id.
 
     Anthropic is banned from this cascade (PR #610). OpenRouter serves it as
     ``anthropic/...``, through ``~anthropic/...-latest`` aliases, and through its
@@ -73,9 +82,19 @@ def _openrouter_model_refused(model: str) -> bool:
     reference (``@preset/x``, alone or as ``model@preset/x``) is refused too: the
     preset chooses its models remotely and can be switched to Claude without any
     change here (Codex r1 F1 on #4436).
+
+    A model id ending in ``:free`` is also refused: those hosts may log or
+    train on inputs, so manuals must not be sent to a host that may train
+    on them.
     """
     m = model.strip().lower()
-    return "anthropic" in m or "claude" in m or m.startswith("openrouter/") or "@" in m
+    return (
+        "anthropic" in m
+        or "claude" in m
+        or m.startswith("openrouter/")
+        or "@" in m
+        or _is_free_openrouter_model(model)
+    )
 
 
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
@@ -469,7 +488,18 @@ def _build_providers() -> list[_Provider]:
             )
         )
 
-    return providers
+    kept: list[_Provider] = []
+    for provider in providers:
+        free_ids = [
+            m
+            for m in (provider.model, provider.vision_model)
+            if m and _is_free_openrouter_model(m)
+        ]
+        if free_ids:
+            logger.error("OPENROUTER_MODEL_REFUSED models=%s — provider left out", free_ids)
+            continue
+        kept.append(provider)
+    return kept
 
 
 class EncodedSessionId(str):
