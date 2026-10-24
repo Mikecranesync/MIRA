@@ -33,8 +33,8 @@ log = logging.getLogger("mission-control")
 HERE = Path(__file__).resolve().parent
 CACHE_SECONDS = int(os.getenv("MC_CACHE_SECONDS", "300"))
 SEND_DISABLED_REASON = (
-    "Send is off. Nothing on this page can start an agent yet: the dispatcher, its "
-    "permissions and delivery receipts are not built or approved."
+    "Nothing on this page can start an agent yet: the dispatcher, its permissions "
+    "and delivery receipts are not built or approved."
 )
 
 
@@ -156,6 +156,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "text/html; charset=utf-8", render(self.snapshot.get()).encode())
         elif self.path == "/factorylm-tokens.css":
             self._send(200, "text/css", (HERE / "factorylm-tokens.css").read_bytes())
+        elif self.path == "/favicon.ico":
+            self._send(204, "image/x-icon", b"")
         elif self.path == "/healthz":
             s = self.snapshot
             self._send(

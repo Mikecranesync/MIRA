@@ -125,7 +125,8 @@ def recommend(item: dict, now: dt.datetime) -> Dict[str, str]:
     age = _age_days(item, now)
     if _is(item["status"], "In Progress") and age >= STALE_DAYS:
         return {"option": "Hold", "why": f"No activity for {age} days."}
-    return {"option": "Continue", "why": f"Active within the last {max(age, 0)} days."}
+    when = "today" if age <= 0 else ("yesterday" if age == 1 else f"{age} days ago")
+    return {"option": "Continue", "why": f"Updated {when}."}
 
 
 def build_views(items: List[dict], now: Optional[dt.datetime] = None) -> Dict[str, Any]:
