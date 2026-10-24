@@ -1,3 +1,9 @@
+# Conversation follow repair — 2026-10-24
+
+PR #4703 / #4680 incorporates merged runner fix #4700 without force-push. Follow now re-arms from an accepted Composer send, not changing message IDs, preserving scroll-away through live-to-persisted replacement. Focused regression red: 6 failures; green: 38 tests; shared suite: 440 pass; TypeScript/build pass. Exact-head review, CI and same-release deployed behavior remain gates. Watcher continuation and proof: `~/.factorylm/issue-repair-watch/queue.json`; worktree `conversation-continuity`. Foreman send/persistence and Notebook Prover answer ownership unchanged.
+
+---
+
 # Photo correction publication race — 2026-10-23
 
 PR #4662 merged as c7efdb007. PR #4663 now fences source publication across independent conversation correction chains sharing a notebook/photo. Older conversation readings remain available, but delayed publication cannot replace a newer correction; new model readings cannot publish over a pending committed technician review. Real PostgreSQL: 29 tests pass, including both controls. Hub: 9216 pass/53 skipped; production build passes. Component version 2.39.0. Exact-head review/CI and staging, production, and physical-device acceptance remain outstanding. Mike authorized finishing through deployment and testing; no gates bypassed. Pixel connected and charging stay-awake verified; private evidence retains original settings.

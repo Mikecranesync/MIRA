@@ -4,11 +4,11 @@ import type { InteractionThread } from "@factorylm/interaction";
 /** Follow the conversation across nested viewports and document-scrolling hosts.
  * A scroll away pauses answer following; opening a thread or sending re-arms it.
  */
-export function useConversationFollow<T extends HTMLElement = HTMLElement>(thread: InteractionThread) {
+export function useConversationFollow<T extends HTMLElement = HTMLElement>(thread: InteractionThread, sendRevision = 0) {
   const rootRef = useRef<T>(null);
   const following = useRef(true);
   const positions = useRef(new WeakMap<HTMLElement, number>());
-  const previous = useRef<{ id: string; turnIds: Set<string> } | null>(null);
+  const previous = useRef<{ id: string; sendRevision: number } | null>(null);
 
   useEffect(() => {
     const onScroll = (event: Event) => {
@@ -55,8 +55,8 @@ export function useConversationFollow<T extends HTMLElement = HTMLElement>(threa
   useEffect(() => {
     const old = previous.current;
     const changedThread = !old || old.id !== thread.id;
-    const sent = !changedThread && thread.turns.some((turn) => turn.role === "user" && !old.turnIds.has(turn.id));
-    previous.current = { id: thread.id, turnIds: new Set(thread.turns.map((turn) => turn.id)) };
+    const sent = !changedThread && old.sendRevision !== sendRevision;
+    previous.current = { id: thread.id, sendRevision };
     if (changedThread || sent) following.current = true;
     if (changedThread) positions.current = new WeakMap();
     const last = thread.turns.at(-1);
@@ -96,6 +96,6 @@ export function useConversationFollow<T extends HTMLElement = HTMLElement>(threa
       window.removeEventListener("resize", schedule);
       window.visualViewport?.removeEventListener("resize", schedule);
     };
-  }, [thread.id, thread.turns]);
+  }, [thread.id, thread.turns, sendRevision]);
   return rootRef;
 }

@@ -54,9 +54,17 @@ try {
     await page.waitForTimeout(150);
     const after = await geometry();
     const noYank = Math.abs((nested ? away.containerTop : away.documentTop) - (nested ? after.containerTop : after.documentTop)) < 2;
-    const pass = Object.values(stages).every((stage) => stage.visible) && noYank;
+    await page.evaluate(() => (window as any).proof.persist());
+    await page.waitForTimeout(150);
+    const persisted = await geometry();
+    const persistenceNoYank = Math.abs((nested ? after.containerTop : after.documentTop) - (nested ? persisted.containerTop : persisted.documentTop)) < 2;
+    await page.locator("textarea").fill("Actual composer send after reading history");
+    await page.locator("textarea").press("Enter");
+    await page.waitForTimeout(200);
+    const sent = await geometry();
+    const pass = Object.values(stages).every((stage) => stage.visible) && noYank && persistenceNoYank && sent.visible;
     if (!pass) failures += 1;
-    records.push({ renderer, width, height, nested, stages, away, after, noYank, pass });
+    records.push({ renderer, width, height, nested, stages, away, after, noYank, persisted, persistenceNoYank, sent, pass });
     await page.screenshot({ path: join(outdir, `${renderer}-${width}-${nested}.png`) });
     await page.close();
   }

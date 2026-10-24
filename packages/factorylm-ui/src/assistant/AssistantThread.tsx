@@ -29,6 +29,7 @@ import { PartRenderer, contextDiffers, describeContext, type HostHooks } from ".
 import { HEAD_PART_NAME, TURN_PART_NAME, useInteractionRuntime, type HeadPartData, type TurnPartData } from "./runtime";
 
 export interface AssistantThreadProps {
+  readonly sendRevision?: number;
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
@@ -220,7 +221,7 @@ function FirstRun() {
   </div>;
 }
 
-export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantThreadProps) {
+export function AssistantThread({ state, dispatch, adapter, hooks, sendRevision = 0 }: AssistantThreadProps) {
   const runtime = useInteractionRuntime({ state, dispatch, hooks });
   const turns = useMemo(() => new Map(state.thread.turns.map((turn) => [turn.id, turn])), [state.thread.turns]);
   const environment = useMemo<ThreadEnvironment>(
@@ -228,7 +229,7 @@ export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantTh
     [state, dispatch, adapter, hooks, turns],
   );
 
-  const rootRef = useConversationFollow<HTMLDivElement>(state.thread);
+  const rootRef = useConversationFollow<HTMLDivElement>(state.thread, sendRevision);
 
   return <AssistantRuntimeProvider runtime={runtime}>
     <EnvironmentContext.Provider value={environment}>

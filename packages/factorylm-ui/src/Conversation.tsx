@@ -11,6 +11,7 @@ import { useConversationFollow } from "./useConversationFollow";
 import { PartRenderer, contextDiffers, describeContext, lifecycleLabel, machineName, type HostHooks } from "./parts";
 
 export interface ConversationProps {
+  readonly sendRevision?: number;
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
@@ -114,8 +115,8 @@ export function ConversationBar({ state }: { readonly state: ShellState }) {
   </div>;
 }
 
-export function Conversation({ state, dispatch, adapter, hooks }: ConversationProps) {
-  const rootRef = useConversationFollow(state.thread);
+export function Conversation({ state, dispatch, adapter, hooks, sendRevision = 0 }: ConversationProps) {
+  const rootRef = useConversationFollow(state.thread, sendRevision);
   return <section ref={rootRef} className="fl-conversation" aria-label="Conversation" data-mode={state.mode} data-conversation-surface="classic">
     <ConversationBar state={state} />
 

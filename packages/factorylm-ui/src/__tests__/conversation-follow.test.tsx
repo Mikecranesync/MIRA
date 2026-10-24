@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { getFixture } from "@factorylm/interaction";
 import { renderHarness, type HarnessView } from "./harness";
+import type { HostHooks } from "../parts";
 const base = getFixture("grounded-answer").thread;
 const turn = (id: string, role: "user" | "assistant", text = "Diagnostic answer") => ({
   ...base.turns[0], id, role, parts: [{ type: "text" as const, text }],
@@ -42,8 +43,9 @@ for (const surface of ["classic", "assistant"] as const) {
       }
       originals.clear();
     });
-    async function setup(empty = false) {
+    async function setup(empty = false, hooks?: HostHooks) {
       view = renderHarness({ surface: "web", fixture: "grounded-answer", conversationSurface: surface,
+        hooks,
         transformFixture: (fixture) => ({ ...fixture, thread: { ...fixture.thread, turns: empty ? [] : base.turns } }),
       });
       await frames();
@@ -55,6 +57,10 @@ for (const surface of ["classic", "assistant"] as const) {
     function hydrate(turns: typeof base.turns, id = base.id) {
       view!.dispatch({ type: "hydrate", data: { thread: { ...base, id, turns } } });
     }
+    function submit(text = "A new question") {
+      view!.type(view!.container.querySelector<HTMLTextAreaElement>("textarea")!, text);
+      view!.submit(view!.container.querySelector<HTMLFormElement>('form[aria-label="Composer"]')!);
+    }
     it("opens populated conversations at latest", async () => {
       await setup(); expect(scrolled).toContain(base.turns.at(-1)!.id);
     });
@@ -64,14 +70,70 @@ for (const surface of ["classic", "assistant"] as const) {
       await frames(); expect(scrolled).toContain("other-answer");
     });
     it("follows a sent user turn even after reading older messages", async () => {
-      await setup(); scrollTo(0); scrolled.length = 0;
-      hydrate([...base.turns, turn("sent-question", "user")]);
+      let calls = 0;
+      await setup(false, { onSend: () => { calls += 1; hydrate([...base.turns, turn("sent-question", "user")]); } });
+      scrollTo(0); scrolled.length = 0;
+      submit();
+      expect(calls).toBe(1);
       await frames(); expect(scrolled).toContain("sent-question");
     });
-    it("follows a batched user and assistant append after reading older messages", async () => {
-      await setup(); scrollTo(0); scrolled.length = 0;
+    it("follows delayed host hydration after an accepted Composer send", async () => {
+      let calls = 0;
+      await setup(false, { onSend: () => { calls += 1; } });
+      scrollTo(0); scrolled.length = 0;
+      submit();
+      expect(calls).toBe(1);
+      await frames();
+      scrolled.length = 0;
       hydrate([...base.turns, turn("sent-question", "user"), turn("new-answer", "assistant")]);
       await frames(); expect(scrolled).toContain("new-answer");
+    });
+    it("follows a Composer mock send after reading older messages", async () => {
+      await setup(); scrollTo(100); scrolled.length = 0;
+      submit();
+      await frames();
+      const last = Array.from(view!.container.querySelectorAll<HTMLElement>("[data-turn-id]")).at(-1)!;
+      expect(last.dataset.role).toBe("user");
+      expect(scrolled).toContain(last.dataset.turnId!);
+    });
+    for (const rejection of ["busy", "empty", "throw"] as const) {
+      it(`keeps follow paused after a ${rejection} Composer submission`, async () => {
+        let calls = 0;
+        await setup(false, { busy: rejection === "busy", onSend: () => {
+          calls += 1;
+          if (rejection === "throw") throw new Error("Project is still loading");
+        } });
+        scrollTo(100); scrolled.length = 0;
+        submit(rejection === "empty" ? "" : "Keep this question");
+        await frames();
+        expect(calls).toBe(rejection === "throw" ? 1 : 0);
+        hydrate([...base.turns, turn("background-answer", "assistant")]);
+        await frames();
+        expect(scrolled).toEqual([]); expect(position).toBe(100);
+        expect(view!.outputs().draft).toBe(rejection === "empty" ? "" : "Keep this question");
+      });
+    }
+    it("keeps follow paused when the live exchange receives persisted IDs", async () => {
+      await setup();
+      hydrate([...base.turns, turn("live-1-q", "user", "Same question"), turn("live-1-a", "assistant")]);
+      await frames(); scrollTo(100); scrolled.length = 0;
+      hydrate([...base.turns, turn("row-1-q", "user", "Same question"), turn("row-1-a", "assistant")]);
+      await frames(); expect(scrolled).toEqual([]); expect(position).toBe(100);
+    });
+    it("keeps follow paused through the host's persisted-plus-live settlement frame", async () => {
+      await setup();
+      const live = [turn("live-1-q", "user", "Same question"), turn("live-1-a", "assistant")];
+      const persisted = [turn("row-1-q", "user", "Same question"), turn("row-1-a", "assistant")];
+      hydrate([...base.turns, ...live]); await frames(); scrollTo(100); scrolled.length = 0;
+      hydrate([...base.turns, ...persisted, ...live]);
+      await frames(); expect(scrolled).toEqual([]); expect(position).toBe(100);
+      hydrate([...base.turns, ...persisted]);
+      await frames(); expect(scrolled).toEqual([]); expect(position).toBe(100);
+    });
+    it("keeps follow paused when older history is prepended", async () => {
+      await setup(); scrollTo(100); scrolled.length = 0;
+      hydrate([turn("older-q", "user"), turn("older-a", "assistant"), ...base.turns]);
+      await frames(); expect(scrolled).toEqual([]); expect(position).toBe(100);
     });
     it("follows an appended answer when reading latest", async () => {
       await setup(); scrollTo(height - 600); scrolled.length = 0; height += 400;
