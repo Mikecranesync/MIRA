@@ -69,7 +69,8 @@
 .fl-turn[data-lifecycle="stopped"] .fl-turn__head { color: var(--fl-workspace-fault-ink); }
 
 .fl-part { margin: 0; }
-.fl-part--text { font-size: var(--fl-workspace-fs-body); line-height: 1.6; }
+/* Long machine identifiers and URLs must wrap inside the conversation. */
+.fl-part--text { min-inline-size: 0; overflow-wrap: anywhere; font-size: var(--fl-workspace-fs-body); line-height: 1.6; }
 /* "Open website to find the manual" is a gloved-thumb target too (issue 4615). */
 .fl-manual-link { display: inline-flex; align-items: center; min-block-size: max(2.75rem, 44px); color: var(--fl-workspace-accent-ink); text-decoration: underline; }
 .fl-card { padding: var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius-card); background: var(--fl-workspace-surface); }

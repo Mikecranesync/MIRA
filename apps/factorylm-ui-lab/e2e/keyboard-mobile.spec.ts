@@ -148,10 +148,26 @@ test.describe("mobile drawer, sheet, Back, and keyboard", () => {
       });
       names.push(name);
     }
-    expect(names).toContain("button:Ask");
-    expect(names).toContain("button:Work");
+    // The mode toggles were removed from the product chat header (#4561).
     expect(names.some((n) => n.startsWith("button:OEM"))).toBe(true);
     expect(names).toContain("textarea:Ask MIRA");
     expect(names).toContain("button:Add attachment");
   });
 });
+
+for (const thread of ["classic", "assistant"]) {
+  test(`long identifiers wrap without sideways conversation scrolling (${thread})`, async ({ page }) => {
+    await page.setViewportSize(MOBILE);
+    await page.goto(`/?surface=mobile&theme=light&scenario=general-ask&thread=${thread}`);
+    await page.keyboard.press("Escape");
+    const identifier = "MachineIdentifier".repeat(20);
+    await page.getByRole("textbox", { name: /ask mira/i }).fill(identifier);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.locator('[data-role="user"] [data-part-type="text"]').last()).toHaveText(identifier);
+    const overflow = await page.locator(".fl-shell").evaluate(shell =>
+      [shell, ...Array.from(shell.querySelectorAll<HTMLElement>("*"))]
+        .filter(el => ["auto", "scroll"].includes(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1)
+        .map(el => `${el.className}: ${el.scrollWidth} > ${el.clientWidth}`));
+    expect(overflow).toEqual([]);
+  });
+}
