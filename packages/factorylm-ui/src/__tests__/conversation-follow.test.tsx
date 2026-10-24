@@ -196,5 +196,50 @@ for (const surface of ["classic", "assistant"] as const) {
     it("leaves empty threads alone", async () => {
       await setup(true); expect(scrolled).toEqual([]);
     });
+    describe("#4710 composer growth shrinks the viewport", () => {
+      type Callback = (entries: unknown[]) => void;
+      let observers: { callback: Callback; targets: Element[] }[] = [];
+      const OriginalRO = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+      beforeEach(() => {
+        observers = [];
+        (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+          private record: { callback: Callback; targets: Element[] };
+          constructor(callback: Callback) { this.record = { callback, targets: [] }; observers.push(this.record); }
+          observe(target: Element) { this.record.targets.push(target); }
+          disconnect() {}
+          unobserve() {}
+        };
+      });
+      afterEach(() => {
+        (globalThis as { ResizeObserver?: unknown }).ResizeObserver = OriginalRO;
+      });
+      function composerGrowthObserver(lastTurnId: string) {
+        // The observer the hook uses to re-follow on resize watches BOTH the
+        // latest turn and the composer — that is the fix this test proves.
+        return observers.find((entry) =>
+          entry.targets.some((t) => t.classList.contains("fl-composer")) &&
+          entry.targets.some((t) => (t as HTMLElement).dataset.turnId === lastTurnId));
+      }
+      it("re-follows the latest answer when the composer alone grows (mobile host, fixed height)", async () => {
+        await setup();
+        const lastId = base.turns.at(-1)!.id;
+        scrolled.length = 0;
+        const observer = composerGrowthObserver(lastId);
+        expect(observer).toBeDefined();
+        observer!.callback([]);
+        await frames();
+        expect(scrolled).toContain(lastId);
+      });
+      it("does not resume following on composer growth after a deliberate scroll-away", async () => {
+        await setup();
+        const lastId = base.turns.at(-1)!.id;
+        scrollTo(100); scrolled.length = 0;
+        const observer = composerGrowthObserver(lastId);
+        expect(observer).toBeDefined();
+        observer!.callback([]);
+        await frames();
+        expect(scrolled).toEqual([]); expect(position).toBe(100);
+      });
+    });
   });
 }

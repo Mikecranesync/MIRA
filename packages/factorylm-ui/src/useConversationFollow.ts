@@ -64,11 +64,21 @@ export function useConversationFollow<T extends HTMLElement = HTMLElement>(threa
     let frame = 0;
     let attempts = 0;
     let observed: HTMLElement | undefined;
+    let composerObserved: HTMLElement | undefined;
     const resize = new ResizeObserver(() => schedule());
     const follow = () => {
       const node = rootRef.current?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(last.id)}"]`);
       if (node) {
         if (observed !== node) { if (observed) resize.unobserve(observed); resize.observe(node); observed = node; }
+        // The composer grows with pending attachments, send errors and the
+        // sync banner (#4620's --fl-composer-block-size), which can clip the
+        // latest turn without the turn, the thread or the window changing
+        // size (#4710). It is outside the mutation-observed subtree, so it
+        // needs its own resize watch.
+        if (!composerObserved) {
+          const composer = rootRef.current?.closest<HTMLElement>(".fl-shell")?.querySelector<HTMLElement>(".fl-composer");
+          if (composer) { resize.observe(composer); composerObserved = composer; }
+        }
         if (following.current) {
           node.scrollIntoView({ block: "end", behavior: "instant" });
           // Seed even when already at latest: no browser scroll event is then
