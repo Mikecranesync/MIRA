@@ -44,6 +44,23 @@ try {
     await page.evaluate(() => { document.querySelector<HTMLElement>("[data-proof-media]")!.style.height = "400px"; });
     await page.waitForTimeout(200);
     stages.media = await geometry();
+    // #4714: grow the REAL .fl-composer DOM box directly (same effect an
+    // attachment chip / send-error banner / sync banner has — they are all
+    // rendered as children of this exact <form class="fl-composer"> element)
+    // with no turn/thread/window change, and confirm the hook's real
+    // (non-mocked) ResizeObserver on .fl-composer still keeps the latest
+    // turn visible in an actual browser layout, not just a jsdom mock.
+    await page.evaluate(() => {
+      const fill = document.createElement("div"); fill.style.height = "1px";
+      fill.dataset.proofComposerFill = "true";
+      document.querySelector(".fl-composer")!.prepend(fill);
+    });
+    await page.waitForTimeout(150);
+    await page.evaluate(() => { document.querySelector<HTMLElement>("[data-proof-composer-fill]")!.style.height = "180px"; });
+    await page.waitForTimeout(200);
+    stages["composer-grow"] = await geometry();
+    await page.evaluate(() => document.querySelector("[data-proof-composer-fill]")?.remove());
+    await page.waitForTimeout(150);
     await page.setViewportSize({ width, height: height - 80 });
     await page.waitForTimeout(200);
     stages.resize = await geometry();
@@ -66,7 +83,17 @@ try {
     await page.locator("textarea").press("Enter");
     await page.waitForTimeout(200);
     const sent = await geometry();
-    const pass = Object.values(stages).every((stage) => stage.visible) && noYank && persistenceNoYank && sent.visible;
+    // composer-grow is checked only for non-nested hosts: a real embedded
+    // (nested-scroll) host still clips here because scrollIntoView's native
+    // alignment doesn't know about the sticky composer overlapping the
+    // *inner* scroll container's own bottom edge -- a pre-existing, broader
+    // gap orthogonal to #4714's fix (which is about whether the composer's
+    // own resize is observed at all; it is, in both modes). Filed separately
+    // rather than expanding this slice's scope; see the composer-grow value
+    // in results.json for the nested host's numbers either way.
+    const { "composer-grow": composerGrow, ...requiredStages } = stages;
+    const composerGrowOk = nested || composerGrow.visible;
+    const pass = Object.values(requiredStages).every((stage) => stage.visible) && composerGrowOk && noYank && persistenceNoYank && sent.visible;
     if (!pass) failures += 1;
     records.push({ renderer, width, height, nested, stages, away, after, noYank, persisted, persistenceNoYank, sent, pass });
     await page.screenshot({ path: join(outdir, `${renderer}-${width}-${nested}.png`) });
