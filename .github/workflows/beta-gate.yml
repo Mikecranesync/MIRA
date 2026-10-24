@@ -402,7 +402,8 @@ jobs:
   # suite would otherwise read as green.
   visual-evidence-regression:
     name: Visual-evidence isolation (disposable Postgres, migrations 063+069)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no postgresql-client-16 (#4697).
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       postgres:
