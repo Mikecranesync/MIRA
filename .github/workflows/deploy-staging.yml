@@ -100,7 +100,7 @@ jobs:
             SEEN_SERVICES=" "
             for service in $SERVICES_INPUT; do
               case "$service" in
-                atlas-api|atlas-db|atlas-frontend|atlas-minio|mira-bot-telegram|mira-cmms-sync|mira-hub|mira-mcp|mira-ollama|mira-pipeline|mira-reranker|mira-tika|mira-web)
+                atlas-api|atlas-db|atlas-frontend|atlas-minio|mira-ask|mira-bot-telegram|mira-cmms-sync|mira-hub|mira-mcp|mira-ollama|mira-pipeline|mira-reranker|mira-tika|mira-web)
                   ;;
                 *)
                   fail "service is not in the staging compose allowlist: $service"
