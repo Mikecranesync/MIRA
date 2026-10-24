@@ -156,33 +156,37 @@ test.describe("mobile drawer, sheet, Back, and keyboard", () => {
 });
 
 for (const thread of ["classic", "assistant"]) {
-  test(`long identifiers wrap without sideways conversation scrolling (${thread})`, async ({ page }) => {
-    await page.setViewportSize(MOBILE);
-    await page.goto(`/?surface=mobile&theme=light&scenario=general-ask&thread=${thread}`);
-    await page.keyboard.press("Escape");
-    const identifier = "MachineIdentifier".repeat(20);
-    await page.getByRole("textbox", { name: /ask mira/i }).fill(identifier);
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(page.locator('[data-role="user"] [data-part-type="text"]').last()).toHaveText(identifier);
-    const overflow = await page.locator(".fl-shell").evaluate(shell =>
-      [shell, ...Array.from(shell.querySelectorAll<HTMLElement>("*"))]
-        .filter(el => ["auto", "scroll"].includes(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1)
-        .map(el => `${el.className}: ${el.scrollWidth} > ${el.clientWidth}`));
-    expect(overflow).toEqual([]);
-    const geometry = await page.locator('[data-role="user"] [data-part-type="text"]').last().evaluate(el => {
-      const box = el.getBoundingClientRect();
-      return {
-        documentWidth: document.documentElement.scrollWidth,
-        viewportWidth: document.documentElement.clientWidth,
-        bodyWidth: document.body.scrollWidth,
-        left: box.left, right: box.right,
-        textWidth: el.scrollWidth, boxWidth: el.clientWidth,
-      };
+  for (const [kind, identifier] of [
+    ["identifier", "MachineIdentifier".repeat(20)],
+    ["URL", `https://example.invalid/manuals/${"MachineIdentifier".repeat(20)}?revision=1`],
+  ]) {
+    test(`long ${kind} wraps without sideways conversation scrolling (${thread})`, async ({ page }) => {
+      await page.setViewportSize(MOBILE);
+      await page.goto(`/?surface=mobile&theme=light&scenario=general-ask&thread=${thread}`);
+      await page.keyboard.press("Escape");
+      await page.getByRole("textbox", { name: /ask mira/i }).fill(identifier);
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(page.locator('[data-role="user"] [data-part-type="text"]').last()).toHaveText(identifier);
+      const overflow = await page.locator(".fl-shell").evaluate(shell =>
+        [shell, ...Array.from(shell.querySelectorAll<HTMLElement>("*"))]
+          .filter(el => ["auto", "scroll"].includes(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1)
+          .map(el => `${el.className}: ${el.scrollWidth} > ${el.clientWidth}`));
+      expect(overflow).toEqual([]);
+      const geometry = await page.locator('[data-role="user"] [data-part-type="text"]').last().evaluate(el => {
+        const box = el.getBoundingClientRect();
+        return {
+          documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: document.documentElement.clientWidth,
+          bodyWidth: document.body.scrollWidth,
+          left: box.left, right: box.right,
+          textWidth: el.scrollWidth, boxWidth: el.clientWidth,
+        };
+      });
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+      expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+      expect(geometry.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
+      expect(geometry.textWidth).toBeLessThanOrEqual(geometry.boxWidth + 1);
     });
-    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
-    expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.viewportWidth);
-    expect(geometry.left).toBeGreaterThanOrEqual(0);
-    expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
-    expect(geometry.textWidth).toBeLessThanOrEqual(geometry.boxWidth + 1);
-  });
+}
 }
