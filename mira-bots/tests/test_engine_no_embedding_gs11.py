@@ -194,7 +194,60 @@ async def test_no_kb_coverage_when_recall_also_returns_nothing():
     )
 
 
+@pytest.mark.asyncio
+async def test_no_kb_coverage_when_tenant_is_missing():
+    """No KB ACCESS AT ALL must be at least as honest as KB-returned-nothing.
+
+    The NeonDB recall block is gated on a truthy tenant, and `no_kb` used to read
+    `retrieval_attempted and not photo_b64` — where `retrieval_attempted` is just
+    `bool(effective_tenant)`. So a turn with NO tenant skipped recall AND skipped
+    the honesty directive, and MIRA answered a technical question from parametric
+    knowledge with zero chunks, zero citations and no admission that it had no
+    documentation. A turn where recall ran and found nothing DID disclaim. That is
+    backwards: losing KB access entirely made the reply MORE confident, not less.
+
+    Observed in Answer Radar (PR #3584): 6/6 questions answered with
+    retrieved_chunk_count=0 and 0% citation coverage, including a confidently
+    stated wrong protocol (an SLC 5/03's DH-485 port described as DH+).
+    """
+    worker = _make_worker()
+    worker.tenant_id = ""  # no tenant → the recall block above is skipped entirely
+
+    async def fake_call_llm(messages, model=None):
+        return "answer with no kb access"
+
+    recall = MagicMock(return_value=[])
+    with (
+        patch.object(worker, "_embed_ollama", new=AsyncMock(return_value=None)),
+        patch.object(worker, "_call_llm", new=fake_call_llm),
+        patch("shared.workers.rag_worker._neon_recall.recall_knowledge", new=recall),
+    ):
+        state = {
+            "state": "DIAGNOSIS",
+            "asset_identified": "GS11 drive",
+            "fault_category": "",
+            "exchange_count": 1,
+            "context": {"triage_result": {}},
+        }
+        await worker.process(
+            message="What parameters do I need to write the word to the GS11 drive?",
+            state=state,
+        )
+
+    # Precondition: with no tenant, recall genuinely never ran — otherwise this
+    # test would be proving something else.
+    assert recall.call_count == 0, "no-tenant turn must not reach recall_knowledge"
+
+    assert worker._last_no_kb is True, (
+        "A text turn that reaches the LLM with zero chunks must carry the no-KB "
+        "honesty directive even when retrieval could not be attempted at all. "
+        "Gating it on retrieval_attempted let a missing tenant silently produce "
+        "confident, uncited answers."
+    )
+
+
 if __name__ == "__main__":
     asyncio.run(test_gs11_modbus_query_grounded_when_embedding_fails())
     asyncio.run(test_no_kb_coverage_when_recall_also_returns_nothing())
     print("PASS")
+    asyncio.run(test_no_kb_coverage_when_tenant_is_missing())
