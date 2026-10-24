@@ -155,14 +155,15 @@ test.describe("mobile drawer, sheet, Back, and keyboard", () => {
   });
 });
 
+for (const scenario of ["general-ask", "machine-ask"]) {
 for (const thread of ["classic", "assistant"]) {
   for (const [kind, identifier] of [
     ["identifier", "MachineIdentifier".repeat(20)],
     ["URL", `https://example.invalid/manuals/${"MachineIdentifier".repeat(20)}?revision=1`],
   ]) {
-    test(`long ${kind} wraps without sideways conversation scrolling (${thread})`, async ({ page }) => {
+    test(`long ${kind} wraps without sideways conversation scrolling (${scenario}, ${thread})`, async ({ page }) => {
       await page.setViewportSize(MOBILE);
-      await page.goto(`/?surface=mobile&theme=light&scenario=general-ask&thread=${thread}`);
+      await page.goto(`/?surface=mobile&theme=light&scenario=${scenario}&thread=${thread}`);
       await page.keyboard.press("Escape");
       await page.getByRole("textbox", { name: /ask mira/i }).fill(identifier);
       await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -188,5 +189,6 @@ for (const thread of ["classic", "assistant"]) {
       expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
       expect(geometry.textWidth).toBeLessThanOrEqual(geometry.boxWidth + 1);
     });
+}
 }
 }
