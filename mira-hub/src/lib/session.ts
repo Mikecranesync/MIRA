@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { decode } from "next-auth/jwt";
 import { cookies } from "next/headers";
-import { findUserById } from "@/lib/users";
+import { findUserById, sessionGeneration } from "@/lib/users";
 
 export interface SessionContext {
   userId: string;
@@ -11,11 +11,8 @@ export interface SessionContext {
   trialExpiresAt: string | null;
   /**
    * The caller's tenant role, derived fresh from `hub_users.role` on every
-   * request (issue #2360). Lowercased; "" when it can't be resolved (deleted
-   * user or a transient DB error) — authorization treats an unknown/absent
-   * role as least-privilege, so an unresolved role can never satisfy a role
-   * gate. NOT read from the JWT: a stale token must not keep a demoted user's
-   * old privilege, and saved sessions must reflect the current role immediately.
+   * request (issue #2360). Lowercased. NOT read from the JWT: a stale token
+   * must not keep a demoted user's old privilege.
    *
    * Optional only so existing test mocks that build a bare SessionContext keep
    * compiling — every production constructor (`requireSession`, `sessionOrDemo`)
@@ -28,7 +25,7 @@ export interface SessionContext {
    * authority: public registration creates `trial` rows, invites create `approved`, and only an
    * existing platform admin (the admin users route) or an operator can set `admin`. Never the
    * JWT's copy of `status` (stale/forgeable for this purpose) and never an email match.
-   * Absent/false = not a platform admin; a failed lookup resolves to false.
+   * Absent/false = not a platform admin.
    */
   platformAdmin?: boolean;
 }
@@ -86,22 +83,21 @@ export async function requireSession(): Promise<SessionContext> {
     throw new UnauthorizedError();
   }
 
-  // Derive the role fresh from hub_users.role (issue #2360). Deliberately a DB
-  // read, not a JWT claim: revocation must be instant and already-issued/saved
-  // sessions must reflect the live role. If the lookup fails (DB blip) or the
-  // row is gone, fall back to least-privilege ("") rather than failing the
-  // whole request — the token-based auth itself stays valid, so read routes
-  // keep working while every role gate denies. One indexed PK SELECT per
-  // authed request; hub_users is tiny.
-  let role = "";
-  let platformAdmin = false;
+  // Admission requires a live hub_users row whose session_version matches the
+  // JWT (#3831). Role and platformAdmin ride that same PK read. Unlike the old
+  // role-only fallback, an unevaluable revocation signal fail-closes: a leaked
+  // cookie must not stay valid because the row is gone or Neon blipped.
+  let user;
   try {
-    const user = await findUserById(token.uid as string);
-    role = (user?.role ?? "").toLowerCase().trim();
-    platformAdmin = user?.status === "admin";
+    user = await findUserById(token.uid as string);
   } catch {
-    role = "";
-    platformAdmin = false;
+    throw new UnauthorizedError();
+  }
+  if (!user) {
+    throw new UnauthorizedError();
+  }
+  if (sessionGeneration(token.sv) !== sessionGeneration(user.sessionVersion)) {
+    throw new UnauthorizedError();
   }
 
   return {
@@ -110,8 +106,8 @@ export async function requireSession(): Promise<SessionContext> {
     email: (token.email as string) ?? "",
     status: (token.status as string) ?? "trial",
     trialExpiresAt: (token.trialExpiresAt as string) ?? null,
-    role,
-    platformAdmin,
+    role: (user.role ?? "").toLowerCase().trim(),
+    platformAdmin: user.status === "admin",
   };
 }
 

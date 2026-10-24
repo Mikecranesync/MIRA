@@ -23,7 +23,7 @@ vi.mock("@/lib/users", async (orig) => ({ ...(await orig<typeof import("@/lib/us
 import { cookies } from "next/headers";
 import { decode } from "next-auth/jwt";
 import * as users from "@/lib/users";
-import { requireSession, type SessionContext } from "@/lib/session";
+import { requireSession, UnauthorizedError, type SessionContext } from "@/lib/session";
 import { getCapabilities } from "@/lib/capabilities";
 import { PATCH as patchUserStatus } from "@/app/(hub)/api/admin/users/[id]/route";
 
@@ -69,10 +69,10 @@ describe("impersonation (#4591)", () => {
     noPlatform(s);
   });
 
-  it("a token for a uid with no DB row (deleted or invented) → no platform caps", async () => {
+  it("a token for a uid with no DB row (deleted or invented) is unauthorized (#3831)", async () => {
     vi.mocked(decode).mockResolvedValue({ uid: "ghost", tid: TID, email: "mike@cranesync.com", status: "admin" } as never);
     um.findUserById.mockResolvedValue(null);
-    noPlatform(await requireSession());
+    await expect(requireSession()).rejects.toBeInstanceOf(UnauthorizedError);
   });
 });
 
