@@ -19,6 +19,9 @@
  * always available. `/feed` remains the default landing until Gate 6.
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { useSession } from "next-auth/react";
+import { signOutToLogin } from "@/components/layout/sign-out-action";
+import { HubAccountFooter } from "./HubAccountFooter";
 import {
   shellReducer,
   type Attachment,
@@ -133,6 +136,8 @@ export function HubShellHost() {
   // One capture timestamp per mount (state, not a ref: it is read during render).
   const [capturedAt] = useState(() => new Date().toISOString());
   const [signedOut, setSignedOut] = useState(false);
+  const { data: authSession } = useSession();
+  const [signingOut, setSigningOut] = useState(false);
   const [notebooks, setNotebooks] = useState<HubNotebook[] | null>(null);
   const [notebookGate] = useState(() => latestRequestGate());
   const [selection, setSelection] = useState<HubSelection | null>(null);
@@ -941,6 +946,16 @@ export function HubShellHost() {
         conversationSurface="assistant"
         onOpenItem={onOpenItem}
         onSelectProject={onSelectProject}
+        navigationFooter={
+          <HubAccountFooter
+            email={authSession?.user?.email}
+            signingOut={signingOut}
+            onSignOut={() => {
+              setSigningOut(true);
+              signOutToLogin();
+            }}
+          />
+        }
       />
       {/* WP-1: shown only when the route is enabled and a manufacturer procedure applies. */}
       {selection && detail && (
