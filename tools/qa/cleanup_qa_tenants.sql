@@ -82,7 +82,7 @@ UNION ALL SELECT 'hub_uploads', count(*) FROM hub_uploads
           WHERE tenant_id IN (SELECT tid FROM qa_tenants)
 UNION ALL SELECT 'hub_magic_tokens', count(*) FROM hub_magic_tokens
           WHERE tenant_id IN (SELECT tid FROM qa_tenants)
-UNION ALL SELECT 'tenants(mirror)', count(*) FROM tenants WHERE id IN (SELECT tid FROM qa_tenants);
+UNION ALL SELECT 'tenants(mirror)', count(*) FROM tenants WHERE id::text IN (SELECT tid FROM qa_tenants);
 
 -- Children before parents; knowledge_entries first (FKs tenants), tenants last.
 -- is_private=true only — belt-and-braces on top of the selector's public-rows
@@ -99,7 +99,7 @@ DELETE FROM hub_uploads WHERE tenant_id IN (SELECT tid FROM qa_tenants);
 DELETE FROM hub_magic_tokens WHERE tenant_id IN (SELECT tid FROM qa_tenants);
 DELETE FROM hub_users WHERE tenant_id IN (SELECT tid FROM qa_tenants);
 DELETE FROM hub_tenants WHERE id IN (SELECT tid FROM qa_tenants);
-DELETE FROM tenants WHERE id IN (SELECT tid FROM qa_tenants);
+DELETE FROM tenants WHERE id::text IN (SELECT tid FROM qa_tenants);
 
 \if :apply
   \echo '=== APPLY: committing deletions ==='
