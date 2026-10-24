@@ -55,6 +55,13 @@ def _ready_doc_ids(client: httpx.Client, h: dict[str, str], nb: str) -> list[str
     ]
 
 
+def _where(r: httpx.Response) -> str:
+    """Redirect chain + final URL + content type — enough to tell an auth bounce
+    from a route answer without printing response bodies or cookies."""
+    hops = " -> ".join(f"{h.status_code} {h.headers.get('location', '')}" for h in r.history)
+    return f"history=[{hops}] final={r.url.path} type={r.headers.get('content-type', '')}"
+
+
 class Fixture:
     """Run-owned notebook + uploaded manual; `close()` deletes all of it."""
 
@@ -72,7 +79,7 @@ class Fixture:
             headers=h,
         )
         if r.status_code != 201:
-            raise RuntimeError(f"notebook create HTTP {r.status_code}")
+            raise RuntimeError(f"notebook create HTTP {r.status_code}: {_where(r)}")
         nb = r.json()["notebook"]
         self.notebook, self.node = nb["id"], nb.get("nodeId")
         pdf = _pdf([[f"FactoryLM retest manual {run}"] + _wrap(p) for p in pages])
