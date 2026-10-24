@@ -445,7 +445,83 @@ export type RerankTraceRow = {
   index: number;
   proc: number;
   comm: number;
+  /** 0..1 table-of-contents / index / front-matter likeness (always applied). */
+  frontMatter: number;
 };
+
+// ---------------------------------------------------------------------------
+// Table-of-contents / index / front-matter demotion (query-time, no schema)
+//
+// Exact-token flooding (TQ-10/22/24/25): a token that appears on almost every
+// page ("CANopen" in 137/265 LXM chunks) gets rank 0 + the exact-ID boost, and
+// ties are ordered by page, so TOC/front-matter (pp.1-6) fill topK and push
+// the answer chunk out. Detect those chunks from CONTENT (+ early page as a
+// supporting signal only) and penalize them. Demote, never drop: a TOC page
+// still wins when nothing else matches. section_path is NULL on v2 chunks, so
+// this cannot wait on a metadata flag.
+// ---------------------------------------------------------------------------
+
+/** Penalty large enough to lose to another exact-token body chunk (boost 3.0)
+ *  plus a comm-family bump (≤1.8), but identical across the pool so a TOC-only
+ *  result keeps its relative order. */
+const FRONT_MATTER_PENALTY = 6;
+
+const TOC_HEADING_LINE =
+  /^(?:table of contents|contents|list of (?:figures|tables|illustrations)|(?:alphabetical\s+)?index|table des mati[eè]res|sommaire|inhaltsverzeichnis|inhalt)\s*$/i;
+
+// Dot leaders (...... / ····· / . . . / OCR � � �) followed by a page number.
+const DOT_LEADER_PAGE_RE =
+  /(?:(?:[.][ \t]*){3,}|[·•⋅…]{3,}|(?:\uFFFD[ \t]*){2,})\s*\d{1,4}\b/g;
+
+// "Title ........ 59" / "CANopen Device Connector Pinout ... page 59".
+// Require "page" or "p." — a bare "p" would match parameter IDs (P034).
+const PAGE_REF_RE = /\b(?:pages?|p\.)\s*\d{1,4}\b/gi;
+
+// Numbered section listing that ends in a page number: "2.3 CANopen overview 33"
+const SECTION_LISTING_LINE =
+  /^(?:(?:chapter|section|part|appendix)\s+)?(?:\d+(?:\.\d+){0,4}|[A-Z])(?:[.\s]+)\S.{2,80}?\s+\d{1,4}\s*$/i;
+
+function lineList(text: string): string[] {
+  return text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+}
+
+/**
+ * How TOC/index/front-matter-like a chunk reads: 0..1. Strong signals
+ * (heading, repeated dot-leaders) stand alone; an early page only contributes
+ * when the chunk is already a section listing. A procedure/how-to page scores 0.
+ */
+export function frontMatterLikeness(content: string, sourcePage: number | null): number {
+  const text = content.trim();
+  if (!text) return 0;
+  // A real how-to is never a TOC even if it sits on page 2.
+  if (procedureScore(text) >= 0.5) return 0;
+
+  const lines = lineList(text);
+  const heading = lines.slice(0, 4).some((l) => TOC_HEADING_LINE.test(l));
+  const leaders = text.match(DOT_LEADER_PAGE_RE)?.length ?? 0;
+  const pageRefs = text.match(PAGE_REF_RE)?.length ?? 0;
+  const listings = lines.filter((l) => SECTION_LISTING_LINE.test(l)).length;
+  const listingDensity = lines.length > 0 ? listings / lines.length : 0;
+
+  let score = 0;
+  if (heading) score += 0.55;
+  if (leaders >= 3) score += 0.7;
+  else if (leaders >= 1) score += 0.3;
+  if (pageRefs >= 4) score += 0.45;
+  else if (pageRefs >= 2) score += 0.2;
+  if (listings >= 4 && listingDensity >= 0.4) score += 0.5;
+  else if (listings >= 3) score += 0.25;
+  // Early pages full of section listings (cover/TOC), never an early page alone.
+  if (
+    sourcePage != null &&
+    sourcePage > 0 &&
+    sourcePage <= 8 &&
+    (leaders >= 1 || listings >= 3 || pageRefs >= 2)
+  ) {
+    score += 0.3;
+  }
+  return Math.min(1, score);
+}
 
 /**
  * Deterministic rerank of a widened candidate pool. Base = normalized ts_rank +
@@ -453,7 +529,9 @@ export type RerankTraceRow = {
  * features: a procedure/fault question boosts prose+imperative signal and
  * penalizes param-index density; a comm question boosts comm-material and
  * penalizes index density; param-lookup/spec keep exact-token dominance with no
- * index penalty. Pass `opts.trace` to capture per-candidate scoring features.
+ * index penalty. TOC/index/front-matter chunks are demoted on EVERY intent
+ * (exact-token flooding otherwise fills topK with pp.1-6). Pass `opts.trace`
+ * to capture per-candidate scoring features.
  */
 export function rerankChunks<T extends Rerankable>(
   expanded: ExpandedQuery,
@@ -526,11 +604,18 @@ export function rerankChunks<T extends Rerankable>(
     // "what protections?" — protection evidence lives in fault tables that read
     // as index-like, so penalizing them demoted the answer's own evidence.)
 
-    opts?.trace?.push({ page: c.sourcePage, base: c.rank, score, exactHit, index: idx, proc, comm });
-    return { c, score, exactHit, i };
+    // TOC/index/front-matter: always demote (not drop). Exact-token ties used
+    // to sort by page, so pp.1-6 of "Contents ........ 12" beat the answer.
+    const frontMatter = frontMatterLikeness(c.content, c.sourcePage);
+    score -= frontMatter * FRONT_MATTER_PENALTY;
+
+    opts?.trace?.push({
+      page: c.sourcePage, base: c.rank, score, exactHit, index: idx, proc, comm, frontMatter,
+    });
+    return { c, score, exactHit, frontMatter, i };
   });
 
-  scored.sort((a, b) => b.score - a.score || a.i - b.i);
+  scored.sort((a, b) => b.score - a.score || a.frontMatter - b.frontMatter || a.i - b.i);
   if (opts?.trace) opts.trace.sort((a, b) => b.score - a.score);
   return scored.map((s) => s.c);
 }
