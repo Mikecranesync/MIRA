@@ -84,15 +84,16 @@ jobs:
           KEYS="$(doppler secrets --project factorylm --config "$CFG" --only-names --json \
                   | jq -r 'keys[]' \
                   | grep -E '^(BETA_PROBE_QA[A-Z0-9_]*|SYNTHETIC_[A-Z0-9_]+)_EMAIL$' || true)"
-          LL_KEYS=""; LL_EMAILS=""
+          LL_KEYS=""; LL_EMAILS=""; LL_BAD=""
           for k in $KEYS; do
             v="$(doppler secrets get "$k" --project factorylm --config "$CFG" --plain)"
-            case "$v" in (*,*|'') echo "::warning::$k is empty or contains a comma — skipped"; continue ;; esac
+            # An uninspectable credential is an alert, never a silent skip (review F1).
+            case "$v" in (*,*|'') echo "::warning::$k is empty or contains a comma"; LL_BAD="${LL_BAD:+$LL_BAD,}$k"; continue ;; esac
             echo "::add-mask::$v"
             LL_KEYS="${LL_KEYS:+$LL_KEYS,}$k"; LL_EMAILS="${LL_EMAILS:+$LL_EMAILS,}$v"
           done
           echo "Long-lived keys: ${LL_KEYS:-<none>}"
-          { echo "LL_KEYS=$LL_KEYS"; echo "LL_EMAILS=$LL_EMAILS"; } >> "$GITHUB_ENV"
+          { echo "LL_KEYS=$LL_KEYS"; echo "LL_EMAILS=$LL_EMAILS"; echo "LL_BAD=$LL_BAD"; } >> "$GITHUB_ENV"
 
       - name: Prove the session refuses writes (must fail)
         env:
@@ -117,8 +118,9 @@ jobs:
           cat /tmp/census.txt
           sed -n '/=== LONG_LIVED ===/,/=== END_LONG_LIVED ===/p' /tmp/census.txt \
             | grep -v '^===' > /tmp/longlived.txt || true
+          for k in ${LL_BAD//,/ }; do echo "$k|INVALID_CREDENTIAL|-|-" >> /tmp/longlived.txt; done
           ALERTS="$(grep -v '|OK|' /tmp/longlived.txt || true)"
-          if [ -z "$LL_KEYS" ] && [ "$TARGET" = prod ]; then
+          if [ -z "$LL_KEYS" ] && [ -z "$LL_BAD" ] && [ "$TARGET" = prod ]; then
             ALERTS="(no BETA_PROBE_QA*/SYNTHETIC_* email keys found in Doppler factorylm/prd)|MISSING|-|-"
           fi
           printf '%s\n' "$ALERTS" | sed '/^$/d' > /tmp/alerts.txt
@@ -154,6 +156,7 @@ jobs:
               sed 's/|/ | /g; s/^/| /; s/$/ |/' /tmp/alerts.txt
               echo
               echo "**Fix:** set each account to \`approved\` on \`/admin/users\` (show system accounts), then sign the probe in again — status lives in the session token."
+              echo "\`INVALID_CREDENTIAL\` means the Doppler value is empty or malformed: fix the key."
               echo "\`MISSING\` means the Doppler key points at an email with no account: sign it up, or fix the key."
               echo
               echo "Run: $RUN_URL · tracking #4696"
