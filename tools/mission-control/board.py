@@ -131,8 +131,8 @@ def recommend(item: dict, now: dt.datetime) -> Dict[str, str]:
 
 def build_views(items: List[dict], now: Optional[dt.datetime] = None) -> Dict[str, Any]:
     now = now or dt.datetime.now(dt.timezone.utc)
-    for it in items:
-        it["rec"] = recommend(it, now)
+    # Copies: the cached snapshot is shared across request threads and must never be mutated.
+    items = [dict(it, rec=recommend(it, now)) for it in items]
     is_open = [i for i in items if i["state"] == "OPEN"]
     focus = [i for i in is_open if _is(i["status"], "In Progress")]
     return {

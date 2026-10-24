@@ -19,7 +19,8 @@
 - **Read-only.** One GraphQL *query*, no mutations, no model calls. `POST` returns 405.
 - **Safe rendering.** All card text is HTML-escaped. Links are limited to `https://github.com/`.
 - **Send stays disabled** until the dispatcher, permissions and delivery receipts in the proposal are built, approved and verified.
-- **Loopback only.** It binds `127.0.0.1` and refuses any other address unless `MC_ALLOW_NONLOOPBACK=1` is set.
+- **Loopback only.** It binds `127.0.0.1` by default (`::1` and `localhost` are also accepted) and refuses any other address unless `MC_ALLOW_NONLOOPBACK=1` is set.
+- **Not frameable.** The page forbids other sites from embedding it (`frame-ancestors 'none'`, `X-Frame-Options: DENY`).
 
 ## Run it locally
 
@@ -29,12 +30,13 @@ GITHUB_TOKEN="$(gh auth token)" python3 tools/mission-control/server.py   # http
 
 Health check: `GET /healthz` returns `{"items": N, "ok": true}`.
 
-**Tests:** `pytest tests/test_mission_control.py` (15 tests on synthetic fixtures). Each protected behaviour was mutation-checked, and every break failed its named test:
+**Tests:** `pytest tests/test_mission_control.py` (18 tests on synthetic fixtures). Each protected behaviour was mutation-checked, and every break failed its named test:
 - escaping
 - pagination
 - case-insensitive status
 - the loopback guard
 - the disabled Send button
+- not mutating the shared cached snapshot
 
 ## Hosting: needs owner approval before anything is set up
 

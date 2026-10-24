@@ -138,10 +138,19 @@ def test_render_escapes_card_text_and_keeps_send_disabled():
     assert all("disabled" in b for b in html.split("<button")[1:])  # every Send button disabled
 
 
-def test_render_refuses_non_github_links():
+@pytest.mark.parametrize(
+    "url", ["javascript:alert(1)", "https://github.com.evil.com/x", "https://github.com@evil.com/x"]
+)
+def test_render_refuses_non_github_links(url):
     bad = board.normalise(node(1))
-    bad["url"] = "javascript:alert(1)"
-    assert "javascript:" not in server.render(_Snap([bad]))
+    bad["url"] = url
+    assert url not in server.render(_Snap([bad]))
+
+
+def test_render_does_not_mutate_the_shared_snapshot():
+    item = board.normalise(node(1))
+    server.render(_Snap([item]))
+    assert "rec" not in item  # concurrent requests share these dicts
 
 
 @pytest.fixture
