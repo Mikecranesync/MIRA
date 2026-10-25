@@ -61,7 +61,7 @@ Rules:
 | 3 | Failing regression test | `test-engineer` agent / `tdd` skill | The red run, captured **before** the fix |
 | 4 | Smallest fix | `implementer` agent, own worktree | Diff touching only the claimed scope |
 | 5 | Tests and CI | Local gates (`ruff format --check`, `ruff check`, affected suites), then `gh pr checks` | Green run on the **current** head SHA, with the new test names visible in the log |
-| 6 | Independent review on a pinned SHA | `pr-review` skill; `[CODEX-REVIEW-REQUEST]` packet (`.claude/rules/factorylm-unified-ui-cutover.md` § Codex gate) | `[CODEX-REVIEW] PASS <sha>`. A Claude review is labelled PARTIAL and does not clear the gate |
+| 6 | Independent review on a pinned SHA | Trusted-base Codex lane: `git show origin/main:scripts/adversarial-review-trusted.sh \| bash -s -- <PR> --review-only` (`docs/adversarial-review-workflow.md`) | The owner-posted `[CODEX-ADVERSARIAL-REVIEW]` envelope with `status: GREEN` for the current head **and** body (`docs/runbooks/charlie-codex-claude-peer-review.md`). A `[CODEX-REVIEW] PASS` line is not read by anything. `pr-review` / Claude output is supporting evidence, labelled PARTIAL |
 | 7 | Evidence handoff | `session-handoff` skill; short handoff file plus issue comment | Branch, head SHA, tests, open risks, next owner |
 | 8 | Owner approval for protected actions | Merge, deploy, migrations, paid runs, access, deletion | Owner's explicit yes, recorded on the issue |
 
