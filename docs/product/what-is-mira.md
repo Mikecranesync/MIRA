@@ -30,7 +30,7 @@ MIRA replaces the "search for information" step with a conversation:
 - **Grounded in your manuals.** MIRA's knowledge base is 25,000+ chunks of OEM manuals, fault code lookups, and plant-specific tribal knowledge. Answers cite the page and source.
 - **Conversational, not Q&A.** MIRA asks clarifying questions ("Does it trip at startup or during acceleration?") the way a senior tech would.
 - **Multi-channel.** Web browser, Telegram, Slack, Teams, WhatsApp — use whichever your team already uses.
-- **CMMS-integrated.** When the fault is resolved, MIRA drafts the work-order closeout and posts to Atlas, MaintainX, Limble, or Fiix. No forms, no end-of-shift documentation debt.
+- **Cited closeout text.** When the fault is resolved, MIRA can draft closeout text from the diagnosis. It does not automatically write that text into a CMMS.
 
 ## What makes MIRA different from ChatGPT / Claude / Gemini
 
@@ -41,7 +41,7 @@ General-purpose chatbots don't know:
 - Your plant's safety procedures
 - Which manual page answers this specific question
 
-MIRA does — because MIRA was built for maintenance from the ground up. Every piece of the architecture (asset scoping, manual ingestion, CMMS write-back, safety guardrails, multi-vendor support) exists to make the plant-floor use case fast and trustworthy.
+MIRA does — because MIRA was built for maintenance from the ground up. Every piece of the architecture (asset scoping, manual ingestion, safety guardrails, multi-vendor support) exists to make the plant-floor use case fast and trustworthy.
 
 ## Who MIRA is for
 
@@ -52,14 +52,14 @@ MIRA does — because MIRA was built for maintenance from the ground up. Every p
 
 ## What MIRA is not
 
-- Not a CMMS replacement. MIRA **feeds** your CMMS; it doesn't replace it.
+- Not a CMMS replacement.
 - Not a predictive maintenance system. MIRA reacts to faults; predictive scheduling is a separate product category.
 - Not an MES or SCADA. MIRA integrates with those systems (via MIRA Connect), but does not replace them.
-- Not "just a chatbot." A chatbot with no equipment context, no manual grounding, and no CMMS write-back is a toy. MIRA is the opposite of that.
+- Not "just a chatbot." A chatbot with no equipment context and no manual grounding is a toy. MIRA is the opposite of that.
 
 ## Where to go next
 
 - [Getting started](getting-started.md) — sign up and run your first diagnosis
 - [QR asset tagging](qr-system.md) — the fastest way to get MIRA scoped to your equipment
-- [CMMS integration](cmms-integration.md) — connect MIRA to Atlas / MaintainX / Limble / Fiix
+- [CMMS integration](cmms-integration.md) — connector status
 - [Troubleshooting](troubleshooting.md) — common issues and fixes

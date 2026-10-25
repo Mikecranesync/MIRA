@@ -28,30 +28,9 @@ type WebhookTarget = {
 
 const CMMS_SYSTEMS: CmmsSystem[] = [
   {
-    id: "atlas", name: "Atlas CMMS", emoji: "🗺️",
-    description: "Your connected CMMS. MIRA writes WOs, syncs diagnostics, and reads asset data from Atlas.",
-    connected: true, viaMcp: false,
-    syncStats: { assets: 47, workorders: 312, lastSync: "2 min ago" },
-  },
-  {
-    id: "limble", name: "Limble CMMS", emoji: "🔩",
-    description: "Cloud-native CMMS popular with mid-market facilities. Available via MIRA MCP connector.",
-    connected: false, viaMcp: true,
-  },
-  {
     id: "maintainx", name: "MaintainX", emoji: "🔧",
-    description: "Mobile-first CMMS with strong technician UX. Available via MIRA MCP connector.",
-    connected: false, viaMcp: true,
-  },
-  {
-    id: "upkeep", name: "UpKeep", emoji: "⬆️",
-    description: "Asset operations platform with strong IoT integrations. Available via MIRA MCP connector.",
-    connected: false, viaMcp: true,
-  },
-  {
-    id: "fiix", name: "Fiix",  emoji: "🔨",
-    description: "Rockwell Automation's CMMS. Available via MIRA MCP connector.",
-    connected: false, viaMcp: true,
+    description: "Adapter code exists. Not proven.",
+    connected: false, viaMcp: false,
   },
 ];
 
@@ -113,7 +92,7 @@ function CmmsTab({ t }: { t: ReturnType<typeof useTranslations> }) {
   return (
     <div className="space-y-6">
       {/* Connected */}
-      <section>
+      {connected.length > 0 && <section>
         <h2 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>
           {t("connected")}
         </h2>
@@ -162,12 +141,12 @@ function CmmsTab({ t }: { t: ReturnType<typeof useTranslations> }) {
             </div>
           </div>
         ))}
-      </section>
+      </section>}
 
-      {/* Available */}
+      {/* In testing */}
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>
-          {t("available")}
+          In testing
         </h2>
         <div className="space-y-2">
           {available.map(sys => (
@@ -179,19 +158,15 @@ function CmmsTab({ t }: { t: ReturnType<typeof useTranslations> }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{sys.name}</span>
-                  {sys.viaMcp && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                      style={{ backgroundColor: "#EFF6FF", color: "#2563EB" }}>
-                      {t("viaMcp")}
-                    </span>
-                  )}
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                    style={{ backgroundColor: "#FEF3C7", color: "#92400E" }}
+                  >
+                    In testing
+                  </span>
                 </div>
                 <p className="text-xs mt-0.5 line-clamp-1" style={{ color: "var(--foreground-muted)" }}>{sys.description}</p>
               </div>
-              <Button size="sm" className="text-xs h-7 px-3 flex-shrink-0"
-                style={{ backgroundColor: "var(--brand-blue)", color: "white" }}>
-                {t("connect")}
-              </Button>
             </div>
           ))}
         </div>

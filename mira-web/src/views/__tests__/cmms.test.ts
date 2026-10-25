@@ -35,7 +35,7 @@ describe("#SO-070 renderCmms — magic-link landing acceptance", () => {
     expect(stepCount).toBe(3);
     expect(html).toContain("fl-state-indexed");
     expect(html).toContain("Asset hierarchy + nameplates");
-    expect(html).toContain("CMMS write-back");
+    expect(html).toContain("Work orders + PMs");
     expect(html).toContain("MIRA on the floor");
   });
 

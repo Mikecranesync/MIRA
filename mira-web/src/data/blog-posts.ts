@@ -611,7 +611,7 @@ export const BLOG_POSTS: BlogPost[] = [
       { type: "heading", text: "Where AI Changes the Game" },
       {
         type: "paragraph",
-        text: "Traditional CMMS tools are databases — they store information but don't help you diagnose. AI-powered CMMS tools like FactoryLM add a diagnostic layer: you type a fault code or describe a symptom, and the system searches your uploaded equipment manuals to give you the fix. It even auto-creates the work order from the diagnosis.",
+        text: "Traditional CMMS tools are databases — they store information but don't help you diagnose. AI-powered CMMS tools like FactoryLM add a diagnostic layer: you type a fault code or describe a symptom, and the system searches your uploaded equipment manuals to give you the fix.",
       },
       {
         type: "paragraph",

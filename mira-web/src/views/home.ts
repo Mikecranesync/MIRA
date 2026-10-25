@@ -133,7 +133,7 @@ function projectCardRow(): string {
     {
       kind: "Operating Layer",
       title: "3. Operating Layer — $499/mo",
-      body: "MIRA in production across the plant. Telegram + web + CMMS write-back. Quarterly namespace audits. Continuous structuring as new assets come online.",
+      body: "MIRA in production across the plant. Telegram + web. Quarterly namespace audits. Continuous structuring as new assets come online.",
       glyph: "⚙️",
     },
   ];
@@ -246,7 +246,7 @@ function howItWorks(): string {
     { n: "3", h: "Map fault history, CMMS &amp; PLC tags", b: "Work-order history and PLC tag names reconciled to the right asset — the IT/OT gap, closed." },
     { n: "4", h: "Ask MIRA", b: "A technician asks a fault-code or troubleshooting question in Slack, Telegram, or the web." },
     { n: "5", h: "MIRA cites the source", b: "When the answer comes from a manual, MIRA points to the manual and the page that grounds it." },
-    { n: "6", h: "Draft PMs &amp; work orders", b: "Validated answers become PM suggestions and work-order drafts — synced to your CMMS." },
+    { n: "6", h: "Draft PMs &amp; work orders", b: "Validated answers become PM suggestions and work-order drafts." },
   ];
   const cards = steps
     .map(

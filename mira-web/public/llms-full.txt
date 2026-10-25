@@ -57,8 +57,6 @@ offers form a staged path — see https://factorylm.com/pricing.
 - **Operating Layer** — $499/month per plant (invoiced; contact sales)
   - MIRA running on the plant floor, ongoing
   - Structured UNS namespace + quarterly audits
-  - CMMS write-back (Atlas, or your existing CMMS)
-  - Auto-generated work orders from MIRA recommendations
   - PM schedule automation and shift handoff reports
 
 Enterprise (multi-plant, SOC 2, SSO): contact mike@factorylm.com

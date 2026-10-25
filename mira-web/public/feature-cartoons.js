@@ -307,7 +307,7 @@
     '<text x="306" y="192" font-size="7" fill="rgba(0,212,170,.6)" font-family="ui-monospace,monospace">§ PF525 p.47</text>' +
     // SYNCED badge
     '<rect x="294" y="196" width="170" height="24" rx="0" fill="rgba(0,212,170,.12)" stroke="rgba(0,212,170,.3)" stroke-width="1"/>' +
-    '<text x="379" y="212" text-anchor="middle" font-size="8" font-weight="700" fill="#00d4aa" font-family="ui-monospace,monospace">✓ SYNCED — MaintainX</text>' +
+    '<text x="379" y="212" text-anchor="middle" font-size="8" font-weight="700" fill="#00d4aa" font-family="ui-monospace,monospace">WORK ORDER DRAFT</text>' +
     // Sync indicator on pipeline
     '<circle cx="240" cy="128" r="6" fill="rgba(0,212,170,.15)" stroke="#00d4aa" stroke-width="1"><animate attributeName="r" values="6;10;6" dur="1.5s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/></circle>' +
     '<circle cx="240" cy="128" r="3" fill="#00d4aa"/>' +
@@ -486,14 +486,14 @@
       'Ask any fault code to MIRA',
       'MIRA searches your manuals',
       'Cited answer in seconds',
-      'Work order auto-created'
+      'Cited answer ready'
     ], 3400);
 
     mount('cartoon-cmms', CMMS, [
       'Fault diagnosed by MIRA',
-      'Data flows to your CMMS',
-      'Work order fields filled in',
-      'Synced to MaintainX · Limble · UpKeep'
+      'Diagnosis stays in MIRA',
+      'Work order fields stay in your system',
+      'MIRA does not replace a CMMS'
     ], 3400);
 
     mount('cartoon-vv', VV, [
