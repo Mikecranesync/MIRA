@@ -8,6 +8,7 @@ import type {
   InteractionPart,
   InteractionTurn,
   Lifecycle,
+  ProgressStage,
   PlatformAdapter,
   ShellAction,
   ShellState,
@@ -193,6 +194,18 @@ const LIFECYCLE_LABEL: Record<Lifecycle, string> = {
   // are different events, and the technician needs to know which happened.
   safety_stop: "Safety stop",
 };
+
+const PROGRESS_LABEL: Record<ProgressStage, string> = {
+  finding_equipment: "Finding your equipment…",
+  searching_documentation: "Searching your manuals…",
+  generating_answer: "Writing the answer…",
+  checking_answer: "Checking the answer against your manuals…",
+};
+
+/** #4687 — plain words for a server stage; never the wire identifier. */
+export function progressLabel(stage: ProgressStage): string {
+  return PROGRESS_LABEL[stage];
+}
 
 export function lifecycleLabel(lifecycle: Lifecycle): string {
   return LIFECYCLE_LABEL[lifecycle];
@@ -692,6 +705,11 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
       if (!contextDiffers(state, part.change)) return null;
       return <p className="fl-part fl-context-change" data-part-type="context_change" data-context-line="part">
         Context: {describeContext(state, part.change)}
+      </p>;
+
+    case "progress":
+      return <p className="fl-part fl-progress" role="status" aria-live="polite" data-part-type="progress" data-stage={part.stage}>
+        {progressLabel(part.stage)}
       </p>;
 
     case "status":
