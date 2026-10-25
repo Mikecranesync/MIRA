@@ -167,6 +167,7 @@ while IFS="$(printf '\t')" read -r p b h l; do
     */.audit-worktrees/*) own="audit run" ;;
     */.codex/worktrees/*) own="Codex CLI" ;;
     */Documents/Codex/*) own="Codex session" ;;
+    */orca/workspaces/*) own="Orca workspace" ;;
     /tmp/*|/private/tmp/*) own="ad-hoc /tmp" ;;
     /sessions/*) own="remote/cloud sandbox" ;;
     "$WT_PARENT"/*) own="ad-hoc MIRA-wt" ;;

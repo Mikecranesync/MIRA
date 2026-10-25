@@ -52,7 +52,10 @@ def run_report(repo: Path, *extra: str, env: dict | None = None):
         e.update(env)
     return subprocess.run(
         ["bash", "tools/worktree-health.sh", *extra],
-        cwd=repo, capture_output=True, text=True, env=e,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=e,
     )
 
 
@@ -157,6 +160,18 @@ def test_reports_owner_and_branch_inventory(repo: Path, tmp_path: Path):
     assert "Inventory with inferred owner" in r.stdout
     assert "canonical checkout" in r.stdout
     assert "feat/thing" in r.stdout
+
+
+def test_orca_workspace_is_attributed_to_orca(repo: Path, tmp_path: Path):
+    # Orca Desktop checks out every workspace under <home>/orca/workspaces/<repo>/.
+    wt = tmp_path / "orca" / "workspaces" / "MIRA" / "fix-thing"
+    wt.parent.mkdir(parents=True)
+    sh("git", "branch", "fix/thing", cwd=repo)
+    sh("git", "worktree", "add", "-q", str(wt), "fix/thing", cwd=repo)
+    r = run_report(repo)
+    line = next(ln for ln in r.stdout.splitlines() if str(wt) in ln)
+    assert "Orca workspace" in line
+    assert "ad-hoc / unknown" not in line
 
 
 def test_never_deletes_anything(repo: Path, tmp_path: Path):
