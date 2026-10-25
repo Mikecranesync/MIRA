@@ -70,7 +70,11 @@ describe("POST /api/quickstart/ask — safety hard-stop (#3876)", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("X-Safety-Stop")).toBeNull();
     expect(cascade.cascadeComplete).toHaveBeenCalledTimes(1);
-    expect((await res.json()).answer).toBe("Lockout/tagout is…");
+    // Still answered (not hard-stopped). It cited no manual, so it also
+    // carries the #4224 "not grounded" notice ahead of the provider text.
+    const answer = (await res.json()).answer as string;
+    expect(answer.endsWith("Lockout/tagout is…")).toBe(true);
+    expect(answer).toMatch(/not grounded/i);
   });
 
   it("the ordinary stranger question is unchanged: retrieval then provider", async () => {
