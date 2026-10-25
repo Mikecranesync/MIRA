@@ -76,6 +76,7 @@ import {
   groundingLineFor,
   historyRows,
   homeSendPlan,
+  hubHostReducer,
   initialHubShellState,
   landingSelection,
   latestRequestGate,
@@ -83,7 +84,7 @@ import {
   metaFor,
   newThreadId,
   openNotebookSelection,
-  openThreadActions,
+  openThreadAction,
   retainedStreamInterruption,
   searchForSelection,
   selectionFromSearch,
@@ -173,7 +174,7 @@ export function HubShellHost() {
   // The web adapter holds the picked bytes until onSend uploads them (#4019).
   const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 
-  const [state, dispatch] = useReducer(shellReducer, undefined, initialHubShellState);
+  const [state, dispatch] = useReducer(hubHostReducer, undefined, initialHubShellState);
   // #4311: the send path finishes long after the render that started it; a
   // successful retry needs the composer's CURRENT draft to decide whether the
   // question it put back is still sitting there.
@@ -187,8 +188,9 @@ export function HubShellHost() {
    * differs from the one it holds, so the id must be kept in sync here or every
    * keystroke would be wiped by the next render.
    */
-  const syncThread = useCallback((sel: HubSelection, keepDraft = "") => {
-    for (const action of openThreadActions(sel, new Date().toISOString(), keepDraft)) dispatch(action);
+  const syncThread = useCallback((sel: HubSelection, how: "choose" | "land" = "choose") => {
+    const at = new Date().toISOString();
+    dispatch(how === "land" ? { type: "land-thread", selection: sel, at } : openThreadAction(sel, at));
   }, []);
 
   // --- data: notebooks (projects/threads), then the selected notebook's detail ---
@@ -208,7 +210,7 @@ export function HubShellHost() {
       const next = selectionFromSearch(readSearch(), data.notebooks) ?? landingSelection(data.notebooks);
       if (next) {
         // #4695: an automatic landing keeps what was typed while the list loaded.
-        syncThread(next, draftRef.current);
+        syncThread(next, "land");
         setSelection(next);
         // A link without a thread opened a freshly minted one (#4444); name it
         // in the URL so a reload returns to this chat, not another blank one.
