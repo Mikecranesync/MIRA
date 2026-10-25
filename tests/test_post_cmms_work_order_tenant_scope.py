@@ -298,7 +298,6 @@ async def test_same_tenant_id_variants_accepted_different_tenant_rejected(mapped
         TENANT_A.upper(),
         TENANT_A.replace("-", ""),
         TENANT_A.replace("-", "").upper(),
-        f"  {TENANT_A}  ",
     )
 
     with (
@@ -382,3 +381,53 @@ async def test_non_uuid_tenant_ids_case_difference_rejected():
     assert len(calls) == 1
     assert calls[0]["tenant_id"] == "PlantAlpha"
     atlas.create_work_order.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "payload_tenant, auth_tenant",
+    [
+        ("PlantAlpha", "PlantAlpha "),
+        ("PlantAlpha", "plantalpha"),
+        ("PlantAlpha", "Pl\u0430ntAlpha"),
+    ],
+    ids=["trailing-space", "case", "cyrillic-a-lookalike"],
+)
+@pytest.mark.asyncio
+async def test_non_uuid_near_miss_pairs_rejected(payload_tenant, auth_tenant):
+    """Whitespace, case, and unicode lookalikes are different tenants."""
+    _rows, calls, fake_create = _hub_row_store()
+    atlas = MagicMock()
+    atlas.create_work_order = AsyncMock(return_value={"id": 5})
+
+    with (
+        patch("shared.engine.AtlasCMMSClient", return_value=atlas),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+        patch("shared.engine.log_uns_event"),
+        patch("shared.engine.push_wo_created", new_callable=AsyncMock),
+        patch("shared.engine.suggest_followup_pm", return_value=None),
+    ):
+        sv = _bare_supervisor()
+        wo = _valid_wo(chat_id="unmapped-chat")
+        wo.tenant_id = payload_tenant
+        with pytest.raises(RuntimeError, match="tenant_mismatch"):
+            await sv._post_cmms_work_order(wo, tenant_id=auth_tenant)
+
+        sv._record_exchange = MagicMock()
+        sv._save_state = MagicMock()
+        draft = _valid_draft(chat_id="unmapped-chat", tenant_id=payload_tenant)
+        state = {
+            "state": "RESOLVED",
+            "asset_identified": "Pump-A3",
+            "fault_category": "",
+            "context": {"cmms_pending": True, "cmms_wo_draft": draft},
+        }
+        result = await sv._handle_cmms_pending(
+            "unmapped-chat", "yes", state, "trace-3237", tenant_id=auth_tenant
+        )
+
+    assert "session tenant doesn't match" in result["reply"]
+    assert state["context"]["cmms_pending"] is True
+    assert state["context"]["cmms_wo_draft"] is draft
+    sv._save_state.assert_not_called()
+    assert calls == []
+    atlas.create_work_order.assert_not_awaited()

@@ -20,16 +20,15 @@ logger = logging.getLogger("mira.chat_tenant")
 
 
 def canonicalize_tenant_id(value: object) -> str:
-    """Strip and canonicalize a tenant id for equality checks.
+    """Canonicalize a tenant id for equality checks.
 
-    UUID-shaped values become ``str(uuid.UUID(...))`` (lowercase, hyphenated).
-    Non-UUID values are returned as stripped text with case preserved —
-    ``PlantAlpha`` and ``plantalpha`` stay distinct. ``None`` / blank become
-    ``""``.
+    A value that parses as a UUID becomes ``str(uuid.UUID(...))``.
+    Any other value is compared byte-for-byte: no strip, no case fold,
+    no other normalization. ``None`` becomes ``""``.
     """
     if value is None:
         return ""
-    text = str(value).strip()
+    text = str(value)
     if not text:
         return ""
     try:

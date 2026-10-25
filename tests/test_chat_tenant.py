@@ -163,15 +163,17 @@ def test_env_fallback_not_stored_in_db(tmp_path):
 
 
 def test_canonicalize_tenant_id_uuid_and_slug():
-    """UUIDs collapse to one form; non-UUID slugs keep case after strip."""
+    """UUIDs collapse to one form; every other value is exact, including spaces."""
     from shared.chat_tenant import canonicalize_tenant_id
 
     uuid_canon = "11111111-1111-4111-8111-111111111111"
     assert canonicalize_tenant_id(uuid_canon.upper()) == uuid_canon
     assert canonicalize_tenant_id(uuid_canon.replace("-", "")) == uuid_canon
-    assert canonicalize_tenant_id(f"  {uuid_canon.upper()}  ") == uuid_canon
+    assert canonicalize_tenant_id(uuid_canon.replace("-", "").upper()) == uuid_canon
+    assert canonicalize_tenant_id(f"  {uuid_canon}  ") != uuid_canon
     assert canonicalize_tenant_id("PlantAlpha") == "PlantAlpha"
-    assert canonicalize_tenant_id("  PlantAlpha  ") == "PlantAlpha"
+    assert canonicalize_tenant_id("PlantAlpha ") == "PlantAlpha "
+    assert canonicalize_tenant_id("PlantAlpha") != canonicalize_tenant_id("PlantAlpha ")
     assert canonicalize_tenant_id("PlantAlpha") != canonicalize_tenant_id("plantalpha")
     assert canonicalize_tenant_id(None) == ""
     assert canonicalize_tenant_id("22222222-2222-4222-8222-222222222222") != uuid_canon
