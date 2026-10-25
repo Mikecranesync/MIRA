@@ -70,7 +70,7 @@ import { UnifiedChat, type UnifiedShellHost } from "./UnifiedChat";
 import { canCancelChatTransport } from "../lib/chat-transport-presentation";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 import { dropPersistedLiveTurns } from "../unified/live-turn-reconcile";
-import { useForegroundRefresh } from "../unified/use-foreground-refresh";
+import { useThreadSync } from "../unified/use-thread-sync";
 
 type Panel = "sources" | "chat" | "studio";
 
@@ -208,7 +208,9 @@ export function NotebookScreen({
   const [lastLook, setLastLook] = useState<RememberedLook | null>(null);
   // A linked photo opened for viewing (same FilePreview door as a source).
   const [openPhoto, setOpenPhoto] = useState<NotebookPhoto | null>(null);
-  const [liveTurns, setLiveTurns] = useState<{ q: string; a: ChatTurn }[]>([]);
+  // `requestId` is the clientRequestId of the answer shown, so a reload can
+  // tell this phone's saved turn from a same-question one asked on web (#4639).
+  const [liveTurns, setLiveTurns] = useState<{ q: string; a: ChatTurn; requestId?: string }[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -282,35 +284,29 @@ export function NotebookScreen({
     onInitialSensorStartConsumed?.();
   }, [initialSensorStart, onInitialSensorStartConsumed]);
 
+  // #3990: a thread continued on web while the app was backgrounded is current
+  // on return. Silent (no loading state), never over an in-flight answer (owed
+  // and replayed once it settles, #4637), and only the newest load for this
+  // view commits (#4638) — see unified/use-thread-sync.
+  const resumeReload = () => {
+    if (detail.state !== "ready") return;
+    const previousRowIds = new Set(detail.data.turns.map((t) => t.id));
+    guardedLoad(fetchDetail, (next) => {
+      if (next.state !== "ready") return;
+      setDetail(next);
+      setLiveTurns((live) => dropPersistedLiveTurns(previousRowIds, next.data.turns, live));
+    }, { yieldToAnswer: true });
+  };
+  const guardedLoad = useThreadSync(`${id}|${threadId ?? ""}`, busy || pending !== null, resumeReload);
   // One fetch for the open view, shared by refresh and the resume reload so
   // their request options cannot drift apart.
   const fetchDetail = () => load(() => getNotebookDetail(id, { threadId }));
-  const refresh = () => {
-    void fetchDetail().then(setDetail);
-  };
+  const refresh = () => guardedLoad(fetchDetail, setDetail);
   useEffect(() => {
     setDetail({ state: "loading" });
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, threadId]);
-
-  // #3990: a thread continued on web while the app was backgrounded is current
-  // on return. Silent (no loading state), never over an in-flight answer, and
-  // dropped if the technician switched threads before it landed.
-  const viewKey = `${id}|${threadId ?? ""}`;
-  const viewKeyRef = useRef(viewKey);
-  viewKeyRef.current = viewKey;
-  const inFlightRef = useRef(false);
-  inFlightRef.current = busy || pending !== null;
-  useForegroundRefresh(() => {
-    if (inFlightRef.current || detail.state !== "ready") return;
-    const previousRowIds = new Set(detail.data.turns.map((t) => t.id));
-    void fetchDetail().then((next) => {
-      if (next.state !== "ready" || viewKeyRef.current !== viewKey || inFlightRef.current) return;
-      setDetail(next);
-      setLiveTurns((live) => dropPersistedLiveTurns(previousRowIds, next.data.turns, live));
-    });
-  });
 
   // `detail` belongs in these deps. Without it, opening a machine that already
   // has history landed on the OLDEST turn: on mount the component is still in
@@ -399,6 +395,8 @@ export function NotebookScreen({
     }
     const ctl = new AbortController();
     abortRef.current = ctl;
+    // The request whose answer the live turn will show (#4639).
+    let requestId = body.clientRequestId;
     setQ("");
     setFailedSend(null);
     setBusy(true);
@@ -434,6 +432,7 @@ export function NotebookScreen({
         !ctl.signal.aborted
       ) {
         const general: PendingSend = { ...body, scope: [], mode: "general", clientRequestId: crypto.randomUUID() };
+        requestId = general.clientRequestId;
         a = await ask(general);
       }
       if (isTruncatedTurn(a)) {
@@ -445,20 +444,20 @@ export function NotebookScreen({
           ...(a.safetyTrigger !== undefined ? { safetyTrigger: a.safetyTrigger } : {}),
           ...(a.identityDisputed ? { identityDisputed: true as const } : {}),
         };
-        setLiveTurns((t) => [...t, { q: question, a: interrupted }]);
+        setLiveTurns((t) => [...t, { q: question, a: interrupted, requestId }]);
         if (a.safetyTrigger === undefined) {
           setFailedSend(body);
           setChatError("The answer was interrupted — retry the same request.");
         }
       } else {
-        setLiveTurns((t) => [...t, { q: question, a }]);
+        setLiveTurns((t) => [...t, { q: question, a, requestId }]);
       }
     } catch (e) {
       const partial = pendingRef.current?.a ?? EMPTY_TURN;
       if (ctl.signal.aborted) {
         setLiveTurns((t) => [
           ...t,
-          { q: question, a: { ...partial, status: "stopped", citations: [], followups: undefined } },
+          { q: question, a: { ...partial, status: "stopped", citations: [], followups: undefined }, requestId },
         ]);
       } else if (partial.safetyTrigger !== undefined) {
         // A validated Safety STOP is terminal and may already be durable on the
@@ -476,6 +475,7 @@ export function NotebookScreen({
               safetyTrigger: partial.safetyTrigger,
               ...(partial.identityDisputed ? { identityDisputed: true as const } : {}),
             },
+            requestId,
           },
         ]);
       } else {
