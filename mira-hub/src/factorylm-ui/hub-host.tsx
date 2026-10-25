@@ -55,6 +55,7 @@ import {
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { AnswerWithSafety } from "./answer-with-safety";
+import { UserTurnText } from "./user-turn-text";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { HOME_THREAD, createOutgoingOwner, withOutgoing, type Outgoing } from "./outgoing-turn";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
@@ -718,7 +719,7 @@ export function HubShellHost() {
   // Answer text renders through the classic notebook's markdown + inline
   // citation marks, gated on the turn's own source parts.
   const renderText = useCallback((text: string, turn: InteractionTurn): ReactNode => {
-    if (turn.role === "user") return text;
+    if (turn.role === "user") return <UserTurnText text={text} />;
     const own: EvidenceCitation[] = [];
     for (const part of turn.parts) {
       if (part.type !== "source") continue;
