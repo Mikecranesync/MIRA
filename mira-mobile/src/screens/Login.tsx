@@ -12,6 +12,7 @@ import {
   InviteSignIn,
   type InviteRecovery,
 } from "../factorylm-ui/invite/InviteSignIn";
+import { INVITE_HYDRATION_FAILED_COPY } from "../factorylm-ui/invite/invite-copy";
 
 export function Login({
   onSignedIn,
@@ -103,6 +104,10 @@ export function Login({
                   const r = await signIn(email, password);
                   if (r.ok) await onSignedIn();
                   else setError(signInFailureCopy(r.reason));
+                } catch {
+                  // #4774: signed in, but the account didn't load. Show the
+                  // retry message rather than an unhandled rejection.
+                  setError(INVITE_HYDRATION_FAILED_COPY);
                 } finally {
                   setBusy(false);
                 }
