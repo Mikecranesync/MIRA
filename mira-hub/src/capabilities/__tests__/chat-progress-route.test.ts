@@ -4,7 +4,7 @@
  * frame at the moment each real stage starts (identity → retrieval → generation → answer check).
  * Everyone else gets the exact stream they got before.
  *
- * Run: npx vitest run "src/app/api/equipment-notebooks/[id]/chat/__tests__/chat-progress.test.ts"
+ * Run: npx vitest run src/capabilities/__tests__/chat-progress-route.test.ts
  * Harness copied from energized-work-hard-stop.test.ts (same mocks, same ASK for the stop path).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -85,7 +85,16 @@ const seamMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
-import { POST } from "../route";
+const ingressMock = vi.hoisted(() => ({
+  recordArrival: vi.fn(async () => undefined),
+  recordResponse: vi.fn<(r: { httpStatus: number; tenantId: string | null }) => Promise<undefined>>(async () => undefined),
+}));
+vi.mock("@/capabilities/observability/turn-ingress", async (orig) => ({
+  ...(await orig<typeof import("@/capabilities/observability/turn-ingress")>()),
+  ...ingressMock,
+}));
+
+import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 
 function req(body: unknown, opts: { progress?: boolean; signal?: AbortSignal } = {}) {
   return new NextRequest("http://test/api/equipment-notebooks/x/chat", {
@@ -254,5 +263,48 @@ describe("#4687 chat progress frames", () => {
     releaseRetrieval();
     await new Promise((r) => setTimeout(r, 50));
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it("F3: a turn that runs no retrieval never claims to be searching documentation", async () => {
+    // General mode AND no manufacturer identity: neither the notebook nor the OEM search runs.
+    nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Unnamed machine", manufacturer: "", model: "" });
+    const out = await frames(await POST(req({ message: "drive trips on acceleration", mode: "general" }, { progress: true }), params));
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(stages(out)).not.toContain("searching_documentation");
+  });
+
+  it("F2: cancelling only the response stream during retrieval stops the turn before any provider call", async () => {
+    let releaseRetrieval!: () => void;
+    const gate = new Promise<void>((r) => { releaseRetrieval = r; });
+    ragMock.retrieveNodeChunks.mockImplementation(async () => { await gate; return [TORQUE_CHUNK]; });
+    const res = await POST(req({ message: ORDINARY, sourceDocIds: [DOC_A] }, { progress: true }), params);
+    const reader = res.body!.getReader();
+    await reader.read();
+    await reader.cancel(); // no request-signal abort: only the stream goes away
+    releaseRetrieval();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it("F1: ingress accounting waits for the real inner status and tenant", async () => {
+    let releaseRetrieval!: () => void;
+    const gate = new Promise<void>((r) => { releaseRetrieval = r; });
+    ragMock.retrieveNodeChunks.mockImplementation(async () => { await gate; return [TORQUE_CHUNK]; });
+    const res = await POST(req({ message: ORDINARY, sourceDocIds: [DOC_A] }, { progress: true }), params);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(ingressMock.recordResponse).not.toHaveBeenCalled(); // the turn is still running
+    releaseRetrieval();
+    await res.text();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(ingressMock.recordResponse).toHaveBeenCalledTimes(1);
+    expect(ingressMock.recordResponse.mock.calls[0][0]).toMatchObject({ httpStatus: 200, tenantId: TENANT });
+  });
+
+  it("F1: a validation error is accounted as its real 400, not a 500", async () => {
+    const res = await POST(req({ sourceDocIds: [DOC_A] }, { progress: true }), params);
+    await res.text();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(ingressMock.recordResponse).toHaveBeenCalledTimes(1);
+    expect(ingressMock.recordResponse.mock.calls[0][0]).toMatchObject({ httpStatus: 400 });
   });
 });

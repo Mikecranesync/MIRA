@@ -256,7 +256,7 @@ import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
 import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
-import { reportProgress, wantsProgress, withProgressStream } from "@/capabilities/chat-progress";
+import { progressCancelSignal, reportProgress, wantsProgress, withProgressStream } from "@/capabilities/chat-progress";
 import {
   JUDGE_OUTPUT_TOKENS,
   judgeHoldInputBound,
@@ -2053,7 +2053,6 @@ async function handleChatTurn(
   // Non-English questions search the English corpus in English (answered in their own language).
   const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history, lookRow?.text), translateForSearch);
   const retrievalSpan = startStage("retrieval.execute");
-  reportProgress(req, "searching_documentation");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
   //   2. no sources, but EQUIPMENT CONTEXT → oem_corpus_bm25 (shared OEM library,
@@ -2213,6 +2212,8 @@ async function handleChatTurn(
   const oemRetrieval =
     !guidedDeadEnd && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
+  // #4687: only when a document search actually runs (Codex #4765 F3).
+  if (retrievalExecuted) reportProgress(req, "searching_documentation");
   // Codex #4069 F4: a failed OEM query is not a completed zero-hit search —
   // the decline below must never say "I couldn't find it" when nothing ran.
   let oemRetrievalFailed = false;
@@ -3651,6 +3652,10 @@ async function handleChatTurn(
   // already-aborted request into the same path a live abort takes.
   if (req.signal?.aborted) onClientGone();
   else req.signal?.addEventListener("abort", onClientGone, { once: true });
+  // #4687: an opted-in client that drops the early progress stream is gone too (Codex #4765 F2).
+  const progressCancel = progressCancelSignal(req);
+  if (progressCancel?.aborted) onClientGone();
+  else progressCancel?.addEventListener("abort", onClientGone, { once: true });
   const abortedRead = new Promise<never>((_, reject) =>
     clientAbort.signal.addEventListener(
       "abort",
@@ -5000,17 +5005,30 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   // from every assertion while leaving the tenant index unreliable. The arrival
   // row has no tenant because at arrival there is no tenant.
   const arrival = recordArrival({ ...ingress });
+  if (wantsProgress(req)) {
+    // #4687: headers go out now; the turn runs behind the open stream. The
+    // accounting below runs when the turn actually finishes, with its real
+    // status and tenant — never at stream open (Codex #4765 F1).
+    return withProgressStream(req, async () => {
+      let innerStatus = 500;
+      try {
+        const inner = await handleChatTurn(req, routeCtx, ingress);
+        innerStatus = inner.status;
+        return inner;
+      } catch (err) {
+        ingress.closeOnUnhandled?.("error");
+        throw err;
+      } finally {
+        void arrival
+          .then(() => recordResponse({ ...ingress, httpStatus: innerStatus }))
+          .catch(() => {
+            /* counted inside the module; never fails a turn */
+          });
+      }
+    });
+  }
   let status = 500;
   try {
-    if (wantsProgress(req)) {
-      // #4687: headers go out now; the turn runs behind the open stream. The
-      // inner status is still what the ingress record reports.
-      return withProgressStream(req, async () => {
-        const inner = await handleChatTurn(req, routeCtx, ingress);
-        status = inner.status;
-        return inner;
-      });
-    }
     const res = await handleChatTurn(req, routeCtx, ingress);
     status = res.status;
     return res;

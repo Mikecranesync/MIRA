@@ -22,6 +22,15 @@ export type ChatProgressStage =
   | "checking_answer";
 
 const sinks = new WeakMap<Request, (stage: ChatProgressStage) => void>();
+const cancels = new WeakMap<Request, AbortSignal>();
+
+/**
+ * Aborts when an opted-in client's response stream is cancelled. The request's own signal does
+ * not necessarily fire then, so the route treats this exactly like `req.signal` (Codex #4765 F2).
+ */
+export function progressCancelSignal(req: Request): AbortSignal | undefined {
+  return cancels.get(req);
+}
 
 /** Called by the route where a stage starts. A no-op unless this request opted in. */
 export function reportProgress(req: Request, stage: ChatProgressStage): void {
@@ -44,6 +53,8 @@ export function withProgressStream(req: Request, handler: () => Promise<Response
   const sent = new Set<ChatProgressStage>();
   let closed = false;
   let inner: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  const cancelled = new AbortController();
+  cancels.set(req, cancelled.signal);
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -107,6 +118,7 @@ export function withProgressStream(req: Request, handler: () => Promise<Response
     },
     cancel() {
       closed = true;
+      cancelled.abort();
       sinks.delete(req);
       void inner?.cancel().catch(() => undefined);
     },
