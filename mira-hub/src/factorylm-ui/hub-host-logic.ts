@@ -195,7 +195,8 @@ export function shellThreadId(sel: HubSelection): string {
  * unchanged: `notes + separator + body` is the original string.
  */
 export function splitLeadingSafetyNotes(text: string): { notes: string; body: string } {
-  const boundary = /\n[ \t]*\n\s*/g;
+  // Blank lines only: the next paragraph's own indentation (a code block) is the answer's.
+  const boundary = /\n(?:[ \t]*\n)+/g;
   let end = 0; // end of the last leading ⚠️ paragraph
   let next = 0; // where the paragraph after it starts
   while (text.slice(next).trimStart().startsWith("⚠️")) {

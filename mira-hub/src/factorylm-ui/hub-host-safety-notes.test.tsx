@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { AnswerWithSafety } from "./answer-with-safety";
 import { splitLeadingSafetyNotes } from "./hub-host-logic";
 
@@ -66,5 +67,21 @@ describe("splitLeadingSafetyNotes — #4690 the warning above an answer is its o
 
   it("renders an answer without a leading warning exactly as before (control)", () => {
     expect(renderToStaticMarkup(<AnswerWithSafety text={ANSWER} markdown={(c) => <p>{c}</p>} />)).toBe(`<p>${ANSWER}</p>`);
+  });
+
+  // Codex #4747 r1 F1: the separator must not eat the answer's own indentation.
+  const CODE = "    IF fault THEN\n        motor := FALSE;\n    END_IF;";
+
+  it("keeps an indented code block after the warning byte-identical", () => {
+    expect(splitLeadingSafetyNotes(`${ISOLATION}\n\n${CODE}`)).toEqual({ notes: ISOLATION, body: CODE });
+    expect(splitLeadingSafetyNotes(`${ISOLATION}\n\n\n${CODE}`).body).toBe(CODE);
+  });
+
+  it("still renders that code block as code through the real answer markdown", () => {
+    const html = renderToStaticMarkup(
+      <AnswerWithSafety text={`${ISOLATION}\n\n${CODE}`} markdown={(c) => <AnswerMarkdown content={c} citations={[]} onCite={() => {}} />} />,
+    );
+    expect(html).toContain('class="fl-safety fl-safety--text"');
+    expect(html).toMatch(/<pre[\s>][\s\S]*IF fault THEN/);
   });
 });
