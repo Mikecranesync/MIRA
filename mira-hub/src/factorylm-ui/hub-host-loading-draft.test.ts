@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { shellReducer, type ShellState } from "../../../packages/factorylm-interaction/src";
-import { EMPTY_FIXTURE, initialHubShellState, loadingThread, shellThreadId, type HubSelection } from "./hub-host-logic";
+import { EMPTY_FIXTURE, initialHubShellState, loadingThread, openThreadActions, shellThreadId, type HubSelection } from "./hub-host-logic";
 
 const SEL: HubSelection = { notebookId: "nb-micro810", threadId: "thread-1" };
 const OTHER: HubSelection = { notebookId: "nb-micro810", threadId: "thread-2" };
@@ -72,5 +72,41 @@ describe("loadingThread — #4695 the composer keeps what is typed while a threa
     const branch = host.slice(host.indexOf("if (!detail || !meta || !selection) {"), host.indexOf("const base = fixtureFor("));
     expect(branch).toContain("const thread = loadingThread(selection, turns);");
     expect(branch).not.toMatch(/:\s*EMPTY_FIXTURE\.thread;/);
+  });
+});
+
+describe("openThreadActions — #4695 part 2: an automatic landing keeps what was typed on HOME", () => {
+  /** Type on HOME, before the notebook list arrives (HOME projects the fixture thread). */
+  const typedOnHome = (text: string) => typeText(initialHubShellState(), text, loadingThread(null, []));
+  const apply = (state: ShellState, actions: ReturnType<typeof openThreadActions>) => actions.reduce(shellReducer, state);
+
+  it("keeps the HOME draft when the deep link / reload lands on its thread", () => {
+    const home = typedOnHome("How do I clear a fault on th");
+    const landed = apply(home, openThreadActions(SEL, AT, home.draft));
+    expect(landed.thread.id).toBe(shellThreadId(SEL));
+    const done = typeText(landed, "e Micro810", loadingThread(SEL, []));
+    expect(view(done, loadingThread(SEL, [])).draft).toBe("How do I clear a fault on the Micro810");
+  });
+
+  it("control: without keeping it, the landing wipes the HOME draft (what staging showed: \"e Micro810\")", () => {
+    const home = typedOnHome("How do I clear a fault on th");
+    const done = typeText(apply(home, openThreadActions(SEL, AT)), "e Micro810", loadingThread(SEL, []));
+    expect(view(done, loadingThread(SEL, [])).draft).toBe("e Micro810");
+  });
+
+  it("choosing another thread still clears the draft (the select path keeps nothing)", () => {
+    const opened = typeText(open(initialHubShellState(), SEL), "draft for one", loadingThread(SEL, []));
+    expect(apply(opened, openThreadActions(OTHER, AT)).draft).toBe("");
+  });
+
+  it("opens the same thread identity syncThread always used", () => {
+    expect(apply(initialHubShellState(), openThreadActions(SEL, AT)).thread).toEqual(open(initialHubShellState(), SEL).thread);
+  });
+
+  it("is wired: the automatic landing passes the current draft; a chosen thread does not", () => {
+    const host = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
+    expect(host).toContain("for (const action of openThreadActions(sel, new Date().toISOString(), keepDraft)) dispatch(action);");
+    expect(host).toContain("syncThread(next, draftRef.current);");
+    expect(host.match(/syncThread\(sel\);/g)?.length).toBe(1);
   });
 });

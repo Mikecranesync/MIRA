@@ -83,6 +83,7 @@ import {
   metaFor,
   newThreadId,
   openNotebookSelection,
+  openThreadActions,
   retainedStreamInterruption,
   searchForSelection,
   selectionFromSearch,
@@ -186,14 +187,8 @@ export function HubShellHost() {
    * differs from the one it holds, so the id must be kept in sync here or every
    * keystroke would be wiped by the next render.
    */
-  const syncThread = useCallback((sel: HubSelection) => {
-    const at = new Date().toISOString();
-    dispatch({
-      type: "hydrate",
-      data: {
-        thread: { ...EMPTY_FIXTURE.thread, id: shellThreadId(sel), notebookId: sel.notebookId, createdAt: at, updatedAt: at },
-      },
-    });
+  const syncThread = useCallback((sel: HubSelection, keepDraft = "") => {
+    for (const action of openThreadActions(sel, new Date().toISOString(), keepDraft)) dispatch(action);
   }, []);
 
   // --- data: notebooks (projects/threads), then the selected notebook's detail ---
@@ -212,7 +207,8 @@ export function HubShellHost() {
     if (!selectionRef.current) {
       const next = selectionFromSearch(readSearch(), data.notebooks) ?? landingSelection(data.notebooks);
       if (next) {
-        syncThread(next);
+        // #4695: an automatic landing keeps what was typed while the list loaded.
+        syncThread(next, draftRef.current);
         setSelection(next);
         // A link without a thread opened a freshly minted one (#4444); name it
         // in the URL so a reload returns to this chat, not another blank one.
