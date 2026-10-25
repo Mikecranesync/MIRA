@@ -431,3 +431,26 @@ async def test_non_uuid_near_miss_pairs_rejected(payload_tenant, auth_tenant):
     sv._save_state.assert_not_called()
     assert calls == []
     atlas.create_work_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_empty_tenant_id_raises_and_writes_nothing():
+    """Empty tenant_id must raise before Atlas or Hub is touched."""
+    _rows, calls, fake_create = _hub_row_store()
+    atlas_cls = MagicMock()
+    atlas_cls.return_value.create_work_order = AsyncMock(return_value={"id": 6})
+
+    with (
+        patch("shared.engine.AtlasCMMSClient", atlas_cls),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+        patch("shared.engine.log_uns_event"),
+        patch("shared.engine.push_wo_created", new_callable=AsyncMock),
+        patch("shared.engine.suggest_followup_pm", return_value=None),
+    ):
+        sv = _bare_supervisor()
+        with pytest.raises(RuntimeError, match="tenant_required"):
+            await sv._post_cmms_work_order(_valid_wo(), tenant_id="")
+
+    atlas_cls.assert_not_called()
+    atlas_cls.return_value.create_work_order.assert_not_awaited()
+    assert calls == []

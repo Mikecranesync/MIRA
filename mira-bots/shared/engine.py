@@ -4658,7 +4658,7 @@ class Supervisor:
             "asset_label": asset,
         }
 
-    async def _post_cmms_work_order(self, wo: UNSWorkOrder, tenant_id: str = "") -> str:
+    async def _post_cmms_work_order(self, wo: UNSWorkOrder, *, tenant_id: str) -> str:
         """Create work order in Atlas CMMS and Hub NeonDB. Returns confirmation string.
 
         Hub reads/writes are scoped to the authenticated ``tenant_id`` passed
@@ -4667,8 +4667,12 @@ class Supervisor:
         payload, and never call ``resolve_tenant`` from this method —
         ``chat_tenant.resolve`` falls back to ``MIRA_TENANT_ID`` for
         unmapped chats, which is the original bleed if a caller forgets
-        to pass the auth tenant (#3237).
+        to pass the auth tenant (#3237). An empty ``tenant_id`` raises
+        before any Atlas or Hub write.
         """
+        if not tenant_id:
+            raise RuntimeError("tenant_required")
+
         auth_tenant = tenant_id
         payload_tenant = getattr(wo, "tenant_id", None)
         if payload_tenant not in (None, "") and canonicalize_tenant_id(
@@ -4693,24 +4697,23 @@ class Supervisor:
         atlas_wo_id = str(result.get("id", "unknown"))
 
         # --- Hub NeonDB (fire-and-forget; failure doesn't block the reply) ---
-        if auth_tenant:
-            hub_result = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: create_hub_work_order(
-                    tenant_id=auth_tenant,
-                    user_id=wo.chat_id or "mira-bot",
-                    title=wo.title,
-                    description=wo.to_atlas_description(),
-                    priority=wo.priority,
-                    asset_name=wo.asset,
-                    wo_number=f"MIRA-{atlas_wo_id}",
-                    source="telegram_text",
-                ),
-            )
-            if "error" not in hub_result:
-                hub_wo_number = hub_result.get("work_order_number", "")
-            else:
-                logger.warning("Hub NeonDB WO write skipped: %s", hub_result["error"])
+        hub_result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: create_hub_work_order(
+                tenant_id=auth_tenant,
+                user_id=wo.chat_id or "mira-bot",
+                title=wo.title,
+                description=wo.to_atlas_description(),
+                priority=wo.priority,
+                asset_name=wo.asset,
+                wo_number=f"MIRA-{atlas_wo_id}",
+                source="telegram_text",
+            ),
+        )
+        if "error" not in hub_result:
+            hub_wo_number = hub_result.get("work_order_number", "")
+        else:
+            logger.warning("Hub NeonDB WO write skipped: %s", hub_result["error"])
 
         label = hub_wo_number or f"#{atlas_wo_id}"
         return f"Work order {label} created in CMMS for {wo.asset or 'equipment'} ✓"
