@@ -21,6 +21,7 @@ import os
 import string
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -66,7 +67,11 @@ def github_post(token: str) -> Callable[[dict], dict]:
 
 
 class Snapshot:
-    """Fetches the whole board at most once per CACHE_SECONDS."""
+    """The last good copy of the board, refreshed in the background.
+
+    Requests never wait on GitHub: a full read takes ~25 s, so fetching on the
+    request path made the page look broken whenever the cache had expired.
+    """
 
     def __init__(self, fetch: Callable[[], List[dict]]):
         self._fetch = fetch
@@ -75,23 +80,33 @@ class Snapshot:
         self.at: Optional[dt.datetime] = None
         self.error: Optional[str] = None
 
-    def get(self) -> "Snapshot":
+    def refresh(self) -> None:
+        try:
+            items = self._fetch()  # slow; deliberately outside the lock
+        except Exception as exc:  # keep serving the last good snapshot
+            log.warning("refresh failed: %s", exc)
+            with self._lock:
+                self.error = f"Refresh failed ({type(exc).__name__}); showing the last good data."
+            return
         with self._lock:
-            fresh = (
-                self.at
-                and (dt.datetime.now(dt.timezone.utc) - self.at).total_seconds() < CACHE_SECONDS
-            )
-            if not fresh:
-                try:
-                    self.items = self._fetch()
-                    self.at = dt.datetime.now(dt.timezone.utc)
-                    self.error = None
-                except Exception as exc:  # keep serving the last good snapshot
-                    log.warning("refresh failed: %s", exc)
-                    self.error = (
-                        f"Refresh failed ({type(exc).__name__}); showing the last good data."
-                    )
-        return self
+            self.items, self.at, self.error = items, dt.datetime.now(dt.timezone.utc), None
+
+    def start(self, every_seconds: int) -> threading.Thread:
+        def loop() -> None:
+            while True:
+                self.refresh()
+                time.sleep(every_seconds)
+
+        t = threading.Thread(target=loop, name="board-refresh", daemon=True)
+        t.start()
+        return t
+
+    def get(self) -> "Snapshot":
+        """Return immediately with a consistent copy; never fetches."""
+        with self._lock:
+            view = Snapshot(self._fetch)
+            view.items, view.at, view.error = self.items, self.at, self.error
+        return view
 
 
 def _e(s: object) -> str:
@@ -136,6 +151,8 @@ def render(snap: Snapshot) -> str:
     when = snap.at.strftime("%Y-%m-%d %H:%M UTC") if snap.at else "never"
     status = "".join(f"<li><b>{n}</b> {_e(s)}</li>" for s, n in v["by_status"].items())
     error = f'<p class="error" role="alert">{_e(snap.error)}</p>' if snap.error else ""
+    if snap.at is None and not snap.error:
+        error = '<p class="error" role="status">Loading the board for the first time; reload in about 30 seconds.</p>'
     return string.Template((HERE / "page.html").read_text()).substitute(
         snapshot_time=_e(when),
         total=v["total"],
@@ -217,6 +234,7 @@ def main() -> None:
         raise SystemExit("GITHUB_TOKEN is not set.")
     post = github_post(token)
     Handler.snapshot = Snapshot(lambda: board.fetch_items(post))
+    Handler.snapshot.start(CACHE_SECONDS)
     port = int(os.getenv("MC_PORT", "8787"))
     srv = ThreadingHTTPServer((bind_address(), port), Handler)
     log.info("mission control on http://%s:%d (read-only)", srv.server_address[0], port)
