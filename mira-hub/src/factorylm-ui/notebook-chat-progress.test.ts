@@ -66,6 +66,33 @@ describe("readNotebookStream — progress frames", () => {
   });
 });
 
+function streamThenFail(chunks: string[], err: Error) {
+  let i = 0;
+  return new ReadableStream<Uint8Array>({
+    pull(ctrl) {
+      if (i >= chunks.length) return ctrl.error(err);
+      ctrl.enqueue(enc.encode(chunks[i++]));
+    },
+  }).getReader();
+}
+
+describe("readNotebookStream — a received refusal wins over a later transport failure (Codex #4770 F1)", () => {
+  for (const err of [new TypeError("network reset"), new DOMException("The operation was aborted.", "AbortError")]) {
+    it(`http_error 401 then ${err.name}: still a NotebookHttpError, never an interrupted answer`, async () => {
+      const p = readNotebookStream(
+        streamThenFail([frame({ kind: "http_error", status: 401, body: { error: "unauthorized" } })], err),
+        () => {},
+      );
+      await expect(p).rejects.toBeInstanceOf(NotebookHttpError);
+      await p.catch((e: NotebookHttpError) => {
+        expect(e.status).toBe(401);
+        expect(e.code).toBe("unauthorized");
+        expect("partial" in e).toBe(false);
+      });
+    });
+  }
+});
+
 describe("livePartsWhileRunning", () => {
   it("shows the progress stage until real answer text arrives, then only the text", () => {
     expect(livePartsWhileRunning("", undefined)).toEqual([]);

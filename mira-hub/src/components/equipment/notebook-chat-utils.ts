@@ -241,7 +241,8 @@ export async function readNotebookStream(
     sawStatus: false,
   };
   try {
-    while (true) {
+    // Labelled so a received refusal ends consumption at once (Codex #4770 F1).
+    read: while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buf += dec.decode(value, { stream: true });
@@ -259,6 +260,9 @@ export async function readNotebookStream(
         } else if (frame.kind === "http_error") {
           const body = frame.body as { error?: unknown } | null;
           httpError = new NotebookHttpError(frame.status, typeof body?.error === "string" ? body.error : "");
+          // A refusal is terminal: stop reading so a later transport failure
+          // (reset, Stop) can never replace it with an "interrupted answer".
+          break read;
         } else if (frame.kind === "sources") out.citations = frame.citations;
         else if (frame.kind === "evidence") {
           if (frame.basis) out.basis = frame.basis;
@@ -306,7 +310,10 @@ export async function readNotebookStream(
   }
   // Thrown outside the read loop on purpose: it is a refused request, not an
   // interrupted answer, so it carries no `partial` for the retention path.
-  if (httpError) throw httpError;
+  if (httpError) {
+    await reader.cancel().catch(() => undefined);
+    throw httpError;
+  }
   return out;
 }
 
