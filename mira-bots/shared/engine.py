@@ -3186,6 +3186,8 @@ class Supervisor:
                     message[:120],
                 )
             else:
+                # Tenant is resolved once above. The confirm path must not
+                # re-resolve via resolve_tenant / MIRA_TENANT_ID / chat_id.
                 return await self._handle_cmms_pending(
                     chat_id, message, state, trace_id, tenant_id=resolved_tenant
                 )
@@ -4726,11 +4728,27 @@ class Supervisor:
         message: str,
         state: dict,
         trace_id: str,
-        tenant_id: str = "",
+        *,
+        tenant_id: str,
     ) -> dict:
-        """Handle tech response to WO preview: yes/no, edit instructions, or missing-field supply."""
-        # Authenticated tenant from process_full, else the existing chat_tenant helper.
-        auth_tenant = tenant_id or resolve_tenant(chat_id)
+        """Handle tech response to WO preview: yes/no, edit instructions, or missing-field supply.
+
+        ``tenant_id`` is required and must already be resolved by
+        ``process_full``. This method does not call ``resolve_tenant``,
+        read ``MIRA_TENANT_ID``, or treat ``chat_id`` as a tenant. An
+        empty tenant refuses before any state mutation or write.
+        """
+        if not tenant_id:
+            reply = (
+                "I can't log this work order — the session has no tenant. "
+                "The draft is still here. Say **yes** after correcting it, or **no** to cancel."
+            )
+            tl_flush()
+            return self._make_result(
+                reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+            )
+
+        auth_tenant = tenant_id
         ctx = state.get("context") or {}
         wo_draft = ctx.get("cmms_wo_draft", {})
 

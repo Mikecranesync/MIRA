@@ -117,7 +117,8 @@ async def test_mapped_tenant_push_does_not_write_env_tenant_rows(mapped_tenant_b
     """Tenant B's confirmed WO must not create or modify tenant A's Hub rows.
 
     On the old code ``_post_cmms_work_order`` reads ``MIRA_TENANT_ID`` (tenant A)
-    and the write lands in A's space. After the fix it uses ``resolve_tenant``.
+    and the write lands in A's space. After the fix the caller passes the
+    authenticated tenant resolved once at ``process_full``.
     """
     rows, calls, fake_create = _hub_row_store()
     atlas = MagicMock()
@@ -145,7 +146,9 @@ async def test_mapped_tenant_push_does_not_write_env_tenant_rows(mapped_tenant_b
                 "cmms_wo_draft": _valid_draft(),
             },
         }
-        result = await sv._handle_cmms_pending(CHAT_B, "yes", state, "trace-3237")
+        result = await sv._handle_cmms_pending(
+            CHAT_B, "yes", state, "trace-3237", tenant_id=TENANT_B
+        )
 
     assert "Work order" in result["reply"]
     assert calls, "expected a Hub write for the authenticated tenant"
@@ -454,3 +457,45 @@ async def test_empty_tenant_id_raises_and_writes_nothing():
     atlas_cls.assert_not_called()
     atlas_cls.return_value.create_work_order.assert_not_awaited()
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_handle_empty_tenant_refuses_and_leaves_pending_intact(mapped_tenant_b):
+    """Empty tenant_id must refuse before any pending mutation or write."""
+    rows, calls, fake_create = _hub_row_store()
+    atlas = MagicMock()
+    atlas.create_work_order = AsyncMock(return_value={"id": 8})
+    draft = _valid_draft(chat_id="unmapped-chat")
+    resolve = MagicMock(return_value=TENANT_A)
+
+    with (
+        patch("shared.engine.resolve_tenant", resolve),
+        patch("shared.engine.AtlasCMMSClient", return_value=atlas),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+        patch("shared.engine.log_uns_event"),
+        patch("shared.engine.push_wo_created", new_callable=AsyncMock),
+        patch("shared.engine.suggest_followup_pm", return_value=None),
+    ):
+        sv = _bare_supervisor()
+        sv._record_exchange = MagicMock()
+        sv._save_state = MagicMock()
+        state = {
+            "state": "RESOLVED",
+            "asset_identified": "Pump-A3",
+            "fault_category": "",
+            "context": {"cmms_pending": True, "cmms_wo_draft": draft},
+        }
+        result = await sv._handle_cmms_pending(
+            "unmapped-chat", "yes", state, "trace-3237", tenant_id=""
+        )
+
+    assert "session has no tenant" in result["reply"]
+    assert result["dispatch_kind"] == "cmms_pending"
+    assert state["context"]["cmms_pending"] is True
+    assert state["context"]["cmms_wo_draft"] is draft
+    sv._save_state.assert_not_called()
+    sv._record_exchange.assert_not_called()
+    resolve.assert_not_called()
+    atlas.create_work_order.assert_not_awaited()
+    assert calls == []
+    assert rows[TENANT_A] == []
