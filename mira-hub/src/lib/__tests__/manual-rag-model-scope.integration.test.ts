@@ -21,6 +21,7 @@ beforeAll(async () => {
   await client.query("BEGIN");
   await client.query(`
     CREATE TEMP TABLE knowledge_entries (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       tenant_id text NOT NULL,
       content text NOT NULL,
       content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
@@ -68,6 +69,247 @@ async function modelsFor(model: string): Promise<string[]> {
 }
 
 describe("identity-bound OEM model SQL", () => {
+  it("uses the opening page of opaque-named notebook manuals to reject sibling-model evidence", async () => {
+    const doc810 = "39700000-0000-4000-8000-000000000081";
+    const doc820 = "39700000-0000-4000-8000-000000000082";
+    for (const [doc, model] of [[doc810, "Micro810"], [doc820, "Micro820"]]) {
+      for (const [page, content] of [[1, `${model} Programmable Controllers User Manual`], [12, "Configure communication settings in controller properties."]] as const) {
+        await client.query(
+          `INSERT INTO knowledge_entries
+            (tenant_id, content, manufacturer, model_number, source_url, page_start,
+             doc_id, ingest_route, metadata, verified, is_private)
+           VALUES ($1, $2, '', '', 'https://test.invalid/2080.pdf', $3, $4, 'v2',
+             '{"node_id":"pilot-model","filename":"2080-publication.pdf","chunk_index":0}', true, true)`,
+          [TENANT, content, page, doc],
+        );
+      }
+    }
+    const retrieve = (docIds: string[]) => retrieveNodeChunks(client, TENANT, "Micro820 communication settings", {
+      nodeId: "pilot-model", unsPath: null, docIds, validatedDocScope: true,
+    });
+    expect(await retrieve([doc810])).toEqual([]);
+    const hits = await retrieve([doc810, doc820]);
+    expect(hits.some((hit) => hit.docId === doc820 && hit.sourcePage === 12)).toBe(true);
+    expect(hits.every((hit) => hit.docId === doc820)).toBe(true);
+    // More than one candidate window of high-ranking wrong-manual pages must
+    // not hide a valid later page from the other attached manual.
+    for (let page = 2; page < 40; page++) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, 'Micro820 communication settings communication settings communication settings',
+           '', '', 'https://test.invalid/2080.pdf', $2, $3, 'v2',
+           '{"node_id":"pilot-model","filename":"2080-publication.pdf"}', true, true)`,
+        [TENANT, page, doc810],
+      );
+    }
+    const crowded = await retrieve([doc810, doc820]);
+    expect(crowded.some((hit) => hit.docId === doc820 && hit.sourcePage === 12)).toBe(true);
+    expect(crowded.every((hit) => hit.docId === doc820)).toBe(true);
+  });
+
+  // #4469 F1: against the real BM25 SQL (not a mocked row), a plain numeric
+  // model token ("800") collides across unrelated families — ACS800 and
+  // Micro800 both reduce to "800" — so an ACS800-only notebook must not
+  // answer a Micro800 question and vice versa.
+  it("does not let an ACS800 manual answer a Micro800 question over real SQL (#4469 F1)", async () => {
+    const docAcs = "39700000-0000-4000-8000-0000000000a8";
+    const docMicro = "39700000-0000-4000-8000-0000000000a9";
+    for (const [doc, heading, content] of [
+      [docAcs, "ACS800 User Manual", "ACS800 communication settings are configured on the control panel."],
+      [docMicro, "Micro800 User Manual", "Micro800 communication settings are configured on the control panel."],
+    ] as const) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-f1.pdf', 1, $3, 'v2',
+           $4::jsonb, true, true)`,
+        [TENANT, `${heading}. ${content}`, doc, JSON.stringify({ node_id: "pilot-f1", filename: `${heading}.pdf` })],
+      );
+    }
+    const retrieve = (docIds: string[], question: string) =>
+      retrieveNodeChunks(client, TENANT, question, { nodeId: "pilot-f1", unsPath: null, docIds, validatedDocScope: true });
+    expect(await retrieve([docAcs], "Micro800 communication settings")).toEqual([]);
+    expect(await retrieve([docMicro], "ACS800 communication settings")).toEqual([]);
+    expect(await retrieve([docAcs], "ACS800 communication settings")).toHaveLength(1);
+    expect(await retrieve([docMicro], "Micro800 communication settings")).toHaveLength(1);
+  });
+
+  // #4469 F2 (primary review, pass 2): no finite keyword list can recognize
+  // every way a document points away from itself — each of the primary
+  // review's named phrasings, plus a renamed/mismatched filename, must
+  // abstain over the real BM25 SQL, while a heading that genuinely covers
+  // both models in one breath must still work, and a mismatched filename
+  // must never override what the heading affirmatively declares.
+  it("rejects every named cross-reference/exclusion phrasing as coverage over real SQL (#4469 F2)", async () => {
+    const seeDoc = "39700000-0000-4000-8000-0000000000b1";
+    const relatedDoc = "39700000-0000-4000-8000-0000000000b3";
+    const excludedDoc = "39700000-0000-4000-8000-0000000000b4";
+    const renamedDoc = "39700000-0000-4000-8000-0000000000b5";
+    const bothDoc = "39700000-0000-4000-8000-0000000000b2";
+    const rows: Array<[string, string, string, string]> = [
+      [seeDoc, "2080-um010.pdf", "Micro810 User Manual. See the separate Micro820 manual.",
+        "Configure the communication settings in the controller properties dialog."],
+      [relatedDoc, "2080-um012.pdf", "Micro810 User Manual\nRelated documents: Micro820 user manual",
+        "Configure the communication settings in the controller properties dialog."],
+      [excludedDoc, "2080-um013.pdf", "Micro810 User Manual. Micro820 is not covered by this manual.",
+        "Configure the communication settings in the controller properties dialog."],
+      [renamedDoc, "Micro820_User_Manual.pdf", "Micro810 Programmable Controllers User Manual",
+        "Configure the communication settings in the controller properties dialog."],
+      [bothDoc, "2080-um011.pdf", "Micro810 and Micro820 Programmable Controllers User Manual",
+        "Configure the communication settings in the controller properties dialog."],
+    ];
+    for (const [doc, filename, heading, body] of rows) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-f2.pdf', 1, $3, 'v2', $4::jsonb, true, true)`,
+        [TENANT, `${heading}\n${body}`, doc, JSON.stringify({ node_id: "pilot-f2", filename })],
+      );
+    }
+    const retrieve = (docIds: string[], question: string) =>
+      retrieveNodeChunks(client, TENANT, question, { nodeId: "pilot-f2", unsPath: null, docIds, validatedDocScope: true });
+    // Reject: none of these affirmatively declare Micro820 coverage.
+    expect(await retrieve([seeDoc], "Micro820 communication settings")).toEqual([]);
+    expect(await retrieve([relatedDoc], "Micro820 communication settings")).toEqual([]);
+    expect(await retrieve([excludedDoc], "Micro820 communication settings")).toEqual([]);
+    expect(await retrieve([renamedDoc], "Micro820 communication settings")).toEqual([]);
+    // Control: each doc still answers the Micro810 question its own heading declares.
+    expect(await retrieve([seeDoc], "Micro810 communication settings")).toHaveLength(1);
+    expect(await retrieve([relatedDoc], "Micro810 communication settings")).toHaveLength(1);
+    expect(await retrieve([excludedDoc], "Micro810 communication settings")).toHaveLength(1);
+    expect(await retrieve([renamedDoc], "Micro810 communication settings")).toHaveLength(1);
+    // Explicit multi-model coverage is retained.
+    expect(await retrieve([bothDoc], "Micro820 communication settings")).toHaveLength(1);
+  });
+
+  // Codex #4469 r2 F2/F5/F6 over the real BM25 SQL: a first-line
+  // cross-reference never declares coverage, a wrapped dual-model title still
+  // does, and an exact catalog number outranks a shared panel label.
+  it("declared-title applicability over real SQL (Codex #4469 r2 F2/F5/F6)", async () => {
+    const xrefDoc = "39700000-0000-4000-8000-0000000000e1";
+    const wrappedDoc = "39700000-0000-4000-8000-0000000000e2";
+    const catMatchDoc = "39700000-0000-4000-8000-0000000000e3";
+    const catConflictDoc = "39700000-0000-4000-8000-0000000000e4";
+    const body = "Configure the communication settings in the controller properties dialog.";
+    const rows: Array<[string, string, string]> = [
+      [xrefDoc, "2080-um020.pdf", `Micro810 User Manual \u2014 for Micro820 consult the separate manual\n${body}`],
+      [wrappedDoc, "2080-um021.pdf", `Micro810 and\nMicro820 Programmable Controllers User Manual\n${body}`],
+      [catMatchDoc, "spec-a.pdf", `TP700 Comfort 6AV2124-0GC01-0AX0 Specification\n${body}`],
+      [catConflictDoc, "spec-b.pdf", `TP700 Comfort 6AV2124-0GC01-9AX0 Specification\n${body}`],
+    ];
+    for (const [doc, filename, content] of rows) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-r2.pdf', 1, $3, 'v2', $4::jsonb, true, true)`,
+        [TENANT, content, doc, JSON.stringify({ node_id: "pilot-r2", filename })],
+      );
+    }
+    const retrieve = (docIds: string[], question: string) =>
+      retrieveNodeChunks(client, TENANT, question, { nodeId: "pilot-r2", unsPath: null, docIds, validatedDocScope: true });
+    expect(await retrieve([xrefDoc], "Micro820 communication settings")).toEqual([]);
+    expect(await retrieve([xrefDoc], "Micro810 communication settings")).toHaveLength(1);
+    expect(await retrieve([wrappedDoc], "Micro820 communication settings")).toHaveLength(1);
+    expect(await retrieve([wrappedDoc], "Micro810 communication settings")).toHaveLength(1);
+    const catalogQ = "TP700 Comfort 6AV2124-0GC01-0AX0 communication settings";
+    expect(await retrieve([catMatchDoc], catalogQ)).toHaveLength(1);
+    expect(await retrieve([catConflictDoc], catalogQ)).toEqual([]);
+  });
+
+  // #4469 F1 (primary review, pass 2): "Comfort" alone is a panel FAMILY
+  // hint, not a specific sibling model — a TP1200-Comfort-titled manual must
+  // not answer a TP700 Comfort question over the real BM25 SQL.
+  it("does not let a TP1200 Comfort manual answer a TP700 Comfort question over real SQL (#4469 F1)", async () => {
+    const tp700Doc = "39700000-0000-4000-8000-0000000000d4";
+    const tp1200Doc = "39700000-0000-4000-8000-0000000000d5";
+    for (const [doc, model] of [[tp700Doc, "TP700"], [tp1200Doc, "TP1200"]] as const) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-f1-comfort.pdf', 1, $3, 'v2', $4::jsonb, true, true)`,
+        [
+          TENANT,
+          `${model} Comfort Operating Instructions\n${model} Comfort supply voltage is 24 VDC.`,
+          doc,
+          JSON.stringify({ node_id: "pilot-f1-comfort", filename: `${model} Comfort Operating Instructions.pdf` }),
+        ],
+      );
+    }
+    const retrieve = (docIds: string[], question: string) =>
+      retrieveNodeChunks(client, TENANT, question, { nodeId: "pilot-f1-comfort", unsPath: null, docIds, validatedDocScope: true });
+    expect(await retrieve([tp1200Doc], "TP700 Comfort supply voltage")).toEqual([]);
+    expect(await retrieve([tp700Doc], "TP700 Comfort supply voltage")).toHaveLength(1);
+  });
+
+  // #4469 F3: title normalization replaced catalog hyphens with spaces,
+  // truncating a Siemens order number to its prefix before model-token
+  // matching ran. Over the real BM25 SQL, the exact number must survive and
+  // a different suffix sharing the same prefix must still be rejected.
+  it("preserves an exact Siemens catalog number through title normalization over real SQL (#4469 F3)", async () => {
+    const exactDoc = "39700000-0000-4000-8000-0000000000c1";
+    const suffixDoc = "39700000-0000-4000-8000-0000000000c2";
+    for (const [doc, catalog] of [
+      [exactDoc, "6AV2124-0GC01-0AX0"],
+      [suffixDoc, "6AV2124-0GC01-9AX0"],
+    ] as const) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-f3.pdf', 1, $3, 'v2', $4::jsonb, true, true)`,
+        [
+          TENANT,
+          `SIMATIC Panel ${catalog} Specification. Supply voltage: 24 VDC, rated current 500 mA.`,
+          doc,
+          JSON.stringify({ node_id: "pilot-f3", filename: `${catalog}.pdf` }),
+        ],
+      );
+    }
+    const retrieve = (docIds: string[]) =>
+      retrieveNodeChunks(client, TENANT, "6AV2124-0GC01-0AX0 supply voltage", {
+        nodeId: "pilot-f3", unsPath: null, docIds, validatedDocScope: true,
+      });
+    expect(await retrieve([exactDoc])).toHaveLength(1);
+    expect(await retrieve([suffixDoc])).toEqual([]);
+  });
+
+  // #4469 F3 (primary review, pass 2): the catalog pattern is greedy enough
+  // to swallow a file extension, so the filename-FALLBACK path (heading
+  // names no model) must strip it before matching over the real BM25 SQL.
+  it("preserves an exact catalog number through the FILENAME fallback over real SQL (#4469 F3)", async () => {
+    const exactDoc = "39700000-0000-4000-8000-0000000000c3";
+    const suffixDoc = "39700000-0000-4000-8000-0000000000c4";
+    for (const [doc, catalog] of [
+      [exactDoc, "6AV2124-0GC01-0AX0"],
+      [suffixDoc, "6AV2124-0GC01-9AX0"],
+    ] as const) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+          (tenant_id, content, manufacturer, model_number, source_url, page_start,
+           doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, '', '', 'https://test.invalid/4469-f3b.pdf', 1, $3, 'v2', $4::jsonb, true, true)`,
+        [
+          TENANT,
+          "Panel Specification Sheet. Supply voltage: 24 VDC, rated current 500 mA.",
+          doc,
+          JSON.stringify({ node_id: "pilot-f3b", filename: `${catalog}.pdf` }),
+        ],
+      );
+    }
+    const retrieve = (docIds: string[]) =>
+      retrieveNodeChunks(client, TENANT, "6AV2124-0GC01-0AX0 supply voltage", {
+        nodeId: "pilot-f3b", unsPath: null, docIds, validatedDocScope: true,
+      });
+    expect(await retrieve([exactDoc])).toHaveLength(1);
+    expect(await retrieve([suffixDoc])).toEqual([]);
+  });
+
   it("admits TP700 and TP700 Comfort, never KTP700, TP7000, TP7001, or V20", async () => {
     expect(await modelsFor("TP700")).toEqual(["TP700", "TP700 Comfort"]);
   });
@@ -233,5 +475,202 @@ describe("quickstart retrieval surfaces the fault code the question names", () =
     const danfoss = await pagesFor("What does Alarm 7 mean on this drive", DECOY_MFR, false);
     expect(danfoss).toContain(42);
     expect(danfoss).not.toContain(88);
+  });
+});
+
+// #3331 / #4373 Codex R1 F1: rows tied on rank, source_url, source_page and
+// chunk_index must still resolve in one fixed order, so the same question cites
+// the same chunk every time. chunk_index is not unique (public rows span tenants;
+// it may be null), so the primary key is the final discriminator. Each case uses
+// its own vocabulary so it cannot match this file's other rows.
+describe("tied rows resolve by primary key (#4373 R1 F1)", () => {
+  const OTHER_TENANT = "39700000-0000-4000-8000-0000000000bb";
+  const LOW_ID = "00000000-0000-4000-8000-0000000000a1";
+  const HIGH_ID = "00000000-0000-4000-8000-0000000000a2";
+  let n = 0;
+
+  /** Insert the HIGH id first, so physical order alone would return it. */
+  async function seedTie(term: string, metadata: object, tenants: [string, string]) {
+    n += 1;
+    for (const [id, tenant, model] of [
+      [HIGH_ID.replace(/a2$/, `${n}2`), tenants[1], "TIE-HIGH"],
+      [LOW_ID.replace(/a1$/, `${n}1`), tenants[0], "TIE-LOW"],
+    ]) {
+      await client.query(
+        `INSERT INTO knowledge_entries (id, tenant_id, content, manufacturer, model_number, source_url, source_page, metadata, is_private)
+         VALUES ($1, $2, $3, 'Tiebreak Co', $4, $5, 7, $6::jsonb, false)`,
+        [id, tenant, `${term} specification`, model, `https://test.invalid/tie-${n}.pdf`, JSON.stringify(metadata)],
+      );
+    }
+  }
+
+  async function topOne(term: string): Promise<string | undefined> {
+    const hits = await retrieveManualChunks(client, TENANT, term, { topK: 1 });
+    expect(hits).toHaveLength(1);
+    return hits[0]?.modelNumber;
+  }
+
+  it("same chunk_index under two public tenants: the lower id wins", async () => {
+    await seedTie("gearbox lubricant", { chunk_index: 3 }, [TENANT, OTHER_TENANT]);
+    expect(await topOne("gearbox lubricant")).toBe("TIE-LOW");
+  });
+
+  it("no chunk_index at all: the lower id wins", async () => {
+    await seedTie("bearing grease", {}, [TENANT, TENANT]);
+    expect(await topOne("bearing grease")).toBe("TIE-LOW");
+  });
+
+  it("the answer is identical across repeated runs", async () => {
+    await seedTie("coupling alignment", {}, [TENANT, OTHER_TENANT]);
+    const runs = new Set<string | undefined>();
+    for (let i = 0; i < 5; i++) runs.add(await topOne("coupling alignment"));
+    expect([...runs]).toEqual(["TIE-LOW"]);
+  });
+});
+
+// #4373 Codex R3 F1: the notebook lane (retrieveNodeChunks) had the same gap —
+// two same-page chunks of one document tie on doc_id/page_start/source_page and
+// rank, so database order picked the cited excerpt. Ends on `id` too.
+describe("notebook lane: tied same-page chunks resolve by primary key (#4373 R3 F1)", () => {
+  const NB = "39700000-0000-4000-8000-0000000000cc";
+  const DOC_T = "39700000-0000-4000-8000-0000000000d9";
+  const LOW = "00000000-0000-4000-8000-0000000000e1";
+  const HIGH = "00000000-0000-4000-8000-0000000000e2";
+
+  beforeAll(async () => {
+    // HIGH id first, so physical order alone would return it.
+    for (const [id, file] of [[HIGH, "HIGH.pdf"], [LOW, "LOW.pdf"]]) {
+      await client.query(
+        `INSERT INTO knowledge_entries
+           (id, tenant_id, content, manufacturer, model_number, source_url, source_page, page_start,
+            doc_id, ingest_route, metadata, verified, is_private)
+         VALUES ($1, $2, 'gearbox oil level sight glass', '', '', 'https://test.invalid/t.pdf', 4, 4, $3, 'v2', $4::jsonb, true, true)`,
+        [id, NB, DOC_T, JSON.stringify({ node_id: "n9", filename: file })],
+      );
+    }
+  });
+
+  async function topFile(): Promise<string> {
+    const hits = await retrieveNodeChunks(client, NB, "gearbox oil level", {
+      nodeId: "n9", unsPath: null, topK: 1, docIds: [DOC_T], rawQuery: "gearbox oil level",
+      validatedDocScope: true, approvedSourceDocIds: [DOC_T],
+    });
+    expect(hits).toHaveLength(1);
+    return JSON.stringify(hits[0]);
+  }
+
+  it("the lower id wins, every time", async () => {
+    for (let i = 0; i < 5; i++) expect(await topFile()).toContain("LOW.pdf");
+  });
+});
+
+// #4513 — IDF-sum lexical candidates (docs/specs/notebook-retrieval-idf-scoring.md),
+// behind NOTEBOOK_LEXICAL_V2. Each fixture reproduces one measured miss mechanism
+// from the 77-question harness in miniature, over real Postgres full-text SQL.
+describe("notebook lexical IDF scoring (#4513, NOTEBOOK_LEXICAL_V2)", () => {
+  const T = "39700000-0000-4000-8000-000000004513";
+  const HIJACK = "39700000-0000-4000-8000-0000000045a1";
+  const CHATTY = "39700000-0000-4000-8000-0000000045a2";
+  const CODES = "39700000-0000-4000-8000-0000000045a3";
+  const SIBLING = "39700000-0000-4000-8000-0000000045a4";
+  const ISOLATED = "39700000-0000-4000-8000-0000000045a5";
+
+  async function seed(doc: string, page: number, content: string) {
+    await client.query(
+      `INSERT INTO knowledge_entries
+         (tenant_id, content, manufacturer, model_number, source_url, source_page, page_start,
+          doc_id, ingest_route, metadata, verified, is_private)
+       VALUES ($1, $2, '', '', 'https://test.invalid/idf.pdf', $3, $3, $4, 'v2', '{"node_id":"n4513"}', true, true)`,
+      [T, content, page, doc],
+    );
+  }
+  async function pages(doc: string, question: string, flag: boolean): Promise<Array<number | null>> {
+    const prev = process.env.NOTEBOOK_LEXICAL_V2;
+    if (flag) process.env.NOTEBOOK_LEXICAL_V2 = "1";
+    else delete process.env.NOTEBOOK_LEXICAL_V2;
+    try {
+      const hits = await retrieveNodeChunks(client, T, question, {
+        nodeId: "n4513", unsPath: null, topK: 6, docIds: [doc], rawQuery: question, validatedDocScope: true,
+      });
+      return hits.map((h) => h.sourcePage);
+    } finally {
+      if (prev === undefined) delete process.env.NOTEBOOK_LEXICAL_V2;
+      else process.env.NOTEBOOK_LEXICAL_V2 = prev;
+    }
+  }
+
+  // AND hijack (micro820-um-q3, ml1100-q3/q5): one wrong page happens to contain
+  // every question word, so the all-words pass is non-empty and the any-words
+  // ranking never runs. The answer page holds the rare words but not "controller".
+  const HIJACK_Q = "what does a flashing red status light on the controller mean";
+  // Chatty near-miss (gs10-ch6-q3, tq-12, tq-23): no page holds every word, and
+  // pages dense in the common words ("drive", "show", "run") outrank the answer
+  // page, which holds the rare words ("undervoltage", "stopping"). Wording avoids
+  // the synonym triggers ("fault", "decel") that add extra OR passes on main.
+  const CHATTY_Q = "why does my drive show undervoltage when stopping and how do I run it again";
+
+  beforeAll(async () => {
+    await seed(HIJACK, 3, "Mean time between failures for the controller. The red status light housing is flashing-resistant.");
+    for (let p = 10; p <= 30; p++) {
+      await seed(HIJACK, p, `Controller wiring page ${p}. Connect the controller to the controller power supply. Controller mounting.`);
+    }
+    await seed(HIJACK, 42, "Status lights. STATUS light flashing red: a recoverable error. Solid red: a non-recoverable error.");
+
+    for (let p = 1; p <= 20; p++) {
+      await seed(CHATTY, p, `The drive display will show the drive run status. Run the drive. The drive will show run. Drive page ${p}.`);
+    }
+    await seed(CHATTY, 57, "Undervoltage while stopping: lengthen the stopping ramp or add a braking resistor.");
+
+    for (let p = 1; p <= 12; p++) await seed(CODES, p, `Fault list continued, page ${p}. Fault reset and fault history.`);
+    await seed(CODES, 31, "F004 Undervoltage. Cause: DC bus voltage below the trip level.");
+    await seed(CODES, 33, "P042 Decel Time 1. Range 0.1 to 600.0 s. Default 10.0 s.");
+    await seed(CODES, 35, "Accel and decel ramp table. Units seconds. Default ramp shape linear.");
+
+    await seed(ISOLATED, 1, "Cooling fan replacement for the enclosure.");
+    await seed(ISOLATED, 2, "Enclosure fan airflow and filter cleaning interval.");
+    await seed(ISOLATED, 3, "Terminal torque values for the enclosure.");
+  });
+
+  it("RED on main: the AND hijack keeps the answer page out (flag off documents today's behaviour)", async () => {
+    expect(await pages(HIJACK, HIJACK_Q, false)).not.toContain(42);
+  });
+
+  it("the AND hijack no longer hides the answer page (invariant 4)", async () => {
+    expect((await pages(HIJACK, HIJACK_Q, true)).slice(0, 6)).toContain(42);
+  });
+
+  it("RED on main: dense common words bury the chatty question's answer page", async () => {
+    expect(await pages(CHATTY, CHATTY_Q, false)).not.toContain(57);
+  });
+
+  it("a rare word outranks a repeated common one (invariant 3)", async () => {
+    expect((await pages(CHATTY, CHATTY_Q, true))[0]).toBe(57);
+  });
+
+  it("control: a fault code still leads under the flag", async () => {
+    expect((await pages(CODES, "what does F004 mean", true))[0]).toBe(31);
+  });
+
+  it("control: a parameter ask still leads under the flag", async () => {
+    expect((await pages(CODES, "what is the default for P042", true))[0]).toBe(33);
+  });
+
+  it("control: a table ask still reaches its table under the flag", async () => {
+    expect((await pages(CODES, "accel decel ramp table units", true)).slice(0, 6)).toContain(35);
+  });
+
+  it("no lexical match returns nothing, never front matter (invariant 2)", async () => {
+    expect(await pages(ISOLATED, "zebra quantum banana", true)).toEqual([]);
+  });
+
+  it("a sibling document never leaks in or shifts the scores (invariant 1)", async () => {
+    const q = "enclosure fan filter";
+    const before = await pages(ISOLATED, q, true);
+    // The sibling repeats one query word everywhere: if it fed df, "filter" would
+    // stop being rare and the order inside ISOLATED could change.
+    for (let p = 1; p <= 40; p++) await seed(SIBLING, p, "Filter filter filter. Enclosure fan filter cleaning.");
+    const after = await pages(ISOLATED, q, true);
+    expect(after).toEqual(before);
+    expect(before[0]).toBe(2);
   });
 });

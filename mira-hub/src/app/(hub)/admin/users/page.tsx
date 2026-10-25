@@ -117,7 +117,7 @@ export default function AdminUsersPage() {
 
     setUpdating(id);
     try {
-      const res = await fetch(`/hub/api/admin/users/${id}/`, {
+      const res = await fetch(`${API_BASE}/api/admin/users/${id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),

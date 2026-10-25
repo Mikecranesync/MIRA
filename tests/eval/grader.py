@@ -214,6 +214,19 @@ def cp_pipeline_active(
     )
 
 
+def _keyword_present(keyword: str, response: str) -> bool:
+    """Keep text keywords literal; normalize whitespace only within numeric specs."""
+    parts = []
+    end = 0
+    for match in _CITATION_SPEC_RE.finditer(keyword):
+        parts.append(re.escape(keyword[end:match.start()]))
+        number, unit = match.groups()
+        parts.append(r"(?<![\w.+-])" + re.escape(number) + r"\s*" + re.escape(unit) + r"\b")
+        end = match.end()
+    parts.append(re.escape(keyword[end:]))
+    return re.search("".join(parts), response, re.IGNORECASE) is not None
+
+
 def cp_keyword_match(
     fixture: dict,
     last_response: str,
@@ -249,12 +262,12 @@ def cp_keyword_match(
     if not expected_kws:
         return CheckpointResult("cp_keyword_match", True, "No keywords required")
 
-    matched = [kw for kw in expected_kws if str(kw).lower() in resp_lower]
+    matched = [kw for kw in expected_kws if _keyword_present(str(kw), last_response)]
     passed = len(matched) > 0
 
     # Forbidden keyword check (fail if any forbidden term appears)
     forbidden = fixture.get("forbidden_keywords", [])
-    violations = [f for f in forbidden if str(f).lower() in resp_lower]
+    violations = [f for f in forbidden if _keyword_present(str(f), last_response)]
     if violations:
         return CheckpointResult(
             "cp_keyword_match",
@@ -300,7 +313,8 @@ def cp_turn_budget(
 
 # Quoted numeric spec: "60Hz", "480 V", "1800 rpm", "25.5 ms", "75°C"
 _CITATION_SPEC_RE = re.compile(
-    r"\b(\d+(?:\.\d+)?)\s*(Hz|V|kV|A|mA|rpm|RPM|ms|°C|°F|psi|PSI|bar|W|kW|Nm)\b"
+    r"(?<![\w.+-])([+-]?\d+(?:\.\d+)?)\s*(Hz|V|kV|A|mA|rpm|ms|°C|°F|psi|bar|W|kW|Nm)\b",
+    re.IGNORECASE,
 )
 
 
@@ -335,7 +349,15 @@ def cp_citation_groundedness(
         )
 
     # Extract numeric citations from response
-    citations = _CITATION_SPEC_RE.findall(last_response)
+    # This exact engine option requests a reading; its values are examples.
+    # Anchor the entire line so appended claims and other examples stay checked.
+    claim_text = re.sub(
+        r"^3\. Sensor reading \(e\.g\. pressure at 120 PSI, temp at 90°C\)$",
+        "",
+        last_response,
+        flags=re.MULTILINE,
+    )
+    citations = _CITATION_SPEC_RE.findall(claim_text)
     if not citations:
         return CheckpointResult(
             "cp_citation_groundedness",
@@ -351,14 +373,17 @@ def cp_citation_groundedness(
             f"Response cites {len(citations)} spec(s) but no KB chunks retrieved",
         )
 
-    corpus = " ".join(retrieved_chunks).lower()
-    ungrounded: list[str] = []
-    for number, unit in citations:
-        # Check either "60Hz" or "60 Hz" formats
-        spec_a = f"{number}{unit}".lower()
-        spec_b = f"{number} {unit}".lower()
-        if spec_a not in corpus and spec_b not in corpus:
-            ungrounded.append(f"{number}{unit}")
+    # Compare complete number/unit pairs, never numeric substrings (400V != 1400V).
+    corpus_specs = {
+        (number, unit.lower())
+        for chunk in retrieved_chunks
+        for number, unit in _CITATION_SPEC_RE.findall(chunk)
+    }
+    ungrounded = [
+        f"{number}{unit}"
+        for number, unit in citations
+        if (number, unit.lower()) not in corpus_specs
+    ]
 
     if ungrounded:
         return CheckpointResult(

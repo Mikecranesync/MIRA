@@ -29,3 +29,14 @@ export const OAUTH_BASE = process.env.OAUTH_BASE_PATH ?? "";
 // fails downstream. The old 20/10 MB caps were a Telegram-era artifact.
 export const MAX_UPLOAD_MB = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB ?? "50");
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
+// Supervised notebook pilot (#4362, owner decision 2026-10-23): the existing
+// trial account IS the 30-day pilot. Do not add a parallel "pilot" status,
+// auto-renewal, or billing. After this window, existing post-trial behavior
+// applies (buyer redirected to /upgrade). Renewal is a manual decision.
+export const PILOT_WINDOW_DAYS = 30;
+
+// Ordinary sign-in magic links stay a same-session 15-minute hop.
+// Workspace invitations use the same 30-day window as the trial.
+export const LOGIN_MAGIC_LINK_TTL_MINUTES = 15;
+export const INVITE_MAGIC_LINK_TTL_MINUTES = PILOT_WINDOW_DAYS * 24 * 60;

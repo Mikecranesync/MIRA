@@ -272,6 +272,7 @@ function unknownInteractionPart(raw: unknown): InteractionPart {
           model,
           running: r.running,
           ...(message ? { message } : {}),
+          ...(rawString(r, "manualUrl") ? { manualUrl: rawString(r, "manualUrl")! } : {}),
           ...(startedAt ? { startedAt } : {}),
         };
       }
@@ -384,6 +385,7 @@ export function withManualSearchOverride(
     model: override.model,
     running: override.running,
     ...(override.message ? { message: override.message } : {}),
+    ...(override.manualUrl ? { manualUrl: override.manualUrl } : {}),
     // Codex round 5 F15 (#4195): carry the override's own generation through
     // to the rendered part, same as every other field — `override` already
     // has it (it comes from a GET/confirm read or the follower's own

@@ -2,7 +2,8 @@
 
 Automates the manual loop where Claude Code implements, Codex adversarially
 reviews, findings are persisted to the GitHub PR, Claude validates + fixes,
-and the cycle repeats until GREEN or a human decision is required. The human
+and the cycle repeats until GREEN, CONVERGED (zero BLOCKER/HIGH; see below),
+or a human decision is required. The human
 is removed from the copy/paste relay — not from the decisions that matter.
 
 ## Purpose — why two agents with separate roles
@@ -225,6 +226,16 @@ not exist). The resulting record is stamped `post_cap_human_authorized: true`
 inside its fenced block, so a post-cap review is visibly authorized in the
 durable ledger, never silent. An unreadable ledger is a tooling failure —
 unknown budget is never treated as budget available.
+
+**Converged (owner decision 2026-10-18).** A post-cap pass is for an open
+BLOCKER or HIGH. When the latest exact-head, exact-body verdict has zero of
+both, the PR is CONVERGED: do not request another pass. File each MEDIUM as a
+follow-up issue, post the `[REVIEW-FOLLOWUPS]` record (format in charter §3 of
+`docs/architecture/convergence/UNIFIED_UI_CUTOVER.md`), dispatch a fresh guard
+run, and hand the merge to the owner (`docs/architecture/mira-sdlc-v1.md` §4.3).
+The Lifecycle Guard accepts that state. The full loop does **not** yet stop on
+it by itself (#4524): on a CONVERGED verdict use `--review-only` passes and
+never start remediation. Stopping the loop must not change what GREEN means.
 
 ### Atomic round reservation (Codex iteration-4 F1, 2026-08-17)
 

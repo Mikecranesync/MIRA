@@ -6,11 +6,11 @@ RIGHT NOW?" Returns one of the defined intents.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import os
 
-import httpx
+from .inference.router import EncodedSessionId, InferenceRouter
 
 logger = logging.getLogger("mira-gsd")
 
@@ -69,8 +69,16 @@ async def route_intent(
     current_fsm_state: str = "IDLE",
     asset_identified: str = "",
     llm_client=None,
+    session_id: str | None = None,
 ) -> dict:
     """Route the user's intent using a lightweight LLM call.
+
+    `session_id` is the caller's own session identity (the engine's
+    `str(chat_id)`, i.e. tenant_platform_chat), so the classification's token
+    usage is attributed to the tenant and platform it served — not to a
+    constant that the usage writer would read as a fictitious tenant
+    (Codex r1 on #4359). The classification PURPOSE is the log line, not the
+    session id.
 
     Returns: {"intent": str, "confidence": float, "reasoning": str}
     """
@@ -94,7 +102,7 @@ async def route_intent(
         },
     ]
 
-    response = await _call_router_llm(messages)
+    response = await _call_router_llm(messages, session_id=session_id)
 
     try:
         result = json.loads(response)
@@ -118,45 +126,136 @@ def _format_history(history: list[dict]) -> str:
     return "\n".join(lines) if lines else "(no prior history)"
 
 
-async def _call_router_llm(messages: list[dict]) -> str:
-    """Call Groq openai/gpt-oss-20b for routing — fast and cheap (~200ms)."""
-    groq_key = os.getenv("GROQ_API_KEY", "")
-    if not groq_key:
+# One shared cascade for the whole process, built on first use so a test can
+# install its own and so import never touches the environment.
+_router: InferenceRouter | None = None
+
+
+def _get_router() -> InferenceRouter:
+    global _router
+    if _router is None:
+        _router = InferenceRouter()
+    return _router
+
+
+def reset_router_for_tests() -> None:
+    global _router
+    _router = None
+
+
+# 300, not 150: gpt-oss reasoning length scales with input length, and this
+# call carries conversation history — 150 produced truncated-JSON parse
+# failures in the staging gate.
+ROUTER_MAX_TOKENS = 300
+
+# The classifier's own deadline, covering every provider attempt, wait and
+# retry inside the cascade (Codex r3 F1 on #4359, review of #4391). The shared
+# router's per-provider timeouts (OpenAI 60 s) are longer than the engine's
+# whole-turn deadline (MIRA_PROCESS_TIMEOUT, default 30 s), so a stalled
+# provider used to cancel the turn into TIMEOUT_WARNING before the keyword
+# fallback could run. 8 s is about four times OpenAI's observed classification
+# latency (canary 2026-10-12: 2.1 s) and leaves the turn 22 s to answer. The
+# old direct-Groq client used 5 s.
+ROUTER_DEADLINE_S = 8.0
+
+
+def _escape_session_part(value: str) -> str:
+    """Escape ``%`` then ``_`` so the part can never contain the split delimiter.
+
+    The exact inverse is ``urllib.parse.unquote`` (used by the writer). Every
+    other character is left alone, so a value with neither is unchanged.
+    (``urllib.parse.quote`` cannot do this: it never encodes ``_``.)
+    """
+    return value.replace("%", "%25").replace("_", "%5F")
+
+
+def accounting_session_id(
+    tenant_id: str | None, platform: str | None, chat_id: str | int | None
+) -> EncodedSessionId:
+    """The usage-accounting identity for a classification: ``tenant_platform_chat``.
+
+    `InferenceRouter.write_api_usage` splits its session id on the first two
+    underscores into tenant, platform and the rest, so the id must be BUILT in
+    that shape from the authenticated tenant and the surface — never taken
+    from an FSM chat key, whose spelling is the surface's own (Ignition's is
+    ``ignition:acme:press7``, which the writer would read as tenant
+    ``ignition:acme:press7`` / platform ``unknown``; Codex r2 on #4359).
+    A missing part is recorded as ``unknown``, never as a word that reads like
+    a tenant.
+
+    Tenant and platform are percent-encoded, so an underscore inside either
+    (an Ignition tenant ``plant_alpha``) cannot move the split; the writer
+    decodes them (Codex r3 F3 on #4359). A value with no ``_`` or ``%`` is
+    unchanged, so ordinary UUID tenants keep their spelling. The chat part is
+    the remainder after the second split and needs no encoding. Pure.
+
+    The result is an `EncodedSessionId`: the writer decodes only ids of that
+    type, so a raw id from any other caller is never decoded (Codex r4 F5 on
+    #4391). Pass it on unchanged — any ``str`` operation drops the marker.
+    """
+    tenant = (tenant_id or "").strip() or "unknown"
+    surface = (platform or "").strip() or "unknown"
+    chat = (str(chat_id) if chat_id is not None else "").strip() or "unknown"
+    return EncodedSessionId(
+        f"{_escape_session_part(tenant)}_{_escape_session_part(surface)}_{chat}"
+    )
+
+
+async def _call_router_llm(messages: list[dict], session_id: str | None = None) -> str:
+    """Classify intent through the shared InferenceRouter cascade (OpenAI first).
+
+    This used to POST straight to Groq with its own key check. With Groq
+    billing-restricted that meant ROUTER_LLM_FAILURE on every turn and intent
+    silently falling back to continue_current while the one provider that
+    works was never tried — and the shared router's budget guard never saw
+    the call. Now the cascade, its key gating, the gpt-5 request dialect and
+    the spend guard are all the router's; this module only shapes the prompt.
+    """
+    router = _get_router()
+    if not router.enabled:
         return json.dumps(
             {
                 "intent": "continue_current",
                 "confidence": 0.5,
-                "reasoning": "No router LLM available — GROQ_API_KEY not set",
+                "reasoning": "No router LLM available — no cloud provider configured",
             }
         )
 
-    # PII scrub before the message ever leaves the process (#1528 adversarial
-    # triage). This path POSTs straight to Groq and bypasses
-    # InferenceRouter.complete()'s default-on sanitize, so the raw user message
-    # (IPs, MACs, serials) would otherwise leak. sanitize_context is a pure
-    # staticmethod — reuse it rather than re-implementing the regexes.
-    from .inference.router import InferenceRouter
-
+    # PII scrub before the message leaves this module (#1528 adversarial
+    # triage). InferenceRouter.complete() sanitizes by default too; scrubbing
+    # here as well keeps the guarantee local instead of resting on a default
+    # argument elsewhere. sanitize_context is a pure, idempotent staticmethod.
     messages = InferenceRouter.sanitize_context(messages)
 
+    # Bounded lane (Codex r1 on #4359): ROUTER_MAX_TOKENS is a HARD per-attempt
+    # cap — no reasoning-burn retry at the router's 8,192-token headroom — and
+    # the usage row carries the caller's session (tenant_platform_chat), not a
+    # constant the writer would split into a fictitious tenant/platform.
+    # Its own deadline over the whole cascade (ROUTER_DEADLINE_S): a stalled
+    # provider costs the turn at most this, then the honest fallback, never
+    # the engine's whole-turn deadline. A cancellation from the CALLER is a
+    # CancelledError (BaseException) and propagates; only our own deadline is
+    # caught here. A cancelled OpenAI attempt books its worst case in the
+    # router's finally, so no budget hold is left behind.
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {groq_key}"},
-                json={
-                    "model": "openai/gpt-oss-20b",
-                    "messages": messages,
-                    "temperature": 0.1,
-                    # 300, not 150: gpt-oss reasoning length scales with input
-                    # length, and this call carries conversation history — 150
-                    # produced truncated-JSON parse failures in the staging gate.
-                    "max_tokens": 300,
-                    "reasoning_effort": "low",
-                },
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+        content, _usage = await asyncio.wait_for(
+            router.complete(
+                messages,
+                max_tokens=ROUTER_MAX_TOKENS,
+                session_id=session_id or "unknown_unknown_unknown",
+                reasoning_retry=False,
+            ),
+            timeout=ROUTER_DEADLINE_S,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("ROUTER_LLM_TIMEOUT after %.1fs — falling back", ROUTER_DEADLINE_S)
+        return json.dumps(
+            {
+                "intent": "continue_current",
+                "confidence": 0.4,
+                "reasoning": f"Router LLM timeout after {ROUTER_DEADLINE_S:.0f}s",
+            }
+        )
     except Exception as exc:
         logger.warning("ROUTER_LLM_FAILURE error=%s", str(exc)[:200])
         return json.dumps(
@@ -166,3 +265,15 @@ async def _call_router_llm(messages: list[dict]) -> str:
                 "reasoning": f"Router LLM error — {str(exc)[:80]}",
             }
         )
+    if not content:
+        # complete() returns "" when every provider failed; it already logged
+        # each provider's failure, this line names the consequence.
+        logger.warning("ROUTER_LLM_FAILURE error=every provider failed")
+        return json.dumps(
+            {
+                "intent": "continue_current",
+                "confidence": 0.4,
+                "reasoning": "Router LLM error — every provider failed",
+            }
+        )
+    return content

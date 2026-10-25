@@ -87,6 +87,35 @@ RETURN_RESERVE_S = 2.0
 # (doc_type=parts_list, conf 0.92) — a false positive by the owner's rule.
 MANUAL_DOC_TYPES = frozenset({"user_manual", "installation_manual"})
 
+# An OEM's own publication-type code is a fact about the document; the model's doc_type is
+# a guess. Staging 2026-10-19: the judge labelled Rockwell 520-PC001 (path /documents/pc/,
+# a product PROFILE) an installation manual at 0.97 and it outranked the Quick Start Guide.
+# Rockwell literature URLs carry the code as /documents/<code>/; these codes are never a
+# manual. Codes not listed here (um, in, qs, rm, pm, ...) leave the model's verdict alone.
+_ROCKWELL_NON_MANUAL_CODES = {
+    "pc": "product_profile",
+    "pp": "product_profile",
+    "td": "datasheet",
+    "ca": "catalog",
+    "sg": "selection_guide",
+    "br": "brochure",
+    "at": "application_technique",
+    "ap": "application_profile",
+    "wp": "white_paper",
+    "sp": "sales_promotion",
+}
+_ROCKWELL_LIT_RE = re.compile(
+    r"^https?://literature\.rockwellautomation\.com/idc/groups/literature/documents/([a-z]{2})/",
+    re.IGNORECASE,
+)
+
+
+def oem_non_manual_kind(url: str) -> str | None:
+    """The doc kind an OEM publication code proves is NOT a manual, else ``None``."""
+    m = _ROCKWELL_LIT_RE.match(url or "")
+    return _ROCKWELL_NON_MANUAL_CODES.get(m.group(1).lower()) if m else None
+
+
 # Verdict strings the caller can show verbatim.
 REASON_JUDGED_MATCH = "judged_manual_match"
 REASON_JUDGED_REJECTED = "judged_not_applicable"
@@ -366,6 +395,11 @@ async def _judge_text_once(
         conf = 0.0
     doc_type = str(verdict.get("doc_type") or "other")[:40]
     said_yes = bool(verdict.get("is_manual_for_model"))
+    # The OEM's own publication code outranks the model's classification (see
+    # oem_non_manual_kind): a "yes" on a coded profile/datasheet/catalog is downgraded.
+    oem_kind = oem_non_manual_kind(str(cand.get("url") or ""))
+    if oem_kind:
+        doc_type = oem_kind
     fault_codes = verdict.get("lists_fault_codes")
     language = str(verdict.get("language") or "").strip().lower()[:2] or None
     return {
@@ -676,6 +710,16 @@ async def _judge_queue(
         # just not an ideal one) is time-boxed so it can never cost that match.
         upgrading = any(is_match(c) for c in candidates)
         try:
+            if not upgrading and deadline_at is not None:
+                # #4401: with no match in hand the batch is bounded by the caller's
+                # deadline too. A read that outlived it got the whole search cancelled
+                # upstream, which the Hub then reported as an outage. Checked before
+                # any read is scheduled, so a spent deadline starts no work at all.
+                remaining = deadline_at - RETURN_RESERVE_S - time.monotonic()
+                if remaining <= 0:
+                    trace["stop"] = "search_deadline"
+                    _mark_interrupted(batch, "search_deadline")
+                    break
             reads = asyncio.gather(*(_judge_one(make, model, c) for c in batch))
             if upgrading:
                 remaining = upgrade_until - time.monotonic()
@@ -686,12 +730,19 @@ async def _judge_queue(
                     _mark_interrupted(batch, "upgrade_skipped")
                     break
                 await asyncio.wait_for(reads, timeout=remaining)
+            elif deadline_at is not None:
+                await asyncio.wait_for(reads, timeout=remaining)
             else:
                 await reads
         except asyncio.TimeoutError:
-            logger.info("judge upgrade batch hit its deadline; keeping the match in hand")
-            trace["stop"] = "upgrade_deadline"
-            _mark_interrupted(batch, "upgrade_deadline")
+            if upgrading:
+                logger.info("judge upgrade batch hit its deadline; keeping the match in hand")
+                trace["stop"] = "upgrade_deadline"
+                _mark_interrupted(batch, "upgrade_deadline")
+            else:
+                logger.info("judge search batch hit the caller's deadline; returning what was read")
+                trace["stop"] = "search_deadline"
+                _mark_interrupted(batch, "search_deadline")
             break
         except Exception as e:  # noqa: BLE001 — belt and braces; _judge_one never raises
             logger.info("judge_candidates degraded: %s", e)

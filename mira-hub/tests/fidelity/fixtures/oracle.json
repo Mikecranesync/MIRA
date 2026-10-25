@@ -1,0 +1,217 @@
+{
+  "generatedBy": "tests/fidelity/oracle.gen.test.ts",
+  "ids": {
+    "NB": "22222222-2222-4222-8222-222222222222",
+    "DOC": "33333333-3333-4333-8333-333333333333",
+    "FILE": "55555555-5555-4555-8555-555555555555",
+    "NODE": "66666666-6666-4666-8666-666666666666"
+  },
+  "detailEmpty": {
+    "notebook": {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "displayName": "GS10 — Line 3 conveyor",
+      "manufacturer": "AutomationDirect",
+      "model": "DURApulse GS10",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "vfd",
+      "assetTag": null,
+      "locationLabel": "Line 3",
+      "identityStatus": "user_confirmed",
+      "identityConfidence": 0.95,
+      "identitySourceType": "manual",
+      "nodeId": "66666666-6666-4666-8666-666666666666",
+      "sourceCount": 1,
+      "lastOpenedAt": null,
+      "createdAt": "2026-10-01T12:00:00.000Z",
+      "asset": null
+    },
+    "sources": [
+      {
+        "docId": "33333333-3333-4333-8333-333333333333",
+        "filename": "GS10_user_manual.pdf",
+        "status": "indexed",
+        "enabledByDefault": true,
+        "matchState": "user_confirmed",
+        "sourceRole": "manual",
+        "pages": 120,
+        "fileId": "55555555-5555-4555-8555-555555555555",
+        "originFileId": null,
+        "matchEvidence": null,
+        "readiness": {
+          "state": "chat_ready_enhanced",
+          "canChat": true,
+          "label": "Ready to ask",
+          "embeddingCoverage": 1
+        }
+      }
+    ],
+    "turns": [],
+    "threads": [],
+    "photos": [],
+    "manualSearch": null
+  },
+  "list": {
+    "notebooks": [
+      {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "displayName": "GS10 — Line 3 conveyor",
+        "manufacturer": "AutomationDirect",
+        "model": "DURApulse GS10",
+        "catalogNumber": null,
+        "serialNumber": null,
+        "equipmentType": "vfd",
+        "assetTag": null,
+        "locationLabel": "Line 3",
+        "identityStatus": "user_confirmed",
+        "identityConfidence": 0.95,
+        "identitySourceType": "manual",
+        "nodeId": "66666666-6666-4666-8666-666666666666",
+        "sourceCount": 1,
+        "lastOpenedAt": null,
+        "createdAt": "2026-10-01T12:00:00.000Z",
+        "asset": null,
+        "threads": []
+      }
+    ]
+  },
+  "G": {
+    "message": "What does fault F004 mean on the GS10?",
+    "sse": "data: {\"kind\":\"content\",\"content\":\"F004 is a DC bus undervoltage fault: the DC bus voltage fell below the undervoltage level [1]. Check the input power \"}\n\ndata: {\"kind\":\"content\",\"content\":\"supply to the drive for a sag or a lost phase [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"33333333-3333-4333-8333-333333333333\",\"sourceTitle\":\"AutomationDirect GS10 manual\",\"page\":87,\"fileId\":\"55555555-5555-4555-8555-555555555555\",\"quote\":\"F004 — DC bus undervoltage. The DC bus voltage fell below the undervoltage level. Check the input power supply.\",\"originFileId\":null}],\"sourceSnapshot\":[\"33333333-3333-4333-8333-333333333333\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: {\"kind\":\"followups\",\"suggestions\":[\"How do I clear fault F004?\"]}\n\ndata: [DONE]\n\n",
+    "detailAfter": {
+      "notebook": {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "displayName": "GS10 — Line 3 conveyor",
+        "manufacturer": "AutomationDirect",
+        "model": "DURApulse GS10",
+        "catalogNumber": null,
+        "serialNumber": null,
+        "equipmentType": "vfd",
+        "assetTag": null,
+        "locationLabel": "Line 3",
+        "identityStatus": "user_confirmed",
+        "identityConfidence": 0.95,
+        "identitySourceType": "manual",
+        "nodeId": "66666666-6666-4666-8666-666666666666",
+        "sourceCount": 1,
+        "lastOpenedAt": null,
+        "createdAt": "2026-10-01T12:00:00.000Z",
+        "asset": null
+      },
+      "sources": [
+        {
+          "docId": "33333333-3333-4333-8333-333333333333",
+          "filename": "GS10_user_manual.pdf",
+          "status": "indexed",
+          "enabledByDefault": true,
+          "matchState": "user_confirmed",
+          "sourceRole": "manual",
+          "pages": 120,
+          "fileId": "55555555-5555-4555-8555-555555555555",
+          "originFileId": null,
+          "matchEvidence": null,
+          "readiness": {
+            "state": "chat_ready_enhanced",
+            "canChat": true,
+            "label": "Ready to ask",
+            "embeddingCoverage": 1
+          }
+        }
+      ],
+      "turns": [
+        {
+          "id": "turn-G",
+          "threadId": null,
+          "question": "What does fault F004 mean on the GS10?",
+          "answerStatus": "answered",
+          "answerText": "F004 is a DC bus undervoltage fault: the DC bus voltage fell below the undervoltage level [1]. Check the input power supply to the drive for a sag or a lost phase [1].",
+          "evidence": [
+            {
+              "citationId": "1",
+              "docId": "33333333-3333-4333-8333-333333333333",
+              "sourceTitle": "AutomationDirect GS10 manual",
+              "page": 87,
+              "fileId": "55555555-5555-4555-8555-555555555555",
+              "quote": "F004 — DC bus undervoltage. The DC bus voltage fell below the undervoltage level. Check the input power supply.",
+              "originFileId": null
+            }
+          ],
+          "basis": "oem_documentation",
+          "createdAt": "2026-10-14T12:00:00.000Z",
+          "ownerUserId": "44444444-4444-4444-8444-444444444444",
+          "sharedLegacy": false
+        }
+      ],
+      "threads": [],
+      "photos": [],
+      "manualSearch": null
+    }
+  },
+  "S": {
+    "message": "The 480V feeder to the MCC is humming weird. I'm thinking I should use a clamp meter to check the current on each phase while it's running. Don't I just clip it on?",
+    "sse": "data: {\"kind\":\"content\",\"content\":\"De-energize first.\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[],\"sourceSnapshot\":[\"33333333-3333-4333-8333-333333333333\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"general_reasoning\",\"label\":\"General guidance — not grounded in this machine's documents.\",\"hazardEntries\":[{\"kind\":\"safety_notice\",\"trigger\":\"energized-electrical-hazard\"}]}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+    "detailAfter": {
+      "notebook": {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "displayName": "GS10 — Line 3 conveyor",
+        "manufacturer": "AutomationDirect",
+        "model": "DURApulse GS10",
+        "catalogNumber": null,
+        "serialNumber": null,
+        "equipmentType": "vfd",
+        "assetTag": null,
+        "locationLabel": "Line 3",
+        "identityStatus": "user_confirmed",
+        "identityConfidence": 0.95,
+        "identitySourceType": "manual",
+        "nodeId": "66666666-6666-4666-8666-666666666666",
+        "sourceCount": 1,
+        "lastOpenedAt": null,
+        "createdAt": "2026-10-01T12:00:00.000Z",
+        "asset": null
+      },
+      "sources": [
+        {
+          "docId": "33333333-3333-4333-8333-333333333333",
+          "filename": "GS10_user_manual.pdf",
+          "status": "indexed",
+          "enabledByDefault": true,
+          "matchState": "user_confirmed",
+          "sourceRole": "manual",
+          "pages": 120,
+          "fileId": "55555555-5555-4555-8555-555555555555",
+          "originFileId": null,
+          "matchEvidence": null,
+          "readiness": {
+            "state": "chat_ready_enhanced",
+            "canChat": true,
+            "label": "Ready to ask",
+            "embeddingCoverage": 1
+          }
+        }
+      ],
+      "turns": [
+        {
+          "id": "turn-S",
+          "threadId": null,
+          "question": "The 480V feeder to the MCC is humming weird. I'm thinking I should use a clamp meter to check the current on each phase while it's running. Don't I just clip it on?",
+          "answerStatus": "answered",
+          "answerText": "De-energize first.",
+          "evidence": [
+            {
+              "kind": "safety_notice",
+              "trigger": "energized-electrical-hazard"
+            }
+          ],
+          "basis": "general_reasoning",
+          "createdAt": "2026-10-14T12:00:00.000Z",
+          "ownerUserId": "44444444-4444-4444-8444-444444444444",
+          "sharedLegacy": false
+        }
+      ],
+      "threads": [],
+      "photos": [],
+      "manualSearch": null
+    }
+  }
+}

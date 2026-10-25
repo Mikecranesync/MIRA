@@ -2,7 +2,7 @@
 // The unified root: the shell owns the app; the drawer lists notebooks; opening
 // an item switches the notebook; the footer carries host controls.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 
 class ResizeObserverStub {
@@ -142,6 +142,13 @@ afterEach(() => {
   otaProbe.activeApiMutation = false;
 });
 
+// A chat row in the project tree and its Recent-conversations row open the same
+// thread and, since the tree dropped its "Chat" tag (#4561), share one
+// accessible name. These tests always meant the Recent row (the only exact
+// match before #4561), so they say so.
+const recentRow = (name: string) =>
+  within(screen.getByRole("list", { name: "Recent conversations" })).getByRole("button", { name });
+
 describe("UnifiedRoot", () => {
   it("loads notebooks into a composer-first home; a HOME send opens an UNBOUND notebook, never the last-opened machine one (#3877)", async () => {
     const onSignOut = vi.fn(async () => {});
@@ -235,7 +242,7 @@ describe("UnifiedRoot", () => {
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
 
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-id")).toBe("nb-a");
@@ -372,7 +379,7 @@ describe("UnifiedRoot", () => {
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-id")).toBe("nb-a");
     expect(nb.getAttribute("data-thread-id")).toBe("thrd-a2");
@@ -404,7 +411,7 @@ describe("UnifiedRoot", () => {
     const { container } = render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
     await act(async () => {
       backRef.current?.();
@@ -423,7 +430,7 @@ describe("UnifiedRoot", () => {
     render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
     await act(async () => {
       backRef.current?.();
@@ -493,7 +500,7 @@ describe("UnifiedRoot", () => {
     const view = render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
     await act(async () => {
       backRef.current?.();
@@ -520,7 +527,7 @@ describe("UnifiedRoot", () => {
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
     await act(async () => {
       backRef.current?.();
@@ -529,7 +536,9 @@ describe("UnifiedRoot", () => {
 
     // Reopen the OTHER thread of the same project — proves the tap reaches
     // the drawer's own open path (host.onOpenItem → open()), not a new one.
-    fireEvent.click(screen.getByRole("button", { name: "Intermittent fault" }));
+    fireEvent.click(
+      within(screen.getByTestId("unified-project-root")).getByRole("button", { name: "Intermittent fault" }),
+    );
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-id")).toBe("nb-a");
     expect(nb.getAttribute("data-thread-id")).toBe("thrd-a1");
@@ -541,7 +550,7 @@ describe("UnifiedRoot", () => {
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
     await act(async () => {
       backRef.current?.();
@@ -560,7 +569,7 @@ describe("UnifiedRoot", () => {
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
 
     let consumed = false;
@@ -1074,7 +1083,7 @@ describe("UnifiedRoot", () => {
     await waitFor(() => expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Intermittent fault" }));
+    fireEvent.click(recentRow("Intermittent fault"));
     await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-id")).toBe("nb-a"));
 
     await act(async () => {

@@ -7,9 +7,11 @@ import type {
   ShellState,
 } from "@factorylm/interaction";
 import type { Dispatch } from "react";
+import { useConversationFollow } from "./useConversationFollow";
 import { PartRenderer, contextDiffers, describeContext, lifecycleLabel, machineName, type HostHooks } from "./parts";
 
 export interface ConversationProps {
+  readonly sendRevision?: number;
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
@@ -101,7 +103,10 @@ function Turn({ turn, state, dispatch, adapter, hooks }: ConversationProps & { r
  */
 export function ConversationBar({ state }: { readonly state: ShellState }) {
   const machine = machineName(state, state.activeContext.machineId);
-  const context = [...breadcrumb(state), ...(machine ? [machine] : [])];
+  // The header already shows the thread title; a crumb with the same text read
+  // as the project name twice, the second copy tiny (#4568).
+  const title = state.thread.title.trim();
+  const context = [...breadcrumb(state), ...(machine ? [machine] : [])].filter((crumb) => crumb.trim() !== title);
   if (context.length === 0) return null;
   return <div className="fl-conversation__bar">
     <nav className="fl-conversation__crumbs" aria-label="Context">
@@ -110,8 +115,9 @@ export function ConversationBar({ state }: { readonly state: ShellState }) {
   </div>;
 }
 
-export function Conversation({ state, dispatch, adapter, hooks }: ConversationProps) {
-  return <section className="fl-conversation" aria-label="Conversation" data-mode={state.mode} data-conversation-surface="classic">
+export function Conversation({ state, dispatch, adapter, hooks, sendRevision = 0 }: ConversationProps) {
+  const rootRef = useConversationFollow(state.thread, sendRevision);
+  return <section ref={rootRef} className="fl-conversation" aria-label="Conversation" data-mode={state.mode} data-conversation-surface="classic">
     <ConversationBar state={state} />
 
     {state.mode === "work"

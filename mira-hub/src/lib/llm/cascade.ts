@@ -13,8 +13,18 @@
  * PRD §4 violation, never reintroduce.
  */
 
-import { requestDialectFields, type CanonicalProvider } from "@/lib/inference/canonical-cascade";
-import { boundInputTokens, logBudgetExhausted, openAiRunBudget, type BudgetReservation } from "@/capabilities/openai-run-budget";
+import {
+  openRouterProviders,
+  requestDialectFields,
+  type CanonicalProvider,
+} from "@/lib/inference/canonical-cascade";
+import {
+  billableTokens,
+  boundInputTokens,
+  logBudgetExhausted,
+  openAiRunBudget,
+  type BudgetReservation,
+} from "@/capabilities/openai-run-budget";
 
 interface CascadeProvider {
   name: string;
@@ -24,6 +34,8 @@ interface CascadeProvider {
   /** See CanonicalProvider — the gpt-5 family needs its own cap/temperature dialect. */
   requestStyle?: CanonicalProvider["requestStyle"];
   extra?: Record<string, unknown>;
+  /** OpenRouter's data-policy block — see CanonicalProvider.providerRouting. */
+  providerRouting?: CanonicalProvider["providerRouting"];
 }
 
 function defaultProviders(): CascadeProvider[] {
@@ -47,6 +59,8 @@ function defaultProviders(): CascadeProvider[] {
     : [];
   return [
     ...openai,
+    // Backup tier (2026-10-14), the same member the streaming cascade uses.
+    ...openRouterProviders(),
     {
       name: "Groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
@@ -168,8 +182,16 @@ async function callOne(
     reservation?.settle(inputBound, outputCap);
     return null;
   }
-  // Served: book the ACTUAL usage (fall back to the estimate when the provider omits it).
-  reservation?.settle(parsed.usage?.prompt_tokens ?? inputBound, parsed.usage?.completion_tokens ?? outputCap);
+  if (!parsed || typeof parsed !== "object") {
+    // A 200 whose JSON is not an object (`null`, a number) was served and may be
+    // billed: book the worst case and fall through (Codex r3 F9 on #4355 — the
+    // same class as the vision paths; reading `.usage` off null used to throw
+    // before the hold was decided, leaking it for the life of the process).
+    reservation?.settle(inputBound, outputCap);
+    return null;
+  }
+  // Served: book the ACTUAL usage; a missing or malformed count books the bound / cap.
+  reservation?.settle(...billableTokens(parsed.usage, inputBound, outputCap));
   return parsed.choices?.[0]?.message?.content ?? null;
 }
 

@@ -61,6 +61,7 @@ import {
   productionRouteDetected,
   serviceVersion,
 } from "@/capabilities/observability/config";
+import { sniffImageFormat } from "@/capabilities/image-format-sniff";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import type { TurnUsage } from "@/lib/inference/canonical-cascade";
 import { sessionOr401 } from "@/lib/session";
@@ -72,9 +73,11 @@ import {
   type LookHazardDescriptor,
 } from "@/lib/visual-evidence-context";
 import { isRecognizerConfigured, fixtureSelected } from "@/lib/nameplate";
+import { openAiVisionSelectable } from "@/capabilities/openai-run-budget";
 import { effectiveImageMime } from "@/lib/nameplate/image-mime";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 import { openAiVisionCall, togetherVisionCall, safeJson, type VisionCall } from "@/lib/nameplate/passes";
+import { attachScreenTextLines, normalizeScreenTextLines } from "@/capabilities/screen-text";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +106,9 @@ Rules:
 - NEVER diagnose, NEVER name a root cause, NEVER recommend a repair.
 - NEVER guess anything hidden, internal, or out of frame. If something cannot be determined from the photo, say so.
 - Do not invent labels, part numbers, or indicator states that are not clearly visible.
+- For diagnostic displays, copy mode labels, read/write markers, selected address, and displayed value separately when readable; do not collapse them into one number or interpret an ID/configuration value as live input data.
+- Do not infer flashing or a transition from a still photograph. Describe only the captured state; a reported flash or change requires separate technician evidence.
+- A blank or "--" is not a measured zero or proof a fault cleared. An obscured indicator is unknown, not unlit. Keep unreadable characters unknown instead of filling them in.
 - Do not infer a device or component type from its shape, color, wiring, or part-number characters. Do not call an object a connector, sensor, relay, or other device unless that type is explicitly printed on the label. Otherwise describe its visible shape and quote the label exactly.
 - Treat every label reading as an unconfirmed transcription. Do not explain what a model or suffix means.
 - Keep it concise (short sentences or a short list). Plain text, no markdown headings.
@@ -113,7 +119,12 @@ For safety classification, also report only hazards visibly present now using th
 - smoke: visible smoke
 Do not infer a hazard from labels, warnings, equipment type, or absence of a guard unless the hazardous condition itself is visible.
 Use a confidence from 0 to 1. A healthy image or negated condition has an empty hazards array.
-Respond ONLY with JSON: {"observation": string, "hazards": [{"code": "arcing" | "exposed_conductor" | "active_fire" | "smoke", "confidence": number}]}`;
+If the photo shows a screen, display, or printed alarm list, also transcribe its text into screen_text_lines:
+- one entry per visual line, top to bottom, exactly as shown (keep spacing between columns as single spaces)
+- characters you cannot read are written as "?"
+- text that is cut off on the screen keeps its "…" or "..." exactly; never complete it and never guess the hidden characters
+- an empty array when no screen or display text is visible
+Respond ONLY with JSON: {"observation": string, "hazards": [{"code": "arcing" | "exposed_conductor" | "active_fire" | "smoke", "confidence": number}], "screen_text_lines": [string]}`;
 
 function safePhotoName(raw: string | undefined, mime: string): string {
   const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : mime === "image/gif" ? "gif" : "jpg";
@@ -141,12 +152,18 @@ const fixtureVisionCall: VisionCall = async () => ({
 });
 
 /** Unwrap and validate JSON-mode output; a prose answer stays a healthy observation. */
-function extractInspection(text: string): { text: string; hazards: LookHazardDescriptor[] } | null {
+function extractInspection(
+  text: string,
+): { text: string; hazards: LookHazardDescriptor[]; screenTextLines: string[] } | null {
   const parsed = safeJson(text);
   const fromJson = parsed && typeof parsed.observation === "string" ? parsed.observation : null;
   const value = (fromJson ?? text).trim();
   if (value.length === 0 || value === "{}") return null;
-  return { text: value, hazards: normalizeLookHazards(parsed?.hazards) };
+  return {
+    text: value,
+    hazards: normalizeLookHazards(parsed?.hazards),
+    screenTextLines: normalizeScreenTextLines(parsed?.screen_text_lines),
+  };
 }
 
 async function handleLookTurn(
@@ -190,8 +207,16 @@ async function handleLookTurn(
   const buffer = Buffer.from(await file.arrayBuffer());
   const mime = effectiveImageMime(file.type, buffer, ALLOWED_IMAGE_MIMES);
   if (!mime) {
+    // 2026-10-12: a Pixel gallery pick got this 415 and nothing recorded which
+    // format it was. Name it in the log and the body; the allowlist is unchanged.
+    const detected = sniffImageFormat(buffer);
+    console.warn("[notebook-look] unsupported image type", {
+      declared: file.type || "(none)",
+      detected,
+      bytes: file.size,
+    });
     return NextResponse.json(
-      { error: "unsupported_image_type", message: "Send a JPEG, PNG, GIF, or WebP photo." },
+      { error: "unsupported_image_type", message: "Send a JPEG, PNG, GIF, or WebP photo.", detected_type: detected },
       { status: 415 },
     );
   }
@@ -398,13 +423,14 @@ async function handleLookTurn(
     );
   }
 
-  // Provider pick (D8, 2026-10-11): OpenAI leads when its key is set, else Together
-  // — the same order as `defaultRecognizer`. Picked inline (not via
+  // Provider pick (D8, 2026-10-11): OpenAI leads when its key is set AND its model
+  // has a verified image bound (`openAiVisionSelectable`, Codex r4 F10 on #4355 —
+  // the ONE policy `defaultRecognizer` uses), else Together. Picked inline (not via
   // `defaultVisionCall`) so each call stays an importable, mockable seam.
   // The provider NAME is picked here too, once, and every telemetry site below
   // reads it — a call served by OpenAI must never be recorded as Together
   // (Codex F1 on #4353: health and audit queries would name the wrong provider).
-  const visionProvider = fixtureSelected() ? "fixture" : process.env.OPENAI_API_KEY ? "openai" : "together";
+  const visionProvider = fixtureSelected() ? "fixture" : openAiVisionSelectable() ? "openai" : "together";
   const vision: VisionCall =
     visionProvider === "fixture"
       ? fixtureVisionCall
@@ -425,7 +451,8 @@ async function handleLookTurn(
       prompt,
       images: [{ base64: read.base64, mimeType: read.mimeType }],
       temperature: 0.1,
-      maxTokens: 600,
+      // A full alarm list + the observation does not fit in 600; a cut-off JSON reply would lose the observation.
+      maxTokens: 1600,
     });
     const inspection = extractInspection(reply.text);
     if (!inspection) throw new Error("vision_empty_response");
@@ -438,8 +465,9 @@ async function handleLookTurn(
     // is told whether it landed — a chat turn that re-sends this photo grounds
     // on the PERSISTED observation, so an unpersisted one must not be sent.
     let observationPersisted = false;
+    let recorded: Awaited<ReturnType<typeof recordLookObservation>> = null;
     try {
-      await recordLookObservation({
+      recorded = await recordLookObservation({
         tenantId: ctx.tenantId,
         ...(attachment.linkId ? { notebookId, threadId } : {}),
         fileId: parked.fileId,
@@ -454,6 +482,15 @@ async function handleLookTurn(
     } catch (err) {
       console.error("[notebook-look] observation persist failed (continuing):", err);
     }
+    // Spec §4.2 — verbatim screen text rides on the same evidence row. Fail-open:
+    // without lines the alarm card simply does not fire on a later turn.
+    if (recorded && inspection.screenTextLines.length > 0) {
+      try {
+        await attachScreenTextLines(ctx.tenantId, recorded.evidenceId, inspection.screenTextLines);
+      } catch (err) {
+        console.error("[notebook-look] screen text persist failed (continuing):", err);
+      }
+    }
     visionSpan.updateName(`chat ${reply.model}`);
     setSpanAttrs(
       {
@@ -462,6 +499,7 @@ async function handleLookTurn(
         "gen_ai.response.model": reply.model,
         "mira.vision.observation_chars": inspection.text.length,
         "mira.vision.hazard_count": inspection.hazards.length,
+        "mira.vision.screen_lines": inspection.screenTextLines.length,
         "mira.vision.ok": true,
       },
       visionSpan,
@@ -474,6 +512,7 @@ async function handleLookTurn(
       latency_ms: Date.now() - visionStartedAt,
       observation_chars: inspection.text.length,
       hazard_count: inspection.hazards.length,
+      screen_lines: inspection.screenTextLines.length,
       ok: true,
     });
     await finishLook({

@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 70,
-    "apiRoutes": 187
+    "apiRoutes": 190
   },
   "pages": [
     "/admin",
@@ -166,6 +166,8 @@
     "/api/equipment-notebooks/[id]/look",
     "/api/equipment-notebooks/[id]/nameplate/confirm",
     "/api/equipment-notebooks/[id]/nameplate/recognize",
+    "/api/equipment-notebooks/[id]/photos/[fileId]/source",
+    "/api/equipment-notebooks/[id]/procedure",
     "/api/equipment-notebooks/[id]/sources",
     "/api/equipment-notebooks/[id]/sources/[docId]",
     "/api/equipment-notebooks/[id]/sources/[docId]/passage",
@@ -209,6 +211,7 @@
     "/api/library/chunks",
     "/api/library/documents",
     "/api/library/tree",
+    "/api/manual-harvester",
     "/api/me",
     "/api/mira/ask",
     "/api/mobile/live-update/manifest",

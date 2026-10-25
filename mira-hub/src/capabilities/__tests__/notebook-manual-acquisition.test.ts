@@ -48,6 +48,7 @@ import type { ManualAcquisitionInput, ManualAcquisitionOutcome } from "@/capabil
 
 import {
   acquisitionDeclineText,
+  acquisitionManualUrl,
   MANUAL_SEARCH_LIMIT_COPY,
   MANUAL_SEARCH_UNAVAILABLE_COPY,
   acquisitionEnabled,
@@ -96,8 +97,41 @@ describe("acquisitionKey — only a technician-confirmed, searchable identity", 
 describe("acquisitionEnabled — off unless explicitly '1'", () => {
   it.each([[{}, false], [{ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "0" }, false], [{ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "true" }, false], [ON, true]])(
     "%j → %s",
-    (env, want) => expect(acquisitionEnabled(env as Record<string, string>)).toBe(want),
+    (env, want) => expect(acquisitionEnabled("t", env as Record<string, string>)).toBe(want),
   );
+});
+
+// Production turns on for one customer first: a tenant allowlist narrows the switch.
+describe("acquisitionEnabled — MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS", () => {
+  const A = "11111111-1111-4111-8111-111111111111";
+  const B = "22222222-2222-4222-8222-222222222222";
+  const LIST = { ...ON, MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: ` ${A.toUpperCase()} , ` };
+  it("a listed tenant is on (case/whitespace-insensitive)", () => expect(acquisitionEnabled(A, LIST)).toBe(true));
+  it("an unlisted tenant is off", () => expect(acquisitionEnabled(B, LIST)).toBe(false));
+  it("no tenant is off when a list is set", () => {
+    expect(acquisitionEnabled(null, LIST)).toBe(false);
+    expect(acquisitionEnabled("", LIST)).toBe(false);
+  });
+  it("unset or blank list keeps the switch server-wide (control)", () => {
+    expect(acquisitionEnabled(B, ON)).toBe(true);
+    expect(acquisitionEnabled(B, { ...ON, MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: " , " })).toBe(true);
+  });
+  it("the list never turns on a switch that is off", () => {
+    expect(acquisitionEnabled(A, { MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: A })).toBe(false);
+  });
+  it("candidate takeover follows the same list", () => {
+    const both = { ...LIST, MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" };
+    expect(candidateAcquisitionEnabled(A, both)).toBe(true);
+    expect(candidateAcquisitionEnabled(B, both)).toBe(false);
+  });
+  it("start / run / status gate on the INPUT's tenant", async () => {
+    const acquire = vi.fn();
+    const onlyA = { ...ON, MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: A };
+    expect(await startManualAcquisition({ ...input, tenantId: B }, { acquire, env: onlyA })).toBe(false);
+    expect(await runManualAcquisition({ ...input, tenantId: B } as ManualAcquisitionInput, { acquire, env: onlyA })).toEqual({ started: false, outcome: null });
+    expect(await currentManualSearchStatus(B, "nb", confirmed, null, [], { env: onlyA })).toBeNull();
+    expect(acquire).not.toHaveBeenCalled();
+  });
 });
 
 describe("startManualAcquisition", () => {
@@ -260,8 +294,37 @@ describe("acquisitionDeclineText — honest about what the search did", () => {
   it("adds nothing for a record about a different identity, or for outcomes with nothing to show", () => {
     expect(acquisitionDeclineText(rec({ state: "no_manual_found" }), "OTHER", "X")).toBeNull();
     expect(acquisitionDeclineText(null, "K", "X")).toBeNull();
-    expect(acquisitionDeclineText(rec({ state: "download_rejected" }), "K", "X")).toBeNull();
+
   });
+  it("does not re-offer a security-rejected URL through the website fallback", () => {
+    const url = "https://example.com/support/";
+    const r = rec({ state: "download_rejected", download_reason: "blocked_address", candidate_url: url, search_page_url: url, oem_request_url: "https://example.com/" });
+    expect(acquisitionManualUrl(r)).toBe("https://example.com/");
+  });
+  it("keeps a search website separate from a citable manual", () => {
+    const r = recordFromOutcome("K", null, { status: "no_manual_found", payload: { searchPageUrl: "https://novel-controls.example/support/" } });
+    expect(acquisitionManualUrl(r)).toBe("https://novel-controls.example/support/");
+    const text = acquisitionDeclineText(r, "K", "Novel Controls Z7")!;
+    expect(text).toContain("https://novel-controls.example/support/");
+    expect(text).toContain("website");
+    expect(text).not.toContain("request it from the manufacturer");
+  });
+  it.each(["download_rejected", "search_unavailable"] as const)("%s retains a failed download URL without claiming it was read", (state) => {
+    const t = acquisitionDeclineText(rec({ state, download_reason: "wrong_content_type", candidate_url: "https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319" }), "K", "KEYENCE GL-R")!;
+    expect(t).toContain("https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319");
+    expect(t).toContain("couldn't download");
+    expect(t.toLowerCase()).toContain("upload");
+    expect(t).not.toContain("couldn't find");
+  });
+  it.each(["javascript:alert(1)", "http://example.com/manual", "https://user:pass@example.com/manual", "https://127.0.0.1/manual", "https://example.com:9200/manual", "https://example.com/\\manual"])("does not expose an unsafe acquisition link: %s", (candidate_url) => {
+    expect(acquisitionManualUrl(rec({ state: "candidate_review", candidate_url }))).toBeNull();
+  });
+  it("does not offer a URL rejected by the download security boundary", () => {
+    const t = acquisitionDeclineText(rec({ state: "download_rejected", download_reason: "blocked_address", candidate_url: "https://localhost/manual.pdf" }), "K", "GL-R")!;
+    expect(t).not.toContain("localhost");
+    expect(t.toLowerCase()).toContain("upload");
+  });
+
 });
 
 describe("recordFromOutcome", () => {
@@ -837,11 +900,11 @@ describe("Codex #4118 r14 F18/F19 — attach gate: database errors retry, remova
 // #4172 F13 / #4175: candidate takeover has its own flag, and needs the base one.
 describe("candidateAcquisitionEnabled", () => {
   it("is on only when BOTH flags are exactly '1'", () => {
-    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(true);
-    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" })).toBe(false);
-    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(false);
-    expect(candidateAcquisitionEnabled({ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "true" })).toBe(false);
-    expect(candidateAcquisitionEnabled({})).toBe(false);
+    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(true);
+    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" })).toBe(false);
+    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(false);
+    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "true" })).toBe(false);
+    expect(candidateAcquisitionEnabled("t", {})).toBe(false);
   });
 });
 
@@ -1011,6 +1074,13 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
   const confirmedIdentity = { identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: null };
   const confirmedKey = acquisitionKey(confirmedIdentity)!;
   const candidateKey = acquisitionKey({ identityStatus: "user_confirmed", manufacturer: "SMC", model: "SS5Y3-DUW01302", catalogNumber: "" })!;
+
+  it("returns the exact manual URL in settled status for both clients", async () => {
+    db.readRow = { key: confirmedKey, state: "download_rejected", started_at: null, finished_at: null, candidate_host: "www.keyence.com", match_state: null, oem_request_url: null, candidate_url: "https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319", download_reason: "wrong_content_type" };
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });
+    expect(r?.manualUrl).toBe("https://www.keyence.com/download/download/confirmation/?dlAssetId=AS_164319");
+    expect(r?.message).toContain("couldn't download");
+  });
 
   it("returns null when acquisition is disabled", async () => {
     db.readRow = { key: confirmedKey, state: "running", started_at: null, finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };

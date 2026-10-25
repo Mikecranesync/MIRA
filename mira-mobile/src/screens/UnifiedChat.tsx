@@ -15,6 +15,7 @@ import "@factorylm/theme/workspace.css";
 import "@factorylm/ui/shell.css";
 import "@factorylm/ui/conversation.css";
 import "../unified/unified.css";
+import { OriginalPhoto } from "../unified/OriginalPhoto";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   PROFILES,
@@ -276,6 +277,8 @@ export interface UnifiedShellHost {
   readonly navigationFooter?: ReactNode;
 }
 
+const COMPOSING_TURN: ChatTurn = { answer: "", citations: [], status: "" };
+
 export interface UnifiedChatProps {
   readonly turns: NotebookServerTurn[];
   readonly liveTurns: { q: string; a: ChatTurn }[];
@@ -420,7 +423,15 @@ function UnifiedChatForNotebook({
     };
   }, []);
   const fullMeta = useMemo<UnifiedNotebookMeta>(() => ({ ...meta, capturedAt: capturedAt.current }), [meta]);
-  const messages = useMemo(() => threadMessages(turns, liveTurns, pending), [turns, liveTurns, pending]);
+  // #3996: a photo send reaches the host only after its upload resolves. Until
+  // then the question shows as this screen's own pending turn; the host's
+  // pending turn takes over as soon as it exists.
+  const [composingQuestion, setComposingQuestion] = useState<string | null>(null);
+  const shownPending = useMemo(
+    () => pending ?? (composingQuestion !== null ? { q: composingQuestion, a: COMPOSING_TURN } : null),
+    [pending, composingQuestion],
+  );
+  const messages = useMemo(() => threadMessages(turns, liveTurns, shownPending), [turns, liveTurns, shownPending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
   const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
   // Whether the shell's send-error banner is still up, as of the last render.
@@ -595,6 +606,9 @@ function UnifiedChatForNotebook({
   // the next send falls back to the host's own eventually-refreshed scope.
   // Resolves `true` when the re-read scope was stored, `false` when the
   // re-read failed (#4219 Codex r2 F1), `null` when there was nothing to do.
+  // Photos already kept as this machine's sources (their origin file ids),
+  // learned from the same notebook re-read below.
+  const [keptPhotoIds, setKeptPhotoIds] = useState<ReadonlySet<string>>(() => new Set());
   const refreshPromotedScope = useCallback(async (): Promise<boolean | null> => {
     if (!notebookId || !aliveRef.current) return null;
     // The re-read is async; this instance can unmount before it returns (the
@@ -606,6 +620,7 @@ function UnifiedChatForNotebook({
       const after = await getNotebookDetail(fetchedFor, { threadId: attachmentThreadId ?? undefined });
       if (!aliveRef.current || notebookIdRef.current !== fetchedFor) return null;
       confirmedScopeRef.current = enabledDocIds(after.sources.filter(canBeChatSource));
+      setKeptPhotoIds(new Set(after.sources.map((src) => src.originFileId).filter((id): id is string => !!id)));
       return true;
     } catch {
       if (aliveRef.current && notebookIdRef.current === fetchedFor) confirmedScopeRef.current = null;
@@ -796,6 +811,14 @@ function UnifiedChatForNotebook({
     // A send made while the banner was up is the shell's Try again (or Send
     // with the restored draft): its banner clear is not a dismissal.
     flagOwnClear();
+    // Before the first persisted turn, SendError invokes onSend with retry
+    // intent. Replay the host's saved body for unchanged text, preserving its
+    // request id and scope without consuming a newly confirmed manual scope.
+    if (opts.retry && canRetry && handlers.onRetry && failedQuestion?.trim() === text.trim()
+      && pending.length === 0 && !attachments.hasRetained() && !attachments.hasCarried()) {
+      handlers.onRetry();
+      return;
+    }
     // Codex F1 (HIGH, #4175/#4189): a confirmed identity may have just
     // promoted a candidate manual into an enabled source (migration 104) —
     // `onConfirmIdentity` below re-reads detail and stashes the refreshed
@@ -841,6 +864,12 @@ function UnifiedChatForNotebook({
       else handlers.onSend(text);
       return;
     }
+    // An attachment-only send has no typed question yet — `compose` resolves
+    // one (the default photo/document question) only after the upload runs.
+    // Showing the raw (empty) `text` here left the temporary turn blank for
+    // the whole upload (Codex #4721 F1); `effectiveQuestion` previews the same
+    // default synchronously, without uploading anything itself.
+    setComposingQuestion(attachments.effectiveQuestion(text, pending, { retry }));
     void attachments.compose(text, pending, { ...opts, retry }).then((composed) => {
       // Light review (#4195, HIGH, notebook-switch class): `confirmedScope`
       // was captured BEFORE this await, on THIS notebook. If the technician
@@ -851,6 +880,7 @@ function UnifiedChatForNotebook({
       // callback as bound to. There is no safe notebook to deliver this
       // send to, so it is DROPPED entirely (not sent to A, not sent to B).
       if (!aliveRef.current) return;
+      setComposingQuestion(null);
       if (composed.failure) {
         // Codex round 7 F22 (#4195): no send is actually handed to the parent
         // on this path, so the promoted scope captured above must not be
@@ -875,6 +905,7 @@ function UnifiedChatForNotebook({
       if (composed.warning) dispatch({ type: "set-send-error", error: composed.warning });
     }).catch((error: unknown) => {
       if (!aliveRef.current) return;
+      setComposingQuestion(null);
       // Codex round 7 F22 (#4195), same reasoning as the `composed.failure`
       // branch above: a rejected compose never reaches `handlers.onSend`
       // either, so the scope it would have ridden must survive for retry.
@@ -885,7 +916,7 @@ function UnifiedChatForNotebook({
       // it was asked with, so the banner has a Try again that carries it.
       dispatch({ type: "set-draft", draft: text || attachments.retainedQuestion?.() || text });
     });
-  }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope]);
+  }, [attachTarget, attachments, handlers, dispatch, restoreConfirmedScope, canRetry, failedQuestion]);
 
   // The question HOME queued for the thread it just created. It goes through
   // `onSend` (not straight to the host) so the attachments HOME stashed are
@@ -951,14 +982,38 @@ function UnifiedChatForNotebook({
     }
   }, [fixRequestIds, meta.notebookId, state.thread.turns]);
 
+  // Keep a photo from this conversation as one of the machine's sources; the
+  // re-read stores the new scope so the next question can cite it.
+  const onKeepPhoto = useCallback(async (fileId: string, reviewed?: Parameters<NonNullable<HostHooks["onKeepPhoto"]>>[1]) => {
+    if (!meta.notebookId) throw new Error("no_notebook");
+    await request(
+      `/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`,
+      // The conversation whose reading the technician is looking at.
+      { method: "POST", json: { threadId: attachmentThreadId ?? "legacy", ...(reviewed ? { reviewed } : {}) } },
+    );
+    setKeptPhotoIds((prev) => new Set(prev).add(fileId));
+    if (await refreshPromotedScope() !== true) return "refresh_pending" as const;
+  }, [meta.notebookId, attachmentThreadId, refreshPromotedScope]);
+
+  const onReviewPhoto = useCallback(async (fileId: string) => {
+    if (!meta.notebookId) throw new Error("no_notebook");
+    const query = attachmentThreadId ? `?threadId=${encodeURIComponent(attachmentThreadId)}` : "";
+    const response = await request(
+      `/api/equipment-notebooks/${encodeURIComponent(meta.notebookId)}/photos/${encodeURIComponent(fileId)}/source/${query}`,
+    );
+    return response.data as { observationId: string; text: string; reviewed: boolean };
+  }, [meta.notebookId, attachmentThreadId]);
+
   const hooks: HostHooks = {
     onSend,
     renderText,
+    renderPhoto: fileId => <OriginalPhoto fileId={fileId} />,
     onCopy,
     ...(readAloud ? { onReadAloud } : {}),
     ...(meta.notebookId
       ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
       : {}),
+    ...(meta.notebookId ? { onKeepPhoto, onReviewPhoto, onRefreshPhotoScope: async () => await refreshPromotedScope() === true, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
     ...(canStop ? { onStop: handlers.onStop } : {}),
     // The host retry re-sends the rendered turn as plain text. That is right for
     // a text turn and WRONG for one whose attachment never uploaded: it would
@@ -967,9 +1022,17 @@ function UnifiedChatForNotebook({
     // the bytes, retry through the composed path so the photo rides the turn.
     ...(canRetry && handlers.onRetry
       ? { onRetry: () => {
-          if (attachments.hasRetained() || attachments.hasCarried()) {
-            flagOwnClear();
-            dispatch({ type: "set-send-error", error: null });
+          flagOwnClear();
+          const draft = state.draft.trim();
+          const priorQuestion = (failedQuestion ?? pending?.q ?? liveTurns.at(-1)?.q
+            ?? state.thread.turns.filter((turn) => turn.role === "user").at(-1)
+              ?.parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n"))?.trim();
+          // A changed question is a new send. An unchanged question must keep
+          // the host's original request id and source scope for deduplication.
+          const edited = Boolean(draft && draft !== priorQuestion);
+          dispatch({ type: "set-draft", draft: "" });
+          dispatch({ type: "set-send-error", error: null });
+          if (attachments.hasRetained() || attachments.hasCarried() || edited) {
             onSend(state.draft, [], { retry: true });
             return;
           }

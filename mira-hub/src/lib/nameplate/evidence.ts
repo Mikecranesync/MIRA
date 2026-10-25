@@ -127,6 +127,31 @@ export function isSafetyCritical(field: string): boolean {
   return SAFETY_CRITICAL_FIELDS.has(field);
 }
 
+/** IEC 81346 reference designation: aspects prefixed `=` (function), `+`
+ *  (location) or `-` (product), e.g. `=EQU+96 -A57`, `+CAB1-K3`, `-A57`.
+ *  A manufacturer identifier never starts with `=` or `+`; a lone `-` prefix
+ *  counts only for the short letter+digit product-aspect form. */
+export function isReferenceDesignation(value: string): boolean {
+  const v = value.trim();
+  if (/^[=+]\S/.test(v)) return true;
+  return /^-[A-Z]{1,3}\d{1,4}$/i.test(v);
+}
+
+const DESIGNATION_FIELDS = ["model", "catalogNumber", "serialNumber"] as const;
+
+/** Copy of an identity with any reference-designation model/catalog/serial
+ *  removed. Applied to the candidate a client pre-fills AND to the identity a
+ *  confirm submits, so a plant tag can never become a confirmed identifier or a
+ *  manual-search key, whatever the client renders. */
+export function scrubReferenceDesignations<T extends Record<string, unknown>>(identity: T): T {
+  const out: Record<string, unknown> = { ...identity };
+  for (const f of DESIGNATION_FIELDS) {
+    const v = out[f];
+    if (typeof v === "string" && isReferenceDesignation(v)) delete out[f];
+  }
+  return out as T;
+}
+
 export function isIdentityField(field: string): boolean {
   return IDENTITY_FIELDS.has(field);
 }
@@ -286,6 +311,22 @@ export function toFact(obs: ObservationInput): NameplateFact {
 
   if (value === null || value === "") {
     return { ...base, status: "candidate", reason: "not read from the plate" };
+  }
+
+  // A plant reference designation (IEC 81346: `=EQU+96 -A57`, `-K1`) is the
+  // customer's own location tag, never a manufacturer's model/catalog/serial.
+  // Staging 2026-10-19: a Bihl+Wiedemann gateway's panel tag was promoted as its
+  // catalog number and sent to manual discovery.
+  if (
+    (field === "model" || field === "catalogNumber" || field === "serialNumber") &&
+    isReferenceDesignation(value)
+  ) {
+    return {
+      ...base,
+      status: "rejected",
+      reason:
+        "this is a plant reference designation (equipment/location tag), not a manufacturer part number",
+    };
   }
 
   if (isComplianceMark(value)) {

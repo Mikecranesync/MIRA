@@ -63,6 +63,97 @@ export function resolveModelFromObservationText(text: string): { model: string |
   return { model: null, ambiguous: true };
 }
 
+// #4469 F1 — resolveModelFromObservationText's single token exists to match
+// ONE `model_number ILIKE '%<token>%'` column, so for the digit-only families
+// (PowerFlex/PF, Micro, ACS) it deliberately keeps just the number: "ACS800"
+// and "Micro800" both reduce to "800". That is correct for the ILIKE use —
+// changing it would ripple into every caller that scopes retrieval by model —
+// but it means "800" alone cannot tell an ACS800 manual from a Micro800
+// manual apart for a document-applicability check. FAMILY_KEYS is index-
+// aligned with MODEL_PATTERNS (one label per pattern, no second pattern list)
+// so modelIdentitiesInText can tag each digit-only capture with its family.
+// PowerFlex and PF share the label "PF" on purpose — they are the same
+// product line written two ways and must still collide WITH EACH OTHER.
+const FAMILY_KEYS: readonly string[] = [
+  "PF", // powerflex
+  "PF", // pf
+  "MICRO", // micro
+  "ACS", // acs
+  "GS", // gs (capture already includes the letters — label unused)
+  "X1000", // a/v/u/j 1000 (capture already includes the letter — label unused)
+  "TP", // tp (capture already includes the letters — label unused)
+  "KTP", // ktp (capture already includes the letters — label unused)
+  "6AV", // 6av (capture already includes the letters — label unused)
+  "V20", // sinamics v20 (aliased below)
+  "V20", // v20 (capture already includes the letters — label unused)
+  "COMFORT", // comfort (capture already includes the letters — label unused)
+];
+
+// The digit-only families whose siblings get listed after one family word.
+// Group 1 is the tail of joined numbers ("and 525", "/525", ", 525 and 527").
+// Bare numbers only: "PowerFlex 525 and 480V input" must not coin "PF480V",
+// so a trailing unit letter breaks the join.
+const JOINED = "(?:\\s*(?:,|and|&|or|/)\\s*\\d{2,4}\\b(?![a-z]))+";
+const CONJOINED_DIGIT_FAMILIES: ReadonlyArray<readonly [family: string, head: RegExp]> = [
+  ["PF", new RegExp(`\\b(?:powerflex|pf)\\s*\\d{2,4}[a-z]?(${JOINED})`, "gi")],
+  ["MICRO", new RegExp(`\\bmicro\\s*8\\d{2}(${JOINED})`, "gi")],
+  ["ACS", new RegExp(`\\bacs\\s*\\d{3,4}(${JOINED})`, "gi")],
+];
+
+/**
+ * Family-qualified model identities named in `text` (#4469 F1), for document
+ * APPLICABILITY checks only — never for `model_number ILIKE` matching (that
+ * stays on resolveModelFromObservationText's plain token). Returns every
+ * match found, each tagged so unrelated product families never collide: a
+ * digit-only capture (PowerFlex/PF/Micro/ACS) becomes `${family}${digits}`
+ * ("ACS800", "MICRO800", "PF525" — PowerFlex and PF alias to the same "PF525"
+ * since they are the same model); a capture that already carries its family
+ * in the matched letters (GS10, TP700, 6AV2124-0GC01-0AX0, V20, Comfort) is
+ * used as-is, preserving its exact punctuation (catalog hyphens included —
+ * #4469 F3 is a normalization bug in the CALLER's title string, not here).
+ */
+export function modelIdentitiesInText(text: string): Set<string> {
+  const identities = new Set<string>();
+  MODEL_PATTERNS.forEach((pattern, i) => {
+    const family = FAMILY_KEYS[i];
+    for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
+      const captured = (match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase();
+      if (captured === "SINAMICSV20") {
+        identities.add("V20");
+      } else if (/^\d+$/.test(captured)) {
+        identities.add(`${family}${captured}`);
+      } else {
+        identities.add(captured);
+      }
+    }
+  });
+  // Round-2 review on #4484: a title that lists sibling numbers after ONE
+  // family word — "PowerFlex 523 and 525", "Micro810 and 820", "ACS580/880" —
+  // was credited to the first number only, so the 525 half of a "523 and 525"
+  // manual was invisible to a PowerFlex 525 notebook. Each trailing number
+  // joined by and/&/,/or/slash inherits the family of the number before it.
+  // Applicability only: resolveModelFromObservationText (the single ILIKE
+  // token) is deliberately untouched.
+  for (const [family, head] of CONJOINED_DIGIT_FAMILIES) {
+    for (const match of text.matchAll(head)) {
+      for (const tail of match[1].matchAll(/\d{2,4}/g)) {
+        identities.add(`${family}${tail[0]}`);
+      }
+    }
+  }
+  // Mirror resolveModelFromObservationText's COMFORT-is-a-family-hint drop
+  // (primary review, pass 2): "Comfort" alone names the PANEL FAMILY, not a
+  // specific sibling model — a TP/KTP panel or 6AV order number is the
+  // specific model. Without this, "TP700 Comfort" and a document titled
+  // "TP1200 Comfort Operating Instructions" each carry COMFORT, so the two
+  // sets would intersect on COMFORT ALONE even though TP700 ≠ TP1200 — the
+  // exact cross-family false-grounding this detector exists to prevent.
+  if (identities.size > 1 && [...identities].some((id) => /^(?:K?TP\d|6AV)/.test(id))) {
+    identities.delete("COMFORT");
+  }
+  return identities;
+}
+
 /**
  * One key per model, however it was written (Codex r7 on #4360): "PF525",
  * "PowerFlex 525", "POWERFLEX 525", "powerflex 525" and the identity-proposal

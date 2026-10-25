@@ -100,7 +100,7 @@ jobs:
             SEEN_SERVICES=" "
             for service in $SERVICES_INPUT; do
               case "$service" in
-                atlas-api|atlas-db|atlas-frontend|atlas-minio|mira-bot-telegram|mira-cmms-sync|mira-hub|mira-mcp|mira-ollama|mira-pipeline|mira-tika|mira-web)
+                atlas-api|atlas-db|atlas-frontend|atlas-minio|mira-ask|mira-bot-telegram|mira-cmms-sync|mira-hub|mira-mcp|mira-ollama|mira-pipeline|mira-reranker|mira-tika|mira-web)
                   ;;
                 *)
                   fail "service is not in the staging compose allowlist: $service"
@@ -352,8 +352,10 @@ jobs:
           # service. NOTE: mira-bot-slack is intentionally NOT here — staging
           # runs no Slack bot (see the header comment in
           # docker-compose.staging-vps.yml; SLACK_BOT_TOKEN is deliberately
-          # omitted), so adding it would fail `compose build`.
-          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram mira-ask mira-ollama}"
+          # omitted), so adding it would fail `compose build`. mira-reranker (CU-RR1,
+          # staging only) is built from source: without it here, `up -d` would keep
+          # an old reranker image forever after the first deploy.
+          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram mira-ask mira-ollama mira-reranker}"
           read -r -a TARGET_LIST <<< "$TARGETS"
           echo "Rebuild targets: $TARGETS"
 
@@ -546,13 +548,27 @@ jobs:
           APPROVED_RC_SHA: ${{ needs.authorize-target.outputs.approved_rc_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ID: ${{ github.run_id }}
+          SERVICES: ${{ needs.authorize-target.outputs.services }}
         run: |
           set -euo pipefail
           python3 tools/staging_receipt.py extract --log "$RUNNER_TEMP/staging-deploy.out" --out staging-receipt.json \
             --set "run_url=$RUN_URL" --set "run_id=$RUN_ID"
+          # The deploy target set decides what the receipt must prove (SDLC v1 §6.2),
+          # as deploy-vps.yml does: image identity for every target, runtime identity
+          # for those that report one. Read it back from the deploy transcript (printed
+          # once, before any build) so the blank-input defaults are not duplicated
+          # here, and require it to equal an explicit authorized services input.
+          # #4415: with no --effective-services, an explicit set without mira-hub or
+          # mira-web (e.g. services=mira-ask) collected no runtime identity and failed
+          # verification after a successful deploy.
+          TARGETS="$(sed -n 's/^Rebuild targets: //p' "$RUNNER_TEMP/staging-deploy.out" | head -n 1)"
+          [ -n "$TARGETS" ] || { echo "::error::no 'Rebuild targets:' line in the deploy transcript"; exit 1; }
+          if [ -n "$SERVICES" ] && [ "$TARGETS" != "$SERVICES" ]; then
+            echo "::error::deployed targets '$TARGETS' differ from the authorized services '$SERVICES'"; exit 1
+          fi
           python3 tools/staging_receipt.py verify --receipt staging-receipt.json \
             --approved-rc-sha "$APPROVED_RC_SHA" --environment staging --max-age-hours 1 \
-            --require-services ""
+            --effective-services "${TARGETS// /,}"
 
       - name: Upload staging receipt (90-day retention)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

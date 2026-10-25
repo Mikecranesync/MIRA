@@ -4,11 +4,10 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import { PROFILES, createShellState, shellReducer, type ManualSearchStatus, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
+import { PROFILES, createShellState, shellReducer, type InteractionTurn, type ManualSearchStatus, type ShellAction, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
-import { shouldRedirectToOnboarding } from "@/lib/onboarding-flow";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
 import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
@@ -82,19 +81,22 @@ export function retainedStreamInterruption(
   return stopped || result.safetyNotice ? { result, stopped } : null;
 }
 
-/** First notebook, its most recently updated thread (or the legacy one). */
-export function initialSelection(notebooks: readonly HubNotebook[]): HubSelection | null {
-  const nb = notebooks[0];
-  if (!nb) return null;
-  const threads = [...(nb.threads ?? [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  return { notebookId: nb.id, threadId: threads[0]?.id ?? LEGACY_THREAD_ID };
+/**
+ * Opening a notebook without naming a thread (a sidebar project click, a
+ * `?notebook=` link) starts a fresh chat, minted exactly as New chat mints one.
+ * It used to resume the most recently updated thread, so a new question landed
+ * under an old, unrelated conversation (#4444). Earlier threads stay listed in
+ * the sidebar; a thread row or a link that names a thread opens that thread.
+ */
+export function openNotebookSelection(nb: Pick<HubNotebook, "id">, mint: () => string = newThreadId): HubSelection {
+  return { notebookId: nb.id, threadId: mint() };
 }
 
 /**
  * Where a fresh mount lands: HOME — no notebook, composer enabled. The 2026-09-07
  * stranger walk recorded "cold launch drops into the last thread" as a failure;
  * the ChatGPT-first lock's L0 is a composer home that answers immediately.
- * `initialSelection` remains the deep-link / project-click entry.
+ * `openNotebookSelection` is the deep-link / project-click entry.
  */
 export function landingSelection(notebooks: readonly HubNotebook[]): HubSelection | null {
   void notebooks; // HOME regardless of how many projects exist
@@ -147,19 +149,24 @@ const THREAD_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 
 /**
  * The selection a URL names, or null for HOME. Unknown notebook → HOME (never a
- * guess at another project); a notebook without a thread → its most recent
- * thread (`initialSelection`); a malformed thread id → the same fallback. A
- * well-formed thread id that is not (yet) in the list is kept: a fresh "New
- * chat" has no server row until its first turn, and a reload must return to it.
+ * guess at another project); a notebook without a thread → a fresh chat
+ * (`openNotebookSelection`, #4444); a malformed thread id → the same fallback.
+ * A well-formed thread id that is not (yet) in the list is kept: a fresh chat
+ * has no server row until its first turn, and a reload must return to it — so
+ * the host writes a minted thread back into the URL.
  */
-export function selectionFromSearch(search: string, notebooks: readonly HubNotebook[]): HubSelection | null {
+export function selectionFromSearch(
+  search: string,
+  notebooks: readonly HubNotebook[],
+  mint: () => string = newThreadId,
+): HubSelection | null {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const notebookId = (params.get(NOTEBOOK_PARAM) ?? "").trim();
   if (!notebookId) return null;
   const nb = notebooks.find((n) => n.id === notebookId);
   if (!nb) return null;
   const threadId = (params.get(THREAD_PARAM) ?? "").trim();
-  if (!threadId || (threadId !== LEGACY_THREAD_ID && !THREAD_ID_RE.test(threadId))) return initialSelection([nb]);
+  if (!threadId || (threadId !== LEGACY_THREAD_ID && !THREAD_ID_RE.test(threadId))) return openNotebookSelection(nb, mint);
   return { notebookId, threadId };
 }
 
@@ -175,6 +182,74 @@ export function searchForSelection(sel: HubSelection | null): string {
 /** The shell's thread id for a selection — same grammar mobile uses. */
 export function shellThreadId(sel: HubSelection): string {
   return threadItemId(sel.notebookId, sel.threadId);
+}
+
+/**
+ * #4690: the safety lines the server writes ABOVE an answer, split from the
+ * answer so the shell can set them apart. Every one of them starts with "⚠️"
+ * (hazard, restart, energized and step-flag banners) and is joined to the
+ * answer by a blank line. On screen they rendered as an ordinary 3.5px-spaced
+ * paragraph, so "⚠️ Isolation. Lock and tag…" ran straight into "Yes—switch off
+ * the supply…" and read as part of the answer. Only LEADING paragraphs count; a
+ * ⚠️ later in an answer stays where the writer put it. The text itself is
+ * unchanged: `notes + separator + body` is the original string.
+ */
+export function splitLeadingSafetyNotes(text: string): { notes: string; body: string } {
+  // Blank lines only: the next paragraph's own indentation (a code block) is the answer's.
+  const boundary = /\n(?:[ \t]*\n)+/g;
+  let end = 0; // end of the last leading ⚠️ paragraph
+  let next = 0; // where the paragraph after it starts
+  while (text.slice(next).trimStart().startsWith("⚠️")) {
+    boundary.lastIndex = next;
+    const m = boundary.exec(text);
+    if (!m) return { notes: text.trim(), body: "" };
+    end = m.index;
+    next = m.index + m[0].length;
+  }
+  return next === 0 ? { notes: "", body: text } : { notes: text.slice(0, end).trim(), body: text.slice(next) };
+}
+
+/** #4695: the hydrate that tells the shell which thread is open (what `syncThread` dispatches). */
+export function openThreadAction(sel: HubSelection, at: string): ShellAction {
+  return {
+    type: "hydrate",
+    data: { thread: { ...EMPTY_FIXTURE.thread, id: shellThreadId(sel), notebookId: sel.notebookId, createdAt: at, updatedAt: at } },
+  };
+}
+
+/** The host's actions: the shell's, plus an automatic landing (deep link, reload, first load). */
+export type HubHostAction = ShellAction | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string };
+
+/**
+ * #4695: the Hub host's reducer. The shell's `hydrate` blanks the draft whenever
+ * the thread id changes, which is right when the technician CHOOSES another
+ * thread. An automatic landing is not a choice: what was already typed on HOME
+ * belongs to the conversation that is opening. `land-thread` opens the thread
+ * and keeps the draft of the SAME state it transitions, in one step, so no
+ * separately held copy can be stale. That is a safeguard: the lost first word
+ * seen on staging was text typed before hydration, fixed in the Composer
+ * (#4695 part 4). Every other action is the shell's.
+ */
+export function hubHostReducer(state: ShellState, action: HubHostAction): ShellState {
+  if (action.type !== "land-thread") return shellReducer(state, action);
+  const landed = shellReducer(state, openThreadAction(action.selection, action.at));
+  return state.draft && landed.draft !== state.draft ? shellReducer(landed, { type: "set-draft", draft: state.draft }) : landed;
+}
+
+/**
+ * #4695: the thread the shell shows while a selection's detail is still loading.
+ * It carries the OPEN thread's id and notebook, the same identity `syncThread`
+ * stored. The reducer's `hydrate` blanks the draft whenever the thread id
+ * changes, so the old placeholder id (`hub-empty:thread`) wiped the composer on
+ * every render while the turns loaded and kept only the last keystroke: typing
+ * "How do I…" on a slow link sent "do I…". HOME (no selection) keeps the
+ * fixture thread, whose id is also the state's initial thread id.
+ */
+export function loadingThread(selection: HubSelection | null, turns: readonly InteractionTurn[]) {
+  const base = selection
+    ? { ...EMPTY_FIXTURE.thread, id: shellThreadId(selection), notebookId: selection.notebookId }
+    : EMPTY_FIXTURE.thread;
+  return turns.length ? { ...base, turns: [...turns] } : base;
 }
 
 /**
@@ -279,8 +354,13 @@ export function chatBodyFor(
   docIds: readonly string[],
   history: ReturnType<typeof historyRows>,
   sel: HubSelection,
-  rider?: { visualEvidence?: { fileId: string; capturedAt: string } },
-): ChatBody & { threadId: string | null; mode?: "general"; visualEvidence?: { fileId: string; capturedAt: string } } {
+  rider?: { visualEvidence?: { fileId: string; capturedAt: string }; guidedEscalation?: { sessionId: string } },
+): ChatBody & {
+  threadId: string | null;
+  mode?: "general";
+  visualEvidence?: { fileId: string; capturedAt: string };
+  guidedEscalation?: { sessionId: string };
+} {
   const base = buildChatBody(question, [...docIds], history);
   const visual = rider?.visualEvidence;
   return {
@@ -292,7 +372,22 @@ export function chatBodyFor(
     // no_sources_selected — caught by the live /v3 photo proof, #4024).
     ...(docIds.length === 0 ? { mode: "general" as const } : {}),
     ...(visual ? { visualEvidence: visual } : {}),
+    ...(rider?.guidedEscalation ? { guidedEscalation: rider.guidedEscalation } : {}),
   };
+}
+
+/**
+ * WP-1 guided dead end: the hand-off is a general-mode turn (no sources) that names the guided
+ * session, so the chat route can confirm the dead end and answer from general knowledge, labelled
+ * as such (owner decision 2026-10-21). The server, not this body, decides whether it qualifies.
+ */
+export function guidedDeadEndBody(
+  question: string,
+  sessionId: string,
+  history: ReturnType<typeof historyRows>,
+  sel: HubSelection,
+): ReturnType<typeof chatBodyFor> {
+  return chatBodyFor(question, [], history, sel, { guidedEscalation: { sessionId } });
 }
 
 /**
@@ -499,23 +594,3 @@ export function createLatestLoadTracker(): {
   };
 }
 
-/**
- * #4284 Codex F1: on staging the shell is the landing page, so it must make the
- * same onboarding decision `/feed` makes (#1901) — a tenant whose setup wizard
- * is not started or still in progress is sent to `/onboarding`. Fail-safe like
- * `/feed`: a failed, non-OK or malformed read keeps the technician where they
- * are. Loop-safe: `/onboarding` never redirects back here.
- */
-export async function onboardingRedirect(
-  getJson: (path: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>,
-): Promise<"/onboarding" | null> {
-  try {
-    const res = await getJson("/api/wizard/company");
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => ({}));
-    const status = String((data as { status?: unknown } | null)?.status ?? "");
-    return shouldRedirectToOnboarding(status) ? "/onboarding" : null;
-  } catch {
-    return null;
-  }
-}

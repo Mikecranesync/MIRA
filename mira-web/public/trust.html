@@ -232,7 +232,7 @@
 
         <h2>4. Authentication</h2>
         <ul>
-          <li><strong>Login:</strong> magic-link email (no passwords stored).</li>
+          <li><strong>Login:</strong> Google, magic-link email, or password (passwords stored only as salted bcrypt hashes).</li>
           <li><strong>Session:</strong> short-lived signed JWT, kept in browser <code>sessionStorage</code> (cleared when you close the tab).</li>
           <li><strong>Multi-factor authentication (TOTP):</strong> <span class="badge badge-roadmap">Roadmap — Q3 2026</span> Available on every plan.</li>
           <li><strong>Single sign-on (SAML / OIDC):</strong> <span class="badge badge-roadmap">Roadmap — Team plan</span> $497/mo Team tier with Okta and Microsoft Entra ID via WorkOS.</li>

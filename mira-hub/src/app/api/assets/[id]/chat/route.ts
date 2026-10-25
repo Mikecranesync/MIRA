@@ -35,6 +35,7 @@ import {
   hasCitationOrGapAdmission,
 } from "@/lib/kb-gap";
 import { canonicalProviders, requestDialectFields } from "@/lib/inference/canonical-cascade";
+import { boundInputTokens, reserveOpenAiAttempt } from "@/capabilities/openai-run-budget";
 import type { CanonicalProvider } from "@/lib/inference/canonical-cascade";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +57,7 @@ interface CascadeProvider {
   /** Request dialect + body extras — see requestDialectFields (Codex F1 on #4349). */
   requestStyle?: CanonicalProvider["requestStyle"];
   extra?: CanonicalProvider["extra"];
+  providerRouting?: CanonicalProvider["providerRouting"];
 }
 
 function getProviders(): CascadeProvider[] {
@@ -69,6 +71,7 @@ function getProviders(): CascadeProvider[] {
     model: p.model,
     requestStyle: p.requestStyle,
     extra: p.extra,
+    providerRouting: p.providerRouting,
   }));
 }
 
@@ -145,35 +148,50 @@ async function streamFromProvider(
   responseBuffer: string[],
 ): Promise<boolean> {
   if (!provider.key) return false;
-
-  let res: Response;
+  // Per-run OpenAI spend hard stop (#4355): hold the worst case before the fetch;
+  // refused at the cap → fall through like a provider that is down.
+  const inputBound = boundInputTokens(messages);
+  const gate = reserveOpenAiAttempt(provider.name, "asset-chat", inputBound, 800);
+  if (!gate.ok) return false;
+  const reservation = gate.reservation;
   try {
-    res = await fetch(provider.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${provider.key}`,
-      },
-      body: JSON.stringify({
-        model: provider.model,
-        messages,
-        stream: true,
-        // Provider dialect: compat → max_tokens 800 + temperature 0.3; OpenAI
-        // gpt-5 → max_completion_tokens 800, no temperature (HTTP 400 otherwise).
-        ...requestDialectFields(provider, 800, 0.3),
-        // gpt-oss spends completion tokens on reasoning; low effort preserves
-        // the 800-token budget for the streamed answer.
-        ...(provider.model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-  } catch {
-    return false;
+    let res: Response;
+    try {
+      res = await fetch(provider.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${provider.key}`,
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          messages,
+          stream: true,
+          // Provider dialect: compat → max_tokens 800 + temperature 0.3; OpenAI
+          // gpt-5 → max_completion_tokens 800, no temperature (HTTP 400 otherwise).
+          ...requestDialectFields(provider, 800, 0.3),
+          // gpt-oss spends completion tokens on reasoning; low effort preserves
+          // the 800-token budget for the streamed answer.
+          ...(provider.model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      return false; // unknown outcome: the finally books the worst case
+    }
+
+    if (!res.ok) {
+      reservation?.release(); // a rejection ran nothing billable
+      return false;
+    }
+    if (!res.body) return false; // a 200 with no body was still accepted: the finally books it
+
+    // This stream carries no usage block, so a served OpenAI answer books the
+    // worst case it reserved (the finally) — conservative, never free.
+    return await drainProviderStream(res.body, controller, enc, responseBuffer);
+  } finally {
+    reservation?.settle(inputBound, 800);
   }
-
-  if (!res.ok || !res.body) return false;
-
-  return drainProviderStream(res.body, controller, enc, responseBuffer);
 }
 
 // ── Asset context ──────────────────────────────────────────────────────────

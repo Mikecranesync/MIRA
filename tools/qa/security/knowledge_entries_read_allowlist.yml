@@ -431,14 +431,6 @@ approved:
       FROM knowledge_entries
                    ORDER BY created_at DESC`,
                 )
-  "mira-hub/src/app/api/assets/[id]/documents/route.ts:111":
-    approved_classification: TENANT-ONLY
-    query_sha256: "f7a5972c46a691c2b65f9bd661471a780396dfabd456fc9f220cc56bee50740d"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-               WHERE tenant_id = $1
-                 AND LOWER(manufacturer) = LOWER($2)
   "mira-hub/src/app/api/assets/[id]/agent-status/route.ts:49":
     approved_classification: UNFILTERED
     query_sha256: "b168c34eb2ca4f1d9a946a570844930f91bc5bacae61ec700a96ce6ac9426c1c"
@@ -447,22 +439,61 @@ approved:
       FROM asset_agent_status WHERE equipment_id = $1 LIMIT 1`,
                 [id],
               )
-  "mira-hub/src/lib/manual-rag.ts:754":
+  "mira-hub/src/lib/manual-rag.ts:1108":
     approved_classification: TENANT-ONLY
-    query_sha256: "a7e484eba481400b3092cae4bd2e0a0f4851a95a3fd139aae1b5027808def767"
-    reason: "retrieveNodeChunks widened BM25 pass (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above). Moved from :462 by the retrieval-repair rewrite, then :469->:482 (rawQuery pass) -> :483 (ensureFacetRepresentation import; SQL text unchanged) (query expansion + rerank widen the candidate LIMIT to a pool; the WHERE scope is unchanged — strictly tighter, never wider). HASH MIGRATION 2026-08-16: context gained ${approvalFilterSql()} (empty or 'AND verified = true' — strictly tighter) + select-list columns (verified/section_path); tenant scope re-reviewed unchanged. HASH MIGRATION 2026-08-27 (085): ORDER BY gained a deterministic tiebreak (rank DESC, doc_id, page_start, source_page — Invariant 5, PR #3432); WHERE scope byte-identical, re-reviewed unchanged. HASH MIGRATION 2026-08-29 (Workstream A, #3437/#3468; :504->:559 after the approvedSourceFilterSql helper + option doc): the approval clause is now ${approvalClauseMain} = '' (gate off) | 'AND verified = true' (no server-derived set) | 'AND (verified = true OR (is_private = true AND doc_id = ANY($6::uuid[])))' — the OR branch admits ONLY is_private=true rows already inside tenant_id=$1 AND doc_id=ANY($5) (the validated notebook doc scope) whose doc is in the SERVER-derived confirmed set validateChatSources returned (intersected with $5 app-side, never widened). Tenant predicate byte-identical; shared/OEM rows still require verified=true; re-reviewed TENANT-ONLY. Moved :564->:623 2026-09-22 (corpusManufacturers + manufacturerFromObservationText inserted above retrieveManualChunks — a separate is_private=false shared-corpus read; SQL text of THIS query unchanged, hash unchanged).Moved :623->:691 2026-09-23 (#3966 identity-bound family scope added MODEL_PATTERNS/modelFromObservationText + the identityBound scope cascade above retrieveNodeChunks; SQL text of THIS query unchanged, hash unchanged)."
+    query_sha256: "e01bb5c923c92cbb44e8da3e8657fefb05101480f168e8042bfbef9e2bc62b94"
+    reason: "retrieveNodeChunks widened BM25 pass (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above). Moved from :462 by the retrieval-repair rewrite, then :469->:482 (rawQuery pass) -> :483 (ensureFacetRepresentation import; SQL text unchanged) (query expansion + rerank widen the candidate LIMIT to a pool; the WHERE scope is unchanged — strictly tighter, never wider). HASH MIGRATION 2026-08-16: context gained ${approvalFilterSql()} (empty or 'AND verified = true' — strictly tighter) + select-list columns (verified/section_path); tenant scope re-reviewed unchanged. HASH MIGRATION 2026-08-27 (085): ORDER BY gained a deterministic tiebreak (rank DESC, doc_id, page_start, source_page — Invariant 5, PR #3432); WHERE scope byte-identical, re-reviewed unchanged. HASH MIGRATION 2026-08-29 (Workstream A, #3437/#3468; :504->:559 after the approvedSourceFilterSql helper + option doc): the approval clause is now ${approvalClauseMain} = '' (gate off) | 'AND verified = true' (no server-derived set) | 'AND (verified = true OR (is_private = true AND doc_id = ANY($6::uuid[])))' — the OR branch admits ONLY is_private=true rows already inside tenant_id=$1 AND doc_id=ANY($5) (the validated notebook doc scope) whose doc is in the SERVER-derived confirmed set validateChatSources returned (intersected with $5 app-side, never widened). Tenant predicate byte-identical; shared/OEM rows still require verified=true; re-reviewed TENANT-ONLY. Moved :564->:623 2026-09-22 (corpusManufacturers + manufacturerFromObservationText inserted above retrieveManualChunks — a separate is_private=false shared-corpus read; SQL text of THIS query unchanged, hash unchanged).Moved :623->:691 2026-09-23 (#3966 identity-bound family scope added MODEL_PATTERNS/modelFromObservationText + the identityBound scope cascade above retrieveNodeChunks; SQL text of THIS query unchanged, hash unchanged). HASH MIGRATION 2026-10-12 (#4373 Codex R3 F1): ORDER BY tiebreak gained metadata->>'chunk_index', id so same-page ties resolve on the primary key, not database order; WHERE scope byte-identical, re-reviewed TENANT-ONLY. HASH MIGRATION 2026-10-16 (#4469, :754->:1108): the per-doc candidate window loop (docWindows — a named-model ask binds ONE id at a time from the already-validated allowedDocIds set as $5, so the doc_id = ANY($5) narrowing is a strict SUBSET of the prior pass's full set, never wider) plus the correlated document_heading subquery (separately allowlisted at :1084 below) were added to the SELECT list above this WHERE; the WHERE clause itself (tenant_id=$1, ingest_route='v2', approval/node/doc clauses, content_tsv match) is byte-identical to the pre-#4469 text. Re-reviewed TENANT-ONLY. The JS-side F1/F2/F3 applicability filter that reads document_heading runs entirely in `add()`, below this query — it can only DROP candidates this query already returned under its own unchanged scope; it cannot add a row or widen tenant/node/doc/approval scope."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
-  "mira-hub/src/lib/manual-rag.ts:795":
+  "mira-hub/src/lib/manual-rag.ts:1163":
     approved_classification: TENANT-ONLY
-    query_sha256: "e1fefa74b7b312eba6b450b8ab4b6c78cf93146e8c46e8129081821213087026"
-    reason: "retrieveNodeChunks exact-token ILIKE lane — the SAME pure-tenant scope as the widened BM25 pass above (tenant_id=$caller + ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership). It guarantees a chunk containing a verbatim parameter/fault/terminal token is a retrieval candidate regardless of ts_rank; it never widens scope beyond the caller's own node-attached uploads, so it stays tenant-only by the same rule (NOT the OEM hybrid). Moved :505->:518 (rawQuery pass) -> :519 (ensureFacetRepresentation import; SQL text unchanged). HASH MIGRATION 2026-08-16: context gained ${approvalFilterSql()} (empty or 'AND verified = true' — strictly tighter) + select-list columns (verified/section_path); tenant scope re-reviewed unchanged. HASH MIGRATION 2026-08-27 (085): lane gained an explicit ORDER BY (doc_id, page_start, source_page) — it previously had NO ordering at all, so row order was arbitrary (Invariant 5, PR #3432); WHERE scope byte-identical, re-reviewed unchanged. HASH MIGRATION 2026-08-29 (Workstream A, #3437/#3468; :540->:600): approval clause is now ${approvalClauseExact} — the same three shapes as the BM25 pass, with the server-derived set bound as the lane's next free param after the $5 doc scope. Same narrowing-only admission (is_private=true AND tenant_id=$1 AND doc in validated scope AND doc in confirmed set); tenant predicate byte-identical; re-reviewed TENANT-ONLY. Moved :605->:664 2026-09-22 (corpusManufacturers + manufacturerFromObservationText inserted above retrieveManualChunks — a separate is_private=false shared-corpus read; SQL text of THIS query unchanged, hash unchanged). HASH MIGRATION 2026-10-04 (#4236, :897->:940): the lane's match predicate is now ${match === \"regex\" ? \"~*\" : \"ILIKE\"} ANY($3::text[]) — legacy exact tokens keep ILIKE; fault codes named in the question use a whole-token regex built by codeTokenMatcher. Only the per-row content predicate changed; tenant_id=$1, ingest_route, node, doc-scope and approval clauses are byte-identical, so the read stays the caller's own node-attached uploads — re-reviewed TENANT-ONLY."
+    query_sha256: "6f5a6dca28b13ac8f263d6a0ab11e9133f28a3a2d3e0c46c500826bb75b7469f"
+    reason: "retrieveNodeChunks exact-token ILIKE lane — the SAME pure-tenant scope as the widened BM25 pass above (tenant_id=$caller + ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership). It guarantees a chunk containing a verbatim parameter/fault/terminal token is a retrieval candidate regardless of ts_rank; it never widens scope beyond the caller's own node-attached uploads, so it stays tenant-only by the same rule (NOT the OEM hybrid). Moved :505->:518 (rawQuery pass) -> :519 (ensureFacetRepresentation import; SQL text unchanged). HASH MIGRATION 2026-08-16: context gained ${approvalFilterSql()} (empty or 'AND verified = true' — strictly tighter) + select-list columns (verified/section_path); tenant scope re-reviewed unchanged. HASH MIGRATION 2026-08-27 (085): lane gained an explicit ORDER BY (doc_id, page_start, source_page) — it previously had NO ordering at all, so row order was arbitrary (Invariant 5, PR #3432); WHERE scope byte-identical, re-reviewed unchanged. HASH MIGRATION 2026-08-29 (Workstream A, #3437/#3468; :540->:600): approval clause is now ${approvalClauseExact} — the same three shapes as the BM25 pass, with the server-derived set bound as the lane's next free param after the $5 doc scope. Same narrowing-only admission (is_private=true AND tenant_id=$1 AND doc in validated scope AND doc in confirmed set); tenant predicate byte-identical; re-reviewed TENANT-ONLY. Moved :605->:664 2026-09-22 (corpusManufacturers + manufacturerFromObservationText inserted above retrieveManualChunks — a separate is_private=false shared-corpus read; SQL text of THIS query unchanged, hash unchanged). HASH MIGRATION 2026-10-04 (#4236, :897->:940): the lane's match predicate is now ${match === \"regex\" ? \"~*\" : \"ILIKE\"} ANY($3::text[]) — legacy exact tokens keep ILIKE; fault codes named in the question use a whole-token regex built by codeTokenMatcher. Only the per-row content predicate changed; tenant_id=$1, ingest_route, node, doc-scope and approval clauses are byte-identical, so the read stays the caller's own node-attached uploads — re-reviewed TENANT-ONLY. HASH MIGRATION 2026-10-12 (#4373 Codex R3 F1): ORDER BY tiebreak gained metadata->>'chunk_index', id so same-page ties resolve on the primary key, not database order; WHERE scope byte-identical, re-reviewed TENANT-ONLY. HASH MIGRATION 2026-10-16 (#4469, :795->:1163): the per-doc candidate window loop (docWindows, same narrowing-only semantics as the BM25 pass above) plus the correlated document_heading subquery (separately allowlisted at :1084 below) were added to the SELECT list above this WHERE; the WHERE clause itself is byte-identical to the pre-#4469 text. Re-reviewed TENANT-ONLY — same rationale as :1108."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
+  "mira-hub/src/lib/manual-rag.ts:1084":
+    approved_classification: TENANT-ONLY
+    query_sha256: "c6657901ecdec8993c3e1f69264596a802f4a95cf221e7aaf1bdd21678825f2b"
+    reason: "NEW (#4469, PR Architecture Check fix pass 2): documentHeadingSql — a correlated subquery inside the SAME SELECT list as the two retrieveNodeChunks passes above (:1108, :1163). It is correlated to the OUTER row's already-pinned tenant_id ($1, pure-tenant surface — see those two entries) and the outer row's own doc_id, additionally scoped to header.ingest_route='v2', ORDER BY + LIMIT 1, and left() to at most 2000 characters. It can only read a chunk belonging to the SAME document the outer query already scoped to this tenant/node/doc — it has no independent WHERE of its own that could reach another tenant's or another document's rows, so it cannot widen the surface; it is strictly narrower than a bare tenant scope (same-tenant AND same-doc AND ingest_route='v2'). Consumed ONLY inside the JS `add()` closure below both outer queries, to DROP title-inapplicable candidates (#4469 F1/F2/F3) before they enter the pool — never to admit a row, never to bypass the approval/node/doc clauses on the outer queries, and not itself subject to the approval clause (it is not a citable corpus read; its value never reaches a citation or the returned ManualChunk — the return statement's `title` field uses `filename`/`section_path` only, never `document_heading`)."
+    query_snippet: |
+      FROM knowledge_entries header
+          WHERE header.tenant_id = knowledge_entries.tenant_id
+            AND header.doc_id = knowledge_entries.doc_id
+            AND header.ingest_route = 'v2'
+  "mira-hub/src/lib/manual-rag.ts:1399":
+    approved_classification: TENANT-ONLY
+    query_sha256: "792fa7f5d8d4f3ef95a374f85371d55683c4a4d99b6857bb408583efbc62e210"
+    reason: "NEW (2026-10-17 prod-test item 4, hybrid retrieval, flag NOTEBOOK_HYBRID_RETRIEVAL default off): retrieveNodeChunks VECTOR lane — the THIRD pass over the SAME pure-tenant scope as the BM25 pass (:1108) and the exact-token lane (:1163): tenant_id=$1, ingest_route='v2', the same ${approvalClauseMain} / ${nodeClauseMain} / ${docClause} fragments bound at the same parameter positions ($3 node ids, $5 validated doc scope, $6 server-derived confirmed set), plus `embedding IS NOT NULL`; ordered by cosine distance to the query vector bound as the lane's last parameter; LIMIT $4 (POOL). `($2::text IS NOT NULL)` only keeps the BM25 pass's $2 slot bound so the shared clause fragments keep their numbering — it is always true and never widens scope. Rows go through the SAME `admit()` applicability filter as every other lane before entering the pool; the correlated document_heading subquery it carries is the one allowlisted at :1084. Reads only the caller's own node-attached uploads — re-reviewed TENANT-ONLY by the same rule as :1108 (pure-tenant surface, not the OEM hybrid)."
+    query_snippet: |
+      FROM knowledge_entries
+              WHERE tenant_id = $1
+                AND ($2::text IS NOT NULL)
+                AND ingest_route = 'v2'
+  "mira-hub/src/lib/manual-rag.ts:1437":
+    approved_classification: TENANT-ONLY
+    query_sha256: "4a19a05da7838acfb04a41ded6cfbf728c2d6beaea014b9ebba061830b8f535b"
+    reason: "RE-APPROVED 2026-10-21 (#4597): the only change in this context is the IDF sum, now `sum(...::numeric)` for an exact, row-order-independent score; the scope predicates were re-read and are unchanged (tenant_id=$1, ingest_route='v2', the same approval/node/doc clauses). NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. The `scope` CTE reads ONLY the BM25 pass's pure-tenant scope: tenant_id=$1, ingest_route='v2', and the SAME ${approvalClauseMain} / ${nodeClauseMain} / ${docClause} fragments at the SAME parameter positions ($3 node ids, $4 LIMIT, $5 validated doc scope, $6 server-derived confirmed set) as the ts_rank_cd pass it replaces under the flag. N and df are computed over this CTE only, so no out-of-scope row can shift a score. Node-attached uploads are the caller's own private rows, so this is a pure-tenant surface, not the OEM hybrid — TENANT-ONLY by the same rule as the BM25 pass and the vector lane (:1399)."
+  "mira-hub/src/lib/manual-rag.ts:1464":
+    approved_classification: TENANT-ONLY
+    query_sha256: "38ede17090d609673dcb6b633683ec7064c6488077454c8ce74d3c7897df0e9c"
+    reason: "NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. Final select joins knowledge_entries back to the `scored` CTE by primary key; every id in `scored` comes from the tenant-scoped `scope` CTE, and the explicit `knowledge_entries.tenant_id = $1` repeats the tenant predicate as defence in depth. Never widens scope beyond the BM25 pass. TENANT-ONLY, pure-tenant node-attachment surface."
+  "mira-hub/src/lib/manual-rag.ts:1466":
+    approved_classification: TENANT-ONLY
+    query_sha256: "38ede17090d609673dcb6b633683ec7064c6488077454c8ce74d3c7897df0e9c"
+    reason: "NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. Same final select as the entry above (the checker reports the join's second line separately); the correlated document_heading subquery it carries is the one already allowlisted for the BM25 pass. TENANT-ONLY, pure-tenant node-attachment surface."
+  "mira-hub/scripts/repair-garbled-chunks.ts:67":
+    approved_classification: TENANT-ONLY
+    query_sha256: "e9cbc91a77a576d679e2961c08089c817bf2347efc4234c5a1c8ea6e6b7b44b3"
+    reason: "NEW (2026-10-17 prod-test items TQ-05/TQ-06, the garbled +29 re-extract script): an operator-run CLI that selects the caller's OWN node-attachment chunks to decode a fixed-shift extraction cipher in place. Pure-tenant surface by the same rule as retrieveNodeChunks (:1108/:1163): tenant_id = $1 AND ingest_route = 'v2' AND source_type = 'node_attachment' — node attachments are per-tenant uploads (is_private = true at write, #1903), so the is_private hybrid read filter does NOT apply; adding `is_private = false` here would select the shared OEM corpus, which is exactly what this script must never rewrite. Additionally narrowed to rows with no metadata->>'text_repair' marker OR the 'shift29_partial' marker (Codex r2/r3 on #4486: a row the decoder only partly repaired stays eligible for a later pass; a completed 'shift29' or 'ocr' row is never touched again, so a re-run over finished rows is a no-op) and optionally to one doc_id. The script is DRY-RUN unless BOTH NOTEBOOK_GARBLE_REEXTRACT=1 and --apply are given; its UPDATE re-asserts tenant_id = $3 and the same null-or-partial marker condition in the WHERE clause, and clears the stale embedding so the sweep re-embeds the decoded text, so it can only ever rewrite content the same tenant already owned. Not a retrieval/citation path: nothing it reads reaches an answer, and the decode is reversible via encodeShift29 with the stamped marker as the audit trail."
+    query_snippet: |
+      FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
+            AND source_type = 'node_attachment'
   "mira-hub/src/lib/__tests__/approved-source-admission.integration.test.ts:161":
     approved_classification: TENANT-ONLY
     query_sha256: "a19fac90fad5d3795b5f25ec76f2108a20def603b9d74ac8b9523a89dd672629"
@@ -591,22 +622,6 @@ approved:
     query_snippet: |
       if (sql.includes("FROM knowledge_entries")) return { rows: [], rowCount: 0 };
             return { rows: [], rowCount: 0 };
-  "mira-hub/src/lib/agents/asset-intelligence.ts:138":
-    approved_classification: TENANT-ONLY
-    query_sha256: "5eae93fe0497b1156cbc6bf1c968c41ac6271fda1d8a92c4faa8c0dbc66193dd"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-                 WHERE tenant_id = $1
-                   AND embedding IS NOT NULL
-  "mira-hub/src/lib/agents/asset-intelligence.ts:157":
-    approved_classification: TENANT-ONLY
-    query_sha256: "c75cd4cc1ca8d7296bcb78cf3a78bdc4dc60a3431a1b3b8a8a4bb783988d3d38"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-             WHERE tenant_id = $1
-               AND to_tsvector('english', content) @@ plainto_tsquery('english', $2)
   # Re-keyed 158 -> 159 by the Gate 9 F1 fix
   # (provenance enforcement added above these queries). Query unchanged;
   # the hash moves because it is computed over surrounding context.
@@ -1027,9 +1042,9 @@ approved:
       """Add kg_entities matches, knowledge_entries count, and site_path when
           available. Falls back to ctx on any error or unavailable DB.
           """
-  "mira-bots/shared/uns_resolver.py:811":
+  "mira-bots/shared/uns_resolver.py:941":
     approved_classification: UNFILTERED
-    query_sha256: "93e2d5836a3ee9474dbeb8dc7924a8847102b886ac481a9fdf8d9a40168583be"
+    query_sha256: "caafd8d1814ef378b539b0a03f455dd835c47f2c352c140ebeb7d2801eddf0e7"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       from .neon_recall import get_pool  # type: ignore[attr-defined]

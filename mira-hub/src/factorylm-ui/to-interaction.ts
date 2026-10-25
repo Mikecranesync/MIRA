@@ -34,13 +34,16 @@ import type {
   SafetyNoticeEntry,
   VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
-import { isMachineEvidenceEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
+import { isMachineEvidenceEntry, isProviderFailureEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
+import { PROVIDER_EXHAUSTION_COPY } from "@/capabilities/provider-health";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { BASIS_LABEL, splitEvidence } from "@/components/equipment/notebook-chat-utils";
 
 type StatusAwareStreamResult = StreamResult & { statusMessage?: string | null };
+
+const PROVIDER_FAILURE_MESSAGES = new Set(Object.values(PROVIDER_EXHAUSTION_COPY));
 
 const GENERIC_ABSTENTION_COPY = "I couldn't find that in the selected sources.";
 const PHOTO_ABSTENTION_COPY =
@@ -199,6 +202,8 @@ export function sourceFor(citation: EvidenceCitation, turnId: string): SourceRef
     kind: citation.fileId ? "workspace_file" : "oem_documentation",
     locator,
     ...(href ? { href } : {}),
+    // The canonical origin of a photo-derived source is the photograph (085).
+    ...(href && citation.originFileId ? { media: "image" as const } : {}),
   };
 }
 
@@ -252,6 +257,13 @@ export function safetyNoticesOf(evidence: readonly unknown[]): SafetyNoticeEntry
 
 export function hasTerminalSafetyStop(evidence: readonly unknown[]): boolean {
   return safetyNoticesOf(evidence).some(isTerminalSafetyNotice);
+}
+
+/** The classic notebook draws every safety banner ABOVE the answer (`NotebookChat`
+ *  `Bubble`), and the shell renders parts in array order — so notices lead, live
+ *  and hydrated alike. Caught by the fidelity harness (#4439). */
+function safetyFirst(parts: InteractionPart[]): InteractionPart[] {
+  return [...parts.filter((p) => p.type === "safety_notice"), ...parts.filter((p) => p.type !== "safety_notice")];
 }
 
 export function safetyNoticePart(entry: SafetyNoticeEntry): InteractionPart {
@@ -339,7 +351,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
     // hydrated row uses, so live and reloaded turns render identically.
     if (result.hazardNotice) parts.push(safetyNoticePart(result.hazardNotice));
     if (result.followups.length) parts.push({ type: "followups", suggestions: result.followups });
-    return parts;
+    return safetyFirst(parts);
   }
 
   if (stopped) {
@@ -350,9 +362,19 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
       error: { code: "provider_failure", message: "The answer ended before it completed.", retryable: true },
     });
   } else {
-    parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
+    // Only the server's technician copy for provider exhaustion (#4356) is shown
+    // verbatim; other status messages ("see server logs") are operator text.
+    const serverMessage = result.statusMessage?.trim();
+    if (serverMessage && PROVIDER_FAILURE_MESSAGES.has(serverMessage)) {
+      parts.push({
+        type: "error",
+        error: { code: "provider_failure", message: serverMessage, retryable: false },
+      });
+    } else {
+      parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
+    }
   }
-  return parts;
+  return safetyFirst(parts);
 }
 
 /**
@@ -454,7 +476,13 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
   } else if (stopped) {
     parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } });
   } else {
-    parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: false } });
+    // #4374: the persisted provider-exhaustion reason shows the same copy the
+    // live turn did. Never retryable: the host's Retry replays the same
+    // idempotent request (#4374 Codex R2); a scoped Retry is tracked on #4366.
+    // `PersistedTurn.evidence` (guarded legacy type) predates this marker; read it as unknown.
+    const failure = (row.evidence as readonly unknown[]).find(isProviderFailureEntry);
+    const message = failure ? PROVIDER_EXHAUSTION_COPY[failure.reason] : "The answer could not be completed.";
+    parts.push({ type: "error", error: { code: "provider_failure", message, retryable: false } });
   }
 
   // Same precedence as `lifecycleFromStream`: a persisted TERMINAL refusal stays a
@@ -470,7 +498,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     id: answerId,
     threadId,
     role: "assistant",
-    parts,
+    parts: safetyFirst(parts),
     lifecycle,
     context,
     createdAt: at,
@@ -508,7 +536,57 @@ export function withManualSearchStatus(
     model: status.model,
     running: status.running,
     ...(status.message ? { message: status.message } : {}),
+    ...(status.manualUrl ? { manualUrl: status.manualUrl } : {}),
   };
+  return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
+}
+
+/** The follow-up suggestions of the answer that just finished streaming, and
+ *  the question they answered (#4454). */
+export interface SettledFollowups {
+  readonly question: string;
+  readonly suggestions: readonly string[];
+  /** Answer turn ids already in the thread when the send started. */
+  readonly answeredBefore: readonly string[];
+}
+
+/** The question text a user turn carried, trimmed; null for any other turn. */
+function askedText(turn: InteractionTurn | undefined): string | null {
+  if (turn?.role !== "user") return null;
+  const text = turn.parts.find((p) => p.type === "text");
+  return text?.type === "text" ? text.text.trim() : null;
+}
+
+/**
+ * #4454 — saved rows never carry follow-up suggestions, so once `hub-host.tsx`
+ * re-loads the thread after a stream and drops the live turn, the chips the
+ * technician just saw vanished. The host keeps the finished answer's
+ * suggestions; this puts them back on the answer that send produced: the one
+ * answer to that question that was not in the thread when the send started.
+ * It must also be the LAST answer and have completed. If another device
+ * answered the same question meanwhile, two answers qualify and neither can be
+ * told apart from here, so neither gets them. Same overlay shape as
+ * `withManualSearchStatus`, applied before it so the order matches the live turn.
+ */
+export function withSettledFollowups(
+  turns: readonly InteractionTurn[],
+  settled: SettledFollowups | null,
+): InteractionTurn[] {
+  if (!settled || settled.suggestions.length === 0) return [...turns];
+  const before = new Set(settled.answeredBefore);
+  const asked = settled.question.trim();
+  let lastAssistantIndex = -1;
+  const produced: number[] = [];
+  for (let i = 0; i < turns.length; i++) {
+    const t = turns[i]!;
+    if (t.role !== "assistant") continue;
+    lastAssistantIndex = i;
+    if (!before.has(t.id) && askedText(turns[i - 1]) === asked) produced.push(i);
+  }
+  if (produced.length !== 1 || produced[0] !== lastAssistantIndex) return [...turns];
+  const answer = turns[lastAssistantIndex]!;
+  if (answer.lifecycle !== "completed" || answer.parts.some((p) => p.type === "followups")) return [...turns];
+  const part: InteractionPart = { type: "followups", suggestions: settled.suggestions };
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
 }
 

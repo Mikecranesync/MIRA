@@ -1160,6 +1160,10 @@ _KE_INSERT_ALLOWLIST: dict[str, str] = {
     "mira-hub/src/lib/__tests__/node-knowledge-ingest-empty.test.ts": "not a writer — same mock-capture assertion string as the batching test.",
     "mira-hub/src/app/api/documents/upload/__tests__/route.test.ts": "not a writer — regex assertion on mock-captured SQL; the test itself ASSERTS "
     "is_private true is present (the #1833 guard), just >600 chars after the match.",
+    "mira-hub/src/lib/__tests__/node-knowledge-ingest-garble.test.ts": "not a writer — same mock-capture assertion string as the batching test "
+    "(#4486, garbled-extraction repair at ingest); the real writer (node-knowledge-ingest.ts) pins true.",
+    "mira-hub/src/capabilities/__tests__/garble-repair-ingest-contracts.test.ts": "not a writer — same mock-capture assertion string "
+    "(#4486 round 4, partial-marker / embed-fence contracts); the real writer (node-knowledge-ingest.ts) pins true.",
 }
 
 

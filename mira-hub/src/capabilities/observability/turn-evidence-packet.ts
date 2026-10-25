@@ -74,6 +74,8 @@ export type TurnEvidencePacketVision = {
   latency_ms: number | null;
   observation_chars: number;
   hazard_count: number;
+  /** Verbatim on-screen text lines LOOK transcribed (alarm-reasoning spec §4). */
+  screen_lines?: number;
   ok: boolean;
 };
 
@@ -164,6 +166,10 @@ export type TurnEvidencePacketContext = {
   visual_evidence_count: number;
   identity_included: boolean;
   history_turns: number;
+  /** Additive report recall metadata; absent on pre-continuity packets. */
+  prior_report_turn_ids?: string[];
+  prior_report_coverage?: "available" | "unavailable" | "not_requested";
+  prior_report_truncated?: boolean;
   prompt_chars: number;
   /** Which system prompt the model received: general (no documents), grounded (documents), machine (machine packet). */
   system_prompt_kind: "general" | "grounded" | "machine" | null;
@@ -213,6 +219,12 @@ export type TurnEvidencePacketAnswerGate = {
    * the packet.
    */
   citations_shipped: number;
+  /** Weak-evidence badge (jev-weak-evidence.ts, `MIRA_JEV_WEAK_EVIDENCE_BADGE`):
+   *  true when the rule fired and the turn's evidence label was replaced. The
+   *  badge RATE over this field is what the 2026-10-12 adjudication asks to
+   *  measure before the rule touches anything else. Optional: absent on paths
+   *  that never evaluate it (read as false). */
+  weak_evidence_badge?: boolean;
   /**
    * #4315 (observe-only): numeric values the answer cited that appear nowhere in the
    * cited page's model-visible text (number + unit). A count — never the values or any
@@ -419,6 +431,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       jev_observation_count: null,
       jev_instructions_version: null,
       citations_shipped: 0,
+      weak_evidence_badge: false,
       evidence_followed: null,
       gate_match: null,
     },

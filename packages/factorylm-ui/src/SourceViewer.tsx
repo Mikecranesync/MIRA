@@ -31,7 +31,11 @@ export function SourceViewer({ state, dispatch }: SourceViewerProps) {
     <h2>{source.title}</h2>
     <p className="fl-source-viewer__locator">{source.locator}</p>
     {href ? <a className="fl-source-viewer__open" href={href} target="_blank" rel="noopener noreferrer">Open document in a new tab</a> : null}
-    {inline ? <iframe className="fl-source-viewer__frame" title={source.title} src={href} /> : null}
+    {inline && source.media === "image"
+      // A framed image renders at its native size, so a 4000 px phone photo
+      // showed one corner. Fit the whole photo instead.
+      ? <img className="fl-source-viewer__image" src={href} alt={`Original photo for ${source.title}`} />
+      : inline ? <iframe className="fl-source-viewer__frame" title={source.title} src={href} /> : null}
     {href ? null : <p className="fl-card__meta">The original document isn&apos;t available to open here; the citation locator above is the reference.</p>}
   </aside>;
 }
