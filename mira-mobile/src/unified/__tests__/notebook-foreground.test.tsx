@@ -242,6 +242,62 @@ describe("unified shell returns to the foreground (#3990)", () => {
     await screen.findByText("F0002 trips at 840 V.");
     expect(screen.getAllByText("F0003 trips at 135 C.")).toHaveLength(1);
   });
+
+  // #4637 / #4639 on the surface Android runs. The rows echo the request id
+  // the phone minted, as the Hub returns it.
+  const sent: string[] = [];
+  const rowFor = (id: string, question: string, answerText: string, clientRequestId: string) => ({
+    ...turn(id, question, answerText),
+    clientRequestId,
+  });
+  async function askUnified(question: string) {
+    const ta = await screen.findByRole("textbox");
+    fireEvent.change(ta, { target: { value: question } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  }
+
+  it("#4637: a resume mid-answer catches up exactly once after the answer settles", async () => {
+    sent.length = 0;
+    getNotebookDetail.mockResolvedValueOnce(detail([]));
+    let settle!: (t: ChatTurn) => void;
+    askNotebook.mockImplementation((_id: string, _q: string, _s: string[], o: { clientRequestId?: string }) => {
+      sent.push(String(o.clientRequestId));
+      return new Promise<ChatTurn>((r) => (settle = r));
+    });
+    mountUnified();
+    await askUnified("What trips F0003?");
+    const calls = getNotebookDetail.mock.calls.length;
+    await resume();
+    expect(getNotebookDetail.mock.calls.length).toBe(calls);
+
+    getNotebookDetail.mockResolvedValue(
+      detail([rowFor("t1", "What trips F0003?", "F0003 trips at 135 C.", sent[0]!), rowFor("t2", "And F0002?", "F0002 trips at 840 V.", "web-1")]),
+    );
+    await act(async () => settle({ answer: "F0003 trips at 135 C.", citations: [], status: "answered" }));
+
+    await screen.findByText("F0002 trips at 840 V.");
+    expect(getNotebookDetail.mock.calls.length).toBe(calls + 1);
+    expect(screen.getAllByText("F0003 trips at 135 C.")).toHaveLength(1);
+  });
+
+  it("#4639: a same-question web row with a different request id leaves the phone's turn", async () => {
+    sent.length = 0;
+    getNotebookDetail.mockResolvedValueOnce(detail([]));
+    askNotebook.mockImplementation(async (_id: string, _q: string, _s: string[], o: { clientRequestId?: string }) => {
+      sent.push(String(o.clientRequestId));
+      return { answer: "F0003 trips at 135 C.", citations: [], status: "answered" };
+    });
+    mountUnified();
+    await askUnified("What trips F0003?");
+    await screen.findByText("F0003 trips at 135 C.");
+
+    getNotebookDetail.mockResolvedValue(detail([rowFor("w1", "What trips F0003?", "F0003 trips at 135 C.", "web-1")]));
+    await resume();
+    await act(async () => {});
+
+    expect(sent[0]).not.toBe("web-1");
+    expect(screen.getAllByText("F0003 trips at 135 C.")).toHaveLength(2);
+  });
 });
 
 describe("dropPersistedLiveTurns", () => {
