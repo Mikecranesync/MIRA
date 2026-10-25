@@ -38,6 +38,13 @@ describe("normalizeWorkOrderStatus (#4731)", () => {
     expect(normalizeWorkOrderStatus(null).ok).toBe(false);
   });
 
+  it("never throws on a hostile object (Codex #4766 F1)", () => {
+    const hostile = { toString: null } as unknown;
+    expect(() => normalizeWorkOrderStatus(hostile)).not.toThrow();
+    expect(normalizeWorkOrderStatus(hostile).ok).toBe(false);
+    expect(normalizeWorkOrderStatus([hostile]).ok).toBe(false);
+  });
+
   it("is case-sensitive like the enum (no silent 'Completed' coercion)", () => {
     expect(normalizeWorkOrderStatus("Completed").ok).toBe(false);
   });

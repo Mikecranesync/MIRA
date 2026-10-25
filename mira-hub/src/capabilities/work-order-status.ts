@@ -37,7 +37,10 @@ export function normalizeWorkOrderStatus(value: unknown): StatusResult {
       return { ok: true, status: ALIASES[value] };
     }
   }
-  const shown = typeof value === "string" ? `"${value}"` : String(value);
+  // Never String() a non-string: a JSON object can make that conversion throw
+  // (Codex #4766 F1), which would surface as the very 500 this module prevents.
+  const shown =
+    typeof value === "string" ? `"${value}"` : value === null ? "null" : Array.isArray(value) ? "array" : `of type ${typeof value}`;
   return {
     ok: false,
     error: `Unknown work order status ${shown}`,

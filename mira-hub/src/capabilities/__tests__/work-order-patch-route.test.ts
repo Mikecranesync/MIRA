@@ -72,6 +72,14 @@ describe("PATCH work order status (#4731)", () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it("a hostile status object is a 400, not a 500 (Codex #4766 F1)", async () => {
+    const query = wire();
+    const res = await patch({ status: { toString: null } });
+    expect(res.status).toBe(400);
+    expect((await res.json()).allowed).toContain("completed");
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it("a non-string status is a 400", async () => {
     const query = wire();
     const res = await patch({ status: 7 });
