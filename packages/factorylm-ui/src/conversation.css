@@ -115,6 +115,9 @@
 .fl-safety[data-severity="stop"] { border-color: var(--fl-workspace-fault-line); background: var(--fl-workspace-fault-tint); color: var(--fl-workspace-fault-ink); }
 .fl-safety p { margin: 0; }
 .fl-safety__title { font-weight: 700; }
+/* Issue 4690: a server ⚠️ line above an answer: the same warning block, set apart from the answer below it. */
+.fl-safety--text { display: block; margin-block-end: var(--fl-workspace-space-3); }
+.fl-safety--text p + p { margin-block-start: var(--fl-workspace-space-2); }
 
 .fl-step { display: flex; align-items: flex-start; gap: var(--fl-workspace-space-2); font-size: var(--fl-workspace-fs-sm); }
 .fl-step__check { flex: 0 0 auto; inline-size: 1.25rem; block-size: 1.25rem; display: grid; place-items: center; border: 1px solid var(--fl-workspace-line); border-radius: 50%; }
