@@ -136,6 +136,39 @@ describe("citationDisplayNumbers (#4667)", () => {
   it("control: an empty citation list maps nothing", () => {
     expect(citationDisplayNumbers([]).size).toBe(0);
   });
+
+  // #4746: OEM-corpus citations carry no docId (manual-rag.ts documents it as
+  // undefined on that path; chat/route.ts normalizes to ""), so two different
+  // manuals at the same page must not collapse onto one shared empty key.
+  it("gives two OEM manuals (empty docId, distinct sourceUrl, same page) different numbers", () => {
+    const cites = [
+      { citationId: "1", docId: "", sourceTitle: "Manual A", sourceUrl: "https://a.example/a.pdf", page: 5, fileId: null, quote: null },
+      { citationId: "2", docId: "", sourceTitle: "Manual B", sourceUrl: "https://b.example/b.pdf", page: 5, fileId: null, quote: null },
+    ];
+    const map = citationDisplayNumbers(cites);
+    expect(map.get("1")).toBe(1);
+    expect(map.get("2")).toBe(2);
+  });
+
+  it("gives two OEM manuals (empty docId, distinct sourceUrl, both null page) different numbers", () => {
+    const cites = [
+      { citationId: "1", docId: "", sourceTitle: "Manual A", sourceUrl: "https://a.example/a.pdf", page: null, fileId: null, quote: null },
+      { citationId: "2", docId: "", sourceTitle: "Manual B", sourceUrl: "https://b.example/b.pdf", page: null, fileId: null, quote: null },
+    ];
+    const map = citationDisplayNumbers(cites);
+    expect(map.get("1")).toBe(1);
+    expect(map.get("2")).toBe(2);
+  });
+
+  it("control: repeated citations to the same OEM manual/page still share a number", () => {
+    const cites = [
+      { citationId: "1", docId: "", sourceTitle: "Manual A", sourceUrl: "https://a.example/a.pdf", page: 5, fileId: null, quote: null },
+      { citationId: "2", docId: "", sourceTitle: "Manual A", sourceUrl: "https://a.example/a.pdf", page: 5, fileId: null, quote: null },
+    ];
+    const map = citationDisplayNumbers(cites);
+    expect(map.get("1")).toBe(1);
+    expect(map.get("2")).toBe(1);
+  });
 });
 
 describe("CodeBlock (RNDR-2)", () => {

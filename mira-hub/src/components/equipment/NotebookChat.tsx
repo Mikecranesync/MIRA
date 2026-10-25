@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { Send, Loader2, FileText, ChevronDown, Square, RotateCcw, Activity, Camera, AlertTriangle } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 import type { EvidenceCitation, MachineEvidenceEntry, SafetyNoticeEntry, VisualObservationEntry } from "@/lib/notebook-chat-types";
-import { AnswerMarkdown, citationDisplayNumbers } from "./notebook-markdown";
+import { AnswerMarkdown, citationDisplayNumbers, passageKey } from "./notebook-markdown";
 import {
   answerContentFor,
   basisLabel,
@@ -27,13 +27,18 @@ import {
   type ChatBody,
 } from "./notebook-chat-utils";
 
-/** Collapse citations to distinct (doc, page) passages — repeated cites from the
- *  same page count once, so "6 filename pills" becomes "3 supporting passages". */
+/** Collapse citations to distinct passages (per `passageKey`) — repeated
+ *  cites from the same page count once, so "6 filename pills" becomes
+ *  "3 supporting passages". Shares its identity rule with
+ *  `citationDisplayNumbers` so the source list and the inline chip numbers
+ *  never disagree about what counts as "the same passage" (#4746) — in
+ *  particular, two different OEM manuals (which carry no `docId`) are never
+ *  collapsed into one just because they land on the same page. */
 export function distinctPassages(cites: EvidenceCitation[]): EvidenceCitation[] {
   const seen = new Set<string>();
   const out: EvidenceCitation[] = [];
   for (const c of cites) {
-    const k = `${c.docId}|${c.page ?? ""}`;
+    const k = passageKey(c);
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(c);

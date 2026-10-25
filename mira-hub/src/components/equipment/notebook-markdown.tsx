@@ -119,23 +119,37 @@ export function CodeBlock({ children }: { children?: ReactNode }) {
   );
 }
 
+/** Identity key for grouping citations into one passage: prefer `docId`
+ *  (every per-tenant upload has one), falling back to `sourceUrl` for the
+ *  shared OEM corpus — those chunks carry `docId: ""` (manual-rag.ts
+ *  documents docId as undefined on that path; chat/route.ts normalizes it to
+ *  `""`), so two different manuals must not collide on a shared empty key.
+ *  When neither identity is available, fall back to `citationId` so unlike
+ *  citations are never merged on no reliable identity (#4746). */
+export function passageKey(c: EvidenceCitation): string {
+  if (c.docId) return `doc:${c.docId}|${c.page ?? ""}`;
+  if (c.sourceUrl) return `url:${c.sourceUrl}|${c.page ?? ""}`;
+  return `id:${c.citationId}`;
+}
+
 /** Per-message display number: 1-based, by order of first appearance among
  *  `cites` — `citationId` is minted as a running counter across the WHOLE
  *  thread (hub-host.tsx uses it as the real resolution key, so it is never
  *  mutated), and must never be shown to a technician as the visible "[n]":
  *  a later message with one source would otherwise show "[3]" instead of
- *  "[1]" (#4667). Citations sharing one (docId, page) passage collapse to
- *  the same number, matching `distinctPassages`'s dedup rule in NotebookChat. */
+ *  "[1]" (#4667). Citations sharing one passage (per `passageKey` above)
+ *  collapse to the same number, matching `distinctPassages`'s dedup rule in
+ *  NotebookChat. */
 export function citationDisplayNumbers(cites: EvidenceCitation[]): Map<string, number> {
   const byPassage = new Map<string, number>();
   const byId = new Map<string, number>();
   let next = 1;
   for (const c of cites) {
-    const passageKey = `${c.docId}|${c.page ?? ""}`;
-    let n = byPassage.get(passageKey);
+    const key = passageKey(c);
+    let n = byPassage.get(key);
     if (n === undefined) {
       n = next++;
-      byPassage.set(passageKey, n);
+      byPassage.set(key, n);
     }
     byId.set(c.citationId, n);
   }

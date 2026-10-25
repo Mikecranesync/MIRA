@@ -109,6 +109,16 @@ describe("distinctPassages", () => {
     const numbers = citationDisplayNumbers(cites);
     expect(distinctPassages(cites).map((p) => numbers.get(p.citationId))).toEqual([1]);
   });
+
+  // #4746: OEM-corpus citations carry no docId, so two different manuals at
+  // the same page must not collapse into one passage in the source list.
+  it("does not collapse two OEM manuals (empty docId, distinct sourceUrl) sharing a page", () => {
+    const oem = (id: string, sourceUrl: string, page: number | null) => ({
+      citationId: id, docId: "", sourceTitle: "m.pdf", sourceUrl, page, fileId: null, quote: "",
+    });
+    const cites = [oem("1", "https://a.example/a.pdf", 5), oem("2", "https://b.example/b.pdf", 5)];
+    expect(distinctPassages(cites).map((x) => x.citationId)).toEqual(["1", "2"]);
+  });
 });
 
 describe("hydrateTurns", () => {
