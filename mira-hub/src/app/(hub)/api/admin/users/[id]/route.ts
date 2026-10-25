@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { updateUserStatus, type UserStatus } from "@/lib/users";
+import { revokeUserSessions, updateUserStatus, type UserStatus } from "@/lib/users";
 import { requireSession, UnauthorizedError } from "@/lib/session";
 import { requireCapability } from "@/lib/capabilities";
 
@@ -13,7 +13,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const denied = requireCapability(session, "platform.users.read");
     if (denied) return denied;
     const { id } = await params;
-    const body = await req.json() as { status?: unknown };
+    const body = await req.json() as { status?: unknown; revokeSessions?: unknown };
+    if (body.revokeSessions === true) {
+      const result = await revokeUserSessions(id);
+      if (!result.found) {
+        return NextResponse.json({ error: "not found" }, { status: 404 });
+      }
+      return NextResponse.json({
+        ok: true,
+        revoked: true,
+        sessionVersion: result.sessionVersion,
+      });
+    }
     const { status } = body;
     if (!status || !VALID_STATUSES.includes(status as UserStatus)) {
       return NextResponse.json({ error: "invalid status" }, { status: 400 });

@@ -11,7 +11,7 @@ vi.mock("@/lib/users", async (orig) => ({ ...(await orig<typeof import("@/lib/us
 import { cookies } from "next/headers";
 import { decode } from "next-auth/jwt";
 import { findUserById } from "@/lib/users";
-import { requireSession, type SessionContext } from "@/lib/session";
+import { requireSession, UnauthorizedError, type SessionContext } from "@/lib/session";
 import { getCapabilities } from "@/lib/capabilities";
 
 const TID = "11111111-2222-4333-8444-555555555555";
@@ -84,14 +84,12 @@ describe("requireSession derives platformAdmin fresh from hub_users.status (#459
     expect((await requireSession()).platformAdmin).toBe(false);
   });
 
-  it("deleted user or a DB error → false (fail closed), session itself still resolves", async () => {
+  it("deleted user or a DB error fail-closes the session (#3831)", async () => {
     token();
     vi.mocked(findUserById).mockResolvedValue(null);
-    expect((await requireSession()).platformAdmin).toBe(false);
+    await expect(requireSession()).rejects.toBeInstanceOf(UnauthorizedError);
     vi.mocked(findUserById).mockRejectedValue(new Error("db blip"));
-    const s = await requireSession();
-    expect(s.platformAdmin).toBe(false);
-    expect(s.tenantId).toBe(TID);
+    await expect(requireSession()).rejects.toBeInstanceOf(UnauthorizedError);
   });
 });
 

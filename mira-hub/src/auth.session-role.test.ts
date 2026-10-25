@@ -11,6 +11,8 @@ vi.mock("@/lib/users", () => ({
   findUserByEmail: vi.fn(),
   findUserById: vi.fn(),
   validateMagicToken: vi.fn(),
+  sessionGeneration: (value: unknown) =>
+    typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0,
 }));
 
 import { findUserById } from "@/lib/users";
@@ -18,6 +20,7 @@ import { authOptions, resolveRoleFromDb } from "@/auth";
 import { NO_ROLE } from "@/lib/role";
 
 type SessionCb = NonNullable<NonNullable<typeof authOptions.callbacks>["session"]>;
+type JwtCb = NonNullable<NonNullable<typeof authOptions.callbacks>["jwt"]>;
 
 async function runSessionCallback(token: Record<string, unknown>) {
   const cb = authOptions.callbacks!.session as SessionCb;
@@ -25,6 +28,17 @@ async function runSessionCallback(token: Record<string, unknown>) {
   return (await cb({ session, token, user: undefined as never, newSession: undefined, trigger: "update" } as never)) as {
     user: { role: string; id: string; tenantId: string };
   };
+}
+
+async function runJwtCallback(args: { token: Record<string, unknown>; user?: Record<string, unknown> }) {
+  const cb = authOptions.callbacks!.jwt as JwtCb;
+  return await cb({
+    token: args.token,
+    user: args.user as never,
+    account: null,
+    profile: undefined,
+    trigger: args.user ? "signIn" : "update",
+  } as never);
 }
 
 describe("resolveRoleFromDb", () => {
@@ -73,5 +87,30 @@ describe("session callback", () => {
   it("sets NO_ROLE (not owner) when the lookup fails", async () => {
     vi.mocked(findUserById).mockImplementation(async () => { throw new Error("down"); });
     expect((await runSessionCallback({ uid: "u1", tid: "t1" })).user.role).toBe(NO_ROLE);
+  });
+});
+
+describe("jwt callback stamps session_version at issuance (#3831)", () => {
+  beforeEach(() => {
+    vi.mocked(findUserById).mockReset();
+  });
+
+  it("writes token.sv from the live user row on sign-in", async () => {
+    vi.mocked(findUserById).mockResolvedValue({ sessionVersion: 7 } as never);
+    const token = await runJwtCallback({
+      token: {},
+      user: { id: "u1", tenantId: "t1", status: "approved" },
+    });
+    expect(token.sv).toBe(7);
+    expect(findUserById).toHaveBeenCalledWith("u1");
+  });
+
+  it("does not refresh sv when the callback runs without a user (session update)", async () => {
+    vi.mocked(findUserById).mockResolvedValue({ sessionVersion: 99 } as never);
+    const token = await runJwtCallback({
+      token: { uid: "u1", tid: "t1", sv: 3 },
+    });
+    expect(token.sv).toBe(3);
+    expect(findUserById).not.toHaveBeenCalled();
   });
 });

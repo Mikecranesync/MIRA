@@ -3,6 +3,16 @@ import { ensureDataSchema } from "@/lib/data-schema";
 
 export type UserStatus = "pending" | "trial" | "approved" | "expired" | "admin";
 
+/** Integer session generation stamped into the Hub JWT (#3831). Unreadable values are 0. */
+export function sessionGeneration(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function sessionVersionFromRow(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return sessionGeneration(Number.isInteger(n) ? n : undefined);
+}
+
 export interface HubUser {
   id: string;
   email: string;
@@ -15,6 +25,7 @@ export interface HubUser {
   trialExpiresAt: Date | null;
   plan: string | null;
   preferences: Record<string, unknown>;
+  sessionVersion: number;
 }
 
 export interface MagicTokenResult {
@@ -50,6 +61,7 @@ export function ensureSchema(): Promise<void> {
         status           TEXT NOT NULL DEFAULT 'trial',
         trial_expires_at TIMESTAMPTZ,
         plan             TEXT,
+        session_version  INTEGER NOT NULL DEFAULT 0,
         created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
@@ -71,6 +83,7 @@ export function ensureSchema(): Promise<void> {
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ`);
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS plan TEXT`);
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS preferences JSONB NOT NULL DEFAULT '{}'`);
+    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0`);
     // hub_tenants — add slug + settings for Phase 2 multi-tenancy
     await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS slug TEXT`);
     await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'`);
@@ -78,7 +91,7 @@ export function ensureSchema(): Promise<void> {
     // No email-based admin promotion here (#4591): registration does not verify email
     // ownership, so promoting whatever row carries ADMIN_EMAIL at boot let anyone who
     // registered that address first become a platform admin. status='admin' is set only by
-    // an existing platform admin (admin users route) or an operator.
+    // an existing platform admin (the admin users route) or an operator.
     await pool.query(`
       UPDATE hub_users SET trial_expires_at = created_at + INTERVAL '7 days'
       WHERE status = 'trial' AND trial_expires_at IS NULL
@@ -104,10 +117,11 @@ function rowToUser(r: Record<string, unknown>): HubUser {
     trialExpiresAt: r.trial_expires_at ? new Date(r.trial_expires_at as string) : null,
     plan: (r.plan as string) ?? null,
     preferences: (r.preferences as Record<string, unknown>) ?? {},
+    sessionVersion: sessionVersionFromRow(r.session_version),
   };
 }
 
-const USER_COLS = "id, email, password_hash, google_sub, tenant_id, name, role, status, trial_expires_at, plan, preferences";
+const USER_COLS = "id, email, password_hash, google_sub, tenant_id, name, role, status, trial_expires_at, plan, preferences, session_version";
 
 export async function findUserByEmail(email: string): Promise<HubUser | null> {
   await ensureSchema();
@@ -163,13 +177,38 @@ export function isSystemAccount(user: { email: string; name: string | null }): b
 
 export async function updateUserStatus(id: string, status: UserStatus): Promise<void> {
   await ensureSchema();
+  const disable = status === "pending" || status === "expired";
+  if (disable) {
+    await pool.query(
+      `UPDATE hub_users
+       SET status = $1, session_version = session_version + 1, updated_at = NOW()
+       WHERE id = $2`,
+      [status, id],
+    );
+    return;
+  }
   await pool.query(
     `UPDATE hub_users SET status = $1, updated_at = NOW() WHERE id = $2`,
     [status, id],
   );
 }
 
-// ── Magic link tokens ──────────────────────────────────────────────────────────
+export async function revokeUserSessions(
+  userId: string,
+): Promise<{ found: boolean; sessionVersion: number | null }> {
+  await ensureSchema();
+  const { rows } = await pool.query(
+    `UPDATE hub_users
+     SET session_version = session_version + 1, updated_at = NOW()
+     WHERE id = $1
+     RETURNING session_version`,
+    [userId],
+  );
+  if (!rows[0]) return { found: false, sessionVersion: null };
+  return { found: true, sessionVersion: sessionVersionFromRow(rows[0].session_version) };
+}
+
+// ── Magic link tokens ──────────────────────────
 
 let magicSchemaReady: Promise<void> | null = null;
 
@@ -355,7 +394,7 @@ export async function ensureInvitedUser(input: {
   };
 }
 
-// ── User preferences ───────────────────────────────────────────────────────────
+// ── User preferences ─────────────────────────
 
 export async function getUserPreferences(userId: string): Promise<Record<string, unknown>> {
   await ensureSchema();
