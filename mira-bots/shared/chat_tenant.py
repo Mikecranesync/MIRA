@@ -23,7 +23,9 @@ def canonicalize_tenant_id(value: object) -> str:
     """Strip and canonicalize a tenant id for equality checks.
 
     UUID-shaped values become ``str(uuid.UUID(...))`` (lowercase, hyphenated).
-    Anything else is lowercased. ``None`` / blank become ``""``.
+    Non-UUID values are returned as stripped text with case preserved —
+    ``PlantAlpha`` and ``plantalpha`` stay distinct. ``None`` / blank become
+    ``""``.
     """
     if value is None:
         return ""
@@ -33,7 +35,7 @@ def canonicalize_tenant_id(value: object) -> str:
     try:
         return str(uuid.UUID(text))
     except (ValueError, AttributeError, TypeError):
-        return text.lower()
+        return text
 
 
 _DB_PATH: str = os.environ.get("MIRA_DB_PATH", "/data/mira.db")

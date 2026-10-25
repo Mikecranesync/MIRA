@@ -336,3 +336,49 @@ async def test_same_tenant_id_variants_accepted_different_tenant_rejected(mapped
     assert len(calls) == len(variants) + 1
     assert all(c["tenant_id"] == TENANT_A for c in calls)
     assert rows[TENANT_B] == tenant_b_before
+
+
+@pytest.mark.asyncio
+async def test_non_uuid_tenant_ids_case_difference_rejected():
+    """Non-UUID slugs that differ only by case are different tenants."""
+    rows, calls, fake_create = _hub_row_store()
+    atlas = MagicMock()
+    atlas.create_work_order = AsyncMock(return_value={"id": 4})
+
+    with (
+        patch("shared.engine.AtlasCMMSClient", return_value=atlas),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+        patch("shared.engine.log_uns_event"),
+        patch("shared.engine.push_wo_created", new_callable=AsyncMock),
+        patch("shared.engine.suggest_followup_pm", return_value=None),
+    ):
+        sv = _bare_supervisor()
+        wo_match = _valid_wo(chat_id="unmapped-chat")
+        wo_match.tenant_id = "PlantAlpha"
+        await sv._post_cmms_work_order(wo_match, tenant_id="PlantAlpha")
+
+        wo_case = _valid_wo(chat_id="unmapped-chat")
+        wo_case.tenant_id = "PlantAlpha"
+        with pytest.raises(RuntimeError, match="tenant_mismatch"):
+            await sv._post_cmms_work_order(wo_case, tenant_id="plantalpha")
+
+        sv._record_exchange = MagicMock()
+        sv._save_state = MagicMock()
+        draft = _valid_draft(chat_id="unmapped-chat", tenant_id="PlantAlpha")
+        state = {
+            "state": "RESOLVED",
+            "asset_identified": "Pump-A3",
+            "fault_category": "",
+            "context": {"cmms_pending": True, "cmms_wo_draft": draft},
+        }
+        result = await sv._handle_cmms_pending(
+            "unmapped-chat", "yes", state, "trace-3237", tenant_id="plantalpha"
+        )
+
+    assert "session tenant doesn't match" in result["reply"]
+    assert state["context"]["cmms_pending"] is True
+    assert state["context"]["cmms_wo_draft"] is draft
+    sv._save_state.assert_not_called()
+    assert len(calls) == 1
+    assert calls[0]["tenant_id"] == "PlantAlpha"
+    atlas.create_work_order.assert_awaited_once()
