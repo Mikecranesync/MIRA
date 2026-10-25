@@ -160,3 +160,16 @@ def test_env_fallback_not_stored_in_db(tmp_path):
     ).fetchone()
     conn.close()
     assert row is None, "Env fallback must not persist a row to the DB"
+
+
+def test_canonicalize_tenant_id_uuid_and_slug():
+    """Same tenant, different spelling, becomes one id; other tenants stay distinct."""
+    from shared.chat_tenant import canonicalize_tenant_id
+
+    uuid_canon = "11111111-1111-4111-8111-111111111111"
+    assert canonicalize_tenant_id(uuid_canon.upper()) == uuid_canon
+    assert canonicalize_tenant_id(uuid_canon.replace("-", "")) == uuid_canon
+    assert canonicalize_tenant_id(f"  {uuid_canon.upper()}  ") == uuid_canon
+    assert canonicalize_tenant_id("PlantAlpha") == "plantalpha"
+    assert canonicalize_tenant_id(None) == ""
+    assert canonicalize_tenant_id("22222222-2222-4222-8222-222222222222") != uuid_canon

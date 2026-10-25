@@ -19,6 +19,7 @@ import httpx
 
 from . import print_recall, quality_gate
 from .answer_qc import qc_mode, run_output_qc
+from .chat_tenant import canonicalize_tenant_id
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import SOURCES_BLOCK_RE as _SOURCES_BLOCK_RE
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
@@ -4670,7 +4671,9 @@ class Supervisor:
         """
         auth_tenant = tenant_id
         payload_tenant = getattr(wo, "tenant_id", None)
-        if payload_tenant not in (None, "") and payload_tenant != auth_tenant:
+        if payload_tenant not in (None, "") and canonicalize_tenant_id(
+            payload_tenant
+        ) != canonicalize_tenant_id(auth_tenant):
             raise RuntimeError("tenant_mismatch")
 
         atlas_wo_id: str | None = None
@@ -4797,7 +4800,9 @@ class Supervisor:
         # so the confirmation is not consumed (Gate-7 on #3237 / #4759).
         if is_yes and wo_draft:
             payload_tenant = wo_draft.get("tenant_id")
-            if payload_tenant not in (None, "") and payload_tenant != auth_tenant:
+            if payload_tenant not in (None, "") and canonicalize_tenant_id(
+                payload_tenant
+            ) != canonicalize_tenant_id(auth_tenant):
                 reply = (
                     "I can't log this work order — the session tenant doesn't match. "
                     "The draft is still here. Say **yes** after correcting it, or **no** to cancel."

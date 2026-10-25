@@ -285,3 +285,54 @@ async def test_mismatch_leaves_pending_confirmation_intact(mapped_tenant_b):
     sv._save_state.assert_not_called()
     assert calls == []
     atlas.create_work_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_same_tenant_id_variants_accepted_different_tenant_rejected(mapped_tenant_b):
+    """Case / hyphen variants of the same UUID are the same tenant; TENANT_B is not."""
+    rows, calls, fake_create = _hub_row_store()
+    atlas = MagicMock()
+    atlas.create_work_order = AsyncMock(return_value={"id": 3})
+    tenant_b_before = list(rows[TENANT_B])
+    variants = (
+        TENANT_A.upper(),
+        TENANT_A.replace("-", ""),
+        TENANT_A.replace("-", "").upper(),
+        f"  {TENANT_A}  ",
+    )
+
+    with (
+        patch("shared.engine.AtlasCMMSClient", return_value=atlas),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+        patch("shared.engine.log_uns_event"),
+        patch("shared.engine.push_wo_created", new_callable=AsyncMock),
+        patch("shared.engine.suggest_followup_pm", return_value=None),
+    ):
+        sv = _bare_supervisor()
+        for variant in variants:
+            wo = _valid_wo(chat_id="unmapped-chat")
+            wo.tenant_id = variant
+            await sv._post_cmms_work_order(wo, tenant_id=TENANT_A)
+
+        wo_b = _valid_wo(chat_id="unmapped-chat")
+        wo_b.tenant_id = TENANT_B
+        with pytest.raises(RuntimeError, match="tenant_mismatch"):
+            await sv._post_cmms_work_order(wo_b, tenant_id=TENANT_A)
+
+        sv._record_exchange = MagicMock()
+        sv._save_state = MagicMock()
+        draft = _valid_draft(chat_id="unmapped-chat", tenant_id=TENANT_A.upper())
+        state = {
+            "state": "RESOLVED",
+            "asset_identified": "Pump-A3",
+            "fault_category": "",
+            "context": {"cmms_pending": True, "cmms_wo_draft": draft},
+        }
+        result = await sv._handle_cmms_pending(
+            "unmapped-chat", "yes", state, "trace-3237", tenant_id=TENANT_A
+        )
+
+    assert "Work order" in result["reply"]
+    assert len(calls) == len(variants) + 1
+    assert all(c["tenant_id"] == TENANT_A for c in calls)
+    assert rows[TENANT_B] == tenant_b_before

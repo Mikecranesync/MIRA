@@ -14,8 +14,27 @@ import functools
 import logging
 import os
 import sqlite3
+import uuid
 
 logger = logging.getLogger("mira.chat_tenant")
+
+
+def canonicalize_tenant_id(value: object) -> str:
+    """Strip and canonicalize a tenant id for equality checks.
+
+    UUID-shaped values become ``str(uuid.UUID(...))`` (lowercase, hyphenated).
+    Anything else is lowercased. ``None`` / blank become ``""``.
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    try:
+        return str(uuid.UUID(text))
+    except (ValueError, AttributeError, TypeError):
+        return text.lower()
+
 
 _DB_PATH: str = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
 
