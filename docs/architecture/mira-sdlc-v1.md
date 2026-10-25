@@ -67,7 +67,7 @@ a live workflow disagree, the live workflow wins until changed through the proce
 ```
 Issue (+PRD for new behavior, +ADR if architectural) ─ Risk class on the issue/claim ─► G0 Ready to Build
   fetch + branch off origin/main ─ implement test-first ─ relevant suites + lint ─ cheap lane clean ─► G1 Ready for Review
-  required contexts green on head ─ [specialist findings] ─ [Codex exact-head GREEN] ─► G2 Ready to Merge
+  required contexts green on head ─ [specialist findings] ─ [Codex exact-head GREEN or CONVERGED, §4.3] ─► G2 Ready to Merge
   SHA-conditioned merge ─ version-tag.yml tags + rollback checkpoint (automatic)
             │ (only if the change ships)
   deploy-staging(approved_rc_sha) ─ staging receipt ─ acceptance receipt (capability-bound) ─ [migrations] ─► G3 Ready for Production
@@ -140,7 +140,9 @@ criterion is marked met with a pointer (test name, check run, screenshot path, r
 ### 1.5 Branch and WIP policy
 
 One branch per slice. Target: merged or closed within **5 working days**; a draft older than **14
-days** is rebased and re-scoped or closed with a note on its issue. Stacked PRs receive `ci.yml` but
+days** is rebased and re-scoped or closed with a note on its issue. **Enforced** by
+`.github/workflows/stale-pr-sweep.yml` (`tools/stale_pr_sweep.py`): 14 idle days → `stale` notice, 7 more →
+closed, branch kept, `keep` label exempts; dry-run until the repo variable `STALE_PR_SWEEP_MODE=apply`. Stacked PRs receive `ci.yml` but
 not every required context (`staging-gate.yml` and others filter on `branches: [main]`); they are not
 merge candidates until re-based on `main`. Rebase onto `origin/main` before requesting Codex review;
 strict up-to-date voids a GREEN otherwise. GitHub Merge Queue is **not used in v1** (§13).
@@ -279,10 +281,56 @@ transitions. No agent may self-award a PASS on work it authored.
   `base_sha`, `status GREEN|ISSUES_FOUND`, `review_iteration`, counts; the script re-verifies the head
   before review and before GREEN. **GREEN binds to the exact head and the exact PR body**: any push or
   body edit makes it stale. Maximum three autonomous rounds, then escalate to Mike with the open findings.
+- **CONVERGED** (owner decision 2026-10-18): an exact-head, exact-body verdict with `BLOCKER: 0` and `HIGH: 0` ends the review loop even when it reports MEDIUM or LOW findings. Do not request another round. File one follow-up issue per MEDIUM (LOWs may share one), post the
+  owner-account `[REVIEW-FOLLOWUPS]` record that binds the reviewed head and body and lists them (format:
+  charter §3; a comment, never a body edit, which voids the verdict), dispatch a fresh guard run
+  (`gh workflow run ui-lifecycle-guard.yml --ref main -f pr_number=<N>`), and hand the merge to Mike. The
+  Lifecycle Guard accepts CONVERGED plus that record. A BLOCKER or HIGH is never CONVERGED; it is fixed and
+  re-reviewed. The full review loop does not yet stop on CONVERGED by itself (#4524), so run `--review-only`
+  passes; never start a remediation round on a CONVERGED verdict.
 - **Required (D1):** every **R3** change; every PR touching a guarded path (the lifecycle guard
   demands the body-bound GREEN regardless of class). **R2:** when Mike names it or a cheap-lane finding is
   disputed. R0/R1: not required.
 - Hotfix deferral (§10.1) is allowed only when the PR touches no guarded control-plane path.
+
+#### 4.3.1 Review-spend discipline (owner decision 2026-10-14)
+
+Every round (including a crashed one) draws on the Codex allowance and consumes a ledger slot, and a
+GREEN goes stale the moment the head or body moves. These rules cut repeat rounds **without relaxing
+any gate**: R3 and guarded changes still need an exact-head, exact-body GREEN, or a CONVERGED verdict
+with its follow-ups filed (§4.3), and every post-cap pass still needs Mike's per-run authorization.
+
+- **Preflight before reserving a round:**
+  - the branch is current with main;
+  - the required checks are green or running;
+  - the PR body is final;
+  - the cheap lane has run at this head with no unresolved finding;
+  - peers have been told a merge to main is coming;
+  - any model passed via `CODEX_MODEL` is one the active Codex login actually offers.
+- **Merge on GREEN.** When the exact-head GREEN lands (or the verdict is CONVERGED and its follow-ups
+  are filed) and the required contexts pass, merge at once
+  under the existing merge authority, pinned with `--match-head-commit`.
+  - Do not push or edit the PR body after GREEN.
+  - The peer announcement is a courtesy, **not a lock**: it blocks no one. A peer that merges first
+    makes this GREEN stale, and the ordinary update-and-re-review route applies. This keeps a failed CI
+    run or a dead session from ever holding main.
+- **The round-3 ask.** The ledger already caps autonomous rounds at three. When asking Mike to
+  authorize a post-cap pass, post on the PR and send him:
+  - one row per finding across all rounds (round, severity, disposition, whether a test now pins it);
+  - what changed since the last round;
+  - the options: (a) one more pass after fixing each open finding's whole class and re-running the
+    cheap lane; (b) split the PR so the settled part can land; (c) stop and redesign.
+  - When the latest exact-head verdict has no BLOCKER or HIGH, the PR is CONVERGED (§4.3). Do not ask
+    for a post-cap pass. File the follow-ups, post the record and ask for the merge. The evidence below is why: rounds
+    past the second rarely find anything severe, and each fix opens new surface for the next round to find
+    MEDIUMs in (#4461 reached iteration 10 and #4201 iteration 11, both at 0 BLOCKER/HIGH).
+
+Evidence (60 PRs merged 2026-10-05 → 10-14):
+- 130 Codex rounds in total.
+- 10 GREENs landed at a new head whose PR changes were identical (same `git patch-id`) to an earlier
+  GREEN, i.e. the branch had been updated from main after it was approved.
+- 8 of 9 blocker/high findings came in rounds 1–2; rounds 4+ found issues 24 times, one of them high.
+- A model the login does not offer fails after reserving: #4424, 2026-10-14.
 
 ### 4.4 Trust limitation of the attestation (stated plainly)
 
@@ -513,8 +561,16 @@ Rollback is a **forward deploy of a known-good SHA** through the same gates, plu
 | Drill | One drill before v1 is declared adopted: deploy the designated candidate to staging, run acceptance, exercise `deploy-vps.yml` `authorize-source` against it with the smallest safe `services`, and walk A→B→rollback-to-A with B current >168 h; record run ids in the runbook. A receipt-only staging drill does not count. |
 | Runbook | `docs/runbooks/rollback.md` (R3 governance doc) replaces `hubv3-rollback.md`, whose `-f ref=` input no longer exists. |
 
-State today: no `rollback_candidate` field, no refresh schedule, no recorded drill. **DOCTRINE until
-Part B step 10.**
+State (Part B step 10): **partly enforced.** Every production receipt written since step 10 records the per-service
+`rollback_candidate` (computed in `authorize-source` from the earlier production receipts, stamped
+after the deploy, `tools/rollback_candidates.py`); `rollback-candidate-refresh.yml` checks the
+designated candidates daily — compatibility, evidence verified with `authorize-source`'s validators
+and flags, refresh due within 72 h — and opens an `incident` issue when readiness is lost. **Not yet
+automated:** the re-deploy to staging, because a `deploy-staging.yml` run dispatched with a workflow's
+`GITHUB_TOKEN` does not fire `workflow_run` and `authorize-source` accepts only `workflow_run`-produced
+acceptance receipts; a human re-stages on the workflow's request until an owner decision (a scoped
+dispatch credential, or a provenance-model change) closes it. **No drill recorded yet.** Runbook:
+`docs/runbooks/rollback.md`.
 
 ### 10.3 Failure → regression
 
@@ -539,7 +595,7 @@ Part B step 10.**
 |---|---|---|---|
 | Candidate code with credentials | Candidate-tree validators only for commits on `main`; trusted-base validators preferred (§5.2) | Any repo commit can be staged; validators from the candidate | Part B step 4 |
 | Privileged `pull_request_target` | **No job may check out and execute PR-head code with secrets or a write token.** The `auto-fix` job is **retired (D5)**; `ui-lifecycle-guard.yml`'s trusted-base evaluation is the permitted pattern | `code-review.yml` `auto-fix` exists (label-gated) | Part B step 2 |
-| Review producers/consumers and agent rules | Governance floor (R3): Codex GREEN required; lifecycle guard status (advisory today) | Guard not required | Part B step 11 |
+| Review producers/consumers and agent rules | Governance floor (R3): Codex GREEN or CONVERGED (§4.3) required; lifecycle guard status (advisory today) | Guard not required | Part B step 11 |
 | Attestation identity | Owner-account comment authentication; organizational independence (§4.4) | As stated | §13 (separate identity) |
 | Body-bound attestation | Any PR body edit invalidates GREEN by design; exceptions and closeouts are **comments**, not body edits | Enforced by the guard parser | — |
 | Direct push to `main` | Forbidden; `enforcement-audit.yml`'s nightly push attempt is removed or turned into a PR | Attempt exists, non-fatal | Part B step 2 |
@@ -679,7 +735,7 @@ tags; ingest-migration environment scope.
 ## B.3 REUSE / CONNECT / REPAIR / ADD and implementation sequence
 
 Every step is a normal PR through this document's gates (steps touching `.github/`, `tools/hooks/`,
-review producers, `.claude/` are R3 → Codex GREEN + Mike merge) or an explicit Mike settings action.
+review producers, `.claude/` are R3 → Codex GREEN or CONVERGED + Mike merge) or an explicit Mike settings action.
 Nothing below is implemented by this document.
 
 | Step | Type | Change | Files / systems | Prerequisite | Evidence of completion | Rollback | Mike |
@@ -808,3 +864,6 @@ cheap-lane saturation (2026-10-03); post-cap Codex rounds after main-merge with
   trusted-base validators). Status text only; no rule text changed.
 - 2026-10-04 — Part B step 6 completed: §4.2, §4.5 and §12.1 describe the head-bound `Cheap Review`
   check-run (`.github/workflows/cheap-review-check.yml`, advisory). Status text only; no rule text changed.
+- 2026-10-04 — Part B step 10 (code and docs): §10.2 state text — `rollback_candidate` on the production
+  receipt, the daily candidate check, `docs/runbooks/rollback.md`; automated re-staging and the drill
+  remain open. Status text only; no rule text changed.

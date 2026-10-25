@@ -18,7 +18,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { renderHook } from "@testing-library/react";
 import { UnifiedChat } from "../src/screens/UnifiedChat";
 import { useUnifiedAttachments } from "../src/unified/attachments";
-import { clearAttachments } from "../src/unified/attachment-handoff";
+import { clearAttachments, stashAttachments } from "../src/unified/attachment-handoff";
 import type { Attachment } from "@factorylm/interaction";
 import type { NotebookServerTurn } from "../src/api/resources";
 import { _resetTransientLayersForTest, closeTopTransientLayer } from "../src/lib/transient-layer";
@@ -33,6 +33,10 @@ class ResizeObserverStub {
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 if (!("scrollTo" in Element.prototype)) {
   Object.defineProperty(Element.prototype, "scrollTo", { value: () => {}, writable: true });
+}
+// jsdom has no scrollIntoView; useConversationFollow calls it when following latest (#4703).
+if (!("scrollIntoView" in Element.prototype)) {
+  Object.defineProperty(Element.prototype, "scrollIntoView", { value: () => {}, writable: true });
 }
 
 
@@ -93,6 +97,60 @@ afterEach(() => {
 });
 
 describe("UnifiedChat", () => {
+  it.each([
+    ["edited", "Observe the seat-one red-state diagnostic.", false],
+    ["unchanged", TURN.question, true],
+  ])("retries the %s restored text without leaving an unsent duplicate draft", async (_label, draft, exactReplay) => {
+    const h = handlers();
+    render(<UnifiedChat turns={[TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={true}
+      chatError="Network problem" failedQuestion={TURN.question} handlers={h} meta={META} />);
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: draft } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    if (exactReplay) {
+      expect(h.onRetry).toHaveBeenCalledTimes(1);
+      expect(h.onSend).not.toHaveBeenCalled();
+    } else {
+      expect(h.onRetry).not.toHaveBeenCalled();
+      expect(h.onSend).toHaveBeenCalledWith(draft, undefined);
+    }
+    expect(box.value).toBe("");
+  });
+
+  it.each([[[]], [[TURN]]])("replays an unchanged failed question with prior turns %j", async (turns) => {
+    const h = handlers();
+    const failedQuestion = "A new question that failed before persistence";
+    render(<UnifiedChat turns={turns} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={true}
+      chatError="Network problem" failedQuestion={failedQuestion} handlers={h} meta={META} />);
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    expect(box.value).toBe(failedQuestion);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    expect(h.onRetry).toHaveBeenCalledTimes(1);
+    expect(h.onSend).not.toHaveBeenCalled();
+    expect(box.value).toBe("");
+  });
+
+  it("replays the host's uploaded-photo request after chat fails before persistence", async () => {
+    nativePick.pickPhoto.mockResolvedValue(new File(["photo"], "seat.jpg", { type: "image/jpeg" }));
+    resources.lookAtPhoto.mockResolvedValue({ fileId: "seat-photo", observation: { capturedAt: "2026-10-09T00:00:00Z" }, attachment: { linkId: "seat-link" }, observationPersisted: true });
+    const h = handlers();
+    const props = { turns: [TURN], liveTurns: [], pending: null, busy: false, canStop: false, handlers: h, meta: META };
+    const { rerender } = render(<UnifiedChat {...props} canRetry={false} chatError={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    const question = "Does this seat photo help?";
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask MIRA" }), { target: { value: question } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledWith(question,
+      expect.objectContaining({ visualEvidence: expect.objectContaining({ fileId: "seat-photo" }) })));
+    rerender(<UnifiedChat {...props} canRetry={true} chatError="Network problem" failedQuestion={question} />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
+    expect(h.onRetry).toHaveBeenCalledTimes(1);
+    expect(h.onSend).toHaveBeenCalledTimes(1);
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("");
+  });
+
   it("renders the persisted turn through the shared shell with citation, basis, and safety parts", () => {
     const h = handlers();
     render(<UnifiedChat turns={[TURN, SAFETY_TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />);
@@ -277,6 +335,212 @@ describe("UnifiedChat", () => {
 
     await waitFor(() => expect(resources.uploadSourceToNotebook).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(h.onSend).toHaveBeenCalledWith("what is the carrier limit", undefined, ["doc-carried"]));
+  });
+
+  // Codex #4350 round 2, F3: a HOME send of a photo with no text reaches the
+  // thread as an EMPTY initial question. That is still a submission when the
+  // handoff carried bytes: the composition path asks its default photo question
+  // with the evidence. Without carried bytes, or for New chat (null), nothing is sent.
+  it("sends an empty initial question when HOME handed over an attachment, with the default photo question", async () => {
+    stashAttachments([{
+      attachment: { id: "att-1", name: "nameplate.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "nameplate.jpg", { type: "image/jpeg" }),
+    }]);
+    resources.lookAtPhoto.mockResolvedValue({ fileId: "file-np", observation: { capturedAt: "2026-10-11T00:00:00Z" }, attachment: { linkId: "link-1", notebookId: "nb-1" }, observationPersisted: true });
+    const h = handlers();
+    const sent = vi.fn();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} initialQuestion="" onInitialQuestionSent={sent} />);
+
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledTimes(1));
+    expect(h.onSend.mock.calls[0]?.[0]).toBe("What am I looking at, and what should I check?");
+    expect(h.onSend.mock.calls[0]?.[1]).toMatchObject({ visualEvidence: { fileId: "file-np" } });
+    expect(sent).toHaveBeenCalledTimes(1);
+  });
+
+  // Codex #4350 round 4, F6: General was created for a photo-only send, then
+  // the upload itself rejected. The catch restored an EMPTY draft, so the
+  // banner had no Try again, and a typed question went out plain-text without
+  // the photo. The draft now restores the question the photo was asked with,
+  // and resending exactly that question is a retry that carries the photo.
+  it("restores the photo's question when its upload rejects, and Try again resends it WITH the photo", async () => {
+    stashAttachments([{
+      attachment: { id: "att-3", name: "nameplate.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "nameplate.jpg", { type: "image/jpeg" }),
+    }]);
+    resources.lookAtPhoto
+      .mockRejectedValueOnce(new Error("Network request failed"))
+      .mockResolvedValue({ fileId: "file-np", observation: { capturedAt: "2026-10-11T00:00:00Z" }, attachment: { linkId: "link-1", notebookId: "nb-1" }, observationPersisted: true });
+    const h = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} initialQuestion="" />);
+
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    expect(box.value).toBe("What am I looking at, and what should I check?");
+    expect(h.onSend).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledTimes(1));
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(2);
+    expect(h.onSend.mock.calls[0]?.[0]).toBe("What am I looking at, and what should I check?");
+    expect(h.onSend.mock.calls[0]?.[1]).toMatchObject({ visualEvidence: { fileId: "file-np" } });
+  });
+
+  // Codex #4350 round 5, F7: the same question with a freshly attached
+  // replacement is NOT a retry of the failed photo. The replacement is what
+  // gets uploaded; the failed photo is dropped — as the home screen already
+  // does when a new attachment arrives after a failed send.
+  it("a replacement photo attached after a rejected upload is what gets sent, not the old photo", async () => {
+    stashAttachments([{
+      attachment: { id: "att-5", name: "old.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "old.jpg", { type: "image/jpeg" }),
+    }]);
+    resources.lookAtPhoto
+      .mockRejectedValueOnce(new Error("Network request failed"))
+      .mockResolvedValue({ fileId: "file-new", observation: { capturedAt: "2026-10-11T00:00:00Z" }, attachment: { linkId: "link-2", notebookId: "nb-1" }, observationPersisted: true });
+    const h = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} initialQuestion="" />);
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    expect(box.value).toBe("What am I looking at, and what should I check?");
+
+    nativePick.pickPhoto.mockResolvedValueOnce(new File(["y"], "replacement.jpg", { type: "image/jpeg" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Photo" })); });
+    await screen.findByText(/replacement\.jpg/);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+
+    await waitFor(() => expect(h.onSend).toHaveBeenCalledTimes(1));
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(2);
+    expect((resources.lookAtPhoto.mock.calls[1]?.[1] as File).name).toBe("replacement.jpg");
+    expect(h.onSend.mock.calls[0]?.[1]).toMatchObject({ visualEvidence: { fileId: "file-new" } });
+  });
+
+  // Codex #4350 round 6, F8: a plain-text send took the short-circuit that
+  // never reaches compose, so it never cleared the failed photo; asking the
+  // original question again later re-uploaded it with no chip in sight. An
+  // unrelated send supersedes the failed turn and discards its evidence.
+  it("an unrelated send after a rejected photo upload disarms it: the original question later goes out without the photo", async () => {
+    stashAttachments([{
+      attachment: { id: "att-6", name: "old.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "old.jpg", { type: "image/jpeg" }),
+    }]);
+    resources.lookAtPhoto.mockRejectedValueOnce(new Error("Network request failed"));
+    const h = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} initialQuestion="" />);
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    const original = box.value;
+    expect(original).toBe("What am I looking at, and what should I check?");
+
+    fireEvent.change(box, { target: { value: "What is a VFD?" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    expect(h.onSend).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(box, { target: { value: original } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(h.onSend).toHaveBeenCalledTimes(2);
+    expect(h.onSend.mock.calls[1]?.[0]).toBe(original);
+    expect(h.onSend.mock.calls[1]?.[1]).toBeUndefined();
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+  });
+
+  // Codex #4350 round 7, F9: Dismiss must disarm the failed photo. The shell's
+  // Try again fires onSend before its banner-clear has rendered; a send after
+  // Dismiss arrives with the banner already gone. So "banner still showing"
+  // is the retry signal, and the same wording sent after Dismiss goes plain.
+  it("after Dismiss, the same question sent again goes out WITHOUT the failed photo", async () => {
+    stashAttachments([{
+      attachment: { id: "att-7", name: "old.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "old.jpg", { type: "image/jpeg" }),
+    }]);
+    resources.lookAtPhoto.mockRejectedValueOnce(new Error("Network request failed"));
+    const h = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} initialQuestion="" />);
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    const original = box.value;
+    expect(original).toBe("What am I looking at, and what should I check?");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("alert", { name: "Send error" })).toBeNull();
+    fireEvent.change(box, { target: { value: original } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(h.onSend).toHaveBeenCalledTimes(1);
+    expect(h.onSend.mock.calls[0]?.[0]).toBe(original);
+    expect(h.onSend.mock.calls[0]?.[1]).toBeUndefined();
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+  });
+
+  // Codex #4350 round 9, F12: the shell's Dismiss clears only shell state. The
+  // host that owns a failed send needs to hear about it, so UnifiedChat
+  // reports a banner clear that neither its own mirroring nor a send caused.
+  it("reports Dismiss to the host once, and not for Try again or a host-driven clear", async () => {
+    const dismissed = vi.fn();
+    const h = { ...handlers(), onSendErrorDismissed: dismissed };
+    const view = render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError="Your question wasn't sent — try again." failedQuestion="Why F004?" handlers={h} meta={META} />);
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("Why F004?"));
+
+    // Try again is a send, not a dismissal.
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(h.onSend).toHaveBeenCalledTimes(1);
+    expect(dismissed).not.toHaveBeenCalled();
+
+    // The host clearing its own error is not a dismissal either.
+    view.rerender(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} failedQuestion={null} handlers={h} meta={META} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(dismissed).not.toHaveBeenCalled();
+
+    // A fresh failure, then Dismiss: exactly one report.
+    view.rerender(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError="Your question wasn't sent — try again." failedQuestion="Why F004?" handlers={h} meta={META} />);
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(dismissed).toHaveBeenCalledTimes(1);
+  });
+
+  it("a DIFFERENT question after a rejected photo upload goes out plain, without the photo (#3863 rule)", async () => {
+    stashAttachments([{
+      attachment: { id: "att-4", name: "nameplate.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "nameplate.jpg", { type: "image/jpeg" }),
+    }]);
+    resources.lookAtPhoto.mockRejectedValueOnce(new Error("Network request failed"));
+    const h = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} initialQuestion="" />);
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "What is a VFD?" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+
+    expect(h.onSend).toHaveBeenCalledTimes(1);
+    expect(h.onSend.mock.calls[0]?.[0]).toBe("What is a VFD?");
+    expect(h.onSend.mock.calls[0]?.[1]).toBeUndefined();
+    expect(resources.lookAtPhoto).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends nothing for an empty initial question with no carried attachment, nor for a null one with a carried attachment", async () => {
+    const h1 = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h1} meta={META} initialQuestion="" />);
+    await act(async () => { await Promise.resolve(); });
+    expect(h1.onSend).not.toHaveBeenCalled();
+    cleanup();
+
+    stashAttachments([{
+      attachment: { id: "att-2", name: "nameplate.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "nameplate.jpg", { type: "image/jpeg" }),
+    }]);
+    const h2 = handlers();
+    render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h2} meta={META} initialQuestion={null} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(h2.onSend).not.toHaveBeenCalled();
+    expect(resources.lookAtPhoto).not.toHaveBeenCalled();
   });
 
   it("routes the shared shell Scan machine action to the host scanner", async () => {

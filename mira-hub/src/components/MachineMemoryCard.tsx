@@ -5,6 +5,7 @@ import { conditionDisplayTitle, isPseudoTopic } from "@/lib/anomaly-titles";
 import Link from "next/link";
 import { Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { API_BASE } from "@/lib/config";
 import type { MachineMemoryResponse, LatestDiff, LiveTag } from "@/lib/machine-memory-response";
 
 // Single source of truth for the response shape is @/lib/machine-memory-response
@@ -85,7 +86,7 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
     // Skeleton only on the first load — refreshes must not flash the pulse.
     if (!hasLoadedRef.current) setLoading(true);
     try {
-      const resp = await fetch(`/hub/api/assets/${assetId}/machine-memory/`);
+      const resp = await fetch(`${API_BASE}/api/assets/${assetId}/machine-memory/`);
       if (resp.ok && !resp.url.includes("/login")) {
         const json = (await resp.json()) as MachineMemoryResponse;
         applyData(json);
@@ -101,7 +102,7 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
 
   const loadHistory = useCallback(async () => {
     try {
-      const resp = await fetch(`/hub/api/assets/${assetId}/signal-history/`);
+      const resp = await fetch(`${API_BASE}/api/assets/${assetId}/signal-history/`);
       if (resp.ok && !resp.url.includes("/login")) {
         const json = (await resp.json()) as { series?: Record<string, SparkPoint[]> };
         setHistory(json.series ?? {});
@@ -147,7 +148,7 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
     // downgrading a working card (esp. a dashboard left open) to the 750 ms
     // poll.
     let sseEverConnected = false;
-    const es = new EventSource(`/hub/api/assets/${assetId}/machine-memory/stream/`);
+    const es = new EventSource(`${API_BASE}/api/assets/${assetId}/machine-memory/stream/`);
     es.onmessage = (evt) => {
       sseEverConnected = true;
       try {

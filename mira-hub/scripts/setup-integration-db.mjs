@@ -14,9 +14,12 @@ const fixturesDir = path.join(hubRoot, "db", "integration-fixtures");
 const defaultMigrationFiles = [
   "001_knowledge_graph.sql",
   "010_kg_uns_path.sql",
+  "011_grant_app_kb_access.sql",
   "026_kg_entities_dedupe_and_constraint.sql",
   "027_ai_suggestions.sql",
   "029_kg_approval_state.sql",
+  // Source verification needs the canonical document/chunk anchors.
+  "045_knowledge_entries_chunk_anchors.sql",
   "055_contextualization.sql",
   "056_contextualization_intake.sql",
   "067_ctx_import_batches_approval_cols.sql",
@@ -32,6 +35,7 @@ const defaultMigrationFiles = [
   "059_namespace_filing_cabinet.sql",
   "073_equipment_notebooks.sql",
   "075_workspace_file_links.sql",
+  "079_grant_app_knowledge_entries_update.sql",
   "081_notebook_asset_binding.sql",
   "084_notebook_turn_basis_and_source_origin.sql",
   "085_notebook_source_canonical_provenance.sql",

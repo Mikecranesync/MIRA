@@ -44,6 +44,10 @@ export type EvidenceCitation = {
    *  doc's own file IS the original) and on pre-085 persisted turns (the
    *  read path enriches those server-side). */
   originFileId?: string | null;
+  /** A manufacturer manual's own http(s) address (shared-library chunks have
+   *  no parked file), so the shell can open it. Absent on older turns and on
+   *  docs without a web address. */
+  sourceUrl?: string | null;
   quote: string | null;
   /** Room for richer selectors later without changing the API shape (PRD §14). */
   selector?: { type: "page" | "text" | "bbox" | "section"; value: unknown };
@@ -62,6 +66,23 @@ export type NotebookStatusFrame = {
   kind: "status";
   status: "answered" | "insufficient_evidence" | "error";
   message?: string;
+  /**
+   * Provider exhaustion (D6) — set only on `status: "error"` when no provider
+   * served. Additive: clients that only read `status`/`message` are unchanged.
+   * `providers` is every attempt in cascade order with its HTTP status and a
+   * short reason, so "why" is visible without server logs.
+   */
+  reason?: "all_providers_failed" | "no_provider_configured" | "budget_exhausted";
+  providers?: { provider: string; httpStatus: number | null; reason: string }[];
+  /**
+   * Weak-evidence badge (`MIRA_JEV_WEAK_EVIDENCE_BADGE=1`, staging) — set only
+   * on `status: "answered"` when the Jev sufficiency rule fired
+   * (capabilities/observability/jev-weak-evidence.ts). The answer and its
+   * citations are delivered unchanged; the evidence frame's label already
+   * says so in words. Additive: a client that ignores it sees the turn it
+   * always saw.
+   */
+  evidence?: "weak";
 };
 
 /**
@@ -322,12 +343,47 @@ export function isSafetyNoticeEntry(e: unknown): e is SafetyNoticeEntry {
   );
 }
 
+/** Durable reason a turn ended with no provider able to answer (#4374). The
+ * live `status` frame carries the same `reason`; persisting it lets a reload
+ * show the technician copy instead of the generic failure. Like the safety
+ * markers it rides `evidence[]`, has no `docId`, and older clients skip it. */
+export type ProviderFailureEntry = {
+  kind: "provider_failure";
+  reason: "all_providers_failed" | "no_provider_configured" | "budget_exhausted";
+};
+
+export function isProviderFailureEntry(e: unknown): e is ProviderFailureEntry {
+  if (typeof e !== "object" || e === null) return false;
+  const { kind, reason } = e as { kind?: unknown; reason?: unknown };
+  return kind === "provider_failure" && (reason === "all_providers_failed" || reason === "no_provider_configured" || reason === "budget_exhausted");
+}
+
 export function isSafetyStopEntry(e: unknown): e is SafetyStopEntry {
   return (
     typeof e === "object" &&
     e !== null &&
     (e as { kind?: unknown }).kind === "safety_stop" &&
     typeof (e as { trigger?: unknown }).trigger === "string"
+  );
+}
+
+/** Durable marker that the weak-evidence badge fired on this turn, persisted
+ * in `evidence[]` so a replay carries the same caption the live stream did.
+ * Stores the rule version and the score that fired it — never the question
+ * or answer text. Clients that do not know the kind ignore it. */
+export type WeakEvidenceEntry = {
+  kind: "weak_evidence";
+  rule: string;
+  jev_sufficient: number;
+};
+
+export function isWeakEvidenceEntry(e: unknown): e is WeakEvidenceEntry {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { kind?: unknown }).kind === "weak_evidence" &&
+    typeof (e as { rule?: unknown }).rule === "string" &&
+    typeof (e as { jev_sufficient?: unknown }).jev_sufficient === "number"
   );
 }
 

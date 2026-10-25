@@ -57,6 +57,9 @@ export function Overlay({ layer, active, modal, trapsTab, children }: OverlayPro
   useEffect(() => {
     if (!trapping_tab) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      // A native modal <dialog> (the photo viewer) sits above every layer and
+      // owns Tab while open; the browser keeps focus inside it.
+      if (document.querySelector("dialog[open]")) return;
       if (root.current) trapTab(event, root.current);
     };
     document.addEventListener("keydown", onKeyDown);

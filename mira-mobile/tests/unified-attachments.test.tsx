@@ -234,4 +234,86 @@ describe("unified attachments controller", () => {
     expect(get().hasCarried()).toBe(false);
   });
 
+  // Pixel 9a against staging 5da41825a (2026-10-07): a picked photo's chip read
+  // "IMG 1000008…" — a text badge — while /v3 shows the picture (#4288). The
+  // shared Composer already renders `previewUrl`; the phone never set one.
+  describe("chip preview (web parity)", () => {
+    const realCreate = URL.createObjectURL;
+    const realRevoke = URL.revokeObjectURL;
+    let created: string[] = [];
+    const revoke = vi.fn();
+    afterEach(() => {
+      URL.createObjectURL = realCreate;
+      URL.revokeObjectURL = realRevoke;
+      created = [];
+      revoke.mockReset();
+    });
+    function stubObjectUrls() {
+      URL.createObjectURL = vi.fn(() => {
+        const url = `blob:https://localhost/${created.length + 1}`;
+        created.push(url);
+        return url;
+      });
+      URL.revokeObjectURL = revoke;
+    }
+
+    it("gives a picked photo a blob: preview the chip can show", async () => {
+      stubObjectUrls();
+      const photo = new File(["x"], "1000008123.jpg", { type: "image/jpeg" });
+      pick.pickPhoto.mockResolvedValue(photo);
+      const get = mount("nb-1");
+
+      let a: Attachment | null = null;
+      await act(async () => { a = await get().attachPhoto(); });
+
+      expect(URL.createObjectURL).toHaveBeenCalledWith(photo);
+      expect(a).toMatchObject({ kind: "photo", previewUrl: "blob:https://localhost/1" });
+    });
+
+    it("gives a document no preview", async () => {
+      stubObjectUrls();
+      pick.pickDocument.mockResolvedValue(new File(["%PDF"], "manual.pdf", { type: "application/pdf" }));
+      const get = mount("nb-1");
+
+      let a: Attachment | null = null;
+      await act(async () => { a = await get().attachFile(); });
+
+      expect(a).not.toHaveProperty("previewUrl");
+      expect(URL.createObjectURL).not.toHaveBeenCalled();
+    });
+
+    it("revokes the preview once the photo is sent, and keeps it while a failed send holds the photo", async () => {
+      stubObjectUrls();
+      pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+      api.lookAtPhoto.mockResolvedValueOnce({ fileId: null });
+      const get = mount("nb-1");
+
+      let a: Attachment | null = null;
+      await act(async () => { a = await get().attachPhoto(); });
+      await act(async () => { await get().compose("why is it leaking", [a as Attachment]); });
+      // Failed: the bytes stay armed for Try again, so their preview stays too.
+      expect(revoke).not.toHaveBeenCalled();
+
+      api.lookAtPhoto.mockResolvedValueOnce({
+        fileId: "file-9",
+        observation: { capturedAt: "2026-10-07T00:00:00Z" },
+        attachment: { linkId: "link-1", notebookId: "nb-1" },
+        observationPersisted: true,
+      });
+      await act(async () => { await get().compose("why is it leaking", [], { retry: true }); });
+      expect(revoke).toHaveBeenCalledWith("blob:https://localhost/1");
+    });
+
+    it("never fails a pick when the platform has no object URLs", async () => {
+      URL.createObjectURL = undefined as unknown as typeof URL.createObjectURL;
+      pick.pickPhoto.mockResolvedValue(new File(["x"], "bearing.jpg", { type: "image/jpeg" }));
+      const get = mount("nb-1");
+
+      let a: Attachment | null = null;
+      await act(async () => { a = await get().attachPhoto(); });
+
+      expect(a).toMatchObject({ kind: "photo", status: "ready" });
+      expect(a).not.toHaveProperty("previewUrl");
+    });
+  });
 });

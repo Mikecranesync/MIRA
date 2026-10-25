@@ -17,6 +17,7 @@ import {
   facetEvidencePages,
   classifyIntent,
   diversifyByPage,
+  codeTokenMatcher,
   type ChatHistoryTurn,
 } from "../notebook-query";
 
@@ -69,6 +70,81 @@ describe("expandIndustrialQuery", () => {
     const e = expandIndustrialQuery("hello there");
     expect(e.variants).toEqual(["hello there"]);
     expect(e.exactTokens).toEqual([]);
+    expect(e.codeTokens).toEqual([]);
+  });
+});
+
+// Golden Walk 2026-10-04: four acquired manuals held the asked code verbatim
+// (GS10 "ovA" p20, Danfoss "ALARM 7" p54, Mitsubishi "E.OV1" p15, ABB "3210")
+// yet the fault page never reached the excerpts — none of these shapes was an
+// exact token, so only BM25 ran and the question's other words won.
+describe("expandIndustrialQuery — fault codes named in the question", () => {
+  const codes = (q: string) => expandIndustrialQuery(q).codeTokens;
+
+  it("takes a mixed-case code after 'fault'", () => {
+    expect(codes("What does fault ovA mean on this drive")).toEqual(["ovA"]);
+    expect(codes("What does fault ObF mean on this drive")).toEqual(["ObF"]);
+  });
+
+  it("takes a dotted code anywhere in the question", () => {
+    expect(codes("What does E.OV1 mean on this inverter")).toEqual(["E.OV1"]);
+  });
+
+  it("takes a bare number of 3+ digits after 'fault'", () => {
+    expect(codes("What does fault 3210 mean on this drive")).toEqual(["3210"]);
+    expect(codes("what is fault code 3210")).toEqual(["3210"]);
+  });
+
+  it("keeps a short number together with its keyword", () => {
+    expect(codes("What does Alarm 7 mean on this drive")).toEqual(["Alarm 7"]);
+    expect(codes("warning 12 keeps coming back")).toEqual(["warning 12"]);
+  });
+
+  it("takes a letter+digit code the parameter patterns miss", () => {
+    expect(codes("What does fault F30002 mean on this drive")).toEqual(["F30002"]);
+    expect(codes("fault OC1 on startup")).toEqual(["OC1"]);
+  });
+
+  it("ignores ordinary words and questions with no code", () => {
+    expect(codes("what does this fault mean")).toEqual([]);
+    expect(codes("fault history for this drive")).toEqual([]);
+    expect(codes("how do I reset the fault")).toEqual([]);
+    expect(codes("e.g. the drive trips")).toEqual([]);
+  });
+
+  it("ignores ordinary title-cased words after a fault keyword", () => {
+    expect(codes("Where is the Fault History on this drive?")).toEqual([]);
+    expect(codes("Alarm Reset does nothing")).toEqual([]);
+    expect(codes("Fault Code List please")).toEqual([]);
+  });
+});
+
+describe("codeTokenMatcher — whole-token match only", () => {
+  it("matches the code as a whole token, case-insensitive", () => {
+    const m = codeTokenMatcher("ovA");
+    expect(m.re.test("ovA 7\nOver-voltage during\nacceleration (ovA)")).toBe(true);
+    expect(m.re.test("OVA fault")).toBe(true);
+  });
+
+  it("never matches inside a longer word or number", () => {
+    expect(codeTokenMatcher("ovA").re.test("removal of the cover")).toBe(false);
+    expect(codeTokenMatcher("Alarm 7").re.test("ALARM 70, Brake check")).toBe(false);
+    expect(codeTokenMatcher("3210").re.test("fault 32100 and 13210")).toBe(false);
+  });
+
+  it("matches a multi-word code across any whitespace", () => {
+    expect(codeTokenMatcher("Alarm 7").re.test("WARNING/ALARM 7, DC overvoltage")).toBe(true);
+    expect(codeTokenMatcher("Alarm 7").re.test("ALARM\n7 DC overvoltage")).toBe(true);
+  });
+
+  it("treats the dot in a dotted code literally", () => {
+    expect(codeTokenMatcher("E.OV1").re.test("indication E.OV1 FR-LU08")).toBe(true);
+    expect(codeTokenMatcher("E.OV1").re.test("EXOV1")).toBe(false);
+  });
+
+  it("emits an equivalent Postgres pattern", () => {
+    expect(codeTokenMatcher("E.OV1").sql).toBe("(^|[^[:alnum:]])E\\.OV1([^[:alnum:]]|$)");
+    expect(codeTokenMatcher("Alarm 7").sql).toBe("(^|[^[:alnum:]])Alarm\\s+7([^[:alnum:]]|$)");
   });
 });
 
@@ -90,6 +166,29 @@ describe("rerankChunks", () => {
     const noise = mk("grounding and wiring inspection checklist", 0.5);
     const out = rerankChunks(e, [decel, noise]);
     expect(out[0]).toBe(decel);
+  });
+
+  it("floats the chunk naming the asked fault code over higher-ranked pages", () => {
+    const e = expandIndustrialQuery("What does Alarm 7 mean on this drive");
+    const overview = mk("WARNING/ALARM 70, Brake check. The drive alarm list shows each alarm", 0.9, 53);
+    const table = mk("WARNING/ALARM 7, DC overvoltage. If the intermediate circuit voltage exceeds", 0.05, 54);
+    expect(rerankChunks(e, [overview, table])[0]).toBe(table);
+  });
+
+  it("keeps a no-code question's ranking when it names a title-cased word", () => {
+    // Codex r1 F1 repro: six revision-history pages must not out-rank the fault queue.
+    const e = expandIndustrialQuery("Where is the Fault History on this drive?");
+    const queue = mk("Fault queue: press the Fault key to view the last eight faults and clear them", 0.9, 20);
+    const history = [1, 2, 3, 4, 5, 6].map((p) => mk(`Revision History table, edition ${p}`, 0.05, p));
+    const out = rerankChunks(e, [queue, ...history]).slice(0, 6);
+    expect(out[0]).toBe(queue);
+  });
+
+  it("does not boost a chunk that only contains the code inside a word", () => {
+    const e = expandIndustrialQuery("What does fault ovA mean on this drive");
+    const removal = mk("removal of the fan cover before servicing the fault relay", 0.9, 12);
+    const other = mk("fault relay wiring and terminal assignment", 0.8, 13);
+    expect(rerankChunks(e, [removal, other])).toEqual([removal, other]);
   });
 
   it("preserves ts_rank order when no boosts apply", () => {

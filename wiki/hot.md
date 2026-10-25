@@ -1,3 +1,68 @@
+# Conversation follow repair — 2026-10-24
+
+PR #4703 / #4680 incorporates merged runner fix #4700 without force-push. Follow now re-arms from an accepted Composer send, not changing message IDs, preserving scroll-away through live-to-persisted replacement. Focused regression red: 6 failures; green: 38 tests; shared suite: 440 pass; TypeScript/build pass. Exact-head review, CI and same-release deployed behavior remain gates. Watcher continuation and proof: `~/.factorylm/issue-repair-watch/queue.json`; worktree `conversation-continuity`. Foreman send/persistence and Notebook Prover answer ownership unchanged.
+
+---
+
+# Photo correction publication race — 2026-10-23
+
+PR #4662 merged as c7efdb007. PR #4663 now fences source publication across independent conversation correction chains sharing a notebook/photo. Older conversation readings remain available, but delayed publication cannot replace a newer correction; new model readings cannot publish over a pending committed technician review. Real PostgreSQL: 29 tests pass, including both controls. Hub: 9216 pass/53 skipped; production build passes. Component version 2.39.0. Exact-head review/CI and staging, production, and physical-device acceptance remain outstanding. Mike authorized finishing through deployment and testing; no gates bypassed. Pixel connected and charging stay-awake verified; private evidence retains original settings.
+
+---
+
+# Photo correction review repairs — 2026-10-23
+
+PR #4663: local repairs remove the canonical mobile dependency on frozen FilePreview presentation, preserve technician-reviewed attribution in chat, and recover a committed reading before an edited retry with renewed acknowledgement. Hub 9177 pass/53 skipped, mobile 968 pass, shared UI 310 pass plus final 13 retry tests, real-Postgres 28 pass on a fresh database; Hub/mobile builds pass. Fresh exact-head review and same-release physical acceptance remain required. No merge/deploy authorization inferred.
+
+---
+
+# Hot Cache — 2026-10-23 — #4332 owner takeover
+
+Mike assigned #4332 to this CHARLIE Codex session. Current-main integration and Sources reopen repair are in the isolated `qualification-4332` workspace; see `PLAN.md`. Historical GREEN3 does not approve the changed candidate. Preserve source review caps. No physical Android device is connected; no merge, deployment or OTA acceptance is claimed.
+
+---
+
+# Hot Cache — 2026-10-09 — resumed field-maintenance release qualification
+
+**Security live; maintenance release BLOCKED.** Security #4325 is deployed as v3.392.6 / da37b8d16cdf6e91cb63f9cafdfa9ce28fc73bbb. Production37990055372 has built/running image identity; post-deploy smoke37990845257 passed15/skipped4/failed0. Rollbackv3.392.4/d3129e827. Curriculum #4337 is merged904f7114f.
+
+- User superseded4p.m. cutoff with “Finish it completely I approve.” Implementation and serial post-cap reviews continue with original ledgers. No gate waiver, billing/vendor changes, foreign WIP mutation or fabricated terminal approval.
+- Source repairs: citation #4321 900bf6186 uses installed GFM parser with original-source exclusions and container-relative cell positions;1056focused/6596Hub/53skip/buildPASS,74940 negative executions across line-ending variants with zero false support. trusted GREEN27. Retrieval #4328 87b6d7752 fixes multiline carrier headings;498focused/6118Hub/53skip/buildPASS; trusted GREEN16. Compatibility #4327 967d941d9 and continuity #4329 b2731e2ed retain exact trusted GREEN. Check latest external receipts for subsequent review verdicts.
+- Existing draft #4332 is refreshed on current main and includes both scoped report context and photo retrieval, original mobile retry/preview composition and current source repairs. Combined Hub7235tests/53skip and production buildPASS preceded the ignored-cell repair; latest7265tests/53skip and production buildPASS are sealed to the final source tree; earlier b722 CI is historical. Mobile916tests/typecheck/build and41evaluator/stream/bootstrap controls apply to unchanged source files. Current combined review/CI and live acceptance remain owed.
+- Fresh staging gates38007704722/38007868303 fail approved judges: Groq organization_delinquent, Cerebras402, Gemini429; all judges failed. No model or physical acceptance claim. Pixel absent fromADB. #4335 workflow extension remains owner-terminal blocked at treeeab4128033c85963367c64023afa189ae5d69e40. Foreign #4306 GitHub base94c61f23f differs from main904f7114f; trusted entry refuses it. Source ownership preserved.
+- ASI-001 remains unresolved: each seat has its own slave; mode/value, fault/identity and train recognition/address acquisition stay distinct. No confirmed root cause, model revision, permitted enclosure replacement method or ride readiness. Ten-photo manifest/five unvalidated fixtures/zero scorable cases; six recovered baseline pairs are qualitative and unmatched.
+- Curriculum: [eight lessons](../docs/plans/2026-10-09-field-maintenance-curriculum.md). Tonight: [progressive acceptance routine](../docs/plans/2026-10-09-field-maintenance-acceptance.md). Actual generated-answer continuity requires leak-free inputs, original-report provenance and a matched recall-negative control. Results remain NOT RUN.
+- Durable current state: /Users/charlienode/Documents/Codex/foundations-acceptance-2026-10-07/RELEASE-CHECKPOINT-2026-10-09.md and field-intelligence-build/SESSION-STATE.json. Refresh heads, review bodies, CI, providers and device before proceeding.
+
+Next: finish source and combined exact-head review/CI, restore approved provider access and genuine workflow terminal record, then obtain same-generation staging/progressive replay/identified Pixel acceptance before production promotion. Structured scene evidence within existing LOOK/Turn Evidence Packet is the planned next product phase, not implemented acceptance.
+
+---
+
+# Hot Cache — 2026-10-06 — power-outage recovery
+
+A power outage at ~01:50–02:05Z dropped every local (Mac) session. Nothing committed was lost.
+Recovery triage from a cloud session; refresh live state before acting.
+
+- **#4292 embedder-on-OVH — the critical path.** The production embedder has been broken since the
+  2026-09-19 OVH move (Hub embeds go to Bravo's tailnet address, which OVH cannot reach), so every
+  new upload is BM25-only. Head `127bb082` (Cursor agent, 05:40Z) addresses Codex F1/F2/F3; 44/45
+  checks green. The **only red is Legacy UI Lifecycle Guard**: it needs a fresh exact-head Codex
+  GREEN (the last review was of `39cee78`). The PR is also `behind` main. Codex runs on CHARLIE.
+  Merge needs a human.
+- **Release order agreed with Mike:** #4292 merges → one staging deploy of the new `main`
+  (`deploy-staging.yml`, approved_rc_sha = merge SHA) → phone parity on the emulator → **one**
+  production deploy on Mike's "go". Do NOT deploy the older candidate `cb60c115a`: it is 10
+  commits behind (missing #4288/#4289/#4291/#4293) and has no migrations to justify a separate run.
+- **Production deploy order for #4292** (runbook §5a): `services=mira-ollama` first and healthy, then
+  `mira-hub`. `PRODUCTION_DEFAULT_SERVICES` omits mira-ollama, so a default dispatch will NOT ship it.
+- **Dependabot:** the five mira-web bumps (#4276, #4277, #4279, #4281, #4282) all fail on a stale
+  bun lockfile, and they also need a Codex GREEN for the guarded `package.json`. #4276 is
+  stripe 22→23 (major, billing). #4278 sqlalchemy 2.1 breaks five real-Postgres session
+  tests, so do not merge it. #4280 is green but is a major anthropic SDK bump.
+- **Physical:** the pulley print on the 3D printer was mid-run at the outage and needs restarting.
+
+---
+
 # Hot Cache — 2026-09-19 — customer-ready unified experience release train
 
 **Start here:** [`docs/mira/CUSTOMER_READY_UNIFIED_EXPERIENCE.md`](../docs/mira/CUSTOMER_READY_UNIFIED_EXPERIENCE.md).

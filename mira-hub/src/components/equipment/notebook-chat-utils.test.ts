@@ -385,6 +385,17 @@ describe("persistedTurns — reload applies the STOPPED-TURN CONTRACT", () => {
     expect(a).not.toHaveProperty("stopped");
   });
 
+  it("a failed or stopped answer whose row keeps the question's photo shows no Visual observation card (#4289 F4)", () => {
+    const photo = { kind: "visual_observation", fileId: "f9", capturedAt: "2026-10-05T20:00:00.000Z", provenance: "phone_photo" };
+    const [, failed] = persistedTurns([{ id: "t3", question: "q", answerStatus: "error", answerText: null, evidence: [photo], basis: null }]);
+    expect(failed).not.toHaveProperty("visualEvidence");
+    const [, stopped] = persistedTurns([{ id: "t4", question: "q", answerStatus: "error", answerText: "The plate ", evidence: [photo], basis: null }]);
+    expect(stopped).not.toHaveProperty("visualEvidence");
+    // Control: an answered row still shows its card.
+    const [, answered] = persistedTurns([{ id: "t5", question: "q", answerStatus: "answered", answerText: "A TP700.", evidence: [photo], basis: null }]);
+    expect(answered).toHaveProperty("visualEvidence");
+  });
+
   it("answered and insufficient_evidence rows map exactly as before (basis + evidence survive)", () => {
     const rows = persistedTurns([
       { id: "t3", question: "q", answerStatus: "answered", answerText: "A. [1]", evidence: [cite], basis: "oem_documentation" },

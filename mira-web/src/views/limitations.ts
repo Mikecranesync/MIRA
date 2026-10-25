@@ -154,8 +154,8 @@ const LIMITS = [
     body: "Hand-drawn diagrams, severely degraded scans, and machine-translated PDFs reduce accuracy. We tell you when OCR confidence is low. Properly structured OEM manuals in English produce the best results.",
   },
   {
-    lead: "Safety-critical questions escalate — they don't get a chat answer.",
-    body: "LOTO, arc flash, confined space, and similar high-consequence procedures trigger an immediate escalation to your designated safety contact. MIRA does not replace professional engineering judgment where lives are at risk.",
+    lead: "Safety-critical questions get a warning, not a safety procedure.",
+    body: "Questions about LOTO, arc flash, confined space, and similar high-consequence work are answered with a safety warning. They are not routed to a person. MIRA does not replace your site's procedures or professional judgment where lives are at risk.",
   },
   {
     lead: "No PLC tag streaming yet.",

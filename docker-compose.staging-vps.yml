@@ -255,6 +255,13 @@ services:
       - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
       - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4-mini}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENAI_RUN_BUDGET_USD=${OPENAI_RUN_BUDGET_USD:-}
+      - OPENAI_RUN_BUDGET_WINDOW_S=${OPENAI_RUN_BUDGET_WINDOW_S:-}
+      - OPENAI_PRICE_PER_MTOK_IN=${OPENAI_PRICE_PER_MTOK_IN:-}
+      - OPENAI_PRICE_PER_MTOK_OUT=${OPENAI_PRICE_PER_MTOK_OUT:-}
       - GROQ_MODEL=openai/gpt-oss-120b
       - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
@@ -316,7 +323,37 @@ services:
       # attachment stayed embedding IS NULL, and the read path threw outright.
       # Same declaration + default as mira-core / mira-ingest / mira-pipeline /
       # the two bots; the real value comes from Doppler.
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # Set HERE, not from Doppler: the shared Doppler value names Bravo's tailnet
+      # address, which this host cannot reach (2026-10-05 outage). The colocated
+      # mira-ollama service below serves the same model digest.
+      - OLLAMA_BASE_URL=http://mira-ollama:11434
+      # Embed retry sweep (#4293): backfill embed-on-write failures with an off switch.
+      # Default ON (unset → 1); explicit 0 disables the sweep without rebuild.
+      - NODE_EMBED_RETRY_SWEEP=${NODE_EMBED_RETRY_SWEEP:-1}
+      # #4487 vector lane for notebook retrieval (RRF with BM25). OFF unless the
+      # environment sets NOTEBOOK_HYBRID_RETRIEVAL=1; it was never passed through,
+      # so the Doppler value alone could not turn it on (#4513, 2026-10-18).
+      - NOTEBOOK_HYBRID_RETRIEVAL=${NOTEBOOK_HYBRID_RETRIEVAL:-0}
+      # #4515 kill switch for the +29 decode at ingest: default ON in code;
+      # NOTEBOOK_GARBLE_DECODE=0 disables it without a rebuild.
+      - NOTEBOOK_GARBLE_DECODE=${NOTEBOOK_GARBLE_DECODE:-1}
+      # #4550 typed claim verifier, shadow only: writes mira.claim_verifier.* onto the
+      # answer-gate span and never changes the answer. OFF unless set to "shadow".
+      - NOTEBOOK_CLAIM_VERIFIER=${NOTEBOOK_CLAIM_VERIFIER:-off}
+      # CU-RR1 cross-encoder rerank lane. OFF unless the environment sets
+      # NOTEBOOK_RERANK=1. The service is the colocated mira-reranker below
+      # (internal network only); any failure or >1.5 s keeps today's order.
+      - NOTEBOOK_RERANK=${NOTEBOOK_RERANK:-0}
+      # WP-1 guided troubleshooting on the notebook (manufacturer procedures on the
+      # #4498 step runner). OFF unless NOTEBOOK_GUIDED_PROCEDURE=1. Staging only.
+      - NOTEBOOK_GUIDED_PROCEDURE=${NOTEBOOK_GUIDED_PROCEDURE:-0}
+      # #4513 IDF-sum lexical candidate scoring. OFF unless the environment sets
+      # NOTEBOOK_LEXICAL_V2=1. Staging only until its walk passes and Mike decides.
+      - NOTEBOOK_LEXICAL_V2=${NOTEBOOK_LEXICAL_V2:-0}
+      - NOTEBOOK_RERANK_POOL=${NOTEBOOK_RERANK_POOL:-}
+      # Client timeout, ms (default 1500): raise it if the host's measured p95 is higher.
+      - NOTEBOOK_RERANK_TIMEOUT_MS=${NOTEBOOK_RERANK_TIMEOUT_MS:-}
+      - RERANKER_URL=http://mira-reranker:8088
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app-staging.factorylm.com}
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
       - AUTH_SECRET=${AUTH_SECRET:-}
@@ -366,6 +403,13 @@ services:
       - NANGO_SERVER_URL=${NANGO_SERVER_URL:-disabled://staging}
       - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4-mini}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENAI_RUN_BUDGET_USD=${OPENAI_RUN_BUDGET_USD:-}
+      - OPENAI_RUN_BUDGET_WINDOW_S=${OPENAI_RUN_BUDGET_WINDOW_S:-}
+      - OPENAI_PRICE_PER_MTOK_IN=${OPENAI_PRICE_PER_MTOK_IN:-}
+      - OPENAI_PRICE_PER_MTOK_OUT=${OPENAI_PRICE_PER_MTOK_OUT:-}
       - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=${CEREBRAS_MODEL:-gpt-oss-120b}
@@ -424,6 +468,10 @@ services:
       # one by accident. Staging only until the vendor-retention item in
       # docs/proofs/2026-09-23-jev-decision-privacy.md is closed.
       - MIRA_JEV_DECISION=${MIRA_JEV_DECISION:-0}
+      # Weak-evidence badge: the sufficiency shadow's one consulted use (needs
+      # MIRA_JEV_SHADOW=1). Relabels the evidence frame, never withholds an answer.
+      # Staging only; production Compose does not pass it.
+      - MIRA_JEV_WEAK_EVIDENCE_BADGE=${MIRA_JEV_WEAK_EVIDENCE_BADGE:-0}
       # 093 stale-turn reconciler: the only writer of the `abandoned` outcome.
       # A start record whose container was SIGKILLed mid-turn can be closed from
       # nowhere else. Default 0 so it is enabled per environment, not by merge.
@@ -538,6 +586,13 @@ services:
       - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
       - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4-mini}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENAI_RUN_BUDGET_USD=${OPENAI_RUN_BUDGET_USD:-}
+      - OPENAI_RUN_BUDGET_WINDOW_S=${OPENAI_RUN_BUDGET_WINDOW_S:-}
+      - OPENAI_PRICE_PER_MTOK_IN=${OPENAI_PRICE_PER_MTOK_IN:-}
+      - OPENAI_PRICE_PER_MTOK_OUT=${OPENAI_PRICE_PER_MTOK_OUT:-}
       - GROQ_MODEL=openai/gpt-oss-120b
       - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
@@ -633,6 +688,13 @@ services:
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - INFERENCE_BACKEND=cloud
       - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4-mini}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENAI_RUN_BUDGET_USD=${OPENAI_RUN_BUDGET_USD:-}
+      - OPENAI_RUN_BUDGET_WINDOW_S=${OPENAI_RUN_BUDGET_WINDOW_S:-}
+      - OPENAI_PRICE_PER_MTOK_IN=${OPENAI_PRICE_PER_MTOK_IN:-}
+      - OPENAI_PRICE_PER_MTOK_OUT=${OPENAI_PRICE_PER_MTOK_OUT:-}
       - GROQ_MODEL=openai/gpt-oss-120b
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=gpt-oss-120b
@@ -727,11 +789,201 @@ services:
       retries: 3
       start_period: 30s
 
+  # Embedder for the Hub, on THIS host (2026-10-05 outage). The host is not on the
+  # tailnet, so Bravo's Ollama (Doppler OLLAMA_BASE_URL) is unreachable from here and
+  # every embed-on-write failed after the 2026-09-19 move to OVH. Same runtime and
+  # model digest as Bravo (Ollama 0.22.0, nomic-embed-text v1.5 = 0a109f422b47), so the
+  # vectors stay comparable with the ~94k already stored. No ports: Ollama has no
+  # auth, so it is reachable only on the internal network. Healthy only once the
+  # pinned model digest is present.
+  mira-ollama:
+    image: ollama/ollama:0.22.0
+    container_name: stg-mira-ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        set -e;
+        LIST_TIMEOUT=$${OLLAMA_LIST_TIMEOUT:-5};
+        CP_TIMEOUT=$${OLLAMA_CP_TIMEOUT:-10};
+        PULL_TIMEOUT=$${OLLAMA_PULL_TIMEOUT:-300};
+        READY_CAP=$${OLLAMA_READY_CAP:-120};
+        PULL_RETRIES=$${OLLAMA_PULL_RETRIES:-5};
+        MODEL='nomic-embed-text:v1.5';
+        DIGEST='0a109f422b47';
+        now() { date +%s; };
+        cleanup() { kill $$1 2>/dev/null || true; wait $$1 2>/dev/null || true; };
+        bounded_call() {
+          local pid=$$1 cap=$$2 op=$$3 start;
+          start=$$(now); waited=0;
+          while [ $$waited -lt $$cap ]; do
+            if ! kill -0 $$pid 2>/dev/null; then
+              wait $$pid 2>/dev/null; code=$$?;
+              elapsed=$$(($$( now ) - start));
+              if [ $$code -ne 0 ]; then
+                echo "ERROR: $$op exited $$code after $${elapsed}s" >&2;
+              fi;
+              return $$code;
+            fi;
+            sleep 1; waited=$$((waited + 1));
+          done;
+          elapsed=$$(($$( now ) - start));
+          if ! kill -0 $$pid 2>/dev/null; then
+            wait $$pid 2>/dev/null; code=$$?;
+            if [ $$code -ne 0 ]; then
+              echo "ERROR: $$op exited $$code after $${elapsed}s" >&2;
+            fi;
+            return $$code;
+          fi;
+          cleanup $$pid;
+          echo "ERROR: $$op timed out after $${elapsed}s (cap: $${cap}s)" >&2;
+          return 124;
+        };
+        bounded_list() {
+          local cap=$$1 op=$$2 tmpfile start elapsed remaining;
+          tmpfile="/tmp/ollama_list_$$$$.tmp";
+          start=$$(now);
+          ollama list > "$$tmpfile" 2>&1 & pid=$$!;
+          if bounded_call $$pid $$cap "$$op"; then
+            cat "$$tmpfile";
+            rm -f "$$tmpfile";
+            return 0;
+          fi;
+          rm -f "$$tmpfile";
+          return 1;
+        };
+        ollama serve & serve_pid=$$!;
+        trap 'cleanup $$serve_pid' EXIT;
+        ready=0; ready_start=$$(now);
+        while true; do
+          elapsed=$$(($$( now ) - ready_start));
+          if [ $$elapsed -ge $$READY_CAP ]; then break; fi;
+          if ! kill -0 $$serve_pid 2>/dev/null; then
+            echo "ERROR: ollama serve died before ready after $${elapsed}s" >&2;
+            exit 1;
+          fi;
+          remaining=$$((READY_CAP - elapsed));
+          probe_cap=$$((remaining < LIST_TIMEOUT ? remaining : LIST_TIMEOUT));
+          if [ $$probe_cap -le 0 ]; then break; fi;
+          if ollama list >/dev/null 2>&1 & list_pid=$$!; bounded_call $$list_pid $$probe_cap "ollama list (readiness probe)"; then
+            ready=1; break;
+          fi;
+          elapsed=$$(($$( now ) - ready_start));
+          remaining=$$((READY_CAP - elapsed));
+          if [ $$remaining -le 0 ]; then break; fi;
+          sleep_time=$$((remaining < 1 ? remaining : 1));
+          if [ $$sleep_time -gt 0 ]; then sleep $$sleep_time; fi;
+        done;
+        elapsed=$$(($$( now ) - ready_start));
+        if [ $$ready -eq 0 ]; then
+          if ! kill -0 $$serve_pid 2>/dev/null; then
+            echo "ERROR: ollama serve died before ready after $${elapsed}s" >&2;
+          else
+            echo "ERROR: ollama serve never became ready (elapsed: $${elapsed}s, cap: $${READY_CAP}s)" >&2;
+          fi;
+          exit 1;
+        fi;
+        if bounded_list $$LIST_TIMEOUT "ollama list (cache check)" | grep -qE "^$${MODEL}[[:space:]]+$${DIGEST}"; then
+          echo "Model $${MODEL} cached with digest $${DIGEST}, skipping pull" >&2;
+        else
+          pull_success=0;
+          for attempt in $$(seq 1 $$PULL_RETRIES); do
+            echo "Pulling $${MODEL} (attempt $$attempt/$$PULL_RETRIES)..." >&2;
+            pull_start=$$(now);
+            ollama pull "$$MODEL" & pull_pid=$$!;
+            if bounded_call $$pull_pid $$PULL_TIMEOUT "ollama pull"; then
+              pull_success=1; break;
+            fi;
+            if [ $$attempt -lt $$PULL_RETRIES ]; then
+              sleep 2;
+            fi;
+          done;
+          if [ $$pull_success -eq 0 ]; then
+            echo "ERROR: Failed to pull $${MODEL} after $${PULL_RETRIES} attempts" >&2;
+            exit 1;
+          fi;
+        fi;
+        if ! bounded_list $$LIST_TIMEOUT "ollama list (digest verify)" | grep -qE "^$${MODEL}[[:space:]]+$${DIGEST}"; then
+          echo "ERROR: Model $${MODEL} has wrong digest (expected $${DIGEST})" >&2;
+          exit 1;
+        fi;
+        if ! bounded_list $$LIST_TIMEOUT "ollama list (alias check)" | grep -qE '^nomic-embed-text:latest[[:space:]]+'"$${DIGEST}"; then
+          ollama cp "$$MODEL" nomic-embed-text:latest & cp_pid=$$!;
+          if ! bounded_call $$cp_pid $$CP_TIMEOUT "ollama cp"; then
+            exit 1;
+          fi;
+        fi;
+        set +e;
+        list_out=$$(bounded_list $$LIST_TIMEOUT "ollama list (final verify)");
+        list_code=$$?;
+        set -e;
+        if [ $$list_code -ne 0 ]; then
+          echo "ERROR: Final verification: ollama list failed" >&2;
+          exit 1;
+        fi;
+        if ! echo "$$list_out" | grep -qE '^nomic-embed-text:v1\.5[[:space:]]+'"$${DIGEST}" ||
+           ! echo "$$list_out" | grep -qE '^nomic-embed-text:latest[[:space:]]+'"$${DIGEST}"; then
+          echo "ERROR: Final verification failed - both tags must resolve to $${DIGEST}" >&2;
+          exit 1;
+        fi;
+        echo "Bootstrap complete, ollama serve running" >&2;
+        trap - EXIT;
+        wait $$serve_pid
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    volumes:
+      - stg-ollama-models:/root/.ollama
+    networks:
+      - staging-net
+    restart: unless-stopped
+    mem_limit: 2g
+    memswap_limit: 2g
+    # CPU cap (Mike, 2026-10-19). Uncapped, this embedder used ~5.5 of the host's 6
+    # vCPUs while indexing uploads (557% during stranger walks), starving the
+    # reranker (2.3-4.1 s per question) and contending with production on the same
+    # host. Trade-off accepted: uploads become searchable more slowly.
+    cpus: 2
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list | grep -E '^nomic-embed-text:v1.5[[:space:]]+0a109f422b47' && ollama list | grep -E '^nomic-embed-text:latest[[:space:]]+0a109f422b47'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+  # CU-RR1: cross-encoder reranker for notebook retrieval (docs/architecture/
+  # convergence/units/CU-RR1.md). STAGING ONLY — not in docker-compose.saas.yml.
+  # This host also runs production, so CPU and memory are hard-capped and the
+  # thread count matches the CPU cap (host: 6 vCPU Haswell, load ~0.1 on 2026-10-19;
+  # 2 threads measured ~1.6 s per pool-24 request on CHARLIE, over the Hub's 1.5 s timeout). Model files are baked in and sha256-verified
+  # at build time; nothing downloads at runtime. No ports: no auth, internal only.
+  # Memory measured flat at ~300 MiB over 50 pool-50 requests (c46239d99).
+  mira-reranker:
+    build:
+      context: ./mira-reranker
+    container_name: stg-mira-reranker
+    environment:
+      - RERANKER_THREADS=3
+      # int8 (AVX2) model: same answers on the replay within 1 of 50/32, ~4x faster than
+      # fp32, which measured p95 4.1 s here. Rollback without a rebuild: RERANKER_MODEL=fp32.
+      - RERANKER_MODEL=${RERANKER_MODEL:-int8-avx2}
+    networks:
+      - staging-net
+    restart: unless-stopped
+    cpus: 3
+    mem_limit: 768m
+    memswap_limit: 768m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
 networks:
   staging-net:
     name: staging-net
     driver: bridge
 
 volumes:
+  stg-ollama-models:
   stg-atlas-pgdata:
   stg-atlas-minio:

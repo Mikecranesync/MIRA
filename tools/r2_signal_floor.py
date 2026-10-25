@@ -44,6 +44,8 @@ _R3_SIGNALS: tuple[tuple[str, str], ...] = (
     # file is labelled as one; both are R3 either way)
     ("migration", "mira-hub/db/migrations/"),
     ("migration", "mira-core/mira-ingest/db/migrations/"),
+    # its `expand` labels decide rollback readiness (SDLC v1 step 10, runbook rollback.md §2)
+    ("migration", "tools/migration_compat.txt"),
     # Tenant — who may see what
     ("tenant", "mira-hub/src/lib/session.ts"),
     ("tenant", "mira-hub/src/lib/tenant-context.ts"),

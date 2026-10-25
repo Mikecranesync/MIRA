@@ -110,7 +110,7 @@ class ManufacturerCrawler(BaseCrawler):
                 else:
                     url = source_def.get("url")
                     if url:
-                        urls.append({
+                        entry_out = {
                             "url": url,
                             "source_type": "equipment_manual",
                             "format": source_def.get("format", "pdf"),
@@ -119,7 +119,14 @@ class ManufacturerCrawler(BaseCrawler):
                             # #4141: model-bound retrieval filters on model_number;
                             # without it the manual is invisible to a known model.
                             "model_number": source_def.get("model_number", ""),
-                        })
+                        }
+                        # A long curated manual declares how many pages to read: the
+                        # parsers stop at 300 by default, and the ATV320 Programming
+                        # Manual's troubleshooting is on page 412 (Codex #4254 F1).
+                        max_pages = source_def.get("max_pages")
+                        if isinstance(max_pages, int) and not isinstance(max_pages, bool) and max_pages > 0:
+                            entry_out["max_pages"] = max_pages
+                        urls.append(entry_out)
 
         logger.info(
             "Discovered %d manufacturer URLs (filter=%s)",

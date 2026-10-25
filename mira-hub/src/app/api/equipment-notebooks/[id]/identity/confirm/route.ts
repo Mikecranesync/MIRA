@@ -205,7 +205,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // by reading the record back after claiming it — `claim()`'s `started_at`
   // is the DB's own `now()`, never a value this route invents.
   let startedAt: string | null = null;
-  if (!manualReady && acquisitionEnabled()) {
+  if (!manualReady && acquisitionEnabled(ctx.tenantId)) {
     const justClaimed = await startManualAcquisition({
       tenantId: ctx.tenantId,
       userId: ctx.userId ?? null,

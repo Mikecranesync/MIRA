@@ -135,6 +135,7 @@ jobs:
           MIRA_STAGING_BOT_USERNAME: ${{ inputs.bot_username || '@Mira_stagong_bot' }}
           INFERENCE_BACKEND: cloud
           GROQ_API_KEY: ${{ secrets.STAGING_GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.STAGING_OPENAI_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.STAGING_CEREBRAS_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.STAGING_GEMINI_API_KEY }}
           QA_TURN_TIMEOUT_S: "60"

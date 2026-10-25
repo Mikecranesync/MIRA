@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ExternalLink, Loader2, Link2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button, type ButtonProps } from "@/components/ui/button";
+import { API_BASE } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
 // Deep-link API response shape — must mirror DeepLinkResult in src/lib/cmms/deep-link.ts.
@@ -46,7 +47,7 @@ export function OpenInCMMSButton({
     (async () => {
       try {
         const res = await fetch(
-          `/hub/api/cmms/deep-link?kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(recordId)}`,
+          `${API_BASE}/api/cmms/deep-link?kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(recordId)}`,
         );
         if (!res.ok) {
           if (!cancelled) setResult({ status: "unconfigured" });

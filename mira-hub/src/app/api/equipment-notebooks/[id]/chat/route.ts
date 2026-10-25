@@ -43,9 +43,21 @@ import { context, SpanStatusCode, trace, type Context, type Span } from "@opente
 import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
 import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observability/turn-recorder";
 import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
+import { citesOnlyUnconfirmedPhotoReadings } from "@/capabilities/photo-source";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
+import { finishedAfterChunk } from "@/capabilities/stream-stop";
+import {
+  billableTokens,
+  boundInputTokens,
+  logBudgetExhausted,
+  openAiRunBudget,
+  type BudgetReservation,
+} from "@/capabilities/openai-run-budget";
+import { withSupportingQuotes } from "@/capabilities/supporting-quote";
+import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
+import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
   proposeIdentityFromText,
   unconfirmedMachineDirective,
@@ -57,6 +69,7 @@ import {
   acquisitionKey,
   candidateAcquisitionEnabled,
   acquisitionDeclineText,
+  acquisitionManualUrl,
   readAcquisition,
   reconcileAcquisition,
   startManualAcquisition,
@@ -70,6 +83,7 @@ import {
   serviceVersion,
   productionRouteDetected,
   anomalyChecksEnabled,
+  jevWeakEvidenceBadgeEnabled,
 } from "@/capabilities/observability/config";
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
@@ -77,6 +91,7 @@ import { composeTimeout } from "@/lib/abort-helpers";
 import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { authorizeGuidedDeadEnd, guidedProcedureEnabled } from "@/capabilities/guided-procedure-store";
 import {
   abandonNotebookTurnRequest,
   claimNotebookTurnRequest,
@@ -96,11 +111,23 @@ import {
   ELECTRICAL_HAZARD_DIRECTIVE,
   ENERGIZED_ELECTRICAL_HAZARD,
   hazardBanner,
+  isEnergizedWorkAsk,
   matchSafetyStop,
+  notebookSafetyTrigger,
   safetyFlagDirective,
   safetyFlagHeaders,
   withSafetyFlag,
 } from "@/lib/safety-classifier";
+import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
+import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
+import {
+  ENERGIZED_WORK_TRIGGER,
+  LOCKOUT_PAGE_QUERY,
+  energizedHardStopEnabled,
+  energizedWorkStop,
+  lockoutPageOf,
+  pickLockoutChunk,
+} from "@/capabilities/energized-work-stop";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
@@ -134,8 +161,19 @@ import {
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
+import {
+  logProvidersExhausted,
+  providerExhaustionStatus,
+  PROVIDER_EXHAUSTION_COPY,
+  providerHealth,
+  type ProviderAttemptFailure,
+} from "@/capabilities/provider-health";
 import { closeTurn, openTurn, type TurnOutcome } from "@/capabilities/observability/turn-lifecycle";
-import { assessEvidenceFollowed } from "@/capabilities/observability/evidence-consistency";
+import {
+  assessEvidenceFollowed,
+  equipmentClassesOf,
+  subjectIdentifiers,
+} from "@/capabilities/observability/evidence-consistency";
 import {
   recordArrival,
   recordResponse,
@@ -154,6 +192,7 @@ import {
 import { inferEquipmentType } from "@/lib/equipment-type";
 import {
   sanitizeHistory,
+  buildPriorReportContext,
   buildRetrievalQuery,
   buildTopicHint,
   classifyBroad,
@@ -199,26 +238,33 @@ import type {
   NotebookChatFrame,
   SafetyNoticeEntry,
   SafetyStopEntry,
+  ProviderFailureEntry,
   VisualObservationEntry,
   IdentityDisputeEntry,
   EvidenceBasis,
+  WeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
 import {
   isMachineEvidenceEntry,
   isSafetyNoticeEntry,
   isSafetyStopEntry,
+  isProviderFailureEntry,
   isVisualObservationEntry,
+  isWeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
 import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import {
+  JUDGE_OUTPUT_TOKENS,
+  judgeHoldInputBound,
   selectForSemanticCheck,
   semanticCheckEnabled,
   semanticSafetyCheck,
   triageSemanticSafetyCheck,
   type HazardTriageResult,
+  type JudgeOpenAiHold,
 } from "@/capabilities/answer-safety-check";
 
 export const dynamic = "force-dynamic";
@@ -296,6 +342,26 @@ HONESTY:
 
 SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on 480 V-class equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized.`;
 
+/**
+ * WP-1 guided dead end (owner decision 2026-10-21). Appended to the general prompt ONLY for a turn
+ * whose guided session the server confirmed ended at a dead end. It corrects the general prompt's
+ * "no manual loaded" premise without letting the model claim anything came from that manual.
+ */
+const GUIDED_DEAD_END_DIRECTIVE = `GUIDED PROCEDURE DEAD END — this overrides ONLY the "no manual" premise above; every SAFETY instruction still applies in full. The technician DOES have this machine's manual and has already worked through its troubleshooting procedure step by step; the steps they checked, with their manual pages, are in their message. The procedure ended with no documented next step for what they are seeing. Now help from general knowledge:
+- Open with one short clause saying this is general guidance beyond the manual.
+- Do not repeat the checks they already did. Suggest the next most likely causes for the symptom they describe and the checks for them, cheapest and safest first.
+- Never say or imply that any of your advice comes from their manual, and never cite pages for it.
+- If their message gives no symptom, ask for one before suggesting anything.`;
+// ASI-001: an observation is evidence, not a root cause. Shared by both modes.
+const FIELD_OBSERVATION_DIRECTIVE = `FIELD OBSERVATIONS — this rule outranks a request to lead with the most likely cause:
+- For an unexplained status change, separate the technician's observation from its meaning. A color/status change does not prove a physical failure, loss of a mechanical lock, or permission to operate. Use the site's documented indication mapping if supplied; otherwise say the meaning is unverified.
+- A reported delay is a clue: elapsed time alone does not establish a configured timeout. Do not invent timer values, device models, channel assignments, or a confirmed root cause.
+- If the evidence cannot determine the cause, offer only clearly labeled hypotheses, not confirmed causes. In grounded mode, keep them within the supplied evidence; unrelated excerpts are not support.
+- Ask the single highest-value question first: whether this is an HMI indication or a device LED, or whether it affects one device or several. Use facts already provided; do not ask the technician to repeat them or dump a questionnaire.
+- Name the next evidence that would distinguish the hypotheses: exact alarm/status, timestamp and repeatability, full device label, circuit/address/channel, or the applicable schematic/manual. Separate a communication fault from a safety-input state when the diagnostics support that distinction.
+- For safety interlocks or passenger restraints, explain existing observations without suggesting fault creation or release tests. Do not recommend bypassing an interlock, forcing an output, changing safety configuration, or treating an earlier green indication as a release authorization. Physical work follows the OEM/site isolation and qualified-person procedure.
+- Old troubleshooting notes are historical evidence, not proof of this event's cause. Preserve uncertainty until the cited diagnostics or documented mapping resolves it.`;
+
 type CascadeProvider = { name: string; url: string; key?: string; model: string };
 
 /**
@@ -346,6 +412,9 @@ async function buildCitations(
       sourceTitle: citationTitle(c),
       page: c.sourcePage,
       fileId: null,
+      // A manufacturer manual's own address, so the reader can open it; only a
+      // place a browser can actually go (http/https) is carried.
+      ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: c.sourceUrl } : {}),
       // Claim-centered window (CIT-07 phase 2) — not the chunk head.
       quote: relevantQuoteWindow(c.content, question),
     });
@@ -469,28 +538,61 @@ export function legacyCascadeUsage(
   };
 }
 
+// ONE copy of the refusal pattern, shared by isRefusal, sentenceIsRefusal and the
+// answer_gate span fields, so the three can never drift apart.
+const REFUSAL_PHRASE_RE =
+  /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/;
+// #4514 (2026-10-19 stranger walk): "The loaded excerpts do not SAY whether…" and
+// "…do not DEFINE fault 39…" were persisted as `answered`. These verbs are also
+// ordinary diagnostic language ("could indicate a fault", "this LED does not indicate
+// a fault"), so they count ONLY when the evidence itself is the subject of the
+// negation, or the assistant states it cannot (Codex F1 on #4532).
+const EVIDENCE_SUBJECT_REFUSAL_RE =
+  /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|pages?|data ?sheets?|materials?)\s+(?:[a-z'-]+\s+){0,2}(?:do(?:es)? not|don't|doesn't|did not|didn't)\s+(?:[a-z'-]+\s+){0,2}(?:say|define|identify|confirm|describe|explain|indicate)\b/;
+const FIRST_PERSON_REFUSAL_RE =
+  /\b(?:i|we)\s+(?:can't|cannot|could not|couldn't|am unable to|was unable to|'m unable to)\s+(?:[a-z'-]+\s+){0,2}(?:say|define|identify|confirm|describe|explain|indicate)\b/;
+const EVIDENCE_PHRASE_RE =
+  /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/;
+/** Lowercase with typographic apostrophes folded to ASCII (#4032 class: the model
+ *  writes "can\u2019t"), for the refusal patterns. */
+function refusalText(text: string): string {
+  return text.toLowerCase().replace(/[\u2018\u2019\u02bc]/g, "'");
+}
+/** A sentence that OPENS with "don't / do not / never" is an instruction to the
+ *  technician ("Don't open the cover until the bus has discharged…"); that opening
+ *  negation is not the model declining, and "cover"/"show"/"see" after it read as a
+ *  refusal before this. Only the opening negation WORD is neutralized — everything
+ *  after it is still checked, so "Do not reset the drive because I cannot find the
+ *  procedure in the supplied manual" (any connector: ; , : because, dash) is still a
+ *  refusal (Codex F2 r1 and r2 on #4532). */
+const IMPERATIVE_NEGATION_RE = /^(?:please\s+)?(?:do not|don't|never)\b/;
+/** Any refusal phrase in already-folded text, sentence by sentence. */
+function refusalPhraseIn(folded: string): boolean {
+  return folded.split(/(?<=[.!?])\s+/).some((raw) => {
+    const sentence = raw.trim().replace(IMPERATIVE_NEGATION_RE, "");
+    return (
+      REFUSAL_PHRASE_RE.test(sentence) ||
+      EVIDENCE_SUBJECT_REFUSAL_RE.test(sentence) ||
+      FIRST_PERSON_REFUSAL_RE.test(sentence)
+    );
+  });
+}
+
 export function isRefusal(answer: string): boolean {
   // Verb list extended 2026-09-22 (staging trace d324d936…): "the supplied
   // references do not SPECIFY the supply voltage" is an honest refusal too,
   // and was persisted as `answered` with a general badge. The refusal regex
   // is the ONLY thing that turns a served refusal into insufficient_evidence.
-  const a = answer.toLowerCase();
-  return (
-    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
-    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a) &&
-    a.length < 400
-  );
+  const a = refusalText(answer);
+  return refusalPhraseIn(a) && EVIDENCE_PHRASE_RE.test(a) && a.length < 400;
 }
 
 /** The refusal pattern applied to ONE sentence, without `isRefusal`'s
  *  whole-answer length bound. Used to separate a limitation clause from the
  *  rest of an answer (#3953). */
 function sentenceIsRefusal(sentence: string): boolean {
-  const a = sentence.toLowerCase();
-  return (
-    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(a) &&
-    /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(a)
-  );
+  const a = refusalText(sentence);
+  return refusalPhraseIn(a) && EVIDENCE_PHRASE_RE.test(a);
 }
 
 /** Minimum characters of cited, non-limitation prose before a turn counts as
@@ -538,6 +640,140 @@ export function refusalVerdict(
   return !(ctx.docGrounded && isCitedPartialAnswer(answer, ctx.citations));
 }
 
+/**
+ * #4426 — the deterministic floor under `refusalVerdict`, for the shared
+ * manufacturer library. An identity-bound OEM search that retrieved passages,
+ * followed by an answer that cites NONE of them (no `[n]`, or only `[n]` that
+ * resolve to nothing), is an uncited documentation claim. The server records
+ * it as `insufficient_evidence` instead of trusting the model's wording to
+ * decline: retrieval acceptance scenario 2 showed the same six chunks and the
+ * same prompt producing an honest decline on two runs and an uncited
+ * "answered" on two others (2026-10-14). This extends #4004/#4010, which made
+ * the zero-passage case of the same search abstain.
+ *
+ * Exempt: a turn also grounded by something other than documents (a machine
+ * reading or a photo), and a safety-flagged turn. A flag never blocks an
+ * answer (owner decision 2026-09-27); Gate G exempts it the same way.
+ * Notebook-source turns are out of scope: whether an unmatched attached source
+ * should decline or answer from general knowledge is still open (#4255, F004
+ * #4303). Exported for tests.
+ */
+export function isUncitedDocumentClaim(
+  answer: string,
+  ctx: { oemGrounded: boolean; citations: EvidenceCitation[]; exempt: boolean },
+): boolean {
+  if (!ctx.oemGrounded || ctx.exempt) return false;
+  return citationsUsedInAnswer(answer, ctx.citations).length === 0;
+}
+
+/** #4426: the bound machine's stored nameplate readings exempt the floor above only
+ *  when the answer affirmatively uses one — it attributes to "the photographed
+ *  nameplate" (the visual-evidence section's own prose-attribution rule) AND repeats
+ *  a reading from it (a digit-bearing token such as "24" or "6AV2124-0GC01-0AX0").
+ *  A passing mention ("check the nameplate") or a statement that the nameplate
+ *  lacks the answer exempts nothing. Exported for unit testing. */
+export function answerUsesStoredNameplateReading(answer: string, readings: readonly string[]): boolean {
+  if (!/\bphotographed nameplate\b/i.test(answer)) return false;
+  const upper = answer.toUpperCase();
+  return readings.some((text) =>
+    text.split(/[\s,;:()]+/).some((raw) => {
+      const tok = raw.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "").toUpperCase();
+      if (tok.length < 2 || !/\d/.test(tok)) return false;
+      for (let i = upper.indexOf(tok); i !== -1; i = upper.indexOf(tok, i + 1)) {
+        const before = i === 0 ? "" : upper[i - 1];
+        const after = upper[i + tok.length] ?? "";
+        if (!/[A-Z0-9]/.test(before) && !/[0-9]/.test(after)) return true;
+      }
+      return false;
+    }),
+  );
+}
+
+/** How an answer refers back to a photo from an earlier turn. The prior-photo
+ *  section asks for "an unconfirmed reading of an earlier photo", but the cascade
+ *  paraphrases, so each pattern needs RETROSPECTIVE context and none matches a
+ *  request for a new photo ("take the photo before you reset…", "once you have
+ *  sent a photo…", Codex r1 F1 on #4450):
+ *  - "your earlier photo", "a previous picture", "the last image";
+ *  - "in/from the photo earlier|before|previously" (a place the reading came from);
+ *  - "the photo from earlier";
+ *  - "the picture you showed me before", "the image you sent previously", "the
+ *    photo you sent a few minutes ago" (a past-tense verb by you or me between);
+ *  - "you showed me a photo", "you sent a picture", unless conditional ("if/once/
+ *    when/after you sent…"). */
+const EARLIER_PHOTO_ATTRIBUTION: readonly RegExp[] = [
+  /\b(?:earlier|previous|prior|last)\s+(?:photo|picture|image|pic)s?\b/i,
+  /\b(?:in|from|on)\s+(?:the|your|that)\s+(?:photo|picture|image|pic)s?\s+(?:earlier|before|previously)\b/i,
+  /\b(?:the|your|that)\s+(?:photo|picture|image|pic)s?\s+from\s+(?:earlier|before)\b/i,
+  /\b(?:the|your|that)\s+(?:photo|picture|image|pic)s?\s+(?:you|I)\s+(?:[\w']+\s+){0,2}?(?:showed|sent|shared|attached|took|uploaded|saw|gave)\b(?:\s+[\w']+){0,3}?\s+(?:earlier|before|previously|ago)\b/i,
+  /(?<!\b(?:if|once|when|after|until|soon as)\s+)\byou\s+(?:showed|sent|shared|attached|took|uploaded)\s+(?:me\s+|us\s+)?(?:a|an|the|your|that)\s+(?:photo|picture|image|pic)s?\b/i,
+];
+
+/** A sentence that refers to an earlier photo but states no reading from it
+ *  (Codex r2 F4 on #4450): an instruction to inspect it ("check / look at /
+ *  compare your earlier photo…"), a question about it, or a conditional ("if your
+ *  earlier photo shows…", "…whether…"). */
+const NON_AFFIRMATIVE_PHOTO_SENTENCE: readonly RegExp[] = [
+  /\?\s*$/,
+  /^\s*(?:(?:please|so|now|then|first|also|just)[,\s]+)*(?:check|look|see|review|compare|verify|inspect|confirm|open|zoom|re-?check|double-?check|examine|re-?read|refer back|go back)\b/i,
+  /^\s*(?:can|could|would|will|do|does|did|is|are)\s+(?:you|it|the|your|that)\b/i,
+  /^\s*(?:if|once|unless)\b|\bwhether\b/i,
+];
+
+/** The sentences of `answer` that affirmatively refer to an earlier photo. */
+function earlierPhotoStatements(answer: string): string[] {
+  return answer
+    .split(/(?<=[.!?])\s+|\n+/)
+    .filter((s) => EARLIER_PHOTO_ATTRIBUTION.some((re) => re.test(s)))
+    .filter((s) => !NON_AFFIRMATIVE_PHOTO_SENTENCE.some((re) => re.test(s)));
+}
+
+/** `id` occurs in `upper` as a whole token: not inside a longer code
+ *  ("GS10-20P2" in "GS10-20P20", "F004" in "F0041") and not continued by a
+ *  hyphenated suffix ("GS10-20P2-EX"). Both strings are upper-case. */
+function containsIdentifierToken(upper: string, id: string): boolean {
+  for (let i = upper.indexOf(id); i !== -1; i = upper.indexOf(id, i + 1)) {
+    const before = i === 0 ? "" : upper[i - 1];
+    const after = upper[i + id.length] ?? "";
+    const afterNext = upper[i + id.length + 1] ?? "";
+    const continued = /[A-Z0-9]/.test(after) || (after === "-" && /[A-Z0-9]/.test(afterNext));
+    if (!/[A-Z0-9-]/.test(before) && !continued) return true;
+  }
+  return false;
+}
+
+/** #4442: the photos attached to EARLIER questions in this conversation ride in
+ *  every later turn's context, so their presence says nothing about whether this
+ *  answer came from them. They exempt the #4426 floor only when the answer uses
+ *  one: it attributes to an earlier photo (the section's own rule) AND repeats
+ *  what that photo showed: one of its identifiers such as "F004", or, for a photo
+ *  with no identifiers, the same kind of equipment (`subjectIdentifiers` /
+ *  `equipmentClassesOf`, the evidence-follow check's own signals). A passing
+ *  mention exempts nothing, mirroring `answerUsesStoredNameplateReading`.
+ *  Exported for unit testing. */
+export function answerUsesEarlierPhoto(answer: string, observations: readonly string[]): boolean {
+  // The reading must be stated in the SAME sentence that refers to the photo:
+  // "Your earlier photo is blurry. F004 on a TP700 means…" uses no reading.
+  return earlierPhotoStatements(answer).some((sentence) => {
+    const upper = sentence.toUpperCase();
+    const sentenceClasses = equipmentClassesOf(sentence);
+    return observations.some((obs) => {
+      // A photo that carries identifiers (a fault code, a model number) is used only
+      // when the answer repeats one: "your earlier photo... the drive has Ethernet"
+      // names the photo's equipment and none of what it showed. The equipment class
+      // is the distinctive content only of a photo with no identifiers at all.
+      const ids = subjectIdentifiers(obs);
+      if (ids.length > 0) return ids.some((id) => containsIdentifierToken(upper, id));
+      return equipmentClassesOf(obs).some((c) => sentenceClasses.includes(c));
+    });
+  });
+}
+
+/** The fixed, server-written text that replaces an uncited manufacturer-library
+ *  claim (#4426). Same voice as the zero-passage library abstain (#4004). */
+export const UNCITED_OEM_CLAIM_TEXT =
+  "I couldn't find that in the manufacturer documentation I have, so I won't guess. Upload the manual for this equipment (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.";
+
 /** Assemble the provider messages: system prompt, then the sanitized
  *  conversation history (so a follow-up has memory of the thread), then the
  *  current user turn carrying the fresh grounding excerpts. Prior turns are plain
@@ -547,10 +783,14 @@ export function buildProviderMessages(
   systemPrompt: string,
   history: ChatHistoryTurn[],
   userContent: string,
+  priorReportContext = "",
 ): { role: string; content: string }[] {
   return [
     { role: "system", content: systemPrompt },
     ...history.map((h) => ({ role: h.role, content: h.content })),
+    // Client history may be a stale snapshot from another device. Do not put
+    // its obsolete assistant theory after a newer server-recorded correction.
+    ...(priorReportContext ? [{ role: "user", content: priorReportContext }] : []),
     { role: "user", content: userContent },
   ];
 }
@@ -699,6 +939,7 @@ function manualSearchStatusFrame(
   manualSearchRunning: "confirmed" | "candidate" | null,
   candidateAcquisitionText: string | null,
   candidateSearchStartedAt?: string,
+  candidateManualUrl?: string | null,
 ): Record<string, unknown> | null {
   if (!identityProposal) return null;
   const running = manualSearchRunning === "candidate";
@@ -710,6 +951,20 @@ function manualSearchStatusFrame(
     running,
     ...(!running && candidateAcquisitionText ? { message: candidateAcquisitionText } : {}),
     ...(candidateSearchStartedAt ? { startedAt: candidateSearchStartedAt } : {}),
+    ...(!running && candidateManualUrl ? { manualUrl: candidateManualUrl } : {}),
+  };
+}
+
+/** #4374 Codex R3 F1: a replayed exhaustion turn says what its live frame said.
+ *  Rows saved before the `provider_failure` marker keep the legacy frame. */
+function replayedErrorStatus(evidence: readonly unknown[]): NotebookStatusFrame {
+  const failure = evidence.find(isProviderFailureEntry);
+  if (!failure) return { kind: "status", status: "error", message: "No answer provider available." };
+  return {
+    kind: "status",
+    status: "error",
+    message: PROVIDER_EXHAUSTION_COPY[failure.reason],
+    reason: failure.reason,
   };
 }
 
@@ -737,6 +992,9 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   );
   const storedProposal = turn.evidence.find(isIdentityProposalEntry) ?? null;
   const basis = REPLAY_BASES.has(turn.basis as EvidenceBasis) ? turn.basis as EvidenceBasis : null;
+  // The weak-evidence badge replays exactly as it was delivered: the persisted
+  // marker (not a re-run of the rule) decides, and only on the basis it fired for.
+  const weakEvidence = basis === "oem_documentation" && turn.evidence.some(isWeakEvidenceEntry);
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -767,7 +1025,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
           emit({
             kind: "evidence",
             basis,
-            label: replayBasisLabel(basis),
+            label: weakEvidence ? WEAK_EVIDENCE_LABEL : replayBasisLabel(basis),
             ...(machineEvidence ? { machineEvidence } : {}),
             ...(visualEvidence ? { visualEvidence } : {}),
             ...(identityDisputed ? { identityDisputed: true } : {}),
@@ -786,8 +1044,8 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
               : "I couldn't find that in the selected sources."),
           }
         : turn.answerStatus === "error"
-          ? { kind: "status", status: "error", message: "No answer provider available." }
-          : { kind: "status", status: "answered" };
+          ? replayedErrorStatus(turn.evidence)
+          : { kind: "status", status: "answered", ...(weakEvidence ? { evidence: "weak" as const } : {}) };
       emit(status);
       // Codex #4120 F4 — the stored proposal replays exactly as it was delivered.
       if (storedProposal) controller.enqueue(enc.encode(sse(storedProposal)));
@@ -869,6 +1127,10 @@ async function handleChatTurn(
      *  ignored. `capturedAt` is still accepted for client compatibility and is
      *  never read. */
     visualEvidence?: { fileId?: unknown; capturedAt?: unknown };
+    /** WP-1 guided dead end: the guided session whose manual procedure ran out. Only the id is
+     *  read; the server checks it against this tenant and notebook, and that the procedure still applies
+     *  to the machine as it is now (authorizeGuidedDeadEnd, #4602). */
+    guidedEscalation?: { sessionId?: unknown };
   };
   try {
     body = await req.json();
@@ -1197,7 +1459,17 @@ async function handleChatTurn(
   // reuses their classifier rather than adding a second policy, which keeps the
   // educational carve-out ("what is arc flash?" is a question, not a hazard
   // report) that a fresh keyword list would silently lose.
-  const questionSafetyTrigger = matchSafetyStop(message);
+  // Review A MEDIUM: TQ-30's lockout verb forms are NOTEBOOK-ONLY. They live
+  // in `notebookSafetyTrigger`, not in the shared `matchSafetyStop`, so
+  // NodeChat and asset chat stay byte-identical to base and do not newly
+  // banner "we locked out the MCC yesterday, what's Addr_CAN_OB?".
+  const questionSafetyTrigger = notebookSafetyTrigger(message);
+  // Codex F5 (round 3): the energized-work stop must pass BOTH zero-source
+  // gates below. A technician at a machine with nothing attached asking the
+  // real TQ-29 was getting `422 no_sources_selected` — a filing complaint
+  // instead of the stop and its site-LOTO fallback. Classified once, here;
+  // the stop itself is still decided later with the directive gate.
+  const energizedAskEarly = energizedHardStopEnabled() && isEnergizedWorkAsk(message);
   // #3763: the energized-electrical hazard sentinel is a DIRECTIVE, not a stop.
   // The answer still streams, framed by the NFPA 70E directive injected below,
   // and the turn persists a safety_notice evidence entry. Every other non-null
@@ -1329,7 +1601,12 @@ async function handleChatTurn(
     // branch above — it does NOT establish that this notebook belongs to the
     // caller. Letting it stand in for ownership would let any notebook id spend
     // this tenant's provider budget. getNotebook() is tenant-scoped.
-    if ((general || questionSafetyTrigger || visualClaimFileId) && validated.error === "no_sources_selected") {
+    // Codex F5 (round 3): the energized-work stop passes this gate too
+    // (energizedAskEarly). Ownership is already proven above.
+    if (
+      (general || questionSafetyTrigger || visualClaimFileId || energizedAskEarly) &&
+      validated.error === "no_sources_selected"
+    ) {
       // Ownership was proven above for every zero-source turn; a safety stop
       // needs neither sources nor general mode to be served.
     } else {
@@ -1443,6 +1720,24 @@ async function handleChatTurn(
   // non-terminal energized-work directive and therefore owns the turn.
   const safetyTrigger = visualSafetyTrigger ?? questionSafetyTrigger;
   const electricalHazardDirective = !visualSafetyTrigger && questionSafetyTrigger === ENERGIZED_ELECTRICAL_HAZARD;
+  // 2026-10-17 prod-test TQ-29 — a hands-on ask on a POWERED machine ("swap
+  // the fan while it's powered", "without locking out") is a terminal stop,
+  // not a flagged answer: the flag-and-answer shape still handed over the
+  // removal steps and torques. Question text only — a photo hazard keeps the
+  // banner path. Kill switch NOTEBOOK_ENERGIZED_HARD_STOP=0 (default on).
+  // `!electricalHazardDirective`: the 480 V + meter conjunction keeps the
+  // owner-decided NFPA 70E directive (answer streams, framed — #3763/#3841/
+  // #3984). This stop covers the shape that had NO treatment: hands-on work
+  // asked for on a powered machine, or an explicit "without locking out".
+  // Review A HIGH: `!visualSafetyTrigger` used to be here, which meant a photo
+  // hazard SKIPPED the stop — so attaching a picture to "can I pull the RFI
+  // jumper with it powered?" turned the stop off. The question's own intent is
+  // what this gate is about, and a photo cannot make energized work safe, so
+  // the photo no longer suppresses it. An ACTIVE incident is still excluded,
+  // but inside `isEnergizedWorkAsk` (ACTIVE_INCIDENT_RE), which is where that
+  // judgement belongs rather than keyed off whether an image was attached.
+  const energizedWorkAsk =
+    !electricalHazardDirective && energizedHardStopEnabled() && isEnergizedWorkAsk(message);
   // `observation_available`/`observation_in_context` are derived from
   // `lookRow`/its rendered section later (renderLookObservationSection), not
   // hardcoded — the LOOK observation DOES reach the prompt (buildManualUserContent
@@ -1473,7 +1768,7 @@ async function handleChatTurn(
   // A claimed photo is allowed past the early zero-source branch only so its
   // server record can be checked. If it is unverified/healthy and this is not a
   // general turn, preserve the original explicit no-sources refusal.
-  if (!validated.ok && !general && !safetyTrigger) {
+  if (!validated.ok && !general && !safetyTrigger && !energizedAskEarly) {
     await abandonRequestClaim();
     endRoot();
     return NextResponse.json({ error: validated.error }, { status: 422 });
@@ -1554,7 +1849,15 @@ async function handleChatTurn(
   // renders on every client and survives reload. It is not a structured
   // safety_notice because today's web/mobile chips label every non-terminal
   // notice "energized electrical work".
-  const flagBanner = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
+  // #4645: a reset / restart-after-fault ask gets the fixed restart banner. It is
+  // an ADVISORY, never a safetyTrigger — a trigger lets a turn be answered with
+  // no evidence, and an invented reset procedure is the #4645 failure itself.
+  const restartAdvisory = !safetyTrigger && !electricalHazardDirective && isFaultResetAsk(message);
+  const flagBannerBase = safetyTrigger && !electricalHazardDirective
+    ? hazardBanner(safetyTrigger)
+    : restartAdvisory
+      ? RESTART_BANNER
+      : null;
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -1746,7 +2049,7 @@ async function handleChatTurn(
   ]);
 
   // Non-English questions search the English corpus in English (answered in their own language).
-  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history), translateForSearch);
+  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history, lookRow?.text), translateForSearch);
   const retrievalSpan = startStage("retrieval.execute");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
@@ -1864,7 +2167,7 @@ async function handleChatTurn(
     // Codex r2 F4 / F13 (#4172): only when the candidate takeover can actually
     // run (both flags; #4175). Otherwise the turn stays exactly as before S6
     // (the explicit, confirm-first photo search below keeps the turn).
-    if (!candidateAcquisitionEnabled()) return null;
+    if (!candidateAcquisitionEnabled(ctx.tenantId)) return null;
     try {
       const candidate = extractCandidateIdentity(photoTextForOem, message);
       // #4172 Codex r3/post-cap: the ONE candidate validator (serials and
@@ -1879,11 +2182,39 @@ async function handleChatTurn(
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
-  const oemRetrieval = !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
+  // WP-1 guided dead end (owner decision 2026-10-21, a narrow exception to #4068): the technician
+  // worked through this machine's manual procedure in the guided panel and it ended with no
+  // documented next step. For that one general-mode turn, and only when the server confirms the
+  // named session is this notebook's latest and ended at a dead end, MIRA may answer from general
+  // knowledge — labelled general, never cited — instead of declining. Fails closed on any error.
+  // Resolved BEFORE retrieval (Codex #4598 F1): a dead-end turn skips the OEM search, so no
+  // excerpt can pull it back into the cited lane — the manual's procedure is already exhausted.
+  const guidedDeadEndId =
+    typeof body.guidedEscalation?.sessionId === "string" && /^[0-9a-f-]{36}$/i.test(body.guidedEscalation.sessionId)
+      ? body.guidedEscalation.sessionId
+      : null;
+  const guidedDeadEnd =
+    general && guidedDeadEndId !== null && guidedProcedureEnabled()
+      ? await authorizeGuidedDeadEnd(ctx.tenantId, notebookId, guidedDeadEndId).then(
+          (d) => {
+            // #4602: a dead end whose machine or manual changed since (or can't be read) declines.
+            if (!d.ok) console.info("[notebook-chat] guided dead-end not honoured", { reason: d.reason });
+            return d.ok;
+          },
+          (err) => {
+            console.error("[notebook-chat] guided dead-end check failed", err);
+            return false;
+          },
+        )
+      : false;
+  const oemRetrieval =
+    !guidedDeadEnd && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   // Codex #4069 F4: a failed OEM query is not a completed zero-hit search —
   // the decline below must never say "I couldn't find it" when nothing ran.
   let oemRetrievalFailed = false;
+  // Filled by retrieveNodeChunks: what the vector lane did this turn (#4548).
+  const retrievalDiagnostics: { vectorLane?: string } = {};
   const chunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
         // Raw pool on purpose (hybrid corpus law — see manual-rag.ts header):
@@ -1900,6 +2231,11 @@ async function handleChatTurn(
               oemEquipmentType && oemEquipmentType !== "Other" ? oemEquipmentType : null,
             topK: 6,
             allowTenantFallback: false,
+            // The un-augmented message, as the attached-document lane already
+            // receives: a terse follow-up's own fault code must reach the
+            // whole-token lane even when buildRetrievalQuery carried the
+            // thread's earlier code in (#4224, Codex r1 on #4360).
+            rawQuery: message,
           });
         } catch (err) {
           console.error("[notebook-chat] OEM corpus retrieval failed (continuing general):", err instanceof Error ? err.message : err);
@@ -1924,6 +2260,13 @@ async function handleChatTurn(
             topK: 6,
             docIds,
             rawQuery: message,
+            // The notebook's own machine name is never a fault code in the
+            // whole-token lane ("GS10 oC" binds oC, not GS10 — Codex r6 on #4360).
+            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
+            // Model-less questions scope to that machine only once a person has
+            // confirmed it — an OCR `candidate` must not hide the right manual.
+            identityStatus: nb?.identityStatus ?? null,
+            includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
             // document linked from another notebook's node stays retrievable here.
@@ -1936,9 +2279,19 @@ async function handleChatTurn(
             // chunks of these docs are admitted without ever being marked globally
             // verified — confirmation is admission, not corpus promotion.
             approvedSourceDocIds: docIds,
+            diagnostics: retrievalDiagnostics,
           }),
         ),
       );
+  // Banner is classified before retrieval; the page citation can only be
+  // written now that chunks exist. Prefer the WARNING/CAUTION/DANGER chunk's
+  // printed label (TQ-29: p.2-15) over INTEGER source_page.
+  // The restart banner is site safety practice, not a manual claim: no page.
+  const flagBanner = flagBannerBase
+    ? restartAdvisory
+      ? flagBannerBase
+      : withPageCitation(flagBannerBase, pageFromRetrievedChunks(chunks))
+    : null;
   {
     // Notebook chunks carry a doc id; shared-OEM chunks carry no doc id but a
     // source URL + page, which is their durable identity in knowledge_entries.
@@ -1999,6 +2352,7 @@ async function handleChatTurn(
         "mira.retrieval.oem_scope": oemScope,
         "mira.retrieval.zero_result_reason": zeroResultReason,
         "mira.retrieval.prior_visual_observations_considered": priorLookRows.length,
+        "mira.retrieval.vector_lane": retrievalDiagnostics.vectorLane ?? null,
         "mira.visual.prior_file_ids": priorLookFileIds,
       },
       retrievalSpan,
@@ -2024,7 +2378,7 @@ async function handleChatTurn(
     !(nb.manufacturer?.trim() || nb.model?.trim()) &&
     oemManufacturer !== null &&
     chunks.length === 0 &&
-    candidateAcquisitionEnabled()
+    candidateAcquisitionEnabled(ctx.tenantId)
   ) {
     // Codex r2 F2 (#4172): the OEM model parser knows a finite set of model
     // families, so a valid part it does not recognise (oemModel null) falls back
@@ -2099,6 +2453,7 @@ async function handleChatTurn(
   // photo in this turn (or recalled from the conversation) or a machine window
   // is evidence of its own, so it keeps the lane.
   const boundAndEmpty =
+    !guidedDeadEnd &&
     oemRetrieval && oemModel !== null && chunks.length === 0 && !groundedMachineEntry &&
     !visualEntry && priorLookRows.length === 0;
   const missingModelManual =
@@ -2129,7 +2484,7 @@ async function handleChatTurn(
   const candidateAcquisitionOwnsTurn =
     identityProposal !== null &&
     Boolean(nb) &&
-    candidateAcquisitionEnabled() &&
+    candidateAcquisitionEnabled(ctx.tenantId) &&
     acquisitionKey({
       identityStatus: "user_confirmed",
       manufacturer: identityProposal.manufacturer,
@@ -2353,19 +2708,23 @@ async function handleChatTurn(
   // "candidate" wins over "confirmed": its manual lands turned off, so the
   // fallback must also say to turn it on (Codex #4183 F1).
   let manualSearchRunning: "confirmed" | "candidate" | null = null;
+  // #4718: the acquisition key `manualSearchRunning` describes, so the copy
+  // can be re-checked against the stored record just before it is chosen.
+  let manualSearchKey: string | null = null;
   // Codex round 5 F15 (#4195) — the candidate search's own generation (the
   // DB's `started_at`, never this route's local clock), threaded onto the
   // LIVE `manual_search_status` SSE frame below so the shared mobile/Hub
   // follower can tell a genuinely NEW search apart from a replay of an old
   // one. Scoped to the candidate basis only, matching `manualSearchStatusFrame`.
   let candidateSearchStartedAt: string | undefined;
+  let candidateManualUrl: string | null = null;
   if (
     (missingModelManual || noEvidenceForMachine) &&
     !oemRetrievalFailed &&
     nb &&
     oemManufacturer?.source === "notebook" &&
     oemModel?.source === "notebook" &&
-    acquisitionEnabled()
+    acquisitionEnabled(ctx.tenantId)
   ) {
     const identity = {
       identityStatus: nb.identityStatus,
@@ -2421,7 +2780,10 @@ async function handleChatTurn(
       if (acq && acq.key === key) {
         manualAcquisition = { state: acq.state, started_this_turn: started, candidate_host: acq.candidate_host };
         acquisitionText = acquisitionDeclineText(acq, key, `${oemManufacturer.name} ${oemModel.value}`);
-        if (acq.state === "running" && manualSearchRunning === null) manualSearchRunning = "confirmed";
+        if (acq.state === "running" && manualSearchRunning === null) {
+          manualSearchRunning = "confirmed";
+          manualSearchKey = key;
+        }
       }
     }
   }
@@ -2486,7 +2848,11 @@ async function handleChatTurn(
         }
         if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
         if (cAcq && cAcq.key === candidateKey) {
-          if (cAcq.state === "running") manualSearchRunning = "candidate";
+          if (cAcq.state === "running") {
+            manualSearchRunning = "candidate";
+            manualSearchKey = candidateKey;
+          }
+          candidateManualUrl = !cAcq.attached_indexed && !cAcq.source_removed ? acquisitionManualUrl(cAcq) : null;
           candidateAcquisitionText = acquisitionDeclineText(
             cAcq,
             candidateKey,
@@ -2533,7 +2899,7 @@ async function handleChatTurn(
   // NEW search, changes retrieval, or alters the reply — the turn stays
   // grounded in its selected sources; the packet records the recovery
   // (`manual_acquisition`) for the flight recorder.
-  if (manualAcquisition === null && nb && acquisitionEnabled()) {
+  if (manualAcquisition === null && nb && acquisitionEnabled(ctx.tenantId)) {
     const identity = {
       identityStatus: nb.identityStatus,
       manufacturer: nb.manufacturer,
@@ -2558,6 +2924,7 @@ async function handleChatTurn(
           manualAcquisition = started
             ? { state: "running", started_this_turn: true, candidate_host: null }
             : { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };
+          if (manualAcquisition.state === "running" && manualSearchRunning === null) manualSearchKey = key;
         }
       }
     }
@@ -2590,6 +2957,153 @@ async function handleChatTurn(
       ? unidentifiedServiceDecline(message)
       : null;
 
+  // 2026-10-17 prod-test TQ-29 — energized-work hard stop. Runs AFTER retrieval
+  // (so the manual's own lockout page can be cited) and BEFORE Gate G and the
+  // provider (so no procedure is ever generated for a powered machine). The
+  // stop text is static + one citation line — never the chunk's words, never
+  // a step, never a torque (`@/capabilities/energized-work-stop`). Persisted
+  // as a terminal safety_stop so reload replays the same stop (same grammar as
+  // #4471's unsafe_answer path: sources → safety → content → status).
+  if (energizedWorkAsk) {
+    const stopTrigger = safetyTrigger ?? ENERGIZED_WORK_TRIGGER;
+    // The manual's lockout / disconnect-power page: a dedicated pass inside the
+    // SAME validated doc scope as the question's retrieval, plus whatever the
+    // question's own pass already surfaced. Best-effort — a failed lookup
+    // serves the stop without a page (site LOTO), never an answer.
+    let lockoutChunks: ManualChunk[] = [];
+    if (notebookRetrieval && nodeId !== null) {
+      try {
+        lockoutChunks = await withTenantContext(ctx.tenantId, (client) =>
+          retrieveNodeChunks(client, ctx.tenantId, LOCKOUT_PAGE_QUERY, {
+            nodeId,
+            unsPath: null,
+            topK: 8,
+            docIds,
+            rawQuery: LOCKOUT_PAGE_QUERY,
+            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
+            validatedDocScope: true,
+            approvedSourceDocIds: docIds,
+          }),
+        );
+      } catch (err) {
+        console.error("[notebook-chat] lockout-page retrieval failed (stop served without a page):", err instanceof Error ? err.message : err);
+      }
+    }
+    const lockoutChunk = pickLockoutChunk([...lockoutChunks, ...chunks]);
+    // Round-2 review: the stop TEXT was clean, but the same turn's citation
+    // chip carried a claim-centred quote of the lockout chunk (which can hold
+    // removal steps and torques when the lockout box sits on a procedure
+    // page) and the upload filename as its title — a crafted filename reached
+    // the chip even after it was kept out of the stop text. On the stop path
+    // the chip is a POINTER to the page, nothing more: no quote, neutral title.
+    const stopCitations = lockoutChunk
+      ? (await releaseClaimOnFailure(() => buildCitations(ctx.tenantId, notebookId, [lockoutChunk], message))).map((c) => ({
+          ...c,
+          sourceTitle: "Lockout / disconnect-power procedure",
+          quote: null,
+        }))
+      : [];
+    const stopText = energizedWorkStop(
+      lockoutChunk ? { title: citationTitle(lockoutChunk), page: lockoutPageOf(lockoutChunk) } : null,
+    );
+    console.warn(`[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"}`);
+    const stopGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
+    lifecycleOutcome = "safety_stop";
+    rec.stage("answer_gate", {
+      invoked: true,
+      decision: "blocked",
+      reason: "energized_work_ask",
+      answer_chars: stopText.length,
+      refusal_phrase_matched: false,
+      evidence_phrase_matched: false,
+      safety_classification: "safety_stop",
+      evidence_sufficient: false,
+      ungrounded_unit_claim: false,
+    });
+    setSpanAttrs(
+      {
+        "mira.answer_gate.invoked": true,
+        "mira.answer_gate.decision": "blocked",
+        "mira.answer_gate.reason": "energized_work_ask",
+        "mira.answer_gate.answer_chars": stopText.length,
+        "mira.safety.trigger": stopTrigger,
+        "mira.safety.lockout_page": lockoutChunk ? lockoutPageOf(lockoutChunk) : null,
+      },
+      stopGateSpan,
+    );
+    stopGateSpan.end();
+    const stopPersistSpan = startStage("turn.persist");
+    const stopTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
+      ownerUserId: ctx.userId,
+      threadId,
+      clientRequestId,
+      claimToken: requestClaimToken,
+      question: message,
+      answerStatus: "answered",
+      answerText: stopText,
+      enabledSourceDocIds: docIds,
+      evidence: [
+        ...disputeEntries,
+        ...(visualEntry ? [visualEntry] : []),
+        { kind: "safety_notice", trigger: stopTrigger } satisfies SafetyNoticeEntry,
+        { kind: "safety_stop", trigger: stopTrigger } satisfies SafetyStopEntry,
+        ...stopCitations,
+        ...proposalEntries,
+      ],
+      model: null,
+      basis: null,
+      ...assetSnapshot,
+    }));
+    const stopUsage: TurnUsage = {
+      provider: null,
+      model: null,
+      routeReason: "legacy_cascade",
+      inputTokens: null,
+      cachedInputTokens: null,
+      outputTokens: null,
+      costUsdEstimate: null,
+      status: "empty",
+      attempted: [],
+    };
+    await finishAndPersist(stopTurnRowId, stopUsage, {
+      answerText: stopText,
+      citationsPresent: stopCitations.length > 0,
+      latencyMs: null,
+    });
+    setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": stopTurnRowId }, stopPersistSpan);
+    endTimed(stopPersistSpan, "persist");
+    endRoot();
+    const stopStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        if (rootTraceId) {
+          const traceFrame: NotebookTraceFrame = { kind: "trace", traceId: rootTraceId, turnId };
+          controller.enqueue(enc.encode(sse(traceFrame)));
+        }
+        if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
+        const sources: NotebookSourcesFrame = { kind: "sources", citations: stopCitations, sourceSnapshot: docIds };
+        controller.enqueue(enc.encode(sse(sources)));
+        controller.enqueue(enc.encode(sse({ kind: "safety", trigger: stopTrigger } as NotebookSafetyFrame)));
+        if (visualEntry) controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
+        for (const piece of chunkForRelease(stopText)) {
+          controller.enqueue(enc.encode(sse({ kind: "content", content: piece })));
+        }
+        const status: NotebookStatusFrame = { kind: "status", status: "answered" };
+        controller.enqueue(enc.encode(sse(status)));
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    return new Response(stopStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        ...safetyFlagHeaders(stopTrigger),
+        ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
+      },
+    });
+  }
+
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
@@ -2621,6 +3135,8 @@ async function handleChatTurn(
         ? `I couldn't find anything about this in the ${noEvidenceForMachine} manuals I have${oemEquipmentType && oemEquipmentType !== "Other" ? ", or in related manuals from the same maker" : ""}, so I won't guess at a procedure for your machine. Upload the manual for the equipment this is about (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : visualEntry
         ? "I saw your photo, but I couldn't find anything about it in the selected sources."
+      : notebookRetrieval
+        ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "abstained";
@@ -2731,7 +3247,7 @@ async function handleChatTurn(
           controller.enqueue(enc.encode(sse(proposalFrame)));
         }
         // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
-        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt);
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl);
         if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
         if (photoPartLookup?.proposal) {
           const chips: NotebookFollowupsFrame = {
@@ -2807,12 +3323,14 @@ async function handleChatTurn(
   // bound, return no visual evidence"). Own try/catch: a ledger read failure
   // never drops the document/machine context already built.
   let visualSection = "";
+  let visualReadings: string[] = [];
   if (boundAsset.state === "resolved" && !identityDisputed) {
     try {
       const visualRows = await withTenantContext(ctx.tenantId, (c) =>
         loadVisualEvidenceForAsset(c, ctx.tenantId, boundAsset.entityId),
       );
       visualSection = renderVisualEvidenceSection(visualRows);
+      if (visualSection) visualReadings = visualRows.map((r) => r.text);
     } catch (err) {
       console.error(
         `[notebook-chat] visual evidence load failed code=${(err as { code?: string }).code ?? "?"} ` +
@@ -2829,9 +3347,11 @@ async function handleChatTurn(
   // It rides in the injection-hardened user-data channel (buildManualUserContent
   // below), NEVER the system prompt. Fail-open: a load failure must not drop the
   // turn. No stored observation → "" → no block, the turn still answers.
-  const lookContext = [renderLookObservationSection(lookRow), renderPriorLookObservationsSection(priorLookRows)]
-    .filter(Boolean)
-    .join("\n\n");
+  // Kept apart for the #4426 floor's exemption (#4442): this turn's photo is this
+  // turn's evidence; earlier photos ride along on every later turn of the thread.
+  const thisTurnLookSection = renderLookObservationSection(lookRow);
+  const priorLookSection = renderPriorLookObservationsSection(priorLookRows);
+  const lookContext = [thisTurnLookSection, priorLookSection].filter(Boolean).join("\n\n");
   // Correction to `evidence.materialize`'s earlier default: the LOOK
   // observation, when present, DOES reach the prompt (buildManualUserContent
   // below carries `lookContext`) — `observation_available`/`observation_in_context`
@@ -2972,14 +3492,21 @@ async function handleChatTurn(
         `present a step-by-step procedure from them (reset, wiring, firmware, parameter steps) as the ${oemModel.value}'s procedure — ` +
         `describe it as how the related model does it and tell the technician to confirm the steps in the ${oemModel.value} manual.`
       : "";
-  const basePrompt = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
+  const modePrompt = docGrounded
+    ? BASE_SYSTEM_PROMPT
+    : guidedDeadEnd
+      ? `${GENERAL_SYSTEM_PROMPT}\n\n${GUIDED_DEAD_END_DIRECTIVE}`
+      : GENERAL_SYSTEM_PROMPT;
+  const basePrompt = `${modePrompt}\n\n${FIELD_OBSERVATION_DIRECTIVE}`;
   // #3763: hazard-intent turns carry the NFPA 70E directive in BOTH modes; with
   // no hazard the string is byte-identical to before.
   const withHazard = electricalHazardDirective
     ? `${basePrompt}\n\n${ELECTRICAL_HAZARD_DIRECTIVE}`
     : safetyTrigger
       ? `${basePrompt}\n\n${safetyFlagDirective(safetyTrigger)}`
-      : basePrompt;
+      : restartAdvisory
+        ? `${basePrompt}\n\n${RESTART_DIRECTIVE}`
+        : basePrompt;
   const withMachine = machineSection ? `${withHazard}\n\n${machineSection}` : withHazard;
   // Visual (photographed nameplate) evidence rides after machine evidence; with
   // none the string is byte-identical to before.
@@ -3004,11 +3531,29 @@ async function handleChatTurn(
   // only) riding IN the user turn next to the question — an end-of-system-prompt
   // hint measurably failed to stop "what's the maximum?" in a decel thread from
   // resolving to the lexically similar P044 [Maximum Freq] row (battery defect D).
-  const topicHint = buildTopicHint(message, history);
+  const topicHint = buildTopicHint(message, history, lookRow?.text);
+  // Restore literal older technician reports from this viewer/thread only.
+  // Existing per-turn machine snapshots prevent a notebook rebind from turning
+  // a different machine's conversation into this machine's prior reports.
+  let priorReportContext = buildPriorReportContext([], history, "not_requested");
+  // An explicit modern thread is the case boundary. Legacy/unscoped callers
+  // keep their existing client history; never guess a case from a notebook.
+  if (threadId && threadId !== "legacy" && !identityDisputed) try {
+    // One lookahead row exposes omission at the 24-report window boundary.
+    const reports = await listTurns(ctx.tenantId, notebookId, 25, {
+      viewerUserId: ctx.userId, threadId, expectedEquipmentEntityId: assetSnapshot.equipmentEntityId,
+    });
+    priorReportContext = buildPriorReportContext(reports.filter(report => report.ownerUserId === ctx.userId), history);
+  } catch (err) {
+    console.error("[notebook-chat] prior technician reports unavailable:", err instanceof Error ? err.message : err);
+    priorReportContext = buildPriorReportContext([], history, "unavailable");
+    rec.error("context", "prior_reports_unavailable");
+  }
   const messages = buildProviderMessages(
     systemPrompt,
     history,
     buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, lookContext),
+    priorReportContext.content,
   );
   {
     const contextSpan = startStage("context.assemble");
@@ -3032,6 +3577,9 @@ async function handleChatTurn(
       visual_evidence_count: visualEvidenceCount,
       identity_included: identityIncluded,
       history_turns: history.length,
+      prior_report_turn_ids: priorReportContext.turnIds,
+      prior_report_coverage: priorReportContext.coverage,
+      prior_report_truncated: priorReportContext.truncated,
       prompt_chars: promptChars,
       system_prompt_kind: !docGrounded ? "general" : groundedMachineEntry ? "machine" : "grounded",
     });
@@ -3051,16 +3599,25 @@ async function handleChatTurn(
   }
 
   // SHADOW (MIRA_JEV_SHADOW=1, off by default): a calibrated relevance
-  // judgment over (question, retrieved chunks), started here so it overlaps
-  // generation and adds no first-token latency; awaited only when the packet's
-  // answer_gate stage is written, after the stream. Fail-open, bounded by its
-  // own timeout, and NEVER consulted by the gate — it is recorded beside
-  // `evidence_sufficient` so the two can be compared on staging traffic.
+  // judgment over (question, photo observation, retrieved chunks), started here
+  // so it overlaps generation and adds no first-token latency; awaited only when
+  // the packet's answer_gate stage is written, after the stream. Fail-open,
+  // bounded by its own timeout, and NEVER consulted by the gate — it is recorded
+  // beside `evidence_sufficient` so the two can be compared on staging traffic.
+  // The observations are the vision model's RAW readings (this turn's photo
+  // first, then the prior turns' already in context) — the same readings the
+  // decision lane sends, but not wrapped in the prompt sections `lookContext`
+  // renders for the model: those headers alone exceed the judge's 900-char cap
+  // (Gate 7 substitute review of #4380). A photo turn is answered from these
+  // readings, and judging the chunks alone scored every photo turn low whatever
+  // the answer did (97 of the first 131 judged turns) — sufficiency-v2.
   const jevShadow: Promise<JevShadowResult> = judgeEvidenceSufficiencyShadow(
     message,
     chunks.map((c) => ({ content: c.content, title: c.title })),
+    { observations: [lookRow?.text, ...priorLookRows.map((r) => r.text)] },
   ).catch(() => ({
     noul: null,
+    observation_count: null,
     skipped_reason: "error",
     latency_ms: null,
     model: null,
@@ -3083,7 +3640,14 @@ async function handleChatTurn(
     lifecycleOutcome = "cancelled";
     clientAbort.abort();
   };
-  req.signal?.addEventListener("abort", onClientGone, { once: true });
+  // #4310: the technician can stop during the pre-stream phase (claim,
+  // validate, retrieval, LOOK — everything above this line). A signal that
+  // aborted before this point never dispatches "abort" to a listener added
+  // afterwards, so the stop was silently lost: the cascade still opened a
+  // provider and the turn persisted as a full `answered` row. Fold an
+  // already-aborted request into the same path a live abort takes.
+  if (req.signal?.aborted) onClientGone();
+  else req.signal?.addEventListener("abort", onClientGone, { once: true });
   const abortedRead = new Promise<never>((_, reject) =>
     clientAbort.signal.addEventListener(
       "abort",
@@ -3098,6 +3662,10 @@ async function handleChatTurn(
       clientAbort.abort();
     },
     async start(controller) {
+      // #4355 option 1 (Mike, 2026-10-12): room for this turn's safety-judge
+      // OpenAI call, held together with the OpenAI answer's. Released in the
+      // `finally` below on every exit; a no-op once the judge has settled it.
+      let judgeHold: JudgeOpenAiHold | null = null;
       try {
       // Turn Flight Recorder correlation frame — FIRST, additive, only when a
       // real trace id exists (see file header + notebook-chat-types.ts).
@@ -3124,6 +3692,10 @@ async function handleChatTurn(
       // #4068: with the gate off, content streams live — the related-manual
       // warning goes out as the first content, before any model text.
       let relatedWarningStreamed = false;
+      // #4645 (Codex #4652 r1 F2): the restart banner reaches the live stream in
+      // the unbuffered (gate-off) mode too, once, ahead of the related-manual
+      // warning — the same order the persisted answerText uses.
+      let restartBannerStreamed = false;
       let served = false;
       let servedModel: string | null = null;
       let internalError: unknown = null;
@@ -3133,6 +3705,10 @@ async function handleChatTurn(
       const cascadeProviders = seam ? canonicalProviders() : providers();
       const outputCap = maxOutputTokens();
       const attempted: string[] = [];
+      // D6 — every failed attempt, in order, with the HTTP status when there
+      // was one. Feeds the honest exhaustion frame + log; never answer text.
+      const providerFailures: ProviderAttemptFailure[] = [];
+      const health = providerHealth();
       let turnUsage: TurnUsage | null = null;
       // Held so persistence runs AFTER the stream is closed — the ledger
       // write must never delay a byte of the technician's answer.
@@ -3155,6 +3731,19 @@ async function handleChatTurn(
       let genResponseId: string | null = null;
       let genAttemptIndex = 0;
 
+      // Per-run OpenAI spend hard stop (owner directive 2026-10-11): the worst
+      // case of a request is HELD for its whole life, not merely pre-checked,
+      // so concurrent turns cannot each pass against the same unspent balance
+      // (Gate 7 on #4355; the same discipline as lib/llm/cascade.ts). The hold
+      // is sized by an UPPER bound on the input, never the chars/4 average.
+      const inputBound = boundInputTokens(messages);
+      // The completion cap the request ACTUALLY sends (the legacy body ignores
+      // outputCap), so the hold is sized by what the provider may bill.
+      const requestCap = seam ? Math.min(coverageDirective ? 1400 : 800, outputCap) : coverageDirective ? 1400 : 800;
+      // The semantic judge runs on every served answer while the gate is on, and
+      // it calls OpenAI first. Its room is sized now, before the answer exists.
+      const judgeWillRun = gate && semanticCheckEnabled();
+      const judgeInputBound = judgeWillRun ? judgeHoldInputBound(message, requestCap) : 0;
       cascade: for (const provider of cascadeProviders) {
         if (!provider.key) continue;
         // STRM-2: a stopped turn must never open a second provider stream.
@@ -3163,6 +3752,53 @@ async function handleChatTurn(
         // also land here — checking once at the top of the loop covers all of
         // them (e.g. Groq 429 arriving after the technician tapped Stop).
         if (clientAbort.signal.aborted) break cascade;
+        // D6 — a provider that answered 401/402/403 within the last
+        // MIRA_PROVIDER_UNHEALTHY_S seconds is skipped, not re-tried: that
+        // answer cannot change until a human fixes the key or the balance.
+        // Canonical seam only, like every other D6 behaviour: the legacy
+        // inline cascade stays byte-identical.
+        if (seam && health.isUnhealthy(provider.name)) {
+          providerFailures.push({ provider: provider.name, httpStatus: null, reason: "quarantined" });
+          attempted.push(provider.name);
+          continue;
+        }
+        // The only metered provider is refused BEFORE the request once this
+        // window's cap would be crossed; the cascade falls through as for a
+        // provider that is down. Reserved here — after every `continue`/`break`
+        // above — so a hold is never taken on a provider this turn skips.
+        let reservation: BudgetReservation | null = null;
+        // This attempt's own usage block. `rawUsage` lives across the whole
+        // cascade, so a block from an earlier provider must never price this one.
+        let attemptUsage: unknown = null;
+        if (provider.name === "OpenAI") {
+          const verdict = openAiRunBudget().reserve(inputBound, requestCap);
+          if (!verdict.ok) {
+            logBudgetExhausted("notebook-chat", verdict);
+            if (seam) attempted.push(provider.name);
+            providerFailures.push({ provider: provider.name, httpStatus: null, reason: "budget_exhausted" });
+            continue;
+          }
+          // Option 1: OpenAI writes the answer only if its safety check also
+          // fits — otherwise a flagged answer could go out unjudged at the cap
+          // edge (the route fails open on "unknown", #4022). Same refusal as
+          // above when the pair does not fit; with no other live provider that
+          // turn gets the provider-exhaustion frame instead of an answer (a band
+          // of one judge hold, about 0.4 to 1.2 cents, at the cap edge).
+          // Residual: an answer denser than the hold's 8 bytes per token makes
+          // the judge re-reserve, which can be refused (see answer-safety-check).
+          if (judgeWillRun && !judgeHold) {
+            const judgeVerdict = openAiRunBudget().reserve(judgeInputBound, JUDGE_OUTPUT_TOKENS);
+            if (!judgeVerdict.ok) {
+              verdict.reservation.release();
+              logBudgetExhausted("notebook-chat+safety-judge", judgeVerdict);
+              if (seam) attempted.push(provider.name);
+              providerFailures.push({ provider: provider.name, httpStatus: null, reason: "budget_exhausted" });
+              continue;
+            }
+            judgeHold = { reservation: judgeVerdict.reservation, inputBound: judgeInputBound };
+          }
+          reservation = verdict.reservation;
+        }
         genSpan = startStage(`chat ${provider.model}`);
         genOutcome = "exception";
         genResponseId = null;
@@ -3185,13 +3821,13 @@ async function handleChatTurn(
                 ? buildRequestBody(
                     provider as never,
                     messages,
-                    Math.min(coverageDirective ? 1400 : 800, outputCap),
+                    requestCap,
                   )
                 : {
                     model: provider.model,
                     messages,
                     stream: true,
-                    max_tokens: coverageDirective ? 1400 : 800,
+                    max_tokens: requestCap,
                     temperature: 0.3,
                     ...(provider.name === "Groq"
                       ? { reasoning_effort: process.env.GROQ_REASONING_EFFORT ?? "low" }
@@ -3208,7 +3844,13 @@ async function handleChatTurn(
             // a fallback just as much as a thrown error, and skipping it here
             // made a Cerebras-served turn report routeReason 'primary'.
             if (seam) attempted.push(provider.name);
+            providerFailures.push({ provider: provider.name, httpStatus: res.status, reason: "http_error" });
+            health.markFailed(provider.name, res.status);
             genOutcome = "http_error";
+            // A rejection ran nothing billable: drop the hold. A 200 with no
+            // body was still served: book the worst case.
+            if (!res.ok) reservation?.release();
+            else reservation?.settle(inputBound, requestCap);
             continue;
           }
           const reader = res.body.getReader();
@@ -3217,11 +3859,37 @@ async function handleChatTurn(
           const dec = new TextDecoder();
           let buffer = "";
           let finished = false;
+          // include_usage providers (OpenAI) send the usage block on a chunk
+          // AFTER finish_reason "stop" — remember the stop and keep draining
+          // until usage (or [DONE]) lands. See capabilities/stream-stop.ts.
+          let sawStop = false;
           while (!finished) {
             // Race the upstream read against the client-stop signal: a stop
             // must interrupt a read that is waiting on a slow provider, not
             // wait for the next delta to notice it.
-            const { done, value } = await Promise.race([reader.read(), abortedRead]);
+            let next: ReadableStreamReadResult<Uint8Array>;
+            try {
+              next = await Promise.race([reader.read(), abortedRead]);
+            } catch (err) {
+              // Post-stop drain failure (Codex F1 on #4354): the answer is
+              // already complete. A dropped connection or the composed timeout
+              // while waiting for the usage block must NOT read as a provider
+              // failure — that would open a fallback and APPEND a second answer
+              // to responseBuffer. Finalize with usage unknown. A client stop
+              // keeps its own path (the catch below checks clientAbort first).
+              if (sawStop && !clientAbort.signal.aborted) {
+                console.warn(
+                  JSON.stringify({
+                    event: "stream.usage_drain_failed",
+                    provider: provider.name,
+                    message: err instanceof Error ? err.message : String(err),
+                  }),
+                );
+                break;
+              }
+              throw err;
+            }
+            const { done, value } = next;
             if (done) break;
             buffer += dec.decode(value, { stream: true });
             const lines = buffer.split("\n");
@@ -3243,7 +3911,10 @@ async function handleChatTurn(
                 // include_usage delivers the usage block on a FINAL chunk that
                 // carries no choices — capture it whenever present rather than
                 // only at finish_reason, or it is missed on some providers.
-                if (parsed.usage) rawUsage = parsed.usage;
+                if (parsed.usage) {
+                  rawUsage = parsed.usage;
+                  attemptUsage = parsed.usage;
+                }
                 if (parsed.id && !genResponseId) genResponseId = parsed.id;
                 const delta = parsed.choices?.[0]?.delta?.content;
                 if (delta) {
@@ -3252,6 +3923,12 @@ async function handleChatTurn(
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
                     if (!gate) {
+                      if (restartAdvisory && flagBanner && !restartBannerStreamed) {
+                        restartBannerStreamed = true;
+                        controller.enqueue(
+                          enc.encode(sse({ kind: "content", content: `${flagBanner}\n\n` } as NotebookContentFrame)),
+                        );
+                      }
                       if (relatedManualWarning && !relatedWarningStreamed) {
                         relatedWarningStreamed = true;
                         controller.enqueue(
@@ -3271,7 +3948,14 @@ async function handleChatTurn(
                     break;
                   }
                 }
-                if (parsed.choices?.[0]?.finish_reason === "stop") finished = true;
+                const stopState = finishedAfterChunk({
+                  seam,
+                  finishReason: parsed.choices?.[0]?.finish_reason,
+                  sawStop,
+                  usageSeen: rawUsage !== null,
+                });
+                sawStop = stopState.sawStop;
+                if (stopState.finished) finished = true;
               } catch {
                 // partial frame — keep buffering
               }
@@ -3290,6 +3974,7 @@ async function handleChatTurn(
             served = true;
             servedModel = `${provider.name}:${provider.model}`;
             genOutcome = "served";
+            health.markHealthy(provider.name);
             if (seam) {
               turnUsage = usageFromRaw(
                 provider.name,
@@ -3300,11 +3985,28 @@ async function handleChatTurn(
                 capped ? "capped" : "ok",
               );
             }
+            // Served: replace the hold with the provider's ACTUAL usage, read
+            // from the raw usage block (captured seam on or off). A count the
+            // provider did not report is unknown, not small: it books the input
+            // bound / the request cap — the visible answer says nothing about a
+            // reasoning model's hidden tokens, and a post-stop drain failure
+            // loses the usage block entirely (Codex r1 F3 on #4355).
+            reservation?.settle(...billableTokens(attemptUsage, inputBound, requestCap));
             break;
           }
           if (seam) attempted.push(provider.name);
+          providerFailures.push({ provider: provider.name, httpStatus: res.status, reason: "empty_stream" });
           genOutcome = "http_error";
+          // A 200 that streamed nothing was still accepted and may be billed.
+          reservation?.settle(inputBound, requestCap);
         } catch (err) {
+          // Whatever threw — a client stop part-way through a stream, a
+          // timeout, a dropped connection, a route bug — the provider may
+          // already have generated and billed tokens, and a stopped turn
+          // never receives the usage block. Book the worst case; never free
+          // budget on an outcome we cannot see (Gate 7 on #4355: a Stop used
+          // to leave the spend unrecorded). Idempotent after a settle above.
+          reservation?.settle(inputBound, requestCap);
           // Client stopped generation (STRM-2). Checked BEFORE the cascade
           // classifier: the race rejects with an AbortError, and a cancelled
           // controller makes enqueue throw a TypeError — neither is a
@@ -3327,9 +4029,18 @@ async function handleChatTurn(
             err instanceof Error ? err.message : err,
           );
           if (seam) attempted.push(provider.name);
+          providerFailures.push({
+            provider: provider.name,
+            httpStatus: null,
+            reason: err instanceof Error && err.name ? err.name : "exception",
+          });
           genOutcome = "exception";
           continue; // cascade to next provider
         } finally {
+          // Backstop for any exit after the reservation that no path above decided
+          // (Codex r3 F9 on #4355, the class): book the worst case. Idempotent — a
+          // no-op once served-settle, release, or the catch's settle ran.
+          reservation?.settle(inputBound, requestCap);
           if (genSpan) {
             const rawUsageObj = rawUsage as { prompt_tokens?: number; completion_tokens?: number } | null | undefined;
             setSpanAttrs(
@@ -3445,7 +4156,11 @@ async function handleChatTurn(
             answerStatus: "error",
             answerText: partialText,
             enabledSourceDocIds: docIds,
-            evidence: [...hazardEntries, ...disputeEntries],
+            // The technician's own photo stays on their saved question (#4289
+            // F3); a stop is still not an answer — hydration shows no
+            // observation, citation or basis on a stopped answer, and prior-look
+            // grounding reads answered turns only.
+            evidence: [...hazardEntries, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
             model: stoppedModel,
             basis: null,
             ...assetSnapshot,
@@ -3511,7 +4226,36 @@ async function handleChatTurn(
       // shipped source is not a refusal just because it also states a
       // limitation. `isRefusal` itself is unchanged (the observability mirror
       // below still reports the raw phrase match).
-      const refused = served && refusalVerdict(answerText, { docGrounded, citations });
+      const refusedByText = served && refusalVerdict(answerText, { docGrounded, citations });
+      // #4426 deterministic floor: a manufacturer-library answer that cites none
+      // of the retrieved passages is not left to the model's wording. Under the
+      // gate nothing has been released yet, so the uncited draft is replaced
+      // before a byte of it reaches the technician; gate off stays legacy.
+      const uncitedDocumentClaim =
+        gate &&
+        served &&
+        !refusedByText &&
+        isUncitedDocumentClaim(answerText, {
+          oemGrounded: oemRetrieval && docGrounded,
+          citations,
+          // `visualSection` is every stored nameplate reading for the bound machine
+          // (not this turn's evidence), so it exempts only an answer that uses one
+          // (answerUsesStoredNameplateReading). Presence alone would switch this
+          // floor off for every later library question on a once-photographed machine.
+          // Earlier photos in the thread are the same case (#4442): only this turn's
+          // photo exempts by presence.
+          exempt:
+            Boolean(groundedMachineEntry) ||
+            Boolean(thisTurnLookSection) ||
+            (Boolean(priorLookSection) && answerUsesEarlierPhoto(answerText, priorLookRows.map((r) => r.text))) ||
+            (Boolean(visualSection) && answerUsesStoredNameplateReading(answerText, visualReadings)) ||
+            Boolean(safetyTrigger),
+        });
+      if (uncitedDocumentClaim) {
+        console.warn(`[notebook-chat] uncited manufacturer-library claim withheld (#4426): ${answerText.length} chars, ${citations.length} citations available`);
+        answerText = UNCITED_OEM_CLAIM_TEXT;
+      }
+      const refused = refusedByText || uncitedDocumentClaim;
       // SECOND BRACKET GUARD (the prompt is the first). A general answer has no
       // sources, so any [n] the model emitted anyway points at nothing and would
       // render as a citation chip in mira-mobile. Strip the markers rather than
@@ -3532,6 +4276,20 @@ async function handleChatTurn(
       // The specificity lane keys on "no documents behind the answer", which
       // is `!docGrounded` (an OEM-grounded turn is held to the citation
       // contract, exactly like a notebook-grounded one).
+      // #4718: the claim above only reserved the search; the cap is checked in
+      // the background run, which usually settles while the answer is being
+      // generated. Re-read once so a refused search is not described as running
+      // in the fallback copy. Only the copy uses this: the live status frame
+      // keeps `manualSearchRunning`, so the app still follows and settles it.
+      let fallbackSearchRunning = manualSearchRunning;
+      if (manualSearchRunning !== null && manualSearchKey !== null) {
+        try {
+          const settled = await readAcquisition(ctx.tenantId, notebookId);
+          if (settled && settled.key === manualSearchKey && settled.state !== "running") fallbackSearchRunning = null;
+        } catch (err) {
+          console.error("[notebook-chat] manual-search re-read failed:", err instanceof Error ? err.message : err);
+        }
+      }
       const validation = validateAnswer({
         answerText,
         question: message,
@@ -3539,7 +4297,7 @@ async function handleChatTurn(
         served,
         refused,
         evidenceSufficient,
-        manualSearchRunning,
+        manualSearchRunning: fallbackSearchRunning,
       });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
       // #4098: which quantity word + unit the exact-rating rule matched —
@@ -3573,9 +4331,11 @@ async function handleChatTurn(
       }
 
       // #3793 semantic layer (2026-09-14 coverage audit): meaning-aware check
-      // on the ACCEPTED candidate. Fail-closed: a flagged candidate that cannot
-      // be judged (timeout, provider failure, malformed verdict) is withheld
-      // behind the controlled unverified fallback — never silently released.
+      // on the ACCEPTED candidate. It FLAGS, never withholds (owner decision
+      // 2026-09-27, #4022): "unsafe" adds a hazard banner; a candidate that
+      // cannot be judged (timeout, provider failure, malformed verdict, or the
+      // OpenAI run budget refusing with no other provider — reason
+      // "openai_budget_exhausted") is logged UNVERIFIED and served as written.
       // Lives inside the gate: gate-off stays byte-identical legacy with zero
       // inference spend. Class/verdict/latency are logged so the real
       // invocation rate is measured, not assumed.
@@ -3613,6 +4373,7 @@ async function handleChatTurn(
           answerText,
           general: !docGrounded,
           selectedClass,
+          openAiHold: judgeHold,
         });
         console.log(`[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`);
         // 2026-09-27 (Mike, settles #4022): the judge FLAGS, it never
@@ -3622,7 +4383,7 @@ async function handleChatTurn(
         if (sv.verdict === "unsafe") {
           const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
           console.warn(`[notebook-chat] semantic FLAGGED ${cls}: ${sv.reason ?? ""}`);
-          answerText = `${hazardBanner(cls)}\n\n${answerText}`;
+          answerText = `${withPageCitation(hazardBanner(cls), pageFromRetrievedChunks(chunks))}\n\n${answerText}`;
         } else if (sv.verdict !== "safe") {
           console.warn(`[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): serving the answer (fail-open)`);
         }
@@ -3664,26 +4425,34 @@ async function handleChatTurn(
 
       // A rejected turn ships ZERO citations — the retrieved content that drove
       // the rejected draft must not be presented as the replacement's authority.
-      const emittedCitations =
-        !docGrounded || !served || refused || outputRejected ? [] : citationsUsedInAnswer(answerText, citations);
+      // #4315: each emitted citation's proof quote is re-derived from the ANSWER — the
+      // window, across every chunk of the cited page, holding the values that citation
+      // claims (number + unit). A citation with no matched value keeps its quote as is.
+      const quoted = withSupportingQuotes(
+        !docGrounded || !served || refused || outputRejected ? [] : citationsUsedInAnswer(answerText, citations),
+        chunks,
+        answerText,
+        message,
+      );
+      const emittedCitations = quoted.citations;
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
         ? "error"
         : refused
           ? "insufficient_evidence"
           : "answered";
 
+      // Hoisted out of the answer-gate block below for the weak-evidence badge,
+      // which is decided after the basis is known. Same value as the packet's
+      // `answer_gate.ungrounded_unit_claim`; computed once.
+      let ungroundedClaimForBadge = false;
       {
         const finalAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
-        const answerLower = answerText.toLowerCase();
+        const answerLower = refusalText(answerText);
         // isRefusal's two clauses, split so each is independently observable
         // without changing isRefusal's own result (design §3 answer_gate
         // fields `refusal_phrase_matched` / `evidence_phrase_matched`).
-        const refusalPhraseMatched =
-          /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see|specify|state|list|give|provide|mention|show|cover)\b/.test(
-            answerLower,
-          );
-        const evidencePhraseMatched =
-          /\b(excerpts?|sources?|references?|documents?|documentation|manuals?|data ?sheets?|ratings?|specifications?|specs?|provided|supplied|selected|information)\b/.test(answerLower);
+        const refusalPhraseMatched = refusalPhraseIn(answerLower);
+        const evidencePhraseMatched = EVIDENCE_PHRASE_RE.test(answerLower);
         const gateReason = outputRejected
           ? outputRejected.violation
           : !served
@@ -3691,12 +4460,15 @@ async function handleChatTurn(
               ? "internal_error"
               : "provider_exhausted"
             : refused
-              ? "refusal_regex"
+              ? uncitedDocumentClaim
+                ? "uncited_document_claim"
+                : "refusal_regex"
               : "served";
         const gateDecision: "answered" | "insufficient_evidence" | "blocked" | "error" = outputRejected
           ? "blocked"
           : answerStatus;
         const ungroundedClaim = served && !refused ? ungroundedUnitClaim(answerText) : false;
+        ungroundedClaimForBadge = ungroundedClaim;
         // #3962 — run on the RAW strings here, like ungroundedUnitClaim, because
         // the packet deliberately carries no answer text and so this can never
         // be recomputed later from stored packets. Only the verdict, its version
@@ -3733,7 +4505,11 @@ async function handleChatTurn(
           jev_skipped_reason: jev.skipped_reason,
           jev_latency_ms: jev.latency_ms,
           jev_input_tokens: jev.input_tokens,
+          jev_observation_count: jev.observation_count,
+          jev_instructions_version: jev.instructions_version,
           citations_shipped: emittedCitations.length,
+          cited_values_unsupported: quoted.unsupportedValueCount,
+          citation_quote_fallbacks: quoted.quoteFallbackCount,
           evidence_followed: evidenceFollowed,
           gate_match: gateMatch,
         });
@@ -3784,10 +4560,26 @@ async function handleChatTurn(
             "mira.safety.classification": electricalHazardDirective ? "hazard_directive" : "none",
             "mira.evidence.sufficient": evidenceSufficient,
             "mira.answer_gate.citations_shipped": emittedCitations.length,
+            "mira.citation.unsupported_values": quoted.unsupportedValueCount,
+            "mira.citation.quote_fallbacks": quoted.quoteFallbackCount,
             "mira.evidence.followed": evidenceFollowed?.verdict ?? "not_applicable",
           },
           finalAnswerGateSpan,
         );
+        // Evidence runoff (#4550): typed claim -> source verifier, SHADOW only. Off unless
+        // NOTEBOOK_CLAIM_VERIFIER=shadow; runs after the safety and answer gates have decided, judges
+        // only an answer that was actually served from the documents, and only adds trace attributes —
+        // the answer, its citations and its status are already final above and are never touched.
+        const claimShadow =
+          docGrounded && served && !refused && !outputRejected
+            ? shadowVerifyCitedTurn({
+                question: message,
+                answer: answerText,
+                citationIds: emittedCitations.map((c) => c.citationId),
+                chunks,
+              })
+            : null;
+        if (claimShadow) setSpanAttrs(claimShadow, finalAnswerGateSpan);
         finalAnswerGateSpan.end();
       }
 
@@ -3815,6 +4607,15 @@ async function handleChatTurn(
                 : oemRetrieval
                   ? "Grounded in recorded machine history and the manufacturer's documentation — not live."
                   : "Grounded in recorded machine history and this notebook's sources — not live.",
+            }
+        : docGrounded && citesOnlyUnconfirmedPhotoReadings(emittedCitations, chunks)
+          ? {
+              // A kept photo reading is the tenant's own captured evidence read
+              // by a vision model, not documentation — same basis and caveat as
+              // a photo attached in the conversation.
+              kind: "evidence",
+              basis: "workspace_evidence",
+              label: "Grounded in a photo kept on this machine — an unconfirmed reading.",
             }
         : docGrounded && emittedCitations.length > 0
           ? {
@@ -3847,9 +4648,49 @@ async function handleChatTurn(
       if (hazardEntries.length > 0) evidenceFrame.hazardEntries = hazardEntries;
       if (identityDisputed) evidenceFrame.identityDisputed = true;
 
+      // Weak-evidence badge (jev-weak-evidence.ts; `MIRA_JEV_WEAK_EVIDENCE_BADGE`).
+      // The ONLY consulted use of the sufficiency shadow. Decided here — after
+      // the shadow was awaited above and after the basis is known — and it
+      // changes exactly two things: the evidence frame's caption and a marker
+      // on the status frame. `answerStatus`, the answer text and its citations
+      // are untouched, and no clarifying question is asked (the adjudication's
+      // reasoning: a low score cannot tell an ambiguous question from a manual
+      // that does not cover it). The packet records that it fired so the badge
+      // RATE can be measured before the rule touches anything else.
+      const weakEvidence =
+        jevWeakEvidenceBadgeEnabled() &&
+        served &&
+        !refused &&
+        !outputRejected &&
+        isWeakEvidence({
+          jevSufficient: jev.noul,
+          basis: evidenceFrame.basis,
+          ungroundedUnitClaim: ungroundedClaimForBadge,
+          citationsShipped: emittedCitations.length,
+        });
+      const weakEntry: WeakEvidenceEntry | null =
+        weakEvidence && typeof jev.noul === "number"
+          ? { kind: "weak_evidence", rule: WEAK_EVIDENCE_RULE, jev_sufficient: jev.noul }
+          : null;
+      if (weakEvidence) {
+        evidenceFrame.label = WEAK_EVIDENCE_LABEL;
+        rec.stage("answer_gate", { weak_evidence_badge: true });
+        console.log(
+          `[notebook-chat] weak-evidence badge: jev=${jev.noul} citations=${emittedCitations.length} unit_claim=${ungroundedClaimForBadge}`,
+        );
+      }
+
       // Complete the durable turn before touching the response controller.
       // Cancellation during the semantic judge closes that controller; a
       // later enqueue may throw, but terminal truth must already be replayable.
+      // #4374: ONE exhaustion decision feeds both the durable marker below and
+      // the live status frame, so a reload can never say something different
+      // from what the technician saw live. Seam-only, like the frame's reason.
+      const exhaustion =
+        seam && answerStatus === "error" && !internalError ? providerExhaustionStatus(providerFailures) : null;
+      const providerFailureEntries: ProviderFailureEntry[] = exhaustion
+        ? [{ kind: "provider_failure", reason: exhaustion.reason }]
+        : [];
       const finalPersistSpan = startStage("turn.persist");
       let finalTurnRowId: string | null = null;
       try {
@@ -3872,8 +4713,10 @@ async function handleChatTurn(
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
                 ]
-              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries]
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries],
+              : [...hazardEntries, ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(weakEntry ? [weakEntry] : [])]
+            // Not served: the technician's own photo still stays on their saved
+            // question (#4289 F4); hydration shows no observation on a failed answer.
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
@@ -3957,12 +4800,21 @@ async function handleChatTurn(
 
       const statusFrame: NotebookStatusFrame =
         answerStatus === "answered"
-          ? { kind: "status", status: "answered" }
+          ? { kind: "status", status: "answered", ...(weakEvidence ? { evidence: "weak" as const } : {}) }
           : answerStatus === "insufficient_evidence"
             ? { kind: "status", status: "insufficient_evidence", message: "Not found in the selected sources." }
             : internalError
               ? { kind: "status", status: "error", message: "Internal chat error — see server logs." }
-              : { kind: "status", status: "error", message: "No answer provider available." };
+              : seam
+                ? // D6 — say WHY, in the technician's words and in the machine's:
+                  // friendly copy + `reason` + the per-provider attempt record.
+                  // Seam-flagged like the usage frame below; the legacy path's
+                  // frame sequence stays byte-for-byte unchanged.
+                  { kind: "status", status: "error", ...(exhaustion ?? providerExhaustionStatus(providerFailures)) }
+                : { kind: "status", status: "error", message: "No answer provider available." };
+      if (seam && statusFrame.status === "error" && !internalError) {
+        logProvidersExhausted({ tenantId: ctx.tenantId, notebookId }, providerFailures);
+      }
       // Canonical per-turn spend, emitted BEFORE status so a client that stops
       // reading at `status` has still received it. Seam-flagged only; the
       // legacy path's frame sequence is byte-for-byte unchanged.
@@ -3992,7 +4844,7 @@ async function handleChatTurn(
       }
       // T2 (#4189) — see manualSearchStatusFrame's own header. Transient only.
       {
-        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt);
+        const searchStatusFrame = manualSearchStatusFrame(identityProposal, manualSearchRunning, candidateAcquisitionText, candidateSearchStartedAt, candidateManualUrl);
         if (searchStatusFrame) controller.enqueue(enc.encode(sse(searchStatusFrame)));
       }
       if (answerStatus === "answered" && !identityDisputed && !outputRejected) {
@@ -4066,6 +4918,10 @@ async function handleChatTurn(
         } catch {
           // A cancelled response controller is already terminal.
         }
+      } finally {
+        // #4355 option 1: a judge hold the judge never used (answer not served,
+        // gate path skipped, an exception) must not pin cap room forever.
+        judgeHold?.reservation.release();
       }
     },
   });

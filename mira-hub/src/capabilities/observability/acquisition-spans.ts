@@ -22,7 +22,7 @@
  */
 import { SpanStatusCode, trace } from "@opentelemetry/api";
 import type { SpanOptions } from "@opentelemetry/api";
-import { getTracer, setSpanAttrs } from "@/capabilities/observability/tracing";
+import { addSpanEvent, getTracer, setSpanAttrs } from "@/capabilities/observability/tracing";
 import type { SpanAttrs } from "@/capabilities/observability/tracing";
 
 export interface SpanLink {
@@ -130,5 +130,15 @@ export function setActiveSpanAttrs(attrs: SpanAttrs): void {
     if (span) setSpanAttrs(attrs, span);
   } catch (err) {
     logTracingError("active", "setSpanAttrs", err);
+  }
+}
+
+/** Add an event to the span `safeSpan` most recently activated, fail-open. */
+export function addActiveSpanEvent(name: string, attrs: SpanAttrs): void {
+  try {
+    const span = trace.getActiveSpan();
+    if (span) addSpanEvent(name, attrs, span);
+  } catch (err) {
+    logTracingError("active", "addSpanEvent", err);
   }
 }

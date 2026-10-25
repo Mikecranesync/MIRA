@@ -2,7 +2,7 @@
 // The unified root: the shell owns the app; the drawer lists notebooks; opening
 // an item switches the notebook; the footer carries host controls.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 
 class ResizeObserverStub {
@@ -91,6 +91,7 @@ vi.mock("../src/screens/NotebookScreen", () => ({
         data-open-add-sources={String(Boolean(props.openAddSources))}
         data-chromeless={String(props.chromeless)}
         data-initial-question={props.initialQuestion ?? ""}
+        data-initial-question-set={String(props.initialQuestion !== null && props.initialQuestion !== undefined)}
         data-initial-sensor={props.initialSensorStart ?? ""}
         data-project-names={JSON.stringify((props.unifiedShell?.projects as { name: string }[] | undefined)?.map((p) => p.name) ?? [])}
       >
@@ -128,7 +129,7 @@ vi.mock("../src/unified/UnifiedAboutUpdates", () => ({
 }));
 
 import { UnifiedRoot } from "../src/screens/UnifiedRoot";
-import { claimAttachments, clearAttachments } from "../src/unified/attachment-handoff";
+import { claimAttachments, clearAttachments, stashAttachments } from "../src/unified/attachment-handoff";
 
 const ME = { id: "u", email: "mike@example.com", name: null, role: "tech", tenantId: "t", capabilities: [] };
 
@@ -140,6 +141,13 @@ afterEach(() => {
   otaProbe.value = null;
   otaProbe.activeApiMutation = false;
 });
+
+// A chat row in the project tree and its Recent-conversations row open the same
+// thread and, since the tree dropped its "Chat" tag (#4561), share one
+// accessible name. These tests always meant the Recent row (the only exact
+// match before #4561), so they say so.
+const recentRow = (name: string) =>
+  within(screen.getByRole("list", { name: "Recent conversations" })).getByRole("button", { name });
 
 describe("UnifiedRoot", () => {
   it("loads notebooks into a composer-first home; a HOME send opens an UNBOUND notebook, never the last-opened machine one (#3877)", async () => {
@@ -234,7 +242,7 @@ describe("UnifiedRoot", () => {
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
 
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-id")).toBe("nb-a");
@@ -371,7 +379,7 @@ describe("UnifiedRoot", () => {
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-id")).toBe("nb-a");
     expect(nb.getAttribute("data-thread-id")).toBe("thrd-a2");
@@ -403,7 +411,7 @@ describe("UnifiedRoot", () => {
     const { container } = render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
     await act(async () => {
       backRef.current?.();
@@ -422,7 +430,7 @@ describe("UnifiedRoot", () => {
     render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
     await act(async () => {
       backRef.current?.();
@@ -492,7 +500,7 @@ describe("UnifiedRoot", () => {
     const view = render(<UnifiedRoot me={ME} backRef={backRef} onSignOut={async () => {}} />);
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
     await act(async () => {
       backRef.current?.();
@@ -519,7 +527,7 @@ describe("UnifiedRoot", () => {
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
     await act(async () => {
       backRef.current?.();
@@ -528,7 +536,9 @@ describe("UnifiedRoot", () => {
 
     // Reopen the OTHER thread of the same project — proves the tap reaches
     // the drawer's own open path (host.onOpenItem → open()), not a new one.
-    fireEvent.click(screen.getByRole("button", { name: "Intermittent fault" }));
+    fireEvent.click(
+      within(screen.getByTestId("unified-project-root")).getByRole("button", { name: "Intermittent fault" }),
+    );
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-id")).toBe("nb-a");
     expect(nb.getAttribute("data-thread-id")).toBe("thrd-a1");
@@ -540,7 +550,7 @@ describe("UnifiedRoot", () => {
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
     await act(async () => {
       backRef.current?.();
@@ -559,7 +569,7 @@ describe("UnifiedRoot", () => {
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Startup checks" }));
+    fireEvent.click(recentRow("Startup checks"));
     await waitFor(() => screen.getByTestId("nb"));
 
     let consumed = false;
@@ -613,17 +623,510 @@ describe("UnifiedRoot", () => {
     expect(root.querySelector('[data-item-id="notebook-nb-new:thread-thrd-n1"]')?.textContent).toContain("Belt slipping");
   });
 
-  it("#4188 control: a cold start with no notebooks is unchanged — the empty-workspace create prompt, not a project root or home composer", async () => {
+  // Row 8 (parity, 2026-10-07 Pixel acceptance): /v3 gives a brand-new account
+  // a composer and answers general questions; the phone showed a dead end with
+  // only "New project". A cold start with no notebooks now lands on the SAME
+  // home composer, and the first send creates General, exactly as a HOME send
+  // does when every notebook is a machine (#3877). This replaces the earlier
+  // #4188 control that pinned the dead-end screen.
+  it("row 8: a cold start with no notebooks lands on the home composer, not a dead end", async () => {
     const { listNotebooks } = await import("../src/api/resources");
     vi.mocked(listNotebooks).mockResolvedValueOnce([]);
     render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
 
-    await waitFor(() =>
-      expect(screen.getByText("No projects yet. Create one to start a conversation.")).toBeTruthy(),
-    );
-    expect(screen.queryByTestId("unified-home")).toBeNull();
+    expect(await waitFor(() => screen.getByTestId("unified-home"))).toBeTruthy();
+    expect(screen.queryByText("No projects yet. Create one to start a conversation.")).toBeNull();
     expect(screen.queryByTestId("unified-project-root")).toBeNull();
     expect(screen.queryByTestId("nb")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Ask MIRA" })).toBeTruthy();
+  });
+
+  it("row 8: the first question from the empty home creates General and is asked there", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement;
+    fireEvent.input(box, { target: { value: "What does F004 mean?" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(notebookApi.createNotebook).toHaveBeenCalledWith({ displayName: "General", identitySourceType: "user" });
+    expect(nb.getAttribute("data-id")).toBe("nb-general");
+    expect(nb.getAttribute("data-initial-question")).toBe("What does F004 mean?");
+  });
+
+  it("row 8: the home greeting carries /v3's general-question line", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    // The exact string /v3 renders (mira-hub/src/factorylm-ui/hub-host-logic.ts
+    // groundingLineFor(null, …)) — identical surfaces, identical words.
+    expect(screen.getByText(
+      "General question — answered from general knowledge, nothing cited. Pick a project to ask about its manuals.",
+    )).toBeTruthy();
+  });
+
+  // Codex #4350 F1: a failed General create on the first send used to set the
+  // root's FATAL error — the composer vanished with the question and nothing
+  // on the screen could recover it. It is a failed send: the composer stays,
+  // the banner says why, the question comes back, and Try again re-attempts.
+  it("row 8: a failed first send keeps the composer and the question, and Try again asks it in General", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    // Call counts are not cleared between tests in this file; count from here.
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    fireEvent.input(screen.getByRole("textbox", { name: "Ask MIRA" }), { target: { value: "What does F004 mean?" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    expect(screen.getByTestId("unified-home")).toBeTruthy();
+    expect(screen.queryByTestId("nb")).toBeNull();
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("What does F004 mean?"));
+
+    // Connectivity is back: the next create succeeds (the mock's default).
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(notebookApi.createNotebook).toHaveBeenCalledTimes(2);
+    expect(nb.getAttribute("data-id")).toBe("nb-general");
+    expect(nb.getAttribute("data-initial-question")).toBe("What does F004 mean?");
+  });
+
+  it("row 8: a failed New chat from the empty home shows the error and keeps the home", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
+
+    await waitFor(() => expect(screen.getByRole("alert", { name: "Send error" })).toBeTruthy());
+    expect(screen.getByTestId("unified-home")).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Ask MIRA" })).toBeTruthy();
+  });
+
+  // Codex #4350 round 2, F1: a photo stashed for a HOME send that then failed
+  // to create General stayed parked in the handoff slot, and rode the NEXT
+  // question — unrelated, invisible, with no chip to remove. It now rides
+  // only a retry of that same submission; anything else discards it.
+  async function attachHomePhoto(name: string) {
+    nativePick.pickPhoto.mockResolvedValueOnce(new File(["x"], name, { type: "image/jpeg" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Photo" }));
+    await screen.findByText(new RegExp(name.replace(".", "\\.")));
+  }
+  function askFromHome(text: string) {
+    const box = screen.getByRole("textbox", { name: "Ask MIRA" });
+    fireEvent.change(box, { target: { value: text } });
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+  }
+
+  it("row 8 / F1: a photo on a failed first send leaves the handoff slot, and rides only the retry of that question", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("bearing.jpg");
+    askFromHome("what is leaking here");
+
+    const alert = await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    // Nothing else may claim it while the send is failed.
+    expect(claimAttachments()).toEqual([]);
+    expect(alert.textContent).toContain("Your attachment is kept for Try again; changing the question drops it.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("what is leaking here");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["bearing.jpg"]);
+  });
+
+  // Codex #4350 round 8, F11: the HOME mirror of the thread's Dismiss rule.
+  // Dismissing the banner and sending the identical wording with nothing
+  // attached is not a retry: the kept photo is discarded, and the thread the
+  // send creates gets the question alone. The shell's Try again (banner still
+  // showing) is the retry, as the first F1 test proves.
+  it("row 8 / F11: after Dismiss on HOME, the identical question creates the thread WITHOUT the kept photo", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("old.jpg");
+    askFromHome("what is this");
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("what is this"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("alert", { name: "Send error" })).toBeNull();
+    askFromHome("what is this");
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("what is this");
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  // Codex #4350 round 9, F12: only the shell forgot the dismissed error; the
+  // root still owned it, so leaving HOME (About) and coming back remounted
+  // the shell, re-showed the banner and the question, and re-armed the photo.
+  // The shell now tells the HOME owner about Dismiss, and the owner forgets
+  // the error, the question and the kept photo.
+  it("row 8 / F12: after Dismiss, leaving HOME and coming back shows no banner, and the identical question carries no photo", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("old.jpg");
+    askFromHome("what is this");
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByText("About & updates")[0]);
+    await waitFor(() => screen.getByTestId("about"));
+    fireEvent.click(screen.getByText("back"));
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    expect(screen.queryByRole("alert", { name: "Send error" })).toBeNull();
+    expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("");
+    askFromHome("what is this");
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("what is this");
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  it("row 8 / F1: the photo is discarded when the failed question is replaced by another", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("bearing.jpg");
+    askFromHome("what is leaking here");
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    askFromHome("What is a VFD?");
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("What is a VFD?");
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  it("row 8 / F1: a photo attached again after the failure replaces the kept one", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("first.jpg");
+    askFromHome("what is leaking here");
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+
+    await attachHomePhoto("second.jpg");
+    askFromHome("what is leaking here");
+
+    await waitFor(() => screen.getByTestId("nb"));
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["second.jpg"]);
+  });
+
+  // Codex #4350 round 2, F3: an attachment with no text is a send the shell
+  // allows; it opened a blank thread and left the photo parked. The root now
+  // queues the submission even when its text is empty, so the thread's
+  // composition path asks its default photo question with the evidence.
+  it("row 8 / F3: an attachment-only first send queues a submission for the thread it creates", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("nameplate.jpg");
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-general");
+    expect(nb.getAttribute("data-initial-question-set")).toBe("true");
+    expect(nb.getAttribute("data-initial-question")).toBe("");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["nameplate.jpg"]);
+  });
+
+  it("row 8 / F3 control: New chat from the empty home queues no submission", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question-set")).toBe("false");
+  });
+
+  // Codex #4350 round 3, F5: nothing serialized HOME sends. A second question
+  // while General was still being created started a second create, and the
+  // single handoff slot let whichever thread mounted first claim the other
+  // send's photo. HOME is busy while a create is in flight, a second send is
+  // not accepted, and the evidence reaches the slot only at handoff.
+  it("row 8 / F5: a second send while General is being created is not accepted, and the first keeps its photo", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("A.jpg");
+    askFromHome("question A");
+
+    await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true));
+    // The evidence is NOT sitting in the slot where any mounting thread could claim it.
+    expect(claimAttachments()).toEqual([]);
+    askFromHome("unrelated question B");
+    expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("question A");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["A.jpg"]);
+  });
+
+  // Codex #4350 round 4, F5: the shell's Enter/submit still reaches the root
+  // while it is busy; the root dropped that send AFTER the shell had stashed
+  // its photo, so the photo stayed parked for the next thread to claim.
+  it("row 8 / F5 (r4): a send that slips through while busy is dropped with its photo, which never reaches another thread", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("A.jpg");
+    askFromHome("question A");
+    await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true));
+
+    await attachHomePhoto("B.jpg");
+    askFromHome("question B");
+
+    expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1);
+    expect(claimAttachments()).toEqual([]);
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("question A");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["A.jpg"]);
+  });
+
+  // Codex #4350 round 7, F10: opening the New-project form does not leave
+  // HOME, so the fence missed it. A create that resolved while the form was
+  // up queued the question and parked the photo, and the project the form
+  // then created claimed both. The form is a root destination too; a send
+  // still pending when it opens is abandoned, and the form never inherits a queue.
+  it("row 8 / F10: a create that resolves while the New-project form is open does not route into the project the form creates", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }))
+      .mockImplementationOnce(async (input: { displayName: string }) => ({
+        id: "nb-new", displayName: input.displayName, manufacturer: null, model: null, equipmentType: null,
+        identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [],
+      }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("A.jpg");
+    askFromHome("question A");
+    await waitFor(() => expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New project" })[0]);
+    await waitFor(() => screen.getByTestId("unified-create-project"));
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    expect(screen.getByTestId("unified-create-project")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Line 1 drive" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Name the machine" }));
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-id")).toBe("nb-new");
+    expect(nb.getAttribute("data-initial-question-set")).toBe("false");
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  it("row 8 / F10: backing out of the New-project form after such a create lands on HOME, not in the abandoned send's thread", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    askFromHome("question A");
+    await waitFor(() => expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New project" })[0]);
+    await waitFor(() => screen.getByTestId("unified-create-project"));
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(await waitFor(() => screen.getByTestId("unified-home"))).toBeTruthy();
+    expect(screen.queryByTestId("nb")).toBeNull();
+  });
+
+  // Codex #4350 round 10, F13: the fence only asked "is HOME showing now?",
+  // so a send abandoned by navigating away revived when HOME was re-entered
+  // before its create settled, opening its thread and wiping a draft the
+  // technician had started. Every HOME send now carries the navigation
+  // generation it was made in; leaving HOME retires that generation for good.
+  it("row 8 / F13: a send abandoned by navigation stays abandoned after returning HOME; a new draft is untouched", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("A.jpg");
+    askFromHome("question A");
+    await waitFor(() => expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New project" })[0]);
+    await waitFor(() => screen.getByTestId("unified-create-project"));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() => screen.getByTestId("unified-home"));
+    fireEvent.input(screen.getByRole("textbox", { name: "Ask MIRA" }), { target: { value: "question B" } });
+
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.getByTestId("unified-home")).toBeTruthy();
+    expect(screen.queryByTestId("nb")).toBeNull();
+    expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("question B");
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  // Codex #4350 round 11, F14 (BLOCKER): nothing retired a pending HOME send
+  // when the signed-in root went away (sign-out). A create that completed
+  // afterwards wrote account A's photo into the module-level handoff slot,
+  // and the next account's first HOME question claimed it. The root now
+  // retires every pending send and empties the slot when it unmounts.
+  it("row 8 / F14: a create that completes after the signed-in root is gone leaves nothing for the next account", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    const view = render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("tenant-A-private.jpg");
+    askFromHome("question A");
+    await waitFor(() => expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1));
+
+    view.unmount(); // sign-out unmounts the authenticated root
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  it("row 8 / F14: anything parked in the handoff when the signed-in root goes away is dropped with it", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    const view = render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    stashAttachments([{
+      attachment: { id: "att-x", name: "tenant-A-private.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" },
+      file: new File(["x"], "tenant-A-private.jpg", { type: "image/jpeg" }),
+    }]);
+
+    view.unmount();
+
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  it("row 8 / F5: a create that resolves after the technician opened another project does not take over", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([
+      { id: "nb-a", displayName: "Drive A", manufacturer: "Siemens", model: "G120", equipmentType: null, identityStatus: "user_confirmed", nodeId: "n", sourceCount: 0, createdAt: null, asset: { entityId: "asset-1", selectedVia: null, confirmedBy: null, confirmedAt: null },
+        threads: [{ id: "thrd-a1", notebookId: "nb-a", title: "Intermittent fault", createdAt: "", updatedAt: "", turnCount: 2, sharedLegacy: false }] },
+    ]);
+    let resolveCreate: (nb: unknown) => void = () => {};
+    notebookApi.createNotebook.mockClear();
+    notebookApi.createNotebook.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("A.jpg");
+    askFromHome("question A"); // every notebook is a machine, so General is created
+    await waitFor(() => expect(notebookApi.createNotebook).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(recentRow("Intermittent fault"));
+    await waitFor(() => expect(screen.getByTestId("nb").getAttribute("data-id")).toBe("nb-a"));
+
+    await act(async () => {
+      resolveCreate({ id: "nb-general", displayName: "General", manufacturer: null, model: null, equipmentType: null, identityStatus: "unknown", nodeId: "n", sourceCount: 0, createdAt: null, asset: null, threads: [] });
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId("nb").getAttribute("data-id")).toBe("nb-a");
+    expect(screen.getByTestId("nb").getAttribute("data-initial-question-set")).toBe("false");
+    expect(claimAttachments()).toEqual([]);
+  });
+
+  // Codex #4350 round 3, F4: an attachment-only send that failed had no way
+  // back — the banner's Try again needs a draft, Send needs text or a chip,
+  // and typing anything dropped the kept photo. The restored draft is now the
+  // question the thread would have asked for it, so Try again works.
+  it("row 8 / F4: an attachment-only send that failed restores the default question, and Try again carries the photo", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    notebookApi.createNotebook.mockRejectedValueOnce(new Error("Network request failed"));
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+    await attachHomePhoto("nameplate.jpg");
+    fireEvent.submit(screen.getByRole("form", { name: "Composer" }));
+
+    await waitFor(() => screen.getByRole("alert", { name: "Send error" }));
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Ask MIRA" }) as HTMLTextAreaElement).value).toBe("What am I looking at, and what should I check?"));
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    const nb = await waitFor(() => screen.getByTestId("nb"));
+    expect(nb.getAttribute("data-initial-question")).toBe("What am I looking at, and what should I check?");
+    expect(claimAttachments().map((h) => h.file.name)).toEqual(["nameplate.jpg"]);
+  });
+
+  it("row 8: Scan machine with no projects opens the New-project form instead of doing nothing", async () => {
+    const { listNotebooks } = await import("../src/api/resources");
+    vi.mocked(listNotebooks).mockResolvedValueOnce([]);
+    render(<UnifiedRoot me={ME} backRef={{ current: null }} onSignOut={async () => {}} />);
+    await waitFor(() => screen.getByTestId("unified-home"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Scan machine" }));
+
+    expect(await waitFor(() => screen.getByTestId("unified-create-project"))).toBeTruthy();
   });
 
   it("hardware Back on the composer home stays inside the unified root", async () => {

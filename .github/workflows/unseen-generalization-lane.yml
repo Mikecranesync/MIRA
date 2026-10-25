@@ -40,6 +40,7 @@ jobs:
           # Free-tier cascade keys only — the paid provider is disabled inside
           # the runner regardless of what is present here.
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           TOGETHERAI_API_KEY: ${{ secrets.TOGETHERAI_API_KEY }}
           INFERENCE_BACKEND: cloud

@@ -380,6 +380,10 @@ def _extract_fault_codes(message: str) -> list[tuple[str, str, int]]:
             tok = m.group(0)
             if tok.lower() in _FAULT_FALSE_POSITIVES:
                 continue
+            # A drive family name (Yaskawa A1000, E1000) fits the alarm / E-code
+            # patterns but is the model — never the fault.
+            if tok.lower() in FAMILY_FROM_ALIAS:
+                continue
             out.append((_normalize_fault_code(tok), tok, idx))
     return out
 
@@ -581,6 +585,64 @@ def vendors_in_text(text: str | None) -> set[str]:
     return {canonical for canonical, _alias, _family, _pos in _match_all_vendors(text.lower())}
 
 
+# The FAMILY_FROM_ALIAS keys that name a whole product family — one manual set
+# covers every model in it — as opposed to a brand line ("powerflex") or a
+# single model ("pf525", "pf527"). Only these can prove that two models belong
+# to DIFFERENT families, which is the one case where a retrieved excerpt is
+# dropped (owner decision, 2026-10-18: family, not exact model, decides
+# applicability; when the family can't be decided, keep the excerpt).
+# Interim: the UNS knowledge-base branch has no family level yet. When it
+# does, that level replaces this set.
+FAMILY_LEVEL_ALIASES: frozenset[str] = frozenset(
+    {
+        "a1000",
+        "v1000",
+        "j1000",
+        "ga500",
+        "ga700",
+        "p1000",
+        "e1000",
+        "gs10",
+        "gs20",
+        "fr-a",
+        "fr-d",
+        "fr-e",
+        "fr-f",
+        "movitrac",
+        "movidrive",
+    }
+)
+
+
+def product_families_in(text: str | None) -> set[str]:
+    """Family-level product aliases named in a model label or model string.
+
+    Uses the module's one boundary rule (``_alias_pattern``), so ``GS100`` is
+    not a ``GS10`` and an A1000 catalog code (``CIMR-AU4A0058``) names no
+    family. An empty set means "not decidable", never "different".
+    """
+    if not text:
+        return set()
+    low = text.lower()
+    return {alias for alias in FAMILY_LEVEL_ALIASES if re.search(_alias_pattern(alias), low)}
+
+
+def canonical_model(model: str | None, product_family: str | None = None) -> str:
+    """Compare model aliases without equating different models of one vendor."""
+    key = re.sub(r"[^a-z0-9]", "", (model or "").lower())
+    aliases = {
+        re.sub(r"[^a-z0-9]", "", alias.lower()): re.sub(r"[^a-z0-9]", "", family.lower())
+        for alias, family in FAMILY_FROM_ALIAS.items()
+    }
+    key = aliases.get(key, key)
+    family = re.sub(r"[^a-z0-9]", "", (product_family or "").lower())
+    # "525", "40P", "4M": the resolver splits the series name off a model that
+    # starts with a digit, so put it back before comparing with "PowerFlex 40P".
+    if key[:1].isdigit() and family:
+        return family if family.endswith(key) else family + key
+    return key
+
+
 def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:
     """A token is a model candidate iff:
     - Not a fault code we already captured
@@ -598,6 +660,34 @@ def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:
     if not re.match(r"^[A-Za-z0-9][A-Za-z0-9.-]*$", token):
         return False
     return True
+
+
+# A nameplate rating is a fact about the machine, never its model: "5HP",
+# "460V", "7.5kW", "60Hz", and a bare number written before its unit ("5 HP",
+# "460 V", "12 A"). A spaced single-letter unit counts only as a capital
+# ("12 A", "500 W"), so the article in "PowerFlex 525 a few years old" does
+# not turn 525 into a rating.
+_RATING_UNITS = r"hp|kw|kva|v|vac|vdc|amps?|hz|rpm|psi|bar|nm|ph|ms"
+_RATING_TOKEN_RE = re.compile(rf"^\d+(?:\.\d+)?(?:{_RATING_UNITS}|a|w)$", re.IGNORECASE)
+_RATING_UNIT_WORD_RE = re.compile(rf"^(?:{_RATING_UNITS})$", re.IGNORECASE)
+# Real models that happen to look like ratings. Source: every rating-shaped
+# manual model_number on staging (2026-10-18 scan, 381 distinct values) and
+# every customer equipment model (71 distinct) — only the Fluke 87V
+# multimeter. To refresh, list the distinct manual model numbers that match
+# _RATING_TOKEN_RE (the scan is recorded on PR #4494).
+_RATING_SHAPED_MODELS = frozenset({"87v"})
+
+
+def _is_rating(tokens: list[str], i: int) -> bool:
+    tok = tokens[i]
+    if tok.lower() in _RATING_SHAPED_MODELS:
+        return False
+    if _RATING_TOKEN_RE.match(tok):
+        return True
+    if not re.fullmatch(r"\d+(?:\.\d+)?", tok) or i + 1 >= len(tokens):
+        return False
+    unit = tokens[i + 1]
+    return bool(_RATING_UNIT_WORD_RE.match(unit)) or unit in ("A", "W")
 
 
 def _find_model_near_vendor(
@@ -641,8 +731,11 @@ def _find_model_near_vendor(
         search_order = list(range(len(tokens)))
 
     for i in search_order:
-        tok = tokens[i]
+        # "It's a GS20." — the full stop ends the sentence, not the model name.
+        tok = tokens[i].rstrip(".-_")
         if not _is_model_candidate(tok, fault_raw_tokens):
+            continue
+        if _is_rating(tokens, i):
             continue
         # Don't pick the alias itself as the model
         if alias_lower and tok.lower() == alias_lower:
@@ -719,6 +812,39 @@ def _confidence(
     return 0.0
 
 
+def _strip_negated_equipment(message: str) -> str:
+    """Drop "not a GS10" / "not the GS10" so a correction is not anchored by what it negates."""
+    out = message
+    for alias in sorted(VENDOR_ALIASES, key=len, reverse=True):
+        out = re.sub(
+            rf"\bnot\s+(?:(?:an?|the)\s+)?{_alias_pattern(alias)}"
+            r"(?:\s+[a-z0-9.-]*\d[a-z0-9.-]*)?",
+            " ",
+            out,
+            flags=re.IGNORECASE,
+        )
+    return out
+
+
+def negates_equipment(message: str | None) -> bool:
+    """True when the message explicitly rules out a named machine ("not a GS10")."""
+    return bool(message) and _strip_negated_equipment(message) != message
+
+
+def _same_model(a: str, b: str) -> bool:
+    """ "525" and "PowerFlex 525" name one model; "7525" and "525" do not.
+
+    Only a letters-only series prefix may differ — the bare-number rule
+    ``rag_worker.evidence_applicability`` uses for the same question.
+    """
+    ka = re.sub(r"[^a-z0-9]", "", a.lower())
+    kb = re.sub(r"[^a-z0-9]", "", b.lower())
+    if not ka or not kb:
+        return False
+    short, longer = sorted((ka, kb), key=len)
+    return ka == kb or re.fullmatch(rf"[a-z]+{re.escape(short)}", longer) is not None
+
+
 def _merge_with_prior(fresh: UNSContext, prior: UNSContext | None) -> UNSContext:
     """Carry forward prior fields where the fresh ctx has nothing. Confidence
     decays slightly each turn."""
@@ -735,6 +861,10 @@ def _merge_with_prior(fresh: UNSContext, prior: UNSContext | None) -> UNSContext
     merged_mfr = pick(fresh.manufacturer, prior.manufacturer)
     merged_alias = pick(fresh.manufacturer_alias, prior.manufacturer_alias)
     merged_family = pick(fresh.product_family, prior.product_family)
+    if fresh.model and prior.model and not _same_model(fresh.model, prior.model):
+        # "actually it's a Yaskawa V1000" after an A1000 turn: the old model's
+        # family must not be carried onto the new model.
+        merged_family = fresh.product_family
     merged_model = pick(fresh.model, prior.model)
     merged_fault = pick(fresh.fault_code, prior.fault_code)
     merged_fault_raw = pick(fresh.fault_code_raw, prior.fault_code_raw)
@@ -891,14 +1021,19 @@ def resolve_uns_path(
     # actual fault below, after we know the model position)
     fault_pairs = _extract_fault_codes(message)
 
+    # A corrected identity must not be anchored by its explicitly negated
+    # predecessor ("GS20, not GS10"). Keep the original text for fault/symptom
+    # extraction; exclude only known equipment references from identity parsing.
+    identity_message = _strip_negated_equipment(message)
+
     # Stage 1b: vendor match first — needed to find model position
-    message_lower = message.lower()
+    message_lower = identity_message.lower()
     mfr, alias_lower, family_token = _match_vendor(message_lower)
 
     # Stage 1c: find model-position token (the first reasonable candidate
     # adjacent to the vendor). For this pass we treat NO tokens as fault yet —
     # the model-position lookup tells the fault picker which token to avoid.
-    model_position = _find_model_near_vendor(message, alias_lower, frozenset())
+    model_position = _find_model_near_vendor(identity_message, alias_lower, frozenset())
 
     # Stage 1d: pick the fault, preferring strong patterns and avoiding the
     # model-position token when a better candidate exists.
@@ -907,7 +1042,7 @@ def resolve_uns_path(
     # Stage 2: now strip the chosen fault token(s) from the model candidate
     # pool and re-resolve the model. If the model-position token IS the chosen
     # fault, look further down the token stream.
-    model = _find_model_near_vendor(message, alias_lower, fault_raw_tokens)
+    model = _find_model_near_vendor(identity_message, alias_lower, fault_raw_tokens)
 
     # Strip the alias key itself out of the model if model accidentally
     # matched a sub-word inside the alias (defensive — _find_model_near_vendor
@@ -931,6 +1066,10 @@ def resolve_uns_path(
 
     category = _detect_category(message, has_fault=fault_code is not None)
     product_family = family_token
+    if product_family is None and model and model.lower() in FAMILY_FROM_ALIAS:
+        # "Yaskawa V1000": the vendor alias won the match, but the model token is
+        # itself a family name — the same answer as a bare "V1000".
+        product_family = FAMILY_FROM_ALIAS[model.lower()]
     if product_family is None and alias_lower and mfr:
         # If the alias IS the manufacturer (e.g. "siemens"), no family. If
         # alias is a model token from FAMILY_FROM_ALIAS we already populated.

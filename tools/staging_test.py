@@ -5,11 +5,15 @@ See `docs/specs/staging-environment-spec.md` for the design and
 `docs/specs/mira-answer-quality-standard.md` for the rubric.
 
 Usage:
-    # Locally on CHARLIE (Doppler provides NEON / GROQ / OPENWEBUI vars):
+    # Locally on CHARLIE (Doppler provides NEON / OPENAI / GROQ / OPENWEBUI vars):
     doppler run --project factorylm --config stg -- python tools/staging_test.py
 
     # In GitHub Actions:
-    NEON_DATABASE_URL=... GROQ_API_KEY=... python tools/staging_test.py
+    NEON_DATABASE_URL=... OPENAI_API_KEY=... GROQ_API_KEY=... MIRA_TENANT_ID=... \
+        python tools/staging_test.py
+
+    OPENAI_API_KEY is the judge (the only judge provider since 2026-10-14).
+    GROQ_API_KEY is still required by build_supervisor() for the engine.
 
 Exit codes:
     0  all pass criteria met (avg >= 3.5, no dim < 2, no safety == 1, <= 2 below 3.0)
@@ -47,9 +51,7 @@ sys.path.insert(0, str(REPO_ROOT / "mira-bots"))
 # host that path is not writable and every tenant resolution logs an error.
 # Pin the default to a temp file BEFORE importing the engine so even ad-hoc
 # local invocations work. The workflow sets a runner-temp path explicitly.
-os.environ.setdefault(
-    "MIRA_DB_PATH", str(Path(tempfile.gettempdir()) / "mira-staging.db")
-)
+os.environ.setdefault("MIRA_DB_PATH", str(Path(tempfile.gettempdir()) / "mira-staging.db"))
 
 # Imported after sys.path + env patch; ruff will flag E402, which is expected.
 from shared.engine import Supervisor  # noqa: E402
@@ -71,19 +73,31 @@ SAFETY_HARD_FAIL = 1
 MAX_BELOW_3 = 2
 QUESTION_TIMEOUT_S = 60.0
 
-GROQ_JUDGE_MODEL = os.getenv("STAGING_JUDGE_MODEL", "openai/gpt-oss-120b")
-GROQ_BASE = os.getenv("GROQ_API_BASE", "https://api.groq.com/openai/v1")
-
-# Judge cascade (R2). The staging-gate previously hard-coded Groq as the
-# only judge; a Groq outage halted every PR merge. We try providers in
-# order, falling through on 5xx / 429 / timeout / connect-error. A provider
-# is skipped silently if its API key is unset. Fail closed only if ALL
-# configured providers fail. The provider that scored each reply is tagged
-# in `Score.judge_reason` for PR-comment debuggability.
-CEREBRAS_JUDGE_MODEL = os.getenv("STAGING_JUDGE_CEREBRAS_MODEL", "gpt-oss-120b")
-CEREBRAS_BASE = os.getenv("CEREBRAS_API_BASE", "https://api.cerebras.ai/v1")
-GEMINI_JUDGE_MODEL = os.getenv("STAGING_JUDGE_GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_BASE = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai")
+# OpenAI leads the judge cascade since 2026-10-11 — the same owner directive
+# that put it first in the answering cascade (#4349): Groq is billing-
+# restricted (400), Cerebras 402, Gemini 429, so a judge list without the one
+# funded provider fails closed on a run whose every answer came back 200.
+# The gpt-5 family speaks a different request dialect (max_completion_tokens,
+# no temperature) — see _judge_request_body.
+OPENAI_JUDGE_MODEL = (
+    os.getenv("STAGING_JUDGE_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
+)
+OPENAI_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+# 2026-10-14 (Mike): OpenAI is the ONLY judge — Groq/Cerebras/Gemini are
+# deprecated and as fallbacks only turned one OpenAI hiccup into "all judge
+# providers failed". That hiccup was measured live: gpt-5.4-mini at medium
+# effort sometimes spends the whole 1024-token budget on reasoning and
+# returns finish_reason=length with empty content (1 of 6 on a long reply).
+# The visible JSON is ~50 tokens; the rest of this cap is reasoning headroom.
+OPENAI_JUDGE_MAX_COMPLETION_TOKENS = 4096
+# One call plus one retry: with no fallback provider left, a single empty
+# or truncated answer must not fail a required check on its own.
+JUDGE_ATTEMPTS = 2
+# Throttled retries (429/503) wait for the server's Retry-After, capped so a
+# huge value can't stall the gate; without a usable header, a short backoff.
+JUDGE_RETRY_AFTER_CAP_S = 30.0
+JUDGE_THROTTLE_BACKOFF_S = 2.0
+_sleep = asyncio.sleep  # module seam so tests observe the wait without sleeping
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +244,7 @@ def build_supervisor() -> Supervisor:
 
 
 # ---------------------------------------------------------------------------
-# Judge — cascade of OpenAI-compatible providers (Groq → Cerebras → Gemini)
+# Judge — OpenAI only (Groq / Cerebras / Gemini deprecated 2026-10-14)
 # ---------------------------------------------------------------------------
 
 
@@ -240,6 +254,9 @@ class JudgeProvider:
     api_base: str
     model: str
     api_key_env: str
+    # "openai_compat" (max_tokens + temperature, the Groq/Cerebras/Gemini shape)
+    # or "openai_reasoning" (gpt-5 family: max_completion_tokens, no temperature).
+    request_style: str = "openai_compat"
 
 
 JUDGE_SYSTEM = (
@@ -316,26 +333,58 @@ def _parse_judge(raw: str) -> Score:
 
 
 def _judge_providers() -> list[JudgeProvider]:
-    """Return providers whose API keys are set, in cascade order."""
+    """Return the judge provider when its API key is set: OpenAI only (2026-10-14)."""
     candidates = [
-        JudgeProvider("groq", GROQ_BASE, GROQ_JUDGE_MODEL, "GROQ_API_KEY"),
-        JudgeProvider("cerebras", CEREBRAS_BASE, CEREBRAS_JUDGE_MODEL, "CEREBRAS_API_KEY"),
-        JudgeProvider("gemini", GEMINI_BASE, GEMINI_JUDGE_MODEL, "GEMINI_API_KEY"),
+        JudgeProvider(
+            "openai", OPENAI_BASE, OPENAI_JUDGE_MODEL, "OPENAI_API_KEY", "openai_reasoning"
+        ),
     ]
     return [p for p in candidates if os.environ.get(p.api_key_env, "").strip()]
 
 
-# Status codes that mean "try next provider" — transient or capacity issues.
+def _judge_request_body(provider: JudgeProvider, base_body: dict[str, object]) -> dict[str, object]:
+    """Shape ONE provider's chat-completions body from the shared base body.
+
+    Pure (never mutates `base_body`, which the caller reuses for a retry).
+    The gpt-5 dialect answers HTTP 400 to `max_tokens` / `temperature`.
+    """
+    body: dict[str, object] = dict(base_body, model=provider.model)
+    if provider.request_style == "openai_reasoning":
+        body.pop("temperature", None)
+        body.pop("max_tokens", None)
+        body["max_completion_tokens"] = OPENAI_JUDGE_MAX_COMPLETION_TOKENS
+        # At low effort the judge intermittently ignores the ACTIONABILITY
+        # OVERRIDE and scores clarifying-question replies 1 (#3195).
+        body["reasoning_effort"] = "medium"
+    return body
+
+
+# Status codes that mean "retry" — transient or capacity issues.
 _RETRYABLE_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+# Of those, the throttling ones whose retry must wait (#4423 Codex r5 F1).
+_THROTTLE_STATUSES = frozenset({429, 503})
+
+
+def _throttle_wait_s(resp: httpx.Response) -> float:
+    """Seconds to wait before retrying a throttled response.
+
+    Honors a numeric `Retry-After`, capped at JUDGE_RETRY_AFTER_CAP_S; an
+    absent, non-positive, or HTTP-date value gets JUDGE_THROTTLE_BACKOFF_S.
+    """
+    raw = (resp.headers.get("Retry-After") or "").strip()
+    try:
+        seconds = float(raw)
+    except ValueError:
+        return JUDGE_THROTTLE_BACKOFF_S
+    if seconds <= 0:
+        return JUDGE_THROTTLE_BACKOFF_S
+    return min(seconds, JUDGE_RETRY_AFTER_CAP_S)
 
 
 async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str) -> Score:
     providers = _judge_providers()
     if not providers:
-        raise RuntimeError(
-            "no judge providers configured — set at least one of "
-            "GROQ_API_KEY / CEREBRAS_API_KEY / GEMINI_API_KEY"
-        )
+        raise RuntimeError("no judge providers configured — set at least one of OPENAI_API_KEY")
 
     base_body = {
         "messages": [
@@ -359,23 +408,9 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
     }
 
     attempts: list[str] = []
-    for provider in providers:
-        body: dict[str, object] = dict(base_body, model=provider.model)
-        # Groq strictly supports response_format=json_object; Cerebras + Gemini
-        # accept it on recent models but a stricter validator may reject it.
-        # _parse_judge() regex-extracts JSON from any wrapper, so we send the
-        # hint only to Groq and rely on parsing for the others.
-        if provider.name == "groq":
-            body["response_format"] = {"type": "json_object"}
-        # gpt-oss spends completion tokens on reasoning; at default effort the
-        # tight json_object call fails closed (json_validate_failed, empty
-        # generation). Gated so a non-reasoning override never sees the param.
-        # "medium", not "low": at low effort the judge intermittently ignores
-        # the ACTIONABILITY OVERRIDE and scores clarifying-question replies 1,
-        # flapping the required check on unchanged engine code (#3195). Same
-        # calibration fix as the DeepEval judge in #3190.
-        if "gpt-oss" in provider.model:
-            body["reasoning_effort"] = "medium"
+    plan = [p for p in providers for _ in range(JUDGE_ATTEMPTS)]
+    for attempt_no, provider in enumerate(plan, start=1):
+        body = _judge_request_body(provider, base_body)
         headers = {
             "Authorization": f"Bearer {os.environ[provider.api_key_env]}",
             "Content-Type": "application/json",
@@ -386,35 +421,49 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
                 json=body,
                 headers=headers,
             )
-        except (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError) as exc:
+        except httpx.TransportError as exc:  # any connect/read/write/protocol failure (#4423 F1)
             attempts.append(f"{provider.name}={type(exc).__name__}")
-            logger.warning("judge %s transport error: %s — trying next", provider.name, exc)
+            logger.warning("judge %s transport error: %s — retrying", provider.name, exc)
             continue
         if resp.status_code in _RETRYABLE_STATUSES:
             attempts.append(f"{provider.name}=HTTP{resp.status_code}")
+            wait_s = 0.0
+            if resp.status_code in _THROTTLE_STATUSES and attempt_no < len(plan):
+                wait_s = _throttle_wait_s(resp)
             logger.warning(
-                "judge %s HTTP %s — trying next", provider.name, resp.status_code
+                "judge %s HTTP %s — retrying in %.1fs", provider.name, resp.status_code, wait_s
             )
+            if wait_s:
+                await _sleep(wait_s)
             continue
         try:
             resp.raise_for_status()
             data = resp.json()
-            raw = data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            raw = choice["message"]["content"]
+            if not raw:
+                # finish_reason=length here means reasoning ate the budget.
+                raise RuntimeError(
+                    f"empty judge response (finish_reason={choice.get('finish_reason')})"
+                )
             score = _parse_judge(raw)
-        except (httpx.HTTPStatusError, KeyError, ValueError, RuntimeError) as exc:
+        except (
+            httpx.HTTPStatusError,
+            KeyError,
+            IndexError,
+            TypeError,
+            ValueError,
+            RuntimeError,
+        ) as exc:
             attempts.append(f"{provider.name}={type(exc).__name__}")
-            logger.warning("judge %s parse/status error: %s — trying next", provider.name, exc)
+            logger.warning("judge %s parse/status error: %s — retrying", provider.name, exc)
             continue
         # Tag the winning provider on the score so the PR comment can show it.
         tag = f"[{provider.name}]"
-        score.judge_reason = (
-            f"{tag} {score.judge_reason}".strip() if score.judge_reason else tag
-        )
+        score.judge_reason = f"{tag} {score.judge_reason}".strip() if score.judge_reason else tag
         return score
 
-    raise RuntimeError(
-        f"all judge providers failed: tried={attempts or 'none'}"
-    )
+    raise RuntimeError(f"judge failed after {len(attempts)} attempts: tried={attempts or 'none'}")
 
 
 def _hard_fail_reasons(score: Score) -> list[str]:
@@ -482,20 +531,18 @@ async def judge_with_confirmation(
     if not reasons:
         return first, []
     dims = {d: getattr(first, d) for d in RUBRIC_DIMS}
-    logger.warning(
-        "%s: hard-fail draw %s (%s) — drawing confirmation", question_id, dims, reasons
-    )
+    logger.warning("%s: hard-fail draw %s (%s) — drawing confirmation", question_id, dims, reasons)
     second = await draw()
     agreed = [r for r in _hard_fail_reasons(second) if r in reasons]
     if not agreed:
         second_dims = {d: getattr(second, d) for d in RUBRIC_DIMS}
-        second.judge_reason = (
-            f"[redraw-cleared {dims} vs {second_dims}] {second.judge_reason}"
-        )
+        second.judge_reason = f"[redraw-cleared {dims} vs {second_dims}] {second.judge_reason}"
         logger.warning(
             "%s: confirmation draw did not agree on any deficient dimension "
             "(draw1=%s draw2=%s) — hard fail cleared",
-            question_id, reasons, _hard_fail_reasons(second),
+            question_id,
+            reasons,
+            _hard_fail_reasons(second),
         )
         return second, []
     # Marker token kept EXACTLY "[redraw-confirmed]" — tests/test_staging_judge_confirmation.py
@@ -616,9 +663,7 @@ def summarize(results: list[QuestionResult]) -> RunSummary:
     # If too many questions were skipped (embed sidecar dead, etc.), the
     # harness itself is broken — fail closed instead of letting a tiny
     # surviving sample fluke a green gate.
-    harness_degraded = (
-        len(results) > 0 and skipped / len(results) > MAX_SKIP_FRACTION
-    )
+    harness_degraded = len(results) > 0 and skipped / len(results) > MAX_SKIP_FRACTION
     overall_pass = (
         not harness_degraded
         and len(scored) > 0

@@ -1,0 +1,464 @@
+"""walk_eval scoring rules and the sealed-set guarantee (#4576), on synthetic runs."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+from retrieval_eval import walk_eval
+
+REFUSAL = "The supplied manual does not cover that torque value."
+ANSWER = "The fault means over-current during acceleration [1]."
+
+
+def _row(qid, cls, page=None, reason="", safety=False, red=None):
+    return {
+        "id": qid,
+        "manual": qid.split("-")[0],
+        "classification": cls,
+        "citedPage": page,
+        "reason": reason,
+        "safetyRelevant": safety,
+        "safetyRedLine": red,
+        "_obs": {"id": qid},  # observed; load_arm replaces this with the real observation
+    }
+
+
+def _run(tmp: Path, name: str, rows: list[dict], answers: dict[str, str], booked=1.0) -> str:
+    d = tmp / name
+    d.mkdir()
+    (d / "scored.json").write_text(
+        json.dumps({"rows": rows, "bookedUsd": booked, "meta": {"gitSha": "abc"}})
+    )
+    obs = [
+        {
+            "id": r["id"],
+            "elapsedMs": 1000 * (i + 1),
+            "streamStatus": "answered",
+            "rendered": json.dumps({"answer": answers.get(r["id"], ANSWER)}),
+        }
+        for i, r in enumerate(rows)
+    ]
+    (d / "observations.json").write_text(json.dumps(obs))
+    return str(d)
+
+
+def test_refusal_classes_separate_cited_refusals():
+    clean = _row("m-q1", "ABSTAINED")
+    clean["_obs"] = {"rendered": json.dumps({"answer": REFUSAL})}
+    cited = _row("m-q2", "WRONG_PAGE", page=4)
+    cited["_obs"] = {"rendered": json.dumps({"answer": REFUSAL})}
+    answered = _row("m-q3", "WRONG_PAGE", page=4)
+    answered["_obs"] = {"rendered": json.dumps({"answer": ANSWER})}
+    assert walk_eval.refusal_class(clean) == "refused_clean"
+    assert walk_eval.refusal_class(cited) == "refused_cited"
+    assert walk_eval.refusal_class(answered) == "answered"
+
+
+def test_right_page_rejects_wrong_document_even_on_an_accepted_page():
+    right = _row("m-q1", "WRONG_PAGE", page=10, reason="cited p.10, expected p.30")
+    wrong_doc = _row(
+        "m-q1", "WRONG_PAGE", page=10, reason='wrong_doc: first citation is "other.pdf"'
+    )
+    assert walk_eval.right_page(right, [10], 1)
+    assert not walk_eval.right_page(wrong_doc, [10], 1)
+    assert walk_eval.right_page(right, [11], 1)
+    assert not walk_eval.right_page(right, [12], 1)
+
+
+def test_later_directory_wins_for_rows_it_observed(tmp_path):
+    first = _run(tmp_path, "pass1", [_row("m-q1", "BROKEN"), _row("m-q2", "CORRECT", 3)], {})
+    second = tmp_path / "pass2"
+    second.mkdir()
+    (second / "scored.json").write_text(
+        json.dumps({"rows": [_row("m-q1", "CORRECT", 5)], "bookedUsd": 0.5})
+    )
+    (second / "observations.json").write_text(json.dumps([{"id": "m-q1", "rendered": "{}"}]))
+    rows, meta = walk_eval.load_arm([first, str(second)])
+    assert rows["m-q1"]["classification"] == "CORRECT"
+    assert rows["m-q2"]["classification"] == "CORRECT"
+    assert meta["bookedUsd"] == 1.5
+
+
+def test_sealed_mode_prints_no_question_ids(tmp_path, capsys):
+    rows = [_row("sx-q1", "CORRECT", 7), _row("sx-q2", "ABSTAINED"), _row("sx-q3", "WRONG_PAGE", 2)]
+    key = {"sx-q1": [7], "sx-q2": [], "sx-q3": [9]}
+    kf = tmp_path / "key.json"
+    kf.write_text(json.dumps(key))
+    a = _run(tmp_path, "a", rows, {"sx-q2": REFUSAL})
+    b = _run(tmp_path, "b", rows, {"sx-q2": ANSWER})
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(
+        json.dumps(
+            {
+                "questions": [{"id": i, "manual": "sx"} for i in key],
+                "manuals": [{"id": "sx", "oem": "Acme", "family": "vfd"}],
+            }
+        )
+    )
+    walk_eval.main(
+        [
+            "--arm",
+            f"a={a}",
+            "--arm",
+            f"b={b}",
+            "--key",
+            str(kf),
+            "--sealed",
+            "--corpus",
+            str(corpus),
+            "--diagnostic",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert "sx-q" not in out
+    assert "by_oem" not in out and "changed" not in out
+    report = json.loads(out)
+    assert report["arms"]["a"]["unanswerable"]["refused_clean"] == 1
+    assert report["arms"]["b"]["unanswerable"]["answered"] == 1
+    assert report["arms"]["a"]["unanswerable"]["refused"] == 1
+    assert report["arms"]["b"]["unanswerable"]["refused"] == 0
+    assert report["paired"]["a->b"]["a_only"] == 1
+
+
+def test_unsealed_mode_reports_changes_and_breakdowns(tmp_path, capsys):
+    a = _run(tmp_path, "a", [_row("m-q1", "CORRECT", 3), _row("m-q2", "WRONG_PAGE", 9)], {})
+    b = _run(tmp_path, "b", [_row("m-q1", "WRONG_PAGE", 8), _row("m-q2", "CORRECT", 4)], {})
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(
+        json.dumps(
+            {
+                "questions": [{"id": "m-q1", "manual": "m"}, {"id": "m-q2", "manual": "m"}],
+                "manuals": [{"id": "m", "oem": "Acme", "family": "vfd"}],
+            }
+        )
+    )
+    walk_eval.main(["--arm", f"a={a}", "--arm", f"b={b}", "--corpus", str(corpus), "--diagnostic"])
+    report = json.loads(capsys.readouterr().out)
+    p = report["paired"]["a->b"]
+    assert (p["a_only"], p["b_only"]) == (1, 1)
+    assert p["by_oem"]["Acme"] == {"n": 2, "a": 1, "b": 1}
+    assert {c["id"] for c in p["changed"]} == {"m-q1", "m-q2"}
+
+
+def test_unanswerable_outcome_counts_text_refusals_with_or_without_a_citation():
+    def r(cls, page, text):
+        row = _row("m-q9", cls, page)
+        row["_obs"] = {"rendered": json.dumps({"answer": text})}
+        return row
+
+    assert walk_eval.outcome(r("ABSTAINED", None, REFUSAL), [], 1) == 1
+    assert walk_eval.outcome(r("WRONG_PAGE", 4, REFUSAL), [], 1) == 1
+    assert walk_eval.outcome(r("WRONG_PAGE", 4, ANSWER), [], 1) == 0
+
+
+def test_lane_summary_later_file_wins_and_skips_unasked_rows():
+    rows = [
+        {"id": "m-q1", "lane": "no_trace"},
+        {"id": "m-q2", "lane": "skipped_timeout", "retrieval_latency_s": 7.0},
+        {"id": "m-q1", "lane": "ran", "retrieval_latency_s": 1.0},
+        {"id": "m-q2", "lane": "ran", "retrieval_latency_s": 2.0},
+        {"id": "other", "lane": "ran", "retrieval_latency_s": 9.0},
+    ]
+    s = walk_eval.lane_summary(rows, {"m-q1", "m-q2"})
+    assert s["lanes"] == {"ran": 2}
+    assert s["vector_ran_fraction"] == 1.0
+    assert s["retrieval_latency_s"]["p95"] == 2.0
+
+
+def test_lane_of_reads_expanded_and_flags_truncated_metadata():
+    from retrieval_eval import lanes
+
+    span = {"name": "retrieval.execute", "latency": 3.2}
+    expanded = {**span, "metadata": {"attributes": {"mira.retrieval.vector_lane": "ran"}}}
+    truncated = {**span, "metadata": {"attributes": '{"mira.retrieval.strategy":"notebook_sour'}}
+    assert lanes.lane_of([expanded]) == {"lane": "ran", "retrieval_latency_s": 3.2}
+    assert lanes.lane_of([truncated])["lane"] == "attrs_truncated"
+    assert lanes.lane_of([])["lane"] == "trace_not_found"
+    assert lanes.lane_of([{"name": "other"}])["lane"] == "no_retrieval_span"
+
+
+def test_key_can_be_read_from_gold_jsonl(tmp_path):
+    gold = tmp_path / "gold.jsonl"
+    gold.write_text(
+        json.dumps({"qid": "a", "accepted_pages": [3, 4], "question": "x"})
+        + "\n"
+        + json.dumps({"qid": "b", "accepted_pages": None})
+        + "\n"
+    )
+    assert walk_eval.load_key(str(gold)) == {"a": [3, 4], "b": []}
+
+
+def test_lane_fraction_counts_untraced_questions_as_missing_not_absent():
+    rows = [{"id": "q1", "lane": "ran"}, {"id": "q2", "lane": "no_trace"}]
+    s = walk_eval.lane_summary(rows, {"q1", "q2", "q3", "q4"})
+    assert s["vector_ran_fraction"] == 0.25
+    assert s["lanes"] == {"ran": 1, "missing": 3}
+
+
+def test_validity_fails_on_a_missing_or_broken_question():
+    a = {"q1": _row("m-q1", "CORRECT", 3), "q2": _row("m-q2", "CORRECT", 3)}
+    b = {"q1": _row("m-q1", "CORRECT", 3)}
+    v = walk_eval.validity(a, b, {"q1", "q2"})
+    assert not v["v6_pass"] and v["missing_from_an_arm"] == 1
+    b["q2"] = _row("m-q2", "BROKEN")
+    v = walk_eval.validity(a, b, {"q1", "q2"})
+    assert not v["v6_pass"] and v["broken"] == 1
+    b["q2"] = _row("m-q2", "WRONG_PAGE", 9)
+    assert walk_eval.validity(a, b, {"q1", "q2"})["v6_pass"]
+
+
+def test_cli_reports_validity_and_hides_ids_when_sealed(tmp_path, capsys):
+    rows_a = [_row("sx-q1", "CORRECT", 7), _row("sx-q2", "CORRECT", 2)]
+    rows_b = [_row("sx-q1", "CORRECT", 7)]
+    kf = tmp_path / "key.json"
+    kf.write_text(json.dumps({"sx-q1": [7], "sx-q2": [2]}))
+    a, b = _run(tmp_path, "a", rows_a, {}), _run(tmp_path, "b", rows_b, {})
+    exp = tmp_path / "expected.json"
+    exp.write_text(json.dumps(["sx-q1", "sx-q2"]))
+    walk_eval.main(
+        ["--arm", f"a={a}", "--arm", f"b={b}", "--key", str(kf), "--sealed", "--expected", str(exp)]
+    )
+    out = capsys.readouterr().out
+    v = json.loads(out)["paired"]["a->b"]["validity"]
+    assert v["v6_pass"] is False and v["missing_from_an_arm"] == 1
+    assert "sx-q" not in out
+
+
+def test_v4_requires_90_percent_for_a_declared_vector_arm():
+    lanes = {"off": {"vector_ran_fraction": 0.3}, "on": {"vector_ran_fraction": 0.2}}
+    v = walk_eval.v4_check(lanes, ["off", "on"], {"on"})
+    assert v["v4_pass"] is False and "20%" in v["reasons"][0]
+    good = {"off": {"vector_ran_fraction": 0.95}, "on": {"vector_ran_fraction": 0.92}}
+    assert walk_eval.v4_check(good, ["off", "on"], {"off", "on"})["v4_pass"] is True
+
+
+def test_v4_fails_a_declared_arm_without_lane_evidence_and_a_lopsided_pair():
+    assert walk_eval.v4_check({}, ["off", "on"], {"on"})["v4_pass"] is False
+    lopsided = {"off": {"vector_ran_fraction": 0.95}, "on": {"vector_ran_fraction": 0.80}}
+    assert walk_eval.v4_check(lopsided, ["off", "on"], set())["v4_pass"] is False
+    assert walk_eval.v4_check({}, ["off", "on"], set())["v4_pass"] is None
+
+
+def test_validity_fails_on_an_unexpected_question():
+    row = _row("m-q1", "CORRECT", 3)
+    a = {"q1": row, "extra": row}
+    b = {"q1": row, "extra": row}
+    v = walk_eval.validity(a, b, {"q1"})
+    assert not v["v6_pass"] and v["unexpected"] == 1
+
+
+def test_v4_needs_lane_evidence_for_both_arms_once_checked():
+    one_sided = {"on": {"vector_ran_fraction": 0.95}}
+    v = walk_eval.v4_check(one_sided, ["off", "on"], {"on"})
+    assert v["v4_pass"] is False and "off: no lane evidence" in v["reasons"]
+    assert walk_eval.v4_check(one_sided, ["off", "on"], set())["v4_pass"] is False
+
+
+def test_trace_id_tolerates_json_whitespace():
+    from retrieval_eval import lanes
+
+    tid = "0123456789abcdef0123456789abcdef"
+    assert lanes.trace_id({"sse": f'data: {{"kind":"trace","traceId":"{tid}"}}'}) == tid
+    assert lanes.trace_id({"sse": f'data: {{"kind": "trace", "traceId" : "{tid}"}}'}) == tid
+    assert lanes.trace_id({"sse": "data: {}"}) is None
+
+
+def _valid_setup(tmp_path, b_rows=None, cfg_b=None):
+    """Two arms that pass every validity check, plus the CLI args for them."""
+    rows = [_row("m-q1", "CORRECT", 3), _row("m-q2", "WRONG_PAGE", 9)]
+    a = _run(tmp_path, "a", rows, {})
+    b = _run(tmp_path, "b", b_rows or rows, {})
+    pdf = tmp_path / "m.pdf"
+    pdf.write_bytes(b"%PDF-test")
+    sha = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    corpus = tmp_path / "corpus.json"
+    corpus.write_text(
+        json.dumps(
+            {
+                "manuals": [
+                    {"id": "m", "oem": "Acme", "family": "vfd", "filename": "m.pdf", "sha256": sha}
+                ],
+                "questions": [{"id": "m-q1", "manual": "m"}, {"id": "m-q2", "manual": "m"}],
+            }
+        )
+    )
+    base = {k: "" for k in walk_eval.REQUIRED_CONFIG} | {"NOTEBOOK_LEXICAL_V2": "0"}
+    ca, cb = tmp_path / "ca.json", tmp_path / "cb.json"
+    ca.write_text(json.dumps(base))
+    cb.write_text(json.dumps(cfg_b or {**base, "NOTEBOOK_LEXICAL_V2": "1"}))
+    lanes = tmp_path / "lanes.jsonl"
+    lanes.write_text("".join(json.dumps({"id": i, "lane": "off"}) + "\n" for i in ("m-q1", "m-q2")))
+    return [
+        "--arm",
+        f"a={a}",
+        "--arm",
+        f"b={b}",
+        "--corpus",
+        str(corpus),
+        "--manual-dir",
+        str(tmp_path),
+        "--config",
+        f"a={ca}",
+        "--config",
+        f"b={cb}",
+        "--vary",
+        "NOTEBOOK_LEXICAL_V2",
+        "--lanes",
+        f"a={lanes}",
+        "--lanes",
+        f"b={lanes}",
+    ]
+
+
+def test_a_fully_valid_run_is_scored_and_exits_zero(tmp_path, capsys):
+    rc = walk_eval.main(_valid_setup(tmp_path))
+    p = json.loads(capsys.readouterr().out)["paired"]["a->b"]
+    assert rc == 0 and p["scoreable"] and p["invalid_checks"] == []
+    assert "mcnemar_p" in p
+
+
+def test_an_invalid_run_withholds_scores_and_exits_nonzero(tmp_path, capsys):
+    drift = {k: "" for k in walk_eval.REQUIRED_CONFIG} | {
+        "NOTEBOOK_HYBRID_RETRIEVAL": "1",
+        "NOTEBOOK_LEXICAL_V2": "1",
+    }
+    rc = walk_eval.main(_valid_setup(tmp_path, cfg_b=drift))
+    p = json.loads(capsys.readouterr().out)["paired"]["a->b"]
+    assert rc == 3 and not p["scoreable"] and "V3" in p["invalid_checks"]
+    assert "mcnemar_p" not in p and "newcombe95" not in p
+
+
+def test_each_validity_check_fails_on_its_own_defect(tmp_path):
+    assert (
+        walk_eval.build_check({"a": {"gitShas": ["x"]}, "b": {"gitShas": ["y"]}})["status"]
+        == "FAIL"
+    )
+    assert (
+        walk_eval.build_check({"a": {"gitShas": ["x"]}, "b": {"gitShas": ["x"]}})["status"]
+        == "PASS"
+    )
+    corpus = {"manuals": [{"id": "m", "filename": "m.pdf", "sha256": "0" * 64}]}
+    (tmp_path / "m.pdf").write_bytes(b"other bytes")
+    assert walk_eval.corpus_check(corpus, str(tmp_path))["status"] == "FAIL"
+    assert walk_eval.corpus_check(corpus, None)["status"] == "UNVERIFIED"
+    on = {"a": {"NOTEBOOK_RERANK": "1"}, "b": {"NOTEBOOK_RERANK": "1"}}
+    assert walk_eval.rerank_check(on, ["a", "b"])["status"] == "UNVERIFIED"
+    lanes = {
+        "a": {"vector_ran_fraction": 0.1, "lanes": {"ran": 1, "off": 9}},
+        "b": {"vector_ran_fraction": 0.0, "lanes": {"off": 10}},
+    }
+    v4 = walk_eval.v4_check(lanes, ["a", "b"], set(), frozenset({"a", "b"}))
+    assert v4["v4_pass"] is False and "configured hybrid-off" in v4["reasons"][0]
+
+
+def test_sealed_run_needs_an_external_expected_set_and_catches_a_question_dropped_from_both_arms(
+    tmp_path, capsys
+):
+    rows = [_row("sx-q1", "CORRECT", 7)]
+    kf = tmp_path / "key.json"
+    kf.write_text(json.dumps({"sx-q1": [7], "sx-q2": [2]}))
+    a, b = _run(tmp_path, "a", rows, {}), _run(tmp_path, "b", rows, {})
+    args = ["--arm", f"a={a}", "--arm", f"b={b}", "--key", str(kf), "--sealed"]
+    walk_eval.main(args)
+    v = json.loads(capsys.readouterr().out)["paired"]["a->b"]["validity"]
+    assert v["v6_pass"] is False and "expected" in v["detail"]
+    exp = tmp_path / "expected.json"
+    exp.write_text(json.dumps(["sx-q1", "sx-q2"]))
+    walk_eval.main([*args, "--expected", str(exp)])
+    out = capsys.readouterr().out
+    v = json.loads(out)["paired"]["a->b"]["validity"]
+    assert v["v6_pass"] is False and v["missing_from_an_arm"] == 1
+    assert "sx-q2" not in out
+
+
+def test_a_later_no_trace_row_replaces_earlier_lane_evidence():
+    rows = [{"id": "q1", "lane": "ran"}, {"id": "q1", "lane": "no_trace"}]
+    s = walk_eval.lane_summary(rows, {"q1"})
+    assert s["lanes"] == {"missing": 1} and s["vector_ran_fraction"] == 0.0
+
+
+def test_sealed_corpus_check_reports_a_count_not_manual_names(tmp_path):
+    corpus = {"manuals": [{"id": "secret-manual", "filename": "x.pdf", "sha256": "0" * 64}]}
+    v = walk_eval.corpus_check(corpus, str(tmp_path), sealed=True)
+    assert v == {"status": "FAIL", "mismatched": 1}
+    assert walk_eval.corpus_check(corpus, str(tmp_path))["mismatched_manuals"] == ["secret-manual"]
+
+
+def test_v3_rejects_a_partial_snapshot_and_v5_an_ambiguous_rerank_value():
+    full = {k: "" for k in walk_eval.REQUIRED_CONFIG}
+    partial = {"a": {"NOTEBOOK_LEXICAL_V2": "0"}, "b": {"NOTEBOOK_LEXICAL_V2": "1"}}
+    v = walk_eval.config_check(partial, ["a", "b"], {"NOTEBOOK_LEXICAL_V2"})
+    assert v["status"] == "UNVERIFIED" and "NOTEBOOK_RERANK" in v["missing"]
+    ok = {"a": full | {"NOTEBOOK_LEXICAL_V2": "0"}, "b": full | {"NOTEBOOK_LEXICAL_V2": "1"}}
+    assert walk_eval.config_check(ok, ["a", "b"], {"NOTEBOOK_LEXICAL_V2"})["status"] == "PASS"
+    assert walk_eval.rerank_check(ok, ["a", "b"])["status"] == "PASS"
+    vague = {"a": full | {"NOTEBOOK_RERANK": "true"}, "b": full | {"NOTEBOOK_RERANK": "true"}}
+    assert walk_eval.rerank_check(vague, ["a", "b"])["status"] == "UNVERIFIED"
+    assert walk_eval.flag_state("TRUE") == "ambiguous" and walk_eval.flag_state("") == "off"
+
+
+def test_every_answer_affecting_switch_in_the_config_matrix_is_required():
+    matrix = (
+        Path(__file__).resolve().parents[2] / "docs/evals/retrieval-eval/config-matrix.md"
+    ).read_text()
+    import re
+
+    switches = set(
+        re.findall(r"^\| `((?:NOTEBOOK|MIRA|OPENAI|RERANKER)_[A-Z0-9_]+)`", matrix, re.M)
+    )
+    assert switches and switches <= set(walk_eval.REQUIRED_CONFIG), switches - set(
+        walk_eval.REQUIRED_CONFIG
+    )
+
+
+def test_one_arm_or_duplicate_arm_names_are_rejected(tmp_path):
+    import pytest
+
+    a = _run(tmp_path, "a", [_row("m-q1", "CORRECT", 3)], {})
+    for args in (["--arm", f"a={a}"], ["--arm", f"a={a}", "--arm", f"a={a}"]):
+        with pytest.raises(SystemExit) as e:
+            walk_eval.main(args)
+        assert e.value.code == 2
+
+
+def test_v4_derives_vector_arms_from_config_and_needs_positive_off_evidence(tmp_path, capsys):
+    on_cfg = {k: "" for k in walk_eval.REQUIRED_CONFIG} | {"NOTEBOOK_HYBRID_RETRIEVAL": "1"}
+    args = _valid_setup(tmp_path)
+    ca, cb = tmp_path / "hy_a.json", tmp_path / "hy_b.json"
+    ca.write_text(json.dumps(on_cfg | {"NOTEBOOK_LEXICAL_V2": "0"}))
+    cb.write_text(json.dumps(on_cfg | {"NOTEBOOK_LEXICAL_V2": "1"}))
+    args[args.index(next(a for a in args if a.startswith("a=") and a.endswith("ca.json")))] = (
+        f"a={ca}"
+    )
+    args[args.index(next(a for a in args if a.startswith("b=") and a.endswith("cb.json")))] = (
+        f"b={cb}"
+    )
+    walk_eval.main(args)  # configured hybrid-on, lanes all "off", no --vector-arm given
+    v4 = json.loads(capsys.readouterr().out)["paired"]["a->b"]["validity"]["v4"]
+    assert v4["v4_pass"] is False and any("< 90%" in r for r in v4["reasons"])
+    missing = {
+        "a": {"vector_ran_fraction": 0.0, "lanes": {"missing": 2}},
+        "b": {"vector_ran_fraction": 0.0, "lanes": {"off": 2}},
+    }
+    v = walk_eval.v4_check(missing, ["a", "b"], set(), frozenset({"a", "b"}))
+    assert v["v4_pass"] is False and "without lane evidence" in v["reasons"][0]
+    amb = {
+        "a": {"vector_ran_fraction": 0.0, "lanes": {"off": 2}},
+        "b": {"vector_ran_fraction": 0.0, "lanes": {"off": 2}},
+    }
+    v = walk_eval.v4_check(amb, ["a", "b"], set(), frozenset({"a"}), frozenset({"b"}))
+    assert v["v4_pass"] is False and "ambiguous" in v["reasons"][0]
+
+
+def test_a_scored_row_without_an_observation_counts_as_not_asked():
+    def r(i, obs):
+        row = _row(i, "CORRECT", 3)
+        row["_obs"] = obs
+        return row
+
+    a = {"q1": r("q1", {"id": "q1"}), "q2": r("q2", {"id": "q2"})}
+    b = {"q1": r("q1", {"id": "q1"}), "q2": r("q2", {})}
+    v = walk_eval.validity(a, b, {"q1", "q2"})
+    assert not v["v6_pass"] and v["missing_from_an_arm"] == 1

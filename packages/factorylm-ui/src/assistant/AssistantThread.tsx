@@ -1,8 +1,8 @@
 /**
  * The conversation surface on assistant-ui primitives (blueprint Phase 3).
  *
- * assistant-ui owns: the thread viewport, stick-to-bottom autoscroll,
- * jump-to-latest, and the message list keyed by stable turn ids. FactoryLM
+ * assistant-ui owns the thread viewport, jump control, and message list keyed
+ * by stable turn IDs. Shared follow logic handles document and nested scrolling. FactoryLM
  * owns everything that carries meaning: the bar (breadcrumb, Ask/Work,
  * machine chip), the run card, the head line per turn, and every part — all
  * rendered by the same components the classic `Conversation` uses, so the two
@@ -22,12 +22,14 @@ import {
 } from "@assistant-ui/react";
 import type { InteractionTurn, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
 import { createContext, useContext, useMemo, type Dispatch } from "react";
+import { useConversationFollow } from "../useConversationFollow";
 import { ConversationBar, RunCard } from "../Conversation";
 import { CopyIcon, RecordFixIcon, RegenerateIcon, SpeakerIcon, ThumbDownIcon, ThumbUpIcon } from "../icons";
 import { PartRenderer, contextDiffers, describeContext, type HostHooks } from "../parts";
 import { HEAD_PART_NAME, TURN_PART_NAME, useInteractionRuntime, type HeadPartData, type TurnPartData } from "./runtime";
 
 export interface AssistantThreadProps {
+  readonly sendRevision?: number;
   readonly state: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
   readonly adapter: PlatformAdapter;
@@ -199,6 +201,8 @@ function FirstRun() {
   };
   return <div className="fl-conversation__first-run">
     <h2 className="fl-conversation__greeting">What can I help you with?</h2>
+    {/* FactoryLM is the platform; MIRA is its AI assistant (#4569, owner decision 2026-10-21). */}
+    <p className="fl-conversation__identity">MIRA is FactoryLM's AI maintenance assistant.</p>
     {grounding ? <p className="fl-conversation__grounding">{grounding}</p> : null}
     {chips && chips.length > 0 ? (
       <div className="fl-conversation__chips">
@@ -217,7 +221,7 @@ function FirstRun() {
   </div>;
 }
 
-export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantThreadProps) {
+export function AssistantThread({ state, dispatch, adapter, hooks, sendRevision = 0 }: AssistantThreadProps) {
   const runtime = useInteractionRuntime({ state, dispatch, hooks });
   const turns = useMemo(() => new Map(state.thread.turns.map((turn) => [turn.id, turn])), [state.thread.turns]);
   const environment = useMemo<ThreadEnvironment>(
@@ -225,9 +229,12 @@ export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantTh
     [state, dispatch, adapter, hooks, turns],
   );
 
+  const rootRef = useConversationFollow<HTMLDivElement>(state.thread, sendRevision);
+
   return <AssistantRuntimeProvider runtime={runtime}>
     <EnvironmentContext.Provider value={environment}>
       <ThreadPrimitive.Root
+        ref={rootRef}
         className="fl-conversation fl-conversation--aui"
         role="region"
         aria-label="Conversation"
@@ -235,7 +242,8 @@ export function AssistantThread({ state, dispatch, adapter, hooks }: AssistantTh
         data-conversation-surface="assistant"
       >
         <ConversationBar state={state} />
-        <ThreadPrimitive.Viewport className="fl-thread__viewport" autoScroll>
+        <ThreadPrimitive.Viewport className="fl-thread__viewport" autoScroll={false}
+          scrollToBottomOnInitialize={false} scrollToBottomOnRunStart={false} scrollToBottomOnThreadSwitch={false}>
           {state.mode === "work"
             ? (state.run
               ? <RunCard run={state.run} state={state} />

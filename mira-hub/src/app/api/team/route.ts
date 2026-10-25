@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
+import { inviteLinkExpiryCopy } from "@/capabilities/trial-access";
 import { createMagicToken, ensureSchema } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -67,7 +68,7 @@ async function sendInviteEmail(email: string, token: string, inviterEmail: strin
             <span style="font-size:24px;font-weight:700;color:#2563EB;">FactoryLM</span>
           </div>
           <h2 style="font-size:20px;font-weight:600;margin-bottom:8px;">Join your FactoryLM workspace</h2>
-          <p style="color:#94A3B8;margin-bottom:24px;">${inviterEmail} invited you to join their maintenance workspace. This link expires in 15 minutes and can only be used once.</p>
+          <p style="color:#94A3B8;margin-bottom:24px;">${inviterEmail} invited you to join their maintenance workspace. ${inviteLinkExpiryCopy()}</p>
           <a href="${inviteUrl}"
              style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#2563EB,#0891B2);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">
             Accept invite

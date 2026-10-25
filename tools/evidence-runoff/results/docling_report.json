@@ -1,0 +1,218 @@
+{
+ "cases": [
+  {
+   "case": "micro820-relay-VA",
+   "pdf_sha256": "6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4",
+   "page": 19,
+   "docling_s": 25.02,
+   "tables": 3,
+   "checks": [
+    {
+     "tokens": [
+      "120 V AC",
+      "15 A",
+      "1.5 A"
+     ],
+     "docling": false,
+     "text_plain": false,
+     "text_layout": true
+    },
+    {
+     "tokens": [
+      "1800",
+      "180"
+     ],
+     "docling": true,
+     "text_plain": true,
+     "text_layout": true
+    },
+    {
+     "tokens": [
+      "Volt-Amperes"
+     ],
+     "docling": true,
+     "text_plain": true,
+     "text_layout": true
+    }
+   ]
+  },
+  {
+   "case": "micro810-supply-columns",
+   "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605",
+   "page": 57,
+   "docling_s": 1.25,
+   "tables": 1,
+   "checks": [
+    {
+     "tokens": [
+      "Supply voltage range",
+      "85\u2026263V",
+      "20.4\u202626.4V DC"
+     ],
+     "docling": true,
+     "text_plain": false,
+     "text_layout": true
+    },
+    {
+     "tokens": [
+      "2080-LC10-12QWB",
+      "2080-LC10-12DWD"
+     ],
+     "docling": false,
+     "text_plain": false,
+     "text_layout": false
+    }
+   ]
+  },
+  {
+   "case": "e3-trip-class",
+   "pdf_sha256": "aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80",
+   "page": 113,
+   "docling_s": 1.79,
+   "tables": 1,
+   "checks": [
+    {
+     "tokens": [
+      "Trip Class",
+      "5",
+      "30"
+     ],
+     "docling": false,
+     "text_plain": false,
+     "text_layout": false
+    }
+   ]
+  },
+  {
+   "case": "e3-trip-summary",
+   "pdf_sha256": "aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80",
+   "page": 89,
+   "docling_s": 2.76,
+   "tables": 1,
+   "checks": [
+    {
+     "tokens": [
+      "Phase Loss",
+      "1.0 s"
+     ],
+     "docling": true,
+     "text_plain": false,
+     "text_layout": true
+    },
+    {
+     "tokens": [
+      "Trip Class",
+      "5...30"
+     ],
+     "docling": true,
+     "text_plain": false,
+     "text_layout": false
+    }
+   ]
+  },
+  {
+   "case": "se-canopen-m12-pinout",
+   "pdf_sha256": "37cef51be2e199e41113017cc98fbb1bb03d9ec7c57aadf78d6b942e4e9b09ae",
+   "page": 47,
+   "docling_s": 11.58,
+   "tables": 1,
+   "checks": [
+    {
+     "tokens": [
+      "4",
+      "CAN_H"
+     ],
+     "docling": true,
+     "text_plain": false,
+     "text_layout": true
+    },
+    {
+     "tokens": [
+      "5",
+      "CAN_L"
+     ],
+     "docling": true,
+     "text_plain": false,
+     "text_layout": true
+    },
+    {
+     "tokens": [
+      "3",
+      "CAN_GND"
+     ],
+     "docling": true,
+     "text_plain": false,
+     "text_layout": true
+    }
+   ]
+  },
+  {
+   "case": "se-m171-addr-can",
+   "pdf_sha256": "0960ac80367576997446b100bf56cc9a5dbb3f1ea2e047fc88f9d005acb8133b",
+   "page": 102,
+   "docling_s": 2.19,
+   "tables": 2,
+   "checks": [
+    {
+     "tokens": [
+      "Addr_CAN_OB"
+     ],
+     "docling": true,
+     "text_plain": true,
+     "text_layout": true
+    }
+   ]
+  },
+  {
+   "case": "se-tsx-ter",
+   "pdf_sha256": "291fff98121f76823502f042104379482c2d167cc7355da893275d7b7ea7d571",
+   "page": 55,
+   "docling_s": 1.0,
+   "tables": 1,
+   "checks": [
+    {
+     "tokens": [
+      "TER"
+     ],
+     "docling": true,
+     "text_plain": true,
+     "text_layout": true
+    },
+    {
+     "tokens": [
+      "mini-DIN"
+     ],
+     "docling": true,
+     "text_plain": true,
+     "text_layout": true
+    }
+   ]
+  },
+  {
+   "case": "plc5-p238-garbled",
+   "pdf_sha256": "9b62ea65488a6003a7a4ada940d563f249c765a97580a49fde67e7849600fa4a",
+   "page": 238,
+   "docling_s": 0.43,
+   "tables": 1,
+   "checks": [
+    {
+     "tokens": [
+      ".DLEN"
+     ],
+     "docling": true,
+     "text_plain": true,
+     "text_layout": true
+    },
+    {
+     "tokens": [
+      "bit 12"
+     ],
+     "docling": false,
+     "text_plain": false,
+     "text_layout": false
+    }
+   ]
+  }
+ ],
+ "max_rss_mb": 2177
+}

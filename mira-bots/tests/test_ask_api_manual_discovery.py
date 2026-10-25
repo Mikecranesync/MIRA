@@ -82,7 +82,7 @@ class TestManualDiscoverySearchBasic:
     def test_part_number_only_search_does_not_claim_an_oem(self, monkeypatch):
         received = {}
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             received["make"] = make
             received["model"] = model
             return dict(_UNVALIDATED_CANDIDATE)
@@ -103,7 +103,7 @@ class TestManualDiscoverySearchBasic:
     def test_validated_oem_result(self, monkeypatch):
         """A validated OEM candidate reports found/validated/is_direct_pdf/oem_host all True."""
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             assert make == "Rockwell Automation"
             assert model == "525"
             return dict(_VALIDATED_CANDIDATE)
@@ -127,7 +127,7 @@ class TestManualDiscoverySearchBasic:
         """An unvalidated candidate is still returned (found=True) but validated=False —
         the caller must be able to tell it must NOT auto-import this link."""
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             return dict(_UNVALIDATED_CANDIDATE)
 
         monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
@@ -144,7 +144,7 @@ class TestManualDiscoverySearchBasic:
     def test_no_result_returns_honest_miss(self, monkeypatch):
         """search_manual returning None -> found=False, candidate=None, reason=no_result."""
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             return None
 
         monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
@@ -162,7 +162,7 @@ class TestManualDiscoverySearchBasic:
     def test_never_fabricates_url_on_no_candidate(self, monkeypatch):
         """No candidate anywhere in the response when search_manual returns None."""
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             return None
 
         monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
@@ -195,7 +195,7 @@ class TestManualDiscoverySearchValidation:
     def test_blank_manufacturer_is_allowed_for_part_lookup(self, monkeypatch):
         received = {}
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             received["make"] = make
             received["model"] = model
             return None
@@ -213,7 +213,7 @@ class TestManualDiscoverySearchValidation:
         """A blank maker is safe for a part-only search; it never qualifies an OEM."""
         called = []
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             called.append((make, model))
             return None
 
@@ -245,7 +245,7 @@ class TestManualDiscoverySearchAuth:
     """
 
     def _fake_search(self, monkeypatch, calls):
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             calls.append((make, model))
             return None
 
@@ -363,7 +363,7 @@ class TestManualDiscoverySearchIdentity:
     """
 
     def _fake_search(self, monkeypatch, calls):
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             calls.append((make, model))
             return None
 
@@ -445,7 +445,7 @@ class TestManualDiscoveryQuota:
         import ask_api.manual_discovery as md
         from shared.manual_search import search as _search_mod
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             # Set the SAME contextvar the real _serper_search gate would, so
             # this fake behaves exactly like a real denial for the purpose of
             # pinning the endpoint's branching on budget.quota_denied.
@@ -545,7 +545,7 @@ class TestManualDiscoveryQuota:
         """Negative control: a plain miss (budget.quota_denied stays None)
         must NOT be mapped to quota_exceeded."""
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             return None
 
         monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
@@ -613,7 +613,7 @@ class TestQuotaDenialInterruptsJudgedSearch:
         import ask_api.manual_discovery as md
         from shared.manual_search import search as _search_mod
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             budget = _search_mod._provider_budget.get()
             assert budget is not None
             if denial:
@@ -710,7 +710,7 @@ class TestManualDiscoverySearchErrorHandling:
         assert body["reason"] == "search_unavailable"
 
     def test_search_manual_exception_returns_200_search_unavailable(self, monkeypatch):
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             raise RuntimeError("SERPER_API_KEY is not configured")
 
         monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
@@ -724,10 +724,48 @@ class TestManualDiscoverySearchErrorHandling:
         assert body["found"] is False
         assert body["reason"] == "search_unavailable"
 
+    def test_timeout_and_error_say_which_in_reason_detail(self, monkeypatch):
+        # #4401: both read "search_unavailable" to the Hub (the technician sees the
+        # one approved outage sentence), but the record must say WHICH — a slow search
+        # was misdiagnosed as an outage on staging 2026-10-13.
+        monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.05")
+
+        async def slow_search_manual(make, model, deadline_at=None):
+            await asyncio.sleep(1.0)
+            return dict(_VALIDATED_CANDIDATE)
+
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", slow_search_manual)
+        timed_out = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+
+        async def broken_search_manual(make, model, deadline_at=None):
+            raise RuntimeError("boom")
+
+        monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "50")
+        monkeypatch.setattr("ask_api.manual_discovery.search_manual", broken_search_manual)
+        errored = (
+            _client()
+            .post(
+                "/manual-discovery/search",
+                json={"manufacturer": "Rockwell Automation", "model": "525"},
+            )
+            .json()
+        )
+
+        assert timed_out["reason"] == errored["reason"] == "search_unavailable"
+        assert timed_out["reason_detail"] == "Manual search ran out of time before it finished."
+        assert errored["reason_detail"] == "Manual search stopped on an internal error."
+
     def test_timeout_returns_search_unavailable(self, monkeypatch):
         monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.05")
 
-        async def slow_search_manual(make, model):
+        async def slow_search_manual(make, model, deadline_at=None):
             await asyncio.sleep(1.0)
             return dict(_VALIDATED_CANDIDATE)
 
@@ -749,7 +787,7 @@ class TestManualDiscoveryCatalogPriority:
     def test_catalog_number_used_when_supplied(self, monkeypatch):
         received = {}
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             received["make"] = make
             received["model"] = model
             return None
@@ -770,7 +808,7 @@ class TestManualDiscoveryCatalogPriority:
     def test_model_used_when_no_catalog_number(self, monkeypatch):
         received = {}
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             received["make"] = make
             received["model"] = model
             return None
@@ -821,6 +859,48 @@ class TestIsOemHost:
         assert is_oem_host("SMC", "notsmc.eu") is False
         assert is_oem_host("SMC", "smc.eu.attacker.net") is False
 
+    def test_emerson_documentation_host_is_oem(self):
+        # #4402: Emerson took over GE's PLC/HMI line; its manuals are served from
+        # www.emerson.com/documents/... Without an entry, a genuine first-party
+        # Emerson PDF could never auto-import (oem_host gates auto-import).
+        assert is_oem_host("Emerson", "www.emerson.com") is True
+        assert is_oem_host("emerson", "emerson.com") is True
+
+    def test_ge_automation_names_map_to_emerson(self):
+        # Technicians read "GE Fanuc" off the hardware; the documentation for
+        # GE's PLC/HMI line now lives on emerson.com.
+        assert is_oem_host("GE Fanuc", "www.emerson.com") is True
+        assert is_oem_host("GE Intelligent Platforms", "www.emerson.com") is True
+        assert is_oem_host("GE Automation", "www.emerson.com") is True
+
+    def test_emerson_automation_division_names_map_to_emerson(self):
+        # Nameplates and catalogs also carry the automation divisions' names.
+        assert is_oem_host("Emerson Automation Solutions", "www.emerson.com") is True
+        assert is_oem_host("Emerson Process Management", "www.emerson.com") is True
+
+    def test_emerson_electric_is_not_mapped_to_emerson_com(self):
+        # "Emerson Electric" is also the old motor brand (now Nidec / US Motors),
+        # whose manuals are not on emerson.com — ambiguous, like a bare "GE".
+        assert is_oem_host("Emerson Electric", "www.emerson.com") is False
+
+    def test_a_bare_ge_is_not_mapped_to_emerson(self):
+        # A bare "GE" is ambiguous: GE's motor, relay and power lines are not
+        # Emerson's, and oem_host gates auto-import. It must not make an
+        # emerson.com PDF count as the maker's own documentation.
+        assert is_oem_host("GE", "www.emerson.com") is False
+
+    def test_ge_lookalike_names_do_not_map_to_emerson(self):
+        # Exact-key lookup: a name that merely contains "ge" must not inherit
+        # Emerson's host, and General Electric's non-automation lines are not
+        # Emerson's.
+        assert is_oem_host("Gefran", "www.emerson.com") is False
+        assert is_oem_host("Georg Fischer", "www.emerson.com") is False
+        assert is_oem_host("General Electric", "www.emerson.com") is False
+
+    def test_emerson_does_not_match_lookalike_hosts(self):
+        assert is_oem_host("Emerson", "notemerson.com") is False
+        assert is_oem_host("GE Fanuc", "emerson.com.attacker.net") is False
+
     def test_trusted_distributor_is_NOT_oem_host(self):
         # Codex P1 (2026-08-16): docs.rs-online.com is on the general trusted
         # list, but oem_host gates AUTO-verify — a distributor (or another
@@ -870,7 +950,7 @@ class TestManualDiscoverySearchStats:
         TestManualDiscoveryQuota above."""
         from shared.manual_search import search as _search_mod
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             budget = _search_mod._provider_budget.get()
             assert budget is not None, "the endpoint must open provider_query_budget()"
             budget.used += used
@@ -951,7 +1031,7 @@ class TestManualDiscoverySearchStats:
         import ask_api.manual_discovery as md
         from shared.manual_search import search as _search_mod
 
-        async def fake_search(make, model):
+        async def fake_search(make, model, deadline_at=None):
             _search_mod._note_examined(["https://linpub.example/news.pdf"])
             return {
                 "url": "https://linpub.example/news.pdf",
@@ -1003,7 +1083,7 @@ class TestManualDiscoverySearchStats:
     def test_search_unavailable_path_reports_search_stats_from_the_spent_budget(self, monkeypatch):
         from shared.manual_search import search as _search_mod
 
-        async def fake_search_manual(make, model):
+        async def fake_search_manual(make, model, deadline_at=None):
             budget = _search_mod._provider_budget.get()
             assert budget is not None
             budget.used += 2
@@ -1099,6 +1179,10 @@ class TestManualDiscoverySearchStats:
             await asyncio.sleep(30)  # stalls past the endpoint timeout
 
         monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "0.2")
+        # The search's own deadline handling (#4401) is pushed past the endpoint's
+        # timeout so this test still covers the ENDPOINT-cancels-mid-read path —
+        # reachable whenever any stage overruns its budget.
+        monkeypatch.setattr(judge_mod, "RETURN_RESERVE_S", -60.0)
         monkeypatch.setattr(search_mod._judge, "judge_enabled", lambda: True)
         monkeypatch.setattr(search_mod, "_serper_search", fake_serper)
         monkeypatch.setattr(judge_mod, "fetch_pdf_bytes", fake_fetch)
@@ -1151,7 +1235,7 @@ def test_all_rejected_disappears_as_no_manual_found(monkeypatch):
     newspaper to 'review'."""
     import ask_api.manual_discovery as md
 
-    async def fake_search(make, model):
+    async def fake_search(make, model, deadline_at=None):
         return {
             "url": "https://linpub.example/news.pdf",
             "title": "Car show",
@@ -1177,3 +1261,24 @@ def test_all_rejected_disappears_as_no_manual_found(monkeypatch):
     assert d["reason"] == "judged_not_applicable"
     assert d["judged_rejected"][0]["reason"] == "newspaper"
     assert d["oem_request_url"].endswith("/owners-manual-request")
+
+
+def test_discovery_passes_its_own_deadline_to_search(monkeypatch):
+    """Codex #4233 r2: the judge's optional upgrade batch is capped by the endpoint's
+    own MANUAL_DISCOVERY_TIMEOUT, which only works if the deadline is passed down."""
+    import time
+
+    monkeypatch.setenv("MANUAL_DISCOVERY_TIMEOUT", "20")
+    seen: dict = {}
+
+    async def fake_search_manual(make, model, deadline_at=None):
+        seen["deadline_at"], seen["now"] = deadline_at, time.monotonic()
+        return None
+
+    monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
+    resp = _client().post(
+        "/manual-discovery/search", json={"manufacturer": "Rockwell", "model": "525"}
+    )
+    assert resp.status_code == 200
+    assert seen["deadline_at"] is not None
+    assert 19.0 <= seen["deadline_at"] - seen["now"] <= 20.0

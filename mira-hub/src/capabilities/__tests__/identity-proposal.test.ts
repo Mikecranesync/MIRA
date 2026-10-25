@@ -460,3 +460,75 @@ describe("Golden Walk — a product-series name before the model", () => {
     expect(proposeIdentityFromText("Danfoss VLT AutomationDrive AquaDrive FC 302", MAKERS)).toBeNull();
   });
 });
+
+// Golden Walk 2026-10-05 (staging a9795440): "I'm at an ABB ACS580 drive" was
+// proposed as model "580". The manual search then could not confirm the ACS580
+// manual covered "580", left it off, and ABB flipped between PASS and FAIL. The
+// parser narrows ACS to its digits on purpose (model_number substring scoping),
+// but the identity a technician confirms is the manufacturer's model name.
+describe("an ACS model keeps its series in the proposal", () => {
+  const ABB = ["ABB", "Rockwell Automation", "Siemens"];
+  it("proposes ACS580 for a joined ACS580", () => {
+    expect(proposeIdentityFromText("I'm at an ABB ACS580 drive and need its manual", ABB)).toEqual({ manufacturer: "ABB", model: "ACS580" });
+  });
+  it("proposes ACS355 for a spaced 'ACS 355'", () => {
+    expect(proposeIdentityFromText("ABB ACS 355 trips on overvoltage", ABB)).toEqual({ manufacturer: "ABB", model: "ACS355" });
+  });
+  it("is the same machine when the model is repeated in either spelling", () => {
+    expect(proposeIdentityFromText("ABB ACS580 faulted. What does fault 3210 mean on the ACS580?", ABB)).toEqual({ manufacturer: "ABB", model: "ACS580" });
+  });
+  it("control: PowerFlex and Micro aliases still narrow to the family number", () => {
+    expect(proposeIdentityFromText("Rockwell Automation PF525 trips on startup", ABB)).toEqual({ manufacturer: "Rockwell Automation", model: "525" });
+    expect(proposeIdentityFromText("Rockwell Automation Micro820 lost its program", ABB)).toEqual({ manufacturer: "Rockwell Automation", model: "820" });
+  });
+  it("control: two different ACS models are still two machines", () => {
+    expect(proposeIdentityFromText("Compare ABB ACS580 and ACS880", ABB)).toBeNull();
+  });
+});
+
+// Golden Walk 2026-10-05: "I'm at an SEW-Eurodrive MOVITRAC LTE-B drive" got no
+// proposal. SEW-Eurodrive is in the library; the variant "LTE-B" carries no digit,
+// so it never parsed as a model. After a KNOWN series name, a hyphenated
+// all-caps variant code is the model, and the series stays in it — "LTE-B"
+// alone names nothing a manual search can confirm.
+describe("a digitless variant code after a known series name", () => {
+  const SEW = ["SEW-Eurodrive", "Siemens", "Rockwell Automation"];
+  it("proposes MOVITRAC LTE-B", () => {
+    expect(proposeIdentityFromText("I'm at an SEW-Eurodrive MOVITRAC LTE-B drive and need its manual", SEW)).toEqual({
+      manufacturer: "SEW-Eurodrive",
+      model: "MOVITRAC LTE-B",
+    });
+  });
+  it("proposes MOVITRAC LTP-B", () => {
+    expect(proposeIdentityFromText("SEW-Eurodrive MOVITRAC LTP-B shows O-Volt", SEW)).toEqual({
+      manufacturer: "SEW-Eurodrive",
+      model: "MOVITRAC LTP-B",
+    });
+  });
+  it("control: without a series name a digitless code is never a model", () => {
+    expect(proposeIdentityFromText("SEW-Eurodrive LTE-B drive faulted", SEW)).toBeNull();
+  });
+  it("control: an ordinary capitalised word after a series name is never a model", () => {
+    expect(proposeIdentityFromText("Siemens SINAMICS FAULT on the line", SEW)).toBeNull();
+    expect(proposeIdentityFromText("Siemens SINAMICS VFD keeps tripping", SEW)).toBeNull();
+  });
+  it("control: an interface or label code after a series name is never a model", () => {
+    expect(proposeIdentityFromText("SEW-Eurodrive MOVITRAC RS-485 link down", SEW)).toBeNull();
+    expect(proposeIdentityFromText("SEW-Eurodrive MOVITRAC SN-AB serial", SEW)).toBeNull();
+  });
+  it("control: two variants are two machines", () => {
+    expect(proposeIdentityFromText("Compare SEW-Eurodrive MOVITRAC LTE-B and MOVITRAC LTP-B", SEW)).toBeNull();
+  });
+  it("review F1: a variant after TWO series names is never proposed with a word dropped", () => {
+    expect(proposeIdentityFromText("Danfoss VLT AutomationDrive XX-Y is down", ["Danfoss"])).toBeNull();
+  });
+  it("review F2: a lowercase second variant still makes it two machines", () => {
+    expect(proposeIdentityFromText("Compare SEW-Eurodrive MOVITRAC LTE-B and movitrac ltp-b", SEW)).toBeNull();
+  });
+  it("control: a lowercase variant is not proposed, like every lowercase model", () => {
+    expect(proposeIdentityFromText("SEW-Eurodrive movitrac lte-b drive", SEW)).toBeNull();
+  });
+  it("control: a digit-bearing model after a series name keeps its existing form", () => {
+    expect(proposeIdentityFromText("Siemens SINAMICS G120C trips on overvoltage", SEW)).toEqual({ manufacturer: "Siemens", model: "G120C" });
+  });
+});

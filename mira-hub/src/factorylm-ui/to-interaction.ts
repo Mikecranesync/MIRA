@@ -34,12 +34,16 @@ import type {
   SafetyNoticeEntry,
   VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
-import { isMachineEvidenceEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
+import { isMachineEvidenceEntry, isProviderFailureEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
+import { API_BASE } from "@/lib/config";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
+import { PROVIDER_EXHAUSTION_COPY } from "@/capabilities/provider-health";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
-import { splitEvidence } from "@/components/equipment/notebook-chat-utils";
+import { BASIS_LABEL, splitEvidence } from "@/components/equipment/notebook-chat-utils";
 
 type StatusAwareStreamResult = StreamResult & { statusMessage?: string | null };
+
+const PROVIDER_FAILURE_MESSAGES = new Set(Object.values(PROVIDER_EXHAUSTION_COPY));
 
 const GENERIC_ABSTENTION_COPY = "I couldn't find that in the selected sources.";
 const PHOTO_ABSTENTION_COPY =
@@ -66,6 +70,10 @@ export interface HubNotebookMeta {
    * omitted: not (yet) confirmed.
    */
   readonly confirmedIdentity?: { readonly manufacturer: string; readonly model: string } | null;
+  /** The docIds of the notebook's own sources (not rejected). The basis chip
+   *  names the notebook only for an answer whose citations are all among
+   *  these; omitted, it never does (#4025, Codex #4301 F1). */
+  readonly notebookDocIds?: readonly string[];
   /** One ISO timestamp per hydrate/turn; the caller passes it so tests stay deterministic. */
   readonly capturedAt: string;
 }
@@ -107,6 +115,38 @@ export function basisKind(basis: string): EvidenceBasisKind {
   return BASIS_BY_VALUE[normalized] ?? "general_reasoning";
 }
 
+/** One caption per shell basis kind — the classic notebook's wording. Typed
+ *  against the SHELL's kind union, so a kind added there without a caption
+ *  here fails to compile instead of rendering an undefined label. */
+const BASIS_CAPTION: Readonly<Record<EvidenceBasisKind, string>> = BASIS_LABEL;
+
+/** A documentation basis whose sources this adapter cannot place. */
+const CITED_DOCUMENTATION_CAPTION = "Grounded in the cited documentation.";
+
+/** True only when every citation is one of the notebook's own sources. The
+ *  route sends `oem_documentation` for a shared-library answer as well
+ *  (chat/route.ts `oemRetrieval`); only its frame label told the two apart,
+ *  and that label never reaches this adapter. Library chunks carry no docId
+ *  (manual-rag.ts `ManualChunk.docId`), so they can never match. */
+function citesOnlyNotebookSources(citations: readonly EvidenceCitation[], notebookDocIds: readonly string[] | undefined): boolean {
+  if (!notebookDocIds || citations.length === 0) return false;
+  return citations.every((c) => c.docId !== "" && notebookDocIds.includes(c.docId));
+}
+
+/** The answer's basis chip. Its words are a caption for the kind (#4025: it
+ *  read "● oem_documentation" under a technician's own cited upload), so an
+ *  unknown value reads as general guidance, never as itself. A documentation
+ *  basis names the notebook only when that is provable from the citations
+ *  (Codex #4301 F1); otherwise it names no scope. `authorized` is
+ *  server-owned; nothing here carries it. */
+function basisPart(basis: string, citations: readonly EvidenceCitation[], notebookDocIds: readonly string[] | undefined): InteractionPart {
+  const kind = basisKind(basis);
+  const label = kind === "oem_documentation" && !citesOnlyNotebookSources(citations, notebookDocIds)
+    ? CITED_DOCUMENTATION_CAPTION
+    : BASIS_CAPTION[kind];
+  return { type: "evidence_basis", basis: { kind, label, authorized: false } };
+}
+
 /**
  * A shell `SourceReference.id` is TURN-SCOPED (Codex #3839 F1). Citation numbers
  * restart at "1" in every answer, so a thread-wide id of "1" would make the
@@ -123,14 +163,47 @@ export function answerTurnId(rowId: string): string {
   return `${rowId}-a`;
 }
 
+/** The byte route that serves a parked original (photo or document) inline —
+ *  the same door the classic notebook's photo thumbnail, its source page and
+ *  the mobile file preview already use. */
+export function fileUrl(fileId: string): string {
+  return `${API_BASE}/api/namespace/files/${encodeURIComponent(fileId)}/`;
+}
+
+/** Where a citation opens, by the classic source page's rule
+ *  ((hub)/equipment/[id]/source/[docId]): the canonical origin wins (085), so a
+ *  photo-derived doc opens the photograph, which has no page; otherwise the
+ *  doc's own parked file at its cited page; otherwise a manufacturer manual's
+ *  own http(s) address. Undefined when there is nothing to open. */
+export function citationHref(citation: EvidenceCitation): string | undefined {
+  const page = citation.page ? `#page=${citation.page}` : "";
+  if (citation.originFileId) return fileUrl(citation.originFileId);
+  if (citation.fileId) return `${fileUrl(citation.fileId)}${page}`;
+  const url = citation.sourceUrl ?? "";
+  if (/^https?:\/\//i.test(url)) return url.includes("#") ? url : `${url}${page}`;
+  return undefined;
+}
+
+/** The photo a question carried, as an attachment on the question turn itself. */
+export function questionPhotoPart(entry: { fileId: string }): InteractionPart {
+  return {
+    type: "attachment",
+    attachment: { id: entry.fileId, name: "Photo", mediaType: "image/*", kind: "photo", status: "ready", previewUrl: fileUrl(entry.fileId) },
+  };
+}
+
 export function sourceFor(citation: EvidenceCitation, turnId: string): SourceReference {
   const page = citation.page ?? null;
   const locator = page !== null ? `p. ${page}` : citation.quote ? citation.quote.slice(0, 80) : "cited passage";
+  const href = citationHref(citation);
   return {
     id: sourceIdFor(turnId, citation.citationId),
     title: citation.sourceTitle,
     kind: citation.fileId ? "workspace_file" : "oem_documentation",
     locator,
+    ...(href ? { href } : {}),
+    // The canonical origin of a photo-derived source is the photograph (085).
+    ...(href && citation.originFileId ? { media: "image" as const } : {}),
   };
 }
 
@@ -154,7 +227,7 @@ export function machineEvidencePart(entry: MachineEvidenceEntry): InteractionPar
 export function visualObservationPart(entry: VisualObservationEntry): InteractionPart {
   return {
     type: "visual_observation",
-    observation: { fileId: entry.fileId, capturedAt: entry.capturedAt, provenance: "phone_photo", verified: false },
+    observation: { fileId: entry.fileId, capturedAt: entry.capturedAt, provenance: "phone_photo", verified: false, previewUrl: fileUrl(entry.fileId) },
   };
 }
 
@@ -184,6 +257,13 @@ export function safetyNoticesOf(evidence: readonly unknown[]): SafetyNoticeEntry
 
 export function hasTerminalSafetyStop(evidence: readonly unknown[]): boolean {
   return safetyNoticesOf(evidence).some(isTerminalSafetyNotice);
+}
+
+/** The classic notebook draws every safety banner ABOVE the answer (`NotebookChat`
+ *  `Bubble`), and the shell renders parts in array order — so notices lead, live
+ *  and hydrated alike. Caught by the fidelity harness (#4439). */
+function safetyFirst(parts: InteractionPart[]): InteractionPart[] {
+  return [...parts.filter((p) => p.type === "safety_notice"), ...parts.filter((p) => p.type !== "safety_notice")];
 }
 
 export function safetyNoticePart(entry: SafetyNoticeEntry): InteractionPart {
@@ -243,7 +323,7 @@ export function identityProposalOf(evidence: readonly unknown[]): IdentityPropos
  *  - `status === "error"` with text is a stop; without text a provider failure.
  *  - `status === "insufficient_evidence"` renders the abstention text only.
  */
-export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped?: boolean; turnId: string }): InteractionPart[] {
+export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped?: boolean; turnId: string; notebookDocIds?: readonly string[] }): InteractionPart[] {
   const parts: InteractionPart[] = [];
   const truncated = !result.sawStatus;
   const stopped = opts.stopped === true;
@@ -262,10 +342,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
 
   if (!nonAnswer) {
     for (const c of result.citations) parts.push({ type: "source", source: sourceFor(c, opts.turnId) });
-    if (result.basis) {
-      // `authorized` is server-owned; the stream carries no such signal, so it is never asserted.
-      parts.push({ type: "evidence_basis", basis: { kind: basisKind(result.basis), label: result.basis, authorized: false } });
-    }
+    if (result.basis) parts.push(basisPart(result.basis, result.citations, opts.notebookDocIds));
     if (result.machineEvidence) parts.push(machineEvidencePart(result.machineEvidence));
     if (result.visualEvidence) parts.push(visualObservationPart(result.visualEvidence));
     if (result.safetyNotice) parts.push(safetyNoticePart(result.safetyNotice));
@@ -274,7 +351,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
     // hydrated row uses, so live and reloaded turns render identically.
     if (result.hazardNotice) parts.push(safetyNoticePart(result.hazardNotice));
     if (result.followups.length) parts.push({ type: "followups", suggestions: result.followups });
-    return parts;
+    return safetyFirst(parts);
   }
 
   if (stopped) {
@@ -285,9 +362,19 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
       error: { code: "provider_failure", message: "The answer ended before it completed.", retryable: true },
     });
   } else {
-    parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
+    // Only the server's technician copy for provider exhaustion (#4356) is shown
+    // verbatim; other status messages ("see server logs") are operator text.
+    const serverMessage = result.statusMessage?.trim();
+    if (serverMessage && PROVIDER_FAILURE_MESSAGES.has(serverMessage)) {
+      parts.push({
+        type: "error",
+        error: { code: "provider_failure", message: serverMessage, retryable: false },
+      });
+    } else {
+      parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
+    }
   }
-  return parts;
+  return safetyFirst(parts);
 }
 
 /**
@@ -347,7 +434,8 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     id: `${row.id}-q`,
     threadId,
     role: "user",
-    parts: [{ type: "text", text: row.question }],
+    // The technician's own photo shows on their own message, as in any chat app.
+    parts: [{ type: "text", text: row.question }, ...visualEvidence.map(questionPhotoPart)],
     lifecycle: "completed",
     context,
     createdAt: at,
@@ -381,16 +469,20 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
   }
   if (!stopped && row.answerStatus !== "error") {
     for (const c of citations) parts.push({ type: "source", source: sourceFor(c, answerId) });
-    if (row.basis) {
-      parts.push({ type: "evidence_basis", basis: { kind: basisKind(row.basis), label: row.basis, authorized: false } });
-    }
+    if (row.basis) parts.push(basisPart(row.basis, citations, meta.notebookDocIds));
     for (const m of machineEvidence) parts.push(machineEvidencePart(m));
     for (const v of visualEvidence) parts.push(visualObservationPart(v));
     for (const n of notices) parts.push(safetyNoticePart(n));
   } else if (stopped) {
     parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } });
   } else {
-    parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: false } });
+    // #4374: the persisted provider-exhaustion reason shows the same copy the
+    // live turn did. Never retryable: the host's Retry replays the same
+    // idempotent request (#4374 Codex R2); a scoped Retry is tracked on #4366.
+    // `PersistedTurn.evidence` (guarded legacy type) predates this marker; read it as unknown.
+    const failure = (row.evidence as readonly unknown[]).find(isProviderFailureEntry);
+    const message = failure ? PROVIDER_EXHAUSTION_COPY[failure.reason] : "The answer could not be completed.";
+    parts.push({ type: "error", error: { code: "provider_failure", message, retryable: false } });
   }
 
   // Same precedence as `lifecycleFromStream`: a persisted TERMINAL refusal stays a
@@ -406,7 +498,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     id: answerId,
     threadId,
     role: "assistant",
-    parts,
+    parts: safetyFirst(parts),
     lifecycle,
     context,
     createdAt: at,
@@ -444,7 +536,57 @@ export function withManualSearchStatus(
     model: status.model,
     running: status.running,
     ...(status.message ? { message: status.message } : {}),
+    ...(status.manualUrl ? { manualUrl: status.manualUrl } : {}),
   };
+  return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
+}
+
+/** The follow-up suggestions of the answer that just finished streaming, and
+ *  the question they answered (#4454). */
+export interface SettledFollowups {
+  readonly question: string;
+  readonly suggestions: readonly string[];
+  /** Answer turn ids already in the thread when the send started. */
+  readonly answeredBefore: readonly string[];
+}
+
+/** The question text a user turn carried, trimmed; null for any other turn. */
+function askedText(turn: InteractionTurn | undefined): string | null {
+  if (turn?.role !== "user") return null;
+  const text = turn.parts.find((p) => p.type === "text");
+  return text?.type === "text" ? text.text.trim() : null;
+}
+
+/**
+ * #4454 — saved rows never carry follow-up suggestions, so once `hub-host.tsx`
+ * re-loads the thread after a stream and drops the live turn, the chips the
+ * technician just saw vanished. The host keeps the finished answer's
+ * suggestions; this puts them back on the answer that send produced: the one
+ * answer to that question that was not in the thread when the send started.
+ * It must also be the LAST answer and have completed. If another device
+ * answered the same question meanwhile, two answers qualify and neither can be
+ * told apart from here, so neither gets them. Same overlay shape as
+ * `withManualSearchStatus`, applied before it so the order matches the live turn.
+ */
+export function withSettledFollowups(
+  turns: readonly InteractionTurn[],
+  settled: SettledFollowups | null,
+): InteractionTurn[] {
+  if (!settled || settled.suggestions.length === 0) return [...turns];
+  const before = new Set(settled.answeredBefore);
+  const asked = settled.question.trim();
+  let lastAssistantIndex = -1;
+  const produced: number[] = [];
+  for (let i = 0; i < turns.length; i++) {
+    const t = turns[i]!;
+    if (t.role !== "assistant") continue;
+    lastAssistantIndex = i;
+    if (!before.has(t.id) && askedText(turns[i - 1]) === asked) produced.push(i);
+  }
+  if (produced.length !== 1 || produced[0] !== lastAssistantIndex) return [...turns];
+  const answer = turns[lastAssistantIndex]!;
+  if (answer.lifecycle !== "completed" || answer.parts.some((p) => p.type === "followups")) return [...turns];
+  const part: InteractionPart = { type: "followups", suggestions: settled.suggestions };
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
 }
 

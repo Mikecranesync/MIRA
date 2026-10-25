@@ -1,0 +1,12 @@
+PASS pending chip shown 
+PASS pending chip has image thumbnail 
+PASS pending chip has remove button 
+PASS pending chip text is short (no 'captured for') "turn2-photo-siemens-tp700-nameplate.jpg\n×"
+PASS send enabled with photo only 
+PASS user's message appears within 1s of Send 
+PASS user's message shows the photo while sending 
+PASS composer cleared after send 
+PASS saved user message shows the photo 
+PASS after reload the user message still shows the photo http://localhost:3131/v3/?…
+PASS photo opens in-app viewer (not a new tab) 
+PASS Escape closes the viewer 

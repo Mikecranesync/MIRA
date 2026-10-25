@@ -1,0 +1,89 @@
+name: Hub fidelity (advisory)
+
+# Behavioral-fidelity harness, P2 (ADR-0038, PRD 2026-10-14, #4439): drives the
+# classic notebook chat (reference) and /v3 (clone) against the SAME oracle
+# backend and fails when what they send or show diverges. See
+# mira-hub/tests/fidelity/README.md.
+#
+# ADVISORY: not a required status check, so an on:-level path filter is safe
+# here (a required check must always report — see hub-e2e.yml). Promotion into
+# the acceptance receipt is P4 and needs 30 days of reliability data first.
+#
+# No secrets and no environment: the harness boots `next dev` with a throwaway
+# AUTH_SECRET minted per run, and every browser request is served from
+# mira-hub/tests/fidelity/fixtures/oracle.json ($0 inference, no DB).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mira-hub/src/factorylm-ui/**'
+      - 'mira-hub/src/components/equipment/**'
+      - 'mira-hub/src/app/(hub)/equipment/**'
+      - 'mira-hub/src/app/v3/**'
+      - 'mira-hub/src/app/api/equipment-notebooks/**'
+      - 'mira-hub/src/lib/notebook-chat-types.ts'
+      - 'mira-hub/src/middleware.ts'
+      - 'packages/factorylm-ui/**'
+      - 'packages/factorylm-interaction/**'
+      - 'packages/factorylm-theme/**'
+      - 'mira-hub/tests/fidelity/**'
+      - '.github/workflows/hub-fidelity.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hub-fidelity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  fidelity:
+    name: Hub fidelity — classic notebook vs /v3 (advisory)
+    # Pinned: ubuntu-26.04 has no Playwright chromium build (#4697).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install mira-hub deps
+        working-directory: mira-hub
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          ln -sfn ../mira-hub/node_modules ../packages/node_modules  # shared FactoryLM shell resolves react/@assistant-ui from Hub (#3839)
+
+      - name: Install Playwright Chromium
+        working-directory: mira-hub
+        run: |
+          # Hosted Ubuntu can carry a stale azure-cli apt source that 403s (see hub-e2e.yml).
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources
+          npx playwright install chromium --with-deps
+
+      # The oracle's declared invalidation trigger (README): regenerate it from
+      # the REAL chat/detail/list routes and fail if the committed fixture is stale.
+      - name: Oracle is current
+        working-directory: mira-hub
+        run: |
+          npx vitest run --config tests/fidelity/vitest.fidelity.config.ts
+          git diff --exit-code -- tests/fidelity/fixtures/oracle.json
+
+      - name: Fidelity checks (AC2–AC6)
+        working-directory: mira-hub
+        run: npx playwright test --config tests/fidelity/playwright.fidelity.config.ts
+
+      - name: Upload records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fidelity-records
+          path: |
+            mira-hub/tests/fidelity/.out/records.json
+            mira-hub/test-results/
+          if-no-files-found: ignore
+          retention-days: 14

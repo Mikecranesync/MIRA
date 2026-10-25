@@ -384,3 +384,22 @@ describe("#3962 — evidence in context that the answer never used", () => {
     expect(codesOf(p)).not.toContain("ANSWER_IGNORED_VISUAL_EVIDENCE");
   });
 });
+
+describe("CITED_VALUE_NOT_IN_SOURCE (#4315, observe-only)", () => {
+  it("fires when the answer cited a value the cited page does not contain", () => {
+    const p = emptyPacket(BASE_INIT);
+    p.answer_gate.citations_shipped = 1;
+    p.answer_gate.cited_values_unsupported = 2;
+    p.answer_gate.citation_quote_fallbacks = 1;
+    const a = detectAnomalies(p).find((x) => x.code === "CITED_VALUE_NOT_IN_SOURCE");
+    expect(a?.detail).toEqual({ unsupported_value_count: 2, citations_shipped: 1, citation_quote_fallbacks: 1 });
+  });
+
+  it("does NOT fire at zero, nor on packets that predate the field", () => {
+    const p = emptyPacket(BASE_INIT);
+    expect(codesOf(p)).not.toContain("CITED_VALUE_NOT_IN_SOURCE");
+    p.answer_gate.cited_values_unsupported = 0;
+    expect(codesOf(p)).not.toContain("CITED_VALUE_NOT_IN_SOURCE");
+    expect(codesOf(turn1 as unknown as TurnEvidencePacket)).not.toContain("CITED_VALUE_NOT_IN_SOURCE");
+  });
+});

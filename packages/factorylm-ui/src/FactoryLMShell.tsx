@@ -126,6 +126,20 @@ export function closeLayerAction(layer: LayerName): ShellAction {
 }
 
 export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, onSelectProject, navigationFooter, conversationSurface = "classic" }: FactoryLMShellProps) {
+  // Only an accepted composer send re-arms scrolling. Message IDs can change
+  // when a live answer is persisted or older history is refreshed.
+  const [sendRevision, setSendRevision] = useState(0);
+  const composerHooks = hooks?.onSend ? {
+    ...hooks,
+    onSend: (...args: Parameters<NonNullable<HostHooks["onSend"]>>) => {
+      hooks.onSend!(...args);
+      setSendRevision((revision) => revision + 1);
+    },
+  } : hooks;
+  const composerDispatch: Dispatch<ShellAction> = (action) => {
+    dispatch(action);
+    if (action.type === "mock-send" && state.draft.trim()) setSendRevision((revision) => revision + 1);
+  };
   const narrowViewport = useNarrowViewport();
   // `layered` rather than the old `mobile`: the drawer overlays the page on any
   // narrow viewport, which is what the stylesheet has always done.
@@ -154,14 +168,20 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
   closeTopRef.current = closeTop;
 
   useEffect(() => {
+    // A native modal <dialog> (the photo viewer) sits above every shell layer:
+    // Escape is the browser's to close it, and Back closes it before anything
+    // underneath — never navigates away from an open photo.
+    const openDialog = () => document.querySelector<HTMLDialogElement>("dialog[open]");
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.key !== "Escape" || event.defaultPrevented || openDialog()) return;
       event.preventDefault();
       closeTopRef.current();
     };
     const onBack = (event: Event) => {
       event.preventDefault();
-      closeTopRef.current();
+      const dialog = openDialog();
+      if (dialog) dialog.close();
+      else closeTopRef.current();
     };
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener(BACK_EVENT, onBack);
@@ -190,10 +210,10 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
           conversation, so it is read before any answer it qualifies. */}
       <DemoNotice state={state} hooks={hooks} />
       {conversationSurface === "assistant"
-        ? <AssistantThread state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
-        : <Conversation state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />}
+        ? <AssistantThread sendRevision={sendRevision} state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
+        : <Conversation sendRevision={sendRevision} state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />}
       {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} turnId={state.thread.turns.at(-1)?.id} hooks={hooks} /> : null}
-      <Composer state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} attachmentTrapsTab={top === "attachment-menu"} />
+      <Composer state={state} dispatch={composerDispatch} adapter={adapter} hooks={composerHooks} attachmentTrapsTab={top === "attachment-menu"} />
     </main>
     <Overlay layer="inspector" active={inspectorOpen(state)} modal={layered} trapsTab={top === "inspector"}>
       <Inspector state={state} />

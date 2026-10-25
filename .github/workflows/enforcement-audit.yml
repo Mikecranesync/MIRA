@@ -93,7 +93,8 @@ jobs:
 
   hub-audit:
     name: Hub Page Audit
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no Playwright chromium build (#4697).
+    runs-on: ubuntu-24.04
     needs: [hub-changes]
     # needs-skipped jobs propagate: always() unwinds that so schedule/dispatch
     # still run when hub-changes itself was skipped (non-PR events).

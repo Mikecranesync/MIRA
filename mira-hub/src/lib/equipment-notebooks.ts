@@ -369,7 +369,27 @@ export async function updateNotebook(
     if (k in patch) fields[col] = (patch as Record<string, unknown>)[k];
   }
   if (Object.keys(fields).length === 0) return false;
-  const sets = Object.keys(fields).map((col, i) => `${col} = $${i + 3}`);
+  const cols = Object.keys(fields);
+  const sets = cols.map((col, i) => `${col} = $${i + 3}`);
+  // A CHANGED machine identity is a new identity. `model` and `identity_status`
+  // are independent columns here, so until 2026-10-18 a PATCH could rewrite the
+  // model while the row stayed `user_confirmed` — and retrieval (#4484) scopes a
+  // notebook's manuals to its model only because a person confirmed it. If the
+  // caller writes manufacturer or model without saying what the new status is,
+  // the status drops to `candidate` — but ONLY when the stored value actually
+  // differs (Codex #4484 F3: re-saving the same "GS10" used to revoke the
+  // confirmation, and migration 104's trigger then disabled the auto-acquired
+  // manuals). The comparison is done in the UPDATE itself, against the row's
+  // old values, so it is atomic with the write. The identity-confirm route sets
+  // the status explicitly and is untouched.
+  if (("model" in patch || "manufacturer" in patch) && !("identityStatus" in patch)) {
+    const changed: string[] = [];
+    for (const col of ["manufacturer", "model"] as const) {
+      const i = cols.indexOf(col);
+      if (i >= 0) changed.push(`${col} IS DISTINCT FROM $${i + 3}`);
+    }
+    sets.push(`identity_status = CASE WHEN ${changed.join(" OR ")} THEN 'candidate' ELSE identity_status END`);
+  }
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
       `UPDATE equipment_notebooks
@@ -627,8 +647,13 @@ export async function attachSource(
     /** Audit metadata (085) — e.g. { confirm_client_key } from the confirm
      *  route's idempotency contract. Set-if-provided in the upsert. */
     matchEvidence?: unknown;
+    /** Keep is idempotent by origin, even when concurrent readings differ. */
+    reuseVisibleOrigin?: boolean;
+    /** Replace an origin only while this exact technician review remains current. */
+    reviewedPhoto?: { observationId: string; threadId: string };
+    candidatePhoto?: { observationId: string; threadId: string };
   } = {},
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; docId?: string; alreadyAttached?: boolean }> {
   // hub_uploads: raw pool + explicit tenant predicate (TEXT column vs UUID session).
   const doc = await pool.query(
     `SELECT id FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid LIMIT 1`,
@@ -638,10 +663,61 @@ export async function attachSource(
 
   return withTenantContext(tenantId, async (c) => {
     const nb = await c.query(
-      `SELECT id FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      `SELECT id FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid${opts.originFileId ? " FOR UPDATE" : ""}`,
       [tenantId, notebookId],
     );
     if (nb.rows.length === 0) return { ok: false, error: "notebook_not_found" };
+    // All origin attachments use this parent lock, including nameplates. The
+    // Keep check and insert share one transaction, so two Keep requests cannot
+    // create separate visible readings and then supersede each other.
+    if (opts.reuseVisibleOrigin && opts.originFileId) {
+      const existing = await c.query(
+        `SELECT doc_id::text AS doc_id FROM equipment_notebook_sources
+          WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+            AND origin_file_id = $3::uuid AND superseded_at IS NULL
+          ORDER BY created_at DESC, doc_id DESC LIMIT 1`,
+        [tenantId, notebookId, opts.originFileId],
+      );
+      if (existing.rows.length) return { ok: true, docId: String(existing.rows[0].doc_id), alreadyAttached: true };
+    }
+    const photoReading = opts.reviewedPhoto ?? opts.candidatePhoto;
+    if (photoReading) {
+      if (!opts.originFileId || !opts.addedBy || (opts.reviewedPhoto && opts.reuseVisibleOrigin))
+        return { ok: false, error: "photo_review_conflict" };
+      // Lock the observation through publication. A subsequent correction must
+      // wait, and a correction already committed makes this attachment stale.
+      const current = await c.query(
+        `SELECT o.observation_id FROM observation o
+          WHERE o.observation_id = $1::uuid AND o.tenant_id = $2
+            AND (($7::boolean AND o.extractor = 'technician' AND o.review_state = 'corrected'
+              AND o.metadata->>'field' = 'photo_reading')
+              OR (NOT $7::boolean AND o.extractor = 'inspection_vision' AND o.review_state = 'unreviewed'))
+            AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED') AND o.superseded_by IS NULL
+            AND o.metadata->>'publication_superseded_by' IS NULL
+            -- A new model reading cannot publish over a committed review whose
+            -- materialization is still pending, even in a different conversation.
+            AND ($7::boolean OR NOT EXISTS (
+              SELECT 1 FROM observation r
+                JOIN visual_session rs ON rs.session_id=r.session_id AND rs.tenant_id=$2
+                JOIN evidence_item re ON re.evidence_id=r.evidence_id AND re.tenant_id=$2
+               WHERE r.tenant_id=$2 AND rs.metadata->>'notebook_id'=$4
+                 AND re.capture_meta->>'file_id'=$6 AND r.extractor='technician'
+                 AND r.review_state='corrected' AND r.metadata->>'field'='photo_reading'
+                 AND r.metadata->>'publication_superseded_by' IS NULL
+                 AND r.superseded_by IS NULL AND r.evidence_state NOT IN ('REJECTED','SUPERSEDED')))
+            AND EXISTS (SELECT 1 FROM visual_session vs WHERE vs.session_id = o.session_id
+              AND vs.tenant_id = $2 AND vs.created_by = $3
+              AND vs.metadata->>'notebook_id' = $4 AND vs.metadata->>'thread_id' = $5)
+            AND EXISTS (SELECT 1 FROM evidence_item e WHERE e.evidence_id = o.evidence_id
+              AND e.tenant_id = $2 AND e.capture_meta->>'file_id' = $6)
+            AND EXISTS (SELECT 1 FROM workspace_file_links l WHERE l.tenant_id = $2::uuid
+              AND l.file_id = $6::uuid AND l.target_id = $4::uuid
+              AND l.target_type = 'equipment_notebook' AND l.role = 'photo')
+          FOR UPDATE OF o`,
+        [photoReading.observationId, tenantId, opts.addedBy, notebookId, photoReading.threadId, opts.originFileId, !!opts.reviewedPhoto],
+      );
+      if (!current.rows.length) return { ok: false, error: "photo_review_conflict" };
+    }
     await upsertNotebookSourceTx(c, {
       tenantId,
       notebookId,
@@ -652,7 +728,17 @@ export async function attachSource(
       originFileId: opts.originFileId ?? null,
       matchEvidence: opts.matchEvidence,
     });
-    return { ok: true };
+    if ((opts.reuseVisibleOrigin || opts.reviewedPhoto) && opts.originFileId) {
+      await c.query(`UPDATE equipment_notebook_sources SET superseded_at = NULL
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+      [tenantId, notebookId, docId]);
+    }
+    if (opts.reviewedPhoto) {
+      await c.query(`UPDATE equipment_notebook_sources SET superseded_at = now()
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND origin_file_id = $3::uuid
+          AND doc_id <> $4::uuid AND superseded_at IS NULL`, [tenantId, notebookId, opts.originFileId, docId]);
+    }
+    return opts.reuseVisibleOrigin || opts.reviewedPhoto ? { ok: true, docId, alreadyAttached: false } : { ok: true };
   });
 }
 
@@ -1640,7 +1726,12 @@ export async function listTurns(
    *  legacy rows; another technician's owned turns are never returned. With
    *  no viewer only legacy rows are returned (fail closed), so a caller that
    *  forgets the session cannot leak a private conversation. */
-  opts: { viewerUserId?: string | null; threadId?: string | null } = {},
+  opts: { viewerUserId?: string | null; threadId?: string | null;
+    /** Report recall only: match the turn's existing equipment snapshot AND
+     * the current confirmed notebook binding atomically. Undefined keeps the
+     * ordinary history read unchanged; null recalls only unbound reports. */
+    expectedEquipmentEntityId?: string | null;
+  } = {},
 ): Promise<
   {
     id: string;
@@ -1665,7 +1756,12 @@ export async function listTurns(
     // returns the OLDEST n — so past n turns the recent conversation vanishes
     // from the notebook on reload. Recent-window + chronological display fixes
     // that while keeping the render order the UI expects.
-    const ownerPredicate = viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`;
+    // Report recall never treats ownerless legacy rows as this technician's
+    // disclosures. Filter before LIMIT so they cannot crowd out owned reports.
+    const reportRecall = opts.expectedEquipmentEntityId !== undefined;
+    const ownerPredicate = reportRecall
+      ? (viewer ? `owner_user_id = $4` : "FALSE")
+      : (viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`);
     const values: unknown[] = [tenantId, notebookId, limit];
     if (viewer) values.push(viewer);
     const threadPredicate = opts.threadId === undefined
@@ -1673,6 +1769,13 @@ export async function listTurns(
       : threadId === null
         ? " AND thread_id IS NULL"
         : ` AND thread_id = $${values.push(threadId)}`;
+    const equipmentParam = opts.expectedEquipmentEntityId === undefined ? null : values.push(opts.expectedEquipmentEntityId);
+    const equipmentPredicate = equipmentParam === null ? "" : `
+      AND equipment_entity_id IS NOT DISTINCT FROM $${equipmentParam}::text
+      AND EXISTS (SELECT 1 FROM equipment_notebooks n
+        WHERE n.id = $2::uuid AND n.tenant_id = $1::uuid
+          AND n.equipment_entity_id IS NOT DISTINCT FROM $${equipmentParam}::text
+          AND (n.equipment_entity_id IS NULL OR n.asset_confirmed_at IS NOT NULL))`;
     const res = await c.query(
       `SELECT id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id
          FROM (
@@ -1682,6 +1785,7 @@ export async function listTurns(
               AND client_request_state = 'complete'
               AND ${ownerPredicate}
               ${threadPredicate}
+              ${equipmentPredicate}
             ORDER BY created_at DESC
             LIMIT $3
          ) recent

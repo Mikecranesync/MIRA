@@ -17,12 +17,14 @@
 // from the insert and never blocks/fails ingest, so it cannot recreate the
 // embed-gate fragility (#1385): a down embedder just leaves chunks BM25-only.
 
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { createUpload, updateUploadStatus } from "@/lib/uploads";
 import { proposeDocumentEdgesForNode } from "@/lib/node-document-proposals";
 import { extractText, getDocumentProxy } from "unpdf";
+import { repairExtractedPage, type PageRepair } from "@/capabilities/garbled-text";
+import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
 
 const CHUNK_CHARS = 1000;
 const CHUNK_OVERLAP = 120;
@@ -133,8 +135,8 @@ export function chunkText(
 
 // Embedding contract — MUST match the query path or cosine is meaningless
 // (asset-intelligence.searchKB embeds with nomic-embed-text; column is vector(768)).
-const EMBED_MODEL = "nomic-embed-text";
-const EMBED_DIM = 768;
+export const EMBED_MODEL = "nomic-embed-text";
+export const EMBED_DIM = 768;
 const EMBED_BATCH = 16; // chunks embedded per SELECT→embed→UPDATE round
 // Kill switch (default ON). Set NODE_EMBED_ON_WRITE=0 to disable the trailing
 // embed pass without a redeploy if the embedder is ever overloaded — chunks stay
@@ -226,6 +228,16 @@ async function embedText(
 }
 
 /**
+ * One embed of a fixed string with the write path's own model and dimension —
+ * the health probe for the embedder (capabilities/embed-retry-sweep.ts). Same
+ * return shape as the write path, so a probe failure carries the same code an
+ * upload would hit.
+ */
+export function probeEmbedder(): Promise<{ vec: number[] } | { code: EmbedFailureCode }> {
+  return embedText("embedder health probe");
+}
+
+/**
  * Best-effort trailing pass: embed the just-written node_attachment chunks for one
  * upload so they're visible to the KB VECTOR ranker (asset-intelligence.searchKB
  * filters `embedding IS NOT NULL`), not only the BM25/text fallback (#2099).
@@ -277,11 +289,18 @@ export async function embedPendingNodeChunks(
 
       // Embed with NO DB connection held.
       const results = await Promise.all(rows.map((r) => embedText(r.content)));
-      const writable: { id: string; vec: number[] }[] = [];
+      const writable: { id: string; vec: number[]; contentMd5: string }[] = [];
       for (let i = 0; i < rows.length; i++) {
         const r = results[i];
-        if ("vec" in r) writable.push({ id: rows[i].id, vec: r.vec });
-        else code ??= r.code; // keep the FIRST reason — it explains the stall
+        if ("vec" in r) {
+          // The write below is fenced on the content this vector was computed
+          // FROM: if a repair (scripts/repair-garbled-chunks.ts) rewrote the row
+          // while the HTTP call was in flight, the stale vector is rejected and
+          // the next sweep embeds the repaired text (Codex r2 F2 on #4486).
+          writable.push({ id: rows[i].id, vec: r.vec, contentMd5: createHash("md5").update(rows[i].content).digest("hex") });
+        } else {
+          code ??= r.code; // keep the FIRST reason — it explains the stall
+        }
       }
       if (writable.length === 0) {
         // Embedder produced nothing usable. `code` is already set above; stop
@@ -294,8 +313,8 @@ export async function embedPendingNodeChunks(
           for (const w of writable) {
             await c.query(
               `UPDATE knowledge_entries SET embedding = $2::vector
-                WHERE id = $1 AND embedding IS NULL`,
-              [w.id, `[${w.vec.join(",")}]`],
+                WHERE id = $1 AND embedding IS NULL AND md5(content) = $3`,
+              [w.id, `[${w.vec.join(",")}]`, w.contentMd5],
             );
           }
         });
@@ -356,6 +375,10 @@ interface NodeChunkOpts {
 async function writeChunkRowsForNode(
   pages: string[],
   opts: NodeChunkOpts,
+  /** Per-page repair marker (index-aligned with `pages`), recorded on every
+   *  chunk of that page as `metadata.text_repair` so a decoded row is
+   *  auditable and reversible (TQ-05/06). Absent = untouched extraction. */
+  repairs?: ReadonlyArray<TextRepair | null>,
 ): Promise<number> {
   const { tenantId, uploadId, nodeId, unsPath, filename } = opts;
 
@@ -363,7 +386,7 @@ async function writeChunkRowsForNode(
   // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
   const sourceUrl = `node-doc/${uploadId}/${filename}`;
 
-  type ChunkRow = { content: string; page: number; idx: number };
+  type ChunkRow = { content: string; page: number; idx: number; repair: TextRepair | null };
   let idx = 0;
   let batch: ChunkRow[] = [];
 
@@ -391,6 +414,7 @@ async function writeChunkRowsForNode(
             node_id: nodeId,
             chunk_index: r.idx,
             source: "hub_node_attachment",
+            ...(r.repair ? { text_repair: r.repair } : {}),
           }),
         );
       }
@@ -417,7 +441,7 @@ async function writeChunkRowsForNode(
       const pageText = pages[p];
       pages[p] = ""; // release each page's text once chunked — bounds peak memory
       for (const piece of chunkText(pageText)) {
-        batch.push({ content: piece, page: p + 1, idx: idx++ });
+        batch.push({ content: piece, page: p + 1, idx: idx++, repair: repairs?.[p] ?? null });
         if (batch.length >= BATCH_ROWS) await flush();
       }
     }
@@ -438,6 +462,82 @@ async function writeChunkRowsForNode(
   // Generated-chunk count (matches the historical `rows.length` semantics: the
   // number attempted, not the number actually inserted after ON CONFLICT).
   return idx;
+}
+
+/** `metadata.text_repair` values — how a page's text was changed after
+ *  extraction. `shift29_partial` = the decoder repaired part of the page and
+ *  cipher-looking text remains (Codex r2 F3 on #4486): still searchable where
+ *  decoded, still eligible for the backfill and the OCR seam. */
+export type TextRepair = "shift29" | "shift29_partial" | "ocr";
+
+/**
+ * TQ-05 / TQ-06 (2026-10-17 prod test): repair garbled extraction IN PLACE
+ * before chunking. A page whose text came out as the fixed +29 cipher (the
+ * PLC-5 manual: ",QDGGLWLRQ" for "Inaddition") is decoded deterministically;
+ * a garbled page that is NOT the fixed shift is left as-is and — only behind
+ * NOTEBOOK_GARBLE_OCR_FALLBACK=1 — offered to the OCR seam, which may return
+ * replacement text. An ordinary page is never touched (the detector requires
+ * the decode to read like English and the original not to). Returns the
+ * index-aligned repair markers for `writeChunkRowsForNode`. Never throws:
+ * a repair failure means the page is written exactly as extracted.
+ *
+ * Default ON — `NOTEBOOK_GARBLE_DECODE=0` is the kill switch. It shipped
+ * default-off (#4486) as a second lock after the round-2 review found the
+ * detector damaging clean English in 18 of 21 non-PLC-5 manuals before the
+ * lowercase guard existed. But no environment ever set the flag, so the repair
+ * never ran: on staging the real 1785-rm001 manual was stored as cipher and
+ * TQ-05/06 found nothing (Release 2 Lane B, 2026-10-18, traces
+ * ee1494fcc921d964c48b27c70eca5c06 / fce2e5796fff061f8781822942642d54).
+ * Measured with the guard in, through unpdf as below: 0 pages rewritten across
+ * 9 clean OEM manuals (1,451 pages); 274 of 372 PLC-5 pages decoded.
+ */
+async function repairGarbledPages(pages: string[], opts: NodeChunkOpts): Promise<Array<TextRepair | null>> {
+  const repairs: Array<TextRepair | null> = new Array(pages.length).fill(null);
+  if (process.env.NOTEBOOK_GARBLE_DECODE === "0") return repairs;
+  const ocrFallback = process.env.NOTEBOOK_GARBLE_OCR_FALLBACK === "1";
+  const originalPages = [...pages];
+  let decoded = 0;
+  let unrepaired = 0;
+  for (let p = 0; p < pages.length; p++) {
+    let verdict: PageRepair;
+    try {
+      verdict = repairExtractedPage(pages[p]);
+    } catch (err) {
+      console.warn(`[node-ingest] garble detector failed on ${opts.filename} p.${p + 1} (page kept as extracted):`, err instanceof Error ? err.message : err);
+      continue;
+    }
+    if (verdict.repair) {
+      pages[p] = verdict.text;
+      // A partly-decoded page keeps the decoded text (already more searchable)
+      // but is marked partial, counted unrepaired, and still offered to OCR —
+      // the `continue` that used to sit here discarded that signal (Codex r2 F3).
+      repairs[p] = verdict.unrepaired ? "shift29_partial" : verdict.repair;
+      decoded++;
+      if (!verdict.unrepaired) continue;
+    } else if (!verdict.unrepaired) {
+      continue;
+    }
+    unrepaired++;
+    if (!ocrFallback) continue;
+    try {
+      // OCR sees the ORIGINAL extraction, not the half-decoded text.
+      const ocrText = await ocrExtractPage({ tenantId: opts.tenantId, uploadId: opts.uploadId, filename: opts.filename, page: p + 1, extracted: originalPages[p] });
+      if (ocrText && ocrText.trim()) {
+        pages[p] = ocrText;
+        repairs[p] = "ocr";
+        unrepaired--;
+      }
+    } catch (err) {
+      console.warn(`[node-ingest] OCR fallback failed on ${opts.filename} p.${p + 1} (page kept as extracted):`, err instanceof Error ? err.message : err);
+    }
+  }
+  if (decoded > 0) {
+    console.info(`[node-ingest] garbled extraction decoded (shift29) on ${decoded}/${pages.length} pages of ${opts.filename}`);
+  }
+  if (unrepaired > 0) {
+    console.warn(`[node-ingest] garbled extraction left unrepaired on ${unrepaired}/${pages.length} pages of ${opts.filename} (not the fixed shift; OCR fallback ${ocrFallback ? "returned nothing" : "off"})`);
+  }
+  return repairs;
 }
 
 /**
@@ -464,7 +564,8 @@ export async function writePdfChunksForNode(opts: {
     const pdf = await getDocumentProxy(new Uint8Array(buffer));
     const { text } = await extractText(pdf, { mergePages: false });
     const pages: string[] = Array.isArray(text) ? text : [text];
-    return await writeChunkRowsForNode(pages, rest);
+    const repairs = await repairGarbledPages(pages, rest);
+    return await writeChunkRowsForNode(pages, rest, repairs);
   } finally {
     release();
   }

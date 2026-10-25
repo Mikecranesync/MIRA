@@ -45,7 +45,9 @@ HOOK="$REPO_ROOT/.githooks/pre-commit"
 FIXTURE_DIR="$REPO_ROOT/.precommit-hook-fixtures"
 GUARDED_FIXTURE="$REPO_ROOT/mira-mobile/src/screens/.precommit lifecycle guard fixture.tsx"
 CANONICAL_FIXTURE="$REPO_ROOT/mira-mobile/src/unified/.precommit-lifecycle-guard-fixture.ts"
+WORKFLOW_FIXTURE="$REPO_ROOT/.github/workflows/.precommit-guarded-workflow-fixture.yml"
 SHIM_DIR=""
+FAULT_DIR=""
 PASS=0
 FAIL=0
 
@@ -71,12 +73,14 @@ fi
 cleanup() {
   cd "$REPO_ROOT" 2>/dev/null || return
   # Only ever touches its own fixture path.
-  git reset -q -- "$FIXTURE_DIR" "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE" 2>/dev/null || true
+  git reset -q -- "$FIXTURE_DIR" "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE" "$WORKFLOW_FIXTURE" 2>/dev/null || true
   rm -rf "$FIXTURE_DIR"
-  rm -f "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE"
+  rm -f "$GUARDED_FIXTURE" "$CANONICAL_FIXTURE" "$WORKFLOW_FIXTURE"
   [ -n "$SHIM_DIR" ] && rm -rf "$SHIM_DIR"
+  if [ -n "$FAULT_DIR" ]; then rm -rf "$FAULT_DIR"; FAULT_DIR=""; fi
 }
-trap cleanup EXIT
+on_exit() { cleanup; }
+trap on_exit EXIT
 
 ok()   { PASS=$((PASS + 1)); printf '  \033[0;32mPASS\033[0m %s\n' "$1"; }
 bad()  { FAIL=$((FAIL + 1)); printf '  \033[0;31mFAIL\033[0m %s\n' "$1"; }
@@ -127,6 +131,11 @@ make_dead_tool_shims() {
 
 run_hook() { bash "$HOOK" 2>&1; }
 
+stage_guarded_fixture() {
+  printf 'export const precommitLifecycleGuardFixture = true;\n' > "$GUARDED_FIXTURE"
+  git add -- "$GUARDED_FIXTURE"
+}
+
 echo "=== .githooks/pre-commit — executable coverage ==="
 echo
 
@@ -143,7 +152,7 @@ assert_contains     "$OUT" "alpha_undefined"          "reports the finding on th
 assert_contains     "$OUT" "beta_undefined_ascii"     "reports the LATER finding (the dropped one)"
 assert_not_contains "$OUT" "commitBuffer"             "no encoding abort"
 assert_contains     "$OUT" "bad.sh:2:"                "uses -f gcc file:line:col format"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -156,7 +165,7 @@ make_dead_tool_shims rg
 OUT=$(PATH="$SHIM_DIR:$PATH" run_hook)
 assert_contains     "$OUT" "SKIPPED, not passed"      "says SKIPPED"
 assert_not_contains "$OUT" "No debug artifacts found" "does NOT claim a clean scan"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -172,7 +181,7 @@ assert_eq "$RC" "1" "missing Python blocks when lifecycle policy cannot run"
 assert_contains "$OUT" "UI lifecycle policy could not run" "lifecycle check fails closed"
 assert_contains "$OUT" "symbol check SKIPPED, not passed" "says SKIPPED"
 assert_not_contains "$OUT" "verify_agent_symbols: no"     "does NOT report a successful run"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -187,25 +196,27 @@ git add -- "$FIXTURE_DIR/good.sh"
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "0"                        "hook exits 0 on a clean staged set"
 assert_not_contains "$OUT" "Failed:   1"   "reports no failures"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
-# 5. A guarded legacy UI path must be stopped before commit with an actionable
-#    route to the canonical shell. This executes the real registry-backed
-#    lifecycle classifier through the production hook.
+# 5. A guarded legacy UI path WARNS with an actionable route to the canonical
+#    shell and does not block (owner decision 2026-10-23: the commit-time owner
+#    approval is retired; the merge-time gates decide). This executes the real
+#    registry-backed lifecycle classifier through the production hook.
 # ---------------------------------------------------------------------------
-echo "[5] guarded legacy UI: hook blocks and routes work to canonical adapters"
-printf 'export const precommitLifecycleGuardFixture = true;\n' > "$GUARDED_FIXTURE"
-git add -- "$GUARDED_FIXTURE"
+echo "[5] guarded legacy UI: hook warns, routes work to canonical adapters, does not block"
+stage_guarded_fixture
 OUT=$(run_hook); RC=$?
-assert_eq "$RC" "1"                                      "hook blocks a guarded legacy UI path"
-assert_contains "$OUT" "Guarded legacy UI route staged" "names the lifecycle violation"
+assert_eq "$RC" "0"                                      "hook does not block a guarded legacy UI path"
+assert_contains "$OUT" "Guarded legacy UI route or control staged" "names the lifecycle warning"
 assert_contains "$OUT" "mira-mobile/src/screens/.precommit lifecycle guard fixture.tsx" \
   "lists the exact guarded path"
 assert_contains "$OUT" "mira-mobile/src/unified/**"      "points mobile work to the canonical adapter"
-assert_contains "$OUT" "Automation must not bypass"     "tells agents not to evade the blocker"
-cleanup; trap cleanup EXIT
+assert_contains "$OUT" "Lifecycle guard rationale"       "names what the PR will need at merge"
+assert_not_contains "$OUT" "Warnings: 0"                 "counts it as a warning"
+assert_not_contains "$OUT" "Failed:   1"                 "does not count it as a failure"
+cleanup; trap on_exit EXIT
 echo
 
 # ---------------------------------------------------------------------------
@@ -219,7 +230,98 @@ git add -- "$CANONICAL_FIXTURE"
 OUT=$(run_hook); RC=$?
 assert_eq "$RC" "0"                                  "hook allows the canonical unified adapter"
 assert_contains "$OUT" "No guarded legacy UI paths staged" "reports the lifecycle check passed"
-cleanup; trap cleanup EXIT
+cleanup; trap on_exit EXIT
+echo
+
+# ---------------------------------------------------------------------------
+# 7–9. The lifecycle warning never clears another check. A guarded path staged
+#    together with a real defect must still be blocked by the check that owns it.
+# ---------------------------------------------------------------------------
+echo "[7] guarded change + shellcheck failure: still blocked"
+make_fixtures
+stage_guarded_fixture
+OUT=$(run_hook); RC=$?
+assert_eq "$RC" "1"                                         "the warning never clears shellcheck"
+assert_contains "$OUT" "Guarded legacy UI route or control staged" "the lifecycle check only warned"
+assert_contains "$OUT" "beta_undefined_ascii"               "shellcheck still ran and reported"
+cleanup; trap on_exit EXIT
+echo
+
+echo "[8] guarded change + planted secret: still blocked"
+if command -v gitleaks >/dev/null 2>&1; then
+  # Assembled at runtime so this harness file itself never contains a token.
+  TOKEN="gh""p_$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 36)"
+  printf 'export const precommitLifecycleGuardFixture = "%s";\n' "$TOKEN" > "$GUARDED_FIXTURE"
+  git add -- "$GUARDED_FIXTURE"
+  OUT=$(run_hook); RC=$?
+  assert_eq "$RC" "1"                                         "the warning never clears gitleaks"
+  assert_contains "$OUT" "Guarded legacy UI route or control staged" "the lifecycle check only warned"
+  assert_contains "$OUT" "gitleaks detected secrets"          "gitleaks still ran and blocked"
+else
+  echo "  SKIP gitleaks not installed here (CI image installs shellcheck + ripgrep only)"
+fi
+cleanup; trap on_exit EXIT
+echo
+
+echo "[9] guarded invalid workflow: actionlint still blocks"
+if command -v actionlint >/dev/null 2>&1; then
+  printf 'name: guarded workflow fixture\non: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ${{ not.a.context }}\n' \
+    > "$WORKFLOW_FIXTURE"
+  git add -- "$WORKFLOW_FIXTURE"
+  OUT=$(run_hook); RC=$?
+  assert_eq "$RC" "1"                                         "the warning never clears actionlint"
+  assert_contains "$OUT" "Guarded legacy UI route or control staged" "the guarded workflow only warned"
+  assert_contains "$OUT" "actionlint failed"                  "actionlint still ran and blocked"
+else
+  echo "  SKIP actionlint not installed here (the CI gate is .github/workflows/actionlint.yml)"
+fi
+cleanup; trap on_exit EXIT
+echo
+
+# ---------------------------------------------------------------------------
+# 10. A lifecycle policy that cannot be evaluated must fail closed, never warn.
+#    Python exits 1 on an uncaught exception, the same code guard-check uses for
+#    "guarded paths found", so each fault below exits 1 from a crash, not from a
+#    verdict. The faults are injected through PYTHONPATH into the real helper;
+#    no tracked file is touched.
+# ---------------------------------------------------------------------------
+make_policy_fault() { # $1 = missing-dependency | missing-registry | malformed-registry
+  FAULT_DIR=$(mktemp -d)
+  if [ "$1" = missing-dependency ]; then
+    printf 'raise ImportError("precommit harness: PyYAML unavailable")\n' > "$FAULT_DIR/yaml.py"
+  else
+    cat > "$FAULT_DIR/sitecustomize.py" <<'PY'
+import os
+import pathlib
+
+_MODE = os.environ.get("PRECOMMIT_HARNESS_REGISTRY_FAULT", "")
+_read_text = pathlib.Path.read_text
+
+
+def _faulty_read_text(self, *args, **kwargs):
+    if self.name == "REGISTRY.yaml":
+        if _MODE == "missing-registry":
+            raise FileNotFoundError(2, "precommit harness: registry missing", str(self))
+        if _MODE == "malformed-registry":
+            return "[]\n"
+    return _read_text(self, *args, **kwargs)
+
+
+pathlib.Path.read_text = _faulty_read_text
+PY
+  fi
+}
+
+for FAULT in missing-dependency missing-registry malformed-registry; do
+  echo "[10] $FAULT: the lifecycle check fails closed with a guarded path staged"
+  make_policy_fault "$FAULT"
+  stage_guarded_fixture
+  OUT=$(PYTHONPATH="$FAULT_DIR" PRECOMMIT_HARNESS_REGISTRY_FAULT="$FAULT" run_hook); RC=$?
+  assert_eq "$RC" "1"                                            "$FAULT blocks the commit"
+  assert_contains "$OUT" "UI lifecycle policy errored"           "$FAULT is reported as a policy error"
+  assert_not_contains "$OUT" "Guarded legacy UI route or control staged" "$FAULT is not mistaken for a warning"
+  cleanup; trap on_exit EXIT
+done
 echo
 
 # ---------------------------------------------------------------------------

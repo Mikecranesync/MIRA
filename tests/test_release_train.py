@@ -44,7 +44,7 @@ def _write(tmp_path: Path, m: dict) -> Path:
         (migs / name).write_text("-- test\n")
     gradle = root / "mira-mobile/android/app"
     gradle.mkdir(parents=True, exist_ok=True)
-    (gradle / "build.gradle").write_text('        versionCode 11\n        versionName "1.2.0"\n')
+    (gradle / "build.gradle").write_text('        versionCode 16\n        versionName "1.2.0"\n')
     runner = root / "tools/release-train"
     runner.mkdir(parents=True, exist_ok=True)
     (runner / "parity_acceptance.py").write_text("# test\n")
@@ -98,7 +98,7 @@ def test_released_is_allowed_only_once_blockers_are_cleared(tmp_path, manifest, 
         {
             "serial": "4A111FDEE0012B",
             "device": "Pixel 9a",
-            "app_version_code": 11,
+            "app_version_code": 16,
             "backend_sha": m["components"]["backend_hub"]["expected"]["sha"],
             "flows": [fl["id"] for fl in m["acceptance"]["flows"] if fl["device"]],
             "date": "2026-09-24",
@@ -179,7 +179,7 @@ def test_an_emulator_receipt_is_refused(tmp_path, manifest):
         {
             "serial": "emulator-5554",
             "device": "sdk_gphone64_arm64",
-            "app_version_code": 11,
+            "app_version_code": 16,
             "backend_sha": "f" * 40,
             "flows": ["sign_in"],
             "date": "2026-09-24",

@@ -24,6 +24,7 @@
  *    A fault-code-shaped token (F004) is never a model, and an ambiguous model
  *    (two different ones named) yields no proposal.
  */
+import { canonicalModelKey } from "@/capabilities/model-token";
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
 import { inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerSearchNames } from "@/lib/manufacturerNormalize";
@@ -129,6 +130,20 @@ const SERIES_WORDS = new Set([
 ]);
 const MAX_SERIES_SKIP = 2;
 
+/**
+ * A digitless variant code ("LTE-B", "LTP-B"): all caps, hyphenated, letters
+ * only. A model ONLY right after a known series name, and kept WITH that name
+ * ("MOVITRAC LTE-B") — the bare code names nothing a manual search can confirm
+ * (Golden Walk 2026-10-05: SEW got no proposal).
+ */
+const VARIANT_CODE_RE = /^[A-Z]{2,4}-[A-Z]{1,2}$/;
+
+function isVariantCode(t: string | undefined): t is string {
+  if (!t || !VARIANT_CODE_RE.test(t)) return false;
+  const head = t.split("-")[0];
+  return !LABEL_WORDS.has(head) && !GENERIC_TECH_WORDS.has(head) && !GENERIC_DEVICE_WORDS.has(head);
+}
+
 /** The model span starting at `tokens[0]`, or null. */
 function modelSpanAt(tokens: string[]): string | null {
   const plain = plainModelSpanAt(tokens);
@@ -136,7 +151,13 @@ function modelSpanAt(tokens: string[]): string | null {
   // "Siemens SINAMICS G120C": skip at most two known series names before the model.
   let rest = tokens;
   for (let i = 0; i < MAX_SERIES_SKIP && rest[0] && SERIES_WORDS.has(rest[0].toUpperCase()); i++) rest = rest.slice(1);
-  return rest === tokens ? null : plainModelSpanAt(rest);
+  if (rest === tokens) return null;
+  const span = plainModelSpanAt(rest);
+  if (span) return span;
+  // "SEW-Eurodrive MOVITRAC LTE-B": the series stays in a digitless variant's model.
+  // Only after exactly ONE series name — two ("VLT AutomationDrive XX-Y") would
+  // either drop a word or disagree with the ambiguity scan (#4248 review F1).
+  return tokens.length - rest.length === 1 && isVariantCode(rest[0]) ? `${tokens[0]} ${rest[0]}` : null;
 }
 
 function plainModelSpanAt(tokens: string[]): string | null {
@@ -161,6 +182,20 @@ function plainModelSpanAt(tokens: string[]): string | null {
 }
 
 /**
+ * The parser narrows ABB's ACS series to its digits ("ACS580" → "580") so
+ * retrieval can substring-match `model_number`. That is right for scoping and
+ * wrong for an identity: "ACS" is part of the manufacturer's model name, and a
+ * manual search for model "580" cannot confirm the ACS580 manual (Golden Walk
+ * 2026-10-05). PowerFlex/PF and Micro keep their reviewed family-number form
+ * (Codex #4120 r3 F8). Returns the series-prefixed model, or null.
+ */
+function withSeriesPrefix(parsedModel: string | null, tokens: string[]): string | null {
+  if (!parsedModel || !/^\d+$/.test(parsedModel)) return null;
+  const m = tokens.join(" ").match(new RegExp(`(?<![A-Za-z0-9])ACS\\s*${parsedModel}(?![A-Za-z0-9])`, "i"));
+  return m ? `ACS${parsedModel}` : null;
+}
+
+/**
  * The model-like span right after ONE manufacturer mention, or null. Pure;
  * exported for tests.
  */
@@ -179,7 +214,7 @@ export function modelAfterManufacturer(message: string, manufacturer: string): s
     // always bound to the manufacturer named before it (Codex #4120 F1).
     const parsed = resolveModelFromObservationText(tokens.join(" "));
     if (parsed.ambiguous) continue;
-    const span = parsed.model ?? modelSpanAt(wide);
+    const span = withSeriesPrefix(parsed.model, tokens) ?? parsed.model ?? modelSpanAt(wide);
     if (span) return span;
   }
   return null;
@@ -317,6 +352,14 @@ function modelMentions(message: string, chosenModel: string): string[] {
       out.push(t);
       continue;
     }
+    // A series name and its digitless variant ("MOVITRAC LTP-B") is a machine.
+    // Case-insensitive, like every other mention here: this scan can only REMOVE
+    // a proposal ("MOVITRAC LTE-B and movitrac ltp-b" — #4248 review F2).
+    if (SERIES_WORDS.has(t.toUpperCase()) && isVariantCode(next?.toUpperCase())) {
+      out.push(`${t} ${next}`);
+      i++;
+      continue;
+    }
     // A next token that is a model on its own ("the s7-1200") is scanned at its
     // own position — never glued to the word before it.
     const nextIsModel = next && (isModelToken(next) || (next.length >= 3 && isModelToken(next.toUpperCase())));
@@ -359,9 +402,11 @@ function splitJoinedModels(t: string): string[] {
   return parts.length > 1 && parts.every((p) => p.length >= 2 && isModel(p)) ? parts : [t];
 }
 
-/** One identity per model, however it was written ("PF525" and "PowerFlex 525" are both 525). */
+/** One identity per model, however it was written ("PF525" and "PowerFlex 525" are both 525).
+ *  The shared key (Codex r7 on #4360) — the query expander excludes a notebook's own model
+ *  from the fault-code tokens with the same computation. */
 function canonicalModel(span: string): string {
-  return norm(resolveModelFromObservationText(span).model ?? span);
+  return canonicalModelKey(span);
 }
 
 /**

@@ -50,6 +50,7 @@ import os
 import re
 import socket
 import ssl
+import time
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -183,6 +184,19 @@ OEM_DOMAINS: dict[str, tuple[str, ...]] = {
     "banner": ("bannerengineering.com",),
     "pepperl": ("pepperl-fuchs.com",),
     "pepperl+fuchs": ("pepperl-fuchs.com",),
+    # #4402: Emerson took over GE's PLC/HMI line (GE Fanuc -> GE Intelligent
+    # Platforms -> Emerson); technicians read "GE Fanuc" off the hardware and the
+    # manuals are served from www.emerson.com. Exact keys only. Never a bare
+    # "ge" or "general electric": GE's motor, relay and power lines are not
+    # Emerson's, and an entry here makes Emerson's site count as the maker's own
+    # documentation (the auto-import gate).
+    "emerson": ("emerson.com",),
+    "emerson automation solutions": ("emerson.com",),
+    "emerson process management": ("emerson.com",),
+    # Not "emerson electric": also the old motor brand (now Nidec / US Motors).
+    "ge fanuc": ("emerson.com",),
+    "ge intelligent platforms": ("emerson.com",),
+    "ge automation": ("emerson.com",),
 }
 
 # Domains whose `.pdf` URLs are SEO spam, third-party scrapes, or random
@@ -244,6 +258,7 @@ TRUSTED_DOMAINS: tuple[tuple[str, int], ...] = (
 # opens it. The server never fetches it (Manual-First PRD R7, Codex G1 —
 # the old live probe read an uncapped body before any search admission).
 OEM_MANUAL_REQUEST: dict[str, str] = {
+    "keyence": "https://www.keyence.com/support/user/safety/manual/",
     "harrington": "https://www.harringtonhoists.com/owners-manual-request",
     "harrington hoists": "https://www.harringtonhoists.com/owners-manual-request",
     "harrington hoists and cranes": "https://www.harringtonhoists.com/owners-manual-request",
@@ -251,12 +266,14 @@ OEM_MANUAL_REQUEST: dict[str, str] = {
 
 
 async def oem_request_link(make: str) -> str | None:
-    """The OEM's curated manual-request page for `make`, or None.
+    """A curated manual-request page or known OEM domain, or None.
 
-    No network I/O: the link comes only from OEM_MANUAL_REQUEST, never from
+    No network I/O: the link comes only from the OEM directory, never from
     search results, and is opened by the technician's browser. Kept async so
     existing awaiting callers are unchanged."""
-    return OEM_MANUAL_REQUEST.get(_norm(make))
+    curated = OEM_MANUAL_REQUEST.get(_norm(make))
+    domains = _oem_domains_for(make)
+    return curated or (f"https://{domains[-1]}/" if domains else None)
 
 
 def _norm(s: str) -> str:
@@ -462,6 +479,109 @@ def provider_query_budget(limit: int | None = None) -> Generator[ProviderQueryBu
         yield budget
     finally:
         _provider_budget.reset(token)
+
+
+# ── Acquisition trail (Golden Walk 2026-10-05) ──────────────────────────────
+#
+# Why did THIS document win? Until now the answer lived only in mira-ask log
+# lines nobody can read on staging (ABB ACS580 picked a Portuguese manual on
+# staging and an English one in every local replay). A caller opens a trail
+# around its search_manual() call; the search records what it asked, every
+# candidate it considered, how each one was read, how they ranked and why the
+# judge stopped. Observability only: nothing here changes which candidate wins.
+TRAIL_VERSION = 1
+TRAIL_MAX_CANDIDATES = 20
+_TRAIL_JUDGE_FIELDS = (
+    "is_manual",
+    "doc_type",
+    "scope",
+    "lists_fault_codes",
+    "language",
+    "text_language",
+    "fault_heading",
+    "confidence",
+    "provider",
+    "model",
+)
+
+
+def trail_url(url: str) -> str:
+    """The URL without its query string or fragment: signed download tokens
+    (ABB's ``x-sign``) are credentials-like and would make one document look
+    like many."""
+    p = urlparse(url or "")
+    return f"{p.scheme}://{p.netloc}{p.path}" if p.scheme and p.netloc else (url or "")[:200]
+
+
+@dataclass
+class AcquisitionTrail:
+    # Browser handoff only, never a manual candidate or source-admission signal.
+    search_page_url: str | None = None
+    search_page_score: int = -1
+    queries: list[dict] = field(default_factory=list)
+    candidates: list[dict] = field(default_factory=list)  # the deduped pool, mutated by the judge
+    ranked: list[dict] | None = None
+    judge: dict = field(default_factory=dict)  # filled by judge_candidates(trace=...)
+
+    def to_dict(self, selected_url: str | None = None) -> dict:
+        order = self.ranked if self.ranked is not None else self.candidates
+        queued = {u: i for i, u in enumerate(self.judge.get("queue") or [])}
+        not_queued = self.judge.get("not_queued") or {}
+        rows = []
+        for rank, c in enumerate(order):
+            j = c.get("judge") or {}
+            url = c.get("url", "")
+            row = {
+                "rank": rank,
+                "url": trail_url(url),
+                "host": c.get("host", ""),
+                "title": (c.get("title") or "")[:120],
+                "score": c.get("score"),
+                "pass": c.get("pass"),
+                "direct_pdf": bool(c.get("is_direct_pdf")),
+                "queue_pos": queued.get(url),
+                "not_queued": not_queued.get(url),
+                "read": j.get("status") or "unread",
+                "read_reason": None if j.get("status") == "judged" else j.get("reason"),
+                "selected": bool(selected_url) and url == selected_url,
+            }
+            if j.get("status") == "judged":
+                row.update({k: j.get(k) for k in _TRAIL_JUDGE_FIELDS})
+            rows.append(row)
+        return {
+            "version": TRAIL_VERSION,
+            "queries": self.queries,
+            "stop": self.judge.get("stop"),
+            "candidates": _capped_keeping_winner(rows),
+            "candidate_count": len(rows),
+        }
+
+
+def _capped_keeping_winner(rows: list[dict]) -> list[dict]:
+    """The first TRAIL_MAX_CANDIDATES rows, but never without the winner: a fallback
+    winner ranked past the cap takes the last slot, keeping its real rank (Codex
+    #4253 F1)."""
+    kept = rows[:TRAIL_MAX_CANDIDATES]
+    if any(r["selected"] for r in kept):
+        return kept
+    winner = next((r for r in rows if r["selected"]), None)
+    return kept if winner is None else kept[: TRAIL_MAX_CANDIDATES - 1] + [winner]
+
+
+_trail: contextvars.ContextVar[AcquisitionTrail | None] = contextvars.ContextVar(
+    "manual_search_trail", default=None
+)
+
+
+@contextmanager
+def acquisition_trail() -> Generator[AcquisitionTrail]:
+    """Record one search_manual() call's queries, candidates and ranking."""
+    trail = AcquisitionTrail()
+    token = _trail.set(trail)
+    try:
+        yield trail
+    finally:
+        _trail.reset(token)
 
 
 async def _serper_search(query: str, num: int = 10) -> list[dict]:
@@ -835,6 +955,13 @@ async def validate_pdf(url: str) -> bool:
         return False
 
 
+def _tagged(found: list[dict], label: str) -> list[dict]:
+    """Which query pass produced each candidate (acquisition trail only)."""
+    for c in found:
+        c["pass"] = label
+    return found
+
+
 def _collect(organic: list[dict], make: str, model: str) -> list[dict]:
     out: list[dict] = []
     for hit in organic:
@@ -866,7 +993,7 @@ class ManualSearchUnavailable(RuntimeError):
     """
 
 
-async def search_manual(make: str, model: str) -> dict | None:
+async def search_manual(make: str, model: str, deadline_at: float | None = None) -> dict | None:
     """Multi-pass real-time search for a (make, model) manual.
 
     Returns the best HEAD-validated PDF candidate, or a lower-confidence
@@ -874,7 +1001,12 @@ async def search_manual(make: str, model: str) -> dict | None:
     or ``None`` if nothing scored at all. Callers MUST check ``validated``
     and ``is_direct_pdf`` before treating a result as a trustable manual
     link — this function never decides trust on the caller's behalf.
+
+    ``deadline_at`` (``time.monotonic()`` seconds) is the caller's own timeout; the
+    judge's optional upgrade batch is capped by it so a timeout never costs the
+    match already found.
     """
+    started_at = time.monotonic()  # the judge's upgrade deadline counts from here
     make = (make or "").strip()
     model = (model or "").strip()
     if not (make or model):
@@ -888,6 +1020,8 @@ async def search_manual(make: str, model: str) -> dict | None:
     sent = 0
     failures = 0
 
+    trail = _trail.get()
+
     async def _send(query: str, label: str) -> list[dict] | None:
         nonlocal sent, failures
         budget = _provider_budget.get()
@@ -898,9 +1032,62 @@ async def search_manual(make: str, model: str) -> dict | None:
             sent += 1
             failures += 1
             logger.exception("Serper %s failed", label)
+            if trail is not None:
+                trail.queries.append(
+                    {"pass": label.split(" ")[0], "query": query, "result": "error"}
+                )
             return None
-        if before is None or (budget is not None and budget.used > before):
+        if trail is not None:
+            for hit in hits:
+                url, title = hit.get("link") or "", hit.get("title") or ""
+                try:
+                    parsed = urlparse(url)
+                    host = parsed.hostname or ""
+                    if (
+                        parsed.scheme != "https"
+                        or not host
+                        or parsed.username
+                        or parsed.password
+                        or parsed.port not in (None, 443)
+                        or _is_denied(host)
+                        or re.search(r"[\\\s<>\"']", url)
+                        or _is_direct_pdf(url)
+                    ):
+                        continue
+                    # Do not retain signed credentials as a browser handoff.
+                    if re.search(
+                        r"(?:token|signature|x-sign|credential|secret|password|api.?key)",
+                        parsed.query,
+                        re.I,
+                    ):
+                        continue
+                    official = _is_oem_host(host, make)
+                    names_make = len(make) >= 2 and re.search(
+                        r"(?<!\w)" + re.escape(make) + r"(?!\w)", title, re.I
+                    )
+                    helpful = re.search(
+                        r"manual|support|download|documentation", title + " " + parsed.path, re.I
+                    )
+                    homepage = parsed.path in ("", "/")
+                    if not (official or names_make) or not (helpful or homepage):
+                        continue
+                    score = (100 if official else 0) + (20 if helpful else 0)
+                    if score > trail.search_page_score:
+                        trail.search_page_url, trail.search_page_score = url, score
+                except ValueError:
+                    continue
+        sent_now = before is None or (budget is not None and budget.used > before)
+        if sent_now:
             sent += 1
+        if trail is not None:
+            trail.queries.append(
+                {
+                    "pass": label.split(" ")[0],
+                    "query": query,
+                    "result": "sent" if sent_now else "refused",
+                    "hits": len(hits),
+                }
+            )
         return hits
 
     # Pass 1: site-scoped PDF — highest precision.
@@ -909,16 +1096,19 @@ async def search_manual(make: str, model: str) -> dict | None:
         q1 = f'"{model}" manual filetype:pdf site:{oem_domains[0]}'
         hits = await _send(q1, "q1 (site-scoped)")
         if hits:
-            candidates.extend(_collect(hits, make, model))
+            candidates.extend(_tagged(_collect(hits, make, model), "q1"))
 
     # Pass 2: typed PDF — broader, still PDFs only.
     if not any(c["is_direct_pdf"] for c in candidates):
         for i, variant in enumerate(_model_variants(model) or [model]):
+            budget = _provider_budget.get()
+            if i and budget is not None and budget.used >= budget.limit - 1:
+                break
             q2 = f"{make} {variant} manual filetype:pdf"
             hits = await _send(q2, "q2 (filetype:pdf)")
             if hits is None:
                 continue
-            found = _collect(hits, make, model)
+            found = _tagged(_collect(hits, make, model), "q2")
             if i:
                 # A hit from a re-hyphenated form is a weaker signal than one
                 # from the nameplate's own spelling: it must not win a tie.
@@ -926,12 +1116,13 @@ async def search_manual(make: str, model: str) -> dict | None:
                     c["score"] -= 5
             candidates.extend(found)
 
-    # Pass 3: widest fallback — accept landing pages too if nothing above.
+    # Pass 3: widest fallback — websites as well as PDFs. A bounded call
+    # reserves its final query for this instead of spending it on spelling variants.
     if not candidates:
-        q3 = f"{make} {model} manual pdf"
+        q3 = f"{make} {model} manual support"
         hits = await _send(q3, "q3 (wide)")
         if hits:
-            candidates.extend(_collect(hits, make, model))
+            candidates.extend(_tagged(_collect(hits, make, model), "q3"))
 
     if not candidates:
         if sent and failures == sent:
@@ -947,6 +1138,8 @@ async def search_manual(make: str, model: str) -> dict | None:
         seen.add(c["url"])
         deduped.append(c)
     deduped.sort(key=lambda c: c["score"], reverse=True)
+    if trail is not None:
+        trail.candidates = deduped
 
     # Read before choosing (2026-08-26): fetch the top direct-PDF candidates,
     # extract their first pages, and let the canonical text cascade judge
@@ -961,7 +1154,16 @@ async def search_manual(make: str, model: str) -> dict | None:
     # judge; the result remains an unconfirmed search candidate.
     use_judge = bool(make) and _judge.judge_enabled()
     if use_judge:
-        ranked = await _judge.judge_candidates(make, model, deduped)  # records what it reads
+        ranked = await _judge.judge_candidates(  # records what it reads
+            make,
+            model,
+            deduped,
+            started_at=started_at,
+            deadline_at=deadline_at,
+            trace=trail.judge if trail is not None else None,
+        )
+        if trail is not None:
+            trail.ranked = ranked
         # What discovery hands downstream, and why — pairs with MANUAL_JUDGE_VERDICT
         # lines so a false positive can be traced from the phone back to the read.
         _top = ranked[0] if ranked else None
@@ -1004,11 +1206,25 @@ async def search_manual(make: str, model: str) -> dict | None:
         # rather than surfacing an unread stranger.
         unread = [c for c in ranked if not _judge.is_rejected(c)]
         deduped = [c for c in unread if _judge.relevant(c, make, model)]
-        if not deduped and rejected:
-            deduped = []
-        elif not deduped:
-            deduped = unread
+        if not deduped and not rejected:
+            # #4400: nothing names the make or the model and nothing was judged. The
+            # old fallback to EVERY unread candidate offered a reseller's company
+            # profile as "a possible manual"; a stranger may win only by being read
+            # and judged the manual (above). An honest miss instead.
+            if (
+                trail is not None
+                and not trail.search_page_url
+                and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
+            ):
+                await _send(f"{make} {model} manual support", "q3 (website handoff)")
+            return None
         if not deduped:
+            if (
+                trail is not None
+                and not trail.search_page_url
+                and (deadline_at is None or deadline_at - time.monotonic() > SEARCH_TIMEOUT)
+            ):
+                await _send(f"{make} {model} manual support", "q3 (website handoff)")
             worst = next((c for c in ranked if _judge.is_rejected(c)), ranked[0])
             code, line = _judge.judge_summary(worst)
             worst["reason"], worst["reason_detail"] = code, line
@@ -1019,6 +1235,14 @@ async def search_manual(make: str, model: str) -> dict | None:
     # HEAD-validate the top few; first one that confirms PDF wins.
     for c in deduped[:5]:
         if not c.get("validated"):
+            # #4401: a probe that cannot finish before the caller's deadline is not
+            # sent (each may take HEAD_TIMEOUT). The top candidate is returned
+            # unvalidated for review below, instead of the whole search being
+            # cancelled upstream and reported as an outage.
+            if deadline_at is not None and (
+                deadline_at - time.monotonic() < HEAD_TIMEOUT + _judge.RETURN_RESERVE_S
+            ):
+                break
             _note_examined([c["url"]])
         if c.get("validated") or await validate_pdf(c["url"]):
             c["validated"] = True

@@ -167,6 +167,29 @@ describe("disconnected lab", () => {
 });
 
 describe("lab adapter", () => {
+  it("revokes a dropped photo's preview when its chip is removed, once (#4288 Codex r1 F3)", () => {
+    const created: string[] = [];
+    const revoked: string[] = [];
+    const original = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+    URL.createObjectURL = () => { created.push(`blob:lab/${created.length + 1}`); return created[created.length - 1]; };
+    URL.revokeObjectURL = (u: string) => { revoked.push(u); };
+    try {
+      const adapter = createLabAdapter(() => ({ machineIds: [] }));
+      const taken = adapter.adoptFiles!([
+        new File([new Uint8Array([1])], "a.jpg", { type: "image/jpeg" }),
+        new File([new Uint8Array([1])], "a.jpg", { type: "image/jpeg" }),
+        new File(["%PDF"], "m.pdf", { type: "application/pdf" }),
+      ]);
+      for (const t of taken) adapter.release!(t.id);
+      adapter.release!(taken[0].id);
+      expect(created).toHaveLength(2);
+      expect(revoked.sort()).toEqual([...created].sort());
+    } finally {
+      URL.createObjectURL = original.create;
+      URL.revokeObjectURL = original.revoke;
+    }
+  });
+
   it("returns deterministic fixture attachments and the next in-scope machine, with no transport", async () => {
     const adapter = createLabAdapter(() => ({
       activeMachineId: "machine-drive-a",

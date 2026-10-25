@@ -242,16 +242,20 @@ characters; one-character or long single-token filler is not approval evidence.
 The substantive rationale is the human-readable audit record of why the
 guarded path was touched.
 
-There is one authorization route. The guard accepts the repository's Codex
-adversarial-review ledger (`scripts/adversarial-review.sh`,
-`docs/adversarial-review-workflow.md`) only when:
+There is one authorization route, the repository's Codex adversarial-review
+ledger (`scripts/adversarial-review.sh`, `docs/adversarial-review-workflow.md`).
+It accepts a GREEN verdict or a CONVERGED one (amended 2026-10-18 by owner
+decision; `docs/architecture/mira-sdlc-v1.md` §4.3). The guard passes only when:
 
 ```text
 guarded path touched
   AND substantive Lifecycle guard rationale
   AND newest valid owner-account ledger record matches current head SHA
   AND reviewed_body_sha256 matches SHA-256(current PR body)
-  AND status is GREEN
+  AND ( status is GREEN
+        OR ( status is ISSUES_FOUND with BLOCKER 0 and HIGH 0           -- CONVERGED
+             AND a newer owner-account [REVIEW-FOLLOWUPS] record binds the same
+                 head and body and lists at least max(MEDIUM, 1) distinct issues ) )
 ```
 
 Concretely, the newest well-formed owner-account User
@@ -259,7 +263,23 @@ Concretely, the newest well-formed owner-account User
 current PR head, `reviewed_body_sha256` equal to the SHA-256 digest of the
 current PR body, and `status: GREEN`. Any push or body edit invalidates the
 reviewed snapshot and requires a fresh review. A newer `ISSUES_FOUND` record
-at that snapshot withdraws an earlier GREEN. Malformed, bot-authored, or
+at that snapshot withdraws an earlier GREEN. A CONVERGED verdict authorizes
+only with a follow-up record posted after it by the owner account, strict from
+its first character:
+
+```text
+[REVIEW-FOLLOWUPS]
+
+<fence>
+reviewed_sha: <the reviewed head>
+reviewed_body_sha256: <the reviewed body digest>
+issues: #<n> #<n> ...
+<fence>
+```
+
+where `<fence>` is a line of three backticks. A comment does not start a guard
+run, so after posting the record dispatch one: `gh workflow run ui-lifecycle-guard.yml --ref main -f pr_number=<N>`.
+A BLOCKER or HIGH is never CONVERGED. Malformed, bot-authored, or
 foreign-account comments are ignored and can neither grant nor revoke. There
 is no label or manual bypass. The ledger trusts the owner account; it does not
 cryptographically attest a Codex execution. A holder of the owner posting

@@ -51,7 +51,7 @@ name: nginx sites-enabled hygiene
 #                     exact moved set back if nginx -t fails or any hostname
 #                     regresses against the baseline captured moments earlier.
 #
-# Human-dispatched and `environment: production`-gated, matching
+# Human-dispatched; mode=fix is `environment: production`-gated, matching
 # deploy-nginx-stg.yml — the repo's established path for a prod nginx mutation.
 
 on:
@@ -87,7 +87,12 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: production
+    # Only mode=fix changes the prod box, so only fix waits on the production
+    # approval gate. The weekly scheduled check and mode=check run ungated. The
+    # gate condition is a superset of the mutation condition: Actions `==` is
+    # case-insensitive, while the remote script mutates only on MODE exactly
+    # "fix". An empty string means "no environment" (verified 2026-10-24).
+    environment: ${{ inputs.mode == 'fix' && 'production' || '' }}
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6

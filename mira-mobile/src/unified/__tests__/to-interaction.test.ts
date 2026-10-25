@@ -107,7 +107,44 @@ describe("toInteractionPart", () => {
     expect(basisKind("workspace_evidence")).toBe("workspace_evidence");
     expect(basisKind("identified_component")).toBe("identified_component");
     expect(toInteractionPart({ type: "basis", basis: "general", label: null })).toEqual({
-      type: "evidence_basis", basis: { kind: "general_reasoning", label: "general", authorized: false },
+      type: "evidence_basis", basis: { kind: "general_reasoning", label: "General guidance — not grounded in this machine's documents.", authorized: false },
+    });
+  });
+
+  // #4025: a reloaded turn carries no server label (the persisted turn has the
+  // basis only), so the chip read the raw key — "● oem_documentation" on a
+  // Pixel 9a, prod v1.2.0, 2026-10-04. It now reads a caption for the kind,
+  // byte-for-byte the /v3 web wording. A documentation basis names no scope:
+  // the route sends `oem_documentation` for shared-library answers too, and
+  // nothing on this path can tell the two apart. A live server label wins.
+  describe("basis chip caption when the server sent no label (#4025)", () => {
+    const CAPTIONS = {
+      oem_documentation: "Grounded in the cited documentation.",
+      general_reasoning: "General guidance — not grounded in this machine's documents.",
+      workspace_evidence: "Grounded in workspace evidence.",
+      identified_component: "Grounded in the identified component.",
+      machine_history: "Grounded in recorded machine history — not live.",
+      live_machine_evidence: "Grounded in live machine evidence.",
+    } as const;
+    for (const [basis, caption] of Object.entries(CAPTIONS)) {
+      it(`${basis} reads "${caption}", never the key`, () => {
+        for (const label of [null, "", "   "]) {
+          const part = toInteractionPart({ type: "basis", basis, label });
+          expect(part).toEqual({ type: "evidence_basis", basis: { kind: basis, label: caption, authorized: false } });
+          if (part.type === "evidence_basis") expect(part.basis.label).not.toBe(basis);
+        }
+      });
+    }
+    it("a documentation caption without a server label never claims the notebook's sources", () => {
+      const part = toInteractionPart({ type: "basis", basis: "oem_documentation", label: null });
+      if (part.type !== "evidence_basis") throw new Error("expected an evidence_basis part");
+      expect(part.basis.label).not.toMatch(/notebook|library/i);
+    });
+    it("the server's own label (a live turn) is kept verbatim", () => {
+      const label = "Grounded in the manufacturer's documentation (shared library).";
+      expect(toInteractionPart({ type: "basis", basis: "oem_documentation", label })).toEqual({
+        type: "evidence_basis", basis: { kind: "oem_documentation", label, authorized: false },
+      });
     });
   });
 
@@ -245,15 +282,20 @@ describe("latestManualSearchStatus / withManualSearchOverride (#4189 F4)", () =>
     expect(latestManualSearchStatus(thread.turns)).toEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: true });
   });
 
+  it("keeps a manual download URL from the live SSE frame", () => {
+    const thread = toThread([{ ...searching[1], parts: [{ type: "unknown", raw: { kind: "manual_search_status", manufacturer: "KEYENCE", model: "GL-R", running: false, manualUrl: "https://www.keyence.com/download/?dlAssetId=AS_164319" } }] }], META);
+    expect(latestManualSearchStatus(thread.turns)?.manualUrl).toBe("https://www.keyence.com/download/?dlAssetId=AS_164319");
+  });
+
   it("returns null when nothing is searching", () => {
     expect(latestManualSearchStatus(toThread([searching[0]], META).turns)).toBeNull();
   });
 
   it("overlays the settled outcome onto the matching part — 'Searching…' resolves to the real result", () => {
     const thread = toThread(searching, META);
-    const resolved = withManualSearchOverride(thread, { manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it — check Sources." });
+    const resolved = withManualSearchOverride(thread, { manufacturer: "SMC", model: "SS5Y3", running: false, message: "Download it first.", manualUrl: "https://www.keyence.com/manual" });
     const part = resolved.turns[1].parts.find((p) => p.type === "manual_search_status");
-    expect(part).toEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Found it — check Sources." });
+    expect(part).toEqual({ type: "manual_search_status", manufacturer: "SMC", model: "SS5Y3", running: false, message: "Download it first.", manualUrl: "https://www.keyence.com/manual" });
     // Every other part on that turn, and the question turn, are untouched.
     expect(resolved.turns[1].parts[0]).toEqual(thread.turns[1].parts[0]);
     expect(resolved.turns[0]).toEqual(thread.turns[0]);

@@ -224,7 +224,7 @@ function featureStrip(): string {
   );
   return `<section class="fl-section fl-feature-strip" aria-labelledby="fl-feature-h">
   <h2 id="fl-feature-h" class="fl-section-h">Built for the floor.</h2>
-  <p class="fl-section-sub">Every document gets a state. Every safety signal gets a stop.</p>
+  <p class="fl-section-sub">Every document gets a state. Every safety signal gets a warning.</p>
   <div class="fl-feature-grid">
     <div class="fl-state-row" role="group" aria-label="Document states">
       ${stateBadge("indexed")}
@@ -245,7 +245,7 @@ function howItWorks(): string {
     { n: "2", h: "Bind manuals to assets", b: "OEM manuals, wiring diagrams, and datasheets indexed and attached to the asset they serve." },
     { n: "3", h: "Map fault history, CMMS &amp; PLC tags", b: "Work-order history and PLC tag names reconciled to the right asset — the IT/OT gap, closed." },
     { n: "4", h: "Ask MIRA", b: "A technician asks a fault-code or troubleshooting question in Slack, Telegram, or the web." },
-    { n: "5", h: "MIRA cites the source", b: "Every answer points to the manual section, fault-history entry, or PLC tag that grounds it." },
+    { n: "5", h: "MIRA cites the source", b: "When the answer comes from a manual, MIRA points to the manual and the page that grounds it." },
     { n: "6", h: "Draft PMs &amp; work orders", b: "Validated answers become PM suggestions and work-order drafts — synced to your CMMS." },
   ];
   const cards = steps
@@ -276,7 +276,7 @@ function buyerFit(): string {
   const notList = [
     "Teams with no manual or document access to structure",
     "Buyers looking for a standalone CMMS replacement",
-    "Anyone expecting autonomous safety decisions — MIRA escalates, it doesn't act",
+    "Anyone expecting a safety system — MIRA flags hazards with a warning; follow your site procedures and qualified people",
   ];
   const li = (items: string[]) => items.map((i) => `<li>${i}</li>`).join("\n      ");
   return `<section class="fl-section" aria-labelledby="fl-fit-h">

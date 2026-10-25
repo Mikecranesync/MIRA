@@ -3,6 +3,7 @@ import { sessionOr401 } from "@/lib/session";
 import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 import { CLOSING_STATUSES, validateWOCompletion } from "@/lib/wo-completion-validation";
+import { normalizeWorkOrderStatus } from "@/capabilities/work-order-status";
 
 export const dynamic = "force-dynamic";
 
@@ -144,13 +145,24 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { status, title, fault_description, resolution, priority } = body as {
-    status?: string;
+  const { status: rawStatus, title, fault_description, resolution, priority } = body as {
+    status?: unknown;
     title?: string;
     fault_description?: string;
     resolution?: string;
     priority?: string;
   };
+
+  // #4731: resolve the status before any query — a value outside the enum is a
+  // 400 naming the allowed values, never a cast error reported as a 500.
+  let status: string | undefined;
+  if (rawStatus !== undefined) {
+    const resolved = normalizeWorkOrderStatus(rawStatus);
+    if (!resolved.ok) {
+      return NextResponse.json({ error: resolved.error, allowed: resolved.allowed }, { status: 400 });
+    }
+    status = resolved.status;
+  }
 
   // When closing, validate required fields against current + incoming values.
   if (status && CLOSING_STATUSES.has(status)) {
