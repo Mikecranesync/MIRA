@@ -426,6 +426,8 @@ case "$*" in
       fi
       i=0
       until mkdir "$FIX/lock" 2>/dev/null; do i=$((i+1)); [ "$i" -gt 300 ] && exit 70; sleep 0.05; done
+      # #4711 evidence: who held the ledger lock, and when.
+      echo "acquire pid=$$ proc=${{ADV_TEST_PROC:-x}} t=$(date +%s.%N)" >> "$FIX/lock.log"
       node -e '
         const fs=require("fs");
         const [cf,bf,viewer]=process.argv.slice(1);
@@ -439,6 +441,7 @@ case "$*" in
         console.log(id);
       ' "$FIX/comments.json" "$body" "{VIEWER}"
       rc=$?
+      echo "release pid=$$ proc=${{ADV_TEST_PROC:-x}} rc=$rc t=$(date +%s.%N)" >> "$FIX/lock.log"
       rmdir "$FIX/lock"
       exit "$rc" ;;
   api\\ repos/*/comments\\ --paginate)
@@ -1616,6 +1619,10 @@ def test_race_two_processes_exactly_one_canonical_winner(tmp_path):
     out2, _ = p2.communicate(timeout=180)
     rcs = {p1.returncode, p2.returncode}
 
+    # #4711: include the ledger-lock trace in every assertion message below.
+    lock_log = h.fix / "lock.log"
+    trace = "\n--- lock.log ---\n" + (lock_log.read_text(encoding="utf-8") if lock_log.exists() else "(none)")
+    out1 += trace
     # Exactly one Codex review ran; runners never launch privileged remediation.
     assert h.codex_runs() == 1, out1 + out2
     assert h.claude_runs() == 0, out1 + out2
