@@ -277,8 +277,8 @@ def _branch_sha(origin: Path, branch: str) -> str:
     return got.stdout.strip() if got.returncode == 0 else ""
 
 
-def test_publish_branch_is_keyed_like_the_fragment() -> None:
-    assert efp.publish_branch("2026-08-30", "charlie") == "docs/eval-fixer-2026-08-30-charlie"
+def test_publish_branch_is_one_rolling_branch_per_worker() -> None:
+    assert efp.publish_branch("charlie") == "docs/eval-fixer-runs-charlie"
 
 
 def test_publish_pushes_the_fragment_to_its_own_branch(origin_and_clone) -> None:
@@ -288,7 +288,7 @@ def test_publish_pushes_the_fragment_to_its_own_branch(origin_and_clone) -> None
     ok, reason = efp.publish_fragment("2026-08-30", "charlie", repo=clone)
 
     assert ok, reason
-    branch = efp.publish_branch("2026-08-30", "charlie")
+    branch = efp.publish_branch("charlie")
     assert _branch_sha(origin, branch), f"branch {branch} not on origin: {reason}"
     shown = _run(
         "git",
@@ -332,7 +332,7 @@ def test_publish_rescues_a_fragment_stranded_in_a_local_main_commit(origin_and_c
     ok, reason = efp.publish_fragment("2026-08-30", "charlie", repo=clone)
 
     assert ok, reason
-    branch = efp.publish_branch("2026-08-30", "charlie")
+    branch = efp.publish_branch("charlie")
     shown = _run(
         "git",
         "-C",
@@ -348,24 +348,101 @@ def test_publish_is_idempotent_across_a_rerun(origin_and_clone) -> None:
     origin, clone = origin_and_clone
     _write_fragment(clone, "2026-08-30", "charlie", "# first\n")
     assert efp.publish_fragment("2026-08-30", "charlie", repo=clone)[0]
-    first = _branch_sha(origin, efp.publish_branch("2026-08-30", "charlie"))
+    first = _branch_sha(origin, efp.publish_branch("charlie"))
 
     _write_fragment(clone, "2026-08-30", "charlie", "# corrected\n")
     ok, reason = efp.publish_fragment("2026-08-30", "charlie", repo=clone)
 
     assert ok, reason
-    second = _branch_sha(origin, efp.publish_branch("2026-08-30", "charlie"))
+    second = _branch_sha(origin, efp.publish_branch("charlie"))
     assert second and second != first, "a restart must update its own branch in place"
     shown = _run(
         "git",
         "-C",
         str(origin),
         "show",
-        f"refs/heads/{efp.publish_branch('2026-08-30', 'charlie')}:"
-        f"{efp.fragment_path('2026-08-30', 'charlie')}",
+        f"refs/heads/{efp.publish_branch('charlie')}:{efp.fragment_path('2026-08-30', 'charlie')}",
         cwd=origin,
     )
     assert "corrected" in shown.stdout
+
+
+def _files_on(origin: Path, branch: str) -> set[str]:
+    out = _run(
+        "git",
+        "-C",
+        str(origin),
+        "ls-tree",
+        "-r",
+        "--name-only",
+        f"refs/heads/{branch}",
+        "--",
+        "wiki/hot.d/",
+        cwd=origin,
+    ).stdout
+    return set(out.split())
+
+
+def test_a_second_night_joins_the_first_nights_branch(origin_and_clone) -> None:
+    """One open eval-fixer PR per worker: night 2 must carry night 1, not replace it."""
+    origin, clone = origin_and_clone
+    _write_fragment(clone, "2026-08-30", "charlie", "# night one\n")
+    assert efp.publish_fragment("2026-08-30", "charlie", repo=clone)[0]
+    _write_fragment(clone, "2026-08-31", "charlie", "# night two\n")
+
+    ok, reason = efp.publish_fragment("2026-08-31", "charlie", repo=clone)
+
+    assert ok, reason
+    assert _files_on(origin, efp.publish_branch("charlie")) == {
+        efp.fragment_path("2026-08-30", "charlie"),
+        efp.fragment_path("2026-08-31", "charlie"),
+    }
+
+
+def test_nights_already_merged_to_main_drop_out_of_the_branch(origin_and_clone) -> None:
+    """After the rolling PR squash-merges, the next night starts a clean one-file branch."""
+    origin, clone = origin_and_clone
+    frag = _write_fragment(clone, "2026-08-30", "charlie", "# merged night\n")
+    assert efp.publish_fragment("2026-08-30", "charlie", repo=clone)[0]
+    _run("git", "add", str(frag.relative_to(clone)), cwd=clone)  # stand-in for the squash merge
+    _run("git", "commit", "-m", "squash", cwd=clone)
+    # Someone then corrects the merged night on main. The branch's stale copy must not
+    # be carried back over it.
+    frag.write_text("# merged night, corrected on main\n", encoding="utf-8")
+    _run("git", "commit", "-am", "fix typo", cwd=clone)
+    _run("git", "push", "origin", "main", cwd=clone)
+    _write_fragment(clone, "2026-08-31", "charlie", "# next night\n")
+
+    assert efp.publish_fragment("2026-08-31", "charlie", repo=clone)[0]
+
+    assert _files_on(origin, efp.publish_branch("charlie")) == {
+        efp.fragment_path("2026-08-30", "charlie"),  # inherited from main, unchanged
+        efp.fragment_path("2026-08-31", "charlie"),
+    }
+    diff = _run(
+        "git",
+        "-C",
+        str(origin),
+        "diff",
+        "--name-only",
+        "main",
+        f"refs/heads/{efp.publish_branch('charlie')}",
+        cwd=origin,
+    ).stdout.split()
+    assert diff == [efp.fragment_path("2026-08-31", "charlie")], (
+        "PR diff must be the new night only"
+    )
+
+
+def test_two_workers_never_share_a_branch(origin_and_clone) -> None:
+    origin, clone = origin_and_clone
+    _write_fragment(clone, "2026-08-30", "charlie")
+    _write_fragment(clone, "2026-08-30", "bravo")
+    assert efp.publish_fragment("2026-08-30", "charlie", repo=clone)[0]
+    assert efp.publish_fragment("2026-08-30", "bravo", repo=clone)[0]
+    assert _files_on(origin, efp.publish_branch("bravo")) == {
+        efp.fragment_path("2026-08-30", "bravo")
+    }
 
 
 def test_publish_reports_nothing_to_do_once_the_fragment_is_on_main(origin_and_clone) -> None:
@@ -379,7 +456,7 @@ def test_publish_reports_nothing_to_do_once_the_fragment_is_on_main(origin_and_c
 
     assert ok
     assert "already on" in reason
-    assert not _branch_sha(origin, efp.publish_branch("2026-08-30", "charlie"))
+    assert not _branch_sha(origin, efp.publish_branch("charlie"))
 
 
 def test_publish_fails_loudly_when_there_is_no_fragment(origin_and_clone) -> None:
@@ -425,7 +502,7 @@ def test_failed_push_keeps_the_commit_on_a_local_ref(origin_and_clone) -> None:
 
     assert not ok
     assert "kept locally" in reason
-    branch = efp.publish_branch("2026-08-30", "charlie")
+    branch = efp.publish_branch("charlie")
     local = _run("git", "rev-parse", "--verify", f"refs/heads/{branch}", cwd=clone).stdout.strip()
     assert local, "the commit must survive on a local ref"
     shown = _run("git", "show", f"{branch}:{efp.fragment_path('2026-08-30', 'charlie')}", cwd=clone)
@@ -439,6 +516,7 @@ def test_cli_uses_a_distinct_code_for_no_fragment_vs_a_real_failure(
     """Clean-eval nights write no fragment. That is normal, not a delivery failure."""
     _, clone = origin_and_clone
     monkeypatch.setenv(efp.WORKER_ENV, "charlie")
+    monkeypatch.setenv("EVAL_FIXER_PUBLISH_WIKI", "1")
 
     assert efp.main(["--date", "2026-08-30", "--publish", "--repo", str(clone)]) == 5
     assert "no fragment to publish" in capsys.readouterr().err
@@ -455,3 +533,23 @@ def test_wrapper_canary_detects_an_unpushed_local_eval_fixer_branch() -> None:
     ).read_text(encoding="utf-8")
     assert "refs/heads/docs/eval-fixer-*" in wrapper, "canary must look for unpushed run branches"
     assert "refs/remotes/origin/" in wrapper, "canary must compare against what reached origin"
+
+
+def test_publish_is_opt_in_and_a_written_fragment_is_not_pushed_by_default(
+    capsys: pytest.CaptureFixture[str], monkeypatch, origin_and_clone
+) -> None:
+    """2026-10-01: nightly wiki-fragment PRs are off unless EVAL_FIXER_PUBLISH_WIKI=1."""
+    origin, clone = origin_and_clone
+    monkeypatch.setenv(efp.WORKER_ENV, "charlie")
+    monkeypatch.delenv("EVAL_FIXER_PUBLISH_WIKI", raising=False)
+    _write_fragment(clone, "2026-08-30", "charlie")
+    branch = efp.publish_branch("charlie")
+
+    assert efp.main(["--date", "2026-08-30", "--publish", "--repo", str(clone)]) == 5
+    assert "opt-in" in capsys.readouterr().err
+    assert _run("git", "ls-remote", str(origin), branch, cwd=clone).stdout.strip() == ""
+
+    # Control: with the flag set, the same fragment IS published.
+    monkeypatch.setenv("EVAL_FIXER_PUBLISH_WIKI", "1")
+    assert efp.main(["--date", "2026-08-30", "--publish", "--repo", str(clone)]) == 0
+    assert _run("git", "ls-remote", str(origin), branch, cwd=clone).stdout.strip() != ""

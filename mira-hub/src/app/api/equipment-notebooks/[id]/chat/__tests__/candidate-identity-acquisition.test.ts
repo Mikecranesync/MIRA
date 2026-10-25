@@ -300,6 +300,13 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     expect(f.find((x) => x.kind === "manual_search_status")).toBeUndefined();
   });
 
+  it("sends the failed-download link on the live settled frame", async () => {
+    acqMock.startManualAcquisition.mockResolvedValue(false);
+    acqMock.readAcquisition.mockResolvedValue({ key: "SMC|SS5Y3DUW01302|", state: "download_rejected", started_at: null, finished_at: null, candidate_host: "www.keyence.com", match_state: null, oem_request_url: null, candidate_url: "https://www.keyence.com/download/?dlAssetId=AS_164319", download_reason: "wrong_content_type" });
+    const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    expect(f.find(x => x.kind === "manual_search_status")).toMatchObject({ running: false, manualUrl: "https://www.keyence.com/download/?dlAssetId=AS_164319" });
+  });
+
   // Codex round 5 F15 (#4195): the live `manual_search_status` frame must
   // carry the search's own GENERATION (`startedAt`) — the SAME value the GET
   // route (`currentManualSearchStatus`, proven against this identical
@@ -419,6 +426,49 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
     // the fallback must say to check it and turn it on before asking again.
     expect(text).toContain("turned off until you check it");
     expect(text).toContain("turn it on there");
+  });
+
+  it("#4718: the search is refused by the cap while the answer is generated → no 'already searching' claim", async () => {
+    // The claim succeeds, then the background search hits the manual-search
+    // cap and records search_limit_reached before the answer is chosen
+    // (staging, 2026-10-24: global monthly cap exhausted).
+    const { acquisitionKey } = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
+      "@/capabilities/notebook-manual-acquisition",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const started = (acqMock.startManualAcquisition.mock.calls[0] as unknown[])[0] as {
+          identity: Parameters<typeof acquisitionKey>[0];
+        };
+        acqMock.readAcquisition.mockResolvedValue({
+          key: acquisitionKey(started.identity),
+          state: "search_limit_reached",
+          started_at: new Date().toISOString(),
+          finished_at: new Date().toISOString(),
+          candidate_host: null,
+          match_state: null,
+          oem_request_url: null,
+        });
+        return new Response(providerStream(UNSUPPORTED), { status: 200 });
+      }),
+    );
+    const f = await frames(await POST(req({ message: SMC_MESSAGE, mode: "general" }), params));
+    const text = f
+      .filter((x) => x.kind === "content" || x.kind === "replace")
+      .map((x) => String(x.content ?? x.text ?? ""))
+      .join("");
+    expect(acqMock.startManualAcquisition).toHaveBeenCalled();
+    expect(text).not.toContain("I'm already searching");
+    expect(text).not.toContain("turned off until you check it");
+    expect(text).toContain("manufacturer's support");
+    // Codex #4719 F1: the status frame must never say "not running" while still
+    // promising a search is underway (the app does not re-check a settled frame).
+    const status = f.filter((x) => x.kind === "manual_search_status");
+    expect(status.length).toBeGreaterThan(0);
+    for (const frame of status) {
+      if (frame.running === false) expect(String(frame.message ?? "")).not.toMatch(/looking for the official/i);
+    }
   });
 
   it("control: no search running (flags off) → the self-serve advice stays", async () => {

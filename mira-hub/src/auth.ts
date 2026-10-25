@@ -4,6 +4,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken } from "@/lib/users";
 import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
+import { refreshEntitlementClaims } from "@/capabilities/session-entitlement";
 
 declare module "next-auth" {
   interface Session {
@@ -148,8 +149,12 @@ export const authOptions: NextAuthOptions = {
         token.tid = user.tenantId;
         token.status = user.status ?? "trial";
         token.trialExpiresAt = user.trialExpiresAt ?? null;
+        return token;
       }
-      return token;
+      // #4362 / Codex #4664 F3: a session minted under the old 7-day trial kept
+      // its day-8 deadline until the next sign-in. Re-read status + deadline on
+      // every later session read; any failure keeps the existing claims.
+      return refreshEntitlementClaims(token, findUserById);
     },
     async session({ session, token }) {
       if (session.user) {

@@ -48,7 +48,8 @@ on:
 jobs:
   smoke:
     name: E2E smoke (factorylm.com + app.factorylm.com)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no Playwright chromium build (#4697).
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:

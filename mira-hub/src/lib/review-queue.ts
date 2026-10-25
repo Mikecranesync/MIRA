@@ -29,14 +29,20 @@ export interface ReviewQueueResponse {
 function repoRoot(): string {
   if (process.env.REVIEW_REPO_ROOT) return process.env.REVIEW_REPO_ROOT;
   if (process.env.NODE_ENV === "production") return "/app";
-  return path.resolve(process.cwd(), "..");
+  // PWD, not process.cwd(): Next's file tracer follows a literal process.cwd()
+  // path and copied the WHOLE REPO (docs, marketing, mira-bridge's DB) into
+  // .next/standalone on every local build. Same value at runtime: `npm run dev`
+  // runs from mira-hub/, and path.resolve falls back to the cwd if PWD is unset.
+  return path.resolve(process.env.PWD ?? "", "..");
 }
 
 const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 // Admin-email allowlist. Comma-separated env var; defaults to the two seats
 // Mike currently uses. Keep this tight — the review surface bypasses normal
-// tenant scoping for filesystem reads.
+// tenant scoping for filesystem reads. NOT an authority on its own (#4591):
+// registration does not verify email ownership, so capabilities.ts requires the
+// DB platform-admin flag (hub_users.status='admin') AND this match.
 const ADMIN_EMAILS = (
   process.env.ADMIN_EMAILS ??
   "harperhousebuyers@gmail.com,mike@cranesync.com"

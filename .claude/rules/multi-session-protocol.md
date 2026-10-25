@@ -144,6 +144,12 @@ The **invariants below bind in all cases, tooling or no tooling**:
   unavailable review is **never** GREEN.
 - **Maximum three autonomous review/remediation rounds**, then escalate to a
   human with the unresolved findings.
+- **Converged ends the loop.** An exact-head, exact-body verdict with zero
+  BLOCKER and zero HIGH is CONVERGED (owner decision 2026-10-18): request no
+  further round, autonomous or post-cap; file each MEDIUM as a follow-up issue,
+  post the `[REVIEW-FOLLOWUPS]` record, and hand the merge to the human. The
+  full loop does not stop on this by itself yet (#4524), so use `--review-only`. Details:
+  `docs/architecture/mira-sdlc-v1.md` §4.3.
 - **Fail closed on missing tooling:** if required review tooling is missing,
   broken, unauthorized, malformed, timed out, or unavailable, do not simulate
   the review and do not silently skip it. Preserve the implementation and

@@ -40,7 +40,7 @@ const poolMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
-import { attachSource, createNotebook, getNotebook, listNotebooks, validateChatSources } from "../equipment-notebooks";
+import { attachSource, createNotebook, getNotebook, listNotebooks, updateNotebook, validateChatSources } from "../equipment-notebooks";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -300,5 +300,56 @@ describe("bound-asset identity on the read path (Slice 0)", () => {
     });
     const nb = await getNotebook(TENANT, NB);
     expect(nb!.asset).toBeNull();
+  });
+});
+
+// Round-2 review on #4484 (LOW, owner go-ahead 2026-10-18): `model` and
+// `identity_status` are independent columns in this SET-from-a-column-map
+// builder, so a PATCH could rewrite the machine while the row stayed
+// `user_confirmed` — and retrieval scopes a notebook's manuals to its model only
+// because a person confirmed it. A changed identity is a new identity.
+describe("updateNotebook — changing the machine drops identity_status to candidate", () => {
+  beforeEach(() => {
+    calls.length = 0;
+    rowsByMatch.length = 0;
+    rowsByMatch.push({ re: /UPDATE equipment_notebooks/, rows: [{}] });
+  });
+
+  const updateCall = () => callFor(/UPDATE equipment_notebooks/)!;
+  const setOf = (c: Call) => c.sql.match(/SET (.*), updated_at = now\(\)/)![1];
+
+  // Codex #4484 F3: the reset must be decided against the STORED value, in the
+  // UPDATE itself — a patch that re-saves the same model must not revoke the
+  // confirmation (migration 104's trigger disables auto-acquired manuals on a
+  // status change). So the SET carries a CASE over `IS DISTINCT FROM $n`, where
+  // $n is the very parameter the model is being written from.
+  it("a model write sets identity_status = 'candidate' ONLY WHEN the stored model differs", async () => {
+    expect(await updateNotebook(TENANT, NB, { model: "PowerFlex 525" })).toBe(true);
+    const c = updateCall();
+    const set = setOf(c);
+    expect(set).toMatch(/model = \$3/);
+    expect(set).toMatch(/identity_status = CASE WHEN model IS DISTINCT FROM \$3 THEN 'candidate' ELSE identity_status END/);
+    // no literal status parameter — the database decides
+    expect(c.params).not.toContain("candidate");
+  });
+
+  it("a manufacturer write compares the stored manufacturer; both together compare both", async () => {
+    await updateNotebook(TENANT, NB, { manufacturer: "Rockwell" });
+    expect(setOf(updateCall())).toMatch(/CASE WHEN manufacturer IS DISTINCT FROM \$3 THEN 'candidate'/);
+    calls.length = 0;
+    await updateNotebook(TENANT, NB, { manufacturer: "Rockwell", model: "PowerFlex 525" });
+    expect(setOf(updateCall())).toMatch(/CASE WHEN manufacturer IS DISTINCT FROM \$3 OR model IS DISTINCT FROM \$4 THEN 'candidate'/);
+  });
+
+  it("control: an explicit identityStatus in the patch is respected (the confirm route sets user_confirmed)", async () => {
+    await updateNotebook(TENANT, NB, { model: "PowerFlex 525", identityStatus: "user_confirmed" });
+    const c = updateCall();
+    expect(c.params).toContain("user_confirmed");
+    expect(setOf(c)).not.toContain("CASE WHEN");
+  });
+
+  it("control: a patch that does not touch the machine leaves identity_status alone", async () => {
+    await updateNotebook(TENANT, NB, { displayName: "Line 3 drive" });
+    expect(setOf(updateCall())).not.toContain("identity_status");
   });
 });

@@ -14,6 +14,7 @@
 
 import path from "path";
 import fs from "fs/promises";
+import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 
 // ── Output types ─────────────────────────────────────────────────────────────
@@ -119,14 +120,18 @@ async function getOllamaEmbedding(text: string): Promise<number[] | null> {
 
 // ── Source 1: KB Vector Search ────────────────────────────────────────────────
 
-async function searchKB(
+export async function searchKB(
   tenantId: string,
   query: string,
   excludeKeywords?: string[],
 ): Promise<KBHit[]> {
   const embedding = await getOllamaEmbedding(query);
 
-  return withTenantContext(tenantId, async (client) => {
+  // Hybrid read (#4250, .claude/rules/knowledge-entries-tenant-scoping.md): the
+  // shared OEM corpus plus this tenant's own uploads, on the raw pool — the RLS
+  // tenant context hides every is_private = false OEM row.
+  const client = pool;
+  {
     if (embedding) {
       const vectorStr = `[${embedding.join(",")}]`;
       try {
@@ -136,7 +141,7 @@ async function searchKB(
           `SELECT id::text, content, source_url,
                   1 - (embedding <=> $2::vector) AS score
            FROM knowledge_entries
-           WHERE tenant_id = $1
+           WHERE (is_private = false OR tenant_id = $1)
              AND embedding IS NOT NULL
            ORDER BY embedding <=> $2::vector
            LIMIT 5`,
@@ -155,7 +160,7 @@ async function searchKB(
     }>(
       `SELECT id::text, content, source_url
        FROM knowledge_entries
-       WHERE tenant_id = $1
+       WHERE (is_private = false OR tenant_id = $1)
          AND to_tsvector('english', content) @@ plainto_tsquery('english', $2)
          ${excludeKeywords?.length ? `AND NOT (content ILIKE ANY($3))` : ""}
        LIMIT 5`,
@@ -164,7 +169,7 @@ async function searchKB(
         : [tenantId, terms],
     );
     return res.rows.map((r) => ({ id: r.id, content: r.content, sourceUrl: r.source_url, score: 0.5 }));
-  });
+  }
 }
 
 // ── Source 2: KG Traversal ────────────────────────────────────────────────────
@@ -312,7 +317,9 @@ async function searchYouTubeCorpus(
   manufacturer: string | null,
 ): Promise<YouTubeHit[]> {
   const corpusType = equipmentTypeToCorpus(equipmentType ?? "");
-  const corpusDir = path.join(process.cwd(), "..", "mira-bots", "benchmarks", "corpus", "youtube", "by_equipment");
+  // PWD, not process.cwd(): a literal process.cwd() path makes Next's file
+  // tracer copy the corpus into .next/standalone (see review-queue.ts repoRoot).
+  const corpusDir = path.join(path.resolve(process.env.PWD ?? ""), "..", "mira-bots", "benchmarks", "corpus", "youtube", "by_equipment");
   const corpusFile = path.join(corpusDir, `${corpusType}.json`);
 
   let entries: RawYoutubeEntry[] = [];

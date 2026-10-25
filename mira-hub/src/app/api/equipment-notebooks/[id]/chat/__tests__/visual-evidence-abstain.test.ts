@@ -180,7 +180,8 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
     expect(out.some((f) => f.kind === "evidence")).toBe(false);
     const status = out.find((f) => f.kind === "status") as { status: string; message: string };
     expect(status.status).toBe("insufficient_evidence");
-    expect(status.message).toBe("I couldn't find that in the selected sources.");
+    expect(status.message).toContain("notebook's manuals");
+    expect(status.message).not.toContain("I saw your photo");
     expect(console.warn).toHaveBeenCalledWith(expect.stringMatching(/visualEvidence ignored/));
 
     const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown[])[2] as { evidence: unknown[] };
@@ -227,12 +228,13 @@ describe("#3788 — verified photo + zero chunks: the abstain carries the photo"
     expect(content).toContain("Possible active incident");
   });
 
-  it("no claim at all: the document abstain is byte-identical to before (no photo lookup, no frame)", async () => {
+  it("no photo claim: the document abstain names the notebook manuals without a photo lookup or frame", async () => {
     const res = await POST(req({ message: "what am I looking at here", sourceDocIds: [DOC_A] }), params);
     const out = await frames(res);
     expect(filesMock.photoLinkedToTarget).not.toHaveBeenCalled();
     expect(out.map((f) => f.kind)).toEqual(["sources", "status"]);
     const status = out[1] as { message: string };
-    expect(status.message).toBe("I couldn't find that in the selected sources.");
+    expect(status.message).toContain("notebook's manuals");
+    expect(status.message).not.toContain("I saw your photo");
   });
 });

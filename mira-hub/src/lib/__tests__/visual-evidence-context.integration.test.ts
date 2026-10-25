@@ -32,7 +32,18 @@ const { pool } = await vi.hoisted(async () => {
 });
 
 vi.mock("@/lib/db", () => ({ default: pool }));
-vi.mock("@/lib/workspace-files", () => ({ sha256Hex: (b: Buffer) => `sha:${b.length}` }));
+vi.mock("@/lib/workspace-files", async (original) => ({
+  ...await original<typeof import("@/lib/workspace-files")>(),
+  sha256Hex: (b: Buffer) => `sha:${b.length}`,
+  parkOrReuseFile: vi.fn(), claimIngest: vi.fn(),
+  linkFileToUpload: vi.fn(), releaseIngestClaim: vi.fn(),
+}));
+vi.mock("@/lib/node-knowledge-ingest", () => ({
+  ingestTextToNode: vi.fn(), deleteOrphanNodeIngest: vi.fn(),
+}));
+import { parkOrReuseFile, claimIngest, linkFileToUpload, releaseIngestClaim } from "../workspace-files";
+import { ingestTextToNode } from "../node-knowledge-ingest";
+import { keepPhotoAsSource } from "../../capabilities/photo-source";
 
 import {
   correctVisualObservations,
@@ -43,6 +54,7 @@ import {
   recordLookObservation,
   recordNameplateObservations,
 } from "../visual-evidence-context";
+import { attachSource, findVisibleOriginSource, getSourceResolution, validateChatSources } from "../equipment-notebooks";
 import { withTenantContext } from "../tenant-context";
 
 const run = process.env.TEST_DATABASE_URL ? describe : describe.skip;
@@ -128,6 +140,12 @@ async function insertObservation(
 
 run("visual-evidence-context (integration)", () => {
   beforeAll(async () => {
+    await q("DELETE FROM equipment_notebook_sources WHERE notebook_id='a55e7a11-0000-4000-8000-000000000077'");
+    await q("DELETE FROM equipment_notebooks WHERE id='a55e7a11-0000-4000-8000-000000000077'");
+    await q("DELETE FROM workspace_file_links WHERE file_id='f11e0000-0000-4000-8000-000000000077'");
+    await q("DELETE FROM namespace_direct_uploads WHERE id='f11e0000-0000-4000-8000-000000000077'");
+    await q("DELETE FROM knowledge_entries WHERE doc_id='d4643000-0000-4000-8000-000000000077' AND is_private = true AND tenant_id IN ($1,$2)", [TENANT_A,TENANT_B]);
+    await q("DELETE FROM hub_uploads WHERE id='d4643000-0000-4000-8000-000000000077'");
     sessionA1 = await insertSession(TENANT_A, ASSET_A1);
     sessionA1Photo2 = await insertSession(TENANT_A, ASSET_A1);
     sessionA2 = await insertSession(TENANT_A, ASSET_A2);
@@ -161,6 +179,17 @@ run("visual-evidence-context (integration)", () => {
     await q(`DELETE FROM visual_session WHERE tenant_id IN ($1, $2)`, [TENANT_A, TENANT_B]);
     await q("DELETE FROM workspace_file_links WHERE file_id = 'f11e0000-0000-4000-8000-000000000099'");
     await q("DELETE FROM namespace_direct_uploads WHERE id = 'f11e0000-0000-4000-8000-000000000099'");
+    await q("DELETE FROM workspace_file_links WHERE file_id = 'f11e0000-0000-4000-8000-000000000088'");
+    await q("DELETE FROM namespace_direct_uploads WHERE id = 'f11e0000-0000-4000-8000-000000000088'");
+    await q("DELETE FROM equipment_notebook_sources WHERE notebook_id=$1 AND tenant_id=$2", [ASSET_A1, TENANT_A]);
+    await q("DELETE FROM equipment_notebooks WHERE id=$1 AND tenant_id=$2", [ASSET_A1, TENANT_A]);
+    await q("DELETE FROM hub_uploads WHERE id IN ('d4643000-0000-4000-8000-000000000001','d4643000-0000-4000-8000-000000000002') AND tenant_id=$1", [TENANT_A]);
+    await q("DELETE FROM equipment_notebook_sources WHERE notebook_id='a55e7a11-0000-4000-8000-000000000077'");
+    await q("DELETE FROM equipment_notebooks WHERE id='a55e7a11-0000-4000-8000-000000000077'");
+    await q("DELETE FROM workspace_file_links WHERE file_id='f11e0000-0000-4000-8000-000000000077'");
+    await q("DELETE FROM namespace_direct_uploads WHERE id='f11e0000-0000-4000-8000-000000000077'");
+    await q("DELETE FROM knowledge_entries WHERE doc_id='d4643000-0000-4000-8000-000000000077' AND is_private = true AND tenant_id IN ($1,$2)", [TENANT_A,TENANT_B]);
+    await q("DELETE FROM hub_uploads WHERE id='d4643000-0000-4000-8000-000000000077'");
     await pool.end();
   });
 
@@ -586,5 +615,181 @@ describe("LOOK conversation association without completed chat turns", () => {
     expect(await withTenantContext(TENANT_A, (c) => loadRecentLookObservations(c, TENANT_A, scope))).toEqual([]);
   });
 });
+
+  it("publishes an edited retry through the real Keep capability after ingestion fails after commit", async () => {
+    const fileId = "f11e0000-0000-4000-8000-000000000077";
+    const notebook = { id: "a55e7a11-0000-4000-8000-000000000077", nodeId: ASSET_A1, displayName: "retry test" };
+    const scope = { notebookId: notebook.id, ownerUserId: "retry-tech", threadId: "retry-thread" };
+    const docId = "d4643000-0000-4000-8000-000000000077";
+    const original = await recordLookObservation({ tenantId: TENANT_A, fileId, text: "-F53.3 /150", createdBy: scope.ownerUserId, notebookId: notebook.id, threadId: scope.threadId });
+    await q("INSERT INTO equipment_notebooks (id,tenant_id,display_name,node_id) VALUES ($1,$2,'retry test',$3)", [notebook.id,TENANT_A,notebook.nodeId]);
+    await q("INSERT INTO namespace_direct_uploads (id,tenant_id,filename,mime_type) VALUES ($1,$2,'retry.jpg','image/jpeg')", [fileId,TENANT_A]);
+    await q("INSERT INTO workspace_file_links (tenant_id,file_id,target_type,target_id,role) VALUES ($1,$2,'equipment_notebook',$3,'photo')", [TENANT_A,fileId,notebook.id]);
+    await q("INSERT INTO hub_uploads (id,tenant_id,filename,status,provider) VALUES ($1,$2,'review.txt','parsed','itest')", [docId,TENANT_A]);
+    await q("INSERT INTO knowledge_entries (tenant_id,doc_id,content,verified,is_private) VALUES ($1,$3,'reviewed chunk',false,true),($2,$3,'foreign chunk',false,true)", [TENANT_A,TENANT_B,docId]);
+    vi.mocked(parkOrReuseFile).mockResolvedValue({ fileId, uploadId: null } as never);
+    vi.mocked(claimIngest).mockResolvedValue({ claimed: true, claimToken: "test-claim" } as never);
+    vi.mocked(linkFileToUpload).mockResolvedValue(true);
+    vi.mocked(releaseIngestClaim).mockResolvedValue(undefined as never);
+    vi.mocked(ingestTextToNode).mockRejectedValueOnce(new Error("controlled ingestion failure"));
+    const opts = { tenantId: TENANT_A, userId: scope.ownerUserId, notebook, fileId, threadId: scope.threadId };
+    const attempted = { observationId: original!.observationId, text: "-F55.3 /150" };
+    await expect(keepPhotoAsSource({ ...opts, reviewed: attempted })).rejects.toThrow("controlled ingestion failure");
+    expect(await findVisibleOriginSource(TENANT_A, notebook.id, fileId)).toBeNull();
+    const current = await withTenantContext(TENANT_A, c => loadVisualEvidenceForPhoto(c,TENANT_A,fileId,scope));
+    expect(current).toMatchObject({ text: attempted.text, trust: "verified" });
+    expect(current!.observationId).not.toBe(attempted.observationId);
+    const editedText = "-F55.3 /15.0";
+    // The original ID cannot overwrite a committed correction with new text.
+    expect(await keepPhotoAsSource({ ...opts, reviewed: { ...attempted, text: editedText } })).toMatchObject({ ok: false, error: "photo_review_conflict" });
+    vi.mocked(ingestTextToNode).mockResolvedValueOnce({ uploadId: docId, chunkCount: 1 } as never);
+    const result = await keepPhotoAsSource({ ...opts, reviewed: { observationId: current!.observationId, text: editedText } });
+    expect(result).toMatchObject({ ok: true, docId });
+    const chunks = (await q("SELECT tenant_id::text,verified FROM knowledge_entries WHERE doc_id=$1 AND is_private = true AND tenant_id IN ($2,$3) ORDER BY tenant_id", [docId,TENANT_A,TENANT_B])).rows;
+    expect(chunks).toEqual([{tenant_id:TENANT_A,verified:true},{tenant_id:TENANT_B,verified:false}]);
+    expect((await findVisibleOriginSource(TENANT_A, notebook.id, fileId))?.docId).toBe(docId);
+    expect(await withTenantContext(TENANT_A, c => loadVisualEvidenceForPhoto(c,TENANT_A,fileId,scope))).toMatchObject({ text: editedText, trust: "verified" });
+    expect((await q("SELECT coalesce(normalized_value,raw_value) AS normalized_value FROM observation WHERE observation_id=$1", [original!.observationId])).rows[0].normalized_value).toBe("-F53.3 /150");
+  });
+
+  it("rejects delayed publication from an older independent conversation correction", async () => {
+    const fileId = "f11e0000-0000-4000-8000-000000000066";
+    const nb = "a55e7a11-0000-4000-8000-000000000066";
+    const docs = ["d4643000-0000-4000-8000-000000000066", "d4643000-0000-4000-8000-000000000067"];
+    const a = { notebookId: nb, ownerUserId: "tech-a", threadId: "conversation-a" };
+    const b = { notebookId: nb, ownerUserId: "tech-b", threadId: "conversation-b" };
+    await q("INSERT INTO equipment_notebooks (id,tenant_id,display_name,node_id) VALUES ($1,$2,'independent chains',$1)", [nb,TENANT_A]);
+    await q("INSERT INTO namespace_direct_uploads (id,tenant_id,filename,mime_type) VALUES ($1,$2,'same-photo.jpg','image/jpeg')", [fileId,TENANT_A]);
+    await q("INSERT INTO workspace_file_links (tenant_id,file_id,target_type,target_id,role) VALUES ($1,$2,'equipment_notebook',$3,'photo')", [TENANT_A,fileId,nb]);
+    for (const doc of docs) await q("INSERT INTO hub_uploads (id,tenant_id,filename,status,provider) VALUES ($1,$2,'reading.txt','parsed','itest')", [doc,TENANT_A]);
+    try {
+      const observations = [];
+      for (const scope of [a,b]) observations.push(await recordLookObservation({ tenantId:TENANT_A,fileId,text:"-F53.3 /150",createdBy:scope.ownerUserId,notebookId:nb,threadId:scope.threadId }));
+      const correct = (scope: typeof a, observationId: string, value: string) => correctVisualObservations({ tenantId:TENANT_A,boundEntityId:null,fileId,correctedBy:scope.ownerUserId,conversation:scope,corrections:[{observationId,value}] });
+      const ra = await correct(a, observations[0]!.observationId, "-F55.3 /150");
+      const loadedA = await withTenantContext(TENANT_A,c=>loadVisualEvidenceForPhoto(c,TENANT_A,fileId,a));
+      expect(loadedA!.observationId).toBe(ra.corrected[0].replacementId);
+      // A is paused after reading load, before materialization/publication.
+      const rb = await correct(b, observations[1]!.observationId, "-F55.3 /15.0");
+      const publish = (scope: typeof a, id: string, doc: string) => attachSource(TENANT_A,nb,doc,{originFileId:fileId,addedBy:scope.ownerUserId,reviewedPhoto:{observationId:id,threadId:scope.threadId}});
+      // A later model LOOK must not replace a committed review while B's
+      // source materialization is pending, even though its observation is new.
+      const late = await recordLookObservation({tenantId:TENANT_A,fileId,text:"model reread",createdBy:"tech-c",notebookId:nb,threadId:"conversation-c"});
+      expect(await attachSource(TENANT_A,nb,docs[0],{originFileId:fileId,addedBy:"tech-c",candidatePhoto:{observationId:late!.observationId,threadId:"conversation-c"},reuseVisibleOrigin:true})).toEqual({ok:false,error:"photo_review_conflict"});
+      expect((await publish(b,rb.corrected[0].replacementId,docs[1])).ok).toBe(true);
+      expect(await publish(a,loadedA!.observationId,docs[0])).toEqual({ok:false,error:"photo_review_conflict"});
+      expect((await findVisibleOriginSource(TENANT_A,nb,fileId))?.docId).toBe(docs[1]);
+      expect(await validateChatSources(TENANT_A,nb,[docs[1]])).toMatchObject({ok:true,docIds:[docs[1]]});
+      expect((await validateChatSources(TENANT_A,nb,[docs[0]])).ok).toBe(false);
+      // A's conversation reading remains readable; only publication is obsolete.
+      expect((await withTenantContext(TENANT_A,c=>loadVisualEvidenceForPhoto(c,TENANT_A,fileId,a)))?.text).toBe("-F55.3 /150");
+    } finally {
+      await q("DELETE FROM equipment_notebook_sources WHERE notebook_id=$1",[nb]);
+      await q("DELETE FROM equipment_notebooks WHERE id=$1",[nb]);
+      await q("DELETE FROM workspace_file_links WHERE file_id=$1",[fileId]);
+      await q("DELETE FROM namespace_direct_uploads WHERE id=$1",[fileId]);
+      await q("DELETE FROM hub_uploads WHERE id=ANY($1::uuid[])",[docs]);
+    }
+  });
+
+  it("print correction preserves original, rejects foreign scope, and recalls exact punctuation with hazards", async () => {
+    const fileId = "f11e0000-0000-4000-8000-000000000088";
+    const scope = { notebookId: ASSET_A1, ownerUserId: "print-tech", threadId: "print-thread" };
+    const reading = await recordLookObservation({ tenantId: TENANT_A, fileId, text: "-F53.3 /150", createdBy: scope.ownerUserId, notebookId: scope.notebookId, threadId: scope.threadId, hazards: [{ code: "arcing", confidence: 0.99 }] });
+    expect(reading).not.toBeNull();
+    await q("INSERT INTO namespace_direct_uploads (id, tenant_id, filename, mime_type) VALUES ($1, $2, 'print.jpg', 'image/jpeg') ON CONFLICT (id) DO NOTHING", [fileId, TENANT_A]);
+    await q("INSERT INTO workspace_file_links (tenant_id, file_id, target_type, target_id, role) VALUES ($1, $2, 'equipment_notebook', $3, 'photo') ON CONFLICT DO NOTHING", [TENANT_A, fileId, scope.notebookId]);
+    const docs = ["d4643000-0000-4000-8000-000000000001", "d4643000-0000-4000-8000-000000000002"];
+    await q("INSERT INTO equipment_notebooks (id, tenant_id, display_name, node_id) VALUES ($1,$2,'print test',$1)", [scope.notebookId, TENANT_A]);
+    for (const doc of docs) await q("INSERT INTO hub_uploads (id,tenant_id,filename,status,provider) VALUES ($1,$2,'review.txt','parsed','itest')", [doc,TENANT_A]);
+    const candidate = { originFileId: fileId, addedBy: scope.ownerUserId, reuseVisibleOrigin: true, candidatePhoto: { observationId: reading!.observationId, threadId: scope.threadId } };
+    expect((await attachSource(TENANT_A, scope.notebookId, docs[0], candidate)).ok).toBe(true);
+    const value = "-F55.3 /15.0\n" + "Reviewed drawing line. ".repeat(20).trim();
+    const opts = { tenantId: TENANT_A, boundEntityId: null, fileId, correctedBy: scope.ownerUserId, conversation: scope, corrections: [{ observationId: reading!.observationId, value }] };
+    for (const change of [
+      { tenantId: TENANT_B }, { fileId: FILE_2 },
+      { conversation: { ...scope, notebookId: ASSET_A2 } },
+      { conversation: { ...scope, threadId: "other-thread" } },
+      { correctedBy: "other-tech", conversation: { ...scope, ownerUserId: "other-tech" } },
+    ]) expect((await correctVisualObservations({ ...opts, ...change })).corrected).toEqual([]);
+    const results = await Promise.all([correctVisualObservations(opts), correctVisualObservations(opts)]);
+    expect(results[0].corrected).toHaveLength(1);
+    expect(results[1]).toEqual(results[0]);
+    // No replacement source has been materialized yet. The obsolete source
+    // must already be excluded from fresh retrieval, while old citations survive.
+    expect(await findVisibleOriginSource(TENANT_A, scope.notebookId, fileId)).toBeNull();
+    expect((await validateChatSources(TENANT_A, scope.notebookId, [docs[0]])).ok).toBe(false);
+    expect((await getSourceResolution(TENANT_A, scope.notebookId, docs[0]))?.docId).toBe(docs[0]);
+    expect(await attachSource(TENANT_A, scope.notebookId, docs[0], {
+      originFileId: fileId, addedBy: scope.ownerUserId, reuseVisibleOrigin: true,
+      candidatePhoto: { observationId: reading!.observationId, threadId: scope.threadId },
+    })).toEqual({ok:false,error:"photo_review_conflict"});
+    const original = (await q("SELECT coalesce(normalized_value, raw_value) AS text, evidence_state, superseded_by::text FROM observation WHERE observation_id = $1", [reading!.observationId])).rows[0];
+    expect(original.text).toBe("-F53.3 /150");
+    expect(original.evidence_state).toBe("SUPERSEDED");
+    expect(original.superseded_by).toBe(results[0].corrected[0].replacementId);
+    const retained = await withTenantContext(TENANT_A, c => loadVisualEvidenceForPhoto(c, TENANT_A, fileId, scope));
+    expect(retained?.text).toBe(value);
+    expect(retained?.trust).toBe("verified");
+    expect(retained?.hazards).toEqual([{ code: "arcing", confidence: 0.99 }]);
+    expect((await withTenantContext(TENANT_A, c => loadRecentLookObservations(c, TENANT_A, scope)))[0]?.text).toBe(value);
+    const revision = await correctVisualObservations({ ...opts, corrections: [{ observationId: retained!.observationId, value: value + "\nReviewed again." }] });
+    expect(revision.corrected).toHaveLength(1);
+    expect((await withTenantContext(TENANT_A, c => loadVisualEvidenceForPhoto(c, TENANT_A, fileId, scope)))?.text).toBe(value + "\nReviewed again.");
+    expect((await correctVisualObservations(opts)).corrected).toEqual([]); // obsolete replay cannot revive old text
+    // A delayed materialization of the previous review cannot replace its revision.
+    const attachOpts = { originFileId: fileId, addedBy: scope.ownerUserId, sourceRole: "photo",
+      reviewedPhoto: { observationId: retained!.observationId, threadId: scope.threadId } };
+    try {
+      expect(await attachSource(TENANT_A, scope.notebookId, docs[0], attachOpts))
+        .toEqual({ ok: false, error: "photo_review_conflict" });
+      expect(await findVisibleOriginSource(TENANT_A, scope.notebookId, fileId)).toBeNull();
+      await attachSource(TENANT_A, scope.notebookId, docs[0], { originFileId: fileId, reuseVisibleOrigin: true });
+      const fresh = { ...attachOpts, reviewedPhoto: { ...attachOpts.reviewedPhoto, observationId: revision.corrected[0].replacementId } };
+      expect((await attachSource(TENANT_A, scope.notebookId, docs[1], fresh)).ok).toBe(true);
+      expect((await findVisibleOriginSource(TENANT_A, scope.notebookId, fileId))?.docId).toBe(docs[1]);
+      expect(await validateChatSources(TENANT_A, scope.notebookId, [docs[0]])).toMatchObject({ok:true,docIds:[docs[1]]});
+      const late = await attachSource(TENANT_A, scope.notebookId, docs[0], candidate);
+      expect(late).toEqual({ ok: true, docId: docs[1], alreadyAttached: true });
+      expect((await q("SELECT doc_id FROM equipment_notebook_sources WHERE notebook_id=$1 AND superseded_at IS NULL", [scope.notebookId])).rows).toEqual([{doc_id:docs[1]}]);
+      // Force both requests to wait on the notebook, then release together.
+      // Whichever wins scheduling, the reviewed revision must be the only source.
+      await q("DELETE FROM equipment_notebook_sources WHERE notebook_id=$1", [scope.notebookId]);
+      const barrier = await pool.connect();
+      await barrier.query("BEGIN");
+      await barrier.query("SELECT id FROM equipment_notebooks WHERE id=$1 FOR UPDATE", [scope.notebookId]);
+      const pending = Promise.all([
+        attachSource(TENANT_A, scope.notebookId, docs[0], candidate),
+        attachSource(TENANT_A, scope.notebookId, docs[1], fresh),
+      ]);
+      let waiting = 0;
+      try {
+        for (let attempt = 0; attempt < 100 && waiting < 2; attempt++) {
+          const blocked = await q(`SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE datname=current_database() AND wait_event_type='Lock'
+              AND query LIKE 'SELECT id FROM equipment_notebooks WHERE tenant_id%'`);
+          waiting = blocked.rows[0].n;
+          if (waiting < 2) await new Promise(resolve => setTimeout(resolve, 10));
+        }
+      } finally {
+        await barrier.query("COMMIT");
+        barrier.release();
+      }
+      const [oldSave, reviewedSave] = await pending;
+      expect(reviewedSave.ok).toBe(true);
+      if (oldSave.ok) expect(oldSave.docId).toBe(docs[1]);
+      else expect(oldSave.error).toBe("photo_review_conflict");
+      expect(waiting).toBe(2);
+      expect((await q("SELECT doc_id FROM equipment_notebook_sources WHERE notebook_id=$1 AND superseded_at IS NULL", [scope.notebookId])).rows).toEqual([{doc_id:docs[1]}]);
+      expect(await attachSource(TENANT_A, scope.notebookId, docs[0], { ...fresh, addedBy: "other-tech" })).toEqual({ok:false,error:"photo_review_conflict"});
+      expect(await attachSource(TENANT_A, scope.notebookId, docs[0], { ...fresh, reviewedPhoto: { ...fresh.reviewedPhoto, threadId: "other-thread" } })).toEqual({ok:false,error:"photo_review_conflict"});
+    } finally {
+      await q("DELETE FROM equipment_notebook_sources WHERE notebook_id=$1", [scope.notebookId]);
+      await q("DELETE FROM equipment_notebooks WHERE id=$1", [scope.notebookId]);
+      await q("DELETE FROM hub_uploads WHERE id=ANY($1::uuid[])", [docs]);
+    }
+    await q("DELETE FROM workspace_file_links WHERE file_id = $1", [fileId]);
+    await q("DELETE FROM namespace_direct_uploads WHERE id = $1", [fileId]);
+  });
 
 });

@@ -121,12 +121,19 @@ jobs:
       - name: Run pre-commit hook tests
         run: bash tests/hooks/test_precommit_hook.sh
 
+      # #4554: the .claude/settings.json guard hooks must still decide when the
+      # session's cwd is not the repo root (a relative path exited 127 there,
+      # a non-blocking error, so commands ran unguarded).
+      - name: Run settings.json guard-hook path tests
+        run: bash tests/hooks/test_settings_hook_paths.sh
+
       # The harness itself is a .sh file the hook would lint, so hold it to the
       # same bar rather than exempting the tester from the test.
       - name: shellcheck the harness and the hook
         run: |
           set -euo pipefail
           shellcheck -S warning -f gcc tests/hooks/test_precommit_hook.sh
+          shellcheck -S warning -f gcc tests/hooks/test_settings_hook_paths.sh
           shellcheck -S warning -f gcc .githooks/pre-commit
 
   shared-line-guard:
@@ -315,7 +322,7 @@ jobs:
         # happened in the previous step; a transient upload-sarif failure must
         # not fail sast-semgrep, which the required ci-gate demands succeed.
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: semgrep.sarif
 
@@ -552,6 +559,13 @@ jobs:
         # reachable and its failure is asserted to be non-fatal. No network, no
         # tokens, no shared checkout touched.
         run: pytest tests/test_eval_fixer_fragment_helper.py tests/test_eval_fixer_fragments.py -v
+      - name: Stale PR sweep (SDLC §1.5 WIP policy)
+        # tools/stale_pr_sweep.py decides which open PRs get the 14-day stale notice and
+        # which close 7 days later; .github/workflows/stale-pr-sweep.yml runs it. Named here
+        # (inside the ci-gate needs list) so a regression in the decision rules — bot
+        # comments resetting the clock, a closed PR losing its branch, a dry run that
+        # writes — fails the merge instead of a nightly run. Hermetic: no gh, no network.
+        run: pytest tests/test_stale_pr_sweep.py -v
       - name: Answer Radar benchmark (rubric, rights gate, leakage split)
         # answer_radar/: the real-world maintenance-question benchmark (VCAD). Named
         # explicitly because root `tests/` is not collected wholesale in this job, and
@@ -1417,7 +1431,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Install Trivy
         run: |
@@ -1610,6 +1624,9 @@ jobs:
               - 'mira-hub/scripts/setup-integration-db.mjs'
               - 'mira-hub/vitest.integration.config.ts'
               - '.github/workflows/ci.yml'
+              # #4597 LEXICAL_V2 determinism regression: the retrieval SQL and its test.
+              - 'mira-hub/src/lib/manual-rag.ts'
+              - 'mira-hub/tests/integration/lexical-v2-determinism.integration.test.ts'
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.lifecycle == 'true'
@@ -1635,6 +1652,7 @@ jobs:
             --config vitest.integration.config.ts \
             src/capabilities/observability/__tests__/turn-ingress.integration.test.ts \
             src/capabilities/__tests__/part-search-claim.integration.test.ts \
+            tests/integration/lexical-v2-determinism.integration.test.ts \
             2>&1 | tee /tmp/reconciliation.out
           # A skip here is the exact failure this job was added to prevent. The
           # suite self-skips when TEST_DATABASE_URL is unset, vitest then EXITS 0,
@@ -1661,6 +1679,10 @@ jobs:
           fi
           grep -qE "Tests +[1-9][0-9]* passed" /tmp/reconciliation.plain || {
             echo "::error::could not confirm a positive passing test count"; exit 1; }
+          # #4597: the passing count above is shared by every suite in this run, so it
+          # cannot show that the determinism file itself ran. Require its own line.
+          grep -qE "✓ tests/integration/lexical-v2-determinism\.integration\.test\.ts" /tmp/reconciliation.plain || {
+            echo "::error::lexical-v2-determinism suite did not run and pass"; exit 1; }
 
   manual-search-quota-pg:
     name: Manual-search quota caps (disposable Postgres, migration 103)

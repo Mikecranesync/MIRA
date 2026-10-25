@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mission Control</title>
+<link rel="stylesheet" href="/factorylm-tokens.css">
+<style>
+  /* Page tokens map onto the shared FactoryLM tokens; dark mode swaps to the --fl-dark-* set. */
+  :root {
+    color-scheme: light;
+    --bg: var(--fl-bg); --surface: var(--fl-surface); --ink: var(--fl-ink);
+    --muted: var(--fl-muted); --faint: var(--fl-faint); --line: var(--fl-line);
+    --ok: var(--fl-ok); --warn: var(--fl-warn); --fault: var(--fl-fault);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: var(--fl-dark-bg); --surface: var(--fl-dark-surface); --ink: var(--fl-dark-ink);
+      --muted: var(--fl-dark-muted); --faint: var(--fl-dark-faint); --line: var(--fl-dark-line);
+      --ok: var(--fl-dark-ok); --warn: var(--fl-dark-warn); --fault: var(--fl-dark-fault);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--fl-font); }
+  .wrap { max-width: 1200px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+  .asof { color: var(--muted); font-size: var(--fl-fs-sm); }
+  .totals { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 0; padding: 0; list-style: none;
+            color: var(--muted); font-variant-numeric: tabular-nums; }
+  .totals b { color: var(--ink); }
+  .notice { margin: 16px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--warn);
+            border-radius: var(--fl-radius); background: var(--surface); }
+  .error { margin: 12px 0 0; color: var(--fault); }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 20px; }
+  section { min-width: 0; }
+  h2 { margin: 0; font-size: var(--fl-fs-title); display: flex; align-items: baseline; gap: 8px; }
+  .count { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+  .hint, .more { margin: 2px 0 8px; color: var(--muted); font-size: var(--fl-fs-sm); }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--fl-radius); padding: 10px 12px; }
+  .card.state-closed, .card.state-merged { border-left: 3px solid var(--faint); }
+  .row { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fl-fs-sm); }
+  .ref a { color: var(--ink); font-family: var(--fl-mono); text-decoration: none; }
+  .ref a:hover, .ref a:focus-visible { text-decoration: underline; }
+  .status { color: var(--muted); white-space: nowrap; }
+  .title { margin: 4px 0; overflow-wrap: anywhere; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { font-size: var(--fl-fs-xs); color: var(--muted); border: 1px solid var(--line); border-radius: var(--fl-radius-pill); padding: 0 8px; }
+  .decide { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+            margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: var(--fl-fs-sm); }
+  .rec { color: var(--muted); }
+  .rec b { color: var(--ink); }
+  button[disabled] { font: inherit; padding: 4px 12px; border-radius: var(--fl-radius); border: 1px solid var(--line);
+                     background: transparent; color: var(--faint); cursor: not-allowed; }
+  .empty { color: var(--muted); padding: 8px 0; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--fl-accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Mission Control</h1>
+    <span class="asof">Board data as of $snapshot_time &middot; refreshes at most every 5 minutes &middot; read-only</span>
+  </header>
+  <ul class="totals" aria-label="Cards by status"><li><b>$total</b> cards on Project #4</li>$status_list</ul>
+  <p class="notice"><b>Send is off.</b> $send_reason Recommendations come from simple rules over each card's GitHub record, not from a model.</p>
+  $error
+  <main>
+    $focus
+    $needs
+    $blocked
+    $mismatched
+  </main>
+</div>
+</body>
+</html>

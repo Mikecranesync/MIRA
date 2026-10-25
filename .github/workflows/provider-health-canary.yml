@@ -25,7 +25,11 @@ name: provider-health canary
 
 on:
   schedule:
-    - cron: "23 */6 * * *"   # every 6h at :23 — catch a dead provider within ~6h, not a demo
+    # Hourly at :23 (was every 6h). OpenAI leads the cascade and the staging acceptance
+    # gate depends on it: on 2026-10-18 its prepaid balance ran dry 20:59Z-22:40Z, entirely
+    # between two 6-hourly runs, and the first signal was a blocked prod deploy (#4519).
+    # One probe per provider per hour costs well under a cent a day.
+    - cron: "23 * * * *"
   workflow_dispatch: {}
   push:
     branches: [main]
@@ -84,6 +88,56 @@ jobs:
           # Keep run status honest: exit 1 (degraded) and exit 2 (probe error)
           # both show red. The page step decides which one alerts a human.
           exit "$code"
+
+      - name: Page separately when OpenAI is down
+        # OpenAI is the lead provider AND the dependency of the staging acceptance gate
+        # (retrieval-acceptance.yml) and the photo "look" route, which has no failover. Its
+        # death must not hide as one more line in the long-running coverage incident (open
+        # for weeks because other providers are unpaid). Own issue, own dedup marker.
+        # Same guards as the step below: the probe ran (summary set) and found a death.
+        if: ${{ always() && steps.probe.outputs.exit_code == '1' && steps.probe.outputs.summary != '' && contains(format(',{0},', steps.probe.outputs.down_providers), ',openai,') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          body=$(printf '%s\n' \
+            "first_seen: $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "deploy_run: none" \
+            "deploy_sha: none" \
+            "services: mira-hub chat (lead provider), photo look route, staging acceptance gate" \
+            "impact: chat falls back to the next provider; photo look fails; the prod deploy gate cannot mint a receipt" \
+            "restored_at: open" \
+            "restoring_action: none" \
+            "" \
+            "The provider-health canary found OpenAI DOWN." \
+            "Most likely cause: the prepaid credit balance is exhausted (insufficient_quota / credit_balance_exhausted), as on 2026-10-18 (#4519)." \
+            "Check: platform.openai.com billing for the key in Doppler factorylm/stg and factorylm/prd (shared key)." \
+            "" \
+            "Failing run (reason in the log): ${run_url}" \
+            "" \
+            "canary_marker: openai-down")
+          gh label create provider-incident --color B60205 \
+            --description "LLM cascade provider coverage incident (canary)" 2>/dev/null || true
+          gh label create incident --color B60205 \
+            --description "Production failure record; SDLC v1 10.3 fixed fields, see docs/agents/issue-tracker.md" 2>/dev/null || true
+          # Dedup on EITHER the fixed body marker OR the creation title, newest match wins: a
+          # hand-retitled issue is still found by its marker, and one whose marker line was
+          # edited away is still found by its title (Codex F1 r1 and r2, PR #4531). Only an
+          # issue that lost both is treated as gone.
+          by_marker=$(gh issue list --state open --label provider-incident --search 'in:body "canary_marker: openai-down"' \
+            --json number --jq '[.[].number]')
+          by_title=$(gh issue list --state open --label provider-incident --search 'in:title "OpenAI DOWN"' \
+            --json number --jq '[.[].number]')
+          existing=$(jq -rn --argjson a "${by_marker:-[]}" --argjson b "${by_title:-[]}" '($a + $b) | max // empty')
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --add-label incident \
+              || { echo "::error::could not add the incident label to #$existing; comment withheld"; exit 1; }
+            gh issue comment "$existing" --body "$body"
+            echo "commented on existing OpenAI incident #$existing"
+          else
+            gh issue create --title "OpenAI DOWN (lead provider + deploy gate dependency)" --body "$body" \
+              --label provider-incident --label incident
+          fi
 
       - name: Page on degraded coverage
         # Only a real provider death opens an incident. Two guards:

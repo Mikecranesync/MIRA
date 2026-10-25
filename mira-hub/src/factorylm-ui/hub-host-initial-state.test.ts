@@ -45,7 +45,8 @@ describe("initialHubShellState (#4290)", () => {
 
   it("is the state the /v3 host actually mounts with", () => {
     const host = read("./hub-host.tsx");
-    expect(host).toMatch(/useReducer\(shellReducer, undefined, initialHubShellState\)/);
+    // #4695: the host reduces with hubHostReducer (the shell's reducer plus land-thread).
+    expect(host).toMatch(/useReducer\(hubHostReducer, undefined, initialHubShellState\)/);
     expect(host).not.toMatch(/"set-navigation-visible", visible: true \}\),\s*\);/);
   });
 });

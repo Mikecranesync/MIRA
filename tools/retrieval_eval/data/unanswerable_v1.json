@@ -1,0 +1,830 @@
+{
+ "version": 1,
+ "frozen": "2026-10-21",
+ "purpose": "development unanswerable set (#4584); never drawn from the sealed set",
+ "n": 50,
+ "questions": [
+  {
+   "id": "gs10-ch6-u1",
+   "manual": "gs10-ch6",
+   "question": "What is the IP rating of the GS10 drive enclosure?",
+   "expectedPage": null,
+   "kind": "spec",
+   "verification": {
+    "manual_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "ip ?[0-9]{2}\\b": 0,
+     "ip ?rating": 0,
+     "nema": 0,
+     "enclosure rating": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "gs10-ch6-u2",
+   "manual": "gs10-ch6",
+   "question": "Can the GS10 run on EtherNet/IP, and which option card do I need?",
+   "expectedPage": null,
+   "kind": "protocol",
+   "verification": {
+    "manual_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "ethernet": 0,
+     "option card": 0,
+     "ethernet/ip": 0,
+     "communication card": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "gs10-ch6-u3",
+   "manual": "gs10-ch6",
+   "question": "How do I update the firmware on a GS10?",
+   "expectedPage": null,
+   "kind": "procedure",
+   "verification": {
+    "manual_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "firmware (update|upgrade)": 0,
+     "update (the )?firmware": 0,
+     "flash": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "gs10-ch6-u4",
+   "manual": "gs10-ch6",
+   "question": "What size branch-circuit fuse should I use for a GS10 on 480 V?",
+   "expectedPage": null,
+   "kind": "spec",
+   "verification": {
+    "manual_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "fuse": 0,
+     "branch circuit": 0,
+     "circuit breaker": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "gs10-ch6-u5",
+   "manual": "gs10-ch6",
+   "question": "What is the MTBF of the GS10 drive?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "mtbf": 0,
+     "mean time": 0,
+     "reliability": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "pf40-u1",
+   "manual": "pf40",
+   "question": "What is the part number for a replacement cooling fan for a PowerFlex 40 frame C?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "fan kit": 0,
+     "replacement fan": 0,
+     "fan.{0,30}(catalog|part) ?(no|number)": 0,
+     "spare": 1,
+     "fan": 5
+    },
+    "reviewed_hits": "5 'fan' and 1 'spare' pages reviewed: fan protection, fan/pump curves, fault text, fan presence by rating; no part number"
+   }
+  },
+  {
+   "id": "pf40-u2",
+   "manual": "pf40",
+   "question": "Is the PowerFlex 40 rated for use in a Class I Division 2 hazardous location?",
+   "expectedPage": null,
+   "kind": "certification",
+   "verification": {
+    "manual_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "class i": 1,
+     "division 2": 0,
+     "hazardous location": 0,
+     "div\\.? ?2": 0
+    },
+    "reviewed_hits": "1 'class i' page reviewed: cable insulation class, not a hazardous-location rating"
+   }
+  },
+  {
+   "id": "pf40-u3",
+   "manual": "pf40",
+   "question": "How do I wire safe torque off (STO) on a PowerFlex 40?",
+   "expectedPage": null,
+   "kind": "procedure",
+   "verification": {
+    "manual_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "safe torque": 0,
+     "\\bsto\\b": 0,
+     "safe-off": 0,
+     "safety input": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "pf40-u4",
+   "manual": "pf40",
+   "question": "What is the UL file number for the PowerFlex 40?",
+   "expectedPage": null,
+   "kind": "certification",
+   "verification": {
+    "manual_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "ul file": 0,
+     "file number": 0,
+     "e[0-9]{5,6}\\b": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "pf40-u5",
+   "manual": "pf40",
+   "question": "How do I wire an incremental encoder to the PowerFlex 40 for closed-loop speed control?",
+   "expectedPage": null,
+   "kind": "procedure",
+   "verification": {
+    "manual_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "encoder": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "pf4m-u1",
+   "manual": "pf4m",
+   "question": "What is the PowerFlex 4M's maximum output frequency in sensorless vector mode?",
+   "expectedPage": null,
+   "kind": "spec",
+   "verification": {
+    "manual_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "sensorless vector": 0,
+     "\\bsvc\\b": 0,
+     "vector": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "pf4m-u2",
+   "manual": "pf4m",
+   "question": "Does the PowerFlex 4M support safe torque off?",
+   "expectedPage": null,
+   "kind": "spec",
+   "verification": {
+    "manual_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "safe torque": 0,
+     "\\bsto\\b": 0,
+     "safe.off": 0
+    },
+    "reviewed_hits": "'safety' appears on 10 pages as general safety text; no STO function"
+   }
+  },
+  {
+   "id": "pf4m-u3",
+   "manual": "pf4m",
+   "question": "How do I wire an encoder to the PowerFlex 4M?",
+   "expectedPage": null,
+   "kind": "procedure",
+   "verification": {
+    "manual_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "encoder": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "pf4m-u4",
+   "manual": "pf4m",
+   "question": "How do I connect the PowerFlex 4M to a PROFIBUS DP network?",
+   "expectedPage": null,
+   "kind": "protocol",
+   "verification": {
+    "manual_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "profibus": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "pf4m-u5",
+   "manual": "pf4m",
+   "question": "What's the price of a PowerFlex 4M 2 HP drive?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "price": 0,
+     "\\$ ?[0-9]": 0,
+     "list price": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "acs355-u1",
+   "manual": "acs355",
+   "question": "How do I update the ACS355 firmware?",
+   "expectedPage": null,
+   "kind": "procedure",
+   "verification": {
+    "manual_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "(load|download|upgrad).{0,25}firmware|firmware.{0,25}(load|download|upgrad)": 0,
+     "update.{0,20}firmware": 0
+    },
+    "reviewed_hits": "'firmware' pages reviewed: applicability by firmware version and panel firmware only; FlashDrop is a parameter tool"
+   }
+  },
+  {
+   "id": "acs355-u2",
+   "manual": "acs355",
+   "question": "How do I use DriveComposer to back up ACS355 parameters?",
+   "expectedPage": null,
+   "kind": "procedure",
+   "verification": {
+    "manual_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "drivecomposer": 0,
+     "drive composer": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "acs355-u3",
+   "manual": "acs355",
+   "question": "Is the ACS355 ATEX certified for use in explosive atmospheres?",
+   "expectedPage": null,
+   "kind": "certification",
+   "verification": {
+    "manual_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "atex": 0,
+     "explosive atmosphere": 0,
+     "ex-?zone": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "acs355-u4",
+   "manual": "acs355",
+   "question": "What is the shipping lead time for an ACS355 cooling fan?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "lead time": 0,
+     "delivery time": 0,
+     "shipping": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "acs355-u5",
+   "manual": "acs355",
+   "question": "What is the MTBF of an ACS355 drive?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "mtbf": 0,
+     "mean time between": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "micro820-um-u1",
+   "manual": "micro820-um",
+   "question": "How do I configure the Micro820 to talk PROFINET?",
+   "expectedPage": null,
+   "kind": "protocol",
+   "verification": {
+    "manual_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "profinet": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "micro820-um-u2",
+   "manual": "micro820-um",
+   "question": "How do I connect a Micro820 to AWS IoT over MQTT?",
+   "expectedPage": null,
+   "kind": "protocol",
+   "verification": {
+    "manual_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "mqtt": 0,
+     "\\baws\\b": 0,
+     "\\biot\\b": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "micro820-um-u3",
+   "manual": "micro820-um",
+   "question": "Is the Micro820 approved for marine (DNV) use?",
+   "expectedPage": null,
+   "kind": "certification",
+   "verification": {
+    "manual_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "dnv": 0,
+     "marine": 0,
+     "lloyd": 0,
+     "abs approval": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "micro820-um-u4",
+   "manual": "micro820-um",
+   "question": "What is the price of a 2080-LC20-20QBB controller?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "price": 0,
+     "\\$ ?[0-9]": 0,
+     "list price": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "micro820-um-u5",
+   "manual": "micro820-um",
+   "question": "What is the Micro820's MTBF?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "mtbf": 0,
+     "mean time between": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "micro820-in-u1",
+   "manual": "micro820-in",
+   "question": "What is the syntax of the PID instruction on the Micro820?",
+   "expectedPage": null,
+   "kind": "procedure",
+   "verification": {
+    "manual_sha256": "6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "\\bpid\\b": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "micro820-in-u2",
+   "manual": "micro820-in",
+   "question": "How do I configure Modbus TCP mapping on a Micro820?",
+   "expectedPage": null,
+   "kind": "protocol",
+   "verification": {
+    "manual_sha256": "6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "modbus": 0,
+     "mapping": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "micro820-in-u3",
+   "manual": "micro820-in",
+   "question": "What is the part number of the Micro820's real-time clock backup battery?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "battery": 0
+    },
+    "reviewed_hits": "1 'rtc' page reviewed: embedded RTC spec line only, no battery"
+   }
+  },
+  {
+   "id": "micro820-in-u4",
+   "manual": "micro820-in",
+   "question": "What is the Micro820's maximum number of EtherNet/IP CIP connections?",
+   "expectedPage": null,
+   "kind": "spec",
+   "verification": {
+    "manual_sha256": "6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "cip connection": 0,
+     "ethernet/ip.{0,40}connection": 0
+    },
+    "reviewed_hits": "1 'connections' page reviewed: wiring warning text"
+   }
+  },
+  {
+   "id": "micro820-in-u5",
+   "manual": "micro820-in",
+   "question": "What is the typical program scan time of a Micro820?",
+   "expectedPage": null,
+   "kind": "spec",
+   "verification": {
+    "manual_sha256": "6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "scan time": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "ml1100-u1",
+   "manual": "ml1100",
+   "question": "How do I connect a MicroLogix 1100 to a cloud historian over MQTT?",
+   "expectedPage": null,
+   "kind": "protocol",
+   "verification": {
+    "manual_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "mqtt": 0,
+     "historian": 0,
+     "cloud": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "ml1100-u2",
+   "manual": "ml1100",
+   "question": "How do I program a MicroLogix 1100 with Connected Components Workbench?",
+   "expectedPage": null,
+   "kind": "procedure",
+   "verification": {
+    "manual_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "connected components": 0,
+     "ccw": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "ml1100-u3",
+   "manual": "ml1100",
+   "question": "Is the MicroLogix 1100 rated for SIL 2 safety applications?",
+   "expectedPage": null,
+   "kind": "certification",
+   "verification": {
+    "manual_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "\\bsil\\b": 0,
+     "safety integrity": 0,
+     "iec 61508": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "ml1100-u4",
+   "manual": "ml1100",
+   "question": "What is the PID auto-tune procedure on the MicroLogix 1100?",
+   "expectedPage": null,
+   "kind": "procedure",
+   "verification": {
+    "manual_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "auto.?tune": 0,
+     "autotune": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "ml1100-u5",
+   "manual": "ml1100",
+   "question": "What is the replacement price for a MicroLogix 1100 controller?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "price": 0,
+     "\\$ ?[0-9]": 0,
+     "list price": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "smcflex-u1",
+   "manual": "smcflex",
+   "question": "How do I connect the SMC Flex to PROFINET?",
+   "expectedPage": null,
+   "kind": "protocol",
+   "verification": {
+    "manual_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "profinet": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "smcflex-u2",
+   "manual": "smcflex",
+   "question": "How do I update the SMC Flex firmware?",
+   "expectedPage": null,
+   "kind": "procedure",
+   "verification": {
+    "manual_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "firmware (update|upgrade)": 0,
+     "update.{0,20}firmware": 0,
+     "controlflash": 0
+    },
+    "reviewed_hits": "1 'flash' page reviewed: arc-flash warning"
+   }
+  },
+  {
+   "id": "smcflex-u3",
+   "manual": "smcflex",
+   "question": "Is the SMC Flex ATEX approved?",
+   "expectedPage": null,
+   "kind": "certification",
+   "verification": {
+    "manual_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "atex": 0,
+     "explosive": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "smcflex-u4",
+   "manual": "smcflex",
+   "question": "What is the MTBF of the SMC Flex?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "mtbf": 0,
+     "mean time between": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "smcflex-u5",
+   "manual": "smcflex",
+   "question": "What is the price of an SMC Flex 135 A controller?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "price": 0,
+     "\\$ ?[0-9]": 0,
+     "list price": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "e3plus-u1",
+   "manual": "e3plus",
+   "question": "How do I configure an E3 Plus with Connected Components Workbench?",
+   "expectedPage": null,
+   "kind": "procedure",
+   "verification": {
+    "manual_sha256": "aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "connected components": 0,
+     "ccw": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "e3plus-u2",
+   "manual": "e3plus",
+   "question": "Is the E3 Plus SIL rated?",
+   "expectedPage": null,
+   "kind": "certification",
+   "verification": {
+    "manual_sha256": "aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "\\bsil\\b": 0,
+     "safety integrity": 0,
+     "iec 61508": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "e3plus-u3",
+   "manual": "e3plus",
+   "question": "How do I connect the E3 Plus to PROFINET?",
+   "expectedPage": null,
+   "kind": "protocol",
+   "verification": {
+    "manual_sha256": "aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "profinet": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "e3plus-u4",
+   "manual": "e3plus",
+   "question": "Can the E3 Plus publish motor current to an MQTT broker?",
+   "expectedPage": null,
+   "kind": "protocol",
+   "verification": {
+    "manual_sha256": "aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "mqtt": 0,
+     "broker": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "e3plus-u5",
+   "manual": "e3plus",
+   "question": "What is the price of an E3 Plus overload relay?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "price": 0,
+     "list price": 0
+    },
+    "reviewed_hits": "1 '$' hit reviewed: '$350 MCM' cable size, not a price"
+   }
+  },
+  {
+   "id": "smc50-u1",
+   "manual": "smc50",
+   "question": "How do I connect the SMC-50 to PROFINET?",
+   "expectedPage": null,
+   "kind": "protocol",
+   "verification": {
+    "manual_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "profinet": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "smc50-u2",
+   "manual": "smc50",
+   "question": "Is the SMC-50 rated for SIL 2?",
+   "expectedPage": null,
+   "kind": "certification",
+   "verification": {
+    "manual_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "\\bsil\\b": 0,
+     "safety integrity": 0,
+     "iec 61508": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "smc50-u3",
+   "manual": "smc50",
+   "question": "Is the SMC-50 ATEX certified?",
+   "expectedPage": null,
+   "kind": "certification",
+   "verification": {
+    "manual_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "atex": 0,
+     "explosive": 0
+    },
+    "reviewed_hits": null
+   }
+  },
+  {
+   "id": "smc50-u4",
+   "manual": "smc50",
+   "question": "What is the shipping weight of an SMC-50 180 A unit?",
+   "expectedPage": null,
+   "kind": "spec",
+   "verification": {
+    "manual_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "weight": 0,
+     "\\bkg\\b": 0
+    },
+    "reviewed_hits": "4 'lb' pages reviewed: lb-in torque units only"
+   }
+  },
+  {
+   "id": "smc50-u5",
+   "manual": "smc50",
+   "question": "What is the price of an SMC-50 90 A controller?",
+   "expectedPage": null,
+   "kind": "commercial",
+   "verification": {
+    "manual_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069",
+    "extractor": "pdftotext -layout (poppler)",
+    "terms": {
+     "price": 0,
+     "\\$ ?[0-9]": 0,
+     "list price": 0
+    },
+    "reviewed_hits": null
+   }
+  }
+ ]
+}

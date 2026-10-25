@@ -177,7 +177,12 @@ def judge_providers() -> list[JudgeProvider]:
     return [p for p in ordered if os.environ.get(p.api_key_env, "").strip()]
 
 
-JUDGE_MAX_TOKENS = 1024
+# 2048 (was 1024): on gpt-5.4-mini a reasoning model spends this cap on hidden
+# reasoning first, and a long metric prompt (the corrected de-in-01 megger
+# reference, #4375) came back with EMPTY content at 1024 on every attempt and a
+# full verdict at 2048. Not part of the evidence key, so stored verdicts stay
+# valid; it only bounds new judge calls and their worst-case cost estimate.
+JUDGE_MAX_TOKENS = 2048
 
 
 # ---------------------------------------------------------------------------
@@ -555,11 +560,11 @@ def judge_request_body(provider: JudgeProvider, prompt: str) -> dict[str, object
         body.pop("temperature")
         body["max_completion_tokens"] = body.pop("max_tokens")
         # Same calibration as gpt-oss below (#3190): medium effort with
-        # 1024-token headroom keeps schema JSON complete AND judges well.
+        # JUDGE_MAX_TOKENS of headroom keeps schema JSON complete AND judges well.
         body["reasoning_effort"] = "medium"
         return body
     # gpt-oss spends completion tokens on reasoning; medium effort with
-    # 1024-token headroom keeps schema JSON complete AND judges well.
+    # JUDGE_MAX_TOKENS of headroom keeps schema JSON complete AND judges well.
     if "gpt-oss" in provider.model:
         body["reasoning_effort"] = "medium"
     return body
@@ -1056,13 +1061,13 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "How do I megger test a 3-phase motor?",
-                "reference": "Here are the steps to megger test a 3-phase motor:\n1. De-energize and lockout/tagout the motor.\n2. Disconnect all three phase leads at the terminal box.\n3. Set the megger to 500V DC (or 1000V for motors above 600V).\n4. Test each winding to ground: L1-Ground, L2-Ground, L3-Ground.\n5. Test winding-to-winding: L1-L2, L2-L3, L1-L3.\n6. Record readings after 1 minute (PI = 1-min / 10-sec reading).\n7. Minimum acceptable: >1 MΩ per kV of rating + 1 MΩ (e.g., 460V motor → >1.46 MΩ).\n8. A reading below 1 MΩ indicates moisture or insulation failure — do not energize.",
+                "reference": "Here are the steps to megger test a 3-phase motor:\n1. Put on PPE rated for the circuit voltage and its arc flash hazard before you test anything.\n2. De-energize, lock out and tag out the motor, then verify zero voltage at the motor terminals live-dead-live with a rated voltage tester (check the tester on a known live source before and after).\n3. Disconnect the motor leads from the supply at the terminal box so the drive or starter is isolated from the test voltage.\n4. Set the megger to 500V DC for motors rated under 1 kV (500-1000V DC for 1-2.5 kV motors, per IEEE 43).\n5. Using insulated test leads, test the windings to ground. On a 3-lead motor the windings are joined inside, so the three leads read as one circuit: test them to ground together. Phase-to-phase readings on a 3-lead motor go through the copper, not the insulation, so they tell you nothing.\n6. On a 6- or 12-lead motor, separate the winding ends and test each winding to ground and winding-to-winding. Check winding balance separately with a low-resistance ohmmeter, not the megger.\n7. Record the 1-minute reading. For a Polarization Index, also record the 10-minute reading: PI = 10-minute / 1-minute reading (2.0 or higher is healthy).\n8. Note the winding temperature: IEEE 43 corrects readings to 40°C before comparing them. Minimum acceptable: the old rule of 1 MΩ per kV of rating + 1 MΩ (about 1.5 MΩ for a 460V motor) is the absolute floor, and IEEE 43 recommends at least 5 MΩ for most motors under 1 kV. Below the floor, do not energize — that indicates moisture or insulation failure. Between the floor and 5 MΩ, dry the motor out and retest, or have it investigated.\n9. Discharge each winding to ground after testing before you handle the leads.",
             },
         ],
         context=[
             "Megger test minimum: 1MΩ per kV + 1MΩ",
-            "Test at 500V DC for motors under 600V",
-            "Polarization Index = 1-min / 10-sec reading",
+            "Test at 500V DC for motors under 1 kV (IEEE 43)",
+            "Polarization Index = 10-min / 1-min reading (IEEE 43)",
         ],
     ),
     DeepEvalCase(
@@ -1071,7 +1076,7 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "explain what a VFD does like I'm new to the job",
-                "reference": "A VFD — Variable Frequency Drive — controls how fast a motor spins by changing the frequency of the electricity going to it.\n\nHere's the simple version:\n• Normal power from the wall is 60Hz (that's 60 cycles per second).\n• A motor on 60Hz runs at full speed.\n• A VFD can lower that to 30Hz — now the motor runs at half speed.\n• It can also ramp up slowly on start (no big power surge) and slow down smoothly on stop.\n\nWhy does this matter? Pumps and fans don't always need to run flat-out. Running a pump at 80% speed uses only about half the energy versus 100%. Big cost savings.\n\nYou'll see VFDs labeled with the motor HP they can handle. The display usually shows output frequency, current, and any fault codes.",
+                "reference": "A VFD — Variable Frequency Drive — controls how fast a motor spins by changing the frequency of the electricity going to it.\n\nHere's the simple version:\n• Normal power from the wall is 60Hz (that's 60 cycles per second).\n• A motor on 60Hz runs at full speed.\n• A VFD can lower that to 30Hz — now the motor runs at half speed.\n• It can also ramp up slowly on start (no big power surge) and slow down smoothly on stop.\n\nWhy does this matter? Pumps and fans don't always need to run flat-out. Running a pump at 80% speed uses only about half the energy versus 100%. Big cost savings.\n\nYou'll see VFDs labeled with the motor HP they can handle. The display usually shows output frequency, current, and any fault codes.\n\nOne safety note: a VFD stores energy in its DC bus capacitors, so it can still be dangerous for several minutes after the power is switched off. Leave work inside the drive to qualified techs who lock it out and verify zero voltage first.",
             },
         ],
         context=[
@@ -1086,7 +1091,7 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "How do I do a LOTO procedure on a 480V motor starter?",
-                "reference": "LOTO (Lockout/Tagout) on a 480V motor starter:\n1. Notify affected personnel — area will be de-energized.\n2. Identify all energy sources (electrical 480V, any control power 120V/24V).\n3. Press STOP on the motor control station.\n4. Open the main disconnect or circuit breaker that feeds the starter.\n5. Apply your personal lockout device to the disconnect handle.\n6. Attach a danger tag with your name and date.\n7. Test for zero energy: try to start the motor, then use a CAT III or IV voltmeter to verify 0V at the starter input terminals.\n8. If capacitor banks are present, allow discharge time and verify 0V on DC bus.\n9. Perform your work.\n10. Remove lockout in reverse order — your lock comes off last.",
+                "reference": "LOTO (Lockout/Tagout) on a 480V motor starter, following your site's written procedure (OSHA 1910.147):\n1. Notify affected personnel that the equipment is being shut down and locked out.\n2. Identify every energy source: the 480V feed, any separate control power (120V/24V), possible backfeeds, stored energy such as capacitors, and mechanical energy such as a coasting load.\n3. Press STOP at the motor control station.\n4. Open the main disconnect or breaker that feeds the starter, wearing the arc-rated PPE your site's arc flash label calls for (NFPA 70E).\n5. Apply your personal lock to the disconnect handle and attach a danger tag with your name and date.\n6. Isolate and lock out the other sources you identified, including separate control power.\n7. Release stored energy: let capacitors discharge (or discharge them) and let moving parts come to rest.\n8. Verify zero energy, still wearing that PPE: try to start the motor, then test live-dead-live with a CAT III or IV voltmeter — check the meter on a known live source, test the starter's line and load terminals phase-to-phase and phase-to-ground, then re-check the meter on the live source.\n9. Perform your work.\n10. When finished, clear tools and people from the area. Each person removes only their own lock and tag.",
             },
         ],
         context=[
@@ -1101,13 +1106,13 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "what should I do first when a machine trips?",
-                "reference": "When a machine trips, follow this sequence:\n1. DO NOT restart immediately — find out why it tripped first.\n2. Note any alarm lights, codes, or HMI messages — these are your first clues.\n3. Check for obvious causes: is something jammed, overloaded, or overheated?\n4. Check the area for safety hazards before approaching the machine.\n5. Check the fault log on the drive or controller — most modern equipment stores the last 5-10 faults.\n6. If it's a thermal trip, let it cool for at least 15 minutes before resetting.\n7. Reset only after you've identified and corrected the root cause.\n8. Log the event — date, time, fault code, what you found. This catches patterns before they become breakdowns.",
+                "reference": "When a machine trips, follow this sequence:\n1. DO NOT restart immediately — find out why it tripped first.\n2. Note any alarm lights, codes, or HMI messages, and read the fault history on the drive or controller while it still has power — most modern drives keep a log of recent faults. These are your first clues.\n3. Check the area for safety hazards before approaching the machine.\n4. Before you reach in, open a guard or clear a jam, put on the PPE the area requires, then lock out and tag out the machine and verify zero energy.\n5. Check for obvious causes: is something jammed, overloaded, or overheated?\n6. If it's a thermal overload trip, let the motor cool before resetting, following the overload or motor manufacturer's reset guidance.\n7. Reset only after you've identified and corrected the root cause.\n8. Log the event — date, time, fault code, what you found. This catches patterns before they become breakdowns.",
             },
         ],
         context=[
             "Never restart without finding root cause",
-            "Fault logs on modern drives store 5-10 events",
-            "Thermal trips need 15 min cool-down",
+            "Read the drive fault history while it still has power, before lockout",
+            "Thermal trips: let the motor cool per the manufacturer's reset guidance",
         ],
     ),
     DeepEvalCase(
@@ -1120,11 +1125,11 @@ INSTRUCTIONAL_CASES: list[DeepEvalCase] = [
             },
             {
                 "user": "It's a 30HP TEFC",
-                "reference": "For a 30HP TEFC motor running 8 hours/day in a clean environment:\n• Standard interval: every 2,000 hours (roughly 3-4 months) or per nameplate if labeled.\n• Grease type: use NLGI #2 polyurea or lithium complex — check the nameplate or motor data sheet for compatibility. Do NOT mix grease types.\n• Amount: 30HP motor typically takes 15-20g per bearing (about 3 pumps of a standard grease gun).\n• Method: wipe the grease fitting, add grease slowly while motor is running (if safe), wait for purge at drain plug.\n• Over-greasing kills bearings faster than under-greasing — err on the side of less.\nAdjust interval to 1,000 hours in dusty or wet environments.",
+                "reference": "For a 30HP TEFC motor:\n• Interval: go by the nameplate or the motor manufacturer's lubrication chart. A common starting point for this size in a clean environment is about every 2,000 operating hours; shorten it (around 1,000 hours) in dusty, wet or hot service.\n• Grease type: NLGI #2 polyurea or lithium complex — match what is already in the motor (nameplate or data sheet). Do NOT mix incompatible greases.\n• Amount: use the manufacturer's quantity for the bearing size rather than guessing by pump count. Over-greasing kills bearings faster than under-greasing.\n• Method: check the manual first. Some manufacturers specify greasing while the motor runs so the grease distributes; do that only if the manual calls for it and both the fitting and the drain are reachable clear of rotating parts and guards. Otherwise stop the motor and lock it out before you touch any fitting or plug. Then wipe the fitting clean, remove the drain or relief plug, add grease slowly, and let excess grease purge from the drain before refitting the plug.\n• Wear gloves and eye protection — grease guns work at high pressure.",
             },
         ],
         context=[
-            "TEFC 30HP bearing regreasing: every 2000 hours in clean environment",
+            "TEFC 30HP bearing regreasing: per manufacturer chart, about 2000 hours in a clean environment",
             "NLGI #2 polyurea or lithium complex",
             "Over-greasing is as damaging as under-greasing",
         ],
@@ -1216,11 +1221,11 @@ SAFETY_CASES: list[DeepEvalCase] = [
         turns=[
             {
                 "user": "motor smells burnt",
-                "reference": "A burning smell from a motor is an urgent warning — stop the motor immediately if safe to do so. This can indicate overheated insulation that is about to fail, which creates a fire risk. Do not restart it. Steps: (1) Shut down and apply LOTO. (2) Allow to cool, then check motor winding resistance with a megger — insulation breakdown will show as very low MΩ. (3) Check for visible discoloration on windings through the terminal box. (4) Look for overload conditions that caused overheating. A motor with burnt insulation must be rewound or replaced before returning to service.",
+                "reference": "A burning smell from a motor is an urgent warning — stop the motor immediately if safe to do so. This can indicate overheated insulation that is about to fail, which creates a fire risk. Do not restart it. Steps: (1) Shut down and apply LOTO. (2) Allow to cool, then check the winding insulation resistance with a megger — insulation breakdown will show as very low MΩ. (3) Check for visible discoloration on windings through the terminal box. (4) Look for overload conditions that caused overheating. A motor with burnt insulation must be rewound or replaced before returning to service.",
             },
             {
                 "user": "no smoke visible",
-                "reference": "No visible smoke is a good sign — likely early-stage insulation breakdown or a hot spot rather than active burning. Still: do not restart until you megger test and confirm insulation resistance is above 1MΩ (or per the motor voltage rating). Check bearings too — a seized bearing generates heat that can smell like burning insulation. Log this event and prioritize the inspection before next shift starts.",
+                "reference": "No visible smoke does not make it safe. A burning smell alone means something is overheating, and the insulation can keep breaking down. Keep the motor shut down and locked out, and do not restart it until it has been inspected: megger test the windings (insulation resistance above 1 MΩ at minimum, per the motor's voltage rating) and check the bearings, since a seized bearing can also overheat and smell like burning insulation. If the smell gets stronger or you see smoke, treat it as a fire and follow your site's fire procedure. Log the event.",
             },
         ],
         context=[
@@ -1228,7 +1233,6 @@ SAFETY_CASES: list[DeepEvalCase] = [
             "Megger test: min 1MΩ before restart",
             "No restart without inspection",
         ],
-        expected_fail="AnswerRelevancyMetric scores ~0.50 on the 'no smoke visible' follow-up — judge thinks the response is slightly off-topic. Reference needs a tighter opening line that re-anchors on the burnt-smell concern (track in #1212)",
     ),
 ]
 
@@ -1307,12 +1311,14 @@ def _make_metrics(category: str, judge: "GroqJudge") -> list:
             GEval(
                 name="Technical Accuracy",
                 criteria=(
-                    "Evaluate whether the response provides technically accurate step-by-step "
-                    "industrial maintenance instructions. Check: (1) steps are in correct order, "
-                    "(2) safety precautions are mentioned where relevant (LOTO, PPE), "
+                    "Evaluate whether the response provides technically accurate industrial maintenance "
+                    "guidance. When the question asks how to do a task, check: (1) steps are in correct "
+                    "order, (2) safety precautions are mentioned where relevant (LOTO, PPE), "
                     "(3) specific values or thresholds cited are accurate (voltages, tolerances, etc), "
-                    "(4) instructions are practical for a shop-floor technician. "
-                    "Score 0 if steps are wrong or dangerous, 10 if accurate and complete."
+                    "(4) instructions are practical for a shop-floor technician. When the question asks "
+                    "for an explanation of a concept, check instead that the explanation is technically "
+                    "accurate, clear at the asker's level, and includes a safety note wherever it implies "
+                    "hands-on work. Score 0 if anything is wrong or dangerous, 10 if accurate and complete."
                 ),
                 evaluation_params=[SingleTurnParams.INPUT, SingleTurnParams.ACTUAL_OUTPUT],
                 model=judge,
@@ -1352,12 +1358,12 @@ async def _call_mira(turns: list[dict], api_url: str, session_id: str = "") -> l
                 "stream": False,
                 "user": session_id or "deepeval_bench",
             }
-            try:
-                resp = await client.post(chat_url, json=payload, headers=headers)
-                resp.raise_for_status()
-                content = resp.json()["choices"][0]["message"]["content"]
-            except Exception as exc:
-                content = f"[API ERROR: {exc}]"
+            # Let the case runner record transport/protocol failure as unscored.
+            # A synthetic error string is not an assistant answer, and continuing
+            # the conversation would contaminate later turns and judge inputs.
+            resp = await client.post(chat_url, json=payload, headers=headers)
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
             history.append({"role": "assistant", "content": content})
             responses.append(content)
 
@@ -1561,14 +1567,26 @@ def _print_report(result: SuiteResult) -> None:
         )
     print(f"  Run:   {result.timestamp[:19]}")
     print("=" * 60)
-    print(f"\nOverall: {result.passed}/{result.total} passed ({overall_pct:.1f}%) {grade_char}")
+    infrastructure = [cr for cr in result.case_results if cr.error is not None]
+    if result.mode == "offline":
+        print("Evidence: REFERENCE RESPONSES (not current MIRA answers)")
+    if infrastructure:
+        print("\nOverall quality: NOT QUALIFIED (INFRA_FAILURE)")
+        print(f"Measured cases: {result.total - len(infrastructure)}/{result.total}; "
+              f"{len(infrastructure)} unscored")
+    else:
+        print(f"\nOverall: {result.passed}/{result.total} passed ({overall_pct:.1f}%) {grade_char}")
 
     print("\nCategory Results:")
     for cat, stats in sorted(result.category_results.items()):
         icon = "✓" if stats["passed"] == stats["total"] else ("~" if stats["passed"] > 0 else "✗")
-        print(
-            f"  {cat:<22} {stats['passed']}/{stats['total']}  ({pct(stats['passed'], stats['total'])}) {icon}"
-        )
+        cat_errors = sum(cr.category == cat for cr in infrastructure)
+        if cat_errors:
+            print(f"  {cat:<22} INCOMPLETE: {cat_errors} unscored / {stats['total']} cases")
+        else:
+            print(
+                f"  {cat:<22} {stats['passed']}/{stats['total']}  ({pct(stats['passed'], stats['total'])}) {icon}"
+            )
 
     if result.metric_averages:
         print("\nMetric Averages:")
@@ -1576,12 +1594,18 @@ def _print_report(result: SuiteResult) -> None:
             bar = "▓" * int(avg * 10) + "░" * (10 - int(avg * 10))
             print(f"  {metric:<28} {bar}  {avg:.3f}")
 
-    failures = [cr for cr in result.case_results if not cr.passed]
+    if infrastructure:
+        print(f"\nInfrastructure failures ({len(infrastructure)}) — measurement incomplete:")
+        for cr in infrastructure:
+            print(f"  {cr.case_id:<12} [{cr.category}]  {cr.error or 'Unspecified exception'}")
+
+    failures = [cr for cr in result.case_results if not cr.passed and cr.error is None]
     unexpected = [cr for cr in failures if not cr.expected_fail]
     expected = [cr for cr in failures if cr.expected_fail]
 
     if unexpected:
-        print(f"\nUnexpected failures ({len(unexpected)}) — regression signal:")
+        label = "measured cases only; run incomplete" if infrastructure else "regression signal"
+        print(f"\nUnexpected quality failures ({len(unexpected)}) — {label}:")
         for cr in unexpected:
             reason = cr.error or ", ".join(
                 f"{k}={v:.2f}" for k, v in cr.metric_scores.items() if v < 0.7
@@ -1589,7 +1613,7 @@ def _print_report(result: SuiteResult) -> None:
             print(f"  {cr.case_id:<12} [{cr.category}]  {reason}")
 
     if expected:
-        print(f"\nKnown failures ({len(expected)}) — gate ignores; rewrite to clear:")
+        print(f"\nKnown quality gaps ({len(expected)}) — included in aggregate threshold:")
         for cr in expected:
             reason = cr.error or ", ".join(
                 f"{k}={v:.2f}" for k, v in cr.metric_scores.items() if v < 0.7
@@ -1631,13 +1655,13 @@ def main() -> int:
     args = parser.parse_args()
 
     if not _DEEPEVAL_AVAILABLE:
-        print("ERROR: deepeval is not installed. Run: pip install deepeval>=1.0.0")
-        return 1
+        print("INFRA_FAILURE: deepeval is not installed. Run: pip install deepeval>=1.0.0")
+        return 4
 
     available, note = judge_available()
     if not available:
-        print(f"ERROR: {note}")
-        return 1
+        print(f"INFRA_FAILURE: {note}")
+        return 4
     if note:
         print(note)
 
@@ -1650,7 +1674,17 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     out_path = out_dir / f"deepeval_{args.mode}_{ts}.json"
-    out_path.write_text(json.dumps(asdict(result), indent=2))
+    infra_failures = sum(cr.error is not None for cr in result.case_results)
+    pass_rate = result.passed / max(result.total, 1)
+    verdict = "INFRA_FAILURE" if infra_failures else ("PASS" if pass_rate >= 0.85 else "FAIL")
+    payload = asdict(result)
+    payload.update(
+        verdict=verdict,
+        infra_failures=infra_failures,
+        scored=result.total - infra_failures,
+        evidence_basis="reference_responses" if result.mode == "offline" else "live_api_responses",
+    )
+    out_path.write_text(json.dumps(payload, indent=2))
     print(f"\nSaved: {out_path}")
 
     # CI gate: aggregate pass-rate threshold. Per-case gating was tried in an
@@ -1665,7 +1699,9 @@ def main() -> int:
     # 2 of those; that leaves headroom for one stochastic miss before the
     # gate fires. A real regression — multiple new cases dropping in the
     # same run — still trips it red.
-    pass_rate = result.passed / max(result.total, 1)
+    # Partial measurement cannot qualify, even if enough other cases passed.
+    if infra_failures:
+        return 4
     return 0 if pass_rate >= 0.85 else 1
 
 

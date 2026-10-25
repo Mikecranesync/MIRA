@@ -202,6 +202,8 @@ export function sourceFor(citation: EvidenceCitation, turnId: string): SourceRef
     kind: citation.fileId ? "workspace_file" : "oem_documentation",
     locator,
     ...(href ? { href } : {}),
+    // The canonical origin of a photo-derived source is the photograph (085).
+    ...(href && citation.originFileId ? { media: "image" as const } : {}),
   };
 }
 
@@ -534,7 +536,57 @@ export function withManualSearchStatus(
     model: status.model,
     running: status.running,
     ...(status.message ? { message: status.message } : {}),
+    ...(status.manualUrl ? { manualUrl: status.manualUrl } : {}),
   };
+  return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
+}
+
+/** The follow-up suggestions of the answer that just finished streaming, and
+ *  the question they answered (#4454). */
+export interface SettledFollowups {
+  readonly question: string;
+  readonly suggestions: readonly string[];
+  /** Answer turn ids already in the thread when the send started. */
+  readonly answeredBefore: readonly string[];
+}
+
+/** The question text a user turn carried, trimmed; null for any other turn. */
+function askedText(turn: InteractionTurn | undefined): string | null {
+  if (turn?.role !== "user") return null;
+  const text = turn.parts.find((p) => p.type === "text");
+  return text?.type === "text" ? text.text.trim() : null;
+}
+
+/**
+ * #4454 — saved rows never carry follow-up suggestions, so once `hub-host.tsx`
+ * re-loads the thread after a stream and drops the live turn, the chips the
+ * technician just saw vanished. The host keeps the finished answer's
+ * suggestions; this puts them back on the answer that send produced: the one
+ * answer to that question that was not in the thread when the send started.
+ * It must also be the LAST answer and have completed. If another device
+ * answered the same question meanwhile, two answers qualify and neither can be
+ * told apart from here, so neither gets them. Same overlay shape as
+ * `withManualSearchStatus`, applied before it so the order matches the live turn.
+ */
+export function withSettledFollowups(
+  turns: readonly InteractionTurn[],
+  settled: SettledFollowups | null,
+): InteractionTurn[] {
+  if (!settled || settled.suggestions.length === 0) return [...turns];
+  const before = new Set(settled.answeredBefore);
+  const asked = settled.question.trim();
+  let lastAssistantIndex = -1;
+  const produced: number[] = [];
+  for (let i = 0; i < turns.length; i++) {
+    const t = turns[i]!;
+    if (t.role !== "assistant") continue;
+    lastAssistantIndex = i;
+    if (!before.has(t.id) && askedText(turns[i - 1]) === asked) produced.push(i);
+  }
+  if (produced.length !== 1 || produced[0] !== lastAssistantIndex) return [...turns];
+  const answer = turns[lastAssistantIndex]!;
+  if (answer.lifecycle !== "completed" || answer.parts.some((p) => p.type === "followups")) return [...turns];
+  const part: InteractionPart = { type: "followups", suggestions: settled.suggestions };
   return turns.map((t, i) => (i === lastAssistantIndex ? { ...t, parts: [...t.parts, part] } : t));
 }
 

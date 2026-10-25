@@ -131,11 +131,40 @@ def test_fix_mode_requires_the_confirmation_token(hygiene_text):
     assert "inputs.mode == 'fix'" in hygiene_text
 
 
+_GATE_EXPR = "${{ inputs.mode == 'fix' && 'production' || '' }}"
+
+
+def _environment_for(mode):
+    """Emulate the job's environment expression for one dispatch/schedule input.
+
+    Actions string `==` is case-insensitive; a missing input (schedule) is ''.
+    """
+    return "production" if (mode or "").lower() == "fix" else ""
+
+
 def test_fix_mode_is_human_dispatched_and_production_gated(hygiene_text):
     wf = yaml.safe_load(hygiene_text)
     triggers = wf[True] if True in wf else wf["on"]
     assert "workflow_dispatch" in triggers
-    assert wf["jobs"]["hygiene"]["environment"] == "production"
+    # Only fix mutates the prod box, so only fix waits on the production
+    # approval gate; the scheduled read-only check must not (#4696).
+    assert wf["jobs"]["hygiene"]["environment"] == _GATE_EXPR
+
+
+@pytest.mark.parametrize(
+    ("mode", "gated"),
+    [("fix", True), ("FIX", True), ("Fix", True), ("check", False), ("", False), (None, False)],
+)
+def test_production_gate_covers_every_mutating_mode(mode, gated):
+    # The remote script mutates only when MODE is exactly "fix"; the gate must
+    # fire for that and may over-approximate (case variants), never under.
+    assert (_environment_for(mode) == "production") is gated
+    if mode == "fix":
+        assert _environment_for(mode) == "production"
+
+
+def test_remote_script_mutates_only_on_exact_fix(hygiene_text):
+    assert 'if [ "${MODE}" != "fix" ]; then' in hygiene_text
 
 
 def test_fix_never_deletes_anything(hygiene_text):

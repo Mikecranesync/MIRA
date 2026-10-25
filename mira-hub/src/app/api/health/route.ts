@@ -6,6 +6,7 @@ import {
   telemetryEnabled,
 } from "@/capabilities/observability/config";
 import { ensureEmbedRetrySweep } from "@/capabilities/embed-retry-sweep";
+import { warmQueryEmbedder } from "@/capabilities/hybrid-retrieval";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,10 @@ export function GET() {
   // guaranteed to reach a fresh container: it starts the embed retry sweep
   // (idempotent, never blocks or throws — see capabilities/embed-retry-sweep.ts).
   ensureEmbedRetrySweep();
+  // Same reason it warms the notebook query embedder (once per process, and only
+  // when NOTEBOOK_HYBRID_RETRIEVAL=1): the first turn after a deploy otherwise
+  // pays the cold model load and silently falls back to BM25.
+  void warmQueryEmbedder().catch(() => undefined);
   // Deploy identity (#2226) — baked at build time, surfaced here so the same
   // probe that reports liveness also says WHICH code is live. See /api/version.
   const identity = {
