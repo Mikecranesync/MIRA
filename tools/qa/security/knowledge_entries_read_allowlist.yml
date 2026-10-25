@@ -481,7 +481,7 @@ approved:
     approved_classification: TENANT-ONLY
     query_sha256: "38ede17090d609673dcb6b633683ec7064c6488077454c8ce74d3c7897df0e9c"
     reason: "NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. Final select joins knowledge_entries back to the `scored` CTE by primary key; every id in `scored` comes from the tenant-scoped `scope` CTE, and the explicit `knowledge_entries.tenant_id = $1` repeats the tenant predicate as defence in depth. Never widens scope beyond the BM25 pass. TENANT-ONLY, pure-tenant node-attachment surface."
-  "mira-hub/src/lib/manual-rag.ts:1466":
+  "mira-hub/src/lib/manual-rag.ts:1498":
     approved_classification: TENANT-ONLY
     query_sha256: "38ede17090d609673dcb6b633683ec7064c6488077454c8ce74d3c7897df0e9c"
     reason: "NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. Same final select as the entry above (the checker reports the join's second line separately); the correlated document_heading subquery it carries is the one already allowlisted for the BM25 pass. TENANT-ONLY, pure-tenant node-attachment surface."
