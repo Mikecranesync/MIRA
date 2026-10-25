@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { Send, Loader2, FileText, ChevronDown, Square, RotateCcw, Activity, Camera, AlertTriangle } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 import type { EvidenceCitation, MachineEvidenceEntry, SafetyNoticeEntry, VisualObservationEntry } from "@/lib/notebook-chat-types";
-import { AnswerMarkdown } from "./notebook-markdown";
+import { AnswerMarkdown, citationDisplayNumbers } from "./notebook-markdown";
 import {
   answerContentFor,
   basisLabel,
@@ -112,6 +112,9 @@ export function Bubble({
   const isUser = turn.role === "user";
   const cites = turn.citations ?? [];
   const passages = distinctPassages(cites);
+  // citationId is a thread-wide running counter; the visible "[n]" here must
+  // reset per message, same as the inline chip (#4667).
+  const displayNumbers = citationDisplayNumbers(cites);
   const [showSources, setShowSources] = useState(false);
 
   if (isUser) {
@@ -287,7 +290,7 @@ export function Bubble({
                 >
                   <FileText size={12} aria-hidden />
                   <span className="min-w-0 truncate">
-                    [{c.citationId}] {c.sourceTitle}
+                    [{displayNumbers.get(c.citationId) ?? c.citationId}] {c.sourceTitle}
                     {c.page != null ? ` · p.${c.page}` : ""}
                   </span>
                   {c.quote ? <span className="truncate opacity-70">— {c.quote.slice(0, 60)}</span> : null}

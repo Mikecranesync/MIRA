@@ -8,6 +8,7 @@ import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { describe, expect, it } from "vitest";
 import { Bubble, chatBodyFor, distinctPassages, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
 import { buildChatBody, persistedTurns, stoppedTurn } from "./notebook-chat-utils";
+import { citationDisplayNumbers } from "./notebook-markdown";
 
 const citation = {
   citationId: "1",
@@ -90,6 +91,23 @@ describe("distinctPassages", () => {
   it("collapses repeated (doc,page) citations to distinct passages", () => {
     const cites = [c("1", "d1", 5), c("2", "d1", 5), c("3", "d1", 9), c("4", "d2", 5)];
     expect(distinctPassages(cites).map((x) => x.citationId)).toEqual(["1", "3", "4"]);
+  });
+
+  // #4667: the source-list row prints the raw (thread-wide) citationId as the
+  // visible "[n]" — a later message whose only source was minted 3rd across
+  // the thread shows "[3]" instead of "[1]". The row must use the per-message
+  // display number instead, in the SAME order distinctPassages already walks.
+  it("citationDisplayNumbers numbers each distinct passage 1..N in distinctPassages' own order", () => {
+    const cites = [c("7", "d1", 5), c("9", "d2", 9), c("11", "d1", 5)];
+    const passages = distinctPassages(cites);
+    const numbers = citationDisplayNumbers(cites);
+    expect(passages.map((p) => numbers.get(p.citationId))).toEqual([1, 2]);
+  });
+
+  it("control: a single-passage thread numbers it 1 even when citationId is a later thread-wide id", () => {
+    const cites = [c("3", "d1", 4)];
+    const numbers = citationDisplayNumbers(cites);
+    expect(distinctPassages(cites).map((p) => numbers.get(p.citationId))).toEqual([1]);
   });
 });
 

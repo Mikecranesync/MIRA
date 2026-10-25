@@ -6,7 +6,14 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AnswerMarkdown, CodeBlock, codeText, copyToClipboard, languageOf } from "./notebook-markdown";
+import {
+  AnswerMarkdown,
+  CodeBlock,
+  citationDisplayNumbers,
+  codeText,
+  copyToClipboard,
+  languageOf,
+} from "./notebook-markdown";
 import { Bubble, type ChatTurn } from "./NotebookChat";
 
 const c1 = { citationId: "1", docId: "d1", sourceTitle: "PF525 User Manual", page: 87, fileId: "f1", quote: null };
@@ -65,6 +72,69 @@ describe("AnswerMarkdown (RNDR-1)", () => {
   it("ordinary links open in a new tab with rel=noopener", () => {
     const html = renderToStaticMarkup(<AnswerMarkdown content="[docs](https://example.com)" citations={[]} />);
     expect(html).toMatch(/<a[^>]*href="https:\/\/example.com"[^>]*target="_blank"[^>]*rel="noopener noreferrer"/);
+  });
+
+  // #4667: citationId is a THREAD-WIDE running counter minted by the server,
+  // not a per-message ordinal — hub-host.tsx uses it as the real resolution
+  // key, so it must never be mutated. But the visible "[n]" must reset per
+  // message, in order of first appearance within THAT message's own
+  // citations, or a later message with a single source shows e.g. "[3]"
+  // instead of "[1]" (the bug as reported).
+  it("renders the visible chip number by per-message order of appearance, not the raw thread-wide citationId", () => {
+    // A later message in the thread: its only citation happens to have been
+    // minted 3rd across the whole conversation.
+    const late = { citationId: "3", docId: "d9", sourceTitle: "GS10 Manual", page: 4, fileId: "f9", quote: null };
+    const html = renderToStaticMarkup(<AnswerMarkdown content="See [3] for the spec." citations={[late]} />);
+    expect(html).toMatch(/<button[^>]*aria-label="Open citation 1:[^>]*>1<\/button>/);
+    expect(html).not.toMatch(/<button[^>]*>3<\/button>/);
+  });
+
+  it("control: two citations number 1, 2 in the order the server listed them (same convention distinctPassages already uses) regardless of [n] marker order in the text", () => {
+    // citationIds "5" and "8" (thread-wide, both arbitrary), citations[] order
+    // is (a, b) even though the text happens to mention "[8]" first.
+    const a = { citationId: "5", docId: "d1", sourceTitle: "Manual A", page: 1, fileId: "f1", quote: null };
+    const b = { citationId: "8", docId: "d2", sourceTitle: "Manual B", page: 2, fileId: "f2", quote: null };
+    const html = renderToStaticMarkup(
+      <AnswerMarkdown content="First [8], then [5]." citations={[a, b]} />,
+    );
+    expect(html).toMatch(/First\s*<button[^>]*>2<\/button>/);
+    expect(html).toMatch(/then\s*<button[^>]*>1<\/button>/);
+  });
+
+  it("control: repeated citations of the same passage within one message share one display number", () => {
+    const rep = { citationId: "12", docId: "d1", sourceTitle: "Manual", page: 9, fileId: "f1", quote: null };
+    const html = renderToStaticMarkup(
+      <AnswerMarkdown content="Check [12] and again [12]." citations={[rep]} />,
+    );
+    const matches = html.match(/<button[^>]*>1<\/button>/g) ?? [];
+    expect(matches.length).toBe(2);
+    expect(html).not.toMatch(/<button[^>]*>12<\/button>/);
+  });
+});
+
+describe("citationDisplayNumbers (#4667)", () => {
+  it("maps each citationId to its 1-based order of first appearance", () => {
+    const cites = [
+      { citationId: "5", docId: "d1", sourceTitle: "A", page: 1, fileId: null, quote: null },
+      { citationId: "3", docId: "d2", sourceTitle: "B", page: 2, fileId: null, quote: null },
+    ];
+    expect(Array.from(citationDisplayNumbers(cites).entries())).toEqual([["5", 1], ["3", 2]]);
+  });
+
+  it("gives citations sharing one (docId, page) passage the same number", () => {
+    const cites = [
+      { citationId: "7", docId: "d1", sourceTitle: "A", page: 1, fileId: null, quote: null },
+      { citationId: "9", docId: "d2", sourceTitle: "B", page: 2, fileId: null, quote: null },
+      { citationId: "11", docId: "d1", sourceTitle: "A", page: 1, fileId: null, quote: null },
+    ];
+    const map = citationDisplayNumbers(cites);
+    expect(map.get("7")).toBe(1);
+    expect(map.get("9")).toBe(2);
+    expect(map.get("11")).toBe(1);
+  });
+
+  it("control: an empty citation list maps nothing", () => {
+    expect(citationDisplayNumbers([]).size).toBe(0);
   });
 });
 

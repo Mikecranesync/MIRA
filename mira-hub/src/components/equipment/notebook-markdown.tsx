@@ -119,17 +119,49 @@ export function CodeBlock({ children }: { children?: ReactNode }) {
   );
 }
 
-/** Rounded numbered chip ≥24px — PRD §26 forbids tiny hit targets. */
-export function CitationChip({ c, onCite }: { c: EvidenceCitation; onCite?: (c: EvidenceCitation) => void }) {
+/** Per-message display number: 1-based, by order of first appearance among
+ *  `cites` — `citationId` is minted as a running counter across the WHOLE
+ *  thread (hub-host.tsx uses it as the real resolution key, so it is never
+ *  mutated), and must never be shown to a technician as the visible "[n]":
+ *  a later message with one source would otherwise show "[3]" instead of
+ *  "[1]" (#4667). Citations sharing one (docId, page) passage collapse to
+ *  the same number, matching `distinctPassages`'s dedup rule in NotebookChat. */
+export function citationDisplayNumbers(cites: EvidenceCitation[]): Map<string, number> {
+  const byPassage = new Map<string, number>();
+  const byId = new Map<string, number>();
+  let next = 1;
+  for (const c of cites) {
+    const passageKey = `${c.docId}|${c.page ?? ""}`;
+    let n = byPassage.get(passageKey);
+    if (n === undefined) {
+      n = next++;
+      byPassage.set(passageKey, n);
+    }
+    byId.set(c.citationId, n);
+  }
+  return byId;
+}
+
+/** Rounded numbered chip ≥24px — PRD §26 forbids tiny hit targets.
+ *  `displayNumber` (not `c.citationId`) is the visible label (#4667). */
+export function CitationChip({
+  c,
+  displayNumber,
+  onCite,
+}: {
+  c: EvidenceCitation;
+  displayNumber: number;
+  onCite?: (c: EvidenceCitation) => void;
+}) {
   return (
     <button
       type="button"
       onClick={() => onCite?.(c)}
       className="mx-0.5 inline-flex min-h-[24px] min-w-[24px] items-center justify-center rounded-full px-1.5 text-xs font-semibold align-baseline"
       style={{ background: "var(--brand-blue)", color: "white" }}
-      aria-label={`Open citation ${c.citationId}: ${c.sourceTitle}${c.page != null ? `, page ${c.page}` : ""}`}
+      aria-label={`Open citation ${displayNumber}: ${c.sourceTitle}${c.page != null ? `, page ${c.page}` : ""}`}
     >
-      {c.citationId}
+      {displayNumber}
     </button>
   );
 }
@@ -145,12 +177,13 @@ export function AnswerMarkdown({
   onCite?: (c: EvidenceCitation) => void;
 }) {
   const citationIds = new Set(citations.map((c) => c.citationId));
+  const displayNumbers = citationDisplayNumbers(citations);
   const components: Components = {
     a: ({ href, children, ...rest }) => {
       if (href?.startsWith(CITE_HREF_PREFIX)) {
         const id = href.slice(CITE_HREF_PREFIX.length);
         const c = citations.find((x) => x.citationId === id);
-        if (c) return <CitationChip c={c} onCite={onCite} />;
+        if (c) return <CitationChip c={c} displayNumber={displayNumbers.get(c.citationId) ?? Number(c.citationId)} onCite={onCite} />;
         return <>{children}</>;
       }
       // Ordinary links: open in a new tab; never a same-window navigation away
