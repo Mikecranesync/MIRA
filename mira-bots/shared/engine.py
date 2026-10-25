@@ -3185,7 +3185,9 @@ class Supervisor:
                     message[:120],
                 )
             else:
-                return await self._handle_cmms_pending(chat_id, message, state, trace_id)
+                return await self._handle_cmms_pending(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
+                )
 
         # PM suggestion pending: user is answering a follow-up PM proposal.
         if (state.get("context") or {}).get("pm_suggestion_pending") and not photo_b64:
@@ -4655,8 +4657,23 @@ class Supervisor:
             "asset_label": asset,
         }
 
-    async def _post_cmms_work_order(self, wo: UNSWorkOrder) -> str:
-        """Create work order in Atlas CMMS and Hub NeonDB. Returns confirmation string."""
+    async def _post_cmms_work_order(self, wo: UNSWorkOrder, tenant_id: str = "") -> str:
+        """Create work order in Atlas CMMS and Hub NeonDB. Returns confirmation string.
+
+        Hub reads/writes are scoped to the authenticated tenant: the ``tenant_id``
+        passed from process_full / ``resolve_tenant(chat_id)``. Never read
+        ``MIRA_TENANT_ID`` here and never take tenant_id from the WO payload
+        (#3237). A payload tenant_id that disagrees with the auth tenant is
+        rejected before any write.
+        """
+        # Authenticated session tenant — reuse chat_tenant.resolve, already
+        # imported as resolve_tenant. Do not fall back to the process env
+        # inside this function: that is the cross-tenant bug.
+        auth_tenant = tenant_id or resolve_tenant(getattr(wo, "chat_id", None) or "")
+        payload_tenant = getattr(wo, "tenant_id", None)
+        if payload_tenant not in (None, "") and payload_tenant != auth_tenant:
+            raise RuntimeError("tenant_mismatch")
+
         atlas_wo_id: str | None = None
         hub_wo_number: str | None = None
 
@@ -4674,12 +4691,11 @@ class Supervisor:
         atlas_wo_id = str(result.get("id", "unknown"))
 
         # --- Hub NeonDB (fire-and-forget; failure doesn't block the reply) ---
-        tenant_id = os.getenv("MIRA_TENANT_ID", wo.chat_id or "")
-        if tenant_id:
+        if auth_tenant:
             hub_result = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: create_hub_work_order(
-                    tenant_id=tenant_id,
+                    tenant_id=auth_tenant,
                     user_id=wo.chat_id or "mira-bot",
                     title=wo.title,
                     description=wo.to_atlas_description(),
@@ -4705,8 +4721,11 @@ class Supervisor:
         message: str,
         state: dict,
         trace_id: str,
+        tenant_id: str = "",
     ) -> dict:
         """Handle tech response to WO preview: yes/no, edit instructions, or missing-field supply."""
+        # Authenticated tenant from process_full, else the existing chat_tenant helper.
+        auth_tenant = tenant_id or resolve_tenant(chat_id)
         ctx = state.get("context") or {}
         wo_draft = ctx.get("cmms_wo_draft", {})
 
@@ -4780,7 +4799,8 @@ class Supervisor:
         state["context"] = ctx
 
         if is_yes and wo_draft:
-            wo = UNSWorkOrder(**wo_draft)
+            payload_tenant = wo_draft.get("tenant_id")
+            wo = UNSWorkOrder(**{k: v for k, v in wo_draft.items() if k != "tenant_id"})
 
             # Validation gate — must have asset, title, fault_description.
             if not wo.is_valid:
@@ -4804,7 +4824,9 @@ class Supervisor:
                 )
 
             try:
-                reply = await self._post_cmms_work_order(wo)
+                if payload_tenant not in (None, "") and payload_tenant != auth_tenant:
+                    raise RuntimeError("tenant_mismatch")
+                reply = await self._post_cmms_work_order(wo, tenant_id=auth_tenant)
                 log_uns_event(wo)
                 logger.info(
                     "CMMS_WO_CREATED chat_id=%s title=%r uns=%s", chat_id, wo.title, wo.uns_topic
