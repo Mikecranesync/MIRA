@@ -18,6 +18,7 @@
  */
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { listFilesForTarget } from "@/lib/workspace-files";
 
@@ -99,8 +100,11 @@ export async function GET(
 
     // Match knowledge_entries by manufacturer (always) + model_number when present.
     // Group by source_url so a single PDF surfaces as one row with its chunk count.
-    const rows = await withTenantContext(ctx.tenantId, (c) =>
-      c.query(
+    // Hybrid read (#4250, .claude/rules/knowledge-entries-tenant-scoping.md): the
+    // shared OEM corpus plus this tenant's own uploads, on the raw pool — the RLS
+    // tenant context hides every is_private = false OEM row.
+    const rows = await pool
+      .query(
         `SELECT
            source_url,
            MIN(equipment_type) AS equipment_type,
@@ -109,15 +113,15 @@ export async function GET(
            MAX(created_at)     AS last_indexed,
            BOOL_OR(verified)   AS verified
          FROM knowledge_entries
-         WHERE tenant_id = $1
+         WHERE (is_private = false OR tenant_id = $1)
            AND LOWER(manufacturer) = LOWER($2)
            AND ($3 = '' OR model_number ILIKE '%' || $3 || '%')
          GROUP BY source_url
          ORDER BY MAX(created_at) DESC NULLS LAST
          LIMIT 50`,
         [ctx.tenantId, mfr, model],
-      ).then((r) => r.rows),
-    );
+      )
+      .then((r) => r.rows);
 
     // Never list the same document twice: a v2 chunk's source_url carries its
     // doc id (node-doc/<docId>/<filename>), and the filename is the fallback.
