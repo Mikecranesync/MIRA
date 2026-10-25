@@ -498,6 +498,44 @@ describe("foreground sync converges on server truth (#4637 #4638 #4639)", () => 
     expect(screen.getByText("wiring.pdf")).toBeTruthy();
   });
 
+  it("#4638 (Codex F1): a refresh that supersedes a resume reload still de-duplicates the phone turn", async () => {
+    const SRC = { docId: "d1", filename: "manual.pdf", status: "ready", enabledByDefault: true, matchState: "user_confirmed",
+      pages: 3, fileId: null, originFileId: null, sourceRole: "manual", matchEvidence: null };
+    const withSources = (t: unknown[]) => ({ ...detail(t), sources: [SRC] });
+    getNotebookDetail.mockResolvedValueOnce(withSources([]));
+    setSourceEnabled.mockRejectedValue(new Error("offline"));
+    const histories: unknown[] = [];
+    const replies = ["F0003 trips at 135 C.", "F0004 is undervoltage."];
+    askNotebook.mockImplementation(async (_id: string, _q: string, _s: string[], o: { clientRequestId?: string; history?: unknown }) => {
+      asked.push(String(o.clientRequestId));
+      histories.push(o.history);
+      return { answer: replies.shift() ?? "", citations: [], status: "answered" };
+    });
+    mount();
+    await ask("What trips F0003?");
+    await screen.findByText("F0003 trips at 135 C.");
+    const saved = withSources([row("t1", "What trips F0003?", "F0003 trips at 135 C.", asked[0]!)]);
+
+    const landResume = heldFetch();
+    await resume();
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.click(screen.getByRole("button", { name: /Sources \(1\)/ }));
+    const landRefresh = heldFetch();
+    await act(async () => {
+      fireEvent.click(await screen.findByTitle("Include this source in notebook chat"));
+    });
+    await landRefresh(saved);
+    await landResume(saved);
+    fireEvent.click(screen.getByText(/Back to chat|← Chat|Chat/, { selector: "button.nb-panel-back" }));
+
+    expect(screen.getAllByText("F0003 trips at 135 C.")).toHaveLength(1);
+    getNotebookDetail.mockResolvedValue(saved);
+    await ask("And F0004?");
+    await screen.findByText("F0004 is undervoltage.");
+    const sentHistory = histories[1] as { role: string; content: string }[];
+    expect(sentHistory.filter((h) => h.content === "What trips F0003?")).toHaveLength(1);
+  });
+
   it("control #4638: a single reload still commits", async () => {
     getNotebookDetail.mockResolvedValueOnce(detail([PHONE]));
     mount();

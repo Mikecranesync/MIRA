@@ -290,18 +290,25 @@ export function NotebookScreen({
   // view commits (#4638) — see unified/use-thread-sync.
   const resumeReload = () => {
     if (detail.state !== "ready") return;
-    const previousRowIds = new Set(detail.data.turns.map((t) => t.id));
     guardedLoad(fetchDetail, (next) => {
-      if (next.state !== "ready") return;
-      setDetail(next);
-      setLiveTurns((live) => dropPersistedLiveTurns(previousRowIds, next.data.turns, live));
+      if (next.state === "ready") commitDetail(next);
     }, { yieldToAnswer: true });
   };
   const guardedLoad = useThreadSync(`${id}|${threadId ?? ""}`, busy || pending !== null, resumeReload);
   // One fetch for the open view, shared by refresh and the resume reload so
   // their request options cannot drift apart.
   const fetchDetail = () => load(() => getNotebookDetail(id, { threadId }));
-  const refresh = () => guardedLoad(fetchDetail, setDetail);
+  // Every committed load reconciles the live turns it now persists: a newer
+  // refresh can supersede a resume reload, so reconciling only on resume let a
+  // phone turn render (and ride the next send's history) twice (#4638 F1).
+  const commitDetail = (next: Loadable<NotebookDetail>) => {
+    const previousRowIds = new Set(detail.state === "ready" ? detail.data.turns.map((t) => t.id) : []);
+    setDetail(next);
+    if (next.state === "ready") {
+      setLiveTurns((live) => dropPersistedLiveTurns(previousRowIds, next.data.turns, live));
+    }
+  };
+  const refresh = () => guardedLoad(fetchDetail, commitDetail);
   useEffect(() => {
     setDetail({ state: "loading" });
     refresh();
