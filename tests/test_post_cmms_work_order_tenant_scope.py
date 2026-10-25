@@ -157,8 +157,8 @@ async def test_mapped_tenant_push_does_not_write_env_tenant_rows(mapped_tenant_b
 
 
 @pytest.mark.asyncio
-async def test_post_cmms_work_order_uses_resolve_tenant_not_env(mapped_tenant_b):
-    """Direct write path: env tenant A must not win over chat_tenant mapping."""
+async def test_post_cmms_work_order_uses_caller_tenant_not_env(mapped_tenant_b):
+    """Direct write path: caller tenant B must win over env tenant A."""
     rows, calls, fake_create = _hub_row_store()
     atlas = MagicMock()
     atlas.create_work_order = AsyncMock(return_value={"id": 42})
@@ -170,7 +170,10 @@ async def test_post_cmms_work_order_uses_resolve_tenant_not_env(mapped_tenant_b)
         patch("shared.engine.create_hub_work_order", side_effect=fake_create),
     ):
         sv = _bare_supervisor()
-        await sv._post_cmms_work_order(_valid_wo())
+        # Sole production caller (_handle_cmms_pending) always passes the
+        # authenticated tenant; this direct call does the same. _post no
+        # longer consults resolve_tenant / MIRA_TENANT_ID.
+        await sv._post_cmms_work_order(_valid_wo(), tenant_id=TENANT_B)
 
     assert calls and calls[0]["tenant_id"] == TENANT_B
     assert rows[TENANT_A] == tenant_a_before
@@ -234,7 +237,51 @@ async def test_handle_pending_rejects_draft_tenant_mismatch(mapped_tenant_b):
             "unmapped-chat", "yes", state, "trace-3237", tenant_id=TENANT_A
         )
 
-    assert "manually" in result["reply"].lower()
+    assert "manually" not in result["reply"].lower()
     assert calls == []
     atlas.create_work_order.assert_not_awaited()
     assert rows[TENANT_B] == tenant_b_before
+    assert state["context"].get("cmms_pending") is True
+    assert state["context"].get("cmms_wo_draft") == _valid_draft(
+        chat_id="unmapped-chat", tenant_id=TENANT_B
+    )
+
+
+@pytest.mark.asyncio
+async def test_mismatch_leaves_pending_confirmation_intact(mapped_tenant_b):
+    """A rejected cross-tenant yes must not consume the WO confirmation (#4759 Gate-7)."""
+    rows, calls, fake_create = _hub_row_store()
+    atlas = MagicMock()
+    atlas.create_work_order = AsyncMock(return_value={"id": 7})
+    draft = _valid_draft(chat_id="unmapped-chat", tenant_id=TENANT_B)
+
+    with (
+        patch("shared.engine.resolve_tenant", return_value=TENANT_A),
+        patch("shared.engine.AtlasCMMSClient", return_value=atlas),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+        patch("shared.engine.log_uns_event"),
+        patch("shared.engine.push_wo_created", new_callable=AsyncMock),
+        patch("shared.engine.suggest_followup_pm", return_value=None),
+    ):
+        sv = _bare_supervisor()
+        sv._record_exchange = MagicMock()
+        sv._save_state = MagicMock()
+        state = {
+            "state": "RESOLVED",
+            "asset_identified": "Pump-A3",
+            "fault_category": "",
+            "context": {
+                "cmms_pending": True,
+                "cmms_wo_draft": draft,
+            },
+        }
+        result = await sv._handle_cmms_pending(
+            "unmapped-chat", "yes", state, "trace-3237", tenant_id=TENANT_A
+        )
+
+    assert result["dispatch_kind"] == "cmms_pending"
+    assert state["context"]["cmms_pending"] is True
+    assert state["context"]["cmms_wo_draft"] is draft
+    sv._save_state.assert_not_called()
+    assert calls == []
+    atlas.create_work_order.assert_not_awaited()

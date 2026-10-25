@@ -4660,16 +4660,15 @@ class Supervisor:
     async def _post_cmms_work_order(self, wo: UNSWorkOrder, tenant_id: str = "") -> str:
         """Create work order in Atlas CMMS and Hub NeonDB. Returns confirmation string.
 
-        Hub reads/writes are scoped to the authenticated tenant: the ``tenant_id``
-        passed from process_full / ``resolve_tenant(chat_id)``. Never read
-        ``MIRA_TENANT_ID`` here and never take tenant_id from the WO payload
-        (#3237). A payload tenant_id that disagrees with the auth tenant is
-        rejected before any write.
+        Hub reads/writes are scoped to the authenticated ``tenant_id`` passed
+        by the caller (``process_full`` → ``_handle_cmms_pending``). Never
+        read ``MIRA_TENANT_ID`` here, never take tenant_id from the WO
+        payload, and never call ``resolve_tenant`` from this method —
+        ``chat_tenant.resolve`` falls back to ``MIRA_TENANT_ID`` for
+        unmapped chats, which is the original bleed if a caller forgets
+        to pass the auth tenant (#3237).
         """
-        # Authenticated session tenant — reuse chat_tenant.resolve, already
-        # imported as resolve_tenant. Do not fall back to the process env
-        # inside this function: that is the cross-tenant bug.
-        auth_tenant = tenant_id or resolve_tenant(getattr(wo, "chat_id", None) or "")
+        auth_tenant = tenant_id
         payload_tenant = getattr(wo, "tenant_id", None)
         if payload_tenant not in (None, "") and payload_tenant != auth_tenant:
             raise RuntimeError("tenant_mismatch")
@@ -4793,13 +4792,29 @@ class Supervisor:
                 reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
             )
 
-        # Consume the pending state now that we have a definitive yes/no.
+        # Tenant check before any pending-state mutation. A rejected
+        # cross-tenant yes must leave cmms_pending / cmms_wo_draft intact
+        # so the confirmation is not consumed (Gate-7 on #3237 / #4759).
+        if is_yes and wo_draft:
+            payload_tenant = wo_draft.get("tenant_id")
+            if payload_tenant not in (None, "") and payload_tenant != auth_tenant:
+                reply = (
+                    "I can't log this work order — the session tenant doesn't match. "
+                    "The draft is still here. Say **yes** after correcting it, or **no** to cancel."
+                )
+                self._record_exchange(chat_id, state, message, reply)
+                tl_flush()
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
+
+        # Consume the pending state now that we have a definitive yes/no
+        # that is tenant-safe.
         ctx.pop("cmms_wo_draft", None)
         ctx.pop("cmms_pending", None)
         state["context"] = ctx
 
         if is_yes and wo_draft:
-            payload_tenant = wo_draft.get("tenant_id")
             wo = UNSWorkOrder(**{k: v for k, v in wo_draft.items() if k != "tenant_id"})
 
             # Validation gate — must have asset, title, fault_description.
@@ -4824,8 +4839,6 @@ class Supervisor:
                 )
 
             try:
-                if payload_tenant not in (None, "") and payload_tenant != auth_tenant:
-                    raise RuntimeError("tenant_mismatch")
                 reply = await self._post_cmms_work_order(wo, tenant_id=auth_tenant)
                 log_uns_event(wo)
                 logger.info(
