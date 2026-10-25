@@ -1,0 +1,35 @@
+{
+  "schema_version": "factorylm.artifact-provenance.v1",
+  "created_on": "2026-10-25",
+  "approved_reference": {
+    "file": "approved-sample.pdf",
+    "sha256": "c84aca76304482965124fb5943197c05a56bb5cd192e6a952f13288a23534c07",
+    "bytes": 3394411,
+    "approval": "User approved the attached sample in this task before requesting publication into PR4762.",
+    "original_builder": "One-off ReportLab prototype. Its environment-specific implementation is replaced by the repository renderer; no byte-identical rebuild of that prototype is claimed."
+  },
+  "hero": {
+    "file": "hero.png",
+    "sha256": "88bf4364b278404a72f310cec1a6d74965287484fc667b4e931009f8d83e074a",
+    "bytes": 1923489,
+    "width": 1536,
+    "height": 1024,
+    "provider": "OpenAI",
+    "tool": "image_gen.imagegen",
+    "model_id": null,
+    "model_id_note": "The generation tool did not expose a versioned model identifier. No specific latest-model assertion is made.",
+    "prompt_file": "hero-prompt.md",
+    "prompt_status": "Reusable design prompt reconstructed from the approved image and recorded design requirements; the verbatim original invocation is not preserved in this repository.",
+    "usage": "Editorial illustration only; keep visible generic-hardware caption."
+  },
+  "repeatability": {
+    "document_build": "Reuse the committed hero and pinned toolchain for repeatable PDF/HTML builds. Compare output hashes from consecutive runs.",
+    "new_imagery": "Fresh generation may differ even with the same prompt. Record actual available model/tool, settings, prompt and image hash; inspect and judge the new artifact."
+  },
+  "case_status": {
+    "editorial": "Approved reference is source-reviewed; v2 input is a proposed reusable draft. No repository-renderer candidate or bound judge reports have been completed.",
+    "hardware_test": "not_run",
+    "mira_evaluation": "not_run",
+    "public_distribution": "not_performed_by_this_PR"
+  }
+}

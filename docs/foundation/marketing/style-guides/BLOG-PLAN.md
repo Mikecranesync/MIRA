@@ -283,4 +283,4 @@ The TP700 draft was not attached for this review. The original plan flagged its 
 
 Use section 6 as the bounded engineering slice: connect one reviewed PowerFlex question to Answer Radar and preserve a baseline, disposition and article draft. Reuse the September run structure and current release process. Carry Micro820 and Siemens as the next development cases, not claims of present product failure.
 
-This PR remains six documentation files. The adapter, live evaluation, source-article revision and any later automation are separate work with explicit evidence of completion. The present result is a developed pilot and initial reference material, ready for implementation and revision as we learn.
+The PR now includes the [phased technical-publishing handoff](../technical-publishing/PHASED-PLAN.md), approved-reference identity, reusable example input, judge contract and marketing study. The renderer, executable judge gate, Answer Radar adapter, live evaluations and distribution each require their own completion evidence. The present result is documented direction and a bounded implementation path, ready for the next agent.

@@ -1,12 +1,12 @@
 # FactoryLM learning pilot, style guides and first editorial review
 
-Version 0.3, 2026-10-25 (America/New_York). Draft refinement of [PR #4762](https://github.com/Mikecranesync/MIRA/pull/4762), starting from `df14ab5857c6e42d2277a2d72751d9c89ffa176f`.
+Version 0.4, 2026-10-25 (America/New_York). Draft refinement of [PR #4762](https://github.com/Mikecranesync/MIRA/pull/4762), starting from `df14ab5857c6e42d2277a2d72751d9c89ffa176f`.
 
 **Start-gate direction:** develop these posts into a repeatable way to learn from real technician questions, test MIRA, improve FactoryLM and create useful content. The style guide is a working tool for that experiment. The [pilot plan](BLOG-PLAN.md) now defines one initial cycle, reuses the existing Answer Radar system and distinguishes implemented components from proposed integration.
 
 **Editorial finding:** retain the navy/amber tech-sheet design and exact OEM citations. Revise the three attached posts before publication. Their main weakness is the transition from a documented condition to an apparent fix without enough scope, prerequisites or evidence of repair. These are content findings and potential evaluation inputs, not demonstrated MIRA defects.
 
-This PR contains six documentation files only. This review updates the guides; it does not revise the source blog posts, replace the attached PDFs, approve publication, alter runtime code or establish current product performance.
+The original six-guide review is now extended by a [phased technical-publishing handoff](../technical-publishing/README.md): approved-sample identity, editable example, independent judge requirements, a callable repository skill and a marketing study. The reusable renderer, executable judge gate and live product/marketing work remain later phases. This PR does not establish current product performance or approve public distribution.
 
 ## Guide map and authority
 
@@ -18,6 +18,7 @@ This PR contains six documentation files only. This review updates the guides; i
 | [STYLE-GUIDE-part4-proposed.md](STYLE-GUIDE-part4-proposed.md) | Pending weekly-batch mechanism; does not override existing publication authority. |
 | [forum-reply-template.md](forum-reply-template.md) | Useful, sourced draft replies; no posting authorization. |
 | README.md | This review, evidence references and concrete corrections. |
+| [Technical publishing](../technical-publishing/README.md) | Shared agent workflow, phase ledger, approved example, judge contract and marketing experiment. |
 
 Hard rules preserved: no prices/dollar amounts, including audit examples; no competitor promotion; exact applicable OEM references; evidence-backed product claims; no invented CMMS dependence; safety work stays catalog and review only; publication follows Mike's existing authority. Technical OEM names remain necessary to identify the equipment and sources.
 

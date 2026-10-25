@@ -1,0 +1,318 @@
+{
+  "schemaVersion": 1,
+  "title": "PowerFlex 525 F004 and F005: what to record first",
+  "slug": "powerflex-525-f004-f005",
+  "revision": "Editorial prototype v2",
+  "date": "2026-10-25",
+  "authorLabel": "FactoryLM - AI-assisted editorial draft",
+  "hero": {
+    "path": "hero.png",
+    "alt": "Editorial illustration of a generic variable-frequency drive beside an open manual and an evidence worksheet. Headline: PowerFlex 525 F004 / F005 - What to record first.",
+    "caption": "AI-generated editorial illustration. Generic drive form; not a model-accurate hardware reference."
+  },
+  "references": [
+    {
+      "id": "rockwell-520-um001o",
+      "label": "Rockwell Automation. PowerFlex 520-Series Adjustable Frequency AC Drive User Manual. 520-UM001O-EN-E, September 2025. Printed/PDF pages 13, 78-79, 134, 145, 159-161.",
+      "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf"
+    }
+  ],
+  "pages": [
+    {
+      "hero": true,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": [
+            {
+              "text": "F004 identifies DC-bus undervoltage; F005 identifies DC-bus overvoltage. Seeing them in that order does not identify one cause. Preserve the recorded codes and matching diagnostic values, then note what the machine was doing. "
+            },
+            {
+              "text": "p.161",
+              "href": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf#page=161"
+            }
+          ],
+          "style": "lead"
+        },
+        {
+          "type": "notice",
+          "title": "Before changing anything",
+          "text": [
+            {
+              "text": "For electrical work, follow the site's lockout/tagout and full applicable OEM procedures with qualified personnel. This note covers recorded diagnostic evidence. A display state does not establish isolation, and fault clearing does not authorize a machine restart. "
+            },
+            {
+              "text": "p.13",
+              "href": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf#page=13"
+            }
+          ]
+        },
+        {
+          "type": "table",
+          "columns": [
+            {
+              "label": "CODE",
+              "width": 65
+            },
+            {
+              "label": "DOCUMENTED CONDITION",
+              "width": 181
+            },
+            {
+              "label": "WHAT IT DOES NOT ESTABLISH",
+              "width": 278
+            }
+          ],
+          "rows": [
+            [
+              [
+                {
+                  "text": "F004",
+                  "bold": true
+                }
+              ],
+              "DC-bus undervoltage",
+              "Which component or event caused it."
+            ],
+            [
+              [
+                {
+                  "text": "F005",
+                  "bold": true
+                }
+              ],
+              "DC-bus overvoltage",
+              "That the brake, wiring or drive is faulty."
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": [
+            {
+              "text": "Source: PowerFlex 520-Series User Manual, 520-UM001O-EN-E, September 2025, "
+            },
+            {
+              "text": "p.161",
+              "href": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf#page=161"
+            },
+            {
+              "text": ". Scope: PowerFlex 525; confirm applicability to the installed equipment."
+            }
+          ],
+          "style": "small"
+        }
+      ]
+    },
+    {
+      "heading": "Read the history before deciding",
+      "blocks": [
+        {
+          "type": "section",
+          "number": "01",
+          "title": "Pair the code with its matching bus record"
+        },
+        {
+          "type": "table",
+          "columns": [
+            {
+              "label": "STORED EVENT",
+              "width": 169
+            },
+            {
+              "label": "FAULT CODE",
+              "width": 159
+            },
+            {
+              "label": "BUS-VOLTAGE SNAPSHOT",
+              "width": 196
+            }
+          ],
+          "rows": [
+            [
+              "Newest recorded fault",
+              [
+                {
+                  "text": "b007",
+                  "code": true
+                },
+                {
+                  "text": "  Fault 1 Code"
+                }
+              ],
+              [
+                {
+                  "text": "F651",
+                  "code": true
+                },
+                {
+                  "text": "  Fault 1 BusVolts"
+                }
+              ]
+            ],
+            [
+              "Previous recorded fault",
+              [
+                {
+                  "text": "b008",
+                  "code": true
+                },
+                {
+                  "text": "  Fault 2 Code"
+                }
+              ],
+              [
+                {
+                  "text": "F652",
+                  "code": true
+                },
+                {
+                  "text": "  Fault 2 BusVolts"
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": [
+            {
+              "text": "If b007 shows F005",
+              "bold": true
+            },
+            {
+              "text": ", F651 belongs to that F005 event. F652 belongs to F004 only if the corresponding b008 entry actually shows F004. Another intervening fault changes the pairing. "
+            },
+            {
+              "text": "p.79",
+              "href": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf#page=79"
+            },
+            {
+              "text": "; "
+            },
+            {
+              "text": "p.145",
+              "href": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf#page=145"
+            }
+          ],
+          "style": "body"
+        },
+        {
+          "type": "paragraph",
+          "text": [
+            {
+              "text": "Know the limits. ",
+              "bold": true
+            },
+            {
+              "text": "Repetitive faults are recorded once. Stored bus values come from filtered b005 data. These records are neither a complete occurrence log nor a high-speed trace. The display range is not a safe operating band or trip threshold. "
+            },
+            {
+              "text": "p.78",
+              "href": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf#page=78"
+            },
+            {
+              "text": "; "
+            },
+            {
+              "text": "p.79",
+              "href": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf#page=79"
+            },
+            {
+              "text": "; "
+            },
+            {
+              "text": "p.145",
+              "href": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf#page=145"
+            }
+          ],
+          "style": "body"
+        },
+        {
+          "type": "section",
+          "number": "02",
+          "title": "Add the operating context"
+        },
+        {
+          "type": "paragraph",
+          "text": "Record whether the motor was running, decelerating or stopped, plus any observed power disturbance or recent change. Preserve available diagnostics before state-changing work where practicable.",
+          "style": "body"
+        },
+        {
+          "type": "paragraph",
+          "text": [
+            {
+              "text": "Rockwell lists low incoming voltage or interrupted power for F004, and high line voltage/transients or motor regeneration for F005. These are investigation paths, not a proven cause. "
+            },
+            {
+              "text": "p.161",
+              "href": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf#page=161"
+            }
+          ],
+          "style": "body"
+        },
+        {
+          "type": "section",
+          "number": "03",
+          "title": "Keep clearing, repair and restart separate"
+        },
+        {
+          "type": "paragraph",
+          "text": [
+            {
+              "text": "Before manual clearing, Rockwell requires the cause to be addressed and corrected. Type 1 classification does not remove that requirement. Automatic clearing may restart the drive depending on configuration; clearing without restart is also documented. "
+            },
+            {
+              "text": "p.134",
+              "href": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf#page=134"
+            },
+            {
+              "text": "; "
+            },
+            {
+              "text": "pp.159-160",
+              "href": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf#page=159"
+            }
+          ],
+          "style": "body"
+        },
+        {
+          "type": "paragraph",
+          "text": [
+            {
+              "text": "A cleared fault is not verification of a repair. ",
+              "bold": true
+            },
+            {
+              "text": "If the cause is unknown, the fault repeats or the next check exceeds your authorization, hand off the evidence to the responsible qualified person."
+            }
+          ],
+          "style": "body"
+        },
+        {
+          "type": "notice",
+          "title": "A useful handoff",
+          "text": "Drive identity and version; stored codes with matching values; operating context; observed changes; and what remains unknown."
+        },
+        {
+          "type": "paragraph",
+          "text": "Manual references checked 25 October 2026. AI-assisted editorial draft; no hardware test or MIRA case result is claimed.",
+          "style": "small"
+        },
+        {
+          "type": "paragraph",
+          "text": [
+            {
+              "text": "Questions about using FactoryLM with your manuals? "
+            },
+            {
+              "text": "Talk to Mike.",
+              "href": "mailto:mike@factorylm.com"
+            }
+          ],
+          "style": "small"
+        }
+      ]
+    }
+  ]
+}

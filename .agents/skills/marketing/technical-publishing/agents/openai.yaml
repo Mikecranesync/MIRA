@@ -1,0 +1,4 @@
+interface:
+  display_name: "FactoryLM Technical Publishing"
+  short_description: "Create and judge sourced FactoryLM technical documents"
+  default_prompt: "Use $technical-publishing to produce a sourced FactoryLM article and printable PDF, compare it with the approved sample, and return independent review evidence."
