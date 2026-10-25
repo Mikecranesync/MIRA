@@ -184,21 +184,31 @@ export function shellThreadId(sel: HubSelection): string {
   return threadItemId(sel.notebookId, sel.threadId);
 }
 
-/**
- * #4695 (part 2): the actions that tell the shell which thread is open. The
- * reducer's `hydrate` blanks the draft whenever the thread id changes, which is
- * right when the technician CHOOSES another thread. An automatic landing (deep
- * link, reload, first load) is not a choice: text already typed on HOME belongs
- * to the conversation that is opening, so it is written back right after.
- * Without this, "How do I clear a fault…" typed before the notebook list arrived
- * kept only the characters typed after it ("e Micro810").
- */
-export function openThreadActions(sel: HubSelection, at: string, keepDraft = ""): ShellAction[] {
-  const hydrate: ShellAction = {
+/** #4695: the hydrate that tells the shell which thread is open (what `syncThread` dispatches). */
+export function openThreadAction(sel: HubSelection, at: string): ShellAction {
+  return {
     type: "hydrate",
     data: { thread: { ...EMPTY_FIXTURE.thread, id: shellThreadId(sel), notebookId: sel.notebookId, createdAt: at, updatedAt: at } },
   };
-  return keepDraft ? [hydrate, { type: "set-draft", draft: keepDraft }] : [hydrate];
+}
+
+/** The host's actions: the shell's, plus an automatic landing (deep link, reload, first load). */
+export type HubHostAction = ShellAction | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string };
+
+/**
+ * #4695: the Hub host's reducer. The shell's `hydrate` blanks the draft whenever
+ * the thread id changes, which is right when the technician CHOOSES another
+ * thread. An automatic landing is not a choice: what was already typed on HOME
+ * belongs to the conversation that is opening. `land-thread` opens the thread
+ * and keeps the draft of the SAME state it transitions, in one step. (Part 2
+ * wrote back a draft read from a ref that an effect refreshes after each render;
+ * a landing between a keystroke and that effect restored a stale draft and the
+ * first word was lost: " do I clear a fault…".) Every other action is the shell's.
+ */
+export function hubHostReducer(state: ShellState, action: HubHostAction): ShellState {
+  if (action.type !== "land-thread") return shellReducer(state, action);
+  const landed = shellReducer(state, openThreadAction(action.selection, action.at));
+  return state.draft && landed.draft !== state.draft ? shellReducer(landed, { type: "set-draft", draft: state.draft }) : landed;
 }
 
 /**
