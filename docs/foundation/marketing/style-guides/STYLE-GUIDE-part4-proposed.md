@@ -1,6 +1,12 @@
 # Publication workflow proposal: weekly batch
 
-Status: proposal retained for Mike's decision, 2026-10-25. The governing review sequence is [STYLE-GUIDE section 10](STYLE-GUIDE.md#10-review-and-publication). This file does not create a second approval process.
+Status: publication mechanism proposed within the early learning pilot, 2026-10-25. The governing review sequence is [STYLE-GUIDE section 10](STYLE-GUIDE.md#10-review-and-publication). This file does not create a second approval process.
+
+## Learning can proceed before publication
+
+The immediate goal is one complete question/source/product-test/disposition cycle, as defined in [BLOG-PLAN](BLOG-PLAN.md). Research, permitted staging evaluations, evidence capture, corrected drafts and isolated repair proposals can proceed within existing authority. A held article or disputed source assertion does not stop unrelated learning.
+
+The weekly batch is an optional way to package public outputs after the pilot establishes useful work and manageable review effort. It is not a daily content commitment or a prerequisite for starting the first experiment. Keep a product run, an article review, a release decision and observed reader outcomes separate.
 
 ## What Grokbot relayed
 

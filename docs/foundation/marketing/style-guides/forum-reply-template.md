@@ -1,6 +1,12 @@
 # Helpful technical forum reply template
 
-Version 0.2, 2026-10-25. Draft replies for a real person's review and posting. This template does not authorize sending a message. Apply [STYLE-GUIDE](STYLE-GUIDE.md), especially source attribution, reset distinctions and safety scope.
+Version 0.3, 2026-10-25. Draft replies for a real person's review and posting. This template does not authorize sending a message. Apply [STYLE-GUIDE](STYLE-GUIDE.md), especially source attribution, reset distinctions and safety scope.
+
+## Internal learning record
+
+When this reply belongs to the [learning pilot](BLOG-PLAN.md), link the existing Answer Radar question ID, source review, relevant run and finding in its internal record. Keep these workflow details out of the public reply. A source-supported reply may be drafted while a MIRA limitation remains open; do not present a corrected human/AI-assisted draft as the product's unedited answer.
+
+If an authorized reply later receives useful feedback, preserve what the person actually reported. A suggestion, reported recovery, confirmed equipment cause and verified repair are different evidence. Do not count a reply or a link click as a qualified product inquiry.
 
 ## Draft
 

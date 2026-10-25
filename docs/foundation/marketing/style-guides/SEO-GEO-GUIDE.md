@@ -1,6 +1,6 @@
 # FactoryLM search and answer-discovery guide
 
-Version 0.2, 2026-10-25 (America/New_York). Draft. Applies to technical articles and their landing-page references. [STYLE-GUIDE](STYLE-GUIDE.md) is the editorial authority; this file does not certify product behavior or a live-site audit.
+Version 0.3, 2026-10-25 (America/New_York). Draft. Applies to technical articles and their landing-page references. [STYLE-GUIDE](STYLE-GUIDE.md) is the editorial authority; this file does not certify product behavior or a live-site audit.
 
 ## 1. Start with a useful answer
 
@@ -98,7 +98,9 @@ No runtime, redirect, analytics, schema or indexing changes are made by this doc
 
 ## 9. Measurement without invented targets
 
-Record a baseline before release. Weekly, distinguish search impressions, search clicks, visits, article-to-contact clicks and actual qualified inquiries. A mailto click is not proof of a sent email or a pilot lead. Device/browser counts are estimates, not an exact count of people. Record the tool definition and time window.
+The [learning pilot](BLOG-PLAN.md#8-what-to-measure) measures product answer quality, technician usefulness and qualified inquiries separately. Search performance helps explain discovery; it does not prove that MIRA improved, a technician repaired equipment or a buyer wants the product. The three reviewed questions begin as development cases, not an independent reliability benchmark.
+
+Record a baseline before release where measurement is available; otherwise mark it unknown. In each agreed reporting period, distinguish search impressions, search clicks, visits, article-to-contact clicks and actual qualified inquiries. A mailto click is not proof of a sent email or a pilot lead. Device/browser counts are estimates, not an exact count of people. Record the tool definition and time window.
 
 Search Console, Bing Webmaster Tools and site analytics can inform topic choices once access and instrumentation are verified. Do not invent search volumes, rankings, AI citations or conversion rates. Keep raw customer content and identifiable details out of marketing reports; use approved aggregate reporting. Do not claim a tracker is automatically exempt from consent requirements merely because it is cookieless.
 

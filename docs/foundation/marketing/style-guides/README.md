@@ -1,8 +1,10 @@
-# FactoryLM style guides and first editorial review
+# FactoryLM learning pilot, style guides and first editorial review
 
-Version 0.2, 2026-10-25 (America/New_York). Draft refinement of [PR #4762](https://github.com/Mikecranesync/MIRA/pull/4762), starting from `df14ab5857c6e42d2277a2d72751d9c89ffa176f`.
+Version 0.3, 2026-10-25 (America/New_York). Draft refinement of [PR #4762](https://github.com/Mikecranesync/MIRA/pull/4762), starting from `df14ab5857c6e42d2277a2d72751d9c89ffa176f`.
 
-**Recommendation:** retain the navy/amber tech-sheet design and exact OEM citations. Revise all three attached posts before publication. Their main weakness is the transition from a documented condition to an apparent fix without enough scope, prerequisites or evidence of repair.
+**Start-gate direction:** develop these posts into a repeatable way to learn from real technician questions, test MIRA, improve FactoryLM and create useful content. The style guide is a working tool for that experiment. The [pilot plan](BLOG-PLAN.md) now defines one initial cycle, reuses the existing Answer Radar system and distinguishes implemented components from proposed integration.
+
+**Editorial finding:** retain the navy/amber tech-sheet design and exact OEM citations. Revise the three attached posts before publication. Their main weakness is the transition from a documented condition to an apparent fix without enough scope, prerequisites or evidence of repair. These are content findings and potential evaluation inputs, not demonstrated MIRA defects.
 
 This PR contains six documentation files only. This review updates the guides; it does not revise the source blog posts, replace the attached PDFs, approve publication, alter runtime code or establish current product performance.
 
@@ -12,7 +14,7 @@ This PR contains six documentation files only. This review updates the guides; i
 |---|---|
 | [STYLE-GUIDE.md](STYLE-GUIDE.md) | Main editorial standard: voice, evidence, technical scope, article structure, visuals, claims and release checklist. |
 | [SEO-GEO-GUIDE.md](SEO-GEO-GUIDE.md) | Search metadata, current search-feature guidance, claim consistency and live-site follow-up. |
-| [BLOG-PLAN.md](BLOG-PLAN.md) | First corrected batch, implementation requirements and the retained thirty-topic research backlog. |
+| [BLOG-PLAN.md](BLOG-PLAN.md) | Early learning pilot: existing Answer Radar integration, three development cases, first implementation slice, measures and retained topic backlog. |
 | [STYLE-GUIDE-part4-proposed.md](STYLE-GUIDE-part4-proposed.md) | Pending weekly-batch mechanism; does not override existing publication authority. |
 | [forum-reply-template.md](forum-reply-template.md) | Useful, sourced draft replies; no posting authorization. |
 | README.md | This review, evidence references and concrete corrections. |
@@ -20,6 +22,20 @@ This PR contains six documentation files only. This review updates the guides; i
 Hard rules preserved: no prices/dollar amounts, including audit examples; no competitor promotion; exact applicable OEM references; evidence-backed product claims; no invented CMMS dependence; safety work stays catalog and review only; publication follows Mike's existing authority. Technical OEM names remain necessary to identify the equipment and sources.
 
 The main guide resolves the collected draft's conflicting FAQ/image quotas, byline rules, article order and capability assumptions. A style guide is not a second product capability registry.
+
+## What we want to learn first
+
+One question should produce a traceable source record, a test of the actual product, a classified outcome and a useful explanation. If it exposes a real product gap, link a bounded repair and comparable retest. If MIRA already handles it correctly, preserve that result and correct the article. Either outcome is useful.
+
+| Initial case | Learning opportunity | What remains unmeasured |
+|---|---|---|
+| PowerFlex 525 F004/F005 | Source-grounded diagnosis, uncertainty, fault history and reset/restart distinctions. | Actual MIRA answer, retrieval/citations, interface experience and technician usefulness. |
+| Micro820 flashing red | Fault class versus cause, conditional recovery, preserving the intended application. | Whether the product preserves these qualifications and asks for needed context. |
+| S7-1200 factory reset | Version scope, deliberate erasure and honest handling of conflicting sources. | Whether MIRA clarifies, scopes or declines appropriately without inventing certainty. |
+
+The existing [Answer Radar records](https://github.com/Mikecranesync/MIRA/blob/f1e53e0d30a317b1863d401df34609c90cea0d8b/answer_radar/schema.py), [Hub batch](https://github.com/Mikecranesync/MIRA/blob/f1e53e0d30a317b1863d401df34609c90cea0d8b/answer_radar/batch.py) and [historical staging rebenchmark](https://github.com/Mikecranesync/MIRA/blob/f1e53e0d30a317b1863d401df34609c90cea0d8b/answer_radar/runs/staging-2026-09-29-ae03a3877/FINDINGS.md) provide a starting implementation. The first extension is a small import of reviewed blog cases and a link between article, references, run, issue and retest. Present staging health and these three case results were not tested in this review.
+
+Begin with one complete PowerFlex cycle, then test whether the workflow transfers to the other two cases. Keep the reviewed questions in the development split. Evaluate source coverage, product behavior, useful content and actual inquiries separately. An article can remain useful while an honestly recorded product limitation is open.
 
 ## Review scope and method
 
@@ -103,9 +119,11 @@ Source: (P1, pp.134,159-160). This is proposed editorial wording, not permission
 
 ## Next handoff
 
-Content Studio should revise the PowerFlex article first using this review and the main guide, including its figures, summary and FAQ. Search Steward should check the exact corrected source and exported artifact. Carry the Micro820 corrections into the next revision. Resolve the Siemens scope conflict before releasing its procedure. Foreman packages only reviewed content under Mike's existing publication authority.
+Use [BLOG-PLAN section 6](BLOG-PLAN.md#6-first-implementation-slice-and-exit-criteria) for the first engineering slice: connect the reviewed PowerFlex question to Answer Radar, preserve a valid baseline and classify the outcome. Reuse existing issue/PR/release work for a demonstrated gap. The pilot is successful when the evidence supports a useful disposition, including a correct existing behavior; it does not need to manufacture a bug.
 
-No additional stylistic preference is needed to begin those corrections. Accurate author/reviewer attribution and the applicable release decision are still required before publication; use the existing review roles and label AI-assisted desk review accurately. Do not infer approval from this guide revision.
+In parallel, Content Studio should revise the PowerFlex article, including its figures, summary and FAQ. Search Steward should check the exact corrected source and exported artifact. Carry Micro820 into the next iteration. Resolve or omit the disputed Siemens claim before releasing the affected procedure. Foreman packages reviewed content under Mike's existing publication authority. A MIRA pass is not a prerequisite for a useful OEM reference article; a product success claim needs its own evidence.
+
+No additional stylistic preference is needed to begin. Measure what the cycle teaches about sources, product behavior, technician comprehension and effort, then revise the process. Accurate author/reviewer attribution and the applicable release decision remain required before publication; use existing roles and label AI-assisted desk review accurately.
 
 ## Evidence references
 

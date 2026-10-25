@@ -1,7 +1,9 @@
 # FactoryLM technical blog style guide
 
-Version 0.2, 2026-10-25 (America/New_York). Draft refinement of PR #4762.
-This is the editorial standard for this guide set. It does not approve a post, change a product capability, or authorize equipment work. [README](README.md) records the three-post review; [SEO-GEO-GUIDE](SEO-GEO-GUIDE.md) owns search rules; [BLOG-PLAN](BLOG-PLAN.md) owns delivery planning.
+Version 0.3, 2026-10-25 (America/New_York). Working guide for the start-gate pilot in PR #4762.
+This is the editorial standard for this guide set. It does not approve a post, change a product capability, or authorize equipment work. [README](README.md) records the three-post review; [SEO-GEO-GUIDE](SEO-GEO-GUIDE.md) owns search rules; [BLOG-PLAN](BLOG-PLAN.md) develops the learning pilot and delivery plan.
+
+Treat voice, layout and workflow preferences as hypotheses to improve with real readers. Keep technical truth, attribution and material qualifications intact. The first goal is to learn how a real question can improve MIRA and FactoryLM while producing a useful explanation.
 
 ## 1. What a FactoryLM post must do
 
@@ -218,4 +220,12 @@ Use the existing review roles; the list below describes responsibilities, not a 
 - [ ] Readable web/PDF output, usable absolute PDF links, useful visuals and no public preview metadata.
 - [ ] Honest byline/reviewer/date; exact reviewed revision and applicable publication authority recorded.
 
-Revisit after the first published batch using technician feedback, corrections and measured search behavior. Change the guide when evidence improves it; do not turn a stylistic preference into a technical fact.
+## 11. Make the research useful to the product
+
+Connect each pilot article to an existing Answer Radar question ID, reviewed source record and actual result when one exists. Keep the reference answer separate from the product prompt. Use the current evaluation records rather than a second correctness registry; [BLOG-PLAN](BLOG-PLAN.md) defines the small integration and first PowerFlex experiment.
+
+A content error is a reason to correct the article and a candidate for a product test. It becomes a MIRA defect only when valid product evidence supports that conclusion. Missing manuals, source conflicts, interface friction, unsupported answers and an already-correct response lead to different next actions. Preserve useful negative and unresolved results.
+
+Keep public explanations useful on their own. A correct OEM article does not require MIRA to pass first, and it must not imply that MIRA solved the case without a suitable recorded run. A source review, staging API run, interface walk and verified equipment repair support different claims.
+
+After the first complete cycle, review what the research changed, what a technician understood and where avoidable work occurred. Revise the guide and workflow as evidence improves them; do not turn a stylistic preference into a technical fact or wait for a final brand system before learning.
