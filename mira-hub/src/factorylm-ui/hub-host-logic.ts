@@ -184,6 +184,31 @@ export function shellThreadId(sel: HubSelection): string {
   return threadItemId(sel.notebookId, sel.threadId);
 }
 
+/**
+ * #4690: the safety lines the server writes ABOVE an answer, split from the
+ * answer so the shell can set them apart. Every one of them starts with "⚠️"
+ * (hazard, restart, energized and step-flag banners) and is joined to the
+ * answer by a blank line. On screen they rendered as an ordinary 3.5px-spaced
+ * paragraph, so "⚠️ Isolation. Lock and tag…" ran straight into "Yes—switch off
+ * the supply…" and read as part of the answer. Only LEADING paragraphs count; a
+ * ⚠️ later in an answer stays where the writer put it. The text itself is
+ * unchanged: `notes + separator + body` is the original string.
+ */
+export function splitLeadingSafetyNotes(text: string): { notes: string; body: string } {
+  // Blank lines only: the next paragraph's own indentation (a code block) is the answer's.
+  const boundary = /\n(?:[ \t]*\n)+/g;
+  let end = 0; // end of the last leading ⚠️ paragraph
+  let next = 0; // where the paragraph after it starts
+  while (text.slice(next).trimStart().startsWith("⚠️")) {
+    boundary.lastIndex = next;
+    const m = boundary.exec(text);
+    if (!m) return { notes: text.trim(), body: "" };
+    end = m.index;
+    next = m.index + m[0].length;
+  }
+  return next === 0 ? { notes: "", body: text } : { notes: text.slice(0, end).trim(), body: text.slice(next) };
+}
+
 /** #4695: the hydrate that tells the shell which thread is open (what `syncThread` dispatches). */
 export function openThreadAction(sel: HubSelection, at: string): ShellAction {
   return {
