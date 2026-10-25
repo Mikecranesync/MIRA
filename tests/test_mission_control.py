@@ -194,3 +194,40 @@ def test_bind_refuses_non_loopback_without_explicit_opt_in(monkeypatch):
         server.bind_address()
     monkeypatch.setenv("MC_BIND", "127.0.0.1")  # control: loopback is allowed
     assert server.bind_address() == "127.0.0.1"
+
+
+def test_page_requests_never_wait_on_a_slow_github_read():
+    import time as _t
+
+    slow = server.Snapshot(lambda: (_t.sleep(1.5), [board.normalise(node(1))])[1])
+    t = threading.Thread(target=slow.refresh)
+    t.start()
+    _t.sleep(0.1)  # the refresh is now mid-fetch
+    started = _t.monotonic()
+    view = slow.get()
+    assert _t.monotonic() - started < 0.2  # answered immediately, not after the fetch
+    assert view.items == [] and view.at is None  # precondition: nothing fetched yet
+    t.join()
+    assert [i["number"] for i in slow.get().items] == [1]  # control: data lands after refresh
+
+
+def test_failed_refresh_keeps_the_last_good_data():
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise RuntimeError("github down")
+        return [board.normalise(node(7))]
+
+    snap = server.Snapshot(flaky)
+    snap.refresh()
+    snap.refresh()
+    view = snap.get()
+    assert [i["number"] for i in view.items] == [7]
+    assert view.error and "Refresh failed" in view.error
+
+
+def test_first_load_shows_a_loading_notice_not_an_empty_board():
+    empty = server.Snapshot(lambda: [])
+    assert "Loading the board for the first time" in server.render(empty.get())
