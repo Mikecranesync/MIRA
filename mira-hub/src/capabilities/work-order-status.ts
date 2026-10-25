@@ -1,8 +1,11 @@
 /**
  * Work-order status values accepted by PATCH /api/work-orders/[id] (#4731).
  *
- * `workorderstatus` is declared by the Atlas CMMS backend (see
- * `.enum-drift-allowlist.txt`) plus `needs_completion` from hub migration 005.
+ * `workorderstatus` is declared by the Atlas CMMS backend plus `needs_completion`
+ * from hub migration 005. The list below is the LIVE staging enum, read with
+ * `SELECT enum_range(NULL::workorderstatus)` on 2026-10-25:
+ * {open,in_progress,completed,cancelled,needs_completion}. `on_hold`, listed in
+ * `.enum-drift-allowlist.txt`, is NOT in it, so accepting it would still 500.
  * A value outside the enum used to reach the `::workorderstatus` cast and make
  * Postgres throw, which the route reported as a 500. Resolving the value here,
  * before any query, turns a bad value into a 400.
@@ -14,7 +17,6 @@
 export const WORK_ORDER_STATUSES = [
   "open",
   "in_progress",
-  "on_hold",
   "needs_completion",
   "completed",
   "cancelled",

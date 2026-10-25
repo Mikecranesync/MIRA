@@ -23,6 +23,13 @@ describe("normalizeWorkOrderStatus (#4731)", () => {
     }
   });
 
+  it("matches the live staging enum exactly — no on_hold (it would still 500)", () => {
+    expect([...WORK_ORDER_STATUSES].sort()).toEqual(
+      ["cancelled", "completed", "in_progress", "needs_completion", "open"],
+    );
+    expect(normalizeWorkOrderStatus("on_hold").ok).toBe(false);
+  });
+
   it("rejects an unknown value and names the allowed ones", () => {
     const r = normalizeWorkOrderStatus("archived");
     expect(r.ok).toBe(false);
