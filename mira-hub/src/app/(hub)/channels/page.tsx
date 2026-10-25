@@ -13,6 +13,7 @@ import {
   type Provider,
   type ConnectionMeta,
 } from "@/lib/connections";
+import { connectorCardControls } from "@/lib/connector-card-controls";
 
 type AuthStatus = {
   telegram: { configured: boolean; botUsername: string | null };
@@ -41,6 +42,11 @@ function ConnectorCard({
   emoji, name, description, conn, onConnect, onDisconnect,
   connectedLabel, disabled, disabledReason, statusLabel, infoOnly,
 }: CardProps) {
+  const controls = connectorCardControls({
+    connected: conn.connected,
+    statusLabel,
+    infoOnly,
+  });
   return (
     <div className="card p-4">
       <div className="flex items-center gap-3">
@@ -82,14 +88,16 @@ function ConnectorCard({
           )}
         </div>
 
-        {!statusLabel && !infoOnly && (
+        {(controls.showConnect || controls.showDisconnect) && (
           <div className="flex-shrink-0">
-            {conn.connected ? (
+            {controls.showDisconnect ? (
               <div className="flex gap-1.5">
-                <Button size="sm" variant="secondary" className="text-xs h-7 px-2.5 gap-1">
-                  <Settings className="w-3 h-3" />
-                  Manage
-                </Button>
+                {!statusLabel && (
+                  <Button size="sm" variant="secondary" className="text-xs h-7 px-2.5 gap-1">
+                    <Settings className="w-3 h-3" />
+                    Manage
+                  </Button>
+                )}
                 <Button
                   size="sm" variant="secondary" className="text-xs h-7 w-7 p-0"
                   onClick={onDisconnect}
@@ -263,6 +271,7 @@ function ChannelsInner() {
   const microsoftConn = conn("microsoft");
   const dropboxConn = conn("dropbox");
   const confluenceConn = conn("confluence");
+  const maintainxConn = conn("maintainx");
 
   // Email is a derived info card mirroring google/microsoft and is intentionally
   // not counted here to avoid double-counting those providers.
@@ -360,10 +369,15 @@ function ChannelsInner() {
             <ConnectorCard
               emoji="🔧" name="MaintainX"
               description="Adapter code exists. Not proven."
-              conn={{ connected: false }}
+              conn={maintainxConn}
               onConnect={() => {}}
-              onDisconnect={() => {}}
-              connectedLabel=""
+              onDisconnect={async () => {
+                await fetch(`${API_BASE}/api/integrations/nango/connect/?provider=maintainx`, {
+                  method: "DELETE",
+                });
+                disconnect("maintainx");
+              }}
+              connectedLabel={maintainxConn.displayName ?? "MaintainX"}
               statusLabel="In testing"
             />
           </div>
