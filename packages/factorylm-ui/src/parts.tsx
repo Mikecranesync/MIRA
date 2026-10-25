@@ -196,10 +196,12 @@ const LIFECYCLE_LABEL: Record<Lifecycle, string> = {
 };
 
 const PROGRESS_LABEL: Record<ProgressStage, string> = {
-  finding_equipment: "Finding your equipment…",
-  searching_documentation: "Searching your manuals…",
+  // Every stage also runs on general turns (no machine, no uploaded manuals), and the search can be
+  // the manufacturer library, so no label claims ownership or a source (#4687 live staging check).
+  finding_equipment: "Checking which machine this is about…",
+  searching_documentation: "Searching the manuals…",
   generating_answer: "Writing the answer…",
-  checking_answer: "Checking the answer against your manuals…",
+  checking_answer: "Checking the answer…",
 };
 
 /** #4687 — plain words for a server stage; never the wire identifier. */

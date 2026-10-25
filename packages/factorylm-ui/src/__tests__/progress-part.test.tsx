@@ -38,8 +38,15 @@ describe("progressLabel", () => {
     }
   });
   it("says what is happening in plain words", () => {
-    expect(progressLabel("searching_documentation")).toBe("Searching your manuals…");
-    expect(progressLabel("checking_answer")).toBe("Checking the answer against your manuals…");
+    expect(progressLabel("searching_documentation")).toBe("Searching the manuals…");
+    expect(progressLabel("checking_answer")).toBe("Checking the answer…");
+  });
+  it("claims nothing a stage does not guarantee (live staging 2026-10-25: a general turn read 'against your manuals')", () => {
+    // Every stage runs on general turns too (no machine, no uploaded manuals), and the search may be the
+    // manufacturer library rather than the technician's own files. No label may assert ownership or a source.
+    for (const s of PROGRESS_STAGES) {
+      expect(progressLabel(s)).not.toMatch(/\byour\b|against/i);
+    }
   });
 });
 
@@ -51,7 +58,7 @@ for (const surface of ["classic", "assistant"] as const) {
       const el = view.container.querySelector('[data-part-type="progress"]');
       expect(el).not.toBeNull();
       expect(el!.getAttribute("role")).toBe("status");
-      expect(el!.textContent).toBe("Searching your manuals…");
+      expect(el!.textContent).toBe("Searching the manuals…");
       expect(view.container.textContent).not.toContain("searching_documentation");
       // The fixture carries a deliberate future-kind part elsewhere; the progress turn itself
       // must not fall through to the "unknown" box.
