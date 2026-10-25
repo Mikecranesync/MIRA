@@ -918,10 +918,13 @@ export function isRefusalAnswer(answer: string | null | undefined): boolean {
 // PLAIN TEXT, not markdown: the quickstart page renders `answer` with
 // whitespace-pre-wrap (quickstart/page.tsx), so a markdown bold would show
 // literal asterisks. The leading warning sign + phrase carry the emphasis.
+// Says only what empty citations prove (this answer cited nothing), never
+// library coverage: a relevant passage can go uncited and retrieval can fail
+// (Codex #4230 F1).
 export const QUICKSTART_UNGROUNDED_NOTICE =
-  "⚠️ General guidance - not grounded in an OEM manual. No manual in the " +
-  "public library matched this question, so the guidance below is standard " +
-  "maintenance knowledge, not from your equipment's documentation.";
+  "⚠️ General guidance - not grounded in an OEM manual. This answer does " +
+  "not cite any manual, so treat it as standard maintenance knowledge, not " +
+  "as your equipment's documentation.";
 
 /**
  * Prepend the no-source notice to an answer that cited nothing. Idempotent -

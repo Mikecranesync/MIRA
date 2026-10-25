@@ -123,6 +123,32 @@ describe("POST /api/quickstart/ask — grounding-honesty floor (#4224 Defect B)"
     expect(body.answer).not.toContain(QUICKSTART_UNGROUNDED_NOTICE);
     expect(body.answer).toContain(QUICKSTART_REFUSAL_MARK);
   });
+
+  // Codex #4230 F1: empty citations prove only that THIS answer cited nothing,
+  // not that no manual matched. A relevant passage can be retrieved and still
+  // go uncited, and a retrieval failure never established coverage at all.
+  it("a relevant passage retrieved but uncited keeps the warning without claiming no manual matched", async () => {
+    rag.retrieveManualChunks.mockResolvedValue([chunk(1)]);
+    cascade.cascadeComplete.mockResolvedValue({ content: UNCITED_ANSWER, provider: "groq" });
+
+    const body = await (await POST(req({ question: "PowerFlex 525 fault F005" }))).json();
+
+    expect(body.citations).toEqual([]);
+    expect(body.answer).toMatch(/not grounded in an OEM manual/);
+    expect(body.answer).not.toMatch(/no manual|matched/i);
+  });
+
+  it("a retrieval failure keeps the warning without claiming anything about library coverage", async () => {
+    rag.retrieveManualChunks.mockRejectedValue(new Error("db down"));
+    cascade.cascadeComplete.mockResolvedValue({ content: UNCITED_ANSWER, provider: "groq" });
+
+    const res = await POST(req({ question: "PowerFlex 525 fault F005" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.answer).toMatch(/not grounded in an OEM manual/);
+    expect(body.answer).not.toMatch(/no manual|matched/i);
+  });
 });
 
 describe("withUngroundedNotice — pure helper", () => {
