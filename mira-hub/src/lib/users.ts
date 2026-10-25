@@ -1,12 +1,7 @@
 import pool from "@/lib/db";
 import { ensureDataSchema } from "@/lib/data-schema";
 import { PILOT_WINDOW_DAYS } from "@/lib/config";
-import {
-  PilotSeatCapError,
-  canInvitePilotSeat,
-  magicTokenTtlMinutes,
-  occupiedPilotSeats,
-} from "@/capabilities/trial-access";
+import { magicTokenTtlMinutes } from "@/capabilities/trial-access";
 
 export type UserStatus = "pending" | "trial" | "approved" | "expired" | "admin";
 
@@ -30,8 +25,6 @@ export interface MagicTokenResult {
   role: string | null;
   invitedBy: string | null;
 }
-
-export { PilotSeatCapError };
 
 let schemaReady: Promise<void> | null = null;
 
@@ -258,38 +251,6 @@ export async function validateMagicToken(token: string): Promise<MagicTokenResul
         invitedBy: rows[0].invited_by ? String(rows[0].invited_by) : null,
       }
     : null;
-}
-
-export async function assertPilotSeatAvailable(
-  tenantId: string,
-  email: string,
-): Promise<void> {
-  await ensureMagicSchema();
-  const target = email.trim().toLowerCase();
-
-  const { rows: trialRows } = await pool.query(
-    `SELECT 1 FROM hub_users WHERE tenant_id = $1 AND status = 'trial' LIMIT 1`,
-    [tenantId],
-  );
-  if (trialRows.length === 0) return;
-
-  const { rows: members } = await pool.query(
-    `SELECT email_lower FROM hub_users WHERE tenant_id = $1`,
-    [tenantId],
-  );
-  const memberEmails = members.map((row: { email_lower: string }) => String(row.email_lower));
-  if (memberEmails.includes(target)) return;
-
-  const { rows: pending } = await pool.query(
-    `SELECT email FROM hub_magic_tokens
-     WHERE tenant_id = $1 AND used_at IS NULL AND expires_at > NOW()`,
-    [tenantId],
-  );
-  const pendingEmails = pending.map((row: { email: string }) => String(row.email));
-  const occupied = occupiedPilotSeats(memberEmails, pendingEmails);
-  if (!canInvitePilotSeat(occupied, false)) {
-    throw new PilotSeatCapError();
-  }
 }
 
 export interface EnsureUserAndTenantInput {

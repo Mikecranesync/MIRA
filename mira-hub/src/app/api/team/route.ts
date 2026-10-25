@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
-import { inviteLinkExpiryCopy, PilotSeatCapError } from "@/capabilities/trial-access";
-import { assertPilotSeatAvailable, createMagicToken, ensureSchema } from "@/lib/users";
+import { inviteLinkExpiryCopy } from "@/capabilities/trial-access";
+import { createMagicToken, ensureSchema } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -141,7 +141,6 @@ export async function POST(req: Request) {
       );
     }
 
-    await assertPilotSeatAvailable(ctx.tenantId, email);
     const token = await createMagicToken(email, {
       tenantId: ctx.tenantId,
       role,
@@ -150,9 +149,6 @@ export async function POST(req: Request) {
     await sendInviteEmail(email, token, ctx.email);
     return NextResponse.json({ ok: true, email, role });
   } catch (err) {
-    if (err instanceof PilotSeatCapError) {
-      return NextResponse.json({ error: err.message }, { status: 409 });
-    }
     console.error("[api/team] invite", err);
     return NextResponse.json({ error: "Invite failed" }, { status: 500 });
   }

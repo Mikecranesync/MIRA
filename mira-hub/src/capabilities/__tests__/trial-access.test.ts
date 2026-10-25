@@ -2,15 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   INVITE_MAGIC_LINK_TTL_MINUTES,
   LOGIN_MAGIC_LINK_TTL_MINUTES,
-  PILOT_MAX_USERS,
   PILOT_WINDOW_DAYS,
 } from "@/lib/config";
 import {
-  PilotSeatCapError,
-  canInvitePilotSeat,
   inviteLinkExpiryCopy,
   isMagicTokenLiveAt,
-  occupiedPilotSeats,
   trialAccessDecision,
   trialExpiresAtFrom,
 } from "@/capabilities/trial-access";
@@ -93,25 +89,5 @@ describe("invite magic-link lifetime (#4362)", () => {
   it("does not claim every magic link expires in 15 minutes", () => {
     expect(inviteLinkExpiryCopy()).toMatch(/30 days/);
     expect(inviteLinkExpiryCopy()).not.toMatch(/15 minutes/);
-  });
-});
-
-describe("pilot seat cap (#4362)", () => {
-  it("counts members plus unused pending invites, without double-counting", () => {
-    expect(
-      occupiedPilotSeats(
-        ["owner@site.test", "tech@site.test"],
-        ["tech@site.test", "pending@site.test"],
-      ),
-    ).toBe(3);
-  });
-
-  it("allows a fifth user and rejects a sixth; re-inviting a member does not consume a seat", () => {
-    expect(PILOT_MAX_USERS).toBe(5);
-    expect(canInvitePilotSeat(4, false)).toBe(true);
-    expect(canInvitePilotSeat(5, false)).toBe(false);
-    expect(canInvitePilotSeat(5, true)).toBe(true);
-    expect(new PilotSeatCapError().message).toMatch(/limited to 5 users/);
-    expect(new PilotSeatCapError().message).toMatch(/sixth invite/);
   });
 });

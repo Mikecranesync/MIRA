@@ -35,7 +35,6 @@ export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 // auto-renewal, or billing. After this window, existing post-trial behavior
 // applies (buyer redirected to /upgrade). Renewal is a manual decision.
 export const PILOT_WINDOW_DAYS = 30;
-export const PILOT_MAX_USERS = 5;
 
 // Ordinary sign-in magic links stay a same-session 15-minute hop.
 // Workspace invitations use the same 30-day window as the trial.

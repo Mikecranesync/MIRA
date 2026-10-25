@@ -1,7 +1,6 @@
 import {
   INVITE_MAGIC_LINK_TTL_MINUTES,
   LOGIN_MAGIC_LINK_TTL_MINUTES,
-  PILOT_MAX_USERS,
   PILOT_WINDOW_DAYS,
 } from "@/lib/config";
 
@@ -42,43 +41,6 @@ export function isMagicTokenLiveAt(
   now: Date,
 ): boolean {
   return now.getTime() - issuedAt.getTime() < magicTokenTtlMinutes(kind) * MINUTE_MS;
-}
-
-export class PilotSeatCapError extends Error {
-  readonly maxUsers: number;
-
-  constructor(maxUsers: number = PILOT_MAX_USERS) {
-    super(
-      `This pilot site is limited to ${maxUsers} users. A sixth invite cannot be sent until a seat is free.`,
-    );
-    this.name = "PilotSeatCapError";
-    this.maxUsers = maxUsers;
-  }
-}
-
-/** Members plus unused pending invite emails that are not already members. */
-export function occupiedPilotSeats(
-  memberEmails: Iterable<string>,
-  pendingInviteEmails: Iterable<string>,
-): number {
-  const members = new Set(
-    [...memberEmails].map((email) => email.trim().toLowerCase()).filter(Boolean),
-  );
-  const pending = new Set(
-    [...pendingInviteEmails]
-      .map((email) => email.trim().toLowerCase())
-      .filter((email) => email && !members.has(email)),
-  );
-  return members.size + pending.size;
-}
-
-export function canInvitePilotSeat(
-  occupied: number,
-  emailAlreadyMember: boolean,
-  maxUsers: number = PILOT_MAX_USERS,
-): boolean {
-  if (emailAlreadyMember) return true;
-  return occupied < maxUsers;
 }
 
 export function inviteLinkExpiryCopy(days: number = PILOT_WINDOW_DAYS): string {

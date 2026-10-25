@@ -9,9 +9,7 @@ import {
   LOGIN_MAGIC_LINK_TTL_MINUTES,
   PILOT_WINDOW_DAYS,
 } from "@/lib/config";
-import { PilotSeatCapError } from "@/capabilities/trial-access";
 import {
-  assertPilotSeatAvailable,
   createMagicToken,
   ensureUserAndTenant,
 } from "@/lib/users";
@@ -91,90 +89,5 @@ describe("pilot invite and trial window persistence (#4362)", () => {
       "Buyer",
       PILOT_WINDOW_DAYS,
     ]);
-  });
-});
-
-describe("assertPilotSeatAvailable", () => {
-  function scriptPilotQueries(opts: {
-    isPilot: boolean;
-    members: string[];
-    pending: string[];
-  }) {
-    queryMock.mockImplementation((sql: string) => {
-      if (/status = 'trial'/.test(sql)) {
-        return Promise.resolve({ rows: opts.isPilot ? [{ "?column?": 1 }] : [] });
-      }
-      if (/SELECT email_lower FROM hub_users/.test(sql)) {
-        return Promise.resolve({
-          rows: opts.members.map((email) => ({ email_lower: email })),
-        });
-      }
-      if (/SELECT email FROM hub_magic_tokens/.test(sql)) {
-        return Promise.resolve({
-          rows: opts.pending.map((email) => ({ email })),
-        });
-      }
-      return Promise.resolve({ rows: [] });
-    });
-  }
-
-  it("rejects a sixth new invite on a 5-user pilot site", async () => {
-    scriptPilotQueries({
-      isPilot: true,
-      members: [
-        "owner@site.test",
-        "a@site.test",
-        "b@site.test",
-        "c@site.test",
-        "d@site.test",
-      ],
-      pending: [],
-    });
-    await expect(assertPilotSeatAvailable("tenant-1", "sixth@site.test")).rejects.toBeInstanceOf(
-      PilotSeatCapError,
-    );
-  });
-
-  it("counts unused pending invites toward the 5-user cap", async () => {
-    scriptPilotQueries({
-      isPilot: true,
-      members: ["owner@site.test", "a@site.test", "b@site.test"],
-      pending: ["pending-1@site.test", "pending-2@site.test"],
-    });
-    await expect(assertPilotSeatAvailable("tenant-1", "sixth@site.test")).rejects.toMatchObject({
-      name: "PilotSeatCapError",
-      message: expect.stringMatching(/limited to 5 users/),
-    });
-  });
-
-  it("lets an existing member be re-invited without consuming a new seat", async () => {
-    scriptPilotQueries({
-      isPilot: true,
-      members: [
-        "owner@site.test",
-        "a@site.test",
-        "b@site.test",
-        "c@site.test",
-        "d@site.test",
-      ],
-      pending: [],
-    });
-    await expect(assertPilotSeatAvailable("tenant-1", "a@site.test")).resolves.toBeUndefined();
-  });
-
-  it("does not cap a site that is no longer on trial", async () => {
-    scriptPilotQueries({
-      isPilot: false,
-      members: [
-        "owner@site.test",
-        "a@site.test",
-        "b@site.test",
-        "c@site.test",
-        "d@site.test",
-        "e@site.test",
-      ],
-      pending: [],
-    });
-    await expect(assertPilotSeatAvailable("tenant-1", "sixth@site.test")).resolves.toBeUndefined();
   });
 });
