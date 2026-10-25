@@ -4,7 +4,7 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import { PROFILES, createShellState, shellReducer, type InteractionTurn, type ManualSearchStatus, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
+import { PROFILES, createShellState, shellReducer, type InteractionTurn, type ManualSearchStatus, type ShellAction, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
@@ -182,6 +182,23 @@ export function searchForSelection(sel: HubSelection | null): string {
 /** The shell's thread id for a selection — same grammar mobile uses. */
 export function shellThreadId(sel: HubSelection): string {
   return threadItemId(sel.notebookId, sel.threadId);
+}
+
+/**
+ * #4695 (part 2): the actions that tell the shell which thread is open. The
+ * reducer's `hydrate` blanks the draft whenever the thread id changes, which is
+ * right when the technician CHOOSES another thread. An automatic landing (deep
+ * link, reload, first load) is not a choice: text already typed on HOME belongs
+ * to the conversation that is opening, so it is written back right after.
+ * Without this, "How do I clear a fault…" typed before the notebook list arrived
+ * kept only the characters typed after it ("e Micro810").
+ */
+export function openThreadActions(sel: HubSelection, at: string, keepDraft = ""): ShellAction[] {
+  const hydrate: ShellAction = {
+    type: "hydrate",
+    data: { thread: { ...EMPTY_FIXTURE.thread, id: shellThreadId(sel), notebookId: sel.notebookId, createdAt: at, updatedAt: at } },
+  };
+  return keepDraft ? [hydrate, { type: "set-draft", draft: keepDraft }] : [hydrate];
 }
 
 /**
