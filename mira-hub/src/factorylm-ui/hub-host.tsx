@@ -79,6 +79,7 @@ import {
   initialHubShellState,
   landingSelection,
   latestRequestGate,
+  loadingThread,
   metaFor,
   newThreadId,
   openNotebookSelection,
@@ -372,7 +373,7 @@ export function HubShellHost() {
       // still shows (a first send creates its project before anything else).
       const openId = selection ? shellThreadId(selection) : HOME_THREAD;
       const turns = withOutgoing([], { turns: [], outgoingId: null }, outgoing, openId, EMPTY_FIXTURE.thread.id, state.activeContext);
-      const thread = turns.length ? { ...EMPTY_FIXTURE.thread, turns } : EMPTY_FIXTURE.thread;
+      const thread = loadingThread(selection, turns);
       return notebooks ? shellReducer(state, { type: "hydrate", data: { thread, projects, machines } }) : state;
     }
     const base = fixtureFor(detail.notebook, selection, detail.turns, meta, projects, machines);

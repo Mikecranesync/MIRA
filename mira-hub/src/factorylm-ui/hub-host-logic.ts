@@ -4,7 +4,7 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import { PROFILES, createShellState, shellReducer, type ManualSearchStatus, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
+import { PROFILES, createShellState, shellReducer, type InteractionTurn, type ManualSearchStatus, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
@@ -182,6 +182,22 @@ export function searchForSelection(sel: HubSelection | null): string {
 /** The shell's thread id for a selection — same grammar mobile uses. */
 export function shellThreadId(sel: HubSelection): string {
   return threadItemId(sel.notebookId, sel.threadId);
+}
+
+/**
+ * #4695: the thread the shell shows while a selection's detail is still loading.
+ * It carries the OPEN thread's id and notebook, the same identity `syncThread`
+ * stored. The reducer's `hydrate` blanks the draft whenever the thread id
+ * changes, so the old placeholder id (`hub-empty:thread`) wiped the composer on
+ * every render while the turns loaded and kept only the last keystroke: typing
+ * "How do I…" on a slow link sent "do I…". HOME (no selection) keeps the
+ * fixture thread, whose id is also the state's initial thread id.
+ */
+export function loadingThread(selection: HubSelection | null, turns: readonly InteractionTurn[]) {
+  const base = selection
+    ? { ...EMPTY_FIXTURE.thread, id: shellThreadId(selection), notebookId: selection.notebookId }
+    : EMPTY_FIXTURE.thread;
+  return turns.length ? { ...base, turns: [...turns] } : base;
 }
 
 /**
