@@ -369,8 +369,15 @@ describe("tabTitleFor - #4753 two open projects must have different tab titles",
     expect(tabTitleFor(null, false)).toBe("FactoryLM Hub");
     expect(tabTitleFor(undefined, false)).toBe("FactoryLM Hub");
   });
+  it("falls back to the plain app name for an empty or whitespace-only name, same as no project (review r2 finding)", () => {
+    expect(tabTitleFor("", false)).toBe("FactoryLM Hub");
+    expect(tabTitleFor("   ", false)).toBe("FactoryLM Hub");
+  });
   it("names the open project so two tabs can be told apart", () => {
     expect(tabTitleFor("Conveyor CV-101", false)).toBe(`Conveyor CV-101 ${MIDDOT} FactoryLM Hub`);
+  });
+  it("trims incidental surrounding whitespace off a real name", () => {
+    expect(tabTitleFor("  Conveyor CV-101  ", false)).toBe(`Conveyor CV-101 ${MIDDOT} FactoryLM Hub`);
   });
   it("prefixes a busy marker while an answer is generating", () => {
     expect(tabTitleFor("Conveyor CV-101", true)).toBe(`${DOT} Conveyor CV-101 ${MIDDOT} FactoryLM Hub`);

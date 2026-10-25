@@ -342,8 +342,9 @@ export function groundingLineFor(nb: EquipmentNotebook | null, enabledCount: num
 
 /** #4753: the browser tab title, so two open projects can be told apart. */
 export function tabTitleFor(displayName: string | null | undefined, busy: boolean): string {
-  if (!displayName) return "FactoryLM Hub";
-  return `${busy ? "● " : ""}${displayName} · FactoryLM Hub`;
+  const trimmed = displayName?.trim();
+  if (!trimmed) return "FactoryLM Hub";
+  return `${busy ? "● " : ""}${trimmed} · FactoryLM Hub`;
 }
 
 /** The Composer's contract: a hook that THROWS keeps the draft and shows this text. */
