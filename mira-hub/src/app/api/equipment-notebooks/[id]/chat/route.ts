@@ -256,6 +256,7 @@ import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
 import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
+import { reportProgress, wantsProgress, withProgressStream } from "@/capabilities/chat-progress";
 import {
   JUDGE_OUTPUT_TOKENS,
   judgeHoldInputBound,
@@ -1777,6 +1778,7 @@ async function handleChatTurn(
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
   const identityResolveSpan = startStage("identity.resolve");
+  reportProgress(req, "finding_equipment"); // #4687: a no-op unless this request opted in
   openChildren.add(identityResolveSpan);
   const boundAsset: ResolvedAsset = await releaseClaimOnFailure(() =>
     resolveBoundAsset(ctx.tenantId, notebookId),
@@ -2051,6 +2053,7 @@ async function handleChatTurn(
   // Non-English questions search the English corpus in English (answered in their own language).
   const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history, lookRow?.text), translateForSearch);
   const retrievalSpan = startStage("retrieval.execute");
+  reportProgress(req, "searching_documentation");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
   //   2. no sources, but EQUIPMENT CONTEXT → oem_corpus_bm25 (shared OEM library,
@@ -3800,6 +3803,7 @@ async function handleChatTurn(
           reservation = verdict.reservation;
         }
         genSpan = startStage(`chat ${provider.model}`);
+        reportProgress(req, "generating_answer"); // once per turn, even across cascade attempts
         genOutcome = "exception";
         genResponseId = null;
         const genAttemptStartedAt = Date.now();
@@ -4217,6 +4221,8 @@ async function handleChatTurn(
         endRoot();
         return;
       }
+      // #4687: only a served answer held under the gate is checked before release.
+      if (served && gate) reportProgress(req, "checking_answer");
       let answerText = normalizeCitationMarkers(responseBuffer.join(""));
 
       // Determine the honest status + which citations to ship. A refusal ships
@@ -4996,6 +5002,15 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   const arrival = recordArrival({ ...ingress });
   let status = 500;
   try {
+    if (wantsProgress(req)) {
+      // #4687: headers go out now; the turn runs behind the open stream. The
+      // inner status is still what the ingress record reports.
+      return withProgressStream(req, async () => {
+        const inner = await handleChatTurn(req, routeCtx, ingress);
+        status = inner.status;
+        return inner;
+      });
+    }
     const res = await handleChatTurn(req, routeCtx, ingress);
     status = res.status;
     return res;
