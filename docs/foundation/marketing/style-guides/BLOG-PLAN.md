@@ -1,82 +1,80 @@
-# MIRA Blog / Daily SEO Plan (draft, Oct 25, 2026 ET)
-Status: plan only. Nothing was posted, filed, messaged or deployed. Source snapshot: /workspace/mira-main-8ca0b52/mira-web.
+# FactoryLM blog delivery and topic plan
 
-## 0. Key finding: a blog already exists, so reuse it instead of building a new one
-mira-web is a **Bun + Hono** server (`src/server.ts`) that renders HTML on the server and ships as a Docker image (`oven/bun:1.2.10-slim`). It deploys through the repo's GitHub workflows: `deploy-staging.yml` goes to staging.factorylm.com, and prod is the `mira-web` service. These pieces are already live:
-| Piece | Where | State |
+Version 0.2, 2026-10-25 (America/New_York). Draft planning only. [STYLE-GUIDE](STYLE-GUIDE.md) governs content and review. This plan does not implement a publishing system, approve posts, change analytics, or schedule an automation.
+
+## 1. Recommended first batch
+
+Correct the three reviewed posts before expanding output. Start with the PowerFlex 525 article because it fits the drives focus and offers a useful stored-diagnostics workflow. Then revise Micro820. Keep the S7-1200 memory-card/password claim on hold until its applicability/source conflict is resolved. The detailed findings and evidence are in [README](README.md).
+
+A useful initial series teaches technicians to distinguish the fault indication, evidence, possible cause, authorized correction and verification. Reuse those habits across a few supported equipment families. A daily quota must never push an unresolved procedure into publication.
+
+| Priority | Deliverable | Evidence of completion |
 |---|---|---|
-| `/blog`, `/blog/:slug`, `/blog/fault-codes` | server.ts L543-570, `lib/blog-renderer.ts` | Live |
-| 9 long-form posts | `src/data/blog-posts.ts` (TS objects, section blocks) | Generic guides, Apr 2026. One is "what-is-cmms" |
-| ~51 static fault-code pages | `src/data/fault-codes.ts` | Hand-written generic causes and fixes, **no manual page citations**, multi-brand |
-| Drive Commander fault and parameter pages | `/drive-commander/:model/faults/:code` and `/parameters/:pid` from `data/drive-packs/*.json` (PF40, PF525, G120) | **Manual-cited** (provenance: doc + page) |
-| DB-backed drafts | `lib/blog-db.ts` reads the Neon `blog_drafts` table, 5-min cache | Table not provisioned yet ("editorial workflow" never shipped) |
-| Sitemap | `lib/sitemap.ts`, dynamic, real per-page `lastmod` | Live. Includes all of the above, so roughly 200 URLs |
-| JSON-LD | Article + BreadcrumbList on posts, HowTo/TroubleshootingGuide on fault codes | Live. **No FAQPage, no BlogPosting** |
-| Canonical + Open Graph | `blog-renderer.ts` head | Live (one shared og-image) |
-| llms.txt / llms-full.txt | server.ts L489-500 | Live (good for AI answer engines) |
-| Analytics | PostHog via `/posthog-init.js` (`PLG_POSTHOG_KEY`) | Wired. Uses cookies, `person_profiles: identified_only` |
-| RSS | none | **Missing** |
+| 1 | Correct the PowerFlex reset distinction and history explanation | Applicable OEM pages, consistent prose/figures/FAQ, source record and reviewed final artifact. |
+| 2 | Reframe Micro820 as diagnosis plus a conditional recovery option | Attempt language everywhere, restore/card prerequisites before changes, no routine replacement-program shortcut. |
+| 3 | Resolve or remove the S7-1200 unconditional card-preservation claim | Explicit CPU/firmware/TIA scope and resolved OEM conflict; erasure consequences before controls. |
+| 4 | Repair common export issues | Absolute PDF links, readable figures, useful page breaks, no public preview metadata. |
+| 5 | Verify product/contact wording and publication authority | Current claim evidence or the modest contact-only invitation; actual approved revision. |
+| 6 | Release the approved batch and measure it | Released URLs/content revision, page checks and a baseline for search/contact metrics. |
 
-### Scaled-content risk in what's already live (Search Steward's ~200 sitemap URLs)
-- **Drive Commander pages (manual-cited):** low risk. Each page decodes a real fault from a cited OEM manual page, which makes it useful reference material. Keep them.
-- **The 51 `fault-codes.ts` pages:** **medium risk.** They're templated, carry no citations, use generic causes across brands, and are "FactoryLM Engineering"-authored with no reviewer. This is the pattern Google's *scaled content abuse* policy targets, especially if a lot more get added. They also contradict our "cited from the manual" pitch. **Recommendation:** freeze new ones. Over 2–4 weeks, either add a manual citation (doc, edition, page) to each page or `noindex` and merge the thin ones. Don't mass-generate more.
-- **The 9 old posts:** fine to keep. Check "what-is-cmms" against the "not a CMMS" positioning, and check any claims against Content Studio's landing audit (T-020).
-- `/pricing`, `/buy` and `/assess` are in the sitemap even though we want prices off the public pages (T-020). Mike decides whether they should stay indexed.
+## 2. Reuse the current site
 
-## 1. Simplest way to add the daily blog (build on top, ~1 PR, small–medium)
-- **Content folder:** `mira-web/content/blog/YYYY-MM-DD-slug.md`, Markdown with front matter (title, description, date, updated, slug, tags, sources[], faq[], status). **Publishing = adding one file.** At startup, a loader parses the folder and merges it into `BLOG_POSTS` using the same `BlogPost` shape (the body renders to sections, or the renderer takes raw HTML). Posts with a future `date` stay hidden until that day, which gives scheduled publishing without a cron job.
-- **Reuse:** the existing `/blog` index, `/blog/:slug` and sitemap pick the posts up automatically.
-- **Add:**
-  - `/blog/tag/:tag` pages
-  - `/blog/rss.xml` (and link it in the head)
-  - **BlogPosting** JSON-LD (replacing the generic Article) with `citation` entries for each source
-  - **FAQPage** JSON-LD from the `faq` front matter
-  - A visible "Sources" block (forum thread + manual doc/edition/page)
-  - A "Reviewed by <name>, <date>" line
-  - Per-post OG image (optional)
-  - Internal links: each post → landing page `/` and 2–3 related posts/fault pages; the landing page → `/blog` and the latest 3 posts
-- **Keep** canonical = `https://factorylm.com/blog/<slug>`. Add **IndexNow** pings to Bing/Yandex on deploy (free).
-- Tests: the loader parses all files, the sitemap contains new slugs, RSS validates, JSON-LD validates (run the Rich Results test manually on staging), and future-dated posts return 404.
+The PR snapshot contains `mira-web/src/data/blog-posts.ts`, `mira-web/src/lib/blog-renderer.ts`, `mira-web/src/lib/blog-db.ts` and `mira-web/public/blog.css`. Inspect their current interfaces before implementing a content-loader change. The original plan's runtime, sitemap counts and deployment observations are historical inputs, not reverified live facts in this refinement.
 
-## 2. Unique-visitor tracking
-**Recommendation: Cloudflare Web Analytics (cookieless, free) if factorylm.com is behind Cloudflare. Otherwise self-host Umami** (MIT license, cookieless, one container plus Postgres, which we already run). Keep PostHog for in-app funnels and CTA clicks. Cookieless tracking avoids a cookie banner for the blog.
-Also: **Google Search Console** and **Bing Webmaster Tools** (impressions, clicks, queries, indexing). Bing feeds ChatGPT search and Copilot, so it matters for GEO.
-| Mike does (needs his accounts) | Foreman builds |
+Prefer the existing renderer and publishing path. Do not add a new CMS, database workflow, analytics container or generalized publishing framework to ship the first corrected articles. A Markdown folder may be a reasonable later implementation if it integrates with the current content shape and review controls.
+
+Any implementation belongs in its own scoped change. This PR edits only six guide documents.
+
+## 3. Review and publication are separate states
+
+Preserve the current release policy. Content Studio drafts; technical review verifies the applicable source and material conditions; Search Steward checks editorial/search/claim consistency and exports; Mike approves the exact reviewed content under his existing authority; Foreman carries out an authorized release.
+
+Use the current queue vocabulary where available. A record saying `review-for-mike` is not approval. A record saying `approved` needs a traceable reviewer/owner decision and exact revision; the string alone is not authority. Keep technical-review result, owner approval and actual release evidence distinct even if they are stored in one document.
+
+The weekly-batch option is retained in [STYLE-GUIDE-part4-proposed](STYLE-GUIDE-part4-proposed.md). It is a way to reduce review overhead, not an additional confirmation round. Apply any already-recorded approval that covers the actual action and revision.
+
+Do not let dates or unreviewed file edits publish content. If automation is later authorized, verify visibility against the current time at request time, or use a documented rebuild/refresh mechanism. **Filtering only at server startup will not make a future post appear when its date arrives.** Use an explicit publish timestamp with the America/New_York offset for that date, and the same rule for the direct route, index, sitemap, RSS and related links. Verify cache behavior at the release boundary.
+
+A post that is in the same PR but scheduled later is not yet a valid related link. Show it only when available or describe it as forthcoming without a dead link.
+
+## 4. Minimum editorial record
+
+These are content requirements, not an implemented schema. Reuse existing fields and add only what the current pipeline needs:
+
+| Record | Required information |
 |---|---|
-| Create Cloudflare WA site (or approve an Umami host + subdomain) | Add the beacon script to the shared head, behind an env var |
-| Verify factorylm.com in Search Console (DNS TXT record) and Bing (import from GSC) | Weekly report script: unique visitors, top /blog pages, referrers (plctalk, reddit, google, bing, chatgpt.com, perplexity) |
-| Submit `/sitemap.xml` in both | UTM convention for links we share ourselves |
-| Put the WA token / Umami ID in Doppler | |
-Rule: analytics data and any customer data never go to free LLM models. Reports use aggregates only.
+| Identity | Stable slug, reader question, article type, proposed title/description. |
+| Scope | Manufacturer/model and material hardware, firmware and software versions. |
+| Sources | Official URL, publication/revision/date, section/table, printed page and PDF page; forum provenance separately. |
+| Claim review | Claim location, evidence, qualifications/conflicts, review result and reviewer/date. |
+| Consequences | What changes, what could be lost, prerequisites and limits of the procedure. |
+| Visuals | Purpose, source/rights, caption, alt text, final legibility. No mandatory image count. |
+| Product wording | Approved claim references or contact-only wording; no inferred capability from the article. |
+| Publication | Actual author/publisher, applicable owner decision, reviewed revision, intended time and released URL once live. |
+| Verification | Readable web/PDF, link results, metadata alignment and corrected blockers. |
 
-## 3. Daily publishing workflow (**needs Mike's decision**)
-Only Mike merges, and Foreman builds. Options:
-- **A (recommended): a weekly batch PR with daily scheduled dates.** Each Friday, Content Studio drafts 7 posts, Search Steward checks them, and Foreman opens **one PR** with 7 future-dated files. Mike reviews and merges once a week, and the posts go live one per day on their own (the date gate in §1). That's one tap a week, every post human-reviewed, and still a daily post.
-- **B: one PR per day.** Mike merges each morning. It's the most control but the easiest to miss.
-- **C: a CMS / `blog_drafts` table that Mike approves in a UI.** Content changes wouldn't need a deploy, but it's more to build and puts publishing outside code review.
-Either way, a post can't ship unless the front matter has `status: approved` plus a reviewer name. CI fails if `sources` is empty or a link doesn't return 200.
+Record actual publication and modification dates separately from a review date and queue filename. Do not invent an author, technical credential, test result or customer story to fill an empty field.
 
-## 4. Post format (SEO + GEO) and policy guardrails
-- **One real technician question per post** (a fault code or symptom). The title is the question in plain words, and the first ~50 words are the direct answer, which is what AI engines quote.
-- Then the steps, citing the **OEM manual, edition and page**, with a "watch out for" section.
-- A **link out to the public thread** it came from (summarize the question, never copy replies), plus the OEM doc link where it's public.
-- A safety note where relevant, in catalog-only form ("follow your lockout procedure"). Never a step-by-step for energized or safety-function work.
-- No prices, no competitor names, no unverified claims. The MIRA mention is one honest line at the end.
-- A 3–5 Q FAQ goes into FAQPage JSON-LD.
-- **Google policies:** *scaled content abuse* (many pages made mainly to rank, AI-generated or not) and *site reputation abuse*. Daily posts are fine **only if** each one is useful, accurate and human-reviewed. No mass-generated pages, no spun variants, no keyword-stuffed tag pages.
-- **What "cross-linking" means here:** we link **out** to the real threads and manuals, which adds credibility, and we **earn** links back by being the best answer. No link schemes, no paid links, no PBNs, no spam or self-promo comments on PLCtalk, MrPLC or Reddit. If Mike posts a helpful answer on a forum himself, he discloses he's affiliated, and a link goes in only where the forum's rules allow. Most forums ban self-promotion.
-- **What "old school SEO, most powerful version" means honestly:**
-  - Consistent daily fresh content
-  - Tight topic clusters: a Micro800 hub page, an S7-1200 hub, a TP700 hub and a drives hub, each linking to its posts
-  - Strong internal linking
-  - Sitemap + RSS + IndexNow
-  - Search Console / Bing submission
-  - Fast server-rendered pages (already the case)
-  - Earned links from OEM-user communities and newsletters
+## 5. Evidence for an implementation change
 
-## 5. 30-day topic seed list
-Verified on Oct 25, 2026 ET. **"200"** means curl loaded the page from the box today. **"T-013"** means it was verified in `/workspace/marketing/research/plc-question-gaps-2026-10-25.md` (Reddit and SiePortal pages are only confirmed via the search index; open them in a browser before publishing). **"301"** means the link redirects to a live canonical URL.
-| Day | Product | Question | Source URL | Check | Manual on box |
+When publishing code is changed, verify the specific behavior that could fail:
+
+- Unapproved/future posts are absent from every public surface, including direct URLs and feeds.
+- A due, approved post becomes visible without an accidental dependency on a server restart.
+- Cache/index behavior does not expose drafts or hide a due post indefinitely.
+- Related links appear only when their targets are available.
+- Metadata, structured data, sources, article body and PDF describe the same revision.
+- PDF exports use absolute HTTPS links and omit internal preview metadata.
+
+A link checker can flag a redirect, failure or bot challenge; it cannot verify manual applicability. Use manual verification when appropriate and record a blocked check honestly. Do not make “every URL returned 200 to a bot” the technical fact-check standard.
+
+This documentation refinement does not require a product test suite or prove the proposed loader exists.
+
+## 6. Thirty topic candidates retained from Grokbot
+
+This is a research backlog, not a calendar or thirty approved articles. The collection notes below are preserved from the original October 25 draft and were **not re-run in this review**. `T-013` and “on box” refer to Grokbot's external workspace, not a file verified in this PR. Verify the actual source and applicable manual before drafting; an indexed result is not an opened source. The old “drafted” marker records prior drafting only, not approval.
+
+| Candidate | Product | Question | Source URL | Original collection note | Original manual note |
 |---|---|---|---|---|---|
 | 1 | Micro820 | Flashing red fault after failed download, clear without CCW (**drafted**) | https://www.plctalk.net/forums/threads/micro820-fault-help.106371/ | 200 | 2080-UM005 |
 | 2 | S7-1200 | How to factory reset (**drafted**) | https://www.plctalk.net/forums/threads/siemens-s7-1200-factory-reset.122271/ | 301→200 | S7-1200 SM |
@@ -108,12 +106,17 @@ Verified on Oct 25, 2026 ET. **"200"** means curl loaded the page from the box t
 | 28 | Comfort panel | TP1200 "HmiRTm.exe serious error" | https://mrplc.com/forums/topic/45898-hmi-tp1200-comfort-panel-error-application-hmirtmexe-encountered-a-serious-error-and-must-shutdown/ | 200 | Comfort OI |
 | 29 | S7-1200 G2 | Bogus analog values | https://www.reddit.com/r/PLC/comments/1pn65nj/im_getting_bogus_values_from_reading_analog_card/ | T-013 indexed | G2 manual missing |
 | 30 | GS20 | Control GS20 frequency over EtherNet/IP (beginner) | https://community.automationdirect.com/s/question/0D5PE00000HQXgf0AH/help-a-beginner-control-gs20-frequency-via-ethernet-ip | search index only | GS20 App. B |
-Manuals missing for days 12, 15, 17, 24, 27 and 29. Ask the Librarian, or move those topics later. Day 24 covers supply voltage and grounding, so keep it catalog-only and refer readers to a qualified electrician.
 
-## 6. Example posts (in `queue/`, status draft-needs-human-review)
-- `2026-10-27-micro820-flashing-red-fault-clear.md`: 2080-UM005H pp.118, 120, 149
-- `2026-10-28-s7-1200-reset-to-factory-settings.md`: S7-1200 SM V4.7 §15.9 pp.1057–1058
-- `2026-10-29-tp700-comfort-touch-calibration.md`: Comfort OI §4.3.5.6 pp.91–92. The "external USB mouse" hint and `CalibrateTouchScreen` are **UNVERIFIED** against the manual, so check them before publishing.
+Candidates 12, 15, 17, 24, 27 and 29 were already flagged as missing manuals in the collection. Acquire and verify the relevant OEM source or defer the topic. Candidates about factory resets, lost passwords, firmware recovery, line voltage or grounding need the consequential-change scope in STYLE-GUIDE section 4. Do not reuse an S7-1200 manual for S7-1200 G2 without establishing applicability.
 
-## 7. Measuring payoff
-Weekly: unique visitors to /blog/* (CF WA/Umami), GSC impressions/clicks/indexed count, Bing clicks, referrals from forums and AI engines, and blog → landing → signup clicks (PostHog `cta_click`). Baseline it before post #1 ships.
+The TP700 draft was not attached for this review. The original plan flagged its external-mouse and `CalibrateTouchScreen` claims as unverified; keep those open rather than treating this three-post review as their clearance.
+
+## 7. Cadence, reuse and measurement
+
+Recommend one reviewed batch first, then adjust cadence to the ability to maintain accurate sources and respond to corrections. Daily publishing can be an eventual operating choice; it is not an SEO prerequisite or a commitment made by this guide.
+
+Reuse a verified source record across related articles when its edition and applicability still match. Do not duplicate a page for superficial query variants. Prefer a better existing article over a new thin page. Review existing fault-code material for actual unsupported claims before proposing consolidation or indexing changes.
+
+Use current analytics before choosing another tracker. Request Search Console/Bing access only when the next authorized task needs it. No new analytics integration or privacy conclusion is authorized here. Measure the chain from search impression to visit to contact action to an actual qualified inquiry; do not count a CTA click as a customer. Capture device/surface definitions, time window and known attribution limits.
+
+GTM progress should be reported as corrected/released articles, useful technician feedback, qualified conversations and observed conversions. Do not invent ranking, traffic, latency or pilot-customer claims. The shortest next action is a corrected PowerFlex article, reviewed on its exact exported revision.

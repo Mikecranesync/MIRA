@@ -1,33 +1,31 @@
-# Helpful forum reply template (no link)
-*For PLCTalk, r/PLC and r/IndustrialMaintenance. Field Voice drafts; Mike verifies every technical point against the manual, rewrites it in his own words, and posts from his own real account. No links in the post. PLCTalk allows a commercial link only in the user profile (https://www.plctalk.net/user-agreement/). On Reddit, read the sub's sidebar first.*
+# Helpful technical forum reply template
 
----
+Version 0.2, 2026-10-25. Draft replies for a real person's review and posting. This template does not authorize sending a message. Apply [STYLE-GUIDE](STYLE-GUIDE.md), especially source attribution, reset distinctions and safety scope.
 
-**[Restate the problem in one line so they know you read it.]**
-Sounds like your [drive/PLC model] is throwing [fault/symptom] after [what they said changed].
+## Draft
 
-**What the manual says:**
-In the [exact manual title, publication number if shown], section [x.x] ("[section name]"), page [nn], [fault/condition] is listed as [plain-English meaning]. The listed causes are:
-- [cause 1]
-- [cause 2]
-- [cause 3]
+**[Restate the actual observation and model in one sentence.]**
 
-**What I'd check first, in this order:**
-1. [Quickest, non-invasive check, e.g. confirm parameter X / read the fault history]
-2. [Next check]
-3. [Next check]
+The [exact manual title, publication revision, section and printed page] identifies [code/indication] as [documented meaning]. That establishes [narrow conclusion]. It does not by itself establish [the cause that is still unknown, if relevant].
 
-**One thing to watch:** [a common gotcha, e.g. firmware version differences change the parameter number; check your rev against the manual's]
+**What I would record first:**
 
-If you can post [the exact fault text / firmware rev / a photo of the nameplate], I can narrow it down.
+1. [A useful, non-invasive observation or stored diagnostic value. Say what it distinguishes.]
+2. [Another check only if it changes the next decision.]
 
-*(Only if AI/manual tools come up, or someone asks what you do:)* Full disclosure, I'm building a tool (FactoryLM) that answers from plant manuals with page citations, but the above is straight from the manual. You don't need anything but the PDF.
+[If a consequential action is discussed, put its consequence, necessary scope and site/qualified-person boundary BEFORE the action. Do not write an energized-work or restart procedure.]
 
----
-## Rules for using this template
-- **No link, no product name** unless the disclosure line applies. Never "check out…".
-- **Cite the page in text** so they can verify it. Don't paste long manual passages (copyright).
-- **Mike must be able to defend every line.** If unsure, don't post. Never post MIRA output unchecked.
-- **Safety:** for energized work, lockout, arc flash or confined space, point to the manual section and site procedure; give no step-by-step.
-- **One account per person, real name.** No sock puppets, no asking friends to upvote, no bot posting.
-- Answer fully even if they'll never buy. That's the AutomationDirect lesson.
+[If relevant: “One possibility is [hypothesis]. The evidence needed to support it would be [observation].” Do not present a guess as the manual's diagnosis.]
+
+Can you provide [the one missing model/version, fault detail or context that most changes the next step]?
+
+## Use rules
+
+- Answer the question fully without requiring a product visit. Cite the exact manual in text. A short reference is better than a long pasted passage.
+- Use no promotional link by default. Verify the current community rules before any post; use an OEM source link only when permitted. The prior draft's platform-rule summary is not a permanent policy source.
+- Distinguish a quoted field report from an independently checked technical fact. Remove a forum-suggested destructive shortcut unless applicable OEM evidence and scope justify discussing it.
+- Mike or the actual poster must be able to defend every technical line. Do not post unchecked MIRA output or invent first-hand experience, credentials, a customer result or a repair.
+- A fault clear, factory reset and restart are different operations. If the question is ambiguous, ask which operation is intended before supplying consequential instructions.
+- For lockout, exposed electrical testing, arc-flash protection, safety functions or return to service, point to the applicable OEM/site procedure and qualified personnel. Keep that boundary before action-oriented text.
+- Disclose affiliation when relevant to a product mention or commercial interest, using only true, approved wording. A simple disclosure is: “I'm building FactoryLM.” Do not append an unverified capability claim.
+- No prices, competitor promotion, fabricated accounts, coordinated voting or automated forum posting. A reviewed draft remains a draft until the user authorizes sending/posting.

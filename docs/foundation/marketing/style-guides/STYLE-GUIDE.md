@@ -1,250 +1,221 @@
-# FactoryLM blog style guide (base version)
-Oct 25, 2026. Search Steward, for Mike (request pt12u). Internal. Content Studio owns post wording. This guide sets the rules.
+# FactoryLM technical blog style guide
 
-**Goal:** posts that read like an experienced maintenance tech explaining a fix to a peer, and that still rank in search and get quoted by AI answers.
+Version 0.2, 2026-10-25 (America/New_York). Draft refinement of PR #4762.
+This is the editorial standard for this guide set. It does not approve a post, change a product capability, or authorize equipment work. [README](README.md) records the three-post review; [SEO-GEO-GUIDE](SEO-GEO-GUIDE.md) owns search rules; [BLOG-PLAN](BLOG-PLAN.md) owns delivery planning.
 
----
+## 1. What a FactoryLM post must do
 
-## Part 1. What the well-read industrial blogs actually do
-All examples below come from pages fetched on Oct 25, 2026. Quotes are short and exact.
-- Word counts are rough whole-page counts from curl, so they include some site chrome.
-- Schema types come from the page's JSON-LD.
+Help a maintenance technician understand one specific condition, collect the next useful evidence, and recognize when the question exceeds the available information. Write for a capable technician reading on a phone near a machine, with a printable reference available afterward.
 
-| Blog / example post | Voice | Headline | Intro | Length and structure | Sources, safety, CTA | What makes it human | SEO seen |
-|---|---|---|---|---|---|---|---|
-| **RealPars**: "How to Test PLC Analog Inputs (Step-by-Step Guide)" https://www.realpars.com/blog/plc-analog-input-troubleshooting | Instructor talking to techs; "we", "Alright", "Ok….back to our problem" | "How to [task] (Step-by-Step Guide)" | A scenario: "A Control Room Operator reports an erroneous analog HMI reading of a tank level…" | ~1,600 words. H2s: concept, worked example, tool. 22 images with descriptive alt text ("The 1756-IF16 module with three current loops sharing a +24V DC power supply.") | Names real modules and terminals. CTA is a free trial and course links. Has an FAQ block | Opinions with numbers ("85% or more of all failures"), dry humor ("unless idle hands have been experimenting"), real terminal numbers ("remove the wire from TB-107") | Article, VideoObject and Breadcrumb schema. "Frequently asked questions" section. Meta describes the symptom: "An analog reading looks wrong. Work through a step-by-step method…" |
-| **RealPars**: "Open vs Short Circuits Explained Simply" https://www.realpars.com/blog/open-vs-short-circuits | Peer, a bit cheeky | "[X] vs [Y] Explained Simply" | Calls out a misuse: "…hmmmm it's not working, so there must be a short somewhere…." | Worked fault (SV101, K0 relay, 2 A fuse) | Subhead promises "safely" | Admits a training gap: "most of us didn't receive a solid foundation in troubleshooting skills" | |
-| **Control.com** (All About Circuits network): "Troubleshooting PLCs: Recognizing Visual Status Indicators and LEDs" https://control.com/technical-articles/troubleshooting-plcs-recognizing-visual-status-indicators-and-leds/ (curl got 403, WebFetch worked) | Practitioner byline (Shawn Dietrich) | "Troubleshooting [thing]: [specific angle]" | A punchy one-liner: "When automated equipment breaks down, the world stops spinning." | H3 per LED (Power, Status/Error, Run/Stop, Forced I/O). Numbered figures with credit: "Image used courtesy of the author" / "courtesy of Siemens" | Safety in context, as plain fact: forcing I/O "can be extremely dangerous if the equipment is already in production" | Shop slang used correctly: "jokingly called a bricked unit". Photos he took himself | Dek under the title acts as the meta |
-| **Electrical Engineering Portal (EEP)**: "Troubleshooting the most typical winding problems of three phase electric motors" https://electrical-engineering-portal.com/troubleshooting-winding-problems-three-phase-electric-motors | Reference manual, authoritative | Long, keyword-literal | Straight to the point: "It's always important to identify the real cause of burned windings and not just to replace the electric motor." | ~4,300 words. Numbered H2s "1. Shorted Turns" through "7." "Estimated Study Time: 24 minutes", "Last updated on November 20th, 2024" | Cites standards (IEEE 43 in a related EEP guide). CTA is premium PDF and subscribe | Field-tested opinion: "A replacement motor can fail sometimes immediately if the in-plant problem isn't corrected." | Article, Breadcrumb, CommentAction schema. Visible "last updated" date. 16 comments |
-| **Machinery Lubrication** (Noria): "8 Lubrication Failure Mechanisms for Rolling-Element Bearings" https://www.machinerylubrication.com/Read/31068/bearing-failure-mechanisms | Expert first person: "In this article, I will refer to rolling-element bearings simply as bearings." | Numbered list: "8 [things] for [component]" | Defines scope, then a stakes number: contact pressure "can exceed 500,000 pounds per square inch (psi)" | ~2,000 words. Numbered H2s and a "Bottom Line" H2 | Quotes a named book: Heinz Bloch, *Machinery Failure Analysis and Troubleshooting Vol. 2*. CTA is subscribe | Named byline (Bennett Fitch), with a quoted authority instead of vague "experts say" | Article schema. The meta is just the first paragraph, which is weak |
-| **The Automation Blog** (Shawn Tierney): "Micro800, CCW – Create and Download Ladder Logic Programs" https://theautomationblog.com/downloading-programs-to-a-micro800/ | Personal, one expert: "In today's article I'll walk you through…" | "[Product], [Software] – [Task]" | One line saying what you'll do, plus a "Preface" link to the prerequisite post | ~1,100 words. **17 numbered "Step N)" headings, each with a screenshot.** Notes inline ("Note: If no connection path is listed…") | CTA is the paid course and membership | Founder voice and hands-on screenshots. Series hub: "TAB's Micro800 Guide… over 85 of our free articles and videos" (https://theautomationblog.com/micro800-guide/) | Breadcrumb schema only. Strong internal linking through hub pages |
-| **Plant Services**: "How to improve your troubleshooting process for rotating equipment" https://www.plantservices.com/equipment/industrial-motors/article/21438795/how-to-improve-your-troubleshooting-process-for-rotating-equipment | Senior practitioner and trade press | "How to improve your [process] for [equipment]" | Proverb hook: "'No news is good news' is always a motto before blowing the first whistle…" | ~1,750 words. Numbered figures. "About the Author" with credentials | Cites a diagnostic chart. CTA is the newsletter | Author bio with real affiliation | NewsArticle schema |
-| **Automation World**: "It's 2 a.m. Sunday—Can You Troubleshoot Your PLC Code?" https://www.automationworld.com/products/control/blog/13319254/its-2-am-sundaycan-you-troubleshoot-your-plc-code | Integrator first person, empathetic | **Scene as headline** (time and pain) | "I'm writing this blog on behalf of the maintenance technicians and control engineers who get called in the middle of the night to figure out why the line won't run." | Short opinion blog. Tips list | Author bio with company | Speaks for the night-shift tech: "get back into their warm beds as quickly as possible" | NewsArticle schema. Meta restates the empathy hook |
+A reader should leave knowing:
 
-**Patterns that repeat across them:**
-1. **Specific scene or symptom first.** The 2 a.m. call, the operator report, the bricked unit. Nobody opens with market talk.
-2. **Real part numbers, terminals and values** (1756-IF16, TB-107, 2 A fuse, 500,000 psi). Specifics are what make them sound human.
-3. **One opinion per post, backed by a number or experience** ("70–80% of faults originate with field devices").
-4. **Numbered steps with a screenshot or photo per step** (The Automation Blog, Control.com), and image credits.
-5. **Named author with credentials.** "Last updated" dates (EEP).
-6. **Safety appears in context as plain fact** ("can be extremely dangerous if…"), not as boilerplate.
-7. **SEO:** Article or NewsArticle plus Breadcrumb schema is standard. Only RealPars ships a visible FAQ. Meta descriptions are often weak (just the first paragraph, as on EEP and Machinery Lubrication), so we can beat them there. Hub pages and series beat one-off posts.
+- What the indication or function means for the stated equipment.
+- What is established, what remains a possibility, and which observation would separate the possibilities.
+- What needs to be preserved or controlled before changing anything.
+- Where the exact OEM instructions are, and when to involve the responsible qualified person.
 
-**What we won't copy:** course and subscription upsells, the "Start Your 7-day free trial" panels, and stats with no source.
+A manual explanation is useful even when there is no confirmed repair. Do not manufacture an outcome to finish the story.
 
----
+## 2. Voice: a careful maintenance technician explaining the next check
 
-## Part 2. Rules for FactoryLM posts
+Use plain, direct English, short paragraphs, concrete nouns and the equipment's actual labels. Explain the point first, then the parameter, terminal, menu or file that supports it. Use contractions naturally. Address the reader as “you.” Use “we tested” or “I found” only for work the attributed person actually performed and recorded.
 
-### 2.1 Voice: an experienced tech talking to a peer
-- **Talk like the person who has stood in front of the cabinet.** Short sentences. Use "you". Use "we" only for things FactoryLM actually did.
-- **Use real nouns:** catalog numbers, LED names, menu paths exactly as printed (**Online & Diagnostics > Functions > Reset to factory settings**), terminal labels, file names (`ConfigMeFirst.txt`).
-- **Use jargon correctly, and only jargon techs actually say:** "bricked", "power-cycle", "go online", "download/upload" (get the direction right). Don't invent slang.
-- **One honest opinion per post** is fine if you can back it up ("Check the SD LED before you blame the card."). Label it as experience, not as the manual.
-- **Credit the forum asker** ("a tech on PLCtalk…") and link the thread. Never invent a story, customer or quote. If Mike has a real first-hand story, use it with his OK and mark it as his.
-- **Say it once, plainly.** Don't hedge everything. One "check your manual edition" beats five "may"s.
+The tone is practical, calm and candid. Avoid vendor language, fake urgency, an invented night-shift story, or reassurance such as “the good news” when a fault has not been diagnosed. Experience shows through the quality of the checks and caveats, not through slang.
 
-### 2.2 Banned patterns (any of these means the post goes back)
-- **Filler openers:** "In today's fast-paced…", "In the world of industrial automation…", "Are you struggling with…?", "Let's dive in", "Picture this…" (unless it's a real scene).
-- **Robot words:** delve, leverage, seamless, robust, unlock, empower, game-changer, navigate the complexities, it's important to note, in conclusion, ultimately, whether you're X or Y.
-- **Tidy triples** ("fast, simple, and reliable"; three bullets that each restate the same thing). Use the number of items the facts give you.
-- **Over-hedging:** "may potentially", "could possibly help", "in some cases it might". Use one qualifier at most, and only where the manual hedges.
-- **Generic conclusions:** "By following these steps, you can ensure…", "Troubleshooting doesn't have to be hard". End on the next action or the edge case instead.
-- **Em-dashes** (Content Studio's existing rule). Use a full stop, comma or colon.
-- **Unsourced statistics, invented quotes, fake reviews or testimonials.**
-- **Prices, competitor names**, and any claim not in `capabilities.md` PROVEN plus the can-say list.
+| Avoid | Prefer | Reason |
+|---|---|---|
+| “Clear it with these two lines.” | “The OEM documents a command that attempts to clear the fault.” | Preserve the source's certainty. |
+| “The likely cause is a recoverable fault.” | “Flashing red identifies the fault class; it does not identify the cause.” | Classification is not diagnosis. |
+| “Just reset it.” | Name the exact operation and its consequences before any instruction. | Reset is ambiguous. |
+| “The brake theory fits here.” | “Regeneration is one OEM-listed possibility; the brake theory is unconfirmed.” | A plausible explanation is not a finding. |
+| “Check before you call it fixed.” | “Evidence to record” or “Verify the operation,” unless repair was demonstrated. | Match the conclusion to the evidence. |
+| “Ready in a few minutes.” | Omit the time promise unless current, relevant production evidence supports it. | Product performance is a factual claim. |
 
-### 2.3 Templates
-**A. Troubleshooting post (symptom → fix)**
-```
-Title: [Model] [symptom]: [what fixes it] ([doc number])
-Intro (2–4 sentences): the symptom as the tech sees it + the one-line answer + "per [manual], p.X".
-## What [the LED / the code / the message] means        (quote the table, cite the page)
-## How to fix it                                       (numbered steps; one action per step; page cites)
-## If that doesn't work                                (next branch, with a cite; no guesses)
-## Watch out for                                       (gotchas from the manual: data loss, passwords, editions)
-> OEM safety quote with cite, OR > Publisher's note (see 2.7)
-## Questions techs ask                                 (2–4 FAQs, each ≤ 50 words)
-Source list: forum thread(s) + manual title, pub no., edition, pages
-CTA (2.8)
-```
-**B. How-to (task)**
-```
-Title: How to [task] on a [model] ([what it changes or deletes])
-Intro: when you'd need this + what it costs you (what gets erased) + cite.
-## Before you start   (requirements from the manual)
-## Steps              (numbered; exact menu names in bold; one screenshot per 2–3 steps)
-## What it changes    (table: item | erased? | page)
-## When it won't work (common blockers, attributed)
-Safety block, FAQ, sources, CTA
-```
-**C. Explainer (concept)**
-```
-Title: [Thing] explained: [the practical question it answers]
-Intro: the confusion as techs hit it on the floor, then the plain definition.
-## [Question form H2s]: What is X? How do I tell X from Y? What does the manual say about X on [model]?
-A table or diagram is mandatory. A worked example with real values is mandatory.
-FAQ, sources, CTA
-```
+House preferences:
 
-### 2.4 Headline and meta formulas
-- **Title (≤ 60 characters where possible; put the model and symptom first):**
-  - `[Model] [symptom]: how to [fix]`, e.g. "Micro820 flashing red fault: clear it from the microSD card"
-  - `How to [task] on a [model] (and what it deletes)`
-  - `[Model] [code/LED] meaning, per the [doc number] manual`
-  - Avoid: "Ultimate guide", "Everything you need to know", question-only titles with no model.
-- **Meta description (140–155 chars):** symptom, then the answer in one clause, then the source. No CTA fluff.
-  - "Flashing red fault LED on a Micro820 means a recoverable fault. Clear it at power-up with [CF] in ConfigMeFirst.txt, per Rockwell 2080-UM005 p.120."
-- **Slug:** model-symptom-fix, lowercase, no dates.
+- Keep exact strings exact: `F004`, `F651 [Fault 1 BusVolts]`, `ConfigMeFirst.txt`, and software menu labels. Explain upload/download direction when it could be confused.
+- Prefer full stops, commas and colons to em dashes. Do not alter an exact source quotation to satisfy punctuation style; paraphrase instead.
+- Avoid filler such as “in today's fast-paced world,” “delve,” “leverage,” “seamless,” “game-changer,” and generic concluding pep talks.
+- Preserve useful qualifiers: “attempts,” “if configured,” “in this edition,” and “reported by the forum poster.” Removing them is a factual change.
+- An opinion is optional. Label a recommendation and give its reason. Do not require an opinion, anecdote, statistic, FAQ or image to fill a template.
+- No prices, dollar amounts, discounts or competitor promotion in organic copy or this guide set, including audit examples. OEM names needed to identify equipment, software and sources remain necessary technical context, not an endorsement or a supported-brand claim.
 
-### 2.5 Intro hook: lead with the symptom
-Within the first 100 words, cover four things:
-1. **The symptom in the tech's words.** The LED, the message, what won't work.
-2. **The direct answer in one or two sentences**, quotable on its own.
-3. **The source**: manual title or pub number and page.
-4. **(Optional) where the question came from**: "Asked on PLCtalk" plus the link.
+## 3. Separate six kinds of statement
 
-No backstory before the answer. Context goes after.
+| Kind | What establishes it | How to write it |
+|---|---|---|
+| Observation | An actual reported LED, code, reading, log or screenshot | “The poster reported F004 followed by F005.” |
+| OEM fact | An applicable official manual, bulletin or software help topic | Identify model, edition, section and printed page. |
+| Field report | A named person's account with a traceable source | Attribute it; preserve whether a result was reported. |
+| Hypothesis | A possible explanation consistent with some evidence | Say what evidence would support or weaken it. |
+| Editorial recommendation | A reasoned next check | Label it as the recommended sequence, not an OEM quotation. |
+| Product claim | Current evidence for the exact MIRA capability and surface | Use the approved claim and its scope; see section 9. |
 
-### 2.6 Visuals
-- **Real first.** Use our own photos of real hardware (with Mike's OK, and no customer names, serials or GPS data), or screenshots from software we ran. Never AI-generated images of real products.
-- **Diagrams:** draw LED-state diagrams and tables ourselves (SVG or HTML table) from the manual's table. Write "Based on 2080-UM005 Table 63, p.149" under the diagram. Don't paste the OEM's figures. Link to the OEM PDF instead.
-- **Screenshots:** crop to the dialog, highlight the click target, and keep version info visible when it matters.
-- **Alt text:** describe what the image shows plus the key value. Example: "Micro820 front panel with the fault LED flashing red and all other status LEDs off." Not "image1" and not keyword stuffing.
-- **Captions:** a numbered figure, one sentence, with a credit line ("Photo: FactoryLM", "Based on Siemens A5E02486680-AQ, p.1057").
-- Set width and height on every image to avoid layout shift.
+A forum link establishes where a statement came from. It does not validate the advice. Keep forum theories out of OEM-derived tables, diagrams and “confirmed cause” boxes. Do not convert one incident into “often,” “usually” or “the common cause.”
 
-**Tech-sheet and manual images (copyright rule from Content Studio, Oct 25, 2026):**
-- **Redraw by default.** Rebuild the relevant table rows as our own clean graphic, using only the cited values plus a highlight on the row that matters. Caption it "Diagram: FactoryLM, based on [pub no.] [table/section], p.X."
-- **Real crops only when the figure itself matters** (a wiring diagram, a terminal layout, a front-panel drawing). Keep them small: just the relevant rows or figure, never a full page.
-- **Credit the source and page in every caption.** Example: "Crop: Rockwell 520-UM001O-EN-E, p.161."
-- **No OEM logos** in any crop, and no cover pages or headers that carry a logo.
-- **Link to the OEM's official PDF at the exact page** (e.g. `...520-um001_-en-e.pdf#page=161`), and confirm the linked file's edition matches the cited one before publishing.
+## 4. Technical scope, safety and consequential changes
 
-### 2.7 Manual citations
-- **First mention:** full title, publication number, edition and date. Example: *Micro820 Programmable Controllers User Manual, 2080-UM005H-EN-E (Sep 2025)*.
-- **Inline after that:** `(2080-UM005, Table 45, p.120)` or `(System Manual §15.9, p.1057)`. Use the **printed** page number, and confirm it matches the PDF before publishing.
-- Quote short exact phrases in quotation marks when the wording matters ("Power up and attempt to clear fault").
-- Attribute forum advice to the forum ("posters in that thread suggest…"). Never pass it off as the manual.
-- Every post gets a **Sources** list: forum URLs plus manual entries (title, pub number, edition, pages). A fact check must open every cited page.
+### Name the operation
 
-### 2.8 Safety notes
-- **Allowed form 1: an OEM quote** with the manual and page: `> Rockwell 2080-UM005, p.37: "WARNING: Before you install and wire any device, disconnect power to the controller system."` Only use a quote that fits the task.
-- **Allowed form 2: a labelled publisher's note:** `> Publisher's note: Follow your site's lockout procedure and the OEM manual.`
-- **Never:** "MIRA recommends…", "MIRA will warn you…", or any safety instruction that sounds like it comes from the product. Safety framing in MIRA is PARTIAL (`capabilities.md` R3).
-- **High-risk topics** (fault reset, restart, factory reset, energized work, safety PLCs) **must** carry one of the two forms, and they get an extra fact-check pass.
-- Never write a safety procedure ourselves (lockout steps, arc flash PPE, safety-relay logic). Point to the site procedure and the OEM document.
+Fault acknowledgment, fault clearing, power cycling, project download, memory restoration, firmware update, factory reset and machine restart are different operations. A display acknowledgment may leave the fault active. A fault clear may leave its cause unresolved. A factory reset may erase the application and data. A restart can move equipment. State the exact operation and applicable behavior.
 
-### 2.9 CTA rules
-- **Default closing line** (approved): `MIRA answers from the manual you attach and cites the page. Not for fault resets or restart steps.`
-  - On low-risk topics (calibration, wiring lookup), Content Studio may propose a variant. It must stay inside PROVEN claims, and Search Steward checks it.
-- **Link** to the homepage with descriptive anchor text, e.g. `[Ask a manual and see the cited page](/)`. Never "click here" or "See how it works".
-- **Contact:** "Talk to Mike" (mike@factorylm.com). No prices, discounts, trials or "book a demo" language.
-- **Never:** competitor names, work-order or CMMS features (not PROVEN), fault-code help, "works on your phone", consistency claims, customer logos or testimonials.
+### Put consequences before controls
 
-### 2.10 SEO and AI-answer checklist (run on every post)
-- [ ] **One target query** written at the top of the draft (e.g. "micro820 flashing red fault"). The title, H1, slug and first sentence all contain the model and symptom.
-- [ ] **Quotable answer in the first 100 words.** 40–60 words that make sense on their own, with the page cite.
-- [ ] **H2s phrased the way techs ask** where it reads naturally ("What does flashing red mean?", "How do I clear it without CCW?"). Steps stay as steps.
-- [ ] **FAQ block** of 2–4 questions, each with a 25–50 word answer and a cite. These map to **FAQPage** JSON-LD (on factorylm.com only).
-- [ ] **Schema:** `TechArticle` (or `Article`) with author "Mike Harper" or a real named author, plus `datePublished`, `dateModified`, `BreadcrumbList` and `FAQPage`. No ratings, reviews or offers.
-- [ ] **Visible "Last checked against [manual edition] on [date]"** line (the EEP pattern; it builds trust with Google and AI).
-- [ ] **Internal links (2–4):** one to the model's hub page (e.g. `/blog/micro800`), one to a related post, one to the homepage (2.9). Use descriptive anchors.
-- [ ] **External links:** the forum thread and the official OEM manual page (Rockwell Literature Library, Siemens support).
-- [ ] **Length:** troubleshooting 700–1,200 words, how-to 800–1,500, explainer 1,200–2,000. Shorter is fine if it fully answers. Never pad.
-- [ ] **Images:** at least 1 real image or diagram, with alt text, width and height.
-- [ ] **Meta description** follows 2.4. `og:title`, `og:description` and `og:image` are set.
-- [ ] **Banned-pattern scan** (2.2), including em-dashes, done.
-- [ ] **Fact check approved:** every page cite opened, every URL loads, claims match `capabilities.md` and the can-say list.
-- [ ] **Hubs:** group posts into model hubs (Micro800, S7-1200, Comfort Panels), the way The Automation Blog does its Micro800 guide.
+Place the relevant warning, scope and prerequisites before the first actionable instruction. This includes the lead, summary card, caption, FAQ, search description and social excerpt. A safety box at the end cannot qualify an earlier reset recipe.
 
-### 2.11 Hub pages (planned)
-Planned model hubs: `/blog/micro800`, `/blog/s7-1200`, `/blog/comfort-panels`. **Don't link to them until they exist.** Until then, related links may only point to posts that ship in the same PR, and those posts must be marked `ship_together` in the front matter.
+For a state-changing procedure, establish the correct equipment and version, site authorization and controlled machine state, relevant saved diagnostics, and the needed backup/restoration plan. For deliberate erasure, allow an explicit decision to discard existing contents instead of implying every used CPU has a recoverable project. Do not present CPU STOP, a dark display, or a cleared fault as proof of isolation or readiness to restart.
 
----
+Routine OEM procedures may be explained when their applicability, necessary conditions and consequences are established. Safety work remains **catalog and review only**: identify the operation, hazard, required expertise and complete applicable source. Do not author a site-specific lockout sequence, energized electrical test, safety-function/interlock bypass, protection-setting change, or restart/return-to-service authorization. Do not shorten an electrical safety procedure into an apparently complete checklist.
 
-### 2.12 Tech sheet format (Mike, Oct 25, 2026)
-Every troubleshooting post is a printable tech sheet a maintenance tech can scan at the machine. Reference build: the 4 posts in `queue/` dated Oct 27-30 and `tools/posts.py`.
+Two permitted attribution forms:
 
-**Layout skeleton (in this order)**
-1. **H1** with model + fault code or symptom (same words in the slug and meta). Keep a separate `seo_title` of about 60 characters for the `<title>` tag.
-2. **Quotable answer in the first 2 sentences**, bold, with the manual pub no., page and a `#page=N` link.
-3. **The question, from the forum:** a short quote (1-3 sentences) of the original post, then the poster's handle and the thread link.
-4. **At a glance** table: Symptom / Likely cause / Fix / Manual + page.
-5. "Last checked against [pub no.] on [date]."
-6. **Question-shaped H2s** that match real search phrasing and "People also ask" variants (What does X mean on [model]? How do I... without...? Why is... off? Does X delete...?).
-7. **Quick-reference table** with manual values only, page cited under it.
-8. **What you need** list, then **numbered steps** (one action per step, menu names in bold).
-9. **Check before you call it fixed** as a checklist. Only manual meanings (LED states, saved values). Never a new reset or restart step.
-10. **Gotchas**: manual gotchas with a page, then thread gotchas attributed by handle ("From the thread, damica1: ...").
-11. Safety box: verbatim OEM quote with page, or a labelled "Publisher's note". Nothing else.
-12. **FAQ** (H2 "[Model] [topic] questions techs ask"), 4-5 Q&As, each answer self-contained with a cite. Mirrors the FAQPage JSON-LD exactly.
-13. **Sources** (every page linked), **Related tech sheets** (only posts shipping in the same PR), closing MIRA line, pilot CTA last.
+- **OEM notice:** a short exact quotation with a page, or an explicitly labelled paraphrase linked to the complete notice. A paraphrase must never be labelled verbatim.
+- **Publisher's note:** task-specific editorial context, clearly separate from OEM wording. Explain the relevant consequence and route the reader to the site's approved procedure and qualified personnel.
 
-**Closing line (Product, Oct 25):** "Attach a manual on the web; it's ready within a few minutes. MIRA answers from the manual you attach, when the manual covers it, and cites the page." Add "Not for fault resets or restart steps." on high-risk posts (faults, resets, drives, power). The "within a few minutes" part rests on the can-say list (row 22, staging walk #4732 not yet passed). Drop it if that list changes.
+A quotation or publisher's note is not an approval to perform hazardous work. Do not claim that MIRA supplies a proven safety barrier merely because the article contains one.
 
-**Pilot CTA:** there is no pilot sign-up page yet. Use the site's live Talk to Mike mailto with the UTM string in the body, plus `data-cta="blog-pilot-<slug>"` for PostHog. Switch to `https://factorylm.com/<pilot-page>?utm_source=blog&utm_medium=post&utm_campaign=tech-sheet&utm_content=<slug>` once a real page exists. No prices.
+### Stop and escalate when the missing information changes the decision
 
-**Front matter:** `status`, `seo_title`, `dateModified`, `author: null` and `publisher: null` (neutral until Mike decides), `sources` with URLs and pages, `images`, `related`, `hubs_planned`, `cta`, `publish_checklist` (sitemap, RSS, indexable/no noindex, JSON-LD renders, images in PR), `ship_together`, `factcheck`, and `schema_jsonld` (TechArticle, HowTo when there are steps, FAQPage, BreadcrumbList Home > Blog > post).
+Hold the affected procedure or claim if equipment identity, critical prerequisite, firmware/software applicability, backup consequence, safety condition or source conflict remains unresolved. Continue independent reference work that does not depend on it. Do not choose the most convenient of two conflicting OEM passages.
 
-**Visual spec (tech-sheet template v1, Oct 25, 2026).** Research: `research/spec-sheet-design-2026-10-25.md` (13 makers checked, 10 with sample PDFs, Rockwell product profiles as the main model). Code: `tools/techsheet/techsheet.css` (reusable by the blog: wrap a post in `<article class="ts">`), `tools/techsheet/render.py` (markdown post to HTML, no text changes), `tools/techsheet/print.js` (Letter PDF with footer and page numbers).
-- **Page:** US Letter, margins 0.5in top / 0.55in sides / 0.6in bottom. One main column plus a 2.15in sidebar on page 1 only. Target 3-4 printed pages.
-- **Type:** Archivo for headings, labels and chips; Fira Sans for body (10pt, 1.42 line height); Fira Code for file names and settings. Web fallbacks: Segoe UI, Helvetica Neue, Arial. Don't use Barlow (Rockwell's face) or any other maker's brand font.
-- **Colour:** navy `#17324d` (band, table heads, step numbers), navy-2 `#24486b` (links, labels), ink `#1d2733`, muted `#5b6876`, rules `#d6dde5`, zebra `#f4f6f9`, amber `#e8a200` accent with `#fff6dc` fill (Fix cell, safety, highlights). Amber is the only accent. No maker's brand colours.
-- **Header band:** navy, kicker "FACTORYLM TECH SHEET · [maker family]", H1 (19pt), chips for model, fault code or symptom (amber chip) and manual pub no. A 4px strip under it, amber then navy.
-- **At-a-glance panel:** 4 cells right under the band (Symptom, Likely cause, Fix, Manual + page), each with a small line icon. The Fix cell has the amber fill.
-- **Top block:** the 2-sentence answer as the lead (10.6pt), then the forum quote card (pale slate, large quote mark), then "Last checked". Quick facts sidebar on the right: equipment, manual (linked), pages used, forum thread(s), last modified.
-- **H2s:** navy, 12.5pt, with a thin rule above and a 44px amber tab at its left end.
-- **Tables:** solid navy header row, zebra body, bold first column, "Source: ... p.N" line in small muted text under each table.
-- **Steps:** round navy number + a line icon by step type (file, card, power, touch, gauge, menu, check). A dashed rule between steps. Sub-options stay as nested bullets, never as extra numbers.
-- **"What you need" / "Steps"** become small-caps labels, not bold paragraphs.
-- **Checklist:** "Check before you call it fixed" renders as boxed tick squares, printable for pen use.
-- **Safety callout:** amber left bar (6px), pale amber fill, triangle icon, tag "SAFETY · FROM THE MANUAL" or "SAFETY · PUBLISHER'S NOTE". Text is the OEM quote or the labelled note, unchanged.
-- **Figures:** full column width, at most 2.4in tall in print, thin rule border, caption in small muted text with an amber left rule. Never split across pages.
-- **End block:** sources list, related sheets in a zebra strip, then the closing line beside a navy CTA box (amber link).
-- **Footer (every page):** "FactoryLM tech sheet · [slug] · Source: [pub no.] · dateModified [date]" left, "Page N of M" right.
-- **Preview-only box:** seo_title, meta and CTA URL print at the end of preview PDFs. The blog must not render it.
-- **Never:** logos, product photos, maker trade dress, or changing copy, claims, cites or links to make the layout fit. White space at the bottom of page 1 is fine when the next figure doesn't fit.
+Record fault evidence before changing state when practicable. Repeated resets, firmware updates, one-rung program downloads and replacement parts are not generic next steps for an undiagnosed problem.
 
-**Image house style (at least 2 per sheet)**
-- 1200x630 PNG, white background, navy (#1f3a5f) top bar and title, grey (#eef2f6) source strip at the bottom with "FactoryLM tech sheet".
-- Highlight = amber (#e8a200) 4px box with pale amber (#fff3d1) row fill. One amber arrow with a short label saying why it matters ("Your symptom: flashing red only").
-- Build with `tools/house.py` (canvas, table, highlight, arrow, box) so every sheet looks the same.
-- Every image gets a caption "Figure N. [what]. Source: [title], [pub no.], [table/section], p.N. Diagram: FactoryLM." and alt text that names the model, the content and what is highlighted.
-- Check every image with Read before shipping (text overlap, cut-off labels, values against the page).
+## 5. Article structure
 
-**Copyright rules**
-- Redraw by default, using only the cited values. Label schematics of software screens "schematic, not a screenshot".
-- Use a small real crop (pdftoppm + PIL) only when the figure itself matters (wiring, terminals, front panel). Show only the relevant rows or figure, never a full page, and include no OEM logos, covers or headers.
-- Quote forum posts briefly (1-3 sentences) with the handle and link.
+Use one primary reader question. The preferred order is:
 
-**Link rules**
-- OEM links go to the official PDF with `#page=N`. Confirm the edition on the cover matches the cite, and confirm PDF page = printed page (pdftotext on the downloaded file). If they differ, use the PDF page number in the anchor.
-- Forum links go to the exact thread. Credit the handle.
-- No hub links until the hubs exist (2.11). List them under `hubs_planned`.
+1. **Title:** model and actual question; no promised fix unless established.
+2. **Short answer:** usually two or three sentences defining the condition and the next useful evidence, with source and material scope. Keep destructive controls out of a context-free answer snippet.
+3. **Before proceeding:** consequences and required conditions when applicable. Put it before any summary that contains action.
+4. **At a glance and scope:** choose the fields below; include model, relevant firmware/software, manual edition and review date.
+5. **Reported context:** a short attributed paraphrase of the real question. A quote is optional and should earn its space.
+6. **Interpretation and checks:** one readable reference table, then the least invasive useful evidence sequence. Separate stored-diagnostic reading from exposed electrical work.
+7. **What the results mean:** distinguish alternatives and limitations; say what remains unknown.
+8. **Evidence or verification:** describe what can actually be concluded, plus escalation conditions.
+9. **Sources, useful related reading and one modest contact invitation.** Add FAQs only for unanswered reader questions.
 
-## Part 3. Before/after example
-Source paragraph: the "Short answer" in `/workspace/marketing/blog/queue/2026-10-27-micro820-flashing-red-fault-clear.md`. This is an illustration only. I didn't edit the post.
+### Choose summary columns for the task
 
-**Before (current):**
-> A **flashing red** fault LED on a Micro820 means a **recoverable** fault. **Solid red** means a non-recoverable fault that needs a power cycle (2080-UM005, Table 63, p.149). Without CCW, you can clear the fault from the microSD card. Put a `ConfigMeFirst.txt` file in the root of the card with the `[CF]` setting, which tells the controller to "power up and attempt to clear fault" (Table 45, p.120).
+| Article type | At-a-glance fields |
+|---|---|
+| Fault/symptom | Observed symptom / What the manual establishes / First evidence to collect / Source |
+| Reset or reconfiguration | Intended task / What changes or is lost / Before proceeding / Source |
+| Parameter or feature reference | Function / Applies to / Conditions or limitations / Source |
+| Verified repair case | Observed fault / Confirmed cause / Corrective action / Verification evidence |
 
-**After (suggested):**
-> Flashing red with nothing else lit is the good news: Rockwell calls that a recoverable fault. Solid red is the one that needs a power cycle (2080-UM005, Table 63, p.149). No laptop with CCW handy? Put a `ConfigMeFirst.txt` in the root of a 2080-SD-2GB card with two lines, `[CF]` and `[END]`, and power the controller back up. Per the manual, `[CF]` makes it "power up and attempt to clear fault" (Table 45, p.120).
+Do not force every article into “Likely cause / Fix.” A failed factory reset and a deliberate reset of a used CPU are different reader questions.
 
-**Why it's better:**
-- It opens on what the tech is actually looking at ("nothing else lit").
-- It adds the plain-English stakes ("the good news").
-- It answers the real constraint (no CCW) in the tech's terms.
-- It folds in the [END] line and the supported card so the steps work first time.
-- It keeps every page cite, adds no claims and uses no em-dashes.
-- It's still quotable on its own for AI answers (about 75 words).
+### Make checks explain a decision
 
----
+For each useful diagnostic check, give the observation to record, the expected or relevant result if documented, what it can establish, and what to do if it does not resolve the question. Do not invent a threshold or a branch absent from the source.
 
-## Part 4. Process
-1. Content Studio drafts using this guide and writes the target query at the top.
-2. Search Steward fact-checks (claims, URLs, pages, safety, CTA, SEO checklist) and sets `status:` in the front matter.
-3. Mike approves before anything is published. Nothing goes live from this guide.
+Example: pair a drive's fault-history code with the diagnostic record at the same history index. “Fault 1” means the newest stored record, not permanently the first code mentioned in the article. A filtered stored value is not a high-speed trace, and a parameter's display range is not its safe operating range.
 
-Revisit this guide after the first 10 posts, using real Search Console data once we have access.
+### Use honest completion headings
+
+- **Evidence to record:** values, order, operating context and unknowns.
+- **Verify the operation:** the intended configuration/memory change occurred; this does not establish a repaired machine.
+- **Verified repair:** documented cause, authorized correction, and observed outcome under relevant operating conditions. Record the test conditions; do not invent a universal observation period.
+- **When to escalate:** unresolved fault, recurring symptom, unavailable diagnostics, conflicting sources or work beyond the reader's authorization.
+
+## 6. Sources and fact-check records
+
+First mention: full manual title, publication number including revision, date and applicable equipment. Later citations can be shorter if unambiguous. Cite the printed page in prose and use the actual PDF page for `#page=N`; check the mapping rather than assuming it.
+
+For every consequential claim record:
+
+- Article location and exact claim.
+- OEM URL, document identifier/revision, section/table, printed page and PDF page.
+- Model and firmware/software scope when material.
+- Supporting passage, required qualifications, and any conflicting source.
+- Reviewer, review date, and result: verified, scoped, unresolved or removed.
+
+Open the cited page and surrounding warning/continuation pages. A search snippet, successful URL response or matching title does not verify the claim. If an official rolling PDF URL changes edition, update the citation and recheck the claim; preserve a checksum in the review evidence when feasible.
+
+Use “Manual references checked against [edition] on [date]” for a desk review. Reserve “tested on hardware” for a recorded test that identifies the device, versions, setup and result. Keep author, technical reviewer and publisher roles distinct. Never invent credentials or attribute an AI-assisted review to Mike.
+
+Drafts may leave a byline unresolved. Before publication, use the actual approved author or an accurate organization byline; use the real reviewer only after review occurred. Structured data must match the visible attribution.
+
+## 7. Visual system and readable exports
+
+Keep the navy/amber FactoryLM tech-sheet identity. The supplied PDFs have a clear header, strong hierarchy and useful source labels. Improve their information density and reading order instead of adding decoration.
+
+| Element | House direction |
+|---|---|
+| Page | US Letter for download; approximately 0.5 in top, 0.55 in sides, 0.6 in bottom margins. Let content determine length. |
+| Type | Archivo headings, Fira Sans body, Fira Code identifiers when available; sensible system fallbacks. Target 10.5-11 pt print body and readable source notes. Web body should be comfortable at phone width. |
+| Color | Navy `#17324d`, secondary navy `#24486b`, ink `#1d2733`, muted `#5b6876`, rules `#d6dde5`, zebra `#f4f6f9`, amber `#e8a200`, pale amber `#fff6dc`. Use navy for links on white; verify contrast. |
+| Header | FactoryLM tech sheet, model, subject and publication identifier. No OEM trade dress or implied OEM endorsement. |
+| Summary | Four task-appropriate fields on desktop/print; stacked labelled fields on mobile. Safety/consequences precede an action-bearing summary. |
+| Tables | Real selectable text, descriptive headers, restrained zebra shading and source immediately below. Reflow or provide a deliberate mobile treatment. |
+| Figures | Use only when they explain a decision, state, location or relationship better than text. No mandatory count. Do not repeat an existing table as a smaller image. |
+| Notices | Task-specific label, icon and text; never depend on color alone. Keep the notice with the relevant action across page breaks. |
+| Footer | Short title/slug, document revision, review date and page number. Avoid long footers that collide with pagination. |
+
+Do not force every post to four pages or every figure into a fixed short height. A title, table, repeated image and duplicate FAQ explaining the same fact are not four separate benefits. Keep a heading with its first paragraph, a figure with its caption, and a step with its qualification. Avoid a trailing page containing only a CTA or internal metadata.
+
+Use genuine equipment photos or software screenshots when they add evidence, with appropriate publication rights and removal of unrelated sensitive details. Label drawings and recreated dialogs “Diagram: FactoryLM” or “schematic, not a screenshot.” A diagram is not proof that software was run. Do not use generated product imagery to represent a real terminal layout, instrument reading or test result.
+
+Use original explanations and only the source material necessary to support them. Attribution, a small crop or a redraw does not by itself establish reuse permission. Do not copy full OEM pages, decorative branding or long forum exchanges. Prefer a linked paraphrase; keep quotations brief and accurate.
+
+Give each useful figure meaningful alt text and a caption naming its purpose, source and page. Critical qualifications must remain in readable text. Use native HTML/SVG for precise diagrams where practical; raster text must remain legible at the delivered size. Keep print and web content in sync.
+
+### Check the delivered artifact
+
+Inspect the actual web output at narrow phone widths (including 360 and 412 CSS px), desktop and text zoom. Inspect every PDF page at normal reading size. Verify no clipped tables, unreadable figure labels, split warnings, missing glyphs or accidental blank/trailing pages.
+
+For exported PDFs, resolve website navigation links to absolute `https://factorylm.com/...` URLs. Reject `file:///` web destinations; legitimate in-document bookmarks and PDF `GoTo` links are allowed. Test the PDF link annotations, not just the source Markdown. A related post must be live when the link is delivered; inclusion in the same PR does not make a future-dated post available today.
+
+Keep SEO fields, workflow status, UTM debugging and preview notes in internal review output. Omit them from public HTML and customer PDFs. Label an internal preview plainly.
+
+## 8. Titles, summaries and FAQs
+
+Search rules live in [SEO-GEO-GUIDE](SEO-GEO-GUIDE.md). These are editorial examples, not approved replacements for the posts:
+
+| Post | Better title direction | Better lead direction |
+|---|---|---|
+| Micro820 | “Micro820 flashing red: meaning and fault-clear options” | Flashing red identifies a recoverable fault. It does not identify the cause. Rockwell's microSD option attempts a fault clear; establish machine state and card restore behavior before using it. |
+| S7-1200 | “S7-1200 factory reset: what it erases and what to check” | A factory reset deliberately erases controller information. Confirm intentional erasure, equipment/version scope and a recovery-or-discard decision before discussing controls. Resolve the memory-card/password source conflict. |
+| PowerFlex 525 | “PowerFlex 525 F004 and F005: what to record first” | Explain undervoltage and overvoltage, then pair stored fault codes with bus-voltage records. The sequence alone does not identify one cause. |
+
+Preserve the full citation and applicable caveats when turning these directions into finished copy. Avoid imperative reset instructions in metadata. FAQ answers must stand safely on their own; omit questions that merely repeat an earlier heading. Zero to three genuinely useful FAQs is a good starting point, not a quota.
+
+## 9. MIRA claims and contact language
+
+An accurate OEM article does not prove MIRA can perform that task. Keep editorial reference material separate from product demonstrations.
+
+The original guide's external `capabilities.md` and can-say snapshots conflict with the draft registry in [PR #4570](https://github.com/Mikecranesync/MIRA/pull/4570). At the reviewed head `0315f7ea62adc0c235a5394f6d7d0336560adad5`, `mira-web/src/capabilities/marketing-claims/capabilities.json` keeps generalized cited-answer claims partial. That is a dated branch observation, not a finding about the current deployed product. Do not create another independent approved-claims list here.
+
+Before using any capability claim, locate its current owner-approved record and production evidence for the exact wording, date, model/content and user surface. A merge, a staging test, an emulator result and a physical-phone production test are different evidence. If sources disagree, omit the disputed claim while it is reconciled.
+
+Remove unsupported processing times, broad “never guesses” promises, automatic fault diagnosis/reset claims, adoption counts, pilot-customer claims, and “works with any manual.” Do not invent CMMS dependence or claim integrations, device support or safety performance from roadmap intent. No prices or competitor promotion in visible copy, metadata, schema, examples or audit notes.
+
+Default contact invitation requiring no performance promise:
+
+> Questions about using FactoryLM with your manuals? Talk to Mike.
+
+Use the established `mailto:mike@factorylm.com` destination. “Talk to Mike about a pilot” is an invitation; “we run pilots with several plants” is a separate factual claim that needs evidence. Preserve the current product boundary for fault-reset and restart guidance. Do not remove a limitation because a reference article discusses the operation.
+
+## 10. Review and publication
+
+Use the existing review roles; the list below describes responsibilities, not a requirement to staff new roles or add an approval layer. Record an AI-assisted desk review as such.
+
+1. Content Studio drafts the post and its claim/source record using this guide.
+2. A technical reviewer checks the applicable OEM pages and all consequential qualifications. Search Steward checks wording, claims, sources, search metadata and delivered output. AI assistance is labelled accurately; it does not impersonate a qualified human review.
+3. Resolve blockers and give Mike the exact reviewed revision, remaining limitations and recommendation. Preserve his existing approval/merge policy; do not add a second confirmation when an applicable approval already exists.
+4. Foreman packages and publishes only under that authority. A date, `status: approved`, a passing check or this guide alone does not authorize publication. The proposed weekly mechanism remains described in [STYLE-GUIDE-part4-proposed](STYLE-GUIDE-part4-proposed.md).
+5. Recheck changed claims, procedures, captions and linked dependencies after edits. Reuse still-valid evidence for unaffected material. Record the final revision and actual publication verification separately.
+
+### Release checklist
+
+- [ ] One clear reader question; model and material version scope stated.
+- [ ] Definitions, observations, hypotheses, recommendations and outcomes remain distinct.
+- [ ] Consequences and required conditions precede actionable instructions everywhere they appear.
+- [ ] Every consequential claim matches its applicable OEM source; conflicts are resolved or the claim is removed.
+- [ ] No forum hypothesis is presented as an established cause, OEM instruction or completed repair.
+- [ ] Verification wording matches the evidence; no inferred hardware test or safe restart.
+- [ ] Product language has current, scoped approval/evidence; no price or competitor promotion.
+- [ ] Readable web/PDF output, usable absolute PDF links, useful visuals and no public preview metadata.
+- [ ] Honest byline/reviewer/date; exact reviewed revision and applicable publication authority recorded.
+
+Revisit after the first published batch using technician feedback, corrections and measured search behavior. Change the guide when evidence improves it; do not turn a stylistic preference into a technical fact.
