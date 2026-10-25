@@ -600,8 +600,10 @@ capabilities:
     entrypoints:
       - "mira-hub/src/capabilities/notebook-manual-acquisition.ts"
       - "mira-hub/src/capabilities/manual-acquisition.ts   # moved verbatim from nameplate/confirm"
+      - "mira-hub/src/capabilities/manual-harvester.ts     # propose-only: which confirmed machines still need a manual"
     consumers:
       - "mira-hub/src/app/api/equipment-notebooks/route.ts          # create-time trigger"
+      - "mira-hub/src/app/api/manual-harvester/route.ts             # GET proposals + POST one-tap OK -> startManualAcquisition (same flag)"
       - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts # decline-time fallback + honest state"
     schema:
       - "mira-hub/db/migrations/100_notebook_manual_acquisition.sql"
@@ -624,6 +626,8 @@ capabilities:
       - mira-hub-unit        # notebook-manual-acquisition + chat-flight-recorder + create-starts-manual-acquisition suites
     required_checks: []
     evidence:
+      - "https://github.com/Mikecranesync/MIRA/pull/4539"   # staging walk 2026-10-19, 12 real Stardust nameplate photos via the Hub recognize->confirm routes (QA tenant): PF525 25B-D010N104 auto-enabled Rockwell 520-PC001 (a product profile) -> judge publication-code fix; Siemens 3RV20 + TP700 found exact OEM docs but 403 (#4541); A-B 700-HA32Z24 + SMC SS5Y3 honest no_manual_found; GS1-45P0 user manual held for confirmation
+      - "https://github.com/Mikecranesync/MIRA/pull/4540"   # same walk: Bihl+Wiedemann plant designator =EQU+96 -A57 read as catalog number -> rejected
       - "https://github.com/Mikecranesync/MIRA/issues/4406"   # staging probe 2026-10-13 (Hub a40eb52a0): GE Fanuc IC752DPA062A completed with a junk candidate (#4400); Emerson IC752DPA062A 'unavailable' 3/3 (#4401)
     rollback: >-
       Set MIRA_NOTEBOOK_MANUAL_ACQUISITION=0 (or unset) in Doppler and redeploy
@@ -644,6 +648,98 @@ capabilities:
       an unrelated PDF (2026-09-29 probe: a bioRxiv paper for an MG17 gearbox);
       applicability keeps it disabled, but the judge keeps it off the screen.
 
+  - id: notebook_lexical_idf
+    purpose: >-
+      Order notebook lexical retrieval candidates by IDF sum (the summed rarity
+      of the question words a chunk contains) in SQL before the candidate LIMIT,
+      instead of an all-words pass first and ts_rank_cd. Retrieval-core-spec L2.
+    customer_outcome: >-
+      A technician's plain-language question ("what does the flashing red light
+      mean") reaches the manual page that holds its rare words, instead of a page
+      that merely repeats common ones.
+    # The Hub reads NOTEBOOK_LEXICAL_V2 (TypeScript). feature_flag is omitted
+    # because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/lib/manual-rag.ts   # lexicalV2Enabled() + idfSql inside retrieveNodeChunks"
+    consumers:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # notebook chat retrieval"
+    environments:
+      dev: unset
+      staging: "1"                          # Doppler factorylm/stg, set 2026-10-21; forwarded by docker-compose.staging-vps.yml (#4557)
+      production: unset                     # not forwarded by docker-compose.saas.yml
+    state: staging_enabled
+    reason: >-
+      New in #4513. Gate 1 (77-question local harness, pre-registered in the
+      spec) passed: top 6 54->70, McNemar p=0.0009, top 1 31->42, p95 220 ms.
+      Gate 2 retrieval half passed (unseen 36->48). Gate 3 staging A/B (2026-10-21,
+      hybrid+rerank on in staging): walk 30->34, but unseen refusals 7/7->6/7 by answer
+      text (1 of 7, unconfirmed at n=7), so the refusal rule fails as pre-registered. Staging only; production is an owner decision
+      after a refusal fix or a production-configuration refusal measurement. The real-SQL tests run in beta-gate.yml (admission-regression,
+      path-filtered on manual-rag.ts), not ci.yml, so ci_jobs is empty.
+    owner: "Mike Harper"
+    ci_jobs: []
+    required_checks: []
+    evidence:
+      - "docs/specs/notebook-retrieval-idf-scoring.md"
+      - "https://github.com/Mikecranesync/MIRA/issues/4513"
+      - "docs/evals/2026-10-21-notebook-lexical-idf-staging-ab.md"
+    rollback: >-
+      Unset NOTEBOOK_LEXICAL_V2 (or set anything other than 1) and redeploy
+      mira-hub. Flag off is byte-identical to the previous retrieval SQL.
+    blocker: >-
+      Production: refusal rule not met in the staging stack (#4572), and refusals in
+      production's lexical-only configuration not measured. Owner decision.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Refusals: unanswerable questions refuse no worse than with the flag off (2026-10-21 staging: 6/7 vs 7/7 by answer text — not met; #4572)."
+      - "Production: owner decision after the staging walk."
+    review_by: "2026-11-17"
+
+  - id: guided_troubleshooting
+    purpose: >-
+      Turn a manufacturer's troubleshooting chapter into a step-by-step, deterministic technician workflow on
+      the equipment notebook (WP-1), built on the #4498 diagnostic-plan runner: branching from the manual's own
+      flowchart and tables, technician measurements judged against the manual's criterion, quoted safety
+      acknowledgements, a manual-revision check, resumable sessions, and escalation to MIRA's chat with the
+      session as evidence when the manual runs out.
+    customer_outcome: >-
+      A technician on an SMC Flex opens its notebook, taps Guided troubleshooting, follows the manufacturer's
+      steps with the page for each, is stopped before anything unsafe, and comes back after an interruption to
+      the same step.
+    # The Hub reads NOTEBOOK_GUIDED_PROCEDURE (TypeScript). feature_flag is omitted
+    # because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/procedure/route.ts   # GET procedures + session, POST start/answer"
+      - "mira-hub/src/capabilities/diagnostic-plan/guided.ts   # applicability, measurement, records, view"
+      - "mira-hub/src/capabilities/diagnostic-plan/manufacturer/smc-flex.ts   # Rockwell 150-UM008J Ch.9"
+    consumers:
+      - "mira-hub/src/factorylm-ui/GuidedProcedure.tsx   # notebook panel, mounted by hub-host.tsx"
+    environments:
+      dev: unset
+      staging: unset
+      production: unset                     # not forwarded by docker-compose.saas.yml
+    state: deployed_disabled
+    reason: >-
+      WP-1. Template independently checked against the page images (371/372 units, the two gaps fixed).
+      Staging enablement and the phone-size walks follow merge; this record moves to staging_enabled with
+      that evidence.
+    owner: "Mike Harper"
+    ci_jobs:
+      - mira-hub-unit
+    required_checks: []
+    evidence:
+      - "mira-hub/src/capabilities/__tests__/diagnostic-plan-smc-flex.test.ts"
+      - "mira-hub/src/capabilities/__tests__/diagnostic-plan-guided-route.test.ts"
+    rollback: >-
+      Unset NOTEBOOK_GUIDED_PROCEDURE (or set anything other than 1) and redeploy mira-hub: the route
+      returns 404 and the panel renders nothing. Sessions already stored stay in guided_procedure_sessions.
+    blocker: >-
+      Production: owner decision after the staging walks.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Staging: three complete technician workflows at phone size on staging with screenshots."
+      - "Production: owner decision."
+    review_by: "2026-11-21"
   - id: unified_ui_shell
     purpose: >-
       Shared FactoryLM presentation shell (design tokens, interaction

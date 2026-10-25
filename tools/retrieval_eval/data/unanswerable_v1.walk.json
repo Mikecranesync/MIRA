@@ -1,0 +1,406 @@
+{
+ "version": 1,
+ "derived_from": "tools/retrieval_eval/data/unanswerable_v1.json (sha256 8a774cc68af3f9ff20922515e3514cfb97aa4612026e3cdf1024e02370c638db)",
+ "questions": [
+  {
+   "id": "gs10-ch6-u1",
+   "manual": "gs10-ch6",
+   "question": "What is the IP rating of the GS10 drive enclosure?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "gs10-ch6-u2",
+   "manual": "gs10-ch6",
+   "question": "Can the GS10 run on EtherNet/IP, and which option card do I need?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "gs10-ch6-u3",
+   "manual": "gs10-ch6",
+   "question": "How do I update the firmware on a GS10?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "gs10-ch6-u4",
+   "manual": "gs10-ch6",
+   "question": "What size branch-circuit fuse should I use for a GS10 on 480 V?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "gs10-ch6-u5",
+   "manual": "gs10-ch6",
+   "question": "What is the MTBF of the GS10 drive?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "pf40-u1",
+   "manual": "pf40",
+   "question": "What is the part number for a replacement cooling fan for a PowerFlex 40 frame C?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "pf40-u2",
+   "manual": "pf40",
+   "question": "Is the PowerFlex 40 rated for use in a Class I Division 2 hazardous location?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "pf40-u3",
+   "manual": "pf40",
+   "question": "How do I wire safe torque off (STO) on a PowerFlex 40?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "pf40-u4",
+   "manual": "pf40",
+   "question": "What is the UL file number for the PowerFlex 40?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "pf40-u5",
+   "manual": "pf40",
+   "question": "How do I wire an incremental encoder to the PowerFlex 40 for closed-loop speed control?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "pf4m-u1",
+   "manual": "pf4m",
+   "question": "What is the PowerFlex 4M's maximum output frequency in sensorless vector mode?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "pf4m-u2",
+   "manual": "pf4m",
+   "question": "Does the PowerFlex 4M support safe torque off?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "pf4m-u3",
+   "manual": "pf4m",
+   "question": "How do I wire an encoder to the PowerFlex 4M?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "pf4m-u4",
+   "manual": "pf4m",
+   "question": "How do I connect the PowerFlex 4M to a PROFIBUS DP network?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "pf4m-u5",
+   "manual": "pf4m",
+   "question": "What's the price of a PowerFlex 4M 2 HP drive?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "acs355-u1",
+   "manual": "acs355",
+   "question": "How do I update the ACS355 firmware?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "acs355-u2",
+   "manual": "acs355",
+   "question": "How do I use DriveComposer to back up ACS355 parameters?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "acs355-u3",
+   "manual": "acs355",
+   "question": "Is the ACS355 ATEX certified for use in explosive atmospheres?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "acs355-u4",
+   "manual": "acs355",
+   "question": "What is the shipping lead time for an ACS355 cooling fan?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "acs355-u5",
+   "manual": "acs355",
+   "question": "What is the MTBF of an ACS355 drive?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "micro820-um-u1",
+   "manual": "micro820-um",
+   "question": "How do I configure the Micro820 to talk PROFINET?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "micro820-um-u2",
+   "manual": "micro820-um",
+   "question": "How do I connect a Micro820 to AWS IoT over MQTT?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "micro820-um-u3",
+   "manual": "micro820-um",
+   "question": "Is the Micro820 approved for marine (DNV) use?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "micro820-um-u4",
+   "manual": "micro820-um",
+   "question": "What is the price of a 2080-LC20-20QBB controller?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "micro820-um-u5",
+   "manual": "micro820-um",
+   "question": "What is the Micro820's MTBF?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "micro820-in-u1",
+   "manual": "micro820-in",
+   "question": "What is the syntax of the PID instruction on the Micro820?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "micro820-in-u2",
+   "manual": "micro820-in",
+   "question": "How do I configure Modbus TCP mapping on a Micro820?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "micro820-in-u3",
+   "manual": "micro820-in",
+   "question": "What is the part number of the Micro820's real-time clock backup battery?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "micro820-in-u4",
+   "manual": "micro820-in",
+   "question": "What is the Micro820's maximum number of EtherNet/IP CIP connections?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "micro820-in-u5",
+   "manual": "micro820-in",
+   "question": "What is the typical program scan time of a Micro820?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "ml1100-u1",
+   "manual": "ml1100",
+   "question": "How do I connect a MicroLogix 1100 to a cloud historian over MQTT?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "ml1100-u2",
+   "manual": "ml1100",
+   "question": "How do I program a MicroLogix 1100 with Connected Components Workbench?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "ml1100-u3",
+   "manual": "ml1100",
+   "question": "Is the MicroLogix 1100 rated for SIL 2 safety applications?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "ml1100-u4",
+   "manual": "ml1100",
+   "question": "What is the PID auto-tune procedure on the MicroLogix 1100?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "ml1100-u5",
+   "manual": "ml1100",
+   "question": "What is the replacement price for a MicroLogix 1100 controller?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "smcflex-u1",
+   "manual": "smcflex",
+   "question": "How do I connect the SMC Flex to PROFINET?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "smcflex-u2",
+   "manual": "smcflex",
+   "question": "How do I update the SMC Flex firmware?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "smcflex-u3",
+   "manual": "smcflex",
+   "question": "Is the SMC Flex ATEX approved?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "smcflex-u4",
+   "manual": "smcflex",
+   "question": "What is the MTBF of the SMC Flex?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "smcflex-u5",
+   "manual": "smcflex",
+   "question": "What is the price of an SMC Flex 135 A controller?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "e3plus-u1",
+   "manual": "e3plus",
+   "question": "How do I configure an E3 Plus with Connected Components Workbench?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "e3plus-u2",
+   "manual": "e3plus",
+   "question": "Is the E3 Plus SIL rated?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "e3plus-u3",
+   "manual": "e3plus",
+   "question": "How do I connect the E3 Plus to PROFINET?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "e3plus-u4",
+   "manual": "e3plus",
+   "question": "Can the E3 Plus publish motor current to an MQTT broker?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "e3plus-u5",
+   "manual": "e3plus",
+   "question": "What is the price of an E3 Plus overload relay?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "smc50-u1",
+   "manual": "smc50",
+   "question": "How do I connect the SMC-50 to PROFINET?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "smc50-u2",
+   "manual": "smc50",
+   "question": "Is the SMC-50 rated for SIL 2?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "smc50-u3",
+   "manual": "smc50",
+   "question": "Is the SMC-50 ATEX certified?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "smc50-u4",
+   "manual": "smc50",
+   "question": "What is the shipping weight of an SMC-50 180 A unit?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  },
+  {
+   "id": "smc50-u5",
+   "manual": "smc50",
+   "question": "What is the price of an SMC-50 90 A controller?",
+   "expectedPage": null,
+   "safetyRelevant": false,
+   "anchor": ""
+  }
+ ]
+}

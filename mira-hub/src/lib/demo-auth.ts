@@ -51,6 +51,8 @@ export async function sessionOrDemo(
       trialExpiresAt: null,
       // Public expo-booth session — least-privilege, never tenant-admin (#2360).
       role: "viewer",
+      // Never a platform admin (#4591).
+      platformAdmin: false,
       isDemo: true,
     };
   }

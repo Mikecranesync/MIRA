@@ -4,6 +4,7 @@ vi.mock("@/lib/db", () => ({ default: { query: vi.fn() } }));
 vi.mock("@/lib/data-schema", () => ({ ensureDataSchema: vi.fn() }));
 
 import pool from "@/lib/db";
+import { INVITE_MAGIC_LINK_TTL_MINUTES } from "@/lib/config";
 import { createMagicToken, ensureInvitedUser, validateMagicToken } from "../users";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,15 +67,18 @@ describe("team invite magic tokens", () => {
 });
 
 describe("magic token TTL (#4370 — invites expiring in 15 minutes)", () => {
-  it("gives a workspace invitation (tenantId set) a 24-hour window", async () => {
+  it("gives a workspace invitation (tenantId set) the configured invite window, not 15 minutes", async () => {
     await createMagicToken("invited@example.com", {
       tenantId: "tenant-1",
       role: "technician",
       invitedBy: "user-admin",
     });
     const insert = callMatching(/INSERT INTO hub_magic_tokens/);
-    expect(insert.sql).toMatch(/NOW\(\) \+ \(\$6 \* INTERVAL '1 minute'\)/);
-    expect(insert.params[5]).toBe(24 * 60);
+    // #4664 owns the length (INVITE_MAGIC_LINK_TTL_MINUTES); this PR only needs
+    // an invite to outlive the 15-minute sign-in hop that broke #4370.
+    expect(insert.sql).toMatch(/NOW\(\) \+ \(\$6::int \* INTERVAL '1 minute'\)/);
+    expect(insert.params[5]).toBe(INVITE_MAGIC_LINK_TTL_MINUTES);
+    expect(insert.params[5]).toBeGreaterThanOrEqual(24 * 60);
   });
 
   it("keeps an ordinary sign-in magic link (no tenantId) at 15 minutes", async () => {

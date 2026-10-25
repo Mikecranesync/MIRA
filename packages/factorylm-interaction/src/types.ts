@@ -193,6 +193,9 @@ export interface SourceReference {
    *  (shown inline, e.g. a parked PDF at `#page=N`) or an absolute http(s)
    *  manual URL (opened in a new tab). Absent: the locator is the reference. */
   readonly href?: string;
+  /** Set when `href` is a photograph (a source read from a photo opens the
+   *  photo itself): the viewer shows the whole image, fitted, not a frame. */
+  readonly media?: "image";
 }
 
 export type EvidenceBasisKind =

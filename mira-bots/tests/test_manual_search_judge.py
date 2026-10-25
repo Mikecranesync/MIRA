@@ -501,7 +501,9 @@ async def test_oem_request_link_is_a_curated_link_not_a_fetch():
     assert await search_mod.oem_request_link("Harrington Hoists and Cranes") == (
         "https://www.harringtonhoists.com/owners-manual-request"
     )
-    assert await search_mod.oem_request_link("Siemens") == "https://industry.siemens.com/"  # known OEM site, no form on file
+    assert (
+        await search_mod.oem_request_link("Siemens") == "https://industry.siemens.com/"
+    )  # known OEM site, no form on file
 
 
 # ── review findings 2026-08-26 ───────────────────────────────────────────────
@@ -1181,3 +1183,56 @@ async def test_an_unread_candidate_naming_the_model_is_still_offered_for_review(
     r = await search_mod.search_manual("GE Fanuc", "IC752DPA062A")
     assert r is not None and r["url"] == named
     assert r["validated"] is False and r["reason"] == judge.REASON_JUDGE_UNAVAILABLE
+
+
+# ── OEM publication code outranks the model (staging 2026-10-19, PF525 25B-D010N104) ─
+
+RA_LIT = "https://literature.rockwellautomation.com/idc/groups/literature/documents"
+
+
+class _SaysInstallManual:
+    """The exact misjudgement observed: a product profile called an installation manual."""
+
+    enabled = True
+
+    async def complete(self, *a, **k):
+        return (
+            json.dumps(
+                {
+                    "is_manual_for_model": True,
+                    "doc_type": "installation_manual",
+                    "scope": "complete",
+                    "confidence": 0.97,
+                    "evidence_quote": "PowerFlex 525 ... Catalog Number 25B",
+                    "reason": "official installation/product information",
+                }
+            ),
+            {"provider": "fake", "model": "fake/m"},
+        )
+
+
+@pytest.mark.parametrize("code", ["pc", "td", "ca", "br", "sg"])
+async def test_rockwell_non_manual_publication_code_is_never_the_manual(monkeypatch, code):
+    monkeypatch.setattr(judge, "_router", _SaysInstallManual())
+    url = f"{RA_LIT}/{code}/520-{code}001_-en-p.pdf"
+    v = await judge.judge_text("Allen-Bradley", "25B-D010N104", {"url": url, "title": ""}, "t")
+    assert v is not None
+    assert v["is_manual"] is False
+    assert v["downgraded"] is True
+    assert v["doc_type"] != "installation_manual"
+
+
+@pytest.mark.parametrize("code", ["um", "qs", "in"])
+async def test_rockwell_manual_publication_codes_keep_the_model_verdict(monkeypatch, code):
+    # control: a user manual / quick start / installation instruction stays a match
+    monkeypatch.setattr(judge, "_router", _SaysInstallManual())
+    url = f"{RA_LIT}/{code}/520-{code}001_-en-e.pdf"
+    v = await judge.judge_text("Allen-Bradley", "25B-D010N104", {"url": url, "title": ""}, "t")
+    assert v is not None and v["is_manual"] is True and v["downgraded"] is False
+
+
+async def test_non_rockwell_url_with_a_pc_segment_is_untouched(monkeypatch):
+    monkeypatch.setattr(judge, "_router", _SaysInstallManual())
+    url = "https://example.com/idc/groups/literature/documents/pc/x.pdf"
+    v = await judge.judge_text("X", "Y", {"url": url, "title": ""}, "t")
+    assert v is not None and v["is_manual"] is True

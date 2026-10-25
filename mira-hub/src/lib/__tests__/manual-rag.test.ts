@@ -89,6 +89,18 @@ describe("retrieveManualChunks", () => {
     ]);
   });
 
+  it("preserves a chapter-section page_label (2-15) instead of Number()-coercing it", async () => {
+    const { client, calls } = makeClient([
+      [row({ source_page: 2, page_label: "2-15" })],
+    ]);
+    const out = await retrieveManualChunks(client, "tenant-1", "warning before servicing");
+    expect(out[0].sourcePage).toBe(2);
+    expect(out[0].pageLabel).toBe("2-15");
+    expect(Number(out[0].pageLabel)).toBeNaN();
+    expect(parseInt(out[0].pageLabel ?? "", 10)).toBe(2);
+    expect(calls[0].sql).toContain("metadata->>'page_label'");
+  });
+
   it("falls back to tenant-only retrieval when the manufacturer scope is fully empty", async () => {
     // Each scope now tries AND then OR, so the mfr scope must exhaust both
     // (AND empty, OR empty) before the tenant-only query runs.
@@ -450,6 +462,352 @@ const nodeRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
 });
 
 describe("retrieveNodeChunks", () => {
+  it("does not claim model coverage when neither the filename nor opening text identifies it", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "manual.pdf", document_heading: "Controller Manual",
+      content: "Configure communication settings in the properties dialog.",
+    })]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    })).toEqual([]);
+  });
+  it("rejects a sibling manual with a publication-number filename using its document heading", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um001.pdf", document_heading: "Micro810 Programmable Controllers User Manual",
+      content: "Communication settings. Micro820 is a separate product.",
+    })]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    })).toEqual([]);
+  });
+
+  it("retains later pages of an opaque-named manual whose heading covers the requested model", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um005.pdf", document_heading: "Micro820 Programmable Controllers User Manual",
+      content: "Communication settings are configured in the controller properties.",
+    })]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    })).toHaveLength(1);
+  });
+  it("does not use a Micro810 manual to answer a Micro820 question", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro810 User Manual.pdf",
+      content: "Micro810 controller: configure the communication settings here.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("retains a manual explicitly covering both Micro810 and Micro820", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro810 and Micro820 User Manual.pdf",
+      content: "Micro820 controller: configure the communication settings here.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("uses the current question's model even when history names the old model", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro810_User_Manual.pdf",
+      content: "Micro810 communication settings. Micro820 is a different controller.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro810 Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, rawQuery: "Micro820 communication settings",
+      docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  // #4469 F1: the plain numeric model token ("800") collides across unrelated
+  // product families — ACS800 (a drive) and Micro800 (a controller) both
+  // reduce to "800" under resolveModelFromObservationText, which must keep
+  // doing that for `model_number ILIKE` matching elsewhere. Applicability
+  // needs the family too so these two never admit each other's manual.
+  it("does not let an ACS800 manual answer a Micro800 question (family collision)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "ACS800 User Manual.pdf",
+      document_heading: "ACS800 User Manual",
+      content: "ACS800 communication settings are configured on the control panel.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro800 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("does not let a Micro800 manual answer an ACS800 question (family collision, reverse)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro800 User Manual.pdf",
+      document_heading: "Micro800 User Manual",
+      content: "Micro800 communication settings are configured on the control panel.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "ACS800 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("still matches an ACS800 manual to an ACS800 question (control)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "ACS800 User Manual.pdf",
+      document_heading: "ACS800 User Manual",
+      content: "ACS800 communication settings are configured on the control panel.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "ACS800 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("still matches a Micro800 manual to a Micro800 question (control)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro800 User Manual.pdf",
+      document_heading: "Micro800 User Manual",
+      content: "Micro800 communication settings are configured on the control panel.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro800 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  // #4469 F2 (primary review, pass 2): no finite keyword list can recognize
+  // every way a document points away from itself. These four scenarios are
+  // the ones the primary review named by name, in both a same-sentence shape
+  // and a separate-line shape (a real first chunk breaks on newlines, not
+  // just periods — a title-boundary rule that only looks for ". " would
+  // silently admit the separate-line form). Each reject case is paired with
+  // a control on the IDENTICAL row, answering the one question the document
+  // actually covers — proving the rule reads the title, not "any mismatch".
+  it('rejects "See the separate Micro820 manual." (same-sentence shape)', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um010.pdf",
+      document_heading: "Micro810 User Manual. See the separate Micro820 manual.",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('control: the "See the separate Micro820 manual." doc still answers its own Micro810 question', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um010.pdf",
+      document_heading: "Micro810 User Manual. See the separate Micro820 manual.",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro810 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it('rejects "Related documents: Micro820 user manual" on a separate line (no period)', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um012.pdf",
+      document_heading: "Micro810 User Manual\nRelated documents: Micro820 user manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('control: the "Related documents" doc still answers its own Micro810 question', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um012.pdf",
+      document_heading: "Micro810 User Manual\nRelated documents: Micro820 user manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro810 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it('rejects "Micro820 is not covered by this manual." (explicit exclusion statement)', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um013.pdf",
+      document_heading: "Micro810 User Manual. Micro820 is not covered by this manual.",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('control: the explicit-exclusion doc still answers its own Micro810 question', async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um013.pdf",
+      document_heading: "Micro810 User Manual. Micro820 is not covered by this manual.",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro810 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("a renamed filename naming Micro820 does not override the actual Micro810 heading", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro820_User_Manual.pdf",
+      document_heading: "Micro810 Programmable Controllers User Manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("does not trust a renamed filename when the generic cover names another model below its title", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro820_User_Manual.pdf",
+      document_heading: "User Manual\nMicro810 Programmable Controllers",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("control: the renamed-filename doc still answers the Micro810 question its heading actually declares", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro820_User_Manual.pdf",
+      document_heading: "Micro810 Programmable Controllers User Manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro810 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  // Precedence, not "any disagreement rejects": when the HEADING affirmatively
+  // names a model, a mismatched filename is simply irrelevant (never widens
+  // and never narrows what the heading already declared).
+  it("precedence control: a mismatched filename never blocks what the heading affirmatively declares", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "Micro810_User_Manual.pdf",
+      document_heading: "Micro820 Programmable Controllers User Manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("retains a manual explicitly covering both models in its heading, not just a cross-reference", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "2080-um011.pdf",
+      document_heading: "Micro810 and Micro820 Programmable Controllers User Manual",
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Micro820 communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  // #4469 F1 (primary review, pass 2): "Comfort" alone is a panel FAMILY
+  // hint, not a specific sibling model (mirrors resolveModelFromObservationText's
+  // own COMFORT-drop). Without dropping it on both sides, a TP700 Comfort
+  // question and a TP1200-Comfort-titled manual would intersect on COMFORT
+  // ALONE and false-ground, even though TP700 != TP1200 — the exact
+  // cross-family collision class F1 exists to prevent.
+  it("does not let a TP1200 Comfort manual answer a TP700 Comfort question (COMFORT is a family hint, not a model)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "TP1200 Comfort Operating Instructions.pdf",
+      document_heading: "TP1200 Comfort Operating Instructions",
+      content: "TP1200 Comfort supply voltage is 24 VDC.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "TP700 Comfort supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("still matches a TP700 Comfort manual to a TP700 Comfort question (control)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "TP700 Comfort Operating Instructions.pdf",
+      document_heading: "TP700 Comfort Operating Instructions",
+      content: "TP700 Comfort supply voltage is 24 VDC.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "TP700 Comfort supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  // #4469 F3: title normalization replaced hyphens with spaces, so a Siemens
+  // catalog number (6AV2124-0GC01-0AX0) was truncated to "6AV2124" before
+  // model-token matching ran, losing the suffix that makes it exact.
+  it("preserves an exact Siemens catalog number through title normalization", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "6AV2124-0GC01-0AX0.pdf",
+      document_heading: "SIMATIC Panel 6AV2124-0GC01-0AX0 Specification",
+      content: "Supply voltage: 24 VDC, rated current 500 mA.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "6AV2124-0GC01-0AX0 supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("rejects a different catalog suffix sharing the same prefix", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "6AV2124-0GC01-9AX0.pdf",
+      document_heading: "SIMATIC Panel 6AV2124-0GC01-9AX0 Specification",
+      content: "Supply voltage: 24 VDC, rated current 500 mA.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "6AV2124-0GC01-0AX0 supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
+  // #4469 F3 (primary review, pass 2): the catalog pattern (`6av[0-9a-z.-]+`)
+  // is greedy enough to swallow a file extension, so the filename-FALLBACK
+  // path (used when the heading names no model at all) must strip it before
+  // matching — otherwise "6AV2124-0GC01-0AX0.pdf" resolves to
+  // "6AV2124-0GC01-0AX0.PDF", a DIFFERENT identity than the query's, and the
+  // whole point of F3 (exact survives, suffix is rejected) is untested by
+  // the heading-driven cases above, which never reach this code path.
+  it("preserves an exact catalog number through the FILENAME fallback (heading names no model)", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "6AV2124-0GC01-0AX0.pdf",
+      document_heading: "Panel Specification Sheet",
+      content: "Supply voltage: 24 VDC, rated current 500 mA.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "6AV2124-0GC01-0AX0 supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("rejects a different catalog suffix through the FILENAME fallback", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "6AV2124-0GC01-9AX0.pdf",
+      document_heading: "Panel Specification Sheet",
+      content: "Supply voltage: 24 VDC, rated current 500 mA.",
+    })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "6AV2124-0GC01-0AX0 supply voltage", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+    expect(out).toEqual([]);
+  });
+
   // Regression: with the approval gate OFF the admission clause is not emitted, so
   // the admission array must not be bound either. Binding it anyway produced
   // "bind message supplies 6 parameters, but prepared statement requires 5" on
@@ -474,6 +832,17 @@ describe("retrieveNodeChunks", () => {
     for (const c of on.calls) expect(c.params.length).toBe(maxPlaceholder(c.sql));
     // The admission branch is present on the BM25 lane ($6 after $5 docIds) and the exact lane.
     expect(on.calls.some((c) => c.sql.includes("is_private = true AND doc_id = ANY($6::uuid[])"))).toBe(true);
+  });
+
+  it("preserves a chapter-section page_label (2-15) on node chunks", async () => {
+    const { client, calls } = makeClient([[nodeRow({ page_start: 2, source_page: 2, page_label: "2-15" })]]);
+    const out = await retrieveNodeChunks(client, "t-1", "disconnect power warning", {
+      nodeId: "n-1",
+      unsPath: null,
+    });
+    expect(out[0].pageLabel).toBe("2-15");
+    expect(out[0].sourcePage).toBe(2);
+    expect(calls[0].sql).toContain("metadata->>'page_label'");
   });
 
   it("returns empty for empty query without touching DB", async () => {
@@ -1306,5 +1675,426 @@ describe("retrieveManualChunks same-family vendor fallback (#4068)", () => {
   it("classifies the SLC 500 family as PLCs so the fallback can run for it", () => {
     expect(inferEquipmentType({ modelNumber: "SLC 5/03" })).toBe("PLCs");
     expect(inferEquipmentType({ modelNumber: "SLC 500" })).toBe("PLCs");
+  });
+});
+
+describe("Codex #4469 r2: declared-title applicability (F2 first-line cross-reference, F5 catalog precedence, F6 wrapped title)", () => {
+  const ask = async (heading: string, question: string, filename = "2080-um020.pdf") => {
+    const { client } = makeClient([[nodeRow({
+      filename, document_heading: heading,
+      content: "Configure the communication settings in the controller properties dialog.",
+    })]]);
+    return retrieveNodeChunks(client, "t-1", question, {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+    });
+  };
+
+  // F2
+  it.each([
+    "Micro810 User Manual — for Micro820 consult the separate manual",
+    "Micro810 User Manual - for Micro820 consult the separate manual",
+    "Micro810 User Manual (Micro820: see publication 2080-UM005)",
+    "Micro810 Controllers: Micro820 is covered separately",
+    "Micro810 Controllers for Micro820 see the separate manual",
+  ])("a first-line cross-reference does not admit Micro820: %s", async (heading) => {
+    expect(await ask(heading, "Micro820 communication settings")).toEqual([]);
+    expect(await ask(heading, "Micro810 communication settings")).toHaveLength(1);
+  });
+
+  it.each([
+    "Micro810 and Micro820 Programmable Controllers User Manual",
+    "User Manual for Micro820 Programmable Controllers",
+  ])("a genuine title naming Micro820 stays retrievable: %s", async (heading) => {
+    expect(await ask(heading, "Micro820 communication settings")).toHaveLength(1);
+  });
+
+  // F6
+  it.each([
+    "Micro810 and Micro820 Programmable Controllers User Manual",
+    "Micro810 and\nMicro820 Programmable Controllers User Manual",
+    "Micro810 &\nMicro820 Programmable Controllers User Manual",
+  ])("single-line and wrapped dual-model titles cover both models: %j", async (heading) => {
+    expect(await ask(heading, "Micro820 communication settings")).toHaveLength(1);
+    expect(await ask(heading, "Micro810 communication settings")).toHaveLength(1);
+  });
+
+  it("a wrapped title still stops at a non-joining newline (cross-reference line stays rejected)", async () => {
+    expect(await ask("Micro810 User Manual\nFor Micro820 and\nMicro830 see 2080-UM005", "Micro820 communication settings")).toEqual([]);
+  });
+
+  // F5
+  it("an exact catalog number outranks a shared panel label", async () => {
+    const q = "TP700 Comfort 6AV2124-0GC01-0AX0 communication settings";
+    expect(await ask("TP700 Comfort 6AV2124-0GC01-9AX0 Specification", q, "spec.pdf")).toEqual([]);
+    expect(await ask("TP700 Comfort 6AV2124-0GC01-0AX0 Specification", q, "spec.pdf")).toHaveLength(1);
+    // a label-only manual still covers a catalog-specific question
+    expect(await ask("TP700 Comfort Operating Instructions", q, "oi.pdf")).toHaveLength(1);
+  });
+});
+
+// Overnight 2026-10-17 item 1 (stacked on #4469): the notebook's own confirmed
+// asset identity is the model boundary when the QUESTION names no model. A
+// Micro820 notebook asking "communication settings" must never cite a
+// Micro810-only manual that merely happens to be attached to it.
+describe("retrieveNodeChunks — notebook identity scopes model-less questions", () => {
+  type Status = "unknown" | "candidate" | "user_confirmed" | "verified" | null;
+  const ask = (
+    heading: string,
+    question: string,
+    identityModel: string | null,
+    filename = "2080-um001.pdf",
+    identityStatus: Status = "user_confirmed",
+  ) =>
+    retrieveNodeChunks(
+      makeClient([[nodeRow({ filename, document_heading: heading, content: "Communication settings are configured in the controller properties." })]]).client,
+      "t-1",
+      question,
+      {
+        nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
+        identity: { manufacturer: "Allen-Bradley", model: identityModel },
+        identityStatus,
+      },
+    );
+
+  it("a Micro820 notebook never cites a Micro810-only manual for a question that names no model", async () => {
+    expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", "Micro820")).toEqual([]);
+  });
+
+  it("control: the same notebook still answers from its own Micro820 manual", async () => {
+    expect(await ask("Micro820 Programmable Controllers User Manual", "communication settings", "Micro820")).toHaveLength(1);
+  });
+
+  it("control: a dual-model manual still covers a Micro820 notebook", async () => {
+    expect(await ask("Micro810 and Micro820 Programmable Controllers User Manual", "communication settings", "Micro820")).toHaveLength(1);
+  });
+
+  it("the question's own model outranks the notebook identity when both are named", async () => {
+    // The technician explicitly asked about the sibling; the notebook identity
+    // must not silently rewrite the question (existing #4469 behavior kept).
+    expect(await ask("Micro810 Programmable Controllers User Manual", "Micro810 communication settings", "Micro820")).toHaveLength(1);
+    expect(await ask("Micro820 Programmable Controllers User Manual", "Micro810 communication settings", "Micro820")).toEqual([]);
+  });
+
+  it("an identity the detector cannot read applies no filter (conservative: behaves as before)", async () => {
+    expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", "CV-101")).toHaveLength(1);
+    expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", null)).toHaveLength(1);
+  });
+
+  it("a manual that names no model is KEPT for an identity-bound notebook (the attachment is the technician's assertion)", async () => {
+    // One notch less strict than a named ask: only a manual that affirmatively
+    // declares a different model is rejected. A generic "Controller Manual"
+    // attached to the Micro820 notebook stays citable for a model-less ask.
+    expect(await ask("Controller Manual", "communication settings", "Micro820", "manual.pdf")).toHaveLength(1);
+    // control: the same generic manual is still declined for a NAMED ask (#4469 unchanged)
+    expect(await ask("Controller Manual", "Micro820 communication settings", "Micro820", "manual.pdf")).toEqual([]);
+  });
+
+  it("the notebook identity never admits a sibling manual via the filename when the heading names the sibling", async () => {
+    expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", "Micro820", "Micro820_notes.pdf")).toEqual([]);
+  });
+
+  it("gives each attached manual its own candidate window when the notebook identity scopes the ask", async () => {
+    const { client, calls } = makeClient([[], [], [], []]);
+    await retrieveNodeChunks(client, "t-1", "communication settings", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1", "d-2"], validatedDocScope: true,
+      identity: { manufacturer: "Allen-Bradley", model: "Micro820" },
+      identityStatus: "user_confirmed",
+    });
+    const firstPassWindows = calls.slice(0, 2).map((c) => c.params[4]);
+    expect(firstPassWindows).toEqual([["d-1"], ["d-2"]]);
+  });
+
+  // 2026-10-18 scope pass. `equipment_notebooks.model` and `identity_status`
+  // are independent columns (updateNotebook builds SET from a column map), so
+  // a `candidate` OCR read can sit in `model`. Scoping to a misread would hide
+  // the right manual silently — so only a person's confirmation scopes.
+  describe("only a confirmed identity scopes (an OCR candidate must not hide the right manual)", () => {
+    const SIBLING = "Micro810 Programmable Controllers User Manual";
+    it.each(["candidate", "unknown", null] as const)("identityStatus=%s applies no filter", async (status) => {
+      expect(await ask(SIBLING, "communication settings", "Micro820", "2080-um001.pdf", status)).toHaveLength(1);
+    });
+    it("an ABSENT identityStatus applies no filter (a caller that forgets it cannot hide a manual)", async () => {
+      // Built directly: passing `undefined` through `ask` would hit its default parameter.
+      const rows = await retrieveNodeChunks(
+        makeClient([[nodeRow({ filename: "2080-um001.pdf", document_heading: SIBLING, content: "Communication settings are configured in the controller properties." })]]).client,
+        "t-1",
+        "communication settings",
+        { nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true, identity: { manufacturer: "Allen-Bradley", model: "Micro820" } },
+      );
+      expect(rows).toHaveLength(1);
+    });
+    it.each(["user_confirmed", "verified"] as const)("control: identityStatus=%s still scopes", async (status) => {
+      expect(await ask(SIBLING, "communication settings", "Micro820", "2080-um001.pdf", status)).toEqual([]);
+    });
+    it("the per-document candidate windows also wait for confirmation", async () => {
+      const { client, calls } = makeClient([[], [], [], []]);
+      await retrieveNodeChunks(client, "t-1", "communication settings", {
+        nodeId: "n-1", unsPath: null, docIds: ["d-1", "d-2"], validatedDocScope: true,
+        identity: { manufacturer: "Allen-Bradley", model: "Micro820" },
+        identityStatus: "candidate",
+      });
+      expect(calls[0].params[4]).toEqual(["d-1", "d-2"]);
+    });
+  });
+
+  // A family manual covers its members. Measured on the detector: "PowerFlex
+  // 520-Series … User Manual" → {PF520}, a PowerFlex 525 notebook → {PF525};
+  // before FAMILY_ROOTS the series manual Rockwell actually publishes for the
+  // 523/525 was hidden from the notebook.
+  describe("a family-root manual covers its member models (FAMILY_ROOTS)", () => {
+    it("the PowerFlex 520-Series manual is citable from a PowerFlex 525 notebook", async () => {
+      expect(await ask("PowerFlex 520-Series Adjustable Frequency AC Drive User Manual", "communication settings", "PowerFlex 525", "520-um001.pdf")).toHaveLength(1);
+    });
+    it("control: a PowerFlex 755 manual is still hidden from a PowerFlex 525 notebook", async () => {
+      expect(await ask("PowerFlex 755 AC Drives User Manual", "communication settings", "PowerFlex 525", "750-um001.pdf")).toEqual([]);
+    });
+    // Round 2: the 750-Series manual covers the 753 and 755.
+    it("the PowerFlex 750-Series manual is citable from a PowerFlex 755 notebook (and a 753)", async () => {
+      expect(await ask("PowerFlex 750-Series AC Drives Programming Manual", "communication settings", "PowerFlex 755", "750-pm001.pdf")).toHaveLength(1);
+      expect(await ask("PowerFlex 750-Series AC Drives Programming Manual", "communication settings", "PowerFlex 753", "750-pm001.pdf")).toHaveLength(1);
+    });
+    it("control: the 750-Series manual is still hidden from a PowerFlex 525 notebook", async () => {
+      expect(await ask("PowerFlex 750-Series AC Drives Programming Manual", "communication settings", "PowerFlex 525", "750-pm001.pdf")).toEqual([]);
+    });
+    // Round 2: a "523 and 525" title covers BOTH siblings, not just the first.
+    it("a 'PowerFlex 523 and 525' manual is citable from a PowerFlex 525 notebook", async () => {
+      expect(await ask("PowerFlex 523 and 525 Adjustable Frequency AC Drives User Manual", "communication settings", "PowerFlex 525", "520-um001.pdf")).toHaveLength(1);
+    });
+    it("the Micro800 family manual is citable from a Micro820 notebook", async () => {
+      expect(await ask("Micro800 Programmable Controllers General Instructions", "communication settings", "Micro820", "2080-rm001.pdf")).toHaveLength(1);
+    });
+    it("the Comfort Panels manual is citable from a TP700 notebook", async () => {
+      expect(await ask("SIMATIC HMI Comfort Panels Operating Instructions", "communication settings", "TP700", "comfort.pdf")).toHaveLength(1);
+    });
+    it("control: KTP panels are Basic, not Comfort — the Comfort manual stays hidden from a KTP700 notebook", async () => {
+      expect(await ask("SIMATIC HMI Comfort Panels Operating Instructions", "communication settings", "KTP700", "comfort.pdf")).toEqual([]);
+    });
+    it("a notebook bound ONLY to a family ('Comfort') applies no filter — any member manual is plausibly right", async () => {
+      expect(await ask("TP1200 Comfort Operating Instructions", "communication settings", "Comfort", "tp1200.pdf")).toHaveLength(1);
+      expect(await ask("Micro850 Programmable Controllers User Manual", "communication settings", "Micro800", "2080-um002.pdf")).toHaveLength(1);
+    });
+    // Codex #4484 F1: the identity-proposal flow confirms "820" / "525", not
+    // "Micro820" / "PowerFlex 525" (identity-proposal.test.ts F8 pins it), and
+    // modelIdentitiesInText("820") is empty — so a CONFIRMED Micro820 notebook
+    // was never scoped and cited the Micro810 manual.
+    describe("a confirmed identity stored as a bare number still scopes (no family is guessed)", () => {
+      it("'820' rejects the Micro810 manual and keeps the Micro820 manual", async () => {
+        expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", "820")).toEqual([]);
+        expect(await ask("Micro820 Programmable Controllers User Manual", "communication settings", "820")).toHaveLength(1);
+      });
+      it("'820' is covered by the Micro800 family manual", async () => {
+        expect(await ask("Micro800 Programmable Controllers General Instructions", "communication settings", "820", "2080-rm001.pdf")).toHaveLength(1);
+      });
+      it("'525' rejects a PowerFlex 755 manual and keeps the 520-Series and 525 manuals", async () => {
+        expect(await ask("PowerFlex 755 AC Drives User Manual", "communication settings", "525", "750-um001.pdf")).toEqual([]);
+        expect(await ask("PowerFlex 520-Series Adjustable Frequency AC Drive User Manual", "communication settings", "525", "520-um001.pdf")).toHaveLength(1);
+        expect(await ask("PowerFlex 525 Adjustable Frequency AC Drive User Manual", "communication settings", "525", "520-um001.pdf")).toHaveLength(1);
+      });
+      it("a manual naming no model stays citable for a bare-number notebook (unchanged lenience)", async () => {
+        expect(await ask("Controller Manual", "communication settings", "820", "manual.pdf")).toHaveLength(1);
+      });
+      it("control: a bare number is still not scoped without confirmation", async () => {
+        expect(await ask("Micro810 Programmable Controllers User Manual", "communication settings", "820", "2080-um001.pdf", "candidate")).toHaveLength(1);
+      });
+    });
+
+    // Round 2: a catalog number and its panel label never met (hidden both ways).
+    describe("a Siemens order number names its panel (CATALOG_PREFIX_TO_MODEL)", () => {
+      const TP700_CAT = "6AV2124-0GC01-0AX0";
+      it("a TP700 notebook cites a manual titled by the TP700 order number", async () => {
+        expect(await ask(`SIMATIC HMI ${TP700_CAT} Operating Instructions`, "communication settings", "TP700", "6av.pdf")).toHaveLength(1);
+      });
+      it("a notebook identified by the order number (nameplate '1P 6AV…') cites the TP700 Comfort manual", async () => {
+        expect(await ask("TP700 Comfort Operating Instructions", "communication settings", TP700_CAT, "tp700.pdf")).toHaveLength(1);
+      });
+      // Codex #4484 F2: the catalog→panel expansion ran only for the exact-match
+      // comparison, so the FAMILY manual was still lost to a catalog-only notebook.
+      it("a catalog-only notebook also keeps the Comfort Panels FAMILY manual", async () => {
+        expect(await ask("SIMATIC HMI Comfort Panels Operating Instructions", "communication settings", TP700_CAT, "comfort.pdf")).toHaveLength(1);
+      });
+      it("the same holds on the question-named path", async () => {
+        expect(await ask("TP700 Comfort Operating Instructions", `${TP700_CAT} communication settings`, null, "tp700.pdf")).toHaveLength(1);
+      });
+      it("control: the TP1200 order number does not reach a TP700 notebook", async () => {
+        expect(await ask("SIMATIC HMI 6AV2124-0MC01-0AX0 Operating Instructions", "communication settings", "TP700", "6av.pdf")).toEqual([]);
+      });
+      it("control: an order number not in the table maps to nothing (never guessed)", async () => {
+        expect(await ask("SIMATIC HMI 6AV2128-3GB06-0AX0 Operating Instructions", "communication settings", "TP700", "6av.pdf")).toEqual([]);
+      });
+      it("control: Codex #4469 F5 stands — a different suffix on BOTH sides is still a different panel", async () => {
+        expect(await ask("SIMATIC Panel 6AV2124-0GC01-9AX0 Specification", `${TP700_CAT} supply voltage`, null, "6av.pdf")).toEqual([]);
+      });
+    });
+
+    it("control: a sibling-specific manual is still hidden from a specific-model notebook", async () => {
+      // The family rule widens only toward family ROOTS, never sibling-to-sibling.
+      expect(await ask("TP1200 Comfort Operating Instructions", "communication settings", "TP700", "tp1200.pdf")).toEqual([]);
+      expect(await ask("PowerFlex 523 AC Drive User Manual", "communication settings", "PowerFlex 525", "523.pdf")).toEqual([]);
+    });
+  });
+});
+
+// Overnight 2026-10-17 item 4 — hybrid retrieval: the vectors node ingest
+// already writes are CONNECTED to notebook chat behind NOTEBOOK_HYBRID_RETRIEVAL
+// (default off). Vector + lexical ranks merge by RRF; the #4469/#4484 model
+// filter still decides admission for every row; the embedder being down or the
+// scope holding no vectors leaves the lexical result byte for byte.
+describe("retrieveNodeChunks — hybrid (vector + lexical, RRF) behind NOTEBOOK_HYBRID_RETRIEVAL", () => {
+  const VEC = Array.from({ length: 768 }, (_, i) => (i % 5) / 10);
+  const lexRow = (page: number, content: string, extra: Partial<Record<string, unknown>> = {}) =>
+    nodeRow({ content, source_page: page, page_start: page, doc_id: "d-1", filename: "gs10.pdf", rank: 0.5 - page * 0.01, ...extra });
+
+  // One client, dispatching by SQL shape instead of by call order: every
+  // ts_rank pass sees the same lexical rows (dedup folds them), the exact
+  // lanes see nothing, and the vector pass sees its own ranked rows.
+  function hybridClient(lexical: Record<string, unknown>[], vector: Record<string, unknown>[]) {
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.includes("<=>")) return { rows: vector };
+      if (sql.includes("ts_rank_cd")) return { rows: lexical };
+      return { rows: [] };
+    });
+    return { client: { query } as unknown as PoolClient, calls };
+  }
+
+  const ask = (client: PoolClient, topK = 3) =>
+    retrieveNodeChunks(client, "t-1", "what carrier frequency should I use", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true, topK,
+      identity: { manufacturer: "AutomationDirect", model: "GS10" },
+      // #4484 (this branch's base): notebook scoping needs a confirmed identity.
+      identityStatus: "user_confirmed",
+    });
+
+  const LEXICAL = [
+    lexRow(10, "Carrier frequency P2.04 sets the PWM switching frequency of the output."),
+    lexRow(11, "Carrier frequency and audible motor noise: higher values reduce noise."),
+    lexRow(12, "Carrier frequency derating table for ambient temperature."),
+    lexRow(40, "Reduce the carrier frequency if the drive trips on overheat (oH) at high ambient."),
+  ];
+  // Vector lane: the oH-derating page is the best semantic match for a "should
+  // I use" ask, and page 55 is a vector-ONLY find the lexical lanes never saw.
+  const VECTOR = [
+    lexRow(40, "Reduce the carrier frequency if the drive trips on overheat (oH) at high ambient.", { rank: 0 }),
+    lexRow(55, "Recommended switching frequency by motor cable length and ambient.", { rank: 0 }),
+  ];
+
+  afterEach(() => {
+    delete process.env.NOTEBOOK_HYBRID_RETRIEVAL;
+    delete process.env.OLLAMA_BASE_URL;
+    vi.unstubAllGlobals();
+  });
+
+  it("flag OFF: no embedder call, no vector SQL, and the result is the lexical result", async () => {
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { client, calls } = hybridClient(LEXICAL, VECTOR);
+    const out = await ask(client);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.sql.includes("<=>"))).toBe(false);
+    expect(out.map((c) => c.sourcePage)).toEqual([10, 11, 12]);
+  });
+
+  it("flag ON: embeds the question, runs ONE vector pass in the same scope, and RRF lifts the vector-first page and admits the vector-only page", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const { client, calls } = hybridClient(LEXICAL, VECTOR);
+    // A 4-cut: with one RRF term each, the vector-only page 55 (vector #2 →
+    // 1/62) TIES the lexical #2 page 11 (1/62) and the tie breaks toward
+    // lexical, so it is 4th — admitted, behind the pages that earned a rank.
+    const out = await ask(client, 4);
+    const vectorCalls = calls.filter((c) => c.sql.includes("<=>"));
+    expect(vectorCalls).toHaveLength(1);
+    expect(vectorCalls[0].sql).toMatch(/embedding IS NOT NULL/);
+    expect(vectorCalls[0].sql).toMatch(/doc_id = ANY\(\$5::uuid\[\]\)/);
+    expect(vectorCalls[0].params).toContain(`[${VEC.join(",")}]`);
+    expect(vectorCalls[0].params[4]).toEqual(["d-1"]);
+    const pages = out.map((c) => c.sourcePage);
+    // page 40 is in BOTH lists (lexical 4th, vector 1st) → it now leads
+    expect(pages[0]).toBe(40);
+    // the vector-only page is admitted into the cut
+    expect(pages).toContain(55);
+    expect(out).toHaveLength(4);
+  });
+
+  // Scope-pass finding on #4487: a vector-only row was pushed into the pool and
+  // so appeared in the lexical rerank too (rank 0, at the bottom) — earning a
+  // lexical RRF term it had no right to. Page 55 (vector-only, 2nd by vector)
+  // then outscored BOTH page 10 (lexical #1) and page 11: 1/(k+5) + 1/(k+2)
+  // beats 1/(k+1). With one term each it scores 1/(k+2), ties page 11, and the
+  // tie breaks toward lexical — so the order is 40, 10, 11, 55, not 40, 55, 10, 11.
+  it("RRF double-count: a vector-only row scores once, so it cannot displace pages that earned a lexical rank", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const { client } = hybridClient(LEXICAL, VECTOR);
+    const out = await ask(client, 4);
+    expect(out.map((c) => c.sourcePage)).toEqual([40, 10, 11, 55]);
+  });
+
+  // Scope-pass finding on #4487: the vector lane ran ONE query over every
+  // attached manual while BM25 iterates docWindows per manual when the ask is
+  // model-scoped — so a large sibling manual could fill all POOL vector slots.
+  it("model-scoped ask: the vector lane runs once per attached manual and re-sorts across windows by cosine", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const d1 = lexRow(10, "Carrier frequency P2.04 sets the PWM switching frequency.", { rank: 0, vscore: 0.5, doc_id: "d-1" });
+    const d2 = lexRow(70, "Switching frequency and ambient derating for the GS10.", { rank: 0, vscore: 0.9, doc_id: "d-2", filename: "gs10_b.pdf" });
+    const query = vi.fn(async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.includes("<=>")) {
+        const window = params[4] as string[];
+        return { rows: window[0] === "d-1" ? [d1] : [d2] };
+      }
+      return { rows: [] };
+    });
+    const out = await retrieveNodeChunks({ query } as unknown as PoolClient, "t-1", "what carrier frequency should I use", {
+      nodeId: "n-1", unsPath: null, docIds: ["d-1", "d-2"], validatedDocScope: true, topK: 3,
+      identity: { manufacturer: "AutomationDirect", model: "GS10" },
+      identityStatus: "user_confirmed",
+    });
+    const vectorCalls = calls.filter((c) => c.sql.includes("<=>"));
+    expect(vectorCalls.map((c) => c.params[4])).toEqual([["d-1"], ["d-2"]]);
+    // d-2's row had the higher cosine even though its window ran second.
+    expect(out.map((c) => c.sourcePage)).toEqual([70, 10]);
+  });
+
+  it("flag ON but the embedder is down: the result is the flag-OFF result, byte for byte, and no vector SQL runs", async () => {
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    const { client: offClient } = hybridClient(LEXICAL, VECTOR);
+    const off = await ask(offClient);
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    const { client, calls } = hybridClient(LEXICAL, VECTOR);
+    const on = await ask(client);
+    expect(calls.some((c) => c.sql.includes("<=>"))).toBe(false);
+    expect(on).toEqual(off);
+  });
+
+  it("flag ON with no vectors in scope (vector pass returns nothing): the lexical result is unchanged", async () => {
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    const { client: offClient } = hybridClient(LEXICAL, []);
+    const off = await ask(offClient);
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const { client } = hybridClient(LEXICAL, []);
+    expect(await ask(client)).toEqual(off);
+  });
+
+  it("the #4469/#4484 model filter still rejects a sibling-manual chunk the vector lane found", async () => {
+    process.env.NOTEBOOK_HYBRID_RETRIEVAL = "1";
+    process.env.OLLAMA_BASE_URL = "http://embedder.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ embedding: VEC }), { status: 200 })));
+    const sibling = lexRow(3, "GS20 carrier frequency recommendations.", {
+      rank: 0, doc_id: "d-2", filename: "gs20.pdf", document_heading: "GS20 Drive User Manual",
+    });
+    const { client } = hybridClient(LEXICAL, [sibling, ...VECTOR]);
+    const out = await ask(client);
+    expect(out.some((c) => c.docId === "d-2")).toBe(false);
+    expect(out.map((c) => c.sourcePage)[0]).toBe(40);
   });
 });

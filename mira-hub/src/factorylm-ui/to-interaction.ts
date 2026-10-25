@@ -202,6 +202,8 @@ export function sourceFor(citation: EvidenceCitation, turnId: string): SourceRef
     kind: citation.fileId ? "workspace_file" : "oem_documentation",
     locator,
     ...(href ? { href } : {}),
+    // The canonical origin of a photo-derived source is the photograph (085).
+    ...(href && citation.originFileId ? { media: "image" as const } : {}),
   };
 }
 

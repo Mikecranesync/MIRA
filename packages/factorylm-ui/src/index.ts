@@ -31,3 +31,5 @@ export {
   type FixRequestIds,
   type ReadAloud,
 } from "./answer-actions";
+
+export { PhotoThumb } from "./PhotoViewer";

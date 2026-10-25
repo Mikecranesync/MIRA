@@ -33,6 +33,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -72,7 +73,8 @@ def judge_baseline_infra_check() -> tuple[bool, str | None]:
 def build_drift_check_cmd(results_dir: Path) -> list[str]:
     """Build drift_check command."""
     return [
-        sys.executable, "evals/scripts/drift_check.py",
+        sys.executable,
+        "evals/scripts/drift_check.py",
         str(results_dir),
     ]
 
@@ -80,9 +82,12 @@ def build_drift_check_cmd(results_dir: Path) -> list[str]:
 def build_run_technician_cmd(results_dir: Path, cases: list[str]) -> list[str]:
     """Build run_technician command."""
     cmd = [
-        sys.executable, "evals/scripts/run_technician.py",
-        "--cases", *cases,
-        "--out", str(results_dir),
+        sys.executable,
+        "evals/scripts/run_technician.py",
+        "--cases",
+        *cases,
+        "--out",
+        str(results_dir),
     ]
     return cmd
 
@@ -90,7 +95,8 @@ def build_run_technician_cmd(results_dir: Path, cases: list[str]) -> list[str]:
 def build_judge_baseline_cmd(results_dir: Path) -> list[str]:
     """Build judge_baseline command."""
     return [
-        sys.executable, "evals/scripts/judge_baseline.py",
+        sys.executable,
+        "evals/scripts/judge_baseline.py",
         str(results_dir),
     ]
 
@@ -98,8 +104,11 @@ def build_judge_baseline_cmd(results_dir: Path) -> list[str]:
 def build_report_cmd(results_dir: Path, baseline: Path | None) -> list[str]:
     """Build report.py command."""
     cmd = [
-        sys.executable, "evals/scripts/report.py",
+        sys.executable,
+        "evals/scripts/report.py",
         str(results_dir),
+        "--stamp",
+        results_dir.name,
     ]
     if baseline:
         cmd.extend(["--baseline", str(baseline)])
@@ -109,7 +118,8 @@ def build_report_cmd(results_dir: Path, baseline: Path | None) -> list[str]:
 def build_android_cmd(results_dir: Path) -> list[str]:
     """Build run_android_workflows.py command."""
     return [
-        sys.executable, "evals/scripts/run_android_workflows.py",
+        sys.executable,
+        "evals/scripts/run_android_workflows.py",
         str(results_dir),
     ]
 
@@ -180,6 +190,8 @@ def write_manifest(
     cases_version: str,
     judge_model_env: str,
     planned_stages: list[str],
+    offline_only: bool = False,
+    baseline: Path | None = None,
 ) -> None:
     """Write manifest.json per §13 spec."""
     manifest = {
@@ -191,7 +203,20 @@ def write_manifest(
         "judge_model_env": judge_model_env,
         "timestamp_start": datetime.now(timezone.utc).isoformat(),
         "stages_planned": planned_stages,
+        "evaluation_mode": "offline_archive" if offline_only else "live_attempt",
     }
+    if offline_only:
+        archive_source = {"path": str(baseline) if baseline else None}
+        if baseline:
+            try:
+                raw = (baseline / "scores" / "_summary.json").read_bytes()
+                archive_source["summary_sha256"] = hashlib.sha256(raw).hexdigest()
+                archived_summary = json.loads(raw)
+                if isinstance(archived_summary, dict):
+                    archive_source["scored_answer_sha"] = archived_summary.get("sha")
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+                logger.warning("Archive summary provenance unavailable: %s", exc)
+        manifest["archive_source"] = archive_source
     manifest_file.write_text(json.dumps(manifest, indent=2))
     logger.info(f"Manifest written to {manifest_file}")
 
@@ -270,6 +295,8 @@ def main() -> int:
         cases_version=cases_version,
         judge_model_env=judge_model_env,
         planned_stages=planned_stages,
+        offline_only=offline_only,
+        baseline=baseline,
     )
 
     # Stage execution — every stage records a status; the verdict below is
@@ -383,7 +410,9 @@ def main() -> int:
     for stage_name, st in stage_status.items():
         logger.info(f"stage {stage_name}: {st}")
     if bad_stages:
-        logger.error(f"VERDICT: INFRA_FAILURE (stages not cleanly executed: {', '.join(bad_stages)})")
+        logger.error(
+            f"VERDICT: INFRA_FAILURE (stages not cleanly executed: {', '.join(bad_stages)})"
+        )
         print("\nVERDICT: INFRA_FAILURE (exit 4)")
         return 4
     if report_exit_code == 3:

@@ -10,6 +10,7 @@ import {
   landingSelection,
   NO_PROJECT_ERROR,
   chatBodyFor,
+  guidedDeadEndBody,
   detailQueryFor,
   draftAfterSendSucceeded,
   enabledDocIds,
@@ -682,5 +683,17 @@ describe("createLatestLoadTracker — a superseded load reports the load that re
   it("control: a load nothing superseded keeps its own result", async () => {
     const tracker = createLatestLoadTracker();
     await expect(tracker.start(async () => true)).resolves.toBe(true);
+  });
+});
+
+describe("guidedDeadEndBody — the guided dead-end hand-off (WP-1, owner decision 2026-10-21)", () => {
+  const sel = { notebookId: "nb-1", threadId: "t1" };
+  const history = historyRows([]);
+  it("is a general-mode turn with no sources that names the guided session", () => {
+    const body = guidedDeadEndBody("what else could cause this", "s-1", history, sel);
+    expect(body).toMatchObject({ message: "what else could cause this", sourceDocIds: [], mode: "general", threadId: "t1", guidedEscalation: { sessionId: "s-1" } });
+  });
+  it("an ordinary send never carries the dead-end claim", () => {
+    expect("guidedEscalation" in chatBodyFor("q", [], history, sel)).toBe(false);
   });
 });

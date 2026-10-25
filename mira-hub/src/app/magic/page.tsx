@@ -51,7 +51,7 @@ function MagicVerify() {
           <>
             <XCircle className="w-8 h-8 text-red-400 mx-auto mb-4" />
             <p className="text-white text-lg font-semibold">Link expired or already used</p>
-            {/* Invitation links now live 24 hours (#4370) while ordinary
+            {/* Invitation links last the pilot window (INVITE_MAGIC_LINK_TTL_MINUTES, #4664) while ordinary
                 sign-in links stay at 15 minutes — this page can't tell which
                 kind an already-invalid token was, so it must not claim one
                 fixed duration for both. */}
