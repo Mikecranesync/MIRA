@@ -37,6 +37,7 @@ vi.mock("@/lib/db", () => ({ default: testPool }));
 vi.mock("@/lib/data-schema", () => ({ ensureDataSchema: vi.fn() }));
 
 import { createMagicToken, ensureSchema, validateMagicToken } from "../users";
+import { INVITE_MAGIC_LINK_TTL_MINUTES } from "@/lib/config";
 
 const TENANT = randomUUID();
 const INVITED_EMAIL = `invited-${randomUUID()}@example.com`;
@@ -78,7 +79,7 @@ describe.skipIf(!READY)("magic token TTL against real Postgres (#4370)", () => {
 
   // Part (a): createMagicToken itself writes the right interval. No
   // backdating — this reads back exactly what the function under test wrote.
-  it("createMagicToken writes ~24h for an invitation (tenantId set), ~15m for an ordinary link", async () => {
+  it("createMagicToken writes the invite TTL for an invitation (tenantId set), ~15m for an ordinary link", async () => {
     const inviteToken = await createMagicToken(INVITED_EMAIL, {
       tenantId: TENANT,
       role: "technician",
@@ -89,23 +90,24 @@ describe.skipIf(!READY)("magic token TTL against real Postgres (#4370)", () => {
     const inviteMinutes = await minutesUntilExpiry(inviteToken);
     const ordinaryMinutes = await minutesUntilExpiry(ordinaryToken);
 
-    expect(inviteMinutes).toBeGreaterThan(24 * 60 - 2);
-    expect(inviteMinutes).toBeLessThan(24 * 60 + 2);
+    // #4664 owns the length via INVITE_MAGIC_LINK_TTL_MINUTES (the pilot window).
+    expect(inviteMinutes).toBeGreaterThan(INVITE_MAGIC_LINK_TTL_MINUTES - 2);
+    expect(inviteMinutes).toBeLessThan(INVITE_MAGIC_LINK_TTL_MINUTES + 2);
     expect(ordinaryMinutes).toBeGreaterThan(15 - 2);
     expect(ordinaryMinutes).toBeLessThan(15 + 2);
   });
 
   // Part (b): validateMagicToken's real `WHERE expires_at > NOW()` boundary,
   // exercised via controlled backdating.
-  it("an invitation token is still valid 16 minutes in — past the old 15-minute boundary, before 24h", async () => {
+  it("an invitation token is still valid 16 minutes in — past the old 15-minute boundary", async () => {
     const token = await createMagicToken(`past15-${INVITED_EMAIL}`, {
       tenantId: TENANT,
       role: "technician",
       invitedBy: "user-admin",
     });
-    // Simulate 16 real minutes having elapsed on a 24h-TTL token: ~23h44m
-    // of real validity remains — exactly what a tech opening the email
-    // later in the shift depends on.
+    // Leave ~23h44m of real validity — a token a tech opens later in the
+    // shift. Absolute remaining time, so it holds for any invite TTL that
+    // exceeds it (INVITE_MAGIC_LINK_TTL_MINUTES is the pilot window, #4664).
     await backdateExpiry(token, "23 hours 44 minutes");
 
     await expect(validateMagicToken(token)).resolves.toMatchObject({
@@ -114,13 +116,13 @@ describe.skipIf(!READY)("magic token TTL against real Postgres (#4370)", () => {
     });
   });
 
-  it("an invitation token is expired once past the 24-hour boundary", async () => {
+  it("an invitation token is expired once past its expiry boundary", async () => {
     const token = await createMagicToken(`expired-${INVITED_EMAIL}`, {
       tenantId: TENANT,
       role: "technician",
       invitedBy: "user-admin",
     });
-    // Simulate 24h + a minute having elapsed — one minute PAST expiry.
+    // One minute PAST expiry, whatever the invite TTL is.
     await backdateExpiry(token, "-1 minute");
 
     await expect(validateMagicToken(token)).resolves.toBeNull();

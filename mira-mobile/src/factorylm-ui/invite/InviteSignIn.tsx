@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { resolveApiBase } from "../../plugins/build-config";
 import { inviteTokenIdentity, parseInviteLink } from "./invite-link";
 import { confirmInviteSession, signInWithMagicToken } from "./invite-sign-in";
@@ -11,10 +11,18 @@ import { INVITE_HYDRATION_FAILED_COPY, inviteLinkErrorCopy, inviteSignInFailureC
  * is only ever parsed locally; the app talks to its own trusted backend, not
  * to the host the technician pasted (see invite-link.ts).
  */
+/** #4470 round 2: the pasted link plus the token whose exchange already set
+ *  a fresh session. Lifted to Login so a password/invite mode switch (which
+ *  remounts this component) cannot drop it. */
+export type InviteRecovery = { pasted: string; establishedToken: string | null };
+export const EMPTY_INVITE_RECOVERY: InviteRecovery = { pasted: "", establishedToken: null };
+
 export function InviteSignIn({
   onSignedIn,
   onSignInStarted,
   onBusyChange,
+  recovery,
+  onRecoveryChange,
 }: {
   onSignedIn: () => Promise<void>;
   onSignInStarted?: () => void;
@@ -27,15 +35,32 @@ export function InviteSignIn({
    *  signed in. Disabling the toggle while busy removes the only way to
    *  create that interleaving from the UI. */
   onBusyChange?: (busy: boolean) => void;
+  /** Controlled recovery state; when omitted the component keeps its own. */
+  recovery?: InviteRecovery;
+  onRecoveryChange?: (next: InviteRecovery) => void;
 }) {
-  const [pasted, setPasted] = useState("");
+  const [localRecovery, setLocalRecovery] = useState<InviteRecovery>(EMPTY_INVITE_RECOVERY);
+  const current = recovery ?? localRecovery;
+  // Writes go to the latest value so two updates in one attempt (pasted is
+  // unchanged mid-attempt, the textarea is disabled) never clobber each other.
+  const latest = useRef(current);
+  latest.current = current;
+  function update(patch: Partial<InviteRecovery>) {
+    const next = { ...latest.current, ...patch };
+    latest.current = next;
+    if (onRecoveryChange) onRecoveryChange(next);
+    else setLocalRecovery(next);
+  }
+  const { pasted, establishedToken } = current;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // #4470 F1: true once a prior exchange has already consumed the token and
-  // set a fresh session — a later /api/me-only failure must be retried via
-  // confirmInviteSession(), never by wiping state and resubmitting the
-  // (now-consumed) token.
-  const [sessionEstablished, setSessionEstablished] = useState(false);
+  // #4470 F1/F4: the session is already established ONLY for the token that
+  // established it. A later /api/me-only failure for that same token is
+  // retried via confirmInviteSession(), never by wiping state and replaying
+  // the consumed token; any OTHER pasted link (a different invite, or an
+  // invalid one) must never confirm that earlier account.
+  const pastedToken = inviteTokenIdentity(pasted);
+  const canConfirm = establishedToken !== null && pastedToken === establishedToken;
 
   function beginBusy() {
     setBusy(true);
@@ -53,11 +78,11 @@ export function InviteSignIn({
   // next tap re-confirms via confirmInviteSession() instead of replaying the
   // spent token (which would wrongly read "already used"), and the rejection
   // never escapes `void submit()` as an unhandled promise.
-  async function hydrate() {
+  async function hydrate(token: string) {
     try {
       await onSignedIn();
     } catch {
-      setSessionEstablished(true);
+      update({ establishedToken: token });
       setError(INVITE_HYDRATION_FAILED_COPY);
     }
   }
@@ -74,14 +99,15 @@ export function InviteSignIn({
     // endBusy() only runs once the ENTIRE attempt — including hydration —
     // is fully resolved, on every return path.
     try {
-      if (sessionEstablished) {
+      if (canConfirm && establishedToken) {
+        const token = establishedToken;
         onSignInStarted?.();
         const r = await confirmInviteSession();
         if (r.ok) {
-          await hydrate();
+          await hydrate(token);
           return;
         }
-        setSessionEstablished(Boolean(r.sessionEstablished));
+        update({ establishedToken: r.sessionEstablished ? token : null });
         setError(inviteSignInFailureCopy(r.reason));
         return;
       }
@@ -101,12 +127,15 @@ export function InviteSignIn({
       }
 
       onSignInStarted?.();
+      const token = inviteTokenIdentity(pasted) ?? parsed.token;
+      // A new exchange replaces any earlier established session.
+      update({ establishedToken: null });
       const r = await signInWithMagicToken(parsed.token);
       if (r.ok) {
-        await hydrate();
+        await hydrate(token);
         return;
       }
-      setSessionEstablished(Boolean(r.sessionEstablished));
+      update({ establishedToken: r.sessionEstablished ? token : null });
       setError(inviteSignInFailureCopy(r.reason));
     } finally {
       endBusy();
@@ -130,17 +159,11 @@ export function InviteSignIn({
         // flight — a late-arriving result for token A must never become
         // the confirmation for an edited token B.
         onChange={(e) => {
-          const next = e.target.value;
-          const previousToken = inviteTokenIdentity(pasted);
-          const nextToken = inviteTokenIdentity(next);
-          setPasted(next);
-          // Only a different invitation token drops the confirmation-retry
-          // path. A stray space or accidental keystroke after hydration
-          // failure must not clear sessionEstablished — that would replay
-          // the spent token and wipe the fresh cookie.
-          if (previousToken && nextToken && previousToken !== nextToken) {
-            setSessionEstablished(false);
-          }
+          // Editing never clears the recovery state: whether a retry confirms
+          // or exchanges is decided at submit time by comparing the pasted
+          // token with establishedToken, so a stray space keeps the retry and
+          // a different (or cleared-then-repasted) invite starts a new one.
+          update({ pasted: e.target.value });
           setError("");
         }}
         placeholder="https://app.factorylm.com/hub/magic?token=…"
@@ -151,7 +174,7 @@ export function InviteSignIn({
           disabled={busy || !pasted.trim()}
           onClick={() => void submit()}
         >
-          {busy ? "Signing in…" : sessionEstablished ? "Finish signing in" : "Use invite link"}
+          {busy ? "Signing in…" : canConfirm ? "Finish signing in" : "Use invite link"}
         </button>
       </div>
       {error && <div className="error">{error}</div>}

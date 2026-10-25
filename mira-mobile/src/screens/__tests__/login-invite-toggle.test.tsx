@@ -538,3 +538,117 @@ describe("Login — invitation-link path (#4364)", () => {
     expect(onSignedIn).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("Login — invite recovery is bound to the token that established it (#4470 round 2)", () => {
+  const A = "https://app.factorylm.com/hub/magic?token=11111111-2222-4333-8444-555555555555";
+  const B = "https://app.factorylm.com/hub/magic?token=22222222-3333-4444-8555-666666666666";
+
+  function mockServer(callbackTokens: string[]) {
+    state.httpRequest.mockImplementation(
+      async ({ url, data }: { url: string; data?: string }) => {
+        if (url.endsWith("/api/auth/csrf/")) {
+          return { status: 200, data: JSON.stringify({ csrfToken: "c" }), headers: {} };
+        }
+        if (url.endsWith("/api/auth/callback/magic-token/")) {
+          callbackTokens.push(String(data ?? ""));
+          return {
+            status: 200,
+            data: JSON.stringify({ url: "https://app.factorylm.com/feed" }),
+            headers: { "Set-Cookie": "session-token=fresh; Path=/" },
+          };
+        }
+        if (url.endsWith("/api/me/")) {
+          return { status: 200, data: JSON.stringify({ id: "u1" }), headers: {} };
+        }
+        throw new Error(`unexpected ${url}`);
+      },
+    );
+  }
+
+  async function flush() {
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+  }
+
+  it("F4: clearing the field and pasting invite B exchanges B, never confirms A's session", async () => {
+    const callbackTokens: string[] = [];
+    mockServer(callbackTokens);
+    const onSignedIn = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("getMe network blip"))
+      .mockResolvedValue(undefined);
+    render(<Login onSignedIn={onSignedIn} />);
+    fireEvent.click(screen.getByText(/Have an invitation link instead/));
+    const textarea = screen.getByLabelText("Invitation link") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: A } });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Use invite link"));
+      await flush();
+    });
+    expect(screen.getByText("Finish signing in")).toBeTruthy();
+
+    // Clear first (the previous value has no token identity), then paste B.
+    fireEvent.change(textarea, { target: { value: "" } });
+    fireEvent.change(textarea, { target: { value: B } });
+    expect(screen.queryByText("Finish signing in")).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Use invite link"));
+      await flush();
+    });
+    expect(callbackTokens).toHaveLength(2);
+    expect(callbackTokens[1]).toContain("22222222-3333-4444-8555-666666666666");
+  });
+
+  it("F4: an invalid link after hydration failure never confirms the earlier session", async () => {
+    const callbackTokens: string[] = [];
+    mockServer(callbackTokens);
+    const onSignedIn = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("getMe network blip"))
+      .mockResolvedValue(undefined);
+    render(<Login onSignedIn={onSignedIn} />);
+    fireEvent.click(screen.getByText(/Have an invitation link instead/));
+    const textarea = screen.getByLabelText("Invitation link") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: A } });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Use invite link"));
+      await flush();
+    });
+    fireEvent.change(textarea, { target: { value: "not a link" } });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Use invite link"));
+      await flush();
+    });
+    expect(onSignedIn).toHaveBeenCalledTimes(1);
+    expect(callbackTokens).toHaveLength(1);
+  });
+
+  it("F1: switching modes and back keeps the recovery state; retry does not replay the token or drop the cookie", async () => {
+    const callbackTokens: string[] = [];
+    mockServer(callbackTokens);
+    const onSignedIn = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("getMe network blip"))
+      .mockResolvedValue(undefined);
+    render(<Login onSignedIn={onSignedIn} />);
+    fireEvent.click(screen.getByText(/Have an invitation link instead/));
+    fireEvent.change(screen.getByLabelText("Invitation link"), { target: { value: A } });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Use invite link"));
+      await flush();
+    });
+    expect(screen.getByText("Finish signing in")).toBeTruthy();
+
+    fireEvent.click(screen.getByText(/Have a password instead/));
+    fireEvent.click(screen.getByText(/Have an invitation link instead/));
+
+    expect((screen.getByLabelText("Invitation link") as HTMLTextAreaElement).value).toBe(A);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Finish signing in"));
+      await flush();
+    });
+    expect(callbackTokens).toHaveLength(1);
+    expect(onSignedIn).toHaveBeenCalledTimes(2);
+    expect(state.data.get("flm.cookiejar.v1") ?? "").toContain("fresh");
+  });
+});

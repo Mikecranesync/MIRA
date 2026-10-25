@@ -7,7 +7,11 @@ import { signInFailureCopy } from "../lib/resource-copy";
 // factorylm-ui per the Unified UI Cutover; this screen stays a thin canonical
 // adapter — a toggle mount, not a reimplementation — passing through the same
 // onSignedIn/onSignInStarted contract both paths already share.
-import { InviteSignIn } from "../factorylm-ui/invite/InviteSignIn";
+import {
+  EMPTY_INVITE_RECOVERY,
+  InviteSignIn,
+  type InviteRecovery,
+} from "../factorylm-ui/invite/InviteSignIn";
 
 export function Login({
   onSignedIn,
@@ -34,6 +38,11 @@ export function Login({
   // mid-flight and start another.
   const [inviteBusy, setInviteBusy] = useState(false);
   const anyBusy = busy || inviteBusy;
+  // #4470 round 2 F1: InviteSignIn remounts on every mode switch; its
+  // recovery state (pasted link + the token whose exchange already set a
+  // session) lives here so switching modes cannot drop it and force a retry
+  // that wipes the fresh cookie and replays the spent token.
+  const [inviteRecovery, setInviteRecovery] = useState<InviteRecovery>(EMPTY_INVITE_RECOVERY);
 
   if (mode === "invite") {
     return (
@@ -44,6 +53,8 @@ export function Login({
             onSignedIn={onSignedIn}
             onSignInStarted={onSignInStarted}
             onBusyChange={setInviteBusy}
+            recovery={inviteRecovery}
+            onRecoveryChange={setInviteRecovery}
           />
           <button
             type="button"
@@ -85,6 +96,8 @@ export function Login({
               onClick={async () => {
                 setBusy(true);
                 setError("");
+                // A password attempt replaces whatever session an invite set.
+                setInviteRecovery((r) => ({ ...r, establishedToken: null }));
                 onSignInStarted?.();
                 try {
                   const r = await signIn(email, password);
