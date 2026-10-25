@@ -4115,6 +4115,7 @@ async function handleChatTurn(
       // tokens were consumed whether or not the technician read them.
       if (clientAbort.signal.aborted) {
         req.signal?.removeEventListener("abort", onClientGone);
+        progressCancel?.removeEventListener("abort", onClientGone); // Codex #4765 F5
         activeReader?.cancel().catch(() => {});
         try {
           controller.close();
@@ -4433,6 +4434,7 @@ async function handleChatTurn(
       // a disconnect during the judge falls into the same designed bucket as a
       // disconnect after commit (the turn stays answered).
       req.signal?.removeEventListener("abort", onClientGone);
+      progressCancel?.removeEventListener("abort", onClientGone); // Codex #4765 F5
 
       // A rejected turn ships ZERO citations — the retrieved content that drove
       // the rejected draft must not be presented as the replacement's authority.
@@ -4908,6 +4910,7 @@ async function handleChatTurn(
       endRoot();
       } catch (err) {
         req.signal?.removeEventListener("abort", onClientGone);
+        progressCancel?.removeEventListener("abort", onClientGone); // Codex #4765 F5
         await abandonRequestClaim().catch((releaseErr) => {
           console.error(
             "[notebook-chat] request claim release failed:",

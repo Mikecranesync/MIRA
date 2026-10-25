@@ -89,6 +89,17 @@ const ingressMock = vi.hoisted(() => ({
   recordArrival: vi.fn(async () => undefined),
   recordResponse: vi.fn<(r: { httpStatus: number; tenantId: string | null }) => Promise<undefined>>(async () => undefined),
 }));
+const lifecycleSpy = vi.hoisted(() => ({ outcomes: [] as string[] }));
+vi.mock("@/capabilities/observability/turn-lifecycle", async (orig) => {
+  const real = await orig<typeof import("@/capabilities/observability/turn-lifecycle")>();
+  return {
+    ...real,
+    closeTurn: vi.fn((o: Parameters<typeof real.closeTurn>[0]) => {
+      lifecycleSpy.outcomes.push(String(o.outcome));
+      return real.closeTurn(o);
+    }),
+  };
+});
 vi.mock("@/capabilities/observability/turn-ingress", async (orig) => ({
   ...(await orig<typeof import("@/capabilities/observability/turn-ingress")>()),
   ...ingressMock,
@@ -306,5 +317,40 @@ describe("#4687 chat progress frames", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(ingressMock.recordResponse).toHaveBeenCalledTimes(1);
     expect(ingressMock.recordResponse.mock.calls[0][0]).toMatchObject({ httpStatus: 400 });
+  });
+
+  it("F5: cancelling the progress stream during persistence cannot reclassify a committed answer", async () => {
+    lifecycleSpy.outcomes.length = 0;
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    nbMock.recordTurn.mockImplementationOnce(async () => { await held; return undefined; });
+    const res = await POST(req({ message: ORDINARY, sourceDocIds: [DOC_A] }, { progress: true }), params);
+    const reader = res.body!.getReader();
+    await vi.waitFor(() => expect(nbMock.recordTurn).toHaveBeenCalledTimes(1));
+    const cancelled = reader.cancel(); // client gone while the committed write is in flight
+    release();
+    await cancelled;
+    await new Promise((r) => setTimeout(r, 50));
+    const turn = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerStatus: string };
+    expect(turn.answerStatus).toBe("answered");
+    expect(lifecycleSpy.outcomes.length).toBeGreaterThan(0);
+    expect(lifecycleSpy.outcomes).not.toContain("cancelled");
+  });
+
+  it("F5: cancelling right after the terminal status frame keeps the committed outcome", async () => {
+    lifecycleSpy.outcomes.length = 0;
+    const res = await POST(req({ message: ORDINARY, sourceDocIds: [DOC_A] }, { progress: true }), params);
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let seen = "";
+    while (!seen.includes('"kind":"status"')) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      seen += dec.decode(value, { stream: true });
+    }
+    expect(seen).toContain('"status":"answered"');
+    await reader.cancel();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lifecycleSpy.outcomes).not.toContain("cancelled");
   });
 });
