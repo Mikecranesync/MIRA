@@ -9,7 +9,7 @@ vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/capabilities", () => ({ requireCapability: vi.fn(() => null) }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 
-import { PATCH } from "../route";
+import { PATCH } from "@/app/api/work-orders/[id]/route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 
