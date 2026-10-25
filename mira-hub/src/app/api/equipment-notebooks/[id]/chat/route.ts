@@ -118,6 +118,7 @@ import {
   safetyFlagHeaders,
   withSafetyFlag,
 } from "@/lib/safety-classifier";
+import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
 import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import {
   ENERGIZED_WORK_TRIGGER,
@@ -1848,7 +1849,15 @@ async function handleChatTurn(
   // renders on every client and survives reload. It is not a structured
   // safety_notice because today's web/mobile chips label every non-terminal
   // notice "energized electrical work".
-  const flagBannerBase = safetyTrigger && !electricalHazardDirective ? hazardBanner(safetyTrigger) : null;
+  // #4645: a reset / restart-after-fault ask gets the fixed restart banner. It is
+  // an ADVISORY, never a safetyTrigger — a trigger lets a turn be answered with
+  // no evidence, and an invented reset procedure is the #4645 failure itself.
+  const restartAdvisory = !safetyTrigger && !electricalHazardDirective && isFaultResetAsk(message);
+  const flagBannerBase = safetyTrigger && !electricalHazardDirective
+    ? hazardBanner(safetyTrigger)
+    : restartAdvisory
+      ? RESTART_BANNER
+      : null;
 
   // Snapshot for every persisted turn, including abstains and safety stops: a
   // refusal about a specific machine is still a record about that machine —
@@ -2277,8 +2286,11 @@ async function handleChatTurn(
   // Banner is classified before retrieval; the page citation can only be
   // written now that chunks exist. Prefer the WARNING/CAUTION/DANGER chunk's
   // printed label (TQ-29: p.2-15) over INTEGER source_page.
+  // The restart banner is site safety practice, not a manual claim: no page.
   const flagBanner = flagBannerBase
-    ? withPageCitation(flagBannerBase, pageFromRetrievedChunks(chunks))
+    ? restartAdvisory
+      ? flagBannerBase
+      : withPageCitation(flagBannerBase, pageFromRetrievedChunks(chunks))
     : null;
   {
     // Notebook chunks carry a doc id; shared-OEM chunks carry no doc id but a
@@ -2696,6 +2708,9 @@ async function handleChatTurn(
   // "candidate" wins over "confirmed": its manual lands turned off, so the
   // fallback must also say to turn it on (Codex #4183 F1).
   let manualSearchRunning: "confirmed" | "candidate" | null = null;
+  // #4718: the acquisition key `manualSearchRunning` describes, so the copy
+  // can be re-checked against the stored record just before it is chosen.
+  let manualSearchKey: string | null = null;
   // Codex round 5 F15 (#4195) — the candidate search's own generation (the
   // DB's `started_at`, never this route's local clock), threaded onto the
   // LIVE `manual_search_status` SSE frame below so the shared mobile/Hub
@@ -2765,7 +2780,10 @@ async function handleChatTurn(
       if (acq && acq.key === key) {
         manualAcquisition = { state: acq.state, started_this_turn: started, candidate_host: acq.candidate_host };
         acquisitionText = acquisitionDeclineText(acq, key, `${oemManufacturer.name} ${oemModel.value}`);
-        if (acq.state === "running" && manualSearchRunning === null) manualSearchRunning = "confirmed";
+        if (acq.state === "running" && manualSearchRunning === null) {
+          manualSearchRunning = "confirmed";
+          manualSearchKey = key;
+        }
       }
     }
   }
@@ -2830,7 +2848,10 @@ async function handleChatTurn(
         }
         if (!cStarted) cAcq = await reconcileAcquisition(ctx.tenantId, notebookId, cAcq);
         if (cAcq && cAcq.key === candidateKey) {
-          if (cAcq.state === "running") manualSearchRunning = "candidate";
+          if (cAcq.state === "running") {
+            manualSearchRunning = "candidate";
+            manualSearchKey = candidateKey;
+          }
           candidateManualUrl = !cAcq.attached_indexed && !cAcq.source_removed ? acquisitionManualUrl(cAcq) : null;
           candidateAcquisitionText = acquisitionDeclineText(
             cAcq,
@@ -2903,6 +2924,7 @@ async function handleChatTurn(
           manualAcquisition = started
             ? { state: "running", started_this_turn: true, candidate_host: null }
             : { state: acq.state, started_this_turn: false, candidate_host: acq.candidate_host };
+          if (manualAcquisition.state === "running" && manualSearchRunning === null) manualSearchKey = key;
         }
       }
     }
@@ -3482,7 +3504,9 @@ async function handleChatTurn(
     ? `${basePrompt}\n\n${ELECTRICAL_HAZARD_DIRECTIVE}`
     : safetyTrigger
       ? `${basePrompt}\n\n${safetyFlagDirective(safetyTrigger)}`
-      : basePrompt;
+      : restartAdvisory
+        ? `${basePrompt}\n\n${RESTART_DIRECTIVE}`
+        : basePrompt;
   const withMachine = machineSection ? `${withHazard}\n\n${machineSection}` : withHazard;
   // Visual (photographed nameplate) evidence rides after machine evidence; with
   // none the string is byte-identical to before.
@@ -3668,6 +3692,10 @@ async function handleChatTurn(
       // #4068: with the gate off, content streams live — the related-manual
       // warning goes out as the first content, before any model text.
       let relatedWarningStreamed = false;
+      // #4645 (Codex #4652 r1 F2): the restart banner reaches the live stream in
+      // the unbuffered (gate-off) mode too, once, ahead of the related-manual
+      // warning — the same order the persisted answerText uses.
+      let restartBannerStreamed = false;
       let served = false;
       let servedModel: string | null = null;
       let internalError: unknown = null;
@@ -3895,6 +3923,12 @@ async function handleChatTurn(
                     responseBuffer.push(norm);
                     // B2: under the gate the candidate is buffered, not shown.
                     if (!gate) {
+                      if (restartAdvisory && flagBanner && !restartBannerStreamed) {
+                        restartBannerStreamed = true;
+                        controller.enqueue(
+                          enc.encode(sse({ kind: "content", content: `${flagBanner}\n\n` } as NotebookContentFrame)),
+                        );
+                      }
                       if (relatedManualWarning && !relatedWarningStreamed) {
                         relatedWarningStreamed = true;
                         controller.enqueue(
@@ -4242,6 +4276,20 @@ async function handleChatTurn(
       // The specificity lane keys on "no documents behind the answer", which
       // is `!docGrounded` (an OEM-grounded turn is held to the citation
       // contract, exactly like a notebook-grounded one).
+      // #4718: the claim above only reserved the search; the cap is checked in
+      // the background run, which usually settles while the answer is being
+      // generated. Re-read once so a refused search is not described as running
+      // in the fallback copy. Only the copy uses this: the live status frame
+      // keeps `manualSearchRunning`, so the app still follows and settles it.
+      let fallbackSearchRunning = manualSearchRunning;
+      if (manualSearchRunning !== null && manualSearchKey !== null) {
+        try {
+          const settled = await readAcquisition(ctx.tenantId, notebookId);
+          if (settled && settled.key === manualSearchKey && settled.state !== "running") fallbackSearchRunning = null;
+        } catch (err) {
+          console.error("[notebook-chat] manual-search re-read failed:", err instanceof Error ? err.message : err);
+        }
+      }
       const validation = validateAnswer({
         answerText,
         question: message,
@@ -4249,7 +4297,7 @@ async function handleChatTurn(
         served,
         refused,
         evidenceSufficient,
-        manualSearchRunning,
+        manualSearchRunning: fallbackSearchRunning,
       });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
       // #4098: which quantity word + unit the exact-rating rule matched —

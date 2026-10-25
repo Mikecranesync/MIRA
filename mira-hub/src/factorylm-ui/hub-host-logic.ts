@@ -4,7 +4,7 @@
  * the shell's context snapshot says about the machine, which sources a turn is
  * allowed to cite, and what history the canonical route receives.
  */
-import { PROFILES, createShellState, shellReducer, type ManualSearchStatus, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
+import { PROFILES, createShellState, shellReducer, type InteractionTurn, type ManualSearchStatus, type ShellAction, type ShellFixture, type ShellState } from "../../../packages/factorylm-interaction/src";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
@@ -182,6 +182,74 @@ export function searchForSelection(sel: HubSelection | null): string {
 /** The shell's thread id for a selection — same grammar mobile uses. */
 export function shellThreadId(sel: HubSelection): string {
   return threadItemId(sel.notebookId, sel.threadId);
+}
+
+/**
+ * #4690: the safety lines the server writes ABOVE an answer, split from the
+ * answer so the shell can set them apart. Every one of them starts with "⚠️"
+ * (hazard, restart, energized and step-flag banners) and is joined to the
+ * answer by a blank line. On screen they rendered as an ordinary 3.5px-spaced
+ * paragraph, so "⚠️ Isolation. Lock and tag…" ran straight into "Yes—switch off
+ * the supply…" and read as part of the answer. Only LEADING paragraphs count; a
+ * ⚠️ later in an answer stays where the writer put it. The text itself is
+ * unchanged: `notes + separator + body` is the original string.
+ */
+export function splitLeadingSafetyNotes(text: string): { notes: string; body: string } {
+  // Blank lines only: the next paragraph's own indentation (a code block) is the answer's.
+  const boundary = /\n(?:[ \t]*\n)+/g;
+  let end = 0; // end of the last leading ⚠️ paragraph
+  let next = 0; // where the paragraph after it starts
+  while (text.slice(next).trimStart().startsWith("⚠️")) {
+    boundary.lastIndex = next;
+    const m = boundary.exec(text);
+    if (!m) return { notes: text.trim(), body: "" };
+    end = m.index;
+    next = m.index + m[0].length;
+  }
+  return next === 0 ? { notes: "", body: text } : { notes: text.slice(0, end).trim(), body: text.slice(next) };
+}
+
+/** #4695: the hydrate that tells the shell which thread is open (what `syncThread` dispatches). */
+export function openThreadAction(sel: HubSelection, at: string): ShellAction {
+  return {
+    type: "hydrate",
+    data: { thread: { ...EMPTY_FIXTURE.thread, id: shellThreadId(sel), notebookId: sel.notebookId, createdAt: at, updatedAt: at } },
+  };
+}
+
+/** The host's actions: the shell's, plus an automatic landing (deep link, reload, first load). */
+export type HubHostAction = ShellAction | { readonly type: "land-thread"; readonly selection: HubSelection; readonly at: string };
+
+/**
+ * #4695: the Hub host's reducer. The shell's `hydrate` blanks the draft whenever
+ * the thread id changes, which is right when the technician CHOOSES another
+ * thread. An automatic landing is not a choice: what was already typed on HOME
+ * belongs to the conversation that is opening. `land-thread` opens the thread
+ * and keeps the draft of the SAME state it transitions, in one step, so no
+ * separately held copy can be stale. That is a safeguard: the lost first word
+ * seen on staging was text typed before hydration, fixed in the Composer
+ * (#4695 part 4). Every other action is the shell's.
+ */
+export function hubHostReducer(state: ShellState, action: HubHostAction): ShellState {
+  if (action.type !== "land-thread") return shellReducer(state, action);
+  const landed = shellReducer(state, openThreadAction(action.selection, action.at));
+  return state.draft && landed.draft !== state.draft ? shellReducer(landed, { type: "set-draft", draft: state.draft }) : landed;
+}
+
+/**
+ * #4695: the thread the shell shows while a selection's detail is still loading.
+ * It carries the OPEN thread's id and notebook, the same identity `syncThread`
+ * stored. The reducer's `hydrate` blanks the draft whenever the thread id
+ * changes, so the old placeholder id (`hub-empty:thread`) wiped the composer on
+ * every render while the turns loaded and kept only the last keystroke: typing
+ * "How do I…" on a slow link sent "do I…". HOME (no selection) keeps the
+ * fixture thread, whose id is also the state's initial thread id.
+ */
+export function loadingThread(selection: HubSelection | null, turns: readonly InteractionTurn[]) {
+  const base = selection
+    ? { ...EMPTY_FIXTURE.thread, id: shellThreadId(selection), notebookId: selection.notebookId }
+    : EMPTY_FIXTURE.thread;
+  return turns.length ? { ...base, turns: [...turns] } : base;
 }
 
 /**

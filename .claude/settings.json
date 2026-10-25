@@ -71,20 +71,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "IN=$(cat); cmd=$(printf '%s' \"$IN\" | jq -r '.tool_input.command // empty'); case \"$cmd\" in *\"git commit\"*|*\"git push\"*) GL=$(command -v gitleaks 2>/dev/null); [ -n \"$GL\" ] || { [ -x /opt/homebrew/bin/gitleaks ] && GL=/opt/homebrew/bin/gitleaks; }; if [ -n \"$GL\" ]; then \"$GL\" protect --staged --redact --no-banner --config=.gitleaks.toml >&2 || { echo \"BLOCKED: gitleaks found secrets in staged changes (above). False positive? .gitleaks.toml allowlist or a # gitleaks:allow comment.\" >&2; exit 2; }; else echo \"gitleaks NOT FOUND - staged secret scan did NOT run (brew install gitleaks)\" >&2; fi;; esac; exit 0",
+            "command": "IN=$(cat); cmd=$(printf '%s' \"$IN\" | jq -r '.tool_input.command // empty'); case \"$cmd\" in *\"git commit\"*|*\"git push\"*) GL=$(command -v gitleaks 2>/dev/null); [ -n \"$GL\" ] || { [ -x /opt/homebrew/bin/gitleaks ] && GL=/opt/homebrew/bin/gitleaks; }; if [ -n \"$GL\" ]; then \"$GL\" protect --staged --redact --no-banner --config=\"$CLAUDE_PROJECT_DIR/.gitleaks.toml\" >&2 || { echo \"BLOCKED: gitleaks found secrets in staged changes (above). False positive? .gitleaks.toml allowlist or a # gitleaks:allow comment.\" >&2; exit 2; }; else echo \"gitleaks NOT FOUND - staged secret scan did NOT run (brew install gitleaks)\" >&2; fi;; esac; exit 0",
             "statusMessage": "Scanning staged changes for secrets..."
           },
           {
             "type": "command",
-            "command": "bash tools/hooks/git-state-guard.sh"
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/tools/hooks/git-state-guard.sh\" ] || { echo \"MIRA hook guard not found: $CLAUDE_PROJECT_DIR/tools/hooks/git-state-guard.sh (CLAUDE_PROJECT_DIR='$CLAUDE_PROJECT_DIR'); blocked fail-closed, see #4554\" >&2; exit 2; }; bash \"$CLAUDE_PROJECT_DIR/tools/hooks/git-state-guard.sh\""
           },
           {
             "type": "command",
-            "command": "bash tools/hooks/prod-guard.sh"
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/tools/hooks/prod-guard.sh\" ] || { echo \"MIRA hook guard not found: $CLAUDE_PROJECT_DIR/tools/hooks/prod-guard.sh (CLAUDE_PROJECT_DIR='$CLAUDE_PROJECT_DIR'); blocked fail-closed, see #4554\" >&2; exit 2; }; bash \"$CLAUDE_PROJECT_DIR/tools/hooks/prod-guard.sh\""
           },
           {
             "type": "command",
-            "command": "bash tools/hooks/rm-guard.sh"
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/tools/hooks/rm-guard.sh\" ] || { echo \"MIRA hook guard not found: $CLAUDE_PROJECT_DIR/tools/hooks/rm-guard.sh (CLAUDE_PROJECT_DIR='$CLAUDE_PROJECT_DIR'); blocked fail-closed, see #4554\" >&2; exit 2; }; bash \"$CLAUDE_PROJECT_DIR/tools/hooks/rm-guard.sh\""
           },
           {
             "type": "command",
@@ -100,7 +100,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash tools/hooks/worktree-file-guard.sh"
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/tools/hooks/worktree-file-guard.sh\" ] || { echo \"MIRA hook guard not found: $CLAUDE_PROJECT_DIR/tools/hooks/worktree-file-guard.sh (CLAUDE_PROJECT_DIR='$CLAUDE_PROJECT_DIR'); blocked fail-closed, see #4554\" >&2; exit 2; }; bash \"$CLAUDE_PROJECT_DIR/tools/hooks/worktree-file-guard.sh\""
           }
         ]
       }
@@ -124,7 +124,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash tools/hooks/stop-gate.sh; bash .claude/hooks/stop.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/tools/hooks/stop-gate.sh\"; bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop.sh\""
           }
         ]
       }

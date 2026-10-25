@@ -117,7 +117,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
       // Trailing slash matches next.config trailingSlash:true — without it,
       // Next.js issues a 308 redirect, fetch follows it, and res.redirected
       // becomes true even though no auth-redirect happened.
-      const res = await fetch(`/hub/api/assets/${id}/qr/`, { method: "POST" });
+      const res = await fetch(`${API_BASE}/api/assets/${id}/qr/`, { method: "POST" });
       // Middleware redirects unauthenticated requests to /login, returning HTML.
       if (res.url.includes("/login")) {
         window.location.href = "/hub/login";
@@ -151,7 +151,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   useEffect(() => {
-    fetch(`/hub/api/assets/${id}/`)
+    fetch(`${API_BASE}/api/assets/${id}/`)
       .then(r => (r.ok && !r.url.includes("/login")) ? r.json() : null)
       .then(data => { if (data && !data.error) setApiAsset(data); })
       .finally(() => setLoading(false));

@@ -14,7 +14,7 @@ import type {
   SourceReference,
 } from "@factorylm/interaction";
 import { IdentityAlreadyConfirmedError } from "@factorylm/interaction";
-import { useEffect, useState, type Dispatch, type ReactNode } from "react";
+import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { openableUrl } from "./links";
 import { PhotoThumb } from "./PhotoViewer";
 
@@ -137,11 +137,16 @@ export interface HostHooks {
   /**
    * Keep a photo attached in this conversation as a source on its machine, so
    * a later conversation on the same machine can use it without the photo
-   * being sent again. Resolves once the server has kept it; rejects on
+   * being sent again. Returns refresh_pending if saved but scope is stale; rejects on
    * failure. The technician confirms the photo belongs to this machine; what
    * MIRA read from it stays unconfirmed. Rendered only when provided.
    */
-  readonly onKeepPhoto?: (fileId: string) => Promise<void>;
+  readonly onKeepPhoto?: (fileId: string, reviewed?: { observationId: string; text: string; confirmed: true }) => Promise<void | "refresh_pending">;
+  /** Native hosts fetch original bytes through their authenticated file viewer. */
+  readonly renderPhoto?: (fileId: string) => ReactNode;
+  readonly onReviewPhoto?: (fileId: string) => Promise<{ observationId: string; text: string; reviewed: boolean }>;
+  /** Re-read sources after a successful Keep; never writes the photo again. */
+  readonly onRefreshPhotoScope?: () => Promise<boolean>;
   /** Whether this photo is already one of the machine's sources. */
   readonly isPhotoKept?: (fileId: string) => boolean;
   readonly busy?: boolean;
@@ -415,40 +420,110 @@ function VisualObservationPart({
   readonly hooks?: HostHooks;
 }) {
   const { observation } = part;
-  const [state, setState] = useState<"idle" | "busy" | "kept" | "failed">(
+  const [state, setState] = useState<"idle" | "busy" | "kept" | "failed" | "refresh_pending" | "refreshing">(
     hooks?.isPhotoKept?.(observation.fileId) ? "kept" : "idle",
   );
+  const [review, setReview] = useState<{ observationId: string; text: string } | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const failedReview = useRef<{ observationId: string; text: string } | null>(null);
+  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
+  const beginReview = () => {
+    if (!hooks?.onReviewPhoto || state === "busy") return;
+    setState("busy");
+    hooks.onReviewPhoto(observation.fileId).then((reading) => {
+      failedReview.current = null;
+      setRecoveryMessage(null);
+      setReview({ observationId: reading.observationId, text: reading.text });
+      setAcknowledged(false);
+      setState("idle");
+    }, () => setState("failed"));
+  };
   // The host learns about sources after mount (the notebook reloads), so follow
   // it; never step back from a keep this card made itself.
   const keptByHost = hooks?.isPhotoKept?.(observation.fileId) ?? false;
   useEffect(() => {
-    if (keptByHost) setState("kept");
+    if (keptByHost) setState((current) =>
+      current === "refresh_pending" || current === "refreshing" || current === "busy" ? current : "kept");
   }, [keptByHost]);
-  const keep = () => {
+  const keep = async () => {
     if (!hooks?.onKeepPhoto || state === "busy" || state === "kept") return;
+    if (!review && hooks.onReviewPhoto) { beginReview(); return; }
+    if (review && (!acknowledged || !review.text.trim())) return;
     setState("busy");
-    hooks.onKeepPhoto(observation.fileId).then(() => setState("kept"), () => setState("failed"));
+    try {
+      if (review && failedReview.current && hooks.onReviewPhoto) {
+        const current = await hooks.onReviewPhoto(observation.fileId);
+        if (current.observationId !== review.observationId) {
+          // Recover only our own committed text, never rebase over a different
+          // writer. The POST still enforces the exact active observation ID.
+          if (!current.reviewed || current.text !== failedReview.current.text.trim()) {
+            setRecoveryMessage("The saved reading changed. Your edits are still here; reopen the review to compare the latest reading before replacing it.");
+            setState("failed");
+            return;
+          }
+          setReview({ ...review, observationId: current.observationId });
+          failedReview.current = null;
+          setAcknowledged(false);
+          setRecoveryMessage("Saved reading recovered. Your edits are still here; check them against the photo and acknowledge again before saving.");
+          setState("failed");
+          return;
+        }
+      }
+      failedReview.current = review;
+      setRecoveryMessage(null);
+      const result = await hooks.onKeepPhoto(observation.fileId, review ? { ...review, confirmed: true } : undefined);
+      failedReview.current = null;
+      setState(result === "refresh_pending" ? "refresh_pending" : "kept");
+    } catch {
+      setState("failed");
+    }
+  };
+  const refresh = () => {
+    if (!hooks?.onRefreshPhotoScope || state === "refreshing") return;
+    setState("refreshing");
+    hooks.onRefreshPhotoScope().then(
+      (ok) => setState(ok ? "kept" : "refresh_pending"),
+      () => setState("refresh_pending"),
+    );
   };
   // The photo itself, when the host says where it lives: a thumbnail that
   // opens the full-size image in an in-app (native <dialog>) viewer. The raw file id
   // is only printed when there is no picture to show instead.
   const preview = openableUrl(observation.previewUrl);
   return <Card type="visual_observation" label="IMG · Photo observation" extra={{ "data-verified": String(observation.verified), "data-file-id": observation.fileId }}>
-    {preview ? <PhotoThumb className="fl-photo" src={preview} alt={`Photo captured ${observation.capturedAt}`} /> : null}
+    {preview ? <PhotoThumb className="fl-photo" src={preview} alt={`Photo captured ${observation.capturedAt}`} /> : review && hooks?.renderPhoto ? hooks.renderPhoto(observation.fileId) : null}
     <dl className="fl-card__facts">
       {preview ? null : <div><dt>File</dt><dd>{observation.fileId}</dd></div>}
       <div><dt>Captured</dt><dd>{observation.capturedAt}</dd></div>
       <div><dt>Provenance</dt><dd>{observation.provenance.replace("_", " ")}</dd></div>
       <div><dt>Verified</dt><dd>{observation.verified ? "yes" : "no"}</dd></div>
     </dl>
-    {hooks?.onKeepPhoto ? state === "kept"
-      ? <p role="status" className="fl-card__meta">Kept on this machine. New conversations here can use it. What MIRA read from it is still unconfirmed.</p>
+    {hooks?.onKeepPhoto ? review && state !== "kept" && state !== "refresh_pending" && state !== "refreshing"
+      ? <div className="fl-card__facts">
+        <p>Compare this reading with the original photo. Correct identifiers and mark anything you cannot verify as uncertain.</p>
+        <textarea aria-label="Photo reading" rows={8} maxLength={20000} value={review.text} disabled={state === "busy"}
+          onChange={(event) => { setReview({ ...review, text: event.target.value }); setAcknowledged(false); }} />
+        <label><input type="checkbox" checked={acknowledged} disabled={state === "busy"} onChange={(event) => setAcknowledged(event.target.checked)} /> I checked this reading against the photo.</label>
+        {state === "failed" ? <p role="alert">{recoveryMessage ?? "Could not save the reviewed reading. Your edits are still here; try again."}</p> : null}
+        <button type="button" disabled={state === "busy" || !acknowledged || !review.text.trim()} onClick={keep}>Save reviewed reading</button>
+        <button type="button" disabled={state === "busy"} onClick={() => { setReview(null); setAcknowledged(false); setState(state === "failed" ? "idle" : keptByHost ? "kept" : "idle"); }}>Cancel review</button>
+      </div>
+      : state === "kept"
+      ? <p role="status" className="fl-card__meta">Kept on this machine. New conversations here can use it. {review ? "Technician-reviewed reading." : "What MIRA read from it is still unconfirmed."}</p>
+      : state === "refresh_pending" || state === "refreshing"
+        ? <>
+          <p role="alert" className="fl-card__meta">Photo saved, but sources could not refresh. Refresh sources before asking about it. {review ? "Technician-reviewed reading." : "What MIRA read from it is still unconfirmed."}</p>
+          {hooks.onRefreshPhotoScope
+            ? <button type="button" disabled={state === "refreshing"} aria-busy={state === "refreshing"} onClick={refresh}>Refresh sources</button>
+            : <p className="fl-card__meta">Reopen this machine to refresh its sources.</p>}
+        </>
       : <>
         {state === "failed" ? <p role="alert" className="fl-card__meta">Could not keep this photo. Try again.</p> : null}
         <div className="fl-card__actions">
           <button type="button" aria-busy={state === "busy"} disabled={state === "busy"} onClick={keep}>Keep on this machine</button>
         </div>
       </> : null}
+    {state === "kept" && hooks?.onReviewPhoto ? <button type="button" onClick={beginReview}>Review reading</button> : null}
   </Card>;
 }
 

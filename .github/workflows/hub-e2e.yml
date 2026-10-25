@@ -37,7 +37,8 @@ concurrency:
 jobs:
   hub-e2e:
     name: Hub E2E (command-center + onboarding)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no Playwright chromium build (#4697).
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: staging
 

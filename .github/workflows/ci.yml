@@ -121,12 +121,19 @@ jobs:
       - name: Run pre-commit hook tests
         run: bash tests/hooks/test_precommit_hook.sh
 
+      # #4554: the .claude/settings.json guard hooks must still decide when the
+      # session's cwd is not the repo root (a relative path exited 127 there,
+      # a non-blocking error, so commands ran unguarded).
+      - name: Run settings.json guard-hook path tests
+        run: bash tests/hooks/test_settings_hook_paths.sh
+
       # The harness itself is a .sh file the hook would lint, so hold it to the
       # same bar rather than exempting the tester from the test.
       - name: shellcheck the harness and the hook
         run: |
           set -euo pipefail
           shellcheck -S warning -f gcc tests/hooks/test_precommit_hook.sh
+          shellcheck -S warning -f gcc tests/hooks/test_settings_hook_paths.sh
           shellcheck -S warning -f gcc .githooks/pre-commit
 
   shared-line-guard:
@@ -315,7 +322,7 @@ jobs:
         # happened in the previous step; a transient upload-sarif failure must
         # not fail sast-semgrep, which the required ci-gate demands succeed.
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: semgrep.sarif
 
@@ -1418,7 +1425,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Install Trivy
         run: |
