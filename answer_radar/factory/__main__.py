@@ -1,7 +1,8 @@
 """One manually-triggered Benchmark Factory cycle over captured data (spec §16 Phase 7).
 
     python -m answer_radar.factory cycle --discovery FIXTURES.json --pages PAGES.json \
-        --out OUT_DIR --private PRIVATE_DIR --seed 2026-W44 [--live-fraction 0.3]
+        --out OUT_DIR --private PRIVATE_DIR --seed 2026-W44 [--live-fraction 0.3] \
+        [--expert-export EXPORT_DIR]
 
 Replays captured records (no live collection), freezes, generates variants, assigns the
 hidden Live subset, resolves candidate evidence, routes labels, and writes:
@@ -9,6 +10,9 @@ hidden Live subset, resolves candidate evidence, routes labels, and writes:
   OUT/live-manifest.json    hashes of the sealed Live holdout (text is in PRIVATE_DIR)
   OUT/cases.json            developer view of every non-holdout case
   OUT/cycle-report.json     counts by pool/source/family/lineage, contamination check
+  PRIVATE/review-data-live.json  the Live cases' expert queue, kept outside git with their text
+With --expert-export (a #4801 page export) expert answers settle gold on every case, Live
+included, before sealing.
 Not scheduled: a recurring job is only added after one complete cycle is proven.
 """
 
@@ -34,7 +38,7 @@ from answer_radar.factory.holdout import (
     developer_export,
     seal_live,
 )
-from answer_radar.factory.labeling import export_review_data, route
+from answer_radar.factory.labeling import export_review_data, import_expert, route
 from answer_radar.factory.registry import SourceRegistry
 from answer_radar.factory.scoring import build_report
 from answer_radar.factory.variants import make_variants
@@ -59,6 +63,7 @@ def cycle(
     private: Path,
     seed: str,
     live_fraction: float,
+    expert_export: Path | None = None,
 ) -> dict:
     reg = SourceRegistry.load()
     cases = []
@@ -78,6 +83,8 @@ def cycle(
         raise SystemExit("invalid case set:\n" + "\n".join(errors))
     candidates = {c.case_id: resolve(c, pages) for c in cases}
     queue = route(cases, seed=seed)
+    if expert_export is not None:
+        cases = import_expert(cases, load_expert_export(expert_export), candidates)
     # review-data.json carries question text for the expert. Text a source does not allow to be
     # committed may not land in a git work tree (the repository is public).
     if _inside_git(out.resolve()) and not all(
@@ -90,11 +97,19 @@ def cycle(
     visible = [c for c in cases if not c.holdout]
     review = export_review_data([c for c in visible if c.case_id in queue], candidates)
     manifest = seal_live(cases, private)
+    # Live cases need expert gold too. Their review file goes beside the sealed text, outside git,
+    # so the expert sees them while developers never do.
+    live = [c for c in cases if c.holdout and c.case_id in queue]
+    (private / "review-data-live.json").write_text(
+        json.dumps(export_review_data(live, candidates), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     report = build_report(cases, registry=reg)
     report["expert_queue"] = {
         cid: why for cid, why in sorted(queue.items()) if cid in {c.case_id for c in visible}
     }
     report["live_holdout_size"] = len(manifest)
+    report["live_expert_queue_size"] = len(live)
     for name, data in {
         "review-data.json": review,
         "live-manifest.json": manifest,
@@ -107,6 +122,22 @@ def cycle(
     return report
 
 
+def load_expert_export(d: Path) -> dict[str, dict]:
+    """Read a #4801 review-page export: export-manifest.json + answers/<doc>.json.
+
+    Refuses an export without a manifest (the preview page's test answers must never count).
+    A record whose key does not match its file is skipped, so it can never settle gold.
+    """
+    if not (d / "export-manifest.json").is_file():
+        raise SystemExit(f"{d}: no export-manifest.json; refusing an unidentified export")
+    out = {}
+    for f in sorted((d / "answers").glob("*.json")):
+        rec = json.loads(f.read_text(encoding="utf-8"))
+        if rec.get("key") == f.stem:
+            out[f.stem] = rec
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m answer_radar.factory")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -117,10 +148,17 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--private", type=Path, required=True)
     c.add_argument("--seed", required=True)
     c.add_argument("--live-fraction", type=float, default=0.3)
+    c.add_argument("--expert-export", type=Path, default=None)
     a = ap.parse_args(argv)
     pages = [ManualPage(**p) for p in json.loads(a.pages.read_text())]
     rep = cycle(
-        json.loads(a.discovery.read_text()), pages, a.out, a.private, a.seed, a.live_fraction
+        json.loads(a.discovery.read_text()),
+        pages,
+        a.out,
+        a.private,
+        a.seed,
+        a.live_fraction,
+        a.expert_export,
     )
     print(json.dumps(rep["counts"], sort_keys=True))
     return 0

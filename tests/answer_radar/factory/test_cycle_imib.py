@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import replace
 from pathlib import Path
 
@@ -44,7 +45,7 @@ def test_cycle_end_to_end(tmp_path):
         rep["counts"]["cases"] > 6 and rep["contamination"] == [] and rep["live_holdout_size"] >= 1
     )
     review = json.loads((out / "review-data.json").read_text())
-    sealed = {p.name for p in private.iterdir()}
+    sealed = {p.name for p in private.iterdir()} - {"review-data-live.json"}
     exported = (out / "cases.json").read_text() + (out / "review-data.json").read_text()
     manifest = json.loads((out / "live-manifest.json").read_text())
     for m in manifest:  # no holdout case or its variants leak into developer-visible outputs
@@ -199,3 +200,79 @@ def test_normalizer_covers_imib_product_names():
         ("an abbey road motor", ""),
     ]:
         assert normalize(text)["manufacturer"] == maker, text
+
+
+def test_live_cases_reach_experts_privately_and_take_expert_gold(tmp_path):
+    out, private, export = tmp_path / "out", tmp_path / "private", tmp_path / "export"
+    args = [
+        "cycle",
+        "--discovery",
+        str(FXD / "discovery.json"),
+        "--pages",
+        str(FXD / "pages.json"),
+        "--out",
+        str(out),
+        "--private",
+        str(private),
+        "--seed",
+        "2026-W44",
+        "--live-fraction",
+        "1.0",
+    ]
+    assert main(args) == 0
+    live_review = json.loads((private / "review-data-live.json").read_text())
+    live_ids = {r["id"] for r in live_review["forum"]}
+    assert live_ids and not live_ids & {
+        r["id"] for r in json.loads((out / "review-data.json").read_text())["forum"]
+    }
+    target = next(r for r in live_review["forum"] if r["pages"])
+    key = f"forum-{target['id']}"
+    (export / "answers").mkdir(parents=True)
+    (export / "export-manifest.json").write_text("{}")
+    (export / "answers" / f"{key}.json").write_text(
+        json.dumps(
+            {
+                "key": key,
+                "savedAt": "2026-10-27T00:00:00Z",
+                "overall": "answered",
+                "pages": {str(p): "yes" for p in target["pages"]},
+            }
+        )
+    )
+    shutil.rmtree(private)
+    assert main([*args, "--expert-export", str(export)]) == 0
+    sealed = [
+        json.loads(f.read_text())
+        for f in private.glob("*.json")
+        if f.name != "review-data-live.json"
+    ]
+    settled = [c for c in sealed if c["case_id"] == target["id"]]
+    assert (
+        settled and settled[0]["gold_status"] == "expert_reviewed" and settled[0]["gold_evidence"]
+    )
+    rep = json.loads((out / "cycle-report.json").read_text())
+    assert rep["counts"]["gold"]["expert_reviewed"] >= 1 and target["id"] not in json.dumps(rep)
+
+
+def test_expert_export_without_manifest_is_refused(tmp_path):
+    import pytest
+
+    (tmp_path / "answers").mkdir()
+    with pytest.raises(SystemExit, match="export-manifest"):
+        main(
+            [
+                "cycle",
+                "--discovery",
+                str(FXD / "discovery.json"),
+                "--pages",
+                str(FXD / "pages.json"),
+                "--out",
+                str(tmp_path / "o"),
+                "--private",
+                str(tmp_path / "p"),
+                "--seed",
+                "s",
+                "--expert-export",
+                str(tmp_path),
+            ]
+        )
