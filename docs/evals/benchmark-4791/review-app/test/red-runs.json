@@ -56,6 +56,27 @@
   "as_expected": true
  },
  {
+  "mutation": "edits allowed before the first sync (Codex F1)",
+  "guard_test": "an edit cannot be made before the first sync",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "offline edit replaces instead of merging (Codex F1)",
+  "guard_test": "an edit made while offline merges",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "removed hazard kept on the phone (Codex F2)",
+  "guard_test": "a removed hazard stays removed",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
   "mutation": "older phone copy overwrites the server",
   "guard_test": "older copy on the phone never overwrites",
   "failed": 1,

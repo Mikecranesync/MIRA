@@ -11,7 +11,7 @@ const DATA = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'data.json'), 'utf
 const PAGE = 'mike-review-v2.local.html';
 const SHOTS = path.join(HERE, '..', 'screenshots');
 
-async function open(page, { cfg = {}, server = null, local = null, localV1 = null } = {}) {
+async function open(page, { cfg = {}, server = null, local = null, localV1 = null, waitReady = true } = {}) {
   await page.addInitScript(FAKE);
   await page.goto('pages/');      // same origin, no app script: seeding here cannot be clobbered by the app's pagehide save
   await page.evaluate(({ cfg, server, local, localV1 }) => {
@@ -22,7 +22,7 @@ async function open(page, { cfg = {}, server = null, local = null, localV1 = nul
     if (localV1) localStorage.setItem('mike-review-v1', JSON.stringify(localV1));
   }, { cfg, server, local, localV1 });
   await page.goto(PAGE);
-  await page.waitForFunction(() => window.__review && (window.__review.S.serverReady || window.__review.S.dbState !== 'on'));
+  if (waitReady) await page.waitForFunction(() => window.__review && (window.__review.S.serverReady || (window.__review.S.dbState !== 'on' && window.__review.S.dbState !== 'connecting')));
 }
 const st = page => page.evaluate(() => ({ xp: window.__review.progress().xp, p: window.__review.progress(), db: window.__review.S.dbState }));
 const writes = page => page.evaluate(() => JSON.parse(localStorage.getItem('__fake_writes') || '[]'));
@@ -200,4 +200,51 @@ test('summary and badges never compare answers with anything', async ({ page }, 
   const text = await page.locator('#app').innerText();
   for (const w of ['correct', 'accuracy', 'agree', 'right answer', 'wrong']) expect(text.toLowerCase()).not.toContain(w);
   await page.screenshot({ path: path.join(SHOTS, `${info.project.name}-summary.png`) });
+});
+
+const savedCase = () => {
+  const f = DATA.forum[0], key = 'forum-' + f.id;
+  return { f, key, rec: { pages: Object.fromEntries(f.pages.map(p => [p, 'yes'])), overall: 'answered', note: 'expert note', key, savedAt: '2026-10-26T08:00:00.000Z' } };
+};
+
+test('Codex F1: an edit cannot be made before the first sync, and never wipes saved page ratings or notes', async ({ page }) => {
+  const { f, key, rec } = savedCase();
+  await open(page, { cfg: { snapshotDelay: 3000 }, server: { answers: { [key]: rec }, hazards: {} }, waitReady: false });
+  await page.locator('section.card', { hasText: 'Manual Detective' }).getByRole('button').first().click();
+  await expect(page.getByText('Loading your saved answers')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'The answer is somewhere else in this manual' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'The answer is somewhere else in this manual' })).toBeEnabled({ timeout: 10000 });
+  await page.getByRole('button', { name: 'The answer is somewhere else in this manual' }).click();
+  await expect.poll(() => serverDoc(page, 'answers', key).then(d => d && d.overall)).toBe('elsewhere');
+  const d = await serverDoc(page, 'answers', key);
+  expect(d.pages).toEqual(rec.pages);
+  expect(d.note).toBe('expert note');
+});
+
+test('Codex F1: an edit made while offline merges into the saved record instead of replacing it', async ({ page }) => {
+  const { key, rec } = savedCase();
+  await open(page, { cfg: { noDb: true }, server: { answers: { [key]: rec }, hazards: {} } });
+  await page.locator('section.card', { hasText: 'Manual Detective' }).getByRole('button').first().click();
+  await page.getByRole('button', { name: 'The question is too unclear to say' }).click();
+  await page.evaluate(() => localStorage.setItem('__fake_cfg', JSON.stringify({ latency: 50 })));
+  await page.reload();
+  await page.waitForFunction(() => window.__review.S.serverReady);
+  await expect.poll(() => serverDoc(page, 'answers', key).then(d => d && d.overall)).toBe('unclear');
+  const d = await serverDoc(page, 'answers', key);
+  expect(d.pages).toEqual(rec.pages);
+  expect(d.note).toBe('expert note');
+});
+
+test('Codex F2: a removed hazard stays removed across reloads', async ({ page }) => {
+  await open(page);
+  await addHazards(page, 1);
+  await expect(page.getByText('Saved \u2713')).toBeVisible({ timeout: 8000 });
+  const id = await page.evaluate(() => Object.keys(window.__review.S.localHaz)[0]);
+  await page.getByRole('button', { name: 'Remove this question' }).click();
+  await expect.poll(() => serverDoc(page, 'hazards', id)).toBeNull();
+  for (let i = 0; i < 2; i++) { await page.reload(); await page.waitForFunction(() => window.__review.S.serverReady && window.__review.S.hazReady); await page.waitForTimeout(500); }
+  expect(await serverDoc(page, 'hazards', id)).toBeNull();
+  const log = (await writes(page)).filter(w => w.id === id);
+  expect(log.map(w => w.op)).toEqual(['set', 'delete']);
+  expect((await st(page)).p.hazards).toBe(0);
 });

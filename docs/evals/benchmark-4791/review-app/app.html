@@ -173,10 +173,19 @@ function retryFailed(){
     else if (S.localHaz[key]) writer.put('hazards', key, S.localHaz[key]);
   }
 }
+/* Answers are editable only once this phone knows what the server already holds (or the db is unavailable for
+   this visit). Editing earlier would start from an empty record and overwrite saved fields (Codex F1 on #4801). */
+const editable = () => S.dbState === 'off' || S.dbState === 'readonly' || S.serverReady;
+/* Field-level merge: the phone's fields win, everything else the server holds is kept. */
+const mergeRec = (server, local) => ({ ...(server || {}), ...(local || {}), pages: { ...((server || {}).pages || {}), ...((local || {}).pages || {}) } });
 function saveAnswer(key, mutate){
-  const rec = JSON.parse(JSON.stringify(S.local[key] || {}));
+  if (!editable()) { toast('Still loading your saved answers. Try again in a moment.'); return; }
+  const base = S.local[key] || (S.server[key] && S.server[key].data) || {};
+  const rec = JSON.parse(JSON.stringify(base));
+  if (!rec.pages || !Object.keys(rec.pages).length) delete rec.pages;
   mutate(rec);
   rec.key = key; rec.savedAt = new Date().toISOString();
+  if (rec.pages && !Object.keys(rec.pages).length) delete rec.pages;
   S.local[key] = rec; lsSave();
   writer.put('answers', key, rec);
 }
@@ -187,7 +196,11 @@ function reconcile(){
   if (S.serverReady) for (const [key, rec] of Object.entries(S.local)) {
     const s = S.server[key];
     if (!s) writer.put('answers', key, rec);
-    else if ((rec.savedAt || '') > (s.data.savedAt || '') && !same(stripMeta(rec), stripMeta(s.data))) writer.put('answers', key, rec);
+    else if ((rec.savedAt || '') > (s.data.savedAt || '')) {
+      const merged = mergeRec(s.data, rec);
+      if (!merged.pages || !Object.keys(merged.pages).length) delete merged.pages;
+      if (!same(stripMeta(merged), stripMeta(s.data))) { S.local[key] = merged; writer.put('answers', key, merged); }
+    }
     else if ((s.data.savedAt || '') >= (rec.savedAt || '')) S.local[key] = s.data;
   }
   if (S.serverReady) for (const [key, s] of Object.entries(S.server)) if (!S.local[key] && s.confirmed) S.local[key] = s.data;
@@ -260,6 +273,7 @@ function paintStatus(){
 function banners(){
   const out = [];
   if (PREVIEW) out.push(el('div', { class: 'preview' }, 'PREVIEW: answers given here are test data and are not used in the benchmark.'));
+  if (S.dbState === 'connecting' || (S.dbState === 'on' && !S.serverReady)) out.push(el('div', { class: 'banner' }, 'Loading your saved answers\u2026 The answer buttons unlock in a moment.'));
   if (S.dbState === 'off') out.push(el('div', { class: 'banner' }, 'Answers are only kept on this phone, so Claude can’t read them and no XP is counted. Open this page in claude.ai while signed in.'));
   if (S.dbState === 'readonly') out.push(el('div', { class: 'banner bad' }, 'This account can view but not save. Only the owner’s answers count.'));
   return out;
@@ -272,7 +286,7 @@ function topbar(title, count){
 function bar(done, total){ const pct = total ? Math.round(100 * done / total) : 0; return el('div', { class: 'bar', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-label': pct + '% complete' }, el('i', { style: 'width:' + pct + '%' })); }
 function choiceGroup(opts, current, onpick, cls = '', disabled = false){
   return el('div', { class: 'choices ' + cls }, opts.map(([val, text, tone]) =>
-    el('button', { class: 'choice ' + tone, 'aria-pressed': String(current === val), disabled, onclick: () => onpick(val) }, text)));
+    el('button', { class: 'choice ' + tone, 'aria-pressed': String(current === val), disabled: disabled || !editable(), onclick: () => onpick(val) }, text)));
 }
 
 /* ───────────── home ───────────── */
@@ -352,7 +366,7 @@ function renderHunter(){
     el('button', { class: 'primary', onclick: add }, 'Add it'),
     el('div', { class: 'list' }, list.map(h => el('div', { class: 'item' },
       el('div', {}, el('p', { text: h.text }), el('p', { class: 'small ' + (S.serverHaz[h.id] && S.serverHaz[h.id].confirmed ? 'status saved' : 'status pending'), text: S.serverHaz[h.id] && S.serverHaz[h.id].confirmed ? 'Saved ✓' : 'Saving…' })),
-      el('button', { 'aria-label': 'Remove this question', onclick: () => { S.tomb[h.id] = true; lsSave(); writer.put('hazards', h.id, null); render(); } }, 'Remove')))),
+      el('button', { 'aria-label': 'Remove this question', onclick: () => { S.tomb[h.id] = true; delete S.localHaz[h.id]; lsSave(); writer.put('hazards', h.id, null); render(); } }, 'Remove')))),
     el('button', { onclick: () => { saveAnswer('meta-words', r => { r.done = true; }); go('home'); } }, 'I’m done writing'));
 }
 
@@ -398,13 +412,13 @@ function renderDetective(){
 function flagToggle(key, rec){
   const id = 'flag-' + key;
   return el('label', { class: 'flag', for: id },
-    el('input', { type: 'checkbox', id, checked: !!rec.flag, onchange: e => { saveAnswer(key, r => { r.flag = e.target.checked; }); } }),
+    el('input', { type: 'checkbox', id, checked: !!rec.flag, disabled: !editable(), onchange: e => { saveAnswer(key, r => { r.flag = e.target.checked; }); } }),
     'Flag: unsure, needs a second expert look');
 }
 const noteTimers = {};
 function noteBox(key, rec, field, ph){
   const id = field + '-' + key;
-  const t = el('textarea', { id, placeholder: ph, 'aria-label': 'Note' }); t.value = rec[field] || '';
+  const t = el('textarea', { id, placeholder: ph, 'aria-label': 'Note', disabled: !editable() }); t.value = rec[field] || '';
   const commit = () => { clearTimeout(noteTimers[id]); if ((S.local[key] || {})[field] === t.value || (!(S.local[key] || {})[field] && !t.value)) return; saveAnswer(key, r => { r[field] = t.value; }); paintStatus(); };
   t.addEventListener('input', () => { clearTimeout(noteTimers[id]); noteTimers[id] = setTimeout(commit, 800); });
   t.addEventListener('blur', commit);
@@ -484,7 +498,7 @@ render();
     S.server = Object.fromEntries(snap.docs.map(d => [d.id, { data: d.data(), confirmed: !snap.metadata.fromCache && !d.metadata.hasPendingWrites }]));
     const first = !S.serverReady && !snap.metadata.fromCache;
     if (first) { S.serverReady = true; reconcile(); }
-    announceBadges(); retryFailed(); refresh();
+    announceBadges(); retryFailed(); if (first) render(); else refresh();
   }, () => {});
   db.collection('hazards').onSnapshot(snap => {
     S.serverHaz = Object.fromEntries(snap.docs.map(d => [d.id, { data: d.data(), confirmed: !snap.metadata.fromCache && !d.metadata.hasPendingWrites }]));

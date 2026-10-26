@@ -61,9 +61,27 @@ MUTATIONS = [
         "the label never changes XP",
     ),
     (
+        "edits allowed before the first sync (Codex F1)",
+        "const editable = () => S.dbState === 'off' || S.dbState === 'readonly' || S.serverReady;",
+        "const editable = () => true;",
+        "an edit cannot be made before the first sync",
+    ),
+    (
+        "offline edit replaces instead of merging (Codex F1)",
+        "const merged = mergeRec(s.data, rec);",
+        "const merged = rec;",
+        "an edit made while offline merges",
+    ),
+    (
+        "removed hazard kept on the phone (Codex F2)",
+        "S.tomb[h.id] = true; delete S.localHaz[h.id]; lsSave();",
+        "S.tomb[h.id] = true; lsSave();",
+        "a removed hazard stays removed",
+    ),
+    (
         "older phone copy overwrites the server",
-        "else if ((rec.savedAt || '') > (s.data.savedAt || '') && !same(stripMeta(rec), stripMeta(s.data))) writer.put('answers', key, rec);",
-        "else if (!same(stripMeta(rec), stripMeta(s.data))) writer.put('answers', key, rec);",
+        "else if ((rec.savedAt || '') > (s.data.savedAt || '')) {",
+        "else if (true) {",
         "older copy on the phone never overwrites",
     ),
 ]

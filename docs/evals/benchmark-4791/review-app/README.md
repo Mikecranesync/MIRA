@@ -37,6 +37,8 @@ The order and the lock are the same as v1:
 | No timers; no accuracy-based or label-based XP | XP is a fixed amount per completed review: 10 per manual case, 5 per safety call, 5 per hazard. "Can't tell", "Not sure" and "Unclear" earn the same as any other answer (test 6). Badges depend only on counts. Nothing tracks time. |
 | No reward for skipping evidence | A page's buttons stay disabled until its image has loaded **and** been on screen (test 5). A case counts only when every page **and** the overall question are answered (test 6). |
 | XP only for saves the server confirmed | XP, progress and badges are computed only from database snapshots that are definitive (`fromCache: false`) and have no pending writes (test 4). |
+| Edits before the first sync, or made offline, never wipe saved fields (Codex F1 on #4801) | Answer buttons, flags and notes stay disabled with a "Loading your saved answers" banner until the first definitive snapshot. A record edited offline is **merged** field by field into the server copy (the phone's fields win; saved page ratings and notes are kept), never replaced (tests 14 and 15). |
+| A removed hazard stays removed (Codex F2) | Removing a hazard deletes it from the phone's copy as well as the server, so a reload can't re-upload it (test 16). |
 | Saved records never altered | The record keys and shapes are unchanged from v1 (`answers/forum-<id>`, `answers/safety-<id>`, `answers/meta-words`, `hazards/<id>`); `flag: true` and the value `"unsure"` are the only additions. Opening v2 over v1 records makes **zero** writes (test 9), and an older phone copy never overwrites a newer server record (test 10). |
 | Save and resume, no lost answers | Every tap writes at once, one write at a time per record. Notes save on pause, on blur and on page hide. A copy is kept on the phone. After a reload or outage, a phone copy that is newer than the server's is pushed (tests 7 and 8). |
 | Owner-only writes | Database rule `{path: "", read: "view", write: "owner"}`, unchanged. A refused write shows a read-only banner and earns nothing (test 11). On the live artifacts, `interact` and `admin` writes are refused; see the evidence below. |
@@ -45,11 +47,11 @@ The order and the lock are the same as v1:
 ## Evidence (2026-10-26)
 
 **Playwright suite** (`test/review.spec.mjs`, against `test/fake-db.js`):
-- **26/26 pass:** 13 tests × 2 devices, Pixel (412×915, Chromium) and iPhone 13 (390×664, WebKit).
+- **32/32 pass:** 16 tests × 2 devices, Pixel (412×915, Chromium) and iPhone 13 (390×664, WebKit).
 - The fake database mimics the real contract: a cached snapshot first, then a definitive one; writes pending,
   then confirmed; injected `unavailable` and `invalid_argument` errors; and a server copy that survives reloads.
 
-**Mutation proof** (`test/red_runs.py` → `test/red-runs.json`): 8 mutations, each turns its guarding test red,
+**Mutation proof** (`test/red_runs.py` → `test/red-runs.json`): 11 mutations, each turns its guarding test red,
 and the control is green. The mutations:
 - answer XP counted from the phone's copy;
 - hazard XP counted from the phone's copy;
@@ -58,7 +60,10 @@ and the control is green. The mutations:
 - the Sentinel lock removed;
 - XP depending on the label;
 - an overall-only answer completing a case;
-- an older phone copy overwriting the server.
+- an older phone copy overwriting the server;
+- edits allowed before the first sync (Codex F1);
+- an offline edit replacing the saved record instead of merging into it (Codex F1);
+- a removed hazard kept on the phone (Codex F2).
 
 **Access probes** (ArtifactData, as the owner's account acting at a lower level):
 
