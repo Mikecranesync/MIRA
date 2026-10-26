@@ -350,3 +350,51 @@ def test_voice_variant_keeps_numeric_meaning():
     assert (
         "gs one zero" in v.question.normalized_question
     )  # a hyphen inside a model name is not a sign
+
+
+@pytest.mark.parametrize(
+    "text, must",
+    [
+        (".5 A at -.5 C", ["point five a", "minus point five c"]),
+        ("2.5 A at -10 C", ["two point five", "minus one zero"]),
+        ("load is 80 %", ["eight zero percent"]),
+    ],
+)
+def test_voice_preserves_leading_point_decimals_and_signs(text, must):
+    from answer_radar.factory.variants import _voice
+
+    out = _voice(text)
+    assert all(m in out for m in must), out
+
+
+@pytest.mark.parametrize("text", ["set 1,000 rpm", "tolerance ±5", "trip at 1e-3 s"])
+def test_voice_skips_numbers_it_cannot_say(text):
+    from answer_radar.freeze import snapshot_hash
+
+    p = _case(1)
+    p.question.normalized_question = text
+    p = replace(p, freeze_hash=snapshot_hash(p.question))
+    assert make_variants(p, ["voice_transcription"]) == []
+
+
+def test_live_duplicate_of_a_visible_question_fails_fast():
+    import signal
+
+    from answer_radar.factory.holdout import assign_live
+
+    live = replace(
+        _repost("control_com"), pool=Pool.LIVE, holdout=True, exposed_to_developers=False
+    )
+    live.question.split_assignment = SplitAssignment.FRESH
+    seen = replace(_repost("mrplc"), exposed_to_developers=True)
+
+    def boom(*_):
+        raise TimeoutError("assign_live did not terminate")
+
+    signal.signal(signal.SIGALRM, boom)
+    signal.alarm(2)
+    try:
+        with pytest.raises(HoldoutLeak, match="already Live"):
+            assign_live([live, seen], fraction=1.0, seed="s")
+    finally:
+        signal.alarm(0)

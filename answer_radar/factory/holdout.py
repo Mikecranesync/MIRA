@@ -161,9 +161,21 @@ def assign_live(
     ]
     # Fresh duplicates may still straddle Live and visible pools via different split keys;
     # pull every group holding a straddling question back out of Live until none remain.
+    # A case that arrived already Live and duplicates a visible question cannot be fixed by
+    # demotion (exposure is irreversible): that is contamination, reported loudly. Every other
+    # pass demotes at least one newly-moved group, so the loop always terminates.
     while True:
         visible = {c.question.dedupe_hash for c in out if c.pool is not Pool.LIVE}
         clash = {key(c) for c in out if c.pool is Pool.LIVE and c.question.dedupe_hash in visible}
         if not clash:
             return out
+        stuck = [
+            o
+            for o in cases
+            if o.pool is Pool.LIVE and key(o) in clash and o.question.dedupe_hash in visible
+        ]
+        if stuck:
+            raise HoldoutLeak(
+                f"{stuck[0].case_id} is already Live but duplicates a developer-visible question"
+            )
         out = [orig if key(c) in clash else c for orig, c in zip(cases, out)]

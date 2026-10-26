@@ -57,14 +57,21 @@ def _shorthand(t: str) -> str:
     return re.sub(r"\b(\w+)\b", lambda m: _SHORT.get(m.group(1).lower(), m.group(1)), t)
 
 
-def _voice(t: str) -> str:
+def _voice(t: str) -> str | None:
     # Say the punctuation that carries numeric meaning before dropping the rest:
-    # "2.5 A at -10 C" -> "two point five a at minus one zero c", never "two five ... one zero".
-    t = re.sub(r"(?<=\d)\.(?=\d)", " point ", t.lower())
-    t = re.sub(r"(?<![\w.])-(?=\d)", " minus ", t)
+    # "2.5 A at -.5 C" -> "two point five a at minus point five c". A hyphen inside a model
+    # name ("GS-10") is not a sign. Any other punctuation touching a digit ("1,000", "1e-3",
+    # "±5") is not verbalized, so the variant is skipped rather than silently changing a value.
+    t = re.sub(r"(?<![\w.])-(?=\.?\d)", " minus ", t.lower())
+    t = re.sub(r"\.(?=\d)", " point ", t)
     t = re.sub(r"(?<=\d)/(?=\d)", " over ", t)
+    t = t.replace("%", " percent ")
+    unsafe = r"\d[^\w\s]+(?=\w)|(?<![a-z])[^\w\s]+\d|\d[a-z]+[^\w\s]+\d"
+    if re.search(unsafe, t):
+        return None
     t = re.sub(r"[^\w\s]", "", t)
-    return re.sub(r"\d", lambda m: f" {_SPOKEN[m.group(0)]} ", t).replace("  ", " ").strip()
+    t = re.sub(r"\d", lambda m: f" {_SPOKEN[m.group(0)]} ", t)
+    return re.sub(r"\s+", " ", t).strip()
 
 
 TRANSFORMS = {
