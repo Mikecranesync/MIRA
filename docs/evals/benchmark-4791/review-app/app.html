@@ -180,7 +180,10 @@ const editable = () => S.dbState === 'off' || S.dbState === 'readonly' || S.serv
 const mergeRec = (server, local) => ({ ...(server || {}), ...(local || {}), pages: { ...((server || {}).pages || {}), ...((local || {}).pages || {}) } });
 function saveAnswer(key, mutate){
   if (!editable()) { toast('Still loading your saved answers. Try again in a moment.'); return; }
-  const base = S.local[key] || (S.server[key] && S.server[key].data) || {};
+  // Start from BOTH copies so a save can never drop a field the other copy holds (Codex F1, rounds 1 and 2 on #4801):
+  // the newer copy's fields win, the older copy only fills gaps.
+  const sv = S.server[key] && S.server[key].data, lc = S.local[key];
+  const base = !sv ? (lc || {}) : !lc ? sv : ((lc.savedAt || '') > (sv.savedAt || '') ? mergeRec(sv, lc) : mergeRec(lc, sv));
   const rec = JSON.parse(JSON.stringify(base));
   if (!rec.pages || !Object.keys(rec.pages).length) delete rec.pages;
   mutate(rec);
@@ -199,7 +202,8 @@ function reconcile(){
     else if ((rec.savedAt || '') > (s.data.savedAt || '')) {
       const merged = mergeRec(s.data, rec);
       if (!merged.pages || !Object.keys(merged.pages).length) delete merged.pages;
-      if (!same(stripMeta(merged), stripMeta(s.data))) { S.local[key] = merged; writer.put('answers', key, merged); }
+      S.local[key] = merged;                                   // always keep the merged copy, write or not
+      if (!same(stripMeta(merged), stripMeta(s.data))) writer.put('answers', key, merged);
     }
     else if ((s.data.savedAt || '') >= (rec.savedAt || '')) S.local[key] = s.data;
   }
@@ -433,7 +437,7 @@ function navButtons(mission, list, isDone){
   const last = inSession ? S.session.pos >= S.session.ids.length - 1 : S.idx >= list.length - 1;
   const next = el('button', { class: 'primary', onclick: () => {
     flushNotes();
-    if (inSession) { if (last) return go('sessionEnd'); S.session.pos++; return go(mission, list.findIndex(x => x.id === S.session.ids[S.session.pos])); }
+    if (inSession) { if (last) { S.sessionDone = S.session; S.session = null; return go('sessionEnd'); } S.session.pos++; return go(mission, list.findIndex(x => x.id === S.session.ids[S.session.pos])); }
     if (last) { const done = list.every(x => mission === 'detective' ? forumComplete(S.local[forumKey(x)], x) : safetyComplete(S.local[safetyKey(x)])); if (done) toast(mission === 'detective' ? 'Manual Detective complete. Every case reviewed.' : 'Safety Sentinel complete. Every call made.'); return go('home'); }
     go(mission, S.idx + 1);
   } }, last ? (inSession ? 'Finish session' : 'Finish') : 'Next →');
@@ -460,9 +464,10 @@ function renderSentinel(){
 
 /* ───────────── session end + summary ───────────── */
 function renderSessionEnd(){
-  const ss = S.session, list = ss.mission === 'detective' ? DATA.forum : DATA.safety;
+  const ss = S.sessionDone;                                  // kept for as long as this screen shows: re-renders stay valid (Codex F4)
+  if (!ss) return go('home');
+  const list = ss.mission === 'detective' ? DATA.forum : DATA.safety;
   const done = ss.ids.filter(id => { const x = list.find(y => y.id === id); return ss.mission === 'detective' ? forumComplete(confirmedRec(forumKey(x)), x) : safetyComplete(confirmedRec(safetyKey(x))); }).length;
-  S.session = null;
   app.append(...banners(), el('section', { class: 'card' },
     el('p', { class: 'eyebrow', text: 'Session complete' }), el('h1', { text: done + ' of ' + ss.ids.length + ' saved' }),
     el('p', { class: 'muted', text: 'Good stopping point. Everything saved is safe; pick up any time.' }),
@@ -508,5 +513,5 @@ render();
   }, () => {});
 })();
 function refresh(){ if (S.view === 'home' || S.view === 'hunter' || S.view === 'summary') render(); else paintStatus(); }   // render() keeps a focused text box's text and cursor
-window.__review = { S, progress, writer };   // test hook: read-only inspection
+window.__review = { S, progress, writer, saveAnswer };   // test hook
 </script>

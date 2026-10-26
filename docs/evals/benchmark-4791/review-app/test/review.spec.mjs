@@ -248,3 +248,55 @@ test('Codex F2: a removed hazard stays removed across reloads', async ({ page })
   expect(log.map(w => w.op)).toEqual(['set', 'delete']);
   expect((await st(page)).p.hazards).toBe(0);
 });
+
+test('Codex round 2 F1: an offline choice identical to the saved one, then a later change, keeps every saved field', async ({ page }) => {
+  const { key, rec } = savedCase();
+  await open(page, { cfg: { noDb: true }, server: { answers: { [key]: rec }, hazards: {} } });
+  await page.locator('section.card', { hasText: 'Manual Detective' }).getByRole('button').first().click();
+  await page.getByRole('button', { name: 'One of these pages answers it' }).click();     // same as the saved overall
+  await page.evaluate(() => localStorage.setItem('__fake_cfg', JSON.stringify({ latency: 50 })));
+  await page.reload();
+  await page.waitForFunction(() => window.__review.S.serverReady);
+  const afterSync = await page.evaluate(k => JSON.parse(localStorage.getItem('mike-review-v2')).local[k], key);
+  expect(afterSync.pages).toEqual(rec.pages);                 // the phone copy is the merged record, even with no write
+  await page.locator('section.card', { hasText: 'Manual Detective' }).getByRole('button').first().click();
+  await page.getByRole('button', { name: '\u2190 Back' }).click();   // case 1 is now complete, so Continue opened case 2
+  await expect(page.locator('.qtext')).toHaveText(DATA.forum[0].question);
+  await page.getByRole('button', { name: 'The answer is somewhere else in this manual' }).click();
+  await expect.poll(() => serverDoc(page, 'answers', key).then(d => d && d.overall)).toBe('elsewhere');
+  const d = await serverDoc(page, 'answers', key);
+  expect(d.pages).toEqual(rec.pages);
+  expect(d.note).toBe('expert note');
+  const local = await page.evaluate(k => JSON.parse(localStorage.getItem('mike-review-v2')).local[k], key);
+  expect(local.pages).toEqual(rec.pages);
+});
+
+test('Codex round 2 F4: finishing a quick session before the first sync arrives does not blank the page', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(String(e)));
+  await open(page, { cfg: { snapshotDelay: 5000 }, waitReady: false });
+  await page.locator('section.card', { hasText: 'Manual Detective' }).getByRole('button', { name: 'Quick 5' }).click();
+  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'Next →' }).click();
+  await page.getByRole('button', { name: 'Finish session' }).click();
+  await expect(page.getByText('Session complete')).toBeVisible();
+  await page.waitForFunction(() => window.__review.S.serverReady, null, { timeout: 10000 });
+  await page.waitForTimeout(300);
+  expect(errors).toEqual([]);
+  await expect(page.getByText('Session complete')).toBeVisible();
+  await page.getByRole('button', { name: 'Back to missions' }).click();
+  await expect(page.getByRole('heading', { name: 'Industrial Intelligence Challenge' })).toBeVisible();
+});
+
+test('a save never drops a field that the server copy holds, even if the phone copy lacks it', async ({ page }) => {
+  const { key, rec } = savedCase();
+  await open(page, { server: { answers: { [key]: rec }, hazards: {} } });
+  await page.evaluate(k => {
+    const R = window.__review;
+    R.S.local[k] = { overall: 'answered', key: k, savedAt: '2026-10-26T07:00:00.000Z' };   // a stripped phone copy, older than the server's
+    R.saveAnswer(k, r => { r.overall = 'unclear'; });
+  }, key);
+  await expect.poll(() => serverDoc(page, 'answers', key).then(d => d && d.overall)).toBe('unclear');
+  const d = await serverDoc(page, 'answers', key);
+  expect(d.pages).toEqual(rec.pages);
+  expect(d.note).toBe('expert note');
+});

@@ -2,7 +2,7 @@
 
     cd test && python3 red_runs.py        (needs `npm i` and `npx playwright install chromium` here)
 
-Each mutation must turn its named test red on the Pixel project; the unmutated control must pass it.
+Each mutation must turn its named test red on the Pixel project; the unmutated control must pass the WHOLE suite.
 Writes results/red-runs.json and exits 1 if any mutation survives.
 """
 
@@ -17,7 +17,12 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.join(HERE, "..", "app.html")
 MUTATIONS = [
-    ("control (no mutation)", None, None, "XP counts only server-confirmed saves"),
+    (
+        "control (no mutation)",
+        None,
+        None,
+        ".",
+    ),  # "." matches every test: the WHOLE suite must pass unmutated
     (
         "answer XP from the phone's copy, not the server",
         "return s && s.confirmed ? s.data : null; }",
@@ -77,6 +82,24 @@ MUTATIONS = [
         "S.tomb[h.id] = true; delete S.localHaz[h.id]; lsSave();",
         "S.tomb[h.id] = true; lsSave();",
         "a removed hazard stays removed",
+    ),
+    (
+        "no-op merge not kept on the phone (Codex round 2 F1)",
+        "      S.local[key] = merged;                                   // always keep the merged copy, write or not\n      if (!same(stripMeta(merged), stripMeta(s.data))) writer.put('answers', key, merged);",
+        "      if (!same(stripMeta(merged), stripMeta(s.data))) { S.local[key] = merged; writer.put('answers', key, merged); }",
+        "offline choice identical to the saved one",
+    ),
+    (
+        "save starts from the phone copy only (Codex round 2 F1)",
+        "const base = !sv ? (lc || {}) : !lc ? sv : ((lc.savedAt || '') > (sv.savedAt || '') ? mergeRec(sv, lc) : mergeRec(lc, sv));",
+        "const base = lc || sv || {};",
+        "a save never drops a field that the server copy holds",
+    ),
+    (
+        "session summary reads the cleared session (Codex round 2 F4)",
+        "  const ss = S.sessionDone;  ",
+        "  const ss = S.sessionDone; S.sessionDone = null;  ",
+        "finishing a quick session before the first sync",
     ),
     (
         "older phone copy overwrites the server",

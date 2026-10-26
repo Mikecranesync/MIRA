@@ -1,9 +1,9 @@
 [
  {
   "mutation": "control (no mutation)",
-  "guard_test": "XP counts only server-confirmed saves",
+  "guard_test": ".",
   "failed": 0,
-  "passed": 1,
+  "passed": 19,
   "as_expected": true
  },
  {
@@ -72,6 +72,27 @@
  {
   "mutation": "removed hazard kept on the phone (Codex F2)",
   "guard_test": "a removed hazard stays removed",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "no-op merge not kept on the phone (Codex round 2 F1)",
+  "guard_test": "offline choice identical to the saved one",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "save starts from the phone copy only (Codex round 2 F1)",
+  "guard_test": "a save never drops a field that the server copy holds",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "session summary reads the cleared session (Codex round 2 F4)",
+  "guard_test": "finishing a quick session before the first sync",
   "failed": 1,
   "passed": 0,
   "as_expected": true
