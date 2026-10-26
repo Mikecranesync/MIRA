@@ -327,3 +327,13 @@ test('#4803: the session summary count updates when pending saves confirm', asyn
   await expect(page.getByRole('heading', { name: '0 of 5 saved' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '1 of 5 saved' })).toBeVisible({ timeout: 10000 });
 });
+
+test('#4802: a hazards-only load failure is shown and recovers, so hazard progress is not silently undercounted', async ({ page }) => {
+  const haz = { hx: { id: 'hx', text: 'saved hazard', writtenAt: '2026-10-26T09:00:00.000Z' } };
+  await open(page, { cfg: { subError: { code: 'unavailable', times: 1, coll: 'hazards' } }, server: { answers: {}, hazards: haz }, waitReady: false });
+  await expect(page.getByText('Couldn\u2019t load your saved answers')).toBeVisible({ timeout: 5000 });
+  expect((await st(page)).p.hazards).toBe(0);
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect.poll(async () => (await st(page)).p.hazards, { timeout: 10000 }).toBe(1);
+  await expect(page.getByText('Couldn\u2019t load your saved answers')).toHaveCount(0);
+});

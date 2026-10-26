@@ -3,7 +3,7 @@
   "mutation": "control (no mutation)",
   "guard_test": ".",
   "failed": 0,
-  "passed": 21,
+  "passed": 22,
   "as_expected": true
  },
  {
@@ -100,13 +100,20 @@
  {
   "mutation": "subscription error swallowed (#4802)",
   "guard_test": "#4802",
-  "failed": 1,
+  "failed": 2,
   "passed": 0,
   "as_expected": true
  },
  {
   "mutation": "session summary never refreshes (#4803)",
   "guard_test": "#4803",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "hazards subscription error ignored (#4802)",
+  "guard_test": "hazards-only load failure",
   "failed": 1,
   "passed": 0,
   "as_expected": true

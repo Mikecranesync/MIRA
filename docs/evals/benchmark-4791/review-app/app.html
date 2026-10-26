@@ -507,18 +507,22 @@ render();
 /* Subscribe once per collection. A subscription error (or a throw while subscribing) shows a "Try again" banner;
    answer controls stay locked until a definitive snapshot arrives (#4802). Retrying drops the dead listeners first. */
 const subs = {};
+let subGen = 0;   // callbacks from a superseded subscription (already in flight when Try again ran) are ignored
 function subscribe(){
+  const gen = ++subGen;
   S.syncError = null;
   for (const k of Object.keys(subs)) { try { subs[k](); } catch (e) {} delete subs[k]; }
-  const fail = e => { S.syncError = (e && e.code) || 'error'; render(); };
+  const fail = e => { if (gen !== subGen) return; S.syncError = (e && e.code) || 'error'; render(); };
   try {
     subs.answers = db.collection('answers').onSnapshot(snap => {
+      if (gen !== subGen) return;
       S.server = Object.fromEntries(snap.docs.map(d => [d.id, { data: d.data(), confirmed: !snap.metadata.fromCache && !d.metadata.hasPendingWrites }]));
       const first = !S.serverReady && !snap.metadata.fromCache;
       if (first) { S.serverReady = true; reconcile(); }
       announceBadges(); retryFailed(); if (first) render(); else refresh();
     }, fail);
     subs.hazards = db.collection('hazards').onSnapshot(snap => {
+      if (gen !== subGen) return;
       S.serverHaz = Object.fromEntries(snap.docs.map(d => [d.id, { data: d.data(), confirmed: !snap.metadata.fromCache && !d.metadata.hasPendingWrites }]));
       const first = !S.hazReady && !snap.metadata.fromCache;
       if (first) { S.hazReady = true; reconcile(); }

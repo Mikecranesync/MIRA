@@ -103,7 +103,7 @@ MUTATIONS = [
     ),
     (
         "subscription error swallowed (#4802)",
-        "const fail = e => { S.syncError = (e && e.code) || 'error'; render(); };",
+        "const fail = e => { if (gen !== subGen) return; S.syncError = (e && e.code) || 'error'; render(); };",
         "const fail = e => {};",
         "#4802",
     ),
@@ -112,6 +112,12 @@ MUTATIONS = [
         "|| S.view === 'summary' || S.view === 'sessionEnd') render();",
         "|| S.view === 'summary') render();",
         "#4803",
+    ),
+    (
+        "hazards subscription error ignored (#4802)",
+        "      announceBadges(); refresh();\n    }, fail);",
+        "      announceBadges(); refresh();\n    }, () => {});",
+        "hazards-only load failure",
     ),
     (
         "older phone copy overwrites the server",

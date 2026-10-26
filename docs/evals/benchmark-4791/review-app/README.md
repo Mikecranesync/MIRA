@@ -42,7 +42,7 @@ The order and the lock are the same as v1:
 | XP only for saves the server confirmed | XP, progress and badges are computed only from database snapshots that are definitive (`fromCache: false`) and have no pending writes (test 4). |
 | Edits before the first sync, or made offline, never wipe saved fields (Codex F1 on #4801) | Answer buttons, flags and notes stay disabled with a "Loading your saved answers" banner until the first definitive snapshot. A record edited offline is **merged** field by field into the server copy (the phone's fields win; saved page ratings and notes are kept), never replaced. Every save starts from both copies, the newer one's fields winning, so no save can drop a field the other copy holds (Codex round 2). (Tests 14, 15, 17 and 19.) |
 | The session summary survives a late first sync (Codex round 2 F4) | The finished session is kept for as long as its summary shows (test 18). |
-| A failed first load recovers (#4802) | A subscription error shows "Couldn't load your saved answers" with a **Try again** button that resubscribes. Answer controls stay locked until a definitive snapshot arrives, so nothing saved can be overwritten (test 20). |
+| A failed first load recovers (#4802) | A subscription error shows "Couldn't load your saved answers" with a **Try again** button that resubscribes. Answer controls stay locked until a definitive snapshot arrives, so nothing saved can be overwritten. A hazards-only failure is shown and recovers too (tests 20 and 22). Callbacks still in flight from a superseded subscription are ignored, via a generation counter. That guard is defensive: no test isolates it (independent review finding, 2026-10-27). |
 | The session count stays accurate (#4803) | The session summary re-renders as pending saves confirm (test 21). |
 | A removed hazard stays removed (Codex F2) | Removing a hazard deletes it from the phone's copy as well as the server, so a reload can't re-upload it (test 16). |
 | Saved records never altered | The record keys and shapes are unchanged from v1 (`answers/forum-<id>`, `answers/safety-<id>`, `answers/meta-words`, `hazards/<id>`); `flag: true` and the value `"unsure"` are the only additions. Opening v2 over v1 records makes **zero** writes (test 9), and an older phone copy never overwrites a newer server record (test 10). |
@@ -53,11 +53,11 @@ The order and the lock are the same as v1:
 ## Evidence (2026-10-26)
 
 **Playwright suite** (`test/review.spec.mjs`, against `test/fake-db.js`):
-- **42/42 pass:** 21 tests × 2 devices, Pixel (412×915, Chromium) and iPhone 13 (390×664, WebKit).
+- **44/44 pass:** 22 tests × 2 devices, Pixel (412×915, Chromium) and iPhone 13 (390×664, WebKit).
 - The fake database mimics the real contract: a cached snapshot first, then a definitive one; writes pending,
   then confirmed; injected `unavailable` and `invalid_argument` errors; and a server copy that survives reloads.
 
-**Mutation proof** (`test/red_runs.py` → `test/red-runs.json`): 16 mutations, each turns its guarding test red,
+**Mutation proof** (`test/red_runs.py` → `test/red-runs.json`): 17 mutations, each turns its guarding test red,
 and the unmutated control passes the **whole** suite. The mutations:
 - answer XP counted from the phone's copy;
 - hazard XP counted from the phone's copy;
@@ -74,7 +74,8 @@ and the unmutated control passes the **whole** suite. The mutations:
 - a save starting from the phone copy alone (Codex round 2 F1);
 - the session summary reading a cleared session (Codex round 2 F4);
 - a subscription error swallowed (#4802);
-- the session summary never refreshing (#4803).
+- the session summary never refreshing (#4803);
+- a hazards subscription error ignored (#4802).
 
 **Access probes** (ArtifactData, as the owner's account acting at a lower level):
 
