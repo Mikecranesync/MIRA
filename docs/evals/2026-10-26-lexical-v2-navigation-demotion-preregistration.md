@@ -77,3 +77,29 @@ these sets. The penalty weight and detector thresholds below are fixed now.
     at least 70% of its non-empty lines.
 - **Penalty:** `score -= 2.0` for a navigation chunk. An exact code hit adds 3.0, so a navigation chunk that
   names the asked code still outranks one that doesn't.
+
+## Amendment 1 (2026-10-26, after Codex review F1 on #4832, before the re-run)
+
+**Why.** Codex showed that an 8-row specification table qualifies under the heading-less branch, the one
+with entries at 70% or more of non-empty lines. It is demoted out of the top 6 for a question it
+answers. A chunk scan of the 19 manuals (no benchmark questions involved) confirmed the branch also flags
+value tables such as ACS355 p.272.
+
+**Index rule, replaced.** Everything else stays as fixed above, including the dot-leader rule and the
+penalty of 2.0.
+- An entry line is unchanged: at most 60 characters, starts with a letter or digit, and ends in page
+  references.
+- A chunk qualifies only if it has at least 8 entries and entries make up at least 50% of its non-empty
+  lines. Then:
+  - with a line that is exactly `Index`, it is navigation;
+  - otherwise it is navigation only when **at least 20** entries carry a label (the line minus its
+    trailing page references) that contains **no digit**.
+
+**The scan under the new rule.** The heading-less branch now flags only:
+- back-of-book index continuation chunks;
+- the ACS355 units-abbreviation table (pp.264–265).
+
+ACS355 p.272 and Micro820 p.53 are no longer flagged.
+
+**Re-run.** Same pass rule (F0, G1–G3), same sets and harness, against the same `main` baseline rows.
+One run. If it fails, report and stop.
