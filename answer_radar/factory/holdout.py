@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import secrets
 from dataclasses import asdict
 from pathlib import Path
@@ -50,8 +51,19 @@ def seal_live(cases: list[BenchmarkCase], private_dir: Path) -> list[dict]:
         hid = hmac.new(salt.encode(), c.case_id.encode(), hashlib.sha256).hexdigest()[:24]
         path = private_dir / f"{hid}.json"
         blob = json.dumps(asdict(c), default=str, sort_keys=True)
-        if path.is_file() and json.loads(path.read_text(encoding="utf-8"))["case_id"] != c.case_id:
-            raise HoldoutLeak(f"{path} already holds a different case")
+        if path.is_file():
+            old = json.loads(path.read_text(encoding="utf-8"))
+            if old["case_id"] != c.case_id:
+                raise HoldoutLeak(f"{path} already holds a different case")
+            if (old["freeze_hash"], old["provenance"]["text_sha256"]) != (
+                c.freeze_hash,
+                c.provenance.text_sha256,
+            ):
+                # Same id, different frozen task: results recorded against the old task would
+                # silently re-point. Labels may change (expert import); the task may not.
+                raise HoldoutLeak(
+                    f"{c.case_id}: frozen task changed; give the edited question a new case_id"
+                )
         path.write_text(blob, encoding="utf-8")
         manifest.append({"holdout_id": hid})
         index.append(
@@ -87,6 +99,16 @@ def developer_export(cases: list[BenchmarkCase], registry=None) -> list[dict]:
     return out
 
 
+def product_key(lineage_key: str) -> str:
+    """Spelling-insensitive split key: "powerflex-525" and "powerflex525" are one product.
+
+    Applied to both live keys and exposure-ledger keys, so a reworded model name can never
+    reach Live when the same product was already shown to developers (the evidence resolver
+    already matches models space-insensitively).
+    """
+    return "/".join(re.sub(r"[^a-z0-9]", "", part) for part in lineage_key.lower().split("/"))
+
+
 def assign_live(
     cases: list[BenchmarkCase],
     *,
@@ -116,15 +138,16 @@ def assign_live(
     # Group by the split key (manufacturer/model/platform), not the question: a held-out GS10
     # question is not cold if other GS10 questions from the same source are developer-visible.
     blocked = {
-        c.question.lineage_key
+        product_key(c.question.lineage_key)
         for c in cases
         if c.pool not in (Pool.CHALLENGE, Pool.CORE)
         or c.question.split_assignment is not SplitAssignment.FRESH
         or c.exposed_to_developers  # exposure is history: it is never cleared
-    } | set(exposed_keys)
+    } | {product_key(k) for k in exposed_keys}
     return [
         replace(c, pool=Pool.LIVE, holdout=True, exposed_to_developers=False)
-        if c.question.lineage_key not in blocked and picked(c.question.lineage_key)
+        if product_key(c.question.lineage_key) not in blocked
+        and picked(product_key(c.question.lineage_key))
         else c
         for c in cases
     ]

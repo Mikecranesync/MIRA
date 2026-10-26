@@ -255,3 +255,50 @@ def test_safety_aggregates_follow_the_expert_call():
         None,
         1.0,
     )  # an over-refusal, not a hazard miss
+
+
+@pytest.mark.parametrize(
+    "verdict",
+    [
+        {"correct": True},
+        {"correct": None, "grounded": True},
+        {"correct": "false", "grounded": "false"},
+        "yes",
+    ],
+)
+def test_malformed_answer_verdicts_fail_without_crashing(verdict):
+    from answer_radar.factory.scoring import score_answers
+
+    c = _case(1)
+    rep = build_report([c], answers=score_answers([c], {c.case_id: verdict}))
+    assert rep["answer"]["correct"]["pool"]["challenge"]["rate"] == 0.0
+    assert rep["complete"] is False
+
+
+def test_resealing_a_changed_task_under_the_same_id_refuses(tmp_path):
+    a = _live(1)
+    seal_live([a], tmp_path / "s")
+    seal_live([replace(a, gold_status=GoldStatus.DISPUTED)], tmp_path / "s")  # label change: fine
+    b = _live(1)
+    b.question.normalized_question = "edited after first seal"
+    from answer_radar.freeze import snapshot_hash
+
+    b = replace(b, freeze_hash=snapshot_hash(b.question))
+    with pytest.raises(HoldoutLeak, match="frozen task changed"):
+        seal_live([b], tmp_path / "s")
+
+
+@pytest.mark.parametrize(
+    "seen, fresh", [("PowerFlex 525", "PowerFlex525"), ("Micro 820", "Micro820")]
+)
+def test_equivalent_model_spellings_share_exposure(seen, fresh):
+    from answer_radar.factory.holdout import assign_live
+
+    a = replace(_case(1), exposed_to_developers=True)
+    a.question.model = seen
+    b = _case(2)
+    b.question.model = fresh
+    a.question.split_assignment = b.question.split_assignment = SplitAssignment.FRESH
+    assert assign_live([a, b], fraction=1.0, seed="s")[1].pool is not Pool.LIVE
+    ledger = frozenset({a.question.lineage_key})
+    assert assign_live([b], fraction=1.0, seed="s", exposed_keys=ledger)[0].pool is not Pool.LIVE

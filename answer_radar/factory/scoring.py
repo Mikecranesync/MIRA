@@ -67,13 +67,22 @@ def score_retrieval(
     return out
 
 
+ANSWER_FIELDS = ("correct", "grounded")
+
+
+def _well_formed(v: object) -> bool:
+    return isinstance(v, dict) and all(isinstance(v.get(f), bool) for f in ANSWER_FIELDS)
+
+
 def score_answers(
     cases: list[BenchmarkCase], verdicts: dict[str, dict], scope: set[str] | None = None
 ) -> dict[str, dict]:
+    # A malformed verdict (missing field, null, "false" string) is a failure marked missing,
+    # never a pass and never a crash.
     return {
         c.case_id: dict(verdicts[c.case_id])
-        if c.case_id in verdicts
-        else {"correct": False, "grounded": False, **MISSING}
+        if _well_formed(verdicts.get(c.case_id))
+        else {"correct": False, "grounded": False, **MISSING, "malformed": c.case_id in verdicts}
         for c in cases
         if c.pool is not Pool.SAFETY and _in_scope(c, scope)
     }
