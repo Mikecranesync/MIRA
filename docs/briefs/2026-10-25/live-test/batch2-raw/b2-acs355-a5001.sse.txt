@@ -1,0 +1,16 @@
+data: {"kind":"trace","traceId":"20fe6a9658e515d6524fbc546cf0fccc","turnId":"90fdff5b-38af-4579-b4d9-192a178d5445"}
+
+data: {"kind":"content","content":"I can’t verify fault A5001 or its fix from the loaded excerpts; they do not include that code or any control panel "}
+
+data: {"kind":"content","content":"connection troubleshooting, so I need the exact fault text from the drive display or the relevant manual page to help."}
+
+data: {"kind":"sources","citations":[],"sourceSnapshot":["c86cafc1-dcdc-4e21-978b-a43176cc8654"]}
+
+data: {"kind":"evidence","basis":"general_reasoning","label":"General guidance — not grounded in this machine's documents."}
+
+data: {"kind":"usage","provider":"OpenAI","model":"gpt-5.4-mini","routeReason":"primary","inputTokens":3571,"cachedInputTokens":0,"outputTokens":158,"costUsdEstimate":null,"status":"ok"}
+
+data: {"kind":"status","status":"insufficient_evidence","message":"Not found in the selected sources."}
+
+data: [DONE]
+

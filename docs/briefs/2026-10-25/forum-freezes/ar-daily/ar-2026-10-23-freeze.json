@@ -1,0 +1,16 @@
+{
+  "freeze_id": "AR-2026-10-23-ROCKWELL-MICRO850-2080-IF4-ANALOG-STUCK-MIN-MAX-UNTIL-POWER-CYCLE",
+  "source": "PLCTalk (PLC Questions and Answers)",
+  "thread_id": "150183",
+  "url": "https://www.plctalk.net/forums/threads/micro800-analog-values-randomly-read-min-or-max-and-stay-stuck.150183/",
+  "title": "Micro800 - Analog Values Randomly Read Min or Max and Stay Stuck",
+  "op_author": "Swagger316",
+  "op_posted_local_et": "2026-10-23T07:03:03-04:00",
+  "age_hours_at_freeze": 2.7,
+  "reply_count_unread": 2,
+  "technician_version": "Micro850 PLC with a 2080-IF4 analog plug-in module, 2 channels used. Values read correctly for a while, then randomly jump to max or 0 on both channels at the same time and stay stuck until the PLC is power cycled. Online during the event the raw values are maxed/zeroed, but mA measured at the module looks normal. No PLC faults. Already swapped the 2080-IF4 for a new one; same problem. Should I move to a 2085-IF4 expansion module, or is this a PLC hardware or program issue?",
+  "oem": "Rockwell Automation / Allen-Bradley",
+  "model": "Micro850, 2080-IF4 plug-in (alt 2085-IF4)",
+  "fault_symptom": "Both analog plug-in channels intermittently latch at max or 0 until power cycle; field mA normal; no controller fault; module replacement did not fix",
+  "notes": "Frozen OP-only via curl HTML extract; 2 replies exist, not read. Answer not researched; no MIRA/FactoryLM calls. MrPLC RSS had no new topic since 45945. Runner-ups: PLCTalk Moxa NPort 5410 serial (vague), 1769-L30ER Studio 5000 V26 upload."
+}

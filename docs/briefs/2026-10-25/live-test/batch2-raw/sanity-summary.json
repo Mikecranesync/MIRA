@@ -1,0 +1,65 @@
+[
+ {
+  "id": "s0-pf525",
+  "model": "pf525",
+  "thread": "thrd_9cadff9da1cd9f379739c92fd987ac3f",
+  "http": 200,
+  "ms": 9019,
+  "status": "insufficient_evidence",
+  "cites": [],
+  "answer": ""
+ },
+ {
+  "id": "s0-acs355",
+  "model": "acs355",
+  "thread": "thrd_caecabf7cd3efe793123498d07e6df01",
+  "http": 200,
+  "ms": 15775,
+  "status": "answered",
+  "label": "Grounded in this notebook's sources.",
+  "cites": [
+   {
+    "id": "4",
+    "page": 359
+   }
+  ],
+  "answer": "0001 means **OVERCURRENT**: the output current has exceeded the trip level [4]. The manual lists likely causes as sudden load change or stall, insufficient acceleration time, incorrect motor data, motor/drive sizing issues, damaged cables or wrong motor connection, internal drive fault, or high-frequency noise in the STO lines [4]."
+ },
+ {
+  "id": "s0-micro820",
+  "model": "micro820",
+  "thread": "thrd_0c8252477e89176d2bee298256f0574e",
+  "http": 200,
+  "ms": 14302,
+  "status": "insufficient_evidence",
+  "label": "General guidance — not grounded in this machine's documents.",
+  "cites": [],
+  "answer": "The loaded excerpts do not state the Micro820 embedded Ethernet port’s default IP address setting; you’ll need the full user manual or the controller’s current configuration to confirm it."
+ },
+ {
+  "id": "s0-s71200",
+  "model": "s71200",
+  "thread": "thrd_a7a699366a71bf7fbc890026c29a3b5c",
+  "http": 200,
+  "ms": 13271,
+  "status": "answered",
+  "label": "Grounded in this notebook's sources.",
+  "cites": [
+   {
+    "id": "3",
+    "page": 1047
+   }
+  ],
+  "answer": "A flashing red ERROR LED means the CPU has an error, such as an internal CPU error, a memory card error, or a configuration error from mismatched modules [3]. For a one-shot error, it can also flash red for three seconds after a non-ongoing fault such as the RTC resetting after power loss [3]."
+ },
+ {
+  "id": "s0-comfort",
+  "model": "comfort",
+  "thread": "thrd_7d1b819220890ea072248d0828b3bd20",
+  "http": 200,
+  "ms": 8160,
+  "status": "insufficient_evidence",
+  "cites": [],
+  "answer": ""
+ }
+]

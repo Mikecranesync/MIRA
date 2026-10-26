@@ -1,0 +1,17 @@
+{
+  "freeze_id": "AR-2026-10-22-OMRON-NX-SL3300-ETHERCAT-NONSAFETY-NODE-POWER-LOSS-TRIPS-SAFETY",
+  "source": "MrPLC (Omron forum)",
+  "thread_id": "45944",
+  "url": "https://mrplc.com/forums/topic/45944-caida-sistema-seguridad-sysmac-nx/",
+  "title": "Caida Sistema Seguridad Sysmac NX",
+  "op_author": "Aixendri (signs Periben)",
+  "op_posted_utc": "2026-10-21T18:24:21Z",
+  "op_posted_local_et": "2026-10-21T14:24:21-04:00",
+  "age_hours_at_freeze": 19,
+  "reply_count_unread": 1,
+  "technician_version": "Omron Sysmac NX distributed system, 7 EtherCAT NX nodes across a plant. Nodes 1-6 carry safety I/O (NX-SID800, NX-SID400, NX-SOH200) under an NX-SL3300 safety CPU; node 7 has only standard digital/analog I/O and nothing safety-related in its program. When node 7 loses power, the whole safety system (SL3300 plus all safety cards) trips with a safety-system failure alarm and the plant stops. Losing node 7's EtherCAT comms alone does NOT trip safety (they got that to ride through and auto-recover), but loss of power to node 7 always does. How do I make a power loss on the non-safety node drop only that node without taking down the safety system? Ongoing for over a year.",
+  "oem": "Omron",
+  "model": "Sysmac NX, NX-SL3300, NX-SID800, NX-SID400, NX-SOH200, EtherCAT coupler nodes",
+  "fault_symptom": "Power loss on non-safety EtherCAT node trips entire NX-SL3300 safety system; comm loss alone does not",
+  "notes": "Frozen OP-only (Spanish original + OP's English translation). 1 reply exists, not read. Answer not researched; no MIRA/FactoryLM calls. PLCTalk not scanned this run (Cloudflare blocks curl; browser not used). Runner-up MrPLC 45945 Omron CX-Programmer/NT HMI DM values reset to 0 (follow-up thread, 2 replies). Omron repeat: NX-SL3500/Lenze FSoE 10-18 seen, NJ501 earlier."
+}

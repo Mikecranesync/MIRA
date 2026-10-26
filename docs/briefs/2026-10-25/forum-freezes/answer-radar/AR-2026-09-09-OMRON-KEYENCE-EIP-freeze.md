@@ -1,0 +1,21 @@
+# AR freeze — 2026-09-09 Omron NX1P2 ↔ Keyence KV-X500 EtherNet/IP
+
+- mission: AR-FIRST-QUESTION-001 daily find-one
+- frozen_at: 2026-09-09T13:54:07.456816+00:00
+- platform: MrPLC
+- url: https://mrplc.com/forums/topic/45899-connection-between-nx1p2-and-keyence-kv-x500/
+- topic: 45899
+- author: CalvinMills
+- posted_at: 2026-09-09T13:18:32Z
+- age: ~35 minutes (OP 2026-09-09T13:18:32Z by CalvinMills; frozen 2026-09-09T13:54:07.456816+00:00)
+- manufacturer/models: Omron NX1P2 + Keyence KV-X500
+- system: EtherNet/IP EDS connection (input-only limitation)
+- original_problem: Technician installing EDS for EtherNet/IP between Omron NX1P2 and Keyence KV-X500; connection type only allows "input only".
+- technician_version: I'm trying to set up EtherNet/IP between an Omron NX1P2 and a Keyence KV-X500. When I install the corresponding EDS file on each PLC it only lets me set the connection up as input only. Has anyone gotten EtherNet/IP working between these two brands, or how do I get past input-only?
+- community_answers_inspected: NO (OP text taken from MrPLC activity feed only; topic page not opened for replies)
+- answer_researched: NO
+- benchmark_eligible: true
+- why_strong_test:
+  - Fresh (~35 min) multi-OEM ask with exact models + concrete EDS/connection symptom
+  - Manual/config Q&A need-class (not binary file archive) — good mobile/manual-rag candidate once SUT+sources ready
+  - Not a prior dry-run seed or prior daily freeze (45892/45895/45896)

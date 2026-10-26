@@ -1,0 +1,28 @@
+{
+  "pf525": {
+    "notebookId": "fc6519a4-67a8-45f9-b751-6ce5aa4a8a3f",
+    "name": "Batch2 2026-10-25 PowerFlex 525",
+    "nodeId": "98d27ff6-a0d7-455a-9f45-02b602169097",
+    "upload": {
+      "status": 201,
+      "ms": 12837,
+      "raw": "{\"ok\":true,\"indexed\":true,\"uploadId\":\"7119eaa1-bc0c-4221-96b5-9fde89d0147c\",\"chunkCount\":746,\"fileId\":\"2f4ab9be-8559-48a5-b6a9-bc5c42415501\",\"file\":{\"id\":\"2f4ab9be-8559-48a5-b6a9-bc5c42415501\",\"filename\":\"520-um001.pdf\",\"size_bytes\":34469932,\"capability\":\"indexable\"}}"
+    },
+    "docId": "7119eaa1-bc0c-4221-96b5-9fde89d0147c",
+    "attachStatus": 201,
+    "attached": true
+  },
+  "acs355": {
+    "notebookId": "8212012f-b47b-4ade-8fb9-718785e5f2fa",
+    "name": "Batch2 2026-10-25 ACS355",
+    "nodeId": "a758879d-5e8c-4105-a227-5ac02bcb4df6",
+    "upload": {
+      "status": 201,
+      "ms": 12787,
+      "raw": "{\"ok\":true,\"indexed\":true,\"uploadId\":\"c86cafc1-dcdc-4e21-978b-a43176cc8654\",\"chunkCount\":974,\"fileId\":\"d7a12b71-d935-4281-9e3e-e75baddb407e\",\"file\":{\"id\":\"d7a12b71-d935-4281-9e3e-e75baddb407e\",\"filename\":\"abb-acs355-users-manual-3AUA0000066143.pdf\",\"size_bytes\":11378626,\"capability\":\"indexable\"}}"
+    },
+    "docId": "c86cafc1-dcdc-4e21-978b-a43176cc8654",
+    "attachStatus": 201,
+    "attached": true
+  }
+}

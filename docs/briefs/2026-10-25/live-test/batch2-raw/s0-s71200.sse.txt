@@ -1,0 +1,18 @@
+data: {"kind":"trace","traceId":"af744c6450b6151ce43ebe3758c2b7d8","turnId":"e813969b-acfb-41b5-8840-286847b27eaf"}
+
+data: {"kind":"content","content":"A flashing red ERROR LED means the CPU has an error, such as an internal CPU error, a memory card error, or a "}
+
+data: {"kind":"content","content":"configuration error from mismatched modules [3]. For a one-shot error, it can also flash red for three seconds after a "}
+
+data: {"kind":"content","content":"non-ongoing fault such as the RTC resetting after power loss [3]."}
+
+data: {"kind":"sources","citations":[{"citationId":"3","docId":"67d09e1e-862a-4b7c-aa82-eb64df83f875","sourceTitle":"siemens-s7-1200-system-manual-A5E02486680-AQ-2024-12-en.pdf","page":1047,"fileId":"cd4a5772-8c60-4fc9-a868-dd5841c0a220","quote":"…(Page 382) to determine the status of the LEDs.\nTable 15-1 Status LEDs for a CPU\nDescription STOP/RUN\nYellow / Green\nERROR\nRed\nMAINT\nYellow\nPower is off Off Off Off\nStartup, self-test, or firmware\nupdate\nFlashing\n(alternating yellow and gre","originFileId":null}],"sourceSnapshot":["67d09e1e-862a-4b7c-aa82-eb64df83f875"]}
+
+data: {"kind":"evidence","basis":"oem_documentation","label":"Grounded in this notebook's sources."}
+
+data: {"kind":"usage","provider":"OpenAI","model":"gpt-5.4-mini","routeReason":"primary","inputTokens":3332,"cachedInputTokens":0,"outputTokens":98,"costUsdEstimate":null,"status":"ok"}
+
+data: {"kind":"status","status":"answered"}
+
+data: [DONE]
+
