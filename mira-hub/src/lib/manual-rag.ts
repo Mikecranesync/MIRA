@@ -345,6 +345,27 @@ const isFamilyRoot = (id: string) => FAMILY_ROOTS.some(([root]) => root === id);
 const familyCovers = (root: string, model: string) =>
   FAMILY_ROOTS.some(([r, members]) => r === root && members.test(model));
 
+/** Named-ask applicability (Foreman T-038 fix A): the exact-identity rule, plus
+ *  a title naming a family root that covers the requested model — so "PowerFlex
+ *  525" is answered from the 520-Series manual and "TP700" from Comfort Panels,
+ *  as the notebook branch already allows. A title that ALSO names a member the
+ *  question did not ask for is that member's manual ("Micro800 … Micro810" is
+ *  not the Micro820's), so it is not admitted on the family alone. */
+function documentCoversNamedAsk(requested: Set<string>, title: Set<string>): boolean {
+  if (documentCoversRequest(requested, title)) return true;
+  const req = withCatalogModels(requested);
+  const declared = withCatalogModels(title);
+  for (const root of declared) {
+    if (!isFamilyRoot(root)) continue;
+    // A root can match its own member pattern (PF520 ~ /^PF52\d$/,
+    // MICRO800 ~ /^MICRO8\d0$/); it names the family, not a sibling.
+    const members = [...declared].filter((id) => !isFamilyRoot(id) && familyCovers(root, id));
+    if (!members.every((m) => req.has(m))) continue;
+    for (const r of req) if (familyCovers(root, r)) return true;
+  }
+  return false;
+}
+
 /** A notebook identity made ONLY of family roots ("Comfort", "Micro800") does
  *  not name a machine the filter could scope to — any TP or Micro8x0 manual
  *  attached to it is plausibly right, so the filter is skipped. */
@@ -1541,7 +1562,13 @@ export async function retrieveNodeChunks(
   // the thread's F0004 that augmentation carried in (Codex r1 on #4360).
   // The notebook's own machine name is never a code (Codex r6 on #4360): "GS10 oC"
   // in a GS10 notebook binds oC, not GS10.
-  const expanded = withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery), opts.identity);
+  // Nor is the model the QUESTION names (forum-batch2 rerun): in a notebook with
+  // no confirmed identity, "ACS355 fault code 0001" let ACS355 earn the code
+  // bonus on every page that repeats it, and the 0001 fault table fell out.
+  const expanded = withoutIdentityCodes(
+    withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery), opts.identity),
+    requestedModel.model && !requestedModel.ambiguous ? { model: requestedModel.model } : null,
+  );
   // `match` picks the predicate: ILIKE substring for the legacy exact tokens,
   // or a whole-token regex for fault codes (codeTokenMatcher) — "%ova%" would
   // also hit "removal", and "%alarm 7%" every "ALARM 70".
@@ -1636,7 +1663,7 @@ export async function retrieveNodeChunks(
           const heading = String(r.document_heading ?? "");
           const declared =
             titleIdentities.size === 0 && coverIsAmbiguous(heading) ? ambiguousCoverIdentities(heading) : titleIdentities;
-          if (!documentCoversRequest(requestedIdentities, declared)) return false;
+          if (!documentCoversNamedAsk(requestedIdentities, declared)) return false;
         } else if (
           (titleIdentities.size > 0 &&
             !documentCoversNotebook(notebookIdentities, titleIdentities, opts.identity?.manufacturer?.trim() || null)) ||

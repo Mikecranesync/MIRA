@@ -730,3 +730,31 @@ describe("rerankChunks — intent-gated content features", () => {
     expect(out[0]).toBe(paramIndex); // higher ts_rank wins; no index penalty
   });
 });
+
+// Foreman T-038 1d (docs/briefs/2026-10-25, batch 2 #3): an ABB panel shows an
+// alarm as "A5001", but the manual's alarm table (ACS355 p.356) lists "5001 …
+// Check panel connection". Every lane searched only "A5001", so the forum
+// question abstained with the answer in the manual.
+describe("expandIndustrialQuery — panel letter + 4-digit code also searches the digits", () => {
+  const forum = "I have tried to connect abb acs355 with com cable with pinout on this site posted but after many tries i get a fault code on drive a5001 and i have learned in manual that this is control pannel connection problem how can i solve this problem help me pls";
+
+  it("the batch-2 forum wording searches 5001 as well as A5001", () => {
+    const e = expandIndustrialQuery(forum);
+    expect(e.exactTokens).toContain("A5001");
+    expect(e.exactTokens).toContain("5001");
+  });
+
+  it("an F + 4-digit fault code also searches its digits", () => {
+    expect(expandIndustrialQuery("ACS355 fault F0001 after power up").exactTokens).toContain("0001");
+  });
+
+  it("control: a 3-digit parameter ID (PowerFlex A410) adds no bare-digit token", () => {
+    const e = expandIndustrialQuery("what does PowerFlex parameter A410 do");
+    expect(e.exactTokens).toContain("A410");
+    expect(e.exactTokens).not.toContain("410");
+  });
+
+  it("control: a model token (ACS355) adds no bare-digit token", () => {
+    expect(expandIndustrialQuery("ACS355 panel connection problem").exactTokens).not.toContain("355");
+  });
+});

@@ -473,15 +473,15 @@ approved:
               WHERE tenant_id = $1
                 AND ($2::text IS NOT NULL)
                 AND ingest_route = 'v2'
-  "mira-hub/src/lib/manual-rag.ts:1437":
+  "mira-hub/src/lib/manual-rag.ts:1458":
     approved_classification: TENANT-ONLY
     query_sha256: "4a19a05da7838acfb04a41ded6cfbf728c2d6beaea014b9ebba061830b8f535b"
     reason: "RE-APPROVED 2026-10-21 (#4597): the only change in this context is the IDF sum, now `sum(...::numeric)` for an exact, row-order-independent score; the scope predicates were re-read and are unchanged (tenant_id=$1, ingest_route='v2', the same approval/node/doc clauses). NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. The `scope` CTE reads ONLY the BM25 pass's pure-tenant scope: tenant_id=$1, ingest_route='v2', and the SAME ${approvalClauseMain} / ${nodeClauseMain} / ${docClause} fragments at the SAME parameter positions ($3 node ids, $4 LIMIT, $5 validated doc scope, $6 server-derived confirmed set) as the ts_rank_cd pass it replaces under the flag. N and df are computed over this CTE only, so no out-of-scope row can shift a score. Node-attached uploads are the caller's own private rows, so this is a pure-tenant surface, not the OEM hybrid — TENANT-ONLY by the same rule as the BM25 pass and the vector lane (:1399)."
-  "mira-hub/src/lib/manual-rag.ts:1464":
+  "mira-hub/src/lib/manual-rag.ts:1485":
     approved_classification: TENANT-ONLY
     query_sha256: "38ede17090d609673dcb6b633683ec7064c6488077454c8ce74d3c7897df0e9c"
     reason: "NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. Final select joins knowledge_entries back to the `scored` CTE by primary key; every id in `scored` comes from the tenant-scoped `scope` CTE, and the explicit `knowledge_entries.tenant_id = $1` repeats the tenant predicate as defence in depth. Never widens scope beyond the BM25 pass. TENANT-ONLY, pure-tenant node-attachment surface."
-  "mira-hub/src/lib/manual-rag.ts:1498":
+  "mira-hub/src/lib/manual-rag.ts:1519":
     approved_classification: TENANT-ONLY
     query_sha256: "38ede17090d609673dcb6b633683ec7064c6488077454c8ce74d3c7897df0e9c"
     reason: "NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. Same final select as the entry above (the checker reports the join's second line separately); the correlated document_heading subquery it carries is the one already allowlisted for the BM25 pass. TENANT-ONLY, pure-tenant node-attachment surface."
