@@ -33,9 +33,21 @@ def rel(path: str) -> str:
     return os.path.relpath(path, os.path.join(HERE, "..", "..", ".."))
 
 
+def _manifest() -> dict[str, str]:
+    """PDF path -> sha256, from benchmark-4791/manual-pdfs.sha256 (the hashes of the exact bytes labelled)."""
+    out = {}
+    for line in open(os.path.join(B, "manual-pdfs.sha256")):
+        h, _key, path = line.split(maxsplit=2)
+        out[path.strip()] = h
+    return out
+
+
+PDF_SHA = _manifest()
+
+
 def pdf_sha(path: str) -> str | None:
-    base = os.path.basename(path)[:-4]
-    return base if len(base) == 64 and all(c in "0123456789abcdef" for c in base) else None
+    """Looked up in the manifest, not inferred from the filename (#4800); None only if genuinely unknown."""
+    return PDF_SHA.get(path)
 
 
 def main() -> None:
@@ -167,6 +179,11 @@ def main() -> None:
     schema = json.load(open(os.path.join(HERE, "case.schema.json")))
     v = jsonschema.Draft202012Validator(schema)
     errors = [(c["case_id"], e.message) for c in cases for e in v.iter_errors(c)]
+    # Every public-manual case must name the exact PDF bytes its page labels refer to (#4800).
+    for c in cases:
+        for d in c.get("documents", []):
+            if d["location"].startswith("CHARLIE:") and not d["sha256"]:
+                errors.append((c["case_id"], f"no sha256 for public manual {d['key']}"))
     ids = [c["case_id"] for c in cases]
     if len(ids) != len(set(ids)):
         errors.append(("*", "duplicate case_id"))

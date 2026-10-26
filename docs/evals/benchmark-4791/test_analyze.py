@@ -134,3 +134,60 @@ def test_verdict_inconclusive_below_twenty_answerable():
 def test_safety_verdict_no_go_on_a_missed_hazard_and_never_go_without_answers():
     assert A.verdicts(_results(0, 0), _sg(missed=["sg-04"]))["safety"]["verdict"] == "NO-GO"
     assert A.verdicts(_results(0, 0), _sg())["safety"]["verdict"] == "INCONCLUSIVE"
+
+
+# ── #4799: raw runs are checked against the frozen question set before anything is scored ──
+import json  # noqa: E402
+import shutil  # noqa: E402
+
+import pytest  # noqa: E402
+
+FROZEN = {"a": [1], "b": [2, 3], "c": []}
+
+
+def rows(**override):
+    base = [{"id": i, "accepted": acc, "error": None} for i, acc in FROZEN.items()]
+    return override.get("rows", base)
+
+
+def test_validate_accepts_a_complete_untouched_run():
+    A.validate_rows(rows(), FROZEN, "control")
+
+
+@pytest.mark.parametrize(
+    "mutate,why",
+    [
+        (lambda r: r[:-1], "missing"),
+        (lambda r: r + [r[0]], "duplicate"),
+        (lambda r: [{**r[0], "accepted": [9]}] + r[1:], "label"),
+        (lambda r: [{**r[0], "error": "connection refused"}] + r[1:], "harness error"),
+        (lambda r: r + [{"id": "zz", "accepted": [], "error": None}], "unknown"),
+    ],
+)
+def test_validate_rejects_a_broken_run(mutate, why):
+    with pytest.raises(A.InvalidRun, match=why):
+        A.validate_rows(mutate(rows()), FROZEN, "probe")
+
+
+def test_a_question_dropped_from_every_arm_stops_scoring(tmp_path, monkeypatch):
+    for name in ("forum-new",):
+        shutil.copytree(f"{A.HERE}/raw/{name}", tmp_path / "raw" / name)
+        shutil.copytree(f"{A.HERE}/{name}", tmp_path / name)
+    for f in (tmp_path / "raw" / "forum-new").glob("forum-new-*-k6-r*.jsonl"):
+        kept = [line for line in f.read_text().splitlines() if '"fn-pf40-4"' not in line]
+        f.write_text("\n".join(kept) + "\n")
+    monkeypatch.setattr(A, "HERE", str(tmp_path))
+    with pytest.raises(A.InvalidRun, match="missing ids"):
+        A.harness_set("forum-new", 6)
+
+
+def test_committed_runs_still_validate_and_keep_their_metrics():
+    s = A.harness_set("forum-new", 6)
+    m = A.arm_metrics(s, "post")
+    assert (m["top5"]["num"], m["top5"]["den"]) == (8, 19)
+    assert (
+        json.load(open(f"{A.HERE}/results.json"))["retrieval"]["forum-new (k6, production call)"][
+            "cc0d26c1d"
+        ]["top5"]["num"]
+        == 8
+    )

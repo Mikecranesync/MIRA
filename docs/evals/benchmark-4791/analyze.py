@@ -71,32 +71,60 @@ def load_jsonl(path: str) -> list[dict]:
     return [json.loads(line) for line in open(path) if line.strip()]
 
 
+class InvalidRun(ValueError):
+    """A raw run that does not match its frozen question set. Scoring stops: no metrics, no verdicts (#4799)."""
+
+
+def validate_rows(
+    rows: list[dict], frozen: dict, where: str, labels: str = "accepted", err: str = "error"
+) -> None:
+    """Every frozen id exactly once, the frozen labels unchanged, and no harness error, or InvalidRun."""
+    ids = [r["id"] for r in rows]
+    dup = sorted({i for i in ids if ids.count(i) > 1})
+    missing, extra = sorted(set(frozen) - set(ids)), sorted(set(ids) - set(frozen))
+    problems = []
+    if dup:
+        problems.append(f"duplicate ids {dup}")
+    if missing:
+        problems.append(f"missing ids {missing}")
+    if extra:
+        problems.append(f"unknown ids {extra}")
+    for r in rows:
+        if r["id"] in frozen and (r.get(labels) or []) != (frozen[r["id"]] or []):
+            problems.append(f"{r['id']}: label {r.get(labels)} != frozen {frozen[r['id']]}")
+        if r.get(err) is not None:
+            problems.append(f"{r['id']}: harness error {str(r[err])[:80]}")
+    if problems:
+        raise InvalidRun(f"{where}: " + "; ".join(problems[:8]))
+
+
 def harness_set(name: str, k: int) -> dict:
     """One question dict per id: accepted pages, kind, manual (the bootstrap cluster) and per-arm ranking."""
     qs: dict = {}
     lat: dict = {}
     det: dict = {}
-    manual_of = {
-        q["id"]: q["manual"]
-        for q in json.load(
-            open(
-                next(
-                    p
-                    for p in (
-                        f"{HERE}/{name}-questions.json",
-                        f"{HERE}/{name}/{name}-questions.json",
-                    )
-                    if os.path.exists(p)
+    frozen_qs = json.load(
+        open(
+            next(
+                p
+                for p in (
+                    f"{HERE}/{name}-questions.json",
+                    f"{HERE}/{name}/{name}-questions.json",
                 )
+                if os.path.exists(p)
             )
         )
-    }
+    )
+    manual_of = {q["id"]: q["manual"] for q in frozen_qs}
+    frozen = {q["id"]: q["accepted"] for q in frozen_qs}
     for arm, tag in ARMS.items():
         kk = 10 if arm == "bm25" else k
         files = sorted(glob.glob(f"{HERE}/raw/{name}/{name}-{tag}-k{kk}-r*.jsonl"))
         if not files:
             continue
         reps = [load_jsonl(f) for f in files]
+        for f, rep in zip(files, reps):
+            validate_rows(rep, frozen, os.path.relpath(f, HERE))
         for r in reps[0]:
             q = qs.setdefault(
                 r["id"],
@@ -120,10 +148,20 @@ def batch2_set() -> dict:
     out: dict = {"questions": {}, "lat": {}, "deterministic": {}}
     for arm in ("pre", "post"):
         rev = ARMS[arm]
-        runs = [
-            {r["id"]: r for r in json.load(open(f))["results"]}
-            for f in sorted(glob.glob(f"{HERE}/raw/batch2/batch2-{rev}-r*.json"))
-        ]
+        files = sorted(glob.glob(f"{HERE}/raw/batch2/batch2-{rev}-r*.json"))
+        if not files:
+            raise InvalidRun(f"batch2: no runs for {rev}")
+        runs = []
+        for f in files:
+            rows = json.load(open(f))["results"]
+            validate_rows(
+                rows,
+                {i: c["expectedPages"] for i, c in cases.items()},
+                os.path.relpath(f, HERE),
+                labels="expectedPages",
+                err="error",
+            )
+            runs.append({r["id"]: r for r in rows})
         out["lat"][arm] = [r["ms"] for run in runs for r in run.values()]
         out["deterministic"][arm] = all(
             {i: r["pages"] for i, r in run.items()} == {i: r["pages"] for i, r in runs[0].items()}
@@ -521,4 +559,8 @@ def charts(results: dict, sg: dict) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except InvalidRun as e:
+        print(f"INVALID RUN, nothing scored: {e}")
+        raise SystemExit(2) from None

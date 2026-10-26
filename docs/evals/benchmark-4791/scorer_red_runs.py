@@ -45,6 +45,19 @@ MUTATIONS = {
         'if sg["changed_pre_post"]:',
     ),
     "nDCG discount shifted by 0.5": ("1 / math.log2(x + 1)", "1 / math.log2(x + 1.5)"),
+    "duplicate ids accepted (#4799)": (
+        "    if dup:\n        problems.append",
+        "    if False:\n        problems.append",
+    ),
+    "missing ids accepted (#4799)": (
+        "    if missing:\n        problems.append",
+        "    if False:\n        problems.append",
+    ),
+    "changed labels accepted (#4799)": (
+        'if r["id"] in frozen and (r.get(labels) or []) != (frozen[r["id"]] or []):',
+        "if False:",
+    ),
+    "harness errors accepted (#4799)": ("if r.get(err) is not None:", "if False:"),
     "unanswerable rows enter the denominator": (
         'ans = {i: q for i, q in s["questions"].items() if q["kind"] == "answerable"}\n    n = len(ans)',
         'ans = dict(s["questions"])\n    n = len(ans)',
@@ -65,6 +78,17 @@ def main() -> None:
                 code = code.replace(old, new)
             open(os.path.join(d, "analyze.py"), "w").write(code)
             shutil.copy(os.path.join(HERE, "test_analyze.py"), d)
+            for entry in (
+                "raw",
+                "forum-new",
+                "results.json",
+                "t4-77-questions.json",
+                "batch2-cases.json",
+                "safety",
+            ):
+                os.symlink(
+                    os.path.join(HERE, entry), os.path.join(d, entry)
+                )  # read-only data the integration tests use
             p = subprocess.run(
                 [
                     sys.executable,

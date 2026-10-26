@@ -325,11 +325,27 @@ python3 review_queue.py && python3 make_dashboard.py && BENCH_ROOT=$ROOT python3
 `run-manifest.json` pins the full revision SHAs, harness and input hashes, the sha256 of every raw file, tool
 versions and flags. A run id is the raw file name.
 
-## Pending
+## Review history and status
 
-- Codex review history:
-  - The first review-only attempt at `675ec2d79` reserved a round, then failed inside the runner ("codex failed
-    or produced no envelope"). It escalated on the PR (comment 6409972564), and the runner deleted its log.
-  - A retry at the same head was refused by design, because a crashed reservation stays consumed.
-  - No review verdict exists for `675ec2d79`.
-- The Codex exact-head review, which will be posted on the PR.
+**Codex review history**
+- The first review-only attempt at `675ec2d79` failed inside the runner: comment 6409972564, log lost. A
+  retry at the same head was refused by design.
+- At `51c29e6f5` the review CONVERGED: 0 BLOCKER, 0 HIGH, 1 MEDIUM (#4799), 1 LOW (#4800). Record:
+  issuecomment-6410100167, follow-ups 6410113119.
+
+**Closeout changes since that review**
+- **#4799:** `analyze.py` now rejects any raw run with a missing, duplicate or unknown id, a changed frozen
+  label, or a harness error. It prints `INVALID RUN, nothing scored` and exits 2. All committed runs pass
+  unchanged, and `results.json` is byte-identical. 5 new tests; 4 new scorer mutations.
+- **#4800:** `convert_cases.py` takes PDF hashes from `manual-pdfs.sha256`. A public-manual case without a
+  hash is now an error. 0 cases lack one; 36 did before.
+- **Human answer key:** `HUMAN_REVIEW.md` and `human-key/rescore_human.py`.
+  - It exports Mike's live answers and rescores at zero model cost.
+  - It refuses preview or unproven exports, scores only completed cases, and reports PARTIAL until every
+    mission is done.
+  - 9 tests; 7 mutations, each caught.
+  - An end-to-end dry run on SYNTHETIC answers (scratch only, never committed) covered: export, rescore,
+    `safety_gate.ts` on the hazard file, then rescore again.
+
+**Human review:** NOT STARTED as of the closeout. The live page holds 0 answers. Every verdict in this report is
+the AI-labelled one until `rescore_human.py` prints `FINAL`.
