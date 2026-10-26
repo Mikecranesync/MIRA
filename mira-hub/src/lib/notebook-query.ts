@@ -372,6 +372,28 @@ function indexiness(text: string): number {
   const prose = countMatches(text, PROSE_WORDS);
   return ids / w - prose / w; // param-index heavy minus prose-heavy
 }
+// A table of contents or back-of-book index lists every section title once, so it
+// holds every topic word of a "where is X covered" question. Under
+// NOTEBOOK_LEXICAL_V2's presence-only IDF sum (no term frequency, no length
+// normalisation) such a chunk outranks the page that explains the topic
+// (Micro810: pp. 5, 123, 124 led over p. 51 for "controller password").
+// Shape-only and narrow: dot-leader contents lines, or short lines ending in
+// page references. Thresholds are pre-registered in
+// docs/evals/2026-10-26-lexical-v2-navigation-demotion-preregistration.md.
+const DOT_LEADER = /(?:\.\s?){4,}\s*\d{1,4}\b/g;
+const INDEX_ENTRY = /^[A-Za-z0-9].{0,58}\s\d{1,4}(?:,\s*\d{1,4})*$/;
+
+/** True when a chunk reads as a table of contents or a back-of-book index. */
+export function isNavigationChunk(text: string): boolean {
+  if (countMatches(text, DOT_LEADER) >= 3) return true;
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return false;
+  const entries = lines.filter((l) => l.length <= 60 && INDEX_ENTRY.test(l)).length;
+  const share = entries / lines.length;
+  if (entries < 8 || share < 0.5) return false;
+  return lines.includes("Index") || share >= 0.7;
+}
+
 function procedureScore(text: string): number {
   return Math.min(countMatches(text, PROC_SIGNALS), 6) / 6;
 }
@@ -466,7 +488,7 @@ export type RerankTraceRow = {
 export function rerankChunks<T extends Rerankable>(
   expanded: ExpandedQuery,
   chunks: T[],
-  opts?: { intent?: Intent; trace?: RerankTraceRow[] },
+  opts?: { intent?: Intent; trace?: RerankTraceRow[]; demoteNavigation?: boolean },
 ): T[] {
   const exact = expanded.exactTokens.map((t) => t.toLowerCase());
   const phrases = expanded.phrases.map((p) => p.toLowerCase());
@@ -529,6 +551,10 @@ export function rerankChunks<T extends Rerankable>(
       // parameter table IS spec material), just a value-material boost.
       score += specScore(c.content) * 1.5;
     }
+    // Contents/index pages are pointers, not answers: demote (never drop) them,
+    // for every intent, when the caller asks. A navigation chunk that names the
+    // asked code still outranks one that doesn't (exact hit +3.0 > penalty 2.0).
+    if (opts?.demoteNavigation && isNavigationChunk(c.content)) score -= 2.0;
     // broad / param_lookup / spec / generic: no index penalty. (Broad already has
     // facet fan-out + page diversity; an index penalty here MEASURABLY regressed
     // "what protections?" — protection evidence lives in fault tables that read
