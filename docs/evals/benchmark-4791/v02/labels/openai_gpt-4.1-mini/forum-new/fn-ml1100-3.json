@@ -1,0 +1,42 @@
+{
+ "id": "fn-ml1100-3",
+ "model": "openai/gpt-4.1-mini",
+ "candidates": [
+  14,
+  154,
+  7,
+  9
+ ],
+ "answer_pages": [
+  14,
+  154
+ ],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [14, 154], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 2560,
+  "completion_tokens": 17,
+  "total_tokens": 2577,
+  "cost": 0.001040688,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.0010512,
+   "upstream_inference_prompt_cost": 0.001024,
+   "upstream_inference_completions_cost": 2.72e-05
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.0010512,
+ "prompt_sha256": "2ce21b30c18c15817a15363316835addd311c2aed65569ebb50907ac07a8971f"
+}

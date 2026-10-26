@@ -37,6 +37,15 @@ MUTATIONS = {
         "            A.validate_rows(rows, frozen, os.path.relpath(path, BENCH), check_kind=True)",
         "            pass",
     ),
+    "queue: consensus overrides Mike": (
+        '        if k["source"] != "mike":\n            pages = x["consensus_pages"]',
+        '        if True:\n            pages = x["consensus_pages"]',
+    ),
+    "queue: audit never counts a wrong consensus": (
+        "            wrong += 1\n",
+        "            wrong += 0\n",
+    ),
+    "queue: FINAL ignores the queue": ("            if need <= mike_done", "            if True"),
     "frozen review data not checked": ("if sha(review_path) != REVIEW_DATA_SHA256:", "if False:"),
 }
 

@@ -1,0 +1,42 @@
+{
+ "id": "of-smcflex-73475cb4",
+ "model": "google/gemini-2.5-flash-lite",
+ "candidates": [
+  105,
+  21,
+  99,
+  100
+ ],
+ "answer_pages": [
+  100,
+  105
+ ],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [100, 105], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 2239,
+  "completion_tokens": 21,
+  "total_tokens": 2260,
+  "cost": 0.000229977,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.0002323,
+   "upstream_inference_prompt_cost": 0.0002239,
+   "upstream_inference_completions_cost": 8.4e-06
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.00023229999999999998,
+ "prompt_sha256": "e4b76dc8d9305736a621566eb205a9b08d756225b2dcd737fb0872c4d785d7f8"
+}

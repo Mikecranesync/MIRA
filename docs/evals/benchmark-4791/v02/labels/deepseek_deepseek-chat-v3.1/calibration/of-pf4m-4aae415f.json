@@ -1,0 +1,41 @@
+{
+ "id": "of-pf4m-4aae415f",
+ "model": "deepseek/deepseek-chat-v3.1",
+ "candidates": [
+  71,
+  74,
+  72,
+  8
+ ],
+ "answer_pages": [
+  74
+ ],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [74], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 1762,
+  "completion_tokens": 15,
+  "total_tokens": 1777,
+  "cost": 0.0004385601,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 98,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.00044299,
+   "upstream_inference_prompt_cost": 0.00042874,
+   "upstream_inference_completions_cost": 1.425e-05
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.00045474999999999997,
+ "prompt_sha256": "b98ab33f9809801719ab78a285dc8040563f37c40ba8eb6c1607f56a7630728d"
+}

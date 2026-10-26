@@ -1,0 +1,58 @@
+{
+ "deepseek_deepseek-chat-v3.1": {
+  "n": 174,
+  "complete": true,
+  "hit": 153,
+  "hit_rate": 0.8793103448275862,
+  "hit_ci95": [
+   0.8225428866472483,
+   0.9196912407340782
+  ],
+  "exact": 142,
+  "unparsed": 0,
+  "cost_usd": 0.1029,
+  "qualified": false
+ },
+ "google_gemini-2.5-flash-lite": {
+  "n": 174,
+  "complete": true,
+  "hit": 152,
+  "hit_rate": 0.8735632183908046,
+  "hit_ci95": [
+   0.8159875728330918,
+   0.915000582921245
+  ],
+  "exact": 127,
+  "unparsed": 0,
+  "cost_usd": 0.0448,
+  "qualified": false
+ },
+ "meta-llama_llama-3.3-70b-instruct": {
+  "n": 174,
+  "complete": true,
+  "hit": 145,
+  "hit_rate": 0.8333333333333334,
+  "hit_ci95": [
+   0.7708891068098971,
+   0.8813772475555111
+  ],
+  "exact": 131,
+  "unparsed": 0,
+  "cost_usd": 0.0405,
+  "qualified": false
+ },
+ "openai_gpt-4.1-mini": {
+  "n": 174,
+  "complete": true,
+  "hit": 171,
+  "hit_rate": 0.9827586206896551,
+  "hit_ci95": [
+   0.9505422775507923,
+   0.9941193391163503
+  ],
+  "exact": 127,
+  "unparsed": 0,
+  "cost_usd": 0.1622,
+  "qualified": true
+ }
+}

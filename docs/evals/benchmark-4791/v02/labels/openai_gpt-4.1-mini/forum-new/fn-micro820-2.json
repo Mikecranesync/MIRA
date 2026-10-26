@@ -1,0 +1,42 @@
+{
+ "id": "fn-micro820-2",
+ "model": "openai/gpt-4.1-mini",
+ "candidates": [
+  17,
+  103,
+  18
+ ],
+ "answer_pages": [
+  17,
+  18,
+  103
+ ],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [17, 18, 103], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 1930,
+  "completion_tokens": 20,
+  "total_tokens": 1950,
+  "cost": 0.00079596,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.000804,
+   "upstream_inference_prompt_cost": 0.000772,
+   "upstream_inference_completions_cost": 3.2e-05
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.000804,
+ "prompt_sha256": "ab41a9d5edd4dceda54d1ce055e2e029cc75ad6e786c476a204cbd77e6c4db1a"
+}

@@ -208,3 +208,88 @@ def test_rescore_refuses_an_invalid_raw_run(tmp_path, monkeypatch, breakage):
     }
     with pytest.raises(R.Refused, match="raw run invalid"):
         R.score_retrieval(key, "yes")
+
+
+# ── queue mode (v0.2): Mike answers only the cases the pre-registered rule sends him ─────────────────────
+def queue_file(tmp_path, asked, agreed, audit_consensus):
+    f = REVIEW["forum"]
+    q = {
+        "forum_for_mike": [
+            {"case_number": i + 1, "id": f[i]["id"], "why": "labelers disagree"} for i in asked
+        ]
+        + [
+            {
+                "case_number": i + 1,
+                "id": f[i]["id"],
+                "why": "audit sample of an agreed case",
+                "consensus_pages": pages,
+            }
+            for i, pages in audit_consensus.items()
+        ],
+        "forum_agreed_not_audited": [
+            {"case_number": i + 1, "id": f[i]["id"], "consensus_pages": pages}
+            for i, pages in agreed.items()
+        ],
+    }
+    p = tmp_path / "mike-queue.json"
+    p.write_text(json.dumps(q))
+    return str(p)
+
+
+def full_safety():
+    return {"safety-" + s["id"]: {"choice": "warn"} for s in REVIEW["safety"]}
+
+
+def test_queue_mode_is_final_when_only_the_queued_cases_are_done(tmp_path):
+    f = REVIEW["forum"]
+    agreed = {i: [f[i]["pages"][0]] for i in range(2, len(f))}
+    qf = queue_file(tmp_path, asked=[0], agreed=agreed, audit_consensus={1: [f[1]["pages"][0]]})
+    answers = {
+        **full_safety(),
+        "forum-" + f[0]["id"]: forum_rec(f[0], yes_page=f[0]["pages"][0]),
+        "forum-" + f[1]["id"]: forum_rec(f[1], yes_page=f[1]["pages"][0]),
+    }
+    hz = {f"h{i}": f"synthetic hazard {i}" for i in range(10)}
+    p, res = run(export(tmp_path, answers=answers, hazards=hz), tmp_path / "out", "--queue", qf)
+    assert p.returncode == 0, p.stdout
+    assert res["status"] == "FINAL"
+    assert res["queue"]["ai_consensus_cases"] == len(f) - 2
+    assert (
+        res["key"][f[5]["id"]]["source"] == "ai_consensus"
+        and res["key"][f[0]["id"]]["source"] == "mike"
+    )
+    assert res["queue"]["audit"] == {
+        "checked": 1,
+        "consensus_wrong": 0,
+        "wrong_ids": [],
+        "error_rate_ci95": [0.0, res["queue"]["audit"]["error_rate_ci95"][1]],
+    }
+
+
+def test_queue_mode_is_partial_until_every_queued_case_is_done(tmp_path):
+    f = REVIEW["forum"]
+    qf = queue_file(
+        tmp_path, asked=[0, 1], agreed={i: [] for i in range(2, len(f))}, audit_consensus={}
+    )
+    answers = {**full_safety(), "forum-" + f[0]["id"]: forum_rec(f[0], yes_page=f[0]["pages"][0])}
+    hz = {f"h{i}": f"synthetic hazard {i}" for i in range(10)}
+    p, res = run(export(tmp_path, answers=answers, hazards=hz), tmp_path / "out", "--queue", qf)
+    assert res["status"] == "PARTIAL"
+
+
+def test_audit_counts_a_wrong_consensus_and_mike_overrides_it(tmp_path):
+    f = REVIEW["forum"]
+    wrong = [p for p in f[1]["pages"] if p != f[1]["pages"][0]][:1]
+    qf = queue_file(tmp_path, asked=[], agreed={2: [f[2]["pages"][0]]}, audit_consensus={1: wrong})
+    answers = {
+        "forum-" + f[1]["id"]: forum_rec(f[1], yes_page=f[1]["pages"][0]),
+        "forum-" + f[2]["id"]: forum_rec(f[2], overall="not-in-manual"),
+    }
+    p, res = run(export(tmp_path, answers=answers), tmp_path / "out", "--queue", qf)
+    assert res["queue"]["audit"]["consensus_wrong"] == 1 and res["queue"]["audit"]["wrong_ids"] == [
+        f[1]["id"]
+    ]
+    assert (
+        res["key"][f[2]["id"]]["source"] == "mike"
+        and res["key"][f[2]["id"]]["kind"] == "unanswerable"
+    )  # Mike wins

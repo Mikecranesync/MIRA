@@ -1,0 +1,12 @@
+[
+ {
+  "id": "rt-04",
+  "set": "forum-resolved",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Gents I'm working on a small project here and the customer requested to control the drive with 4-20mA by using Micro820 Analog output 4-20mA, Module 2080-OF2. After getting all the logic up and running the only issue I have is I can't get 4-20mA to present on the output? even checked with Ammeter on the output of the module I can't see anything. Typically after doing scaling the output is REAL data type but the module only accepts UINT, and by using UNIT going to lose some data precision.",
+  "accepted": [
+   67
+  ]
+ }
+]

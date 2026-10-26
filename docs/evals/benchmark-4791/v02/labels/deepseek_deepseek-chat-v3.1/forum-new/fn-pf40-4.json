@@ -1,0 +1,42 @@
+{
+ "id": "fn-pf40-4",
+ "model": "deepseek/deepseek-chat-v3.1",
+ "candidates": [
+  76,
+  94,
+  123,
+  131
+ ],
+ "answer_pages": [
+  76,
+  94
+ ],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [76, 94], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 2192,
+  "completion_tokens": 17,
+  "total_tokens": 2209,
+  "cost": 0.001435797,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.0014503,
+   "upstream_inference_prompt_cost": 0.0014248,
+   "upstream_inference_completions_cost": 2.55e-05
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.00056415,
+ "prompt_sha256": "a5dfaa6120604c0b5527e30747270d3c51e9b0d77ee47d48484f014810fd5789"
+}

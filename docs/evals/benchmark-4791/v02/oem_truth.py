@@ -103,10 +103,23 @@ TEMPLATES = {
 STOP = set("a an and are as at be by for from in is it of on or the to with see also".split())
 
 
+PAGE_CACHE = os.environ.get("IMIB_PAGE_CACHE", os.path.expanduser("~/.cache/imib-pages"))
+
+
 def pages_of(pdf: str) -> list[str]:
-    return subprocess.run(
+    """`pdftotext -layout` pages, cached on disk by the PDF's sha256 (the text of identical bytes never changes)."""
+    key = hashlib.sha256(open(pdf, "rb").read()).hexdigest()
+    path = os.path.join(PAGE_CACHE, f"{key}.json")
+    if os.path.exists(path):
+        return json.load(open(path))
+    pages = subprocess.run(
         ["pdftotext", "-layout", pdf, "-"], capture_output=True, text=True, check=True
     ).stdout.split("\f")
+    os.makedirs(PAGE_CACHE, exist_ok=True)
+    tmp = path + f".{os.getpid()}.tmp"
+    json.dump(pages, open(tmp, "w"))
+    os.replace(tmp, path)
+    return pages
 
 
 def word_pages(pages: list[str], token: str) -> list[int]:

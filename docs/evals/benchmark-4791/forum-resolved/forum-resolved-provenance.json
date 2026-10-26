@@ -1,0 +1,15 @@
+[
+ {
+  "id": "rt-04",
+  "url": "https://www.plctalk.net/forums/threads/micro820-analog-output-4-20ma-with-2080-of2.131288/",
+  "forum": "plctalk",
+  "kept_identifiers": {
+   "65535": [
+    67
+   ]
+  },
+  "attribution": "visible",
+  "solution": "The 2080-OF2 has 12-bit resolution, and the output range is 0 to 65535, so 4mA will be around 13107, and 20mA will be around 65535. ... If you write a UDINT value of 65535 to an -OF2 channel in the Micro820 program, the output current signal should be near 20mA. If you send a UDINT value of 0, the output current should be near 0mA. If you send a UDINT value of 13107 (=65535/5), the output current should be near 4mA (=20mA/5).",
+  "confirmation": "Thank you guys for the Help. it finally worked with this setup 13107 = 4mA 65535 = 20mA I typically use an Ammeter to see the 4-20mA, but here little different method The output is a Varying voltage. after you connect it to the drive, it will \"Covert\" to Current because of the input resistance of the VFD. Appreciate all help"
+ }
+]

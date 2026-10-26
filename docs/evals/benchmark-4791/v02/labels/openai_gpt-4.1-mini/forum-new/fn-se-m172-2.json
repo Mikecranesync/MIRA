@@ -1,0 +1,39 @@
+{
+ "id": "fn-se-m172-2",
+ "model": "openai/gpt-4.1-mini",
+ "candidates": [
+  181,
+  192,
+  179,
+  16
+ ],
+ "answer_pages": [],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 1613,
+  "completion_tokens": 12,
+  "total_tokens": 1625,
+  "cost": 0.000657756,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.0006644,
+   "upstream_inference_prompt_cost": 0.0006452,
+   "upstream_inference_completions_cost": 1.92e-05
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.0006644,
+ "prompt_sha256": "abd5bf5b78ea4832e434398af51e341e8c2400acd70fb6eb616820036e4888da"
+}

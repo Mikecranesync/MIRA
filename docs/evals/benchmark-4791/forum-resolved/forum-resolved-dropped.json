@@ -1,0 +1,58 @@
+[
+ {
+  "id": "rt-01",
+  "url": "https://mrplc.com/forums/topic/17743-powerflex-40p/",
+  "reasons": [
+   "no identifier pins down 1-3 manual pages"
+  ]
+ },
+ {
+  "id": "rt-02",
+  "url": "https://www.plctalk.net/forums/threads/micro820-connection-problems.116756/",
+  "reasons": [
+   "no identifier pins down 1-3 manual pages"
+  ]
+ },
+ {
+  "id": "rt-03",
+  "url": "https://www.plctalk.net/threads/changing-parameters-on-a-pf40.78112/",
+  "reasons": [
+   "no identifier pins down 1-3 manual pages"
+  ]
+ },
+ {
+  "id": "rt-05",
+  "url": "https://www.plctalk.net/forums/threads/micro-810-analog-input.138986/",
+  "reasons": [
+   "no identifier pins down 1-3 manual pages"
+  ]
+ },
+ {
+  "id": "rt-06",
+  "url": "https://www.plctalk.net/threads/micro820-aka-disaster.117668/",
+  "reasons": [
+   "no identifier pins down 1-3 manual pages"
+  ]
+ },
+ {
+  "id": "rt-07",
+  "url": "https://www.plctalk.net/threads/0-10v-analog-output-to-control-vfd.80421/",
+  "reasons": [
+   "no identifier pins down 1-3 manual pages"
+  ]
+ },
+ {
+  "id": "rt-08",
+  "url": "https://mrplc.com/forums/topic/37680-powerflex-to-micrologix-1100-cip-messaging-error/",
+  "reasons": [
+   "no identifier pins down 1-3 manual pages"
+  ]
+ },
+ {
+  "id": "rt-09",
+  "url": "https://www.plctalk.net/threads/modbus-communication-problem-using-allenbradley-powerflex-4m-and-micrologix-1100.64333/",
+  "reasons": [
+   "no identifier pins down 1-3 manual pages"
+  ]
+ }
+]

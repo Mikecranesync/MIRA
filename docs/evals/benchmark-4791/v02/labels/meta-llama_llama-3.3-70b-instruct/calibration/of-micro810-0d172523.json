@@ -1,0 +1,39 @@
+{
+ "id": "of-micro810-0d172523",
+ "model": "meta-llama/llama-3.3-70b-instruct",
+ "candidates": [
+  45,
+  34,
+  37,
+  36
+ ],
+ "answer_pages": [],
+ "confidence": "low",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [], \"confidence\": \"low\"}",
+ "usage": {
+  "prompt_tokens": 2012,
+  "completion_tokens": 12,
+  "total_tokens": 2024,
+  "cost": 0.0002736558,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.00027642,
+   "upstream_inference_prompt_cost": 0.00027162,
+   "upstream_inference_completions_cost": 4.8e-06
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.00020503999999999997,
+ "prompt_sha256": "8d866d10014aa9892afd48f880ee18a1ee59d9558762760f3817b6e2332faad5"
+}

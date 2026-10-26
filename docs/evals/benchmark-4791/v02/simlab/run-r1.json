@@ -1,0 +1,433 @@
+{
+ "repeat": 1,
+ "ledger_after": {
+  "usd": 0.66259825,
+  "calls": 110,
+  "prompt_tokens": 434649,
+  "completion_tokens": 19247,
+  "note": "9 calls from an aborted first attempt were not metered (wrong usage field names, fixed + tested); booked at a conservative $0.25 upper-bound estimate"
+ },
+ "results": [
+  {
+   "id": "conveyor_jam_01",
+   "passed": false,
+   "final_state": "FIX_STEP",
+   "error": null,
+   "latency_ms": 31127,
+   "standard_results": {
+    "cp_reached_state": {
+     "passed": false,
+     "actual": "FIX_STEP",
+     "expected": "DIAGNOSIS"
+    },
+    "cp_keyword_match": {
+     "passed": true,
+     "reason": "OK"
+    },
+    "cp_turn_budget": {
+     "passed": true
+    },
+    "cp_no_error": {
+     "passed": true,
+     "error": null
+    }
+   },
+   "behavior_results": [
+    {
+     "name": "cp_no_premature_blame",
+     "passed": true,
+     "reason": "No premature blame of red-herring components"
+    },
+    {
+     "name": "cp_isolation_evidence",
+     "passed": true,
+     "reason": "Evidence cited: ['fault']"
+    },
+    {
+     "name": "cp_subsystem_identified",
+     "passed": true,
+     "reason": "Subsystem 'jam' identified"
+    }
+   ],
+   "bot_replies": [
+    "I don't have documentation for this equipment in my records \u2014 searching now. Type PROCEED to continue with my best estimate (not manual-verified). What fault code is on the GS20 display?\n\n \n\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "Photoeyes both blocked points to a start interlock. Is the belt physically loaded or jammed at the transfer?\n\n [Source: AutomationDirect drives g vg 4 manual, p. 1]\n\n--- Sources ---\n[2] AutomationDirect drives g vg 4 manual, p. 1\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "The cardboard box is the obstruction. Clear it, then retry the belt on the belt conveyor start profile .\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_"
+   ]
+  },
+  {
+   "id": "juice_capper_torque_01",
+   "passed": true,
+   "final_state": "DIAGNOSIS",
+   "error": null,
+   "latency_ms": 32849,
+   "standard_results": {
+    "cp_reached_state": {
+     "passed": true,
+     "actual": "DIAGNOSIS",
+     "expected": "DIAGNOSIS"
+    },
+    "cp_keyword_match": {
+     "passed": true,
+     "reason": "OK"
+    },
+    "cp_turn_budget": {
+     "passed": true
+    },
+    "cp_no_error": {
+     "passed": true,
+     "error": null
+    }
+   },
+   "behavior_results": [],
+   "bot_replies": [
+    "Are the loose caps happening on every bottle, or only one lane/head?",
+    "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "Based on general industrial knowledge (not from documentation specific to this equipment): low torque plus high variance usually points to chuck slip, worn insert/pad, or a torque-control/output signal issue. Check whether the chuck is slipping on the cap or if the digital output changes state when the capper engages."
+   ]
+  },
+  {
+   "id": "juice_casepacker_jam_01",
+   "passed": false,
+   "final_state": "DIAGNOSIS",
+   "error": null,
+   "latency_ms": 35001,
+   "standard_results": {
+    "cp_reached_state": {
+     "passed": true,
+     "actual": "DIAGNOSIS",
+     "expected": "DIAGNOSIS"
+    },
+    "cp_keyword_match": {
+     "passed": false,
+     "reason": "OK"
+    },
+    "cp_turn_budget": {
+     "passed": true
+    },
+    "cp_no_error": {
+     "passed": true,
+     "error": null
+    }
+   },
+   "behavior_results": [],
+   "bot_replies": [
+    "What alarm or fault is on the drive display?\n\n1. Display shows a fault code\n2. Display is normal or blank",
+    "Unlikely just the labeler. This line stops when no start signal is present or an error class is active [Source: User Manual MultiControl EN]. Is the packer drive showing an error code?",
+    "I don't have specific documentation for that. What digital output label or tag is lit at the packer?"
+   ]
+  },
+  {
+   "id": "juice_filler_underfill_01",
+   "passed": true,
+   "final_state": "DIAGNOSIS",
+   "error": null,
+   "latency_ms": 41383,
+   "standard_results": {
+    "cp_reached_state": {
+     "passed": true,
+     "actual": "DIAGNOSIS",
+     "expected": "DIAGNOSIS"
+    },
+    "cp_keyword_match": {
+     "passed": true,
+     "reason": "OK"
+    },
+    "cp_turn_budget": {
+     "passed": true
+    },
+    "cp_no_error": {
+     "passed": true,
+     "error": null
+    }
+   },
+   "behavior_results": [],
+   "bot_replies": [
+    "What defect is on Line 1 bottles \u2014 underfill, overflow, cap issue, or label issue?\n\n1. Underfill\n2. Overflow\n3. Cap issue\n4. Label issue",
+    "Is the 13.5 oz underfill on every valve, or only Station 4?\n\n1. Every valve on Line 1\n2. Only Station 4",
+    "I don't have specific documentation for that. Can you tell me the bowl pressure setpoint from the machine or manual?"
+   ]
+  },
+  {
+   "id": "juice_labeler_registration_01",
+   "passed": true,
+   "final_state": "DIAGNOSIS",
+   "error": null,
+   "latency_ms": 36682,
+   "standard_results": {
+    "cp_reached_state": {
+     "passed": true,
+     "actual": "DIAGNOSIS",
+     "expected": "DIAGNOSIS"
+    },
+    "cp_keyword_match": {
+     "passed": true,
+     "reason": "OK"
+    },
+    "cp_turn_budget": {
+     "passed": true
+    },
+    "cp_no_error": {
+     "passed": true,
+     "error": null
+    }
+   },
+   "behavior_results": [],
+   "bot_replies": [
+    "I only have label specs here: 6 x 17 mm labels . Are they skewing at the peel plate or after the guide rollers?\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "Crooked labels with 2.8 mm registration error and 0.4 N tension usually means web slip or poor register control. Is the web slipping at the drive or peel plate?\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "I don't have documentation for this equipment in my records \u2014 searching now. Type PROCEED to continue with my best estimate (not manual-verified).\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_"
+   ]
+  },
+  {
+   "id": "juice_low_plant_air_01",
+   "passed": true,
+   "final_state": "DIAGNOSIS",
+   "error": null,
+   "latency_ms": 32326,
+   "standard_results": {
+    "cp_reached_state": {
+     "passed": true,
+     "actual": "DIAGNOSIS",
+     "expected": "DIAGNOSIS"
+    },
+    "cp_keyword_match": {
+     "passed": true,
+     "reason": "OK"
+    },
+    "cp_turn_budget": {
+     "passed": true
+    },
+    "cp_no_error": {
+     "passed": true,
+     "error": null
+    }
+   },
+   "behavior_results": [],
+   "bot_replies": [
+    "Same-time faults usually share air, power, or control. Is one upstream item common to all machines, like the main compressor/header, supply voltage, or one controller?\n\n[Source: Cm5003%20Vibration%20Guide1 \u2014 CAUSES] [Source: Cm5003%20Vibration%20Guide1 \u2014 DETERMINE THE SEVERITY OF THE FAULT]\n\n--- Sources ---\n[1] Cm5003%20Vibration%20Guide1 \u2014 CAUSES\n[2] Cm5003%20Vibration%20Guide1 \u2014 DETERMINE THE SEVERITY OF THE FAULT",
+    "Yes\u2014both low bowl pressure and low vacuum point upstream. What does the main plant air gauge read at the skid? [Source: 2.11.5 Systems of pressure measurement]",
+    "55 PSI is below the UP6-25-125 load setpoint; the low-air alarm is expected . Check the compressor discharge pressure and loaded/unloaded state next.\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_"
+   ]
+  },
+  {
+   "id": "juice_palletizer_estop_01",
+   "passed": false,
+   "final_state": "FIX_STEP",
+   "error": null,
+   "latency_ms": 29914,
+   "standard_results": {
+    "cp_reached_state": {
+     "passed": false,
+     "actual": "FIX_STEP",
+     "expected": "DIAGNOSIS"
+    },
+    "cp_keyword_match": {
+     "passed": false,
+     "reason": "OK"
+    },
+    "cp_turn_budget": {
+     "passed": true
+    },
+    "cp_no_error": {
+     "passed": true,
+     "error": null
+    }
+   },
+   "behavior_results": [],
+   "bot_replies": [
+    "PowerFlex 525 I/O Terminal 01 is always a stop input . Is Terminal 01 active, or is the drive being stopped from the keypad/term block?\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "PA001 isn\u2019t in my references. For the Yaskawa V1000 fast-stop, the input must be released and Run cycled . What drive/model is generating PA001?\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "Select Yes on the MultiControl restart prompt; it stops control and drops network [Source: User Manual MultiControl EN]. Was Fast-Stop active?"
+   ]
+  },
+  {
+   "id": "motor_no_motion_01",
+   "passed": false,
+   "final_state": "FIX_STEP",
+   "error": null,
+   "latency_ms": 36491,
+   "standard_results": {
+    "cp_reached_state": {
+     "passed": false,
+     "actual": "FIX_STEP",
+     "expected": "DIAGNOSIS"
+    },
+    "cp_keyword_match": {
+     "passed": true,
+     "reason": "OK"
+    },
+    "cp_turn_budget": {
+     "passed": true
+    },
+    "cp_no_error": {
+     "passed": true,
+     "error": null
+    }
+   },
+   "behavior_results": [
+    {
+     "name": "cp_no_cross_component_confusion",
+     "passed": true,
+     "reason": "No cross-component confusion detected"
+    },
+    {
+     "name": "cp_isolation_evidence",
+     "passed": false,
+     "reason": "No measurement evidence cited. Expected at least one of: ['hz', 'amps', 'output', 'current', 'fault']"
+    },
+    {
+     "name": "cp_subsystem_identified",
+     "passed": true,
+     "reason": "Subsystem 'coupling' identified"
+    }
+   ],
+   "bot_replies": [
+    "Drive is running; the conveyor isn\u2019t. Is the motor shaft turning at the coupling?\n\n[Source: User Manual MultiControl EN, p. 1] \n\n--- Sources ---\n[1] User Manual MultiControl EN, p. 1\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "Motor spins, belt doesn\u2019t. Is the pulley on the shaft turning with the motor? Reply: Yes, pulley turns or No, pulley stays still.",
+    "Shredded coupling spider. Most likely the coupling failed, so the motor spins unloaded while the gearbox stays still. Replace the spider; are the hubs and shaft keys undamaged?\n\n \n\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_\n\n_(Note: I removed a citation that pointed to a photo or session artifact \u2014 that is not documentation. Treat the statement above as unverified until confirmed against the equipment's manual.)_"
+   ]
+  },
+  {
+   "id": "pump_no_flow_01",
+   "passed": false,
+   "final_state": "RESOLVED",
+   "error": null,
+   "latency_ms": 34242,
+   "standard_results": {
+    "cp_reached_state": {
+     "passed": false,
+     "actual": "RESOLVED",
+     "expected": "DIAGNOSIS"
+    },
+    "cp_keyword_match": {
+     "passed": true,
+     "reason": "OK"
+    },
+    "cp_turn_budget": {
+     "passed": true
+    },
+    "cp_no_error": {
+     "passed": true,
+     "error": null
+    }
+   },
+   "behavior_results": [
+    {
+     "name": "cp_no_premature_blame",
+     "passed": false,
+     "reason": "Prematurely blamed 'pump' before isolation (turn \u22642)"
+    },
+    {
+     "name": "cp_isolation_evidence",
+     "passed": true,
+     "reason": "Evidence cited: ['pressure', 'inlet', 'hz', 'amps']"
+    },
+    {
+     "name": "cp_subsystem_identified",
+     "passed": true,
+     "reason": "Subsystem 'valve' identified"
+    }
+   ],
+   "bot_replies": [
+    "Zero flow at 60Hz and ~2A points to no-flow or lost prime . Is the pump fully primed?\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "Pressure at no-flow is a defined pump condition . Is the discharge valve fully open?\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "Exactly right. Open the inlet isolation valve fully, then recheck flow.\n\nWould you like to log a work order for this? Say **yes** to create it, **no** to skip.\n\n\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: Grundfos CM5-4\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: HIGH\nFault: Cooling pump is running but the flow meter shows zero GPM. The VFD shows 60Hz and the motor is pulling about 2 amps. No fault codes.\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_"
+   ]
+  },
+  {
+   "id": "sensor_stuck_high_01",
+   "passed": false,
+   "final_state": "FIX_STEP",
+   "error": null,
+   "latency_ms": 31700,
+   "standard_results": {
+    "cp_reached_state": {
+     "passed": false,
+     "actual": "FIX_STEP",
+     "expected": "DIAGNOSIS"
+    },
+    "cp_keyword_match": {
+     "passed": true,
+     "reason": "OK"
+    },
+    "cp_turn_budget": {
+     "passed": true
+    },
+    "cp_no_error": {
+     "passed": true,
+     "error": null
+    }
+   },
+   "behavior_results": [
+    {
+     "name": "cp_no_premature_blame",
+     "passed": false,
+     "reason": "Prematurely blamed 'safety relay' before isolation (turn \u22642)"
+    },
+    {
+     "name": "cp_isolation_evidence",
+     "passed": true,
+     "reason": "Evidence cited: ['EF', 'external fault', 'safety', 'relay', 'prox', 'sensor']"
+    },
+    {
+     "name": "cp_subsystem_identified",
+     "passed": true,
+     "reason": "Subsystem 'sensor' identified"
+    }
+   ],
+   "bot_replies": [
+    "EF = external fault on GS10/GS20 . Most likely the safety relay or input wiring is re-triggering it. Is EF tied to that relay output?\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "That points to a stuck or misread gate input. Does the prox LED go out when you disconnect its output at the safety input?\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "Exactly right. The sensor is falsely on; replace it, then cycle power to the CR30 to restore operation .\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_"
+   ]
+  },
+  {
+   "id": "vfd_thermal_cascade_01",
+   "passed": false,
+   "final_state": "FIX_STEP",
+   "error": null,
+   "latency_ms": 38400,
+   "standard_results": {
+    "cp_reached_state": {
+     "passed": false,
+     "actual": "FIX_STEP",
+     "expected": "DIAGNOSIS"
+    },
+    "cp_keyword_match": {
+     "passed": true,
+     "reason": "OK"
+    },
+    "cp_turn_budget": {
+     "passed": true
+    },
+    "cp_no_error": {
+     "passed": true,
+     "error": null
+    }
+   },
+   "behavior_results": [
+    {
+     "name": "cp_no_cross_component_confusion",
+     "passed": true,
+     "reason": "No cross-component confusion detected"
+    },
+    {
+     "name": "cp_isolation_evidence",
+     "passed": true,
+     "reason": "Evidence cited: ['heatsink', 'temp', 'F0075']"
+    },
+    {
+     "name": "cp_subsystem_identified",
+     "passed": true,
+     "reason": "Subsystem 'cooling' identified"
+    }
+   ],
+   "bot_replies": [
+    "F0075 is overtemperature. Most likely cause: cooling airflow or drive heat buildup. Is the drive fan running and the panel filter clean?\n\n[Source: Rockwell Automation Bulletin 193 Overload Relay, p. 1]\n\n--- Sources ---\n[1] Rockwell Automation Bulletin 193 Overload Relay, p. 1",
+    "Heatsink at 82C. Is the drive fan running normally, and is the heatsink/filter path clear of dust?\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_",
+    "Rockwell PowerFlex 525. Thick dust blocking the fan intake is the likely cause. Clean the intake with dry oil-free air and vacuum the outlet .\n\n_(Note: I removed a citation because I haven't established which machine you're working on, so I can't attribute a manufacturer's manual to it. Tell me the make and model \u2014 or the asset tag \u2014 and I can cite the right documentation.)_"
+   ]
+  }
+ ]
+}

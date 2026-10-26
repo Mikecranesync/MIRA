@@ -1,0 +1,45 @@
+{
+ "id": "fn-x80-1",
+ "model": "google/gemini-2.5-flash-lite",
+ "candidates": [
+  244,
+  363,
+  70,
+  306,
+  256,
+  298
+ ],
+ "answer_pages": [
+  256,
+  298,
+  363
+ ],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [363, 298, 256], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 2276,
+  "completion_tokens": 26,
+  "total_tokens": 2302,
+  "cost": 0.00023562,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.000238,
+   "upstream_inference_prompt_cost": 0.0002276,
+   "upstream_inference_completions_cost": 1.04e-05
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.000238,
+ "prompt_sha256": "517802bd9ac2981f0e33d8b84269bc7dbdd6eac6dfc8b381fea026f62fdbfbbc"
+}

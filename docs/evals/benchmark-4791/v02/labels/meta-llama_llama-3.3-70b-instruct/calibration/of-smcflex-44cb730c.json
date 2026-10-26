@@ -1,0 +1,43 @@
+{
+ "id": "of-smcflex-44cb730c",
+ "model": "meta-llama/llama-3.3-70b-instruct",
+ "candidates": [
+  99,
+  1,
+  105,
+  7,
+  22,
+  100
+ ],
+ "answer_pages": [
+  105
+ ],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [105], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 2669,
+  "completion_tokens": 14,
+  "total_tokens": 2683,
+  "cost": 0.0002686662,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.00027138,
+   "upstream_inference_prompt_cost": 0.0002669,
+   "upstream_inference_completions_cost": 4.48e-06
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.00027138,
+ "prompt_sha256": "dce93ef4acd265f363eae494dcc8a5d59cae2198af43724bf003ee0776f5bee9"
+}

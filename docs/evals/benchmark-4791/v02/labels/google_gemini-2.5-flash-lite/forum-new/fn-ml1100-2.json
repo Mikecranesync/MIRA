@@ -1,0 +1,41 @@
+{
+ "id": "fn-ml1100-2",
+ "model": "google/gemini-2.5-flash-lite",
+ "candidates": [
+  74,
+  91,
+  71,
+  72,
+  82,
+  9
+ ],
+ "answer_pages": [],
+ "confidence": "low",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [], \"confidence\": \"low\"}",
+ "usage": {
+  "prompt_tokens": 2589,
+  "completion_tokens": 12,
+  "total_tokens": 2601,
+  "cost": 0.000261063,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.0002637,
+   "upstream_inference_prompt_cost": 0.0002589,
+   "upstream_inference_completions_cost": 4.8e-06
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.0002637,
+ "prompt_sha256": "b7fb6150df9e1d786717f6f665d99d3701fea267215415d80128d6384fb5d25c"
+}

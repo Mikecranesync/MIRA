@@ -1,0 +1,21 @@
+{
+ "pf40": "PowerFlex 40",
+ "pf4m": "PowerFlex 4M",
+ "acs355": "ABB ACS355",
+ "gs10-ch6": "GS10 drive",
+ "gs4-ch6": "DURApulse GS4",
+ "smcflex": "SMC Flex",
+ "smc50": "SMC-50",
+ "micro820-um": "Micro820",
+ "micro810": "Micro810",
+ "ml1100": "MicroLogix 1100",
+ "se-m172": "Modicon M172",
+ "se-canopen-hw": "Schneider CANopen",
+ "se-premium-serial": "Schneider Premium",
+ "micro820-in": "Micro820",
+ "gs4-ch2": "DURApulse GS4",
+ "se-lxm32a-canopen": "Lexium 32A",
+ "se-m171": "Modicon M171",
+ "se-x80-analog": "Modicon X80 analog",
+ "e3plus": "E3 Plus"
+}

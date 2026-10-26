@@ -1,0 +1,44 @@
+{
+ "id": "of-pf40-a39b6e51",
+ "model": "openai/gpt-4.1-mini",
+ "task": "calibration",
+ "candidates": [
+  151,
+  92,
+  91,
+  152,
+  93,
+  48
+ ],
+ "answer_pages": [
+  93
+ ],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [93], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 3008,
+  "completion_tokens": 14,
+  "total_tokens": 3022,
+  "cost": 0.001213344,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.0012256,
+   "upstream_inference_prompt_cost": 0.0012032,
+   "upstream_inference_completions_cost": 2.24e-05
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.0012255999999999999,
+ "prompt_sha256": "60351a4c7252a4fa62e95430827b81a6f7d75c34acf21bcbf0736eb1aa87eebb"
+}

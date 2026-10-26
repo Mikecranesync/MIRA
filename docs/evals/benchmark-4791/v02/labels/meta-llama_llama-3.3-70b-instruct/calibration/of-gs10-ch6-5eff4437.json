@@ -1,0 +1,42 @@
+{
+ "id": "of-gs10-ch6-5eff4437",
+ "model": "meta-llama/llama-3.3-70b-instruct",
+ "candidates": [
+  24,
+  30,
+  17,
+  37,
+  33
+ ],
+ "answer_pages": [
+  33
+ ],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [33], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 3041,
+  "completion_tokens": 14,
+  "total_tokens": 3055,
+  "cost": 0.0003054942,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.00030858,
+   "upstream_inference_prompt_cost": 0.0003041,
+   "upstream_inference_completions_cost": 4.48e-06
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.00030858,
+ "prompt_sha256": "f720f997c3b96b5db5cb9aadd85d53477878c79413fe600f8a9379b85a02b73b"
+}

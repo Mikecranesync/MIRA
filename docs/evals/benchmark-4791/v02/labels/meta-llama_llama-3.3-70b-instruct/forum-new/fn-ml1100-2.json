@@ -1,0 +1,43 @@
+{
+ "id": "fn-ml1100-2",
+ "model": "meta-llama/llama-3.3-70b-instruct",
+ "candidates": [
+  74,
+  91,
+  71,
+  72,
+  82,
+  9
+ ],
+ "answer_pages": [
+  82
+ ],
+ "confidence": "low",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [82], \"confidence\": \"low\"}",
+ "usage": {
+  "prompt_tokens": 2409,
+  "completion_tokens": 14,
+  "total_tokens": 2423,
+  "cost": 0.0005228982,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 80,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.00052818,
+   "upstream_inference_prompt_cost": 0.00052118,
+   "upstream_inference_completions_cost": 7e-06
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.00024538,
+ "prompt_sha256": "b7fb6150df9e1d786717f6f665d99d3701fea267215415d80128d6384fb5d25c"
+}

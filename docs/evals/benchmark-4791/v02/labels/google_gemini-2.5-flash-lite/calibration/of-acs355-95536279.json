@@ -1,0 +1,43 @@
+{
+ "id": "of-acs355-95536279",
+ "model": "google/gemini-2.5-flash-lite",
+ "candidates": [
+  118,
+  107,
+  249,
+  368,
+  363,
+  256
+ ],
+ "answer_pages": [
+  368
+ ],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [368], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 3013,
+  "completion_tokens": 16,
+  "total_tokens": 3029,
+  "cost": 0.000304623,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.0003077,
+   "upstream_inference_prompt_cost": 0.0003013,
+   "upstream_inference_completions_cost": 6.4e-06
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.0003077,
+ "prompt_sha256": "80f3e0a8ed8c8005de06c710a9993eb8ff5bf3a84ebe7d3dbef8c447ed3fa922"
+}

@@ -1,0 +1,42 @@
+{
+ "id": "of-micro810-97ebaaca",
+ "model": "google/gemini-2.5-flash-lite",
+ "candidates": [
+  45,
+  38,
+  37,
+  34,
+  36
+ ],
+ "answer_pages": [
+  38
+ ],
+ "confidence": "high",
+ "parsed": true,
+ "raw": "{\"answer_pages\": [38], \"confidence\": \"high\"}",
+ "usage": {
+  "prompt_tokens": 2791,
+  "completion_tokens": 15,
+  "total_tokens": 2806,
+  "cost": 0.000282249,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.0002851,
+   "upstream_inference_prompt_cost": 0.0002791,
+   "upstream_inference_completions_cost": 6e-06
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "cost_usd": 0.0002851,
+ "prompt_sha256": "244498e6e1f19c5188809e98cf3e765b67997eb118fb6a524dd5ed8894984880"
+}

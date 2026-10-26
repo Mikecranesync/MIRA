@@ -292,6 +292,10 @@ def main() -> None:
         "--hazard-gate",
         help="jsonl from harness/safety_gate.ts run on <out>/mike-hazard-cases.json",
     )
+    ap.add_argument(
+        "--queue",
+        help="v02/mike-queue.json: Mike answers only its cases; agreed cases use the labelers' consensus",
+    )
     a = ap.parse_args()
     try:
         review_path = os.path.join(HERE, "review-data.json")
@@ -304,12 +308,24 @@ def main() -> None:
         check_inputs(answers, hazards, review)
         os.makedirs(a.out, exist_ok=True)
         key = forum_key(review, answers)
+        for k in key.values():
+            k["source"] = "mike" if k["complete"] else None
         forum_done = sum(k["complete"] for k in key.values())
+        queue = audit = None
+        if a.queue:
+            queue = json.load(open(a.queue))
+            key, audit = apply_queue(key, queue)
         saf = safety(review, answers)
         haz = hazard_cases(hazards, a.out, a.hazard_gate)
+        need = (
+            {x["id"] for x in queue["forum_for_mike"]}
+            if queue
+            else {f["id"] for f in review["forum"]}
+        )
+        mike_done = {i for i, k in key.items() if k["source"] == "mike"}
         status = (
             "FINAL"
-            if forum_done == len(review["forum"])
+            if need <= mike_done
             and saf["answered"] == len(review["safety"])
             and haz["n"] >= HAZARD_TARGET
             else "PARTIAL"
@@ -339,6 +355,17 @@ def main() -> None:
                 )
             },
             "flagged": sorted(i for i, k in key.items() if k["flag"]),
+            "queue": {
+                "file_sha256": sha(a.queue),
+                "asked_of_mike": len(need),
+                "ai_consensus_cases": sum(1 for k in key.values() if k["source"] == "ai_consensus"),
+                "audit": audit,
+            }
+            if queue
+            else None,
+            "retrieval_strict_mike_only": score_retrieval(
+                {i: k for i, k in key.items() if k["source"] == "mike"}, "yes"
+            ),
             "retrieval_strict": score_retrieval(key, "yes"),
             "retrieval_lenient": score_retrieval(key, "yes_or_partly"),
             "ai_label_baseline_top5": {
@@ -360,6 +387,51 @@ def main() -> None:
     except Refused as e:
         print(f"REFUSED: {e}")
         raise SystemExit(1) from None
+
+
+def apply_queue(key: dict, queue: dict) -> tuple[dict, dict]:
+    """Fill cases Mike was not asked about with the qualified labelers' consensus (source "ai_consensus"), and
+    measure that consensus against Mike on the audit sample. Mike's own answer always wins when he gave one."""
+    key = {i: dict(k) for i, k in key.items()}
+    for x in queue["forum_agreed_not_audited"]:
+        k = key[x["id"]]
+        if k["source"] != "mike":
+            pages = x["consensus_pages"]
+            k.update(
+                complete=True,
+                kind="answerable" if pages else "unanswerable",
+                yes=pages,
+                yes_or_partly=pages,
+                flag=False,
+                note="",
+                source="ai_consensus",
+            )
+    checked = wrong = 0
+    wrong_ids = []
+    for x in queue["forum_for_mike"]:
+        if not x["why"].startswith("audit"):
+            continue
+        k = key[x["id"]]
+        if k["source"] != "mike" or k["kind"] not in (
+            "answerable",
+            "answerable_partly_only",
+            "unanswerable",
+        ):
+            continue
+        checked += 1
+        mike_answerable = k["kind"] != "unanswerable"
+        ai_pages = set(x["consensus_pages"])
+        if mike_answerable != bool(ai_pages) or (
+            mike_answerable and not set(k["yes_or_partly"]) & ai_pages
+        ):
+            wrong += 1
+            wrong_ids.append(x["id"])
+    return key, {
+        "checked": checked,
+        "consensus_wrong": wrong,
+        "wrong_ids": wrong_ids,
+        "error_rate_ci95": A.wilson(wrong, checked) if checked else None,
+    }
 
 
 PAGES_LABEL = {"strict": '"Answers it"', "lenient": '"Answers it" + "Partly"'}
