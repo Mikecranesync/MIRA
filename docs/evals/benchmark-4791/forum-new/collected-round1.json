@@ -1,0 +1,600 @@
+[
+ {
+  "id": "fn-pf40-1",
+  "set": "forum-new",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "We have a devicenet network that consist of a compact 1769-SDN, 20+ PoweFlex 40 drives, and a couple compact I/O blocks.  Recently drives have been faulting randomly F71.  This has not been an issue in the past.  Drives fail occasionally and we swap them with a same HP drive.  We use a him copycat to upload and download parameters.\nThe DeviceNet power supply is separated from other power and has been replaced recently to rule it out.  The Network 120 ohm resistors are installed at the network’s beginning and end. The Network wiring has been inspected.\nHas any experienced anything similar?\nThanks!",
+  "accepted": [
+   94
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 94,
+    "quote": "F71 Net Loss         The communication network has 1. Cycle power."
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/42818-devicenet-powerflex-40-faults/",
+  "forum": "mrplc.com",
+  "posted": "2022-11-19T13:46:52Z"
+ },
+ {
+  "id": "fn-pf40-2",
+  "set": "forum-new",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "Can anyone tell me how to check fault history in Allen Bradley powerflex 40 drive?",
+  "accepted": [
+   43,
+   92
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 43,
+    "quote": "Faults             View fault queue or fault information, clear faults or clear fault"
+   },
+   {
+    "page": 92,
+    "quote": "Access d007 [Fault 1 Code] to view the most recent fault information."
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/42402-powerflex-40/",
+  "forum": "mrplc.com",
+  "posted": "2022-09-08T14:04:03Z"
+ },
+ {
+  "id": "fn-pf40-3",
+  "set": "forum-new",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "Hello! First time using this forum.  The facility I work in has an abundance of powerflex 40's and some 525's.  When the team LOTO's a piece of equipment and brings it back up we consistently see F081 Comm Loss.  We have found several different avenues to try and work around this some of them being.\nParameter A105- Comm Loss Action:  Default 0- Switch it to 3 for continue last:  This works occasionally\nUnplug the Comm port and plug it back in-  This works occasionally\nPower off and back on-  Works rarely\nReplace the comm board and ribbon- This works rarely\nSwapp the drive out- Works every time but is costly and I feel its unnecessary.\nWe operate with micro logix and I have been told that there is a way to by pass this Comm loss in the program?  using a Debug type?  I am not sure and looking for any help.\nThank you",
+  "accepted": [
+   94,
+   76
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 94,
+    "quote": "RS-485 (DSI) port stopped"
+   },
+   {
+    "page": 76,
+    "quote": "Drive will fault on an F81 Comm Loss and coast to stop."
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/37840-powerflex-40-f081-plc-resoulution/",
+  "forum": "mrplc.com",
+  "posted": "2019-12-12T10:46:04Z"
+ },
+ {
+  "id": "fn-pf40-4",
+  "set": "forum-new",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "Hey Guys,\nThis is my first time on a forum like this! but i need a hand with something if someone could point me in the right direction.\nI have a Powerflex 40 drive communicating over Ethernet/IP to a switch, That drive has four Powerflex 4's connected to it thru DSI connection. They seemed to be wired correctly and seem to be sound connections but when someone on the production hits an E-Stop it removes power from this bank of drives. (Which is standard here) . However, when they power back up i get an F081 Error (Comms lost) on the master drive and one slave. Also, the port light on the 20-comm-e(Powerflex 40) is faintly flashing about every 5 seconds and is the only light on. In this state, none of them communicate. However, when i unplug the DSI cable, the 20-comm-e powers back up to normal operation. I then plug the DSI back in and everything works fine.\nShould i start replacing parts or is there some parameters/other wiring i could check?\nThanks guys.",
+  "accepted": [
+   94
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 94,
+    "quote": "RS-485 (DSI) port stopped"
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/35218-communication-error/",
+  "forum": "mrplc.com",
+  "posted": "2018-08-24T11:16:03Z"
+ },
+ {
+  "id": "fn-pf40-5",
+  "set": "forum-new",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "Hello every one looking for some guidance here we are trying to set up a driver\n(powerflex 40) to run it either from a HMI wich we would like to call local and our PLC system wich will be remote\nI'm kind of confused between the parameters we are using just a single switch to change it between local/remote\nany help will be appreciated",
+  "accepted": [
+   33,
+   27
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 33,
+    "quote": "Local/Remote Input             Start, Speed, and Direction commands"
+   },
+   {
+    "page": 27,
+    "quote": "Program with A051 [Digital In1 Sel]."
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/37353-powerflex-40/",
+  "forum": "mrplc.com",
+  "posted": "2019-09-16T21:03:47Z"
+ },
+ {
+  "id": "fn-pf40-6",
+  "set": "forum-new",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "I purchased a simple powder milling machine which came as 460 volt. It uses a powerflex40 as the speed control. I swapped that out for the same model in 220v & re-configed the motor wires. The machine has a power switch, a speed switch with 3 positions. the leads connect to digital input 1,2,3 of the PF40. There is a momentary on switch & an e-stop. I don't know much about the PF40. I read thru a quick start guide which helped some but a lot of it is over my pay grade. It looks like ill need to set some motor stats in the smart start program group. I don't have some of the answers to the parameters its looking for. Not sure how important those are. Then I enter in a speed setting using A51-A54. Im not sure i completely understand how to adjust the speed using either Hz, Amps or Volts.  Any help would be great. Is there anyway to manually start this and ramp up the speed to see how things work. I was thinking I should be able to do that with the dial button but since I have the digital inputs connect it may not allow that manual operation. Any help would be great thanks.",
+  "accepted": [
+   33
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 33,
+    "quote": "normally determined by P038 [Speed Reference]. However, when A051…A054 [Digital Inx"
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/25420-powerflex-40-crash-course/",
+  "forum": "mrplc.com",
+  "posted": "2013-07-25T18:11:37Z"
+ },
+ {
+  "id": "fn-pf4m-1",
+  "set": "forum-new",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "We have identical panels in several different plant locations and have no issues whatsoever. At this particular site we have three panels located very close to one another on a mezzanine. On about a dozen drives in two of the panels we get nuisance faults at seemingly random time intervals (Phase UV Short, Phase UW Short, Phase VW Short). All cabling is belden shielded VFD cable with the shield terminated at the drive as well as the motor.  We have tried shielding the motor connections from the drive to the Terminal blocks where field connections are made. This did not help. We recently installed grounding rods at the panel location. This did not help.  All drives have earth ground connected to the backplane (which is in turn tied into the grounding rod and main supply neutral). All VFD cable lengths are short enough to not require line reactors or the like.  We have pulled the motor leads off of a drive and had that drive trip with no load attached (hardware overcurrent on the output terminals). We have swapped a new drive with the one that tripped with no load attached and still had it fault. May be unrelated - There is a lot of process control nearby (pumps, etc). The temperature reading on the a/c for both problem panelsl jumps all over the place. But, one if the a/c units shipped DOA so this may be non-related. All panels are fed off the same PDP yet we are only getting the nuisance faults in two of the three panels. There are 40+ drives in one problem panel and nearly 30 in the other problem panel. The non-problem panel has 27 drives. Some drives trip 7-8 times more often than the others. The ones that fault the most are all mounted closely to some piece of ancillary equipment that has its own separate power feed. (may be unrelated) No faults occur on any of the VFDs that are mounted on the mezzanine (grounded steel structure) in which the panels are located.  Faults only occur on conveyor sections that are mounted along a cement floor.  Faults do not seem to be temperature related as the panels are always cool feeling.  I have trended the input voltage to a problem drive and the voltage at the input (Fluke 289) never dipped below 469vac while the highest spike was somewhere around 481vac.  Changing the carrier frequency did not help. Using software current limits in the drive did not help. Voltage at the drive output compared to voltage at the motor peckerhead is within 1% between all three phases of the drive that faults most often. resistance between phases of the drive that faults most often is within 1%. We have swapped a known bad motor with a known good one. This did not help. We have ran a shielded cable outside the cable tray directly to the closest problem motor (less than 50ft). This did not help. Any input or troubleshooting suggestions would be greatly appreciated. I have contacted Rockwell half a dozen times and the techs are always clueless.",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/27227-powerflex-4m-nuisance-overcurrent/",
+  "forum": "mrplc.com",
+  "posted": "2014-07-08T13:41:10Z",
+  "search_note": "Searched the fault table for 'Phase UV Short'/'Phase UW Short' (p74) — the manual lists only generic causes (shorted motor/wiring) and the standard remedy (check wiring, replace drive). It does not address intermittent multi-drive EMI/grounding/interference across adjacent panels with no load fault reproduction — that is a field electrical-interference investigation beyond the fault table's scope."
+ },
+ {
+  "id": "fn-pf4m-2",
+  "set": "forum-new",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Hey guys, I was wondering if anyone could help me understand what is wrong with this VFD. It was working perfectly fine and then all of the sudden all lights turned on and the LCD display reads \"8888.\" It is non responsive, power cycled it for 5 min, tried resetting as you would normally with faults, no dice. Any help would be greatly appreciated!",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/41601-powerflex-4m-all-lights-on-lcd-showing-8888/",
+  "forum": "mrplc.com",
+  "posted": "2022-01-29T12:19:12Z",
+  "search_note": "Searched the whole PF4M manual for the string '8888' — no match anywhere. This display state is not documented in the fault table or anywhere else in the manual."
+ },
+ {
+  "id": "fn-pf4m-3",
+  "set": "forum-new",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Hi Gurus iv got a powerflex 0.37kw inverter 4M that needs to wind up paper on a reel it works fine with regards to start stop and speed control on pot, but i need to adjust the torque as my product is just snapping when there is to much tension ive had a look at the parameter lists and nothings jumping out at me please see parameter list attached if any one could help me id be very grateful\nkind regards Glenn",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/34951-torq-settings-powerflex-4m/",
+  "forum": "mrplc.com",
+  "posted": "2018-05-16T13:59:43Z",
+  "search_note": "Searched for 'torque'/'tension' — the PF4M manual's only torque-related content is the Boost Select V/Hz curve and the Constant/Variable Torque fan-pump load-type selection (p34, p67); there is no closed-loop torque-limiting or winder/tension-control parameter the manual documents for this use case."
+ },
+ {
+  "id": "fn-pf4m-4",
+  "set": "forum-new",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Help with powerflex 4m drive communication\nHello,\nI have a machine with 4 powerflex 4m drives that are networked using a 22-XCOMM-DC-BASE with a 22-comm-e card attached.\nBackstory....There was a power surge at the plant that took out the power supply portion of this module. Dead short. After getting some bad info from tech support, they told me I could remove the 22-comm-e chip and install in the new unit and all should be good. Here's where I screwed up....even though the chip looked to be soldered in, I believed them and proceeded to try and to remove the chip. In the process I broke one of the tangs that was soldered in. I have a replacement module, and even though I can successfully send an IP address to it via bootp dhcp tool, it is not happy and doesn't properly communicate with the drives. Been back and forth with support from my distributer, and still not having any luck. I was able to position the bent/broken tang to touch consistently and got the machine up and running, but I don't know how long it will last. I can connect via ethernet to the working unit via CCW and see all its parameters. I need to know what I need to upload those parameters and download them to the new unit I have as a spare. When I install the new unit and give it the proper IP address, I can see it on RS links, but get an error when I try to connect via CCW.\nI feel like I am close, but definitely missing something.\nAny ideas would be appreciated.\nThank you,\nDave",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/43391-help-with-powerflex-4m-drives/",
+  "forum": "mrplc.com",
+  "posted": "2023-07-13T23:13:39Z",
+  "search_note": "Searched the PF4M manual for '22-COMM-E'/'22-XCOMM-DC-BASE'/Ethernet — the base drive manual documents only the RS-485(DSI) protocol (Appendix C) and no Ethernet comm adapter at all; the 22-COMM-E EtherNet/IP adapter's configuration, parameter-copy procedure, and connection errors are covered in that adapter's own user manual, not here."
+ },
+ {
+  "id": "fn-micro820-1",
+  "set": "forum-new",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Hi.\nI have a Micro820 mounted in an Exd box in a Zone 1 haz area.\nHad an issue with the PLC not booting up and subsequent polling through Connected Components Workbench revealed an error due to noisy environment.\nIs there anyway we can set the 820 to ignore or bypass this error code (or automatically clear it) on startup so it powers up and runs as usual?\nThe supply can get noisy at times (refinery application) and with no remote comms access to the 820, the need to open up the box in the hot zone to connect a laptop and clear the fault isn't ideal.\nAny thoughts on how we can get around this?\nCheers.",
+  "accepted": [
+   150
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 150,
+    "quote": "The controller was unexpectedly reset due to a noisy"
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/35228-micro820-clear-fault-code-on-startup/",
+  "forum": "mrplc.com",
+  "posted": "2018-08-28T09:11:46Z"
+ },
+ {
+  "id": "fn-micro820-2",
+  "set": "forum-new",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Hi everybody,\nRecently, I started working on a project. I want to develop a program for a Micro820 controller (2080-LC20-20AWB) using CCW (Connected Components Workbench). I built a little motor circuit for testing purpose. However, after building the program and downloading it to the controller, I tried to connect to my controller via CCW, but I can't. When I click the button \"Connect\", CWW crashes OR a window saying : \"The controller has unnacepted changes\" appears and asks me if I want to \"Download current project to the controller\" (wich I already did) or \"Upload the project in the controller to overwrite current project content\" (wich is grayed out). When I choose to \"Download current project to the controller\", CCW starts downloading the resource, but fails. In the \"Output\" window, there's a line saying : \"Download failed for Device:Micro820: An error occured while reading from GETACTIVERESOURCELIST.\". The problem is that there's no documentation at all concerning this error. I even tried to reinstall CCW, but it didn't fix the problem.\nI joined some images so you guys can see what I'm talking about. Don't mind asking for more details !",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/32957-cant-connect-to-micro820-controller-via-ccw/",
+  "forum": "mrplc.com",
+  "posted": "2017-05-26T14:17:45Z",
+  "search_note": "Searched the Micro820 user manual for 'GETACTIVERESOURCELIST' — no match. This is a Connected Components Workbench software-side download/connection error, not documented in the controller hardware/user manual."
+ },
+ {
+  "id": "fn-micro820-3",
+  "set": "forum-new",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Hello all,I have a Micro820 PLC. I want to upload my Program by CCW software. I get this error when I select the upload option.Upload failed for: Cannot import \"c:\\users\\eddi\\documents\\ccw\\project12\\controller\\Controller\\Micro820\\Micro820\\Micro820_IDS00103\" file. The file is either corrupted or has an invalid format.I need the program and I don't have a copy.What do you think could be the reason for this?I would be grateful if you have any suggestions.",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/44171-upload-failed-in-micro820/",
+  "forum": "mrplc.com",
+  "posted": "2024-05-17T07:49:35Z",
+  "search_note": "Searched for 'corrupted'/'invalid format' — only one unrelated hit (I/O packet loss, p162). CCW project-file import/corruption on upload is a software-side issue not documented in the controller user manual."
+ },
+ {
+  "id": "fn-micro820-4",
+  "set": "forum-new",
+  "manual": "micro820-in",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4.pdf",
+  "question": "Hi everyone,\nRecently, I started working with the Micro820 Controller Embedded I/O. My project is simple : when the output _IO_EM_DO_00 is set to true, an LED light turns on. But, even though it's super simple, I can't make it work.\nHere's my setup. If you need more information, feel free to ask anything !",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/33112-trouble-wiring-a-simple-led-with-a-micro820-controller/",
+  "forum": "mrplc.com",
+  "posted": "2017-06-21T15:54:32Z",
+  "search_note": "The post gives no model/output-type detail and the referenced wiring photo isn't available to this process; the install manual's relay/DC output specs and wiring diagrams (p18-20) are generic and can't be matched to this specific LED circuit with confidence."
+ },
+ {
+  "id": "fn-micro820-5",
+  "set": "forum-new",
+  "manual": "micro820-in",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4.pdf",
+  "question": "Hi,\nI'm trying to test the serial communications with my Micro820. I acquired a 2080-SERIALISOL so I could have \"someone\" to talk to.\nI want to use RS485, so I figured that I'd have to connect:\nModbus pin 1 (D+) to serialisol pin A1 (+485)\nModbus pin 2 (D-) to serialisol pin B4 (-485)\nModbus pin 3 (GND) to serialisol pin A2 (GND)\nNow when it comes to CCW, the thing gets a little harder. I know I need to use the MSG_MODBUS block (in fact I need 2, one for the modbus and another one for the serialisol), and I guess I specify the interface I'm using on the TargetCfg field (data type MODBUSTARPARA).\nBut how do I figure out that the Addr (UDINT) and Node (USINT) values are for my Modbus and Serialisol?\nOr am I doing it wrong?\nDoes anybody know of any place where I can get some more guidance or even a funcional ladder program?\nThank you in advance",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/32606-micro820-serial-communication/",
+  "forum": "mrplc.com",
+  "posted": "2017-03-31T01:28:22Z",
+  "search_note": "The install manual documents the physical serial port wiring/pinout but not the CCW MSG_MODBUS instruction's Addr/Node parameter semantics — that is a programming/instruction-set reference topic, not covered here."
+ },
+ {
+  "id": "fn-ml1100-1",
+  "set": "forum-new",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Typically I use some Micrologix and a lot of SLC, Contrologix, Compact Logix. We decided to use a Micrologix 1100 on a small project that doesn't warrant the horsepower of the other PLC's. It has a few cards added to it including one 4 point analog input card that has a single point left on it. We need to add 2 more analog points and rather than add an AI card I was thinking that I could use the 2 on board analog points that the ML1100 comes with. But... our stuff is all 4-20mA not 0-10VDC. We looked into buying a couple of 4-20mA to 0-10V converters but they cost as much as it would cost to buy another AI card. The downside to adding the AI card is that real estate is getting tight in the cabinet. I've never really bothered with the on board AI's so any information about them would be appreciated. Am I understanding the on board AI's correctly? 0-10VDC?",
+  "accepted": [
+   113
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 113,
+    "quote": "Voltage input range                        0…10.0V DC, - 1 LSB"
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/21832-micrologix-1100-onboard-analog-question/",
+  "forum": "mrplc.com",
+  "posted": "2011-08-23T14:23:22Z"
+ },
+ {
+  "id": "fn-ml1100-2",
+  "set": "forum-new",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "First, I'm new in this forum and I appreciate all the anwers that I'll have.   This is my problem: I'm kind of new in my job, and my boss put me in a new project that im using this PLC Micrologix 1100. But he can't support me right now with the software Rslogix 500, and he told me that I can program this PLC \"manually\" with the LCD panel, but surfing the net I didn't find any subject about it. And this is my doubt, Can I program this PLC only with the LCD panel of the PLC without using the software from this PLC?  Please I need a hand with this trouble!!  Add: I did a ladder \"program\" in a paper, its like a 7 lines, using 5 inputs, 2 outputs, 2 flags and 1 timer. Can I program this kind of \"program\" using only the LCD panel?, and if I can, can u provide me a manual of that?, thanks all!!",
+  "accepted": [
+   74,
+   72
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 74,
+    "quote": "Mode Switch           Allows you to change the mode switch selection."
+   },
+   {
+    "page": 72,
+    "quote": "MicroLogix 1100 LCD Menu Structure Tree"
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/28889-micrologix-1100-programming-trouble/",
+  "forum": "mrplc.com",
+  "posted": "2015-06-30T10:36:56Z"
+ },
+ {
+  "id": "fn-ml1100-3",
+  "set": "forum-new",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Hello, I have almost decided to go with a ML 1100 because of the ethernet convenience.  I can't seem to find any info about using MODBUS with the ethernet port 1.  I see that port 0 (serial) supports MODBUS master/slave.  Has anyone attempted this/had success? Specifically, I am trying to attach some other gear to this PLC, which speaks MODBUS over TCP.  It is a QSI operator interface panel. Thank you, Matt",
+  "accepted": [
+   14,
+   154
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 14,
+    "quote": "The MicroLogix 1100 controller supports EtherNet/IP™ communication via the Ethernet"
+   },
+   {
+    "page": 154,
+    "quote": "MicroLogix 1100 controllers support Modbus RTU saster"
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/12079-micrologix-1100-ethernet-modbus/",
+  "forum": "mrplc.com",
+  "posted": "2007-09-06T13:54:09Z"
+ },
+ {
+  "id": "fn-ml1100-4",
+  "set": "forum-new",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "How to fix MicroLogix 1100 fault display not show  please see Photo below .",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/35237-micrologix-1100-cpu-fault/",
+  "forum": "mrplc.com",
+  "posted": "2018-08-30T08:44:32Z",
+  "search_note": "The post refers to a photo of the fault display that isn't available to this process, and gives no fault code, error number, or symptom text to match against the manual's fault/status-indicator tables."
+ },
+ {
+  "id": "fn-ml1100-5",
+  "set": "forum-new",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Hi all im have a bit of drama with setting up a PID im using a Micrologix 1100 and expansion mod 1762-OF4 a telemecanique 0-10v ultrasonic sensor and a proportional valve 0-10v as I need the control the level of water in a tank what iv written isn't working i cant see any raw value on I:0.0 iv measured the out put of the sensor and im getting 0-10v out what am i missing please find attached some images\nkind regards Glenn",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/35121-analogue-micrologix-1100/",
+  "forum": "mrplc.com",
+  "posted": "2018-07-17T12:01:28Z",
+  "search_note": "This is a specific ladder-program/PID configuration debugging question referencing attached images of the user's own program; the manual's generic analog wiring chapter does not diagnose why a particular address isn't updating in a particular program."
+ },
+ {
+  "id": "fn-ml1100-6",
+  "set": "forum-new",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Hopefully a simple, basic question.  I want to utilize the on board Analog input on my Micrologix 1100.  What is it called??  How do I address it on my program?  It is not an expansion card.  Just the built in inputs.\nI am sure that I will have more questions about scaling and setting it up but I can't even get my foot in the door if I don't know how to find it.\nThanks,\nChuck",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/30279-micrologix-1100-analog-input-programming/",
+  "forum": "mrplc.com",
+  "posted": "2016-03-16T17:20:32Z",
+  "search_note": "Searched for an onboard-analog I/O addressing convention (e.g. an I:0.x table) — this user manual covers analog wiring/specs (ch.3, Appendix A) but not the RSLogix 500 data-file address mapping for the embedded channels; that lives in the instruction-set reference manual (1763-RM001), not here."
+ },
+ {
+  "id": "fn-e3plus-1",
+  "set": "forum-new",
+  "manual": "e3plus",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+  "question": "We have an Allen Bradley MCC and we have E3 Plus Overload Relays. So I'm in the phase of configuration and I'm not pretty sure how bad a Ground Fault can affect. Can someone explain to me in plain English how a Ground Fault could affect the motor, and how necessary it is to have that protection. Thanks in advance.",
+  "accepted": [
+   52,
+   53
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 52,
+    "quote": "breakdowns or entry of foreign objects. Detection of such ground faults can be"
+   },
+   {
+    "page": 53,
+    "quote": "The E3 Plus Overload Relay is not a ground fault circuit"
+   }
+  ],
+  "safety": true,
+  "url": "https://mrplc.com/forums/topic/21631-e3-plus-ground-fault/",
+  "forum": "mrplc.com",
+  "posted": "2011-07-04T23:04:07Z",
+  "safety_note": "p53: \"The E3 Plus Overload Relay is not a ground fault circuit interrupt or for personal protection as defined in Article 100 of the NEC.\""
+ },
+ {
+  "id": "fn-e3plus-2",
+  "set": "forum-new",
+  "manual": "e3plus",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+  "question": "Hi guys, We have put a new E3-Plus overload onto one of our DeviceNet networks, it is on a PLC 5. We set up 4 words fine. We are wondering how we can change what parameters are coming into the first word. From the manual we have read that parameters 60, 61, 62 and 63 are used for reading from the device. Parameter 60 is set to 100, and therefore we are reading the currents from L1 - L3 on parameters 61 - 3. If we change parameter 60 to 114 will this change the first word to read as per page B-23 in the manual? And if we do this will the other parameters 61 - 3 change?  We are just slightly confused reading the manual Thanks, Conor",
+  "accepted": [
+   100
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 100,
+    "quote": "by the value in Output Assembly, Parameter 59, and Input Assembly, Parameter"
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/22262-e3-plus-devicenet-values/",
+  "forum": "mrplc.com",
+  "posted": "2011-11-22T15:42:57Z"
+ },
+ {
+  "id": "fn-e3plus-3",
+  "set": "forum-new",
+  "manual": "e3plus",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+  "question": "I have two systems with AB SLC5/05, device net cards and two softstarts controlled by device net. When there is a power failure and the UPS gives up, when the system powers back up there is a \"comm fault F21\" displayed on the softstarts, and the softstart overload shows a fault and red led. The overload can be reset, or the power cycled to the softstart. There are two EC3+s on the same system and they show a fault as well. Is there a way to do a reset from the SLC5/05 to the softstart/EC3s?",
+  "accepted": [
+   217,
+   218
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 217,
+    "quote": "An E3 Overload Relay trip condition can be reset by taking one of the"
+   },
+   {
+    "page": 218,
+    "quote": "Setting Parameter 26, Trip Reset, to a value of 1 = trip reset."
+   }
+  ],
+  "safety": true,
+  "url": "https://mrplc.com/forums/topic/18303-comm-fault-on-device-net/",
+  "forum": "mrplc.com",
+  "posted": "2009-09-25T22:51:17Z",
+  "safety_note": "p217: \"Resetting a trip will not correct the cause for the trip. Corrective action should be taken before resetting the trip.\""
+ },
+ {
+  "id": "fn-e3plus-4",
+  "set": "forum-new",
+  "manual": "e3plus",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+  "question": "Hi guys, I have a new starter section for two motors going in to a part of my Plant. I wanted to put in Point I/O as well as two E3-Plus Overloads. I would prefer to run just one Ethernet cable, and not have to run a DeiveNet cable. I would be connecting the Devices to a Stratix Managed switch. I have been checking on the AB website but an not 100% sure of which product would suit my application the best. The following are the part numbers that I have dug up. 2100-ENET 193-DNENCAT 193-DNENCATR I think that the 193-DNENCAT or 193-DNENCATR would be the best for me, as each of these can connect to up to 6 Nodes on DeviceNet. I am not sure about the 2100- ENET.  I was wondering about the 193-DNENCATR. Is the second port only for DLR? Could I connect the EtherNet cable from y Managed Swich into the first port and then connect the Point I/O to the second port on the 193-DNENCATR?  Thanks, Conor PS: I rang Tech support for there advice on this. The guy was not very helpful, and couldn't give me an answer. He then told me that I should contact my local distributor. My experience with Tech support has been mainly very good up to this, but I am very p*&sed off with his answer. Maybe I rang him too close to his lunch time and he couldn't be bothered",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/?app=forums&controller=topic&id=25506&module=forums",
+  "forum": "mrplc.com",
+  "posted": "2013-08-07T11:56:33Z",
+  "search_note": "The E3 Plus manual's accessories appendix (p273) only lists 193-DNENCAT/193-DNENCATR as compatible catalog numbers; it does not describe the adapter's port functions (DLR ring vs. a second device port) — that is covered in the 193-DNENCAT/R adapter's own user manual, not this one."
+ },
+ {
+  "id": "fn-lxm32a-1",
+  "set": "forum-new",
+  "manual": "se-lxm32a-canopen",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-lxm32a-canopen-0198441113779.pdf",
+  "question": "Hi,\nIam new to schneider electric PLC drive programming and also to canOpen communication.\nI have an LMC058 PLC and there are three Lexium 32A drives connected via canOpen which inturn controls three servomotors. My question is how to find/ read hardware limit status of the axis in which limit is connected to a digital input pin of the drive. Even though the axis is properly working by configuring the digital input pins we are unable to get the digital input status of the drive.\nIn the drive manual its given that the digital input status can be read from canOpen address 3008:F(hex) we dont know how to read the status during run time in the program . Can any one advise me how to read that address. I tried SDO_read function but its giving me error(canOpen network id Unknown). Thanks in advance.",
+  "accepted": [
+   70
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 70,
+    "quote": "3008:F     Status of digital inputs                                            T_PDO   UINT16      _IO_DI_act"
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/31870-lexium-32a-hardware-limit-status/",
+  "forum": "mrplc.com",
+  "posted": "2016-12-05T05:59:33Z"
+ },
+ {
+  "id": "fn-m172-1",
+  "set": "forum-new",
+  "manual": "se-m172",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+  "question": "Hi, I'm new to both structured text and Modicon. I'm having trouble compiling this tiny procedure, meant to scale a number to an integer when the operator changes it. Although I can set the page edit variable to @localparameters.iLTemp_SPt1 with no problems, I can't get this function to compile as either a local or global procedure. What am I doing wrong?",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/36509-help-with-st-on-m172-please/",
+  "forum": "mrplc.com",
+  "posted": "2019-05-23T09:02:30Z",
+  "search_note": "The se-m172 manual in hand is the Hardware Guide (wiring, power, CAN expansion bus, mounting); it only names structured text as an available programming language (p192) and does not document SoMachine procedure/function syntax or compile errors — that is covered in the programming guide, not the hardware guide."
+ },
+ {
+  "id": "fn-premium-1",
+  "set": "forum-new",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "Hi, Im having problems with a Premium PLC trying to get it to talk to a modbus TCP device. Im sure im missing something really obvious but just cant quite get it. im trying F NOT %MW790.0 and %s6 THEN (* Test the activity bit to start the transfer *)  READ_VAR(ADDR('{1.3}SYS'), '%MW', 1, 1, %MW790:4, %MW799:1); END_IF; i have set under networks the xway addr of 1.3 to the ip address of the device and it is set in \"Mono\" mode. the PLC can ping the device and vise versa. when it is running looking at the managment report i get %MW790[0] - changing values (session id) %MW790[1] - cycling with %s6 between 0 and 4863 looking at some schnieider documentation does that suggest from the most significant byte an operation report of 10010 suggesting \"lack of line resources\" and \"length error\" ? the PLC is communicating using read_var/write_var to another plc in the network just fine. using wireshark on the destination device i dont see any network traffic between it and the PLC.  the device responds to modbusTCP packets just fine as if i tell citect to read/write data from the device it works just fine. any suggestions? im stumped.",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/19497-premium-plcunity-modbus-tcp-problem/",
+  "forum": "mrplc.com",
+  "posted": "2010-05-05T04:55:44Z",
+  "search_note": "Searched for 'XWAY'/'Modbus TCP' — no matches. The se-premium-serial manual in hand documents only the built-in asynchronous serial port (Modbus RTU/ASCII); it does not cover XWAY addressing or Modbus TCP READ_VAR/WRITE_VAR networking, which is a different (Ethernet) communication manual's subject."
+ },
+ {
+  "id": "fn-x80-1",
+  "set": "forum-new",
+  "manual": "se-x80-analog",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-x80-analog-io-35011978.pdf",
+  "question": "Hi all, I'm using M340 logic controller and in that i'm adding bmxami0810 analog module, i can able to set the analog input range settings and scalings, but i don't know how to read and transfer the analog values from module to CPU memory address. Note:programming through unity pro XL V7.0, Help me  Thanks in advance",
+  "accepted": [
+   256
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 256,
+    "quote": "VALUE                  INT     R        Analog input measurement.                     %IWr.m.c.0"
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/27983-how-to-configure-bmxami-0810/",
+  "forum": "mrplc.com",
+  "posted": "2014-12-05T15:31:37Z"
+ },
+ {
+  "id": "fn-micro810-1",
+  "set": "forum-new",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Hi. I hav a AB micro 810 12QWB controller. Is it possible to connect it up with a PV component ? Thanks",
+  "accepted": [
+   9
+  ],
+  "kind": "answerable",
+  "evidence": [
+   {
+    "page": 9,
+    "quote": "Micro810 controllers do not support Micro800 plug-in modules, but do support a USB adapter, and an LCD module"
+   }
+  ],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/23285-ab-micro-810/",
+  "forum": "mrplc.com",
+  "posted": "2012-06-28T09:34:20Z"
+ },
+ {
+  "id": "fn-micro810-2",
+  "set": "forum-new",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Hello,\nI am new here please let me know if there is a problem with this post. I bought an 810 and wired it up and wanted to check its function. I toggled the logic value. I hear the contractors close although when I read voltage I do not get 24v out. I have been looking all over the place and can't come up with a reason why I wouldn't see 24v on the DO\nRyan",
+  "accepted": [],
+  "kind": "unanswerable",
+  "evidence": [],
+  "safety": false,
+  "url": "https://mrplc.com/forums/topic/39631-micro-810-do-fault/",
+  "forum": "mrplc.com",
+  "posted": "2020-12-28T17:11:40Z",
+  "search_note": "The Troubleshooting chapter (p33) only documents the controller status-indicator LED states (power/firmware/fault); it has no diagnostic for 'contactor audibly closes but no output voltage measured' — that is a field wiring/hardware-failure investigation beyond the manual's scope."
+ }
+]
