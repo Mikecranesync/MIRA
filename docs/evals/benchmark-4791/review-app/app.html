@@ -277,7 +277,10 @@ function paintStatus(){
 function banners(){
   const out = [];
   if (PREVIEW) out.push(el('div', { class: 'preview' }, 'PREVIEW: answers given here are test data and are not used in the benchmark.'));
-  if (S.dbState === 'connecting' || (S.dbState === 'on' && !S.serverReady)) out.push(el('div', { class: 'banner' }, 'Loading your saved answers\u2026 The answer buttons unlock in a moment.'));
+  if (S.syncError) out.push(el('div', { class: 'banner bad' },
+    el('p', { text: 'Couldn\u2019t load your saved answers (' + S.syncError + '). Nothing you saved is lost. Check your connection, then try again.' }),
+    el('button', { class: 'primary', onclick: () => subscribe() }, 'Try again')));
+  else if (S.dbState === 'connecting' || (S.dbState === 'on' && !S.serverReady)) out.push(el('div', { class: 'banner' }, 'Loading your saved answers\u2026 The answer buttons unlock in a moment.'));
   if (S.dbState === 'off') out.push(el('div', { class: 'banner' }, 'Answers are only kept on this phone, so Claude can’t read them and no XP is counted. Open this page in claude.ai while signed in.'));
   if (S.dbState === 'readonly') out.push(el('div', { class: 'banner bad' }, 'This account can view but not save. Only the owner’s answers count.'));
   return out;
@@ -499,19 +502,31 @@ render();
   try { db = window.claude && window.claude.use ? await window.claude.use('db') : null; } catch (e) { db = null; }
   if (!db) { S.dbState = 'off'; render(); return; }
   S.dbState = 'on';
-  db.collection('answers').onSnapshot(snap => {
-    S.server = Object.fromEntries(snap.docs.map(d => [d.id, { data: d.data(), confirmed: !snap.metadata.fromCache && !d.metadata.hasPendingWrites }]));
-    const first = !S.serverReady && !snap.metadata.fromCache;
-    if (first) { S.serverReady = true; reconcile(); }
-    announceBadges(); retryFailed(); if (first) render(); else refresh();
-  }, () => {});
-  db.collection('hazards').onSnapshot(snap => {
-    S.serverHaz = Object.fromEntries(snap.docs.map(d => [d.id, { data: d.data(), confirmed: !snap.metadata.fromCache && !d.metadata.hasPendingWrites }]));
-    const first = !S.hazReady && !snap.metadata.fromCache;
-    if (first) { S.hazReady = true; reconcile(); }
-    announceBadges(); refresh();
-  }, () => {});
+  subscribe();
 })();
-function refresh(){ if (S.view === 'home' || S.view === 'hunter' || S.view === 'summary') render(); else paintStatus(); }   // render() keeps a focused text box's text and cursor
+/* Subscribe once per collection. A subscription error (or a throw while subscribing) shows a "Try again" banner;
+   answer controls stay locked until a definitive snapshot arrives (#4802). Retrying drops the dead listeners first. */
+const subs = {};
+function subscribe(){
+  S.syncError = null;
+  for (const k of Object.keys(subs)) { try { subs[k](); } catch (e) {} delete subs[k]; }
+  const fail = e => { S.syncError = (e && e.code) || 'error'; render(); };
+  try {
+    subs.answers = db.collection('answers').onSnapshot(snap => {
+      S.server = Object.fromEntries(snap.docs.map(d => [d.id, { data: d.data(), confirmed: !snap.metadata.fromCache && !d.metadata.hasPendingWrites }]));
+      const first = !S.serverReady && !snap.metadata.fromCache;
+      if (first) { S.serverReady = true; reconcile(); }
+      announceBadges(); retryFailed(); if (first) render(); else refresh();
+    }, fail);
+    subs.hazards = db.collection('hazards').onSnapshot(snap => {
+      S.serverHaz = Object.fromEntries(snap.docs.map(d => [d.id, { data: d.data(), confirmed: !snap.metadata.fromCache && !d.metadata.hasPendingWrites }]));
+      const first = !S.hazReady && !snap.metadata.fromCache;
+      if (first) { S.hazReady = true; reconcile(); }
+      announceBadges(); refresh();
+    }, fail);
+  } catch (e) { fail(e); }
+  render();
+}
+function refresh(){ if (S.view === 'home' || S.view === 'hunter' || S.view === 'summary' || S.view === 'sessionEnd') render(); else paintStatus(); }   // render() keeps a focused text box's text and cursor
 window.__review = { S, progress, writer, saveAnswer };   // test hook
 </script>

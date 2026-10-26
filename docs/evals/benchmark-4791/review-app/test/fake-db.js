@@ -3,7 +3,7 @@
  * (fromCache: true) view, then a definitive one; a write is seen at once with hasPendingWrites: true
  * and confirmed only after `latency` ms; errors carry {code}. The "server" lives in localStorage
  * under __fake_server so it survives reloads (interruption tests); every write attempt is logged in
- * __fake_writes. Config (localStorage __fake_cfg): {latency, fail: {code, times}, readonly, noDb}. */
+ * __fake_writes. Config (localStorage __fake_cfg): {latency, fail: {code, times}, subError: {code, times}, snapshotDelay, readonly, noDb}. */
 (() => {
   const ls = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d; } catch (e) { return d; } };
   const put = (k, v) => localStorage.setItem(k, JSON.stringify(v));
@@ -35,10 +35,16 @@
     collection(coll){
       return {
         doc: id => ({ set: b => write(coll, id, b), delete: () => write(coll, id, null), get: async () => { const v = server()[coll]?.[id]; return { id, exists: !!v, data: () => v, metadata: { fromCache: false, hasPendingWrites: false } }; } }),
-        onSnapshot(next){
-          listeners[coll].push(next);
+        onSnapshot(next, error){
           setTimeout(() => next(view(coll, true)), 5);
-          setTimeout(() => next(view(coll, false)), (cfg().snapshotDelay || 30));
+          const c = cfg();
+          if (c.subError && c.subError.times > 0) {            // a terminal subscription error before the first definitive snapshot
+            c.subError.times--; put('__fake_cfg', c);
+            setTimeout(() => error && error({ code: c.subError.code, message: 'injected' }), 20);
+            return () => {};
+          }
+          listeners[coll].push(next);
+          setTimeout(() => next(view(coll, false)), (c.snapshotDelay || 30));
           return () => { listeners[coll] = listeners[coll].filter(f => f !== next); };
         },
       };

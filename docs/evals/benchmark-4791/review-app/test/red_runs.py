@@ -102,6 +102,18 @@ MUTATIONS = [
         "finishing a quick session before the first sync",
     ),
     (
+        "subscription error swallowed (#4802)",
+        "const fail = e => { S.syncError = (e && e.code) || 'error'; render(); };",
+        "const fail = e => {};",
+        "#4802",
+    ),
+    (
+        "session summary never refreshes (#4803)",
+        "|| S.view === 'summary' || S.view === 'sessionEnd') render();",
+        "|| S.view === 'summary') render();",
+        "#4803",
+    ),
+    (
         "older phone copy overwrites the server",
         "else if ((rec.savedAt || '') > (s.data.savedAt || '')) {",
         "else if (true) {",

@@ -300,3 +300,30 @@ test('a save never drops a field that the server copy holds, even if the phone c
   expect(d.pages).toEqual(rec.pages);
   expect(d.note).toBe('expert note');
 });
+
+test('#4802: a failed first load shows Try again, keeps answers locked, and recovers with saved fields intact', async ({ page }) => {
+  const { key, rec } = savedCase();
+  await open(page, { cfg: { subError: { code: 'unavailable', times: 2 } }, server: { answers: { [key]: rec }, hazards: {} }, waitReady: false });
+  await expect(page.getByText('Couldn\u2019t load your saved answers')).toBeVisible({ timeout: 5000 });
+  await page.locator('section.card', { hasText: 'Manual Detective' }).getByRole('button').first().click();
+  await expect(page.getByRole('button', { name: 'The answer is somewhere else in this manual' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('button', { name: 'The answer is somewhere else in this manual' })).toBeEnabled({ timeout: 10000 });
+  await expect(page.getByText('Couldn\u2019t load your saved answers')).toHaveCount(0);
+  await page.getByRole('button', { name: 'The answer is somewhere else in this manual' }).click();
+  await expect.poll(() => serverDoc(page, 'answers', key).then(d => d && d.overall)).toBe('elsewhere');
+  const d = await serverDoc(page, 'answers', key);
+  expect(d.pages).toEqual(rec.pages);
+  expect(d.note).toBe('expert note');
+});
+
+test('#4803: the session summary count updates when pending saves confirm', async ({ page }) => {
+  await open(page, { cfg: { latency: 3000 } });
+  await page.locator('section.card', { hasText: 'Manual Detective' }).getByRole('button', { name: 'Quick 5' }).click();
+  await rateAllPages(page, 'No');
+  await page.getByRole('button', { name: 'This manual doesn\u2019t cover it' }).click();
+  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'Next \u2192' }).click();
+  await page.getByRole('button', { name: 'Finish session' }).click();
+  await expect(page.getByRole('heading', { name: '0 of 5 saved' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '1 of 5 saved' })).toBeVisible({ timeout: 10000 });
+});
