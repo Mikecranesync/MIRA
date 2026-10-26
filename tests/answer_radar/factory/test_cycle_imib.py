@@ -261,6 +261,7 @@ def test_live_cases_reach_experts_privately_and_take_expert_gold(tmp_path):
         settled and settled[0]["gold_status"] == "expert_reviewed" and settled[0]["gold_evidence"]
     )
     rep = json.loads((out / "cycle-report.json").read_text())
+    assert rep["expert_export"]["answered"] == 1 and rep["expert_export"]["complete"] is False
     assert rep["counts"]["gold"]["expert_reviewed"] >= 1 and target["id"] not in json.dumps(rep)
 
 

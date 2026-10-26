@@ -99,6 +99,11 @@ def cycle(
             extra = json.loads(live_shown.read_text(encoding="utf-8"))
             shown = {k: shown.get(k, []) + extra.get(k, []) for k in ("forum", "safety")}
         cases = import_expert(cases, answers, candidates, shown)
+        # Partial exports are normal (experts work through the queue over time); unanswered cases
+        # stay provisional. Say how partial, so a truncated export is never silent.
+        shown_ids = {f"{k}-{r['id']}" for k in ("forum", "safety") for r in shown.get(k, [])}
+        expert_status = {"shown": len(shown_ids), "answered": len(shown_ids & set(answers))}
+        expert_status["complete"] = expert_status["shown"] == expert_status["answered"]
     # review-data.json carries question text for the expert. Text a source does not allow to be
     # committed may not land in a git work tree (the repository is public).
     if _inside_git(out.resolve()) and not all(
@@ -132,6 +137,8 @@ def cycle(
     }
     report["live_holdout_size"] = len(manifest)
     report["live_expert_queue_size"] = len(live)
+    if expert_export is not None:
+        report["expert_export"] = expert_status
     for name, data in {
         "review-data.json": review,
         "live-manifest.json": manifest,
