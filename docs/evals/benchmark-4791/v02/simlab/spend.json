@@ -1,7 +1,7 @@
 {
- "usd": 1.3971992500000012,
- "calls": 294,
- "prompt_tokens": 1207363,
- "completion_tokens": 53706,
+ "usd": 1.4697482500000012,
+ "calls": 312,
+ "prompt_tokens": 1281475,
+ "completion_tokens": 57476,
  "note": "9 calls from an aborted first attempt were not metered (wrong usage field names, fixed + tested); booked at a conservative $0.25 upper-bound estimate"
 }
