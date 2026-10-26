@@ -117,6 +117,7 @@ def cycle(
         raise SystemExit("invalid case set after expert import:\n" + "\n".join(errors))
     manifest = seal_live(cases, private)
     ledger |= {c.question.lineage_key for c in cases if not c.holdout}
+    ledger |= {f"fp:{c.question.dedupe_hash}" for c in cases if not c.holdout}
     ledger_path.write_text(json.dumps(sorted(ledger), indent=2) + "\n", encoding="utf-8")
     # Live cases need expert gold too. Their review file goes beside the sealed text, outside git,
     # so the expert sees them while developers never do.

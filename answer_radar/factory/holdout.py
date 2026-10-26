@@ -137,17 +137,33 @@ def assign_live(
 
     # Group by the split key (manufacturer/model/platform), not the question: a held-out GS10
     # question is not cold if other GS10 questions from the same source are developer-visible.
-    blocked = {
-        product_key(c.question.lineage_key)
-        for c in cases
-        if c.pool not in (Pool.CHALLENGE, Pool.CORE)
-        or c.question.split_assignment is not SplitAssignment.FRESH
-        or c.exposed_to_developers  # exposure is history: it is never cleared
-    } | {product_key(k) for k in exposed_keys}
-    return [
+    def key(c: BenchmarkCase) -> str:
+        return product_key(c.question.lineage_key)
+
+    def ineligible(c: BenchmarkCase) -> bool:
+        return (
+            c.pool not in (Pool.CHALLENGE, Pool.CORE)
+            or c.question.split_assignment is not SplitAssignment.FRESH
+            or c.exposed_to_developers  # exposure is history: it is never cleared
+        )
+
+    # Exposure follows the QUESTION as well as the product: the same text reposted on another
+    # source (a different split key) is still a question developers have seen.
+    seen_fps = {c.question.dedupe_hash for c in cases if ineligible(c)}
+    seen_fps |= {k[3:] for k in exposed_keys if k.startswith("fp:")}
+    blocked = {key(c) for c in cases if ineligible(c) or c.question.dedupe_hash in seen_fps}
+    blocked |= {product_key(k) for k in exposed_keys if not k.startswith("fp:")}
+    out = [
         replace(c, pool=Pool.LIVE, holdout=True, exposed_to_developers=False)
-        if product_key(c.question.lineage_key) not in blocked
-        and picked(product_key(c.question.lineage_key))
+        if key(c) not in blocked and picked(key(c))
         else c
         for c in cases
     ]
+    # Fresh duplicates may still straddle Live and visible pools via different split keys;
+    # pull every group holding a straddling question back out of Live until none remain.
+    while True:
+        visible = {c.question.dedupe_hash for c in out if c.pool is not Pool.LIVE}
+        clash = {key(c) for c in out if c.pool is Pool.LIVE and c.question.dedupe_hash in visible}
+        if not clash:
+            return out
+        out = [orig if key(c) in clash else c for orig, c in zip(cases, out)]

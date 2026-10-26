@@ -58,7 +58,12 @@ def _shorthand(t: str) -> str:
 
 
 def _voice(t: str) -> str:
-    t = re.sub(r"[^\w\s]", "", t.lower())
+    # Say the punctuation that carries numeric meaning before dropping the rest:
+    # "2.5 A at -10 C" -> "two point five a at minus one zero c", never "two five ... one zero".
+    t = re.sub(r"(?<=\d)\.(?=\d)", " point ", t.lower())
+    t = re.sub(r"(?<![\w.])-(?=\d)", " minus ", t)
+    t = re.sub(r"(?<=\d)/(?=\d)", " over ", t)
+    t = re.sub(r"[^\w\s]", "", t)
     return re.sub(r"\d", lambda m: f" {_SPOKEN[m.group(0)]} ", t).replace("  ", " ").strip()
 
 

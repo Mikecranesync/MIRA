@@ -302,3 +302,51 @@ def test_equivalent_model_spellings_share_exposure(seen, fresh):
     assert assign_live([a, b], fraction=1.0, seed="s")[1].pool is not Pool.LIVE
     ledger = frozenset({a.question.lineage_key})
     assert assign_live([b], fraction=1.0, seed="s", exposed_keys=ledger)[0].pool is not Pool.LIVE
+
+
+def _repost(source):
+    rec = {
+        "id": "r-1",
+        "captured_at": "2026-10-27",
+        "opening_post": "PowerFlex 525 F5 overvoltage when decelerating",
+    }
+    (c,) = ForumAdapter(source, REG).replay([rec])
+    return c
+
+
+def test_a_repost_on_another_source_inherits_exposure():
+    from answer_radar.factory.holdout import assign_live
+
+    seen = replace(_repost("control_com"), exposed_to_developers=True)
+    again = _repost("mrplc")
+    assert seen.question.dedupe_hash == again.question.dedupe_hash
+    assert seen.question.lineage_key != again.question.lineage_key  # different split keys
+    assert assign_live([seen, again], fraction=1.0, seed="s")[1].pool is not Pool.LIVE
+    ledger = frozenset({f"fp:{seen.question.dedupe_hash}"})
+    assert (
+        assign_live([again], fraction=1.0, seed="s", exposed_keys=ledger)[0].pool is not Pool.LIVE
+    )
+
+
+def test_fresh_duplicates_never_straddle_live_and_visible():
+    from answer_radar.factory.holdout import assign_live
+
+    for seed in map(str, range(40)):
+        out = assign_live([_repost("control_com"), _repost("mrplc")], fraction=0.5, seed=seed)
+        assert len({c.pool is Pool.LIVE for c in out}) == 1, seed
+
+
+def test_voice_variant_keeps_numeric_meaning():
+    p = _case(1)
+    p.question.normalized_question = "Motor current is 2.5 A at -10 C on the GS-10"
+    from answer_radar.freeze import snapshot_hash
+
+    p = replace(p, freeze_hash=snapshot_hash(p.question))
+    (v,) = make_variants(p, ["voice_transcription"])
+    assert (
+        "two point five" in v.question.normalized_question
+        and "minus one zero" in v.question.normalized_question
+    )
+    assert (
+        "gs one zero" in v.question.normalized_question
+    )  # a hyphen inside a model name is not a sign
