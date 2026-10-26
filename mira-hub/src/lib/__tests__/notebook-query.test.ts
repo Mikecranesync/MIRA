@@ -811,6 +811,29 @@ describe("isNavigationChunk + demoteNavigation", () => {
     expect(isNavigationChunk("Input voltage 24\nOutput current 2\nNumber of relays 4\nWeight 450")).toBe(false);
   });
 
+  it("recognises a heading-less index continuation chunk", () => {
+    const terms = ["backup", "baud rate", "battery", "cable", "coast", "configuration", "controller password",
+      "counter", "current cycle time", "data types", "directory structure", "disconnecting main power",
+      "embedded serial port", "execution rules", "function block", "grounding", "heat", "input states",
+      "installation", "jam detection", "keypad", "logic"];
+    expect(isNavigationChunk(terms.map((t, i) => `${t} ${10 + i}`).join("\n"))).toBe(true);
+  });
+
+  // Codex F1 on #4832: an 8-row spec table read as an index and fell out of the top 6.
+  it("keeps an 8-row specification table in the final context", () => {
+    const spec = mk(
+      ["Controller specifications", "Input voltage 24", "Output current 2", "Number of relays 4", "Weight 450",
+        "Digital inputs 8", "Analog inputs 2", "Digital outputs 4", "Analog outputs 1"].join("\n"),
+      1.0,
+      12,
+    );
+    expect(isNavigationChunk(spec.content)).toBe(false);
+    const prose = [1, 2, 3, 4, 5, 6].map((n) => mk(`General description of the controller family, part ${n}.`, 0.3, 20 + n));
+    const e = expandIndustrialQuery("What is the number of relays on this controller?");
+    const top6 = rerankChunks(e, [spec, ...prose], { intent: "spec", demoteNavigation: true }).slice(0, 6);
+    expect(top6).toContain(spec);
+  });
+
   it("demotes contents/index chunks below the answer page when asked", () => {
     const e = expandIndustrialQuery("Where does the Micro810 manual cover controller password?");
     const pool = [mk(contents, 1.0, 5), mk(index, 0.95, 123), answer];

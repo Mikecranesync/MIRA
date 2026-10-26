@@ -379,19 +379,25 @@ function indexiness(text: string): number {
 // (Micro810: pp. 5, 123, 124 led over p. 51 for "controller password").
 // Shape-only and narrow: dot-leader contents lines, or short lines ending in
 // page references. Thresholds are pre-registered in
-// docs/evals/2026-10-26-lexical-v2-navigation-demotion-preregistration.md.
+// docs/evals/2026-10-26-lexical-v2-navigation-demotion-preregistration.md (amendment 1).
 const DOT_LEADER = /(?:\.\s?){4,}\s*\d{1,4}\b/g;
 const INDEX_ENTRY = /^[A-Za-z0-9].{0,58}\s\d{1,4}(?:,\s*\d{1,4})*$/;
+const PAGE_REFS = /\s\d{1,4}(?:,\s*\d{1,4})*$/;
 
 /** True when a chunk reads as a table of contents or a back-of-book index. */
 export function isNavigationChunk(text: string): boolean {
   if (countMatches(text, DOT_LEADER) >= 3) return true;
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (lines.length === 0) return false;
-  const entries = lines.filter((l) => l.length <= 60 && INDEX_ENTRY.test(l)).length;
-  const share = entries / lines.length;
-  if (entries < 8 || share < 0.5) return false;
-  return lines.includes("Index") || share >= 0.7;
+  const entries = lines.filter((l) => l.length <= 60 && INDEX_ENTRY.test(l));
+  if (entries.length < 8 || entries.length / lines.length < 0.5) return false;
+  if (lines.includes("Index")) return true;
+  // A continuation chunk of an index carries no heading. Line shape alone cannot
+  // tell "controller password 51" from a spec row "Number of relays 4" (Codex F1
+  // on #4832), so require index scale: 20+ entries whose label holds no digit.
+  // A spec or rating table is shorter, or its labels carry catalog numbers.
+  const wordEntries = entries.filter((l) => !/\d/.test(l.replace(PAGE_REFS, ""))).length;
+  return wordEntries >= 20;
 }
 
 function procedureScore(text: string): number {
