@@ -1562,7 +1562,13 @@ export async function retrieveNodeChunks(
   // the thread's F0004 that augmentation carried in (Codex r1 on #4360).
   // The notebook's own machine name is never a code (Codex r6 on #4360): "GS10 oC"
   // in a GS10 notebook binds oC, not GS10.
-  const expanded = withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery), opts.identity);
+  // Nor is the model the QUESTION names (forum-batch2 rerun): in a notebook with
+  // no confirmed identity, "ACS355 fault code 0001" let ACS355 earn the code
+  // bonus on every page that repeats it, and the 0001 fault table fell out.
+  const expanded = withoutIdentityCodes(
+    withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery), opts.identity),
+    requestedModel.model && !requestedModel.ambiguous ? { model: requestedModel.model } : null,
+  );
   // `match` picks the predicate: ILIKE substring for the legacy exact tokens,
   // or a whole-token regex for fault codes (codeTokenMatcher) — "%ova%" would
   // also hit "removal", and "%alarm 7%" every "ALARM 70".
