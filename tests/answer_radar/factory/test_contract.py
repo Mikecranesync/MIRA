@@ -57,10 +57,20 @@ GOLD = Evidence(source_id="oem_manuals", doc_sha256="ab" * 32, page=94, quote="F
 HUMAN = Label("expert-1", IndependenceClass.HUMAN_REVIEW, Answerability.ANSWERABLE, pages=(94,))
 
 
+def test_only_the_owner_approved_source_may_be_collected():
+    assert REG.require_collection("stackexchange")  # owner approved 2026-10-27
+    assert not REG.may_commit_text(
+        "stackexchange"
+    )  # approval to collect is not approval to publish
+    approved = [
+        e.source_id for e in REG._by_id.values() if e.reviewed and e.automated_collection_allowed
+    ]
+    assert approved == ["stackexchange"]
+
+
 def test_registry_ships_unreviewed_and_refuses_collection():
     assert len(REG.families()) >= 5
     for sid in (
-        "stackexchange",
         "control_com",
         "mrplc",
         "osha_fatalities",

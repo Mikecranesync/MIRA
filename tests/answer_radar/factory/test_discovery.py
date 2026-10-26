@@ -96,7 +96,7 @@ def test_field_failure_lands_in_red_as_regression():
     "adapter", [StackExchangeAdapter, ForumAdapter, IncidentAdapter, MachineStateAdapter]
 )
 def test_live_collection_refused_for_every_shipped_source(adapter):
-    for sid in ("stackexchange", "control_com", "osha_fatalities", "uci_ai4i"):
+    for sid in ("control_com", "osha_fatalities", "uci_ai4i"):
         with pytest.raises(SourcePolicyError):
             adapter(sid, REG).collect()
 
@@ -112,10 +112,68 @@ def test_rights_follow_registry_review_and_fail_closed():
     from answer_radar.factory.discovery import rights_for
     from answer_radar.schema import LicenseClass
 
-    se = _all()["stackexchange"][0]
+    (cc,) = ForumAdapter("control_com", REG).replay(FX["control_com"])  # unreviewed source
     assert (
-        se.question.license_class is LicenseClass.UNKNOWN and not se.question.rights.rights_resolved
+        cc.question.license_class is LicenseClass.UNKNOWN and not cc.question.rights.rights_resolved
     )
+    assert _all()["stackexchange"][0].question.license_class is LicenseClass.PUBLIC_EVAL_ONLY
     reviewed = dataclasses.replace(REG.get("stackexchange"), reviewed_at="2026-10-26")
     assert rights_for(reviewed)[1] is LicenseClass.PUBLIC_EVAL_ONLY
     assert rights_for(REG.get("field"))[1] is LicenseClass.CUSTOMER_PRIVATE
+
+
+def _fake_api(pages):
+    calls = []
+
+    def get(url, params):
+        calls.append(params)
+        items = pages.get((params["tagged"], params["page"]), [])
+        return {"items": items, "has_more": (params["tagged"], params["page"] + 1) in pages}
+
+    return get, calls
+
+
+SE_ITEM = {
+    "question_id": 7,
+    "link": "https://electronics.stackexchange.com/q/7",
+    "creation_date": 1761400000,
+    "owner": {"display_name": "tech"},
+    "title": "PLC &amp; VFD fault F5",
+    "body": "<p>PowerFlex 525 trips <b>F5</b> on decel.</p>",
+    "tags": ["plc", "vfd"],
+}
+
+
+def test_stackexchange_fetch_builds_replayable_records_without_answers():
+    from answer_radar.factory.discovery import se_license
+
+    get, calls = _fake_api(
+        {("plc", 1): [SE_ITEM], ("plc", 2): [{**SE_ITEM, "question_id": 8}], ("vfd", 1): [SE_ITEM]}
+    )
+    a = StackExchangeAdapter("stackexchange", REG)
+    recs = a.fetch(site="electronics", tags=["plc", "vfd"], pages=3, get=get)
+    assert [r["id"] for r in recs] == [
+        "electronics-7",
+        "electronics-8",
+    ]  # deduped across tags, paged until has_more is false
+    assert all(p["filter"] == "withbody" for p in calls) and len(calls) == 3
+    assert recs[0]["title"] == "PLC & VFD fault F5" and "<" not in recs[0]["body"]
+    assert recs[0]["license"] == "CC BY-SA 4.0" and se_license(1400000000) == "CC BY-SA 3.0"
+    cases = a.replay(recs)
+    assert (
+        cases[0].question.error_code == "F5" and cases[0].provenance.license_note == "CC BY-SA 4.0"
+    )
+
+
+def test_fetch_refuses_an_unapproved_source():
+    import dataclasses
+
+    locked = SourceRegistry(
+        [dataclasses.replace(REG.get("stackexchange"), automated_collection_allowed=False)]
+    )
+    get, calls = _fake_api({("plc", 1): [SE_ITEM]})
+    with pytest.raises(SourcePolicyError):
+        StackExchangeAdapter("stackexchange", locked).fetch(
+            site="electronics", tags=["plc"], pages=1, get=get
+        )
+    assert calls == []  # refused before any request

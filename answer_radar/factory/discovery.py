@@ -4,9 +4,10 @@ Each adapter turns already-captured records into frozen `BenchmarkCase`s. Two en
 
 - `replay(records)` re-reads captured data (test fixtures, a manual export). It needs only
   `registry.require_case`.
-- `collect()` would fetch live. It first calls `registry.require_collection`, which fails
-  closed for every shipped source, and no fetcher is implemented: activating a crawler is a
-  human decision (spec §17), not a code path.
+- `collect()` / `StackExchangeAdapter.fetch()` fetch live. They first call
+  `registry.require_collection`, which fails closed unless a human has reviewed the source's
+  terms and allowed collection (spec section 17). Only Stack Exchange has a fetcher, and only
+  Stack Exchange is approved (owner, 2026-10-27).
 
 Normalization here is a small deterministic extractor, deliberately NOT MIRA's
 `uns_resolver`: the benchmark's view of a question must not come from the system it grades.
@@ -16,8 +17,10 @@ Answers, accepted solutions and replies are never read at this stage, which is w
 
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from answer_radar.factory.case import Answerability, BenchmarkCase, Pool, freeze_case
@@ -158,11 +161,74 @@ class Adapter:
         return out
 
 
+def se_license(created: int) -> str:
+    """Stack Exchange's CC BY-SA version is set by contribution date (spec section 4A)."""
+    if created >= 1525219200:  # 2018-05-02
+        return "CC BY-SA 4.0"
+    return "CC BY-SA 3.0" if created >= 1302220800 else "CC BY-SA 2.5"  # 2011-04-08
+
+
+def _plain(html_text: str) -> str:
+    return html.unescape(re.sub(r"<[^>]+>", " ", html_text))
+
+
 class StackExchangeAdapter(Adapter):
-    """Stack Exchange API question objects. Title+body only; `answers` is ignored."""
+    """Stack Exchange API question objects. Title+body only; answers are never requested."""
+
+    API = "https://api.stackexchange.com/2.3/questions"
 
     def question_text(self, rec: dict) -> str:
         return f"{rec['title']}\n{rec.get('body', '')}".strip()
+
+    def fetch(self, *, site: str, tags: list[str], pages: int, get=None) -> list[dict]:
+        """Capture questions as replayable records. Gated on the registry like any collection.
+
+        Uses the default `withbody` filter, which returns question title and body but no
+        answers, so nothing an answer says can reach the frozen question. `get` is injectable
+        (tests run offline); the default is httpx.
+        """
+        self.registry.require_collection(self.source_id)
+        if get is None:
+            import httpx
+
+            def get(url, params):
+                r = httpx.get(url, params=params, timeout=30)
+                r.raise_for_status()
+                return r.json()
+
+        captured = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        records: dict[int, dict] = {}
+        for tag in tags:
+            for page in range(1, pages + 1):
+                params = {
+                    "site": site,
+                    "tagged": tag,
+                    "order": "desc",
+                    "sort": "creation",
+                    "pagesize": 100,
+                    "page": page,
+                    "filter": "withbody",
+                }
+                data = get(self.API, params)
+                for q in data.get("items", []):
+                    # question_id is only unique within one site: qualify it with the site
+                    records[q["question_id"]] = {
+                        "id": f"{site}-{q['question_id']}",
+                        "captured_at": captured,
+                        "url": q["link"],
+                        "author": (q.get("owner") or {}).get("display_name"),
+                        "license": se_license(int(q["creation_date"])),
+                        "posted_at": datetime.fromtimestamp(
+                            q["creation_date"], timezone.utc
+                        ).isoformat(),
+                        "title": html.unescape(q["title"]),
+                        "body": _plain(q.get("body", "")),
+                        "site": site,
+                        "tags": q.get("tags", []),
+                    }
+                if not data.get("has_more"):
+                    break
+        return [records[k] for k in sorted(records)]
 
 
 class ForumAdapter(Adapter):

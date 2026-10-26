@@ -40,6 +40,7 @@ from answer_radar.factory.holdout import (
     _inside_git,
     assign_live,
     developer_export,
+    group_key,
     seal_live,
 )
 from answer_radar.factory.labeling import export_review_data, import_expert, route
@@ -133,7 +134,7 @@ def cycle(
     if errors:
         raise SystemExit("invalid case set after expert import:\n" + "\n".join(errors))
     manifest = seal_live(cases, private)
-    ledger |= {c.question.lineage_key for c in cases if not c.holdout}
+    ledger |= {group_key(c) for c in cases if not c.holdout}
     ledger |= {f"fp:{c.question.dedupe_hash}" for c in cases if not c.holdout}
     ledger_path.write_text(json.dumps(sorted(ledger), indent=2) + "\n", encoding="utf-8")
     # Live cases need expert gold too. Their review file goes beside the sealed text, outside git,
@@ -199,6 +200,29 @@ def load_expert_export(d: Path) -> dict[str, dict]:
     return out
 
 
+def capture(source: str, site: str, tags: list[str], pages: int, private: Path) -> int:
+    """Fetch an approved source into PRIVATE (outside git): captured text is never committed."""
+    if _inside_git(private.resolve()):
+        raise HoldoutLeak(
+            f"{private} is inside a git work tree; captured source text would be publishable"
+        )
+    reg = SourceRegistry.load()
+    records = ADAPTERS[source](source, reg).fetch(site=site, tags=tags, pages=pages)
+    private.mkdir(parents=True, exist_ok=True)
+    path = private / f"{source}-{site}.json"
+    existing = (
+        json.loads(path.read_text(encoding="utf-8")).get(source, []) if path.is_file() else []
+    )
+    merged = {r["id"]: r for r in [*existing, *records]}  # re-captures keep the first capture
+    for r in existing:
+        merged[r["id"]] = r
+    path.write_text(
+        json.dumps({source: [merged[k] for k in sorted(merged)]}, indent=2) + "\n", encoding="utf-8"
+    )
+    print(json.dumps({"file": str(path), "fetched": len(records), "total": len(merged)}))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m answer_radar.factory")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -210,7 +234,15 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--seed", required=True)
     c.add_argument("--live-fraction", type=float, default=0.3)
     c.add_argument("--expert-export", type=Path, default=None)
+    cap = sub.add_parser("capture")
+    cap.add_argument("--source", choices=["stackexchange"], required=True)
+    cap.add_argument("--site", required=True)
+    cap.add_argument("--tag", action="append", required=True)
+    cap.add_argument("--pages", type=int, default=1)
+    cap.add_argument("--private", type=Path, required=True)
     a = ap.parse_args(argv)
+    if a.cmd == "capture":
+        return capture(a.source, a.site, a.tag, a.pages, a.private)
     pages = [ManualPage(**p) for p in json.loads(a.pages.read_text())]
     rep = cycle(
         json.loads(a.discovery.read_text()),

@@ -109,6 +109,19 @@ def product_key(lineage_key: str) -> str:
     return "/".join(re.sub(r"[^a-z0-9]", "", part) for part in lineage_key.lower().split("/"))
 
 
+def group_key(c: BenchmarkCase) -> str:
+    """The unit that moves into Live as a whole.
+
+    A question naming a manufacturer or model groups with every question about that product
+    (split-key law). A question naming neither has no product to leak through, so it is its
+    own group: otherwise every unidentified question (561 of 587 in the first real Stack
+    Exchange capture) would collapse into one all-or-nothing "unknown/unknown" block.
+    """
+    if c.question.manufacturer or c.question.model:
+        return product_key(c.question.lineage_key)
+    return product_key(f"lineage/{c.lineage_id}")
+
+
 def assign_live(
     cases: list[BenchmarkCase],
     *,
@@ -137,8 +150,7 @@ def assign_live(
 
     # Group by the split key (manufacturer/model/platform), not the question: a held-out GS10
     # question is not cold if other GS10 questions from the same source are developer-visible.
-    def key(c: BenchmarkCase) -> str:
-        return product_key(c.question.lineage_key)
+    key = group_key
 
     def ineligible(c: BenchmarkCase) -> bool:
         return (

@@ -446,3 +446,40 @@ def test_incidents_sharing_a_control_question_keep_complete_pairs(tmp_path):
     cases = IncidentAdapter("osha_fatalities", REG).replay([inc, inc2])
     assert len(cases) == 4 and validate_set(cases, REG) == []
     _cycle(tmp_path, {"osha_fatalities": [inc, inc2]})
+
+
+def test_capture_refuses_a_private_dir_inside_git():
+    import pytest
+
+    from answer_radar.factory.holdout import HoldoutLeak
+
+    with pytest.raises(HoldoutLeak):
+        main(
+            [
+                "capture",
+                "--source",
+                "stackexchange",
+                "--site",
+                "electronics",
+                "--tag",
+                "plc",
+                "--private",
+                str(Path(__file__).parent / "never"),
+            ]
+        )
+    assert not (Path(__file__).parent / "never").exists()
+
+
+def test_unidentified_questions_are_held_out_individually():
+    recs = [
+        {
+            "id": f"u-{i}",
+            "captured_at": "2026-10-27",
+            "opening_post": f"Why does my relay chatter, case {i}?",
+        }
+        for i in range(100)
+    ]
+    cases = ForumAdapter("control_com", REG).replay(recs)
+    assert all(not c.question.manufacturer and not c.question.model for c in cases)
+    live = sum(c.pool is Pool.LIVE for c in assign_live(cases, fraction=0.3, seed="s"))
+    assert 15 < live < 45  # not all-or-nothing

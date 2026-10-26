@@ -13,13 +13,16 @@ sources:
     base_url: https://electronics.stackexchange.com/
     license_or_terms: CC BY-SA; the version depends on the contribution date
     attribution_required: true
-    automated_collection_allowed: false
+    automated_collection_allowed: true
     store_full_text: false
     store_derived_case: true
     redistribution_allowed: false
     ground_truth_role: discovery
-    reviewed_at: null
-    notes: Keep author, URL and license version on every case.
+    reviewed_at: "2026-10-27"
+    notes: >-
+      Owner approved capture 2026-10-27 (Stack Exchange only). Public API, anonymous quota
+      300 requests/day. Captured text stays in a private directory outside git; keep author,
+      URL and license version on every case.
   - source_id: control_com
     name: Control.com automation forums
     source_type: forum
