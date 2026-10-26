@@ -2098,3 +2098,70 @@ describe("retrieveNodeChunks — hybrid (vector + lexical, RRF) behind NOTEBOOK_
     expect(out.map((c) => c.sourcePage)[0]).toBe(40);
   });
 });
+
+// Foreman T-038 diagnosis fix A (docs/briefs/2026-10-25, batch 2 sanity check):
+// a question that NAMES a model went through documentCoversRequest, which has
+// no family rule, so the PowerFlex 520-Series manual could not answer a single
+// "PowerFlex 525" question and the Comfort Panels manual could not answer a
+// "TP700" one — insufficient_evidence with the answer on p.65 / p.91. The
+// notebook branch already admits a family manual for its members; a named ask
+// gets the same rule, and a sibling model still never admits.
+describe("retrieveNodeChunks named-ask family coverage (fix A, #4788 batch 2)", () => {
+  const scope = { nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true };
+  const pf520Row = (overrides: Partial<Record<string, unknown>> = {}) => nodeRow({
+    filename: "520-um001.pdf",
+    document_heading: "PowerFlex 520-Series Adjustable Frequency AC Drive\nUser Manual",
+    content: "P034 [Motor NP FLA] Sets the motor nameplate full load amps.",
+    source_page: 65, page_start: 65,
+    ...overrides,
+  });
+  const comfortRow = (overrides: Partial<Record<string, unknown>> = {}) => nodeRow({
+    filename: "comfort_panels_operating_instructions.pdf",
+    document_heading: "SIMATIC HMI Comfort Panels Operating Instructions",
+    content: "Calibrating the touch screen: open Touch in the Control Panel and select Recalibrate.",
+    source_page: 91, page_start: 91,
+    ...overrides,
+  });
+
+  it("a PowerFlex 525 question is answered from the PowerFlex 520-Series manual", async () => {
+    const { client } = makeClient([[pf520Row()]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Which PowerFlex 525 parameter sets the motor nameplate full load amps?", scope);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.sourcePage).toBe(65);
+  });
+
+  it("a TP700 Comfort question is answered from the Comfort Panels manual", async () => {
+    const { client } = makeClient([[comfortRow()]]);
+    const out = await retrieveNodeChunks(client, "t-1", "How do I recalibrate the touch screen on a TP700 Comfort panel?", scope);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.sourcePage).toBe(91);
+  });
+
+  it("control: a PowerFlex 755 question is NOT answered from the 520-Series manual", async () => {
+    const { client } = makeClient([[pf520Row()]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Which PowerFlex 755 parameter sets the motor nameplate full load amps?", scope)).toEqual([]);
+  });
+
+  it("control: a KTP700 Basic question is NOT answered from the Comfort Panels manual", async () => {
+    const { client } = makeClient([[comfortRow()]]);
+    expect(await retrieveNodeChunks(client, "t-1", "How do I recalibrate the touch screen on a KTP700 Basic panel?", scope)).toEqual([]);
+  });
+
+  it("control: a family title that also names a sibling model does not answer another member", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "manual.pdf",
+      document_heading: "Micro800 Micro810 Programmable Controllers User Manual",
+      content: "Configure the embedded Ethernet port communication settings.",
+    })]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Micro820 embedded Ethernet communication settings", scope)).toEqual([]);
+  });
+
+  it("control: a family title that names the requested member still answers it", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "manual.pdf",
+      document_heading: "Micro800 Micro820 Programmable Controllers User Manual",
+      content: "Configure the embedded Ethernet port communication settings.",
+    })]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Micro820 embedded Ethernet communication settings", scope)).toHaveLength(1);
+  });
+});
