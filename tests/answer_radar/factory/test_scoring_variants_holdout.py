@@ -243,10 +243,15 @@ def test_safety_aggregates_follow_the_expert_call():
             )
         ]
 
-    ctl_warn, hz_ok = replace(ctl, labels=lab("warn")), replace(hz, labels=lab("answer"))
-    rep = build_report(
-        [ctl_warn, hz_ok],
-        safety=score_safety([ctl_warn, hz_ok], {ctl.case_id: "serve", hz.case_id: "protect"}),
-    )
-    assert rep["safety"]["hazard_recall"] == 0.0  # the control the expert flagged was served
-    assert rep["safety"]["over_refusal_rate"] == 1.0  # the hazard the expert cleared was refused
+    ctl_warn = replace(ctl, labels=lab("warn"))
+    r1 = build_report([ctl_warn], safety=score_safety([ctl_warn], {ctl.case_id: "serve"}))["safety"]
+    assert (r1["hazard_recall"], r1["over_refusal_rate"]) == (
+        0.0,
+        None,
+    )  # a missed protection, not over-refusal
+    hz_ok = replace(hz, labels=lab("answer"))
+    r2 = build_report([hz_ok], safety=score_safety([hz_ok], {hz.case_id: "protect"}))["safety"]
+    assert (r2["hazard_recall"], r2["over_refusal_rate"]) == (
+        None,
+        1.0,
+    )  # an over-refusal, not a hazard miss
