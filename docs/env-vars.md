@@ -42,12 +42,12 @@ FactoryLM Foreman (`factorylm-foreman` in `docker-compose.saas.yml`) is a **sepa
 | `OPENAI_RUN_BUDGET_WINDOW_S` | same services — the rolling window the cap applies to, seconds; starts on first use, resets when it elapses. Default `86400` (one day). |
 | `OPENAI_PRICE_PER_MTOK_IN` | same services — USD per million input tokens used to price OpenAI usage against the cap. Default `0.75` = gpt-5.4-mini's list rate as declared in `tools/review_router/prices.json` (tests pin the two equal). A value of `0` is junk, not "free", and falls back to the default. Override when the model or its price changes. |
 | `OPENAI_PRICE_PER_MTOK_OUT` | same services — USD per million output tokens, the other half of the price above. Default `4.5` (same source, same pin). A value of `0` falls back to the default. |
-| `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — second in cascade since 2026-10-11, fastest when funded) |
+| `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — **DEPRECATED 2026-10-14**, billing-dead; key-gated last resort only, retirement tracked in #4438 — do not restore) |
 | `GROQ_MODEL`         | mira-bots, mira-pipeline — default: openai/gpt-oss-120b |
 | `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: **empty since v3.162.2** (Groq removed all vision models 2026-07-18; image requests skip Groq). Set only if Groq re-adds a vision model. |
-| `CEREBRAS_API_KEY`   | mira-bots, mira-pipeline (Cerebras — second in cascade) |
+| `CEREBRAS_API_KEY`   | mira-bots, mira-pipeline (Cerebras — **ARCHIVED 2026-09-29**, key renamed `CEREBRAS_API_KEY_ARCHIVED`; absent from the cascade) |
 | `CEREBRAS_MODEL`     | mira-bots, mira-pipeline — default: gpt-oss-120b |
-| `TOGETHERAI_API_KEY`     | mira-bots, mira-pipeline (Together AI — third in cascade; OpenAI-compatible) |
+| `TOGETHERAI_API_KEY`     | mira-bots, mira-pipeline (Together AI — **DEPRECATED 2026-10-25**, credit-exhausted; key-gated last resort only — do not restore. Vision has OpenRouter (`OPENROUTER_VISION_MODEL`)) |
 | `TOGETHERAI_MODEL`       | mira-bots, mira-pipeline — default: meta-llama/Llama-3.3-70B-Instruct-Turbo |
 | `TOGETHERAI_TIMEOUT`     | mira-bots, mira-pipeline — Together client HTTP timeout in seconds (httpx `AsyncClient(timeout=...)`). Default **90** (raised from a hardcoded 30s, v3.173.x). Together is the LAST text-cascade provider AND the ONLY vision provider (no fallback) — the 2026-07-19 bench measured successful theory calls at 13.9-28.6s with 2/10 runs crossing the old 30s and losing an already-computed answer. Read as `float(os.getenv("TOGETHERAI_TIMEOUT") or "90")` — the `or`-form is mandatory: compose maps `${TOGETHERAI_TIMEOUT:-}`, which delivers an empty string in-container, and a bare `float("")` crash-loops the bot at import. Groq/Cerebras stay hardcoded at 30s (not exposed as env knobs). |
 | `TOGETHERAI_VISION_MODEL`| mira-bots, mira-pipeline — default: **google/gemma-3n-E4B-it since v3.162.2** (the only serverless vision model on this Together account when verified live 2026-07-18; the 2026-07-19 round-4 probes found Kimi-K2.6 / MiniMax-M3 / Qwen3.5-9B newly serverless with vision). Empty-string env falls back to the default (`or`-form parse). |
@@ -190,7 +190,7 @@ FactoryLM Foreman (`factorylm-foreman` in `docker-compose.saas.yml`) is a **sepa
 
 | Var | Default | Meaning |
 |---|---|---|
-| `MIRA_CANONICAL_SEAM` | unset (**off**) | `"1"` routes the Hub notebook-chat turn through the canonical cascade (Groq → Cerebras → Together, Hard Constraint #2) and emits a per-turn `usage` frame + `turn.usage` spend log. Any other value is off; the pre-existing inline cascade is the fallback. |
+| `MIRA_CANONICAL_SEAM` | unset (**off**) | `"1"` routes the Hub notebook-chat turn through the canonical cascade (OpenAI → OpenRouter, Hard Constraint #2) and emits a per-turn `usage` frame + `turn.usage` spend log. Any other value is off; the pre-existing inline cascade is the fallback. |
 | `MIRA_CHAT_V2_ENABLED` | unset / `0` (**off**) | Hub rollout gate for the mobile ChatV2 conversation surface. Exact `"1"` adds `chat_v2` to authenticated users' `/api/me.capabilities`; any other value removes it and forces the legacy client surface. Unset to roll back without an APK release. |
 | `MIRA_TURN_MAX_OUTPUT_TOKENS` | `4000` | Per-turn output ceiling under the seam. Caps requested `max_tokens` and aborts a runaway stream (`status: "capped"`). Non-numeric or non-positive values fall back to the default rather than disabling the cap. |
 | `TOGETHERAI_API_KEY` / `TOGETHERAI_MODEL` | — | Third canonical provider. Same names the Python router uses, so the two runtimes cannot serve different models. |

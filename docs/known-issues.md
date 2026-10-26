@@ -25,6 +25,7 @@ Updated: 2026-06-21
   computed CSS visibility AND live tag value patterns. See issue #2064 and the
   disambiguation section in `docs/runbooks/hermes-find-convsimple-screen.md`.
 
+- **Groq + Together deprecated (billing-dead)** — owner decisions 2026-10-14 (Groq) and 2026-10-25 (Together). Live cascade is OpenAI → OpenRouter. Do not pay or restore either. Code still reaches them as key-gated last resort, and ~45 files call Groq directly (Telegram voice transcription has no other provider) — #4438. The provider-health canary still probes both and goes red on them; that red is expected until the canary drops them (#4215).
 - **Gemini key blocked** — `GEMINI_API_KEY` in Doppler returns 403 "Your project has been denied access". Get fresh key from aistudio.google.com and update Doppler `factorylm/prd`. Cascade falls through to Groq/Cerebras in the meantime (smoke-tested OK).
 - **Teams + WhatsApp** — Code-complete, pending **cloud setup only** (Azure Bot Service for Teams; Twilio account + public domain for WhatsApp). WhatsApp FastAPI webhook is wired (`mira-bots/whatsapp/bot.py:96-113`); it just needs Twilio to point at it.
 - **PLC at 192.168.1.100** — Unreachable from PLC laptop; needs physical check (power/switch/cable).
@@ -56,7 +57,7 @@ Updated: 2026-06-21
 | Google Photos API direct | rclone + Ollama triage | OAuth consent screen "Testing" mode returned empty results |
 | GWS CLI for Gmail | IMAP with Doppler app passwords | Scope registration issues on Windows |
 | glm-ocr model (as primary) | qwen2.5vl handles vision | Consistent 400 errors — retained as optional fallback in vision_worker.py |
-| Anthropic / Claude as cloud LLM provider | Groq → Cerebras → Gemini cascade | Removed PR #610. Do not reintroduce. |
+| Anthropic / Claude as cloud LLM provider | OpenAI → OpenRouter cascade | Removed PR #610. Do not reintroduce. |
 
 ## Open low-watch
 
