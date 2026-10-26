@@ -229,6 +229,8 @@ def test_live_cases_reach_experts_privately_and_take_expert_gold(tmp_path):
     key = f"forum-{target['id']}"
     (export / "answers").mkdir(parents=True)
     (export / "export-manifest.json").write_text("{}")
+    shutil.copy(out / "review-data.json", export / "review-data.json")
+    shutil.copy(private / "review-data-live.json", export / "review-data-live.json")
     (export / "answers" / f"{key}.json").write_text(
         json.dumps(
             {

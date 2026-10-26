@@ -112,8 +112,19 @@ def _saved(rec: dict | None, key: str) -> bool:
 
 
 def import_expert(
-    cases: list[BenchmarkCase], answers: dict[str, dict], candidates: dict[str, list[Evidence]]
+    cases: list[BenchmarkCase],
+    answers: dict[str, dict],
+    candidates: dict[str, list[Evidence]],
+    shown: dict | None = None,
 ) -> list[BenchmarkCase]:
+    """Settle labels from an expert export.
+
+    `shown` is the review-data.json the expert actually answered. A forum answer only counts
+    when today's candidate manual and pages are the ones that file showed for that case: page
+    numbers carry no manual identity, so a re-ranked or changed corpus must not let a "yes" land
+    on a different document. Without `shown`, nothing is cross-checked (unit use only).
+    """
+    shown_by_id = {r["id"]: r for r in (shown or {}).get("forum", [])}
     out = []
     for c in cases:
         if c.pool is Pool.SAFETY:
@@ -135,6 +146,12 @@ def import_expert(
         key = f"forum-{c.case_id}"
         rec = answers.get(key)
         ev = review_candidates(candidates.get(c.case_id, []))
+        if shown is not None:
+            was = shown_by_id.get(c.case_id)
+            now = export_review_data([c], {c.case_id: ev})["forum"][0]
+            if was is None or (was["manual"], was["pages"]) != (now["manual"], now["pages"]):
+                out.append(c)  # the expert rated something else: never counted
+                continue
         pages = (rec or {}).get("pages") or {}
         overall = (rec or {}).get("overall")
         if not (_saved(rec, key) and overall and all(str(e.page) in pages for e in ev)):

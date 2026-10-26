@@ -196,3 +196,28 @@ def test_expert_gold_never_cites_a_manual_the_expert_did_not_see():
     (g,) = import_expert([c], _answers(c, "answered", {"41": "yes"}), cand)
     assert {e.doc_sha256 for e in g.gold_evidence} == {cand[c.case_id][0].doc_sha256}
     assert shown["manual"] == cand[c.case_id][0].doc_sha256[:12]
+
+
+def test_expert_answer_ignored_when_shown_manual_or_pages_changed():
+    c = _forum()
+    cand = {c.case_id: resolve(c, PAGES)}
+    shown = export_review_data([c], cand)
+    ans = _answers(c, "answered", {"41": "yes"})
+    assert import_expert([c], ans, cand, shown)[0].gold_status is GoldStatus.EXPERT_REVIEWED
+    other = ManualPage(
+        "oem_manuals",
+        "00" * 32,
+        41,
+        "F5 overvoltage F5 overvoltage decelerates conveyor check",
+        "Allen-Bradley",
+        "PowerFlex 525",
+    )
+    reranked = {c.case_id: resolve(c, [*PAGES, other])}
+    assert (
+        reranked[c.case_id][0].doc_sha256 != cand[c.case_id][0].doc_sha256
+    )  # a different manual now ranks first
+    assert import_expert([c], ans, reranked, shown)[0].gold_status is GoldStatus.PROVISIONAL
+    assert (
+        import_expert([c], ans, cand, {"forum": [], "safety": []})[0].gold_status
+        is GoldStatus.PROVISIONAL
+    )

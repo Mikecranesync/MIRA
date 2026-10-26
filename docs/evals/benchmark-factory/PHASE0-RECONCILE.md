@@ -25,4 +25,4 @@ Spec §6 says "extend the current IMIB schema". IMIB v0.1 has no single schema: 
 
 ## Hard limits this session
 
-No crawler activation, paid run or scheduled job is authorized (§17). Discovery adapters ship as fixture replay. Collection stays refused until a registry entry has `reviewed_at` set by a human.
+No crawler activation, paid run or scheduled job is authorized (§17). Discovery adapters ship as fixture replay. Collection stays refused until a registry entry has both `reviewed_at` set by a human and `automated_collection_allowed: true`.

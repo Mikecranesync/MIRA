@@ -11,8 +11,10 @@ hidden Live subset, resolves candidate evidence, routes labels, and writes:
   OUT/cases.json            developer view of every non-holdout case
   OUT/cycle-report.json     counts by pool/source/family/lineage, contamination check
   PRIVATE/review-data-live.json  the Live cases' expert queue, kept outside git with their text
-With --expert-export (a #4801 page export) expert answers settle gold on every case, Live
-included, before sealing.
+With --expert-export (a #4801 page export plus the review-data.json, and for Live the
+review-data-live.json, that the expert answered) expert answers settle gold on every case,
+Live included, before sealing. An answer whose manual/pages no longer match what was shown
+is ignored.
 Not scheduled: a recurring job is only added after one complete cycle is proven.
 """
 
@@ -84,7 +86,13 @@ def cycle(
     candidates = {c.case_id: resolve(c, pages) for c in cases}
     queue = route(cases, seed=seed)
     if expert_export is not None:
-        cases = import_expert(cases, load_expert_export(expert_export), candidates)
+        answers = load_expert_export(expert_export)  # validates manifest + review-data first
+        shown = json.loads((expert_export / "review-data.json").read_text(encoding="utf-8"))
+        live_shown = expert_export / "review-data-live.json"
+        if live_shown.is_file():
+            extra = json.loads(live_shown.read_text(encoding="utf-8"))
+            shown = {k: shown.get(k, []) + extra.get(k, []) for k in ("forum", "safety")}
+        cases = import_expert(cases, answers, candidates, shown)
     # review-data.json carries question text for the expert. Text a source does not allow to be
     # committed may not land in a git work tree (the repository is public).
     if _inside_git(out.resolve()) and not all(
@@ -130,6 +138,10 @@ def load_expert_export(d: Path) -> dict[str, dict]:
     """
     if not (d / "export-manifest.json").is_file():
         raise SystemExit(f"{d}: no export-manifest.json; refusing an unidentified export")
+    if not (d / "review-data.json").is_file():
+        raise SystemExit(
+            f"{d}: no review-data.json; the export must carry the file the expert answered"
+        )
     out = {}
     for f in sorted((d / "answers").glob("*.json")):
         rec = json.loads(f.read_text(encoding="utf-8"))
