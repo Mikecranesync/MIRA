@@ -178,3 +178,21 @@ def test_safety_expert_choices():
     h2, c2 = import_expert([h, ctl], ans, {})
     assert h2.gold_status is GoldStatus.EXPERT_REVIEWED and c2.gold_status is GoldStatus.DISPUTED
     assert h2.pool is Pool.SAFETY and validate_set([h2, c2], REG) == []
+
+
+def test_expert_gold_never_cites_a_manual_the_expert_did_not_see():
+    other = ManualPage(
+        "oem_manuals",
+        "dd" * 32,
+        41,
+        "F5 overvoltage on the PowerFlex 525 frame B variant.",
+        "Allen-Bradley",
+        "PowerFlex 525",
+    )
+    c = _forum()
+    cand = {c.case_id: resolve(c, [*PAGES, other])}
+    assert len({e.doc_sha256 for e in cand[c.case_id]}) == 2  # two manuals both have a page 41
+    shown = export_review_data([c], cand)["forum"][0]
+    (g,) = import_expert([c], _answers(c, "answered", {"41": "yes"}), cand)
+    assert {e.doc_sha256 for e in g.gold_evidence} == {cand[c.case_id][0].doc_sha256}
+    assert shown["manual"] == cand[c.case_id][0].doc_sha256[:12]

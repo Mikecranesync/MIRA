@@ -27,7 +27,13 @@ from answer_radar.factory.discovery import (
     StackExchangeAdapter,
 )
 from answer_radar.factory.evidence import ManualPage, resolve
-from answer_radar.factory.holdout import assign_live, developer_export, seal_live
+from answer_radar.factory.holdout import (
+    HoldoutLeak,
+    _inside_git,
+    assign_live,
+    developer_export,
+    seal_live,
+)
 from answer_radar.factory.labeling import export_review_data, route
 from answer_radar.factory.registry import SourceRegistry
 from answer_radar.factory.scoring import build_report
@@ -72,6 +78,14 @@ def cycle(
         raise SystemExit("invalid case set:\n" + "\n".join(errors))
     candidates = {c.case_id: resolve(c, pages) for c in cases}
     queue = route(cases, seed=seed)
+    # review-data.json carries question text for the expert. Text a source does not allow to be
+    # committed may not land in a git work tree (the repository is public).
+    if _inside_git(out.resolve()) and not all(
+        reg.may_commit_text(c.provenance.source_id) for c in cases
+    ):
+        raise HoldoutLeak(
+            f"{out} is inside a git work tree and the cases include uncommittable source text"
+        )
     out.mkdir(parents=True, exist_ok=True)
     visible = [c for c in cases if not c.holdout]
     review = export_review_data([c for c in visible if c.case_id in queue], candidates)
@@ -84,7 +98,7 @@ def cycle(
     for name, data in {
         "review-data.json": review,
         "live-manifest.json": manifest,
-        "cases.json": developer_export(cases),
+        "cases.json": developer_export(cases, reg),
         "cycle-report.json": report,
     }.items():
         (out / name).write_text(

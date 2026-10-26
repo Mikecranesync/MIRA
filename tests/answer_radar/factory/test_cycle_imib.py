@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from answer_radar.factory.__main__ import main
@@ -12,6 +13,7 @@ from answer_radar.factory.holdout import assign_live
 from answer_radar.factory.imib import import_forum, import_safety_gate
 from answer_radar.factory.registry import SourceRegistry
 from answer_radar.factory.variants import make_variants
+from answer_radar.schema import SplitAssignment
 
 REG = SourceRegistry.load()
 FXD = Path(__file__).parent / "fixtures"
@@ -51,24 +53,73 @@ def test_cycle_end_to_end(tmp_path):
     assert {"forum", "safety"} == set(review) and review["safety"]  # safety pairs go to experts
 
 
-def test_assign_live_moves_whole_lineages_only_from_fresh_pools():
+def test_assign_live_moves_whole_split_key_groups():
     recs = [
         {
-            "id": f"t-{i}",
+            "id": f"t-{i}-{k}",
             "captured_at": "2026-10-26",
-            "opening_post": f"GS10 oCA fault number {i} on start",
+            "opening_post": f"GS{i} oCA fault on start, case {k}",
         }
-        for i in range(40)
+        for i in range(1, 31)
+        for k in range(2)
     ]
     cases = ForumAdapter("control_com", REG).replay(recs)
     cases += [v for c in cases for v in make_variants(c)]
     moved = assign_live(cases, fraction=0.5, seed="s")
-    by_lineage = {}
+    by_key = {}
     for c in moved:
-        by_lineage.setdefault(c.lineage_id, set()).add(c.pool)
-    assert all(len(p) == 1 for p in by_lineage.values())
-    assert 5 < sum(Pool.LIVE in p for p in by_lineage.values()) < 35
+        by_key.setdefault(c.question.lineage_key, set()).add(c.pool)
+    assert len(by_key) == 30 and all(len(p) == 1 for p in by_key.values())  # no product split
+    assert 5 < sum(Pool.LIVE in p for p in by_key.values()) < 25
     assert validate_set(moved, REG) == []
+
+
+def test_assign_live_never_holds_out_a_product_developers_already_see():
+    seen = ForumAdapter("control_com", REG).replay(
+        [{"id": "dev-1", "captured_at": "2026-10-26", "opening_post": "GS10 oCA fault on start"}]
+    )
+    seen = [
+        replace(
+            seen[0],
+            question=replace(seen[0].question, split_assignment=SplitAssignment.DEVELOPMENT),
+        )
+    ]
+    fresh = ForumAdapter("control_com", REG).replay(
+        [
+            {
+                "id": f"f-{k}",
+                "captured_at": "2026-10-26",
+                "opening_post": f"GS10 oCA again, take {k}",
+            }
+            for k in range(5)
+        ]
+    )
+    moved = assign_live(seen + fresh, fraction=1.0, seed="s")
+    assert not any(c.pool is Pool.LIVE for c in moved)
+
+
+def test_cycle_refuses_to_write_uncommittable_text_into_a_git_tree(tmp_path):
+    import pytest
+
+    from answer_radar.factory.holdout import HoldoutLeak
+
+    with pytest.raises(HoldoutLeak):
+        main(
+            [
+                "cycle",
+                "--discovery",
+                str(FXD / "discovery.json"),
+                "--pages",
+                str(FXD / "pages.json"),
+                "--out",
+                str(Path(__file__).parent / "out-should-not-exist"),
+                "--private",
+                str(tmp_path / "p"),
+                "--seed",
+                "s",
+            ]
+        )
+    assert not (Path(__file__).parent / "out-should-not-exist").exists()
 
 
 IMIB_FORUM = [

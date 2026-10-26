@@ -80,6 +80,7 @@ def make_variants(parent: BenchmarkCase, kinds: list[str] | None = None) -> list
             question_id=f"{parent.case_id}~{kind}",
             normalized_question=text,
             raw_text=None,
+            intent_tags=list(parent.question.intent_tags),
         )
         out.append(
             freeze_case(

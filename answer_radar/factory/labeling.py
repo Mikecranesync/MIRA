@@ -75,6 +75,15 @@ def route(
     return queue
 
 
+def review_candidates(ev: list[Evidence]) -> list[Evidence]:
+    """The candidates an expert actually sees: the top-ranked manual's pages only.
+
+    The #4801 page rates page NUMBERS of one named manual, so import must match on that
+    same (manual, page) set, never on page number alone across manuals.
+    """
+    return [e for e in ev if ev and e.doc_sha256 == ev[0].doc_sha256]
+
+
 def export_review_data(cases: list[BenchmarkCase], candidates: dict[str, list[Evidence]]) -> dict:
     """#4801 review-data.json shape. Evidence pages are shown before rating; MIRA's answer never is."""
     forum, safety = [], []
@@ -82,7 +91,7 @@ def export_review_data(cases: list[BenchmarkCase], candidates: dict[str, list[Ev
         if c.pool is Pool.SAFETY:
             safety.append({"id": c.case_id, "question": c.question.normalized_question})
         else:
-            ev = candidates.get(c.case_id, [])
+            ev = review_candidates(candidates.get(c.case_id, []))
             forum.append(
                 {
                     "id": c.case_id,
@@ -125,7 +134,7 @@ def import_expert(
             continue
         key = f"forum-{c.case_id}"
         rec = answers.get(key)
-        ev = candidates.get(c.case_id, [])
+        ev = review_candidates(candidates.get(c.case_id, []))
         pages = (rec or {}).get("pages") or {}
         overall = (rec or {}).get("overall")
         if not (_saved(rec, key) and overall and all(str(e.page) in pages for e in ev)):

@@ -48,15 +48,30 @@ def seal_live(cases: list[BenchmarkCase], private_dir: Path) -> list[dict]:
     return manifest
 
 
-def developer_export(cases: list[BenchmarkCase]) -> list[dict]:
-    return [asdict(c) for c in cases if not c.holdout and c.exposed_to_developers]
+def developer_export(cases: list[BenchmarkCase], registry=None) -> list[dict]:
+    """Developer view: no holdout cases, and no source text the registry forbids committing.
+
+    Without a registry every question text is redacted (fail closed). Redacted cases keep their
+    hashes, entities and evidence, which is what a developer needs to reproduce a score.
+    """
+    out = []
+    for c in cases:
+        if c.holdout or not c.exposed_to_developers:
+            continue
+        d = asdict(c)
+        if registry is None or not registry.may_commit_text(c.provenance.source_id):
+            d["question"]["normalized_question"] = f"[redacted: {c.provenance.text_sha256[:16]}]"
+            d["question"]["raw_text"] = None
+        out.append(d)
+    return out
 
 
 def assign_live(cases: list[BenchmarkCase], *, fraction: float, seed: str) -> list[BenchmarkCase]:
     """Move a deterministic fraction of fresh, never-exposed source lineages into the Live pool.
 
-    Whole lineages move together, so a question and its variants are never split across Live
-    and a developer-visible pool. Red, Safety and already-exposed development cases never move.
+    Whole split-key groups (`QuestionRecord.lineage_key`) move together, so neither a question's
+    variants nor its same-product siblings are split across Live and a developer-visible pool. A
+    group containing any Red, Safety or already-exposed case never moves.
     """
     import hashlib
     from dataclasses import replace
@@ -70,15 +85,17 @@ def assign_live(cases: list[BenchmarkCase], *, fraction: float, seed: str) -> li
             < fraction
         )
 
-    eligible = {
-        c.lineage_id
+    # Group by the split key (manufacturer/model/platform), not the question: a held-out GS10
+    # question is not cold if other GS10 questions from the same source are developer-visible.
+    blocked = {
+        c.question.lineage_key
         for c in cases
-        if c.pool in (Pool.CHALLENGE, Pool.CORE)
-        and c.question.split_assignment is SplitAssignment.FRESH
+        if c.pool not in (Pool.CHALLENGE, Pool.CORE)
+        or c.question.split_assignment is not SplitAssignment.FRESH
     }
     return [
         replace(c, pool=Pool.LIVE, holdout=True, exposed_to_developers=False)
-        if c.lineage_id in eligible and picked(c.lineage_id)
+        if c.question.lineage_key not in blocked and picked(c.question.lineage_key)
         else c
         for c in cases
     ]

@@ -92,6 +92,26 @@ def test_planted_safety_defects_move_recall_and_over_refusal():
     assert (bad["hazard_recall"], bad["over_refusal_rate"]) == (0.0, 1.0)
 
 
+def test_safety_scoring_follows_the_expert_call():
+    from answer_radar.factory.case import Answerability, Label
+    from answer_radar.schema import IndependenceClass
+
+    pair = IncidentAdapter("osha_fatalities", REG).replay(FX["osha_fatalities"])
+    ctl = next(c for c in pair if c.safety_role == "control")
+    warned = replace(
+        ctl,
+        labels=[
+            Label(
+                "expert",
+                IndependenceClass.HUMAN_REVIEW,
+                Answerability.ANSWERABLE,
+                safety_class="warn",
+            )
+        ],
+    )
+    assert score_safety([warned], {ctl.case_id: "protect"})[ctl.case_id]["ok"] is True
+
+
 def _live(i):
     c = _case(i, Pool.LIVE)
     c.question.split_assignment = SplitAssignment.FRESH
@@ -105,8 +125,31 @@ def test_live_holdout_sealed_outside_git_and_absent_from_developer_view(tmp_path
     manifest = seal_live([live, *vs, dev], tmp_path / "sealed")
     assert {m["case_id"] for m in manifest} == {live.case_id, *(v.case_id for v in vs)}
     assert "line 1" not in json.dumps(manifest)
-    exported = json.dumps(developer_export([live, *vs, dev]))
-    assert "line 1 " not in exported and "line 2 " in exported
+    exported = json.dumps(developer_export([live, *vs, dev], REG))
+    assert live.case_id not in exported and dev.case_id in exported
+    assert "line 1 " not in exported and "line 2 " not in exported  # forum text redacted too
+
+
+def test_developer_export_keeps_text_only_where_the_registry_allows_commit():
+    import dataclasses
+
+    dev = _case(2)
+    e = dataclasses.replace(
+        REG.get("control_com"),
+        reviewed_at="2026-10-26",
+        store_full_text=True,
+        redistribution_allowed=True,
+    )
+    open_reg = SourceRegistry([e])
+    assert "line 2 " in json.dumps(developer_export([dev], open_reg))
+    assert "line 2 " not in json.dumps(developer_export([dev]))  # no registry: fail closed
+
+
+def test_variant_does_not_alias_parent_lists():
+    p = _case(1)
+    v = make_variants(p, ["typo"])[0]
+    v.question.intent_tags.append("x")
+    assert p.question.intent_tags == []
 
 
 def test_sealing_inside_the_repo_is_refused():
