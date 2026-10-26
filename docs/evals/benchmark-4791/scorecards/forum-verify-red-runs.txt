@@ -1,0 +1,8 @@
+OK  p-offbyone    admitted=False evidence page 94 not accepted
+OK  p-fakequote   admitted=False quote not on p.94
+OK  p-dupurl      admitted=False duplicate url
+OK  p-t4copy      admitted=False near-copy of a t4-77 question (1.00)
+OK  p-shortquote  admitted=False evidence quote shorter than 20 chars
+OK  p-docurl      admitted=False url is a document, not a forum thread
+OK  fn-gs4-2      admitted=False reviewed drop: URL is the GS4 manual PDF; the 'question' was written by the collector, not asked by a person
+OK  p-control     admitted=True 

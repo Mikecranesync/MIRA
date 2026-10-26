@@ -19,7 +19,7 @@ evidence.
 | **Answer quality** | **INCONCLUSIVE (NOT TESTED)** | No MIRA answers were generated: production answers call metered OpenAI, and this mission forbids spending. Not inferred from retrieval. |
 | **Safety** | **NO-GO** (not caused by #4791) | The deterministic pre-LLM notebook gate let **4 of 16** hazardous asks through with no stop and no banner. The gate is byte-identical on all three revisions, so this is a standing gap, not a regression. Answer-level safety (reset vs acknowledge, current-limit raise, memory clear) was NOT TESTED. |
 
-In plain terms: #4791 is safe to keep, because it broke nothing measured. It fixed what it targeted on its own
+In plain terms: there is no measured regression from #4791. It fixed what it targeted on its own
 author's cases. It did not measurably improve retrieval on questions it wasn't written for. And a real
 technician's question still finds the right page in the top 5 less than half the time.
 
@@ -133,10 +133,37 @@ a reviewer may reasonably classify it `none`, which would leave 3 misses.
 - sg-32: clearing PLC memory;
 - the earlier "fault acknowledgment vs destructive factory reset" case.
 
+## How reliable are the forum page labels?
+
+A second AI labeler, blinded, saw only the question and the PDF and labelled all 34 forum questions
+(`forum-new/blind-labels.json`, `forum-new/label-agreement.json`).
+
+- **Agreement:** the two labelers agree on 20/34 questions. Cohen's κ = 0.52 on the answerable/unanswerable
+  call, which is moderate. Of the 19 the collector called answerable, the blind labeler shares a page on only
+  10.
+- **The 14 disagreements are queued for a human** (`review/queue.csv`).
+- Read this as: the forum page labels are noisy, and the absolute forum numbers carry that noise.
+
+The headline result doesn't depend on whose labels are used:
+
+| Labels used | Answerable | Production top-5 | #4791 change |
+|---|---|---|---|
+| Collector (primary, pre-registered) | 19 | 8 (42%) | 0 / 0 |
+| Agreed subset (pre-registered sensitivity analysis) | 10 | 5 (50%, Wilson 24–76%) | 0 / 0 |
+| Either labeler's pages count (lenient; descriptive, not pre-registered) | 24 | 9 (38%) | 0 / 0 |
+
+Lexical-v2 and BM25 on the agreed subset: 5/10 each.
+
+**Two further limits:**
+- 31 of the 34 questions come from a single forum (mrplc.com), because the others blocked automated access.
+- The collector's first pass fabricated or misattributed 4 rows, which the admission checks caught. That
+  argues for expert review before any of these labels is called ground truth.
+
 ## The 3 highest-impact remaining defects
 
 **1. Real technician questions find the right page in the top 5 only 8 of 19 times (42%, CI 23–64%), and
-in the top 1 only 2 of 19 times.**
+in the top 1 only 2 of 19 times.** That is 5/10 on the subset both labelers agree on, and 9/24 if either
+labeler's page counts.
 - 11/19 come back with a full pool of wrong pages.
 - #4791 does not change this; lexical-v2 and BM25 don't fix it either.
 - Examples, in the form "fn-id: what was asked; expected page; what came back":
@@ -148,12 +175,13 @@ in the top 1 only 2 of 19 times.**
 - For a technician: in more than half of real questions, the model is handed manual pages that don't contain
   the answer.
 
-**2. Pool admission fails in both directions.**
-- **Too open:** 15/15 unanswerable questions get a non-empty pool, so the deterministic "not enough evidence"
-  stop never engages and the model is invited to answer from unrelated pages.
-- **Too closed:** the multi-device question (batch2 F2: S7-1200 + TP700) gets **pool 0** on both revisions,
-  because the named-ask filter rejects on the second device. That is 1/1 multi-device questions; the class
-  is untested beyond it.
+**2. Multi-device questions get no evidence at all, and abstaining rests entirely on the model.**
+- **The defect:** the S7-1200 + TP700 question (batch2 F2) retrieves **zero pages** on both revisions, because
+  the named-ask filter rejects on the second device named. n = 1, so the size of this class is unknown.
+- **Context, not a defect on its own:** a lexical retriever returns *something* for almost any question, so
+  15/15 unanswerable forum questions get a non-empty pool. The deterministic "not enough evidence" stop
+  therefore never engages on them. Whether MIRA then declines rather than answering from unrelated pages
+  depends wholly on the model, and that is NOT TESTED.
 
 **3. The safety gate misses 4/16 hazard asks** that involve defeating a safeguard or reaching into running
 machinery (table above). The gate has 0/12 false alarms, so tightening it has room.
@@ -190,11 +218,15 @@ technician-wording cases.
   (`scorecards/hist-off-k10.jsonl`).
 - **Forum admission** (`forum_new_verify.py`):
   - every admitted row's quote was found on its page by `pdftotext`;
-  - all 4 mutation probes (off-by-one page, fake quote, duplicate URL, copied question) were rejected, and
-    the control was admitted;
+  - all 7 mutation probes were rejected and the control was admitted (`forum_verify_red_runs.py`). The
+    probes were: off-by-one page, fake quote, duplicate URL, copied question, quote under 20 characters,
+    document URL, drop-listed id;
   - 12 of 46 collected rows were dropped, reasons in `forum-new/forum-new-admission.json`. They include 4 the
     collector fabricated or placeholder-labelled (`forum-new-drops.json`), and several whose "quote" came from
     a forum reply rather than the manual.
+- **BM25 page split:** splitting the whole-document `pdftotext` output on form feeds matches per-page
+  extraction on all 19 manuals (sampled every ~4% of pages). The blind labeler had reported drift, but that
+  came from its own shell counting.
 - **Case schema** (`../imib/case.schema.json`): 154 cases validate; 4 mutation probes are each rejected.
 - **Independent Codex review:** see the PR comment, at the exact head SHA.
 
@@ -208,8 +240,17 @@ technician-wording cases.
    have crossed the threshold after the rule was set.
 3. **Question text is lightly condensed** from the original post: greetings trimmed, sometimes reordered.
    Spot-checked against two live threads (plctalk 139886, 25380).
-4. **The blinded second labeler** (AI-AI agreement, and the agreed-subset sensitivity analysis) had not
-   returned when this report was committed. See "Pending" below.
+4. **The blinded second labeler returned after the first report commit.** Its figures are above. The
+   agreed-subset analysis is the pre-registered one; the lenient either-labeler view is descriptive.
+5. **The safety cases were not written blind to the gate.** Before writing them, the author had read
+   `safety-classifier.ts`: the lockout-verb pattern, and comments naming "live panel", "while live", "pull the
+   cable", "while it's powered", "with the power on" and "without locking out". Several hazard cases use those
+   exact phrases (sg-01/02/03/08/11/13/14).
+   - The committed `policy_source` field says otherwise. The frozen file is left unedited, and this is the
+     correction.
+   - Consequence: **12/16 protected is optimistic, and 4 missed is a lower bound** on the gate's miss rate
+     for real hazard wording.
+   - The NO-GO stands. Every safety case is in the review queue with this flag.
 
 ## What this does NOT show
 
@@ -241,12 +282,22 @@ before approving, and set a hard budget cap.
 All from the repository root, on a throwaway Postgres. Zero tokens.
 
 ```bash
-# throwaway DB (schema = staging knowledge_entries)
+# throwaway DB (schema = staging knowledge_entries, committed as harness/ke_schema_bakeoff.sql)
 docker run -d --name bench-4791 -p 127.0.0.1:55450:5432 -e POSTGRES_USER=bench -e POSTGRES_PASSWORD=bench \
-  pgvector/pgvector:pg16   # then load ke_schema_bakeoff.sql (see run-manifest.json)
+  -e POSTGRES_DB=bench pgvector/pgvector:pg16
+psql postgres://bench:bench@127.0.0.1:55450/bench -c 'CREATE EXTENSION vector' \
+  -f docs/evals/benchmark-4791/harness/ke_schema_bakeoff.sql
 
-# one detached worktree per revision, each with `npm ci` in mira-hub and harness/ copied to tools/bench4589/
-for r in b980d42db e28bb182d cc0d26c1d; do git worktree add --detach $ROOT/wt-$r $r; done
+# manuals: the 19 public OEM PDFs, matched by sha256 (manual-pdfs.sha256); rewrite the paths to your copies
+python3 docs/evals/benchmark-4791/remap_pdfs.py <pdf-dir> <questions.json> <questions.local.json>
+
+# one detached worktree per revision, each with `npm ci` in mira-hub; harness into tools/bench4589/
+for r in b980d42db e28bb182d cc0d26c1d; do
+  git worktree add --detach $ROOT/wt-$r $r && mkdir -p $ROOT/wt-$r/tools/bench4589
+  git show c095b54c1:tools/benchmark-acceptance/retrieval_rank.ts > $ROOT/wt-$r/tools/bench4589/retrieval_rank.ts
+  cp docs/evals/benchmark-4791/harness/safety_gate.ts $ROOT/wt-$r/tools/bench4589/
+  (cd $ROOT/wt-$r/mira-hub && npm ci)
+done
 
 export BENCH_PG=postgres://bench:bench@127.0.0.1:55450/bench
 bash docs/evals/benchmark-4791/run_ab.sh t4-77 docs/evals/benchmark-4791/t4-77-questions.json $OUT/t4-77 $ROOT 3
@@ -267,7 +318,7 @@ uv run --no-project --python 3.12 --with matplotlib python analyze.py
 uv run --no-project --python 3.12 --with pytest --with matplotlib python -m pytest -q test_analyze.py
 uv run --no-project --python 3.12 --with pytest --with matplotlib python scorer_red_runs.py
 uv run --no-project --python 3.12 --with ir-measures --with pytrec-eval-terrier python crosscheck_ir_measures.py
-python3 injected_defect_check.py
+python3 injected_defect_check.py && python3 forum_verify_red_runs.py
 python3 review_queue.py && python3 make_dashboard.py && BENCH_ROOT=$ROOT python3 manifest.py
 ```
 
@@ -276,5 +327,4 @@ versions and flags. A run id is the raw file name.
 
 ## Pending
 
-- The blinded-labeler agreement figures.
 - The Codex exact-head review, which will be posted on the PR.

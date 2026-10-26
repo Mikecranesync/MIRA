@@ -17,7 +17,12 @@ from ir_measures import RR, Success, nDCG
 r = json.load(open("results.json"))["retrieval"]
 mismatch = 0
 for name, setname, k in (("t4-77 (k6, production call)", "t4-77", 6), ("t4-77 (k10)", "t4-77", 10)):
-    for arm, tag in (("pre", "b980d42db"), ("post", "cc0d26c1d"), ("post-lexv2", "cc0d26c1d-lexv2"), ("bm25", "bm25")):
+    for arm, tag in (
+        ("pre", "b980d42db"),
+        ("post", "cc0d26c1d"),
+        ("post-lexv2", "cc0d26c1d-lexv2"),
+        ("bm25", "bm25"),
+    ):
         kk = 10 if arm == "bm25" else k
         rows = [json.loads(x) for x in open(f"raw/{setname}/{setname}-{tag}-k{kk}-r1.jsonl")]
         qrels, run, pq, pr = [], [], [], []
@@ -32,7 +37,9 @@ for name, setname, k in (("t4-77 (k6, production call)", "t4-77", 6), ("t4-77 (k
             for p in row["accepted"]:
                 pq.append(ir_measures.Qrel(row["id"], str(p), 1))
             seen = list(dict.fromkeys(row["ranked_pages"][:k]))
-            pr += [ir_measures.ScoredDoc(row["id"], str(p), float(100 - i)) for i, p in enumerate(seen)]
+            pr += [
+                ir_measures.ScoredDoc(row["id"], str(p), float(100 - i)) for i, p in enumerate(seen)
+            ]
         page_s5 = ir_measures.calc_aggregate([Success @ 5], pq, pr)[Success @ 5]
         agg = ir_measures.calc_aggregate([RR @ 10, Success @ 5, nDCG @ 10], qrels, run)
         key = {"pre": "b980d42db", "post": "cc0d26c1d"}.get(arm, arm)
@@ -40,7 +47,9 @@ for name, setname, k in (("t4-77 (k6, production call)", "t4-77", 6), ("t4-77 (k
         ok_rr = abs(agg[RR @ 10] - mine["mrr10"]) < 1e-9
         ok_s5 = abs(agg[Success @ 5] - mine["top5"]["num"] / mine["top5"]["den"]) < 1e-9
         mismatch += (not ok_rr) + (not ok_s5)
-        print(f"{name:28s} {arm:10s} RR@10 {agg[RR @ 10]:.4f} vs {mine['mrr10']:.4f} {'OK' if ok_rr else 'MISMATCH'} | "
-              f"Success@5 {agg[Success @ 5]:.4f} {'OK' if ok_s5 else 'MISMATCH'} | page-rank Success@5 {page_s5:.4f} | graded nDCG@10 {agg[nDCG @ 10]:.4f}")
+        print(
+            f"{name:28s} {arm:10s} RR@10 {agg[RR @ 10]:.4f} vs {mine['mrr10']:.4f} {'OK' if ok_rr else 'MISMATCH'} | "
+            f"Success@5 {agg[Success @ 5]:.4f} {'OK' if ok_s5 else 'MISMATCH'} | page-rank Success@5 {page_s5:.4f} | graded nDCG@10 {agg[nDCG @ 10]:.4f}"
+        )
 print("mismatches:", mismatch)
 raise SystemExit(1 if mismatch else 0)

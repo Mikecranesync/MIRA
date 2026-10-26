@@ -105,7 +105,7 @@ def main() -> None:
             (
                 "safety-gate",
                 c["id"],
-                f"ai_authored_unreviewed; expected {c['expected_gate']}",
+                f"ai_authored_unreviewed, written by an author who had read the gate's phrase lists; expected {c['expected_gate']}",
                 c["question"],
                 "",
                 "",

@@ -1506,6 +1506,359 @@
      ]
     }
    }
+  },
+  "forum-new AI-AI-agreed subset (k6)": {
+   "n_answerable": 10,
+   "n_total": 20,
+   "n_clusters": 10,
+   "arms": [
+    "pre",
+    "parent",
+    "post",
+    "post-lexv2",
+    "bm25"
+   ],
+   "deterministic": {
+    "pre": true,
+    "parent": true,
+    "post": true,
+    "post-lexv2": true,
+    "bm25": true
+   },
+   "b980d42db": {
+    "top1": {
+     "num": 1,
+     "den": 10,
+     "ci95": [
+      0.017876213095072896,
+      0.4041500267952385
+     ]
+    },
+    "top3": {
+     "num": 3,
+     "den": 10,
+     "ci95": [
+      0.10779126740630099,
+      0.6032218525388546
+     ]
+    },
+    "top5": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ],
+     "boot95_by_manual": [
+      0.2222222222222222,
+      0.7777777777777778
+     ]
+    },
+    "top6": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ]
+    },
+    "mrr10": 0.21166666666666667,
+    "ndcg10": 0.2817529365307935,
+    "wrong_page6": {
+     "num": 5,
+     "den": 10
+    },
+    "nothing_retrieved": {
+     "num": 0,
+     "den": 20
+    },
+    "distinct_pages_top6_mean": 5.4,
+    "unanswerable_nonempty_pool": {
+     "num": 10,
+     "den": 10
+    },
+    "latency_p50_ms": 62.66008300000067,
+    "latency_p95_ms": 283.78079199999956,
+    "latency_n": 102
+   },
+   "e28bb182d": {
+    "top1": {
+     "num": 1,
+     "den": 10,
+     "ci95": [
+      0.017876213095072896,
+      0.4041500267952385
+     ]
+    },
+    "top3": {
+     "num": 3,
+     "den": 10,
+     "ci95": [
+      0.10779126740630099,
+      0.6032218525388546
+     ]
+    },
+    "top5": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ],
+     "boot95_by_manual": [
+      0.2222222222222222,
+      0.7777777777777778
+     ]
+    },
+    "top6": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ]
+    },
+    "mrr10": 0.21166666666666667,
+    "ndcg10": 0.2817529365307935,
+    "wrong_page6": {
+     "num": 5,
+     "den": 10
+    },
+    "nothing_retrieved": {
+     "num": 0,
+     "den": 20
+    },
+    "distinct_pages_top6_mean": 5.4,
+    "unanswerable_nonempty_pool": {
+     "num": 10,
+     "den": 10
+    },
+    "latency_p50_ms": 72.2630420000005,
+    "latency_p95_ms": 290.39787499999875,
+    "latency_n": 102
+   },
+   "cc0d26c1d": {
+    "top1": {
+     "num": 1,
+     "den": 10,
+     "ci95": [
+      0.017876213095072896,
+      0.4041500267952385
+     ]
+    },
+    "top3": {
+     "num": 3,
+     "den": 10,
+     "ci95": [
+      0.10779126740630099,
+      0.6032218525388546
+     ]
+    },
+    "top5": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ],
+     "boot95_by_manual": [
+      0.2222222222222222,
+      0.7777777777777778
+     ]
+    },
+    "top6": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ]
+    },
+    "mrr10": 0.21166666666666667,
+    "ndcg10": 0.2817529365307935,
+    "wrong_page6": {
+     "num": 5,
+     "den": 10
+    },
+    "nothing_retrieved": {
+     "num": 0,
+     "den": 20
+    },
+    "distinct_pages_top6_mean": 5.4,
+    "unanswerable_nonempty_pool": {
+     "num": 10,
+     "den": 10
+    },
+    "latency_p50_ms": 71.77174999999988,
+    "latency_p95_ms": 283.5707910000001,
+    "latency_n": 102
+   },
+   "post-lexv2": {
+    "top1": {
+     "num": 3,
+     "den": 10,
+     "ci95": [
+      0.10779126740630099,
+      0.6032218525388546
+     ]
+    },
+    "top3": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ]
+    },
+    "top5": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ],
+     "boot95_by_manual": [
+      0.3333333333333333,
+      0.75
+     ]
+    },
+    "top6": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ]
+    },
+    "mrr10": 0.38333333333333336,
+    "ndcg10": 0.4130929753571458,
+    "wrong_page6": {
+     "num": 5,
+     "den": 10
+    },
+    "nothing_retrieved": {
+     "num": 0,
+     "den": 20
+    },
+    "distinct_pages_top6_mean": 5.5,
+    "unanswerable_nonempty_pool": {
+     "num": 10,
+     "den": 10
+    },
+    "latency_p50_ms": 141.0689169999987,
+    "latency_p95_ms": 528.6487080000006,
+    "latency_n": 102
+   },
+   "bm25": {
+    "top1": {
+     "num": 4,
+     "den": 10,
+     "ci95": [
+      0.16818032970623614,
+      0.6873262302663417
+     ]
+    },
+    "top3": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ]
+    },
+    "top5": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ],
+     "boot95_by_manual": [
+      0.3333333333333333,
+      0.75
+     ]
+    },
+    "top6": {
+     "num": 5,
+     "den": 10,
+     "ci95": [
+      0.236593090512564,
+      0.7634069094874361
+     ]
+    },
+    "mrr10": 0.45,
+    "ndcg10": 0.4630929753571458,
+    "wrong_page6": {
+     "num": 5,
+     "den": 10
+    },
+    "nothing_retrieved": {
+     "num": 0,
+     "den": 20
+    },
+    "distinct_pages_top6_mean": 6.0,
+    "unanswerable_nonempty_pool": {
+     "num": 10,
+     "den": 10
+    },
+    "latency_p50_ms": null,
+    "latency_p95_ms": null,
+    "latency_n": 0
+   },
+   "paired_pre_post": {
+    "top1": {
+     "b_lost": 0,
+     "c_gained": 0,
+     "delta_pp": 0.0,
+     "mcnemar_p": 1.0
+    },
+    "top5": {
+     "b_lost": 0,
+     "c_gained": 0,
+     "delta_pp": 0.0,
+     "mcnemar_p": 1.0,
+     "boot95_delta_by_manual": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "paired_post_vs_post-lexv2": {
+    "top1": {
+     "b_lost": 1,
+     "c_gained": 3,
+     "delta_pp": 20.0,
+     "mcnemar_p": 0.625
+    },
+    "top5": {
+     "b_lost": 1,
+     "c_gained": 1,
+     "delta_pp": 0.0,
+     "mcnemar_p": 1.0,
+     "boot95_delta_by_manual": [
+      -0.25,
+      0.3333333333333333
+     ]
+    }
+   },
+   "paired_post_vs_bm25": {
+    "top1": {
+     "b_lost": 0,
+     "c_gained": 3,
+     "delta_pp": 30.0,
+     "mcnemar_p": 0.25
+    },
+    "top5": {
+     "b_lost": 1,
+     "c_gained": 1,
+     "delta_pp": 0.0,
+     "mcnemar_p": 1.0,
+     "boot95_delta_by_manual": [
+      -0.25,
+      0.3333333333333333
+     ]
+    }
+   }
   }
  },
  "safety_gate": {

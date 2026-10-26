@@ -55,7 +55,19 @@ def main() -> None:
         },
         "revisions": revs,
         "harness": {
-            "retrieval_rank.ts": sha(f"{HERE}/harness/retrieval_rank.ts"),
+            "retrieval_rank.ts": hashlib.sha256(
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        HERE,
+                        "show",
+                        "c095b54c1:tools/benchmark-acceptance/retrieval_rank.ts",
+                    ],
+                    capture_output=True,
+                    check=True,
+                ).stdout
+            ).hexdigest(),
             "retrieval_rank_origin": "PR #4589 branch feat/benchmark-acceptance-scorecard @ c095b54c1",
             "safety_gate.ts": sha(f"{HERE}/harness/safety_gate.ts"),
             "bm25_baseline.py": sha(f"{HERE}/bm25_baseline.py"),

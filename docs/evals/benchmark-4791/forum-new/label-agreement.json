@@ -1,0 +1,423 @@
+{
+ "n_labelled": 34,
+ "agree": 20,
+ "answerability_kappa": 0.5160142348754447,
+ "answerable_both_with_shared_page": 10,
+ "answerable_primary": 19,
+ "agreed_ids": [
+  "fn-pf40-3",
+  "fn-pf40-5",
+  "fn-pf40-6",
+  "fn-pf4m-1",
+  "fn-pf4m-2",
+  "fn-pf4m-3",
+  "fn-pf4m-4",
+  "fn-micro820-2",
+  "fn-micro820-3",
+  "fn-ml1100-3",
+  "fn-ml1100-5",
+  "fn-e3plus-1",
+  "fn-e3plus-3",
+  "fn-e3plus-4",
+  "fn-lxm32a-1",
+  "fn-m172-1",
+  "fn-premium-1",
+  "fn-micro810-1",
+  "fn-ml1100-8",
+  "fn-smcflex-1"
+ ],
+ "rows": [
+  {
+   "id": "fn-pf40-1",
+   "primary": [
+    94
+   ],
+   "blind": [],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-pf40-2",
+   "primary": [
+    43,
+    92
+   ],
+   "blind": [
+    42,
+    48
+   ],
+   "blind_confidence": "high",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-pf40-3",
+   "primary": [
+    94,
+    76
+   ],
+   "blind": [
+    76,
+    94
+   ],
+   "blind_confidence": "high",
+   "shared": [
+    76,
+    94
+   ],
+   "agree": true
+  },
+  {
+   "id": "fn-pf40-4",
+   "primary": [
+    94
+   ],
+   "blind": [],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-pf40-5",
+   "primary": [
+    33,
+    27
+   ],
+   "blind": [
+    33
+   ],
+   "blind_confidence": "high",
+   "shared": [
+    33
+   ],
+   "agree": true
+  },
+  {
+   "id": "fn-pf40-6",
+   "primary": [
+    33
+   ],
+   "blind": [
+    33,
+    58
+   ],
+   "blind_confidence": "medium",
+   "shared": [
+    33
+   ],
+   "agree": true
+  },
+  {
+   "id": "fn-pf4m-1",
+   "primary": [],
+   "blind": [],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": true
+  },
+  {
+   "id": "fn-pf4m-2",
+   "primary": [],
+   "blind": [],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": true
+  },
+  {
+   "id": "fn-pf4m-3",
+   "primary": [],
+   "blind": [],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": true
+  },
+  {
+   "id": "fn-pf4m-4",
+   "primary": [],
+   "blind": [],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": true
+  },
+  {
+   "id": "fn-micro820-1",
+   "primary": [
+    150
+   ],
+   "blind": [
+    120
+   ],
+   "blind_confidence": "high",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-micro820-2",
+   "primary": [],
+   "blind": [],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": true
+  },
+  {
+   "id": "fn-micro820-3",
+   "primary": [],
+   "blind": [],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": true
+  },
+  {
+   "id": "fn-micro820-4",
+   "primary": [],
+   "blind": [
+    14
+   ],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-micro820-5",
+   "primary": [],
+   "blind": [
+    13
+   ],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-ml1100-1",
+   "primary": [
+    113
+   ],
+   "blind": [
+    11
+   ],
+   "blind_confidence": "high",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-ml1100-2",
+   "primary": [
+    74,
+    72
+   ],
+   "blind": [
+    71
+   ],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-ml1100-3",
+   "primary": [
+    14,
+    154
+   ],
+   "blind": [
+    154
+   ],
+   "blind_confidence": "high",
+   "shared": [
+    154
+   ],
+   "agree": true
+  },
+  {
+   "id": "fn-ml1100-4",
+   "primary": [],
+   "blind": [
+    99,
+    100
+   ],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-ml1100-5",
+   "primary": [],
+   "blind": [],
+   "blind_confidence": "low",
+   "shared": [],
+   "agree": true
+  },
+  {
+   "id": "fn-ml1100-6",
+   "primary": [],
+   "blind": [
+    37,
+    113
+   ],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-e3plus-1",
+   "primary": [
+    52,
+    53
+   ],
+   "blind": [
+    52,
+    53
+   ],
+   "blind_confidence": "high",
+   "shared": [
+    52,
+    53
+   ],
+   "agree": true
+  },
+  {
+   "id": "fn-e3plus-2",
+   "primary": [
+    100
+   ],
+   "blind": [
+    125,
+    126
+   ],
+   "blind_confidence": "high",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-e3plus-3",
+   "primary": [
+    217,
+    218
+   ],
+   "blind": [
+    217,
+    218
+   ],
+   "blind_confidence": "medium",
+   "shared": [
+    217,
+    218
+   ],
+   "agree": true
+  },
+  {
+   "id": "fn-e3plus-4",
+   "primary": [],
+   "blind": [],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": true
+  },
+  {
+   "id": "fn-lxm32a-1",
+   "primary": [
+    70
+   ],
+   "blind": [
+    70
+   ],
+   "blind_confidence": "medium",
+   "shared": [
+    70
+   ],
+   "agree": true
+  },
+  {
+   "id": "fn-m172-1",
+   "primary": [],
+   "blind": [],
+   "blind_confidence": "high",
+   "shared": [],
+   "agree": true
+  },
+  {
+   "id": "fn-premium-1",
+   "primary": [],
+   "blind": [],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": true
+  },
+  {
+   "id": "fn-x80-1",
+   "primary": [
+    256
+   ],
+   "blind": [
+    298,
+    363
+   ],
+   "blind_confidence": "high",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-micro810-1",
+   "primary": [
+    9
+   ],
+   "blind": [
+    9
+   ],
+   "blind_confidence": "medium",
+   "shared": [
+    9
+   ],
+   "agree": true
+  },
+  {
+   "id": "fn-micro810-2",
+   "primary": [],
+   "blind": [
+    29
+   ],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": false
+  },
+  {
+   "id": "fn-ml1100-8",
+   "primary": [
+    160
+   ],
+   "blind": [
+    160,
+    161
+   ],
+   "blind_confidence": "high",
+   "shared": [
+    160
+   ],
+   "agree": true
+  },
+  {
+   "id": "fn-smcflex-1",
+   "primary": [
+    101
+   ],
+   "blind": [
+    101
+   ],
+   "blind_confidence": "high",
+   "shared": [
+    101
+   ],
+   "agree": true
+  },
+  {
+   "id": "fn-se-m172-2",
+   "primary": [
+    192
+   ],
+   "blind": [],
+   "blind_confidence": "medium",
+   "shared": [],
+   "agree": false
+  }
+ ]
+}

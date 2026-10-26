@@ -76,7 +76,21 @@ def harness_set(name: str, k: int) -> dict:
     qs: dict = {}
     lat: dict = {}
     det: dict = {}
-    manual_of = {q["id"]: q["manual"] for q in json.load(open(next(p for p in (f"{HERE}/{name}-questions.json", f"{HERE}/{name}/{name}-questions.json") if os.path.exists(p))))}
+    manual_of = {
+        q["id"]: q["manual"]
+        for q in json.load(
+            open(
+                next(
+                    p
+                    for p in (
+                        f"{HERE}/{name}-questions.json",
+                        f"{HERE}/{name}/{name}-questions.json",
+                    )
+                    if os.path.exists(p)
+                )
+            )
+        )
+    }
     for arm, tag in ARMS.items():
         kk = 10 if arm == "bm25" else k
         files = sorted(glob.glob(f"{HERE}/raw/{name}/{name}-{tag}-k{kk}-r*.jsonl"))
@@ -288,10 +302,15 @@ def main() -> None:
         sets["forum-new (k6, production call)"] = harness_set("forum-new", 6)
         sets["forum-new (k10)"] = harness_set("forum-new", 10)
         agreed = f"{HERE}/forum-new/label-agreement.json"
-        if os.path.exists(agreed):  # pre-registered sensitivity: rows the blinded labeler agrees with
+        if os.path.exists(
+            agreed
+        ):  # pre-registered sensitivity: rows the blinded labeler agrees with
             keep = set(json.load(open(agreed))["agreed_ids"])
             base = sets["forum-new (k6, production call)"]
-            sets["forum-new AI-AI-agreed subset (k6)"] = {**base, "questions": {i: q for i, q in base["questions"].items() if i in keep}}
+            sets["forum-new AI-AI-agreed subset (k6)"] = {
+                **base,
+                "questions": {i: q for i, q in base["questions"].items() if i in keep},
+            }
     results: dict = {}
     for name, s in sets.items():
         arms = [a for a in ARMS if all(a in q["arms"] for q in s["questions"].values())]
