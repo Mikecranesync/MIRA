@@ -1,0 +1,134 @@
+{
+ "benchmark": "IMIB v0.1 / benchmark-4791",
+ "preregistration_commits": {
+  "decision_rules_and_safety_cases": "bd4928480",
+  "forum_new_questions": "c9be2d887"
+ },
+ "revisions": {
+  "pre": {
+   "short": "b980d42db",
+   "full": "b980d42db14c318b431f6228826bf1a72731c5be",
+   "deploy_run": "40210914670"
+  },
+  "parent": {
+   "short": "e28bb182d",
+   "full": "e28bb182d43a05934d8ce415b8e01a93ccf141de",
+   "deploy_run": null
+  },
+  "post": {
+   "short": "cc0d26c1d",
+   "full": "cc0d26c1db28d19c1ea11671a70ec432181596f6",
+   "deploy_run": "40275532081"
+  }
+ },
+ "harness": {
+  "retrieval_rank.ts": "12ced03b922e1947cb2e0a5dd8f8a412738cda70a5a0bca0242538f262ca5f07",
+  "retrieval_rank_origin": "PR #4589 branch feat/benchmark-acceptance-scorecard @ c095b54c1",
+  "safety_gate.ts": "fc115b79e8aac3bc9063ca25ae691da2935d23b8ca88703118c4067c99058f13",
+  "bm25_baseline.py": "c1a21e2ab85d2b635a2b684de908e491438d605b86452e9d99d32591a7ac097e",
+  "analyze.py": "0d54fa14059baac2fb10e4ee41be53fc100adf66c993fd5af8a29964eca0bc3f"
+ },
+ "inputs": {
+  "t4-77-questions.json": "b2aaac384ca2f28c3465c1a2cd94cd6e3f588af71c419d5b2295e3135b169fb1",
+  "batch2-cases.json": "e696d6a4fe2b83fc8c345a9c567d84b95940e9ee5e701ab37e5ea5855586bcfc",
+  "forum-new-questions.json": "7933cb8b0ad63814f9c34dccd546f03e62c920c2ad57a188a9b0f85f98102a29",
+  "safety-gate-cases.json": "b893fa891c0f5bd0a4d1f6714ea74854f70919a484ea3676f6f1103e9bbf89d3",
+  "manual_pdfs": "manual-pdfs.sha256"
+ },
+ "flags": {
+  "doppler_read": "2026-10-26",
+  "stg": {
+   "NOTEBOOK_HYBRID_RETRIEVAL": "1",
+   "NOTEBOOK_RERANK": "1",
+   "NOTEBOOK_LEXICAL_V2": "1",
+   "NOTEBOOK_ENERGIZED_HARD_STOP": "unset (default on)"
+  },
+  "prd": {
+   "NOTEBOOK_HYBRID_RETRIEVAL": "unset (off)",
+   "NOTEBOOK_RERANK": "unset (off)",
+   "NOTEBOOK_LEXICAL_V2": "unset (off)",
+   "NOTEBOOK_ENERGIZED_HARD_STOP": "unset (default on)"
+  },
+  "benchmark_arms": {
+   "pre/parent/post": "all three off (production)",
+   "post-lexv2": "NOTEBOOK_LEXICAL_V2=1 only",
+   "safety-gate": "NOTEBOOK_ENERGIZED_HARD_STOP unset (default on)"
+  }
+ },
+ "environment": {
+  "host": "CharlieNodes-Mac-mini.local",
+  "node": "v25.8.0",
+  "pdftotext": "pdftotext version 26.07.0",
+  "python_analysis": "uv run --no-project --python 3.12 --with matplotlib",
+  "postgres": "docker pgvector/pgvector:pg16 (throwaway container bench-4791, 127.0.0.1:55450), schema ke_schema_bakeoff.sql = staging knowledge_entries",
+  "postgres_image_id": "sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a"
+ },
+ "raw_files_sha256": {
+  "raw/batch2/batch2-b980d42db-r1.json": "57628ebcd17ee191bd157a40b4bbd3794ae1467fb26b205f989ed2ef93dedf55",
+  "raw/batch2/batch2-b980d42db-r2.json": "1800298e9b05ba0ba3cfb958c23b003fddf4742e8a1108b08d6c10e0ede82072",
+  "raw/batch2/batch2-b980d42db-r3.json": "63c1c457e8dc38e38dade4f748e1536293f2f8d58a8edb48048953baa9c60054",
+  "raw/batch2/batch2-cc0d26c1d-r1.json": "d0aa18554cc7a526cf25572e499fe5c2757c436f4d02460830cac4badb038177",
+  "raw/batch2/batch2-cc0d26c1d-r2.json": "13a7031fd79cb1d55c7dcd21f8985d90dd7483d80d03a6571fe6a413a18b687c",
+  "raw/batch2/batch2-cc0d26c1d-r3.json": "6adbc15dbcce19e16a82b1869304bd489d7751c127198690354277d31c5d036c",
+  "raw/forum-new/forum-new-b980d42db-k10-r1.jsonl": "8fd840ce96f2ae4e14912f1c4c2618c93406d686842c2d172fb5c00461e327d1",
+  "raw/forum-new/forum-new-b980d42db-k10-r2.jsonl": "5463adeb972e7a2aa7b10b799b61434d7c1610538d110977019ec715699b5e00",
+  "raw/forum-new/forum-new-b980d42db-k10-r3.jsonl": "57a9272afb6c3dbbca2df91de906742011f9951172dc402a41a92a2d9be7ecdd",
+  "raw/forum-new/forum-new-b980d42db-k6-r1.jsonl": "6f98253c70feacfa6aab0f736530c26610f95a4045c2f2c0184d9c9954911ac0",
+  "raw/forum-new/forum-new-b980d42db-k6-r2.jsonl": "68124dc535ca5f7b7f286168e640dfaf364d091316f9a5da1a08e629ce6bfe00",
+  "raw/forum-new/forum-new-b980d42db-k6-r3.jsonl": "88e362d25ac069c4c558614c2be66f43a7afe08ed46f2bdcf284e74653437784",
+  "raw/forum-new/forum-new-bm25-k10-r1.jsonl": "134ffab097ed272143a180c0481ccd7418421f57cbac5186b43aa3296da5b24e",
+  "raw/forum-new/forum-new-cc0d26c1d-k10-r1.jsonl": "8d23d1ed70de08dbf7b4ff10b186402328da565bede37116ddc8f53945d3e161",
+  "raw/forum-new/forum-new-cc0d26c1d-k10-r2.jsonl": "3510c1671825e4a4951a854b8eab7c91add71bca7e5036dd036a3d161b1ad929",
+  "raw/forum-new/forum-new-cc0d26c1d-k10-r3.jsonl": "9da201d34fb12eb2e9fcfeb565105dd28661aec1658fc12b989b621196a54fff",
+  "raw/forum-new/forum-new-cc0d26c1d-k6-r1.jsonl": "af567c3fec0f4957e2b0bd14fbb8733bae84fd0a6536ca7b2559cd6e98d646e8",
+  "raw/forum-new/forum-new-cc0d26c1d-k6-r2.jsonl": "43f4fcbe7f273c2df7f7364bb82f8443837de3c47ce1fe13b43f293d73d02c5c",
+  "raw/forum-new/forum-new-cc0d26c1d-k6-r3.jsonl": "3a310ae75fbba857282f512dccd9b1e310f0f34eac7de22fe36d0238166aa96f",
+  "raw/forum-new/forum-new-cc0d26c1d-lexv2-k10-r1.jsonl": "1f4f1dc73cfc1acb9d4c08e8b295c11cce7edc41ca63d3b859b121a870d9b2a6",
+  "raw/forum-new/forum-new-cc0d26c1d-lexv2-k10-r2.jsonl": "27b1b77abbdb65931a010c1b2a0d00b287760a2461417386000acf155840622a",
+  "raw/forum-new/forum-new-cc0d26c1d-lexv2-k10-r3.jsonl": "609b27778f7e1d2940f97f1b7932c1bfe131a51be65ee6ba5b7d319104e924fc",
+  "raw/forum-new/forum-new-cc0d26c1d-lexv2-k6-r1.jsonl": "74f0f836132a3aa2af48c3815de44cab49bfed5e6efebbec2010e8d8b0c3f689",
+  "raw/forum-new/forum-new-cc0d26c1d-lexv2-k6-r2.jsonl": "f254fcd77a9bc503f7b24aa8f1591a94c2e1e308358248fefee0611d4c37aaa7",
+  "raw/forum-new/forum-new-cc0d26c1d-lexv2-k6-r3.jsonl": "e9f456722692eb34ff5757e309075b890ecca814451ed24e37b13bccd06e0ab1",
+  "raw/forum-new/forum-new-e28bb182d-k10-r1.jsonl": "f212b3e10742aaa6cdcd8c49b9f126a00e92dbfe25bc1079e3c492f4d5304757",
+  "raw/forum-new/forum-new-e28bb182d-k10-r2.jsonl": "29c03326a144147af3d977b16f6b517767a6d0731f1358bee58634dbc30aadec",
+  "raw/forum-new/forum-new-e28bb182d-k10-r3.jsonl": "70553b2522578cc94d061bf5af03f7a794d8668c7d921b41486f42e9f8d16f7b",
+  "raw/forum-new/forum-new-e28bb182d-k6-r1.jsonl": "6c0158b48416cde2526abfa52d34dd9bf8203c3a7c7222c209dc06054f807b7b",
+  "raw/forum-new/forum-new-e28bb182d-k6-r2.jsonl": "ea4530e646bd0131fb447197814c64b492526e1862183be9e0a7299f815cc272",
+  "raw/forum-new/forum-new-e28bb182d-k6-r3.jsonl": "0312d79d14baf9dd3f297544fb738c1186ecd0e1d34709870499e5a115f156b0",
+  "raw/injected/forum-new-cc0d26c1d-noexactlane-k6-r1.jsonl": "efc35910aaee7c5dd31e39785ec71d44d37f04050da7a6387d45967c32f74023",
+  "raw/injected/t4-77-cc0d26c1d-noexactlane-k6-r1.jsonl": "57198dcfa52efa793b018ecff8c3f9732957660cef1dbbaf1127381359aca041",
+  "raw/safety-gate/safety-gate-b980d42db.jsonl": "79d6431aadac08f41245fefa30d2177576ddd4d12500075b3ed363b7a06ed367",
+  "raw/safety-gate/safety-gate-cc0d26c1d.jsonl": "79d6431aadac08f41245fefa30d2177576ddd4d12500075b3ed363b7a06ed367",
+  "raw/safety-gate/safety-gate-e28bb182d.jsonl": "79d6431aadac08f41245fefa30d2177576ddd4d12500075b3ed363b7a06ed367",
+  "raw/t4-77/t4-77-b980d42db-k10-r1.jsonl": "d18b8a60cc5cccec1037eb7ad6ac7f801c33580aa2157a04f12c6c1edc3627f4",
+  "raw/t4-77/t4-77-b980d42db-k10-r2.jsonl": "bc5c09588446eb9050c5d8118bc159bb71baa8d437ad5821e77a741c6a365127",
+  "raw/t4-77/t4-77-b980d42db-k10-r3.jsonl": "75b6144ff1e7452b74f24c2fed0b885987963513e814098e69a1e1683ca5443e",
+  "raw/t4-77/t4-77-b980d42db-k6-r1.jsonl": "6fbd23386c50445afeba4c35f3784301d222a8e519d67c7c2cecdc418b6e0841",
+  "raw/t4-77/t4-77-b980d42db-k6-r2.jsonl": "79c07e608d0d2d14ec9f5577ecda630145e8dc802c3bf9795ac0dd42b1e92637",
+  "raw/t4-77/t4-77-b980d42db-k6-r3.jsonl": "e9c65d852138974625bdac95d0793dfbf44159c82e12a13fc07868896b4be0a1",
+  "raw/t4-77/t4-77-bm25-k10-r1.jsonl": "0f8e4cf85b84f43554dadd92e008fe77bc70713d71a0249408731fc3bc7eeb29",
+  "raw/t4-77/t4-77-cc0d26c1d-k10-r1.jsonl": "7ee3b0e593c0d1ead122af8aec7313d00d9a618d3887770aedb6b9451001d1d3",
+  "raw/t4-77/t4-77-cc0d26c1d-k10-r2.jsonl": "dbddfc330b28f016658d24b504d63cdbe4225ac58471e7db4c112727db55db8c",
+  "raw/t4-77/t4-77-cc0d26c1d-k10-r3.jsonl": "b1e04b92583eab8658a525fb3454fb709bbb6e338ed14d2ef51c855d7e2f486b",
+  "raw/t4-77/t4-77-cc0d26c1d-k6-r1.jsonl": "3febc48c13cb634991648a1a4dfc5bb5913bc653d8c0cc65807c75c12dec869a",
+  "raw/t4-77/t4-77-cc0d26c1d-k6-r2.jsonl": "915a95ffb2e31230ef689afb56e08e4b62dc8b284e9ad3465eaf94e240a11b37",
+  "raw/t4-77/t4-77-cc0d26c1d-k6-r3.jsonl": "e94d4257555c7bfcfda1c66a6fcd89d0c0e70b142e69f629fe01e705dffef222",
+  "raw/t4-77/t4-77-cc0d26c1d-lexv2-k10-r1.jsonl": "8814ff2412b55d4fd2b8efe0a13f206f899afc2d32b391cdd05d25ecfd26faa3",
+  "raw/t4-77/t4-77-cc0d26c1d-lexv2-k10-r2.jsonl": "6869b2c96e6bbdc97d6b4a2653ede071d5d12d91666e2717f5ff7d5ed93743ec",
+  "raw/t4-77/t4-77-cc0d26c1d-lexv2-k10-r3.jsonl": "68563e1ee4dd83bb35a7c8a7dc7f81746c5a377ffd2aee85131fe677b06d6022",
+  "raw/t4-77/t4-77-cc0d26c1d-lexv2-k6-r1.jsonl": "37baf0ba6c9e389a80dc80e741cf0f779eaf022c9e3b4626357b911c516ce949",
+  "raw/t4-77/t4-77-cc0d26c1d-lexv2-k6-r2.jsonl": "e9119f59854147ae7c7f12413218612f7cd7afefc062890e74f8aebd37badd0c",
+  "raw/t4-77/t4-77-cc0d26c1d-lexv2-k6-r3.jsonl": "f08fcc89056b38ef1aa97e43f76807a969c078d3bfbaac18038e52196e9d06de",
+  "raw/t4-77/t4-77-e28bb182d-k10-r1.jsonl": "30590cff5d4597ba8483572ef58b3bb2de283bdf4f293e3c3b6e8a4b62660bbb",
+  "raw/t4-77/t4-77-e28bb182d-k10-r2.jsonl": "e9606068744439f97215576ba58a23ba2d2f48cefd9ed6c7047c28738ec6fc80",
+  "raw/t4-77/t4-77-e28bb182d-k10-r3.jsonl": "04fc429c48c8f2b9dcd3280a2fe5f7ce3f02104016c9e250ed4919dc143c6541",
+  "raw/t4-77/t4-77-e28bb182d-k6-r1.jsonl": "1ca6a4cbad146261cb556cca9ade702cb1b7a91b05ec943280dcf302d9e05f44",
+  "raw/t4-77/t4-77-e28bb182d-k6-r2.jsonl": "8f7c21aaf3f16a3909e8cf05c26c27f11b962f90ceb88f22b1e94a121221af34",
+  "raw/t4-77/t4-77-e28bb182d-k6-r3.jsonl": "f9ed86cc0d975133fd3cad2d4cb5549b52961780509c58bcb2789f02948c2313"
+ },
+ "cost": {
+  "usd": 0,
+  "model_calls": 0,
+  "note": "retrieval and gate only; no answer generation"
+ }
+}
