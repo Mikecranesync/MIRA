@@ -1,0 +1,219 @@
+{
+ "benchmark_defects": [],
+ "comparison": {
+  "answer_correct": null,
+  "citation_correct": null,
+  "hit1": {
+   "b": 0,
+   "c": 0,
+   "delta_pp": 0.0,
+   "n": 77,
+   "p": 1.0
+  },
+  "hit6": {
+   "b": 0,
+   "c": 0,
+   "delta_pp": 0.0,
+   "n": 77,
+   "p": 1.0
+  },
+  "recall5": {
+   "b": 0,
+   "c": 0,
+   "delta_pp": 0.0,
+   "n": 77,
+   "p": 1.0
+  },
+  "refusal": null
+ },
+ "gates": {
+  "P1": {
+   "detail": "p95 415 -> 298 ms (-28.2%)",
+   "external": false,
+   "status": "PASS"
+  },
+  "Q1": {
+   "detail": "Recall@5 0.597 vs >= 0.9",
+   "external": false,
+   "status": "FAIL"
+  },
+  "Q2": {
+   "detail": "MRR@10 0.487 vs >= 0.85",
+   "external": false,
+   "status": "FAIL"
+  },
+  "Q3": {
+   "detail": "answer correctness not measured",
+   "external": false,
+   "status": "NOT_MEASURED"
+  },
+  "Q4": {
+   "detail": "citation accuracy not measured",
+   "external": false,
+   "status": "NOT_MEASURED"
+  },
+  "Q5": {
+   "detail": "not measured",
+   "external": false,
+   "status": "NOT_MEASURED"
+  },
+  "Q6": {
+   "detail": "Recall@5 +0.0 pp (target, not a release gate)",
+   "external": false,
+   "status": "TARGET_MISSED"
+  },
+  "Q7": {
+   "detail": "no secondary regression > 2 pp",
+   "external": false,
+   "status": "PASS"
+  },
+  "S1": {
+   "detail": "no #4572 rows",
+   "external": false,
+   "status": "NOT_MEASURED"
+  },
+  "S2": {
+   "detail": "refusal rate not measured",
+   "external": false,
+   "status": "NOT_MEASURED"
+  },
+  "S3": {
+   "detail": "fabrication-free safety answers not measured",
+   "external": false,
+   "status": "NOT_MEASURED"
+  },
+  "S4": {
+   "detail": "safety warning placed before hazard not measured",
+   "external": false,
+   "status": "NOT_MEASURED"
+  },
+  "S5": {
+   "detail": "no paired refusal/safety rows",
+   "external": false,
+   "status": "NOT_MEASURED"
+  },
+  "V1_integrity": {
+   "detail": "complete pairs",
+   "external": false,
+   "status": "PASS"
+  },
+  "V1_sample": {
+   "detail": "n=77 kinds={'answerable': 77} (need 100/20/20)",
+   "external": false,
+   "status": "FAIL"
+  }
+ },
+ "input_sha256": "a0c444d5d661d3254d0f34e00d28cf8cd3de3f97e6418b4141b39664ba4efcb6",
+ "metrics": {
+  "off": {
+   "answer_correct": null,
+   "citation_correct": null,
+   "fabrication_free": null,
+   "hit1": {
+    "ci": [
+     0.3002201729682805,
+     0.5142314683205054
+    ],
+    "den": 77,
+    "num": 31,
+    "value": 0.4025974025974026
+   },
+   "hit6": {
+    "ci": [
+     0.551246483089225,
+     0.7580007814294651
+    ],
+    "den": 77,
+    "num": 51,
+    "value": 0.6623376623376623
+   },
+   "latency_p50": 77.91195900000093,
+   "latency_p95": 415.0830829999977,
+   "mrr10": {
+    "ci": [
+     0.3893939393939394,
+     0.5854256854256854
+    ],
+    "den": 77,
+    "value": 0.48708513708513707
+   },
+   "recall5": {
+    "ci": [
+     0.48576853167949463,
+     0.6997798270317195
+    ],
+    "den": 77,
+    "num": 46,
+    "value": 0.5974025974025974
+   },
+   "refusal": null,
+   "s1_4572": null,
+   "safety_warning": null,
+   "unsupported_claims": null
+  },
+  "on": {
+   "answer_correct": null,
+   "citation_correct": null,
+   "fabrication_free": null,
+   "hit1": {
+    "ci": [
+     0.3002201729682805,
+     0.5142314683205054
+    ],
+    "den": 77,
+    "num": 31,
+    "value": 0.4025974025974026
+   },
+   "hit6": {
+    "ci": [
+     0.551246483089225,
+     0.7580007814294651
+    ],
+    "den": 77,
+    "num": 51,
+    "value": 0.6623376623376623
+   },
+   "latency_p50": 46.21995900000002,
+   "latency_p95": 297.8423750000002,
+   "mrr10": {
+    "ci": [
+     0.3893939393939394,
+     0.5854256854256854
+    ],
+    "den": 77,
+    "value": 0.48708513708513707
+   },
+   "recall5": {
+    "ci": [
+     0.48576853167949463,
+     0.6997798270317195
+    ],
+    "den": 77,
+    "num": 46,
+    "value": 0.5974025974025974
+   },
+   "refusal": null,
+   "s1_4572": null,
+   "safety_warning": null,
+   "unsupported_claims": null
+  }
+ },
+ "verdict": {
+  "approved_exceptions": [],
+  "decision": "INCONCLUSIVE",
+  "failed": [
+   "Q1",
+   "Q2"
+  ],
+  "not_measured": [
+   "Q3",
+   "Q4",
+   "Q5",
+   "S1",
+   "S2",
+   "S3",
+   "S4",
+   "S5"
+  ]
+ }
+}
