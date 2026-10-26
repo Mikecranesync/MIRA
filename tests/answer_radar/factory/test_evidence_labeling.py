@@ -295,3 +295,24 @@ def test_a_third_disagreeing_label_still_routes_to_experts():
     c = _forum()
     c.labels = [_lab("a"), _lab("b"), _lab("c", Answerability.UNANSWERABLE, ())]
     assert "labelers disagree" in route([c], seed="s", audit_rate=0.0)[c.case_id]
+
+
+def test_missing_model_manual_is_a_coverage_gap_not_a_substitute():
+    c = _forum()  # PowerFlex 525 question
+    only_40 = [p for p in PAGES if p.model == "PowerFlex 40"]
+    assert resolve(c, only_40) == []
+    data = export_review_data([c], {c.case_id: resolve(c, only_40)})
+    assert data["forum"][0]["manual_title"] == "" and data["forum"][0]["pages"] == []
+    family = [
+        ManualPage(
+            "oem_manuals",
+            "ee" * 32,
+            3,
+            "F5 overvoltage family-wide fault table",
+            "Allen-Bradley",
+            "",
+        )
+    ]
+    ev = resolve(c, [*only_40, *family])
+    assert [e.doc_sha256 for e in ev] == ["ee" * 32]  # a family-wide document stays eligible
+    assert export_review_data([c], {c.case_id: ev})["forum"][0]["manual_title"] == "Allen-Bradley"

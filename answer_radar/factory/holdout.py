@@ -1,13 +1,16 @@
 """The hidden Live holdout (spec §3 IMIB-Live, §10).
 
 The repository is public and every agent reads it, so Live case text is sealed OUTSIDE any
-git work tree; only a manifest of hashes may be committed. `developer_export` is the only
+git work tree; only a manifest of salted opaque ids may be committed. `developer_export` is the only
 view implementation agents get, and it omits every holdout case.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import secrets
 from dataclasses import asdict
 from pathlib import Path
 
@@ -23,28 +26,46 @@ def _inside_git(path: Path) -> bool:
 
 
 def seal_live(cases: list[BenchmarkCase], private_dir: Path) -> list[dict]:
-    """Write holdout cases to `private_dir` (must be outside git); return the committable manifest."""
+    """Write holdout cases to `private_dir` (must be outside git); return the committable manifest.
+
+    The manifest holds only salted opaque ids. The mapping back to source ids, URLs and hashes
+    lives in `private_dir/holdout-index.json`, beside the sealed cases and the salt.
+    """
     private_dir = private_dir.resolve()
     if _inside_git(private_dir):
         raise HoldoutLeak(
             f"{private_dir} is inside a git work tree; holdout text would be publishable"
         )
     private_dir.mkdir(parents=True, exist_ok=True)
-    manifest = []
+    salt_path = private_dir / "holdout-salt"
+    if not salt_path.is_file():
+        salt_path.write_text(secrets.token_hex(32), encoding="utf-8")
+    salt = salt_path.read_text(encoding="utf-8").strip()
+    manifest, index = [], []
     for c in sorted((c for c in cases if c.holdout), key=lambda c: c.case_id):
         if c.exposed_to_developers:
             raise HoldoutLeak(f"{c.case_id} is marked exposed; it cannot be a holdout")
+        # Opaque, salted id: a public manifest must not reveal the source post (case_id embeds
+        # source:external_id) or a hash of its public text that could be matched by guessing.
+        hid = hmac.new(salt.encode(), c.case_id.encode(), hashlib.sha256).hexdigest()[:24]
+        path = private_dir / f"{hid}.json"
         blob = json.dumps(asdict(c), default=str, sort_keys=True)
-        (private_dir / f"{c.case_id.replace(':', '_').replace('/', '_')}.json").write_text(
-            blob, encoding="utf-8"
-        )
-        manifest.append(
+        if path.is_file() and json.loads(path.read_text(encoding="utf-8"))["case_id"] != c.case_id:
+            raise HoldoutLeak(f"{path} already holds a different case")
+        path.write_text(blob, encoding="utf-8")
+        manifest.append({"holdout_id": hid})
+        index.append(
             {
+                "holdout_id": hid,
                 "case_id": c.case_id,
                 "freeze_hash": c.freeze_hash,
                 "text_sha256": c.provenance.text_sha256,
+                "url": c.provenance.url,
             }
         )
+    (private_dir / "holdout-index.json").write_text(
+        json.dumps(index, indent=2) + "\n", encoding="utf-8"
+    )
     return manifest
 
 

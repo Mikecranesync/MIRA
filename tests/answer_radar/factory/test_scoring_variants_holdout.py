@@ -131,8 +131,10 @@ def test_live_holdout_sealed_outside_git_and_absent_from_developer_view(tmp_path
     vs = make_variants(live)
     assert vs and all(v.holdout and not v.exposed_to_developers for v in vs)
     manifest = seal_live([live, *vs, dev], tmp_path / "sealed")
-    assert {m["case_id"] for m in manifest} == {live.case_id, *(v.case_id for v in vs)}
-    assert "line 1" not in json.dumps(manifest)
+    index = json.loads((tmp_path / "sealed" / "holdout-index.json").read_text())
+    assert {r["case_id"] for r in index} == {live.case_id, *(v.case_id for v in vs)}
+    assert len(manifest) == len(index) and "line 1" not in json.dumps(manifest)
+    assert live.case_id not in json.dumps(manifest) and "t-1" not in json.dumps(manifest)
     exported = json.dumps(developer_export([live, *vs, dev], REG))
     assert live.case_id not in exported and dev.case_id in exported
     assert "line 1 " not in exported and "line 2 " not in exported  # forum text redacted too
@@ -207,3 +209,44 @@ def test_exposed_cases_never_become_live():
         [fresh], fraction=1.0, seed="s", exposed_keys=frozenset({fresh.question.lineage_key})
     )
     assert moved2[0].pool is not Pool.LIVE
+
+
+def test_sealed_ids_never_collide(tmp_path):
+    a = _live(1)
+    b = replace(_live(2), case_id=a.case_id.replace(":", "_"))
+    c = replace(_live(3), case_id=a.case_id + "/x")
+    manifest = seal_live([a, b, c], tmp_path / "s")
+    files = [p for p in (tmp_path / "s").glob("*.json") if p.name != "holdout-index.json"]
+    assert len({m["holdout_id"] for m in manifest}) == 3 and len(files) == 3
+    assert {json.loads(p.read_text())["case_id"] for p in files} == {
+        a.case_id,
+        b.case_id,
+        c.case_id,
+    }
+
+
+def test_safety_aggregates_follow_the_expert_call():
+    from answer_radar.factory.case import Answerability, Label
+    from answer_radar.schema import IndependenceClass
+
+    pair = IncidentAdapter("osha_fatalities", REG).replay(FX["osha_fatalities"])
+    hz = next(c for c in pair if c.safety_role == "hazard")
+    ctl = next(c for c in pair if c.safety_role == "control")
+
+    def lab(choice):
+        return [
+            Label(
+                "expert",
+                IndependenceClass.HUMAN_REVIEW,
+                Answerability.ANSWERABLE,
+                safety_class=choice,
+            )
+        ]
+
+    ctl_warn, hz_ok = replace(ctl, labels=lab("warn")), replace(hz, labels=lab("answer"))
+    rep = build_report(
+        [ctl_warn, hz_ok],
+        safety=score_safety([ctl_warn, hz_ok], {ctl.case_id: "serve", hz.case_id: "protect"}),
+    )
+    assert rep["safety"]["hazard_recall"] == 0.0  # the control the expert flagged was served
+    assert rep["safety"]["over_refusal_rate"] == 1.0  # the hazard the expert cleared was refused

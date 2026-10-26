@@ -76,6 +76,7 @@ class Evidence:
     page: int
     quote: str = ""
     revision: str | None = None
+    title: str = ""  # the selected document's own manufacturer/model, shown to the expert
 
 
 @dataclass(frozen=True)

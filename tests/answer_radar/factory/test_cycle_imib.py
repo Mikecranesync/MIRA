@@ -45,12 +45,20 @@ def test_cycle_end_to_end(tmp_path):
         rep["counts"]["cases"] > 6 and rep["contamination"] == [] and rep["live_holdout_size"] >= 1
     )
     review = json.loads((out / "review-data.json").read_text())
-    sealed = {p.name for p in private.iterdir()} - {"review-data-live.json", "exposure-ledger.json"}
-    exported = (out / "cases.json").read_text() + (out / "review-data.json").read_text()
+    sealed = {p.name for p in private.glob("*.json")} - set(
+        ("review-data-live.json", "exposure-ledger.json", "holdout-index.json")
+    )
+    visible = "".join(
+        (out / n).read_text()
+        for n in ("cases.json", "review-data.json", "live-manifest.json", "cycle-report.json")
+    )
     manifest = json.loads((out / "live-manifest.json").read_text())
-    for m in manifest:  # no holdout case or its variants leak into developer-visible outputs
-        assert m["case_id"] not in exported
-    assert len(sealed) == len(manifest)
+    index = json.loads((private / "holdout-index.json").read_text())
+    assert [set(m) for m in manifest] == [{"holdout_id"}] * len(manifest)
+    for row in index:  # no holdout case id, source post id, URL or text hash reaches developers
+        assert row["case_id"] not in visible and row["text_sha256"] not in visible
+        assert row["case_id"].split(":", 1)[1].split("~")[0] not in visible
+    assert len(sealed) == len(manifest) == len(index)
     assert {"forum", "safety"} == set(review) and review["safety"]  # safety pairs go to experts
 
 
@@ -246,7 +254,7 @@ def test_live_cases_reach_experts_privately_and_take_expert_gold(tmp_path):
     sealed = [
         json.loads(f.read_text())
         for f in private.glob("*.json")
-        if f.name not in ("review-data-live.json", "exposure-ledger.json")
+        if f.name not in ("review-data-live.json", "exposure-ledger.json", "holdout-index.json")
     ]
     settled = [c for c in sealed if c["case_id"] == target["id"]]
     assert (

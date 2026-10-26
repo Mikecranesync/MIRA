@@ -105,9 +105,7 @@ def export_review_data(cases: list[BenchmarkCase], candidates: dict[str, list[Ev
                 {
                     "id": c.case_id,
                     "manual": ev[0].doc_sha256[:12] if ev else "",
-                    "manual_title": " ".join(
-                        filter(None, [c.question.manufacturer, c.question.model])
-                    ),
+                    "manual_title": ev[0].title if ev else "",
                     "question": c.question.normalized_question,
                     "url": c.provenance.url,
                     "pages": sorted({e.page for e in ev}),

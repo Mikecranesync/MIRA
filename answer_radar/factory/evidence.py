@@ -42,8 +42,10 @@ def candidate_manuals(case: BenchmarkCase, pages: list[ManualPage]) -> list[Manu
     maker, model = q.manufacturer.lower(), q.model.lower().replace(" ", "")
     keep = [p for p in pages if not maker or not p.manufacturer or p.manufacturer.lower() == maker]
     if model:
-        exact = [p for p in keep if p.model and p.model.lower().replace(" ", "") == model]
-        keep = exact or keep
+        # A page that names a DIFFERENT model is never a candidate: a PowerFlex 40 manual does not
+        # answer a PowerFlex 525 question just because the 525 manual is missing. Pages with no
+        # model (family-wide documents) stay eligible. No match means no candidates: coverage gap.
+        keep = [p for p in keep if not p.model or p.model.lower().replace(" ", "") == model]
     return keep
 
 
@@ -73,5 +75,13 @@ def resolve(case: BenchmarkCase, pages: list[ManualPage], k: int = 5) -> list[Ev
     query = " ".join(filter(None, [q.normalized_question, q.error_code, q.model]))
     ranked = [(s, p) for s, p in bm25_rank(query, candidate_manuals(case, pages)) if s > 0][:k]
     return [
-        Evidence(p.source_id, p.doc_sha256, p.page, p.text[:200], p.revision) for _, p in ranked
+        Evidence(
+            p.source_id,
+            p.doc_sha256,
+            p.page,
+            p.text[:200],
+            p.revision,
+            " ".join(filter(None, [p.manufacturer, p.model])),
+        )
+        for _, p in ranked
     ]
