@@ -45,7 +45,7 @@ def test_cycle_end_to_end(tmp_path):
         rep["counts"]["cases"] > 6 and rep["contamination"] == [] and rep["live_holdout_size"] >= 1
     )
     review = json.loads((out / "review-data.json").read_text())
-    sealed = {p.name for p in private.iterdir()} - {"review-data-live.json"}
+    sealed = {p.name for p in private.iterdir()} - {"review-data-live.json", "exposure-ledger.json"}
     exported = (out / "cases.json").read_text() + (out / "review-data.json").read_text()
     manifest = json.loads((out / "live-manifest.json").read_text())
     for m in manifest:  # no holdout case or its variants leak into developer-visible outputs
@@ -246,7 +246,7 @@ def test_live_cases_reach_experts_privately_and_take_expert_gold(tmp_path):
     sealed = [
         json.loads(f.read_text())
         for f in private.glob("*.json")
-        if f.name != "review-data-live.json"
+        if f.name not in ("review-data-live.json", "exposure-ledger.json")
     ]
     settled = [c for c in sealed if c["case_id"] == target["id"]]
     assert (
@@ -291,3 +291,51 @@ def test_expert_export_with_mismatched_key_refuses(tmp_path):
     (tmp_path / "answers" / "forum-a.json").write_text('{"key": "forum-b", "savedAt": "t"}')
     with pytest.raises(SystemExit, match="does not match"):
         load_expert_export(tmp_path)
+
+
+def test_cycle_keeps_an_exposure_ledger_across_runs(tmp_path):
+    private = tmp_path / "private"
+    base = [
+        "cycle",
+        "--discovery",
+        str(FXD / "discovery.json"),
+        "--pages",
+        str(FXD / "pages.json"),
+        "--private",
+        str(private),
+        "--seed",
+        "a",
+    ]
+    assert main([*base, "--out", str(tmp_path / "o1"), "--live-fraction", "0.0"]) == 0
+    ledger = set(json.loads((private / "exposure-ledger.json").read_text()))
+    assert ledger
+    assert main([*base, "--out", str(tmp_path / "o2"), "--live-fraction", "1.0"]) == 0
+    rep = json.loads((tmp_path / "o2" / "cycle-report.json").read_text())
+    live = json.loads((tmp_path / "o2" / "live-manifest.json").read_text())
+    assert rep["contamination"] == [] and live == []  # everything was already exposed in run 1
+
+
+def test_cycle_rejects_gold_from_non_authoritative_pages(tmp_path):
+    pages = json.loads((FXD / "pages.json").read_text())
+    for p in pages:
+        p["source_id"] = "control_com"  # a discovery-only source posing as a manual
+    pf = tmp_path / "pages.json"
+    pf.write_text(json.dumps(pages))
+    out, private = tmp_path / "o", tmp_path / "p"
+    main(
+        [
+            "cycle",
+            "--discovery",
+            str(FXD / "discovery.json"),
+            "--pages",
+            str(pf),
+            "--out",
+            str(out),
+            "--private",
+            str(private),
+            "--seed",
+            "s",
+        ]
+    )
+    review = json.loads((out / "review-data.json").read_text())
+    assert all(r["pages"] == [] for r in review["forum"])  # never offered to the expert

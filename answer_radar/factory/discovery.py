@@ -146,6 +146,8 @@ class Adapter:
                     captured_text=text,
                     captured_at=rec["captured_at"],
                     pool=extra.pop("pool", self.pool),
+                    # Newly captured: nobody has seen it yet. The cycle marks what it exports.
+                    exposed_to_developers=extra.pop("exposed_to_developers", False),
                     license_note=rec.get("license"),
                     **extra,
                 )

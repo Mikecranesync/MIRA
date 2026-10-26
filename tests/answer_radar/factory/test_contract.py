@@ -142,14 +142,39 @@ def test_variants_keep_lineage_and_declare_kind():
     ok = _case("v1", lineage_id="p", parent_case_id="p", variant_kind="typo")
     stray = _case("v2", lineage_id="other", parent_case_id="p", variant_kind="typo")
     undeclared = _case("v3", lineage_id="p", parent_case_id="p", variant_kind="emoji")
-    needs_gold = _case(
-        "v4", lineage_id="p", parent_case_id="p", variant_kind="changed_numeric_value"
+    unsettled = _case(
+        "v5", lineage_id="p", parent_case_id="p", variant_kind="changed_numeric_value"
     )
-    errs = validate_set([parent, ok, stray, undeclared, needs_gold], REG)
+    needs_gold = _case(
+        "v4",
+        lineage_id="p",
+        parent_case_id="p",
+        variant_kind="changed_numeric_value",
+        gold_status=GoldStatus.EXPERT_REVIEWED,
+        gold_evidence=[GOLD],
+    )
+    errs = validate_set([parent, ok, stray, undeclared, needs_gold, unsettled], REG)
+    assert not any(e.startswith("v5") for e in errs)  # an unsettled answer-changing variant is fine
     assert not any(e.startswith("v1") for e in errs)
     assert any(e.startswith("v2") and "lineage" in e for e in errs)
     assert any(e.startswith("v3") and "undeclared" in e for e in errs)
-    assert any(e.startswith("v4") and "own gold" in e for e in errs)
+    assert any(e.startswith("v4") and "not reviewed for" in e for e in errs)
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [("normalized_question", "edited"), ("model", "PowerFlex 755"), ("error_code", "F12")],
+)
+def test_task_edits_after_freeze_are_rejected(field, value):
+    c = _case()
+    setattr(c.question, field, value)
+    assert any("snapshot hash mismatch" in e for e in validate_case(c, REG))
+
+
+def test_discovery_metadata_edits_do_not_break_the_freeze():
+    c = _case()
+    c.question.lead_score = 99
+    assert validate_case(c, REG) == []
 
 
 def test_live_variant_cannot_be_exposed():

@@ -56,7 +56,7 @@ def developer_export(cases: list[BenchmarkCase], registry=None) -> list[dict]:
     """
     out = []
     for c in cases:
-        if c.holdout or not c.exposed_to_developers:
+        if c.holdout:
             continue
         d = asdict(c)
         if registry is None or not registry.may_commit_text(c.provenance.source_id):
@@ -66,12 +66,19 @@ def developer_export(cases: list[BenchmarkCase], registry=None) -> list[dict]:
     return out
 
 
-def assign_live(cases: list[BenchmarkCase], *, fraction: float, seed: str) -> list[BenchmarkCase]:
+def assign_live(
+    cases: list[BenchmarkCase],
+    *,
+    fraction: float,
+    seed: str,
+    exposed_keys: frozenset[str] = frozenset(),
+) -> list[BenchmarkCase]:
     """Move a deterministic fraction of fresh, never-exposed source lineages into the Live pool.
 
     Whole split-key groups (`QuestionRecord.lineage_key`) move together, so neither a question's
     variants nor its same-product siblings are split across Live and a developer-visible pool. A
-    group containing any Red, Safety or already-exposed case never moves.
+    group containing any Red, Safety or already-exposed case never moves, nor does any key in
+    `exposed_keys` (the cycle's exposure ledger: everything earlier cycles exported).
     """
     import hashlib
     from dataclasses import replace
@@ -92,7 +99,8 @@ def assign_live(cases: list[BenchmarkCase], *, fraction: float, seed: str) -> li
         for c in cases
         if c.pool not in (Pool.CHALLENGE, Pool.CORE)
         or c.question.split_assignment is not SplitAssignment.FRESH
-    }
+        or c.exposed_to_developers  # exposure is history: it is never cleared
+    } | set(exposed_keys)
     return [
         replace(c, pool=Pool.LIVE, holdout=True, exposed_to_developers=False)
         if c.question.lineage_key not in blocked and picked(c.question.lineage_key)

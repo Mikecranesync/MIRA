@@ -25,7 +25,7 @@ from answer_radar.factory.case import (
     Label,
     Pool,
 )
-from answer_radar.schema import IndependenceClass, SafetyClass
+from answer_radar.schema import NON_PROMOTING_INDEPENDENCE, IndependenceClass, SafetyClass
 
 MIN_CONFIDENCE = 0.7
 EXPERT_ID = "expert"
@@ -54,8 +54,11 @@ def route(
     for c in cases:
         ai = [lb for lb in c.labels if lb.independence is not IndependenceClass.HUMAN_REVIEW]
         why = []
+        independent = [lb for lb in ai if lb.independence not in NON_PROMOTING_INDEPENDENCE]
         if len(ai) < 2:
             why.append("fewer than two independent labels")
+        elif len({lb.labeler_id for lb in ai}) < 2 or len(independent) < len(ai):
+            why.append("labels not independent (duplicate labeler or self-consistency)")
         elif not agree(ai[0], ai[1]):
             why.append("labelers disagree")
         if any(
@@ -89,7 +92,13 @@ def export_review_data(cases: list[BenchmarkCase], candidates: dict[str, list[Ev
     forum, safety = [], []
     for c in sorted(cases, key=lambda c: c.case_id):
         if c.pool is Pool.SAFETY:
-            safety.append({"id": c.case_id, "question": c.question.normalized_question})
+            safety.append(
+                {
+                    "id": c.case_id,
+                    "question": c.question.normalized_question,
+                    "freeze_hash": c.freeze_hash,
+                }
+            )
         else:
             ev = review_candidates(candidates.get(c.case_id, []))
             forum.append(
@@ -102,6 +111,7 @@ def export_review_data(cases: list[BenchmarkCase], candidates: dict[str, list[Ev
                     "question": c.question.normalized_question,
                     "url": c.provenance.url,
                     "pages": sorted({e.page for e in ev}),
+                    "freeze_hash": c.freeze_hash,
                 }
             )
     return {"forum": forum, "safety": safety}
@@ -119,14 +129,21 @@ def import_expert(
 ) -> list[BenchmarkCase]:
     """Settle labels from an expert export.
 
-    `shown` is the review-data.json the expert actually answered. A forum answer only counts
-    when today's candidate manual and pages are the ones that file showed for that case: page
+    `shown` is the review-data.json the expert actually answered. An answer only counts when
+    that file showed this exact frozen question (`freeze_hash`), and for forum cases when
+    today's candidate manual and pages are the ones it showed: page
     numbers carry no manual identity, so a re-ranked or changed corpus must not let a "yes" land
     on a different document. Without `shown`, nothing is cross-checked (unit use only).
     """
-    shown_by_id = {r["id"]: r for r in (shown or {}).get("forum", [])}
+    shown_by_id = {r["id"]: r for k in ("forum", "safety") for r in (shown or {}).get(k, [])}
     out = []
     for c in cases:
+        if (
+            shown is not None
+            and (shown_by_id.get(c.case_id) or {}).get("freeze_hash") != c.freeze_hash
+        ):
+            out.append(c)  # the expert answered a different (or no) frozen question: never counted
+            continue
         if c.pool is Pool.SAFETY:
             key = f"safety-{c.case_id}"
             rec = answers.get(key)

@@ -43,9 +43,9 @@ VARIANT_KINDS: dict[str, bool] = {
     "shorthand": True,
     "typo": True,
     "voice_transcription": True,
-    "fault_code_only": True,
+    "fault_code_only": False,  # drops context (and any hazard) from the ask
     "synonym": True,
-    "ack_clear_reset": True,
+    "ack_clear_reset": False,  # adds a reset task the parent evidence may not answer
     "model_family": True,
     "sibling_model_distractor": False,
     "two_device": False,
@@ -127,11 +127,24 @@ def validate_case(case: BenchmarkCase, registry: SourceRegistry) -> list[str]:
         errs.append(f"{case.case_id}: provenance/freeze incomplete")
     if case.question.raw_text is not None and text_sha256(case.question.raw_text) != p.text_sha256:
         errs.append(f"{case.case_id}: raw text does not match its frozen hash")
+    from answer_radar.freeze import snapshot_hash
+
+    if case.freeze_hash and snapshot_hash(case.question) != case.freeze_hash:
+        errs.append(f"{case.case_id}: task changed after freezing (snapshot hash mismatch)")
     if case.is_variant:
         if case.variant_kind not in VARIANT_KINDS:
             errs.append(f"{case.case_id}: undeclared variant kind {case.variant_kind!r}")
-        elif not VARIANT_KINDS[case.variant_kind] and not case.gold_evidence:
-            errs.append(f"{case.case_id}: answer-changing variant needs its own gold")
+        elif (
+            not VARIANT_KINDS[case.variant_kind]
+            and case.gold_status is not GoldStatus.PROVISIONAL
+            and not any(
+                lb.independence is IndependenceClass.HUMAN_REVIEW and not lb.unsure
+                for lb in case.labels
+            )
+        ):
+            errs.append(
+                f"{case.case_id}: answer-changing variant cannot carry settled gold it was not reviewed for"
+            )
     for ev in case.gold_evidence:
         if ev.source_id not in registry or not registry.may_back_gold(ev.source_id):
             errs.append(

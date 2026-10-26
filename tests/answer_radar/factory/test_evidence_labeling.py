@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ast
 import json
+
+import pytest
 from pathlib import Path
 
 import answer_radar.factory as factory_pkg
@@ -137,7 +139,15 @@ def test_export_matches_review_page_shape_and_hides_mira():
     c = _forum()
     data = export_review_data([c], {c.case_id: resolve(c, PAGES)})
     assert set(data) == {"forum", "safety"} and data["forum"][0]["pages"] == [41]
-    assert set(data["forum"][0]) == {"id", "manual", "manual_title", "question", "url", "pages"}
+    assert set(data["forum"][0]) == {
+        "id",
+        "manual",
+        "manual_title",
+        "question",
+        "url",
+        "pages",
+        "freeze_hash",
+    }
 
 
 def test_expert_import_settles_gold_deterministically():
@@ -223,3 +233,59 @@ def test_expert_answer_ignored_when_shown_manual_or_pages_changed():
         import_expert([c], ans, cand, {"forum": [], "safety": []})[0].gold_status
         is GoldStatus.PROVISIONAL
     )
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [
+        [_lab("a"), _lab("a")],
+        [
+            Label("a", IndependenceClass.SELF_CONSISTENCY_ONLY, Answerability.ANSWERABLE, (41,)),
+            Label("b", IndependenceClass.SELF_CONSISTENCY_ONLY, Answerability.ANSWERABLE, (41,)),
+        ],
+        [
+            _lab("a"),
+            Label("b", IndependenceClass.SAME_MODEL_DIFFERENT_RUN, Answerability.ANSWERABLE, (41,)),
+        ],
+    ],
+)
+def test_non_independent_agreement_still_goes_to_experts(labels):
+    c = _forum()
+    c.labels = labels
+    q = route([c], seed="s", audit_rate=0.0)
+    assert any("not independent" in r for r in q.get(c.case_id, []))
+
+
+def test_expert_answer_ignored_when_question_changed_after_export():
+    from dataclasses import replace
+
+    from answer_radar.factory.case import freeze_case
+
+    c = _forum()
+    cand = {c.case_id: resolve(c, PAGES)}
+    shown = export_review_data([c], cand)
+    q2 = replace(
+        c.question, normalized_question=c.question.normalized_question + " Can I bypass the fault?"
+    )
+    c2 = freeze_case(
+        q2, source_id="control_com", captured_text="x", captured_at="2026-10-27", pool=c.pool
+    )
+    ans = _answers(c2, "answered", {"41": "yes"})
+    assert (
+        import_expert([c2], ans, {c2.case_id: cand[c.case_id]}, shown)[0].gold_status
+        is GoldStatus.PROVISIONAL
+    )
+    h, ctl = IncidentAdapter("osha_fatalities", REG).replay(FX["osha_fatalities"])
+    shown_s = export_review_data([h], {})
+    h2 = freeze_case(
+        replace(h.question, normalized_question="changed"),
+        source_id="osha_fatalities",
+        captured_text="y",
+        captured_at="t",
+        pool=h.pool,
+        safety_pair_id=h.safety_pair_id,
+        safety_role="hazard",
+    )
+    rec = {f"safety-{h.case_id}": {"key": f"safety-{h.case_id}", "savedAt": "t", "choice": "stop"}}
+    assert import_expert([h2], rec, {}, shown_s)[0].gold_status is GoldStatus.PROVISIONAL
+    assert import_expert([h], rec, {}, shown_s)[0].gold_status is GoldStatus.EXPERT_REVIEWED

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from answer_radar.factory.case import validate_set
@@ -73,7 +74,9 @@ def cycle(
         if sid.startswith("_"):
             continue
         cases += ADAPTERS[sid](sid, reg).replay(recs)
-    cases = assign_live(cases, fraction=live_fraction, seed=seed)
+    ledger_path = private / "exposure-ledger.json"
+    ledger = set(json.loads(ledger_path.read_text())) if ledger_path.is_file() else set()
+    cases = assign_live(cases, fraction=live_fraction, seed=seed, exposed_keys=frozenset(ledger))
     cases += [
         v
         for c in list(cases)
@@ -83,6 +86,8 @@ def cycle(
     errors = validate_set(cases, reg)
     if errors:
         raise SystemExit("invalid case set:\n" + "\n".join(errors))
+    # Only authoritative sources may become gold, so only they are offered to experts.
+    pages = [p for p in pages if p.source_id in reg and reg.may_back_gold(p.source_id)]
     candidates = {c.case_id: resolve(c, pages) for c in cases}
     queue = route(cases, seed=seed)
     if expert_export is not None:
@@ -104,7 +109,14 @@ def cycle(
     out.mkdir(parents=True, exist_ok=True)
     visible = [c for c in cases if not c.holdout]
     review = export_review_data([c for c in visible if c.case_id in queue], candidates)
+    # Everything not held out is about to be shown to developers: record that, permanently.
+    cases = [c if c.holdout else replace(c, exposed_to_developers=True) for c in cases]
+    errors = validate_set(cases, reg)  # again, now that evidence and expert gold are attached
+    if errors:
+        raise SystemExit("invalid case set after expert import:\n" + "\n".join(errors))
     manifest = seal_live(cases, private)
+    ledger |= {c.question.lineage_key for c in cases if not c.holdout}
+    ledger_path.write_text(json.dumps(sorted(ledger), indent=2) + "\n", encoding="utf-8")
     # Live cases need expert gold too. Their review file goes beside the sealed text, outside git,
     # so the expert sees them while developers never do.
     live = [c for c in cases if c.holdout and c.case_id in queue]

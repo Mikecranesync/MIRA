@@ -1,10 +1,10 @@
 """Metamorphic variants (spec §7): expand a real question, never invent its gold.
 
 Each transformation is deterministic and declared in `case.VARIANT_KINDS`. Variants keep
-the parent's `lineage_id` and question identity fields (so the same split key), inherit
-its exposure (a Live parent's variants stay hidden), and inherit its gold only when the
-transformation is answer-preserving. Answer-changing kinds are not generated here: they
-need their own gold, which only a labeler can supply.
+the parent's `lineage_id` and question identity fields (so the same split key) and inherit
+its exposure (a Live parent's variants stay hidden). Only answer-preserving kinds inherit
+the parent's answer and labels; answer-changing kinds start provisional and unlabeled, and
+are never generated from safety-relevant parents.
 """
 
 from __future__ import annotations
@@ -12,7 +12,15 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 
-from answer_radar.factory.case import VARIANT_KINDS, BenchmarkCase, freeze_case
+from answer_radar.factory.case import (
+    VARIANT_KINDS,
+    Answerability,
+    BenchmarkCase,
+    GoldStatus,
+    Pool,
+    freeze_case,
+)
+from answer_radar.schema import SafetyClass
 
 _SHORT = {
     "drive": "vfd",
@@ -65,16 +73,22 @@ TRANSFORMS = {
         f"{c.question.normalized_question} How do I acknowledge and clear it?"
     ),
 }
-if not all(VARIANT_KINDS[k] for k in TRANSFORMS):
-    raise RuntimeError("only answer-preserving kinds may be auto-generated")
 
 
 def make_variants(parent: BenchmarkCase, kinds: list[str] | None = None) -> list[BenchmarkCase]:
     out = []
     for kind in kinds or list(TRANSFORMS):
+        preserving = VARIANT_KINDS[kind]
+        if not preserving and (
+            parent.pool is Pool.SAFETY or parent.question.safety_class is not SafetyClass.NONE
+        ):
+            continue  # an answer-changing rewrite could silently drop the hazard being tested
         text = TRANSFORMS[kind](parent)
         if not text or text == parent.question.normalized_question:
             continue
+        # Answer-preserving kinds inherit the parent's settled answer; answer-changing kinds
+        # start unsettled and need their own labels (spec section 7).
+        inherit = preserving
         q = replace(
             parent.question,
             question_id=f"{parent.case_id}~{kind}",
@@ -92,12 +106,12 @@ def make_variants(parent: BenchmarkCase, kinds: list[str] | None = None) -> list
                 lineage_id=parent.lineage_id,
                 parent_case_id=parent.case_id,
                 variant_kind=kind,
-                answerability=parent.answerability,
-                gold_status=parent.gold_status,
-                gold_evidence=list(parent.gold_evidence),
-                labels=list(parent.labels),
-                expected_behavior=list(parent.expected_behavior),
-                forbidden_behavior=list(parent.forbidden_behavior),
+                answerability=parent.answerability if inherit else Answerability.UNKNOWN,
+                gold_status=parent.gold_status if inherit else GoldStatus.PROVISIONAL,
+                gold_evidence=list(parent.gold_evidence) if inherit else [],
+                labels=list(parent.labels) if inherit else [],
+                expected_behavior=list(parent.expected_behavior) if inherit else [],
+                forbidden_behavior=list(parent.forbidden_behavior) if inherit else [],
                 holdout=parent.holdout,
                 exposed_to_developers=parent.exposed_to_developers,
                 url=parent.provenance.url,

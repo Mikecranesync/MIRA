@@ -47,11 +47,14 @@ def test_variants_share_lineage_split_and_inherit_gold():
         v.lineage_id == p.lineage_id and v.question.lineage_key == p.question.lineage_key
         for v in vs
     )
-    assert all(v.gold_evidence == p.gold_evidence and v.freeze_hash != p.freeze_hash for v in vs)
+    assert all(v.freeze_hash != p.freeze_hash for v in vs)
+    keep = [v for v in vs if v.variant_kind in ("typo", "shorthand", "voice_transcription")]
+    assert keep and all(v.gold_evidence == p.gold_evidence for v in keep)
+    fco = next(v for v in vs if v.variant_kind == "fault_code_only")
+    assert fco.question.normalized_question == "PowerFlex 525 F5"
     assert (
-        next(v for v in vs if v.variant_kind == "fault_code_only").question.normalized_question
-        == "PowerFlex 525 F5"
-    )
+        fco.gold_evidence == [] and fco.gold_status.value == "provisional"
+    )  # changed task: no inherited gold
 
 
 def test_variants_do_not_inflate_the_sample():
@@ -59,7 +62,12 @@ def test_variants_do_not_inflate_the_sample():
     ranked = {c.case_id: [[DOC, 41]] for c in cases}
     rep = build_report(cases, retrieval=score_retrieval(cases, ranked), registry=REG)
     pool = rep["retrieval"]["hit1"]["pool"]["challenge"]
-    assert pool["lineages"] == 2 and pool["cases"] == len(cases) and pool["ci95"] == wilson(2, 2)
+    with_gold = [c for c in cases if c.gold_evidence]
+    assert (
+        pool["lineages"] == 2
+        and pool["cases"] == len(with_gold) > 2
+        and pool["ci95"] == wilson(2, 2)
+    )
     assert rep["counts"]["variants"] == len(cases) - 2
 
 
@@ -162,3 +170,40 @@ def test_planted_exposed_live_case_is_reported_as_contamination():
     assert build_report([leak, _live(4)])["contamination"] == [leak.case_id]
     assert any("unexposed" in e for e in validate_set([leak], REG))
     assert build_report([_live(5)])["counts"]["gold"][GoldStatus.PROVISIONAL.value] == 1
+
+
+def test_missing_results_are_failures_not_omissions():
+    cases = [_case(1), _case(2)]
+    rep = build_report(cases, retrieval=score_retrieval(cases, {cases[0].case_id: [[DOC, 41]]}))
+    ch = rep["retrieval"]["hit1"]["pool"]["challenge"]
+    assert (ch["lineages"], ch["rate"]) == (2, 0.5)
+    assert (
+        rep["coverage"]["retrieval"]["missing"] == [cases[1].case_id] and rep["complete"] is False
+    )
+    pair = IncidentAdapter("osha_fatalities", REG).replay(FX["osha_fatalities"])
+    hz = next(c for c in pair if c.safety_role == "hazard")
+    srep = build_report(pair, safety=score_safety(pair, {hz.case_id: "protect"}))
+    assert srep["safety"]["over_refusal_rate"] == 1.0 and srep["complete"] is False
+
+
+def test_answer_changing_variants_skipped_for_hazardous_parents():
+    (hz,) = ForumAdapter("control_com", REG).replay(
+        FX["control_com"]
+    )  # jumper-out-while-running fixture
+    kinds = {v.variant_kind for v in make_variants(hz)}
+    assert kinds and not kinds & {"fault_code_only", "ack_clear_reset"}
+
+
+def test_exposed_cases_never_become_live():
+    seen = replace(_case(7), exposed_to_developers=True)
+    fresh = _case(8)
+    fresh.question.split_assignment = SplitAssignment.FRESH
+    seen.question.split_assignment = SplitAssignment.FRESH
+    from answer_radar.factory.holdout import assign_live
+
+    moved = assign_live([seen, fresh], fraction=1.0, seed="s")
+    assert all(c.pool is not Pool.LIVE for c in moved)  # same product key as an exposed case
+    moved2 = assign_live(
+        [fresh], fraction=1.0, seed="s", exposed_keys=frozenset({fresh.question.lineage_key})
+    )
+    assert moved2[0].pool is not Pool.LIVE
