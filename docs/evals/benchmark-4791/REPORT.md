@@ -327,4 +327,9 @@ versions and flags. A run id is the raw file name.
 
 ## Pending
 
+- Codex review history:
+  - The first review-only attempt at `675ec2d79` reserved a round, then failed inside the runner ("codex failed
+    or produced no envelope"). It escalated on the PR (comment 6409972564), and the runner deleted its log.
+  - A retry at the same head was refused by design, because a crashed reservation stays consumed.
+  - No review verdict exists for `675ec2d79`.
 - The Codex exact-head review, which will be posted on the PR.
