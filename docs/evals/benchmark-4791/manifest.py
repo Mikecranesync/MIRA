@@ -40,7 +40,9 @@ def main() -> None:
         wt = os.path.join(root, f"wt-{rev}")
         revs[arm] = {
             "short": rev,
-            "full": sh("git", "-C", wt, "rev-parse", "HEAD") if os.path.isdir(wt) else None,
+            "full": sh("git", "-C", wt, "rev-parse", "HEAD")
+            if os.path.isdir(wt)
+            else sh("git", "-C", HERE, "rev-parse", rev),
             "deploy_run": {"pre": "40210914670", "post": "40275532081"}.get(arm),
         }
     raw = {

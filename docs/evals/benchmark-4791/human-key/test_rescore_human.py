@@ -172,3 +172,39 @@ def test_frozen_review_data_is_checked(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         sys.argv = ["rescore_human.py", "--export", export(tmp_path), "--out", str(tmp_path / "o")]
         R.main()
+
+
+@pytest.mark.parametrize("breakage", ["error", "duplicate", "missing"])
+def test_rescore_refuses_an_invalid_raw_run(tmp_path, monkeypatch, breakage):
+    """Codex F4: the human rescorer applies the main scorer's raw-run validation before using any human label."""
+    import shutil
+
+    bench = tmp_path / "bench"
+    bench.mkdir()
+    for entry in os.listdir(R.BENCH):
+        if entry not in ("raw", "human-key"):
+            os.symlink(os.path.join(R.BENCH, entry), bench / entry)
+    shutil.copytree(os.path.join(R.BENCH, "raw"), bench / "raw")
+    f = bench / "raw" / "forum-new" / "forum-new-cc0d26c1d-k6-r1.jsonl"
+    rows = [json.loads(line) for line in f.read_text().splitlines() if line.strip()]
+    if breakage == "error":
+        rows[0] = {**rows[0], "error": "connection refused", "ranked_pages": []}
+    elif breakage == "duplicate":
+        rows.append(rows[0])
+    else:
+        rows = rows[1:]
+    f.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    monkeypatch.setattr(R, "BENCH", str(bench))
+    key = {
+        x["id"]: {
+            "complete": True,
+            "kind": "answerable",
+            "yes": [x["pages"][0]],
+            "yes_or_partly": [x["pages"][0]],
+            "flag": False,
+            "note": "",
+        }
+        for x in REVIEW["forum"][:2]
+    }
+    with pytest.raises(R.Refused, match="raw run invalid"):
+        R.score_retrieval(key, "yes")

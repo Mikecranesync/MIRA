@@ -33,6 +33,10 @@ MUTATIONS = {
         '    "answer": "none",\n    "unsure": "protect",\n}',
     ),
     "FINAL without the hazard target": ('and haz["n"] >= HAZARD_TARGET', ""),
+    "rescore skips raw-run validation (Codex F4)": (
+        "            A.validate_rows(rows, frozen, os.path.relpath(path, BENCH), check_kind=True)",
+        "            pass",
+    ),
     "frozen review data not checked": ("if sha(review_path) != REVIEW_DATA_SHA256:", "if False:"),
 }
 

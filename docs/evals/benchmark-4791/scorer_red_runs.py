@@ -58,6 +58,10 @@ MUTATIONS = {
         "if False:",
     ),
     "harness errors accepted (#4799)": ("if r.get(err) is not None:", "if False:"),
+    "kind not checked against frozen labels (Codex F1, 2nd review)": (
+        '            if r.get("kind") != want:',
+        "            if False:",
+    ),
     "unanswerable rows enter the denominator": (
         'ans = {i: q for i, q in s["questions"].items() if q["kind"] == "answerable"}\n    n = len(ans)',
         'ans = dict(s["questions"])\n    n = len(ans)',

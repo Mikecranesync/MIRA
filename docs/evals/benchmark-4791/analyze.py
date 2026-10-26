@@ -76,9 +76,15 @@ class InvalidRun(ValueError):
 
 
 def validate_rows(
-    rows: list[dict], frozen: dict, where: str, labels: str = "accepted", err: str = "error"
+    rows: list[dict],
+    frozen: dict,
+    where: str,
+    labels: str = "accepted",
+    err: str = "error",
+    check_kind: bool = False,
 ) -> None:
-    """Every frozen id exactly once, the frozen labels unchanged, and no harness error, or InvalidRun."""
+    """Every frozen id exactly once, the frozen labels unchanged, and no harness error, or InvalidRun.
+    With check_kind, a row's kind must also match its frozen labels (answerable iff it has accepted pages)."""
     ids = [r["id"] for r in rows]
     dup = sorted({i for i in ids if ids.count(i) > 1})
     missing, extra = sorted(set(frozen) - set(ids)), sorted(set(ids) - set(frozen))
@@ -94,6 +100,10 @@ def validate_rows(
             problems.append(f"{r['id']}: label {r.get(labels)} != frozen {frozen[r['id']]}")
         if r.get(err) is not None:
             problems.append(f"{r['id']}: harness error {str(r[err])[:80]}")
+        if check_kind and r["id"] in frozen:
+            want = "answerable" if frozen[r["id"]] else "unanswerable"
+            if r.get("kind") != want:
+                problems.append(f"{r['id']}: kind {r.get('kind')!r} != frozen {want!r}")
     if problems:
         raise InvalidRun(f"{where}: " + "; ".join(problems[:8]))
 
@@ -124,13 +134,15 @@ def harness_set(name: str, k: int) -> dict:
             continue
         reps = [load_jsonl(f) for f in files]
         for f, rep in zip(files, reps):
-            validate_rows(rep, frozen, os.path.relpath(f, HERE))
+            validate_rows(rep, frozen, os.path.relpath(f, HERE), check_kind=True)
         for r in reps[0]:
             q = qs.setdefault(
                 r["id"],
                 {
                     "accepted": r["accepted"],
-                    "kind": r["kind"],
+                    "kind": "answerable"
+                    if frozen[r["id"]]
+                    else "unanswerable",  # from frozen labels, never raw
                     "cluster": manual_of[r["id"]],
                     "arms": {},
                 },

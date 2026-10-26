@@ -347,5 +347,14 @@ versions and flags. A run id is the raw file name.
   - An end-to-end dry run on SYNTHETIC answers (scratch only, never committed) covered: export, rescore,
     `safety_gate.ts` on the hazard file, then rescore again.
 
+**Second Codex review**, at `f0e8a26ed`: CONVERGED, 0 BLOCKER and 0 HIGH (issuecomment-6418359761). Its MEDIUM
+and LOW findings were closed in the next commit:
+- **F1:** a row's kind must now match its frozen labels, in every arm. The population comes from the frozen
+  labels, never from the raw rows.
+- **F4:** the human rescorer runs the same raw-run validation and refuses invalid runs.
+- **F5:** `run-manifest.json` was refreshed, and the new `test_manifest.py` hashes every file the manifest names.
+  It was red on the stale scorer hash before the refresh.
+- **Tests:** 38 pass. Mutations: scorer 20, rescore 8 (each caught).
+
 **Human review:** NOT STARTED as of the closeout. The live page holds 0 answers. Every verdict in this report is
 the AI-labelled one until `rescore_human.py` prints `FINAL`.

@@ -191,3 +191,18 @@ def test_committed_runs_still_validate_and_keep_their_metrics():
         ]["top5"]["num"]
         == 8
     )
+
+
+def test_a_kind_changed_in_one_arm_only_stops_scoring(tmp_path, monkeypatch):
+    """Codex F1 (2nd review): relabelling a row's kind must be rejected even if only the first arm's file changed."""
+    shutil.copytree(f"{A.HERE}/raw/forum-new", tmp_path / "raw" / "forum-new")
+    shutil.copytree(f"{A.HERE}/forum-new", tmp_path / "forum-new")
+    f = tmp_path / "raw" / "forum-new" / "forum-new-b980d42db-k6-r1.jsonl"
+    rows = [json.loads(line) for line in f.read_text().splitlines() if line.strip()]
+    for r in rows:
+        if r["id"] == "fn-pf40-4":
+            r["kind"] = "unanswerable"
+    f.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    monkeypatch.setattr(A, "HERE", str(tmp_path))
+    with pytest.raises(A.InvalidRun, match="kind"):
+        A.harness_set("forum-new", 6)

@@ -2,13 +2,13 @@
  {
   "mutation": "control (no mutation)",
   "failed": 0,
-  "passed": 22,
+  "passed": 23,
   "failing_tests": []
  },
  {
   "mutation": "rank is 0-based",
   "failed": 8,
-  "passed": 14,
+  "passed": 15,
   "failing_tests": [
    "test_bootstrap_is_deterministic_and_resamples_clusters",
    "test_committed_runs_still_validate_and_keep_their_metrics",
@@ -23,7 +23,7 @@
  {
   "mutation": "top-N uses < instead of <=",
   "failed": 3,
-  "passed": 19,
+  "passed": 20,
   "failing_tests": [
    "test_committed_runs_still_validate_and_keep_their_metrics",
    "test_off_by_one_page_labels_lose_the_hit",
@@ -33,7 +33,7 @@
  {
   "mutation": "McNemar one-sided (drops x2)",
   "failed": 1,
-  "passed": 21,
+  "passed": 22,
   "failing_tests": [
    "test_mcnemar_exact_values"
   ]
@@ -41,7 +41,7 @@
  {
   "mutation": "paired b/c swapped",
   "failed": 1,
-  "passed": 21,
+  "passed": 22,
   "failing_tests": [
    "test_paired_counts_lost_and_gained_and_swapping_arms_flips_them"
   ]
@@ -49,7 +49,7 @@
  {
   "mutation": "wrong-page counts empty pools",
   "failed": 1,
-  "passed": 21,
+  "passed": 22,
   "failing_tests": [
    "test_wrong_page_needs_a_nonempty_pool_without_a_hit"
   ]
@@ -57,7 +57,7 @@
  {
   "mutation": "bootstrap resamples questions, not manuals",
   "failed": 1,
-  "passed": 21,
+  "passed": 22,
   "failing_tests": [
    "test_bootstrap_is_deterministic_and_resamples_clusters"
   ]
@@ -65,7 +65,7 @@
  {
   "mutation": "NO-GO threshold loosened to 3",
   "failed": 1,
-  "passed": 21,
+  "passed": 22,
   "failing_tests": [
    "test_verdict_no_go_on_two_net_regressions"
   ]
@@ -73,7 +73,7 @@
  {
   "mutation": "minimum n lowered to 10",
   "failed": 1,
-  "passed": 21,
+  "passed": 22,
   "failing_tests": [
    "test_verdict_inconclusive_below_twenty_answerable"
   ]
@@ -81,7 +81,7 @@
  {
   "mutation": "safety verdict ignores missed hazards",
   "failed": 1,
-  "passed": 21,
+  "passed": 22,
   "failing_tests": [
    "test_safety_verdict_no_go_on_a_missed_hazard_and_never_go_without_answers"
   ]
@@ -89,7 +89,7 @@
  {
   "mutation": "nDCG discount shifted by 0.5",
   "failed": 1,
-  "passed": 21,
+  "passed": 22,
   "failing_tests": [
    "test_single_relevance_ndcg"
   ]
@@ -97,7 +97,7 @@
  {
   "mutation": "duplicate ids accepted (#4799)",
   "failed": 1,
-  "passed": 21,
+  "passed": 22,
   "failing_tests": [
    "test_validate_rejects_a_broken_run"
   ]
@@ -105,7 +105,7 @@
  {
   "mutation": "missing ids accepted (#4799)",
   "failed": 2,
-  "passed": 20,
+  "passed": 21,
   "failing_tests": [
    "test_a_question_dropped_from_every_arm_stops_scoring",
    "test_validate_rejects_a_broken_run"
@@ -114,7 +114,7 @@
  {
   "mutation": "changed labels accepted (#4799)",
   "failed": 1,
-  "passed": 21,
+  "passed": 22,
   "failing_tests": [
    "test_validate_rejects_a_broken_run"
   ]
@@ -122,15 +122,23 @@
  {
   "mutation": "harness errors accepted (#4799)",
   "failed": 1,
-  "passed": 21,
+  "passed": 22,
   "failing_tests": [
    "test_validate_rejects_a_broken_run"
   ]
  },
  {
+  "mutation": "kind not checked against frozen labels (Codex F1, 2nd review)",
+  "failed": 1,
+  "passed": 22,
+  "failing_tests": [
+   "test_a_kind_changed_in_one_arm_only_stops_scoring"
+  ]
+ },
+ {
   "mutation": "unanswerable rows enter the denominator",
   "failed": 2,
-  "passed": 20,
+  "passed": 21,
   "failing_tests": [
    "test_committed_runs_still_validate_and_keep_their_metrics",
    "test_unanswerable_rows_never_count_as_hits_or_misses"

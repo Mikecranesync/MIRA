@@ -135,11 +135,20 @@ def forum_key(review: dict, answers: dict) -> dict:
 
 def score_retrieval(key: dict, label: str) -> dict:
     """Hit rates per arm against Mike's pages, on the cases where those pages exist. Uses the frozen raw runs."""
+    frozen = {
+        q["id"]: q["accepted"]
+        for q in json.load(open(os.path.join(BENCH, "forum-new", "forum-new-questions.json")))
+    }
     runs = {}
     for arm, tag in ARMS.items():
         kk = 10 if arm == "bm25" else 6
         path = os.path.join(BENCH, "raw", "forum-new", f"forum-new-{tag}-k{kk}-r1.jsonl")
-        runs[arm] = {r["id"]: r["ranked_pages"][:6] for r in map(json.loads, open(path))}
+        rows = [json.loads(line) for line in open(path) if line.strip()]
+        try:  # the same validation the main scorer uses: no errored, missing, duplicate or relabelled rows (Codex F4)
+            A.validate_rows(rows, frozen, os.path.relpath(path, BENCH), check_kind=True)
+        except A.InvalidRun as e:
+            raise Refused(f"raw run invalid, nothing scored: {e}") from None
+        runs[arm] = {r["id"]: r["ranked_pages"][:6] for r in rows}
     cases = {
         i: k[label]
         for i, k in key.items()
