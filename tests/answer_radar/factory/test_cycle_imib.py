@@ -278,3 +278,16 @@ def test_expert_export_without_manifest_is_refused(tmp_path):
                 str(tmp_path),
             ]
         )
+
+
+def test_expert_export_with_mismatched_key_refuses(tmp_path):
+    import pytest
+
+    from answer_radar.factory.__main__ import load_expert_export
+
+    (tmp_path / "answers").mkdir()
+    (tmp_path / "export-manifest.json").write_text("{}")
+    (tmp_path / "review-data.json").write_text('{"forum": [], "safety": []}')
+    (tmp_path / "answers" / "forum-a.json").write_text('{"key": "forum-b", "savedAt": "t"}')
+    with pytest.raises(SystemExit, match="does not match"):
+        load_expert_export(tmp_path)

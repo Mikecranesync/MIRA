@@ -49,7 +49,9 @@ def test_five_families_replay_into_a_valid_set():
 
 
 def test_replies_and_answers_never_enter_a_case():
-    blob = json.dumps([c.question.to_dict() for cs in _all().values() for c in cs])
+    import dataclasses
+
+    blob = json.dumps([dataclasses.asdict(c) for cs in _all().values() for c in cs], default=str)
     assert "MUST-NOT-LEAK" not in blob
 
 

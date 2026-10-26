@@ -134,7 +134,8 @@ def load_expert_export(d: Path) -> dict[str, dict]:
     """Read a #4801 review-page export: export-manifest.json + answers/<doc>.json.
 
     Refuses an export without a manifest (the preview page's test answers must never count).
-    A record whose key does not match its file is skipped, so it can never settle gold.
+    A record whose key does not match its file refuses the whole export (fail closed, like
+    rescore_human), rather than silently scoring a partial answer set.
     """
     if not (d / "export-manifest.json").is_file():
         raise SystemExit(f"{d}: no export-manifest.json; refusing an unidentified export")
@@ -145,8 +146,11 @@ def load_expert_export(d: Path) -> dict[str, dict]:
     out = {}
     for f in sorted((d / "answers").glob("*.json")):
         rec = json.loads(f.read_text(encoding="utf-8"))
-        if rec.get("key") == f.stem:
-            out[f.stem] = rec
+        if rec.get("key") != f.stem:
+            raise SystemExit(
+                f"{f}: record key {rec.get('key')!r} does not match its file; refusing the export"
+            )
+        out[f.stem] = rec
     return out
 
 

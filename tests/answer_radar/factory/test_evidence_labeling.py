@@ -71,7 +71,9 @@ def test_hazardous_forum_question_is_flagged():
 
 
 def test_factory_never_imports_mira_retrieval():
-    for py in Path(factory_pkg.__file__).parent.glob("*.py"):
+    files = list(Path(factory_pkg.__file__).parent.rglob("*.py"))
+    assert len(files) >= 10
+    for py in files:
         tree = ast.parse(py.read_text())
         names = [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
         names += [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
