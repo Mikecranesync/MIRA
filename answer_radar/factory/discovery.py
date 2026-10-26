@@ -30,25 +30,29 @@ from answer_radar.schema import (
     SplitAssignment,
 )
 
-_MAKERS = {
-    "allen-bradley": "Allen-Bradley",
-    "allen bradley": "Allen-Bradley",
-    "rockwell": "Allen-Bradley",
-    "powerflex": "Allen-Bradley",
-    "automationdirect": "AutomationDirect",
-    "gs10": "AutomationDirect",
-    "siemens": "Siemens",
-    "sinamics": "Siemens",
-    "yaskawa": "Yaskawa",
-    "abb": "ABB",
-    "schneider": "Schneider",
-    "mitsubishi": "Mitsubishi",
-    "omron": "Omron",
-    "danfoss": "Danfoss",
-    "fanuc": "Fanuc",
-}
+# (word-boundary pattern, manufacturer). Order matters: first match wins.
+_MAKERS = [
+    (
+        r"allen[- ]?bradley|rockwell|\ba-?b\b|powerflex|micrologix|\bml\s?1[0-9]{3}\b|micro\s?8[0-9]{2}|"
+        r"\bslc\s?5?|compact\s?logix|control\s?logix|plc-?5|\be3[- ]?plus|smc[- ]?(?:flex|50)|panelview|1769-|2080-",
+        "Allen-Bradley",
+    ),
+    (r"automation\s?direct|\bgs\d{1,2}\b|\bgs4\b", "AutomationDirect"),
+    (r"siemens|sinamics|simatic|\bs7-", "Siemens"),
+    (
+        r"schneider|telemecanique|modicon|\bm[0-9]{3}\b|lexium|\blxm|altivar|premium plc",
+        "Schneider",
+    ),
+    (r"yaskawa|\bga[0-9]{3}\b|\bv1000\b", "Yaskawa"),
+    (r"\babb\b|\bacs[0-9]{3}\b", "ABB"),
+    (r"mitsubishi|melsec", "Mitsubishi"),
+    (r"\bomron\b", "Omron"),
+    (r"danfoss", "Danfoss"),
+    (r"fanuc", "Fanuc"),
+]
 _MODEL = re.compile(
-    r"\b(PowerFlex\s?\d+[A-Z]?|GS\d{1,2}|GA\d{3}|V1000|SINAMICS\s?[GS]\d+|ACS\d{3}|E3\s?Plus)\b",
+    r"\b(PowerFlex\s?\d+[A-Z]?|GS\d{1,2}|GA\d{3}|V1000|SINAMICS\s?[GS]\d+|ACS\d{3}|E3[- ]?Plus|"
+    r"Micro\s?8[0-9]{2}|MicroLogix\s?\d{3,4}|ML\s?1[0-9]{3}|SMC[- ]?(?:Flex|50)|M[0-9]{3}|LXM32\w*|SLC\s?5/0[0-9])\b",
     re.I,
 )
 _FAULT = re.compile(
@@ -64,7 +68,7 @@ _HAZARD = re.compile(
 def normalize(text: str) -> dict[str, Any]:
     """Extract manufacturer / model / fault code / safety signal. Deterministic, no LLM."""
     low = text.lower()
-    maker = next((v for k, v in _MAKERS.items() if k in low), "")
+    maker = next((m for pat, m in _MAKERS if re.search(pat, low)), "")
     model = _MODEL.search(text)
     fault = _FAULT.search(text)
     return {

@@ -48,6 +48,20 @@ sources:
     ground_truth_role: discovery
     reviewed_at: null
     notes: Source of IMIB v0.1 forum-new (PR #4793).
+  - source_id: plctalk
+    name: PLCtalk forums
+    source_type: forum
+    family: industrial_forum
+    base_url: https://www.plctalk.net/
+    license_or_terms: unreviewed
+    attribution_required: true
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: discovery
+    reviewed_at: null
+    notes: 3 of IMIB v0.1's 34 forum-new questions.
   - source_id: oem_manuals
     name: OEM manuals, fault and alarm tables
     source_type: oem

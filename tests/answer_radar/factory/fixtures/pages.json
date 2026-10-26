@@ -1,0 +1,8 @@
+[
+  {"source_id": "oem_manuals", "doc_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "page": 41,
+   "text": "F5 overvoltage: DC bus voltage exceeded the limit. Check the brake resistor and lengthen decel time.",
+   "manufacturer": "Allen-Bradley", "model": "PowerFlex 525"},
+  {"source_id": "oem_manuals", "doc_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "page": 17,
+   "text": "oCA overcurrent during acceleration: increase acceleration time, check motor load.",
+   "manufacturer": "AutomationDirect", "model": "GS10"}
+]

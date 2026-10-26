@@ -50,3 +50,35 @@ def seal_live(cases: list[BenchmarkCase], private_dir: Path) -> list[dict]:
 
 def developer_export(cases: list[BenchmarkCase]) -> list[dict]:
     return [asdict(c) for c in cases if not c.holdout and c.exposed_to_developers]
+
+
+def assign_live(cases: list[BenchmarkCase], *, fraction: float, seed: str) -> list[BenchmarkCase]:
+    """Move a deterministic fraction of fresh, never-exposed source lineages into the Live pool.
+
+    Whole lineages move together, so a question and its variants are never split across Live
+    and a developer-visible pool. Red, Safety and already-exposed development cases never move.
+    """
+    import hashlib
+    from dataclasses import replace
+
+    from answer_radar.factory.case import Pool
+    from answer_radar.schema import SplitAssignment
+
+    def picked(lineage: str) -> bool:
+        return (
+            int(hashlib.sha256(f"{seed}:{lineage}".encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
+            < fraction
+        )
+
+    eligible = {
+        c.lineage_id
+        for c in cases
+        if c.pool in (Pool.CHALLENGE, Pool.CORE)
+        and c.question.split_assignment is SplitAssignment.FRESH
+    }
+    return [
+        replace(c, pool=Pool.LIVE, holdout=True, exposed_to_developers=False)
+        if c.lineage_id in eligible and picked(c.lineage_id)
+        else c
+        for c in cases
+    ]
