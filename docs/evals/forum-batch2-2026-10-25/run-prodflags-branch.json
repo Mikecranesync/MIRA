@@ -1,0 +1,299 @@
+{
+ "ranAt": "2026-10-26T04:21:34.389Z",
+ "results": [
+  {
+   "id": "S1",
+   "kind": "sanity",
+   "baseline": "insufficient_evidence, no citation",
+   "expectedPages": [
+    65,
+    73,
+    76,
+    77,
+    85,
+    89,
+    155,
+    165
+   ],
+   "pages": [
+    65,
+    258,
+    65,
+    85,
+    260,
+    266
+   ],
+   "hit": true,
+   "ms": 502,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "S2",
+   "kind": "sanity",
+   "baseline": "cited p.359",
+   "expectedPages": [
+    359
+   ],
+   "pages": [
+    363,
+    353,
+    257,
+    258,
+    359,
+    30
+   ],
+   "hit": true,
+   "ms": 556,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "S3",
+   "kind": "sanity",
+   "baseline": "insufficient_evidence, no citation",
+   "expectedPages": [
+    64
+   ],
+   "pages": [
+    73,
+    161,
+    57,
+    162,
+    161,
+    74
+   ],
+   "hit": false,
+   "ms": 784,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "S4",
+   "kind": "sanity",
+   "baseline": "cited p.1047",
+   "expectedPages": [
+    1047
+   ],
+   "pages": [
+    1047,
+    706,
+    1274,
+    80,
+    837,
+    276
+   ],
+   "hit": true,
+   "ms": 678,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "S5",
+   "kind": "sanity",
+   "baseline": "insufficient_evidence, empty answer",
+   "expectedPages": [
+    91
+   ],
+   "pages": [
+    99,
+    87,
+    23,
+    91,
+    86,
+    175
+   ],
+   "hit": true,
+   "ms": 249,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F1",
+   "kind": "forum",
+   "baseline": "PARTIAL (cited p.114)",
+   "expectedPages": [
+    114,
+    1047
+   ],
+   "pages": [
+    111,
+    114,
+    113,
+    112,
+    106,
+    109
+   ],
+   "hit": true,
+   "ms": 881,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F2",
+   "kind": "forum",
+   "baseline": "ABSTAIN (false)",
+   "expectedPages": [
+    526,
+    527,
+    528,
+    529
+   ],
+   "pages": [],
+   "hit": false,
+   "ms": 681,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F3",
+   "kind": "forum",
+   "baseline": "FAIL (false abstain)",
+   "expectedPages": [
+    356
+   ],
+   "pages": [
+    286,
+    356,
+    185,
+    328,
+    374,
+    363
+   ],
+   "hit": true,
+   "ms": 565,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F4",
+   "kind": "forum",
+   "baseline": "NOT RUN (gate)",
+   "expectedPages": null,
+   "pages": [
+    75,
+    87,
+    155,
+    144,
+    145,
+    145
+   ],
+   "hit": null,
+   "ms": 432,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F5",
+   "kind": "forum",
+   "baseline": "NOT RUN (gate)",
+   "expectedPages": [
+    64
+   ],
+   "pages": [
+    14,
+    54,
+    55,
+    62,
+    143,
+    73,
+    161,
+    45,
+    57,
+    14,
+    23,
+    45,
+    55,
+    95
+   ],
+   "hit": false,
+   "ms": 827,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F6",
+   "kind": "forum",
+   "baseline": "NOT RUN (gate)",
+   "expectedPages": null,
+   "pages": [
+    162,
+    162,
+    260,
+    262,
+    266,
+    13
+   ],
+   "hit": null,
+   "ms": 689,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  }
+ ]
+}
