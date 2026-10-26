@@ -21,6 +21,7 @@ Not scheduled: a recurring job is only added after one complete cycle is proven.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -155,6 +156,18 @@ def load_expert_export(d: Path) -> dict[str, dict]:
         raise SystemExit(
             f"{d}: no review-data.json; the export must carry the file the expert answered"
         )
+    # The manifest pins the exact review file(s) the answers were given against, so an old
+    # answers/ tree can never be paired with a newer review file (rescore_human's frozen pin).
+    manifest = json.loads((d / "export-manifest.json").read_text(encoding="utf-8"))
+    for name, field in (
+        ("review-data.json", "review_data_sha256"),
+        ("review-data-live.json", "review_data_live_sha256"),
+    ):
+        pinned = manifest.get(field)
+        if (d / name).is_file() and pinned != hashlib.sha256((d / name).read_bytes()).hexdigest():
+            raise SystemExit(
+                f"{d}: export-manifest {field} does not match {name}; refusing the export"
+            )
     out = {}
     for f in sorted((d / "answers").glob("*.json")):
         rec = json.loads(f.read_text(encoding="utf-8"))

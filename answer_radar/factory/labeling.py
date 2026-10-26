@@ -59,7 +59,7 @@ def route(
             why.append("fewer than two independent labels")
         elif len({lb.labeler_id for lb in ai}) < 2 or len(independent) < len(ai):
             why.append("labels not independent (duplicate labeler or self-consistency)")
-        elif not agree(ai[0], ai[1]):
+        elif not all(agree(ai[0], lb) for lb in ai[1:]):
             why.append("labelers disagree")
         if any(
             lb.unsure or (lb.confidence is not None and lb.confidence < MIN_CONFIDENCE) for lb in ai

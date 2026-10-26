@@ -228,9 +228,9 @@ def test_live_cases_reach_experts_privately_and_take_expert_gold(tmp_path):
     target = next(r for r in live_review["forum"] if r["pages"])
     key = f"forum-{target['id']}"
     (export / "answers").mkdir(parents=True)
-    (export / "export-manifest.json").write_text("{}")
     shutil.copy(out / "review-data.json", export / "review-data.json")
     shutil.copy(private / "review-data-live.json", export / "review-data-live.json")
+    (export / "export-manifest.json").write_text(json.dumps(_pin(export)))
     (export / "answers" / f"{key}.json").write_text(
         json.dumps(
             {
@@ -286,8 +286,8 @@ def test_expert_export_with_mismatched_key_refuses(tmp_path):
     from answer_radar.factory.__main__ import load_expert_export
 
     (tmp_path / "answers").mkdir()
-    (tmp_path / "export-manifest.json").write_text("{}")
     (tmp_path / "review-data.json").write_text('{"forum": [], "safety": []}')
+    (tmp_path / "export-manifest.json").write_text(json.dumps(_pin(tmp_path)))
     (tmp_path / "answers" / "forum-a.json").write_text('{"key": "forum-b", "savedAt": "t"}')
     with pytest.raises(SystemExit, match="does not match"):
         load_expert_export(tmp_path)
@@ -339,3 +339,30 @@ def test_cycle_rejects_gold_from_non_authoritative_pages(tmp_path):
     )
     review = json.loads((out / "review-data.json").read_text())
     assert all(r["pages"] == [] for r in review["forum"])  # never offered to the expert
+
+
+def _pin(d):
+    import hashlib
+
+    out = {"review_data_sha256": hashlib.sha256((d / "review-data.json").read_bytes()).hexdigest()}
+    if (d / "review-data-live.json").is_file():
+        out["review_data_live_sha256"] = hashlib.sha256(
+            (d / "review-data-live.json").read_bytes()
+        ).hexdigest()
+    return out
+
+
+def test_expert_export_pinned_to_its_review_file(tmp_path):
+    import pytest
+
+    from answer_radar.factory.__main__ import load_expert_export
+
+    (tmp_path / "answers").mkdir()
+    (tmp_path / "review-data.json").write_text('{"forum": [], "safety": []}')
+    (tmp_path / "export-manifest.json").write_text(json.dumps(_pin(tmp_path)))
+    assert load_expert_export(tmp_path) == {}
+    (tmp_path / "review-data.json").write_text(
+        '{"forum": [{"id": "new"}], "safety": []}'
+    )  # swapped later
+    with pytest.raises(SystemExit, match="does not match review-data.json"):
+        load_expert_export(tmp_path)

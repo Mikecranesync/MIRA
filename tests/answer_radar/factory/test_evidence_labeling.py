@@ -289,3 +289,9 @@ def test_expert_answer_ignored_when_question_changed_after_export():
     rec = {f"safety-{h.case_id}": {"key": f"safety-{h.case_id}", "savedAt": "t", "choice": "stop"}}
     assert import_expert([h2], rec, {}, shown_s)[0].gold_status is GoldStatus.PROVISIONAL
     assert import_expert([h], rec, {}, shown_s)[0].gold_status is GoldStatus.EXPERT_REVIEWED
+
+
+def test_a_third_disagreeing_label_still_routes_to_experts():
+    c = _forum()
+    c.labels = [_lab("a"), _lab("b"), _lab("c", Answerability.UNANSWERABLE, ())]
+    assert "labelers disagree" in route([c], seed="s", audit_rate=0.0)[c.case_id]
