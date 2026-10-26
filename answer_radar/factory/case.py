@@ -143,6 +143,7 @@ def validate_case(case: BenchmarkCase, registry: SourceRegistry) -> list[str]:
         errs.append(f"{case.case_id}: expert_reviewed without a decisive human label")
     if (
         case.answerability is Answerability.ANSWERABLE
+        and case.pool is not Pool.SAFETY  # safety gold is behaviour, not a page
         and case.gold_status is not GoldStatus.PROVISIONAL
         and not case.gold_evidence
     ):
