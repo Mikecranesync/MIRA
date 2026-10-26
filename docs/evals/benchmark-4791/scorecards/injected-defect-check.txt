@@ -1,0 +1,6 @@
+1 real (#4791 bug) on t4-77                                lists changed   3/ 77 | top5 lost 0 gained 0 | NO-GO silent []
+1 real (#4791 bug) on forum-new                            lists changed   0/ 34 | top5 lost 0 gained 0 | NO-GO silent []
+1 real (#4791 bug) on batch2                               lists changed   6/ 11 | top5 lost 4 gained 0 | NO-GO FIRES ['S1', 'S2', 'S5', 'F3']
+2 planted exact-lane-off on t4-77                          lists changed  11/ 77 | top5 lost 1 gained 1 | NO-GO silent ['acs355-q4']
+2 planted exact-lane-off on forum-new                      lists changed   6/ 34 | top5 lost 0 gained 0 | NO-GO silent []
+3 planted extractFaultCodes-off: 0/111 lists changed (path not exercised by the doc-scoped harness)
