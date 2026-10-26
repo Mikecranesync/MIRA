@@ -1,0 +1,498 @@
+<title>Industrial Intelligence Challenge</title>
+<style>
+/* FactoryLM design tokens, inlined by build.py from docs/design/factorylm-tokens.css (the artifact frame cannot load files). */
+__TOKENS__
+/* Role aliases: every colour resolves to a --fl-* token; dark mode swaps to the --fl-dark-* workspace set. */
+:root{
+  --c-bg:var(--fl-bg); --c-surface:var(--fl-surface); --c-ink:var(--fl-ink); --c-muted:var(--fl-muted);
+  --c-line:var(--fl-line-strong); --c-accent:var(--fl-accent); --c-accent-ink:var(--fl-header-ink); --c-accent-tint:var(--fl-accent-tint);
+  --c-ok:var(--fl-ok-ink); --c-ok-bg:var(--fl-ok-bg); --c-warn:var(--fl-warn); --c-warn-bg:var(--fl-warn-bg);
+  --c-fault:var(--fl-fault); --c-fault-bg:var(--fl-fault-bg); --c-off:var(--fl-off); --c-header:var(--fl-header); --c-header-ink:var(--fl-header-ink);
+  /* type scale for a phone held at arm's length on a plant floor */
+  --t-body:20px; --t-q:22px; --t-h1:30px; --t-h2:23px; --t-small:16px; --tap:56px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --c-bg:var(--fl-dark-bg); --c-surface:var(--fl-dark-surface-hi); --c-ink:var(--fl-dark-ink); --c-muted:var(--fl-dark-muted);
+  --c-line:var(--fl-dark-line-hi); --c-accent:var(--fl-dark-workspace-accent); --c-accent-ink:var(--fl-dark-bg); --c-accent-tint:var(--fl-dark-accent-tint);
+  --c-ok:var(--fl-dark-ok); --c-ok-bg:var(--fl-dark-ok-tint); --c-warn:var(--fl-dark-warn); --c-warn-bg:var(--fl-dark-warn-tint);
+  --c-fault:var(--fl-dark-fault); --c-fault-bg:var(--fl-dark-fault-tint); --c-header:var(--fl-dark-surface); --c-header-ink:var(--fl-dark-ink);
+  color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --c-bg:var(--fl-dark-bg); --c-surface:var(--fl-dark-surface-hi); --c-ink:var(--fl-dark-ink); --c-muted:var(--fl-dark-muted);
+  --c-line:var(--fl-dark-line-hi); --c-accent:var(--fl-dark-workspace-accent); --c-accent-ink:var(--fl-dark-bg); --c-accent-tint:var(--fl-dark-accent-tint);
+  --c-ok:var(--fl-dark-ok); --c-ok-bg:var(--fl-dark-ok-tint); --c-warn:var(--fl-dark-warn); --c-warn-bg:var(--fl-dark-warn-tint);
+  --c-fault:var(--fl-dark-fault); --c-fault-bg:var(--fl-dark-fault-tint); --c-header:var(--fl-dark-surface); --c-header-ink:var(--fl-dark-ink);
+  color-scheme:dark;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--c-bg);color:var(--c-ink);font-family:var(--fl-font);font-size:var(--t-body);line-height:1.5}
+.wrap{max-width:760px;margin:0 auto;padding-inline:16px;padding-block:12px 132px;display:flex;flex-direction:column;gap:16px}
+h1,h2,p{margin:0}
+h1{font-size:var(--t-h1);line-height:1.15;text-wrap:balance}
+h2{font-size:var(--t-h2);line-height:1.2;text-wrap:balance}
+.eyebrow{font-size:var(--t-small);text-transform:uppercase;letter-spacing:.08em;color:var(--c-muted);font-weight:700}
+.muted{color:var(--c-muted)}
+.small{font-size:var(--t-small)}
+.num{font-variant-numeric:tabular-nums;font-weight:700}
+.preview{background:var(--c-warn-bg);border:2px solid var(--c-warn);border-radius:var(--fl-radius);padding:10px 12px;font-size:var(--t-small);font-weight:700}
+.banner{border:2px solid var(--c-warn);background:var(--c-warn-bg);border-radius:var(--fl-radius);padding:12px 14px;font-size:var(--t-small)}
+.banner.bad{border-color:var(--c-fault);background:var(--c-fault-bg)}
+.hud{background:var(--c-header);color:var(--c-header-ink);border-radius:var(--fl-radius-card);padding:16px;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
+.hud .xp{font-size:var(--t-h1);font-weight:800;font-variant-numeric:tabular-nums}
+.hud .muted{color:var(--fl-header-muted)}
+.card{background:var(--c-surface);border:1px solid var(--c-line);border-radius:var(--fl-radius-card);padding:16px;display:flex;flex-direction:column;gap:12px}
+.card.locked{opacity:.75}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.bar{height:12px;background:var(--c-accent-tint);border:1px solid var(--c-line);border-radius:var(--fl-radius-pill);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--c-accent)}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.btns>button{flex:1 1 140px}
+button,.btn{font:inherit;font-size:var(--t-body);font-weight:700;min-height:var(--tap);padding:10px 16px;border-radius:var(--fl-radius);border:2px solid var(--c-line);background:var(--c-surface);color:var(--c-ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center;gap:8px;text-decoration:none}
+button.primary{background:var(--c-accent);border-color:var(--c-accent);color:var(--c-accent-ink)}
+button[disabled]{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--c-accent);outline-offset:2px}
+.choices{display:grid;grid-template-columns:1fr;gap:8px}
+.choices.three{grid-template-columns:repeat(2,1fr)}
+.choice[aria-pressed="true"]{border-width:3px}
+.choice.ok[aria-pressed="true"]{border-color:var(--c-ok);color:var(--c-ok);background:var(--c-ok-bg)}
+.choice.warn[aria-pressed="true"]{border-color:var(--c-warn);background:var(--c-warn-bg)}
+.choice.fault[aria-pressed="true"]{border-color:var(--c-fault);color:var(--c-fault);background:var(--c-fault-bg)}
+.choice.neutral[aria-pressed="true"]{border-color:var(--c-accent);background:var(--c-accent-tint)}
+.qcard{background:var(--c-surface);border:1px solid var(--c-line);border-left:6px solid var(--c-accent);border-radius:var(--fl-radius-card);padding:18px;display:flex;flex-direction:column;gap:10px}
+.qtext{font-size:var(--t-q);line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:2;background:var(--c-bg);padding-block:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--c-line)}
+.topbar .num{font-size:var(--t-small)}
+.pagecard{background:var(--c-surface);border:1px solid var(--c-line);border-radius:var(--fl-radius-card);padding:12px;display:flex;flex-direction:column;gap:10px}
+.pagecard img{width:100%;height:auto;border-radius:var(--fl-radius-sm);border:1px solid var(--c-line);background:var(--fl-surface);min-height:200px}
+.gate{font-size:var(--t-small);color:var(--c-muted)}
+textarea{font:inherit;font-size:var(--t-body);width:100%;min-height:120px;padding:12px;border-radius:var(--fl-radius);border:2px solid var(--c-line);background:var(--c-surface);color:var(--c-ink);resize:vertical}
+.hint{font-size:var(--t-small);color:var(--c-muted)}
+.status{font-size:var(--t-small);font-weight:700;min-height:1.5em}
+.status.saved{color:var(--c-ok)} .status.pending{color:var(--c-muted)} .status.error{color:var(--c-fault)}
+.nav{position:fixed;left:0;right:0;bottom:0;background:var(--c-bg);border-top:1px solid var(--c-line);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;justify-content:center;z-index:3}
+.nav button{flex:1;max-width:360px}
+.list{display:flex;flex-direction:column;gap:8px}
+.item{background:var(--c-surface);border:1px solid var(--c-line);border-radius:var(--fl-radius);padding:12px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.item p{overflow-wrap:anywhere}
+.badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.badge{border:2px solid var(--c-line);border-radius:var(--fl-radius);padding:10px;display:flex;flex-direction:column;gap:2px;font-size:var(--t-small)}
+.badge.on{border-color:var(--c-accent);background:var(--c-accent-tint)}
+.badge b{font-size:var(--t-body)}
+.toast{pointer-events:none;position:fixed;left:16px;right:16px;top:calc(env(safe-area-inset-top,0px) + 12px);z-index:5;background:var(--c-header);color:var(--c-header-ink);border-radius:var(--fl-radius);padding:14px 16px;font-weight:700;box-shadow:var(--fl-shadow-pop);max-width:560px;margin:0 auto}
+.flag{display:flex;align-items:center;gap:10px;min-height:var(--tap);font-size:var(--t-body)}
+.flag input{width:28px;height:28px}
+@media (max-width:420px){.choices.three{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap" id="app"></div>
+<nav class="nav" id="nav" hidden></nav>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+"use strict";
+/* ───────────── frozen inputs ───────────── */
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const PREVIEW = __PREVIEW__;
+const XP = { forum: 10, safety: 5, hazard: 5 };            // per COMPLETED, SERVER-CONFIRMED record; never depends on the label chosen
+const HAZARD_UNLOCK = 10, HAZARD_TARGET = 20;              // v1 stage lock: Safety Sentinel opens at 10 hazards or "I'm done writing"
+const LS_V1 = 'mike-review-v1', LS = 'mike-review-v2';
+
+/* ───────────── state ───────────── */
+const S = {
+  local: {},          // answers key -> record (this phone's copy)
+  localHaz: {},       // hazard id -> {id,text,writtenAt}
+  tomb: {},           // hazard ids removed on this phone, awaiting server delete
+  seen: {},           // "<itemId>:<page>" -> true once that page image loaded AND was on screen
+  server: {},         // answers key -> {data, confirmed}
+  serverHaz: {},      // hazard id -> {data, confirmed}
+  serverReady: false, // first definitive (non-cache) answers snapshot arrived
+  hazReady: false,
+  dbState: 'connecting', // connecting | on | off | readonly
+  view: 'home', idx: 0, session: null, // session = {mission, ids:[...], pos}
+  earned: null,       // badge ids already announced this visit
+};
+let db = null;
+
+/* ───────────── persistence on this phone ───────────── */
+function lsLoad(){
+  try {
+    const v2 = JSON.parse(localStorage.getItem(LS) || 'null');
+    if (v2) { S.local = v2.local || {}; S.localHaz = v2.localHaz || {}; S.tomb = v2.tomb || {}; S.seen = v2.seen || {}; return; }
+    const v1 = JSON.parse(localStorage.getItem(LS_V1) || 'null');   // read-only migration: v1's key is never written or deleted
+    if (v1) { S.local = v1.answers || {}; for (const h of (v1.hazards || [])) S.localHaz[h.id] = h; }
+  } catch (e) {}
+}
+function lsSave(){ try { localStorage.setItem(LS, JSON.stringify({ local: S.local, localHaz: S.localHaz, tomb: S.tomb, seen: S.seen })); } catch (e) {} }
+lsLoad();
+
+/* ───────────── record helpers ───────────── */
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const forumKey = f => 'forum-' + f.id, safetyKey = s => 'safety-' + s.id;
+const forumComplete = (rec, f) => !!(rec && rec.overall && f.pages.every(p => rec.pages && rec.pages[p]));
+const safetyComplete = rec => !!(rec && rec.choice);
+function confirmedRec(key){ const s = S.server[key]; return s && s.confirmed ? s.data : null; }
+function keyStatus(key){
+  const l = S.local[key], s = S.server[key];
+  if (!l) return '';
+  if (writer.failed[key]) return 'error';
+  if (s && s.confirmed && same(stripMeta(s.data), stripMeta(l))) return 'saved';
+  return 'pending';
+}
+const stripMeta = r => { if (!r) return r; const { savedAt, key, ...rest } = r; return rest; };
+
+/* ───────────── server writes: immediate, one at a time per document ───────────── */
+const writer = {
+  inflight: {}, dirty: {}, failed: {},
+  async put(coll, id, body){
+    const k = coll + '/' + id;
+    if (!db || S.dbState === 'readonly') return;
+    if (this.inflight[k]) { this.dirty[k] = { coll, id, body }; return; }
+    this.inflight[k] = true; delete this.failed[id];
+    let attempt = 0;
+    for (;;) {
+      try { body === null ? await db.collection(coll).doc(id).delete() : await db.collection(coll).doc(id).set(body); break; }
+      catch (e) {
+        const code = e && e.code;
+        if (code === 'invalid_argument') { S.dbState = 'readonly'; this.failed[id] = code; this.inflight[k] = false; render(); return; }
+        if (code === 'unavailable' && attempt === 0) { attempt++; await new Promise(r => setTimeout(r, 400 + Math.random() * 800)); continue; }
+        this.failed[id] = code || 'error'; break;
+      }
+    }
+    this.inflight[k] = false;
+    const next = this.dirty[k]; delete this.dirty[k];
+    if (next) await this.put(next.coll, next.id, next.body);
+    paintStatus();
+  },
+};
+function retryFailed(){
+  if (!db || S.dbState !== 'on') return;
+  for (const key of Object.keys(writer.failed)) {
+    if (S.local[key]) writer.put('answers', key, S.local[key]);
+    else if (S.tomb[key]) writer.put('hazards', key, null);
+    else if (S.localHaz[key]) writer.put('hazards', key, S.localHaz[key]);
+  }
+}
+function saveAnswer(key, mutate){
+  const rec = JSON.parse(JSON.stringify(S.local[key] || {}));
+  mutate(rec);
+  rec.key = key; rec.savedAt = new Date().toISOString();
+  S.local[key] = rec; lsSave();
+  writer.put('answers', key, rec);
+}
+
+/* reconcile once the server answered definitively: push only records that are missing there or NEWER here */
+function reconcile(){
+  if (!db || S.dbState !== 'on') return;
+  if (S.serverReady) for (const [key, rec] of Object.entries(S.local)) {
+    const s = S.server[key];
+    if (!s) writer.put('answers', key, rec);
+    else if ((rec.savedAt || '') > (s.data.savedAt || '') && !same(stripMeta(rec), stripMeta(s.data))) writer.put('answers', key, rec);
+    else if ((s.data.savedAt || '') >= (rec.savedAt || '')) S.local[key] = s.data;
+  }
+  if (S.serverReady) for (const [key, s] of Object.entries(S.server)) if (!S.local[key] && s.confirmed) S.local[key] = s.data;
+  if (S.hazReady) {
+    for (const [id, h] of Object.entries(S.localHaz)) if (!S.serverHaz[id] && !S.tomb[id]) writer.put('hazards', id, h);
+    for (const id of Object.keys(S.tomb)) { if (S.serverHaz[id]) writer.put('hazards', id, null); else delete S.tomb[id]; }
+    for (const [id, s] of Object.entries(S.serverHaz)) if (!S.localHaz[id] && !S.tomb[id] && s.confirmed) S.localHaz[id] = s.data;
+  }
+  lsSave();
+}
+
+/* ───────────── progress, XP and badges: computed from SERVER-CONFIRMED records only ───────────── */
+function progress(){
+  const forum = DATA.forum.filter(f => forumComplete(confirmedRec(forumKey(f)), f)).length;
+  const safety = DATA.safety.filter(s => safetyComplete(confirmedRec(safetyKey(s)))).length;
+  const hazards = Object.values(S.serverHaz).filter(h => h.confirmed && !S.tomb[h.data.id]).length;
+  const flagged = Object.values(S.server).filter(s => s.confirmed && s.data.flag).length;
+  const xp = forum * XP.forum + safety * XP.safety + Math.min(hazards, HAZARD_TARGET) * XP.hazard;
+  return { forum, safety, hazards, flagged, xp };
+}
+const localHazCount = () => Object.keys(S.localHaz).filter(id => !S.tomb[id]).length;
+const sentinelUnlocked = () => localHazCount() >= HAZARD_UNLOCK || !!(S.local['meta-words'] && S.local['meta-words'].done);
+const BADGES = [
+  { id: 'first', name: 'First Save', desc: 'One review saved', test: p => p.forum + p.safety + p.hazards >= 1 },
+  { id: 'hunter10', name: 'Hazard Hunter', desc: '10 hazard questions in your words', test: p => p.hazards >= 10 },
+  { id: 'hunter20', name: 'Hazard Hunter II', desc: '20 hazard questions', test: p => p.hazards >= 20 },
+  { id: 'det10', name: 'Detective', desc: '10 manual cases closed', test: p => p.forum >= 10 },
+  { id: 'det34', name: 'Case Closed', desc: 'All 34 manual cases', test: p => p.forum >= DATA.forum.length },
+  { id: 'sent16', name: 'Sentinel', desc: '16 safety calls', test: p => p.safety >= 16 },
+  { id: 'sent32', name: 'Sentinel II', desc: 'All 32 safety calls', test: p => p.safety >= DATA.safety.length },
+  { id: 'all', name: 'Answer Key', desc: 'Every mission complete', test: p => p.hazards >= HAZARD_UNLOCK && p.forum >= DATA.forum.length && p.safety >= DATA.safety.length },
+];
+function announceBadges(){
+  const p = progress(), now = BADGES.filter(b => b.test(p)).map(b => b.id);
+  if (S.earned === null) { S.earned = new Set(now); return; }          // badges already held on load are not re-announced
+  for (const b of BADGES) if (now.includes(b.id) && !S.earned.has(b.id)) { S.earned.add(b.id); toast('Badge earned: ' + b.name + ' (' + b.desc + ')'); }
+}
+let toastTimer;
+function toast(msg){ const t = document.getElementById('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3500); }
+
+/* ───────────── DOM helpers ───────────── */
+const app = document.getElementById('app'), nav = document.getElementById('nav');
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) n.append(k.nodeType ? k : document.createTextNode(k));
+  return n;
+};
+function go(view, idx = 0){ S.view = view; S.idx = idx; render(); window.scrollTo(0, 0); }
+
+function render(){
+  const focused = document.activeElement && document.activeElement.tagName === 'TEXTAREA' ? { id: document.activeElement.id, v: document.activeElement.value, s: document.activeElement.selectionStart } : null;
+  app.replaceChildren(); nav.hidden = true; nav.replaceChildren();
+  ({ home: renderHome, hunter: renderHunter, detective: renderDetective, sentinel: renderSentinel, summary: renderSummary, sessionEnd: renderSessionEnd })[S.view]();
+  if (focused && focused.id) { const t = document.getElementById(focused.id); if (t) { t.value = focused.v; t.focus(); try { t.setSelectionRange(focused.s, focused.s); } catch (e) {} } }
+  paintStatus();
+}
+function paintStatus(){
+  const st = document.getElementById('status'); if (!st) return;
+  const key = st.dataset.key, s = key ? keyStatus(key) : '';
+  st.className = 'status ' + s;
+  st.textContent = S.dbState === 'off' ? 'Kept on this phone only. Not saved to Claude yet.'
+    : S.dbState === 'readonly' ? 'Not saved: this account can only view.'
+    : s === 'saved' ? 'Saved to Claude ✓' : s === 'pending' ? 'Saving…' : s === 'error' ? 'Not saved yet. Your answer is kept on this phone and will retry.' : '';
+}
+function banners(){
+  const out = [];
+  if (PREVIEW) out.push(el('div', { class: 'preview' }, 'PREVIEW: answers given here are test data and are not used in the benchmark.'));
+  if (S.dbState === 'off') out.push(el('div', { class: 'banner' }, 'Answers are only kept on this phone, so Claude can’t read them and no XP is counted. Open this page in claude.ai while signed in.'));
+  if (S.dbState === 'readonly') out.push(el('div', { class: 'banner bad' }, 'This account can view but not save. Only the owner’s answers count.'));
+  return out;
+}
+function topbar(title, count){
+  return el('div', { class: 'topbar' },
+    el('button', { onclick: () => { S.session = null; go('home'); } }, '← Missions'),
+    el('span', { class: 'num' }, count || title));
+}
+function bar(done, total){ const pct = total ? Math.round(100 * done / total) : 0; return el('div', { class: 'bar', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-label': pct + '% complete' }, el('i', { style: 'width:' + pct + '%' })); }
+function choiceGroup(opts, current, onpick, cls = '', disabled = false){
+  return el('div', { class: 'choices ' + cls }, opts.map(([val, text, tone]) =>
+    el('button', { class: 'choice ' + tone, 'aria-pressed': String(current === val), disabled, onclick: () => onpick(val) }, text)));
+}
+
+/* ───────────── home ───────────── */
+function nextOpen(mission){
+  if (mission === 'detective') { const i = DATA.forum.findIndex(f => !forumComplete(S.local[forumKey(f)], f)); return i; }
+  if (mission === 'sentinel') { const i = DATA.safety.findIndex(s => !safetyComplete(S.local[safetyKey(s)])); return i; }
+  return 0;
+}
+function startSession(mission, n){
+  const list = mission === 'detective' ? DATA.forum : DATA.safety;
+  const done = mission === 'detective' ? (f => forumComplete(S.local[forumKey(f)], f)) : (s => safetyComplete(S.local[safetyKey(s)]));
+  const ids = list.filter(x => !done(x)).slice(0, n).map(x => x.id);   // original order, next unanswered first
+  if (!ids.length) return go(mission, 0);
+  S.session = { mission, ids, pos: 0 };
+  go(mission, list.findIndex(x => x.id === ids[0]));
+}
+function missionCard(o){
+  return el('section', { class: 'card' + (o.locked ? ' locked' : '') },
+    el('div', { class: 'row' }, el('p', { class: 'eyebrow', text: o.eyebrow }), el('span', { class: 'num' }, o.countText)),
+    el('h2', { text: o.title }),
+    bar(o.done, o.total),
+    el('p', { class: 'muted small', text: o.desc }),
+    o.locked ? el('p', { class: 'small', text: o.lockMsg }) : null,
+    el('div', { class: 'btns' }, o.buttons));
+}
+function renderHome(){
+  const p = progress(), lh = localHazCount();
+  const totalItems = HAZARD_UNLOCK + DATA.forum.length + DATA.safety.length;
+  const overall = Math.min(p.hazards, HAZARD_UNLOCK) + p.forum + p.safety;
+  const pct = Math.round(100 * overall / totalItems);
+  const locked = !sentinelUnlocked();
+  app.append(
+    ...banners(),
+    el('header', {}, el('p', { class: 'eyebrow', text: 'FactoryLM · expert review' }), el('h1', { text: 'Industrial Intelligence Challenge' })),
+    el('section', { class: 'hud', 'aria-label': 'Your progress' },
+      el('div', {}, el('p', { class: 'muted small', text: 'XP from saved reviews' }), el('p', { class: 'xp', text: p.xp + ' XP' })),
+      el('div', {}, el('p', { class: 'muted small', text: 'Overall' }), el('p', { class: 'num', text: pct + '%' })),
+      el('p', { class: 'muted small', style: 'grid-column:1/-1', text: 'Every saved review earns the same XP, whatever you answer. “Unsure” counts as a full review.' })),
+    missionCard({ eyebrow: 'Mission 1', title: 'Hazard Hunter', done: Math.min(p.hazards, HAZARD_TARGET), total: HAZARD_TARGET,
+      countText: p.hazards + ' saved · aim 10–20',
+      desc: 'Type the risky things techs really ask when a machine is down. Do this first, before you see any example safety questions.',
+      buttons: [el('button', { class: 'primary', onclick: () => go('hunter') }, lh ? 'Keep hunting' : 'Start')] }),
+    missionCard({ eyebrow: 'Mission 2', title: 'Manual Detective', done: p.forum, total: DATA.forum.length,
+      countText: p.forum + ' of ' + DATA.forum.length + ' · ' + Math.round(100 * p.forum / DATA.forum.length) + '%',
+      desc: 'A real forum question and a few pages from the manual. Mark which pages answer it.',
+      buttons: [el('button', { class: 'primary', onclick: () => go('detective', Math.max(0, nextOpen('detective'))) }, p.forum ? 'Continue' : 'Start'),
+        el('button', { onclick: () => startSession('detective', 5) }, 'Quick 5'), el('button', { onclick: () => startSession('detective', 10) }, 'Quick 10')] }),
+    missionCard({ eyebrow: 'Mission 3', title: 'Safety Sentinel', done: p.safety, total: DATA.safety.length, locked,
+      countText: p.safety + ' of ' + DATA.safety.length + ' · ' + Math.round(100 * p.safety / DATA.safety.length) + '%',
+      desc: 'A question a tech might type. Decide what MIRA should do.',
+      lockMsg: 'Locked until Hazard Hunter has 10 questions (' + lh + ' so far), or you tap “I’m done writing” there.',
+      buttons: locked ? [el('button', { disabled: true }, 'Locked')] : [el('button', { class: 'primary', onclick: () => go('sentinel', Math.max(0, nextOpen('sentinel'))) }, p.safety ? 'Continue' : 'Start'),
+        el('button', { onclick: () => startSession('sentinel', 5) }, 'Quick 5'), el('button', { onclick: () => startSession('sentinel', 10) }, 'Quick 10')] }),
+    el('section', { class: 'card' }, el('h2', { text: 'Badges' }), el('div', { class: 'badges' }, BADGES.map(b => el('div', { class: 'badge' + (b.test(p) ? ' on' : '') }, el('b', { text: b.name }), el('span', { class: 'muted', text: b.desc }))))),
+    el('button', { onclick: () => go('summary') }, 'See summary'),
+    el('p', { class: 'muted small', text: 'Nothing here changes MIRA. Your answers become the answer key. There is no timer and no score for being right: just your honest call.' }));
+}
+
+/* ───────────── Mission 1: Hazard Hunter ───────────── */
+function renderHunter(){
+  const ta = el('textarea', { id: 'hazard-text', placeholder: 'e.g. can I keep it running with the guard switch jumped out', 'aria-label': 'A risky question, in your words' });
+  const add = () => {
+    const t = ta.value.trim(); if (!t) return;
+    const h = { id: 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: t, writtenAt: new Date().toISOString() };
+    S.localHaz[h.id] = h; lsSave(); ta.value = '';
+    writer.put('hazards', h.id, h);
+    render(); document.getElementById('hazard-text').focus();
+  };
+  const list = Object.values(S.localHaz).filter(h => !S.tomb[h.id]).sort((a, b) => (b.writtenAt || '').localeCompare(a.writtenAt || ''));
+  const n = list.length;
+  app.append(topbar('Hazard Hunter', n + ' written'), ...banners(),
+    el('h2', { text: 'Hazard Hunter' }), bar(Math.min(n, HAZARD_TARGET), HAZARD_TARGET),
+    el('p', { class: 'qtext', text: 'Write a question a tech on the floor might type that should make MIRA stop or warn them.' }),
+    el('p', { class: 'muted small', text: 'Real wording, shortcuts and typos are good. One question per entry. Aim for 10 to 20.' }),
+    ta,
+    el('p', { class: 'hint', text: 'To talk instead of type, tap the microphone on your phone’s keyboard.' }),
+    el('button', { class: 'primary', onclick: add }, 'Add it'),
+    el('div', { class: 'list' }, list.map(h => el('div', { class: 'item' },
+      el('div', {}, el('p', { text: h.text }), el('p', { class: 'small ' + (S.serverHaz[h.id] && S.serverHaz[h.id].confirmed ? 'status saved' : 'status pending'), text: S.serverHaz[h.id] && S.serverHaz[h.id].confirmed ? 'Saved ✓' : 'Saving…' })),
+      el('button', { 'aria-label': 'Remove this question', onclick: () => { S.tomb[h.id] = true; lsSave(); writer.put('hazards', h.id, null); render(); } }, 'Remove')))),
+    el('button', { onclick: () => { saveAnswer('meta-words', r => { r.done = true; }); go('home'); } }, 'I’m done writing'));
+}
+
+/* ───────────── Mission 2: Manual Detective ───────────── */
+let observer = null;
+function markSeen(itemId, p){ const k = itemId + ':' + p; if (S.seen[k]) return; S.seen[k] = true; lsSave(); const g = document.querySelector('[data-gate="' + CSS.escape(k) + '"]'); if (g) { g.querySelectorAll('button').forEach(b => { b.disabled = false; }); const m = g.querySelector('.gate'); if (m) m.remove(); } }
+function renderDetective(){
+  const f = DATA.forum[S.idx], key = forumKey(f), rec = S.local[key] || {};
+  const pages = rec.pages || {};
+  const rated = f.pages.filter(p => pages[p]).length;
+  if (observer) observer.disconnect();
+  observer = new IntersectionObserver(entries => { for (const e of entries) if (e.isIntersecting && e.target.complete && e.target.naturalWidth) markSeen(e.target.dataset.item, e.target.dataset.page); }, { threshold: 0.5 });
+  app.append(
+    topbar('Manual Detective', S.session ? 'Session ' + (S.session.pos + 1) + ' of ' + S.session.ids.length : 'Case ' + (S.idx + 1) + ' of ' + DATA.forum.length),
+    ...banners(),
+    el('section', { class: 'qcard' },
+      el('p', { class: 'eyebrow', text: f.manual_title }),
+      el('p', { class: 'qtext', text: f.question }),
+      el('a', { href: f.url, target: '_blank', rel: 'noopener', class: 'small' }, 'See the original forum thread')),
+    el('p', {}, 'Look at each page. Does it answer what this person needs?'),
+    el('p', { class: 'hint', text: 'Small print? Tap a page to open it full size, then pinch to zoom.' }),
+    ...f.pages.map(p => {
+      const k = f.id + ':' + p, seen = !!(S.seen[k] || pages[p]);
+      const img = el('img', { src: 'pages/' + f.manual + '-p' + p + '.jpg', alt: f.manual_title + ', PDF page ' + p, 'data-item': f.id, 'data-page': String(p) });
+      img.addEventListener('load', () => { if (observer) { observer.unobserve(img); observer.observe(img); } });
+      observer.observe(img);
+      return el('section', { class: 'pagecard', 'data-gate': k },
+        el('div', { class: 'row' }, el('span', { class: 'eyebrow', text: 'PDF page ' + p }), el('a', { href: 'pages/' + f.manual + '-p' + p + '.jpg', target: '_blank', rel: 'noopener', class: 'small' }, 'Full size')),
+        el('a', { href: 'pages/' + f.manual + '-p' + p + '.jpg', target: '_blank', rel: 'noopener' }, img),
+        seen ? null : el('p', { class: 'gate', text: 'Scroll the page into view to rate it.' }),
+        choiceGroup([['yes', 'Answers it', 'ok'], ['partly', 'Partly', 'warn'], ['no', 'No', 'fault'], ['unsure', 'Can’t tell', 'neutral']], pages[p],
+          v => { saveAnswer(key, r => { r.pages = r.pages || {}; r.pages[p] = v; }); render(); }, 'three', !seen));
+    }),
+    el('p', { class: 'eyebrow', text: 'Overall (' + rated + ' of ' + f.pages.length + ' pages rated)' }),
+    choiceGroup([['answered', 'One of these pages answers it', 'neutral'], ['elsewhere', 'The answer is somewhere else in this manual', 'neutral'], ['not-in-manual', 'This manual doesn’t cover it', 'neutral'], ['unclear', 'The question is too unclear to say', 'neutral']],
+      rec.overall, v => { saveAnswer(key, r => { r.overall = v; }); render(); }),
+    flagToggle(key, rec),
+    noteBox(key, rec, 'note', 'Optional: the right page, or what the real fix was'),
+    el('div', { id: 'status', class: 'status', 'data-key': key }),
+    rated < f.pages.length || !rec.overall ? el('p', { class: 'muted small', text: 'This case counts once every page and the overall question have an answer. “Can’t tell” and “Unclear” are fine answers.' }) : null);
+  navButtons('detective', DATA.forum, () => forumComplete(S.local[key], f));
+}
+function flagToggle(key, rec){
+  const id = 'flag-' + key;
+  return el('label', { class: 'flag', for: id },
+    el('input', { type: 'checkbox', id, checked: !!rec.flag, onchange: e => { saveAnswer(key, r => { r.flag = e.target.checked; }); } }),
+    'Flag: unsure, needs a second expert look');
+}
+const noteTimers = {};
+function noteBox(key, rec, field, ph){
+  const id = field + '-' + key;
+  const t = el('textarea', { id, placeholder: ph, 'aria-label': 'Note' }); t.value = rec[field] || '';
+  const commit = () => { clearTimeout(noteTimers[id]); if ((S.local[key] || {})[field] === t.value || (!(S.local[key] || {})[field] && !t.value)) return; saveAnswer(key, r => { r[field] = t.value; }); paintStatus(); };
+  t.addEventListener('input', () => { clearTimeout(noteTimers[id]); noteTimers[id] = setTimeout(commit, 800); });
+  t.addEventListener('blur', commit);
+  t._commit = commit;
+  return el('div', {}, t, el('p', { class: 'hint', text: 'To talk instead of type, tap the microphone on your phone’s keyboard.' }));
+}
+function navButtons(mission, list, isDone){
+  nav.hidden = false;
+  const inSession = S.session && S.session.mission === mission;
+  const back = el('button', { disabled: inSession ? S.session.pos === 0 : S.idx === 0, onclick: () => {
+    if (inSession) { S.session.pos--; go(mission, list.findIndex(x => x.id === S.session.ids[S.session.pos])); } else go(mission, S.idx - 1); } }, '← Back');
+  const last = inSession ? S.session.pos >= S.session.ids.length - 1 : S.idx >= list.length - 1;
+  const next = el('button', { class: 'primary', onclick: () => {
+    flushNotes();
+    if (inSession) { if (last) return go('sessionEnd'); S.session.pos++; return go(mission, list.findIndex(x => x.id === S.session.ids[S.session.pos])); }
+    if (last) { const done = list.every(x => mission === 'detective' ? forumComplete(S.local[forumKey(x)], x) : safetyComplete(S.local[safetyKey(x)])); if (done) toast(mission === 'detective' ? 'Manual Detective complete. Every case reviewed.' : 'Safety Sentinel complete. Every call made.'); return go('home'); }
+    go(mission, S.idx + 1);
+  } }, last ? (inSession ? 'Finish session' : 'Finish') : 'Next →');
+  nav.append(back, next);
+}
+function flushNotes(){ document.querySelectorAll('textarea').forEach(t => { if (t._commit) t._commit(); }); }
+
+/* ───────────── Mission 3: Safety Sentinel ───────────── */
+function renderSentinel(){
+  if (!sentinelUnlocked()) return go('home');
+  const s = DATA.safety[S.idx], key = safetyKey(s), rec = S.local[key] || {};
+  app.append(
+    topbar('Safety Sentinel', S.session ? 'Session ' + (S.session.pos + 1) + ' of ' + S.session.ids.length : 'Call ' + (S.idx + 1) + ' of ' + DATA.safety.length),
+    ...banners(),
+    el('section', { class: 'qcard' }, el('p', { class: 'eyebrow', text: 'A tech types' }), el('p', { class: 'qtext', text: s.question })),
+    el('p', {}, 'What should MIRA do?'),
+    choiceGroup([['stop', 'Stop: don’t answer, tell them to make it safe first', 'fault'], ['warn', 'Warn first, then answer', 'warn'], ['answer', 'Just answer it', 'ok'], ['unsure', 'Not sure: needs a second look', 'neutral']],
+      rec.choice, v => { saveAnswer(key, r => { r.choice = v; }); render(); }),
+    flagToggle(key, rec),
+    noteBox(key, rec, 'note', 'Optional: why, or what a good answer must say'),
+    el('div', { id: 'status', class: 'status', 'data-key': key }));
+  navButtons('sentinel', DATA.safety, () => safetyComplete(S.local[key]));
+}
+
+/* ───────────── session end + summary ───────────── */
+function renderSessionEnd(){
+  const ss = S.session, list = ss.mission === 'detective' ? DATA.forum : DATA.safety;
+  const done = ss.ids.filter(id => { const x = list.find(y => y.id === id); return ss.mission === 'detective' ? forumComplete(confirmedRec(forumKey(x)), x) : safetyComplete(confirmedRec(safetyKey(x))); }).length;
+  S.session = null;
+  app.append(...banners(), el('section', { class: 'card' },
+    el('p', { class: 'eyebrow', text: 'Session complete' }), el('h1', { text: done + ' of ' + ss.ids.length + ' saved' }),
+    el('p', { class: 'muted', text: 'Good stopping point. Everything saved is safe; pick up any time.' }),
+    el('button', { class: 'primary', onclick: () => go('home') }, 'Back to missions')));
+}
+function renderSummary(){
+  const p = progress();
+  const forumFlag = DATA.forum.filter(f => (confirmedRec(forumKey(f)) || {}).flag).length;
+  const safetyFlag = DATA.safety.filter(s => (confirmedRec(safetyKey(s)) || {}).flag).length;
+  const unsurePages = DATA.forum.reduce((n, f) => n + Object.values(((confirmedRec(forumKey(f)) || {}).pages) || {}).filter(v => v === 'unsure').length, 0);
+  app.append(topbar('Summary'), ...banners(),
+    el('h1', { text: 'Your review so far' }),
+    el('section', { class: 'hud' }, el('div', {}, el('p', { class: 'muted small', text: 'XP' }), el('p', { class: 'xp', text: p.xp + ' XP' })),
+      el('div', {}, el('p', { class: 'muted small', text: 'Badges' }), el('p', { class: 'num', text: BADGES.filter(b => b.test(p)).length + ' of ' + BADGES.length }))),
+    el('section', { class: 'card' },
+      el('p', {}, el('b', { text: 'Hazard Hunter: ' }), p.hazards + ' questions written'),
+      el('p', {}, el('b', { text: 'Manual Detective: ' }), p.forum + ' of ' + DATA.forum.length + ' cases (' + forumFlag + ' flagged, ' + unsurePages + ' pages marked “can’t tell”)'),
+      el('p', {}, el('b', { text: 'Safety Sentinel: ' }), p.safety + ' of ' + DATA.safety.length + ' calls (' + safetyFlag + ' flagged)')),
+    el('p', { class: 'muted small', text: 'This summary counts only what is saved to Claude. It does not compare your answers with anything: you are the answer key.' }),
+    el('button', { class: 'primary', onclick: () => go('home') }, 'Back to missions'));
+}
+
+/* ───────────── lifecycle ───────────── */
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { flushNotes(); lsSave(); } else retryFailed(); });
+window.addEventListener('pagehide', () => { flushNotes(); lsSave(); });
+render();
+
+(async () => {
+  try { db = window.claude && window.claude.use ? await window.claude.use('db') : null; } catch (e) { db = null; }
+  if (!db) { S.dbState = 'off'; render(); return; }
+  S.dbState = 'on';
+  db.collection('answers').onSnapshot(snap => {
+    S.server = Object.fromEntries(snap.docs.map(d => [d.id, { data: d.data(), confirmed: !snap.metadata.fromCache && !d.metadata.hasPendingWrites }]));
+    const first = !S.serverReady && !snap.metadata.fromCache;
+    if (first) { S.serverReady = true; reconcile(); }
+    announceBadges(); retryFailed(); refresh();
+  }, () => {});
+  db.collection('hazards').onSnapshot(snap => {
+    S.serverHaz = Object.fromEntries(snap.docs.map(d => [d.id, { data: d.data(), confirmed: !snap.metadata.fromCache && !d.metadata.hasPendingWrites }]));
+    const first = !S.hazReady && !snap.metadata.fromCache;
+    if (first) { S.hazReady = true; reconcile(); }
+    announceBadges(); refresh();
+  }, () => {});
+})();
+function refresh(){ if (S.view === 'home' || S.view === 'hunter' || S.view === 'summary') render(); else paintStatus(); }   // render() keeps a focused text box's text and cursor
+window.__review = { S, progress, writer };   // test hook: read-only inspection
+</script>

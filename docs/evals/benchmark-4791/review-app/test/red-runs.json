@@ -1,0 +1,65 @@
+[
+ {
+  "mutation": "control (no mutation)",
+  "guard_test": "XP counts only server-confirmed saves",
+  "failed": 0,
+  "passed": 1,
+  "as_expected": true
+ },
+ {
+  "mutation": "answer XP from the phone's copy, not the server",
+  "guard_test": "XP counts only server-confirmed saves",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "hazard XP from the phone's copy",
+  "guard_test": "XP counts only server-confirmed saves",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "page gate removed",
+  "guard_test": "page buttons stay disabled until",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "v1 records rewritten on load",
+  "guard_test": "opening v2 writes nothing",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "Safety Sentinel lock removed",
+  "guard_test": "Safety Sentinel stays locked",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "XP depends on the label",
+  "guard_test": "the label never changes XP",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "overall alone completes a case",
+  "guard_test": "the label never changes XP",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ },
+ {
+  "mutation": "older phone copy overwrites the server",
+  "guard_test": "older copy on the phone never overwrites",
+  "failed": 1,
+  "passed": 0,
+  "as_expected": true
+ }
+]
