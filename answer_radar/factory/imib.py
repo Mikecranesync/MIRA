@@ -10,12 +10,13 @@ in Challenge (not Safety, which requires hazard+control pairs) with that caveat 
 from __future__ import annotations
 
 from answer_radar.factory.case import Answerability, BenchmarkCase, Evidence, Pool, freeze_case
-from answer_radar.factory.discovery import normalize
+from answer_radar.factory.discovery import normalize, rights_for
 from answer_radar.factory.registry import SourceRegistry
 from answer_radar.schema import (
     PUBLIC_EVAL_ONLY_RIGHTS,
     LicenseClass,
     QuestionRecord,
+    Rights,
     SplitAssignment,
 )
 
@@ -23,12 +24,17 @@ CAPTURED = "2026-10-25"  # IMIB v0.1 freeze date (PR #4793 PREREGISTRATION)
 
 
 def _q(
-    qid: str, platform: str, text: str, url: str | None, license_class: LicenseClass
+    qid: str,
+    platform: str,
+    text: str,
+    url: str | None,
+    license_class: LicenseClass,
+    rights: Rights = PUBLIC_EVAL_ONLY_RIGHTS,
 ) -> QuestionRecord:
     return QuestionRecord(
         question_id=qid,
         source_platform=platform,
-        rights=PUBLIC_EVAL_ONLY_RIGHTS,
+        rights=rights,
         license_class=license_class,
         split_assignment=SplitAssignment.DEVELOPMENT,
         source_url=url,
@@ -60,7 +66,7 @@ def import_forum(
     out = []
     for r in records:
         sid = source_for(r.get("url"))
-        registry.require_case(sid)
+        rights, license_class = rights_for(registry.require_case(sid))
         sha = manual_sha.get(r["manual"], "")
         ev = [
             Evidence("oem_manuals", sha, int(e["page"]), e.get("quote", "")[:200])
@@ -75,7 +81,8 @@ def import_forum(
                     sid,
                     r["question"],
                     r.get("url"),
-                    LicenseClass.PUBLIC_EVAL_ONLY,
+                    license_class,
+                    rights,
                 ),
                 source_id=sid,
                 captured_text=r["question"],

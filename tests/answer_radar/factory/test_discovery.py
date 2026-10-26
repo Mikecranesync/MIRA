@@ -102,3 +102,18 @@ def test_live_collection_refused_for_every_shipped_source(adapter):
 def test_unregistered_source_cannot_replay():
     with pytest.raises(SourcePolicyError):
         ForumAdapter("reddit", REG).replay(FX["control_com"])
+
+
+def test_rights_follow_registry_review_and_fail_closed():
+    import dataclasses
+
+    from answer_radar.factory.discovery import rights_for
+    from answer_radar.schema import LicenseClass
+
+    se = _all()["stackexchange"][0]
+    assert (
+        se.question.license_class is LicenseClass.UNKNOWN and not se.question.rights.rights_resolved
+    )
+    reviewed = dataclasses.replace(REG.get("stackexchange"), reviewed_at="2026-10-26")
+    assert rights_for(reviewed)[1] is LicenseClass.PUBLIC_EVAL_ONLY
+    assert rights_for(REG.get("field"))[1] is LicenseClass.CUSTOMER_PRIVATE

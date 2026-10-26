@@ -26,6 +26,7 @@ from answer_radar.schema import (
     PUBLIC_EVAL_ONLY_RIGHTS,
     LicenseClass,
     QuestionRecord,
+    Rights,
     SafetyClass,
     SplitAssignment,
 )
@@ -80,6 +81,20 @@ def normalize(text: str) -> dict[str, Any]:
     }
 
 
+def rights_for(entry) -> tuple[Rights, LicenseClass]:
+    """Rights and license follow the registry review, failing closed.
+
+    An unreviewed source gets no rights and `UNKNOWN`: nobody has read its terms, so the
+    case may be built and frozen but claims nothing. A reviewed third-party source is capped
+    at evaluation-only (PRS section 15); internal field data is customer-private.
+    """
+    if entry.source_type == "field":
+        return PUBLIC_EVAL_ONLY_RIGHTS, LicenseClass.CUSTOMER_PRIVATE
+    if not entry.reviewed:
+        return Rights(), LicenseClass.UNKNOWN
+    return PUBLIC_EVAL_ONLY_RIGHTS, LicenseClass.PUBLIC_EVAL_ONLY
+
+
 @dataclass
 class Adapter:
     """One approved source. Subclasses map a captured record to case fields."""
@@ -107,16 +122,13 @@ class Adapter:
         for rec in records:
             text = self.question_text(rec)  # question only; replies are never passed in
             norm = normalize(text)
+            rights, license_class = rights_for(entry)
             extra = self.extra(rec)
             q = QuestionRecord(
                 question_id=f"{self.source_id}:{rec['id']}",
                 source_platform=self.source_id,
-                rights=PUBLIC_EVAL_ONLY_RIGHTS,
-                license_class=(
-                    LicenseClass.CUSTOMER_PRIVATE
-                    if entry.source_type == "field"
-                    else LicenseClass.PUBLIC_EVAL_ONLY
-                ),
+                rights=rights,
+                license_class=license_class,
                 split_assignment=extra.pop("split", SplitAssignment.FRESH),
                 source_url=rec.get("url"),
                 external_post_id=str(rec["id"]),
