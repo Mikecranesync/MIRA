@@ -1,0 +1,2292 @@
+[
+ {
+  "id": "oi-micro810-072a19cf",
+  "term": "1492-EAHJ35",
+  "printed": [
+   24
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   24
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-10028b97",
+  "term": "About Your Controller",
+  "printed": [
+   11
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   11
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-e67128a1",
+  "term": "Compliance to European Union Directives",
+  "printed": [
+   11
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   11
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-676a0f14",
+  "term": "Connected Components Workbench controller password",
+  "printed": [
+   51
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   51
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-1375a8ad",
+  "term": "Countdown (CTD) Function Block",
+  "printed": [
+   95
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   95
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-b485a2ff",
+  "term": "Error codes",
+  "printed": [
+   34
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   34
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-d0682a3f",
+  "term": "Micro810 12-Point Controllers",
+  "printed": [
+   9
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   9
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-6ff2ffa0",
+  "term": "PID Application Example",
+  "printed": [
+   118
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   118
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-8938c724",
+  "term": "RSLinx Classic",
+  "printed": [
+   109
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   109
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-015b4e0a",
+  "term": "Specifications",
+  "printed": [
+   57
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   57
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-c3af076f",
+  "term": "Troubleshooting",
+  "printed": [
+   33
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   33
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-5f1a3859",
+  "term": "USB Adapter",
+  "printed": [
+   68
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   68
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-20ae2fed",
+  "term": "User Defined Function (UDF)",
+  "printed": [
+   45
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   45
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-a1623989",
+  "term": "controller description",
+  "printed": [
+   9
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   9
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-3a27383f",
+  "term": "controller mounting dimensions",
+  "printed": [
+   23
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   23
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-8d3cf6ba",
+  "term": "controller password",
+  "printed": [
+   51
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   51
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-c539f4f1",
+  "term": "controller password compatibility",
+  "printed": [
+   52
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   52
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-37c27bc8",
+  "term": "controller preventing excessive heat",
+  "printed": [
+   18
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   18
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-fc4d847b",
+  "term": "isolation transformer power considerations",
+  "printed": [
+   17
+  ],
+  "kind": "index",
+  "index_page": 123,
+  "strict": [
+   17
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-ce7b1924",
+  "term": "master control relay circuit periodic tests",
+  "printed": [
+   16
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   16
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-ba94d294",
+  "term": "module spacing",
+  "printed": [
+   23
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   23
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-45e0f738",
+  "term": "power considerations loss of power source",
+  "printed": [
+   17
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   17
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-28568530",
+  "term": "power supply inrush power considerations",
+  "printed": [
+   17
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   17
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-951ed1c2",
+  "term": "program execution",
+  "printed": [
+   45
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   45
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-f3a00369",
+  "term": "relay function block DOY",
+  "printed": [
+   78
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   78
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-2c044e2f",
+  "term": "relay function block TOF",
+  "printed": [
+   78
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   78
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-b87065bb",
+  "term": "safety considerations",
+  "printed": [
+   14
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   14
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-6607a047",
+  "term": "status indicators",
+  "printed": [
+   33
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   33
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-2197edde",
+  "term": "status indicators on the Controller",
+  "printed": [
+   33
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   33
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro810-c41a9ffb",
+  "term": "wiring examples",
+  "printed": [
+   31
+  ],
+  "kind": "index",
+  "index_page": 124,
+  "strict": [
+   31
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "oi-micro820-um-f23c20ef",
+  "term": "CIP Serial",
+  "printed": [
+   55,
+   58
+  ],
+  "kind": "index",
+  "index_page": 221,
+  "strict": [
+   55,
+   58
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-de0ab79e",
+  "term": "ConfigMeFirst.txt",
+  "printed": [
+   13
+  ],
+  "kind": "index",
+  "index_page": 221,
+  "strict": [
+   13
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-bdfff885",
+  "term": "ConfigMeFirst.txt errors",
+  "printed": [
+   121
+  ],
+  "kind": "index",
+  "index_page": 221,
+  "strict": [
+   121
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-edfd1509",
+  "term": "IP65",
+  "printed": [
+   107
+  ],
+  "kind": "index",
+  "index_page": 222,
+  "strict": [
+   107
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-e7eed75f",
+  "term": "KEY_READ_REM",
+  "printed": [
+   112,
+   113
+  ],
+  "kind": "index",
+  "index_page": 222,
+  "strict": [
+   112,
+   113
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-1f138997",
+  "term": "Micro820 Controllers",
+  "printed": [
+   12
+  ],
+  "kind": "index",
+  "index_page": 222,
+  "strict": [
+   12
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-2c6fcad7",
+  "term": "Modbus",
+  "printed": [
+   54
+  ],
+  "kind": "index",
+  "index_page": 222,
+  "strict": [
+   54
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-261c5a85",
+  "term": "RJ45 Ethernet cable",
+  "printed": [
+   15
+  ],
+  "kind": "index",
+  "index_page": 223,
+  "strict": [
+   15
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-583911d2",
+  "term": "Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 Ethernet",
+  "printed": [
+   55,
+   108
+  ],
+  "kind": "index",
+  "index_page": 222,
+  "strict": [
+   55,
+   108
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-4b2b9e3f",
+  "term": "Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 Hardware Overview",
+  "printed": [
+   11
+  ],
+  "kind": "index",
+  "index_page": 222,
+  "strict": [
+   11
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-b981d5c4",
+  "term": "Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 error codes",
+  "printed": [
+   150
+  ],
+  "kind": "index",
+  "index_page": 222,
+  "strict": [
+   150
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-7509f009",
+  "term": "Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 error detection",
+  "printed": [
+   61
+  ],
+  "kind": "index",
+  "index_page": 222,
+  "strict": [
+   61
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-e5caca62",
+  "term": "Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 for motor starters",
+  "printed": [
+   39
+  ],
+  "kind": "index",
+  "index_page": 224,
+  "strict": [
+   39
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-adaad146",
+  "term": "Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 motion axis fault reset",
+  "printed": [
+   88,
+   194
+  ],
+  "kind": "index",
+  "index_page": 224,
+  "strict": [
+   88,
+   194
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-4bf093dc",
+  "term": "Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 motion axis jog",
+  "printed": [
+   87,
+   194
+  ],
+  "kind": "index",
+  "index_page": 224,
+  "strict": [
+   87,
+   194
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-5b417ee5",
+  "term": "Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 power distribution",
+  "printed": [
+   27
+  ],
+  "kind": "index",
+  "index_page": 223,
+  "strict": [
+   27
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-a7e66636",
+  "term": "Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 preventing excessive heat",
+  "printed": [
+   28
+  ],
+  "kind": "index",
+  "index_page": 223,
+  "strict": [
+   28
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-a2a298e8",
+  "term": "Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 status indicators",
+  "printed": [
+   12
+  ],
+  "kind": "index",
+  "index_page": 224,
+  "strict": [
+   12
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-3be177fc",
+  "term": "Run Mode Change (RMC)",
+  "printed": [
+   17
+  ],
+  "kind": "index",
+  "index_page": 223,
+  "strict": [
+   17
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-d5e5fd53",
+  "term": "USB Mode",
+  "printed": [
+   108
+  ],
+  "kind": "index",
+  "index_page": 221,
+  "strict": [
+   108
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-67d2f319",
+  "term": "array of strings",
+  "printed": [
+   56
+  ],
+  "kind": "index",
+  "index_page": 221,
+  "strict": [
+   56
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-6c9d7e44",
+  "term": "connection limits",
+  "printed": [
+   53
+  ],
+  "kind": "index",
+  "index_page": 221,
+  "strict": [
+   53
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-069a9678",
+  "term": "controller minimizing electrical noise",
+  "printed": [
+   46
+  ],
+  "kind": "index",
+  "index_page": 221,
+  "strict": [
+   46
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-5b90071a",
+  "term": "discover",
+  "printed": [
+   102
+  ],
+  "kind": "index",
+  "index_page": 221,
+  "strict": [
+   102
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-ce7b1924",
+  "term": "master control relay circuit periodic tests",
+  "printed": [
+   27
+  ],
+  "kind": "index",
+  "index_page": 222,
+  "strict": [
+   27
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-3b483077",
+  "term": "recipe function block parameters",
+  "printed": [
+   130
+  ],
+  "kind": "index",
+  "index_page": 223,
+  "strict": [
+   130
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-53b8a457",
+  "term": "resistance input",
+  "printed": [
+   50
+  ],
+  "kind": "index",
+  "index_page": 223,
+  "strict": [
+   50
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-d5c79fb4",
+  "term": "startup screen",
+  "printed": [
+   108
+  ],
+  "kind": "index",
+  "index_page": 221,
+  "strict": [
+   108
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-b9da8b91",
+  "term": "user defined function (UDF)",
+  "printed": [
+   67
+  ],
+  "kind": "index",
+  "index_page": 224,
+  "strict": [
+   67
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-micro820-um-f814c170",
+  "term": "wiring",
+  "printed": [
+   37
+  ],
+  "kind": "index",
+  "index_page": 224,
+  "strict": [
+   37
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "oi-ml1100-d26333bd",
+  "term": "1762-IA8 wiring diagram",
+  "printed": [
+   39
+  ],
+  "kind": "index",
+  "index_page": 173,
+  "strict": [
+   39
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-683e2a15",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 1762-IF4",
+  "printed": [
+   48
+  ],
+  "kind": "index",
+  "index_page": 176,
+  "strict": [
+   48
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-6e956427",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 DIN rail",
+  "printed": [
+   169
+  ],
+  "kind": "index",
+  "index_page": 174,
+  "strict": [
+   169
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-957ce380",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 I/O wiring",
+  "printed": [
+   37
+  ],
+  "kind": "index",
+  "index_page": 174,
+  "strict": [
+   37
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-2b994a51",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 Master Control Relay (MCR)",
+  "printed": [
+   170
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   170
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-3e84b23c",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 Offline Editing",
+  "printed": [
+   105
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   105
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-c14c9c8d",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 default communication configuration",
+  "printed": [
+   51
+  ],
+  "kind": "index",
+  "index_page": 174,
+  "strict": [
+   51
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-7282d949",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 disconnecting main power",
+  "printed": [
+   16
+  ],
+  "kind": "index",
+  "index_page": 174,
+  "strict": [
+   16
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-0f2be270",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 grounding",
+  "printed": [
+   32
+  ],
+  "kind": "index",
+  "index_page": 174,
+  "strict": [
+   32
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-17b5ab6b",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 network",
+  "printed": [
+   171
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   171
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-66b60914",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 nominal input current",
+  "printed": [
+   171
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   171
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-02cced08",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 non-critical",
+  "printed": [
+   137
+  ],
+  "kind": "index",
+  "index_page": 174,
+  "strict": [
+   137
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-0641be01",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 normally closed",
+  "printed": [
+   171
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   171
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-aa3013da",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 power distribution",
+  "printed": [
+   17
+  ],
+  "kind": "index",
+  "index_page": 176,
+  "strict": [
+   17
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-70b17300",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 run mode",
+  "printed": [
+   172
+  ],
+  "kind": "index",
+  "index_page": 176,
+  "strict": [
+   172
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-0ff2c2d1",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 save",
+  "printed": [
+   172
+  ],
+  "kind": "index",
+  "index_page": 176,
+  "strict": [
+   172
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-4ec2958a",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 status indicators",
+  "printed": [
+   133
+  ],
+  "kind": "index",
+  "index_page": 174,
+  "strict": [
+   133
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-b3cf0e9c",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 using a modem",
+  "printed": [
+   56,
+   147
+  ],
+  "kind": "index",
+  "index_page": 174,
+  "strict": [
+   56,
+   147
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-9ae390fa",
+  "term": "Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 write protection",
+  "printed": [
+   103
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   103
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-fcbcf165",
+  "term": "false",
+  "printed": [
+   170
+  ],
+  "kind": "index",
+  "index_page": 174,
+  "strict": [
+   170
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-a130e019",
+  "term": "off-state leakage current",
+  "printed": [
+   171
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   171
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-d320455a",
+  "term": "output type selection",
+  "printed": [
+   45
+  ],
+  "kind": "index",
+  "index_page": 173,
+  "strict": [
+   45
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-3fdde7cd",
+  "term": "power source loss of",
+  "printed": [
+   17
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   17
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-a4ff9df3",
+  "term": "programming device",
+  "printed": [
+   171
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   171
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-3316348d",
+  "term": "read",
+  "printed": [
+   172
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   172
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-37be0c55",
+  "term": "replacement battery",
+  "printed": [
+   129
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   129
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-e203531b",
+  "term": "replacement battery handling",
+  "printed": [
+   130
+  ],
+  "kind": "index",
+  "index_page": 175,
+  "strict": [
+   130
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-ff4085ad",
+  "term": "upload",
+  "printed": [
+   172
+  ],
+  "kind": "index",
+  "index_page": 176,
+  "strict": [
+   172
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-93c7bf1f",
+  "term": "wiring recommendation",
+  "printed": [
+   29
+  ],
+  "kind": "index",
+  "index_page": 176,
+  "strict": [
+   29
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-ml1100-ebebe4a7",
+  "term": "wiring your controller",
+  "printed": [
+   29
+  ],
+  "kind": "index",
+  "index_page": 176,
+  "strict": [
+   29
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9"
+ },
+ {
+  "id": "oi-pf4m-53387783",
+  "term": "AC Supply Ground",
+  "printed": [
+   14
+  ],
+  "kind": "index",
+  "index_page": 109,
+  "strict": [
+   14
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-694667d3",
+  "term": "Auxiliary Input Fault",
+  "printed": [
+   73
+  ],
+  "kind": "index",
+  "index_page": 109,
+  "strict": [
+   73
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-68b39610",
+  "term": "Catalog Number Explanation",
+  "printed": [
+   10
+  ],
+  "kind": "index",
+  "index_page": 109,
+  "strict": [
+   10
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-4edd9249",
+  "term": "Display Group Parameters",
+  "printed": [
+   41
+  ],
+  "kind": "index",
+  "index_page": 109,
+  "strict": [
+   41
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-3096af16",
+  "term": "Drive Grounding",
+  "printed": [
+   14
+  ],
+  "kind": "index",
+  "index_page": 109,
+  "strict": [
+   14
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-0be58e7c",
+  "term": "ESD, Static Discharge",
+  "printed": [
+   9
+  ],
+  "kind": "index",
+  "index_page": 109,
+  "strict": [
+   9
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-ca9b3ac4",
+  "term": "Faults Auto Rstrt Tries",
+  "printed": [
+   74
+  ],
+  "kind": "index",
+  "index_page": 109,
+  "strict": [
+   74
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-cd3fef7b",
+  "term": "Faults Comm Loss",
+  "printed": [
+   74
+  ],
+  "kind": "index",
+  "index_page": 109,
+  "strict": [
+   74
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-f19ac9fb",
+  "term": "Faults Drive Overload",
+  "printed": [
+   74
+  ],
+  "kind": "index",
+  "index_page": 109,
+  "strict": [
+   74
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-7cefd671",
+  "term": "Faults Phase Short",
+  "printed": [
+   74
+  ],
+  "kind": "index",
+  "index_page": 109,
+  "strict": [
+   74
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-654b903c",
+  "term": "Faults Phase to Ground Short",
+  "printed": [
+   74
+  ],
+  "kind": "index",
+  "index_page": 109,
+  "strict": [
+   74
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-f3160031",
+  "term": "Parameter Checksum Fault",
+  "printed": [
+   74
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   74
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-c5795742",
+  "term": "Parameter Viewing and Editing",
+  "printed": [
+   36
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   36
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-75eb68de",
+  "term": "Parameters Communications Group",
+  "printed": [
+   55
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   55
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-3ebb83cf",
+  "term": "Power Loss Fault",
+  "printed": [
+   73
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   73
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-3346dc91",
+  "term": "Power Unit Fault",
+  "printed": [
+   74
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   74
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-ff862693",
+  "term": "Ratings",
+  "printed": [
+   79
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   79
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-4b1028af",
+  "term": "Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 HW OverCurrent Fault",
+  "printed": [
+   73
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   73
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-e4c5d58b",
+  "term": "Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 Heatsink OvrTmp Fault",
+  "printed": [
+   73
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   73
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-47369f78",
+  "term": "Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 Input Contactor",
+  "printed": [
+   22
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   22
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-7468275d",
+  "term": "Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 Input Potentiometer",
+  "printed": [
+   25
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   25
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-f3ef596f",
+  "term": "Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 Input Power Conditioning",
+  "printed": [
+   14
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   14
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-152db812",
+  "term": "Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 Motor Overload Fault",
+  "printed": [
+   73
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   73
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-e6154683",
+  "term": "Short Circuit Protection",
+  "printed": [
+   16
+  ],
+  "kind": "index",
+  "index_page": 110,
+  "strict": [
+   16
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-fd50400a",
+  "term": "Terminal Block Group Parameters",
+  "printed": [
+   51
+  ],
+  "kind": "index",
+  "index_page": 111,
+  "strict": [
+   51
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-4baca84d",
+  "term": "Terminal Block I/O",
+  "printed": [
+   23
+  ],
+  "kind": "index",
+  "index_page": 111,
+  "strict": [
+   23
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-976508f5",
+  "term": "Terminal Block Power",
+  "printed": [
+   22
+  ],
+  "kind": "index",
+  "index_page": 111,
+  "strict": [
+   22
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-8ae23e82",
+  "term": "UnderVoltage Fault",
+  "printed": [
+   73
+  ],
+  "kind": "index",
+  "index_page": 111,
+  "strict": [
+   73
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-72529059",
+  "term": "Wiring",
+  "printed": [
+   11
+  ],
+  "kind": "index",
+  "index_page": 111,
+  "strict": [
+   11
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-pf4m-41c654dd",
+  "term": "Wiring Block Diagram",
+  "printed": [
+   24
+  ],
+  "kind": "index",
+  "index_page": 111,
+  "strict": [
+   24
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "oi-se-canopen-hw-66231a6c",
+  "term": "VW3 CAN TAP2",
+  "printed": [
+   53
+  ],
+  "kind": "index",
+  "index_page": 66,
+  "strict": [
+   53
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "37cef51be2e199e41113017cc98fbb1bb03d9ec7c57aadf78d6b942e4e9b09ae"
+ },
+ {
+  "id": "oi-se-m172-8f13a754",
+  "term": "RTC ...................................................................",
+  "printed": [
+   105
+  ],
+  "kind": "index",
+  "index_page": 196,
+  "strict": [
+   105
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "624c0605b759b2d49b0a2768d7ac5aba2cf9957e1802466a8e9ec045761e3d88"
+ },
+ {
+  "id": "oi-se-m172-fe646f32",
+  "term": "TM172DCLF\u2022......................................................",
+  "printed": [
+   116
+  ],
+  "kind": "index",
+  "index_page": 196,
+  "strict": [
+   116
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "624c0605b759b2d49b0a2768d7ac5aba2cf9957e1802466a8e9ec045761e3d88"
+ },
+ {
+  "id": "oi-se-m172-4b98da94",
+  "term": "TM172DCLWT\u2022\u2022..................................................",
+  "printed": [
+   115
+  ],
+  "kind": "index",
+  "index_page": 196,
+  "strict": [
+   115
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "624c0605b759b2d49b0a2768d7ac5aba2cf9957e1802466a8e9ec045761e3d88"
+ },
+ {
+  "id": "oi-se-m172-3ed08ad1",
+  "term": "TM172DGRP ......................................................",
+  "printed": [
+   117
+  ],
+  "kind": "index",
+  "index_page": 196,
+  "strict": [
+   117
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "624c0605b759b2d49b0a2768d7ac5aba2cf9957e1802466a8e9ec045761e3d88"
+ },
+ {
+  "id": "oi-se-premium-serial-c4f66213",
+  "term": "T_COM_CHAR",
+  "printed": [
+   344,
+   345
+  ],
+  "kind": "index",
+  "index_page": 368,
+  "strict": [
+   344,
+   345
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "291fff98121f76823502f042104379482c2d167cc7355da893275d7b7ea7d571"
+ },
+ {
+  "id": "oi-se-premium-serial-a013d253",
+  "term": "T_COM_MB",
+  "printed": [
+   337,
+   338
+  ],
+  "kind": "index",
+  "index_page": 368,
+  "strict": [
+   337,
+   338
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "291fff98121f76823502f042104379482c2d167cc7355da893275d7b7ea7d571"
+ },
+ {
+  "id": "oi-se-premium-serial-0afaecc9",
+  "term": "T_COM_UTW_M",
+  "printed": [
+   351,
+   353
+  ],
+  "kind": "index",
+  "index_page": 368,
+  "strict": [
+   351,
+   353
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "291fff98121f76823502f042104379482c2d167cc7355da893275d7b7ea7d571"
+ },
+ {
+  "id": "oi-se-premium-serial-3faa87fe",
+  "term": "T_COM_UTW_S",
+  "printed": [
+   359,
+   360
+  ],
+  "kind": "index",
+  "index_page": 368,
+  "strict": [
+   359,
+   360
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "291fff98121f76823502f042104379482c2d167cc7355da893275d7b7ea7d571"
+ },
+ {
+  "id": "oi-se-premium-serial-5b2ea1a3",
+  "term": "T_GEN_MOD",
+  "printed": [
+   364
+  ],
+  "kind": "index",
+  "index_page": 368,
+  "strict": [
+   364
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "291fff98121f76823502f042104379482c2d167cc7355da893275d7b7ea7d571"
+ },
+ {
+  "id": "oi-se-premium-serial-8205c556",
+  "term": "Uni-Telway",
+  "printed": [
+   257
+  ],
+  "kind": "index",
+  "index_page": 368,
+  "strict": [
+   257
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "291fff98121f76823502f042104379482c2d167cc7355da893275d7b7ea7d571"
+ },
+ {
+  "id": "oi-se-premium-serial-6f447d81",
+  "term": "Uni-Telway bus addresses",
+  "printed": [
+   264
+  ],
+  "kind": "index",
+  "index_page": 368,
+  "strict": [
+   264
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "291fff98121f76823502f042104379482c2d167cc7355da893275d7b7ea7d571"
+ },
+ {
+  "id": "oi-smc50-111f9c0a",
+  "term": "150-SM4 digital I/O module",
+  "printed": [
+   251
+  ],
+  "kind": "index",
+  "index_page": 271,
+  "strict": [
+   251
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-60602d89",
+  "term": "Multiple motors",
+  "printed": [
+   98
+  ],
+  "kind": "index",
+  "index_page": 272,
+  "strict": [
+   98
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-514a0386",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 Protection\u2014Fault and Alarm",
+  "printed": [
+   118
+  ],
+  "kind": "index",
+  "index_page": 272,
+  "strict": [
+   118
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-58132354",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 auxiliary relay output",
+  "printed": [
+   207
+  ],
+  "kind": "index",
+  "index_page": 272,
+  "strict": [
+   207
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-9fadf10c",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 controller",
+  "printed": [
+   11
+  ],
+  "kind": "index",
+  "index_page": 272,
+  "strict": [
+   11
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-6f703afe",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 fan wiring",
+  "printed": [
+   65
+  ],
+  "kind": "index",
+  "index_page": 272,
+  "strict": [
+   65
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-e8184add",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 integrated bypass units",
+  "printed": [
+   65
+  ],
+  "kind": "index",
+  "index_page": 272,
+  "strict": [
+   65
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-6fcc3e49",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 kickstart",
+  "printed": [
+   72
+  ],
+  "kind": "index",
+  "index_page": 272,
+  "strict": [
+   72
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-4e2fbaa4",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 motor protection",
+  "printed": [
+   25
+  ],
+  "kind": "index",
+  "index_page": 272,
+  "strict": [
+   25
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-d2d528f7",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 parameter information",
+  "printed": [
+   217
+  ],
+  "kind": "index",
+  "index_page": 273,
+  "strict": [
+   217
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-621eb144",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 pump control mode",
+  "printed": [
+   15
+  ],
+  "kind": "index",
+  "index_page": 273,
+  "strict": [
+   15
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-3b6010df",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 resistance check",
+  "printed": [
+   215
+  ],
+  "kind": "index",
+  "index_page": 273,
+  "strict": [
+   215
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-000640d2",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 soft stop",
+  "printed": [
+   17
+  ],
+  "kind": "index",
+  "index_page": 274,
+  "strict": [
+   17
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-58063cc9",
+  "term": "Rockwell Automation Publication 150-UM011F-EN-P - April 2025 solid-state",
+  "printed": [
+   20
+  ],
+  "kind": "index",
+  "index_page": 273,
+  "strict": [
+   20
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-9b3289a3",
+  "term": "Software",
+  "printed": [
+   109
+  ],
+  "kind": "index",
+  "index_page": 271,
+  "strict": [
+   109
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-423c13f0",
+  "term": "alarms",
+  "printed": [
+   26
+  ],
+  "kind": "index",
+  "index_page": 271,
+  "strict": [
+   26
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-c2a248f7",
+  "term": "clear fault",
+  "printed": [
+   201
+  ],
+  "kind": "index",
+  "index_page": 271,
+  "strict": [
+   201
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-19ec6af8",
+  "term": "communications",
+  "printed": [
+   24
+  ],
+  "kind": "index",
+  "index_page": 271,
+  "strict": [
+   24
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-2e8a8506",
+  "term": "control wiring specifications",
+  "printed": [
+   40
+  ],
+  "kind": "index",
+  "index_page": 271,
+  "strict": [
+   40
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-8c1f490f",
+  "term": "controller overview",
+  "printed": [
+   109
+  ],
+  "kind": "index",
+  "index_page": 271,
+  "strict": [
+   109
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-8fa78148",
+  "term": "diagnostics",
+  "printed": [
+   111,
+   115,
+   199
+  ],
+  "kind": "index",
+  "index_page": 271,
+  "strict": [
+   199
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-6fdad852",
+  "term": "dual ramp start",
+  "printed": [
+   15
+  ],
+  "kind": "index",
+  "index_page": 271,
+  "strict": [
+   15
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-e67e5f1b",
+  "term": "linear acceleration",
+  "printed": [
+   71
+  ],
+  "kind": "index",
+  "index_page": 272,
+  "strict": [
+   71
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-178865a9",
+  "term": "modes starting",
+  "printed": [
+   12
+  ],
+  "kind": "index",
+  "index_page": 272,
+  "strict": [
+   12
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-10e98fee",
+  "term": "outputs PTC",
+  "printed": [
+   29
+  ],
+  "kind": "index",
+  "index_page": 272,
+  "strict": [
+   29
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-de2aec34",
+  "term": "parameter configuration option module",
+  "printed": [
+   28
+  ],
+  "kind": "index",
+  "index_page": 271,
+  "strict": [
+   28
+  ],
+  "template": "Where does the {product} manual cover {term}?",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-8f7f08dc",
+  "term": "soft stop",
+  "printed": [
+   17
+  ],
+  "kind": "index",
+  "index_page": 273,
+  "strict": [
+   17
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-44661d5c",
+  "term": "stall protection",
+  "printed": [
+   25
+  ],
+  "kind": "index",
+  "index_page": 273,
+  "strict": [
+   25
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-03a98343",
+  "term": "standard inputs",
+  "printed": [
+   28
+  ],
+  "kind": "index",
+  "index_page": 273,
+  "strict": [
+   28
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ },
+ {
+  "id": "oi-smc50-5798143c",
+  "term": "starting modes pump control mode",
+  "printed": [
+   15
+  ],
+  "kind": "index",
+  "index_page": 273,
+  "strict": [
+   15
+  ],
+  "template": "{product}: {term}",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069"
+ }
+]

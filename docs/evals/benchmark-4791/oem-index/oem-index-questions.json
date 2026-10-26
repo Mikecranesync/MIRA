@@ -1,0 +1,1632 @@
+[
+ {
+  "id": "oi-micro810-072a19cf",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover 1492-EAHJ35?",
+  "accepted": [
+   24
+  ]
+ },
+ {
+  "id": "oi-micro810-10028b97",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: About Your Controller",
+  "accepted": [
+   11
+  ]
+ },
+ {
+  "id": "oi-micro810-e67128a1",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover Compliance to European Union Directives?",
+  "accepted": [
+   11
+  ]
+ },
+ {
+  "id": "oi-micro810-676a0f14",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: Connected Components Workbench controller password",
+  "accepted": [
+   51
+  ]
+ },
+ {
+  "id": "oi-micro810-1375a8ad",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: Countdown (CTD) Function Block",
+  "accepted": [
+   95
+  ]
+ },
+ {
+  "id": "oi-micro810-b485a2ff",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover Error codes?",
+  "accepted": [
+   34
+  ]
+ },
+ {
+  "id": "oi-micro810-d0682a3f",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: Micro810 12-Point Controllers",
+  "accepted": [
+   9
+  ]
+ },
+ {
+  "id": "oi-micro810-6ff2ffa0",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: PID Application Example",
+  "accepted": [
+   118
+  ]
+ },
+ {
+  "id": "oi-micro810-8938c724",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: RSLinx Classic",
+  "accepted": [
+   109
+  ]
+ },
+ {
+  "id": "oi-micro810-015b4e0a",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: Specifications",
+  "accepted": [
+   57
+  ]
+ },
+ {
+  "id": "oi-micro810-c3af076f",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover Troubleshooting?",
+  "accepted": [
+   33
+  ]
+ },
+ {
+  "id": "oi-micro810-5f1a3859",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover USB Adapter?",
+  "accepted": [
+   68
+  ]
+ },
+ {
+  "id": "oi-micro810-20ae2fed",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover User Defined Function (UDF)?",
+  "accepted": [
+   45
+  ]
+ },
+ {
+  "id": "oi-micro810-a1623989",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover controller description?",
+  "accepted": [
+   9
+  ]
+ },
+ {
+  "id": "oi-micro810-3a27383f",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: controller mounting dimensions",
+  "accepted": [
+   23
+  ]
+ },
+ {
+  "id": "oi-micro810-8d3cf6ba",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover controller password?",
+  "accepted": [
+   51
+  ]
+ },
+ {
+  "id": "oi-micro810-c539f4f1",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: controller password compatibility",
+  "accepted": [
+   52
+  ]
+ },
+ {
+  "id": "oi-micro810-37c27bc8",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: controller preventing excessive heat",
+  "accepted": [
+   18
+  ]
+ },
+ {
+  "id": "oi-micro810-fc4d847b",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover isolation transformer power considerations?",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "oi-micro810-ce7b1924",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover master control relay circuit periodic tests?",
+  "accepted": [
+   16
+  ]
+ },
+ {
+  "id": "oi-micro810-ba94d294",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover module spacing?",
+  "accepted": [
+   23
+  ]
+ },
+ {
+  "id": "oi-micro810-45e0f738",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover power considerations loss of power source?",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "oi-micro810-28568530",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: power supply inrush power considerations",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "oi-micro810-951ed1c2",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover program execution?",
+  "accepted": [
+   45
+  ]
+ },
+ {
+  "id": "oi-micro810-f3a00369",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: relay function block DOY",
+  "accepted": [
+   78
+  ]
+ },
+ {
+  "id": "oi-micro810-2c044e2f",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: relay function block TOF",
+  "accepted": [
+   78
+  ]
+ },
+ {
+  "id": "oi-micro810-b87065bb",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: safety considerations",
+  "accepted": [
+   14
+  ]
+ },
+ {
+  "id": "oi-micro810-6607a047",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Where does the Micro810 manual cover status indicators?",
+  "accepted": [
+   33
+  ]
+ },
+ {
+  "id": "oi-micro810-2197edde",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: status indicators on the Controller",
+  "accepted": [
+   33
+  ]
+ },
+ {
+  "id": "oi-micro810-c41a9ffb",
+  "set": "oem-index",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810: wiring examples",
+  "accepted": [
+   31
+  ]
+ },
+ {
+  "id": "oi-micro820-um-f23c20ef",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover CIP Serial?",
+  "accepted": [
+   55,
+   58
+  ]
+ },
+ {
+  "id": "oi-micro820-um-de0ab79e",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: ConfigMeFirst.txt",
+  "accepted": [
+   13
+  ]
+ },
+ {
+  "id": "oi-micro820-um-bdfff885",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: ConfigMeFirst.txt errors",
+  "accepted": [
+   121
+  ]
+ },
+ {
+  "id": "oi-micro820-um-edfd1509",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover IP65?",
+  "accepted": [
+   107
+  ]
+ },
+ {
+  "id": "oi-micro820-um-e7eed75f",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover KEY_READ_REM?",
+  "accepted": [
+   112,
+   113
+  ]
+ },
+ {
+  "id": "oi-micro820-um-1f138997",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover Micro820 Controllers?",
+  "accepted": [
+   12
+  ]
+ },
+ {
+  "id": "oi-micro820-um-2c6fcad7",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: Modbus",
+  "accepted": [
+   54
+  ]
+ },
+ {
+  "id": "oi-micro820-um-261c5a85",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover RJ45 Ethernet cable?",
+  "accepted": [
+   15
+  ]
+ },
+ {
+  "id": "oi-micro820-um-583911d2",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 Ethernet?",
+  "accepted": [
+   55,
+   108
+  ]
+ },
+ {
+  "id": "oi-micro820-um-4b2b9e3f",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 Hardware Overview",
+  "accepted": [
+   11
+  ]
+ },
+ {
+  "id": "oi-micro820-um-b981d5c4",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 error codes?",
+  "accepted": [
+   150
+  ]
+ },
+ {
+  "id": "oi-micro820-um-7509f009",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 error detection",
+  "accepted": [
+   61
+  ]
+ },
+ {
+  "id": "oi-micro820-um-e5caca62",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 for motor starters",
+  "accepted": [
+   39
+  ]
+ },
+ {
+  "id": "oi-micro820-um-adaad146",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 motion axis fault reset",
+  "accepted": [
+   88,
+   194
+  ]
+ },
+ {
+  "id": "oi-micro820-um-4bf093dc",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 motion axis jog?",
+  "accepted": [
+   87,
+   194
+  ]
+ },
+ {
+  "id": "oi-micro820-um-5b417ee5",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 power distribution?",
+  "accepted": [
+   27
+  ]
+ },
+ {
+  "id": "oi-micro820-um-a7e66636",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 preventing excessive heat",
+  "accepted": [
+   28
+  ]
+ },
+ {
+  "id": "oi-micro820-um-a2a298e8",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: Rockwell Automation Publication 2080-UM005H-EN-E - September 2025 status indicators",
+  "accepted": [
+   12
+  ]
+ },
+ {
+  "id": "oi-micro820-um-3be177fc",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover Run Mode Change (RMC)?",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "oi-micro820-um-d5e5fd53",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover USB Mode?",
+  "accepted": [
+   108
+  ]
+ },
+ {
+  "id": "oi-micro820-um-67d2f319",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: array of strings",
+  "accepted": [
+   56
+  ]
+ },
+ {
+  "id": "oi-micro820-um-6c9d7e44",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: connection limits",
+  "accepted": [
+   53
+  ]
+ },
+ {
+  "id": "oi-micro820-um-069a9678",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover controller minimizing electrical noise?",
+  "accepted": [
+   46
+  ]
+ },
+ {
+  "id": "oi-micro820-um-5b90071a",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: discover",
+  "accepted": [
+   102
+  ]
+ },
+ {
+  "id": "oi-micro820-um-ce7b1924",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover master control relay circuit periodic tests?",
+  "accepted": [
+   27
+  ]
+ },
+ {
+  "id": "oi-micro820-um-3b483077",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover recipe function block parameters?",
+  "accepted": [
+   130
+  ]
+ },
+ {
+  "id": "oi-micro820-um-53b8a457",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: resistance input",
+  "accepted": [
+   50
+  ]
+ },
+ {
+  "id": "oi-micro820-um-d5c79fb4",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: startup screen",
+  "accepted": [
+   108
+  ]
+ },
+ {
+  "id": "oi-micro820-um-b9da8b91",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Where does the Micro820 manual cover user defined function (UDF)?",
+  "accepted": [
+   67
+  ]
+ },
+ {
+  "id": "oi-micro820-um-f814c170",
+  "set": "oem-index",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820: wiring",
+  "accepted": [
+   37
+  ]
+ },
+ {
+  "id": "oi-ml1100-d26333bd",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover 1762-IA8 wiring diagram?",
+  "accepted": [
+   39
+  ]
+ },
+ {
+  "id": "oi-ml1100-683e2a15",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "MicroLogix 1100: Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 1762-IF4",
+  "accepted": [
+   48
+  ]
+ },
+ {
+  "id": "oi-ml1100-6e956427",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 DIN rail?",
+  "accepted": [
+   169
+  ]
+ },
+ {
+  "id": "oi-ml1100-957ce380",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "MicroLogix 1100: Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 I/O wiring",
+  "accepted": [
+   37
+  ]
+ },
+ {
+  "id": "oi-ml1100-2b994a51",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 Master Control Relay (MCR)?",
+  "accepted": [
+   170
+  ]
+ },
+ {
+  "id": "oi-ml1100-3e84b23c",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "MicroLogix 1100: Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 Offline Editing",
+  "accepted": [
+   105
+  ]
+ },
+ {
+  "id": "oi-ml1100-c14c9c8d",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 default communication configuration?",
+  "accepted": [
+   51
+  ]
+ },
+ {
+  "id": "oi-ml1100-7282d949",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 disconnecting main power?",
+  "accepted": [
+   16
+  ]
+ },
+ {
+  "id": "oi-ml1100-0f2be270",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 grounding?",
+  "accepted": [
+   32
+  ]
+ },
+ {
+  "id": "oi-ml1100-17b5ab6b",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "MicroLogix 1100: Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 network",
+  "accepted": [
+   171
+  ]
+ },
+ {
+  "id": "oi-ml1100-66b60914",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "MicroLogix 1100: Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 nominal input current",
+  "accepted": [
+   171
+  ]
+ },
+ {
+  "id": "oi-ml1100-02cced08",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 non-critical?",
+  "accepted": [
+   137
+  ]
+ },
+ {
+  "id": "oi-ml1100-0641be01",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 normally closed?",
+  "accepted": [
+   171
+  ]
+ },
+ {
+  "id": "oi-ml1100-aa3013da",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 power distribution?",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "oi-ml1100-70b17300",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "MicroLogix 1100: Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 run mode",
+  "accepted": [
+   172
+  ]
+ },
+ {
+  "id": "oi-ml1100-0ff2c2d1",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 save?",
+  "accepted": [
+   172
+  ]
+ },
+ {
+  "id": "oi-ml1100-4ec2958a",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "MicroLogix 1100: Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 status indicators",
+  "accepted": [
+   133
+  ]
+ },
+ {
+  "id": "oi-ml1100-b3cf0e9c",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 using a modem?",
+  "accepted": [
+   56,
+   147
+  ]
+ },
+ {
+  "id": "oi-ml1100-9ae390fa",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover Rockwell Automation Publication 1763-UM001G-EN-P - May 2024 write protection?",
+  "accepted": [
+   103
+  ]
+ },
+ {
+  "id": "oi-ml1100-fcbcf165",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "MicroLogix 1100: false",
+  "accepted": [
+   170
+  ]
+ },
+ {
+  "id": "oi-ml1100-a130e019",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "MicroLogix 1100: off-state leakage current",
+  "accepted": [
+   171
+  ]
+ },
+ {
+  "id": "oi-ml1100-d320455a",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover output type selection?",
+  "accepted": [
+   45
+  ]
+ },
+ {
+  "id": "oi-ml1100-3fdde7cd",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover power source loss of?",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "oi-ml1100-a4ff9df3",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "MicroLogix 1100: programming device",
+  "accepted": [
+   171
+  ]
+ },
+ {
+  "id": "oi-ml1100-3316348d",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover read?",
+  "accepted": [
+   172
+  ]
+ },
+ {
+  "id": "oi-ml1100-37be0c55",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover replacement battery?",
+  "accepted": [
+   129
+  ]
+ },
+ {
+  "id": "oi-ml1100-e203531b",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover replacement battery handling?",
+  "accepted": [
+   130
+  ]
+ },
+ {
+  "id": "oi-ml1100-ff4085ad",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover upload?",
+  "accepted": [
+   172
+  ]
+ },
+ {
+  "id": "oi-ml1100-93c7bf1f",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "MicroLogix 1100: wiring recommendation",
+  "accepted": [
+   29
+  ]
+ },
+ {
+  "id": "oi-ml1100-ebebe4a7",
+  "set": "oem-index",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Where does the MicroLogix 1100 manual cover wiring your controller?",
+  "accepted": [
+   29
+  ]
+ },
+ {
+  "id": "oi-pf4m-53387783",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover AC Supply Ground?",
+  "accepted": [
+   14
+  ]
+ },
+ {
+  "id": "oi-pf4m-694667d3",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Auxiliary Input Fault",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "oi-pf4m-68b39610",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Catalog Number Explanation",
+  "accepted": [
+   10
+  ]
+ },
+ {
+  "id": "oi-pf4m-4edd9249",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Display Group Parameters",
+  "accepted": [
+   41
+  ]
+ },
+ {
+  "id": "oi-pf4m-3096af16",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Drive Grounding",
+  "accepted": [
+   14
+  ]
+ },
+ {
+  "id": "oi-pf4m-0be58e7c",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: ESD, Static Discharge",
+  "accepted": [
+   9
+  ]
+ },
+ {
+  "id": "oi-pf4m-ca9b3ac4",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Faults Auto Rstrt Tries",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "oi-pf4m-cd3fef7b",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Faults Comm Loss?",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "oi-pf4m-f19ac9fb",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Faults Drive Overload",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "oi-pf4m-7cefd671",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Faults Phase Short",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "oi-pf4m-654b903c",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Faults Phase to Ground Short?",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "oi-pf4m-f3160031",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Parameter Checksum Fault?",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "oi-pf4m-c5795742",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Parameter Viewing and Editing?",
+  "accepted": [
+   36
+  ]
+ },
+ {
+  "id": "oi-pf4m-75eb68de",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Parameters Communications Group",
+  "accepted": [
+   55
+  ]
+ },
+ {
+  "id": "oi-pf4m-3ebb83cf",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Power Loss Fault",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "oi-pf4m-3346dc91",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Power Unit Fault",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "oi-pf4m-ff862693",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Ratings?",
+  "accepted": [
+   79
+  ]
+ },
+ {
+  "id": "oi-pf4m-4b1028af",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 HW OverCurrent Fault",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "oi-pf4m-e4c5d58b",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 Heatsink OvrTmp Fault",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "oi-pf4m-47369f78",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 Input Contactor?",
+  "accepted": [
+   22
+  ]
+ },
+ {
+  "id": "oi-pf4m-7468275d",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 Input Potentiometer?",
+  "accepted": [
+   25
+  ]
+ },
+ {
+  "id": "oi-pf4m-f3ef596f",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 Input Power Conditioning?",
+  "accepted": [
+   14
+  ]
+ },
+ {
+  "id": "oi-pf4m-152db812",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Rockwell Automation Publication 22F-UM001E-EN-E - September 2024 Motor Overload Fault?",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "oi-pf4m-e6154683",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Short Circuit Protection",
+  "accepted": [
+   16
+  ]
+ },
+ {
+  "id": "oi-pf4m-fd50400a",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Terminal Block Group Parameters?",
+  "accepted": [
+   51
+  ]
+ },
+ {
+  "id": "oi-pf4m-4baca84d",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Terminal Block I/O",
+  "accepted": [
+   23
+  ]
+ },
+ {
+  "id": "oi-pf4m-976508f5",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Terminal Block Power?",
+  "accepted": [
+   22
+  ]
+ },
+ {
+  "id": "oi-pf4m-8ae23e82",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: UnderVoltage Fault",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "oi-pf4m-72529059",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M: Wiring",
+  "accepted": [
+   11
+  ]
+ },
+ {
+  "id": "oi-pf4m-41c654dd",
+  "set": "oem-index",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Where does the PowerFlex 4M manual cover Wiring Block Diagram?",
+  "accepted": [
+   24
+  ]
+ },
+ {
+  "id": "oi-se-canopen-hw-66231a6c",
+  "set": "oem-index",
+  "manual": "se-canopen-hw",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-canopen-hw-setup.pdf",
+  "question": "Where does the Schneider CANopen manual cover VW3 CAN TAP2?",
+  "accepted": [
+   53
+  ]
+ },
+ {
+  "id": "oi-se-m172-8f13a754",
+  "set": "oem-index",
+  "manual": "se-m172",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+  "question": "Where does the Modicon M172 manual cover RTC ...................................................................?",
+  "accepted": [
+   105
+  ]
+ },
+ {
+  "id": "oi-se-m172-fe646f32",
+  "set": "oem-index",
+  "manual": "se-m172",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+  "question": "Modicon M172: TM172DCLF\u2022......................................................",
+  "accepted": [
+   116
+  ]
+ },
+ {
+  "id": "oi-se-m172-4b98da94",
+  "set": "oem-index",
+  "manual": "se-m172",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+  "question": "Where does the Modicon M172 manual cover TM172DCLWT\u2022\u2022..................................................?",
+  "accepted": [
+   115
+  ]
+ },
+ {
+  "id": "oi-se-m172-3ed08ad1",
+  "set": "oem-index",
+  "manual": "se-m172",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+  "question": "Where does the Modicon M172 manual cover TM172DGRP ......................................................?",
+  "accepted": [
+   117
+  ]
+ },
+ {
+  "id": "oi-se-premium-serial-c4f66213",
+  "set": "oem-index",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "Schneider Premium: T_COM_CHAR",
+  "accepted": [
+   344,
+   345
+  ]
+ },
+ {
+  "id": "oi-se-premium-serial-a013d253",
+  "set": "oem-index",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "Schneider Premium: T_COM_MB",
+  "accepted": [
+   337,
+   338
+  ]
+ },
+ {
+  "id": "oi-se-premium-serial-0afaecc9",
+  "set": "oem-index",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "Schneider Premium: T_COM_UTW_M",
+  "accepted": [
+   351,
+   353
+  ]
+ },
+ {
+  "id": "oi-se-premium-serial-3faa87fe",
+  "set": "oem-index",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "Schneider Premium: T_COM_UTW_S",
+  "accepted": [
+   359,
+   360
+  ]
+ },
+ {
+  "id": "oi-se-premium-serial-5b2ea1a3",
+  "set": "oem-index",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "Where does the Schneider Premium manual cover T_GEN_MOD?",
+  "accepted": [
+   364
+  ]
+ },
+ {
+  "id": "oi-se-premium-serial-8205c556",
+  "set": "oem-index",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "Where does the Schneider Premium manual cover Uni-Telway?",
+  "accepted": [
+   257
+  ]
+ },
+ {
+  "id": "oi-se-premium-serial-6f447d81",
+  "set": "oem-index",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "Where does the Schneider Premium manual cover Uni-Telway bus addresses?",
+  "accepted": [
+   264
+  ]
+ },
+ {
+  "id": "oi-smc50-111f9c0a",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: 150-SM4 digital I/O module",
+  "accepted": [
+   251
+  ]
+ },
+ {
+  "id": "oi-smc50-60602d89",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: Multiple motors",
+  "accepted": [
+   98
+  ]
+ },
+ {
+  "id": "oi-smc50-514a0386",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: Rockwell Automation Publication 150-UM011F-EN-P - April 2025 Protection\u2014Fault and Alarm",
+  "accepted": [
+   118
+  ]
+ },
+ {
+  "id": "oi-smc50-58132354",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: Rockwell Automation Publication 150-UM011F-EN-P - April 2025 auxiliary relay output",
+  "accepted": [
+   207
+  ]
+ },
+ {
+  "id": "oi-smc50-9fadf10c",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover Rockwell Automation Publication 150-UM011F-EN-P - April 2025 controller?",
+  "accepted": [
+   11
+  ]
+ },
+ {
+  "id": "oi-smc50-6f703afe",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover Rockwell Automation Publication 150-UM011F-EN-P - April 2025 fan wiring?",
+  "accepted": [
+   65
+  ]
+ },
+ {
+  "id": "oi-smc50-e8184add",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: Rockwell Automation Publication 150-UM011F-EN-P - April 2025 integrated bypass units",
+  "accepted": [
+   65
+  ]
+ },
+ {
+  "id": "oi-smc50-6fcc3e49",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover Rockwell Automation Publication 150-UM011F-EN-P - April 2025 kickstart?",
+  "accepted": [
+   72
+  ]
+ },
+ {
+  "id": "oi-smc50-4e2fbaa4",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover Rockwell Automation Publication 150-UM011F-EN-P - April 2025 motor protection?",
+  "accepted": [
+   25
+  ]
+ },
+ {
+  "id": "oi-smc50-d2d528f7",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover Rockwell Automation Publication 150-UM011F-EN-P - April 2025 parameter information?",
+  "accepted": [
+   217
+  ]
+ },
+ {
+  "id": "oi-smc50-621eb144",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover Rockwell Automation Publication 150-UM011F-EN-P - April 2025 pump control mode?",
+  "accepted": [
+   15
+  ]
+ },
+ {
+  "id": "oi-smc50-3b6010df",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: Rockwell Automation Publication 150-UM011F-EN-P - April 2025 resistance check",
+  "accepted": [
+   215
+  ]
+ },
+ {
+  "id": "oi-smc50-000640d2",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover Rockwell Automation Publication 150-UM011F-EN-P - April 2025 soft stop?",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "oi-smc50-58063cc9",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: Rockwell Automation Publication 150-UM011F-EN-P - April 2025 solid-state",
+  "accepted": [
+   20
+  ]
+ },
+ {
+  "id": "oi-smc50-9b3289a3",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover Software?",
+  "accepted": [
+   109
+  ]
+ },
+ {
+  "id": "oi-smc50-423c13f0",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover alarms?",
+  "accepted": [
+   26
+  ]
+ },
+ {
+  "id": "oi-smc50-c2a248f7",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover clear fault?",
+  "accepted": [
+   201
+  ]
+ },
+ {
+  "id": "oi-smc50-19ec6af8",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover communications?",
+  "accepted": [
+   24
+  ]
+ },
+ {
+  "id": "oi-smc50-2e8a8506",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: control wiring specifications",
+  "accepted": [
+   40
+  ]
+ },
+ {
+  "id": "oi-smc50-8c1f490f",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover controller overview?",
+  "accepted": [
+   109
+  ]
+ },
+ {
+  "id": "oi-smc50-8fa78148",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: diagnostics",
+  "accepted": [
+   199
+  ]
+ },
+ {
+  "id": "oi-smc50-6fdad852",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: dual ramp start",
+  "accepted": [
+   15
+  ]
+ },
+ {
+  "id": "oi-smc50-e67e5f1b",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover linear acceleration?",
+  "accepted": [
+   71
+  ]
+ },
+ {
+  "id": "oi-smc50-178865a9",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover modes starting?",
+  "accepted": [
+   12
+  ]
+ },
+ {
+  "id": "oi-smc50-10e98fee",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: outputs PTC",
+  "accepted": [
+   29
+  ]
+ },
+ {
+  "id": "oi-smc50-de2aec34",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "Where does the SMC-50 manual cover parameter configuration option module?",
+  "accepted": [
+   28
+  ]
+ },
+ {
+  "id": "oi-smc50-8f7f08dc",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: soft stop",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "oi-smc50-44661d5c",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: stall protection",
+  "accepted": [
+   25
+  ]
+ },
+ {
+  "id": "oi-smc50-03a98343",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: standard inputs",
+  "accepted": [
+   28
+  ]
+ },
+ {
+  "id": "oi-smc50-5798143c",
+  "set": "oem-index",
+  "manual": "smc50",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069.pdf",
+  "question": "SMC-50: starting modes pump control mode",
+  "accepted": [
+   15
+  ]
+ }
+]

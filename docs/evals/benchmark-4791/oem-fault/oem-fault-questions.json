@@ -1,0 +1,1742 @@
+[
+ {
+  "id": "of-acs355-4fac6dbe",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0002 mean on a ABB ACS355?",
+  "accepted": [
+   359
+  ]
+ },
+ {
+  "id": "of-acs355-446e21f2",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 is showing 0003, what does that fault mean",
+  "accepted": [
+   360
+  ]
+ },
+ {
+  "id": "of-acs355-0b6dfcd5",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 is showing 0008, what does that fault mean",
+  "accepted": [
+   361
+  ]
+ },
+ {
+  "id": "of-acs355-0b08e3dc",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0010 mean on a ABB ACS355?",
+  "accepted": [
+   362
+  ]
+ },
+ {
+  "id": "of-acs355-07a8e31c",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0014 mean on a ABB ACS355?",
+  "accepted": [
+   363
+  ]
+ },
+ {
+  "id": "of-acs355-d5153a8e",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 is showing 0016, what does that fault mean",
+  "accepted": [
+   363
+  ]
+ },
+ {
+  "id": "of-acs355-c966f403",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0024 mean on a ABB ACS355?",
+  "accepted": [
+   364
+  ]
+ },
+ {
+  "id": "of-acs355-6dedf838",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0027 mean on a ABB ACS355?",
+  "accepted": [
+   364
+  ]
+ },
+ {
+  "id": "of-acs355-fb363655",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0028 mean on a ABB ACS355?",
+  "accepted": [
+   364
+  ]
+ },
+ {
+  "id": "of-acs355-d5d54e22",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0029 mean on a ABB ACS355?",
+  "accepted": [
+   364
+  ]
+ },
+ {
+  "id": "of-acs355-727350de",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 is showing 0036, what does that fault mean",
+  "accepted": [
+   365
+  ]
+ },
+ {
+  "id": "of-acs355-59b68ead",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 is showing 0037, what does that fault mean",
+  "accepted": [
+   365
+  ]
+ },
+ {
+  "id": "of-acs355-b957fa06",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 is showing 0045, what does that fault mean",
+  "accepted": [
+   365
+  ]
+ },
+ {
+  "id": "of-acs355-07334386",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0101 mean on a ABB ACS355?",
+  "accepted": [
+   366
+  ]
+ },
+ {
+  "id": "of-acs355-1a1ebe2a",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0201 mean on a ABB ACS355?",
+  "accepted": [
+   366
+  ]
+ },
+ {
+  "id": "of-acs355-6249017f",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 0204 mean on a ABB ACS355?",
+  "accepted": [
+   366
+  ]
+ },
+ {
+  "id": "of-acs355-8c9a013a",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 1003 mean on a ABB ACS355?",
+  "accepted": [
+   367
+  ]
+ },
+ {
+  "id": "of-acs355-7f861bce",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 is showing 1005, what does that fault mean",
+  "accepted": [
+   367
+  ]
+ },
+ {
+  "id": "of-acs355-478c4ffb",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does fault 1006 mean on a ABB ACS355?",
+  "accepted": [
+   367
+  ]
+ },
+ {
+  "id": "of-acs355-6ad4a6b1",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 is showing 1009, what does that fault mean",
+  "accepted": [
+   367
+  ]
+ },
+ {
+  "id": "of-acs355-95536279",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 is showing 1015, what does that fault mean",
+  "accepted": [
+   368
+  ]
+ },
+ {
+  "id": "of-acs355-b0ab628c",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 is showing 1017, what does that fault mean",
+  "accepted": [
+   368
+  ]
+ },
+ {
+  "id": "of-acs355-85d6385b",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does alarm 2001 mean on an ABB ACS355?",
+  "accepted": [
+   353
+  ]
+ },
+ {
+  "id": "of-acs355-72d1b5da",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 alarm 2011 what is it",
+  "accepted": [
+   354
+  ]
+ },
+ {
+  "id": "of-acs355-7931aa2a",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does alarm 2013 mean on an ABB ACS355?",
+  "accepted": [
+   354
+  ]
+ },
+ {
+  "id": "of-acs355-152e69cf",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does alarm 2018 mean on an ABB ACS355?",
+  "accepted": [
+   354
+  ]
+ },
+ {
+  "id": "of-acs355-1bea20e1",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does alarm 2021 mean on an ABB ACS355?",
+  "accepted": [
+   354
+  ]
+ },
+ {
+  "id": "of-acs355-d398b29d",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "What does alarm 2023 mean on an ABB ACS355?",
+  "accepted": [
+   354
+  ]
+ },
+ {
+  "id": "of-acs355-158a323a",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 alarm 2026 what is it",
+  "accepted": [
+   355
+  ]
+ },
+ {
+  "id": "of-acs355-c7c1b4da",
+  "set": "oem-fault",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "ABB ACS355 alarm 2035 what is it",
+  "accepted": [
+   355
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-2f97c94d",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "GS10 drive faulted with AFE on the keypad, what does it mean?",
+  "accepted": [
+   30
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-28fc76fc",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "GS10 drive faulted with AUE on the keypad, what does it mean?",
+  "accepted": [
+   29
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-0366fbc8",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "GS10 drive faulted with AUE3 on the keypad, what does it mean?",
+  "accepted": [
+   36
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-7d93758d",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What is fault CE1 on a GS10 drive?",
+  "accepted": [
+   31
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-e6ffa128",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What is fault CE2 on a GS10 drive?",
+  "accepted": [
+   31
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-f7d8b8f9",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What is fault CE3 on a GS10 drive?",
+  "accepted": [
+   32
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-f16e1ae5",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What is fault CE4 on a GS10 drive?",
+  "accepted": [
+   32
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-3b4afbd6",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What is fault Hd0 on a GS10 drive?",
+  "accepted": [
+   29
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-919a5408",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What is fault Hd1 on a GS10 drive?",
+  "accepted": [
+   29
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-0ba7de91",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "GS10 drive faulted with Hd7 on the keypad, what does it mean?",
+  "accepted": [
+   37
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-6931b481",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What is fault Lvn on a GS10 drive?",
+  "accepted": [
+   23
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-5eff4437",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What is fault Sto on a GS10 drive?",
+  "accepted": [
+   33
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-8279bd98",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What is fault b4GF on a GS10 drive?",
+  "accepted": [
+   36
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-eb7d0df2",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "What is fault oL on a GS10 drive?",
+  "accepted": [
+   24
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-aa833c7f",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "GS10 drive faulted with ocS on the keypad, what does it mean?",
+  "accepted": [
+   20
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-9579ea23",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "GS10 drive faulted with ovS on the keypad, what does it mean?",
+  "accepted": [
+   22
+  ]
+ },
+ {
+  "id": "of-gs10-ch6-18a2b0a4",
+  "set": "oem-fault",
+  "manual": "gs10-ch6",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669.pdf",
+  "question": "GS10 drive faulted with tH1o on the keypad, what does it mean?",
+  "accepted": [
+   24
+  ]
+ },
+ {
+  "id": "of-micro810-2c744f5a",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF000 mean on a Micro810 controller?",
+  "accepted": [
+   35
+  ]
+ },
+ {
+  "id": "of-micro810-0878878d",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF001 mean on a Micro810 controller?",
+  "accepted": [
+   35
+  ]
+ },
+ {
+  "id": "of-micro810-8d114e40",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF003 mean on a Micro810 controller?",
+  "accepted": [
+   35
+  ]
+ },
+ {
+  "id": "of-micro810-50f32076",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF004 mean on a Micro810 controller?",
+  "accepted": [
+   35
+  ]
+ },
+ {
+  "id": "of-micro810-256f2d3e",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF006 mean on a Micro810 controller?",
+  "accepted": [
+   35
+  ]
+ },
+ {
+  "id": "of-micro810-cd14fcc8",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF010 mean on a Micro810 controller?",
+  "accepted": [
+   35
+  ]
+ },
+ {
+  "id": "of-micro810-f4eeae60",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF014 mean on a Micro810 controller?",
+  "accepted": [
+   36
+  ]
+ },
+ {
+  "id": "of-micro810-fe0434dd",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF020 - what does it mean?",
+  "accepted": [
+   36
+  ]
+ },
+ {
+  "id": "of-micro810-6b1de660",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF021 - what does it mean?",
+  "accepted": [
+   36
+  ]
+ },
+ {
+  "id": "of-micro810-317d54a1",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF022 - what does it mean?",
+  "accepted": [
+   36
+  ]
+ },
+ {
+  "id": "of-micro810-9883f20c",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF030 mean on a Micro810 controller?",
+  "accepted": [
+   37
+  ]
+ },
+ {
+  "id": "of-micro810-69325fd6",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF050 - what does it mean?",
+  "accepted": [
+   37
+  ]
+ },
+ {
+  "id": "of-micro810-5cf54456",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF100 - what does it mean?",
+  "accepted": [
+   37
+  ]
+ },
+ {
+  "id": "of-micro810-086e02e4",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF110 - what does it mean?",
+  "accepted": [
+   37
+  ]
+ },
+ {
+  "id": "of-micro810-2a97b72b",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF210 mean on a Micro810 controller?",
+  "accepted": [
+   37
+  ]
+ },
+ {
+  "id": "of-micro810-05563e68",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF230 - what does it mean?",
+  "accepted": [
+   37
+  ]
+ },
+ {
+  "id": "of-micro810-0d172523",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF250 - what does it mean?",
+  "accepted": [
+   37
+  ]
+ },
+ {
+  "id": "of-micro810-250d7b6c",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF300 mean on a Micro810 controller?",
+  "accepted": [
+   38
+  ]
+ },
+ {
+  "id": "of-micro810-8e290df5",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF301 mean on a Micro810 controller?",
+  "accepted": [
+   38
+  ]
+ },
+ {
+  "id": "of-micro810-53d52463",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF302 - what does it mean?",
+  "accepted": [
+   38
+  ]
+ },
+ {
+  "id": "of-micro810-97ebaaca",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF303 - what does it mean?",
+  "accepted": [
+   38
+  ]
+ },
+ {
+  "id": "of-micro810-5a34bcd6",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF830 mean on a Micro810 controller?",
+  "accepted": [
+   39
+  ]
+ },
+ {
+  "id": "of-micro810-e2646dd4",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF840 mean on a Micro810 controller?",
+  "accepted": [
+   39
+  ]
+ },
+ {
+  "id": "of-micro810-5c8d4aaf",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF850 mean on a Micro810 controller?",
+  "accepted": [
+   39
+  ]
+ },
+ {
+  "id": "of-micro810-80699c16",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF860 - what does it mean?",
+  "accepted": [
+   39
+  ]
+ },
+ {
+  "id": "of-micro810-8dd25aa6",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF870 mean on a Micro810 controller?",
+  "accepted": [
+   39
+  ]
+ },
+ {
+  "id": "of-micro810-0a57a22b",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Micro810 error code 0xF880 - what does it mean?",
+  "accepted": [
+   40
+  ]
+ },
+ {
+  "id": "of-micro810-b97b677c",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF898 mean on a Micro810 controller?",
+  "accepted": [
+   40
+  ]
+ },
+ {
+  "id": "of-micro810-1336c4c8",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF8A0 mean on a Micro810 controller?",
+  "accepted": [
+   40
+  ]
+ },
+ {
+  "id": "of-micro810-bdd9c889",
+  "set": "oem-fault",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "What does 0xF8A1 mean on a Micro810 controller?",
+  "accepted": [
+   40
+  ]
+ },
+ {
+  "id": "of-micro820-um-8ce09b57",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0004, what does it mean?",
+  "accepted": [
+   92
+  ]
+ },
+ {
+  "id": "of-micro820-um-a30c1d11",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0005, what does it mean?",
+  "accepted": [
+   92
+  ]
+ },
+ {
+  "id": "of-micro820-um-37353562",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0007, what does it mean?",
+  "accepted": [
+   92
+  ]
+ },
+ {
+  "id": "of-micro820-um-cd035d83",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0008, what does it mean?",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-micro820-um-9dae4a6d",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0009, what does it mean?",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-micro820-um-311e6ce0",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x000C, what does it mean?",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-micro820-um-00b6f11e",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0011, what does it mean?",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-micro820-um-01ced13f",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0106, what does it mean?",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-micro820-um-bd50cabd",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0108, what does it mean?",
+  "accepted": [
+   95
+  ]
+ },
+ {
+  "id": "of-micro820-um-47d6f576",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0109, what does it mean?",
+  "accepted": [
+   95
+  ]
+ },
+ {
+  "id": "of-micro820-um-023b359a",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0118, what does it mean?",
+  "accepted": [
+   96
+  ]
+ },
+ {
+  "id": "of-micro820-um-65289b5a",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0128, what does it mean?",
+  "accepted": [
+   97
+  ]
+ },
+ {
+  "id": "of-micro820-um-eb165543",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0306, what does it mean?",
+  "accepted": [
+   98
+  ]
+ },
+ {
+  "id": "of-micro820-um-37d8e425",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x031E, what does it mean?",
+  "accepted": [
+   99
+  ]
+ },
+ {
+  "id": "of-micro820-um-bff99ee6",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x031F, what does it mean?",
+  "accepted": [
+   99
+  ]
+ },
+ {
+  "id": "of-micro820-um-616eb05f",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0322, what does it mean?",
+  "accepted": [
+   99
+  ]
+ },
+ {
+  "id": "of-micro820-um-6ee35a47",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0800, what does it mean?",
+  "accepted": [
+   99
+  ]
+ },
+ {
+  "id": "of-micro820-um-a0bd0ec6",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 EtherNet/IP connection fault 0x0814, what does it mean?",
+  "accepted": [
+   100
+  ]
+ },
+ {
+  "id": "of-micro820-um-0878878d",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 error code 0xF001 - what does it mean?",
+  "accepted": [
+   150
+  ]
+ },
+ {
+  "id": "of-micro820-um-8d114e40",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 error code 0xF003 - what does it mean?",
+  "accepted": [
+   151
+  ]
+ },
+ {
+  "id": "of-micro820-um-0b2dd4f4",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "What does 0xF01A mean on a Micro820 controller?",
+  "accepted": [
+   151
+  ]
+ },
+ {
+  "id": "of-micro820-um-6b1de660",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "What does 0xF021 mean on a Micro820 controller?",
+  "accepted": [
+   151
+  ]
+ },
+ {
+  "id": "of-micro820-um-c744c25d",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "What does 0xF031 mean on a Micro820 controller?",
+  "accepted": [
+   152
+  ]
+ },
+ {
+  "id": "of-micro820-um-69325fd6",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 error code 0xF050 - what does it mean?",
+  "accepted": [
+   152
+  ]
+ },
+ {
+  "id": "of-micro820-um-5cf54456",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "What does 0xF100 mean on a Micro820 controller?",
+  "accepted": [
+   152
+  ]
+ },
+ {
+  "id": "of-micro820-um-53d52463",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "What does 0xF302 mean on a Micro820 controller?",
+  "accepted": [
+   153
+  ]
+ },
+ {
+  "id": "of-micro820-um-97ebaaca",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "What does 0xF303 mean on a Micro820 controller?",
+  "accepted": [
+   153
+  ]
+ },
+ {
+  "id": "of-micro820-um-5a34bcd6",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 error code 0xF830 - what does it mean?",
+  "accepted": [
+   153
+  ]
+ },
+ {
+  "id": "of-micro820-um-5c8d4aaf",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 error code 0xF850 - what does it mean?",
+  "accepted": [
+   153
+  ]
+ },
+ {
+  "id": "of-micro820-um-2f14dd44",
+  "set": "oem-fault",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Micro820 error code 0xF8A3 - what does it mean?",
+  "accepted": [
+   154
+  ]
+ },
+ {
+  "id": "of-pf40-a486d588",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F100 mean on a PowerFlex 40?",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-pf40-9aaec030",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F122 mean on a PowerFlex 40?",
+  "accepted": [
+   95
+  ]
+ },
+ {
+  "id": "of-pf40-1e360cf7",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "PowerFlex 40 is showing F13, what does that fault mean",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-pf40-8e2de333",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F2 mean on a PowerFlex 40?",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-pf40-626b5b12",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "PowerFlex 40 is showing F29, what does that fault mean",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-pf40-7c96eb02",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F3 mean on a PowerFlex 40?",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-pf40-16ee13fe",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "PowerFlex 40 is showing F33, what does that fault mean",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-pf40-8b12cb8d",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "PowerFlex 40 is showing F39, what does that fault mean",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-pf40-015b7913",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F4 mean on a PowerFlex 40?",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-pf40-8a2fa5b1",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "PowerFlex 40 is showing F40, what does that fault mean",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-pf40-f304bcf0",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F42 mean on a PowerFlex 40?",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-pf40-ea19ea25",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "PowerFlex 40 is showing F43, what does that fault mean",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-pf40-54431eab",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "PowerFlex 40 is showing F48, what does that fault mean",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-pf40-6cd28ed3",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F5 mean on a PowerFlex 40?",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-pf40-1c003eb2",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F6 mean on a PowerFlex 40?",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-pf40-a32eec43",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "PowerFlex 40 is showing F70, what does that fault mean",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-pf40-4aae415f",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "PowerFlex 40 is showing F71, what does that fault mean",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-pf40-a39b6e51",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "PowerFlex 40 is showing F8, what does that fault mean",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "of-pf40-46fa3174",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F80 mean on a PowerFlex 40?",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-pf40-0f6ee794",
+  "set": "oem-fault",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "What does fault F81 mean on a PowerFlex 40?",
+  "accepted": [
+   94
+  ]
+ },
+ {
+  "id": "of-pf4m-a486d588",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M is showing F100, what does that fault mean",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "of-pf4m-1e360cf7",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What does fault F13 mean on a PowerFlex 4M?",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "of-pf4m-8e2de333",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What does fault F2 mean on a PowerFlex 4M?",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "of-pf4m-7c96eb02",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M is showing F3, what does that fault mean",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "of-pf4m-16ee13fe",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M is showing F33, what does that fault mean",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "of-pf4m-8b12cb8d",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M is showing F39, what does that fault mean",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "of-pf4m-015b7913",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What does fault F4 mean on a PowerFlex 4M?",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "of-pf4m-8a2fa5b1",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What does fault F40 mean on a PowerFlex 4M?",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "of-pf4m-f304bcf0",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M is showing F42, what does that fault mean",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "of-pf4m-ea19ea25",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What does fault F43 mean on a PowerFlex 4M?",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "of-pf4m-54431eab",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What does fault F48 mean on a PowerFlex 4M?",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "of-pf4m-6cd28ed3",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M is showing F5, what does that fault mean",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "of-pf4m-1c003eb2",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M is showing F6, what does that fault mean",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "of-pf4m-a32eec43",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What does fault F70 mean on a PowerFlex 4M?",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "of-pf4m-4aae415f",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "PowerFlex 4M is showing F71, what does that fault mean",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "of-pf4m-a39b6e51",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What does fault F8 mean on a PowerFlex 4M?",
+  "accepted": [
+   73
+  ]
+ },
+ {
+  "id": "of-pf4m-0f6ee794",
+  "set": "oem-fault",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "What does fault F81 mean on a PowerFlex 4M?",
+  "accepted": [
+   74
+  ]
+ },
+ {
+  "id": "of-smcflex-6b86b273",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 1 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-6b51d431",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 12, what does it mean?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-3fdba35f",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 13 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-8527a891",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 14, what does it mean?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-e629fa65",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 15, what does it mean?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-b17ef6d1",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 16, what does it mean?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-4523540f",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 17 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-4ec9599f",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 18, what does it mean?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-f5ca38f7",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 20 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-6f4b6612",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 21 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-785f3ec7",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 22, what does it mean?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-535fa30d",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 23 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-c2356069",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 24 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-b7a56873",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 25 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-5f9c4ab0",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 26, what does it mean?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-4e074085",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 3, what does it mean?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-624b60c5",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 30 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-eb1e33e8",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 31 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-e29c9c18",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 32, what does it mean?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-c6f3ac57",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 33 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-9f14025a",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 35 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-7a61b537",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 37, what does it mean?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-0b918943",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 39, what does it mean?",
+  "accepted": [
+   105
+  ]
+ },
+ {
+  "id": "of-smcflex-4b227777",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 4 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-d59eced1",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 40, what does it mean?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-3d914f93",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 41 on an SMC Flex soft starter?",
+  "accepted": [
+   105
+  ]
+ },
+ {
+  "id": "of-smcflex-73475cb4",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 42, what does it mean?",
+  "accepted": [
+   105
+  ]
+ },
+ {
+  "id": "of-smcflex-44cb730c",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 43 on an SMC Flex soft starter?",
+  "accepted": [
+   105
+  ]
+ },
+ {
+  "id": "of-smcflex-ef2d127d",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "What is fault 5 on an SMC Flex soft starter?",
+  "accepted": [
+   104
+  ]
+ },
+ {
+  "id": "of-smcflex-e7f6c011",
+  "set": "oem-fault",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "SMC Flex fault code 6, what does it mean?",
+  "accepted": [
+   104
+  ]
+ }
+]

@@ -1,0 +1,2484 @@
+[
+ {
+  "id": "of-acs355-4fac6dbe",
+  "code": "0002",
+  "name": "DC OVERVOLT",
+  "kind": "fault",
+  "lenient": [
+   359
+  ],
+  "strict": [
+   359
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-446e21f2",
+  "code": "0003",
+  "name": "DEV OVERTEMP",
+  "kind": "fault",
+  "lenient": [
+   360
+  ],
+  "strict": [
+   360
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-0b6dfcd5",
+  "code": "0008",
+  "name": "AI2 LOSS",
+  "kind": "fault",
+  "lenient": [
+   361
+  ],
+  "strict": [
+   361
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-0b08e3dc",
+  "code": "0010",
+  "name": "PANEL LOSS",
+  "kind": "fault",
+  "lenient": [
+   362
+  ],
+  "strict": [
+   362
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-07a8e31c",
+  "code": "0014",
+  "name": "EXT FAULT 1",
+  "kind": "fault",
+  "lenient": [
+   363
+  ],
+  "strict": [
+   363
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-d5153a8e",
+  "code": "0016",
+  "name": "EARTH FAULT",
+  "kind": "fault",
+  "lenient": [
+   363
+  ],
+  "strict": [
+   363
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-c966f403",
+  "code": "0024",
+  "name": "OVERSPEED",
+  "kind": "fault",
+  "lenient": [
+   364
+  ],
+  "strict": [
+   364
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-6dedf838",
+  "code": "0027",
+  "name": "CONFIG FILE",
+  "kind": "fault",
+  "lenient": [
+   364
+  ],
+  "strict": [
+   364
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-fb363655",
+  "code": "0028",
+  "name": "SERIAL 1 ERR",
+  "kind": "fault",
+  "lenient": [
+   364
+  ],
+  "strict": [
+   364
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-d5d54e22",
+  "code": "0029",
+  "name": "EFB CON FILE",
+  "kind": "fault",
+  "lenient": [
+   364
+  ],
+  "strict": [
+   364
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-727350de",
+  "code": "0036",
+  "name": "INCOMPATIBLE",
+  "kind": "fault",
+  "lenient": [
+   365
+  ],
+  "strict": [
+   365
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-59b68ead",
+  "code": "0037",
+  "name": "CB OVERTEMP",
+  "kind": "fault",
+  "lenient": [
+   365
+  ],
+  "strict": [
+   365
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-b957fa06",
+  "code": "0045",
+  "name": "STO1 LOST",
+  "kind": "fault",
+  "lenient": [
+   365
+  ],
+  "strict": [
+   365
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-07334386",
+  "code": "0101",
+  "name": "SERF CORRUPT",
+  "kind": "fault",
+  "lenient": [
+   366
+  ],
+  "strict": [
+   366
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-1a1ebe2a",
+  "code": "0201",
+  "name": "DSP T1",
+  "kind": "fault",
+  "lenient": [
+   366
+  ],
+  "strict": [
+   366
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-6249017f",
+  "code": "0204",
+  "name": "DSP STACK",
+  "kind": "fault",
+  "lenient": [
+   366
+  ],
+  "strict": [
+   366
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-8c9a013a",
+  "code": "1003",
+  "name": "PAR AI SCALE",
+  "kind": "fault",
+  "lenient": [
+   367
+  ],
+  "strict": [
+   367
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-7f861bce",
+  "code": "1005",
+  "name": "PAR PCU 2",
+  "kind": "fault",
+  "lenient": [
+   367
+  ],
+  "strict": [
+   367
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-478c4ffb",
+  "code": "1006",
+  "name": "PAR EXT RO",
+  "kind": "fault",
+  "lenient": [
+   367
+  ],
+  "strict": [
+   367
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-6ad4a6b1",
+  "code": "1009",
+  "name": "PAR PCU 1",
+  "kind": "fault",
+  "lenient": [
+   367
+  ],
+  "strict": [
+   367
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-95536279",
+  "code": "1015",
+  "name": "PAR USER U/F",
+  "kind": "fault",
+  "lenient": [
+   368
+  ],
+  "strict": [
+   368
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-b0ab628c",
+  "code": "1017",
+  "name": "PAR SETUP 1",
+  "kind": "fault",
+  "lenient": [
+   368
+  ],
+  "strict": [
+   368
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-85d6385b",
+  "code": "2001",
+  "name": "OVERCURRENT",
+  "kind": "alarm",
+  "lenient": [
+   353
+  ],
+  "strict": [
+   353
+  ],
+  "template": "What does alarm {code} mean on an {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-72d1b5da",
+  "code": "2011",
+  "name": "UNDERLOAD",
+  "kind": "alarm",
+  "lenient": [
+   354
+  ],
+  "strict": [
+   354
+  ],
+  "template": "{product} alarm {code} what is it",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-7931aa2a",
+  "code": "2013",
+  "name": "AUTORESET",
+  "kind": "alarm",
+  "lenient": [
+   354
+  ],
+  "strict": [
+   354
+  ],
+  "template": "What does alarm {code} mean on an {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-152e69cf",
+  "code": "2018",
+  "name": "PID SLEEP",
+  "kind": "alarm",
+  "lenient": [
+   354
+  ],
+  "strict": [
+   354
+  ],
+  "template": "What does alarm {code} mean on an {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-1bea20e1",
+  "code": "2021",
+  "name": "START ENABLE 1",
+  "kind": "alarm",
+  "lenient": [
+   354
+  ],
+  "strict": [
+   354
+  ],
+  "template": "What does alarm {code} mean on an {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-d398b29d",
+  "code": "2023",
+  "name": "EMERGENCY",
+  "kind": "alarm",
+  "lenient": [
+   354
+  ],
+  "strict": [
+   354
+  ],
+  "template": "What does alarm {code} mean on an {product}?",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-158a323a",
+  "code": "2026",
+  "name": "INPUT PHASE",
+  "kind": "alarm",
+  "lenient": [
+   355
+  ],
+  "strict": [
+   355
+  ],
+  "template": "{product} alarm {code} what is it",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-acs355-c7c1b4da",
+  "code": "2035",
+  "name": "SAFE TORQUE",
+  "kind": "alarm",
+  "lenient": [
+   355
+  ],
+  "strict": [
+   355
+  ],
+  "template": "{product} alarm {code} what is it",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ {
+  "id": "of-gs10-ch6-2f97c94d",
+  "code": "AFE",
+  "name": "ID 41",
+  "kind": "fault_id",
+  "lenient": [
+   30
+  ],
+  "strict": [
+   30
+  ],
+  "template": "{product} faulted with {code} on the keypad, what does it mean?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-28fc76fc",
+  "code": "AUE",
+  "name": "ID 40",
+  "kind": "fault_id",
+  "lenient": [
+   29
+  ],
+  "strict": [
+   29
+  ],
+  "template": "{product} faulted with {code} on the keypad, what does it mean?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-0366fbc8",
+  "code": "AUE3",
+  "name": "ID 144",
+  "kind": "fault_id",
+  "lenient": [
+   36
+  ],
+  "strict": [
+   36
+  ],
+  "template": "{product} faulted with {code} on the keypad, what does it mean?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-7d93758d",
+  "code": "CE1",
+  "name": "ID 54",
+  "kind": "fault_id",
+  "lenient": [
+   31
+  ],
+  "strict": [
+   31
+  ],
+  "template": "What is fault {code} on a {product}?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-e6ffa128",
+  "code": "CE2",
+  "name": "ID 55",
+  "kind": "fault_id",
+  "lenient": [
+   31
+  ],
+  "strict": [
+   31
+  ],
+  "template": "What is fault {code} on a {product}?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-f7d8b8f9",
+  "code": "CE3",
+  "name": "ID 56",
+  "kind": "fault_id",
+  "lenient": [
+   8,
+   32
+  ],
+  "strict": [
+   32
+  ],
+  "template": "What is fault {code} on a {product}?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-f16e1ae5",
+  "code": "CE4",
+  "name": "ID 57",
+  "kind": "fault_id",
+  "lenient": [
+   8,
+   32
+  ],
+  "strict": [
+   32
+  ],
+  "template": "What is fault {code} on a {product}?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-3b4afbd6",
+  "code": "Hd0",
+  "name": "ID 36",
+  "kind": "fault_id",
+  "lenient": [
+   29
+  ],
+  "strict": [
+   29
+  ],
+  "template": "What is fault {code} on a {product}?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-919a5408",
+  "code": "Hd1",
+  "name": "ID 37",
+  "kind": "fault_id",
+  "lenient": [
+   29
+  ],
+  "strict": [
+   29
+  ],
+  "template": "What is fault {code} on a {product}?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-0ba7de91",
+  "code": "Hd7",
+  "name": "ID 159",
+  "kind": "fault_id",
+  "lenient": [
+   37
+  ],
+  "strict": [
+   37
+  ],
+  "template": "{product} faulted with {code} on the keypad, what does it mean?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-6931b481",
+  "code": "Lvn",
+  "name": "ID 13",
+  "kind": "fault_id",
+  "lenient": [
+   23
+  ],
+  "strict": [
+   23
+  ],
+  "template": "What is fault {code} on a {product}?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-5eff4437",
+  "code": "Sto",
+  "name": "ID 76",
+  "kind": "fault_id",
+  "lenient": [
+   33
+  ],
+  "strict": [
+   33
+  ],
+  "template": "What is fault {code} on a {product}?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-8279bd98",
+  "code": "b4GF",
+  "name": "ID 141",
+  "kind": "fault_id",
+  "lenient": [
+   36
+  ],
+  "strict": [
+   36
+  ],
+  "template": "What is fault {code} on a {product}?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-eb7d0df2",
+  "code": "oL",
+  "name": "ID 21",
+  "kind": "fault_id",
+  "lenient": [
+   24
+  ],
+  "strict": [
+   24
+  ],
+  "template": "What is fault {code} on a {product}?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-aa833c7f",
+  "code": "ocS",
+  "name": "ID 6",
+  "kind": "fault_id",
+  "lenient": [
+   20
+  ],
+  "strict": [
+   20
+  ],
+  "template": "{product} faulted with {code} on the keypad, what does it mean?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-9579ea23",
+  "code": "ovS",
+  "name": "ID 10",
+  "kind": "fault_id",
+  "lenient": [
+   22
+  ],
+  "strict": [
+   22
+  ],
+  "template": "{product} faulted with {code} on the keypad, what does it mean?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-gs10-ch6-18a2b0a4",
+  "code": "tH1o",
+  "name": "ID 18",
+  "kind": "fault_id",
+  "lenient": [
+   24
+  ],
+  "strict": [
+   24
+  ],
+  "template": "{product} faulted with {code} on the keypad, what does it mean?",
+  "pdf_sha256": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669"
+ },
+ {
+  "id": "of-micro810-2c744f5a",
+  "code": "0xF000",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   35
+  ],
+  "strict": [
+   35
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-0878878d",
+  "code": "0xF001",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   35
+  ],
+  "strict": [
+   35
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-8d114e40",
+  "code": "0xF003",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   35
+  ],
+  "strict": [
+   35
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-50f32076",
+  "code": "0xF004",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   35
+  ],
+  "strict": [
+   35
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-256f2d3e",
+  "code": "0xF006",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   35
+  ],
+  "strict": [
+   35
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-cd14fcc8",
+  "code": "0xF010",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   35
+  ],
+  "strict": [
+   35
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-f4eeae60",
+  "code": "0xF014",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   36
+  ],
+  "strict": [
+   36
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-fe0434dd",
+  "code": "0xF020",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   36
+  ],
+  "strict": [
+   36
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-6b1de660",
+  "code": "0xF021",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   36
+  ],
+  "strict": [
+   36
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-317d54a1",
+  "code": "0xF022",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   36
+  ],
+  "strict": [
+   36
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-9883f20c",
+  "code": "0xF030",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   37
+  ],
+  "strict": [
+   37
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-69325fd6",
+  "code": "0xF050",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   37
+  ],
+  "strict": [
+   37
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-5cf54456",
+  "code": "0xF100",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   37
+  ],
+  "strict": [
+   37
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-086e02e4",
+  "code": "0xF110",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   37
+  ],
+  "strict": [
+   37
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-2a97b72b",
+  "code": "0xF210",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   37
+  ],
+  "strict": [
+   37
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-05563e68",
+  "code": "0xF230",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   37
+  ],
+  "strict": [
+   37
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-0d172523",
+  "code": "0xF250",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   37
+  ],
+  "strict": [
+   37
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-250d7b6c",
+  "code": "0xF300",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   38
+  ],
+  "strict": [
+   38
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-8e290df5",
+  "code": "0xF301",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   38
+  ],
+  "strict": [
+   38
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-53d52463",
+  "code": "0xF302",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   38
+  ],
+  "strict": [
+   38
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-97ebaaca",
+  "code": "0xF303",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   38
+  ],
+  "strict": [
+   38
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-5a34bcd6",
+  "code": "0xF830",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   39
+  ],
+  "strict": [
+   39
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-e2646dd4",
+  "code": "0xF840",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   39
+  ],
+  "strict": [
+   39
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-5c8d4aaf",
+  "code": "0xF850",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   39
+  ],
+  "strict": [
+   39
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-80699c16",
+  "code": "0xF860",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   39
+  ],
+  "strict": [
+   39
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-8dd25aa6",
+  "code": "0xF870",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   39
+  ],
+  "strict": [
+   39
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-0a57a22b",
+  "code": "0xF880",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   40
+  ],
+  "strict": [
+   40
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-b97b677c",
+  "code": "0xF898",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   40
+  ],
+  "strict": [
+   40
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-1336c4c8",
+  "code": "0xF8A0",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   40
+  ],
+  "strict": [
+   40
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro810-bdd9c889",
+  "code": "0xF8A1",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   40
+  ],
+  "strict": [
+   40
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605"
+ },
+ {
+  "id": "of-micro820-um-8ce09b57",
+  "code": "0x0004",
+  "name": "IOI segment error on connection request.",
+  "kind": "connection_fault",
+  "lenient": [
+   92
+  ],
+  "strict": [
+   92
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-a30c1d11",
+  "code": "0x0005",
+  "name": "Bad Class",
+  "kind": "connection_fault",
+  "lenient": [
+   92
+  ],
+  "strict": [
+   92
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-37353562",
+  "code": "0x0007",
+  "name": "Messaging connection lost",
+  "kind": "connection_fault",
+  "lenient": [
+   92
+  ],
+  "strict": [
+   92
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-cd035d83",
+  "code": "0x0008",
+  "name": "Unsupported Service",
+  "kind": "connection_fault",
+  "lenient": [
+   93
+  ],
+  "strict": [
+   93
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-9dae4a6d",
+  "code": "0x0009",
+  "name": "configuration",
+  "kind": "connection_fault",
+  "lenient": [
+   93
+  ],
+  "strict": [
+   93
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-311e6ce0",
+  "code": "0x000C",
+  "name": "Invalid mode or state for",
+  "kind": "connection_fault",
+  "lenient": [
+   93
+  ],
+  "strict": [
+   93
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-00b6f11e",
+  "code": "0x0011",
+  "name": "Reply data too large",
+  "kind": "connection_fault",
+  "lenient": [
+   93
+  ],
+  "strict": [
+   93
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-01ced13f",
+  "code": "0x0106",
+  "name": "by another controller. Module",
+  "kind": "connection_fault",
+  "lenient": [
+   94
+  ],
+  "strict": [
+   94
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-bd50cabd",
+  "code": "0x0108",
+  "name": "Connection type (Multicast/",
+  "kind": "connection_fault",
+  "lenient": [
+   95
+  ],
+  "strict": [
+   95
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-47d6f576",
+  "code": "0x0109",
+  "name": "Invalid connection size",
+  "kind": "connection_fault",
+  "lenient": [
+   95
+  ],
+  "strict": [
+   95
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-023b359a",
+  "code": "0x0118",
+  "name": "Format error",
+  "kind": "connection_fault",
+  "lenient": [
+   96
+  ],
+  "strict": [
+   96
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-65289b5a",
+  "code": "0x0128",
+  "name": "Invalid input size",
+  "kind": "connection_fault",
+  "lenient": [
+   97
+  ],
+  "strict": [
+   97
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-eb165543",
+  "code": "0x0306",
+  "name": "be node 1.",
+  "kind": "connection_fault",
+  "lenient": [
+   98
+  ],
+  "strict": [
+   98
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-37d8e425",
+  "code": "0x031E",
+  "name": "by too many consumers.",
+  "kind": "connection_fault",
+  "lenient": [
+   99
+  ],
+  "strict": [
+   99
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-bff99ee6",
+  "code": "0x031F",
+  "name": "Tag not published",
+  "kind": "connection_fault",
+  "lenient": [
+   99
+  ],
+  "strict": [
+   99
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-616eb05f",
+  "code": "0x0322",
+  "name": "connection does not match",
+  "kind": "connection_fault",
+  "lenient": [
+   99
+  ],
+  "strict": [
+   99
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-6ee35a47",
+  "code": "0x0800",
+  "name": "is offline",
+  "kind": "connection_fault",
+  "lenient": [
+   99
+  ],
+  "strict": [
+   99
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-a0bd0ec6",
+  "code": "0x0814",
+  "name": "Data Type Mismatch",
+  "kind": "connection_fault",
+  "lenient": [
+   100
+  ],
+  "strict": [
+   100
+  ],
+  "template": "{product} EtherNet/IP connection fault {code}, what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-0878878d",
+  "code": "0xF001",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   150
+  ],
+  "strict": [
+   150
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-8d114e40",
+  "code": "0xF003",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   151
+  ],
+  "strict": [
+   151
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-0b2dd4f4",
+  "code": "0xF01A",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   151
+  ],
+  "strict": [
+   151
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-6b1de660",
+  "code": "0xF021",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   151
+  ],
+  "strict": [
+   151
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-c744c25d",
+  "code": "0xF031",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   152
+  ],
+  "strict": [
+   152
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-69325fd6",
+  "code": "0xF050",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   152
+  ],
+  "strict": [
+   152
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-5cf54456",
+  "code": "0xF100",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   152
+  ],
+  "strict": [
+   152
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-53d52463",
+  "code": "0xF302",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   153
+  ],
+  "strict": [
+   153
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-97ebaaca",
+  "code": "0xF303",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   153
+  ],
+  "strict": [
+   153
+  ],
+  "template": "What does {code} mean on a {product} controller?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-5a34bcd6",
+  "code": "0xF830",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   153
+  ],
+  "strict": [
+   153
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-5c8d4aaf",
+  "code": "0xF850",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   153
+  ],
+  "strict": [
+   153
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-micro820-um-2f14dd44",
+  "code": "0xF8A3",
+  "name": "Recoverable",
+  "kind": "error",
+  "lenient": [
+   154
+  ],
+  "strict": [
+   154
+  ],
+  "template": "{product} error code {code} - what does it mean?",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675"
+ },
+ {
+  "id": "of-pf40-a486d588",
+  "code": "F100",
+  "name": "Parameter",
+  "kind": "fault",
+  "lenient": [
+   94,
+   152
+  ],
+  "strict": [
+   94
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-9aaec030",
+  "code": "F122",
+  "name": "I/O Board Fail",
+  "kind": "fault",
+  "lenient": [
+   48,
+   95,
+   151,
+   152
+  ],
+  "strict": [
+   95
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-1e360cf7",
+  "code": "F13",
+  "name": "Ground Fault",
+  "kind": "fault",
+  "lenient": [
+   93,
+   151,
+   152
+  ],
+  "strict": [
+   93
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-8e2de333",
+  "code": "F2",
+  "name": "Auxiliary Input",
+  "kind": "fault",
+  "lenient": [
+   48,
+   58,
+   85,
+   93,
+   139,
+   151
+  ],
+  "strict": [
+   93
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-626b5b12",
+  "code": "F29",
+  "name": "Analog Input",
+  "kind": "fault",
+  "lenient": [
+   80,
+   93,
+   151
+  ],
+  "strict": [
+   93
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-7c96eb02",
+  "code": "F3",
+  "name": "Power Loss",
+  "kind": "fault",
+  "lenient": [
+   4,
+   93,
+   152,
+   153
+  ],
+  "strict": [
+   93
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-16ee13fe",
+  "code": "F33",
+  "name": "Auto Rstrt Tries",
+  "kind": "fault",
+  "lenient": [
+   94,
+   151
+  ],
+  "strict": [
+   94
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-8b12cb8d",
+  "code": "F39",
+  "name": "Phase V to Gnd",
+  "kind": "fault",
+  "lenient": [
+   94
+  ],
+  "strict": [
+   94
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-015b7913",
+  "code": "F4",
+  "name": "UnderVoltage",
+  "kind": "fault",
+  "lenient": [
+   93,
+   152,
+   153
+  ],
+  "strict": [
+   93
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-8a2fa5b1",
+  "code": "F40",
+  "name": "Phase W to Gnd",
+  "kind": "fault",
+  "lenient": [
+   94,
+   152,
+   153
+  ],
+  "strict": [
+   94
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-f304bcf0",
+  "code": "F42",
+  "name": "Phase UW",
+  "kind": "fault",
+  "lenient": [
+   94
+  ],
+  "strict": [
+   94
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-ea19ea25",
+  "code": "F43",
+  "name": "Phase VW Short",
+  "kind": "fault",
+  "lenient": [
+   94,
+   152,
+   153
+  ],
+  "strict": [
+   94
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-54431eab",
+  "code": "F48",
+  "name": "Params",
+  "kind": "fault",
+  "lenient": [
+   57,
+   94,
+   152,
+   153
+  ],
+  "strict": [
+   94
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-6cd28ed3",
+  "code": "F5",
+  "name": "OverVoltage",
+  "kind": "fault",
+  "lenient": [
+   93,
+   152
+  ],
+  "strict": [
+   93
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-1c003eb2",
+  "code": "F6",
+  "name": "Motor Stalled",
+  "kind": "fault",
+  "lenient": [
+   93,
+   151,
+   152
+  ],
+  "strict": [
+   93
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-a32eec43",
+  "code": "F70",
+  "name": "Power Unit",
+  "kind": "fault",
+  "lenient": [
+   94,
+   152,
+   153
+  ],
+  "strict": [
+   94
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-4aae415f",
+  "code": "F71",
+  "name": "Net Loss",
+  "kind": "fault",
+  "lenient": [
+   94,
+   152
+  ],
+  "strict": [
+   94
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-a39b6e51",
+  "code": "F8",
+  "name": "Heatsink",
+  "kind": "fault",
+  "lenient": [
+   93,
+   151,
+   152
+  ],
+  "strict": [
+   93
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-46fa3174",
+  "code": "F80",
+  "name": "SVC Autotune",
+  "kind": "fault",
+  "lenient": [
+   81,
+   94,
+   152,
+   153
+  ],
+  "strict": [
+   94
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf40-0f6ee794",
+  "code": "F81",
+  "name": "Comm Loss",
+  "kind": "fault",
+  "lenient": [
+   76,
+   94,
+   151
+  ],
+  "strict": [
+   94
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9"
+ },
+ {
+  "id": "of-pf4m-a486d588",
+  "code": "F100",
+  "name": "Parameter",
+  "kind": "fault",
+  "lenient": [
+   74
+  ],
+  "strict": [
+   74
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-1e360cf7",
+  "code": "F13",
+  "name": "Ground Fault",
+  "kind": "fault",
+  "lenient": [
+   73
+  ],
+  "strict": [
+   73
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-8e2de333",
+  "code": "F2",
+  "name": "Auxiliary Input",
+  "kind": "fault",
+  "lenient": [
+   42,
+   51,
+   73
+  ],
+  "strict": [
+   73
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-7c96eb02",
+  "code": "F3",
+  "name": "Power Loss",
+  "kind": "fault",
+  "lenient": [
+   4,
+   73
+  ],
+  "strict": [
+   73
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-16ee13fe",
+  "code": "F33",
+  "name": "Auto Rstrt Tries",
+  "kind": "fault",
+  "lenient": [
+   74
+  ],
+  "strict": [
+   74
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-8b12cb8d",
+  "code": "F39",
+  "name": "Phase V to Gnd",
+  "kind": "fault",
+  "lenient": [
+   74
+  ],
+  "strict": [
+   74
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-015b7913",
+  "code": "F4",
+  "name": "UnderVoltage",
+  "kind": "fault",
+  "lenient": [
+   73
+  ],
+  "strict": [
+   73
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-8a2fa5b1",
+  "code": "F40",
+  "name": "Phase W to Gnd",
+  "kind": "fault",
+  "lenient": [
+   74
+  ],
+  "strict": [
+   74
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-f304bcf0",
+  "code": "F42",
+  "name": "Phase UW Short",
+  "kind": "fault",
+  "lenient": [
+   74
+  ],
+  "strict": [
+   74
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-ea19ea25",
+  "code": "F43",
+  "name": "Phase VW Short",
+  "kind": "fault",
+  "lenient": [
+   74
+  ],
+  "strict": [
+   74
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-54431eab",
+  "code": "F48",
+  "name": "Params",
+  "kind": "fault",
+  "lenient": [
+   50,
+   74
+  ],
+  "strict": [
+   74
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-6cd28ed3",
+  "code": "F5",
+  "name": "OverVoltage",
+  "kind": "fault",
+  "lenient": [
+   73
+  ],
+  "strict": [
+   73
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-1c003eb2",
+  "code": "F6",
+  "name": "Motor Stalled",
+  "kind": "fault",
+  "lenient": [
+   73
+  ],
+  "strict": [
+   73
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-a32eec43",
+  "code": "F70",
+  "name": "Power Unit",
+  "kind": "fault",
+  "lenient": [
+   74
+  ],
+  "strict": [
+   74
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-4aae415f",
+  "code": "F71",
+  "name": "Net Loss",
+  "kind": "fault",
+  "lenient": [
+   74
+  ],
+  "strict": [
+   74
+  ],
+  "template": "{product} is showing {code}, what does that fault mean",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-a39b6e51",
+  "code": "F8",
+  "name": "Heatsink",
+  "kind": "fault",
+  "lenient": [
+   73
+  ],
+  "strict": [
+   73
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-pf4m-0f6ee794",
+  "code": "F81",
+  "name": "Comm Loss",
+  "kind": "fault",
+  "lenient": [
+   55,
+   74
+  ],
+  "strict": [
+   74
+  ],
+  "template": "What does fault {code} mean on a {product}?",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5"
+ },
+ {
+  "id": "of-smcflex-6b86b273",
+  "code": "1",
+  "name": "Line Loss",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-6b51d431",
+  "code": "12",
+  "name": "Motor PTC",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-3fdba35f",
+  "code": "13",
+  "name": "Open Bypass",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-8527a891",
+  "code": "14",
+  "name": "Open Bypass",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-e629fa65",
+  "code": "15",
+  "name": "Open Bypass",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-b17ef6d1",
+  "code": "16",
+  "name": "No Load",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-4523540f",
+  "code": "17",
+  "name": "No Load",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-4ec9599f",
+  "code": "18",
+  "name": "No Load",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-f5ca38f7",
+  "code": "20",
+  "name": "Overvoltage",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-6f4b6612",
+  "code": "21",
+  "name": "Undervoltage",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-785f3ec7",
+  "code": "22",
+  "name": "Overload",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-535fa30d",
+  "code": "23",
+  "name": "Underload",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-c2356069",
+  "code": "24",
+  "name": "Jam",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-b7a56873",
+  "code": "25",
+  "name": "Stall",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-5f9c4ab0",
+  "code": "26",
+  "name": "Phase Reversal",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-4e074085",
+  "code": "3",
+  "name": "Line Loss",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-624b60c5",
+  "code": "30",
+  "name": "Network",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-eb1e33e8",
+  "code": "31",
+  "name": "Network",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-e29c9c18",
+  "code": "32",
+  "name": "Network",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-c6f3ac57",
+  "code": "33",
+  "name": "Ground Fault",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-9f14025a",
+  "code": "35",
+  "name": "Power Loss",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-7a61b537",
+  "code": "37",
+  "name": "Power Loss",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-0b918943",
+  "code": "39",
+  "name": "NVS Error",
+  "kind": "fault_display",
+  "lenient": [
+   105
+  ],
+  "strict": [
+   105
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-4b227777",
+  "code": "4",
+  "name": "Shorted SCR",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-d59eced1",
+  "code": "40",
+  "name": "No Load",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-3d914f93",
+  "code": "41",
+  "name": "Line Loss",
+  "kind": "fault_display",
+  "lenient": [
+   105
+  ],
+  "strict": [
+   105
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-73475cb4",
+  "code": "42",
+  "name": "Line Loss",
+  "kind": "fault_display",
+  "lenient": [
+   105
+  ],
+  "strict": [
+   105
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-44cb730c",
+  "code": "43",
+  "name": "Line Loss",
+  "kind": "fault_display",
+  "lenient": [
+   105
+  ],
+  "strict": [
+   105
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-ef2d127d",
+  "code": "5",
+  "name": "Shorted SCR",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "What is fault {code} on an {product} soft starter?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ },
+ {
+  "id": "of-smcflex-e7f6c011",
+  "code": "6",
+  "name": "Shorted SCR",
+  "kind": "fault_display",
+  "lenient": [
+   104
+  ],
+  "strict": [
+   104
+  ],
+  "template": "{product} fault code {code}, what does it mean?",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd"
+ }
+]
