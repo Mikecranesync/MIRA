@@ -120,10 +120,14 @@ from .response_formatter import (
     parse_response,
 )
 from .session_manager import (
+    MissingConversationTenant,
+    bind_conversation_tenant,
+    current_conversation_tenant,
     ensure_table,
     load_state,
     log_interaction,
     record_exchange,
+    require_conversation_tenant,
     save_state,
 )
 from .telemetry import flush as tl_flush
@@ -1041,6 +1045,13 @@ _MANUAL_ESCAPE_PHRASES = frozenset(
 # Matched in process_full BEFORE RAG routing to avoid the text being
 # embedded as a vector query for the word "proceed".
 _PROCEED_RE = re.compile(r"^\s*proceed\s*$", re.IGNORECASE)
+
+# Fail-closed reply when process()/process_full is asked to read or write
+# conversation_state without a trusted tenant. Not an env fallback.
+CONVERSATION_STATE_NO_TENANT_REPLY = (
+    "I can't continue this conversation because the workspace is not authenticated. "
+    "Ask your admin to enroll you."
+)
 
 _DIAGNOSIS_SIGNAL_RE = re.compile(
     r"\b(?:fault|error|code|alarm|trips?|overload|won'?t start|not working|"
@@ -2337,6 +2348,9 @@ class Supervisor:
         # Per-call tenant flows through method params (tenant_id → process_full,
         # workers, and the decision-trace) — NOT stashed on self, which a
         # concurrent tenant would overwrite across this turn's awaits.
+        # Conversation-state reads/writes use ONLY this per-call tenant_id
+        # (ChatDispatcher passes mira_user.tenant_id). Constructor/env tenant
+        # is quota/RAG fallback only — never a state-write authority (#4844).
         # Plan/quota gate (audit issue #1) — the ONE enforcement point every
         # adapter (Telegram/Slack/Ignition/web) inherits. Flag-gated behind
         # ENFORCE_PLAN_QUOTA (default OFF — no DB call, no behavior change) and
@@ -2344,6 +2358,7 @@ class Supervisor:
         # blocked tenant costs zero LLM calls; does not touch the UNS gate,
         # greeting, or safety paths (those live inside process_full).
         quota_tenant = tenant_id or self.tenant_id or None
+        state_tenant = (tenant_id or "").strip() or None
         quota_allowed, quota_reason = await check_quota(quota_tenant)
         if not quota_allowed:
             logger.warning(
@@ -2354,6 +2369,40 @@ class Supervisor:
                 quota_reason,
             )
             return QUOTA_BLOCK_MESSAGE
+        # Bind the trusted per-call tenant for every conversation-state
+        # read/write on this turn (live snapshot, process_full, QC). Empty
+        # means fail-closed at the first state access — no env fallback.
+        _state_bind = bind_conversation_tenant(state_tenant)
+        _state_bind.__enter__()
+        try:
+            return await self._process_after_quota(
+                chat_id,
+                message,
+                photo_b64,
+                platform=platform,
+                tenant_id=tenant_id,
+                uns_source=uns_source,
+                tag_evidence=tag_evidence,
+                live_tags=live_tags,
+                retrieval_query=retrieval_query,
+            )
+        finally:
+            _state_bind.__exit__(None, None, None)
+
+    async def _process_after_quota(
+        self,
+        chat_id: str,
+        message: str,
+        photo_b64: str = None,
+        *,
+        platform: str = "telegram",
+        tenant_id: str | None = None,
+        uns_source: str | None = None,
+        tag_evidence: list | None = None,
+        live_tags: dict | None = None,
+        retrieval_query: str | None = None,
+    ) -> str:
+        """Remainder of process() after quota + tenant bind. Not a public API."""
         # Read-only live-tag snapshot — gated on a confirmed asset (see helper).
         message = self._maybe_attach_live_snapshot(chat_id, message, live_tags, platform)
 
@@ -2995,11 +3044,25 @@ class Supervisor:
         banner (if the turn was safety-classified) above the reply."""
         token = _SAFETY_FLAG.set(None)
         try:
+            if tenant_id is not None:
+                state_tenant = require_conversation_tenant(tenant_id)
+            else:
+                state_tenant = current_conversation_tenant()
+        except MissingConversationTenant:
+            logger.error(
+                "CONVERSATION_STATE_NO_TENANT chat_id=%s — fail closed; no state load/save",
+                chat_id,
+            )
+            _SAFETY_FLAG.reset(token)
+            return self._make_result(CONVERSATION_STATE_NO_TENANT_REPLY, "none", "", "IDLE")
+        state_bind = bind_conversation_tenant(state_tenant)
+        state_bind.__enter__()
+        try:
             result = await self._process_full_impl(
                 chat_id,
                 message,
                 photo_b64,
-                tenant_id=tenant_id,
+                tenant_id=state_tenant,
                 platform=platform,
                 uns_source=uns_source,
                 retrieval_query=retrieval_query,
@@ -3010,6 +3073,7 @@ class Supervisor:
                 result["safety_flag"] = True
             return result
         finally:
+            state_bind.__exit__(None, None, None)
             _SAFETY_FLAG.reset(token)
 
     async def _process_full_impl(
@@ -3041,10 +3105,31 @@ class Supervisor:
         # guards assume str (guardrails.py). Normalize once at the entry point.
         message = message or ""
 
-        # An authenticated adapter's tenant is authoritative. The chat-id LRU
-        # remains the compatibility fallback for legacy surfaces that cannot
-        # supply one, followed by the Supervisor's configured default.
+        # An authenticated adapter's tenant is authoritative for RAG/UNS.
+        # The chat-id LRU remains the compatibility fallback for legacy
+        # surfaces that cannot supply one, followed by the Supervisor's
+        # configured default. Those fallbacks are NOT used for
+        # conversation-state reads/writes (#4844 Slice 1).
         resolved_tenant = tenant_id or resolve_tenant(chat_id) or self.rag.tenant_id
+
+        # Conversation-state tenant: only the per-call argument, or a
+        # request-scoped bind set by process(). Never resolve_tenant(chat_id)
+        # or MIRA_TENANT_ID / self.tenant_id.
+        try:
+            if tenant_id is not None:
+                state_tenant = require_conversation_tenant(tenant_id)
+            else:
+                state_tenant = current_conversation_tenant()
+        except MissingConversationTenant:
+            logger.error(
+                "CONVERSATION_STATE_NO_TENANT chat_id=%s — fail closed; no state load/save",
+                chat_id,
+            )
+            t_deny = tl_trace("supervisor.process", user_id=chat_id)
+            tl_flush()
+            return self._make_result(
+                CONVERSATION_STATE_NO_TENANT_REPLY, "none", t_deny.id, "IDLE"
+            )
 
         # Telemetry trace
         t = tl_trace("supervisor.process", user_id=chat_id)
@@ -3061,7 +3146,7 @@ class Supervisor:
         # (eval runner, Slack, mira-pipeline HTTP).
         _msg_stripped = message.strip()
         if _msg_stripped.lower() in ("/reset", "/new"):
-            self.reset(chat_id)
+            self.reset(chat_id, tenant_id=state_tenant)
             reply = "Started a fresh session. What equipment can I help with?"
             tl_flush()
             return self._make_result(reply, "none", trace_id, "IDLE")
@@ -4882,33 +4967,43 @@ class Supervisor:
         tl_flush()
         return self._make_result(reply, "none", trace_id, "RESOLVED")
 
-    def reset(self, chat_id: str) -> None:
-        """Reset conversation to IDLE state.
+    def reset(self, chat_id: str, tenant_id: str | None = None) -> None:
+        """Reset conversation to IDLE state for the trusted tenant.
 
         Deletes any conversation_state row matching this chat_id under any of
-        the known key formats:
+        the known key formats, scoped to the resolved tenant:
           - exact match (legacy/internal callers passing the raw key)
           - "telegram:<id>"           (current ChatDispatcher key, no thread)
           - "telegram:<id>:..."       (current ChatDispatcher key with thread)
         Same shape for slack/teams/etc. We delete via LIKE prefix so a /new
         from any caller wipes all rows that could re-surface stale state.
+
+        Slice 2 will address LIKE ESCAPE / fan-out. Slice 1 only requires a
+        tenant and scopes the existing deletes so they cannot touch another
+        tenant's rows. Empty tenant fails closed — no delete.
         """
+        tid = current_conversation_tenant(tenant_id)
         self._clear_session_photo(chat_id)
         db = sqlite3.connect(self.db_path)
         db.execute("PRAGMA journal_mode=WAL")
-        # Exact key
-        db.execute("DELETE FROM conversation_state WHERE chat_id = ?", (chat_id,))
+        # Exact key, this tenant only
+        db.execute(
+            "DELETE FROM conversation_state WHERE tenant_id = ? AND chat_id = ?",
+            (tid, chat_id),
+        )
         # Composite keys for known platforms ending in this raw chat id
         for platform in ("telegram", "slack", "teams", "gchat", "webui"):
             prefix = f"{platform}:{chat_id}"
             db.execute(
-                "DELETE FROM conversation_state WHERE chat_id = ? OR chat_id LIKE ?",
-                (prefix, f"{prefix}:%"),
+                "DELETE FROM conversation_state WHERE tenant_id = ? AND (chat_id = ? OR chat_id LIKE ?)",
+                (tid, prefix, f"{prefix}:%"),
             )
         db.commit()
         deleted = db.total_changes
         db.close()
-        logger.info("ENGINE_RESET chat_id=%s rows_deleted=%d", chat_id, deleted)
+        logger.info(
+            "ENGINE_RESET tenant_id=%s chat_id=%s rows_deleted=%d", tid, chat_id, deleted
+        )
 
     def log_feedback(self, chat_id: str, feedback: str, reason: str = "") -> None:
         state = self._load_state(chat_id)
@@ -7970,13 +8065,13 @@ class Supervisor:
             logger.warning("CITATION_GATE_FAILED chat_id=%s error=%s", chat_id, exc)
             return formatted
 
-    def _load_state(self, chat_id: str) -> dict:
-        """Load conversation state from SQLite."""
-        return load_state(self.db_path, chat_id)
+    def _load_state(self, chat_id: str, tenant_id: str | None = None) -> dict:
+        """Load conversation state from SQLite for the trusted tenant."""
+        return load_state(self.db_path, chat_id, tenant_id=tenant_id)
 
-    def _save_state(self, chat_id: str, state: dict) -> None:
-        """Persist conversation state to SQLite."""
-        save_state(self.db_path, chat_id, state)
+    def _save_state(self, chat_id: str, state: dict, tenant_id: str | None = None) -> None:
+        """Persist conversation state to SQLite for the trusted tenant."""
+        save_state(self.db_path, chat_id, state, tenant_id=tenant_id)
 
     @staticmethod
     def _strip_memory_block(message: str) -> str:
@@ -7990,9 +8085,18 @@ class Supervisor:
             flags=_re.DOTALL,
         ).lstrip()
 
-    def _record_exchange(self, chat_id: str, state: dict, message: str, reply: str) -> None:
+    def _record_exchange(
+        self, chat_id: str, state: dict, message: str, reply: str, tenant_id: str | None = None
+    ) -> None:
         """Save a user/assistant exchange to conversation history and persist."""
-        record_exchange(self.db_path, chat_id, state, self._strip_memory_block(message), reply)
+        record_exchange(
+            self.db_path,
+            chat_id,
+            state,
+            self._strip_memory_block(message),
+            reply,
+            tenant_id=tenant_id,
+        )
 
     def _log_interaction(
         self,

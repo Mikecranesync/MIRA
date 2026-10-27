@@ -68,6 +68,23 @@ def _resolve_tenant_for_telegram_user(cur, telegram_user_id: str) -> Optional[st
     return str(row[0]) if row else None
 
 
+def _trusted_tenant_for_telegram_user(telegram_user_id: str) -> Optional[str]:
+    """Resolve the enrolled tenant for a Telegram user. Never env or chat_id."""
+    url = os.getenv("NEON_DATABASE_URL", "")
+    if not url:
+        return None
+    try:
+        conn = psycopg2.connect(url)
+        try:
+            with conn.cursor() as cur:
+                return _resolve_tenant_for_telegram_user(cur, telegram_user_id)
+        finally:
+            conn.close()
+    except Exception as exc:
+        logger.warning("TELEGRAM_TENANT_LOOKUP_FAILED user=%s err=%s", telegram_user_id, exc)
+        return None
+
+
 def _lookup_asset_by_tag(tag: str, telegram_user_id: str) -> Optional[AssetContext]:
     """Look up an asset by ``equipment_number`` scoped to the user's tenant.
 
@@ -161,12 +178,14 @@ async def _handle_asset_deep_link(
     telegram_user_id = str(update.effective_user.id)
     asset = _lookup_asset_by_tag(tag, telegram_user_id)
     chat_id = str(update.effective_chat.id)
+    tenant_id = _trusted_tenant_for_telegram_user(telegram_user_id)
 
     # Wipe stale state regardless of whether the lookup succeeds — a fresh QR
-    # scan is always a new context.
-    if diagnostic_engine is not None:
+    # scan is always a new context. Fail closed without a trusted tenant
+    # rather than deleting another tenant's row (#4844).
+    if diagnostic_engine is not None and tenant_id:
         try:
-            diagnostic_engine.reset(chat_id)
+            diagnostic_engine.reset(chat_id, tenant_id=tenant_id)
         except Exception as exc:
             logger.warning("ASSET_DEEPLINK_RESET_FAILED chat_id=%s err=%s", chat_id, exc)
 
@@ -185,7 +204,9 @@ async def _handle_asset_deep_link(
         return
     try:
         identifier = " ".join(b for b in (asset.manufacturer, asset.model) if b) or asset.name
-        state = diagnostic_engine._load_state(chat_id)
+        if not tenant_id:
+            raise RuntimeError("QR seed requires a trusted tenant")
+        state = diagnostic_engine._load_state(chat_id, tenant_id=tenant_id)
         state["asset_identified"] = identifier
         state.setdefault("context", {})
         state["context"]["asset_tag"] = asset.tag
@@ -201,7 +222,7 @@ async def _handle_asset_deep_link(
                 "source": "direct_connection",
                 "confidence": "certified",
             }
-        diagnostic_engine._save_state(chat_id, state)
+        diagnostic_engine._save_state(chat_id, state, tenant_id=tenant_id)
     except Exception as exc:
         # Seeding is a best-effort optimisation; the greeting still works
         # without it, the user just has to repeat the make/model.

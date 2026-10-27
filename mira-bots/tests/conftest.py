@@ -35,7 +35,22 @@ if _XDIST_WORKER:
 # Repo root on sys.path: telegram modules import the repo-root `printsense`
 # package (bot.py -> printsense_commercial -> printsense.*). CI invokes bare
 # `pytest`, which unlike `python -m pytest` does not put the cwd on sys.path.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO_ROOT))
+sys.path.insert(0, str(_REPO_ROOT / "mira-bots"))
+
+# Default tenant for existing mira-bots tests that call _load_state/_save_state/
+# process_full without an explicit tenant. Isolation tests override this via
+# bind_conversation_tenant(...) or process_full(tenant_id=...).
+TEST_CONVERSATION_TENANT = "mira-bots-test-tenant"
+
+
+@pytest.fixture(autouse=True)
+def _bind_test_conversation_tenant():
+    from shared.session_manager import bind_conversation_tenant
+
+    with bind_conversation_tenant(TEST_CONVERSATION_TENANT):
+        yield
 
 
 @pytest.fixture
@@ -46,12 +61,16 @@ def tmp_db(tmp_path):
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
         """CREATE TABLE IF NOT EXISTS conversation_state (
-            chat_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
             state TEXT DEFAULT 'IDLE',
+            context TEXT DEFAULT '{}',
             asset_identified TEXT DEFAULT '',
             history TEXT DEFAULT '[]',
             last_options TEXT DEFAULT '[]',
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            exchange_count INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (tenant_id, chat_id)
         )"""
     )
     conn.execute(

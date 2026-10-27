@@ -44,7 +44,8 @@ def test_voice_command_on_sets_db_flag():
     db = sqlite3.connect(db_path)
     db.execute(
         """CREATE TABLE conversation_state (
-               chat_id TEXT PRIMARY KEY,
+               tenant_id TEXT NOT NULL,
+               chat_id TEXT NOT NULL,
                state TEXT NOT NULL DEFAULT 'IDLE',
                context TEXT NOT NULL DEFAULT '{}',
                asset_identified TEXT,
@@ -53,7 +54,8 @@ def test_voice_command_on_sets_db_flag():
                final_state TEXT,
                voice_enabled INTEGER NOT NULL DEFAULT 0,
                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+               PRIMARY KEY (tenant_id, chat_id)
            )"""
     )
     db.commit()
@@ -62,8 +64,8 @@ def test_voice_command_on_sets_db_flag():
     import bot
 
     with patch.dict(os.environ, {"MIRA_DB_PATH": db_path}):
-        bot._set_voice_enabled("chat_1", True)
-        enabled = bot._get_voice_enabled("chat_1")
+        bot._set_voice_enabled("chat_1", "tenant-voice", True)
+        enabled = bot._get_voice_enabled("chat_1", "tenant-voice")
 
     assert enabled is True
     os.unlink(db_path)
@@ -82,7 +84,8 @@ def test_voice_command_off_clears_db_flag():
     db = sqlite3.connect(db_path)
     db.execute(
         """CREATE TABLE conversation_state (
-               chat_id TEXT PRIMARY KEY,
+               tenant_id TEXT NOT NULL,
+               chat_id TEXT NOT NULL,
                state TEXT NOT NULL DEFAULT 'IDLE',
                context TEXT NOT NULL DEFAULT '{}',
                asset_identified TEXT,
@@ -91,7 +94,8 @@ def test_voice_command_off_clears_db_flag():
                final_state TEXT,
                voice_enabled INTEGER NOT NULL DEFAULT 0,
                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+               PRIMARY KEY (tenant_id, chat_id)
            )"""
     )
     db.commit()
@@ -100,9 +104,9 @@ def test_voice_command_off_clears_db_flag():
     import bot
 
     with patch.dict(os.environ, {"MIRA_DB_PATH": db_path}):
-        bot._set_voice_enabled("chat_1", True)
-        bot._set_voice_enabled("chat_1", False)
-        enabled = bot._get_voice_enabled("chat_1")
+        bot._set_voice_enabled("chat_1", "tenant-voice", True)
+        bot._set_voice_enabled("chat_1", "tenant-voice", False)
+        enabled = bot._get_voice_enabled("chat_1", "tenant-voice")
 
     assert enabled is False
     os.unlink(db_path)
@@ -122,7 +126,8 @@ async def test_text_response_sent_even_when_tts_fails():
     db = sqlite3.connect(db_path)
     db.execute(
         """CREATE TABLE conversation_state (
-               chat_id TEXT PRIMARY KEY,
+               tenant_id TEXT NOT NULL,
+               chat_id TEXT NOT NULL,
                state TEXT NOT NULL DEFAULT 'IDLE',
                context TEXT NOT NULL DEFAULT '{}',
                asset_identified TEXT,
@@ -131,11 +136,14 @@ async def test_text_response_sent_even_when_tts_fails():
                final_state TEXT,
                voice_enabled INTEGER NOT NULL DEFAULT 1,
                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+               PRIMARY KEY (tenant_id, chat_id)
            )"""
     )
     # Pre-insert with voice_enabled=1
-    db.execute("INSERT INTO conversation_state (chat_id, voice_enabled) VALUES ('chat_1', 1)")
+    db.execute(
+        "INSERT INTO conversation_state (tenant_id, chat_id, voice_enabled) VALUES ('tenant-voice', 'chat_1', 1)"
+    )
     db.commit()
     db.close()
 
@@ -150,8 +158,11 @@ async def test_text_response_sent_even_when_tts_fails():
     mock_context.bot.send_chat_action = AsyncMock()
 
     with patch.dict(os.environ, {"MIRA_DB_PATH": db_path}):
-        with patch("tts.text_to_ogg", new=AsyncMock(return_value=None)):
-            await bot._maybe_send_voice(mock_update, mock_context, "chat_1", "Some response text")
+        with patch.object(bot, "_trusted_telegram_tenant", return_value="tenant-voice"):
+            with patch("tts.text_to_ogg", new=AsyncMock(return_value=None)):
+                await bot._maybe_send_voice(
+                    mock_update, mock_context, "chat_1", "Some response text"
+                )
 
     # Voice was attempted (send_chat_action called) but reply_voice was NOT called
     mock_context.bot.send_chat_action.assert_called_once()
