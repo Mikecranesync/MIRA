@@ -399,12 +399,28 @@ export async function embedPendingNodeChunks(
   return { embedded, state: "degraded", code, permanent };
 }
 
-interface NodeChunkOpts {
+export interface NodeChunkOpts {
   tenantId: string;
   uploadId: string;
   nodeId: string;
   unsPath: string | null;
   filename: string;
+}
+
+/** Minimal query surface so a caller can share one transaction with the writer. */
+export interface NodeChunkClient {
+  query: (sql: string, params?: unknown[]) => Promise<unknown>;
+}
+
+export interface WriteChunkRowsRuntime {
+  /** When set, inserts run on this client (no nested withTenantContext). */
+  client?: NodeChunkClient;
+  /** Skip the fire-and-forget embed pass; caller embeds after COMMIT. */
+  deferEmbed?: boolean;
+}
+
+export function nodeAttachmentSourceUrl(uploadId: string, filename: string): string {
+  return `node-doc/${uploadId}/${filename}`;
 }
 
 /**
@@ -417,25 +433,26 @@ interface NodeChunkOpts {
  * formats. Does NOT acquire the concurrency slot; that guards the heavy PDF
  * parse and is the PDF writer's responsibility. Returns the generated chunk count.
  */
-async function writeChunkRowsForNode(
+export async function writeChunkRowsForNode(
   pages: string[],
   opts: NodeChunkOpts,
   /** Per-page repair marker (index-aligned with `pages`), recorded on every
    *  chunk of that page as `metadata.text_repair` so a decoded row is
    *  auditable and reversible (TQ-05/06). Absent = untouched extraction. */
   repairs?: ReadonlyArray<TextRepair | null>,
+  runtime?: WriteChunkRowsRuntime,
 ): Promise<number> {
   const { tenantId, uploadId, nodeId, unsPath, filename } = opts;
 
   // Unique per attachment so same-named files on different nodes never false-dedup
   // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
-  const sourceUrl = `node-doc/${uploadId}/${filename}`;
+  const sourceUrl = nodeAttachmentSourceUrl(uploadId, filename);
 
   type ChunkRow = { content: string; page: number; idx: number; repair: TextRepair | null };
   let idx = 0;
   let batch: ChunkRow[] = [];
 
-  await withTenantContext(tenantId, async (c) => {
+  const write = async (c: NodeChunkClient) => {
     // Flush the buffered chunks as ONE multi-row INSERT, then drop them.
     // tenant_id / source_url / doc_id are constant across the whole file, so
     // they are fixed leading params ($1..$3) and only id/content/page/metadata
@@ -491,7 +508,13 @@ async function writeChunkRowsForNode(
       }
     }
     await flush();
-  });
+  };
+
+  if (runtime?.client) {
+    await write(runtime.client);
+  } else {
+    await withTenantContext(tenantId, write);
+  }
 
   // Zero chunks = nothing was inserted above; failing here is honest and safe.
   if (idx === 0) throw new NoExtractableTextError(filename);
@@ -502,7 +525,10 @@ async function writeChunkRowsForNode(
   // server, so this continues after the caller returns; embedPendingNodeChunks
   // is self-contained (own short transactions) and never throws. Anything left
   // dark (e.g. a restart mid-pass) is caught by the #2098 canary + backfill.
-  void embedPendingNodeChunks(tenantId, sourceUrl);
+  // A shared-transaction caller (one-off rechunk) must defer this until COMMIT.
+  if (!runtime?.deferEmbed) {
+    void embedPendingNodeChunks(tenantId, sourceUrl);
+  }
 
   // Generated-chunk count (matches the historical `rows.length` semantics: the
   // number attempted, not the number actually inserted after ON CONFLICT).
@@ -592,6 +618,22 @@ async function repairGarbledPages(pages: string[], opts: NodeChunkOpts): Promise
  * concurrency slot, then delegates the insert/embed to writeChunkRowsForNode.
  * Returns the chunk count. Throws on extraction/insert error (caller marks the upload).
  */
+/**
+ * Parse + repair a PDF the same way writePdfChunksForNode does, without writing.
+ * Used by the one-off rechunk operator script so dry-run and apply share the
+ * A2 path. Not a product rechunk API.
+ */
+export async function extractPdfPagesForNode(
+  buffer: Buffer | Uint8Array,
+  opts: NodeChunkOpts,
+): Promise<{ pages: string[]; repairs: Array<TextRepair | null> }> {
+  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  const { text } = await extractText(pdf, { mergePages: false });
+  const pages: string[] = Array.isArray(text) ? text : [text];
+  const repairs = await repairGarbledPages(pages, opts);
+  return { pages, repairs };
+}
+
 export async function writePdfChunksForNode(opts: {
   tenantId: string;
   uploadId: string;
@@ -599,18 +641,17 @@ export async function writePdfChunksForNode(opts: {
   unsPath: string | null;
   filename: string;
   buffer: Buffer | Uint8Array;
+  client?: NodeChunkClient;
+  deferEmbed?: boolean;
 }): Promise<number> {
-  const { buffer, ...rest } = opts;
+  const { buffer, client, deferEmbed, ...rest } = opts;
 
   // Serialize heavy parses so concurrent uploads don't multiply the in-memory
   // PDF peak (see acquireIngestSlot / INGEST_CONCURRENCY above).
   const release = await acquireIngestSlot();
   try {
-    const pdf = await getDocumentProxy(new Uint8Array(buffer));
-    const { text } = await extractText(pdf, { mergePages: false });
-    const pages: string[] = Array.isArray(text) ? text : [text];
-    const repairs = await repairGarbledPages(pages, rest);
-    return await writeChunkRowsForNode(pages, rest, repairs);
+    const { pages, repairs } = await extractPdfPagesForNode(buffer, rest);
+    return await writeChunkRowsForNode(pages, rest, repairs, { client, deferEmbed });
   } finally {
     release();
   }
