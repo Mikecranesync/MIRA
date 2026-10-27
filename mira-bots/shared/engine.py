@@ -123,7 +123,6 @@ from .session_manager import (
     CONVERSATION_STATE_TABLE,
     MissingConversationTenant,
     bind_conversation_tenant,
-    current_conversation_tenant,
     ensure_table,
     load_state,
     log_interaction,
@@ -4985,11 +4984,11 @@ class Supervisor:
         Same shape for slack/teams/etc. We delete via LIKE prefix so a /new
         from any caller wipes all rows that could re-surface stale state.
 
-        Slice 2 will address LIKE ESCAPE / fan-out. Slice 1 only requires a
-        tenant and scopes the existing deletes so they cannot touch another
-        tenant's rows. Empty tenant fails closed — no delete.
+        Slice 2 will address LIKE ESCAPE / fan-out. Empty tenant uses the
+        declared unscoped default so pipeline /reset still clears the
+        Open WebUI row.
         """
-        tid = current_conversation_tenant(tenant_id)
+        tid = resolve_process_state_tenant(tenant_id)
         self._clear_session_photo(chat_id)
         db = sqlite3.connect(self.db_path)
         db.execute("PRAGMA journal_mode=WAL")

@@ -429,6 +429,22 @@ async def test_explicit_empty_tenant_fails_closed(supervisor):
     assert _row(supervisor, TENANT_A).get("asset_identified") == ASSET_A
 
 
+def test_pipeline_reset_without_tenant_clears_unscoped(supervisor):
+    save_state(
+        supervisor.db_path,
+        "webui:reset-me",
+        {"state": "Q2", "exchange_count": 1, "asset_identified": "Pump", "context": {}},
+        tenant_id=UNSCOPED_CONVERSATION_TENANT,
+    )
+    with bind_conversation_tenant(None):
+        supervisor.reset("webui:reset-me")
+    after = load_state(
+        supervisor.db_path, "webui:reset-me", tenant_id=UNSCOPED_CONVERSATION_TENANT
+    )
+    assert after.get("asset_identified") in (None, "")
+    assert after["state"] == "IDLE"
+
+
 def test_legacy_conversation_state_survives_ensure_table(tmp_path):
     """Mixed-version: do not DROP the chat_id-only table old services still write."""
     db_path = str(tmp_path / "mixed.db")
