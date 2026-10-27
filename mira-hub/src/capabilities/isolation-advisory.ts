@@ -176,7 +176,7 @@ function withoutRestores(step: string): string {
   let s = step;
   for (const re of [RESTORE, LOCKOUT_REMOVED]) {
     const copy = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
-    s = s.replace(copy, " ");
+    s = s.replace(copy, (m) => " ".repeat(m.length));
   }
   return s;
 }
