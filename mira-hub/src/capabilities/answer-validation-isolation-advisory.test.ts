@@ -133,7 +133,11 @@ describe("#4858 isolation after, negated, or adjectival does not silence", () =>
     "Do not lock out, replace the fuse.",
     "Replace the fuse, then measure with the circuit isolated.",
     "Disconnect the incoming lugs.",
+    "Disconnect the power wires.",
     "With the isolated analog input module, check the terminals.",
+    "You cannot lock out. Replace the fuse.",
+    "Lock out the drive. Restore power. Replace the fuse.",
+    "The analog input shows no voltage. Replace the input fuse.",
   ])("still prepends: %s", (text) => {
     const v = judge(text);
     expect(v.ok).toBe(false);

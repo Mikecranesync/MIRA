@@ -37,7 +37,14 @@ import {
   LETHAL_VOLTAGE_CONTEXT,
   LOCKOUT_VERB_RE,
 } from "@/lib/safety-classifier";
-import { ISOLATED, PROHIBITION, STATE_ISOLATED, stepTexts } from "./step-energy";
+import {
+  ISOLATED,
+  LOCKOUT_REMOVED,
+  PROHIBITION,
+  RESTORE,
+  STATE_ISOLATED,
+  stepTexts,
+} from "./step-energy";
 
 /** Fixed banner shown above a hands-on answer. No page citation (see header). */
 export const ISOLATION_BANNER =
@@ -54,12 +61,13 @@ export const DISCHARGE_WAIT_LINE = "Follow the manual's discharge wait.";
  *  DEAD_CHECK blanks tester/resistance/insulation so they do not count as
  *  needing power; those are not "already isolated". */
 const VERIFY_DEAD =
-  /\b(?:absence of voltage|zero (?:volts|voltage|energy)|no voltage|confirmed dead|verif\w* (?:it is |they are )?dead)\b/i;
+  /\b(?:absence of voltage|confirmed dead|verif\w* (?:it is |they are )?dead|(?:verif\w*|confirm(?:ed|ing)?)\s+(?:the )?(?:absence of voltage|zero (?:volts|voltage|energy)|no voltage))\b/i;
 
 /** Imperative siblings of ISOLATED's participles. `disconnect` counts only
- *  with `power` — bare "disconnect the lugs" is the work, not the isolation. */
+ *  with a bare `power` (Mike: disconnect power) — "disconnect the power
+ *  wires" is the work, so `power` must not start a longer noun phrase. */
 const ISOLATION_IMPERATIVE =
-  /\b(?:isolate|de[\s-]?energi[sz]e|disconnect(?:ing)?\s+(?:the\s+)?power|shut(?:ting)?\s+(?:off|down)|power(?:ing)?\s+(?:off|down))\b/i;
+  /\b(?:isolate|de[\s-]?energi[sz]e|disconnect(?:ing)?\s+(?:the\s+)?power(?!\s+(?!then\b|and\b|or\b|to\b)\w)|shut(?:ting)?\s+(?:off|down)|power(?:ing)?\s+(?:off|down))\b/i;
 
 /** Dual-use verbs: the same words edit a parameter or open a screen.
  *  They count only with a WORK_OBJECT. `work on` / connect / disconnect
@@ -96,14 +104,19 @@ const DISPLAY_SURFACE_RE =
 
 /** Isolation mention is void when a negation / skip / "before you" governs it. */
 const ISO_VOID_PRE =
-  /(?:\b(?:do\s+not|don't|never|not|skip(?:ping)?|without|before(?:\s+you)?)\s+|\b(?:is|are|was|were|be)\s+not\s+)$/i;
+  /(?:\b(?:do\s+not|don't|never|not|cannot|can't|can\s+not|skip(?:ping)?|without|until(?:\s+you)?|before(?:\s+you)?)\s+|\b(?:is|are|was|were|be)\s+not\s+(?:possible\s+)?)$/i;
+
+const ISO_VOID_POST =
+  /^\s+(?:is|are)\s+not\s+(?:possible|required|needed|present)\b/i;
 
 /** Dual-use object window ends at the next coordinator or purpose "to". */
-const OBJECT_WINDOW_CUT = /\s+(?:then|so|and\s+then)\b|,\s+(?:then|and|or)\b|[;.]|\bto\b/i;
+const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?)\b|,\s+(?:then|and|or)\b|[;.]|\bto\b/i;
 
 function withoutProhibitions(text: string): string {
+  // Em-dash / colon are the same clause cut PROHIBITION already makes at comma.
+  const normalized = text.replace(/[—–:]/g, ",");
   const copy = new RegExp(PROHIBITION.source, PROHIBITION.flags);
-  return text.replace(copy, " ");
+  return normalized.replace(copy, " ");
 }
 
 /** `isolated` as a prenominal adjective ("isolated analog input module")
@@ -115,8 +128,9 @@ function isolatedIsAdjective(text: string, index: number, matched: string): bool
   return /^\s+(?!and\b|then\b|or\b|but\b|with\b|while\b|so\b|is\b|are\b)/i.test(after);
 }
 
-function isolationIsVoid(text: string, index: number): boolean {
-  return ISO_VOID_PRE.test(text.slice(Math.max(0, index - 48), index));
+function isolationIsVoid(text: string, index: number, matched = ""): boolean {
+  if (ISO_VOID_PRE.test(text.slice(Math.max(0, index - 48), index))) return true;
+  return ISO_VOID_POST.test(text.slice(index + matched.length));
 }
 
 function firstMatchIndex(
@@ -128,7 +142,7 @@ function firstMatchIndex(
   let best = -1;
   for (const m of text.matchAll(copy)) {
     const idx = m.index ?? 0;
-    if (opts.skipVoid && isolationIsVoid(text, idx)) continue;
+    if (opts.skipVoid && isolationIsVoid(text, idx, m[0])) continue;
     if (opts.skipAdj && isolatedIsAdjective(text, idx, m[0])) continue;
     if (best < 0 || idx < best) best = idx;
   }
@@ -140,12 +154,20 @@ function stateIsolatedIndex(step: string): number {
   let best = -1;
   for (const m of step.matchAll(copy)) {
     const idx = m.index ?? 0;
-    if (isolationIsVoid(step, idx)) continue;
+    if (isolationIsVoid(step, idx, m[0])) continue;
     const isoWord = /isolated/i.exec(m[0]);
     if (isoWord && isolatedIsAdjective(step, idx + (isoWord.index ?? 0), isoWord[0])) continue;
     if (best < 0 || idx < best) best = idx;
   }
   return best;
+}
+
+function restoreIndex(step: string): number {
+  const candidates = [
+    firstMatchIndex(RESTORE, step, { skipVoid: true }),
+    firstMatchIndex(LOCKOUT_REMOVED, step, { skipVoid: true }),
+  ].filter((n) => n >= 0);
+  return candidates.length ? Math.min(...candidates) : -1;
 }
 
 /** Earliest live isolation / verify-dead language in this step, or -1. */
@@ -213,15 +235,32 @@ function firstHandsOnAlreadyIsolated(text: string): boolean {
     const step = withoutProhibitions(raw);
     const isoAt = isolationIndex(step);
     const conditionedAt = stateIsolatedIndex(step);
+    const restoredAt = restoreIndex(step);
     const workAt = firstHandsOnIndex(step);
     if (workAt >= 0) {
-      if (isoAt >= 0 && isoAt <= workAt) return true;
+      const restoredBeforeWork = restoredAt >= 0 && restoredAt <= workAt
+        && (isoAt < 0 || restoredAt > isoAt);
+      if (restoredBeforeWork) isolated = false;
+      else if (isoAt >= 0 && isoAt <= workAt) return true;
       // Trailing "measure … with the circuit isolated" conditions only
       // the clause it attaches to, not an earlier "Replace the fuse, then…".
-      if (conditionedAt >= 0 && workAt >= clauseStartBefore(step, conditionedAt)) return true;
+      else if (conditionedAt >= 0 && workAt >= clauseStartBefore(step, conditionedAt)
+        && (restoredAt < 0 || restoredAt < conditionedAt || restoredAt > workAt)) {
+        return true;
+      }
       return isolated;
     }
-    if (isoAt >= 0 || conditionedAt >= 0) isolated = true;
+    if (restoredAt >= 0 && (isoAt < 0 || restoredAt > isoAt)) isolated = false;
+    else if (isoAt >= 0 || conditionedAt >= 0) isolated = true;
+  }
+  return false;
+}
+
+function dischargeAlreadyStated(text: string): boolean {
+  const kept = withoutProhibitions(text);
+  const copy = new RegExp(ALREADY_DISCHARGE.source, "gi");
+  for (const m of kept.matchAll(copy)) {
+    if (!isolationIsVoid(kept, m.index ?? 0, m[0])) return true;
   }
   return false;
 }
@@ -253,6 +292,6 @@ export function isolationBannerFor(answer: string): string | null {
   if (!directsHandsOnWork(text)) return null;
   if (firstHandsOnAlreadyIsolated(text)) return null;
   if (!isStoredEnergyWork(text)) return ISOLATION_BANNER;
-  if (ALREADY_DISCHARGE.test(text)) return ISOLATION_BANNER;
+  if (dischargeAlreadyStated(text)) return ISOLATION_BANNER;
   return `${ISOLATION_BANNER} ${DISCHARGE_WAIT_LINE}`;
 }

@@ -84,10 +84,20 @@ describe("isolation-safety wording", () => {
     expect(isolationBannerFor("Replace the fuse, then measure with the circuit isolated.")).toBe(
       ISOLATION_BANNER,
     );
+    expect(isolationBannerFor("You cannot lock out. Replace the fuse.")).toBe(ISOLATION_BANNER);
+    expect(isolationBannerFor("Until you lock it out, replace the fuse.")).toBe(ISOLATION_BANNER);
+    expect(isolationBannerFor("Lockout is not possible. Replace the fuse.")).toBe(ISOLATION_BANNER);
+    expect(isolationBannerFor("Lock out the drive. Restore power. Replace the fuse.")).toBe(
+      ISOLATION_BANNER,
+    );
+    expect(isolationBannerFor("The analog input shows no voltage. Replace the input fuse.")).toBe(
+      ISOLATION_BANNER,
+    );
   });
   it("disconnect of a work object is the work, not the isolation", () => {
     expect(isolationBannerFor("Disconnect the incoming lugs.")).toBe(ISOLATION_BANNER);
     expect(isolationBannerFor("Disconnect the wires and replace the fuse.")).toBe(ISOLATION_BANNER);
+    expect(isolationBannerFor("Disconnect the power wires.")).toBe(ISOLATION_BANNER);
     expect(isolationBannerFor("Disconnect power. Then replace the fuse.")).toBeNull();
   });
   it("same-step isolation before the work stays silent, including lock-it-out", () => {
