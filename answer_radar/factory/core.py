@@ -9,8 +9,10 @@ real captured wording only); "high value" beyond that is not guessed at here.
 Core is append-only and versioned. The manifest records each member's gold hash, and a later
 expert answer that contradicts it fails closed (`CoreRelabeled`) unless the run passes
 `relabel=True`, which bumps the version and records the change: cases are never silently
-relabeled. A member with no fresh expert answer this cycle stays Core and is reported as
-unverified. Promotion order is a hash of the case id, so the same inputs give the same Core.
+relabeled. Each member's settled gold (answerability plus source/manual/page, never source
+text) is stored in the manifest, so a cycle with no fresh expert answer re-attaches the
+recorded expert gold instead of scoring the anchor as unlabeled; such members are reported as
+`unverified_this_cycle` (no new answer arrived, the recorded gold stands). Promotion order is a hash of the case id, so the same inputs give the same Core.
 Below `min_size` Core is reported not ready rather than padded with weaker cases.
 """
 
@@ -20,7 +22,15 @@ import hashlib
 import json
 from dataclasses import replace
 
-from answer_radar.factory.case import BenchmarkCase, GoldStatus, Pool
+from answer_radar.factory.case import (
+    Answerability,
+    BenchmarkCase,
+    Evidence,
+    GoldStatus,
+    Label,
+    Pool,
+)
+from answer_radar.schema import IndependenceClass
 
 CORE_MIN, CORE_MAX = 150, 300
 DEFAULT_ORIGINS = frozenset({"captured"})
@@ -36,6 +46,28 @@ def gold_sha256(c: BenchmarkCase) -> str:
         "evidence": sorted([e.doc_sha256, e.page] for e in c.gold_evidence),
     }
     return hashlib.sha256(json.dumps(gold, sort_keys=True).encode()).hexdigest()
+
+
+def _gold_record(c: BenchmarkCase) -> dict:
+    return {
+        "answerability": c.answerability.value,
+        "evidence": sorted([e.source_id, e.doc_sha256, e.page] for e in c.gold_evidence),
+    }
+
+
+def _restore(c: BenchmarkCase, gold: dict) -> BenchmarkCase:
+    from answer_radar.factory.labeling import EXPERT_ID
+
+    ans = Answerability(gold["answerability"])
+    ev = [Evidence(src, doc, page) for src, doc, page in gold["evidence"]]
+    label = Label(EXPERT_ID, IndependenceClass.HUMAN_REVIEW, ans, tuple(e.page for e in ev))
+    return replace(
+        c,
+        answerability=ans,
+        gold_status=GoldStatus.EXPERT_REVIEWED,
+        gold_evidence=ev,
+        labels=[*c.labels, label],
+    )
 
 
 def _order(case_id: str) -> str:
@@ -70,8 +102,11 @@ def promote_core(
         c = by_id.get(m["case_id"])
         if c is None or c.holdout:
             raise CoreRelabeled(f"Core member {m['case_id']} is missing from this cycle's cases")
+        if c.freeze_hash != m["freeze_hash"]:
+            raise CoreRelabeled(f"Core member {c.case_id}: its frozen question changed")
         if c.gold_status is GoldStatus.PROVISIONAL:
-            unverified.append(c.case_id)  # no expert answer this cycle: keep the recorded gold
+            unverified.append(c.case_id)  # no expert answer this cycle: the recorded gold stands
+            by_id[c.case_id] = _restore(c, m["gold"])
             members.append(m)
             continue
         if c.gold_status is GoldStatus.EXPERT_REVIEWED and gold_sha256(c) == m["gold_sha256"]:
@@ -83,7 +118,7 @@ def promote_core(
                 "rerun with an explicit relabel to version Core"
             )
         if c.gold_status is GoldStatus.EXPERT_REVIEWED:
-            members.append({**m, "gold_sha256": gold_sha256(c)})
+            members.append({**m, "gold_sha256": gold_sha256(c), "gold": _gold_record(c)})
             if review_data_sha256:
                 members[-1]["review_data_sha256"] = review_data_sha256
             relabeled.append(c.case_id)
@@ -103,6 +138,7 @@ def promote_core(
                 "lineage_id": c.lineage_id,
                 "freeze_hash": c.freeze_hash,
                 "gold_sha256": gold_sha256(c),
+                "gold": _gold_record(c),
                 "review_data_sha256": review_data_sha256,
             }
         )
@@ -125,5 +161,5 @@ def promote_core(
         "unverified_this_cycle": unverified,
     }
     core_ids = {m["case_id"] for m in members}
-    out = [replace(c, pool=Pool.CORE) if c.case_id in core_ids else c for c in cases]
+    out = [replace(by_id[c.case_id], pool=Pool.CORE) if c.case_id in core_ids else c for c in cases]
     return out, manifest

@@ -138,6 +138,27 @@ def test_member_without_fresh_expert_gold_stays_core_but_unverified():
     assert m2["unverified_this_cycle"] == [a.case_id]
 
 
+def test_recorded_gold_is_restored_and_scored_without_a_fresh_export():
+    from answer_radar.factory.scoring import score_retrieval
+
+    a = _case(1)
+    _, m = _core([a])
+    out, _ = _core([_case(1, gold=GoldStatus.PROVISIONAL)], prior=m)
+    assert out[0].gold_status is GoldStatus.EXPERT_REVIEWED
+    assert [(e.doc_sha256, e.page) for e in out[0].gold_evidence] == [(DOC, 41)]
+    assert validate_set(out, REG) == []
+    scored = score_retrieval(out, {a.case_id: [[DOC, 41]]})
+    assert scored[a.case_id]["hit1"] is True
+    assert "F5 overvoltage" not in json.dumps(m)  # the quote (source text) is never stored
+
+
+def test_changed_frozen_question_on_a_member_fails_closed():
+    _, m = _core([_case(1)])
+    m["members"][0]["freeze_hash"] = "0" * 64
+    with pytest.raises(CoreRelabeled, match="frozen question"):
+        _core([_case(1)], prior=m)
+
+
 def test_missing_member_fails_closed():
     _, m = _core([_case(1)])
     with pytest.raises(CoreRelabeled, match="missing"):
@@ -212,3 +233,6 @@ def test_cycle_promotes_expert_answered_case_and_keeps_it_out_of_live(tmp_path):
     cases = json.loads((out / "cases.json").read_text())
     member = [c for c in cases if c["case_id"] == target["id"]]
     assert member and member[0]["pool"] == "core"
+    # the member keeps its expert gold even though no export was given this cycle
+    assert member[0]["gold_status"] == "expert_reviewed"
+    assert {e["page"] for e in member[0]["gold_evidence"]} == set(target["pages"])
