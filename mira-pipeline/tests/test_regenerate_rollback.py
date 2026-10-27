@@ -81,11 +81,48 @@ def test_regenerate_rollback_writes_v2_unscoped(db_path):
     db.close()
     assert [r[0] for r in leftover] == ["q1"]
     assert CONVERSATION_STATE_TABLE in tables
-    # Legacy table must not be required for the rollback to succeed.
-    if "conversation_state" in tables:
-        legacy = sqlite3.connect(db_path).execute(
-            "SELECT COUNT(*) FROM conversation_state"
-        ).fetchone()[0]
-        assert legacy == 0
+    # Fresh ensure_table DBs have no legacy table; rollback must still work.
+    assert "conversation_state" not in tables
+
+
+def test_regenerate_rollback_does_not_touch_legacy_when_both_tables_exist(tmp_path):
+    """BRAVO correction (comment 6453435346): 001 + ensure_table, v2 at Q3.
+
+    Old UPDATE conversation_state rolled the legacy row to Q1 and left v2 at Q3.
+    The engine reads v2, so regenerate must write v2 and leave legacy alone.
+    """
+    from main import _detect_and_rollback_regenerate
+
+    db_path = str(tmp_path / "mixed.db")
+    db = sqlite3.connect(db_path)
+    db.executescript((_REPO / "mira-bridge/migrations/001_add_gsd_state.sql").read_text())
+    db.close()
+    ensure_table(db_path)
+
+    chat = "ow-regen-mixed"
+    db = sqlite3.connect(db_path)
+    db.execute(
+        "INSERT INTO conversation_state (chat_id, state) VALUES (?, ?)",
+        (chat, "Q3"),
+    )
+    db.commit()
+    db.close()
+    _seed_v2_q3_and_interactions(db_path, chat)
+
+    rolled = _detect_and_rollback_regenerate(db_path, chat, "q2")
+    assert rolled is True
+    assert load_state(db_path, chat, tenant_id=UNSCOPED_CONVERSATION_TENANT)["state"] == "Q1"
+
+    db = sqlite3.connect(db_path)
+    legacy = db.execute(
+        "SELECT state FROM conversation_state WHERE chat_id = ?", (chat,)
+    ).fetchone()
+    leftover = db.execute(
+        "SELECT user_message FROM interactions WHERE chat_id = ? ORDER BY id",
+        (chat,),
+    ).fetchall()
+    db.close()
+    assert legacy[0] == "Q3"
+    assert [r[0] for r in leftover] == ["q1"]
 
 
