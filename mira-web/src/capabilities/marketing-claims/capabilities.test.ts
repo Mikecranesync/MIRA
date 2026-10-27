@@ -28,6 +28,10 @@ function withoutP1(data: CapabilitiesFile): CapabilitiesFile {
   return clone;
 }
 
+function readPricing(): string {
+  return readFileSync(join(PUBLIC, "pricing.html"), "utf-8");
+}
+
 function publishedSurfaces(data: CapabilitiesFile): string[] {
   const home = renderHome("https://factorylm.com/", data);
   const limitations = renderLimitations("https://factorylm.com/limitations", data);
@@ -35,8 +39,41 @@ function publishedSurfaces(data: CapabilitiesFile): string[] {
   const meta = effectiveMetaDescription(data);
   const llms = generateLlmsTxt(data);
   const full = generateLlmsFullTxt(data);
-  return [home, limitations, jsonLd, meta, llms, full];
+  // Codex F1: /pricing is a public marketing surface. It is static HTML, so it
+  // must not carry claim sentences (proven or not); the flip contract still
+  // scans it so a leaked unpublished sentence fails the same way home does.
+  return [home, limitations, jsonLd, meta, llms, full, readPricing()];
 }
+
+// Paraphrases of unpublished notebook claims. capabilities.json marks
+// notebook-for-one-crew and notebook-open-lookup-ask-record as partial;
+// /pricing used to publish both in other words (Codex F1 on #4570).
+const UNPUBLISHED_NOTEBOOK_PARAPHRASES: Array<{
+  ids: string[];
+  label: string;
+  re: RegExp;
+}> = [
+  {
+    ids: ["notebook-for-one-crew"],
+    label: "one-crew / your-crew equipment-notebook pitch",
+    re: /equipment notebook for (?:your|one) maintenance crew/i,
+  },
+  {
+    ids: ["notebook-for-one-crew"],
+    label: "equipment-notebook pilot for one crew",
+    re: /equipment-notebook (?:pilot )?for one crew/i,
+  },
+  {
+    ids: ["notebook-open-lookup-ask-record"],
+    label: "open / find / ask / record workflow",
+    re: /Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it/,
+  },
+  {
+    ids: ["notebook-open-lookup-ask-record"],
+    label: "open/find/ask/record fragments",
+    re: /Open the machine's notebook|find the right manual passage|record what fixed it/i,
+  },
+];
 
 describe("capabilities.json schema", () => {
   const data = loadCapabilities();
@@ -165,6 +202,23 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(llms).not.toContain("work-order history");
   });
 
+  test("/pricing is a published surface and drops unpublished notebook claims", () => {
+    const pricing = readPricing();
+    expect(publishedSurfaces(data)).toContain(pricing);
+    for (const claim of data.claims.filter(
+      (c) => c.status === "partial" || c.status === "not-yet"
+    )) {
+      expect(pricing, `/pricing leaked unpublished ${claim.id}`).not.toContain(
+        claim.text
+      );
+    }
+    for (const rule of UNPUBLISHED_NOTEBOOK_PARAPHRASES) {
+      expect(pricing, `/pricing still has ${rule.label}`).not.toMatch(rule.re);
+    }
+    // D1 offer stays; this test only gates capability claims.
+    expect(pricing).toContain("$500 per site for 30 days");
+  });
+
   test("without P1, published surfaces have no cites or answers-from wording", () => {
     const stripped = withoutP1(data);
     expect(hasCitedProof(stripped)).toBe(false);
@@ -232,7 +286,7 @@ describe("flipping a claim to partial removes its sentence from every published 
   const data = loadCapabilities();
 
   for (const claim of data.claims) {
-    test(`${claim.id} disappears from home, limitations, JSON-LD, meta, and llms when partial`, () => {
+    test(`${claim.id} disappears from home, limitations, JSON-LD, meta, llms, and /pricing when partial`, () => {
       const flipped = structuredClone(data);
       const row = flipped.claims.find((c) => c.id === claim.id);
       expect(row).toBeDefined();
@@ -241,6 +295,13 @@ describe("flipping a claim to partial removes its sentence from every published 
         expect(surface, `${claim.id} still published after flip`).not.toContain(
           claim.text
         );
+        for (const rule of UNPUBLISHED_NOTEBOOK_PARAPHRASES) {
+          if (!rule.ids.includes(claim.id)) continue;
+          expect(
+            surface,
+            `${claim.id} paraphrase still published after flip: ${rule.label}`
+          ).not.toMatch(rule.re);
+        }
       }
       expect(effectiveHeadline(flipped)).not.toContain(claim.text);
       expect(effectiveTitle(flipped)).not.toContain(claim.text);

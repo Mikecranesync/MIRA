@@ -166,16 +166,21 @@ describe("public marketing copy — don't-say list and only the D1 price", () =>
     expect(renderSamplePlaceholder()).not.toContain("Open CMMS");
   });
 
-  test("/pricing title, meta, and headline lead with the equipment notebook", () => {
+  test("/pricing title, meta, and headline omit unpublished notebook claims", () => {
     const pricing = pages.find((p) => p.name === "/pricing")!.html;
-    expect(pricing).toContain(
-      "<title>FactoryLM — The equipment notebook for your maintenance crew</title>"
+    // Codex F1: notebook-for-one-crew and notebook-open-lookup-ask-record are
+    // partial in capabilities.json; /pricing must not publish them or a paraphrase.
+    expect(pricing).not.toContain("The equipment notebook for your maintenance crew");
+    expect(pricing).not.toMatch(/equipment notebook for (?:your|one) maintenance crew/i);
+    expect(pricing).not.toMatch(/equipment-notebook (?:pilot )?for one crew/i);
+    expect(pricing).not.toContain("Open the machine's notebook");
+    expect(pricing).not.toContain("find the right manual passage");
+    expect(pricing).not.toContain("record what fixed it");
+    expect(pricing).toMatch(
+      /<h1>\s*Find reliable answers in your own equipment manuals\s*<\/h1>/
     );
     expect(pricing).toMatch(
-      /<meta name="description" content="[^"]*equipment notebook[^"]*Talk to Mike[^"]*"/i
-    );
-    expect(pricing).toMatch(
-      /<h1>\s*The equipment notebook for your maintenance crew\s*<\/h1>/
+      /<meta name="description" content="[^"]*Talk to Mike[^"]*"/i
     );
     expect(pricing).toContain('data-cta="pricing-talk">Talk to Mike</a>');
     expect(pricing).not.toContain("<title>Pricing — FactoryLM</title>");
