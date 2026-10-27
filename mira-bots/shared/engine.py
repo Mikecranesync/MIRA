@@ -120,6 +120,7 @@ from .response_formatter import (
     parse_response,
 )
 from .session_manager import (
+    CONVERSATION_STATE_TABLE,
     MissingConversationTenant,
     bind_conversation_tenant,
     current_conversation_tenant,
@@ -128,6 +129,7 @@ from .session_manager import (
     log_interaction,
     record_exchange,
     require_conversation_tenant,
+    resolve_process_state_tenant,
     save_state,
 )
 from .telemetry import flush as tl_flush
@@ -1046,8 +1048,8 @@ _MANUAL_ESCAPE_PHRASES = frozenset(
 # embedded as a vector query for the word "proceed".
 _PROCEED_RE = re.compile(r"^\s*proceed\s*$", re.IGNORECASE)
 
-# Fail-closed reply when process()/process_full is asked to read or write
-# conversation_state without a trusted tenant. Not an env fallback.
+# Fail-closed reply when process_full is given an explicit empty tenant_id.
+# process() with no tenant uses UNSCOPED_CONVERSATION_TENANT instead.
 CONVERSATION_STATE_NO_TENANT_REPLY = (
     "I can't continue this conversation because the workspace is not authenticated. "
     "Ask your admin to enroll you."
@@ -2358,7 +2360,10 @@ class Supervisor:
         # blocked tenant costs zero LLM calls; does not touch the UNS gate,
         # greeting, or safety paths (those live inside process_full).
         quota_tenant = tenant_id or self.tenant_id or None
-        state_tenant = (tenant_id or "").strip() or None
+        # Per-call tenant if present; else the request-scoped bind (tests);
+        # else the declared unscoped default so pipeline/Open WebUI multi-turn
+        # still persists. Never MIRA_TENANT_ID / chat_id.
+        state_tenant = resolve_process_state_tenant(tenant_id)
         quota_allowed, quota_reason = await check_quota(quota_tenant)
         if not quota_allowed:
             logger.warning(
@@ -2369,37 +2374,22 @@ class Supervisor:
                 quota_reason,
             )
             return QUOTA_BLOCK_MESSAGE
-        # Bind only a non-empty per-call tenant. An empty argument must not
-        # overwrite a request-scoped bind (tests) and must not fall back to
-        # env; process_full fail-closes if nothing trusted is bound.
-        if state_tenant:
-            _state_bind = bind_conversation_tenant(state_tenant)
-            _state_bind.__enter__()
-            try:
-                return await self._process_after_quota(
-                    chat_id,
-                    message,
-                    photo_b64,
-                    platform=platform,
-                    tenant_id=tenant_id,
-                    uns_source=uns_source,
-                    tag_evidence=tag_evidence,
-                    live_tags=live_tags,
-                    retrieval_query=retrieval_query,
-                )
-            finally:
-                _state_bind.__exit__(None, None, None)
-        return await self._process_after_quota(
-            chat_id,
-            message,
-            photo_b64,
-            platform=platform,
-            tenant_id=tenant_id,
-            uns_source=uns_source,
-            tag_evidence=tag_evidence,
-            live_tags=live_tags,
-            retrieval_query=retrieval_query,
-        )
+        _state_bind = bind_conversation_tenant(state_tenant)
+        _state_bind.__enter__()
+        try:
+            return await self._process_after_quota(
+                chat_id,
+                message,
+                photo_b64,
+                platform=platform,
+                tenant_id=tenant_id,
+                uns_source=uns_source,
+                tag_evidence=tag_evidence,
+                live_tags=live_tags,
+                retrieval_query=retrieval_query,
+            )
+        finally:
+            _state_bind.__exit__(None, None, None)
 
     async def _process_after_quota(
         self,
@@ -3057,9 +3047,11 @@ class Supervisor:
         token = _SAFETY_FLAG.set(None)
         try:
             if tenant_id is not None:
+                # Explicit empty is fail-closed (caller tried to name a tenant).
+                # None means pipeline-shaped — use bind or unscoped default.
                 state_tenant = require_conversation_tenant(tenant_id)
             else:
-                state_tenant = current_conversation_tenant()
+                state_tenant = resolve_process_state_tenant()
         except MissingConversationTenant:
             logger.error(
                 "CONVERSATION_STATE_NO_TENANT chat_id=%s — fail closed; no state load/save",
@@ -3127,14 +3119,14 @@ class Supervisor:
         # conversation-state reads/writes (#4844 Slice 1).
         resolved_tenant = tenant_id or resolve_tenant(chat_id) or self.rag.tenant_id
 
-        # Conversation-state tenant: only the per-call argument, or a
-        # request-scoped bind set by process(). Never resolve_tenant(chat_id)
+        # Conversation-state tenant: per-call argument, request-scoped bind,
+        # or the declared unscoped default. Never resolve_tenant(chat_id)
         # or MIRA_TENANT_ID / self.tenant_id.
         try:
             if tenant_id is not None:
                 state_tenant = require_conversation_tenant(tenant_id)
             else:
-                state_tenant = current_conversation_tenant()
+                state_tenant = resolve_process_state_tenant()
         except MissingConversationTenant:
             logger.error(
                 "CONVERSATION_STATE_NO_TENANT chat_id=%s — fail closed; no state load/save",
@@ -5003,14 +4995,14 @@ class Supervisor:
         db.execute("PRAGMA journal_mode=WAL")
         # Exact key, this tenant only
         db.execute(
-            "DELETE FROM conversation_state WHERE tenant_id = ? AND chat_id = ?",
+            f"DELETE FROM {CONVERSATION_STATE_TABLE} WHERE tenant_id = ? AND chat_id = ?",
             (tid, chat_id),
         )
         # Composite keys for known platforms ending in this raw chat id
         for platform in ("telegram", "slack", "teams", "gchat", "webui"):
             prefix = f"{platform}:{chat_id}"
             db.execute(
-                "DELETE FROM conversation_state WHERE tenant_id = ? AND (chat_id = ? OR chat_id LIKE ?)",
+                f"DELETE FROM {CONVERSATION_STATE_TABLE} WHERE tenant_id = ? AND (chat_id = ? OR chat_id LIKE ?)",
                 (tid, prefix, f"{prefix}:%"),
             )
         db.commit()

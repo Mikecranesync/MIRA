@@ -60,7 +60,7 @@ def tmp_db(tmp_path):
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
-        """CREATE TABLE IF NOT EXISTS conversation_state (
+        """CREATE TABLE IF NOT EXISTS conversation_state_v2 (
             tenant_id TEXT NOT NULL,
             chat_id TEXT NOT NULL,
             state TEXT DEFAULT 'IDLE',

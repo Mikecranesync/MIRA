@@ -70,27 +70,15 @@ if not MCP_REST_API_KEY:
 mcp = FastMCP("mira-mcp")
 
 
-def _conversation_state_needs_rebuild(db: sqlite3.Connection) -> bool:
-    """True when conversation_state is missing tenant_id or still chat_id-only PK."""
-    info = list(db.execute("PRAGMA table_info(conversation_state)"))
-    if not info:
-        return False
-    names = {row[1] for row in info}
-    pk_cols = [row[1] for row in sorted(info, key=lambda r: r[5]) if row[5]]
-    return "tenant_id" not in names or pk_cols != ["tenant_id", "chat_id"]
-
-
 def _ensure_schema():
-    """Create required tables if they don't exist. Idempotent."""
+    """Create required tables if they don't exist. Idempotent.
+
+    conversation_state_v2 is the Slice 1 (#4844) store. The legacy
+    conversation_state table is not dropped or rebuilt — old services
+    keep writing it until they are redeployed.
+    """
     db = sqlite3.connect(DB_PATH)
     db.execute("PRAGMA journal_mode=WAL")
-    if _conversation_state_needs_rebuild(db):
-        sys.stderr.write(
-            "WARN: conversation_state is chat_id-only — dropping and recreating "
-            "with PRIMARY KEY (tenant_id, chat_id); in-flight rows discarded "
-            "(#4844 START FRESH)\n"
-        )
-        db.execute("DROP TABLE conversation_state")
     db.executescript("""
         CREATE TABLE IF NOT EXISTS equipment_status (
             equipment_id TEXT PRIMARY KEY,
@@ -123,7 +111,7 @@ def _ensure_schema():
             category TEXT NOT NULL DEFAULT 'general',
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
-        CREATE TABLE IF NOT EXISTS conversation_state (
+        CREATE TABLE IF NOT EXISTS conversation_state_v2 (
             tenant_id TEXT NOT NULL,
             chat_id TEXT NOT NULL,
             state TEXT NOT NULL DEFAULT 'IDLE',

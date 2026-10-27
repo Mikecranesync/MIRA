@@ -43,7 +43,7 @@ def test_voice_command_on_sets_db_flag():
     # Bootstrap the table
     db = sqlite3.connect(db_path)
     db.execute(
-        """CREATE TABLE conversation_state (
+        """CREATE TABLE conversation_state_v2 (
                tenant_id TEXT NOT NULL,
                chat_id TEXT NOT NULL,
                state TEXT NOT NULL DEFAULT 'IDLE',
@@ -83,7 +83,7 @@ def test_voice_command_off_clears_db_flag():
 
     db = sqlite3.connect(db_path)
     db.execute(
-        """CREATE TABLE conversation_state (
+        """CREATE TABLE conversation_state_v2 (
                tenant_id TEXT NOT NULL,
                chat_id TEXT NOT NULL,
                state TEXT NOT NULL DEFAULT 'IDLE',
@@ -125,7 +125,7 @@ async def test_text_response_sent_even_when_tts_fails():
 
     db = sqlite3.connect(db_path)
     db.execute(
-        """CREATE TABLE conversation_state (
+        """CREATE TABLE conversation_state_v2 (
                tenant_id TEXT NOT NULL,
                chat_id TEXT NOT NULL,
                state TEXT NOT NULL DEFAULT 'IDLE',
@@ -142,7 +142,7 @@ async def test_text_response_sent_even_when_tts_fails():
     )
     # Pre-insert with voice_enabled=1
     db.execute(
-        "INSERT INTO conversation_state (tenant_id, chat_id, voice_enabled) VALUES ('tenant-voice', 'chat_1', 1)"
+        "INSERT INTO conversation_state_v2 (tenant_id, chat_id, voice_enabled) VALUES ('tenant-voice', 'chat_1', 1)"
     )
     db.commit()
     db.close()

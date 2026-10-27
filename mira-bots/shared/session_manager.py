@@ -5,10 +5,12 @@ engine.py delegates all state read/write work here.
 
 Dependency direction: session_manager ← stdlib only (no engine imports)
 
-Slice 1 (#4844): conversation_state is keyed by (tenant_id, chat_id).
-load/save/record_exchange require a trusted tenant from authenticated
-context. Empty tenant fails closed — never env, payload tenant_id, or
-raw chat_id for state writes.
+Slice 1 (#4844): conversation_state_v2 is keyed by (tenant_id, chat_id).
+load/save/record_exchange require a tenant from authenticated context
+or the declared UNSCOPED_CONVERSATION_TENANT default used by pipeline-
+shaped callers. Never env, payload tenant_id, or raw chat_id. The
+legacy conversation_state table is left intact for mixed-version
+deploys (old services keep writing it; new code ignores it).
 """
 
 from __future__ import annotations
@@ -30,12 +32,21 @@ _STATE_TENANT: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "mira_conversation_state_tenant", default=None
 )
 
-CONVERSATION_STATE_DDL = """
-        CREATE TABLE IF NOT EXISTS conversation_state (
+# Declared single-tenant default for pipeline-shaped callers that have no
+# authenticated tenant (mira-pipeline / Open WebUI). Not env, not chat_id.
+# Authenticated tenants never share this bucket. BRAVO #4852 / #4844.
+UNSCOPED_CONVERSATION_TENANT = "unscoped"
+
+# New table so mixed-version deploys keep the chat_id-only conversation_state
+# for old services. New code reads/writes only this table. No backfill.
+CONVERSATION_STATE_TABLE = "conversation_state_v2"
+
+CONVERSATION_STATE_DDL = f"""
+        CREATE TABLE IF NOT EXISTS {CONVERSATION_STATE_TABLE} (
             tenant_id        TEXT NOT NULL,
             chat_id          TEXT NOT NULL,
             state            TEXT NOT NULL DEFAULT 'IDLE',
-            context          TEXT NOT NULL DEFAULT '{}',
+            context          TEXT NOT NULL DEFAULT '{{}}',
             asset_identified TEXT,
             fault_category   TEXT,
             exchange_count   INTEGER NOT NULL DEFAULT 0,
@@ -88,36 +99,30 @@ def bind_conversation_tenant(tenant_id: str | None) -> Iterator[None]:
         _STATE_TENANT.reset(token)
 
 
-def _conversation_state_needs_rebuild(db: sqlite3.Connection) -> bool:
-    """True when the live table is missing or still uses the chat_id-only PK.
+def resolve_process_state_tenant(explicit: str | None = None) -> str:
+    """Tenant for process()/process_full state I/O.
 
-    Owner decision #4844: existing rows have no tenant to backfill from
-    and state is short-lived — START FRESH (drop + recreate). Do not
-    assign old rows to a tenant.
+    Non-empty explicit wins. Else the request-scoped bind. Else the
+    declared UNSCOPED_CONVERSATION_TENANT default (pipeline / Open WebUI).
+    Never reads MIRA_TENANT_ID or chat_id.
     """
-    info = list(db.execute("PRAGMA table_info(conversation_state)"))
-    if not info:
-        return False
-    names = {row[1] for row in info}
-    pk_cols = [row[1] for row in sorted(info, key=lambda r: r[5]) if row[5]]
-    return "tenant_id" not in names or pk_cols != ["tenant_id", "chat_id"]
+    if explicit is not None and str(explicit).strip():
+        return require_conversation_tenant(explicit)
+    bound = _STATE_TENANT.get()
+    if bound and str(bound).strip():
+        return require_conversation_tenant(bound)
+    return UNSCOPED_CONVERSATION_TENANT
 
 
 def ensure_table(db_path: str) -> None:
-    """Create conversation_state and related tables if they don't exist.
+    """Create conversation_state_v2 and related tables if they don't exist.
 
-    Rebuilds conversation_state when the live schema is still keyed by
-    chat_id only. That drop is intentional (START FRESH) — in-flight
-    rows are short-lived session state, not durable history.
+    Does not DROP or rebuild the legacy chat_id-only ``conversation_state``
+    table. Old services keep writing that table until they are redeployed;
+    new code uses only ``conversation_state_v2`` (START FRESH — no backfill).
     """
     db = sqlite3.connect(db_path)
     db.execute("PRAGMA journal_mode=WAL")
-    if _conversation_state_needs_rebuild(db):
-        logger.warning(
-            "conversation_state schema is chat_id-only — dropping and recreating "
-            "with PRIMARY KEY (tenant_id, chat_id); in-flight rows are discarded (#4844 START FRESH)"
-        )
-        db.execute("DROP TABLE conversation_state")
     db.execute(CONVERSATION_STATE_DDL)
     db.execute("""
         CREATE TABLE IF NOT EXISTS feedback_log (
@@ -145,12 +150,6 @@ def ensure_table(db_path: str) -> None:
             created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    try:
-        db.execute(
-            "ALTER TABLE conversation_state ADD COLUMN voice_enabled INTEGER NOT NULL DEFAULT 0"
-        )
-    except Exception as e:
-        logger.debug("voice_enabled column already exists: %s", e)
     # Print-turn provenance columns (2026-07-15 operator directive: every
     # PrintSense request + full reply must be retrievable from THIS table).
     # SQLite has no ADD COLUMN IF NOT EXISTS — guarded ALTERs upgrade a prod
@@ -181,7 +180,7 @@ def load_state(db_path: str, chat_id: str, tenant_id: str | None = None) -> dict
     db.execute("PRAGMA journal_mode=WAL")
     db.row_factory = sqlite3.Row
     row = db.execute(
-        "SELECT * FROM conversation_state WHERE tenant_id = ? AND chat_id = ?",
+        f"SELECT * FROM {CONVERSATION_STATE_TABLE} WHERE tenant_id = ? AND chat_id = ?",
         (tid, chat_id),
     ).fetchone()
     db.close()
@@ -212,7 +211,7 @@ def save_state(db_path: str, chat_id: str, state: dict, tenant_id: str | None = 
     db = sqlite3.connect(db_path)
     db.execute("PRAGMA journal_mode=WAL")
     db.execute(
-        """INSERT INTO conversation_state
+        f"""INSERT INTO {CONVERSATION_STATE_TABLE}
            (tenant_id, chat_id, state, context, asset_identified, fault_category,
             exchange_count, final_state, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -264,7 +263,7 @@ def get_voice_enabled(db_path: str, chat_id: str, tenant_id: str | None = None) 
     db.execute("PRAGMA journal_mode=WAL")
     try:
         row = db.execute(
-            "SELECT voice_enabled FROM conversation_state WHERE tenant_id = ? AND chat_id = ?",
+            f"SELECT voice_enabled FROM {CONVERSATION_STATE_TABLE} WHERE tenant_id = ? AND chat_id = ?",
             (tid, chat_id),
         ).fetchone()
         return bool(row[0]) if row else False
@@ -280,7 +279,7 @@ def set_voice_enabled(
     db = sqlite3.connect(db_path)
     db.execute("PRAGMA journal_mode=WAL")
     db.execute(
-        """INSERT INTO conversation_state (tenant_id, chat_id, voice_enabled)
+        f"""INSERT INTO {CONVERSATION_STATE_TABLE} (tenant_id, chat_id, voice_enabled)
            VALUES (?, ?, ?)
            ON CONFLICT(tenant_id, chat_id) DO UPDATE SET
              voice_enabled = excluded.voice_enabled""",

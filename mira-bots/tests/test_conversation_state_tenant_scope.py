@@ -7,6 +7,7 @@ forged payload tenant, missing tenant fail-closed, resume/stale state.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import sys
@@ -18,7 +19,9 @@ sys.path.insert(0, "mira-bots")
 
 from shared.engine import CONVERSATION_STATE_NO_TENANT_REPLY, Supervisor
 from shared.session_manager import (
+    CONVERSATION_STATE_TABLE,
     MissingConversationTenant,
+    UNSCOPED_CONVERSATION_TENANT,
     bind_conversation_tenant,
     current_conversation_tenant,
     ensure_table,
@@ -103,13 +106,7 @@ def _history_blob(state: dict) -> str:
 def _stub_downstream(supervisor: Supervisor):
     """Keep process_full off the network after the state load/save path."""
     supervisor.rag.process = AsyncMock(
-        return_value={
-            "reply": "B-side reply with no tenant-A content [Source: test p.1]",
-            "next_state": "IDLE",
-            "options": [],
-            "confidence": "low",
-            "sources": ["test p.1"],
-        }
+        return_value="B-side reply with no tenant-A content [Source: test p.1]"
     )
 
 
@@ -131,33 +128,8 @@ def test_require_conversation_tenant_fails_closed_on_empty():
 
 
 def test_ensure_table_rebuilds_chat_id_only_schema(tmp_path):
-    db_path = str(tmp_path / "legacy.db")
-    db = sqlite3.connect(db_path)
-    db.execute(
-        """CREATE TABLE conversation_state (
-            chat_id TEXT PRIMARY KEY,
-            state TEXT NOT NULL DEFAULT 'IDLE',
-            context TEXT NOT NULL DEFAULT '{}'
-        )"""
-    )
-    db.execute(
-        "INSERT INTO conversation_state (chat_id, state) VALUES (?, ?)",
-        (SHARED_CHAT, "Q2"),
-    )
-    db.commit()
-    db.close()
-
-    ensure_table(db_path)
-
-    db = sqlite3.connect(db_path)
-    info = list(db.execute("PRAGMA table_info(conversation_state)"))
-    names = {row[1] for row in info}
-    pk_cols = [row[1] for row in sorted(info, key=lambda r: r[5]) if row[5]]
-    leftover = db.execute("SELECT COUNT(*) FROM conversation_state").fetchone()[0]
-    db.close()
-    assert "tenant_id" in names
-    assert pk_cols == ["tenant_id", "chat_id"]
-    assert leftover == 0  # START FRESH — old row discarded
+    """Superseded by test_legacy_conversation_state_survives_ensure_table."""
+    test_legacy_conversation_state_survives_ensure_table(tmp_path)
 
 
 def test_two_tenants_same_chat_id_are_separate_rows(tmp_path):
@@ -290,18 +262,28 @@ async def test_forged_payload_tenant_is_ignored(supervisor):
 
 
 @pytest.mark.asyncio
-async def test_missing_tenant_fails_closed_no_write(supervisor):
+async def test_missing_tenant_uses_unscoped_default_no_cross_write(supervisor):
+    """No authenticated tenant → declared unscoped bucket, not another tenant."""
     _seed_tenant_a(supervisor)
+    _stub_downstream(supervisor)
     with bind_conversation_tenant(None):
         result = await supervisor.process_full(SHARED_CHAT, "hi")
-    assert result["reply"] == CONVERSATION_STATE_NO_TENANT_REPLY
-    assert result["next_state"] == "IDLE"
+    assert "workspace is not authenticated" not in (result.get("reply") or "")
+    after_a = _row(supervisor, TENANT_A)
+    assert after_a.get("asset_identified") == ASSET_A
+    assert SECRET_A in _history_blob(after_a)
+    unscoped = load_state(
+        supervisor.db_path, SHARED_CHAT, tenant_id=UNSCOPED_CONVERSATION_TENANT
+    )
+    assert SECRET_A not in _history_blob(unscoped)
     db = sqlite3.connect(supervisor.db_path)
     rows = db.execute(
-        "SELECT tenant_id FROM conversation_state WHERE chat_id = ?", (SHARED_CHAT,)
+        f"SELECT tenant_id FROM {CONVERSATION_STATE_TABLE} WHERE chat_id = ? ORDER BY tenant_id",
+        (SHARED_CHAT,),
     ).fetchall()
     db.close()
-    assert [r[0] for r in rows] == [TENANT_A]
+    assert TENANT_A in [r[0] for r in rows]
+    assert UNSCOPED_CONVERSATION_TENANT in [r[0] for r in rows]
 
 
 @pytest.mark.asyncio
@@ -349,3 +331,140 @@ def test_record_exchange_without_tenant_raises(supervisor):
     with bind_conversation_tenant(None):
         with pytest.raises(MissingConversationTenant):
             record_exchange(supervisor.db_path, SHARED_CHAT, state, "hi", "hello")
+
+
+# ---------------------------------------------------------------------------
+# BRAVO pre-review #4852 — pipeline default, persistence, concurrent, fan-out
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_two_turns_same_tenant_persist_through_process_full(supervisor):
+    """Two process_full turns under one tenant; _record_exchange is not mocked."""
+    _stub_downstream(supervisor)
+    chat = "webui:same-tenant"
+    first = "the hydraulic pump LINE4-SECRET is leaking oil"
+    await supervisor.process_full(chat, first, tenant_id=TENANT_A)
+    mid = load_state(supervisor.db_path, chat, tenant_id=TENANT_A)
+    hist = (mid.get("context") or {}).get("history") or []
+    assert any(first in (e.get("content") or "") for e in hist)
+    await supervisor.process_full(chat, "which pump did I mention", tenant_id=TENANT_A)
+    after = load_state(supervisor.db_path, chat, tenant_id=TENANT_A)
+    hist2 = (after.get("context") or {}).get("history") or []
+    assert any(first in (e.get("content") or "") for e in hist2)
+    assert any("which pump did I mention" in (e.get("content") or "") for e in hist2)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_shaped_turns_without_tenant_resume(supervisor):
+    """Pipeline / Open WebUI: process() with no tenant; turn 2 sees turn 1."""
+    _stub_downstream(supervisor)
+    chat = "webui:pipeline-anon"
+    first = "the conveyor PIPELINE-TURN-1 jammed yesterday"
+    with bind_conversation_tenant(None):
+        reply1 = await supervisor.process(chat, first, platform="webui")
+        reply2 = await supervisor.process(chat, "which conveyor jammed", platform="webui")
+    assert "workspace is not authenticated" not in (reply1 or "")
+    assert "workspace is not authenticated" not in (reply2 or "")
+    saved = load_state(
+        supervisor.db_path, chat, tenant_id=UNSCOPED_CONVERSATION_TENANT
+    )
+    hist = (saved.get("context") or {}).get("history") or []
+    assert any(first in (e.get("content") or "") for e in hist)
+    assert any("which conveyor jammed" in (e.get("content") or "") for e in hist)
+    # Must not land on a real tenant row
+    assert load_state(supervisor.db_path, chat, tenant_id=TENANT_A)["state"] == "IDLE"
+
+
+@pytest.mark.asyncio
+async def test_two_tenants_same_chat_id_concurrent(supervisor):
+    _stub_downstream(supervisor)
+    msg_a = "tenant-A concurrent UNIQUE_A_PHRASE on pump 7"
+    msg_b = "tenant-B concurrent UNIQUE_B_PHRASE on pump 9"
+
+    async def _turn(tid: str, msg: str):
+        return await supervisor.process_full(SHARED_CHAT, msg, tenant_id=tid)
+
+    await asyncio.gather(_turn(TENANT_A, msg_a), _turn(TENANT_B, msg_b))
+    hist_a = _history_blob(_row(supervisor, TENANT_A))
+    hist_b = _history_blob(_row(supervisor, TENANT_B))
+    assert "UNIQUE_A_PHRASE" in hist_a
+    assert "UNIQUE_B_PHRASE" not in hist_a
+    assert "UNIQUE_B_PHRASE" in hist_b
+    assert "UNIQUE_A_PHRASE" not in hist_b
+
+
+def test_reset_fanout_stays_inside_tenant(supervisor):
+    """LIKE prefix fan-out must not delete the other tenant's prefixed rows."""
+    raw = "99"
+    for tid, asset in ((TENANT_A, "A-fanout"), (TENANT_B, "B-fanout")):
+        for key in (raw, f"telegram:{raw}", f"telegram:{raw}:thread"):
+            save_state(
+                supervisor.db_path,
+                key,
+                {
+                    "state": "Q1",
+                    "exchange_count": 1,
+                    "asset_identified": asset,
+                    "context": {},
+                },
+                tenant_id=tid,
+            )
+    supervisor.reset(raw, tenant_id=TENANT_B)
+    for key in (raw, f"telegram:{raw}", f"telegram:{raw}:thread"):
+        assert (
+            load_state(supervisor.db_path, key, tenant_id=TENANT_A).get("asset_identified")
+            == "A-fanout"
+        )
+        assert load_state(supervisor.db_path, key, tenant_id=TENANT_B).get(
+            "asset_identified"
+        ) in (None, "")
+
+
+@pytest.mark.asyncio
+async def test_explicit_empty_tenant_fails_closed(supervisor):
+    _seed_tenant_a(supervisor)
+    result = await supervisor.process_full(SHARED_CHAT, "hi", tenant_id="")
+    assert result["reply"] == CONVERSATION_STATE_NO_TENANT_REPLY
+    assert _row(supervisor, TENANT_A).get("asset_identified") == ASSET_A
+
+
+def test_legacy_conversation_state_survives_ensure_table(tmp_path):
+    """Mixed-version: do not DROP the chat_id-only table old services still write."""
+    db_path = str(tmp_path / "mixed.db")
+    db = sqlite3.connect(db_path)
+    db.execute(
+        """CREATE TABLE conversation_state (
+            chat_id TEXT PRIMARY KEY,
+            state TEXT NOT NULL DEFAULT 'IDLE',
+            context TEXT NOT NULL DEFAULT '{}'
+        )"""
+    )
+    db.execute(
+        "INSERT INTO conversation_state (chat_id, state) VALUES (?, ?)",
+        (SHARED_CHAT, "Q2"),
+    )
+    db.commit()
+    db.close()
+
+    ensure_table(db_path)
+
+    db = sqlite3.connect(db_path)
+    legacy = db.execute(
+        "SELECT state FROM conversation_state WHERE chat_id = ?", (SHARED_CHAT,)
+    ).fetchone()
+    v2_names = {row[1] for row in db.execute(f"PRAGMA table_info({CONVERSATION_STATE_TABLE})")}
+    v2_pk = [
+        row[1]
+        for row in sorted(
+            db.execute(f"PRAGMA table_info({CONVERSATION_STATE_TABLE})"),
+            key=lambda r: r[5],
+        )
+        if row[5]
+    ]
+    v2_count = db.execute(f"SELECT COUNT(*) FROM {CONVERSATION_STATE_TABLE}").fetchone()[0]
+    db.close()
+    assert legacy[0] == "Q2"
+    assert "tenant_id" in v2_names
+    assert v2_pk == ["tenant_id", "chat_id"]
+    assert v2_count == 0

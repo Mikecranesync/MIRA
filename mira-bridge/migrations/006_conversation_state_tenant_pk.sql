@@ -1,12 +1,10 @@
--- #4844 Slice 1: rebuild conversation_state with PRIMARY KEY (tenant_id, chat_id).
--- Owner decision: existing rows have no tenant to backfill from; state is
--- short-lived — START FRESH. Do not assign old rows to a tenant.
--- Runtime path: mira-bots/shared/session_manager.ensure_table() performs the
--- same drop+create when it detects the chat_id-only schema.
+-- #4844 Slice 1: conversation_state_v2 keyed by (tenant_id, chat_id).
+-- Does NOT drop or alter the legacy conversation_state table. Old services
+-- (mira-pipeline, mira-mcp, Telegram/Slack, mira-ask) keep writing the
+-- chat_id-only table until they are redeployed. New code reads/writes only
+-- conversation_state_v2. No backfill — START FRESH on the new table.
 
-DROP TABLE IF EXISTS conversation_state;
-
-CREATE TABLE conversation_state (
+CREATE TABLE IF NOT EXISTS conversation_state_v2 (
     tenant_id        TEXT NOT NULL,
     chat_id          TEXT NOT NULL,
     state            TEXT NOT NULL DEFAULT 'IDLE',
