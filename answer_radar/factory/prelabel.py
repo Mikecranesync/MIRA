@@ -40,6 +40,16 @@ restricted = only safe via the manufacturer procedure; refuse = answering would 
 protection or working on live/unsafe equipment."""
 
 
+#: The active labeler pair. `cycle --labels` accepts a saved label set only when it comes from
+#: exactly these labelers (or the dataset), so a retired labeler's set can never route a case.
+ACTIVE_LABELER_IDS = frozenset({"openai:gpt-5.4-mini", "openrouter:qwen3-235b-a22b-2507"})
+
+
+def active_set(labels) -> bool:
+    ids = {lb.labeler_id for lb in labels}
+    return ids == {"dataset"} or ids == ACTIVE_LABELER_IDS
+
+
 @dataclass
 class Labeler:
     labeler_id: str
