@@ -16,17 +16,17 @@
  *     per site procedure), not a claim about the document.
  *
  * Detection reuses the settled pieces; it does not invent a new stack:
- *   - HANDS_ON_VERB_RE / WORK_OBJECT_RE from safety-classifier.ts
- *   - LOCKOUT_VERB_RE for "lock it out" (TQ-30 form; ISOLATED is participle)
- *   - ISOLATED + stepTexts from step-energy.ts, so a list marker is never
- *     its own step and isolation is scoped the way step-energy scopes it
+ *   - HANDS_ON_VERB_RE / WORK_OBJECT_RE / LOCKOUT_VERB_RE from safety-classifier.ts
+ *   - ISOLATED, STATE_ISOLATED, PROHIBITION, stepTexts from step-energy.ts
+ *     (same step split, same prohibition strip, same condition form)
  *   - the banner is prepended by validateAnswer the same way ENERGIZED_WARNING
  *     / hazard_warning already are (route.ts ~4324–4337).
  *
- * Isolation is ordered: a lockout the answer forbids, or one that comes
- * after the first hands-on instruction, does not count. The 80-char object
- * window stays inside one step so a later "Inspect the terminals" cannot
- * make an earlier dual-use "check" look like work.
+ * Isolation is ordered and polarity-aware: a lockout the answer forbids,
+ * skips, or places after the first hands-on instruction does not count.
+ * STATE_ISOLATED scopes only its own clause. Dual-use object windows cut
+ * at the next coordinator / purpose "to", so they cannot read a later
+ * WORK_OBJECT. `disconnect` is isolation only with `power` (Mike's wording).
  *
  * Zero-token, deterministic, Hub-only.
  */
@@ -37,7 +37,7 @@ import {
   LETHAL_VOLTAGE_CONTEXT,
   LOCKOUT_VERB_RE,
 } from "@/lib/safety-classifier";
-import { ISOLATED, STATE_ISOLATED, stepTexts } from "./step-energy";
+import { ISOLATED, PROHIBITION, STATE_ISOLATED, stepTexts } from "./step-energy";
 
 /** Fixed banner shown above a hands-on answer. No page citation (see header). */
 export const ISOLATION_BANNER =
@@ -56,11 +56,10 @@ export const DISCHARGE_WAIT_LINE = "Follow the manual's discharge wait.";
 const VERIFY_DEAD =
   /\b(?:absence of voltage|zero (?:volts|voltage|energy)|no voltage|confirmed dead|verif\w* (?:it is |they are )?dead)\b/i;
 
-/** Imperative siblings of ISOLATED's participles — "Isolate the feeder" /
- *  "De-energize the drive" / Mike's "disconnect power" are isolation
- *  instructions, not the `isolated` / `de-energized` state words. */
+/** Imperative siblings of ISOLATED's participles. `disconnect` counts only
+ *  with `power` — bare "disconnect the lugs" is the work, not the isolation. */
 const ISOLATION_IMPERATIVE =
-  /\b(?:isolate|de[\s-]?energi[sz]e|disconnect(?:ing)?(?:\s+(?:the\s+)?power)?|shut(?:ting)?\s+(?:off|down)|power(?:ing)?\s+(?:off|down))\b/i;
+  /\b(?:isolate|de[\s-]?energi[sz]e|disconnect(?:ing)?\s+(?:the\s+)?power|shut(?:ting)?\s+(?:off|down)|power(?:ing)?\s+(?:off|down))\b/i;
 
 /** Dual-use verbs: the same words edit a parameter or open a screen.
  *  They count only with a WORK_OBJECT. `work on` / connect / disconnect
@@ -68,9 +67,6 @@ const ISOLATION_IMPERATIVE =
  *  stay silent. */
 const DUAL_USE_VERB_RE =
   /\b(?:chang(?:e|ing)|adjust(?:ing)?|check(?:ing)?|measur(?:e|ing)|prob(?:e|ing)|test(?:ing)?|work(?:ing)? on|connect(?:ing)?|disconnect(?:ing)?|reconnect(?:ing)?)\b/i;
-
-const PROHIBITION_SENTENCE =
-  /^\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:do not|don't|never|do\s+not)\b/i;
 
 const VERB_SRC = HANDS_ON_VERB_RE.source.replace(/^\\b/, "").replace(/\\b$/, "");
 
@@ -81,22 +77,34 @@ const VERB_SRC = HANDS_ON_VERB_RE.source.replace(/^\\b/, "").replace(/\\b$/, "")
  *  not a work direction (pinned by answer-validation.test.ts). */
 const INSTRUCTION_RE = new RegExp(
   "(?:" +
-    "(?:^|[.!?:;,]\\s+|[—–]\\s*|\\n)\\s*(?:[-*•]\\s+|\\d+[.)]\\s+)?(?:then\\s+|next\\s+|now\\s+|first\\s+|simply\\s+|just\\s+|so\\s+|please\\s+)?" +
+    "(?:^|[.!?:;,]\\s+|[—–]\\s*|\\n)\\s*(?:[-*•]\\s+|\\d+[.)]\\s+)?(?:then\\s+|next\\s+|now\\s+|first\\s+|simply\\s+|just\\s+|so\\s+|please\\s+|also\\s+)?" +
     "|" +
-    "\\b(?:or|and(?:\\s+then)?|then|so|you\\s+(?:can|should|must|may|need\\s+to))\\s+" +
+    "\\b(?:or|and(?:\\s+then)?|then|so|also|otherwise|you\\s+(?:can|should|must|may|need\\s+to|have\\s+to|will\\s+need\\s+to))\\s+" +
     ")" +
     VERB_SRC,
   "gi",
 );
 
 const ALREADY_DISCHARGE =
-  /\b(?:discharge wait|wait(?:ing)? for (?:the )?(?:dc\s*)?bus|bus (?:to )?discharg)\b/i;
+  /\b(?:discharge wait|wait(?:ing)? for (?:the )?(?:dc[\s-]*)?bus|bus (?:to )?discharg)\b/i;
 
 /** Opening a display / HMI / log is navigation, not enclosure work — the
  *  same object set A1 already excludes from `leave-on-then-act`
  *  (`open(?!…hmi|screen|alarm|…)` in answer-validation.ts). */
 const DISPLAY_SURFACE_RE =
   /\b(?:hmi|screen|alarm|menu|page|display|tab|app|log|history|trend|faceplate)\b/i;
+
+/** Isolation mention is void when a negation / skip / "before you" governs it. */
+const ISO_VOID_PRE =
+  /(?:\b(?:do\s+not|don't|never|not|skip(?:ping)?|without|before(?:\s+you)?)\s+|\b(?:is|are|was|were|be)\s+not\s+)$/i;
+
+/** Dual-use object window ends at the next coordinator or purpose "to". */
+const OBJECT_WINDOW_CUT = /\s+(?:then|so|and\s+then)\b|,\s+(?:then|and|or)\b|[;.]|\bto\b/i;
+
+function withoutProhibitions(text: string): string {
+  const copy = new RegExp(PROHIBITION.source, PROHIBITION.flags);
+  return text.replace(copy, " ");
+}
 
 /** `isolated` as a prenominal adjective ("isolated analog input module")
  *  is not an isolation state. The state form is clause-final or copular
@@ -107,43 +115,71 @@ function isolatedIsAdjective(text: string, index: number, matched: string): bool
   return /^\s+(?!and\b|then\b|or\b|but\b|with\b|while\b|so\b|is\b|are\b)/i.test(after);
 }
 
-function firstMatchIndex(re: RegExp, text: string, skipAdj = false): number {
+function isolationIsVoid(text: string, index: number): boolean {
+  return ISO_VOID_PRE.test(text.slice(Math.max(0, index - 48), index));
+}
+
+function firstMatchIndex(
+  re: RegExp,
+  text: string,
+  opts: { skipAdj?: boolean; skipVoid?: boolean } = {},
+): number {
   const copy = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
   let best = -1;
   for (const m of text.matchAll(copy)) {
-    if (skipAdj && isolatedIsAdjective(text, m.index ?? 0, m[0])) continue;
     const idx = m.index ?? 0;
+    if (opts.skipVoid && isolationIsVoid(text, idx)) continue;
+    if (opts.skipAdj && isolatedIsAdjective(text, idx, m[0])) continue;
     if (best < 0 || idx < best) best = idx;
   }
   return best;
 }
 
-/** Earliest isolation / verify-dead language in this step, or -1. */
+function stateIsolatedIndex(step: string): number {
+  const copy = new RegExp(STATE_ISOLATED.source, STATE_ISOLATED.flags.includes("g") ? STATE_ISOLATED.flags : `${STATE_ISOLATED.flags}g`);
+  let best = -1;
+  for (const m of step.matchAll(copy)) {
+    const idx = m.index ?? 0;
+    if (isolationIsVoid(step, idx)) continue;
+    const isoWord = /isolated/i.exec(m[0]);
+    if (isoWord && isolatedIsAdjective(step, idx + (isoWord.index ?? 0), isoWord[0])) continue;
+    if (best < 0 || idx < best) best = idx;
+  }
+  return best;
+}
+
+/** Earliest live isolation / verify-dead language in this step, or -1. */
 function isolationIndex(step: string): number {
   const candidates = [
-    firstMatchIndex(ISOLATED, step, true),
-    firstMatchIndex(VERIFY_DEAD, step),
-    firstMatchIndex(ISOLATION_IMPERATIVE, step),
+    firstMatchIndex(ISOLATED, step, { skipAdj: true, skipVoid: true }),
+    firstMatchIndex(VERIFY_DEAD, step, { skipVoid: true }),
+    firstMatchIndex(ISOLATION_IMPERATIVE, step, { skipVoid: true }),
     // LOCKOUT_VERB_RE is applied to lowercased text in the classifier
     // (no `i` flag). Same form, case-insensitive, for answer text.
-    firstMatchIndex(new RegExp(LOCKOUT_VERB_RE.source, "i"), step),
+    firstMatchIndex(new RegExp(LOCKOUT_VERB_RE.source, "i"), step, { skipVoid: true }),
   ].filter((n) => n >= 0);
   return candidates.length ? Math.min(...candidates) : -1;
+}
+
+function objectWindow(after: string): string {
+  return after.split(OBJECT_WINDOW_CUT)[0] ?? after;
 }
 
 function instructionIsHandsOn(match: string, after: string): boolean {
   const verbMatch = HANDS_ON_VERB_RE.exec(match);
   HANDS_ON_VERB_RE.lastIndex = 0;
   const verb = verbMatch?.[0] ?? "";
-  const clause = `${verb} ${after}`;
-  if (/^open/i.test(verb) && DISPLAY_SURFACE_RE.test(after) && !WORK_OBJECT_RE.test(after)) {
+  const window = objectWindow(after);
+  const clause = `${verb} ${window}`;
+  if (/^open/i.test(verb) && DISPLAY_SURFACE_RE.test(window) && !WORK_OBJECT_RE.test(window)) {
     return false;
   }
   return WORK_OBJECT_RE.test(clause) || Boolean(verb && !DUAL_USE_VERB_RE.test(verb));
 }
 
 /** Index of the first instruction-shaped hands-on verb in this step, or -1.
- *  The object window stays inside the step — it does not read the next item. */
+ *  The object window stays inside the clause — it does not read the next
+ *  coordinator or a purpose "to …". */
 function firstHandsOnIndex(step: string): number {
   INSTRUCTION_RE.lastIndex = 0;
   try {
@@ -157,24 +193,35 @@ function firstHandsOnIndex(step: string): number {
   }
 }
 
+/** Start of the clause that contains `index` — after the last `then` / `;`. */
+function clauseStartBefore(text: string, index: number): number {
+  const head = text.slice(0, index);
+  const cut = Math.max(head.lastIndexOf(";"), ...[" then ", " then,", ", then "].map((s) => {
+    const at = head.toLowerCase().lastIndexOf(s);
+    return at < 0 ? -1 : at + s.length;
+  }));
+  return cut < 0 ? 0 : cut;
+}
+
 /** True when the first hands-on instruction is already under an isolation
  *  scope — isolation stated in a prior (non-prohibited) step, or in the
- *  same step before the work. A lockout the answer forbids, or one that
- *  comes after the work, does not count. */
+ *  same clause before / conditioning the work. A lockout the answer
+ *  forbids, skips, or places after the work does not count. */
 function firstHandsOnAlreadyIsolated(text: string): boolean {
   let isolated = false;
-  for (const step of stepTexts(text)) {
-    if (PROHIBITION_SENTENCE.test(step)) continue;
+  for (const raw of stepTexts(text)) {
+    const step = withoutProhibitions(raw);
     const isoAt = isolationIndex(step);
-    // step-energy's condition form ("measure … with the circuit isolated")
-    // scopes the whole step; word order puts the verb first.
-    const conditioned = STATE_ISOLATED.test(step);
+    const conditionedAt = stateIsolatedIndex(step);
     const workAt = firstHandsOnIndex(step);
     if (workAt >= 0) {
-      if (conditioned || (isoAt >= 0 && isoAt <= workAt)) return true;
+      if (isoAt >= 0 && isoAt <= workAt) return true;
+      // Trailing "measure … with the circuit isolated" conditions only
+      // the clause it attaches to, not an earlier "Replace the fuse, then…".
+      if (conditionedAt >= 0 && workAt >= clauseStartBefore(step, conditionedAt)) return true;
       return isolated;
     }
-    if (isoAt >= 0 || conditioned) isolated = true;
+    if (isoAt >= 0 || conditionedAt >= 0) isolated = true;
   }
   return false;
 }
@@ -183,17 +230,17 @@ function isStoredEnergyWork(text: string): boolean {
   const msg = text.toLowerCase();
   // Bare "bus" is also CAN / Modbus / fieldbus. Stored energy is the
   // LETHAL_VOLTAGE_CONTEXT entries that are not a communications bus,
-  // plus the D4 fault name "bus overvoltage".
-  if (LETHAL_VOLTAGE_CONTEXT.includes("dc bus") && /\bdc\s*bus\b/.test(msg)) return true;
+  // plus the D4 fault name "bus overvoltage". Hyphenated DC-bus / bus-
+  // overvoltage survive foldForDetection (unicode hyphen → ASCII '-').
+  if (LETHAL_VOLTAGE_CONTEXT.includes("dc bus") && /\bdc[\s-]*bus\b/.test(msg)) return true;
   if (LETHAL_VOLTAGE_CONTEXT.includes("panel interior") && /\bpanel interior\b/.test(msg)) return true;
-  return /\bbus\s+overvoltage\b/.test(msg);
+  return /\bbus[\s-]+overvoltage\b/.test(msg);
 }
 
 /** True when the answer directs hands-on work (not a parameter edit). */
 export function directsHandsOnWork(answer: string): boolean {
-  for (const step of stepTexts(answer || "")) {
-    if (PROHIBITION_SENTENCE.test(step)) continue;
-    if (firstHandsOnIndex(step) >= 0) return true;
+  for (const raw of stepTexts(answer || "")) {
+    if (firstHandsOnIndex(withoutProhibitions(raw)) >= 0) return true;
   }
   return false;
 }

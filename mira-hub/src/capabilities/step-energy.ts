@@ -45,7 +45,7 @@ const DEAD_PURPOSE =
 /** A prohibition ("do not press start", "never measure the voltage") is not an instruction. */
 // Ends at "but"/"then" so the instruction after it survives (Codex #4146 r2 F2);
 // "do not forget to …" is an instruction, not a prohibition.
-const PROHIBITION = /\b(?:do not|don't|never|avoid|without)\b(?!\s+forget)[^,;.]*?(?=\s+(?:but|and then|then)\b|[,;.]|$)/gi;
+export const PROHIBITION = /\b(?:do not|don't|never|avoid|without)\b(?!\s+forget)[^,;.]*?(?=\s+(?:but|and then|then)\b|[,;.]|$)/gi;
 /** Isolation stated as a CONDITION of the step ("with the machine locked out, …") — as
  *  opposed to a sequence ("lock out, remove the drive, restore power"). */
 export const STATE_ISOLATED = /\b(?:with|while|keeping) (?:the )?(?:[\w-]+ ){0,2}(?:locked[\s-]?out|isolated|de[\s-]?energi[sz]ed)\b/i;
