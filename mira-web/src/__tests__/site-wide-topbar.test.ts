@@ -83,6 +83,11 @@ const blogPages: PageCase[] = [
 
 const allPages: PageCase[] = [...tsViewPages, ...staticPages, ...blogPages];
 
+// /terms is a contract kept identical to main (Codex F2 on #4570). It changes only
+// through a versioned, owner-approved amendment, so its topbar keeps main's CMMS
+// link until then. Every other page must drop it.
+const CMMS_LINK_EXEMPT = new Set(["/terms"]);
+
 // Extracts the topbar (header.fl-topbar OR <nav>) so footer/body links
 // don't pollute assertions.
 function extractTopbar(html: string): string {
@@ -94,6 +99,11 @@ function extractTopbar(html: string): string {
 }
 
 describe("site-wide topbar coherence (v0.6.0)", () => {
+  test("only /terms may keep the CMMS topbar link, and it is a page under test", () => {
+    expect([...CMMS_LINK_EXEMPT]).toEqual(["/terms"]);
+    expect(allPages.map((p) => p.name)).toContain("/terms");
+  });
+
   for (const page of allPages) {
     test(`${page.name}: topbar logo is wordmark only — no M-icon SVG`, () => {
       const topbar = extractTopbar(page.html);
@@ -123,7 +133,9 @@ describe("site-wide topbar coherence (v0.6.0)", () => {
       expect(topbar).toMatch(/href="[^"]*\/blog"/);
       expect(topbar).toMatch(/href="[^"]*\/limitations"/);
       expect(topbar).toMatch(/href="[^"]*\/security"/);
-      expect(topbar).not.toContain(">CMMS<");
+      if (!CMMS_LINK_EXEMPT.has(page.name)) {
+        expect(topbar).not.toContain(">CMMS<");
+      }
     });
 
     test(`${page.name}: topbar dropped the "Troubleshooter" / "Product" / "Fault Codes" labels`, () => {
