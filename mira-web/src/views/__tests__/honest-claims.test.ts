@@ -71,6 +71,21 @@ const DONT_SAY: Array<{ label: string; re: RegExp }> = [
   { label: "CI cross-tenant build-fail claim", re: /fails the build if any row leaks|queries as Tenant B/i },
 ];
 
+// Owner decision D1 (2026-10-27): $500 per site for 30 days, one maintenance team,
+// no automatic renewal, no self-serve checkout. It is the only price any page may publish,
+// and only on /pricing. The follow-on $399 / $3,990 price was not decided.
+const D1_PRICE = "$500";
+const D1_PHRASES = [
+  "$500 per site for 30 days",
+  "One maintenance team",
+  "No automatic renewal",
+  "No self-serve checkout",
+];
+
+function dollarAmounts(html: string): string[] {
+  return html.match(/\$[\d,]+/g) ?? [];
+}
+
 function marketingSurface(name: string, html: string): string {
   if (name !== "/llms-full.txt") return html;
   return html.replace(
@@ -79,7 +94,7 @@ function marketingSurface(name: string, html: string): string {
   );
 }
 
-describe("public marketing copy — don't-say list and no published prices", () => {
+describe("public marketing copy — don't-say list and only the D1 price", () => {
   for (const page of pages) {
     test(`${page.name}: drops the don't-say list and removed claims`, () => {
       const surface = marketingSurface(page.name, page.html);
@@ -91,10 +106,11 @@ describe("public marketing copy — don't-say list and no published prices", () 
   }
 
   for (const page of pages) {
-    test(`${page.name}: publishes no price`, () => {
-      expect(page.html, `${page.name} still contains a dollar price`).not.toMatch(
-        /\$[\d,]+/
-      );
+    test(`${page.name}: publishes no price except D1 on /pricing`, () => {
+      const allowed = page.name === "/pricing" ? [D1_PRICE] : [];
+      for (const amount of dollarAmounts(page.html)) {
+        expect(allowed, `${page.name} contains an unapproved price ${amount}`).toContain(amount);
+      }
       expect(page.html, `${page.name} still contains $399`).not.toContain("$399");
       expect(page.html, `${page.name} still contains $3,990`).not.toMatch(
         /\$3,990|\$3990/
@@ -175,10 +191,26 @@ describe("public marketing copy — don't-say list and no published prices", () 
         /"@type"\s*:\s*"Offer"/
       );
       expect(html, `${name} still has a schema price`).not.toMatch(/"price"/);
-      expect(html, `${name} still has a dollar price`).not.toMatch(/\$[\d,]+/);
+      const allowed = name === "/pricing" ? [D1_PRICE] : [];
+      for (const amount of dollarAmounts(html)) {
+        expect(allowed, `${name} has an unapproved price ${amount}`).toContain(amount);
+      }
+      expect(html, `${name} links to a checkout`).not.toMatch(/href="[^"]*(checkout|stripe)/i);
       expect(html, `${name} still has $499`).not.toContain("$499");
       expect(html, `${name} still has $2-5K`).not.toMatch(/\$2-5K|\$2,\d{3}|\$5,\d{3}/);
     }
+  });
+
+  test("/pricing states Mike's D1 pilot offer exactly (2026-10-27)", () => {
+    const pricing = pages.find((p) => p.name === "/pricing")!.html;
+    // The visible page body, not just meta tags, must carry the offer.
+    const body = pricing.match(/<main[\s\S]*?<\/main>/)?.[0] ?? "";
+    expect(body, "/pricing has no <main> body").not.toBe("");
+    for (const phrase of D1_PHRASES) {
+      expect(body, `/pricing body is missing D1 wording: ${phrase}`).toContain(phrase);
+    }
+    expect(pricing).not.toContain("no published price");
+    expect(pricing).not.toContain("not published here");
   });
 
   test("/llms.txt omits sensors and work orders", () => {
