@@ -57,37 +57,28 @@ def _shorthand(t: str) -> str:
     return re.sub(r"\b(\w+)\b", lambda m: _SHORT.get(m.group(1).lower(), m.group(1)), t)
 
 
-_SAID = [
-    ("<=", " less than or equal to "),
-    (">=", " greater than or equal to "),
-    ("≤", " less than or equal to "),
-    ("≥", " greater than or equal to "),
-    ("<", " less than "),
-    (">", " greater than "),
-    ("=", " equals "),
-    ("+", " plus "),
-    ("°", " degrees "),
-    ("%", " percent "),
-]
-#: Punctuation that carries no value in technician prose. Anything else left after
-#: verbalizing (±, ^, *, ~, ×, brackets of units, ...) means the variant could change the task.
-_PROSE = re.compile(r"[\w\s.,?!'\"():;-]*")
+#: The only characters a voice variant may start from. Relational and math notation
+#: (< > = != ± + ^ * ~ [ ] ...) is NOT verbalized: four review rounds showed each attempt to
+#: say it aloud could flip or drop a condition (Codex F16-F19). Such questions get no voice
+#: variant at all; losing one paraphrase is cheap, a changed task under inherited gold is not.
+_VOICE_SAFE = re.compile(r"[\w\s.,?'\"():;%/-]*")
 
 
 def _voice(t: str) -> str | None:
     """Spoken form of a question, or None when its meaning cannot be preserved.
 
-    "2.5 A at -.5 C, trip if > 5 A" -> "two point five a at minus point five c trip if
-    greater than five a". A hyphen inside a model name ("GS-10") is not a sign.
+    "2.5 A at -.5 C, 80 %" -> "two point five a at minus point five c eight zero percent".
+    A hyphen inside a model name ("GS-10") is not a sign.
     """
     t = t.lower()
-    for sym, word in _SAID:
-        t = t.replace(sym, word)
+    if not _VOICE_SAFE.fullmatch(t):
+        return None
+    t = t.replace("%", " percent ")
     t = re.sub(r"(?<![\w.])-(?=\.?\d)", " minus ", t)
     t = re.sub(r"\.(?=\d)", " point ", t)
     t = re.sub(r"(?<=\d)/(?=\d)", " over ", t)
     unsafe = r"\d[^\w\s]+(?=\w)|(?<![a-z])[^\w\s]+\d|\d[a-z]+[^\w\s]+\d"
-    if not _PROSE.fullmatch(t) or re.search(unsafe, t):
+    if re.search(unsafe, t):
         return None
     t = re.sub(r"[^\w\s]", "", t)
     t = re.sub(r"\d", lambda m: f" {_SPOKEN[m.group(0)]} ", t)

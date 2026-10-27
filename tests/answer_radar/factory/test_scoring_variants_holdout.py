@@ -403,12 +403,15 @@ def test_live_duplicate_of_a_visible_question_fails_fast():
 def test_voice_keeps_comparison_operators_distinct():
     from answer_radar.factory.variants import _voice
 
-    ops = ["< 5 A", "> 5 A", "<= 5 A", ">= 5 A", "= 5 A"]
+    ops = ["< 5 A", "> 5 A", "<= 5 A", ">= 5 A", "= 5 A", "!= 5 A", "≠ 5 A", "== 5 A"]
     spoken = [_voice(f"The trip threshold is {op}. Is 4 A below it?") for op in ops]
-    assert all(spoken) and len(set(spoken)) == len(ops)  # opposite conditions never collapse
+    assert spoken == [None] * len(ops)  # relational notation is never re-said, so it can't flip
+    assert _voice("The trip threshold is 5 A. Is 4 A below it?")  # plain prose still gets a variant
 
 
-@pytest.mark.parametrize("text", ["x^2 at 5 A", "5 A ~ 6 A", "torque 5 * 2", "range [5, 6] A"])
+@pytest.mark.parametrize(
+    "text", ["x^2 at 5 A", "5 A ~ 6 A", "torque 5 * 2", "range [5, 6] A", "40°C", "a + b"]
+)
 def test_voice_skips_any_unsaid_math_notation(text):
     from answer_radar.factory.variants import _voice
 
