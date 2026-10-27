@@ -398,3 +398,18 @@ def test_live_duplicate_of_a_visible_question_fails_fast():
             assign_live([live, seen], fraction=1.0, seed="s")
     finally:
         signal.alarm(0)
+
+
+def test_voice_keeps_comparison_operators_distinct():
+    from answer_radar.factory.variants import _voice
+
+    ops = ["< 5 A", "> 5 A", "<= 5 A", ">= 5 A", "= 5 A"]
+    spoken = [_voice(f"The trip threshold is {op}. Is 4 A below it?") for op in ops]
+    assert all(spoken) and len(set(spoken)) == len(ops)  # opposite conditions never collapse
+
+
+@pytest.mark.parametrize("text", ["x^2 at 5 A", "5 A ~ 6 A", "torque 5 * 2", "range [5, 6] A"])
+def test_voice_skips_any_unsaid_math_notation(text):
+    from answer_radar.factory.variants import _voice
+
+    assert _voice(text) is None
