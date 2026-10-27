@@ -503,12 +503,22 @@ jobs:
           echo "::add-mask::$APP_ID"
           unset DOPPLER_TOKEN
           export GOOGLE_APPLICATION_CREDENTIALS="$FIREBASE_SECRET_DIR/service-account.json"
+          # The CLI prints a binary download URL carrying a live token= query.
+          # This log is public (#4836): capture it privately, print it with
+          # every such URL redacted, and keep the CLI's own exit status.
+          FIREBASE_LOG="$FIREBASE_SECRET_DIR/distribute.log"
+          FIREBASE_STATUS=0
           "$RUNNER_TEMP/firebase-v15.29.0" appdistribution:distribute \
             "$RUNNER_TEMP/firebase-release/app-release.apk" \
             --app "$APP_ID" \
             --groups "$FIREBASE_GROUPS" \
             --release-notes "$RELEASE_NOTES_INPUT" \
-            --non-interactive
+            --non-interactive >"$FIREBASE_LOG" 2>&1 || FIREBASE_STATUS=$?
+          sed -E 's#https?://[^[:space:]]*(app-binary-downloads|[?&]token=)[^[:space:]]*#[redacted download URL]#g' "$FIREBASE_LOG"
+          [ "$FIREBASE_STATUS" -eq 0 ] || {
+            echo "::error::Firebase distribution failed with exit status $FIREBASE_STATUS"
+            exit "$FIREBASE_STATUS"
+          }
       - name: Confirm Firebase credential cleanup
         if: always()
         run: test ! -e "$RUNNER_TEMP/firebase-secret"

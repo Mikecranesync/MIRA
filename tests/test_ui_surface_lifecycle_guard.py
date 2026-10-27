@@ -3837,6 +3837,53 @@ def test_firebase_distribution_uses_verified_standalone_binary():
     assert validation_index < secret_index
 
 
+def test_firebase_distribution_log_redacts_tokenized_download_url(tmp_path):
+    """The public Actions log must never carry the CLI's tokenized binary URL (#4836)."""
+    job = _native_release_workflow()["jobs"]["firebase-distribute"]
+    step = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Distribute signed APK to Firebase testers"
+    )
+    run = step["run"]
+
+    assert '--non-interactive >"$FIREBASE_LOG" 2>&1 || FIREBASE_STATUS=$?' in run
+    assert 'FIREBASE_LOG="$FIREBASE_SECRET_DIR/distribute.log"' in run
+    assert '[ "$FIREBASE_STATUS" -eq 0 ] ||' in run
+    assert 'exit "$FIREBASE_STATUS"' in run
+
+    match = re.search(r"^\s*sed -E '([^']+)' \"\$FIREBASE_LOG\"$", run, re.MULTILINE)
+    assert match, "the captured CLI output must be printed through the redaction filter"
+
+    token = "FAKE-download-token-for-redaction-test"
+    sample = tmp_path / "distribute.log"
+    sample.write_text(
+        "i  uploading binary...\n"
+        "+  uploaded new release 1.2.0 (16) successfully!\n"
+        "i  View this release in the Firebase console: "
+        "https://console.firebase.google.com/project/p/appdistribution/app/a/releases/r\n"
+        "i  Download the release binary (link expires in 1 hour): "
+        "https://firebaseappdistribution.googleapis.com/app-binary-downloads/projects/1/"
+        f"apps/a/releases/r/binaries/b?token={token}\n"
+        f"i  Mirror: https://example.invalid/apk?alt=media&token={token}\n"
+        "+  distributed to testers/groups successfully\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        ["sed", "-E", match.group(1), str(sample)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert token not in result.stdout
+    assert "app-binary-downloads" not in result.stdout
+    assert result.stdout.count("[redacted download URL]") == 2
+    assert "uploaded new release 1.2.0 (16) successfully" in result.stdout
+    assert "distributed to testers/groups successfully" in result.stdout
+    assert "https://console.firebase.google.com/project/p/appdistribution" in result.stdout
+
+
 def test_direct_download_uses_governed_metadata_and_pinned_ssh_trust():
     """Production publication must not trust a live ssh-keyscan or disable checking."""
     job = _native_release_workflow()["jobs"]["publish-download"]
