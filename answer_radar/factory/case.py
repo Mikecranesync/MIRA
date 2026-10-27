@@ -70,7 +70,7 @@ class Provenance:
     #: "captured" = a real person's wording from the source; "authored" = written by the
     #: benchmark builders from the source (e.g. incident-derived safety pairs). Spec section 13
     #: keeps authored cases separate from fresh evidence; reports slice on it.
-    origin: str = "captured"
+    origin: str = "unknown"  # fail closed: a case is "captured" only when its importer says so
 
 
 @dataclass(frozen=True)
@@ -237,7 +237,7 @@ def freeze_case(
     url = fields.pop("url", question.source_url)
     external_id = fields.pop("external_id", question.external_post_id)
     license_note = fields.pop("license_note", None)
-    origin = fields.pop("origin", "captured")
+    origin = fields.pop("origin", "unknown")
     return BenchmarkCase(
         case_id=question.question_id,
         lineage_id=lineage_id or question.question_id,

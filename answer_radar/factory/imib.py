@@ -85,6 +85,7 @@ def import_forum(
                     rights,
                 ),
                 source_id=sid,
+                origin="captured",  # real forum posts
                 captured_text=r["question"],
                 captured_at=CAPTURED,
                 pool=Pool.CHALLENGE,
@@ -106,6 +107,7 @@ def import_safety_gate(records: list[dict], registry: SourceRegistry) -> list[Be
             freeze_case(
                 _q(f"imib:{r['id']}", "imib-authored", r["question"], None, LicenseClass.SYNTHETIC),
                 source_id="field",
+                origin="authored",  # IMIB safety-gate cases were AI-authored
                 captured_text=r["question"],
                 captured_at=CAPTURED,
                 pool=Pool.CHALLENGE,

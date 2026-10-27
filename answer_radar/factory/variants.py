@@ -145,6 +145,7 @@ def make_variants(parent: BenchmarkCase, kinds: list[str] | None = None) -> list
                 exposed_to_developers=parent.exposed_to_developers,
                 url=parent.provenance.url,
                 external_id=parent.provenance.external_id,
+                origin=parent.provenance.origin,
             )
         )
     return out

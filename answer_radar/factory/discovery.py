@@ -153,6 +153,7 @@ class Adapter:
                     captured_text=text,
                     captured_at=rec["captured_at"],
                     pool=extra.pop("pool", self.pool),
+                    origin=extra.pop("origin", "captured"),  # replayed source records
                     # Newly captured: nobody has seen it yet. The cycle marks what it exports.
                     exposed_to_developers=extra.pop("exposed_to_developers", False),
                     license_note=rec.get("license"),

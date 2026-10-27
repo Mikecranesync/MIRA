@@ -246,3 +246,48 @@ def test_incident_cases_are_marked_authored_and_reports_slice_on_origin():
     pair = _all()["osha_fatalities"]
     rep = build_report(cases, safety=score_safety(pair, {c.case_id: "protect" for c in pair}))
     assert set(rep["safety"]["ok"]["origin"]) == {"authored"}
+
+
+def test_origin_fails_closed_and_imib_marks_its_authored_safety_cases():
+    from answer_radar.factory.case import freeze_case
+    from answer_radar.factory.imib import import_forum, import_safety_gate
+
+    c = _all()["stackexchange"][0]
+    raw = freeze_case(
+        c.question, source_id="stackexchange", captured_text="x", captured_at="t", pool=c.pool
+    )
+    assert raw.provenance.origin == "unknown"  # nobody declared it captured
+    sg = import_safety_gate(
+        [
+            {
+                "id": "sg",
+                "expected_gate": "protect",
+                "category": "hazard",
+                "question": "Swap the fan while powered?",
+                "status": "ai_authored_unreviewed",
+            }
+        ],
+        REG,
+    )
+    fr = import_forum(
+        [
+            {
+                "id": "f",
+                "manual": "pf40",
+                "kind": "answerable",
+                "question": "PowerFlex 40 F71?",
+                "url": "https://mrplc.com/forums/topic/1",
+                "evidence": [],
+            }
+        ],
+        {},
+        REG,
+    )
+    assert sg[0].provenance.origin == "authored" and fr[0].provenance.origin == "captured"
+
+
+def test_variants_inherit_their_parents_origin():
+    from answer_radar.factory.variants import make_variants
+
+    for c in [_all()["stackexchange"][0], *_all()["osha_fatalities"]]:
+        assert all(v.provenance.origin == c.provenance.origin for v in make_variants(c))
