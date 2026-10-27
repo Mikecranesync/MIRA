@@ -148,3 +148,27 @@ def make_variants(parent: BenchmarkCase, kinds: list[str] | None = None) -> list
             )
         )
     return out
+
+
+def sync_variant_evidence(cases: list[BenchmarkCase]) -> list[BenchmarkCase]:
+    """Give answer-preserving variants their parent's CURRENT evidence as a provisional candidate.
+
+    Variants are generated before experts review the parent, so they start without evidence and
+    would be dropped from retrieval scoring forever. After the parent is adjudicated, an
+    answer-preserving rewording is probed against the same pages. The variant stays PROVISIONAL
+    (case.validate_case still requires its own human label to settle), so this enables
+    robustness scoring without ever inheriting settled gold.
+    """
+    by_id = {c.case_id: c for c in cases}
+    out = []
+    for c in cases:
+        parent = by_id.get(c.parent_case_id or "")
+        if c.is_variant and parent is not None and VARIANT_KINDS.get(c.variant_kind or "", False):
+            c = replace(
+                c,
+                gold_evidence=list(parent.gold_evidence),
+                answerability=parent.answerability,
+                gold_status=c.gold_status if c.labels else GoldStatus.PROVISIONAL,
+            )
+        out.append(c)
+    return out

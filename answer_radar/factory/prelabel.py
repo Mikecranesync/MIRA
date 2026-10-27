@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -55,6 +56,17 @@ class Budget:
     cap_usd: float
     spent_usd: float = 0.0
     calls: list[dict] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # NaN compares false and inf never trips: either would silently remove the hard cap.
+        if not (
+            isinstance(self.cap_usd, (int, float))
+            and math.isfinite(self.cap_usd)
+            and self.cap_usd >= 0
+        ):
+            raise ValueError(
+                f"budget must be a finite, non-negative dollar amount, got {self.cap_usd!r}"
+            )
 
     def worst_case(self, lab: Labeler, prompt: str) -> float:
         # A strict upper bound, not an average: no token is shorter than one byte, and the
@@ -162,11 +174,12 @@ def prelabel(
     labelers: list[Labeler],
     budget: Budget,
     post,
+    reuse: dict[str, list[Label]] | None = None,
 ) -> dict[str, list[Label]]:
     """Label visible original cases. Stops (without partial pairs) when the budget would be hit."""
-    out: dict[str, list[Label]] = {}
+    out: dict[str, list[Label]] = dict(reuse or {})  # recall before recompute: never re-pay
     for c in cases:
-        if c.holdout or c.is_variant:
+        if c.holdout or c.is_variant or c.case_id in out:
             continue
         if c.provenance.source_id.startswith("uci_"):
             out[c.case_id] = [dataset_label()]

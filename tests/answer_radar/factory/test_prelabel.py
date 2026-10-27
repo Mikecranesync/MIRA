@@ -265,3 +265,110 @@ def _lab_obj(lid):
         (41,),
         confidence=0.9,
     )
+
+
+@pytest.mark.parametrize("cap", [float("nan"), float("inf"), -1.0])
+def test_non_finite_or_negative_budget_is_rejected_before_any_call(cap):
+    post, seen = _post(GOOD)
+    with pytest.raises(ValueError, match="finite"):
+        prelabel([_forum()], {}, {}, LABS, Budget(cap), post)
+    assert seen == []
+
+
+def test_rerun_reuses_saved_labels_and_pays_nothing():
+    post, seen = _post(GOOD)
+    c = _forum()
+    first = prelabel([c], {c.case_id: EV}, {}, LABS, Budget(1.0), post)
+    again = prelabel([c, _forum(2)], {c.case_id: EV}, {}, LABS, Budget(1.0), post, reuse=first)
+    assert (
+        again[c.case_id] == first[c.case_id] and len(seen) == 4
+    )  # 2 for c, 2 for the new case only
+
+
+def test_preserving_variants_probe_the_parents_adjudicated_pages():
+    from answer_radar.factory.case import GoldStatus, Label
+    from answer_radar.factory.variants import sync_variant_evidence
+
+    c = _forum()
+    vs = make_variants(c)
+    expert = Label("expert", IndependenceClass.HUMAN_REVIEW, Answerability.ANSWERABLE, (41,))
+    settled = replace(
+        c,
+        gold_status=GoldStatus.EXPERT_REVIEWED,
+        gold_evidence=EV,
+        answerability=Answerability.ANSWERABLE,
+        labels=[expert],
+    )
+    out = {x.case_id: x for x in sync_variant_evidence([settled, *vs])}
+    for v in vs:
+        got = out[v.case_id]
+        if v.variant_kind in ("typo", "shorthand", "voice_transcription"):
+            assert got.gold_evidence == EV and got.gold_status is GoldStatus.PROVISIONAL
+        else:
+            assert got.gold_evidence == []  # answer-changing: needs its own review
+    from answer_radar.factory.case import validate_set
+    from answer_radar.factory.scoring import score_retrieval
+
+    assert validate_set(list(out.values()), REG) == []
+    scored = score_retrieval(list(out.values()), {k: [["aa" * 32, 41]] for k in out})
+    assert {k for k in scored if "~" in k} >= {v.case_id for v in vs if v.variant_kind == "typo"}
+
+
+def test_prelabel_command_reuses_saved_labels_and_keeps_cost_history(tmp_path, monkeypatch):
+    import httpx
+
+    from answer_radar.factory.__main__ import main
+
+    calls = []
+
+    class Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": GOOD}}],
+                "usage": {"prompt_tokens": 500, "completion_tokens": 20},
+            }
+
+    def fake_post(url, json=None, headers=None, timeout=None):  # noqa: A002
+        calls.append(url)
+        return Resp()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    d, p = tmp_path / "d.json", tmp_path / "p.json"
+    d.write_text(
+        json.dumps(
+            {
+                "control_com": [
+                    {"id": "x", "captured_at": "2026-10-27", "opening_post": "GS10 oCA on start"}
+                ]
+            }
+        )
+    )
+    p.write_text("[]")
+    args = [
+        "prelabel",
+        "--discovery",
+        str(d),
+        "--pages",
+        str(p),
+        "--private",
+        str(tmp_path / "pv"),
+        "--seed",
+        "s",
+        "--live-fraction",
+        "0",
+        "--budget-usd",
+        "1",
+    ]
+    assert main(args) == 0 and len(calls) == 2
+    assert main(args) == 0 and len(calls) == 2  # second run: nothing re-sent, nothing re-paid
+    costs = (tmp_path / "pv" / "prelabel-costs.jsonl").read_text().splitlines()
+    assert len(costs) == 2  # history preserved, not overwritten by the empty second run
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError):
+        main([*args[:-1], "nan"])

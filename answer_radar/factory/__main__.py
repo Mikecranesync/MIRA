@@ -46,7 +46,7 @@ from answer_radar.factory.holdout import (
 from answer_radar.factory.labeling import export_review_data, import_expert, route
 from answer_radar.factory.registry import SourceRegistry
 from answer_radar.factory.scoring import build_report
-from answer_radar.factory.variants import make_variants
+from answer_radar.factory.variants import make_variants, sync_variant_evidence
 from answer_radar.schema import IndependenceClass
 
 ADAPTERS = {
@@ -171,6 +171,7 @@ def cycle(
             extra = json.loads(live_shown.read_text(encoding="utf-8"))
             shown = {k: shown.get(k, []) + extra.get(k, []) for k in ("forum", "safety")}
         cases = import_expert(cases, answers, candidates, shown)
+        cases = sync_variant_evidence(cases)  # preserving variants probe the adjudicated pages
         # Partial exports are normal (experts work through the queue over time); unanswered cases
         # stay provisional. Say how partial, so a truncated export is never silent.
         shown_ids = {f"{k}-{r['id']}" for k in ("forum", "safety") for r in shown.get(k, [])}
@@ -338,10 +339,21 @@ def run_prelabel(a) -> int:
         r.raise_for_status()
         return r.json()
 
-    budget = Budget(cap_usd=a.budget_usd)
+    budget = Budget(cap_usd=a.budget_usd)  # validates: finite, non-negative
     page_text = {(p.doc_sha256, p.page): p.text for p in pages}
-    labels = prelabel(cases, candidates, page_text, labelers, budget, post)
     by_id = {c.case_id: c for c in cases}
+    # Recall before recompute: reuse every saved label whose frozen question and rendered input
+    # are unchanged; only missing or invalidated cases are sent (and paid for) again.
+    saved_path = a.private / "labels.json"
+    saved = load_labels(saved_path) if saved_path.is_file() else {}
+    reuse = {
+        k: rec["labels"]
+        for k, rec in saved.items()
+        if k in by_id
+        and rec["freeze_hash"] == by_id[k].freeze_hash
+        and rec["input_sha256"] == input_digest(by_id[k], candidates.get(k, []), page_text)
+    }
+    labels = prelabel(cases, candidates, page_text, labelers, budget, post, reuse=reuse)
     a.private.mkdir(parents=True, exist_ok=True)
     (a.private / "labels.json").write_text(
         json.dumps(
@@ -358,13 +370,13 @@ def run_prelabel(a) -> int:
         ),
         encoding="utf-8",
     )
-    (a.private / "prelabel-costs.jsonl").write_text(
-        "".join(json.dumps(c) + "\n" for c in budget.calls)
-    )
+    with (a.private / "prelabel-costs.jsonl").open("a", encoding="utf-8") as fh:  # history kept
+        fh.write("".join(json.dumps(c) + "\n" for c in budget.calls))
     print(
         json.dumps(
             {
                 "labeled": len(labels),
+                "reused": len(reuse),
                 "calls": len(budget.calls),
                 "spent_usd": round(budget.spent_usd, 4),
                 "cap_usd": a.budget_usd,
