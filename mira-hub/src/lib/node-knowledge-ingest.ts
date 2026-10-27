@@ -525,8 +525,9 @@ export async function writeChunkRowsForNode(
   // server, so this continues after the caller returns; embedPendingNodeChunks
   // is self-contained (own short transactions) and never throws. Anything left
   // dark (e.g. a restart mid-pass) is caught by the #2098 canary + backfill.
-  // A shared-transaction caller (one-off rechunk) must defer this until COMMIT.
-  if (!runtime?.deferEmbed) {
+  // A shared-transaction caller must embed only after COMMIT. Passing a client
+  // implies that contract even if deferEmbed was omitted.
+  if (!runtime?.deferEmbed && !runtime?.client) {
     void embedPendingNodeChunks(tenantId, sourceUrl);
   }
 

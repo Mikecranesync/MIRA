@@ -32,7 +32,7 @@ describe("writeChunkRowsForNode shared-transaction hook", () => {
     withTenant.mockClear();
   });
 
-  it("uses the provided client (no nested withTenantContext) when one is passed", async () => {
+  it("uses the provided client and does not open withTenantContext even without deferEmbed", async () => {
     const { writeChunkRowsForNode } = await import("../node-knowledge-ingest");
     const clientSql: string[] = [];
     const client = {
@@ -51,9 +51,11 @@ describe("writeChunkRowsForNode shared-transaction hook", () => {
         filename: "note.pdf",
       },
       undefined,
-      { client, deferEmbed: true },
+      { client },
     );
     expect(n).toBe(1);
+    // client implies deferEmbed: embedPendingNodeChunks uses withTenantContext,
+    // so a leaked fire-and-forget embed would show up as a withTenant call.
     expect(withTenant).not.toHaveBeenCalled();
     expect(clientSql.some((s) => /INSERT INTO knowledge_entries/.test(s))).toBe(true);
     expect(clientSql.join(" ")).toMatch(/,\s*true\)/);
