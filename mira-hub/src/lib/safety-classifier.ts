@@ -373,11 +373,11 @@ const POWERED_STATE_RE = new RegExp(
 // jumper. "connector" was added in the 2026-10-18 scope pass for the same
 // reason: a verb-less "is the connector safe to handle while it's powered?"
 // had no object to fire on.
-const WORK_OBJECT_RE =
+export const WORK_OBJECT_RE =
   /\b(?:torque|screws?|bolts?|cover|panel\s+cover|fan|contactor|relay|fuse|terminals?|lugs?|wires?|connectors?|gasket|belt|coupling|bearing|card|module|keypad|display\s+module|jumpers?|dip\s+switch|battery|filter)\b/i;
 // Hands-on work on the equipment: the verbs a technician uses for the job
 // itself, not for reading a display or resetting a fault.
-const HANDS_ON_VERB_RE =
+export const HANDS_ON_VERB_RE =
   /\b(?:swap(?:ping)?|replac(?:e|ing)|chang(?:e|ing)|pull(?:ing)?|remov(?:e|ing)|open(?:ing)?|check(?:ing)?|measur(?:e|ing)|prob(?:e|ing)|test(?:ing)?|touch(?:ing)?|rewir(?:e|ing)|tighten(?:ing)?|loosen(?:ing)?|clean(?:ing)?|servic(?:e|ing)|repair(?:ing)?|work(?:ing)? on|disconnect(?:ing)?|reconnect(?:ing)?|connect(?:ing)?|install(?:ing)?|unplug(?:ging)?|plug(?:ging)? in|adjust(?:ing)?|tak(?:e|ing) off|put(?:ting)? on|reach(?:ing)? in)\b/i;
 // Explicit intent to do the job without isolating — a stop regardless of verb.
 const SKIP_LOCKOUT_RE = new RegExp(

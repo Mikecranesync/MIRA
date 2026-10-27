@@ -30,6 +30,7 @@
 
 import { stepEnergyContradiction } from "./step-energy";
 import { firstUngovernedMatch } from "./hazard-modifiers";
+import { isolationBannerFor } from "./isolation-advisory";
 
 export type AnswerValidation =
   | { ok: true }
@@ -1211,12 +1212,27 @@ function falseCapabilityClaim(text: string): string | null {
  *  replaces a whole answer, so it needs the same sentence standing alone. */
 const toStandaloneSentence = (bulletLine: string) => bulletLine.replace(/^- If you need the document itself:\s*/, "");
 
+function isolationWarning(banner: string, answerText: string): AnswerValidation {
+  return {
+    ok: false,
+    kind: "hazard_warning",
+    violation: "hazard-warning:isolation-advisory",
+    detail: banner.slice(0, 160),
+    replacement: `${banner}\n\n${answerText}`,
+  };
+}
+
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
   if (!restore) {
     // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
     // markdown emphasis and curly apostrophes must not change the result.
-    const step = stepEnergyContradiction(foldForDetection(answerText));
-    return step ? stepEnergyWarning(step, answerText) : { ok: true };
+    const scan = foldForDetection(answerText);
+    const step = stepEnergyContradiction(scan);
+    if (step) return stepEnergyWarning(step, answerText);
+    // #4858: a hands-on answer with no isolation / verify-dead language gets
+    // the fixed notice. Warns; never withholds (owner 2026-10-27).
+    const notice = isolationBannerFor(scan);
+    return notice ? isolationWarning(notice, answerText) : { ok: true };
   }
   return {
     ok: false,
