@@ -443,11 +443,18 @@ capabilities:
       Shipped dark. The EVID-4 live gate (photo of a spec table -> cited answer
       sourced from it) has not been run against prod: needs the Doppler flip,
       a mira-ask image rebuild (Dockerfile adds tesseract), and a real photo.
+      Re-decided 2026-10-27 (#4838) when the 2026-10-26 review lapsed: it stays
+      deployed_disabled. Nothing has changed since the last review (flag unset
+      everywhere, no live proof, owner still unset), and the owner's 10-27
+      objective puts the first $500 30-day pilot on manual-grounded
+      troubleshooting, so this is not promoted for the pilot. The next review
+      falls after that first pilot window and must promote, defer or retire it
+      using pilot evidence. The promotion criteria below are unchanged.
     promotion_criteria:
       - "PHOTO_OCR_ENABLED=1 in Doppler factorylm/prd for mira-ask AND mira-hub; deploy services=mira-ask,mira-hub."
       - "One real spec-table photo -> [1] citation whose file opens the photograph, on prod (server-side proof acceptable)."
       - "mira-ask RSS under the 1536m cap during OCR observed once (tesseract is light; confirm, don't assume)."
-    review_by: "2026-10-26"
+    review_by: "2026-12-15"
 
   # =========================================================================
   - id: machine_memory_observer_cv101
