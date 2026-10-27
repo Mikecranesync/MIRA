@@ -529,3 +529,70 @@ def test_an_interrupted_batch_keeps_every_paid_label_and_cost(tmp_path, monkeypa
     sent.clear()
     monkeypatch.setattr(httpx, "post", lambda *a, **k: (sent.append(1), Resp())[1])
     assert main(args) == 0 and len(sent) == 6  # resume pays only for the 3 unfinished cases
+
+
+def test_interruption_between_providers_keeps_the_first_paid_label(tmp_path, monkeypatch):
+    import httpx
+
+    from answer_radar.factory.__main__ import main
+
+    urls = []
+
+    class Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": GOOD}}],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 5},
+            }
+
+    def post(url, **k):
+        urls.append(url)
+        if len(urls) == 2:  # provider one answered; interrupted while provider two runs
+            raise KeyboardInterrupt
+        return Resp()
+
+    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    p, d = tmp_path / "p.json", tmp_path / "d.json"
+    p.write_text("[]")
+    d.write_text(
+        json.dumps(
+            {"control_com": [{"id": "q", "captured_at": "2026-10-27", "opening_post": "GS10 oCA"}]}
+        )
+    )
+    args = [
+        "prelabel",
+        "--discovery",
+        str(d),
+        "--pages",
+        str(p),
+        "--private",
+        str(tmp_path / "pv"),
+        "--seed",
+        "s",
+        "--live-fraction",
+        "0",
+        "--budget-usd",
+        "1",
+    ]
+    with pytest.raises(KeyboardInterrupt):
+        main(args)
+    saved = json.loads((tmp_path / "pv" / "labels.json").read_text())["control_com:q"]
+    assert saved["complete"] is False and [lb["labeler_id"] for lb in saved["labels"]] == [
+        "openai:gpt-5.4-mini"
+    ]
+    assert len((tmp_path / "pv" / "prelabel-costs.jsonl").read_text().splitlines()) == 1
+    first = urls[0]
+    urls.clear()
+    monkeypatch.setattr(httpx, "post", lambda url, **k: (urls.append(url), Resp())[1])
+    assert (
+        main(args) == 0 and len(urls) == 1 and urls[0] != first
+    )  # only the missing provider is called
+    assert (
+        json.loads((tmp_path / "pv" / "labels.json").read_text())["control_com:q"]["complete"]
+        is True
+    )

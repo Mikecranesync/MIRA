@@ -112,6 +112,7 @@ def load_labels(path: Path) -> dict[str, dict]:
     return {
         cid: {
             "freeze_hash": rec["freeze_hash"],
+            "complete": rec.get("complete", True),
             "input_sha256": rec["input_sha256"],
             "labels": [
                 Label(
@@ -155,6 +156,7 @@ def cycle(
             rec = pre.get(c.case_id)
             return (
                 bool(rec)
+                and rec["complete"]  # a half-labeled case (interrupted run) is never routed on
                 and rec["freeze_hash"] == c.freeze_hash
                 and rec["input_sha256"] == input_digest(c, candidates.get(c.case_id, []), page_text)
             )
@@ -359,8 +361,9 @@ def run_prelabel(a) -> int:
     # snapshot) are kept verbatim, so labels already paid for are never discarded.
     merged = json.loads(saved_path.read_text(encoding="utf-8")) if saved_path.is_file() else {}
 
-    def checkpoint(case_id, case_labels, calls):
+    def checkpoint(case_id, case_labels, calls, complete):
         merged[case_id] = {
+            "complete": complete,
             "freeze_hash": by_id[case_id].freeze_hash,
             "input_sha256": input_digest(by_id[case_id], candidates.get(case_id, []), page_text),
             "labels": [dataclasses.asdict(lb) for lb in case_labels],

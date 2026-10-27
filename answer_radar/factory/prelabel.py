@@ -177,25 +177,38 @@ def prelabel(
     reuse: dict[str, list[Label]] | None = None,
     checkpoint=None,
 ) -> dict[str, list[Label]]:
-    """Label visible original cases. Stops (without partial pairs) when the budget would be hit."""
-    out: dict[str, list[Label]] = dict(reuse or {})  # recall before recompute: never re-pay
+    """Label visible original cases. Returns only COMPLETE label sets (one per labeler).
+
+    `reuse` may hold complete or partial saved labels: a labeler already answered for a case is
+    never called (or paid) again. `checkpoint(case_id, labels, calls, complete)` runs after
+    EVERY provider call, so an interruption at any point loses no paid label or cost record.
+    The budget is checked against the providers still missing for a case.
+    """
+    wanted = {lab.labeler_id for lab in labelers}
+    out: dict[str, list[Label]] = {}
     for c in cases:
-        if c.holdout or c.is_variant or c.case_id in out:
+        if c.holdout or c.is_variant:
             continue
+        have = {lb.labeler_id: lb for lb in (reuse or {}).get(c.case_id, [])}
         if c.provenance.source_id.startswith("uci_"):
-            out[c.case_id] = [dataset_label()]
-            if checkpoint is not None:
-                checkpoint(c.case_id, out[c.case_id], [])  # free, but still persisted
+            if "dataset" not in have:
+                have["dataset"] = dataset_label()
+                if checkpoint is not None:
+                    checkpoint(c.case_id, list(have.values()), [], True)  # free, still persisted
+            out[c.case_id] = [have["dataset"]]
+            continue
+        missing = [lab for lab in labelers if lab.labeler_id not in have]
+        if not missing:
+            out[c.case_id] = [have[lab.labeler_id] for lab in labelers]
             continue
         ev = candidates.get(c.case_id, [])
         prompt = render(c, ev, page_text)
         if (
-            budget.spent_usd + sum(budget.worst_case(lab, prompt) for lab in labelers)
+            budget.spent_usd + sum(budget.worst_case(lab, prompt) for lab in missing)
             > budget.cap_usd
         ):
-            break  # never half-label a case; stop before the cap
-        labels = []
-        for lab in labelers:
+            break  # never start a case the budget cannot finish; stop before the cap
+        for lab in missing:
             try:
                 text, usage = call(lab, prompt, post)
                 error = None
@@ -213,27 +226,22 @@ def prelabel(
                 else budget.worst_case(lab, prompt)
             )
             budget.spent_usd += cost
-            budget.calls.append(
-                {
-                    "case_id": c.case_id,
-                    "labeler": lab.labeler_id,
-                    "usd": round(cost, 6),
-                    "prompt_tokens": t_in,
-                    "completion_tokens": t_out,
-                    "error": error,
-                }
-            )
+            record = {
+                "case_id": c.case_id,
+                "labeler": lab.labeler_id,
+                "usd": round(cost, 6),
+                "prompt_tokens": t_in,
+                "completion_tokens": t_out,
+                "error": error,
+            }
+            budget.calls.append(record)
             try:
-                labels.append(
-                    to_label(
-                        lab, parse(text if isinstance(text, str) else ""), {e.page for e in ev}
-                    )
+                have[lab.labeler_id] = to_label(
+                    lab, parse(text if isinstance(text, str) else ""), {e.page for e in ev}
                 )
             except Exception:  # noqa: BLE001 - never lose a paid run to one odd reply
-                labels.append(to_label(lab, None, set()))
-        out[c.case_id] = labels
-        if checkpoint is not None:
-            # Persist each paid case as soon as it completes: an interrupted batch keeps every
-            # label and cost record it already paid for.
-            checkpoint(c.case_id, labels, budget.calls[-len(labelers) :])
+                have[lab.labeler_id] = to_label(lab, None, set())
+            if checkpoint is not None:
+                checkpoint(c.case_id, list(have.values()), [record], wanted <= set(have))
+        out[c.case_id] = [have[lab.labeler_id] for lab in labelers]
     return out
