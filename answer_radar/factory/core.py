@@ -161,5 +161,12 @@ def promote_core(
         "unverified_this_cycle": unverified,
     }
     core_ids = {m["case_id"] for m in members}
-    out = [replace(by_id[c.case_id], pool=Pool.CORE) if c.case_id in core_ids else c for c in cases]
+    # Pool membership must match the manifest: a case re-pooled as Core before routing that is no
+    # longer a member (removed on an explicit relabel) goes back to Challenge, the default pool.
+    out = [
+        replace(by_id[c.case_id], pool=Pool.CORE)
+        if c.case_id in core_ids
+        else (replace(c, pool=Pool.CHALLENGE) if c.pool is Pool.CORE else c)
+        for c in cases
+    ]
     return out, manifest

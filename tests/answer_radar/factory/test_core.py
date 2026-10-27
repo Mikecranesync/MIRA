@@ -130,6 +130,15 @@ def test_changed_expert_gold_on_a_member_fails_closed_unless_relabel_is_explicit
     assert m3["members"] == [] and m3["history"][-1]["removed"] == [a.case_id]
 
 
+def test_removed_member_is_demoted_from_the_core_pool():
+    a = _case(1)
+    _, m = _core([a])
+    disputed = _case(1, gold=GoldStatus.DISPUTED, pool=Pool.CORE)  # pre-pooled, as cycle does
+    out, m2 = _core([disputed], prior=m, relabel=True)
+    assert m2["members"] == [] and m2["history"][-1]["removed"] == [a.case_id]
+    assert out[0].pool is Pool.CHALLENGE
+
+
 def test_member_without_fresh_expert_gold_stays_core_but_unverified():
     a = _case(1)
     _, m = _core([a])
