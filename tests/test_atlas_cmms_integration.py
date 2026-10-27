@@ -335,9 +335,10 @@ class TestHandleCmmsPending:
         state["context"]["cmms_pending"] = True
         state["context"]["cmms_wo_draft"] = {
             "title": "[MIRA] GS10 — power action",
-            "description": "...",
+            "fault_description": "...",
             "priority": "HIGH",
-            "asset_label": "GS10",
+            "asset": "GS10",
+            "tenant_id": "test-tenant",
         }
 
         sv._record_exchange = MagicMock()
@@ -355,7 +356,7 @@ class TestHandleCmmsPending:
         sv = self._get_supervisor()
         state = _make_engine_state()
         state["context"]["cmms_pending"] = True
-        state["context"]["cmms_wo_draft"] = {"title": "T", "description": "D", "priority": "M", "asset_label": "X"}
+        state["context"]["cmms_wo_draft"] = {"title": "T", "fault_description": "D", "priority": "M", "asset": "X", "tenant_id": "test-tenant"}
 
         sv._record_exchange = MagicMock()
         sv._post_cmms_work_order = AsyncMock()
@@ -371,7 +372,7 @@ class TestHandleCmmsPending:
         sv = self._get_supervisor()
         state = _make_engine_state()
         state["context"]["cmms_pending"] = True
-        state["context"]["cmms_wo_draft"] = {"title": "T", "description": "D", "priority": "M", "asset_label": "X"}
+        state["context"]["cmms_wo_draft"] = {"title": "T", "fault_description": "D", "priority": "M", "asset": "X", "tenant_id": "test-tenant"}
 
         sv._record_exchange = MagicMock()
         sv._post_cmms_work_order = AsyncMock(side_effect=RuntimeError("HTTP 503"))
@@ -387,7 +388,7 @@ class TestHandleCmmsPending:
         sv = self._get_supervisor()
         state = _make_engine_state()
         state["context"]["cmms_pending"] = True
-        state["context"]["cmms_wo_draft"] = {"title": "T", "description": "D", "priority": "M", "asset_label": "X"}
+        state["context"]["cmms_wo_draft"] = {"title": "T", "fault_description": "D", "priority": "M", "asset": "X", "tenant_id": "test-tenant"}
 
         sv._record_exchange = MagicMock()
         sv._post_cmms_work_order = AsyncMock(return_value="Work order #1 created.")
@@ -406,7 +407,7 @@ class TestHandleCmmsPending:
             state = _make_engine_state()
             state["context"]["cmms_pending"] = True
             state["context"]["cmms_wo_draft"] = {
-                "title": "T", "description": "D", "priority": "M", "asset_label": "X"
+                "title": "T", "fault_description": "D", "priority": "M", "asset": "X", "tenant_id": "test-tenant"
             }
             sv._record_exchange = MagicMock()
             sv._post_cmms_work_order = AsyncMock(return_value="Work order #1 created.")

@@ -143,7 +143,8 @@ async def test_mapped_tenant_push_does_not_write_env_tenant_rows(mapped_tenant_b
             "fault_category": "",
             "context": {
                 "cmms_pending": True,
-                "cmms_wo_draft": _valid_draft(),
+                # Drafts are stamped with their creating tenant (F1, #4759).
+                "cmms_wo_draft": _valid_draft(tenant_id=TENANT_B),
             },
         }
         result = await sv._handle_cmms_pending(
@@ -499,3 +500,143 @@ async def test_handle_empty_tenant_refuses_and_leaves_pending_intact(mapped_tena
     atlas.create_work_order.assert_not_awaited()
     assert calls == []
     assert rows[TENANT_A] == []
+
+
+# ---------------------------------------------------------------------------
+# Codex round-1 findings on #4759 (F1 unstamped drafts, F2 env-only tenant,
+# F3 decline without a tenant). Each test isolates one condition.
+# ---------------------------------------------------------------------------
+
+
+def _pending_state(draft: dict) -> dict:
+    return {
+        "state": "RESOLVED",
+        "context": {"cmms_pending": True, "cmms_wo_draft": dict(draft)},
+    }
+
+
+def _write_spies():
+    atlas = MagicMock()
+    atlas.create_work_order = AsyncMock(return_value={"id": 99})
+    rows, calls, fake_create = _hub_row_store()
+    return atlas, calls, fake_create
+
+
+@pytest.mark.asyncio
+async def test_unstamped_draft_is_refused_and_stays_pending(mapped_tenant_b):
+    """F1: a draft with no creating tenant is never adopted by the confirmer."""
+    atlas, calls, fake_create = _write_spies()
+    draft = _valid_draft(chat_id=CHAT_B)  # no tenant_id stamp
+    assert "tenant_id" not in draft
+    with (
+        patch("shared.engine.AtlasCMMSClient", return_value=atlas),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+        patch("shared.engine.log_uns_event"),
+        patch("shared.engine.push_wo_created", new_callable=AsyncMock),
+        patch("shared.engine.suggest_followup_pm", return_value=None),
+    ):
+        sv = _bare_supervisor()
+        sv._record_exchange = MagicMock()
+        sv._save_state = MagicMock()
+        state = _pending_state(draft)
+        result = await sv._handle_cmms_pending(CHAT_B, "yes", state, "trace-f1", tenant_id=TENANT_B)
+    assert calls == []
+    atlas.create_work_order.assert_not_called()
+    assert state["context"]["cmms_pending"] is True
+    assert state["context"]["cmms_wo_draft"] == draft
+    assert "doesn't match" in result["reply"]
+
+
+@pytest.mark.asyncio
+async def test_stamped_draft_same_tenant_still_writes(mapped_tenant_b):
+    """F1 control: the creating tenant can still confirm its own draft."""
+    atlas, calls, fake_create = _write_spies()
+    draft = _valid_draft(chat_id=CHAT_B, tenant_id=TENANT_B)
+    with (
+        patch("shared.engine.AtlasCMMSClient", return_value=atlas),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+        patch("shared.engine.log_uns_event"),
+        patch("shared.engine.push_wo_created", new_callable=AsyncMock),
+        patch("shared.engine.suggest_followup_pm", return_value=None),
+    ):
+        sv = _bare_supervisor()
+        sv._record_exchange = MagicMock()
+        sv._save_state = MagicMock()
+        await sv._handle_cmms_pending(
+            CHAT_B, "yes", _pending_state(draft), "trace-f1c", tenant_id=TENANT_B
+        )
+    assert [c["tenant_id"] for c in calls] == [TENANT_B]
+
+
+@pytest.mark.asyncio
+async def test_env_only_tenant_resolves_to_no_write_tenant(tmp_path, monkeypatch):
+    """F2: with MIRA_TENANT_ID set and no chat mapping, the write tenant is empty
+    and a confirmation through it writes nothing."""
+    db_path = str(tmp_path / "mira.db")
+    monkeypatch.setenv("MIRA_DB_PATH", db_path)
+    monkeypatch.setenv("MIRA_TENANT_ID", TENANT_A)
+    ct = _fresh_chat_tenant(db_path, TENANT_A)
+    unmapped = "unmapped-f2"
+    assert ct.resolve(unmapped) == TENANT_A  # compatibility read still sees env
+    assert ct.resolve_mapped_only(unmapped) == ""  # the write path does not
+    ct.set_mapping(CHAT_B, TENANT_B)
+    assert ct.resolve_mapped_only(CHAT_B) == TENANT_B
+
+    atlas, calls, fake_create = _write_spies()
+    draft = _valid_draft(chat_id=unmapped, tenant_id=TENANT_A)
+    with (
+        patch("shared.engine.resolve_mapped_only", side_effect=ct.resolve_mapped_only),
+        patch("shared.engine.AtlasCMMSClient", return_value=atlas),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+    ):
+        import shared.engine as engine_mod
+
+        write_tenant = engine_mod.resolve_mapped_only(unmapped)
+        sv = _bare_supervisor()
+        sv._record_exchange = MagicMock()
+        sv._save_state = MagicMock()
+        state = _pending_state(draft)
+        await sv._handle_cmms_pending(unmapped, "yes", state, "trace-f2", tenant_id=write_tenant)
+    assert write_tenant == ""
+    assert calls == []
+    atlas.create_work_order.assert_not_called()
+    assert state["context"]["cmms_pending"] is True
+
+
+@pytest.mark.asyncio
+async def test_decline_cancels_without_tenant():
+    """F3: "no" clears the pending draft even when the session has no tenant."""
+    atlas, calls, fake_create = _write_spies()
+    with (
+        patch("shared.engine.AtlasCMMSClient", return_value=atlas),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+    ):
+        sv = _bare_supervisor()
+        sv._record_exchange = MagicMock()
+        sv._save_state = MagicMock()
+        state = _pending_state(_valid_draft(tenant_id=TENANT_B))
+        await sv._handle_cmms_pending(CHAT_B, "no", state, "trace-f3", tenant_id="")
+    assert "cmms_pending" not in state["context"]
+    assert "cmms_wo_draft" not in state["context"]
+    sv._save_state.assert_called_once()
+    assert calls == []
+    atlas.create_work_order.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_yes_without_tenant_still_refuses_and_keeps_draft():
+    """F3 control: only a decline proceeds without a tenant; a yes still refuses."""
+    atlas, calls, fake_create = _write_spies()
+    with (
+        patch("shared.engine.AtlasCMMSClient", return_value=atlas),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+    ):
+        sv = _bare_supervisor()
+        sv._record_exchange = MagicMock()
+        sv._save_state = MagicMock()
+        state = _pending_state(_valid_draft(tenant_id=TENANT_B))
+        result = await sv._handle_cmms_pending(CHAT_B, "yes", state, "trace-f3c", tenant_id="")
+    assert state["context"]["cmms_pending"] is True
+    sv._save_state.assert_not_called()
+    assert calls == []
+    assert "no tenant" in result["reply"]

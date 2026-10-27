@@ -105,6 +105,19 @@ def _db_lookup(chat_id: str) -> str | None:
         return None
 
 
+def resolve_mapped_only(chat_id: str) -> str:
+    """Return the stored tenant_id for chat_id without env/default fallback.
+
+    Returns the mapping from chat_tenant_map only. No MIRA_TENANT_ID,
+    no rag.tenant_id. Used for authenticated write operations where
+    a tenant_id must be explicit and not derived from env.
+    """
+    stored = _db_lookup(chat_id)
+    if stored is not None:
+        return stored
+    return ""
+
+
 def resolve(chat_id: str) -> str:
     """Return the tenant_id for chat_id.
 
