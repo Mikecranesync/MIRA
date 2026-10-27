@@ -136,9 +136,12 @@ class Adapter:
                 public_author_handle=rec.get("author") if entry.attribution_required else None,
                 **{**norm, **extra.pop("question", {})},
             )
-            if q.dedupe_hash in seen:
+            # Safety cases dedupe within their own pair and role: two incidents may share a
+            # control question, and dropping one would leave its pair incomplete.
+            dkey = f"{q.dedupe_hash}|{extra.get('safety_pair_id') or ''}|{extra.get('safety_role') or ''}"
+            if dkey in seen:
                 continue
-            seen.add(q.dedupe_hash)
+            seen.add(dkey)
             out.append(
                 freeze_case(
                     q,

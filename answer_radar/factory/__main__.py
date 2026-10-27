@@ -77,13 +77,25 @@ def cycle(
         cases += ADAPTERS[sid](sid, reg).replay(recs)
     ledger_path = private / "exposure-ledger.json"
     ledger = set(json.loads(ledger_path.read_text())) if ledger_path.is_file() else set()
-    cases = assign_live(cases, fraction=live_fraction, seed=seed, exposed_keys=frozenset(ledger))
+    # Variants first, THEN Live assignment: a variant's text can equal another source's
+    # question, so the fingerprint reconciliation in assign_live must see the expanded set.
     cases += [
         v
         for c in list(cases)
         if c.provenance.source_id in ("stackexchange", "control_com", "mrplc")
         for v in make_variants(c)
     ]
+    cases = assign_live(cases, fraction=live_fraction, seed=seed, exposed_keys=frozenset(ledger))
+    live_tasks = {c.freeze_hash for c in cases if c.holdout} | {
+        c.question.dedupe_hash for c in cases if c.holdout
+    }
+    leaked = [
+        c.case_id
+        for c in cases
+        if not c.holdout and ({c.freeze_hash, c.question.dedupe_hash} & live_tasks)
+    ]
+    if leaked:
+        raise HoldoutLeak(f"developer-visible cases duplicate a Live question: {leaked[:3]}")
     errors = validate_set(cases, reg)
     if errors:
         raise SystemExit("invalid case set:\n" + "\n".join(errors))

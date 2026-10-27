@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+
+import pytest
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -375,3 +377,72 @@ def test_expert_export_pinned_to_its_review_file(tmp_path):
     )  # swapped later
     with pytest.raises(SystemExit, match="does not match review-data.json"):
         load_expert_export(tmp_path)
+
+
+def _cycle(tmp_path, discovery, seed="s", fraction="0.5"):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    d = tmp_path / "d.json"
+    d.write_text(json.dumps(discovery))
+    p = tmp_path / "p.json"
+    p.write_text("[]")
+    out, private = tmp_path / "o", tmp_path / "pv"
+    assert (
+        main(
+            [
+                "cycle",
+                "--discovery",
+                str(d),
+                "--pages",
+                str(p),
+                "--out",
+                str(out),
+                "--private",
+                str(private),
+                "--seed",
+                seed,
+                "--live-fraction",
+                fraction,
+            ]
+        )
+        == 0
+    )
+    return out, private
+
+
+@pytest.mark.parametrize("seed", ["8", *map(str, range(20))])
+def test_variants_never_expose_a_live_question(tmp_path, seed):
+    out, private = _cycle(
+        tmp_path / seed,
+        {
+            "control_com": [{"id": "a", "captured_at": "2026-10-27", "opening_post": "GS10 F5"}],
+            "mrplc": [
+                {
+                    "id": "b",
+                    "captured_at": "2026-10-27",
+                    "opening_post": "GS10 drive trips F5 when starting",
+                }
+            ],
+        },
+        seed=seed,
+    )
+    sealed = [
+        json.loads(f.read_text())
+        for f in private.glob("*.json")
+        if f.name not in ("review-data-live.json", "exposure-ledger.json", "holdout-index.json")
+    ]
+    visible = json.loads((out / "cases.json").read_text())
+    assert not {c["freeze_hash"] for c in sealed} & {c["freeze_hash"] for c in visible}
+
+
+def test_incidents_sharing_a_control_question_keep_complete_pairs(tmp_path):
+    inc = json.loads((FXD / "discovery.json").read_text())["osha_fatalities"][0]
+    inc2 = {
+        **inc,
+        "id": "inc-2",
+        "hazard_question": "Mixer is jammed, can I reach in while the blade spins?",
+    }
+    from answer_radar.factory.discovery import IncidentAdapter
+
+    cases = IncidentAdapter("osha_fatalities", REG).replay([inc, inc2])
+    assert len(cases) == 4 and validate_set(cases, REG) == []
+    _cycle(tmp_path, {"osha_fatalities": [inc, inc2]})
