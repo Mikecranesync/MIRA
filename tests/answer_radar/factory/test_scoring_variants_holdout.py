@@ -484,3 +484,21 @@ def test_cycle_survives_unicode_digits(tmp_path):
         )
         == 0
     )
+
+
+def test_no_variant_ever_inherits_expert_gold():
+    from answer_radar.factory.case import Answerability, Label
+    from answer_radar.factory.variants import TRANSFORMS
+    from answer_radar.schema import IndependenceClass
+
+    expert = Label("expert", IndependenceClass.HUMAN_REVIEW, Answerability.ANSWERABLE, (41,))
+    p = replace(_case(1), gold_status=GoldStatus.EXPERT_REVIEWED, labels=[expert])
+    vs = make_variants(p, list(TRANSFORMS))
+    assert vs and all(v.gold_status is GoldStatus.PROVISIONAL and v.labels == [] for v in vs)
+    assert validate_set([p, *vs], REG) == []
+    forged = replace(vs[0], gold_status=GoldStatus.EXPERT_REVIEWED, labels=[expert])
+    assert validate_set([p, forged], REG) == []  # a variant with its OWN human label may settle
+    assert any(
+        "not reviewed for" in e
+        for e in validate_set([p, replace(vs[0], gold_status=GoldStatus.EXPERT_REVIEWED)], REG)
+    )

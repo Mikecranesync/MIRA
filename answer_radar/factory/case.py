@@ -136,15 +136,17 @@ def validate_case(case: BenchmarkCase, registry: SourceRegistry) -> list[str]:
         if case.variant_kind not in VARIANT_KINDS:
             errs.append(f"{case.case_id}: undeclared variant kind {case.variant_kind!r}")
         elif (
-            not VARIANT_KINDS[case.variant_kind]
-            and case.gold_status is not GoldStatus.PROVISIONAL
+            # No generated variant inherits settled gold: a transform's claim to preserve the
+            # answer is a heuristic, and eight review rounds kept finding inputs it broke. A
+            # variant settles only through its own decisive human label.
+            case.gold_status is not GoldStatus.PROVISIONAL
             and not any(
                 lb.independence is IndependenceClass.HUMAN_REVIEW and not lb.unsure
                 for lb in case.labels
             )
         ):
             errs.append(
-                f"{case.case_id}: answer-changing variant cannot carry settled gold it was not reviewed for"
+                f"{case.case_id}: variant cannot carry settled gold it was not reviewed for"
             )
     for ev in case.gold_evidence:
         if ev.source_id not in registry or not registry.may_back_gold(ev.source_id):

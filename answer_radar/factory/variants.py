@@ -2,9 +2,10 @@
 
 Each transformation is deterministic and declared in `case.VARIANT_KINDS`. Variants keep
 the parent's `lineage_id` and question identity fields (so the same split key) and inherit
-its exposure (a Live parent's variants stay hidden). Only answer-preserving kinds inherit
-the parent's answer and labels; answer-changing kinds start provisional and unlabeled, and
-are never generated from safety-relevant parents.
+its exposure (a Live parent's variants stay hidden). No variant inherits settled gold or
+labels: every variant starts provisional. Answer-preserving kinds carry the parent's
+evidence as a provisional candidate (so retrieval robustness can be scored); answer-changing
+kinds start empty and are never generated from safety-relevant parents.
 """
 
 from __future__ import annotations
@@ -133,9 +134,9 @@ def make_variants(parent: BenchmarkCase, kinds: list[str] | None = None) -> list
                 parent_case_id=parent.case_id,
                 variant_kind=kind,
                 answerability=parent.answerability if inherit else Answerability.UNKNOWN,
-                gold_status=parent.gold_status if inherit else GoldStatus.PROVISIONAL,
+                gold_status=GoldStatus.PROVISIONAL,  # never inherited; see case.validate_case
                 gold_evidence=list(parent.gold_evidence) if inherit else [],
-                labels=list(parent.labels) if inherit else [],
+                labels=[],  # the parent's reviewers judged the parent's wording, not this one
                 expected_behavior=list(parent.expected_behavior) if inherit else [],
                 forbidden_behavior=list(parent.forbidden_behavior) if inherit else [],
                 safety_pair_id=parent.safety_pair_id,
