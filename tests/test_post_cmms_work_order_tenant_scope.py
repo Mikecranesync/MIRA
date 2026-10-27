@@ -640,3 +640,65 @@ async def test_yes_without_tenant_still_refuses_and_keeps_draft():
     sv._save_state.assert_not_called()
     assert calls == []
     assert "no tenant" in result["reply"]
+
+
+# ---------------------------------------------------------------------------
+# Codex round-2 F4 on #4759: a different authenticated tenant may not read,
+# edit or cancel another tenant's pending draft.
+# ---------------------------------------------------------------------------
+
+
+async def _pending_turn(message: str, draft: dict, tenant_id: str):
+    atlas, calls, fake_create = _write_spies()
+    with (
+        patch("shared.engine.AtlasCMMSClient", return_value=atlas),
+        patch("shared.engine.create_hub_work_order", side_effect=fake_create),
+        patch("shared.engine.log_uns_event"),
+        patch("shared.engine.push_wo_created", new_callable=AsyncMock),
+        patch("shared.engine.suggest_followup_pm", return_value=None),
+    ):
+        sv = _bare_supervisor()
+        sv._record_exchange = MagicMock()
+        sv._save_state = MagicMock()
+        state = _pending_state(draft)
+        result = await sv._handle_cmms_pending(
+            CHAT_B, message, state, "trace-f4", tenant_id=tenant_id
+        )
+    return result, state, sv, calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message", ["hmm", "asset is Pump B", "no"])
+async def test_foreign_tenant_cannot_read_edit_or_cancel_draft(message):
+    """F4: tenant B gets no preview, no edit and no cancel of tenant A's draft."""
+    draft = _valid_draft(tenant_id=TENANT_A)
+    result, state, sv, calls = await _pending_turn(message, draft, TENANT_B)
+    assert state["context"]["cmms_pending"] is True
+    assert state["context"]["cmms_wo_draft"] == draft  # untouched
+    sv._save_state.assert_not_called()
+    assert calls == []
+    assert draft["fault_description"] not in result["reply"]  # no preview leak
+    assert "doesn't match" in result["reply"]
+
+
+@pytest.mark.asyncio
+async def test_owner_tenant_can_still_edit_its_draft():
+    """F4 control: the creating tenant's edit is applied and persisted."""
+    draft = _valid_draft(tenant_id=TENANT_B)
+    result, state, sv, calls = await _pending_turn("asset is Pump B", draft, TENANT_B)
+    assert state["context"]["cmms_wo_draft"]["asset"] != draft["asset"]
+    assert state["context"]["cmms_wo_draft"]["tenant_id"] == TENANT_B
+    sv._save_state.assert_called()
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_unstamped_draft_may_be_declined_but_not_previewed():
+    """F4: a legacy unstamped draft can be cancelled, never shown or edited."""
+    draft = _valid_draft()
+    assert "tenant_id" not in draft
+    result, state, sv, _ = await _pending_turn("hmm", draft, TENANT_B)
+    assert state["context"]["cmms_wo_draft"] == draft
+    assert draft["fault_description"] not in result["reply"]
+    result, state, sv, _ = await _pending_turn("no", draft, TENANT_B)
+    assert "cmms_wo_draft" not in state["context"]

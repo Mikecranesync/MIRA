@@ -4770,6 +4770,29 @@ class Supervisor:
             w in msg_lower for w in self._CMMS_NO if len(w) > 3
         )
 
+        # F4 (#4759 Codex R2): a draft belongs to the tenant that created it.
+        # An authenticated session for a different tenant may not preview,
+        # edit, confirm or cancel it. A legacy unstamped draft may only be
+        # declined (no content shown); it is never previewed, edited or
+        # adopted. An empty-tenant session keeps the F3 decline below.
+        if tenant_id and wo_draft:
+            draft_tenant = wo_draft.get("tenant_id")
+            if draft_tenant in (None, ""):
+                foreign = not is_no
+            else:
+                foreign = canonicalize_tenant_id(draft_tenant) != canonicalize_tenant_id(tenant_id)
+            if foreign:
+                reply = (
+                    "I can't use the pending work order on this chat — the session "
+                    "tenant doesn't match the account that created it, so I can't "
+                    "show, change or log it here."
+                )
+                self._record_exchange(chat_id, state, message, reply)
+                tl_flush()
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
+
         # F3: a decline cancels even without a tenant; nothing is written.
         if is_no:
             ctx.pop("cmms_wo_draft", None)
