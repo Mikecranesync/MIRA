@@ -596,3 +596,41 @@ def test_interruption_between_providers_keeps_the_first_paid_label(tmp_path, mon
         json.loads((tmp_path / "pv" / "labels.json").read_text())["control_com:q"]["complete"]
         is True
     )
+
+
+def test_missing_output_usage_is_charged_worst_case_and_the_cap_holds():
+    def post(url, body, headers):
+        return {
+            "choices": [{"message": {"content": GOOD}}],
+            "usage": {"prompt_tokens": 10},
+        }  # no completion_tokens
+
+    cases = [_forum(i) for i in range(200)]
+    budget = Budget(0.01)
+    prelabel(cases, {c.case_id: EV for c in cases}, {}, LABS, budget, post)
+    worst_possible = sum(
+        budget.worst_case(lab, "x" * 10_000) for lab in LABS
+    )  # generous per-case bound
+    assert (
+        budget.spent_usd <= 0.01
+        and len(budget.calls) * LABS[0].max_out * 1.0 / 1e6 <= 0.01 + worst_possible
+    )
+
+
+def test_labelers_see_one_manual_so_page_numbers_cannot_fake_agreement():
+    post, seen = _post(GOOD)
+    c = _forum()
+    two = [
+        Evidence("oem_manuals", "aa" * 32, 41, "F5 overvoltage A"),
+        Evidence("oem_manuals", "bb" * 32, 41, "F5 B"),
+    ]
+    prelabel(
+        [c],
+        {c.case_id: two},
+        {("aa" * 32, 41): "manual A page", ("bb" * 32, 41): "manual B page"},
+        LABS,
+        Budget(1.0),
+        post,
+    )
+    prompt = seen[0]["messages"][0]["content"]
+    assert "manual A page" in prompt and "manual B page" not in prompt

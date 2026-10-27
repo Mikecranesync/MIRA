@@ -20,6 +20,7 @@ import re
 from dataclasses import dataclass, field
 
 from answer_radar.factory.case import Answerability, BenchmarkCase, Evidence, Label
+from answer_radar.factory.labeling import review_candidates
 from answer_radar.schema import IndependenceClass
 
 PROMPT = """You label a maintenance-question benchmark. Judge ONLY from the manual pages below.
@@ -157,7 +158,9 @@ def input_digest(
 ) -> str:
     """What a labeler actually saw: the rendered prompt. Saved labels are reused only while the
     frozen question AND this digest are unchanged (the invalidation trigger, ZTA Hard Rule 3)."""
-    return hashlib.sha256(render(case, ev, page_text).encode("utf-8")).hexdigest()
+    return hashlib.sha256(
+        render(case, review_candidates(ev), page_text).encode("utf-8")
+    ).hexdigest()
 
 
 def dataset_label() -> Label:
@@ -201,7 +204,9 @@ def prelabel(
         if not missing:
             out[c.case_id] = [have[lab.labeler_id] for lab in labelers]
             continue
-        ev = candidates.get(c.case_id, [])
+        # One manual only, exactly like the expert page: page numbers carry no manual identity,
+        # so two labelers picking "page 41" of different manuals must never look like agreement.
+        ev = review_candidates(candidates.get(c.case_id, []))
         prompt = render(c, ev, page_text)
         if (
             budget.spent_usd + sum(budget.worst_case(lab, prompt) for lab in missing)
@@ -214,15 +219,15 @@ def prelabel(
                 error = None
             except Exception as exc:  # noqa: BLE001 - a failed call is recorded and becomes unsure
                 text, usage, error = "", {}, type(exc).__name__
-            try:
-                t_in = int((usage or {}).get("prompt_tokens") or 0)
-                t_out = int((usage or {}).get("completion_tokens") or 0)
-            except (TypeError, ValueError, AttributeError):
-                t_in = t_out = 0
-            # Unknown usage (error / missing field) is charged at the worst case, never at zero.
+            u = usage if isinstance(usage, dict) else {}
+            counters = (u.get("prompt_tokens"), u.get("completion_tokens"))
+            valid = all(isinstance(x, int) and not isinstance(x, bool) and x >= 0 for x in counters)
+            t_in, t_out = counters if valid else (0, 0)
+            # Actual cost only when BOTH counters are reported and valid; anything missing or
+            # malformed is charged at the worst case, never at zero.
             cost = (
                 (t_in * lab.price_in + t_out * lab.price_out) / 1e6
-                if t_in
+                if valid and t_in > 0
                 else budget.worst_case(lab, prompt)
             )
             budget.spent_usd += cost
