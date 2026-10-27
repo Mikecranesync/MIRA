@@ -1,3 +1,9 @@
+# Isolation notice on hands-on notebook answers — 2026-10-27
+
+DRAFT PR #4867 (`cursor/isolation-advisory-hands-on-522d`, head `9de38e253`) implements #4858. Hub `validateAnswer` prepends a fixed uncited isolation notice on hands-on electrical/mechanical answers that lack isolation / verify-dead language. Parameter-only stays silent. Notice warns, never withholds. Official Gate-7 `--paid` refused (sanitizer / no keys); substitute panel PASSed after structural closer/polarity/disconnect fixes. Codex not run — owner-gated. Mike merges; deploy needs a separate OK.
+
+---
+
 # Conversation follow repair — 2026-10-24
 
 PR #4703 / #4680 incorporates merged runner fix #4700 without force-push. Follow now re-arms from an accepted Composer send, not changing message IDs, preserving scroll-away through live-to-persisted replacement. Focused regression red: 6 failures; green: 38 tests; shared suite: 440 pass; TypeScript/build pass. Exact-head review, CI and same-release deployed behavior remain gates. Watcher continuation and proof: `~/.factorylm/issue-repair-watch/queue.json`; worktree `conversation-continuity`. Foreman send/persistence and Notebook Prover answer ownership unchanged.
