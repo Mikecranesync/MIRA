@@ -106,22 +106,27 @@ def build(discovery: dict, pages: list[ManualPage], private: Path, seed: str, li
     return reg, cases, candidates, ledger, ledger_path
 
 
-def load_labels(path: Path) -> dict[str, list[Label]]:
+def load_labels(path: Path) -> dict[str, dict]:
+    """{case_id: {"freeze_hash", "input_sha256", "labels": [Label]}} as written by prelabel."""
     raw = json.loads(path.read_text(encoding="utf-8"))
     return {
-        cid: [
-            Label(
-                d["labeler_id"],
-                IndependenceClass(d["independence"]),
-                Answerability(d["answerability"]),
-                tuple(d.get("pages", ())),
-                d.get("safety_class"),
-                d.get("confidence"),
-                bool(d.get("unsure")),
-            )
-            for d in labels
-        ]
-        for cid, labels in raw.items()
+        cid: {
+            "freeze_hash": rec["freeze_hash"],
+            "input_sha256": rec["input_sha256"],
+            "labels": [
+                Label(
+                    d["labeler_id"],
+                    IndependenceClass(d["independence"]),
+                    Answerability(d["answerability"]),
+                    tuple(d.get("pages", ())),
+                    d.get("safety_class"),
+                    d.get("confidence"),
+                    bool(d.get("unsure")),
+                )
+                for d in rec["labels"]
+            ],
+        }
+        for cid, rec in raw.items()
     }
 
 
@@ -139,9 +144,22 @@ def cycle(
         discovery, pages, private, seed, live_fraction
     )
     if labels is not None:
-        pre = load_labels(labels)
+        from answer_radar.factory.prelabel import input_digest
+
+        pre, page_text = load_labels(labels), {(p.doc_sha256, p.page): p.text for p in pages}
+
+        def fresh(c) -> bool:
+            # Reuse a label only for the exact frozen question AND the exact pages the labeler
+            # saw; a changed question or manual corpus leaves the case unlabeled for review.
+            rec = pre.get(c.case_id)
+            return (
+                bool(rec)
+                and rec["freeze_hash"] == c.freeze_hash
+                and rec["input_sha256"] == input_digest(c, candidates.get(c.case_id, []), page_text)
+            )
+
         cases = [
-            replace(c, labels=[*c.labels, *pre[c.case_id]]) if c.case_id in pre else c
+            replace(c, labels=[*c.labels, *pre[c.case_id]["labels"]]) if fresh(c) else c
             for c in cases
         ]
     queue = route(cases, seed=seed)
@@ -288,7 +306,7 @@ def run_prelabel(a) -> int:
 
     import httpx
 
-    from answer_radar.factory.prelabel import Budget, Labeler, prelabel
+    from answer_radar.factory.prelabel import Budget, Labeler, input_digest, prelabel
 
     _private(a.private)
     pages = [ManualPage(**p) for p in json.loads(a.pages.read_text())]
@@ -323,10 +341,18 @@ def run_prelabel(a) -> int:
     budget = Budget(cap_usd=a.budget_usd)
     page_text = {(p.doc_sha256, p.page): p.text for p in pages}
     labels = prelabel(cases, candidates, page_text, labelers, budget, post)
+    by_id = {c.case_id: c for c in cases}
     a.private.mkdir(parents=True, exist_ok=True)
     (a.private / "labels.json").write_text(
         json.dumps(
-            {k: [dataclasses.asdict(lb) for lb in v] for k, v in labels.items()},
+            {
+                k: {
+                    "freeze_hash": by_id[k].freeze_hash,
+                    "input_sha256": input_digest(by_id[k], candidates.get(k, []), page_text),
+                    "labels": [dataclasses.asdict(lb) for lb in v],
+                }
+                for k, v in labels.items()
+            },
             default=str,
             indent=1,
         ),

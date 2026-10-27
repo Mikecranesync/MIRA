@@ -6,6 +6,8 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from answer_radar.factory.case import Answerability, Evidence, Pool
 from answer_radar.factory.discovery import ForumAdapter, MachineStateAdapter
 from answer_radar.factory.labeling import route
@@ -125,8 +127,141 @@ def test_failed_calls_are_charged_worst_case_and_become_unsure():
     assert all(call["error"] == "TimeoutError" for call in budget.calls)
 
 
-def test_variants_never_enter_the_expert_queue():
+def test_only_answer_changing_variants_reach_experts():
     c = _forum()
     vs = make_variants(c)
     q = route([c, *vs], seed="s", audit_rate=0.0)
-    assert vs and set(q) == {c.case_id}  # the unlabeled original is queued, its variants are not
+    changing = {v.case_id for v in vs if v.variant_kind in ("fault_code_only", "ack_clear_reset")}
+    assert changing and set(q) == {c.case_id, *changing}
+    assert all(q[k] == ["answer-changing variant needs its own review"] for k in changing)
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        '{"answerability": "answerable", "pages": null}',
+        '{"answerability": []}',
+        '{"answerability": "answerable", "pages": "41", "confidence": "high"}',
+        "[1,2]",
+    ],
+)
+def test_malformed_replies_never_crash_the_paid_run(reply):
+    good, _ = _post(GOOD)
+    bad, _ = _post(reply)
+    cases = [_forum(i) for i in range(3)]
+    replies = iter([good, good, bad, bad, good, good])
+
+    def post(url, body, headers):
+        return next(replies)(url, body, headers)
+
+    budget = Budget(1.0)
+    out = prelabel(cases, {c.case_id: EV for c in cases}, {}, LABS, budget, post)
+    assert len(out) == 3 and len(budget.calls) == 6
+    assert all(lb.unsure for lb in out[cases[1].case_id])
+    assert (
+        "unsure or low confidence"
+        in route([replace(cases[1], labels=out[cases[1].case_id])], seed="s", audit_rate=0.0)[
+            cases[1].case_id
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        '{"answerability": "unknown"}',
+        '{"answerability": "answerable", "pages": [41]}',
+        '{"answerability": "answerable", "pages": [41], "confidence": 7}',
+    ],
+)
+def test_unknown_or_unconfident_agreement_still_goes_to_experts(reply):
+    post, _ = _post(reply)
+    c = _forum()
+    labels = prelabel([c], {c.case_id: EV}, {}, LABS, Budget(1.0), post)[c.case_id]
+    assert all(lb.unsure for lb in labels)
+    assert route([replace(c, labels=labels)], seed="s", audit_rate=0.0)
+
+
+def test_saved_labels_only_reattach_to_the_exact_question_and_pages(tmp_path):
+    import dataclasses
+
+    from answer_radar.factory.__main__ import build, main
+    from answer_radar.factory.evidence import ManualPage
+    from answer_radar.factory.prelabel import input_digest
+
+    page = {
+        "source_id": "oem_manuals",
+        "doc_sha256": "aa" * 32,
+        "page": 41,
+        "manufacturer": "Allen-Bradley",
+        "model": "PowerFlex 525",
+        "text": "F5 overvoltage: DC bus too high, lengthen decel time",
+    }
+    disc = {
+        "control_com": [
+            {
+                "id": "x",
+                "captured_at": "2026-10-27",
+                "opening_post": "PowerFlex 525 F5 overvoltage on decel, what to check?",
+            }
+        ]
+    }
+    d, p1, p2 = tmp_path / "d.json", tmp_path / "p1.json", tmp_path / "p2.json"
+    d.write_text(json.dumps(disc))
+    p1.write_text(json.dumps([page]))
+    p2.write_text(
+        json.dumps([{**page, "text": "F5 overvoltage: replaced manual text, different evidence"}])
+    )
+    _, cases, cands, _, _ = build(disc, [ManualPage(**page)], tmp_path / "pv0", "s", 0.0)
+    c = next(c for c in cases if c.case_id == "control_com:x")
+    lab = [dataclasses.asdict(lb) for lb in [_lab_obj("a"), _lab_obj("b")]]
+    rec = {
+        "control_com:x": {
+            "freeze_hash": c.freeze_hash,
+            "input_sha256": input_digest(c, cands[c.case_id], {("aa" * 32, 41): page["text"]}),
+            "labels": lab,
+        }
+    }
+    lf = tmp_path / "labels.json"
+    lf.write_text(json.dumps(rec, default=str))
+
+    def run(pages, tag):
+        main(
+            [
+                "cycle",
+                "--discovery",
+                str(d),
+                "--pages",
+                str(pages),
+                "--out",
+                str(tmp_path / f"o{tag}"),
+                "--private",
+                str(tmp_path / f"pv{tag}"),
+                "--seed",
+                "s",
+                "--live-fraction",
+                "0",
+                "--labels",
+                str(lf),
+            ]
+        )
+        return json.loads((tmp_path / f"o{tag}" / "cycle-report.json").read_text())["expert_queue"]
+
+    assert "control_com:x" not in run(
+        p1, 1
+    )  # same question + pages: labels reused, agreement settles it
+    assert "control_com:x" in run(
+        p2, 2
+    )  # manual text changed: stale labels ignored, expert decides
+
+
+def _lab_obj(lid):
+    from answer_radar.factory.case import Label
+
+    return Label(
+        lid,
+        IndependenceClass.INDEPENDENT_PROVIDER_MODEL,
+        Answerability.ANSWERABLE,
+        (41,),
+        confidence=0.9,
+    )

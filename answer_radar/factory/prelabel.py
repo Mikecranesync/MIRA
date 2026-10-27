@@ -13,6 +13,7 @@ call's cost is recorded. Live holdout cases and generated variants are never sen
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -83,9 +84,28 @@ def parse(text: str) -> dict | None:
         d = json.loads(m.group(0))
     except json.JSONDecodeError:
         return None
-    if d.get("answerability") not in {"answerable", "unanswerable", "unknown"}:
+    # Strict schema: anything malformed is "no usable label", never a crash after a paid call.
+    if not isinstance(d, dict) or d.get("answerability") not in {
+        "answerable",
+        "unanswerable",
+        "unknown",
+    }:
         return None
-    return d
+    pages = d.get("pages", [])
+    conf = d.get("confidence")
+    safety = d.get("safety_class", "none")
+    return {
+        "answerability": d["answerability"],
+        "pages": [p for p in pages if isinstance(p, int) and not isinstance(p, bool)]
+        if isinstance(pages, list)
+        else [],
+        "safety_class": safety
+        if safety in {"none", "advisory", "restricted", "refuse"}
+        else "none",
+        "confidence": float(conf)
+        if isinstance(conf, (int, float)) and not isinstance(conf, bool) and 0 <= conf <= 1
+        else None,
+    }
 
 
 def call(lab: Labeler, prompt: str, post) -> tuple[str, dict]:
@@ -106,16 +126,26 @@ def to_label(lab: Labeler, d: dict | None, shown: set[int]) -> Label:
             Answerability.UNKNOWN,
             unsure=True,
         )
-    pages = tuple(sorted(p for p in d.get("pages", []) if isinstance(p, int) and p in shown))
-    conf = d.get("confidence")
+    pages = tuple(sorted(p for p in d["pages"] if p in shown))
+    ans = Answerability(d["answerability"])
     return Label(
         lab.labeler_id,
         IndependenceClass.INDEPENDENT_PROVIDER_MODEL,
-        Answerability(d["answerability"]),
+        ans,
         pages,
-        safety_class=d.get("safety_class") if d.get("safety_class") != "none" else None,
-        confidence=float(conf) if isinstance(conf, (int, float)) else None,
+        safety_class=d["safety_class"] if d["safety_class"] != "none" else None,
+        confidence=d["confidence"],
+        # "unknown" or a missing/invalid confidence is explicit uncertainty: an expert decides.
+        unsure=ans is Answerability.UNKNOWN or d["confidence"] is None,
     )
+
+
+def input_digest(
+    case: BenchmarkCase, ev: list[Evidence], page_text: dict[tuple[str, int], str]
+) -> str:
+    """What a labeler actually saw: the rendered prompt. Saved labels are reused only while the
+    frozen question AND this digest are unchanged (the invalidation trigger, ZTA Hard Rule 3)."""
+    return hashlib.sha256(render(case, ev, page_text).encode("utf-8")).hexdigest()
 
 
 def dataset_label() -> Label:
@@ -155,10 +185,11 @@ def prelabel(
                 error = None
             except Exception as exc:  # noqa: BLE001 - a failed call is recorded and becomes unsure
                 text, usage, error = "", {}, type(exc).__name__
-            t_in, t_out = (
-                int(usage.get("prompt_tokens") or 0),
-                int(usage.get("completion_tokens") or 0),
-            )
+            try:
+                t_in = int((usage or {}).get("prompt_tokens") or 0)
+                t_out = int((usage or {}).get("completion_tokens") or 0)
+            except (TypeError, ValueError, AttributeError):
+                t_in = t_out = 0
             # Unknown usage (error / missing field) is charged at the worst case, never at zero.
             cost = (
                 (t_in * lab.price_in + t_out * lab.price_out) / 1e6
@@ -176,6 +207,13 @@ def prelabel(
                     "error": error,
                 }
             )
-            labels.append(to_label(lab, parse(text), {e.page for e in ev}))
+            try:
+                labels.append(
+                    to_label(
+                        lab, parse(text if isinstance(text, str) else ""), {e.page for e in ev}
+                    )
+                )
+            except Exception:  # noqa: BLE001 - never lose a paid run to one odd reply
+                labels.append(to_label(lab, None, set()))
         out[c.case_id] = labels
     return out
