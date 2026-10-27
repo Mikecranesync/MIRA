@@ -608,13 +608,10 @@ def test_missing_output_usage_is_charged_worst_case_and_the_cap_holds():
     cases = [_forum(i) for i in range(200)]
     budget = Budget(0.01)
     prelabel(cases, {c.case_id: EV for c in cases}, {}, LABS, budget, post)
-    worst_possible = sum(
-        budget.worst_case(lab, "x" * 10_000) for lab in LABS
-    )  # generous per-case bound
-    assert (
-        budget.spent_usd <= 0.01
-        and len(budget.calls) * LABS[0].max_out * 1.0 / 1e6 <= 0.01 + worst_possible
-    )
+    # Each call is charged its worst case, so the declared cap bounds what could really be billed
+    # (the pre-fix code let 82 such calls through on this cap, charging input tokens only).
+    assert budget.spent_usd <= 0.01 and 0 < len(budget.calls) < 20
+    assert all(call["prompt_tokens"] == 0 and call["usd"] > 0 for call in budget.calls)
 
 
 def test_labelers_see_one_manual_so_page_numbers_cannot_fake_agreement():
