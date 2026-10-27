@@ -24,6 +24,7 @@
 
 import type { EvidenceFollowedAssessment } from "./evidence-consistency";
 
+import type { AnswerRequirementsVerdict } from "./answer-requirements";
 import type { JevDecisionRecord } from "./jev-decision";
 
 export const TURN_EVIDENCE_PACKET_VERSION = "2" as const;
@@ -300,6 +301,17 @@ export type TurnEvidencePacket = {
    * output never self-promotes).
    */
   jev_decision?: JevDecisionRecord | null;
+  /**
+   * SHADOW. Answer Requirements Gate verdict for this turn.
+   *
+   * Produced after `jev_decision`, stamping whether the answer meets seven
+   * delivery requirements (grounded, right equipment, consistent with photos,
+   * no invented values, uses relevant evidence, calibrated, cited). null when
+   * jev_decision is absent (flag off).
+   *
+   * NOTHING reads this. It is shadow observability only (ADR-0029 rule 9).
+   */
+  answer_requirements?: AnswerRequirementsVerdict | null;
 };
 
 /** What is known at request.receive, before any stage has run. */
