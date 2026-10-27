@@ -34,12 +34,13 @@ from answer_radar.factory.discovery import (
     MachineStateAdapter,
     StackExchangeAdapter,
 )
-from answer_radar.factory.evidence import ManualPage, resolve
+from answer_radar.factory.evidence import ManualPage, PageIndex, resolve
 from answer_radar.factory.holdout import (
     HoldoutLeak,
     _inside_git,
     assign_live,
     developer_export,
+    group_key,
     seal_live,
 )
 from answer_radar.factory.labeling import export_review_data, import_expert, route
@@ -51,6 +52,7 @@ ADAPTERS = {
     "stackexchange": StackExchangeAdapter,
     "control_com": ForumAdapter,
     "mrplc": ForumAdapter,
+    "plctalk": ForumAdapter,
     "osha_fatalities": IncidentAdapter,
     "niosh_face": IncidentAdapter,
     "csb": IncidentAdapter,
@@ -82,7 +84,7 @@ def cycle(
     cases += [
         v
         for c in list(cases)
-        if c.provenance.source_id in ("stackexchange", "control_com", "mrplc")
+        if c.provenance.source_id in ("stackexchange", "control_com", "mrplc", "plctalk")
         for v in make_variants(c)
     ]
     cases = assign_live(cases, fraction=live_fraction, seed=seed, exposed_keys=frozenset(ledger))
@@ -101,7 +103,8 @@ def cycle(
         raise SystemExit("invalid case set:\n" + "\n".join(errors))
     # Only authoritative sources may become gold, so only they are offered to experts.
     pages = [p for p in pages if p.source_id in reg and reg.may_back_gold(p.source_id)]
-    candidates = {c.case_id: resolve(c, pages) for c in cases}
+    index = PageIndex(pages)
+    candidates = {c.case_id: resolve(c, pages, index=index) for c in cases}
     queue = route(cases, seed=seed)
     if expert_export is not None:
         answers = load_expert_export(expert_export)  # validates manifest + review-data first
@@ -133,7 +136,7 @@ def cycle(
     if errors:
         raise SystemExit("invalid case set after expert import:\n" + "\n".join(errors))
     manifest = seal_live(cases, private)
-    ledger |= {c.question.lineage_key for c in cases if not c.holdout}
+    ledger |= {group_key(c) for c in cases if not c.holdout}
     ledger |= {f"fp:{c.question.dedupe_hash}" for c in cases if not c.holdout}
     ledger_path.write_text(json.dumps(sorted(ledger), indent=2) + "\n", encoding="utf-8")
     # Live cases need expert gold too. Their review file goes beside the sealed text, outside git,
@@ -199,6 +202,46 @@ def load_expert_export(d: Path) -> dict[str, dict]:
     return out
 
 
+def _private(path: Path) -> Path:
+    if _inside_git(path.resolve()):
+        raise HoldoutLeak(
+            f"{path} is inside a git work tree; captured source text would be publishable"
+        )
+    return path
+
+
+def capture(
+    source: str,
+    site: str,
+    tags: list[str],
+    pages: int,
+    private: Path,
+    per_label: int = 10,
+    seed: str = "s",
+) -> int:
+    """Fetch an approved source into PRIVATE (outside git): captured text is never committed."""
+    _private(private)
+    reg = SourceRegistry.load()
+    adapter = ADAPTERS[source](source, reg)
+    if source == "uci_ai4i":
+        records, site = adapter.fetch_ai4i(per_label=per_label, seed=seed), "ai4i"
+    else:
+        records = adapter.fetch(site=site, tags=tags, pages=pages)
+    private.mkdir(parents=True, exist_ok=True)
+    path = private / f"{source}-{site}.json"
+    existing = (
+        json.loads(path.read_text(encoding="utf-8")).get(source, []) if path.is_file() else []
+    )
+    merged = {r["id"]: r for r in [*existing, *records]}  # re-captures keep the first capture
+    for r in existing:
+        merged[r["id"]] = r
+    path.write_text(
+        json.dumps({source: [merged[k] for k in sorted(merged)]}, indent=2) + "\n", encoding="utf-8"
+    )
+    print(json.dumps({"file": str(path), "fetched": len(records), "total": len(merged)}))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m answer_radar.factory")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -210,7 +253,29 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--seed", required=True)
     c.add_argument("--live-fraction", type=float, default=0.3)
     c.add_argument("--expert-export", type=Path, default=None)
+    cap = sub.add_parser("capture")
+    cap.add_argument("--source", choices=["stackexchange", "uci_ai4i"], required=True)
+    cap.add_argument("--site", default="")
+    cap.add_argument("--tag", action="append", default=[])
+    cap.add_argument("--pages", type=int, default=1)
+    cap.add_argument("--per-label", type=int, default=10)
+    cap.add_argument("--seed", default="s")
+    cap.add_argument("--private", type=Path, required=True)
+    pg = sub.add_parser("pages")
+    pg.add_argument("--manuals", type=Path, required=True)
+    pg.add_argument("--out", type=Path, required=True)
     a = ap.parse_args(argv)
+    if a.cmd == "capture":
+        return capture(a.source, a.site, a.tag, a.pages, a.private, a.per_label, a.seed)
+    if a.cmd == "pages":
+        from answer_radar.factory.pages import build_pages
+
+        _private(a.out.parent)
+        corpus = build_pages(a.manuals)
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        a.out.write_text(json.dumps(corpus) + "\n", encoding="utf-8")
+        print(json.dumps({"pages": len(corpus), "manuals": len({p["doc_sha256"] for p in corpus})}))
+        return 0
     pages = [ManualPage(**p) for p in json.loads(a.pages.read_text())]
     rep = cycle(
         json.loads(a.discovery.read_text()),

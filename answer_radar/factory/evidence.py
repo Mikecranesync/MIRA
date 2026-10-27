@@ -49,31 +49,50 @@ def candidate_manuals(case: BenchmarkCase, pages: list[ManualPage]) -> list[Manu
     return keep
 
 
-def bm25_rank(
-    query: str, pages: list[ManualPage], k1: float = 1.5, b: float = 0.75
-) -> list[tuple[float, ManualPage]]:
-    docs = [tokens(p.text) for p in pages]
-    if not docs:
-        return []
-    avg = sum(map(len, docs)) / len(docs)
-    df = Counter(t for d in docs for t in set(d))
-    n = len(docs)
-    scored = []
-    for page, d in zip(pages, docs):
-        tf = Counter(d)
-        s = 0.0
+class PageIndex:
+    """BM25 over a page corpus, tokenized once.
+
+    Re-tokenizing every page per question made a 5,480-page corpus unusable for a 2,000-case
+    cycle. Scores use corpus-wide document frequencies; only pages sharing a query token are
+    touched (inverted index), and the document-family filter restricts which may be returned.
+    """
+
+    def __init__(self, pages: list[ManualPage], k1: float = 1.5, b: float = 0.75):
+        self.pages, self.k1, self.b = pages, k1, b
+        self.tf = [Counter(tokens(p.text)) for p in pages]
+        self.length = [sum(t.values()) for t in self.tf]
+        self.avg = (sum(self.length) / len(pages)) if pages else 0.0
+        self.postings: dict[str, list[int]] = {}
+        for i, tf in enumerate(self.tf):
+            for t in tf:
+                self.postings.setdefault(t, []).append(i)
+
+    def rank(self, query: str, allowed: set[int] | None = None) -> list[tuple[float, ManualPage]]:
+        n, scores = len(self.pages), Counter()
         for t in set(tokens(query)):
-            if t in tf:
-                idf = math.log(1 + (n - df[t] + 0.5) / (df[t] + 0.5))
-                s += idf * tf[t] * (k1 + 1) / (tf[t] + k1 * (1 - b + b * len(d) / (avg or 1)))
-        scored.append((s, page))
-    return sorted(scored, key=lambda x: (-x[0], x[1].doc_sha256, x[1].page))
+            post = self.postings.get(t, [])
+            idf = math.log(1 + (n - len(post) + 0.5) / (len(post) + 0.5))
+            for i in post:
+                if allowed is not None and i not in allowed:
+                    continue
+                f = self.tf[i][t]
+                norm = 1 - self.b + self.b * self.length[i] / (self.avg or 1)
+                scores[i] += idf * f * (self.k1 + 1) / (f + self.k1 * norm)
+        ranked = [(s, self.pages[i]) for i, s in scores.items() if s > 0]
+        return sorted(ranked, key=lambda x: (-x[0], x[1].doc_sha256, x[1].page))
 
 
-def resolve(case: BenchmarkCase, pages: list[ManualPage], k: int = 5) -> list[Evidence]:
+def resolve(
+    case: BenchmarkCase, pages: list[ManualPage], k: int = 5, index: PageIndex | None = None
+) -> list[Evidence]:
+    """Top-k candidate pages from the question's document family. Pass `index` (built once
+    over `pages`) when resolving many cases."""
     q = case.question
     query = " ".join(filter(None, [q.normalized_question, q.error_code, q.model]))
-    ranked = [(s, p) for s, p in bm25_rank(query, candidate_manuals(case, pages)) if s > 0][:k]
+    index = index or PageIndex(pages)
+    keep = {id(p) for p in candidate_manuals(case, index.pages)}
+    allowed = {i for i, p in enumerate(index.pages) if id(p) in keep}
+    ranked = index.rank(query, allowed)[:k]
     return [
         Evidence(
             p.source_id,
