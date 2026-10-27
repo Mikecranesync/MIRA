@@ -24,7 +24,8 @@ const pages: Array<{ name: string; html: string }> = [
   { name: "/privacy", html: readPublic("privacy.html") },
   { name: "/sample", html: renderSamplePlaceholder() },
   { name: "/assess", html: readPublic("assess.html") },
-  { name: "/terms", html: readPublic("terms.html") },
+  // /terms is deliberately absent: it is a contract, changed only by a versioned,
+  // owner-approved amendment with notice (Codex F2 on #4570), never by this suite.
   { name: "/llms.txt", html: readPublic("llms.txt") },
   { name: "/llms-full.txt", html: readPublic("llms-full.txt") },
   { name: "nav+footer", html: navbar() + footer() },

@@ -856,7 +856,7 @@ jobs:
         working-directory: mira-web
         run: bun install --frozen-lockfile
 
-      - name: Run deterministic pack-truth + landing suites
+      - name: Run deterministic pack-truth + landing + marketing-claims suites
         if: steps.web.outputs.web == 'true'
         working-directory: mira-web
         run: >
@@ -865,6 +865,8 @@ jobs:
           src/__tests__/printsense-landing.test.ts
           src/lib/__tests__/components.test.ts
           src/lib/__tests__/hub-handoff.test.ts
+          src/capabilities/marketing-claims/capabilities.test.ts
+          src/views/__tests__/honest-claims.test.ts
 
   architecture-check:
     name: Architecture Check
