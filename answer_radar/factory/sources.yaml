@@ -77,8 +77,8 @@ sources:
     store_derived_case: true
     redistribution_allowed: false
     ground_truth_role: authoritative
-    reviewed_at: null
-    notes: Store document sha256, revision, page and a short evidence quote only.
+    reviewed_at: "2026-10-27"
+    notes: Owner approved 2026-10-27 for locally held copies only; page text stays private (no redistribution). Store doc sha256, page and a short quote.
   - source_id: osha_fatalities
     name: OSHA fatality and inspection data
     source_type: government
@@ -86,13 +86,13 @@ sources:
     base_url: https://www.osha.gov/fatalities
     license_or_terms: unreviewed (U.S. federal government work)
     attribution_required: true
-    automated_collection_allowed: false
+    automated_collection_allowed: true
     store_full_text: false
     store_derived_case: true
     redistribution_allowed: false
     ground_truth_role: supporting
-    reviewed_at: null
-    notes: Derive safety scenarios; record the incident id.
+    reviewed_at: "2026-10-27"
+    notes: Owner approved 2026-10-27. Incidents become hazard/control pairs authored from the report; record the incident URL.
   - source_id: niosh_face
     name: NIOSH FACE reports
     source_type: government
@@ -100,13 +100,13 @@ sources:
     base_url: https://www.cdc.gov/niosh/face/about/
     license_or_terms: unreviewed (U.S. federal government work)
     attribution_required: true
-    automated_collection_allowed: false
+    automated_collection_allowed: true
     store_full_text: false
     store_derived_case: true
     redistribution_allowed: false
     ground_truth_role: supporting
-    reviewed_at: null
-    notes: null
+    reviewed_at: "2026-10-27"
+    notes: Owner approved 2026-10-27. Incidents become hazard/control pairs authored from the report; record the incident URL.
   - source_id: csb
     name: U.S. Chemical Safety Board investigations
     source_type: government
@@ -114,13 +114,13 @@ sources:
     base_url: https://www.csb.gov/investigation-details/
     license_or_terms: unreviewed (U.S. federal government work)
     attribution_required: true
-    automated_collection_allowed: false
+    automated_collection_allowed: true
     store_full_text: false
     store_derived_case: true
     redistribution_allowed: false
     ground_truth_role: supporting
-    reviewed_at: null
-    notes: null
+    reviewed_at: "2026-10-27"
+    notes: Owner approved 2026-10-27. Incidents become hazard/control pairs authored from the report; record the incident URL.
   - source_id: uci_ai4i
     name: UCI AI4I 2020 predictive maintenance dataset
     source_type: dataset
@@ -128,13 +128,13 @@ sources:
     base_url: https://archive.ics.uci.edu/dataset/601/ai4i+2020+predictive+maintenance+dataset
     license_or_terms: unreviewed (UCI page states the dataset license)
     attribution_required: true
-    automated_collection_allowed: false
+    automated_collection_allowed: true
     store_full_text: false
     store_derived_case: true
     redistribution_allowed: false
     ground_truth_role: authoritative
-    reviewed_at: null
-    notes: The dataset's own failure labels are the ground truth for state-reasoning cases.
+    reviewed_at: "2026-10-27"
+    notes: Owner approved 2026-10-27. CC BY 4.0 (UCI page); the dataset's own labels are the answer key.
   - source_id: uci_metropt3
     name: UCI MetroPT-3
     source_type: dataset
@@ -142,13 +142,13 @@ sources:
     base_url: https://archive.ics.uci.edu/dataset/791/metropt+3+dataset
     license_or_terms: unreviewed (UCI page states the dataset license)
     attribution_required: true
-    automated_collection_allowed: false
+    automated_collection_allowed: true
     store_full_text: false
     store_derived_case: true
     redistribution_allowed: false
     ground_truth_role: authoritative
-    reviewed_at: null
-    notes: null
+    reviewed_at: "2026-10-27"
+    notes: Owner approved 2026-10-27. CC BY 4.0 (UCI page); the dataset's own labels are the answer key.
   - source_id: field
     name: FactoryLM field failures (production, staging, Pixel acceptance, pilots, expert review)
     source_type: field

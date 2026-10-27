@@ -34,7 +34,7 @@ from answer_radar.factory.discovery import (
     MachineStateAdapter,
     StackExchangeAdapter,
 )
-from answer_radar.factory.evidence import ManualPage, resolve
+from answer_radar.factory.evidence import ManualPage, PageIndex, resolve
 from answer_radar.factory.holdout import (
     HoldoutLeak,
     _inside_git,
@@ -52,6 +52,7 @@ ADAPTERS = {
     "stackexchange": StackExchangeAdapter,
     "control_com": ForumAdapter,
     "mrplc": ForumAdapter,
+    "plctalk": ForumAdapter,
     "osha_fatalities": IncidentAdapter,
     "niosh_face": IncidentAdapter,
     "csb": IncidentAdapter,
@@ -83,7 +84,7 @@ def cycle(
     cases += [
         v
         for c in list(cases)
-        if c.provenance.source_id in ("stackexchange", "control_com", "mrplc")
+        if c.provenance.source_id in ("stackexchange", "control_com", "mrplc", "plctalk")
         for v in make_variants(c)
     ]
     cases = assign_live(cases, fraction=live_fraction, seed=seed, exposed_keys=frozenset(ledger))
@@ -102,7 +103,8 @@ def cycle(
         raise SystemExit("invalid case set:\n" + "\n".join(errors))
     # Only authoritative sources may become gold, so only they are offered to experts.
     pages = [p for p in pages if p.source_id in reg and reg.may_back_gold(p.source_id)]
-    candidates = {c.case_id: resolve(c, pages) for c in cases}
+    index = PageIndex(pages)
+    candidates = {c.case_id: resolve(c, pages, index=index) for c in cases}
     queue = route(cases, seed=seed)
     if expert_export is not None:
         answers = load_expert_export(expert_export)  # validates manifest + review-data first
@@ -200,14 +202,31 @@ def load_expert_export(d: Path) -> dict[str, dict]:
     return out
 
 
-def capture(source: str, site: str, tags: list[str], pages: int, private: Path) -> int:
-    """Fetch an approved source into PRIVATE (outside git): captured text is never committed."""
-    if _inside_git(private.resolve()):
+def _private(path: Path) -> Path:
+    if _inside_git(path.resolve()):
         raise HoldoutLeak(
-            f"{private} is inside a git work tree; captured source text would be publishable"
+            f"{path} is inside a git work tree; captured source text would be publishable"
         )
+    return path
+
+
+def capture(
+    source: str,
+    site: str,
+    tags: list[str],
+    pages: int,
+    private: Path,
+    per_label: int = 10,
+    seed: str = "s",
+) -> int:
+    """Fetch an approved source into PRIVATE (outside git): captured text is never committed."""
+    _private(private)
     reg = SourceRegistry.load()
-    records = ADAPTERS[source](source, reg).fetch(site=site, tags=tags, pages=pages)
+    adapter = ADAPTERS[source](source, reg)
+    if source == "uci_ai4i":
+        records, site = adapter.fetch_ai4i(per_label=per_label, seed=seed), "ai4i"
+    else:
+        records = adapter.fetch(site=site, tags=tags, pages=pages)
     private.mkdir(parents=True, exist_ok=True)
     path = private / f"{source}-{site}.json"
     existing = (
@@ -235,14 +254,28 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--live-fraction", type=float, default=0.3)
     c.add_argument("--expert-export", type=Path, default=None)
     cap = sub.add_parser("capture")
-    cap.add_argument("--source", choices=["stackexchange"], required=True)
-    cap.add_argument("--site", required=True)
-    cap.add_argument("--tag", action="append", required=True)
+    cap.add_argument("--source", choices=["stackexchange", "uci_ai4i"], required=True)
+    cap.add_argument("--site", default="")
+    cap.add_argument("--tag", action="append", default=[])
     cap.add_argument("--pages", type=int, default=1)
+    cap.add_argument("--per-label", type=int, default=10)
+    cap.add_argument("--seed", default="s")
     cap.add_argument("--private", type=Path, required=True)
+    pg = sub.add_parser("pages")
+    pg.add_argument("--manuals", type=Path, required=True)
+    pg.add_argument("--out", type=Path, required=True)
     a = ap.parse_args(argv)
     if a.cmd == "capture":
-        return capture(a.source, a.site, a.tag, a.pages, a.private)
+        return capture(a.source, a.site, a.tag, a.pages, a.private, a.per_label, a.seed)
+    if a.cmd == "pages":
+        from answer_radar.factory.pages import build_pages
+
+        _private(a.out.parent)
+        corpus = build_pages(a.manuals)
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        a.out.write_text(json.dumps(corpus) + "\n", encoding="utf-8")
+        print(json.dumps({"pages": len(corpus), "manuals": len({p["doc_sha256"] for p in corpus})}))
+        return 0
     pages = [ManualPage(**p) for p in json.loads(a.pages.read_text())]
     rep = cycle(
         json.loads(a.discovery.read_text()),

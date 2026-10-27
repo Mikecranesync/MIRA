@@ -65,7 +65,14 @@ def test_only_the_owner_approved_source_may_be_collected():
     approved = [
         e.source_id for e in REG._by_id.values() if e.reviewed and e.automated_collection_allowed
     ]
-    assert approved == ["stackexchange"]
+    assert sorted(approved) == [
+        "csb",
+        "niosh_face",
+        "osha_fatalities",
+        "stackexchange",
+        "uci_ai4i",
+        "uci_metropt3",
+    ]
 
 
 def test_registry_ships_unreviewed_and_refuses_collection():
@@ -73,9 +80,9 @@ def test_registry_ships_unreviewed_and_refuses_collection():
     for sid in (
         "control_com",
         "mrplc",
-        "osha_fatalities",
-        "uci_ai4i",
-        "oem_manuals",
+        "plctalk",
+        "field",
+        "oem_manuals",  # reviewed for local copies only: never collected
     ):
         with pytest.raises(SourcePolicyError):
             REG.require_collection(sid)

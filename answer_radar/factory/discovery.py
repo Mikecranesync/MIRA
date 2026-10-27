@@ -17,6 +17,7 @@ Answers, accepted solutions and replies are never read at this stage, which is w
 
 from __future__ import annotations
 
+import hashlib
 import html
 import re
 from dataclasses import dataclass
@@ -296,6 +297,67 @@ class MachineStateAdapter(Adapter):
             "answerability": Answerability.ANSWERABLE,
             "expected_behavior": [f"dataset label: {rec['label']}"],
         }
+
+    AI4I_URL = (
+        "https://archive.ics.uci.edu/static/public/601/ai4i+2020+predictive+maintenance+dataset.zip"
+    )
+    AI4I_MODES = {
+        "TWF": "tool wear failure",
+        "HDF": "heat dissipation failure",
+        "PWF": "power failure",
+        "OSF": "overstrain failure",
+        "RNF": "random failure",
+    }
+
+    def fetch_ai4i(
+        self, *, per_label: int, seed: str, rows: list[dict] | None = None
+    ) -> list[dict]:
+        """Stratified, deterministic sample of UCI AI4I 2020 rows as state-interpretation records.
+
+        The answer key is the dataset's own failure label; the question shows only sensor
+        readings. `rows` is injectable (tests run offline); the default downloads the CSV.
+        """
+        self.registry.require_collection(self.source_id)
+        if rows is None:
+            import csv
+            import io
+            import zipfile
+
+            import httpx
+
+            blob = httpx.get(self.AI4I_URL, timeout=60, follow_redirects=True).content
+            z = zipfile.ZipFile(io.BytesIO(blob))
+            text = io.TextIOWrapper(z.open("ai4i2020.csv"), encoding="utf-8-sig")
+            rows = list(csv.DictReader(text))
+        captured = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        by_label: dict[str, list[dict]] = {}
+        for r in rows:
+            modes = [name for k, name in self.AI4I_MODES.items() if r.get(k) == "1"]
+            label = " + ".join(modes) if modes else "no failure"
+            by_label.setdefault(label, []).append(r)
+        out = []
+        for label, group in sorted(by_label.items()):
+            group.sort(key=lambda r: hashlib.sha256(f"{seed}:{r['UDI']}".encode()).hexdigest())
+            for r in group[:per_label]:
+                out.append(
+                    {
+                        "id": f"ai4i-{r['UDI']}",
+                        "captured_at": captured,
+                        "url": self.AI4I_URL,
+                        "license": "CC BY 4.0",
+                        "machine": f"Milling machine (product quality {r['Type']})",
+                        "readings": {
+                            "air_temp_K": r["Air temperature [K]"],
+                            "process_temp_K": r["Process temperature [K]"],
+                            "speed_rpm": r["Rotational speed [rpm]"],
+                            "torque_Nm": r["Torque [Nm]"],
+                            "tool_wear_min": r["Tool wear [min]"],
+                        },
+                        "ask": "Is a failure likely, and if so which failure mode?",
+                        "label": label,
+                    }
+                )
+        return out
 
 
 class FieldFailureAdapter(Adapter):

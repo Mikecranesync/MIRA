@@ -96,7 +96,7 @@ def test_field_failure_lands_in_red_as_regression():
     "adapter", [StackExchangeAdapter, ForumAdapter, IncidentAdapter, MachineStateAdapter]
 )
 def test_live_collection_refused_for_every_shipped_source(adapter):
-    for sid in ("control_com", "osha_fatalities", "uci_ai4i"):
+    for sid in ("control_com", "mrplc", "oem_manuals", "field"):
         with pytest.raises(SourcePolicyError):
             adapter(sid, REG).collect()
 
@@ -177,3 +177,33 @@ def test_fetch_refuses_an_unapproved_source():
             site="electronics", tags=["plc"], pages=1, get=get
         )
     assert calls == []  # refused before any request
+
+
+def test_ai4i_sample_is_stratified_deterministic_and_label_free():
+    rows = [
+        {
+            "UDI": str(i),
+            "Type": "M",
+            "Air temperature [K]": "300",
+            "Process temperature [K]": "310",
+            "Rotational speed [rpm]": "1500",
+            "Torque [Nm]": "40",
+            "Tool wear [min]": str(i),
+            "TWF": "1" if i % 10 == 0 else "0",
+            "HDF": "0",
+            "PWF": "0",
+            "OSF": "1" if i % 7 == 0 else "0",
+            "RNF": "0",
+        }
+        for i in range(1, 200)
+    ]
+    a = MachineStateAdapter("uci_ai4i", REG)
+    recs = a.fetch_ai4i(per_label=3, seed="s", rows=rows)
+    assert recs == a.fetch_ai4i(per_label=3, seed="s", rows=rows)
+    labels = {r["label"] for r in recs}
+    assert {"no failure", "tool wear failure", "overstrain failure"} <= labels
+    cases = a.replay(recs)
+    assert all("failure" not in c.question.normalized_question.split("readings:")[0] for c in cases)
+    assert all(
+        r["label"] not in a.question_text(r) for r in recs
+    )  # the answer key never enters the question

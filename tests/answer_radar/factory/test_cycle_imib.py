@@ -483,3 +483,18 @@ def test_unidentified_questions_are_held_out_individually():
     assert all(not c.question.manufacturer and not c.question.model for c in cases)
     live = sum(c.pool is Pool.LIVE for c in assign_live(cases, fraction=0.3, seed="s"))
     assert 15 < live < 45  # not all-or-nothing
+
+
+def test_pages_corpus_identifies_manuals(tmp_path, monkeypatch):
+    from answer_radar.factory import pages as P
+
+    (tmp_path / "m").mkdir()
+    (tmp_path / "m" / "a.pdf").write_bytes(b"%PDF-fake")
+    monkeypatch.setattr(
+        P,
+        "pdf_pages",
+        lambda pdf: ["Allen-Bradley PowerFlex 525 User Manual", "F5 overvoltage", ""],
+    )
+    corpus = P.build_pages(tmp_path / "m")
+    assert [c["page"] for c in corpus] == [1, 2]
+    assert {(c["manufacturer"], c["model"]) for c in corpus} == {("Allen-Bradley", "PowerFlex 525")}
