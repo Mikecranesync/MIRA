@@ -139,6 +139,7 @@ def cycle(
     live_fraction: float,
     expert_export: Path | None = None,
     labels: Path | None = None,
+    review_variants: bool = False,
 ) -> dict:
     reg, cases, candidates, ledger, ledger_path = build(
         discovery, pages, private, seed, live_fraction
@@ -162,7 +163,7 @@ def cycle(
             replace(c, labels=[*c.labels, *pre[c.case_id]["labels"]]) if fresh(c) else c
             for c in cases
         ]
-    queue = route(cases, seed=seed)
+    queue = route(cases, seed=seed, review_variants=review_variants)
     if expert_export is not None:
         answers = load_expert_export(expert_export)  # validates manifest + review-data first
         shown = json.loads((expert_export / "review-data.json").read_text(encoding="utf-8"))
@@ -398,6 +399,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--live-fraction", type=float, default=0.3)
     c.add_argument("--expert-export", type=Path, default=None)
     c.add_argument("--labels", type=Path, default=None)
+    c.add_argument("--review-variants", action="store_true")
     pl = sub.add_parser("prelabel")
     pl.add_argument("--discovery", type=Path, required=True)
     pl.add_argument("--pages", type=Path, required=True)
@@ -440,6 +442,7 @@ def main(argv: list[str] | None = None) -> int:
         a.live_fraction,
         a.expert_export,
         a.labels,
+        a.review_variants,
     )
     print(json.dumps(rep["counts"], sort_keys=True))
     return 0

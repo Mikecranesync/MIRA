@@ -21,7 +21,7 @@ from answer_radar.factory.case import (
     Pool,
     freeze_case,
 )
-from answer_radar.schema import SafetyClass
+from answer_radar.schema import IndependenceClass, SafetyClass
 
 _SHORT = {
     "drive": "vfd",
@@ -163,12 +163,18 @@ def sync_variant_evidence(cases: list[BenchmarkCase]) -> list[BenchmarkCase]:
     out = []
     for c in cases:
         parent = by_id.get(c.parent_case_id or "")
-        if c.is_variant and parent is not None and VARIANT_KINDS.get(c.variant_kind or "", False):
+        own_review = any(lb.independence is IndependenceClass.HUMAN_REVIEW for lb in c.labels)
+        if (
+            c.is_variant
+            and parent is not None
+            and VARIANT_KINDS.get(c.variant_kind or "", False)
+            and not own_review  # a variant's own adjudication (even disputed) is never overwritten
+            and c.gold_status is GoldStatus.PROVISIONAL
+        ):
             c = replace(
                 c,
                 gold_evidence=list(parent.gold_evidence),
                 answerability=parent.answerability,
-                gold_status=c.gold_status if c.labels else GoldStatus.PROVISIONAL,
             )
         out.append(c)
     return out

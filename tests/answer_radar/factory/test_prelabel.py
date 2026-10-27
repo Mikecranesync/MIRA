@@ -372,3 +372,46 @@ def test_prelabel_command_reuses_saved_labels_and_keeps_cost_history(tmp_path, m
 
     with _pytest.raises(ValueError):
         main([*args[:-1], "nan"])
+
+
+def test_preserving_variants_keep_a_review_path():
+    c = _forum()
+    vs = [
+        v
+        for v in make_variants(c)
+        if v.variant_kind in ("typo", "shorthand", "voice_transcription")
+    ]
+    assert vs
+    q = route([c, *vs], seed="s", audit_rate=1.0)  # every case audited
+    assert all("random audit" in q[v.case_id] for v in vs)
+    q_all = route([c, *vs], seed="s", audit_rate=0.0, review_variants=True)
+    assert all(q_all[v.case_id] == ["variant review requested"] for v in vs)
+    assert not set(route([c, *vs], seed="s", audit_rate=0.0)) & {v.case_id for v in vs}
+
+
+def test_sync_never_overwrites_a_variants_own_adjudication():
+    from answer_radar.factory.case import GoldStatus, Label
+    from answer_radar.factory.variants import sync_variant_evidence
+
+    c = _forum()
+    (v,) = make_variants(c, ["typo"])
+    expert = Label("expert", IndependenceClass.HUMAN_REVIEW, Answerability.UNANSWERABLE)
+    v_own = replace(
+        v,
+        gold_status=GoldStatus.EXPERT_REVIEWED,
+        answerability=Answerability.UNANSWERABLE,
+        labels=[expert],
+    )
+    parent = replace(
+        c,
+        gold_status=GoldStatus.EXPERT_REVIEWED,
+        gold_evidence=EV,
+        answerability=Answerability.ANSWERABLE,
+        labels=[Label("expert", IndependenceClass.HUMAN_REVIEW, Answerability.ANSWERABLE, (41,))],
+    )
+    out = {x.case_id: x for x in sync_variant_evidence([parent, v_own])}[v.case_id]
+    assert (out.answerability, out.gold_evidence, out.gold_status) == (
+        Answerability.UNANSWERABLE,
+        [],
+        GoldStatus.EXPERT_REVIEWED,
+    )
