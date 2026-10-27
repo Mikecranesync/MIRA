@@ -3551,7 +3551,6 @@ def test_production_mobile_release_jobs_refuse_non_main_refs(workflow_name, job_
     "workflow_name",
     [
         "ci.yml",
-        "deploy-nginx-staging-passthrough.yml",
         "deploy-nginx-stg.yml",
         "deploy-staging.yml",
         "deploy-vps.yml",
@@ -3559,8 +3558,6 @@ def test_production_mobile_release_jobs_refuse_non_main_refs(workflow_name, job_
         "mobile-release-distribute.yml",
         "nginx-sites-enabled-hygiene.yml",
         "ota-release.yml",
-        "printsense-production-activation.yml",
-        "printsense-staging-e2e.yml",
         "vps-cleanup.yml",
         "vps-install-amux.yml",
     ],
@@ -3641,7 +3638,6 @@ def _native_job_secret_refs(job: dict) -> set[str]:
 @pytest.mark.parametrize(
     ("workflow_name", "job_name"),
     [
-        ("deploy-nginx-staging-passthrough.yml", "deploy-nginx"),
         ("deploy-nginx-stg.yml", "deploy-nginx"),
         ("nginx-sites-enabled-hygiene.yml", "hygiene"),
         ("vps-cleanup.yml", "cleanup"),
@@ -4107,15 +4103,12 @@ def test_license_ci_installs_and_allowlists_the_isolated_migration_driver():
 @pytest.mark.parametrize(
     "workflow_name",
     [
-        "deploy-nginx-staging-passthrough.yml",
         "deploy-nginx-stg.yml",
         "deploy-staging.yml",
         "deploy-vps.yml",
         "mobile-release-distribute.yml",
         "nginx-sites-enabled-hygiene.yml",
         "ota-release.yml",
-        "printsense-production-activation.yml",
-        "printsense-staging-e2e.yml",
         "vps-cleanup.yml",
     ],
 )
