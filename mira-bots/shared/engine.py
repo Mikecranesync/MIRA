@@ -2369,25 +2369,37 @@ class Supervisor:
                 quota_reason,
             )
             return QUOTA_BLOCK_MESSAGE
-        # Bind the trusted per-call tenant for every conversation-state
-        # read/write on this turn (live snapshot, process_full, QC). Empty
-        # means fail-closed at the first state access — no env fallback.
-        _state_bind = bind_conversation_tenant(state_tenant)
-        _state_bind.__enter__()
-        try:
-            return await self._process_after_quota(
-                chat_id,
-                message,
-                photo_b64,
-                platform=platform,
-                tenant_id=tenant_id,
-                uns_source=uns_source,
-                tag_evidence=tag_evidence,
-                live_tags=live_tags,
-                retrieval_query=retrieval_query,
-            )
-        finally:
-            _state_bind.__exit__(None, None, None)
+        # Bind only a non-empty per-call tenant. An empty argument must not
+        # overwrite a request-scoped bind (tests) and must not fall back to
+        # env; process_full fail-closes if nothing trusted is bound.
+        if state_tenant:
+            _state_bind = bind_conversation_tenant(state_tenant)
+            _state_bind.__enter__()
+            try:
+                return await self._process_after_quota(
+                    chat_id,
+                    message,
+                    photo_b64,
+                    platform=platform,
+                    tenant_id=tenant_id,
+                    uns_source=uns_source,
+                    tag_evidence=tag_evidence,
+                    live_tags=live_tags,
+                    retrieval_query=retrieval_query,
+                )
+            finally:
+                _state_bind.__exit__(None, None, None)
+        return await self._process_after_quota(
+            chat_id,
+            message,
+            photo_b64,
+            platform=platform,
+            tenant_id=tenant_id,
+            uns_source=uns_source,
+            tag_evidence=tag_evidence,
+            live_tags=live_tags,
+            retrieval_query=retrieval_query,
+        )
 
     async def _process_after_quota(
         self,
@@ -3058,11 +3070,14 @@ class Supervisor:
         state_bind = bind_conversation_tenant(state_tenant)
         state_bind.__enter__()
         try:
+            # Pass the caller's tenant_id through for RAG/UNS resolution
+            # (resolve_tenant / constructor remain the RAG fallback). State
+            # I/O uses the bind above, not those fallbacks.
             result = await self._process_full_impl(
                 chat_id,
                 message,
                 photo_b64,
-                tenant_id=state_tenant,
+                tenant_id=tenant_id,
                 platform=platform,
                 uns_source=uns_source,
                 retrieval_query=retrieval_query,
