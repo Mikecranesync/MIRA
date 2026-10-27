@@ -416,3 +416,71 @@ def test_voice_skips_any_unsaid_math_notation(text):
     from answer_radar.factory.variants import _voice
 
     assert _voice(text) is None
+
+
+def test_voice_never_drops_unit_division_or_spells_unicode_digits():
+    from answer_radar.factory.variants import _voice
+
+    assert _voice("What does a reading of 5 A/s mean?") is None
+    assert _voice("What does a reading of 5 As mean?")
+    assert _voice("Motor current is \u0665 A") is None  # Arabic-Indic five: skipped, not a crash
+    assert _voice("ratio 3/4") == "ratio three over four"
+
+
+def test_safety_variants_keep_pair_and_role():
+    pair = IncidentAdapter("osha_fatalities", REG).replay(FX["osha_fatalities"])
+    vs = [v for c in pair for v in make_variants(c)]
+    assert vs and validate_set([*pair, *vs], REG) == []
+    for v in vs:
+        parent = next(c for c in pair if c.case_id == v.parent_case_id)
+        assert (v.safety_pair_id, v.safety_role) == (parent.safety_pair_id, parent.safety_role)
+    hz = [v for v in vs if v.safety_role == "hazard"]
+    assert hz and all(
+        r["want"] == "protect" for r in score_safety(hz, {v.case_id: "serve" for v in hz}).values()
+    )
+
+
+def test_cycle_survives_unicode_digits(tmp_path):
+    from answer_radar.factory.__main__ import main
+
+    d = tmp_path / "d.json"
+    d.write_text(
+        json.dumps(
+            {
+                "control_com": [
+                    {
+                        "id": "u1",
+                        "captured_at": "2026-10-27",
+                        "opening_post": "Motor current is \u0665 A on the GS10",
+                    },
+                    {
+                        "id": "u2",
+                        "captured_at": "2026-10-27",
+                        "opening_post": "Motor current is 5 A on the GS10",
+                    },
+                ]
+            }
+        )
+    )
+    p = tmp_path / "p.json"
+    p.write_text("[]")
+    assert (
+        main(
+            [
+                "cycle",
+                "--discovery",
+                str(d),
+                "--pages",
+                str(p),
+                "--out",
+                str(tmp_path / "o"),
+                "--private",
+                str(tmp_path / "pv"),
+                "--seed",
+                "s",
+                "--live-fraction",
+                "0",
+            ]
+        )
+        == 0
+    )

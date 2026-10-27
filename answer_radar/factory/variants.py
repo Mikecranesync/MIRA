@@ -71,12 +71,15 @@ def _voice(t: str) -> str | None:
     A hyphen inside a model name ("GS-10") is not a sign.
     """
     t = t.lower()
-    if not _VOICE_SAFE.fullmatch(t):
+    # ASCII only: Unicode digits ("٥") and letters would slip past the digit speller.
+    if not t.isascii() or not _VOICE_SAFE.fullmatch(t):
         return None
     t = t.replace("%", " percent ")
     t = re.sub(r"(?<![\w.])-(?=\.?\d)", " minus ", t)
     t = re.sub(r"\.(?=\d)", " point ", t)
     t = re.sub(r"(?<=\d)/(?=\d)", " over ", t)
+    if "/" in t:  # unit division ("5 A/s") is not "5 As"; it is never dropped silently
+        return None
     unsafe = r"\d[^\w\s]+(?=\w)|(?<![a-z])[^\w\s]+\d|\d[a-z]+[^\w\s]+\d"
     if re.search(unsafe, t):
         return None
@@ -135,6 +138,8 @@ def make_variants(parent: BenchmarkCase, kinds: list[str] | None = None) -> list
                 labels=list(parent.labels) if inherit else [],
                 expected_behavior=list(parent.expected_behavior) if inherit else [],
                 forbidden_behavior=list(parent.forbidden_behavior) if inherit else [],
+                safety_pair_id=parent.safety_pair_id,
+                safety_role=parent.safety_role,
                 holdout=parent.holdout,
                 exposed_to_developers=parent.exposed_to_developers,
                 url=parent.provenance.url,
