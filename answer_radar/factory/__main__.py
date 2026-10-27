@@ -28,7 +28,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from answer_radar.factory.case import Answerability, Label, validate_set
+from answer_radar.factory.case import Answerability, Label, Pool, validate_set
 from answer_radar.factory.core import DEFAULT_ORIGINS, CoreRelabeled, promote_core
 from answer_radar.factory.discovery import (
     FieldFailureAdapter,
@@ -171,6 +171,12 @@ def cycle(
             replace(c, labels=[*c.labels, *pre[c.case_id]["labels"]]) if fresh(c) else c
             for c in cases
         ]
+    # Existing Core anchors are release-gating: re-pool them BEFORE routing so every cycle sends
+    # them to experts (labeling.route), even when two AI labelers agree on them.
+    core_path = private / "core-manifest.json"
+    prior_core = json.loads(core_path.read_text(encoding="utf-8")) if core_path.is_file() else None
+    core_ids = {m["case_id"] for m in (prior_core or {}).get("members", [])}
+    cases = [replace(c, pool=Pool.CORE) if c.case_id in core_ids else c for c in cases]
     queue = route(cases, seed=seed, review_variants=review_variants)
     if expert_export is not None:
         answers = load_expert_export(expert_export)  # validates manifest + review-data first
@@ -180,16 +186,13 @@ def cycle(
             extra = json.loads(live_shown.read_text(encoding="utf-8"))
             shown = {k: shown.get(k, []) + extra.get(k, []) for k in ("forum", "safety")}
         cases = import_expert(cases, answers, candidates, shown)
-        cases = sync_variant_evidence(cases)  # preserving variants probe the adjudicated pages
         # Partial exports are normal (experts work through the queue over time); unanswered cases
         # stay provisional. Say how partial, so a truncated export is never silent.
         shown_ids = {f"{k}-{r['id']}" for k in ("forum", "safety") for r in shown.get(k, [])}
         expert_status = {"shown": len(shown_ids), "answered": len(shown_ids & set(answers))}
         expert_status["complete"] = expert_status["shown"] == expert_status["answered"]
-    # Core (spec §3) is promoted from expert gold only, after import and after routing, and its
-    # membership persists beside the exposure ledger so it only ever grows across cycles.
-    core_path = private / "core-manifest.json"
-    prior_core = json.loads(core_path.read_text(encoding="utf-8")) if core_path.is_file() else None
+    # Core (spec §3) is promoted from expert gold only, after import, and its membership persists
+    # beside the exposure ledger so it only ever grows across cycles.
     review_sha = None
     if expert_export is not None:
         review_sha = json.loads(
@@ -205,6 +208,9 @@ def cycle(
         )
     except CoreRelabeled as e:
         raise SystemExit(f"Core pool: {e}") from e
+    # After import AND Core restoration: answer-preserving variants probe the adjudicated (or
+    # recorded Core) pages, so robustness coverage is the same with or without a fresh export.
+    cases = sync_variant_evidence(cases)
     # review-data.json carries question text for the expert. Text a source does not allow to be
     # committed may not land in a git work tree (the repository is public).
     if _inside_git(out.resolve()) and not all(

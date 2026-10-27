@@ -236,3 +236,15 @@ def test_cycle_promotes_expert_answered_case_and_keeps_it_out_of_live(tmp_path):
     # the member keeps its expert gold even though no export was given this cycle
     assert member[0]["gold_status"] == "expert_reviewed"
     assert {e["page"] for e in member[0]["gold_evidence"]} == set(target["pages"])
+    # F2: an existing Core anchor is routed to experts as release-gating on every cycle
+    assert "release-gating core case" in rep["expert_queue"][target["id"]]
+    # F1: answer-preserving variants probe the restored gold pages, so they stay scorable
+    keep = [
+        c
+        for c in cases
+        if c["parent_case_id"] == target["id"]
+        and c["variant_kind"] in ("typo", "shorthand", "voice_transcription")
+    ]
+    assert keep and all(
+        {e["page"] for e in v["gold_evidence"]} == set(target["pages"]) for v in keep
+    )
