@@ -150,9 +150,10 @@ function requireUuid(label: string, value: string | null): string {
 }
 
 function asBuffer(content: unknown): Buffer {
+  // BYTEA comes back as Buffer (pg). A string here is not a file — refuse rather
+  // than guess base64/hex and feed unpdf garbage.
   if (Buffer.isBuffer(content)) return content;
   if (content instanceof Uint8Array) return Buffer.from(content);
-  if (typeof content === "string") return Buffer.from(content, "base64");
   throw new Error("canonical file has no readable bytes");
 }
 
@@ -246,18 +247,34 @@ async function applyRechunk(
   let deleted = 0;
   try {
     await client.query("BEGIN");
+    // Tenant + this upload only. source_type pins node attachments; source_url
+    // is included so a leftover unique-key row with a different/NULL doc_id
+    // cannot ON CONFLICT the re-insert into a silent no-op.
     const del = await client.query(
-      `DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid`,
-      [tenantId, docId],
+      `DELETE FROM knowledge_entries
+        WHERE tenant_id = $1::uuid
+          AND source_type = 'node_attachment'
+          AND (doc_id = $2::uuid OR source_url = $3)`,
+      [tenantId, docId, plan.sourceUrl],
     );
     deleted = del.rowCount ?? 0;
+    if (plan.oldChunkCount > 0 && deleted === 0) {
+      throw new Error(
+        `refusing apply: counted ${plan.oldChunkCount} chunks but DELETE removed 0 (tenant/doc mismatch?)`,
+      );
+    }
     // Same A2 insert path; same client so delete+insert are one transaction.
-    // deferEmbed: embedPendingNodeChunks opens its own short tx and must not
-    // run before COMMIT (it would see the uncommitted rows, or miss them).
+    // A provided client implies deferEmbed inside the writer; we still pass it
+    // so embedPendingNodeChunks runs only after COMMIT.
     const written = await deps.writeChunkRows(plan.pages.slice(), plan.opts, plan.repairs, {
       client,
       deferEmbed: true,
     });
+    if (written !== plan.newChunkCount) {
+      throw new Error(
+        `refusing apply: writer returned ${written} chunks, A2 plan had ${plan.newChunkCount}`,
+      );
+    }
     await client.query("COMMIT");
     const embedded = await deps.embedPending(tenantId, plan.sourceUrl);
     return { deleted, written, embedded };

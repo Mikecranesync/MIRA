@@ -3,6 +3,7 @@ import { join } from "path";
 import { describe, it, expect, vi } from "vitest";
 import {
   chunkKeepsF005Decel,
+  loadDocSource,
   planRechunk,
   resolveRechunkMode,
   runRechunk,
@@ -33,6 +34,8 @@ function logsOf() {
 function mockDeps(opts: {
   pages?: string[];
   oldChunkCount?: number;
+  deleteRowCount?: number;
+  content?: unknown;
   writeImpl?: RechunkDeps["writeChunkRows"];
   embedImpl?: RechunkDeps["embedPending"];
   extraQueries?: Array<{ match: RegExp; rows: unknown[]; rowCount?: number }>;
@@ -40,12 +43,16 @@ function mockDeps(opts: {
   deps: RechunkDeps;
   sql: string[];
   txSql: string[];
+  txParams: unknown[][];
+  events: string[];
   writeCalls: Array<{ deferEmbed?: boolean; hasClient: boolean }>;
   embedCalls: Array<{ tenantId: string; sourceUrl: string }>;
   logs: ReturnType<typeof logsOf>;
 } {
   const sql: string[] = [];
   const txSql: string[] = [];
+  const txParams: unknown[][] = [];
+  const events: string[] = [];
   const writeCalls: Array<{ deferEmbed?: boolean; hasClient: boolean }> = [];
   const embedCalls: Array<{ tenantId: string; sourceUrl: string }> = [];
   const logs = logsOf();
@@ -65,7 +72,7 @@ function mockDeps(opts: {
             node_id: NODE,
             uns_path: "enterprise.site.line.vfd",
             entity_uns_path: "enterprise.site.line.vfd",
-            content: Buffer.from("%PDF-1.4 fixture"),
+            content: opts.content !== undefined ? opts.content : Buffer.from("%PDF-1.4 fixture"),
           },
         ],
       };
@@ -79,10 +86,16 @@ function mockDeps(opts: {
   };
 
   const client: RechunkTxClient = {
-    query: async (text) => {
+    query: async (text, params) => {
       txSql.push(text);
-      if (/^DELETE FROM knowledge_entries/.test(text)) {
-        return { rows: [], rowCount: opts.oldChunkCount ?? 12 };
+      txParams.push(params ?? []);
+      if (text === "BEGIN") events.push("BEGIN");
+      else if (/DELETE FROM knowledge_entries/.test(text)) events.push("DELETE");
+      else if (/INSERT INTO knowledge_entries/.test(text)) events.push("INSERT");
+      else if (text === "COMMIT") events.push("COMMIT");
+      else if (text === "ROLLBACK") events.push("ROLLBACK");
+      if (/DELETE FROM knowledge_entries/.test(text)) {
+        return { rows: [], rowCount: opts.deleteRowCount ?? opts.oldChunkCount ?? 12 };
       }
       return { rows: [], rowCount: 0 };
     },
@@ -106,6 +119,7 @@ function mockDeps(opts: {
     embedPending:
       opts.embedImpl ??
       (async (tenantId, sourceUrl) => {
+        events.push("EMBED");
         embedCalls.push({ tenantId, sourceUrl });
         return { embedded: 1, state: "complete", permanent: false };
       }),
@@ -113,7 +127,7 @@ function mockDeps(opts: {
     error: logs.error,
   };
 
-  return { deps, sql, txSql, writeCalls, embedCalls, logs };
+  return { deps, sql, txSql, txParams, events, writeCalls, embedCalls, logs };
 }
 
 describe("resolveRechunkMode — write only behind env + --apply + --doc-id", () => {
@@ -223,7 +237,7 @@ describe("runRechunk dry-run / apply", () => {
   });
 
   it("apply runs delete + insert on ONE client, then embeds after COMMIT", async () => {
-    const { deps, txSql, writeCalls, embedCalls } = mockDeps({
+    const { deps, txSql, txParams, events, writeCalls, embedCalls } = mockDeps({
       pages: [F005_PAGE],
       oldChunkCount: 14,
     });
@@ -231,18 +245,21 @@ describe("runRechunk dry-run / apply", () => {
     expect(out.written).toBe(true);
     expect(out.mode).toBe("APPLY");
     expect(out.deleted).toBe(14);
-    expect(txSql[0]).toBe("BEGIN");
-    expect(txSql[1]).toMatch(/^DELETE FROM knowledge_entries WHERE tenant_id = \$1::uuid AND doc_id = \$2::uuid/);
-    expect(txSql.some((s) => /INSERT INTO knowledge_entries/.test(s))).toBe(true);
-    expect(txSql.filter((s) => s === "COMMIT")).toHaveLength(1);
+    expect(events).toEqual(["BEGIN", "DELETE", "INSERT", "COMMIT", "EMBED"]);
+    const del = txSql.find((s) => /DELETE FROM knowledge_entries/.test(s))!;
+    expect(del).toMatch(/tenant_id = \$1::uuid/);
+    expect(del).toMatch(/source_type = 'node_attachment'/);
+    expect(del).toMatch(/doc_id = \$2::uuid OR source_url = \$3/);
+    expect(txParams[txSql.findIndex((s) => /DELETE FROM knowledge_entries/.test(s))]).toEqual([
+      TENANT,
+      DOC,
+      `node-doc/${DOC}/pf525.pdf`,
+    ]);
     expect(txSql.some((s) => /hub_uploads/.test(s))).toBe(false);
     expect(txSql.some((s) => /workspace_file_links/.test(s))).toBe(false);
     expect(txSql.some((s) => /namespace_direct_uploads/.test(s))).toBe(false);
     expect(writeCalls).toEqual([{ deferEmbed: true, hasClient: true }]);
     expect(embedCalls).toEqual([{ tenantId: TENANT, sourceUrl: `node-doc/${DOC}/pf525.pdf` }]);
-    const commitAt = txSql.indexOf("COMMIT");
-    // embedPending is invoked by runRechunk after applyRechunk's COMMIT, not via SQL.
-    expect(commitAt).toBeGreaterThan(txSql.findIndex((s) => /DELETE FROM knowledge_entries/.test(s)));
   });
 
   it("apply rolls back when the writer throws and never embeds", async () => {
@@ -281,6 +298,25 @@ describe("runRechunk dry-run / apply", () => {
     expect(load).toMatch(/u\.tenant_id = \$1::uuid AND u\.id = \$2::uuid/);
     expect(load).not.toMatch(/DELETE /);
   });
+
+  it("refuses a string/null canonical payload instead of guessing an encoding", async () => {
+    const { deps } = mockDeps({ content: "JVBERi0x" });
+    await expect(loadDocSource(deps, TENANT, DOC)).rejects.toThrow(/no readable bytes/);
+    const empty = mockDeps({ content: null });
+    await expect(loadDocSource(empty.deps, TENANT, DOC)).rejects.toThrow(/no readable bytes/);
+  });
+
+  it("refuses apply when DELETE removes nothing but chunks were counted", async () => {
+    const { deps, events } = mockDeps({
+      pages: [F005_PAGE],
+      oldChunkCount: 14,
+      deleteRowCount: 0,
+    });
+    await expect(
+      runRechunk([...argv, "--apply"], { NOTEBOOK_RECHUNK_APPLY: "1" }, deps),
+    ).rejects.toThrow(/DELETE removed 0/);
+    expect(events).toEqual(["BEGIN", "DELETE", "ROLLBACK"]);
+  });
 });
 
 describe("one-off script invariants (source)", () => {
@@ -303,7 +339,9 @@ describe("one-off script invariants (source)", () => {
 
   it("requires the dual write lock and scopes DELETE to tenant_id + doc_id", () => {
     expect(src).toMatch(/NOTEBOOK_RECHUNK_APPLY/);
-    expect(lib).toMatch(/DELETE FROM knowledge_entries WHERE tenant_id = \$1::uuid AND doc_id = \$2::uuid/);
+    expect(lib).toMatch(/DELETE FROM knowledge_entries/);
+    expect(lib).toMatch(/source_type = 'node_attachment'/);
+    expect(lib).toMatch(/doc_id = \$2::uuid OR source_url = \$3/);
     expect(lib).toMatch(/deferEmbed: true/);
   });
 });
