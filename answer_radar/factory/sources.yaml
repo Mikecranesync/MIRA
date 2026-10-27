@@ -1,0 +1,162 @@
+# Benchmark Factory source registry (spec §5). No adapter may collect from a source that is
+# not listed here. Collection additionally requires automated_collection_allowed: true AND a
+# human-set reviewed_at (YYYY-MM-DD). Every entry ships unreviewed: no crawler is authorized.
+# Fixture replay (re-reading already-captured test data) is not collection.
+#
+# license_or_terms records what the spec or the source states; "unreviewed" means nobody has
+# read the terms yet, and every capability then fails closed.
+sources:
+  - source_id: stackexchange
+    name: Stack Exchange network (Electrical Engineering, Engineering)
+    source_type: q_and_a
+    family: public_qa
+    base_url: https://electronics.stackexchange.com/
+    license_or_terms: CC BY-SA; the version depends on the contribution date
+    attribution_required: true
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: discovery
+    reviewed_at: null
+    notes: Keep author, URL and license version on every case.
+  - source_id: control_com
+    name: Control.com automation forums
+    source_type: forum
+    family: industrial_forum
+    base_url: https://control.com/forums/
+    license_or_terms: unreviewed
+    attribution_required: true
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: discovery
+    reviewed_at: null
+    notes: Replies are context only, never gold.
+  - source_id: mrplc
+    name: MrPLC forums
+    source_type: forum
+    family: industrial_forum
+    base_url: https://mrplc.com/forums/
+    license_or_terms: unreviewed
+    attribution_required: true
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: discovery
+    reviewed_at: null
+    notes: Source of IMIB v0.1 forum-new (PR #4793).
+  - source_id: plctalk
+    name: PLCtalk forums
+    source_type: forum
+    family: industrial_forum
+    base_url: https://www.plctalk.net/
+    license_or_terms: unreviewed
+    attribution_required: true
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: discovery
+    reviewed_at: null
+    notes: 3 of IMIB v0.1's 34 forum-new questions.
+  - source_id: oem_manuals
+    name: OEM manuals, fault and alarm tables
+    source_type: oem
+    family: oem_documentation
+    base_url: null
+    license_or_terms: per-manufacturer; public availability is not a redistribution grant
+    attribution_required: true
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: authoritative
+    reviewed_at: null
+    notes: Store document sha256, revision, page and a short evidence quote only.
+  - source_id: osha_fatalities
+    name: OSHA fatality and inspection data
+    source_type: government
+    family: safety_incident
+    base_url: https://www.osha.gov/fatalities
+    license_or_terms: unreviewed (U.S. federal government work)
+    attribution_required: true
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: supporting
+    reviewed_at: null
+    notes: Derive safety scenarios; record the incident id.
+  - source_id: niosh_face
+    name: NIOSH FACE reports
+    source_type: government
+    family: safety_incident
+    base_url: https://www.cdc.gov/niosh/face/about/
+    license_or_terms: unreviewed (U.S. federal government work)
+    attribution_required: true
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: supporting
+    reviewed_at: null
+    notes: null
+  - source_id: csb
+    name: U.S. Chemical Safety Board investigations
+    source_type: government
+    family: safety_incident
+    base_url: https://www.csb.gov/investigation-details/
+    license_or_terms: unreviewed (U.S. federal government work)
+    attribution_required: true
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: supporting
+    reviewed_at: null
+    notes: null
+  - source_id: uci_ai4i
+    name: UCI AI4I 2020 predictive maintenance dataset
+    source_type: dataset
+    family: machine_state
+    base_url: https://archive.ics.uci.edu/dataset/601/ai4i+2020+predictive+maintenance+dataset
+    license_or_terms: unreviewed (UCI page states the dataset license)
+    attribution_required: true
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: authoritative
+    reviewed_at: null
+    notes: The dataset's own failure labels are the ground truth for state-reasoning cases.
+  - source_id: uci_metropt3
+    name: UCI MetroPT-3
+    source_type: dataset
+    family: machine_state
+    base_url: https://archive.ics.uci.edu/dataset/791/metropt+3+dataset
+    license_or_terms: unreviewed (UCI page states the dataset license)
+    attribution_required: true
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: authoritative
+    reviewed_at: null
+    notes: null
+  - source_id: field
+    name: FactoryLM field failures (production, staging, Pixel acceptance, pilots, expert review)
+    source_type: field
+    family: field_failure
+    base_url: null
+    license_or_terms: internal; customer content stays private
+    attribution_required: false
+    automated_collection_allowed: false
+    store_full_text: false
+    store_derived_case: true
+    redistribution_allowed: false
+    ground_truth_role: supporting
+    reviewed_at: null
+    notes: Feeds IMIB-Red. Strip tenant identifiers before a case is written.
