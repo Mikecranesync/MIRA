@@ -20,8 +20,12 @@ describe("directsHandsOnWork — answers that must get the isolation notice", ()
     "Open the drive cover.",
     "Install the dynamic brake option.",
     "Bus overvoltage: extend the decel time or install the dynamic brake option [1].",
+    "Bus overvoltage is regen, then install the dynamic brake option [1].",
+    "If that fails, install the dynamic brake option [1].",
     "1. Rewire the motor terminals.",
     "Replace the worn belt.",
+    "Do not lock out. Replace the input fuse.",
+    "Replace the isolated analog input module.",
   ];
   for (const a of POSITIVE) it(`flags: "${a}"`, () => expect(directsHandsOnWork(a)).toBe(true));
 });
@@ -36,6 +40,8 @@ describe("directsHandsOnWork — parameter-only and look-alikes stay unflagged",
     "It is not safe to open the cabinet while the drive is powered on.",
     "Never replace the fuse while the drive is energized.",
     "Leave the machine on and open the HMI alarm history.",
+    "Work on the parameter set.",
+    "Connect the laptop to the drive.",
     "",
   ];
   for (const a of NEGATIVE) it(`does not flag: "${a}"`, () => expect(directsHandsOnWork(a)).toBe(false));
@@ -58,6 +64,29 @@ describe("isolation-safety wording", () => {
     expect(
       isolationBannerFor("Lock out the drive. Then replace the input fuse."),
     ).toBeNull();
+    expect(isolationBannerFor("De-energize the drive. Then replace the input fuse.")).toBeNull();
+  });
+  it("a negated or later lockout does not count as already isolated", () => {
+    expect(isolationBannerFor("Do not lock out. Replace the input fuse.")).toBe(ISOLATION_BANNER);
+    expect(isolationBannerFor("Replace the input fuse. Then lock out.")).toBe(ISOLATION_BANNER);
+    expect(isolationBannerFor("Replace the fuse, then lock it out.")).toBe(ISOLATION_BANNER);
+  });
+  it("same-step isolation before the work stays silent, including lock-it-out", () => {
+    expect(
+      isolationBannerFor(
+        "1. With the drive locked out, check the input fuse for continuity.\n2. Inspect the terminals for loose or burnt wiring.",
+      ),
+    ).toBeNull();
+    expect(
+      isolationBannerFor(
+        "Leave the machine on while you read the alarm, lock it out, then repair the seal bar.",
+      ),
+    ).toBeNull();
+    expect(
+      isolationBannerFor(
+        "Measure resistance across the terminals with the circuit isolated and locked out then restore power.",
+      ),
+    ).toBeNull();
   });
   it("DC-bus work adds the follow-the-manual discharge wait", () => {
     const banner = isolationBannerFor(
@@ -65,6 +94,11 @@ describe("isolation-safety wording", () => {
     );
     expect(banner).toContain(ISOLATION_BANNER);
     expect(banner).toContain(DISCHARGE_WAIT_LINE);
+  });
+  it("a communications bus is not a DC-bus discharge wait", () => {
+    const banner = isolationBannerFor("Replace the CAN bus connector.");
+    expect(banner).toBe(ISOLATION_BANNER);
+    expect(banner).not.toContain(DISCHARGE_WAIT_LINE);
   });
   it("mechanical-only work does not add a discharge wait", () => {
     expect(isolationBannerFor("Replace the worn belt.")).toBe(ISOLATION_BANNER);

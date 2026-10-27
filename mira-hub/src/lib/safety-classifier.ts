@@ -232,7 +232,7 @@ export function matchSafetyStop(text: string): string | null {
  * applies, not the wide parity-pinned pattern, which exempted the real
  * reports this is for ("the conveyor is locked out, can I reach in…").
  */
-const LOCKOUT_VERB_RE =
+export const LOCKOUT_VERB_RE =
   /\block(?:ed|ing)?[- ]?out\b|\block(?:ed|ing)?\s+(?:it|this|that|them|the\s+\w+)\s+out\b/;
 
 /**

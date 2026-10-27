@@ -48,7 +48,7 @@ const DEAD_PURPOSE =
 const PROHIBITION = /\b(?:do not|don't|never|avoid|without)\b(?!\s+forget)[^,;.]*?(?=\s+(?:but|and then|then)\b|[,;.]|$)/gi;
 /** Isolation stated as a CONDITION of the step ("with the machine locked out, …") — as
  *  opposed to a sequence ("lock out, remove the drive, restore power"). */
-const STATE_ISOLATED = /\b(?:with|while|keeping) (?:the )?(?:[\w-]+ ){0,2}(?:locked[\s-]?out|isolated|de[\s-]?energi[sz]ed)\b/i;
+export const STATE_ISOLATED = /\b(?:with|while|keeping) (?:the )?(?:[\w-]+ ){0,2}(?:locked[\s-]?out|isolated|de[\s-]?energi[sz]ed)\b/i;
 /** "noted the display, then proceed to lock out" — the observation happens BEFORE isolation. */
 const OBSERVE_THEN_ISOLATE = /\b(?:display|LEDs?|status|fault)\b[^.]*?\b(?:then|proceed|before)\b[^.]*?\b(?:lock(?:ed)?[\s-]?out|lockout|LOTO|isolat\w*)\b/i;
 
@@ -73,6 +73,12 @@ function steps(text: string): { line: number; text: string; lead: boolean; list:
     for (const s of body.split(/(?<=[.!?])\s+(?=[A-Z0-9*])/)) out.push({ line, text: s, lead, list });
   });
   return out;
+}
+
+/** Step texts in the same order `stepEnergyContradiction` walks them.
+ *  List markers stay attached to their item; "1." is never a step of its own. */
+export function stepTexts(text: string): string[] {
+  return steps(text).map((s) => s.text).filter((t) => t.trim());
 }
 
 /** The first step that is both isolated and needs power, or null. */

@@ -112,8 +112,57 @@ describe("#4858 already-isolated answers stay silent", () => {
     "De-energize, lock out per site procedure, and verify absence of voltage. Then replace the input fuse.",
     "With the drive locked out, open the cover and replace the fan.",
     "Isolate the feeder, apply lockout/tagout, and confirm zero voltage. Then rewire the motor terminals.",
+    "De-energize the drive. Then replace the input fuse.",
+    "Isolate the feeder. Then replace the fuse.",
+    "1. With the drive locked out, check the input fuse for continuity.\n2. Inspect the terminals for loose or burnt wiring.",
+    "Leave the machine on while you read the alarm, lock it out, then repair the seal bar.",
   ])("does not prepend: %s", (text) => {
     expect(judge(text).ok).toBe(true);
+  });
+});
+
+describe("#4858 isolation after, negated, or adjectival does not silence", () => {
+  it.each([
+    "Do not lock out. Replace the input fuse.",
+    "Replace the input fuse. Then lock out.",
+    "Replace the fuse, then lock it out.",
+    "Replace the isolated analog input module.",
+  ])("still prepends: %s", (text) => {
+    const v = judge(text);
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.violation).toBe("hazard-warning:isolation-advisory");
+    expect(v.replacement.endsWith(text)).toBe(true);
+  });
+});
+
+describe("#4858 comma / then instruction shapes still fire", () => {
+  it.each([
+    "Bus overvoltage can also be caused by motor regeneration, then install the dynamic brake option [1].",
+    "If that fails, install the dynamic brake option [1].",
+  ])("prepends: %s", (text) => {
+    const v = judge(text);
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.violation).toBe("hazard-warning:isolation-advisory");
+  });
+});
+
+describe("#4858 general-lane hands-on gets the same notice", () => {
+  it("a grounded-lane rule on the shared validateAnswer tail", () => {
+    const text = "Replace the input fuse.";
+    const v = validateAnswer({
+      answerText: text,
+      question: Q,
+      general: true,
+      served: true,
+      refused: false,
+      evidenceSufficient: true,
+    });
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.kind).toBe("hazard_warning");
+    expect(v.replacement.endsWith(text)).toBe(true);
   });
 });
 
