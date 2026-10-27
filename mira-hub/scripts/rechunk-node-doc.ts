@@ -30,4 +30,9 @@
 
 import { runRechunkCli } from "@/lib/rechunk-node-doc";
 
-process.exit(await runRechunkCli(process.argv, process.env));
+process.exit(
+  await runRechunkCli(process.argv, {
+    NOTEBOOK_RECHUNK_APPLY: process.env.NOTEBOOK_RECHUNK_APPLY,
+    NEON_DATABASE_URL: process.env.NEON_DATABASE_URL,
+  }),
+);
