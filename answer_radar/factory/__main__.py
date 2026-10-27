@@ -10,7 +10,9 @@ hidden Live subset, resolves candidate evidence, routes labels, and writes:
   OUT/live-manifest.json    hashes of the sealed Live holdout (text is in PRIVATE_DIR)
   OUT/cases.json            developer view of every non-holdout case
   OUT/cycle-report.json     counts by pool/source/family/lineage, contamination check
+  OUT/core-manifest.json    IMIB-Core members (ids + gold hashes), versioned, append-only
   PRIVATE/review-data-live.json  the Live cases' expert queue, kept outside git with their text
+  PRIVATE/core-manifest.json     Core membership carried across cycles (see core.py)
 With --expert-export (a #4801 page export plus the review-data.json, and for Live the
 review-data-live.json, that the expert answered) expert answers settle gold on every case,
 Live included, before sealing. An answer whose manual/pages no longer match what was shown
@@ -27,6 +29,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from answer_radar.factory.case import Answerability, Label, validate_set
+from answer_radar.factory.core import DEFAULT_ORIGINS, CoreRelabeled, promote_core
 from answer_radar.factory.discovery import (
     FieldFailureAdapter,
     ForumAdapter,
@@ -141,6 +144,8 @@ def cycle(
     expert_export: Path | None = None,
     labels: Path | None = None,
     review_variants: bool = False,
+    core_origins: frozenset[str] = DEFAULT_ORIGINS,
+    core_relabel: bool = False,
 ) -> dict:
     reg, cases, candidates, ledger, ledger_path = build(
         discovery, pages, private, seed, live_fraction
@@ -181,6 +186,25 @@ def cycle(
         shown_ids = {f"{k}-{r['id']}" for k in ("forum", "safety") for r in shown.get(k, [])}
         expert_status = {"shown": len(shown_ids), "answered": len(shown_ids & set(answers))}
         expert_status["complete"] = expert_status["shown"] == expert_status["answered"]
+    # Core (spec §3) is promoted from expert gold only, after import and after routing, and its
+    # membership persists beside the exposure ledger so it only ever grows across cycles.
+    core_path = private / "core-manifest.json"
+    prior_core = json.loads(core_path.read_text(encoding="utf-8")) if core_path.is_file() else None
+    review_sha = None
+    if expert_export is not None:
+        review_sha = json.loads(
+            (expert_export / "export-manifest.json").read_text(encoding="utf-8")
+        ).get("review_data_sha256")
+    try:
+        cases, core = promote_core(
+            cases,
+            prior_core,
+            review_data_sha256=review_sha,
+            origins=core_origins,
+            relabel=core_relabel,
+        )
+    except CoreRelabeled as e:
+        raise SystemExit(f"Core pool: {e}") from e
     # review-data.json carries question text for the expert. Text a source does not allow to be
     # committed may not land in a git work tree (the repository is public).
     if _inside_git(out.resolve()) and not all(
@@ -201,6 +225,7 @@ def cycle(
     ledger |= {group_key(c) for c in cases if not c.holdout}
     ledger |= {f"fp:{c.question.dedupe_hash}" for c in cases if not c.holdout}
     ledger_path.write_text(json.dumps(sorted(ledger), indent=2) + "\n", encoding="utf-8")
+    core_path.write_text(json.dumps(core, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     # Live cases need expert gold too. Their review file goes beside the sealed text, outside git,
     # so the expert sees them while developers never do.
     live = [c for c in cases if c.holdout and c.case_id in queue]
@@ -216,11 +241,25 @@ def cycle(
     report["live_expert_queue_size"] = len(live)
     if expert_export is not None:
         report["expert_export"] = expert_status
+    report["core"] = {
+        "size": len(core["members"]),
+        "version": core["version"],
+        "ready": core["ready"],
+        "min_size": core["min_size"],
+        "origins": core["origins"],
+        "added": core["history"][-1]["added"]
+        if core["history"]
+        and core["history"][-1]["version"] == core["version"]
+        and core["version"] != (prior_core or {}).get("version", 0)
+        else [],
+        "unverified_this_cycle": core["unverified_this_cycle"],
+    }
     for name, data in {
         "review-data.json": review,
         "live-manifest.json": manifest,
         "cases.json": developer_export(cases, reg),
         "cycle-report.json": report,
+        "core-manifest.json": core,
     }.items():
         (out / name).write_text(
             json.dumps(data, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8"
@@ -422,6 +461,16 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--expert-export", type=Path, default=None)
     c.add_argument("--labels", type=Path, default=None)
     c.add_argument("--review-variants", action="store_true")
+    c.add_argument(
+        "--core-origins",
+        default=",".join(sorted(DEFAULT_ORIGINS)),
+        help="provenance origins that may join Core (owner's call; default: captured)",
+    )
+    c.add_argument(
+        "--core-relabel",
+        action="store_true",
+        help="accept changed expert gold on Core members; bumps the Core version",
+    )
     pl = sub.add_parser("prelabel")
     pl.add_argument("--discovery", type=Path, required=True)
     pl.add_argument("--pages", type=Path, required=True)
@@ -465,6 +514,8 @@ def main(argv: list[str] | None = None) -> int:
         a.expert_export,
         a.labels,
         a.review_variants,
+        frozenset(o for o in a.core_origins.split(",") if o),
+        a.core_relabel,
     )
     print(json.dumps(rep["counts"], sort_keys=True))
     return 0

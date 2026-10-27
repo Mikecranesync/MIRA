@@ -48,7 +48,12 @@ def test_cycle_end_to_end(tmp_path):
     )
     review = json.loads((out / "review-data.json").read_text())
     sealed = {p.name for p in private.glob("*.json")} - set(
-        ("review-data-live.json", "exposure-ledger.json", "holdout-index.json")
+        (
+            "review-data-live.json",
+            "exposure-ledger.json",
+            "holdout-index.json",
+            "core-manifest.json",
+        )
     )
     visible = "".join(
         (out / n).read_text()
@@ -256,7 +261,13 @@ def test_live_cases_reach_experts_privately_and_take_expert_gold(tmp_path):
     sealed = [
         json.loads(f.read_text())
         for f in private.glob("*.json")
-        if f.name not in ("review-data-live.json", "exposure-ledger.json", "holdout-index.json")
+        if f.name
+        not in (
+            "review-data-live.json",
+            "exposure-ledger.json",
+            "holdout-index.json",
+            "core-manifest.json",
+        )
     ]
     settled = [c for c in sealed if c["case_id"] == target["id"]]
     assert (
@@ -428,7 +439,13 @@ def test_variants_never_expose_a_live_question(tmp_path, seed):
     sealed = [
         json.loads(f.read_text())
         for f in private.glob("*.json")
-        if f.name not in ("review-data-live.json", "exposure-ledger.json", "holdout-index.json")
+        if f.name
+        not in (
+            "review-data-live.json",
+            "exposure-ledger.json",
+            "holdout-index.json",
+            "core-manifest.json",
+        )
     ]
     visible = json.loads((out / "cases.json").read_text())
     assert not {c["freeze_hash"] for c in sealed} & {c["freeze_hash"] for c in visible}
