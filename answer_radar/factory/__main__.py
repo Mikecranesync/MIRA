@@ -354,24 +354,28 @@ def run_prelabel(a) -> int:
         and rec["freeze_hash"] == by_id[k].freeze_hash
         and rec["input_sha256"] == input_digest(by_id[k], candidates.get(k, []), page_text)
     }
-    labels = prelabel(cases, candidates, page_text, labelers, budget, post, reuse=reuse)
     a.private.mkdir(parents=True, exist_ok=True)
     # Merge, never shrink: saved records for cases outside this run (a smaller or filtered
     # snapshot) are kept verbatim, so labels already paid for are never discarded.
     merged = json.loads(saved_path.read_text(encoding="utf-8")) if saved_path.is_file() else {}
-    merged.update(
-        {
-            k: {
-                "freeze_hash": by_id[k].freeze_hash,
-                "input_sha256": input_digest(by_id[k], candidates.get(k, []), page_text),
-                "labels": [dataclasses.asdict(lb) for lb in v],
-            }
-            for k, v in labels.items()
+
+    def checkpoint(case_id, case_labels, calls):
+        merged[case_id] = {
+            "freeze_hash": by_id[case_id].freeze_hash,
+            "input_sha256": input_digest(by_id[case_id], candidates.get(case_id, []), page_text),
+            "labels": [dataclasses.asdict(lb) for lb in case_labels],
         }
+        with (a.private / "prelabel-costs.jsonl").open("a", encoding="utf-8") as fh:  # history kept
+            fh.write("".join(json.dumps(c) + "\n" for c in calls))
+        tmp = saved_path.with_suffix(
+            ".json.tmp"
+        )  # atomic replace: a crash mid-write can't corrupt it
+        tmp.write_text(json.dumps(merged, default=str, indent=1), encoding="utf-8")
+        tmp.replace(saved_path)
+
+    labels = prelabel(
+        cases, candidates, page_text, labelers, budget, post, reuse=reuse, checkpoint=checkpoint
     )
-    saved_path.write_text(json.dumps(merged, default=str, indent=1), encoding="utf-8")
-    with (a.private / "prelabel-costs.jsonl").open("a", encoding="utf-8") as fh:  # history kept
-        fh.write("".join(json.dumps(c) + "\n" for c in budget.calls))
     print(
         json.dumps(
             {

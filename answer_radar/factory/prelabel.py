@@ -175,6 +175,7 @@ def prelabel(
     budget: Budget,
     post,
     reuse: dict[str, list[Label]] | None = None,
+    checkpoint=None,
 ) -> dict[str, list[Label]]:
     """Label visible original cases. Stops (without partial pairs) when the budget would be hit."""
     out: dict[str, list[Label]] = dict(reuse or {})  # recall before recompute: never re-pay
@@ -183,6 +184,8 @@ def prelabel(
             continue
         if c.provenance.source_id.startswith("uci_"):
             out[c.case_id] = [dataset_label()]
+            if checkpoint is not None:
+                checkpoint(c.case_id, out[c.case_id], [])  # free, but still persisted
             continue
         ev = candidates.get(c.case_id, [])
         prompt = render(c, ev, page_text)
@@ -229,4 +232,8 @@ def prelabel(
             except Exception:  # noqa: BLE001 - never lose a paid run to one odd reply
                 labels.append(to_label(lab, None, set()))
         out[c.case_id] = labels
+        if checkpoint is not None:
+            # Persist each paid case as soon as it completes: an interrupted batch keeps every
+            # label and cost record it already paid for.
+            checkpoint(c.case_id, labels, budget.calls[-len(labelers) :])
     return out

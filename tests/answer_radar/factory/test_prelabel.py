@@ -461,3 +461,71 @@ def test_prelabel_never_discards_saved_labels_for_cases_outside_the_run(tmp_path
     main([*base, "--discovery", str(small)])
     saved = json.loads((tmp_path / "pv" / "labels.json").read_text())
     assert {"control_com:q0", "control_com:q1", "control_com:q2"} <= set(saved)
+
+
+def test_an_interrupted_batch_keeps_every_paid_label_and_cost(tmp_path, monkeypatch):
+    import httpx
+
+    from answer_radar.factory.__main__ import main
+
+    sent = []
+
+    class Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": GOOD}}],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 5},
+            }
+
+    def post(*a, **k):
+        sent.append(1)
+        if len(sent) > 4:  # two cases fully paid, then the operator hits Ctrl-C
+            raise KeyboardInterrupt
+        return Resp()
+
+    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    p, d = tmp_path / "p.json", tmp_path / "d.json"
+    p.write_text("[]")
+    d.write_text(
+        json.dumps(
+            {
+                "control_com": [
+                    {
+                        "id": f"q{i}",
+                        "captured_at": "2026-10-27",
+                        "opening_post": f"GS10 oCA fault case {i}",
+                    }
+                    for i in range(5)
+                ],
+                "uci_ai4i": FX["uci_ai4i"],
+            }
+        )
+    )
+    args = [
+        "prelabel",
+        "--discovery",
+        str(d),
+        "--pages",
+        str(p),
+        "--private",
+        str(tmp_path / "pv"),
+        "--seed",
+        "s",
+        "--live-fraction",
+        "0",
+        "--budget-usd",
+        "1",
+    ]
+    with pytest.raises(KeyboardInterrupt):
+        main(args)
+    saved = json.loads((tmp_path / "pv" / "labels.json").read_text())
+    costs = (tmp_path / "pv" / "prelabel-costs.jsonl").read_text().splitlines()
+    assert sum(k.startswith("control_com:") for k in saved) == 2 and len(costs) == 4
+    sent.clear()
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: (sent.append(1), Resp())[1])
+    assert main(args) == 0 and len(sent) == 6  # resume pays only for the 3 unfinished cases
