@@ -214,7 +214,10 @@ def test_saved_labels_only_reattach_to_the_exact_question_and_pages(tmp_path):
     )
     _, cases, cands, _, _ = build(disc, [ManualPage(**page)], tmp_path / "pv0", "s", 0.0)
     c = next(c for c in cases if c.case_id == "control_com:x")
-    lab = [dataclasses.asdict(lb) for lb in [_lab_obj("a"), _lab_obj("b")]]
+    lab = [
+        dataclasses.asdict(lb)
+        for lb in [_lab_obj("openai:gpt-5.4-mini"), _lab_obj("openrouter:qwen3-235b-a22b-2507")]
+    ]
     rec = {
         "control_com:x": {
             "freeze_hash": c.freeze_hash,
