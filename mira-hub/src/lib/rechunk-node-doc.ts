@@ -49,7 +49,12 @@ export interface RechunkMode {
   apply: boolean;
 }
 
-export function resolveRechunkMode(argv: string[], env: NodeJS.ProcessEnv): RechunkMode {
+export interface RechunkEnv {
+  NOTEBOOK_RECHUNK_APPLY?: string;
+  NEON_DATABASE_URL?: string;
+}
+
+export function resolveRechunkMode(argv: string[], env: RechunkEnv): RechunkMode {
   const tenantId = parseArg(argv, "--tenant-id");
   const docId = parseArg(argv, "--doc-id");
   const applyRequested = argv.includes("--apply");
@@ -100,10 +105,25 @@ export interface RechunkDeps {
   error?: (msg: string) => void;
 }
 
+async function queryVia<T = Record<string, unknown>>(
+  client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number | null }> },
+  sql: string,
+  params?: unknown[],
+): Promise<SqlResult<T>> {
+  const res = await client.query(sql, params);
+  return { rows: res.rows as T[], rowCount: res.rowCount };
+}
+
 export function defaultRechunkDeps(): RechunkDeps {
   return {
-    query: (sql, params) => pool.query(sql, params),
-    connect: () => pool.connect(),
+    query: (sql, params) => queryVia(pool, sql, params),
+    connect: async () => {
+      const client = await pool.connect();
+      return {
+        query: (sql, params) => queryVia(client, sql, params),
+        release: () => client.release(),
+      };
+    },
     extractPdfPages: extractPdfPagesForNode,
     writeChunkRows: writeChunkRowsForNode,
     embedPending: embedPendingNodeChunks,
@@ -292,7 +312,7 @@ async function applyRechunk(
 
 export async function runRechunk(
   argv: string[],
-  env: NodeJS.ProcessEnv,
+  env: RechunkEnv,
   deps: RechunkDeps = defaultRechunkDeps(),
 ): Promise<RechunkResult> {
   const mode = resolveRechunkMode(argv, env);
@@ -361,7 +381,7 @@ export async function runRechunk(
   };
 }
 
-export async function runRechunkCli(argv: string[], env: NodeJS.ProcessEnv): Promise<number> {
+export async function runRechunkCli(argv: string[], env: RechunkEnv): Promise<number> {
   if (!env.NEON_DATABASE_URL) {
     console.error("Error: NEON_DATABASE_URL is required");
     return 1;

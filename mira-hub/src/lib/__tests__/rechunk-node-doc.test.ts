@@ -7,6 +7,7 @@ import {
   planRechunk,
   resolveRechunkMode,
   runRechunk,
+  type QueryFn,
   type RechunkDeps,
   type RechunkTxClient,
 } from "../rechunk-node-doc";
@@ -57,7 +58,7 @@ function mockDeps(opts: {
   const embedCalls: Array<{ tenantId: string; sourceUrl: string }> = [];
   const logs = logsOf();
 
-  const query: RechunkDeps["query"] = async (text, params) => {
+  const query = (async (text: string, params?: unknown[]) => {
     sql.push(text);
     const extra = opts.extraQueries?.find((q) => q.match.test(text));
     if (extra) return { rows: extra.rows as never, rowCount: extra.rowCount ?? extra.rows.length };
@@ -83,10 +84,10 @@ function mockDeps(opts: {
       return { rows: [{ n: opts.oldChunkCount ?? 12 }] };
     }
     return { rows: [] };
-  };
+  }) as QueryFn;
 
   const client: RechunkTxClient = {
-    query: async (text, params) => {
+    query: (async (text: string, params?: unknown[]) => {
       txSql.push(text);
       txParams.push(params ?? []);
       if (text === "BEGIN") events.push("BEGIN");
@@ -98,7 +99,7 @@ function mockDeps(opts: {
         return { rows: [], rowCount: opts.deleteRowCount ?? opts.oldChunkCount ?? 12 };
       }
       return { rows: [], rowCount: 0 };
-    },
+    }) as QueryFn,
     release: vi.fn(),
   };
 
