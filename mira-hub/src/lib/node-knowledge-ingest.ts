@@ -97,9 +97,45 @@ export class NoExtractableTextError extends Error {
   }
 }
 
+// A line that starts a code-keyed table row: "F005 OverVoltage …", "0xF003 Recoverable …".
+const TABLE_ROW_START = /^(0x[0-9A-Fa-f]{3,4}|[A-Za-z]{1,3}\d{1,4}[A-Za-z]?)\s+[A-Z][A-Za-z]/gm;
+const TABLE_MIN_ROWS = 3;
+
+/**
+ * Offsets of the rows of a code-keyed table (fault codes, error codes), or []
+ * when the page is not one. Codes group by family (prefix letters + digit
+ * count, or 0x + length); a page is a table when one family starts at least
+ * TABLE_MIN_ROWS lines, and only that family counts, so an action-cell line
+ * such as "A485 [Current Limit]" inside an F-code table is not a row (#4842).
+ */
+function tableRowStarts(clean: string): number[] {
+  const hits = [...clean.matchAll(TABLE_ROW_START)].map((m) => {
+    const code = m[1];
+    const family = code.startsWith("0x")
+      ? `0x${code.length}`
+      : `${code.replace(/\d.*$/, "")}${(code.match(/\d+/) ?? [""])[0].length}`;
+    return { at: m.index ?? 0, family };
+  });
+  const counts = new Map<string, number>();
+  for (const h of hits) counts.set(h.family, (counts.get(h.family) ?? 0) + 1);
+  let best = "";
+  let bestCount = 0;
+  for (const [family, n] of counts) {
+    if (n > bestCount) {
+      best = family;
+      bestCount = n;
+    }
+  }
+  if (bestCount < TABLE_MIN_ROWS) return [];
+  return hits.filter((h) => h.family === best).map((h) => h.at);
+}
+
 /**
  * Split text into ~CHUNK_CHARS windows with overlap, preferring to end on a
- * paragraph or sentence boundary. Single-use, intentionally simple.
+ * paragraph or sentence boundary. On a code-keyed table page it ends a window
+ * just before a row instead, so a fault code stays in one chunk with its
+ * cause and corrective action (#4842: the F005 "Extend the decel time" step
+ * was split away by a mid-row ". " break). Other pages are unchanged.
  */
 export function chunkText(
   text: string,
@@ -113,22 +149,31 @@ export function chunkText(
   if (!clean) return [];
   if (clean.length <= size) return [clean];
 
+  const rowStarts = tableRowStarts(clean);
   const chunks: string[] = [];
   let i = 0;
   while (i < clean.length) {
     let end = Math.min(i + size, clean.length);
+    let atRow = false;
     if (end < clean.length) {
-      const window = clean.slice(i, end);
-      const brk = Math.max(
-        window.lastIndexOf("\n\n"),
-        window.lastIndexOf(". "),
-      );
-      if (brk > size * 0.5) end = i + brk + 1;
+      const rowBreak = rowStarts.filter((s) => s > i + size * 0.5 && s < end).pop();
+      if (rowBreak !== undefined) {
+        end = rowBreak;
+        atRow = true;
+      } else {
+        const window = clean.slice(i, end);
+        const brk = Math.max(
+          window.lastIndexOf("\n\n"),
+          window.lastIndexOf(". "),
+        );
+        if (brk > size * 0.5) end = i + brk + 1;
+      }
     }
     const piece = clean.slice(i, end).trim();
     if (piece) chunks.push(piece);
     if (end >= clean.length) break;
-    i = Math.max(end - overlap, i + 1);
+    // A row break needs no overlap: the next chunk begins exactly at the row.
+    i = atRow ? end : Math.max(end - overlap, i + 1);
   }
   return chunks;
 }
