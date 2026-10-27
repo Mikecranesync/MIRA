@@ -170,6 +170,17 @@ function restoreIndex(step: string): number {
   return candidates.length ? Math.min(...candidates) : -1;
 }
 
+/** Isolation words that exist only as part of a restore / lockout-removed
+ *  phrase ("the lockout is removed") are not isolation-in-force. */
+function withoutRestores(step: string): string {
+  let s = step;
+  for (const re of [RESTORE, LOCKOUT_REMOVED]) {
+    const copy = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
+    s = s.replace(copy, " ");
+  }
+  return s;
+}
+
 /** Earliest live isolation / verify-dead language in this step, or -1. */
 function isolationIndex(step: string): number {
   const candidates = [
@@ -233,13 +244,13 @@ function firstHandsOnAlreadyIsolated(text: string): boolean {
   let isolated = false;
   for (const raw of stepTexts(text)) {
     const step = withoutProhibitions(raw);
-    const isoAt = isolationIndex(step);
-    const conditionedAt = stateIsolatedIndex(step);
+    const isoAt = isolationIndex(withoutRestores(step));
+    const conditionedAt = stateIsolatedIndex(withoutRestores(step));
     const restoredAt = restoreIndex(step);
     const workAt = firstHandsOnIndex(step);
     if (workAt >= 0) {
       const restoredBeforeWork = restoredAt >= 0 && restoredAt <= workAt
-        && (isoAt < 0 || restoredAt > isoAt);
+        && (isoAt < 0 || restoredAt >= isoAt);
       if (restoredBeforeWork) isolated = false;
       else if (isoAt >= 0 && isoAt <= workAt) return true;
       // Trailing "measure … with the circuit isolated" conditions only

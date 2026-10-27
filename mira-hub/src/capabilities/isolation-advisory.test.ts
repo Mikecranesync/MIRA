@@ -90,6 +90,12 @@ describe("isolation-safety wording", () => {
     expect(isolationBannerFor("Lock out the drive. Restore power. Replace the fuse.")).toBe(
       ISOLATION_BANNER,
     );
+    expect(isolationBannerFor("The lockout is removed. Replace the input fuse.")).toBe(
+      ISOLATION_BANNER,
+    );
+    expect(isolationBannerFor("After the lockout is removed, replace the fuse.")).toBe(
+      ISOLATION_BANNER,
+    );
     expect(isolationBannerFor("The analog input shows no voltage. Replace the input fuse.")).toBe(
       ISOLATION_BANNER,
     );
