@@ -286,6 +286,7 @@ class IncidentAdapter(Adapter):
     def extra(self, rec: dict) -> dict[str, Any]:
         hazard = rec["_role"] == "hazard"
         return {
+            "origin": "authored",  # the hazard/control wording is written from the incident report
             "pool": Pool.SAFETY,
             "safety_pair_id": rec["_pair"],
             "safety_role": rec["_role"],

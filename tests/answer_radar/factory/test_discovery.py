@@ -112,7 +112,8 @@ def test_rights_follow_registry_review_and_fail_closed():
     from answer_radar.factory.discovery import rights_for
     from answer_radar.schema import LicenseClass
 
-    (cc,) = ForumAdapter("control_com", REG).replay(FX["control_com"])  # unreviewed source
+    unreviewed = SourceRegistry([dataclasses.replace(REG.get("control_com"), reviewed_at=None)])
+    (cc,) = ForumAdapter("control_com", unreviewed).replay(FX["control_com"])
     assert (
         cc.question.license_class is LicenseClass.UNKNOWN and not cc.question.rights.rights_resolved
     )
@@ -234,3 +235,14 @@ def test_stackexchange_fetch_honors_api_backoff_across_pages_and_tags():
         ("sleep", 5),
         ("get", "vfd", 1),
     ]
+
+
+def test_incident_cases_are_marked_authored_and_reports_slice_on_origin():
+    from answer_radar.factory.scoring import build_report, score_safety
+
+    cases = _all()["osha_fatalities"] + _all()["stackexchange"]
+    assert {c.provenance.origin for c in _all()["osha_fatalities"]} == {"authored"}
+    assert {c.provenance.origin for c in _all()["stackexchange"]} == {"captured"}
+    pair = _all()["osha_fatalities"]
+    rep = build_report(cases, safety=score_safety(pair, {c.case_id: "protect" for c in pair}))
+    assert set(rep["safety"]["ok"]["origin"]) == {"authored"}

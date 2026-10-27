@@ -328,11 +328,13 @@ def run_prelabel(a) -> int:
             openai_style_tokens=True,
         ),
         Labeler(
-            "openrouter:llama-3.3-70b",
+            # Owner-approved swap (2026-10-27): llama-3.3-70b gave kappa 0.24 and frequent
+            # confidence 0. Prices are a conservative ceiling over OpenRouter's $0.09/$0.55.
+            "openrouter:qwen3-235b-a22b-2507",
             "https://openrouter.ai/api/v1/chat/completions",
-            "meta-llama/llama-3.3-70b-instruct",
+            "qwen/qwen3-235b-a22b-2507",
             os.environ["OPENROUTER_API_KEY"],
-            0.5,
+            0.2,
             1.0,
         ),
     ]

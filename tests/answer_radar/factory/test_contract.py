@@ -65,14 +65,7 @@ def test_only_the_owner_approved_source_may_be_collected():
     approved = [
         e.source_id for e in REG._by_id.values() if e.reviewed and e.automated_collection_allowed
     ]
-    assert sorted(approved) == [
-        "csb",
-        "niosh_face",
-        "osha_fatalities",
-        "stackexchange",
-        "uci_ai4i",
-        "uci_metropt3",
-    ]
+    assert sorted(approved) == ["csb", "niosh_face", "stackexchange", "uci_ai4i", "uci_metropt3"]
 
 
 def test_registry_ships_unreviewed_and_refuses_collection():

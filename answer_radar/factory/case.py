@@ -67,6 +67,10 @@ class Provenance:
     external_id: str | None = None
     license_note: str | None = None
     author: str | None = None
+    #: "captured" = a real person's wording from the source; "authored" = written by the
+    #: benchmark builders from the source (e.g. incident-derived safety pairs). Spec section 13
+    #: keeps authored cases separate from fresh evidence; reports slice on it.
+    origin: str = "captured"
 
 
 @dataclass(frozen=True)
@@ -233,6 +237,7 @@ def freeze_case(
     url = fields.pop("url", question.source_url)
     external_id = fields.pop("external_id", question.external_post_id)
     license_note = fields.pop("license_note", None)
+    origin = fields.pop("origin", "captured")
     return BenchmarkCase(
         case_id=question.question_id,
         lineage_id=lineage_id or question.question_id,
@@ -245,6 +250,7 @@ def freeze_case(
             url=url,
             external_id=external_id,
             license_note=license_note,
+            origin=origin,
         ),
         frozen_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         freeze_hash=snapshot_hash(question),
