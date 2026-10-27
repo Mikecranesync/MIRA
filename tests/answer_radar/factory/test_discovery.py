@@ -286,8 +286,19 @@ def test_origin_fails_closed_and_imib_marks_its_authored_safety_cases():
     assert sg[0].provenance.origin == "authored" and fr[0].provenance.origin == "captured"
 
 
-def test_variants_inherit_their_parents_origin():
+def test_variants_are_generated_and_stay_out_of_the_captured_slice():
+    from answer_radar.factory.scoring import build_report, score_answers
     from answer_radar.factory.variants import make_variants
 
-    for c in [_all()["stackexchange"][0], *_all()["osha_fatalities"]]:
-        assert all(v.provenance.origin == c.provenance.origin for v in make_variants(c))
+    c = _all()["stackexchange"][0]
+    vs = make_variants(c)
+    assert vs and all(v.provenance.origin == "generated" for v in vs)
+    verdicts = {c.case_id: {"correct": False, "grounded": False}}
+    verdicts |= {v.case_id: {"correct": True, "grounded": True} for v in vs}
+    rep = build_report([c, *vs], answers=score_answers([c, *vs], verdicts))
+    captured = rep["answer"]["correct"]["origin"]["captured"]
+    assert (captured["cases"], captured["rate"]) == (
+        1,
+        0.0,
+    )  # the real question's failure is not hidden
+    assert rep["answer"]["correct"]["origin"]["generated"]["cases"] == len(vs)
