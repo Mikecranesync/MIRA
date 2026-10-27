@@ -422,6 +422,19 @@ export interface InteractionError {
   readonly retryable: boolean;
 }
 
+/**
+ * #4687 — the stage a server-side answer is in. The host reports a stage only
+ * when the server says it started; the renderer turns it into plain words.
+ * Order is the real order a turn moves through.
+ */
+export const PROGRESS_STAGES = [
+  "finding_equipment",
+  "searching_documentation",
+  "generating_answer",
+  "checking_answer",
+] as const;
+export type ProgressStage = (typeof PROGRESS_STAGES)[number];
+
 export type InteractionPart =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "attachment"; readonly attachment: Attachment }
@@ -456,6 +469,7 @@ export type InteractionPart =
   /** Background manual-search progress for THAT SAME unconfirmed identity (#4160 S6 /
    *  #4189). Flattened to mirror `ManualSearchStatus`, plus the part's own `type`. */
   | ({ readonly type: "manual_search_status" } & ManualSearchStatus)
+  | { readonly type: "progress"; readonly stage: ProgressStage }
   | { readonly type: "unknown"; readonly raw: unknown };
 
 export interface InteractionTurn {

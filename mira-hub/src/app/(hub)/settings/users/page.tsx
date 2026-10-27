@@ -60,10 +60,18 @@ export default function SettingsUsersPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        emailSent?: boolean;
+        warning?: string;
+      };
       if (!res.ok) throw new Error(body.error ?? `Invite failed (${res.status})`);
       setInviteStatus("sent");
-      setInviteMessage(`Invite sent to ${inviteEmail}.`);
+      // #4370: a missing RESEND_API_KEY must not read back as a plain "sent" —
+      // the admin needs to know the invite exists but was not emailed.
+      setInviteMessage(
+        body.emailSent === false && body.warning ? body.warning : `Invite sent to ${inviteEmail}.`,
+      );
       setInviteEmail("");
       await fetchMembers();
     } catch (err) {

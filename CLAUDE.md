@@ -2,7 +2,7 @@
 
 **Version:** derived from the latest `v*` tag (no `/VERSION` file since #3064; every merge auto-tags `vX.Y.Z` + a rollback checkpoint — `docs/versioning.md`)
 **One-liner:** FactoryLM = the maintenance-context layer that makes messy factory data trustworthy for AI (on any UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Canonical wedge → `NORTH_STAR.md`** (lead with context, not copilot; adapters retained).
-**Inference:** `INFERENCE_BACKEND=cloud` → OpenAI (`gpt-5.4-mini`, leads since 2026-10-11) → OpenRouter (backup tier since 2026-10-14, key-gated, no Claude models) → Groq → Together (cascade; Cerebras archived 2026-09-29, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
+**Inference:** `INFERENCE_BACKEND=cloud` → OpenAI (`gpt-5.4-mini`, leads since 2026-10-11) → OpenRouter (backup tier since 2026-10-14, key-gated, no Claude models) (live cascade = OpenAI + OpenRouter only; Groq + Together DEPRECATED, Cerebras archived 2026-09-29, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
 
 ---
@@ -26,7 +26,7 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY. (Enforced today as a GPL/AGPL/UNKNOWN **denylist** in `ci.yml` `license-check`, plus an allowlist for the migration driver; the full allowlist is SDLC v1 step 7.)
-2. **Cloud LLMs:** OpenAI (`OPENAI_API_KEY`, `gpt-5.4-mini`, leads — owner directive 2026-10-11 while Groq is billing-restricted; metered, so watch spend) → Groq → Together cascade (OpenAI-compat). **Cerebras ARCHIVED 2026-09-29** (402 quota since 09-07): its key is `CEREBRAS_API_KEY_ARCHIVED` in Doppler dev/stg/prd; every cascade is key-gated, so it is simply absent. Restore = rename the key back + re-add it to `EXPECTED` in `tools/provider_health_check.py`. NeonDB for persistence. Doppler-managed secrets. **No Anthropic in the diagnostic cascade** (removed PR #610 — never reintroduce there). Sole owner-authorized carve-out: the PrintSynth print-vision interpreter (PR #2661) — print-photo vision only, never chat/diagnosis.
+2. **Cloud LLMs:** OpenAI (`OPENAI_API_KEY`, `gpt-5.4-mini`, leads — owner directive 2026-10-11; metered, so watch spend) → OpenRouter (`OPENROUTER_API_KEY`, prepaid credits). That is the whole live cascade (OpenAI-compat). **Groq and Together are DEPRECATED** (owner: Groq 2026-10-14, Together 2026-10-25; both billing-dead — do not pay or restore them). They remain in code only as key-gated last-resort entries until #4438 retires them; never count them as live. **Cerebras ARCHIVED 2026-09-29** (402 quota since 09-07): its key is `CEREBRAS_API_KEY_ARCHIVED` in Doppler dev/stg/prd; every cascade is key-gated, so it is simply absent. Restore = rename the key back + re-add it to `EXPECTED` in `tools/provider_health_check.py`. NeonDB for persistence. Doppler-managed secrets. **No Anthropic in the diagnostic cascade** (removed PR #610 — never reintroduce there). Sole owner-authorized carve-out: the PrintSynth print-vision interpreter (PR #2661) — print-photo vision only, never chat/diagnosis.
 3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler. Config is env-scoped: `factorylm/dev` (local), `factorylm/stg` (staging), `factorylm/prd` (production). Never commit `.env` to git. Never paste prod values into a dev shell — set them in `factorylm/dev`.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
@@ -233,7 +233,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
 - **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
 - **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
-- **Together AI is the third provider** — replaced Gemini (403-blocked in Doppler). Key-gated via `TOGETHERAI_API_KEY`; if all cloud providers fail, the cascade falls through to Open WebUI/Ollama.
+- **Live providers are OpenAI → OpenRouter only.** Groq (deprecated 2026-10-14) and Together (deprecated 2026-10-25) are billing-dead: their 400/402 errors in the provider-health canary are expected, not an outage, and not a bill to pay. About 45 files still call Groq directly and degrade silently (Telegram voice notes are dead) — tracked in #4438. If all cloud providers fail, the cascade falls through to Open WebUI/Ollama.
 
 ---
 

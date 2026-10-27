@@ -34,6 +34,7 @@ import {
   type ManualSearchStatus,
   type ProjectItem,
   type ShellState,
+  type ProgressStage,
 } from "@factorylm/interaction";
 import {
   FactoryLMShell,
@@ -50,6 +51,7 @@ import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebook
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import {
   isAbortError,
+  NotebookHttpError,
   readNotebookStream,
   type PersistedTurn,
 } from "@/components/equipment/notebook-chat-utils";
@@ -62,7 +64,7 @@ import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, ty
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { GuidedProcedure } from "./GuidedProcedure";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
+import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
   EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
@@ -117,6 +119,8 @@ type Live = {
   readonly startedAt: string;
   /** The outgoing message this stream answers (null: a retry, or none). */
   readonly outgoingId: string | null;
+  /** #4687: the latest stage the server reported, shown until answer text arrives. */
+  readonly progress?: ProgressStage;
 };
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<{ status: number; data: T | null }> {
@@ -353,7 +357,7 @@ export function HubShellHost() {
       parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId, notebookDocIds: meta.notebookDocIds });
       lifecycle = lifecycleFromStream(live.result, { stopped: live.stopped });
     } else {
-      parts = live.content ? [{ type: "text", text: live.content }] : [];
+      parts = livePartsWhileRunning(live.content, live.stopped ? undefined : live.progress);
       lifecycle = live.stopped ? "stopped" : "running";
     }
     const a: InteractionTurn = {
@@ -425,7 +429,8 @@ export function HubShellHost() {
     setBusy(true);
     try {
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal,
+        // #4687: ask for stage progress; a server without MIRA_CHAT_PROGRESS ignores the header.
+        method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: JSON.stringify(body), signal: ctrl.signal,
       });
       if (res.status === 401) { setSignedOut(true); return; }
       if (!res.ok || !res.body) {
@@ -436,6 +441,8 @@ export function HubShellHost() {
       }
       const result = await readNotebookStream(res.body.getReader(), (content, cits) => {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
+      }, null, {
+        onProgress: (stage) => setLive((cur) => (cur && cur.id === id ? { ...cur, progress: stage } : cur)),
       });
       setLive((cur) => (cur && cur.id === id ? { ...cur, result } : cur));
       // The server row is the source of truth; refresh it (also picks up a
@@ -456,7 +463,11 @@ export function HubShellHost() {
       // successful retry takes it away again (never a newer draft).
       const draft = draftAfterSendSucceeded(draftRef.current, question);
       if (draft !== null) dispatch({ type: "set-draft", draft });
-    } catch (err) {
+    } catch (caught) {
+      // #4687: a refusal delivered inside the progress stream is handled exactly
+      // like the non-OK response above (signed out, or the route's own message).
+      if (caught instanceof NotebookHttpError && caught.status === 401) { setSignedOut(true); return; }
+      const err = caught instanceof NotebookHttpError ? new Error(errorMessageFor(caught.code, caught.status)) : caught;
       const retained = retainedStreamInterruption(err);
       if (retained) {
         setLive((cur) =>

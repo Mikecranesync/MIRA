@@ -256,6 +256,7 @@ import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
 import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
+import { progressCancelSignal, reportProgress, wantsProgress, withProgressStream } from "@/capabilities/chat-progress";
 import {
   JUDGE_OUTPUT_TOKENS,
   judgeHoldInputBound,
@@ -1777,6 +1778,7 @@ async function handleChatTurn(
   // Which machine is this turn about? Resolved BEFORE retrieval, so an
   // unresolvable binding costs nothing: no retrieval SQL, no provider call.
   const identityResolveSpan = startStage("identity.resolve");
+  reportProgress(req, "finding_equipment"); // #4687: a no-op unless this request opted in
   openChildren.add(identityResolveSpan);
   const boundAsset: ResolvedAsset = await releaseClaimOnFailure(() =>
     resolveBoundAsset(ctx.tenantId, notebookId),
@@ -2210,6 +2212,8 @@ async function handleChatTurn(
   const oemRetrieval =
     !guidedDeadEnd && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
+  // #4687: only when a document search actually runs (Codex #4765 F3).
+  if (retrievalExecuted) reportProgress(req, "searching_documentation");
   // Codex #4069 F4: a failed OEM query is not a completed zero-hit search —
   // the decline below must never say "I couldn't find it" when nothing ran.
   let oemRetrievalFailed = false;
@@ -3648,6 +3652,10 @@ async function handleChatTurn(
   // already-aborted request into the same path a live abort takes.
   if (req.signal?.aborted) onClientGone();
   else req.signal?.addEventListener("abort", onClientGone, { once: true });
+  // #4687: an opted-in client that drops the early progress stream is gone too (Codex #4765 F2).
+  const progressCancel = progressCancelSignal(req);
+  if (progressCancel?.aborted) onClientGone();
+  else progressCancel?.addEventListener("abort", onClientGone, { once: true });
   const abortedRead = new Promise<never>((_, reject) =>
     clientAbort.signal.addEventListener(
       "abort",
@@ -3800,6 +3808,7 @@ async function handleChatTurn(
           reservation = verdict.reservation;
         }
         genSpan = startStage(`chat ${provider.model}`);
+        reportProgress(req, "generating_answer"); // once per turn, even across cascade attempts
         genOutcome = "exception";
         genResponseId = null;
         const genAttemptStartedAt = Date.now();
@@ -4106,6 +4115,7 @@ async function handleChatTurn(
       // tokens were consumed whether or not the technician read them.
       if (clientAbort.signal.aborted) {
         req.signal?.removeEventListener("abort", onClientGone);
+        progressCancel?.removeEventListener("abort", onClientGone); // Codex #4765 F5
         activeReader?.cancel().catch(() => {});
         try {
           controller.close();
@@ -4217,6 +4227,8 @@ async function handleChatTurn(
         endRoot();
         return;
       }
+      // #4687: only a served answer held under the gate is checked before release.
+      if (served && gate) reportProgress(req, "checking_answer");
       let answerText = normalizeCitationMarkers(responseBuffer.join(""));
 
       // Determine the honest status + which citations to ship. A refusal ships
@@ -4422,6 +4434,7 @@ async function handleChatTurn(
       // a disconnect during the judge falls into the same designed bucket as a
       // disconnect after commit (the turn stays answered).
       req.signal?.removeEventListener("abort", onClientGone);
+      progressCancel?.removeEventListener("abort", onClientGone); // Codex #4765 F5
 
       // A rejected turn ships ZERO citations — the retrieved content that drove
       // the rejected draft must not be presented as the replacement's authority.
@@ -4897,6 +4910,7 @@ async function handleChatTurn(
       endRoot();
       } catch (err) {
         req.signal?.removeEventListener("abort", onClientGone);
+        progressCancel?.removeEventListener("abort", onClientGone); // Codex #4765 F5
         await abandonRequestClaim().catch((releaseErr) => {
           console.error(
             "[notebook-chat] request claim release failed:",
@@ -4994,6 +5008,28 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   // from every assertion while leaving the tenant index unreliable. The arrival
   // row has no tenant because at arrival there is no tenant.
   const arrival = recordArrival({ ...ingress });
+  if (wantsProgress(req)) {
+    // #4687: headers go out now; the turn runs behind the open stream. The
+    // accounting below runs when the turn actually finishes, with its real
+    // status and tenant — never at stream open (Codex #4765 F1).
+    return withProgressStream(req, async () => {
+      let innerStatus = 500;
+      try {
+        const inner = await handleChatTurn(req, routeCtx, ingress);
+        innerStatus = inner.status;
+        return inner;
+      } catch (err) {
+        ingress.closeOnUnhandled?.("error");
+        throw err;
+      } finally {
+        void arrival
+          .then(() => recordResponse({ ...ingress, httpStatus: innerStatus }))
+          .catch(() => {
+            /* counted inside the module; never fails a turn */
+          });
+      }
+    });
+  }
   let status = 500;
   try {
     const res = await handleChatTurn(req, routeCtx, ingress);

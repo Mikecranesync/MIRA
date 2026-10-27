@@ -280,6 +280,14 @@ export function expandIndustrialQuery(query: string): ExpandedQuery {
       if (/^[a-z]/i.test(tok) || /-/.test(tok)) exact.add(tok.toUpperCase());
     }
   }
+  // Foreman T-038 1d: a drive panel shows an alarm or fault as a letter plus
+  // the code ("A5001"), while the manual's code table lists the digits only
+  // (ACS355 p.356 "5001 … Check panel connection"). An A/F prefix on EXACTLY
+  // four digits also searches the digits; 3-digit parameter IDs (A410) do not.
+  for (const tok of [...exact]) {
+    const code = /^[AF](\d{4})$/.exec(tok);
+    if (code) exact.add(code[1]!);
+  }
   // "terminal 07" / "term 7" → the terminal number as an exact token.
   for (const m of lower.matchAll(/\b(?:terminal|term|digital input|din)\s*#?\s*0*(\d{1,2})\b/g)) {
     exact.add(`0${m[1]}`.slice(-2)); // 7 → "07"

@@ -252,6 +252,10 @@ export const config = {
     // api/i3x/* is the read-only i3X (CESMII) API — it has its OWN bearer-key
     // auth (resolveI3xTenant) and GET /info MUST be public, so the session
     // middleware must not intercept it.
-    "/((?!login|signup|magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/version|api/i3x/|api/scanbe/healthz|api/uploads/folder|api/uploads/[a-f0-9]|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
+    // The PWA install assets (#4363) are fetched by the browser WITHOUT the
+    // session cookie, so add-to-home-screen breaks if they bounce to /login.
+    // Exact filenames only — a bare `manifest` or `icon` prefix would also
+    // exempt real routes (capabilities/pwa-manifest.ts lists the icons).
+    "/((?!login|signup|magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/version|api/i3x/|api/scanbe/healthz|api/uploads/folder|api/uploads/[a-f0-9]|_next/static|_next/image|favicon\\.ico|favicon\\.svg|manifest\\.webmanifest|apple-touch-icon\\.png|pwa-icon-192\\.png|pwa-icon-512\\.png|pwa-icon-maskable-512\\.png|sitemap\\.xml|robots\\.txt).*)",
   ],
 };

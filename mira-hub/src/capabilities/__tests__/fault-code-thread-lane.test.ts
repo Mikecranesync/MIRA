@@ -618,7 +618,9 @@ describe("a real thread: the terse follow-up arrives conversation-augmented", ()
       expect(bound).toContain(codeTokenMatcher("oC").sql);
     });
 
-    it("control: the same terse message in a notebook with NO identity still binds both (the pinned limit)", async () => {
+    // Forum-batch2 rerun: the model the QUESTION names is not a code either, so
+    // with no notebook identity "GS10 oC" still binds oC and no longer GS10.
+    it("GS10 oC with NO notebook identity: the model the question names binds no pattern, oC does", async () => {
       const { client, calls } = makeClient();
       await retrieveNodeChunks(client, "tenant-1", "GS10 oC", {
         nodeId: "node-1",
@@ -628,7 +630,25 @@ describe("a real thread: the terse follow-up arrives conversation-augmented", ()
         rawQuery: "GS10 oC",
         validatedDocScope: true,
       });
-      expect(boundPatterns(calls)).toContain(codeTokenMatcher("GS10").sql);
+      const bound = boundPatterns(calls);
+      expect(bound).not.toContain(codeTokenMatcher("GS10").sql);
+      expect(bound).toContain(codeTokenMatcher("oC").sql);
+    });
+
+    // The pinned limit, now for a token that names no model: with no identity,
+    // an asset tag the resolver does not read as a model ("CV101") still binds,
+    // so the identity exclusion above is what removes a notebook's own name.
+    it("control: an asset tag that is not a model still binds when the notebook has NO identity (the pinned limit)", async () => {
+      const { client, calls } = makeClient();
+      await retrieveNodeChunks(client, "tenant-1", "CV101 oC", {
+        nodeId: "node-1",
+        unsPath: null,
+        topK: 6,
+        docIds: [DOC],
+        rawQuery: "CV101 oC",
+        validatedDocScope: true,
+      });
+      expect(boundPatterns(calls)).toContain(codeTokenMatcher("CV101").sql);
     });
 
     it("source contract: the notebook route hands its machine identity to the attached-document lane", () => {

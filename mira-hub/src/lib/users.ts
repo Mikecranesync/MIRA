@@ -1,5 +1,7 @@
 import pool from "@/lib/db";
 import { ensureDataSchema } from "@/lib/data-schema";
+import { PILOT_WINDOW_DAYS } from "@/lib/config";
+import { magicTokenTtlMinutes } from "@/capabilities/trial-access";
 
 export type UserStatus = "pending" | "trial" | "approved" | "expired" | "admin";
 
@@ -79,10 +81,19 @@ export function ensureSchema(): Promise<void> {
     // ownership, so promoting whatever row carries ADMIN_EMAIL at boot let anyone who
     // registered that address first become a platform admin. status='admin' is set only by
     // an existing platform admin (admin users route) or an operator.
-    await pool.query(`
-      UPDATE hub_users SET trial_expires_at = created_at + INTERVAL '7 days'
-      WHERE status = 'trial' AND trial_expires_at IS NULL
-    `);
+    // #4362: the trial account IS the 30-day pilot. Stretch any still-short window
+    // (the old 7-day default caused the day-8 lockout) up to created_at + 30 days.
+    // Already-longer or already-elapsed 30-day clocks are left alone.
+    await pool.query(
+      `UPDATE hub_users
+       SET trial_expires_at = created_at + ($1::int * INTERVAL '1 day')
+       WHERE status = 'trial'
+         AND (
+           trial_expires_at IS NULL
+           OR trial_expires_at < created_at + ($1::int * INTERVAL '1 day')
+         )`,
+      [PILOT_WINDOW_DAYS],
+    );
     // Phase 2: idempotent migrations for pipeline-managed tables
     await ensureDataSchema();
   })();
@@ -169,7 +180,7 @@ export async function updateUserStatus(id: string, status: UserStatus): Promise<
   );
 }
 
-// ── Magic link tokens ──────────────────────────────────────────────────────────
+// ── Magic link tokens ──────────────────────────────────────────
 
 let magicSchemaReady: Promise<void> | null = null;
 
@@ -205,9 +216,11 @@ export async function createMagicToken(
   await ensureMagicSchema();
   const { randomUUID } = await import("crypto");
   const token = randomUUID();
+  const kind = opts.tenantId ? "invite" : "login";
+  const ttlMinutes = magicTokenTtlMinutes(kind);
   await pool.query(
     `INSERT INTO hub_magic_tokens (token, email, tenant_id, role, invited_by, expires_at)
-     VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '15 minutes')
+     VALUES ($1, $2, $3, $4, $5, NOW() + ($6::int * INTERVAL '1 minute'))
      ON CONFLICT (token) DO NOTHING`,
     [
       token,
@@ -215,6 +228,7 @@ export async function createMagicToken(
       opts.tenantId ?? null,
       opts.role ?? null,
       opts.invitedBy ?? null,
+      ttlMinutes,
     ],
   );
   return token;
@@ -297,9 +311,9 @@ export async function ensureUserAndTenant(
       rows: [user],
     } = await client.query(
       `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at)
-       VALUES ($1, $2, $3, $4, $5, 'trial', NOW() + INTERVAL '7 days')
+       VALUES ($1, $2, $3, $4, $5, 'trial', NOW() + ($6::int * INTERVAL '1 day'))
        RETURNING id, email`,
-      [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null],
+      [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null, PILOT_WINDOW_DAYS],
     );
     await client.query(
       `UPDATE hub_tenants SET owner_user_id = $1 WHERE id = $2`,
@@ -355,7 +369,7 @@ export async function ensureInvitedUser(input: {
   };
 }
 
-// ── User preferences ───────────────────────────────────────────────────────────
+// ── User preferences ─────────────────────────────────────────
 
 export async function getUserPreferences(userId: string): Promise<Record<string, unknown>> {
   await ensureSchema();

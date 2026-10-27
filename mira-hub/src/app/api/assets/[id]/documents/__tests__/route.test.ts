@@ -12,11 +12,13 @@ import { NextResponse } from "next/server";
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 vi.mock("@/lib/workspace-files", () => ({ listFilesForTarget: vi.fn() }));
+vi.mock("@/lib/db", () => ({ default: { query: vi.fn() } }));
 
 import { GET } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { listFilesForTarget } from "@/lib/workspace-files";
+import pool from "@/lib/db";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
 const ASSET_ID = "22222222-2222-2222-2222-222222222222";
@@ -60,13 +62,12 @@ function attachedFile(over: Record<string, unknown> = {}) {
   };
 }
 
-/** asset lookup first, then the suggestion rollup. */
+/** asset lookup through the tenant context; the suggestion rollup on the raw
+ *  pool (hybrid read, #4250 — the RLS context hides the shared OEM corpus). */
 function scriptTenantCtx(asset: Record<string, unknown> | null, rows: Record<string, unknown>[]) {
-  vi.mocked(withTenantContext)
-    .mockImplementationOnce((async (_t: string, fn: (c: unknown) => unknown) =>
-      fn({ query: async () => ({ rows: asset ? [asset] : [] }) })) as never)
-    .mockImplementationOnce((async (_t: string, fn: (c: unknown) => unknown) =>
-      fn({ query: async () => ({ rows }) })) as never);
+  vi.mocked(withTenantContext).mockImplementationOnce((async (_t: string, fn: (c: unknown) => unknown) =>
+    fn({ query: async () => ({ rows: asset ? [asset] : [] }) })) as never);
+  vi.mocked(pool.query).mockResolvedValueOnce({ rows } as never);
 }
 
 beforeEach(() => {

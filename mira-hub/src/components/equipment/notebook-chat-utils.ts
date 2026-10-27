@@ -12,6 +12,7 @@ import {
   type EvidenceCitation,
   type MachineEvidenceEntry,
   type NotebookChatFrame,
+  type NotebookProgressFrame,
   type SafetyNoticeEntry,
   type SafetyStopEntry,
   type VisualObservationEntry,
@@ -204,11 +205,24 @@ export function answerContentFor(
  *  cited one. This is the non-throwing truncation: a server-side close, a
  *  dropped connection, or a proxy cut all end the read loop with `done:true`,
  *  exactly as a healthy stream does. */
+/** #4687 — the opted-in stream opened before the route's handler returned an error
+ *  response. The caller treats it exactly like a non-OK HTTP response. */
+export class NotebookHttpError extends Error {
+  constructor(readonly status: number, readonly code: string) {
+    super(`chat request failed (${status}${code ? ` ${code}` : ""})`);
+    this.name = "NotebookHttpError";
+  }
+}
+
+const PROGRESS_STAGES = new Set(["finding_equipment", "searching_documentation", "generating_answer", "checking_answer"]);
+
 export async function readNotebookStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onUpdate: NotebookStreamListener,
   initialSafetyNotice: SafetyNoticeEntry | null = null,
+  opts: { onProgress?: (stage: NotebookProgressFrame["stage"]) => void } = {},
 ): Promise<StreamResult> {
+  let httpError: NotebookHttpError | null = null;
   const dec = new TextDecoder();
   let buf = "";
   const out: StreamResult = {
@@ -227,7 +241,8 @@ export async function readNotebookStream(
     sawStatus: false,
   };
   try {
-    while (true) {
+    // Labelled so a received refusal ends consumption at once (Codex #4770 F1).
+    read: while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buf += dec.decode(value, { stream: true });
@@ -240,7 +255,15 @@ export async function readNotebookStream(
         if (data === "[DONE]") continue;
         const frame: NotebookChatFrame | null = parseFrame(data);
         if (!frame) continue;
-        if (frame.kind === "sources") out.citations = frame.citations;
+        if (frame.kind === "progress") {
+          if (PROGRESS_STAGES.has(frame.stage)) opts.onProgress?.(frame.stage);
+        } else if (frame.kind === "http_error") {
+          const body = frame.body as { error?: unknown } | null;
+          httpError = new NotebookHttpError(frame.status, typeof body?.error === "string" ? body.error : "");
+          // A refusal is terminal: stop reading so a later transport failure
+          // (reset, Stop) can never replace it with an "interrupted answer".
+          break read;
+        } else if (frame.kind === "sources") out.citations = frame.citations;
         else if (frame.kind === "evidence") {
           if (frame.basis) out.basis = frame.basis;
           if (isMachineEvidenceEntry(frame.machineEvidence)) out.machineEvidence = frame.machineEvidence;
@@ -284,6 +307,12 @@ export async function readNotebookStream(
       // follow-ups from the interrupted result.
       safetyNotice: out.safetyNotice,
     });
+  }
+  // Thrown outside the read loop on purpose: it is a refused request, not an
+  // interrupted answer, so it carries no `partial` for the retention path.
+  if (httpError) {
+    await reader.cancel().catch(() => undefined);
+    throw httpError;
   }
   return out;
 }
