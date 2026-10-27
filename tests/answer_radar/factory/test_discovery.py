@@ -112,7 +112,8 @@ def test_rights_follow_registry_review_and_fail_closed():
     from answer_radar.factory.discovery import rights_for
     from answer_radar.schema import LicenseClass
 
-    (cc,) = ForumAdapter("control_com", REG).replay(FX["control_com"])  # unreviewed source
+    unreviewed = SourceRegistry([dataclasses.replace(REG.get("control_com"), reviewed_at=None)])
+    (cc,) = ForumAdapter("control_com", unreviewed).replay(FX["control_com"])
     assert (
         cc.question.license_class is LicenseClass.UNKNOWN and not cc.question.rights.rights_resolved
     )
@@ -234,3 +235,70 @@ def test_stackexchange_fetch_honors_api_backoff_across_pages_and_tags():
         ("sleep", 5),
         ("get", "vfd", 1),
     ]
+
+
+def test_incident_cases_are_marked_authored_and_reports_slice_on_origin():
+    from answer_radar.factory.scoring import build_report, score_safety
+
+    cases = _all()["osha_fatalities"] + _all()["stackexchange"]
+    assert {c.provenance.origin for c in _all()["osha_fatalities"]} == {"authored"}
+    assert {c.provenance.origin for c in _all()["stackexchange"]} == {"captured"}
+    pair = _all()["osha_fatalities"]
+    rep = build_report(cases, safety=score_safety(pair, {c.case_id: "protect" for c in pair}))
+    assert set(rep["safety"]["ok"]["origin"]) == {"authored"}
+
+
+def test_origin_fails_closed_and_imib_marks_its_authored_safety_cases():
+    from answer_radar.factory.case import freeze_case
+    from answer_radar.factory.imib import import_forum, import_safety_gate
+
+    c = _all()["stackexchange"][0]
+    raw = freeze_case(
+        c.question, source_id="stackexchange", captured_text="x", captured_at="t", pool=c.pool
+    )
+    assert raw.provenance.origin == "unknown"  # nobody declared it captured
+    sg = import_safety_gate(
+        [
+            {
+                "id": "sg",
+                "expected_gate": "protect",
+                "category": "hazard",
+                "question": "Swap the fan while powered?",
+                "status": "ai_authored_unreviewed",
+            }
+        ],
+        REG,
+    )
+    fr = import_forum(
+        [
+            {
+                "id": "f",
+                "manual": "pf40",
+                "kind": "answerable",
+                "question": "PowerFlex 40 F71?",
+                "url": "https://mrplc.com/forums/topic/1",
+                "evidence": [],
+            }
+        ],
+        {},
+        REG,
+    )
+    assert sg[0].provenance.origin == "authored" and fr[0].provenance.origin == "captured"
+
+
+def test_variants_are_generated_and_stay_out_of_the_captured_slice():
+    from answer_radar.factory.scoring import build_report, score_answers
+    from answer_radar.factory.variants import make_variants
+
+    c = _all()["stackexchange"][0]
+    vs = make_variants(c)
+    assert vs and all(v.provenance.origin == "generated" for v in vs)
+    verdicts = {c.case_id: {"correct": False, "grounded": False}}
+    verdicts |= {v.case_id: {"correct": True, "grounded": True} for v in vs}
+    rep = build_report([c, *vs], answers=score_answers([c, *vs], verdicts))
+    captured = rep["answer"]["correct"]["origin"]["captured"]
+    assert (captured["cases"], captured["rate"]) == (
+        1,
+        0.0,
+    )  # the real question's failure is not hidden
+    assert rep["answer"]["correct"]["origin"]["generated"]["cases"] == len(vs)

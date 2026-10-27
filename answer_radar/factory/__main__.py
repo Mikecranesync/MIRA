@@ -146,7 +146,7 @@ def cycle(
         discovery, pages, private, seed, live_fraction
     )
     if labels is not None:
-        from answer_radar.factory.prelabel import input_digest
+        from answer_radar.factory.prelabel import active_set, input_digest
 
         pre, page_text = load_labels(labels), {(p.doc_sha256, p.page): p.text for p in pages}
 
@@ -157,6 +157,7 @@ def cycle(
             return (
                 bool(rec)
                 and rec["complete"]  # a half-labeled case (interrupted run) is never routed on
+                and active_set(rec["labels"])  # only the configured labelers (or the dataset)
                 and rec["freeze_hash"] == c.freeze_hash
                 and rec["input_sha256"] == input_digest(c, candidates.get(c.case_id, []), page_text)
             )
@@ -310,7 +311,13 @@ def run_prelabel(a) -> int:
 
     import httpx
 
-    from answer_radar.factory.prelabel import Budget, Labeler, input_digest, prelabel
+    from answer_radar.factory.prelabel import (
+        ACTIVE_LABELER_IDS,
+        Budget,
+        Labeler,
+        input_digest,
+        prelabel,
+    )
 
     _private(a.private)
     pages = [ManualPage(**p) for p in json.loads(a.pages.read_text())]
@@ -328,14 +335,19 @@ def run_prelabel(a) -> int:
             openai_style_tokens=True,
         ),
         Labeler(
-            "openrouter:llama-3.3-70b",
+            # Owner-approved swap (2026-10-27): llama-3.3-70b gave kappa 0.24 and frequent
+            # confidence 0. Prices are a conservative ceiling over OpenRouter's $0.09/$0.55.
+            "openrouter:qwen3-235b-a22b-2507",
             "https://openrouter.ai/api/v1/chat/completions",
-            "meta-llama/llama-3.3-70b-instruct",
+            "qwen/qwen3-235b-a22b-2507",
             os.environ["OPENROUTER_API_KEY"],
-            0.5,
+            0.2,
             1.0,
         ),
     ]
+
+    if {lab.labeler_id for lab in labelers} != ACTIVE_LABELER_IDS:
+        raise SystemExit("labeler config and ACTIVE_LABELER_IDS disagree; update both together")
 
     def post(url, body, headers):
         r = httpx.post(url, json=body, headers=headers, timeout=60)
@@ -379,6 +391,10 @@ def run_prelabel(a) -> int:
     labels = prelabel(
         cases, candidates, page_text, labelers, budget, post, reuse=reuse, checkpoint=checkpoint
     )
+    # Rewrite every returned case with exactly the ACTIVE labelers' set, so a retired labeler's
+    # saved labels can never reach routing (no new spend: nothing is called here).
+    for k, v in labels.items():
+        checkpoint(k, v, [], True)
     print(
         json.dumps(
             {

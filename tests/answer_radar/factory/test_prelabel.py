@@ -214,7 +214,10 @@ def test_saved_labels_only_reattach_to_the_exact_question_and_pages(tmp_path):
     )
     _, cases, cands, _, _ = build(disc, [ManualPage(**page)], tmp_path / "pv0", "s", 0.0)
     c = next(c for c in cases if c.case_id == "control_com:x")
-    lab = [dataclasses.asdict(lb) for lb in [_lab_obj("a"), _lab_obj("b")]]
+    lab = [
+        dataclasses.asdict(lb)
+        for lb in [_lab_obj("openai:gpt-5.4-mini"), _lab_obj("openrouter:qwen3-235b-a22b-2507")]
+    ]
     rec = {
         "control_com:x": {
             "freeze_hash": c.freeze_hash,
@@ -631,3 +634,170 @@ def test_labelers_see_one_manual_so_page_numbers_cannot_fake_agreement():
     )
     prompt = seen[0]["messages"][0]["content"]
     assert "manual A page" in prompt and "manual B page" not in prompt
+
+
+def test_a_swapped_out_labeler_never_reaches_routing(tmp_path, monkeypatch):
+    import httpx
+
+    from answer_radar.factory.__main__ import build, load_labels, main
+    from answer_radar.factory.evidence import ManualPage
+    from answer_radar.factory.prelabel import input_digest
+
+    class Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": GOOD}}],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 5},
+            }
+
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: Resp())
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    disc = {
+        "control_com": [
+            {"id": "q", "captured_at": "2026-10-27", "opening_post": "PowerFlex 525 F5 on decel"}
+        ]
+    }
+    d, p = tmp_path / "d.json", tmp_path / "p.json"
+    d.write_text(json.dumps(disc))
+    p.write_text("[]")
+    pv = tmp_path / "pv"
+    _, cases, cands, _, _ = build(disc, [], pv, "s", 0.0)
+    c = next(x for x in cases if x.case_id == "control_com:q")
+    old = {
+        "control_com:q": {
+            "freeze_hash": c.freeze_hash,
+            "input_sha256": input_digest(c, cands[c.case_id], {}),
+            "complete": True,
+            "labels": [
+                {
+                    "labeler_id": "openai:gpt-5.4-mini",
+                    "independence": "INDEPENDENT_PROVIDER_MODEL",
+                    "answerability": "answerable",
+                    "pages": [],
+                    "confidence": 0.9,
+                    "unsure": False,
+                },
+                {
+                    "labeler_id": "openrouter:llama-3.3-70b",
+                    "independence": "INDEPENDENT_PROVIDER_MODEL",
+                    "answerability": "unanswerable",
+                    "pages": [],
+                    "confidence": 0.0,
+                    "unsure": False,
+                },
+            ],
+        }
+    }
+    pv.mkdir()
+    (pv / "labels.json").write_text(json.dumps(old))
+    assert (
+        main(
+            [
+                "prelabel",
+                "--discovery",
+                str(d),
+                "--pages",
+                str(p),
+                "--private",
+                str(pv),
+                "--seed",
+                "s",
+                "--live-fraction",
+                "0",
+                "--budget-usd",
+                "1",
+            ]
+        )
+        == 0
+    )
+    saved = load_labels(pv / "labels.json")["control_com:q"]["labels"]
+    assert {lb.labeler_id for lb in saved} == {
+        "openai:gpt-5.4-mini",
+        "openrouter:qwen3-235b-a22b-2507",
+    }
+    del ManualPage
+
+
+def test_machine_state_questions_are_generated_not_captured():
+    from answer_radar.factory.scoring import build_report, score_answers
+
+    (m,) = MachineStateAdapter("uci_ai4i", REG).replay(FX["uci_ai4i"])
+    assert m.provenance.origin == "generated"
+    rep = build_report(
+        [m], answers=score_answers([m], {m.case_id: {"correct": True, "grounded": True}})
+    )
+    assert set(rep["answer"]["correct"]["origin"]) == {"generated"}
+
+
+def test_cycle_ignores_label_sets_from_a_retired_labeler(tmp_path):
+    from answer_radar.factory.__main__ import build, main
+    from answer_radar.factory.prelabel import input_digest
+
+    disc = {
+        "control_com": [
+            {"id": "q", "captured_at": "2026-10-27", "opening_post": "PowerFlex 525 F5 on decel"}
+        ]
+    }
+    d, p = tmp_path / "d.json", tmp_path / "p.json"
+    d.write_text(json.dumps(disc))
+    p.write_text("[]")
+    _, cases, cands, _, _ = build(disc, [], tmp_path / "pv0", "s", 0.0)
+    c = next(x for x in cases if x.case_id == "control_com:q")
+
+    def rec(second):
+        def lab(lid):
+            return {
+                "labeler_id": lid,
+                "independence": "INDEPENDENT_PROVIDER_MODEL",
+                "answerability": "unanswerable",
+                "pages": [],
+                "confidence": 0.95,
+                "unsure": False,
+            }
+
+        return {
+            "control_com:q": {
+                "freeze_hash": c.freeze_hash,
+                "input_sha256": input_digest(c, cands[c.case_id], {}),
+                "complete": True,
+                "labels": [lab("openai:gpt-5.4-mini"), lab(second)],
+            }
+        }
+
+    def queued(second, tag):
+        lf = tmp_path / f"l{tag}.json"
+        lf.write_text(json.dumps(rec(second)))
+        main(
+            [
+                "cycle",
+                "--discovery",
+                str(d),
+                "--pages",
+                str(p),
+                "--out",
+                str(tmp_path / f"o{tag}"),
+                "--private",
+                str(tmp_path / f"pv{tag}"),
+                "--seed",
+                "s",
+                "--live-fraction",
+                "0",
+                "--labels",
+                str(lf),
+            ]
+        )
+        return (
+            "control_com:q"
+            in json.loads((tmp_path / f"o{tag}" / "cycle-report.json").read_text())["expert_queue"]
+        )
+
+    assert queued(
+        "openrouter:llama-3.3-70b", "old"
+    )  # retired pair: ignored, so the case still needs review
+    assert not queued(
+        "openrouter:qwen3-235b-a22b-2507", "new"
+    )  # active pair agreeing confidently: settled

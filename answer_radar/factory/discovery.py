@@ -153,6 +153,7 @@ class Adapter:
                     captured_text=text,
                     captured_at=rec["captured_at"],
                     pool=extra.pop("pool", self.pool),
+                    origin=extra.pop("origin", "captured"),  # replayed source records
                     # Newly captured: nobody has seen it yet. The cycle marks what it exports.
                     exposed_to_developers=extra.pop("exposed_to_developers", False),
                     license_note=rec.get("license"),
@@ -286,6 +287,7 @@ class IncidentAdapter(Adapter):
     def extra(self, rec: dict) -> dict[str, Any]:
         hazard = rec["_role"] == "hazard"
         return {
+            "origin": "authored",  # the hazard/control wording is written from the incident report
             "pool": Pool.SAFETY,
             "safety_pair_id": rec["_pair"],
             "safety_role": rec["_role"],
@@ -304,6 +306,8 @@ class MachineStateAdapter(Adapter):
 
     def extra(self, rec: dict) -> dict[str, Any]:
         return {
+            # The wording is a template around dataset readings, not a person's question.
+            "origin": "generated",
             "answerability": Answerability.ANSWERABLE,
             "expected_behavior": [f"dataset label: {rec['label']}"],
         }

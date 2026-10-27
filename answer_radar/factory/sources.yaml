@@ -35,8 +35,8 @@ sources:
     store_derived_case: true
     redistribution_allowed: false
     ground_truth_role: discovery
-    reviewed_at: null
-    notes: Replies are context only, never gold.
+    reviewed_at: "2026-10-27"
+    notes: Owner approved 2026-10-27, but the forums sit behind a Cloudflare bot challenge for automated clients; not collected.
   - source_id: mrplc
     name: MrPLC forums
     source_type: forum
@@ -49,8 +49,8 @@ sources:
     store_derived_case: true
     redistribution_allowed: false
     ground_truth_role: discovery
-    reviewed_at: null
-    notes: Source of IMIB v0.1 forum-new (PR #4793).
+    reviewed_at: "2026-10-27"
+    notes: Owner approved 2026-10-27, but robots.txt disallows AI crawlers (ClaudeBot, GPTBot, ...); not collected. IMIB v0.1 already holds 31 questions.
   - source_id: plctalk
     name: PLCtalk forums
     source_type: forum
@@ -63,8 +63,8 @@ sources:
     store_derived_case: true
     redistribution_allowed: false
     ground_truth_role: discovery
-    reviewed_at: null
-    notes: 3 of IMIB v0.1's 34 forum-new questions.
+    reviewed_at: "2026-10-27"
+    notes: Owner approved 2026-10-27, but every automated request gets a Cloudflare bot challenge; not collected (no challenge circumvention).
   - source_id: oem_manuals
     name: OEM manuals, fault and alarm tables
     source_type: oem
@@ -86,13 +86,13 @@ sources:
     base_url: https://www.osha.gov/fatalities
     license_or_terms: unreviewed (U.S. federal government work)
     attribution_required: true
-    automated_collection_allowed: true
+    automated_collection_allowed: false
     store_full_text: false
     store_derived_case: true
     redistribution_allowed: false
     ground_truth_role: supporting
     reviewed_at: "2026-10-27"
-    notes: Owner approved 2026-10-27. Incidents become hazard/control pairs authored from the report; record the incident URL.
+    notes: Owner approved 2026-10-27, but osha.gov returns 403 to automated requests (a terms signal); collection stays off. Manual capture only.
   - source_id: niosh_face
     name: NIOSH FACE reports
     source_type: government

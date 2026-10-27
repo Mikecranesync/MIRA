@@ -142,6 +142,7 @@ def build_report(cases, *, retrieval=None, answers=None, safety=None, registry=N
     slices = {
         "pool": lambda c: c.pool.value,
         "source": lambda c: c.provenance.source_id,
+        "origin": lambda c: c.provenance.origin,
         "family": fam,
     }
     rep: dict = {
