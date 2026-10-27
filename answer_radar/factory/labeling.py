@@ -55,7 +55,10 @@ def route(
         ai = [lb for lb in c.labels if lb.independence is not IndependenceClass.HUMAN_REVIEW]
         why = []
         independent = [lb for lb in ai if lb.independence not in NON_PROMOTING_INDEPENDENCE]
-        if len(ai) < 2:
+        proof = [lb for lb in ai if lb.independence is IndependenceClass.DETERMINISTIC_PROOF]
+        if proof and len(ai) == len(proof):
+            pass  # a dataset's own label (e.g. UCI AI4I) needs no second opinion
+        elif len(ai) < 2:
             why.append("fewer than two independent labels")
         elif len({lb.labeler_id for lb in ai}) < 2 or len(independent) < len(ai):
             why.append("labels not independent (duplicate labeler or self-consistency)")

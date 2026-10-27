@@ -26,7 +26,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from answer_radar.factory.case import validate_set
+from answer_radar.factory.case import Answerability, Label, validate_set
 from answer_radar.factory.discovery import (
     FieldFailureAdapter,
     ForumAdapter,
@@ -47,6 +47,7 @@ from answer_radar.factory.labeling import export_review_data, import_expert, rou
 from answer_radar.factory.registry import SourceRegistry
 from answer_radar.factory.scoring import build_report
 from answer_radar.factory.variants import make_variants
+from answer_radar.schema import IndependenceClass
 
 ADAPTERS = {
     "stackexchange": StackExchangeAdapter,
@@ -62,15 +63,12 @@ ADAPTERS = {
 }
 
 
-def cycle(
-    discovery: dict,
-    pages: list[ManualPage],
-    out: Path,
-    private: Path,
-    seed: str,
-    live_fraction: float,
-    expert_export: Path | None = None,
-) -> dict:
+def build(discovery: dict, pages: list[ManualPage], private: Path, seed: str, live_fraction: float):
+    """Replay -> freeze -> variants -> Live assignment -> validate -> evidence candidates.
+
+    Pure with respect to the filesystem except for READING the exposure ledger, so `prelabel`
+    sees exactly the cases and candidates `cycle` will route.
+    """
     reg = SourceRegistry.load()
     cases = []
     for sid, recs in sorted(discovery.items()):
@@ -105,6 +103,47 @@ def cycle(
     pages = [p for p in pages if p.source_id in reg and reg.may_back_gold(p.source_id)]
     index = PageIndex(pages)
     candidates = {c.case_id: resolve(c, pages, index=index) for c in cases}
+    return reg, cases, candidates, ledger, ledger_path
+
+
+def load_labels(path: Path) -> dict[str, list[Label]]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {
+        cid: [
+            Label(
+                d["labeler_id"],
+                IndependenceClass(d["independence"]),
+                Answerability(d["answerability"]),
+                tuple(d.get("pages", ())),
+                d.get("safety_class"),
+                d.get("confidence"),
+                bool(d.get("unsure")),
+            )
+            for d in labels
+        ]
+        for cid, labels in raw.items()
+    }
+
+
+def cycle(
+    discovery: dict,
+    pages: list[ManualPage],
+    out: Path,
+    private: Path,
+    seed: str,
+    live_fraction: float,
+    expert_export: Path | None = None,
+    labels: Path | None = None,
+) -> dict:
+    reg, cases, candidates, ledger, ledger_path = build(
+        discovery, pages, private, seed, live_fraction
+    )
+    if labels is not None:
+        pre = load_labels(labels)
+        cases = [
+            replace(c, labels=[*c.labels, *pre[c.case_id]]) if c.case_id in pre else c
+            for c in cases
+        ]
     queue = route(cases, seed=seed)
     if expert_export is not None:
         answers = load_expert_export(expert_export)  # validates manifest + review-data first
@@ -242,6 +281,73 @@ def capture(
     return 0
 
 
+def run_prelabel(a) -> int:
+    """Paid lane: two independent providers label visible original cases under a hard cap."""
+    import dataclasses
+    import os
+
+    import httpx
+
+    from answer_radar.factory.prelabel import Budget, Labeler, prelabel
+
+    _private(a.private)
+    pages = [ManualPage(**p) for p in json.loads(a.pages.read_text())]
+    _, cases, candidates, _, _ = build(
+        json.loads(a.discovery.read_text()), pages, a.private, a.seed, a.live_fraction
+    )
+    labelers = [
+        Labeler(
+            "openai:gpt-5.4-mini",
+            "https://api.openai.com/v1/chat/completions",
+            "gpt-5.4-mini",
+            os.environ["OPENAI_API_KEY"],
+            0.75,
+            4.5,
+            openai_style_tokens=True,
+        ),
+        Labeler(
+            "openrouter:llama-3.3-70b",
+            "https://openrouter.ai/api/v1/chat/completions",
+            "meta-llama/llama-3.3-70b-instruct",
+            os.environ["OPENROUTER_API_KEY"],
+            0.5,
+            1.0,
+        ),
+    ]
+
+    def post(url, body, headers):
+        r = httpx.post(url, json=body, headers=headers, timeout=60)
+        r.raise_for_status()
+        return r.json()
+
+    budget = Budget(cap_usd=a.budget_usd)
+    page_text = {(p.doc_sha256, p.page): p.text for p in pages}
+    labels = prelabel(cases, candidates, page_text, labelers, budget, post)
+    a.private.mkdir(parents=True, exist_ok=True)
+    (a.private / "labels.json").write_text(
+        json.dumps(
+            {k: [dataclasses.asdict(lb) for lb in v] for k, v in labels.items()},
+            default=str,
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
+    (a.private / "prelabel-costs.jsonl").write_text(
+        "".join(json.dumps(c) + "\n" for c in budget.calls)
+    )
+    print(
+        json.dumps(
+            {
+                "labeled": len(labels),
+                "calls": len(budget.calls),
+                "spent_usd": round(budget.spent_usd, 4),
+                "cap_usd": a.budget_usd,
+            }
+        )
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m answer_radar.factory")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -253,6 +359,14 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--seed", required=True)
     c.add_argument("--live-fraction", type=float, default=0.3)
     c.add_argument("--expert-export", type=Path, default=None)
+    c.add_argument("--labels", type=Path, default=None)
+    pl = sub.add_parser("prelabel")
+    pl.add_argument("--discovery", type=Path, required=True)
+    pl.add_argument("--pages", type=Path, required=True)
+    pl.add_argument("--private", type=Path, required=True)
+    pl.add_argument("--seed", required=True)
+    pl.add_argument("--live-fraction", type=float, default=0.3)
+    pl.add_argument("--budget-usd", type=float, required=True)
     cap = sub.add_parser("capture")
     cap.add_argument("--source", choices=["stackexchange", "uci_ai4i"], required=True)
     cap.add_argument("--site", default="")
@@ -267,6 +381,8 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     if a.cmd == "capture":
         return capture(a.source, a.site, a.tag, a.pages, a.private, a.per_label, a.seed)
+    if a.cmd == "prelabel":
+        return run_prelabel(a)
     if a.cmd == "pages":
         from answer_radar.factory.pages import build_pages
 
@@ -285,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
         a.seed,
         a.live_fraction,
         a.expert_export,
+        a.labels,
     )
     print(json.dumps(rep["counts"], sort_keys=True))
     return 0
