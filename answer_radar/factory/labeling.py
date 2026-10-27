@@ -52,6 +52,8 @@ def route(
     """Return {case_id: [reasons]} for every case that needs an expert. Others become provisional."""
     queue: dict[str, list[str]] = {}
     for c in cases:
+        if c.is_variant:
+            continue  # variants are robustness probes of an original: experts label the original
         ai = [lb for lb in c.labels if lb.independence is not IndependenceClass.HUMAN_REVIEW]
         why = []
         independent = [lb for lb in ai if lb.independence not in NON_PROMOTING_INDEPENDENCE]

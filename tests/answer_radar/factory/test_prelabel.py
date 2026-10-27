@@ -123,3 +123,10 @@ def test_failed_calls_are_charged_worst_case_and_become_unsure():
     labels = prelabel([c], {c.case_id: EV}, {}, LABS, budget, post)[c.case_id]
     assert budget.spent_usd > 0 and all(lb.unsure for lb in labels)
     assert all(call["error"] == "TimeoutError" for call in budget.calls)
+
+
+def test_variants_never_enter_the_expert_queue():
+    c = _forum()
+    vs = make_variants(c)
+    q = route([c, *vs], seed="s", audit_rate=0.0)
+    assert vs and set(q) == {c.case_id}  # the unlabeled original is queued, its variants are not
