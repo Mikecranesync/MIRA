@@ -181,7 +181,7 @@ class StackExchangeAdapter(Adapter):
     def question_text(self, rec: dict) -> str:
         return f"{rec['title']}\n{rec.get('body', '')}".strip()
 
-    def fetch(self, *, site: str, tags: list[str], pages: int, get=None) -> list[dict]:
+    def fetch(self, *, site: str, tags: list[str], pages: int, get=None, sleep=None) -> list[dict]:
         """Capture questions as replayable records. Gated on the registry like any collection.
 
         Uses the default `withbody` filter, which returns question title and body but no
@@ -198,7 +198,12 @@ class StackExchangeAdapter(Adapter):
                 return r.json()
 
         captured = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        if sleep is None:
+            import time
+
+            sleep = time.sleep
         records: dict[int, dict] = {}
+        backoff = 0
         for tag in tags:
             for page in range(1, pages + 1):
                 params = {
@@ -210,7 +215,12 @@ class StackExchangeAdapter(Adapter):
                     "page": page,
                     "filter": "withbody",
                 }
+                if backoff:
+                    # The API's throttle contract: wait `backoff` seconds before calling the
+                    # same method again, whatever the arguments (next page or next tag).
+                    sleep(backoff)
                 data = get(self.API, params)
+                backoff = int(data.get("backoff") or 0)
                 for q in data.get("items", []):
                     # question_id is only unique within one site: qualify it with the site
                     records[q["question_id"]] = {

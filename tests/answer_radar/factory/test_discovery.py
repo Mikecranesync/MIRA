@@ -207,3 +207,30 @@ def test_ai4i_sample_is_stratified_deterministic_and_label_free():
     assert all(
         r["label"] not in a.question_text(r) for r in recs
     )  # the answer key never enters the question
+
+
+def test_stackexchange_fetch_honors_api_backoff_across_pages_and_tags():
+    events = []
+
+    def get(url, params):
+        events.append(("get", params["tagged"], params["page"]))
+        if (params["tagged"], params["page"]) == ("plc", 1):
+            return {"items": [SE_ITEM], "has_more": True, "backoff": 10}
+        if (params["tagged"], params["page"]) == ("plc", 2):
+            return {"items": [], "has_more": False, "backoff": 5}
+        return {"items": [], "has_more": False}
+
+    StackExchangeAdapter("stackexchange", REG).fetch(
+        site="electronics",
+        tags=["plc", "vfd"],
+        pages=3,
+        get=get,
+        sleep=lambda s: events.append(("sleep", s)),
+    )
+    assert events == [
+        ("get", "plc", 1),
+        ("sleep", 10),
+        ("get", "plc", 2),
+        ("sleep", 5),
+        ("get", "vfd", 1),
+    ]

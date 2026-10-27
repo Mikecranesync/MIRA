@@ -9,11 +9,14 @@ corpus is written only to a private path outside git.
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 from collections import Counter
 from pathlib import Path
 
-from answer_radar.factory.discovery import normalize
+from answer_radar.factory.discovery import _MODEL, normalize
+
+_SERIES = re.compile(r"\b[\w-]*\d+\w*[- ]series\b|\bfamily\b", re.I)
 
 
 def pdf_pages(pdf: Path) -> list[str]:
@@ -22,18 +25,26 @@ def pdf_pages(pdf: Path) -> list[str]:
 
 
 def identify(pages: list[str]) -> tuple[str, str]:
-    """Most frequent manufacturer and model named on the first five pages."""
-    makers, models = Counter(), Counter()
+    """Manufacturer and model from the first five pages.
+
+    The model is set only when the opening pages name exactly ONE model and do not present
+    the document as a series. A family manual ("PowerFlex 520-Series ... 523 and 525") stays
+    model-less, so it is eligible for every model of that manufacturer: the evidence filter
+    excludes pages naming a different model, and a wrong single-model tag would hide the
+    right manual.
+    """
+    makers: Counter = Counter()
+    found: dict[str, str] = {}
+    family = False
     for text in pages[:5]:
         n = normalize(text)
         if n["manufacturer"]:
             makers[n["manufacturer"]] += 1
-        if n["model"]:
-            models[n["model"]] += 1
-    return (
-        makers.most_common(1)[0][0] if makers else "",
-        models.most_common(1)[0][0] if models else "",
-    )
+        for m in _MODEL.findall(text):
+            found.setdefault(re.sub(r"[\s-]+", "", m).lower(), re.sub(r"\s+", " ", m))
+        family = family or bool(_SERIES.search(text))
+    model = next(iter(found.values())) if len(found) == 1 and not family else ""
+    return (makers.most_common(1)[0][0] if makers else "", model)
 
 
 def build_pages(manual_dir: Path, source_id: str = "oem_manuals") -> list[dict]:

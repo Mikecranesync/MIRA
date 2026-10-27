@@ -498,3 +498,33 @@ def test_pages_corpus_identifies_manuals(tmp_path, monkeypatch):
     corpus = P.build_pages(tmp_path / "m")
     assert [c["page"] for c in corpus] == [1, 2]
     assert {(c["manufacturer"], c["model"]) for c in corpus} == {("Allen-Bradley", "PowerFlex 525")}
+
+
+def test_family_manual_serves_every_model_it_covers(tmp_path, monkeypatch):
+    from answer_radar.factory import pages as P
+    from answer_radar.factory.discovery import ForumAdapter
+    from answer_radar.factory.evidence import ManualPage, resolve
+
+    (tmp_path / "m").mkdir()
+    (tmp_path / "m" / "f.pdf").write_bytes(b"%PDF-family")
+    (tmp_path / "m" / "o.pdf").write_bytes(b"%PDF-other")
+    texts = {
+        "f.pdf": [
+            "PowerFlex 520-Series AC Drive User Manual PowerFlex 523 and PowerFlex 525",
+            "F5 overvoltage: DC bus too high, check decel time",
+        ],
+        "o.pdf": ["Allen-Bradley PowerFlex 40 User Manual", "F5 overvoltage on the PowerFlex 40"],
+    }
+    monkeypatch.setattr(P, "pdf_pages", lambda pdf: texts[pdf.name])
+    corpus = [ManualPage(**p) for p in P.build_pages(tmp_path / "m")]
+    for model in ("PowerFlex 523", "PowerFlex 525"):
+        rec = {
+            "id": model,
+            "captured_at": "2026-10-27",
+            "opening_post": f"Allen-Bradley {model} F5 overvoltage on decel",
+        }
+        (c,) = ForumAdapter("control_com", REG).replay([rec])
+        docs = {e.doc_sha256 for e in resolve(c, corpus)}
+        fam = next(p.doc_sha256 for p in corpus if "520-Series" in p.text)
+        other = next(p.doc_sha256 for p in corpus if "PowerFlex 40 User" in p.text)
+        assert fam in docs and other not in docs
