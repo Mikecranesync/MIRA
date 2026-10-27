@@ -306,6 +306,8 @@ class MachineStateAdapter(Adapter):
 
     def extra(self, rec: dict) -> dict[str, Any]:
         return {
+            # The wording is a template around dataset readings, not a person's question.
+            "origin": "generated",
             "answerability": Answerability.ANSWERABLE,
             "expected_behavior": [f"dataset label: {rec['label']}"],
         }

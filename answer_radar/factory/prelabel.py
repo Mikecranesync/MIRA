@@ -192,7 +192,13 @@ def prelabel(
     for c in cases:
         if c.holdout or c.is_variant:
             continue
-        have = {lb.labeler_id: lb for lb in (reuse or {}).get(c.case_id, [])}
+        # Only the CONFIGURED labelers' saved answers count; a retired labeler's labels (e.g.
+        # after a model swap) are dropped rather than carried into routing.
+        have = {
+            lb.labeler_id: lb
+            for lb in (reuse or {}).get(c.case_id, [])
+            if lb.labeler_id in wanted or lb.labeler_id == "dataset"
+        }
         if c.provenance.source_id.startswith("uci_"):
             if "dataset" not in have:
                 have["dataset"] = dataset_label()

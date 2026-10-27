@@ -381,6 +381,10 @@ def run_prelabel(a) -> int:
     labels = prelabel(
         cases, candidates, page_text, labelers, budget, post, reuse=reuse, checkpoint=checkpoint
     )
+    # Rewrite every returned case with exactly the ACTIVE labelers' set, so a retired labeler's
+    # saved labels can never reach routing (no new spend: nothing is called here).
+    for k, v in labels.items():
+        checkpoint(k, v, [], True)
     print(
         json.dumps(
             {

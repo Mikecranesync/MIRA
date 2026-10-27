@@ -67,9 +67,10 @@ class Provenance:
     external_id: str | None = None
     license_note: str | None = None
     author: str | None = None
-    #: "captured" = a real person's wording from the source; "authored" = written by the
-    #: benchmark builders from the source (e.g. incident-derived safety pairs). Spec section 13
-    #: keeps authored cases separate from fresh evidence; reports slice on it.
+    #: "captured" = a real person's wording from the source; "authored" = written by people or
+    #: models building the benchmark (e.g. incident-derived safety pairs); "generated" = a
+    #: template filled from data (e.g. dataset rows). Spec section 13 keeps non-captured cases
+    #: separate from fresh evidence; reports slice on it.
     origin: str = "unknown"  # fail closed: a case is "captured" only when its importer says so
 
 
