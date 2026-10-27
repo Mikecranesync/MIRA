@@ -356,21 +356,20 @@ def run_prelabel(a) -> int:
     }
     labels = prelabel(cases, candidates, page_text, labelers, budget, post, reuse=reuse)
     a.private.mkdir(parents=True, exist_ok=True)
-    (a.private / "labels.json").write_text(
-        json.dumps(
-            {
-                k: {
-                    "freeze_hash": by_id[k].freeze_hash,
-                    "input_sha256": input_digest(by_id[k], candidates.get(k, []), page_text),
-                    "labels": [dataclasses.asdict(lb) for lb in v],
-                }
-                for k, v in labels.items()
-            },
-            default=str,
-            indent=1,
-        ),
-        encoding="utf-8",
+    # Merge, never shrink: saved records for cases outside this run (a smaller or filtered
+    # snapshot) are kept verbatim, so labels already paid for are never discarded.
+    merged = json.loads(saved_path.read_text(encoding="utf-8")) if saved_path.is_file() else {}
+    merged.update(
+        {
+            k: {
+                "freeze_hash": by_id[k].freeze_hash,
+                "input_sha256": input_digest(by_id[k], candidates.get(k, []), page_text),
+                "labels": [dataclasses.asdict(lb) for lb in v],
+            }
+            for k, v in labels.items()
+        }
     )
+    saved_path.write_text(json.dumps(merged, default=str, indent=1), encoding="utf-8")
     with (a.private / "prelabel-costs.jsonl").open("a", encoding="utf-8") as fh:  # history kept
         fh.write("".join(json.dumps(c) + "\n" for c in budget.calls))
     print(

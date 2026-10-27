@@ -415,3 +415,49 @@ def test_sync_never_overwrites_a_variants_own_adjudication():
         [],
         GoldStatus.EXPERT_REVIEWED,
     )
+
+
+def test_prelabel_never_discards_saved_labels_for_cases_outside_the_run(tmp_path, monkeypatch):
+    import httpx
+
+    from answer_radar.factory.__main__ import main
+
+    class Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": GOOD}}],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 5},
+            }
+
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: Resp())
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    p = tmp_path / "p.json"
+    p.write_text("[]")
+    big, small = tmp_path / "big.json", tmp_path / "small.json"
+    recs = [
+        {"id": f"q{i}", "captured_at": "2026-10-27", "opening_post": f"GS10 oCA fault case {i}"}
+        for i in range(3)
+    ]
+    big.write_text(json.dumps({"control_com": recs}))
+    small.write_text(json.dumps({"control_com": recs[:1]}))
+    base = [
+        "prelabel",
+        "--pages",
+        str(p),
+        "--private",
+        str(tmp_path / "pv"),
+        "--seed",
+        "s",
+        "--live-fraction",
+        "0",
+        "--budget-usd",
+        "1",
+    ]
+    main([*base, "--discovery", str(big)])
+    main([*base, "--discovery", str(small)])
+    saved = json.loads((tmp_path / "pv" / "labels.json").read_text())
+    assert {"control_com:q0", "control_com:q1", "control_com:q2"} <= set(saved)
