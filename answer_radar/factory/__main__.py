@@ -26,7 +26,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from answer_radar.factory.case import validate_set
+from answer_radar.factory.case import Answerability, Label, validate_set
 from answer_radar.factory.discovery import (
     FieldFailureAdapter,
     ForumAdapter,
@@ -46,7 +46,8 @@ from answer_radar.factory.holdout import (
 from answer_radar.factory.labeling import export_review_data, import_expert, route
 from answer_radar.factory.registry import SourceRegistry
 from answer_radar.factory.scoring import build_report
-from answer_radar.factory.variants import make_variants
+from answer_radar.factory.variants import make_variants, sync_variant_evidence
+from answer_radar.schema import IndependenceClass
 
 ADAPTERS = {
     "stackexchange": StackExchangeAdapter,
@@ -62,15 +63,12 @@ ADAPTERS = {
 }
 
 
-def cycle(
-    discovery: dict,
-    pages: list[ManualPage],
-    out: Path,
-    private: Path,
-    seed: str,
-    live_fraction: float,
-    expert_export: Path | None = None,
-) -> dict:
+def build(discovery: dict, pages: list[ManualPage], private: Path, seed: str, live_fraction: float):
+    """Replay -> freeze -> variants -> Live assignment -> validate -> evidence candidates.
+
+    Pure with respect to the filesystem except for READING the exposure ledger, so `prelabel`
+    sees exactly the cases and candidates `cycle` will route.
+    """
     reg = SourceRegistry.load()
     cases = []
     for sid, recs in sorted(discovery.items()):
@@ -105,7 +103,69 @@ def cycle(
     pages = [p for p in pages if p.source_id in reg and reg.may_back_gold(p.source_id)]
     index = PageIndex(pages)
     candidates = {c.case_id: resolve(c, pages, index=index) for c in cases}
-    queue = route(cases, seed=seed)
+    return reg, cases, candidates, ledger, ledger_path
+
+
+def load_labels(path: Path) -> dict[str, dict]:
+    """{case_id: {"freeze_hash", "input_sha256", "labels": [Label]}} as written by prelabel."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {
+        cid: {
+            "freeze_hash": rec["freeze_hash"],
+            "complete": rec.get("complete", True),
+            "input_sha256": rec["input_sha256"],
+            "labels": [
+                Label(
+                    d["labeler_id"],
+                    IndependenceClass(d["independence"]),
+                    Answerability(d["answerability"]),
+                    tuple(d.get("pages", ())),
+                    d.get("safety_class"),
+                    d.get("confidence"),
+                    bool(d.get("unsure")),
+                )
+                for d in rec["labels"]
+            ],
+        }
+        for cid, rec in raw.items()
+    }
+
+
+def cycle(
+    discovery: dict,
+    pages: list[ManualPage],
+    out: Path,
+    private: Path,
+    seed: str,
+    live_fraction: float,
+    expert_export: Path | None = None,
+    labels: Path | None = None,
+    review_variants: bool = False,
+) -> dict:
+    reg, cases, candidates, ledger, ledger_path = build(
+        discovery, pages, private, seed, live_fraction
+    )
+    if labels is not None:
+        from answer_radar.factory.prelabel import input_digest
+
+        pre, page_text = load_labels(labels), {(p.doc_sha256, p.page): p.text for p in pages}
+
+        def fresh(c) -> bool:
+            # Reuse a label only for the exact frozen question AND the exact pages the labeler
+            # saw; a changed question or manual corpus leaves the case unlabeled for review.
+            rec = pre.get(c.case_id)
+            return (
+                bool(rec)
+                and rec["complete"]  # a half-labeled case (interrupted run) is never routed on
+                and rec["freeze_hash"] == c.freeze_hash
+                and rec["input_sha256"] == input_digest(c, candidates.get(c.case_id, []), page_text)
+            )
+
+        cases = [
+            replace(c, labels=[*c.labels, *pre[c.case_id]["labels"]]) if fresh(c) else c
+            for c in cases
+        ]
+    queue = route(cases, seed=seed, review_variants=review_variants)
     if expert_export is not None:
         answers = load_expert_export(expert_export)  # validates manifest + review-data first
         shown = json.loads((expert_export / "review-data.json").read_text(encoding="utf-8"))
@@ -114,6 +174,7 @@ def cycle(
             extra = json.loads(live_shown.read_text(encoding="utf-8"))
             shown = {k: shown.get(k, []) + extra.get(k, []) for k in ("forum", "safety")}
         cases = import_expert(cases, answers, candidates, shown)
+        cases = sync_variant_evidence(cases)  # preserving variants probe the adjudicated pages
         # Partial exports are normal (experts work through the queue over time); unanswered cases
         # stay provisional. Say how partial, so a truncated export is never silent.
         shown_ids = {f"{k}-{r['id']}" for k in ("forum", "safety") for r in shown.get(k, [])}
@@ -242,6 +303,96 @@ def capture(
     return 0
 
 
+def run_prelabel(a) -> int:
+    """Paid lane: two independent providers label visible original cases under a hard cap."""
+    import dataclasses
+    import os
+
+    import httpx
+
+    from answer_radar.factory.prelabel import Budget, Labeler, input_digest, prelabel
+
+    _private(a.private)
+    pages = [ManualPage(**p) for p in json.loads(a.pages.read_text())]
+    _, cases, candidates, _, _ = build(
+        json.loads(a.discovery.read_text()), pages, a.private, a.seed, a.live_fraction
+    )
+    labelers = [
+        Labeler(
+            "openai:gpt-5.4-mini",
+            "https://api.openai.com/v1/chat/completions",
+            "gpt-5.4-mini",
+            os.environ["OPENAI_API_KEY"],
+            0.75,
+            4.5,
+            openai_style_tokens=True,
+        ),
+        Labeler(
+            "openrouter:llama-3.3-70b",
+            "https://openrouter.ai/api/v1/chat/completions",
+            "meta-llama/llama-3.3-70b-instruct",
+            os.environ["OPENROUTER_API_KEY"],
+            0.5,
+            1.0,
+        ),
+    ]
+
+    def post(url, body, headers):
+        r = httpx.post(url, json=body, headers=headers, timeout=60)
+        r.raise_for_status()
+        return r.json()
+
+    budget = Budget(cap_usd=a.budget_usd)  # validates: finite, non-negative
+    page_text = {(p.doc_sha256, p.page): p.text for p in pages}
+    by_id = {c.case_id: c for c in cases}
+    # Recall before recompute: reuse every saved label whose frozen question and rendered input
+    # are unchanged; only missing or invalidated cases are sent (and paid for) again.
+    saved_path = a.private / "labels.json"
+    saved = load_labels(saved_path) if saved_path.is_file() else {}
+    reuse = {
+        k: rec["labels"]
+        for k, rec in saved.items()
+        if k in by_id
+        and rec["freeze_hash"] == by_id[k].freeze_hash
+        and rec["input_sha256"] == input_digest(by_id[k], candidates.get(k, []), page_text)
+    }
+    a.private.mkdir(parents=True, exist_ok=True)
+    # Merge, never shrink: saved records for cases outside this run (a smaller or filtered
+    # snapshot) are kept verbatim, so labels already paid for are never discarded.
+    merged = json.loads(saved_path.read_text(encoding="utf-8")) if saved_path.is_file() else {}
+
+    def checkpoint(case_id, case_labels, calls, complete):
+        merged[case_id] = {
+            "complete": complete,
+            "freeze_hash": by_id[case_id].freeze_hash,
+            "input_sha256": input_digest(by_id[case_id], candidates.get(case_id, []), page_text),
+            "labels": [dataclasses.asdict(lb) for lb in case_labels],
+        }
+        with (a.private / "prelabel-costs.jsonl").open("a", encoding="utf-8") as fh:  # history kept
+            fh.write("".join(json.dumps(c) + "\n" for c in calls))
+        tmp = saved_path.with_suffix(
+            ".json.tmp"
+        )  # atomic replace: a crash mid-write can't corrupt it
+        tmp.write_text(json.dumps(merged, default=str, indent=1), encoding="utf-8")
+        tmp.replace(saved_path)
+
+    labels = prelabel(
+        cases, candidates, page_text, labelers, budget, post, reuse=reuse, checkpoint=checkpoint
+    )
+    print(
+        json.dumps(
+            {
+                "labeled": len(labels),
+                "reused": len(reuse),
+                "calls": len(budget.calls),
+                "spent_usd": round(budget.spent_usd, 4),
+                "cap_usd": a.budget_usd,
+            }
+        )
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m answer_radar.factory")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -253,6 +404,15 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--seed", required=True)
     c.add_argument("--live-fraction", type=float, default=0.3)
     c.add_argument("--expert-export", type=Path, default=None)
+    c.add_argument("--labels", type=Path, default=None)
+    c.add_argument("--review-variants", action="store_true")
+    pl = sub.add_parser("prelabel")
+    pl.add_argument("--discovery", type=Path, required=True)
+    pl.add_argument("--pages", type=Path, required=True)
+    pl.add_argument("--private", type=Path, required=True)
+    pl.add_argument("--seed", required=True)
+    pl.add_argument("--live-fraction", type=float, default=0.3)
+    pl.add_argument("--budget-usd", type=float, required=True)
     cap = sub.add_parser("capture")
     cap.add_argument("--source", choices=["stackexchange", "uci_ai4i"], required=True)
     cap.add_argument("--site", default="")
@@ -267,6 +427,8 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     if a.cmd == "capture":
         return capture(a.source, a.site, a.tag, a.pages, a.private, a.per_label, a.seed)
+    if a.cmd == "prelabel":
+        return run_prelabel(a)
     if a.cmd == "pages":
         from answer_radar.factory.pages import build_pages
 
@@ -285,6 +447,8 @@ def main(argv: list[str] | None = None) -> int:
         a.seed,
         a.live_fraction,
         a.expert_export,
+        a.labels,
+        a.review_variants,
     )
     print(json.dumps(rep["counts"], sort_keys=True))
     return 0

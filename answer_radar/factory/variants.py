@@ -21,7 +21,7 @@ from answer_radar.factory.case import (
     Pool,
     freeze_case,
 )
-from answer_radar.schema import SafetyClass
+from answer_radar.schema import IndependenceClass, SafetyClass
 
 _SHORT = {
     "drive": "vfd",
@@ -147,4 +147,34 @@ def make_variants(parent: BenchmarkCase, kinds: list[str] | None = None) -> list
                 external_id=parent.provenance.external_id,
             )
         )
+    return out
+
+
+def sync_variant_evidence(cases: list[BenchmarkCase]) -> list[BenchmarkCase]:
+    """Give answer-preserving variants their parent's CURRENT evidence as a provisional candidate.
+
+    Variants are generated before experts review the parent, so they start without evidence and
+    would be dropped from retrieval scoring forever. After the parent is adjudicated, an
+    answer-preserving rewording is probed against the same pages. The variant stays PROVISIONAL
+    (case.validate_case still requires its own human label to settle), so this enables
+    robustness scoring without ever inheriting settled gold.
+    """
+    by_id = {c.case_id: c for c in cases}
+    out = []
+    for c in cases:
+        parent = by_id.get(c.parent_case_id or "")
+        own_review = any(lb.independence is IndependenceClass.HUMAN_REVIEW for lb in c.labels)
+        if (
+            c.is_variant
+            and parent is not None
+            and VARIANT_KINDS.get(c.variant_kind or "", False)
+            and not own_review  # a variant's own adjudication (even disputed) is never overwritten
+            and c.gold_status is GoldStatus.PROVISIONAL
+        ):
+            c = replace(
+                c,
+                gold_evidence=list(parent.gold_evidence),
+                answerability=parent.answerability,
+            )
+        out.append(c)
     return out

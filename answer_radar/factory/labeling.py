@@ -18,6 +18,7 @@ import hashlib
 from dataclasses import replace
 
 from answer_radar.factory.case import (
+    VARIANT_KINDS,
     Answerability,
     BenchmarkCase,
     Evidence,
@@ -47,15 +48,40 @@ def _audit_pick(case_id: str, seed: str, rate: float) -> bool:
 
 
 def route(
-    cases: list[BenchmarkCase], *, seed: str, audit_rate: float = 0.1
+    cases: list[BenchmarkCase], *, seed: str, audit_rate: float = 0.1, review_variants: bool = False
 ) -> dict[str, list[str]]:
-    """Return {case_id: [reasons]} for every case that needs an expert. Others become provisional."""
+    """Return {case_id: [reasons]} for every case that needs an expert. Others become provisional.
+
+    Answer-preserving variants are never AI-labeled, so the two-label rule does not apply to
+    them; they follow the same safety / Core / audit routing as originals (and all of them go
+    to experts with review_variants=True). Answer-changing variants always need their own review.
+    """
     queue: dict[str, list[str]] = {}
     for c in cases:
+        if c.is_variant and VARIANT_KINDS.get(c.variant_kind or "", False):
+            own = any(lb.independence is IndependenceClass.HUMAN_REVIEW for lb in c.labels)
+            why = []
+            if review_variants and not own:
+                why.append("variant review requested")
+            if c.pool is Pool.SAFETY or c.question.safety_class is not SafetyClass.NONE:
+                why.append("safety-critical")
+            if c.pool is Pool.CORE:
+                why.append("release-gating core case")
+            if not why and not own and _audit_pick(c.case_id, seed, audit_rate):
+                why.append("random audit")
+            if why:
+                queue[c.case_id] = why
+            continue
+        if c.is_variant:
+            queue[c.case_id] = ["answer-changing variant needs its own review"]
+            continue
         ai = [lb for lb in c.labels if lb.independence is not IndependenceClass.HUMAN_REVIEW]
         why = []
         independent = [lb for lb in ai if lb.independence not in NON_PROMOTING_INDEPENDENCE]
-        if len(ai) < 2:
+        proof = [lb for lb in ai if lb.independence is IndependenceClass.DETERMINISTIC_PROOF]
+        if proof and len(ai) == len(proof):
+            pass  # a dataset's own label (e.g. UCI AI4I) needs no second opinion
+        elif len(ai) < 2:
             why.append("fewer than two independent labels")
         elif len({lb.labeler_id for lb in ai}) < 2 or len(independent) < len(ai):
             why.append("labels not independent (duplicate labeler or self-consistency)")
