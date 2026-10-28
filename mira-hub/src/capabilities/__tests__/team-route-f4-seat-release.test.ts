@@ -15,11 +15,11 @@ vi.mock("@/capabilities/pilot-access", () => ({
   releasePilotSeatReservation: vi.fn(async () => undefined),
 }));
 
-import { POST } from "../route";
+import { POST } from "@/app/api/team/route";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 import { createMagicToken } from "@/lib/users";
-import { releasePilotSeatReservation, reservePilotSeat } from "@/capabilities/pilot-access";
+import { releasePilotSeatReservation, reservePilotSeat } from "../pilot-access";
 
 const TENANT = "tenant-1";
 const session = { userId: "u_admin", tenantId: TENANT, email: "admin@example.com" };
