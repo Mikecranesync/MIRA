@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { ensureUserAndTenant, findUserByEmail } from "@/lib/users";
+import { attributionFromRequest, handlePilotApplicationSubmitted } from "@/capabilities/pilot-funnel";
 
 export const dynamic = "force-dynamic";
 
@@ -113,6 +114,20 @@ export async function POST(req: Request) {
     const nameStr = typeof name === "string" ? name.trim() || undefined : undefined;
     const result = await ensureUserAndTenant({ email: trimmed, passwordHash, name: nameStr });
     captureHubSpotLead(trimmed, nameStr).catch(() => {});
+    // #4877 — pilot-application funnel. `existing` above is null, so this is
+    // genuinely a NEW account (not the Google-OAuth/magic-link signup paths
+    // in src/auth.ts, which don't go through this route — see PR #4877 body
+    // for that gap). Fire-and-forget: must never fail or slow this response.
+    // tenantName mirrors ensureUserAndTenant's own fallback
+    // (mira-hub/src/lib/users.ts) rather than a second DB read.
+    void handlePilotApplicationSubmitted({
+      tenantId: result.tenantId,
+      userId: result.id,
+      email: trimmed,
+      name: nameStr ?? null,
+      tenantName: nameStr || trimmed,
+      attribution: attributionFromRequest(req, body),
+    }).catch((err) => console.error("[api/auth/register] pilot-funnel hook failed:", err));
     return NextResponse.json({ ok: true, userId: result.id, tenantId: result.tenantId }, { status: 201, headers });
   } catch (err) {
     console.error("[api/auth/register]", err);
