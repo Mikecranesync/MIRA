@@ -27,6 +27,48 @@ describe("NodeChat MessageBubble — sources rendering", () => {
     expect(html).toContain("p.42");
   });
 
+  it("renders a clickable citation chip (anchor tag) when source has a URL", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble
+        msg={{
+          id: "m1",
+          role: "assistant",
+          content: "See the manual for details.",
+          sources: [
+            { index: 1, title: "PowerFlex 525 Manual", url: "https://example.com/manual.pdf", page: 42 },
+          ],
+        }}
+      />,
+    );
+
+    // Citation with URL should be rendered as an anchor tag
+    expect(html).toContain("<a");
+    expect(html).toContain("href=");
+    expect(html).toContain("https://example.com/manual.pdf");
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain("[1] PowerFlex 525 Manual");
+  });
+
+  it("renders a non-clickable citation chip (span tag) when source has no URL", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble
+        msg={{
+          id: "m1",
+          role: "assistant",
+          content: "The comm fault clears after a power cycle.",
+          sources: [
+            { index: 1, title: "PowerFlex 525 Manual", url: null, page: 42 },
+          ],
+        }}
+      />,
+    );
+
+    // Citation without URL should be rendered as a span (not clickable)
+    expect(html).toContain("<span");
+    expect(html).not.toContain('href=');
+    expect(html).toContain("[1] PowerFlex 525 Manual");
+  });
+
   it("omits the citation chip row when the message has no sources", () => {
     const html = renderToStaticMarkup(
       <MessageBubble
