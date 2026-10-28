@@ -460,7 +460,8 @@ capabilities:
       - "PHOTO_OCR_ENABLED=1 in Doppler factorylm/prd for mira-ask AND mira-hub; deploy services=mira-ask,mira-hub."
       - "One real spec-table photo -> [1] citation whose file opens the photograph, on prod (server-side proof acceptable)."
       - "mira-ask RSS under the 1536m cap during OCR observed once (tesseract is light; confirm, don't assume)."
-    review_by: "2026-12-15"
+      - "REVIEW 2026-10-28 -> 2026-12-22 (reason): moved only to avoid a three-record collision on 2026-12-15 (notebook_manual_acquisition and manual_discovery_judge are deliberately paired on that day). Disposition unchanged from #4838: deployed_disabled, not part of the first-five pilot offer."
+    review_by: "2026-12-22"
 
   # =========================================================================
   - id: machine_memory_observer_cv101
