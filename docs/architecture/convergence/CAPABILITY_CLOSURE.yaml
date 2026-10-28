@@ -630,6 +630,16 @@ capabilities:
       so setting Doppler alone would not turn it on. The nameplate-scan confirm
       route searches regardless of this flag; the flag gates the create-time
       trigger and the notebook-chat fallback/candidate takeover.
+      Re-decided 2026-10-28 when the 2026-10-27 review lapsed: the owner's
+      disposition is OFF in production until the staging promotion criteria
+      below pass and #4400/#4401 are re-probed on staging. The record stays
+      staging_enabled; production stays unset. The first five free 30-day
+      pilots run on manuals the customer uploads, so this capability is not
+      part of the pilot offer. The environment values above are the
+      2026-10-13 snapshot and were NOT re-read for this re-decision. The next
+      review falls after the first pilot window: re-read the flag in staging
+      and production, then promote, defer or retire it. The promotion
+      criteria below are unchanged.
     owner: "Mike Harper"
     ci_jobs:
       - mira-hub-unit        # notebook-manual-acquisition + chat-flight-recorder + create-starts-manual-acquisition suites
@@ -651,7 +661,7 @@ capabilities:
       - "Staging: set the flag after 100 is applied; scan SMC VQ1000-FPG and STEPPERONLINE MG17 notebooks; record the packet manual_acquisition states."
       - "Staging: #4400 and #4401 fixed and re-probed on staging (GE Fanuc and Emerson IC752DPA062A end in an honest result, not a junk candidate or 'unavailable')."
       - "Production: owner decision after the staging walk and the #4102 human-readiness run; compose passthrough added first (#4406)."
-    review_by: "2026-10-27"
+    review_by: "2026-12-15"
     notes: >-
       Pairs with manual_discovery_judge: without the judge, discovery can return
       an unrelated PDF (2026-09-29 probe: a bioRxiv paper for an MG17 gearbox);
