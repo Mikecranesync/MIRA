@@ -38,6 +38,7 @@ import { hubUrl } from "./capabilities/hub-origin.js";
 import {
   submitPilotRequest,
   ensurePilotRequestSchema,
+  pilotRequestLimiterKey,
 } from "./capabilities/pilot-request.js";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
@@ -964,7 +965,7 @@ app.post("/api/pilot-request", async (c) => {
     return c.json({ error: "Forbidden origin" }, 403);
   }
 
-  const ip = getClientIp(c.req.raw.headers);
+  const ip = pilotRequestLimiterKey(c.req.raw.headers);
   const rl = checkPilotRequestRateLimit(ip);
   if (!rl.allowed) {
     c.header("Retry-After", String(rl.retryAfterSec));

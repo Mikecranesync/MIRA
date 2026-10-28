@@ -412,3 +412,21 @@ export async function submitPilotRequest(
 
   return { ok: true, id: row.id };
 }
+
+/**
+ * Rate-limit key for POST /api/pilot-request (Codex #4881 F5). The shared
+ * getClientIp in server.ts trusts the FIRST X-Forwarded-For value, which a
+ * client can set to anything. nginx overwrites X-Real-IP with $remote_addr
+ * (deployment/nginx-factorylm-marketing.conf), so prefer it; otherwise use the
+ * LAST X-Forwarded-For hop, the one our own proxy appended.
+ */
+export function pilotRequestLimiterKey(headers: Headers): string {
+  const real = headers.get("x-real-ip")?.trim();
+  if (real) return real;
+  const fwd = headers.get("x-forwarded-for");
+  if (fwd) {
+    const hops = fwd.split(",").map((h) => h.trim()).filter(Boolean);
+    if (hops.length) return hops[hops.length - 1]!;
+  }
+  return "unknown";
+}

@@ -19,6 +19,7 @@ import {
   CONSENT_TEXT_VERSION,
   type ValidPilotRequest,
   type StoredPilotRequest,
+  pilotRequestLimiterKey,
 } from "./pilot-request";
 
 // ---------------------------------------------------------------------------
@@ -467,5 +468,21 @@ describe("submitPilotRequest with real capture (default deps.capture)", () => {
     expect(props.email).toBeUndefined();
     expect(props.company).toBeUndefined();
     expect(props.equipment).toBeUndefined();
+  });
+});
+
+describe("pilotRequestLimiterKey (Codex #4881 F5)", () => {
+  test("prefers the proxy-set X-Real-IP over a client-supplied X-Forwarded-For", () => {
+    const h = new Headers({ "x-forwarded-for": "1.2.3.4, 10.0.0.9", "x-real-ip": "10.0.0.9" });
+    expect(pilotRequestLimiterKey(h)).toBe("10.0.0.9");
+  });
+  test("rotating a forged first X-Forwarded-For hop does not change the key", () => {
+    const a = pilotRequestLimiterKey(new Headers({ "x-forwarded-for": "9.9.9.1, 203.0.113.7" }));
+    const b = pilotRequestLimiterKey(new Headers({ "x-forwarded-for": "9.9.9.2, 203.0.113.7" }));
+    expect(a).toBe("203.0.113.7");
+    expect(b).toBe(a);
+  });
+  test("falls back to 'unknown' with no forwarding headers", () => {
+    expect(pilotRequestLimiterKey(new Headers())).toBe("unknown");
   });
 });
