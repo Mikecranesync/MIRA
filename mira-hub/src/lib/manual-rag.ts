@@ -1878,7 +1878,9 @@ export async function retrieveNodeChunks(
       docId: r.doc_id == null ? null : String(r.doc_id),
       _row: r,
     })),
-    { intent, trace },
+    // Contents/index demotion only rides with IDF scoring, whose presence-only sum
+    // is what lets those pages lead; flag off stays byte-identical.
+    { intent, trace, demoteNavigation: lexicalV2 },
   );
   // Item 4 — Reciprocal Rank Fusion of the lexical rerank and the vector order
   // (hybrid-retrieval.ts). With no vector lane this IS lexicalRanked.
