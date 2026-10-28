@@ -8,12 +8,15 @@ import {
   PilotCohortCapError,
   PilotCohortRenewalError,
   PilotSeatCapError,
+  PilotTenantNotActiveError,
   PilotTenantNotFoundError,
+  admitPilotInvite,
   approvePilotTenant,
   endPilotTenant,
   getPilotTenantStatus,
   isPilotApprovalRequired,
   redeemPilotSeat,
+  releasePilotSeatReservation,
   reservePilotSeat,
 } from "../pilot-access";
 
@@ -97,14 +100,58 @@ describe("approvePilotTenant", () => {
     expect(result.tenant.pilotStatus).toBe("active");
     expect(result.tenant.pilotExpiresAt).toBe("2026-11-27T00:00:00.000Z");
 
-    const ownerUpdate = client.calls.find((c) => /UPDATE hub_users/.test(c.sql));
-    expect(ownerUpdate).toBeTruthy();
-    expect(ownerUpdate?.sql).toMatch(/status = 'trial'/);
-    expect(ownerUpdate?.sql).toMatch(/AND status <> 'admin'/);
-    expect(ownerUpdate?.params).toEqual(["owner-1", "2026-11-27T00:00:00.000Z"]);
+    const usersUpdate = client.calls.find((c) => /UPDATE hub_users/.test(c.sql));
+    expect(usersUpdate).toBeTruthy();
+    // F3 (Codex #4664 / #4878 review round 1): the update is scoped to the
+    // whole TENANT, not just the owner — every existing non-admin member
+    // follows the org onto the pilot window.
+    expect(usersUpdate?.sql).toMatch(/WHERE tenant_id = \$1 AND status <> 'admin'/);
+    expect(usersUpdate?.sql).toMatch(/status = 'trial'/);
+    expect(usersUpdate?.params).toEqual(["tenant-1", "2026-11-27T00:00:00.000Z"]);
 
     const expiryUpdate = client.calls.find((c) => /SET pilot_status = 'active'/.test(c.sql));
     expect(expiryUpdate?.params).toEqual(["tenant-1", PILOT_WINDOW_DAYS, "admin-1"]);
+  });
+
+  it("F3 — moves EVERY existing non-admin user in the tenant, not just the owner", async () => {
+    // The production SQL (`WHERE tenant_id = $1 AND status <> 'admin'`) is
+    // tenant-scoped by construction, so there is nothing for a hand-rolled
+    // mock to selectively apply per-row — this test exists to pin that exact
+    // WHERE clause (caught by mutation below) rather than re-simulate SQL
+    // semantics in TypeScript.
+    const client = makeClient([
+      [
+        /FROM hub_tenants WHERE id = \$1 FOR UPDATE/,
+        () => ({
+          rows: [{ id: "tenant-2", owner_user_id: "owner-2", pilot_status: "pending" }],
+        }),
+      ],
+      [/SELECT COUNT\(\*\)::int AS n FROM hub_tenants WHERE pilot_status = 'active'/, () => ({ rows: [{ n: 0 }] })],
+      [
+        /UPDATE hub_tenants[\s\S]*SET pilot_status = 'active'/,
+        () => ({
+          rows: [
+            {
+              id: "tenant-2",
+              pilot_status: "active",
+              pilot_approved_at: "2026-10-28T00:00:00.000Z",
+              pilot_expires_at: "2026-11-27T00:00:00.000Z",
+              pilot_approved_by: "admin-9",
+            },
+          ],
+        }),
+      ],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    await approvePilotTenant("tenant-2", "admin-9");
+
+    const usersUpdate = client.calls.find((c) => /UPDATE hub_users/.test(c.sql));
+    // Not "WHERE id = $1" (owner-only, the pre-fix query) — tenant_id-scoped,
+    // which a real database applies to the owner AND every existing crew row.
+    expect(usersUpdate?.sql).not.toMatch(/WHERE id = \$1/);
+    expect(usersUpdate?.sql).toMatch(/WHERE tenant_id = \$1/);
+    expect(usersUpdate?.params?.[0]).toBe("tenant-2");
   });
 
   it("re-approving an already-active tenant is a no-op — it does not extend the date", async () => {
@@ -209,6 +256,21 @@ describe("endPilotTenant", () => {
     expect(result.ended).toBe(false);
     expect(client.calls.some((c) => /UPDATE hub_users/.test(c.sql))).toBe(false);
   });
+
+  it("F1 — takes the same tenant-scoped advisory lock as admitPilotInvite, before touching the tenant row", async () => {
+    const client = makeClient([
+      [/UPDATE hub_tenants SET pilot_status = 'ended'/, () => ({ rows: [{ id: "tenant-1" }] })],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    await endPilotTenant("tenant-1");
+
+    const lockIndex = client.calls.findIndex((c) => /pg_advisory_xact_lock\(\$1, hashtext\(\$2\)\)/.test(c.sql));
+    const updateIndex = client.calls.findIndex((c) => /UPDATE hub_tenants SET pilot_status = 'ended'/.test(c.sql));
+    expect(lockIndex).toBeGreaterThanOrEqual(0);
+    expect(lockIndex).toBeLessThan(updateIndex);
+    expect(client.calls[lockIndex].params).toEqual([778899002, "tenant-1"]);
+  });
 });
 
 describe("getPilotTenantStatus", () => {
@@ -307,6 +369,96 @@ describe("reservePilotSeat", () => {
       reserved: true,
     });
     expect(client.calls.some((c) => /INSERT INTO pilot_seat_reservations/.test(c.sql))).toBe(true);
+  });
+});
+
+describe("admitPilotInvite (F1/F2 — the authoritative redemption-time check)", () => {
+  it("is not a pilot tenant when pilot_status is NULL — caller keeps legacy behavior", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: null }] })],
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await expect(admitPilotInvite(client as any, "tenant-1", "x@example.com")).resolves.toEqual({
+      isPilotTenant: false,
+      pilotExpiresAt: null,
+    });
+  });
+
+  it("F1 — rejects redemption for a 'pending' tenant", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: "pending" }] })],
+    ]);
+    await expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admitPilotInvite(client as any, "tenant-1", "x@example.com"),
+    ).rejects.toBeInstanceOf(PilotTenantNotActiveError);
+  });
+
+  it("F1 — rejects redemption for an 'ended' tenant (the token was issued while active)", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: "ended" }] })],
+    ]);
+    await expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admitPilotInvite(client as any, "tenant-1", "x@example.com"),
+    ).rejects.toBeInstanceOf(PilotTenantNotActiveError);
+    // Never reaches the membership/capacity checks for a non-active tenant.
+    expect(client.calls.some((c) => /FROM hub_users/.test(c.sql))).toBe(false);
+  });
+
+  it("admits an already-redeemed member without re-checking capacity", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/, () => ({
+        rows: [{ pilot_status: "active", pilot_expires_at: "2026-11-27T00:00:00.000Z" }],
+      })],
+      [/FROM hub_users WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [{ "1": 1 }] })],
+    ]);
+    await expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admitPilotInvite(client as any, "tenant-1", "existing@example.com"),
+    ).resolves.toEqual({ isPilotTenant: true, pilotExpiresAt: new Date("2026-11-27T00:00:00.000Z") });
+    expect(client.calls.some((c) => /pilot_seat_reservations/.test(c.sql))).toBe(false);
+  });
+
+  it("F2 — a token with NO reservation on record is still capacity-checked at redemption", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/, () => ({
+        rows: [{ pilot_status: "active", pilot_expires_at: "2026-11-27T00:00:00.000Z" }],
+      })],
+      [/FROM hub_users WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/FROM pilot_seat_reservations WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/COUNT\(DISTINCT email_lower\)/, () => ({ rows: [{ n: PILOT_SEAT_MAX_USERS }] })],
+    ]);
+    await expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admitPilotInvite(client as any, "tenant-1", "unreserved@example.com"),
+    ).rejects.toBeInstanceOf(PilotSeatCapError);
+  });
+
+  it("F2 — a token with no reservation reserves a seat on redemption when under the cap", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/, () => ({
+        rows: [{ pilot_status: "active", pilot_expires_at: "2026-11-27T00:00:00.000Z" }],
+      })],
+      [/FROM hub_users WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/FROM pilot_seat_reservations WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/COUNT\(DISTINCT email_lower\)/, () => ({ rows: [{ n: 3 }] })],
+    ]);
+    await expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admitPilotInvite(client as any, "tenant-1", "unreserved@example.com"),
+    ).resolves.toEqual({ isPilotTenant: true, pilotExpiresAt: new Date("2026-11-27T00:00:00.000Z") });
+    expect(client.calls.some((c) => /INSERT INTO pilot_seat_reservations/.test(c.sql))).toBe(true);
+  });
+});
+
+describe("releasePilotSeatReservation (F4)", () => {
+  it("deletes only a still-pending reservation for that tenant+email", async () => {
+    await releasePilotSeatReservation("tenant-1", "FIFTH@EXAMPLE.COM");
+    const call = queryMock.mock.calls.find((c) => /DELETE FROM pilot_seat_reservations/.test(String(c[0])));
+    expect(call).toBeTruthy();
+    expect(String(call?.[0])).toMatch(/AND status = 'pending'/);
+    expect(call?.[1]).toEqual(["tenant-1", "fifth@example.com"]);
   });
 });
 

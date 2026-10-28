@@ -39,7 +39,10 @@ import { PILOT_COHORT_MAX_ORGS, PILOT_SEAT_MAX_USERS } from "@/lib/config";
 import {
   PilotCohortCapError,
   PilotSeatCapError,
+  PilotTenantNotActiveError,
+  admitPilotInvite,
   approvePilotTenant,
+  endPilotTenant,
   redeemPilotSeat,
   reservePilotSeat,
 } from "../pilot-access";
@@ -77,6 +80,35 @@ async function activeOrgCount(): Promise<number> {
     `SELECT COUNT(*)::int AS n FROM hub_tenants WHERE pilot_status = 'active'`,
   );
   return Number(rows[0].n);
+}
+
+async function occupiedSeatCount(tenantId: string): Promise<number> {
+  const { rows } = await testPool.query(
+    `SELECT COUNT(DISTINCT email_lower)::int AS n FROM (
+       SELECT email_lower FROM hub_users WHERE tenant_id = $1
+       UNION
+       SELECT email_lower FROM pilot_seat_reservations WHERE tenant_id = $1
+     ) seats`,
+    [tenantId],
+  );
+  return Number(rows[0].n);
+}
+
+/** Mirrors ensureInvitedUser's real transactional shape: admitPilotInvite
+ *  runs inside the SAME open transaction/lock the caller commits. */
+async function runAdmit(tenantId: string, email: string) {
+  const client = await testPool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await admitPilotInvite(client, tenantId, email);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 describe.skipIf(!READY)("pilot access against real Postgres (#4878, Codex #4664 F1/F2/F4)", () => {
@@ -214,5 +246,127 @@ describe.skipIf(!READY)("pilot access against real Postgres (#4878, Codex #4664 
       [tenantId],
     );
     expect(Number(rows[0].n)).toBe(PILOT_SEAT_MAX_USERS);
+  });
+
+  it("F1 — endPilotTenant genuinely BLOCKS while a redemption holds the tenant lock, it does not race it", async () => {
+    // Proves the mechanism, not just an outcome a scheduler happened to
+    // pick: a second transaction on the SAME tenant lock cannot proceed
+    // until the first commits, so a redemption can never observe a stale
+    // 'active' snapshot concurrently with termination committing 'ended'.
+    const { tenantId } = await makeTenant(`f1-lock-org-${MARK}`);
+    testTenantIds.push(tenantId);
+    await activateDirectly(tenantId);
+
+    const holdClient = await testPool.connect();
+    try {
+      await holdClient.query("BEGIN");
+      await holdClient.query("SELECT pg_advisory_xact_lock($1, hashtext($2))", [778899002, tenantId]);
+
+      const start = Date.now();
+      const endPromise = endPilotTenant(tenantId);
+
+      // Give endPilotTenant ample time to attempt the lock and block.
+      await new Promise((r) => setTimeout(r, 300));
+      const raceResult = await Promise.race([
+        endPromise.then(() => "resolved" as const),
+        new Promise<"still-pending">((r) => setTimeout(() => r("still-pending"), 0)),
+      ]);
+      expect(raceResult).toBe("still-pending");
+
+      await holdClient.query("COMMIT");
+      await expect(endPromise).resolves.toEqual({ ended: true });
+      expect(Date.now() - start).toBeGreaterThanOrEqual(290);
+    } finally {
+      holdClient.release();
+    }
+  });
+
+  it("F1 — a token issued while active, redeemed after the admin ends the pilot, never creates access", async () => {
+    const { tenantId } = await makeTenant(`f1-race-org-${MARK}`);
+    testTenantIds.push(tenantId);
+    await activateDirectly(tenantId);
+    const email = `late-redeemer-${MARK}@example.com`;
+    await reservePilotSeat(tenantId, email); // the live, still-unredeemed reservation/token
+
+    await expect(endPilotTenant(tenantId)).resolves.toEqual({ ended: true });
+
+    // The pilot has now ended. Redeeming the still-live token must be rejected.
+    await expect(runAdmit(tenantId, email)).rejects.toBeInstanceOf(PilotTenantNotActiveError);
+    const { rows } = await testPool.query(
+      `SELECT COUNT(*)::int AS n FROM hub_users WHERE tenant_id = $1 AND email_lower = $2`,
+      [tenantId, email],
+    );
+    expect(Number(rows[0].n)).toBe(0);
+  });
+
+  it("F2 — two concurrent redemptions of tokens with NO reservation on record, at 4 occupied: exactly one wins", async () => {
+    const { tenantId } = await makeTenant(`f2-org-${MARK}`);
+    testTenantIds.push(tenantId);
+    await activateDirectly(tenantId);
+    for (let i = 0; i < 3; i++) {
+      await testPool.query(`INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'trial')`, [
+        `f2-crew-${MARK}-${i}@example.com`,
+        tenantId,
+      ]);
+    }
+    expect(await occupiedSeatCount(tenantId)).toBe(4);
+
+    // Neither email was ever reserved — simulates two tokens issued before
+    // the tenant was ever capacity-checked. admitPilotInvite must still
+    // re-check capacity live, with exactly one winner.
+    const results = await Promise.allSettled([
+      runAdmit(tenantId, `f2-unreserved-a-${MARK}@example.com`),
+      runAdmit(tenantId, `f2-unreserved-b-${MARK}@example.com`),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(PilotSeatCapError);
+    expect(await occupiedSeatCount(tenantId)).toBe(PILOT_SEAT_MAX_USERS);
+  });
+
+  it("F3 — approving a tenant moves an existing 'approved' crew member to trial, and leaves a platform admin untouched", async () => {
+    // Free the cohort entirely: earlier tests in this file leave active
+    // tenants behind (cleanup is afterAll-only), so this test's own
+    // approval would otherwise 409 on the COHORT cap — a test-ordering
+    // artifact, not the thing F3 is proving.
+    await testPool.query(`UPDATE hub_tenants SET pilot_status = 'ended' WHERE pilot_status = 'active'`);
+    expect(await activeOrgCount()).toBe(0);
+
+    const { tenantId } = await makeTenant(`f3-org-${MARK}`);
+    testTenantIds.push(tenantId);
+
+    const {
+      rows: [crew],
+    } = await testPool.query(
+      `INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'approved') RETURNING id`,
+      [`f3-crew-${MARK}@example.com`, tenantId],
+    );
+    const {
+      rows: [admin],
+    } = await testPool.query(
+      `INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'admin') RETURNING id`,
+      [`f3-admin-${MARK}@example.com`, tenantId],
+    );
+
+    const result = await approvePilotTenant(tenantId, "approving-admin");
+    expect(result.status).toBe("activated");
+
+    const { rows } = await testPool.query(
+      `SELECT id, status, trial_expires_at FROM hub_users WHERE tenant_id = $1 ORDER BY email`,
+      [tenantId],
+    );
+    const byId = new Map(
+      rows.map((r: { id: string; status: string; trial_expires_at: string }) => [String(r.id), r]),
+    );
+
+    const crewRow = byId.get(String(crew.id));
+    expect(crewRow?.status).toBe("trial");
+    expect(new Date(crewRow!.trial_expires_at).toISOString()).toBe(result.tenant.pilotExpiresAt);
+
+    const adminRow = byId.get(String(admin.id));
+    expect(adminRow?.status).toBe("admin");
   });
 });
