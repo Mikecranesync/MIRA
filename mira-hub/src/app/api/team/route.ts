@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 import { inviteLinkExpiryCopy } from "@/capabilities/trial-access";
+import { PilotSeatCapError, reservePilotSeat } from "@/capabilities/pilot-access";
 import { createMagicToken, ensureSchema } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -149,6 +150,10 @@ export async function POST(req: Request) {
       );
     }
 
+    // #4878 (F1/F2/F4): no-op when the flag is off or this tenant isn't an
+    // active pilot (reservePilotSeat checks hub_tenants.pilot_status itself).
+    await reservePilotSeat(ctx.tenantId, email);
+
     const token = await createMagicToken(email, {
       tenantId: ctx.tenantId,
       role,
@@ -171,6 +176,9 @@ export async function POST(req: Request) {
           }),
     });
   } catch (err) {
+    if (err instanceof PilotSeatCapError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     console.error("[api/team] invite", err);
     return NextResponse.json({ error: "Invite failed" }, { status: 500 });
   }
