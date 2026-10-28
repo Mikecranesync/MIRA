@@ -27,8 +27,7 @@
  *   GET  /qr-test                  → Branded QR display page (no auth; ?tenant_id &tenant_name)
  *   GET  /admin/qr-print          → Admin: list assets + select stickers (ADMIN only)
  *   POST /api/admin/qr-print-batch → Admin: UPSERT tags + generate Avery 5163 PDF (ADMIN only)
- *   GET  /pilot                   → Free 30-day pilot request form (#4877)
- *   POST /api/pilot-request        → Store pilot request + notify owner + capture event (#4877)
+ *   POST /api/pilot-request        → Store pilot request intake + notify owner + capture event (#4877, #4881 rework)
  */
 
 import { Hono, type Context } from "hono";
@@ -40,7 +39,6 @@ import {
   submitPilotRequest,
   ensurePilotRequestSchema,
 } from "./capabilities/pilot-request.js";
-import { renderPilotRequestPage } from "./factorylm-ui/pilot-request-page.js";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
@@ -886,10 +884,19 @@ app.post("/api/register", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Free 30-day pilot request (#4877) — first five pilot customers, no price
-// shown anywhere.
+// Free 30-day pilot request intake (#4877, reworked #4881) — first five pilot
+// customers, no price shown anywhere.
 //
-// Codex round-1 remediation (PR #4881, F2/F3):
+// Owner decision (#4881): the Hub signup flow is the pilot application; ads
+// use Meta/Google's native lead-gen forms, not a website-to-React
+// integration. So there is no `/pilot` presentation route here. This JSON
+// API is the intake behind that decision: it stores (and notifies on) a
+// pilot request regardless of where it originated — a lead-form export or
+// import, or any future first-party form — tagged by `lead_source`.
+//
+// Codex round-1 remediation (PR #4881, F2/F3 — both still hold after the
+// page removal; F1, the standalone-page BLOCKER, is resolved by deleting the
+// page rather than migrating it to the shared shell):
 // - F3: a dedicated per-IP rate bucket (NOT shared with /api/register — a
 //   flood of invalid cross-origin pilot submissions must not lock out real
 //   signups, and vice versa), plus a same-origin guard: Content-Type must be
@@ -945,8 +952,6 @@ function resolvePilotRequestOrigin(c: Context): string | null {
   }
   return null;
 }
-
-app.get("/pilot", (c) => c.html(renderPilotRequestPage()));
 
 app.post("/api/pilot-request", async (c) => {
   const contentType = (c.req.header("content-type") || "").toLowerCase();

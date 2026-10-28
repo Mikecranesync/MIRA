@@ -1,14 +1,17 @@
 /**
- * Free 30-day pilot request form — capture, store, notify (#4877).
+ * Free 30-day pilot request intake — capture, store, notify (#4877, reworked #4881).
  *
- * "Journey step 2" of the first-five-pilots funnel: a prospect who wants the
- * free pilot could previously only click a `mailto:` link. Nothing recorded
- * the request, its source, or consent. This module stores the submission in
- * NeonDB (idempotent `CREATE TABLE IF NOT EXISTS`, same pattern as
- * `lib/quota.ts` → `plg_tenants`), emails the owner via the existing
- * `lib/mailer.ts` `sendEmail()`, and fires a PostHog funnel event via the
- * existing `lib/posthog-server.ts` `captureServerEvent()` — no price, no ad
- * pixel, no free-text/email fields leave this module's capture() path.
+ * Originally built behind a standalone `/pilot` form; the owner decided
+ * (#4881) that the Hub signup flow is the pilot application and ads run
+ * through Meta/Google's native lead-gen forms instead of a website-to-React
+ * integration, so that presentation page was removed. This module is now the
+ * intake for however a pilot request originates — a lead-form export/import,
+ * or any future first-party form — distinguished by `lead_source`. It stores
+ * the submission in NeonDB (idempotent `CREATE TABLE IF NOT EXISTS`, same
+ * pattern as `lib/quota.ts` → `plg_tenants`), emails the owner via the
+ * existing `lib/mailer.ts` `sendEmail()`, and fires a PostHog funnel event via
+ * the existing `lib/posthog-server.ts` `captureServerEvent()` — no price, no
+ * ad pixel, no free-text/email fields leave this module's capture() path.
  *
  * No price is ever rendered or stored: this is a free pilot for the first
  * five customers. CMMS connectors are optional — MIRA works from uploaded
@@ -27,12 +30,16 @@ function sql() {
 
 const OWNER_EMAIL = "mike@factorylm.com";
 
-/** Bumped whenever the consent copy rendered on /pilot materially changes. */
+/** Bumped whenever the consent copy shown to the submitter materially changes. */
 export const CONSENT_TEXT_VERSION = "pilot-consent-v1";
 
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
+
+/** Known lead sources (#4881). Anything else is rejected, not coerced. */
+const LEAD_SOURCES = new Set(["meta_lead_form", "google_lead_form", "direct", "other"]);
+const DEFAULT_LEAD_SOURCE = "direct";
 
 const ALLOWED_FIELDS = new Set([
   "name",
@@ -46,6 +53,7 @@ const ALLOWED_FIELDS = new Set([
   "utm_content",
   "utm_term",
   "referrer",
+  "lead_source",
 ]);
 
 const UTM_FIELDS = [
@@ -80,6 +88,7 @@ export interface ValidPilotRequest {
   utmContent: string | null;
   utmTerm: string | null;
   referrer: string | null;
+  leadSource: string;
 }
 
 export type PilotRequestValidation =
@@ -161,6 +170,24 @@ export function validatePilotRequest(input: unknown): PilotRequestValidation {
     }
   }
 
+  // lead_source (#4881): which channel this request came in on — a native
+  // Meta/Google lead-form export/import, or a first-party ("direct") form.
+  // Absent/undefined defaults to "direct" (same shape as /api/register
+  // treating no explicit path as the default path); present-but-invalid is
+  // rejected outright, same strictness as every other field here.
+  let leadSource = DEFAULT_LEAD_SOURCE;
+  if (body.lead_source !== undefined) {
+    if (typeof body.lead_source !== "string") {
+      errors.push("lead_source must be a string.");
+    } else if (!LEAD_SOURCES.has(body.lead_source)) {
+      errors.push(
+        `lead_source must be one of: ${Array.from(LEAD_SOURCES).join(", ")}.`,
+      );
+    } else {
+      leadSource = body.lead_source;
+    }
+  }
+
   if (errors.length > 0) return { ok: false, errors };
 
   return {
@@ -177,6 +204,7 @@ export function validatePilotRequest(input: unknown): PilotRequestValidation {
       utmContent: utmOut.utm_content ?? null,
       utmTerm: utmOut.utm_term ?? null,
       referrer,
+      leadSource,
     },
   };
 }
@@ -193,6 +221,11 @@ export interface StoredPilotRequest {
 /**
  * Idempotent schema creation — same pattern as `lib/quota.ts` → `ensureSchema()`.
  * No IP is stored (not a submitted/stored column at all).
+ *
+ * `lead_source` (#4881) is added via `ADD COLUMN IF NOT EXISTS` rather than
+ * only in the `CREATE TABLE`, because this function also runs against an
+ * already-created table on every startup (same idempotency contract as
+ * `lib/quota.ts` → `ensureSchema()`) — the table predates this column.
  */
 export async function ensurePilotRequestSchema(): Promise<void> {
   const db = sql();
@@ -213,8 +246,12 @@ export async function ensurePilotRequestSchema(): Promise<void> {
       utm_content           TEXT,
       utm_term              TEXT,
       referrer              TEXT,
-      status                TEXT NOT NULL DEFAULT 'new'
+      status                TEXT NOT NULL DEFAULT 'new',
+      lead_source            TEXT NOT NULL DEFAULT 'direct'
     )`;
+  await db`
+    ALTER TABLE plg_pilot_requests
+      ADD COLUMN IF NOT EXISTS lead_source TEXT NOT NULL DEFAULT 'direct'`;
   await db`
     CREATE INDEX IF NOT EXISTS idx_plg_pilot_requests_created_at
       ON plg_pilot_requests (created_at DESC)`;
@@ -230,12 +267,12 @@ export async function insertPilotRequest(
     INSERT INTO plg_pilot_requests (
       id, name, work_email, company, equipment, consent, consent_text_version,
       consent_at, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
-      referrer, status, created_at
+      referrer, status, lead_source, created_at
     ) VALUES (
       ${id}, ${value.name}, ${value.workEmail}, ${value.company}, ${value.equipment},
       ${value.consent}, ${CONSENT_TEXT_VERSION}, NOW(),
       ${value.utmSource}, ${value.utmMedium}, ${value.utmCampaign}, ${value.utmContent}, ${value.utmTerm},
-      ${value.referrer}, 'new', NOW()
+      ${value.referrer}, 'new', ${value.leadSource}, NOW()
     )
     RETURNING id, created_at
   `) as Array<{ id: string; created_at: string }>;

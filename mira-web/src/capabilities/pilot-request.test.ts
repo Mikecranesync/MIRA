@@ -150,6 +150,31 @@ describe("validatePilotRequest", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.equipment).toBe("");
   });
+
+  // lead_source (#4881) — intake tagging for lead-form exports/imports.
+  test("lead_source defaults to 'direct' when absent", () => {
+    const result = validatePilotRequest(VALID_INPUT);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.leadSource).toBe("direct");
+  });
+
+  test("lead_source accepts each known value", () => {
+    for (const value of ["meta_lead_form", "google_lead_form", "direct", "other"]) {
+      const result = validatePilotRequest({ ...VALID_INPUT, lead_source: value });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.leadSource).toBe(value);
+    }
+  });
+
+  test("rejects an unknown lead_source value (no coercion to a default)", () => {
+    const { errors } = requireInvalid({ ...VALID_INPUT, lead_source: "tiktok_ads" });
+    expect(errors.join(" ")).toMatch(/lead_source must be one of/i);
+  });
+
+  test("rejects a non-string lead_source", () => {
+    const { errors } = requireInvalid({ ...VALID_INPUT, lead_source: 42 });
+    expect(errors.join(" ")).toMatch(/lead_source must be a string/i);
+  });
 });
 
 function requireInvalid(input: unknown): { ok: boolean; errors: string[] } {
@@ -212,6 +237,7 @@ const VALID: ValidPilotRequest = {
   utmContent: null,
   utmTerm: null,
   referrer: "https://google.com",
+  leadSource: "direct",
 };
 
 describe("insertPilotRequest", () => {
@@ -227,13 +253,15 @@ describe("insertPilotRequest", () => {
       "id", "name", "work_email", "company", "equipment", "consent",
       "consent_text_version", "consent_at", "utm_source", "utm_medium",
       "utm_campaign", "utm_content", "utm_term", "referrer", "status",
+      "lead_source",
     ]) {
       expect(sql).toContain(col);
     }
 
     const values = capturedQueries[0]!.values;
     // id (uuid, app-generated), name, workEmail, company, equipment, consent,
-    // CONSENT_TEXT_VERSION, utmSource, utmMedium, utmCampaign, utmContent, utmTerm, referrer
+    // CONSENT_TEXT_VERSION, utmSource, utmMedium, utmCampaign, utmContent,
+    // utmTerm, referrer, leadSource ('new' and NOW() are literals, not params).
     expect(values[1]).toBe(VALID.name);
     expect(values[2]).toBe(VALID.workEmail);
     expect(values[3]).toBe(VALID.company);
@@ -243,6 +271,7 @@ describe("insertPilotRequest", () => {
     expect(values).toContain(VALID.utmSource);
     expect(values).toContain(VALID.utmCampaign);
     expect(values).toContain(VALID.referrer);
+    expect(values[values.length - 1]).toBe(VALID.leadSource);
 
     expect(row.id).toBe("11111111-1111-1111-1111-111111111111");
   });
@@ -261,6 +290,17 @@ describe("ensurePilotRequestSchema", () => {
     const sql = capturedQueries.map((q) => q.strings.join("?")).join("\n");
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS plg_pilot_requests");
     expect(sql).not.toContain("DROP TABLE");
+  });
+
+  // lead_source (#4881) — table already exists in deployed envs (created
+  // before this column), so the column must arrive via an idempotent ALTER,
+  // not only inside the CREATE TABLE a live table will never re-run.
+  test("issues an idempotent ADD COLUMN IF NOT EXISTS lead_source", async () => {
+    const { ensurePilotRequestSchema } = await import("./pilot-request");
+    await ensurePilotRequestSchema();
+    const sql = capturedQueries.map((q) => q.strings.join("?")).join("\n");
+    expect(sql).toContain("ALTER TABLE plg_pilot_requests");
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS lead_source");
   });
 });
 
