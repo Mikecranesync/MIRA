@@ -80,6 +80,11 @@ export function restoreComposer(current: string, failedMessage: string): string 
   return current.trim() ? current : failedMessage;
 }
 
+/** Only absolute http(s) URLs open; an uploaded document's `node-doc/<id>/<file>` storage path would 404. */
+function isOpenableUrl(url: string | null): url is string {
+  return !!url && /^https?:\/\//i.test(url);
+}
+
 function SourceChips({ sources }: { sources: Source[] }) {
   if (!sources || sources.length === 0) return null;
   return (
@@ -93,7 +98,7 @@ function SourceChips({ sources }: { sources: Source[] }) {
           </>
         );
 
-        if (s.url) {
+        if (isOpenableUrl(s.url)) {
           return (
             <a
               key={`${s.index}-${s.title}`}

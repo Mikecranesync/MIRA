@@ -69,6 +69,25 @@ describe("NodeChat MessageBubble — sources rendering", () => {
     expect(html).toContain("[1] PowerFlex 525 Manual");
   });
 
+  it("keeps an uploaded-document chip non-clickable: its node-doc/ storage path is not an openable URL", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble
+        msg={{
+          id: "m1",
+          role: "assistant",
+          content: "Check the parameter list.",
+          sources: [
+            { index: 1, title: "GS10 manual", url: "node-doc/5f0c/gs10.pdf", page: 7 },
+          ],
+        }}
+      />,
+    );
+
+    // A relative storage path would resolve against the current page and 404 — never an href.
+    expect(html).not.toContain("href=");
+    expect(html).toContain("[1] GS10 manual");
+  });
+
   it("omits the citation chip row when the message has no sources", () => {
     const html = renderToStaticMarkup(
       <MessageBubble
