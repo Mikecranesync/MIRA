@@ -28,3 +28,11 @@ CVE-2026-42271
 # mira-mcp does not call litellm directly and does not expose its
 # vulnerable endpoints. Re-evaluate every openviking / fastmcp bump.
 CVE-2026-40217
+
+# GHSA-g5ff-637f-6q2m — LiteLLM internal_user_viewer arbitrary local file read
+# via `vertex_ai_credentials` on the proxy's /utils/transform_request (HIGH).
+# Fixed in litellm 1.95.0, but unreachable for us: openviking==0.3.20 caps
+# litellm<1.85.2 and even the latest openviking (0.5.2.1) caps litellm<1.91.2.
+# mira-mcp does not run the LiteLLM proxy server, so the endpoint does not
+# exist in our image. Re-evaluate every openviking bump.
+GHSA-g5ff-637f-6q2m
