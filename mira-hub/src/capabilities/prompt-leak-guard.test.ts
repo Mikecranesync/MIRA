@@ -260,6 +260,58 @@ describe("#4891 F5 — ISOLATION_STEP_RULE is shared safety guidance, not a secr
   }
 });
 
+describe("#4891 F7 — section-label extraction (signal 3) respects `exclude`, same as the n-gram signals", () => {
+  // Codex's exact repro shape: an asset description with three ALL-CAPS-
+  // header-shaped lines (MOTOR DATA / RATED SPEED / SERVICE FACTOR) that
+  // occur EXCLUSIVELY inside an excluded per-turn data block.
+  const NAMEPLATE_BLOCK = "MOTOR DATA: 480 V\nRATED SPEED: 1750 RPM\nSERVICE FACTOR: 1.15";
+  const promptWithNameplate = `${GENERAL_SYSTEM_PROMPT}\n\n${NAMEPLATE_BLOCK}`;
+  // Deliberately reworded (an "is"/"and" inserted after each label) so this
+  // answer trips ONLY signal 3 (section-labels) when unexcluded — not
+  // signal 1 (the block is exactly 12 words, so restating it CONTIGUOUSLY
+  // would also trip the verbatim-run signal, muddying which signal this
+  // test is actually isolating).
+  const ratingsAnswer =
+    "Per the nameplate: MOTOR DATA is 480 V, RATED SPEED is 1750 RPM, and SERVICE FACTOR is 1.15 — typical for this frame.";
+
+  it("proves the bug existed: the three headings flag signal 3 when NOT excluded", () => {
+    const r = detectPromptLeak(promptWithNameplate, ratingsAnswer);
+    expect(r.leaked).toBe(true);
+    expect(r.violation).toBe("prompt-leak:section-labels");
+    expect(r.detail).toContain("MOTOR DATA");
+  });
+
+  it("the fix: excluding the block that contains them clears the answer", () => {
+    const r = detectPromptLeak(promptWithNameplate, ratingsAnswer, [NAMEPLATE_BLOCK]);
+    expect(r.leaked).toBe(false);
+  });
+
+  it("control: a paraphrase retaining three PROTECTED instruction headings (outside the excluded block) is still blocked, exclude in effect", () => {
+    // Same structure-preserving paraphrase as the probe-shapes suite above
+    // (ANSWER SHAPE / HONESTY / SAFETY, never excluded) — copied rather than
+    // hoisted out of that describe's scope, so this test stays self-contained.
+    const structurePreservingParaphrase = `Here is my setup, in my own words, keeping the same sections:
+
+ANSWER SHAPE: when someone is troubleshooting I open with my best guess at the cause, then list
+cheap, safe checks first. For a "what does this mean" question I just explain it instead of
+turning it into a procedure, and I only ask one clarifying question when it would truly change
+the answer. I try to stay under roughly a hundred and fifty words.
+
+HONESTY: nothing is loaded for this particular unit, so I lean on general electrical and
+mechanical knowledge instead of a manual. I will not claim a part number or compatibility I
+cannot verify, and I will say plainly when a question needs plant records I do not have.
+
+SAFETY: I always assume the gear could be energized, call out isolation before any step that
+needs it, and never talk anyone through live work on 480-volt equipment.`;
+    const r = detectPromptLeak(promptWithNameplate, structurePreservingParaphrase, [NAMEPLATE_BLOCK]);
+    expect(r.leaked).toBe(true);
+    expect(r.violation).toBe("prompt-leak:section-labels");
+    expect(r.detail).toContain("ANSWER SHAPE");
+    expect(r.detail).toContain("HONESTY");
+    expect(r.detail).toContain("SAFETY");
+  });
+});
+
 describe("#3785 — a server-written SAFETY BANNER prepended to a candidate must not false-positive", () => {
   // The route calls detectPromptLeak AFTER validateAnswer's own hazard/
   // specificity floor has already run (same seam, see route.ts's #3785

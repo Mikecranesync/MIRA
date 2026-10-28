@@ -130,9 +130,9 @@ import {
 } from "@/capabilities/energized-work-stop";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { ISOLATION_STEP_RULE, normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
-import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
+import { LABEL_DATA_IDENTIFIER_NOTE, showsLabelDataIdentifier, withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
 import { withPhotoProvenance } from "@/capabilities/photo-provenance";
-import { withRetailCodeNote } from "@/capabilities/retail-codes";
+import { RETAIL_CODE_NOTE, showsRetailCode, withRetailCodeNote } from "@/capabilities/retail-codes";
 import {
   PART_SEARCH_CANCEL,
   asksPartCompatibility,
@@ -3552,6 +3552,15 @@ async function handleChatTurn(
     : safetyTrigger
       ? safetyFlagDirective(safetyTrigger)
       : "";
+  // Codex #4891 F6: the label-code notes `withLabelDataIdentifiers`/
+  // `withRetailCodeNote` append below are the SAME restatable-fact class as
+  // FIELD_OBSERVATION_DIRECTIVE/ISOLATION_STEP_RULE — factual explanation of
+  // what a "1P <code>"/FNSKU prefix means, not a secret instruction. A
+  // correct answer explaining the code legitimately shares the note's
+  // wording. Mirrors `showsLabelDataIdentifier`/`showsRetailCode`'s own
+  // conditionals so only text ACTUALLY appended this turn is excluded.
+  const labelDataNoteText = showsLabelDataIdentifier(lookContext) ? LABEL_DATA_IDENTIFIER_NOTE : "";
+  const retailCodeNoteText = showsRetailCode(lookContext) ? RETAIL_CODE_NOTE : "";
   const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
@@ -4434,6 +4443,12 @@ async function handleChatTurn(
           // Same audit, the hazard-directive text actually injected this
           // turn (see `hazardDirectiveText` above) — empty string is a no-op.
           hazardDirectiveText,
+          // Codex #4891 F6: `withLabelDataIdentifiers`/`withRetailCodeNote`'s
+          // notes (see `labelDataNoteText`/`retailCodeNoteText` above) are
+          // the same restatable-fact class — only present when this turn's
+          // photo context actually shows a "1P <code>"/FNSKU field.
+          labelDataNoteText,
+          retailCodeNoteText,
         ]);
         if (leak.leaked) {
           console.error(

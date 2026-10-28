@@ -205,26 +205,26 @@ function removeExcluded(segments: readonly string[], exclude: readonly string[])
 /** Union of n-grams across every excluded/quote-excluded segment of the
  *  prompt, for both gram sizes this module uses — one pass per call.
  *
- *  `exclude`: per-turn DATA sections the prompt carries alongside its fixed
- *  instructions — MACHINE CONTEXT (the bound asset's name/UNS path),
- *  visual/nameplate evidence, replayed machine-observation lines, an
- *  unconfirmed-identity directive. The prompt's own rules INSTRUCT the
- *  model to restate these facts (MACHINE OVERVIEW: "state the equipment
- *  identity"; #4143: "quote the label text"; `answerUsesStoredNameplate
- *  Reading` exists because answers legitimately reuse a nameplate reading
- *  verbatim) — so "what machine is this?" on a bound asset, or a nameplate
- *  follow-up, must never be flagged as leaking the PROMPT merely because it
- *  correctly repeats data the prompt happened to carry this turn. Measured:
- *  without this exclusion, restating a bound asset's name + UNS path (a
- *  16-word run) or paraphrasing it (32% 6-gram overlap) both false-
- *  positived — see prompt-leak-guard-route.test.ts. */
-function buildPromptGramSets(
-  systemPrompt: string,
-  exclude: readonly string[] = [],
-): { runs: Set<string>; ratioGrams: Set<string> } {
+ *  `dataExcluded` (the caller's `removeExcluded([systemPrompt], exclude)`
+ *  result, Codex #4891 F7 — see `detectPromptLeak`): per-turn DATA sections
+ *  the prompt carries alongside its fixed instructions — MACHINE CONTEXT
+ *  (the bound asset's name/UNS path), visual/nameplate evidence, replayed
+ *  machine-observation lines, an unconfirmed-identity directive. The
+ *  prompt's own rules INSTRUCT the model to restate these facts (MACHINE
+ *  OVERVIEW: "state the equipment identity"; #4143: "quote the label text";
+ *  `answerUsesStoredNameplateReading` exists because answers legitimately
+ *  reuse a nameplate reading verbatim) — so "what machine is this?" on a
+ *  bound asset, or a nameplate follow-up, must never be flagged as leaking
+ *  the PROMPT merely because it correctly repeats data the prompt happened
+ *  to carry this turn. Measured: without this exclusion, restating a bound
+ *  asset's name + UNS path (a 16-word run) or paraphrasing it (32% 6-gram
+ *  overlap) both false-positived — see prompt-leak-guard-route.test.ts. */
+/** Takes the ALREADY exclude-filtered segments (see `removeExcluded` in
+ *  `detectPromptLeak`) — never re-derives them — so this signal and Signal 3
+ *  (`extractSectionLabels`) see exactly the same segmentation. */
+function buildPromptGramSets(dataExcluded: readonly string[]): { runs: Set<string>; ratioGrams: Set<string> } {
   const runs = new Set<string>();
   const ratioGrams = new Set<string>();
-  const dataExcluded = removeExcluded([systemPrompt], exclude);
   for (const dataSegment of dataExcluded) {
     for (const segment of segmentsExcludingQuotedExamples(dataSegment)) {
       const words = normalizeWords(segment);
@@ -242,11 +242,24 @@ function buildPromptGramSets(
  *  silently stopping coverage. */
 const SECTION_LABEL_RE = /^([A-Z][A-Z0-9&/ -]{3,60}?)(?=:|\s—|\s\()/gm;
 
-function extractSectionLabels(systemPrompt: string): string[] {
+/** Codex #4891 F7: takes the SAME exclude-filtered segments
+ *  `buildPromptGramSets` uses (never the raw, unfiltered `systemPrompt`) —
+ *  an excluded data block (e.g. an asset's nameplate ratings) must not
+ *  contribute a section-label match just because signal 3 alone forgot
+ *  about `exclude`. Matched PER SEGMENT, never by rejoining the segments
+ *  into one string first: `removeExcluded` splits ON the excluded text, so
+ *  the word immediately before an excluded block and the word immediately
+ *  after it were never adjacent in the source — concatenating them back
+ *  together could create a synthetic "label" neither half actually forms
+ *  (e.g. prose ending "...see the MOTOR" + an excluded block + prose
+ *  starting "DATA: ..." must never read as the single header "MOTOR DATA:"). */
+function extractSectionLabels(segments: readonly string[]): string[] {
   const seen = new Set<string>();
-  for (const m of systemPrompt.matchAll(SECTION_LABEL_RE)) {
-    const label = m[1];
-    if (label.length >= SECTION_LABEL_MIN_LEN) seen.add(label);
+  for (const segment of segments) {
+    for (const m of segment.matchAll(SECTION_LABEL_RE)) {
+      const label = m[1];
+      if (label.length >= SECTION_LABEL_MIN_LEN) seen.add(label);
+    }
   }
   return [...seen];
 }
@@ -286,7 +299,12 @@ export function detectPromptLeak(
 ): PromptLeakResult {
   if (!systemPrompt.trim() || !replyText.trim()) return { leaked: false };
 
-  const { runs, ratioGrams } = buildPromptGramSets(systemPrompt, exclude);
+  // Codex #4891 F7: computed ONCE, fed to both Signal 1/2 (buildPromptGramSets)
+  // and Signal 3 (extractSectionLabels) — a single exclude-filtered
+  // segmentation of the prompt, never two independently-derived ones that
+  // could silently drift apart.
+  const dataExcluded = removeExcluded([systemPrompt], exclude);
+  const { runs, ratioGrams } = buildPromptGramSets(dataExcluded);
   const replyWords = normalizeWords(replyText);
 
   // Signal 1 — verbatim run.
@@ -312,7 +330,7 @@ export function detectPromptLeak(
 
   // Signal 3 — section-label echo (catches a structure-preserving paraphrase
   // that Signals 1 and 2 cannot, by construction).
-  const labels = extractSectionLabels(systemPrompt);
+  const labels = extractSectionLabels(dataExcluded);
   if (labels.length > 0) {
     const strippedReply = stripMarkdownKeepCase(replyText);
     const matched = labels.filter((label) => strippedReply.includes(label));
