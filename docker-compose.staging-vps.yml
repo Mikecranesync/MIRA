@@ -492,6 +492,7 @@ services:
       - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
       - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-}
       - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}  # owner notification (pilot-funnel.ts); same key mira-web uses
     networks:
       - staging-net
     volumes:

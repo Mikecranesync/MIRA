@@ -207,7 +207,8 @@ function posthogKey(): string {
   return (process.env.PLG_POSTHOG_KEY ?? "").trim();
 }
 function posthogHost(): string {
-  return (process.env.PLG_POSTHOG_HOST ?? "https://us.i.posthog.com").trim();
+  // `||`, not `??`: compose forwards an UNSET var as "" (${PLG_POSTHOG_HOST:-}).
+  return (process.env.PLG_POSTHOG_HOST?.trim() || "https://us.i.posthog.com").replace(/\/+$/, "");
 }
 
 const CAPTURE_TIMEOUT_MS = 3000;
@@ -249,6 +250,9 @@ export function captureFunnelEvent(
       body,
       signal: controller.signal,
     })
+      .then((res) => {
+        if (!res.ok) console.warn(`[pilot-funnel] posthog capture rejected: HTTP ${res.status}`);
+      })
       .catch((err) => {
         console.warn("[pilot-funnel] posthog capture failed:", err instanceof Error ? err.message : err);
       })

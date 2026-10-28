@@ -161,6 +161,24 @@ describe("captureFunnelEvent", () => {
     expect(url).toBe("https://eu.i.posthog.com/capture/");
   });
 
+  it("falls back to the default host when compose forwards an empty PLG_POSTHOG_HOST (Codex #4893 F1)", () => {
+    process.env.PLG_POSTHOG_KEY = "phk_test";
+    process.env.PLG_POSTHOG_HOST = "";
+    captureFunnelEvent("pilot_application_submitted", "tenant-1");
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe("https://us.i.posthog.com/capture/");
+  });
+
+  it("logs a warning when PostHog rejects the capture with a non-2xx status (Codex #4893 F3)", async () => {
+    process.env.PLG_POSTHOG_KEY = "phk_test";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockFetch.mockResolvedValue(new Response("bad key", { status: 401 }));
+    captureFunnelEvent("pilot_application_submitted", "tenant-1");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(warn.mock.calls.some((c) => String(c[0]).includes("HTTP 401"))).toBe(true);
+    warn.mockRestore();
+  });
+
   it("never includes email, name, or free text in the serialized payload (PII allowlist)", () => {
     process.env.PLG_POSTHOG_KEY = "phk_test";
     captureFunnelEvent("pilot_application_submitted", "tenant-1", {
