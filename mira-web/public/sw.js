@@ -1,7 +1,7 @@
 // Bump CACHE_NAME on every release that ships a new CSS/JS asset under /public
 // so returning visitors get fresh files instead of stale cache. The activate
 // handler below deletes any cache key that doesn't match this name.
-const CACHE_NAME = 'factorylm-v4';
+const CACHE_NAME = 'factorylm-v5'; // v5: evicts a cached no-op /posthog-init.js (#4900)
 const PRECACHE_URLS = [
   '/',
   '/cmms',
@@ -13,6 +13,8 @@ const PRECACHE_URLS = [
   '/sun-toggle.js',
 ];
 const API_PREFIXES = ['/api/', '/demo/'];
+// Server-generated per environment (PLG_POSTHOG_KEY); never serve it from cache.
+const NETWORK_ONLY_PATHS = ['/posthog-init.js'];
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -34,6 +36,7 @@ self.addEventListener('fetch', event => {
 
   // Never intercept API or demo endpoints — always live
   if (API_PREFIXES.some(p => url.pathname.startsWith(p))) return;
+  if (NETWORK_ONLY_PATHS.includes(url.pathname)) return;
 
   // Network-first for HTML navigations so deploys are visible immediately.
   // Falls back to cached HTML only on offline failure.
