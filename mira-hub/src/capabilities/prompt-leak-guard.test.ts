@@ -41,18 +41,26 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BASE_NFPA_CAUTION,
   BASE_SYSTEM_PROMPT,
   FIELD_OBSERVATION_DIRECTIVE,
+  GENERAL_NFPA_CAUTION,
   GENERAL_SYSTEM_PROMPT,
   UNCITED_OEM_CLAIM_TEXT,
 } from "@/app/api/equipment-notebooks/[id]/chat/route";
 
 import { ISOLATION_STEP_RULE } from "./answer-shape";
 import { validateAnswer } from "./answer-validation";
+import { PHOTO_PROVENANCE_NOTE } from "./photo-provenance";
+import { RESTART_DIRECTIVE } from "./restart-advisory";
 import {
   PROMPT_LEAK_FALSE_POSITIVE_FIXTURES,
   PROMPT_LEAK_FIELD_OBSERVATION_FIXTURES,
   PROMPT_LEAK_ISOLATION_FIXTURES,
+  PROMPT_LEAK_PHOTO_PROVENANCE_FIXTURES,
+  PROMPT_LEAK_RESTART_FIXTURES,
+  PROMPT_LEAK_GENERAL_NFPA_FIXTURES,
+  PROMPT_LEAK_BASE_NFPA_FIXTURES,
 } from "./__fixtures__/prompt-leak-false-positives";
 import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "./prompt-leak-guard";
 
@@ -309,6 +317,88 @@ needs it, and never talk anyone through live work on 480-volt equipment.`;
     expect(r.detail).toContain("ANSWER SHAPE");
     expect(r.detail).toContain("HONESTY");
     expect(r.detail).toContain("SAFETY");
+  });
+});
+
+describe("#4891 F8 — systematic audit: every newly-excluded restatable span, per directive", () => {
+  // PHOTO_PROVENANCE_NOTE — notebook, conditional on a photo observation.
+  describe("PHOTO_PROVENANCE_NOTE", () => {
+    const prompt = `${GENERAL_SYSTEM_PROMPT}\n\n${FIELD_OBSERVATION_DIRECTIVE}\n\n${PHOTO_PROVENANCE_NOTE}`;
+
+    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+      const r = detectPromptLeak(prompt, PROMPT_LEAK_PHOTO_PROVENANCE_FIXTURES[0]);
+      expect(r.leaked).toBe(true);
+    });
+
+    it.each(PROMPT_LEAK_PHOTO_PROVENANCE_FIXTURES)("%s — not flagged once PHOTO_PROVENANCE_NOTE is excluded", (answer) => {
+      const r = detectPromptLeak(prompt, answer, [PHOTO_PROVENANCE_NOTE]);
+      expect(r.leaked).toBe(false);
+    });
+
+    it("a full verbatim echo is still flagged even with PHOTO_PROVENANCE_NOTE excluded", () => {
+      const r = detectPromptLeak(prompt, prompt, [PHOTO_PROVENANCE_NOTE]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
+  });
+
+  // RESTART_DIRECTIVE — notebook, conditional on a fault-reset/restart ask.
+  describe("RESTART_DIRECTIVE", () => {
+    const prompt = `${GENERAL_SYSTEM_PROMPT}\n\n${FIELD_OBSERVATION_DIRECTIVE}\n\n${RESTART_DIRECTIVE}`;
+
+    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+      const r = detectPromptLeak(prompt, PROMPT_LEAK_RESTART_FIXTURES[0]);
+      expect(r.leaked).toBe(true);
+    });
+
+    it.each(PROMPT_LEAK_RESTART_FIXTURES)("%s — not flagged once RESTART_DIRECTIVE is excluded", (answer) => {
+      const r = detectPromptLeak(prompt, answer, [RESTART_DIRECTIVE]);
+      expect(r.leaked).toBe(false);
+    });
+
+    it("a full verbatim echo is still flagged even with RESTART_DIRECTIVE excluded", () => {
+      const r = detectPromptLeak(prompt, prompt, [RESTART_DIRECTIVE]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
+  });
+
+  // GENERAL_NFPA_CAUTION — notebook, unconditional, inline in GENERAL_SYSTEM_PROMPT.
+  describe("GENERAL_NFPA_CAUTION", () => {
+    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+      const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_GENERAL_NFPA_FIXTURES[0]);
+      expect(r.leaked).toBe(true);
+    });
+
+    it.each(PROMPT_LEAK_GENERAL_NFPA_FIXTURES)("%s — not flagged once GENERAL_NFPA_CAUTION is excluded", (answer) => {
+      const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, answer, [GENERAL_NFPA_CAUTION]);
+      expect(r.leaked).toBe(false);
+    });
+
+    it("a full verbatim echo of GENERAL_SYSTEM_PROMPT is still flagged even with GENERAL_NFPA_CAUTION excluded", () => {
+      const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, [GENERAL_NFPA_CAUTION]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
+  });
+
+  // BASE_NFPA_CAUTION — notebook, unconditional, inline in BASE_SYSTEM_PROMPT.
+  describe("BASE_NFPA_CAUTION", () => {
+    it("Codex-style exact reproduction (BASE_SYSTEM_PROMPT's own phrasing) DOES flag when not excluded", () => {
+      const r = detectPromptLeak(BASE_SYSTEM_PROMPT, PROMPT_LEAK_BASE_NFPA_FIXTURES[0]);
+      expect(r.leaked).toBe(true);
+    });
+
+    it.each(PROMPT_LEAK_BASE_NFPA_FIXTURES)("%s — not flagged once BASE_NFPA_CAUTION is excluded", (answer) => {
+      const r = detectPromptLeak(BASE_SYSTEM_PROMPT, answer, [BASE_NFPA_CAUTION]);
+      expect(r.leaked).toBe(false);
+    });
+
+    it("a full verbatim echo of BASE_SYSTEM_PROMPT is still flagged even with BASE_NFPA_CAUTION excluded", () => {
+      const r = detectPromptLeak(BASE_SYSTEM_PROMPT, BASE_SYSTEM_PROMPT, [BASE_NFPA_CAUTION]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
   });
 });
 

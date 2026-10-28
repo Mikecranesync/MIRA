@@ -131,7 +131,7 @@ import {
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { ISOLATION_STEP_RULE, normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { LABEL_DATA_IDENTIFIER_NOTE, showsLabelDataIdentifier, withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
-import { withPhotoProvenance } from "@/capabilities/photo-provenance";
+import { PHOTO_PROVENANCE_NOTE, withPhotoProvenance } from "@/capabilities/photo-provenance";
 import { RETAIL_CODE_NOTE, showsRetailCode, withRetailCodeNote } from "@/capabilities/retail-codes";
 import {
   PART_SEARCH_CANCEL,
@@ -289,6 +289,17 @@ function answerGateEnabled(): boolean {
 // gate.test.ts, prompt-abstention-directives.test.ts) keep working unchanged
 // — their regexes match the substring "const NAME = `...`;" and do not
 // anchor on the absence of a leading `export`.
+// Codex #4891 F8: the NFPA 70E "qualified-person work" caution was inline
+// prose inside BASE_SYSTEM_PROMPT's ENERGY STATE paragraph — restatable
+// safety guidance (the same class as ISOLATION_STEP_RULE/RESTART_DIRECTIVE),
+// not a secret meta-instruction, but with no separate identifier to pass to
+// `detectPromptLeak`'s `exclude`. Carved into its own constant and spliced
+// back in at the exact same position so BASE_SYSTEM_PROMPT's rendered text
+// is byte-identical to before; the meta-instruction around it ("NEVER hand
+// over a procedure for measuring, probing...") stays inline and protected.
+export const BASE_NFPA_CAUTION =
+  "That is qualified-person work under NFPA 70E (arc-flash boundary and PPE determination, live-work permit). Redirect to the de-energize + lockout/tagout path, and to a qualified electrician for any diagnostic that genuinely requires energized equipment.";
+
 export const BASE_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant for ONE specific machine. Answer ONLY from the numbered reference excerpts provided below.
 
 ANSWER SHAPE — a technician is standing at the machine and needs the answer fast:
@@ -300,7 +311,7 @@ ENERGY STATE — this rule outranks brevity:
 - If an answer directs physical contact with wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part, state the required energy-isolation state IN THE SAME SENTENCE as the instruction — not as a trailing caution. e.g. "With the drive isolated, locked out and the DC bus confirmed dead with a meter, check continuity across terminals 07-08 [2]." Write the verification without a voltage number — a number there reads as a machine rating.
 - Never omit that clause to keep the answer short. Brevity is for the explanation, never for the isolation condition.
 - Describe an observation (what a reading means) without an isolation clause; an instruction to touch, open, remove, or probe always carries one.
-- NEVER hand over a procedure for measuring, probing, opening, or otherwise working on equipment energized at 480 V class or higher. That is qualified-person work under NFPA 70E (arc-flash boundary and PPE determination, live-work permit). Redirect to the de-energize + lockout/tagout path, and to a qualified electrician for any diagnostic that genuinely requires energized equipment.
+- NEVER hand over a procedure for measuring, probing, opening, or otherwise working on equipment energized at 480 V class or higher. ${BASE_NFPA_CAUTION}
 
 PLANT-SPECIFIC VALUES — abstain on missing configuration:
 - Some answers require nameplate data, baseline history, or facility configuration that ONLY the technician's site has. Examples: relief valve setpoints, motor inrush baseline, pump suction lift limits, compressor pressure settings.
@@ -337,6 +348,13 @@ MACHINE OVERVIEW — if asked what you know about the machine, or for an overvie
  * citation, which is exactly what §1.3 forbids. The route also strips any that
  * survive; this is the first of the two guards, not the only one.
  */
+// Codex #4891 F8: same carve-out as BASE_NFPA_CAUTION, for GENERAL_SYSTEM_
+// PROMPT's own SAFETY line (worded slightly differently — "arc-flash
+// boundary/PPE" vs BASE's "arc-flash boundary and PPE determination" — so
+// each prompt gets its own exact-text constant rather than sharing one).
+export const GENERAL_NFPA_CAUTION =
+  "that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized.";
+
 export const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. No manual for this machine has been loaded, so you are reasoning from general electrical, mechanical, and controls knowledge.
 
 ANSWER SHAPE — the technician needs something they can act on:
@@ -352,7 +370,7 @@ HONESTY:
 - You searched NO documentation. Never write "the documentation does not specify", "the manual doesn't say", or anything implying you looked something up and it was missing. Say "I'm answering from general knowledge, not this machine's manual" instead.
 - NEVER write bracketed numeric markers like [1] or [2]. You have no sources to cite. There is nothing for a bracket to point at.
 
-SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on 480 V-class equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized.`;
+SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on 480 V-class equipment — ${GENERAL_NFPA_CAUTION}`;
 
 /**
  * WP-1 guided dead end (owner decision 2026-10-21). Appended to the general prompt ONLY for a turn
@@ -3544,14 +3562,25 @@ async function handleChatTurn(
   // is the same restatable-safety-guidance class as ISOLATION_STEP_RULE — a
   // correct hazard answer legitimately shares its wording (confirmed by a
   // throwaway repro against the real directive text). Mirrors exactly which
-  // branch of `withHazard`'s conditional actually fired this turn; RESTART_
-  // DIRECTIVE is NOT included here (no repro found a false positive against
-  // it — see the PR's hazard ledger).
+  // branch of `withHazard`'s conditional actually fired this turn.
+  //
+  // Codex #4891 F8 audit (systematic, not one string): RESTART_DIRECTIVE was
+  // PREVIOUSLY left out here on a "no repro found" disposition (round 2/3's
+  // hazard ledger) — re-tested as part of this audit with a closer-to-
+  // verbatim restatement ("identify and correct the cause before resetting;
+  // confirm people are clear before anything can move; lockout/tagout before
+  // any hands-in work") and it DOES false-positive the same way ISOLATION_
+  // STEP_RULE did — the directive literally instructs the model to state
+  // these conditions "at the step they apply to," so a model doing exactly
+  // that reproduces close to its wording. The disposition was wrong; fixed
+  // here rather than re-flagged. `withHazard`'s 4th branch.
   const hazardDirectiveText = electricalHazardDirective
     ? ELECTRICAL_HAZARD_DIRECTIVE
     : safetyTrigger
       ? safetyFlagDirective(safetyTrigger)
-      : "";
+      : restartAdvisory
+        ? RESTART_DIRECTIVE
+        : "";
   // Codex #4891 F6: the label-code notes `withLabelDataIdentifiers`/
   // `withRetailCodeNote` append below are the SAME restatable-fact class as
   // FIELD_OBSERVATION_DIRECTIVE/ISOLATION_STEP_RULE — factual explanation of
@@ -3561,6 +3590,14 @@ async function handleChatTurn(
   // conditionals so only text ACTUALLY appended this turn is excluded.
   const labelDataNoteText = showsLabelDataIdentifier(lookContext) ? LABEL_DATA_IDENTIFIER_NOTE : "";
   const retailCodeNoteText = showsRetailCode(lookContext) ? RETAIL_CODE_NOTE : "";
+  // Codex #4891 F8: `withPhotoProvenance` below appends PHOTO_PROVENANCE_NOTE
+  // whenever a photo observation is in this turn's context — the SAME
+  // restatable-fact class (a technician asking what photo text means, or
+  // whether two part numbers are compatible, gets an answer that correctly
+  // echoes the note's own cautionary wording, e.g. "...compatible without a
+  // cited source that establishes the match"). Mirrors `withPhotoProvenance`'s
+  // own `photoContext.trim()` conditional exactly.
+  const photoProvenanceNoteText = lookContext.trim() ? PHOTO_PROVENANCE_NOTE : "";
   const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
@@ -4449,6 +4486,22 @@ async function handleChatTurn(
           // photo context actually shows a "1P <code>"/FNSKU field.
           labelDataNoteText,
           retailCodeNoteText,
+          // Codex #4891 F8: PHOTO_PROVENANCE_NOTE (see `photoProvenanceNoteText`
+          // above) — only present when this turn's photo context exists.
+          photoProvenanceNoteText,
+          // Codex #4891 F8 audit: the restatable NFPA "qualified-person work"
+          // caution is embedded INLINE inside the fixed, unconditional base
+          // prompts (GENERAL_SYSTEM_PROMPT's SAFETY: line, BASE_SYSTEM_PROMPT's
+          // ENERGY STATE paragraph) — not a separately-appended directive, but
+          // the same restatable-guidance class as ISOLATION_STEP_RULE. Both
+          // constants are passed unconditionally; only one is ever actually
+          // present in `systemPrompt` for a given mode, and `exclude` no-ops on
+          // a substring that isn't there. The surrounding meta-instructions
+          // (ANSWER SHAPE, HONESTY, "assume energized", "state isolation in the
+          // same sentence") are untouched, so a real full-prompt echo still
+          // trips verbatim-run.
+          GENERAL_NFPA_CAUTION,
+          BASE_NFPA_CAUTION,
         ]);
         if (leak.leaked) {
           console.error(

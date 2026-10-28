@@ -221,6 +221,18 @@ function buildAssetContextBlock(asset: Record<string, unknown>): string {
 - Work order count: ${asset.work_order_count ?? 0}`;
 }
 
+// Codex #4891 F8 audit: this bullet is restatable safety GUIDANCE (the model
+// is literally instructed to SAY this to the technician), the same class as
+// ISOLATION_STEP_RULE/RESTART_DIRECTIVE — not a secret instruction. Carved
+// into its own constant, unconditional (every turn), so it can be named in
+// `detectPromptLeak`'s `exclude`; `buildSystemPrompt`'s rendered output is
+// byte-identical to before. Confirmed false-positive by a throwaway repro:
+// "...stop and instruct the tech to follow site safety procedures before
+// proceeding" is a 12-word verbatim run a correct hazard-stop answer
+// naturally reproduces.
+export const ASSET_SAFETY_STOP_CAUTION =
+  "If the question involves lockout/tagout, arc flash, confined space, or electrical safety, stop and instruct the tech to follow site safety procedures before proceeding.";
+
 function buildSystemPrompt(asset: Record<string, unknown>): string {
   return `You are MIRA, an AI maintenance assistant for industrial equipment built by FactoryLM.
 
@@ -231,7 +243,7 @@ ${buildAssetContextBlock(asset)}
 - If you cite a manual section, say so explicitly (e.g., "Per the ${asset.manufacturer ?? "OEM"} service manual, §3.4…").
 - If you are unsure, say so — never guess at safety-critical specifications.
 - Keep answers concise and actionable. Techs are on the floor.
-- If the question involves lockout/tagout, arc flash, confined space, or electrical safety, stop and instruct the tech to follow site safety procedures before proceeding.`;
+- ${ASSET_SAFETY_STOP_CAUTION}`;
 }
 
 // Review Q1 (PR #2414) — the strings below (tag_path, diff_type, severity,
@@ -772,6 +784,10 @@ export async function POST(
           // the real ELECTRICAL_HAZARD_DIRECTIVE text). Only present when
           // `safetyFlag` fired this turn; empty string is a no-op exclude.
           safetyFlag ? flagDirectiveFor(safetyFlag) : "",
+          // Codex #4891 F8 audit: ASSET_SAFETY_STOP_CAUTION (the fixed
+          // Instructions bullet's own lockout/arc-flash/confined-space
+          // safety-stop wording) — unconditional, same restatable class.
+          ASSET_SAFETY_STOP_CAUTION,
         ]);
         if (leak.leaked) {
           leakBlocked = true;

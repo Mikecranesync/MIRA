@@ -576,3 +576,35 @@ describe("#4891 F4 audit — notebook chat's existing design already fails close
     expect(persisted.answerStatus).toBe("error");
   });
 });
+
+describe("#4891 F8 — the NFPA 'qualified-person work' caution inline in both base prompts is not refused as a prompt leak", () => {
+  it("Codex's exact GENERAL_SYSTEM_PROMPT-phrasing NFPA answer is answered, not refused (general mode)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const answer =
+      "That is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit). De-energize and lock out before inspecting it.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const res = await POST(
+      req({ message: "Can I check that 480 V terminal live, or do I need to shut it down first?", mode: "general" }),
+      params,
+    );
+    const fr = await frames(res);
+    const streamed = contentOf(fr);
+    expect(streamed).toContain("qualified-person work under NFPA 70E");
+    expect(streamed).not.toBe(PROMPT_LEAK_REFUSAL);
+  });
+
+  it("Codex-style exact BASE_SYSTEM_PROMPT-phrasing NFPA answer is answered, not refused (grounded mode)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      { docId: DOC_A, filename: "manual.pdf", page: 7, content: "Terminal block TB1 carries 480 VAC 3-phase supply." },
+    ] as never);
+    const answer =
+      "That is qualified-person work under NFPA 70E (arc-flash boundary and PPE determination, live-work permit). Redirect to the de-energize and lockout/tagout path [1].";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const res = await POST(req({ message: "What should I check at TB1 before working on it?" }), params);
+    const fr = await frames(res);
+    const streamed = contentOf(fr);
+    expect(streamed).toContain("qualified-person work under NFPA 70E");
+    expect(streamed).not.toBe(PROMPT_LEAK_REFUSAL);
+  });
+});

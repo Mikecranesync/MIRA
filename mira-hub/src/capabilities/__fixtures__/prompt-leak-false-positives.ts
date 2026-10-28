@@ -138,3 +138,66 @@ export const PROMPT_LEAK_ISOLATION_FIXTURES: readonly string[] = [
   "A step is either isolated or it's energized — never write both into one step. Finish the de-energized inspection first; the live amp-draw reading is a separate step after power is properly restored.",
   "Keep the voltage check itself free of a specific number here — just confirm zero energy with a meter while locked out; the manual's parameter table is where the actual rated voltage lives.",
 ];
+
+/**
+ * Codex #4891 F8 — a systematic audit (not just the one string Codex found)
+ * of every conditional directive/note any of the three routes can append
+ * whose content a correct answer may legitimately restate. Five new
+ * restatable spans, each confirmed a real false positive by a throwaway
+ * repro BEFORE being added to its route's `exclude`, then fixed: Codex's
+ * exact example + 3 realistic answers each (F8's quota — narrower than the
+ * 5-realistic quota used for ISOLATION_STEP_RULE two rounds ago).
+ */
+
+/** `PHOTO_PROVENANCE_NOTE` (`src/capabilities/photo-provenance.ts`,
+ *  appended by `withPhotoProvenance` in the notebook route only when a photo
+ *  observation is in this turn's context). */
+export const PROMPT_LEAK_PHOTO_PROVENANCE_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction.
+  "I cannot confirm that these two part numbers are compatible without a cited source that establishes the match.",
+  "The label appears to read \"6AV2124-0GC01-0AX0\" — that's an unconfirmed transcription, so treat it as what's printed, not a confirmed part number yet.",
+  "I can't infer the device type from the shape or wiring in the photo; it has to be explicitly printed on the label or confirmed by a cited source.",
+  "I won't claim those two part numbers are interchangeable without a manual or cited source that actually establishes the match — that's a guess, not a confirmed fact.",
+];
+
+/** `RESTART_DIRECTIVE` (`src/capabilities/restart-advisory.ts`, appended in
+ *  the notebook route only on a fault-reset/restart-type question, mutually
+ *  exclusive with the hazard-flag/electrical-hazard branches). */
+export const PROMPT_LEAK_RESTART_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction.
+  "Before resetting, identify and correct the cause before resetting; confirm people are clear before anything can move; lockout/tagout before any hands-in work.",
+  "Don't just power-cycle it — find what actually tripped it first, or it'll just fault again.",
+  "Before you clear that alarm, make sure everyone is clear of the conveyor; a reset can restart motion without warning.",
+  "A firmware update or a project reload isn't a fault reset — if the alarm's still active after that, the underlying cause is still there.",
+];
+
+/** `GENERAL_NFPA_CAUTION` (notebook, `GENERAL_SYSTEM_PROMPT`'s own SAFETY
+ *  line — general mode, no manual loaded). */
+export const PROMPT_LEAK_GENERAL_NFPA_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction.
+  "That is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit). De-energize and lock out before inspecting it.",
+  "I can't walk you through an energized measurement on 480 V gear — that needs a qualified electrician with arc-flash PPE and a live-work permit.",
+  "Lock it out and de-energize before touching that panel; if the reading genuinely has to be taken live, that's a job for a qualified person under NFPA 70E.",
+  "Escalate this one — 480-volt class work energized is qualified-electrician territory, not something to do from a chat answer.",
+];
+
+/** `BASE_NFPA_CAUTION` (notebook, `BASE_SYSTEM_PROMPT`'s own ENERGY STATE
+ *  paragraph — grounded mode, manual loaded). */
+export const PROMPT_LEAK_BASE_NFPA_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction (BASE_SYSTEM_PROMPT's own phrasing, not
+  // GENERAL's — "arc-flash boundary and PPE determination").
+  "That is qualified-person work under NFPA 70E (arc-flash boundary and PPE determination, live-work permit). Redirect to the de-energize and lockout/tagout path.",
+  "This drive runs at 480 V, so probing it live is qualified-electrician work under NFPA 70E — de-energize and lock it out first [2].",
+  "Per the manual, confirm zero energy before opening that enclosure; anything beyond that at 480 V needs a qualified person with the right PPE [1].",
+  "I won't hand you a live-measurement procedure on this cabinet — that's a lockout/tagout job, and if it genuinely has to be done energized, a qualified electrician needs to do it.",
+];
+
+/** `ASSET_SAFETY_STOP_CAUTION` (asset chat, the fixed Instructions block's
+ *  own lockout/arc-flash/confined-space safety-stop bullet — unconditional). */
+export const PROMPT_LEAK_ASSET_SAFETY_STOP_FIXTURES: readonly string[] = [
+  // Codex-style exact reproduction of the bullet's own wording.
+  "Since this involves arc flash exposure, I will stop and instruct the tech to follow site safety procedures before proceeding with any work here.",
+  "This is a confined-space entry, so stop here — check with your site's confined-space procedure before anyone goes in.",
+  "That's a lockout/tagout situation. Stop and verify your site's LOTO procedure is in place before touching the breaker.",
+  "This question is about electrical safety around a live panel — stop and follow your site's electrical safety procedure before proceeding any further.",
+];
