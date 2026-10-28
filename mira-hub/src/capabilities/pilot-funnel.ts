@@ -1,4 +1,5 @@
 import pool from "@/lib/db";
+import { isPilotApprovalRequired } from "./pilot-access";
 
 // Pilot-application funnel plumbing (#4877). Mike's decision: the Hub signup
 // at app.factorylm.com IS the free 30-day pilot application. This module is
@@ -372,14 +373,12 @@ export async function notifyOwnerOfApplication(notice: PilotApplicationNotice): 
 // ---------------------------------------------------------------------------
 
 /**
- * Duplicated from `mira-hub/src/capabilities/pilot-access.ts::isPilotApprovalRequired`
- * (introduced by PR #4882, which is not yet on `main` as of this PR). Reads
- * the same env var the same way on purpose. TODO consolidate on the real
- * export once #4882 merges — tracked in this PR's body, not re-flagged here.
+ * Consolidated onto the real export now that #4882 has merged — this module
+ * previously duplicated the function (same env var, same check) because
+ * #4882 wasn't on `main` yet when this file was written. Re-exported, not
+ * reimplemented, so there is exactly one definition.
  */
-export function isPilotApprovalRequired(): boolean {
-  return process.env.MIRA_PILOT_APPROVAL_REQUIRED === "1";
-}
+export { isPilotApprovalRequired } from "./pilot-access";
 
 export interface PilotApplicationSubmittedInput {
   tenantId: string;

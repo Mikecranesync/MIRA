@@ -2,6 +2,7 @@ import pool from "@/lib/db";
 import { ensureDataSchema } from "@/lib/data-schema";
 import { PILOT_WINDOW_DAYS } from "@/lib/config";
 import { magicTokenTtlMinutes } from "@/capabilities/trial-access";
+import { admitPilotInvite, isPilotApprovalRequired } from "@/capabilities/pilot-access";
 
 export type UserStatus = "pending" | "trial" | "approved" | "expired" | "admin";
 
@@ -84,8 +85,32 @@ export function ensureSchema(): Promise<void> {
     // #4362: the trial account IS the 30-day pilot. Stretch any still-short window
     // (the old 7-day default caused the day-8 lockout) up to created_at + 30 days.
     // Already-longer or already-elapsed 30-day clocks are left alone.
+    // #4878: a pilot-active tenant's crew expiry tracks the ORG's
+    // pilot_expires_at (set once at approval), not created_at + 30d. Without
+    // excluding pilot tenants, this backfill — which re-runs on every
+    // process boot — would stretch a crew member invited on pilot day 10
+    // from (approved + 30d) back out to (created_at + 30d), silently undoing
+    // "crew follow the organization" on the next deploy.
+    //
+    // This runs on EVERY boot in EVERY environment regardless of the flag, so
+    // the exclusion clause (which reads hub_tenants.pilot_status) is only
+    // added when the flag is on — a deploy that reaches a pilot-approval-off
+    // environment where migration 107 hasn't landed yet must not 500 every
+    // signup/login by querying a column that may not exist there yet.
     await pool.query(
-      `UPDATE hub_users
+      isPilotApprovalRequired()
+        ? `UPDATE hub_users
+       SET trial_expires_at = created_at + ($1::int * INTERVAL '1 day')
+       WHERE status = 'trial'
+         AND (
+           trial_expires_at IS NULL
+           OR trial_expires_at < created_at + ($1::int * INTERVAL '1 day')
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM hub_tenants t
+           WHERE t.id = hub_users.tenant_id AND t.pilot_status IS NOT NULL
+         )`
+        : `UPDATE hub_users
        SET trial_expires_at = created_at + ($1::int * INTERVAL '1 day')
        WHERE status = 'trial'
          AND (
@@ -307,14 +332,29 @@ export async function ensureUserAndTenant(
        ON CONFLICT (id) DO NOTHING`,
       [tenantId, tenantName, input.email],
     );
+    // #4878: approval-required pilot access, behind MIRA_PILOT_APPROVAL_REQUIRED
+    // (default off — flag off is this block's `else`, byte-for-byte the prior
+    // query). On: the new owner is 'pending' with no trial clock running yet
+    // (the admin approve route starts it), and the tenant is marked a pilot
+    // applicant so the admin cohort view can find it.
+    const pilotMode = isPilotApprovalRequired();
     const {
       rows: [user],
     } = await client.query(
-      `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at)
+      pilotMode
+        ? `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending', NULL)
+       RETURNING id, email`
+        : `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at)
        VALUES ($1, $2, $3, $4, $5, 'trial', NOW() + ($6::int * INTERVAL '1 day'))
        RETURNING id, email`,
-      [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null, PILOT_WINDOW_DAYS],
+      pilotMode
+        ? [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null]
+        : [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null, PILOT_WINDOW_DAYS],
     );
+    if (pilotMode) {
+      await client.query(`UPDATE hub_tenants SET pilot_status = 'pending' WHERE id = $1`, [tenantId]);
+    }
     await client.query(
       `UPDATE hub_tenants SET owner_user_id = $1 WHERE id = $2`,
       [String(user.id), tenantId],
@@ -339,34 +379,125 @@ export async function ensureInvitedUser(input: {
   await ensureSchema();
   const email = input.email.trim().toLowerCase();
   const role = input.role.trim() || "technician";
-  const existing = await findUserByEmail(email);
 
-  if (existing) {
-    if (existing.tenantId !== input.tenantId) {
-      throw new Error("email already belongs to another workspace");
+  // Flag off: the exact pre-#4878 code path — no transaction, no pilot_*
+  // query, zero overhead, and safe in any environment migration 107 hasn't
+  // reached yet.
+  if (!isPilotApprovalRequired()) {
+    const existing = await findUserByEmail(email);
+    if (existing) {
+      if (existing.tenantId !== input.tenantId) {
+        throw new Error("email already belongs to another workspace");
+      }
+      await pool.query(
+        `UPDATE hub_users
+         SET role = $1,
+             status = CASE WHEN status = 'admin' THEN status ELSE 'approved' END,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [role, existing.id],
+      );
+      return { id: existing.id, tenantId: existing.tenantId, email: existing.email };
     }
-    await pool.query(
-      `UPDATE hub_users
-       SET role = $1,
-           status = CASE WHEN status = 'admin' THEN status ELSE 'approved' END,
-           updated_at = NOW()
-       WHERE id = $2`,
-      [role, existing.id],
+    const { rows } = await pool.query(
+      `INSERT INTO hub_users (email, tenant_id, name, role, status)
+       VALUES ($1, $2, NULL, $3, 'approved')
+       RETURNING id, email, tenant_id`,
+      [email, input.tenantId, role],
     );
-    return { id: existing.id, tenantId: existing.tenantId, email: existing.email };
+    return {
+      id: String(rows[0].id),
+      tenantId: String(rows[0].tenant_id),
+      email: String(rows[0].email),
+    };
   }
 
-  const { rows } = await pool.query(
-    `INSERT INTO hub_users (email, tenant_id, name, role, status)
-     VALUES ($1, $2, NULL, $3, 'approved')
-     RETURNING id, email, tenant_id`,
-    [email, input.tenantId, role],
-  );
-  return {
-    id: String(rows[0].id),
-    tenantId: String(rows[0].tenant_id),
-    email: String(rows[0].email),
-  };
+  // #4878 pilot mode (Codex #4664 F1/F2, review round 1): the admission
+  // decision and the hub_users write happen inside ONE transaction, under
+  // the SAME tenant-scoped lock `endPilotTenant` takes — a redemption can't
+  // race a termination and act on a stale 'active' snapshot (F1), and a
+  // token with no reservation on record is capacity-checked right now, not
+  // trusted on faith (F2). `admitPilotInvite` throws `PilotTenantNotActiveError`
+  // for a pending/ended tenant and `PilotSeatCapError` at capacity; both
+  // propagate to the caller (the magic-token credentials provider in
+  // auth.ts), so neither redemption creates or restores access.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const admission = await admitPilotInvite(client, input.tenantId, email);
+    const pilotActive = admission.isPilotTenant;
+
+    const { rows: existingRows } = await client.query(
+      `SELECT id, tenant_id, email FROM hub_users WHERE email_lower = LOWER($1) LIMIT 1`,
+      [email],
+    );
+    const existing = existingRows[0] as
+      | { id: string; tenant_id: string; email: string }
+      | undefined;
+
+    if (existing) {
+      if (String(existing.tenant_id) !== input.tenantId) {
+        throw new Error("email already belongs to another workspace");
+      }
+      await client.query(
+        pilotActive
+          ? `UPDATE hub_users
+         SET role = $1,
+             status = CASE WHEN status = 'admin' THEN status ELSE 'trial' END,
+             trial_expires_at = CASE WHEN status = 'admin' THEN trial_expires_at ELSE $3 END,
+             updated_at = NOW()
+         WHERE id = $2`
+          : `UPDATE hub_users
+         SET role = $1,
+             status = CASE WHEN status = 'admin' THEN status ELSE 'approved' END,
+             updated_at = NOW()
+         WHERE id = $2`,
+        pilotActive ? [role, existing.id, admission.pilotExpiresAt] : [role, existing.id],
+      );
+      await client.query("COMMIT");
+      return {
+        id: String(existing.id),
+        tenantId: String(existing.tenant_id),
+        email: String(existing.email),
+      };
+    }
+
+    const { rows } = await client.query(
+      pilotActive
+        ? `INSERT INTO hub_users (email, tenant_id, name, role, status, trial_expires_at)
+       VALUES ($1, $2, NULL, $3, 'trial', $4)
+       RETURNING id, email, tenant_id`
+        : `INSERT INTO hub_users (email, tenant_id, name, role, status)
+       VALUES ($1, $2, NULL, $3, 'approved')
+       RETURNING id, email, tenant_id`,
+      pilotActive
+        ? [email, input.tenantId, role, admission.pilotExpiresAt]
+        : [email, input.tenantId, role],
+    );
+    if (pilotActive) {
+      // Inlined (not the pool-based redeemPilotSeat helper): this MUST run
+      // on `client`, inside the same transaction/lock admitPilotInvite used,
+      // or the reservation and the membership row could commit on different
+      // snapshots. Idempotent no-op if no matching pending row exists.
+      await client.query(
+        `UPDATE pilot_seat_reservations
+         SET status = 'redeemed', redeemed_at = NOW()
+         WHERE tenant_id = $1 AND email_lower = $2 AND status = 'pending'`,
+        [input.tenantId, email],
+      );
+    }
+    await client.query("COMMIT");
+    return {
+      id: String(rows[0].id),
+      tenantId: String(rows[0].tenant_id),
+      email: String(rows[0].email),
+    };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ── User preferences ─────────────────────────────────────────

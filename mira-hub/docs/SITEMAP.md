@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **70** (12 dynamic) |
-| API routes | **190** (73 dynamic) |
+| API routes | **192** (75 dynamic) |
 
 ## Pages (70)
 
@@ -88,11 +88,13 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (190)
+## API routes (192)
 
 | Route | Kind | Source |
 |---|---|---|
 | `/` | static | `route.ts` |
+| `/api/admin/pilots/[tenantId]/approve` | dynamic | `(hub)/api/admin/pilots/[tenantId]/approve/route.ts` |
+| `/api/admin/pilots/[tenantId]/end` | dynamic | `(hub)/api/admin/pilots/[tenantId]/end/route.ts` |
 | `/api/admin/review/asset/[...path]` | dynamic | `api/admin/review/asset/[...path]/route.ts` |
 | `/api/admin/review/queue` | static | `api/admin/review/queue/route.ts` |
 | `/api/admin/users` | static | `(hub)/api/admin/users/route.ts` |

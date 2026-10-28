@@ -894,6 +894,92 @@ capabilities:
       docs/architecture/convergence/REGISTRY.yaml (mira-web-legacy-ui,
       mira-hub-legacy-ui, mira-mobile-legacy-ui), not here.
 
+  # =========================================================================
+  - id: pilot_access
+    purpose: >-
+      Approval-required pilot signup (first cohort: 5 approved organizations)
+      plus a concurrency-safe 5-seat-per-org cap, fixing Codex #4664 findings
+      F1 (overbooking under concurrent invites), F2 (pilot-or-not derived from
+      an ephemeral status instead of durable tenant state), and F4 (resending
+      an invite consuming a second seat) from #4768.
+    customer_outcome: >-
+      A buyer who signs up lands on /pending-approval instead of straight into
+      a trial; once Mike approves their organization into the 5-org cohort,
+      they and up to 4 invited crew get a 30-day pilot window that tracks the
+      organization's approval date, not each person's own signup date.
+    # TypeScript-only flag (mira-hub). feature_flag omitted — tools/capability_closure.py
+    # discovers flags in Python only (same convention as notebook_manual_acquisition,
+    # notebook_lexical_idf, and every other TS-hub-flag record in this file).
+    entrypoints:
+      - "mira-hub/src/capabilities/pilot-access.ts"
+      - "mira-hub/src/app/(hub)/api/admin/pilots/[tenantId]/approve/route.ts"
+      - "mira-hub/src/app/(hub)/api/admin/pilots/[tenantId]/end/route.ts"
+    consumers:
+      - "mira-hub/src/lib/users.ts                 # ensureUserAndTenant (signup), ensureInvitedUser (crew expiry + seat redemption)"
+      - "mira-hub/src/app/api/team/route.ts        # POST invite -> reservePilotSeat"
+    schema:
+      - "mira-hub/db/migrations/107_pilot_access.sql"
+    environments:
+      dev: unset
+      staging: unset
+      production: unset
+    state: deployed_disabled
+    owner: "Mike Harper"
+    ci_jobs:
+      - mira-hub-unit        # pilot-access.test.ts + users-pilot-approval.test.ts + the pre-existing users-pilot/users-invites suites (regression)
+    required_checks: []
+    evidence:
+      # Settled against a throwaway local postgres:16 before this file was
+      # added (mira-hub-migrations.md rule 8); applied + re-applied idempotently.
+      - "mira-hub/db/migrations/107_pilot_access.sql"
+      # Real-Postgres proof: concurrent approvals at 4/5 active orgs resolve to
+      # exactly one winner; concurrent invites at 4/5 occupied seats resolve to
+      # exactly one winner; redeeming a seat never frees it for a 6th reservation.
+      - "mira-hub/src/capabilities/__tests__/pilot-access.integration.test.ts"
+      - "https://github.com/Mikecranesync/MIRA/issues/4878"
+      - "https://github.com/Mikecranesync/MIRA/issues/4768"
+      - "https://github.com/Mikecranesync/MIRA/pull/4664#issuecomment-6397466915   # Codex F1/F2/F4 findings this record fixes"
+    rollback: >-
+      Unset MIRA_PILOT_APPROVAL_REQUIRED (or leave it unset — it was never
+      forwarded by any compose file; see blocker). hub_tenants.pilot_status
+      stays NULL for every tenant created with the flag off, so
+      ensureUserAndTenant/ensureInvitedUser/reservePilotSeat all take their
+      pre-#4878 branch, byte-for-byte. The migration's columns/table are
+      additive and inert; no data to unwind.
+    reason: >-
+      Off by default per the spec (#4878) — this is a new approval gate, not
+      a bug fix, and must be a deliberate owner decision to flip on. Also off
+      in EVERY environment for a second, structural reason: wiring the flag
+      through docker-compose.staging-vps.yml (the spec's instruction) was
+      BLOCKED by tools/ui_surface_lifecycle_guard.py — root compose filenames
+      are a guarded control-plane path requiring the exact-head Codex
+      adversarial-review envelope (or the legacy-ui-exception label flow),
+      neither of which this implementation session is authorized to produce.
+      The code (capabilities/pilot-access.ts, the two admin routes, the
+      users.ts branches, the migration) is complete and tested; only the
+      compose passthrough is missing.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Unblock the docker-compose.staging-vps.yml edit through the lifecycle guard's authorized path (Codex adversarial-review GREEN/CONVERGED, or the audited legacy-ui-exception), then forward MIRA_PILOT_APPROVAL_REQUIRED alongside the hub's other feature flags."
+      - "Apply migration 107 to staging (migration-verify.yml auto-applies on this PR's push) and confirm the schema before setting the flag anywhere."
+      - "Staging: set the flag, approve a real tenant through /api/admin/pilots/[tenantId]/approve, invite a 5th crew member, confirm the 409 on a 6th."
+      - "Owner decision on production timing after the staging walk."
+    review_by: "2026-12-12"
+    notes: >-
+      Session-refresh finding (spec item 5): the Hub's `jwt` NextAuth callback
+      re-reads status/trialExpiresAt from the DB on every session read
+      (session-entitlement.ts, #4664 F3) — but `middleware.ts` decodes the raw
+      session cookie directly and never runs that callback, and the guarded
+      `/pending-approval` page (mira-hub/src/app/(hub)/pending-approval/page.tsx)
+      already calls `signOut()` 1.5s after check-approval reports non-pending,
+      forcing a fresh sign-in. So in practice an approved owner DOES sign in
+      again today — by the existing page's own design, not by anything this
+      PR added or could change (that page is a guarded legacy-UI path).
+      Integration tests are local-only (no dedicated CI job runs
+      *.integration.test.ts outside beta-gate.yml's narrow allowlist — most
+      existing mira-hub integration suites share this, e.g.
+      users-invites.integration.test.ts, uploads.integration.test.ts).
+
 ignored_flags:
   - CRAWL_SCHEDULE_ENABLED          # default-ON operational schedule, not a gated capability
   - ENFORCE_PLAN_QUOTA              # billing/plan enforcement; belongs to the PLG surface
