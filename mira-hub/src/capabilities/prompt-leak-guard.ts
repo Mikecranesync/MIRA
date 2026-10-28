@@ -139,17 +139,39 @@ function segmentsExcludingQuotedExamples(text: string): string[] {
   return text.split(/"[^"]*"|(?<![\p{L}\p{N}])'[^'\n]+?'(?![\p{L}\p{N}])/gu);
 }
 
+/** Codex round 1 F1: a backtick-wrapped echo ("```\n<prompt>\n```" or
+ *  `` `<prompt>` ``) bypassed every signal, because the prior version
+ *  DELETED everything between backticks instead of unwrapping them — the
+ *  leaked prompt text itself was discarded before the gram/label checks
+ *  ever saw it. Fixed: drop only the DELIMITERS (the fence line's backticks
+ *  + optional language tag, or an inline span's backticks) and keep the
+ *  content so it is scanned exactly like ordinary prose. Two passes:
+ *   1. A proper fenced block — ``` optionally followed by a language tag,
+ *      then a newline, content, then closing ``` — becomes just its
+ *      content (the fence's own newline is kept so an adjacent prose word
+ *      never fuses with the first code word).
+ *   2. Any backticks still remaining (an inline `code` span, a doubled
+ *      ``code`` span, or a malformed/unterminated fence) are themselves
+ *      stripped — never the text between them.
+ *  Known, accepted limitation: a fenced block whose OWN content contains a
+ *  nested "```" closes at that nested fence (lazy match) rather than the
+ *  real one — the same class of limit `segmentsExcludingQuotedExamples`
+ *  documents for an internal apostrophe. */
+function unwrapCodeMarkers(text: string): string {
+  return text.replace(/```[^\n`]*\n([\s\S]*?)```/g, "$1").replace(/`+/g, "");
+}
+
 /** Lowercase, strip zero-width/format characters BEFORE collapsing
  *  non-alphanumerics (so "M​I​R​A" folds back to one token
  *  "mira" instead of splitting into four single-letter tokens — splitting
- *  would defeat exactly the obfuscation this is meant to catch), strip
- *  Markdown emphasis/heading/code-fence/blockquote markers and citation
- *  markers, then tokenize on whitespace. */
+ *  would defeat exactly the obfuscation this is meant to catch), unwrap
+ *  (never delete) Markdown code spans/fences, strip Markdown emphasis/
+ *  heading/blockquote markers and citation markers, then tokenize on
+ *  whitespace. */
 function normalizeWords(text: string): string[] {
-  return text
+  return unwrapCodeMarkers(text)
     .toLowerCase()
     .replace(/\p{Cf}/gu, "")
-    .replace(/`{1,3}[^`]*`{1,3}/g, " ")
     .replace(/[*_#>~]+/g, " ")
     .replace(/\[\d+\]/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
@@ -231,11 +253,12 @@ function extractSectionLabels(systemPrompt: string): string[] {
 
 /** Markdown-stripped, whitespace-collapsed, CASE PRESERVED — Signal 3 is
  *  case-sensitive on purpose (the common word "safety" must not match the
- *  header "SAFETY"). */
+ *  header "SAFETY"). Codex round 1 F1: unwraps (never deletes) code spans/
+ *  fences first, same as `normalizeWords` — a backtick-wrapped echo must
+ *  still expose its section labels. */
 function stripMarkdownKeepCase(text: string): string {
-  return text
+  return unwrapCodeMarkers(text)
     .replace(/\p{Cf}/gu, "")
-    .replace(/`{1,3}[^`]*`{1,3}/g, " ")
     .replace(/[*_#>~]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();

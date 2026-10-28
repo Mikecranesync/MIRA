@@ -4393,12 +4393,24 @@ async function handleChatTurn(
       // bound asset, or a nameplate follow-up, would get its answer flagged
       // as a prompt leak — measured and fixed, see
       // prompt-leak-guard-route.test.ts.
+      //
+      // Codex round 1 F2: FIELD_OBSERVATION_DIRECTIVE rides EVERY turn's
+      // prompt (both modes — `basePrompt = modePrompt + FIELD_OBSERVATION_
+      // DIRECTIVE`), and unlike HONESTY/SAFETY it is domain GUIDANCE phrased
+      // close to the ideal answer itself, not a secret meta-instruction — a
+      // technician answer correctly applying it ("a color change doesn't
+      // prove a physical failure…") legitimately shares its wording. Same
+      // per-turn/restatable-content exclusion as the data sections above;
+      // the persona opening line and HONESTY/SAFETY sections are untouched
+      // by this exclusion, so a real full-prompt echo still trips signal 1 —
+      // measured and fixed, see prompt-leak-guard.test.ts's Codex F2 suite.
       if (!outputRejected && served && answerText.trim()) {
         const leak = detectPromptLeak(systemPrompt, answerText, [
           machineContext,
           visualSection,
           machineSection,
           identityProposalDirective,
+          FIELD_OBSERVATION_DIRECTIVE,
         ]);
         if (leak.leaked) {
           console.error(

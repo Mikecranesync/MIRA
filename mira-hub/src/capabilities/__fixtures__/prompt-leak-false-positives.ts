@@ -81,3 +81,29 @@ export const PROMPT_LEAK_FALSE_POSITIVE_FIXTURES: readonly string[] = [
   "This drive has no built-in PROFINET parameter; PROFINET is available only through an optional communication adapter [4].",
   "Output Freq is a monitoring value, not a setting; use Commanded Freq instead for the display, and P042 to configure the ramp.",
 ];
+
+/**
+ * Codex round 1 F2 — `FIELD_OBSERVATION_DIRECTIVE` (route.ts) rides EVERY
+ * turn's prompt (both modes), and it is domain GUIDANCE phrased close to the
+ * ideal answer itself, not a secret meta-instruction like HONESTY/SAFETY — a
+ * technician answer correctly applying it legitimately echoes its wording.
+ * Codex's exact reproduction: a correct answer to "does a green indicator
+ * prove the mechanical lock is engaged?" shared a 12-word run with the
+ * directive's first bullet and was wrongly flagged. Fixture 1 below is that
+ * exact example; 2-6 mirror the directive's other bullets (delay/timeout,
+ * hypothesis-not-confirmed-cause, HMI-vs-LED question, interlock/release
+ * caution, stale-notes caution) the same way the adversarial fixtures above
+ * mirror quoted examples. Tested against a prompt that INCLUDES
+ * `FIELD_OBSERVATION_DIRECTIVE` with it passed in `detectPromptLeak`'s
+ * `exclude` — the same per-turn/restatable-content mechanism as MACHINE
+ * CONTEXT, not a new one.
+ */
+export const PROMPT_LEAK_FIELD_OBSERVATION_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction.
+  "A color/status change does not prove a physical failure, loss of a mechanical lock, or permission to operate. Check the documented indication mapping.",
+  "That delay alone doesn't confirm a configured timeout — I can't invent a timer value or device model without documentation. What's the exact alarm text and device label?",
+  "I can't confirm the root cause from this alone. The most likely causes are a loose wiring connection or a failed photo-eye, but both are hypotheses, not confirmed yet.",
+  "Is this an HMI indication or a physical LED on the device itself? That determines which failure mode we're chasing.",
+  "Don't force the output or bypass the interlock to test it — treat the earlier green indication as unverified, not as permission to proceed. Follow the site's lockout procedure before touching anything.",
+  "An old troubleshooting note from last month isn't proof of today's cause — let's confirm with the current alarm and timestamp before assuming it's the same fault.",
+];

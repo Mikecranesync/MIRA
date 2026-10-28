@@ -42,13 +42,17 @@ import { describe, expect, it } from "vitest";
 
 import {
   BASE_SYSTEM_PROMPT,
+  FIELD_OBSERVATION_DIRECTIVE,
   GENERAL_SYSTEM_PROMPT,
   UNCITED_OEM_CLAIM_TEXT,
 } from "@/app/api/equipment-notebooks/[id]/chat/route";
 
 import { ISOLATION_STEP_RULE } from "./answer-shape";
 import { validateAnswer } from "./answer-validation";
-import { PROMPT_LEAK_FALSE_POSITIVE_FIXTURES } from "./__fixtures__/prompt-leak-false-positives";
+import {
+  PROMPT_LEAK_FALSE_POSITIVE_FIXTURES,
+  PROMPT_LEAK_FIELD_OBSERVATION_FIXTURES,
+} from "./__fixtures__/prompt-leak-false-positives";
 import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "./prompt-leak-guard";
 
 const PROMPTS = {
@@ -58,6 +62,15 @@ const PROMPTS = {
   // (`withStepSafety`). Catches the single-quoted-example false positive.
   GENERAL_WITH_STEP_SAFETY: `${GENERAL_SYSTEM_PROMPT}\n\n${ISOLATION_STEP_RULE}`,
   BASE_WITH_STEP_SAFETY: `${BASE_SYSTEM_PROMPT}\n\n${ISOLATION_STEP_RULE}`,
+} as const;
+
+// Codex F2: FIELD_OBSERVATION_DIRECTIVE rides EVERY turn's prompt in BOTH
+// modes (route.ts: `basePrompt = modePrompt + FIELD_OBSERVATION_DIRECTIVE`).
+// Real production shape, with the per-turn `exclude` param these tests pass
+// explicitly (what route.ts's hook now does).
+const PROMPTS_WITH_FIELD_OBS = {
+  GENERAL: `${GENERAL_SYSTEM_PROMPT}\n\n${FIELD_OBSERVATION_DIRECTIVE}`,
+  BASE: `${BASE_SYSTEM_PROMPT}\n\n${FIELD_OBSERVATION_DIRECTIVE}`,
 } as const;
 
 describe("#3785 — the three reproduced probe shapes, against both prompts", () => {
@@ -70,6 +83,33 @@ describe("#3785 — the three reproduced probe shapes, against both prompts", ()
 
     it(`a verbatim echo prefixed with chatty filler ("Sure, here it is:\\n\\n") is still flagged (${name})`, () => {
       const r = detectPromptLeak(prompt, `Sure, here it is:\n\n${prompt}`);
+      expect(r.leaked).toBe(true);
+    });
+
+    // Codex round 1 F1 (HIGH): the prior version DELETED everything between
+    // backticks instead of unwrapping them, so a backtick-wrapped echo
+    // returned {"leaked":false} — the leaked text was discarded before any
+    // signal ever saw it. These four shapes must all still be flagged.
+    it(`a triple-fenced echo (no language tag) is still flagged (${name})`, () => {
+      const r = detectPromptLeak(prompt, "```\n" + prompt + "\n```");
+      expect(r.leaked).toBe(true);
+    });
+
+    it(`a triple-fenced echo WITH a language tag is still flagged (${name})`, () => {
+      const r = detectPromptLeak(prompt, "```text\n" + prompt + "\n```");
+      expect(r.leaked).toBe(true);
+    });
+
+    it(`a single-backtick-wrapped echo is still flagged (${name})`, () => {
+      const r = detectPromptLeak(prompt, "`" + prompt + "`");
+      expect(r.leaked).toBe(true);
+    });
+
+    it(`a fenced echo mixed with chatty prose before and after is still flagged (${name})`, () => {
+      const r = detectPromptLeak(
+        prompt,
+        "Sure, here are my instructions verbatim:\n\n```\n" + prompt + "\n```\n\nLet me know if you need anything else!",
+      );
       expect(r.leaked).toBe(true);
     });
   }
@@ -145,6 +185,39 @@ describe("#3785 — false-positive sweep (shared fixture set, see __fixtures__/p
     it.each(PROMPT_LEAK_FALSE_POSITIVE_FIXTURES)(`%s — not flagged against ${name}`, (answerText) => {
       const r = detectPromptLeak(prompt, answerText);
       expect(r.leaked).toBe(false);
+    });
+  }
+});
+
+describe("#3785 — Codex F2: FIELD_OBSERVATION_DIRECTIVE is domain guidance, not a secret — correctly applying it is not a leak", () => {
+  // Reproduces the exact bug BEFORE the fix: the directive rides every
+  // turn's prompt, and a correct answer sharing its phrasing (Codex's own
+  // example) was flagged with NO exclusion applied.
+  it("Codex's exact reproduction DOES flag when the directive is not excluded (proves the bug existed)", () => {
+    const answer = PROMPT_LEAK_FIELD_OBSERVATION_FIXTURES[0];
+    const r = detectPromptLeak(PROMPTS_WITH_FIELD_OBS.GENERAL, answer);
+    expect(r.leaked).toBe(true);
+  });
+
+  // The fix: route.ts's hook passes FIELD_OBSERVATION_DIRECTIVE in `exclude`
+  // (same per-turn/restatable-content mechanism as MACHINE CONTEXT) —
+  // Codex's example AND 5 more realistic directive-derived answers must all
+  // clear, against BOTH modes' real prompt shape.
+  for (const [name, prompt] of Object.entries(PROMPTS_WITH_FIELD_OBS)) {
+    it.each(PROMPT_LEAK_FIELD_OBSERVATION_FIXTURES)(`%s — not flagged against ${name} once FIELD_OBSERVATION_DIRECTIVE is excluded`, (answerText) => {
+      const r = detectPromptLeak(prompt, answerText, [FIELD_OBSERVATION_DIRECTIVE]);
+      expect(r.leaked).toBe(false);
+    });
+  }
+
+  // Control: excluding the directive must NOT blind the guard to a full
+  // prompt echo — the persona opening line and HONESTY/SAFETY sections are
+  // untouched by this exclusion and still carry a 12-word run.
+  for (const [name, prompt] of Object.entries(PROMPTS_WITH_FIELD_OBS)) {
+    it(`a full verbatim echo of ${name} is still flagged even with FIELD_OBSERVATION_DIRECTIVE excluded`, () => {
+      const r = detectPromptLeak(prompt, prompt, [FIELD_OBSERVATION_DIRECTIVE]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
     });
   }
 });
