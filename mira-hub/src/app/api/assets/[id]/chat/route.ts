@@ -37,6 +37,7 @@ import {
 import { canonicalProviders, requestDialectFields } from "@/lib/inference/canonical-cascade";
 import { boundInputTokens, reserveOpenAiAttempt } from "@/capabilities/openai-run-budget";
 import type { CanonicalProvider } from "@/lib/inference/canonical-cascade";
+import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "@/capabilities/prompt-leak-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -195,14 +196,17 @@ async function streamFromProvider(
 }
 
 // ── Asset context ──────────────────────────────────────────────────────────
-function buildSystemPrompt(asset: Record<string, unknown>): string {
+// #3785 (prompt-leak-guard extension): split out so detectPromptLeak's
+// `exclude` can name exactly the per-turn ASSET DATA block — never the fixed
+// persona/instructions around it — the same granularity notebook chat's
+// `machineContext` exclusion uses. Byte-identical concatenation to the prior
+// single-template version; `buildSystemPrompt`'s output is unchanged.
+function buildAssetContextBlock(asset: Record<string, unknown>): string {
   const name = (asset.description as string) ||
     [asset.manufacturer, asset.model_number, asset.equipment_type].filter(Boolean).join(" ") ||
     "Unknown Equipment";
 
-  return `You are MIRA, an AI maintenance assistant for industrial equipment built by FactoryLM.
-
-## Asset in scope
+  return `## Asset in scope
 - Name: ${name}
 - Tag: ${asset.equipment_number ?? "—"}
 - Manufacturer: ${asset.manufacturer ?? "—"}
@@ -214,14 +218,72 @@ function buildSystemPrompt(asset: Record<string, unknown>): string {
 - Install date: ${asset.installation_date ? String(asset.installation_date).slice(0, 10) : "—"}
 - Last maintenance: ${asset.last_maintenance_date ? String(asset.last_maintenance_date).slice(0, 10) : "—"}
 - Last fault: ${asset.last_reported_fault ?? "none recorded"}
-- Work order count: ${asset.work_order_count ?? 0}
+- Work order count: ${asset.work_order_count ?? 0}`;
+}
+
+// Codex #4891 F8 audit: this bullet is restatable safety GUIDANCE (the model
+// is literally instructed to SAY this to the technician), the same class as
+// ISOLATION_STEP_RULE/RESTART_DIRECTIVE — not a secret instruction. Carved
+// into its own constant, unconditional (every turn), so it can be named in
+// `detectPromptLeak`'s `exclude`; `buildSystemPrompt`'s rendered output is
+// byte-identical to before. Confirmed false-positive by a throwaway repro:
+// "...stop and instruct the tech to follow site safety procedures before
+// proceeding" is a 12-word verbatim run a correct hazard-stop answer
+// naturally reproduces.
+export const ASSET_SAFETY_STOP_CAUTION =
+  "If the question involves lockout/tagout, arc flash, confined space, or electrical safety, stop and instruct the tech to follow site safety procedures before proceeding.";
+
+// Codex #4891 F9 (round 5 — architectural inversion): the PROTECTED CORE for
+// this route when an asset is bound — the fixed persona + instructions text a
+// correct technician answer would never reproduce, compared ONLY against this
+// (not the full turn-assembled `groundedSystemPrompt`). Unlike notebook chat's
+// BASE_SYSTEM_PROMPT/GENERAL_SYSTEM_PROMPT, `buildSystemPrompt` has no
+// pre-existing fixed-only constant — its per-turn `buildAssetContextBlock`
+// asset-data block is interpolated directly into the template — so this is a
+// hand-written constant: the SAME literal persona + "## Instructions" text as
+// `buildSystemPrompt`, with the asset-context block and ASSET_SAFETY_STOP_
+// CAUTION deliberately OMITTED (per-turn data and a restatable caution,
+// neither of them protected meta-instruction). No `exclude` entry is needed
+// for either: they are simply never part of the comparison text. A full-
+// prompt echo still contains this text as a literal substring, so signal 1
+// still fires — see the inversion-proof test in prompt-leak-guard tests.
+//
+// Round 6 (#4891 F10) audit note: the "If you are unsure, say so — never
+// guess at safety-critical specifications." bullet was investigated as a
+// candidate for the same carve-out (it is abstention wording a correct
+// answer could echo). Mutation-proof disproved it: with the bullet restored,
+// no realistic abstention answer (4 tried, including a close paraphrase of
+// the bullet's own wording) triggered either n-gram signal — the bullet is
+// too short to produce a 12-word verbatim run or clear signal-2 majority, so
+// there is no actual false-positive to fix here. Left in place; narrowing it
+// would be an unevidenced change. (The F10 finding itself only named
+// equipment-notebooks/[id]/chat/route.ts — this route was reviewed on the
+// coordinator's "narrow each route's protected core" instruction, not an
+// independent Codex finding.)
+export const ASSET_PROTECTED_CORE = `You are MIRA, an AI maintenance assistant for industrial equipment built by FactoryLM.
+
+## Instructions
+- Answer questions specifically about this asset using the context above.
+- If you cite a manual section, say so explicitly (e.g., "Per the OEM service manual, §3.4…").
+- If you are unsure, say so — never guess at safety-critical specifications.
+- Keep answers concise and actionable. Techs are on the floor.`;
+
+// The no-asset fallback prompt (used when `assetRow` is falsy) carries no
+// per-turn data at all — it is already a fixed-only constant, so it doubles
+// as its own protected core with no carve-out needed.
+export const NO_ASSET_SYSTEM_PROMPT = `You are MIRA, an AI maintenance assistant for industrial equipment. Answer questions about this asset concisely and accurately. Cite manual sections when referenced.`;
+
+function buildSystemPrompt(asset: Record<string, unknown>): string {
+  return `You are MIRA, an AI maintenance assistant for industrial equipment built by FactoryLM.
+
+${buildAssetContextBlock(asset)}
 
 ## Instructions
 - Answer questions specifically about this asset using the context above.
 - If you cite a manual section, say so explicitly (e.g., "Per the ${asset.manufacturer ?? "OEM"} service manual, §3.4…").
 - If you are unsure, say so — never guess at safety-critical specifications.
 - Keep answers concise and actionable. Techs are on the floor.
-- If the question involves lockout/tagout, arc flash, confined space, or electrical safety, stop and instruct the tech to follow site safety procedures before proceeding.`;
+- ${ASSET_SAFETY_STOP_CAUTION}`;
 }
 
 // Review Q1 (PR #2414) — the strings below (tag_path, diff_type, severity,
@@ -548,9 +610,7 @@ export async function POST(
   // Returns "" if KG not populated; never throws (graceful fallback)
   const graphContext = await buildGraphContext(ctx.tenantId, lastUser.content, id).catch(() => "");
 
-  const baseSystemPrompt = assetRow
-    ? buildSystemPrompt(assetRow)
-    : `You are MIRA, an AI maintenance assistant for industrial equipment. Answer questions about this asset concisely and accurately. Cite manual sections when referenced.`;
+  const baseSystemPrompt = assetRow ? buildSystemPrompt(assetRow) : NO_ASSET_SYSTEM_PROMPT;
 
   const withGraph = graphContext
     ? `${baseSystemPrompt}\n\n## Knowledge Graph Context\nThe following relational context was retrieved from the plant knowledge graph. Use it to give more specific, history-aware answers.\n\n${graphContext}`
@@ -672,18 +732,123 @@ export async function POST(
         controller.enqueue(enc.encode(`data: ${JSON.stringify({ next_check: nextCheck })}\n\n`));
       }
 
+      // #3785 (prompt-leak-guard extension): this route streams provider
+      // deltas LIVE (unlike notebook chat's buffer-then-release gate), so a
+      // leaked system prompt would already be on the wire by the time any
+      // post-hoc check could run. Collect the provider cascade's deltas into
+      // a local, not-yet-visible buffer instead of the real `controller` —
+      // `streamFromProvider`/`drainProviderStream` only ever call
+      // `.enqueue()` on the controller they're given, so this shim satisfies
+      // their whole contract without touching either function. Once the full
+      // candidate is known, validate it, then either replay the buffered SSE
+      // frames verbatim (clean) or discard them and emit the refusal instead
+      // (leaked) — before the real client ever sees a byte of it.
+      const preModelBufferLen = responseBuffer.length;
+      const bufferedFrames: Uint8Array[] = [];
+      const collectingController = { enqueue: (chunk: Uint8Array) => bufferedFrames.push(chunk) };
+
       let served = false;
       let servedBy: string | null = null;
       for (const provider of providers) {
+        // Codex #4891 F4: a provider that emits a delta and THEN errors
+        // mid-stream (a read rejection, an abort) throws out of
+        // `streamFromProvider` — caught below, cascading to the next
+        // provider — but it has already pushed its partial text into the
+        // SHARED `responseBuffer`/`bufferedFrames` before throwing. Left in
+        // place, that partial text either (a) survives to the final
+        // `!served` check below and gets released UNCHECKED if every
+        // remaining provider also fails, or (b) gets silently concatenated
+        // in front of a LATER provider's clean answer if one succeeds.
+        // Snapshot this attempt's starting length and roll back to it on
+        // ANY non-success (throw OR a clean `false`) so a failed attempt
+        // never leaves a trace for the next attempt or the final check to
+        // inherit.
+        const preAttemptBufferLen = responseBuffer.length;
+        const preAttemptFramesLen = bufferedFrames.length;
         try {
-          served = await streamFromProvider(provider, fullMessages, controller, enc, responseBuffer);
+          served = await streamFromProvider(
+            provider,
+            fullMessages,
+            collectingController as unknown as ReadableStreamDefaultController<Uint8Array>,
+            enc,
+            responseBuffer,
+          );
           if (served) {
             servedBy = provider.name;
             break;
           }
+          responseBuffer.length = preAttemptBufferLen;
+          bufferedFrames.length = preAttemptFramesLen;
         } catch {
-          // cascade
+          // cascade — discard this attempt's partial buffer first (see above).
+          responseBuffer.length = preAttemptBufferLen;
+          bufferedFrames.length = preAttemptFramesLen;
         }
+      }
+
+      // Per-turn DATA the prompt INSTRUCTS the model to restate — the bound
+      // asset's own fields, KG relational context, and live/replayed machine
+      // evidence — must never read as a leak merely because the model
+      // correctly repeats data this turn's prompt happened to carry. Same
+      // mechanism as notebook chat's `machineContext`/`visualSection`/
+      // `machineSection` exclusion (prompt-leak-guard.ts's `exclude` param);
+      // never the fixed persona/instructions around it. ISOLATION_STEP_RULE
+      // (Codex #4891 F5) is excluded the same way: it rides every turn's
+      // prompt via `withStepSafety` below, and is domain safety GUIDANCE a
+      // correct answer legitimately restates, not a secret instruction — the
+      // persona/Instructions text around it is untouched, so a real full-
+      // prompt echo still trips the verbatim-run signal.
+      const modelText = responseBuffer.slice(preModelBufferLen).join("");
+      let leakBlocked = false;
+      // Codex #4891 F4: gate on whether there IS buffered text to check, not
+      // on `served` — a candidate must be validated before release/persist
+      // regardless of which cascade path produced it. With the per-attempt
+      // discard above in place, `modelText` is already empty whenever
+      // `served` is false (every failed attempt's partial text was rolled
+      // back), so this is a fail-closed backstop, not an independently
+      // load-bearing fix on its own — see the PR body for the mutation-proof
+      // breakdown of what each half catches.
+      if (modelText.trim()) {
+        // Codex #4891 F9 (round 5 — architectural inversion): compare ONLY
+        // against this turn's PROTECTED CORE (ASSET_PROTECTED_CORE when an
+        // asset is bound, NO_ASSET_SYSTEM_PROMPT otherwise) — never the full
+        // turn-assembled `groundedSystemPrompt`. Every per-turn block built
+        // above (`buildAssetContextBlock`, `graphContext`,
+        // `machineMemorySection`, ISOLATION_STEP_RULE via `withStepSafety`,
+        // `flagDirectiveFor`, KB_GAP_SYSTEM_INSTRUCTION) is NEVER part of
+        // either protected-core constant's own text, so it is out of scope
+        // by construction — no exclude entry needed, for these or any
+        // directive added later. ASSET_SAFETY_STOP_CAUTION is likewise out
+        // of scope: it is deliberately omitted from ASSET_PROTECTED_CORE
+        // (see that constant's comment), not merely excluded.
+        const protectedCore = assetRow ? ASSET_PROTECTED_CORE : NO_ASSET_SYSTEM_PROMPT;
+        const leak = detectPromptLeak(protectedCore, modelText);
+        if (leak.leaked) {
+          leakBlocked = true;
+          console.error(
+            `[api/assets/:id/chat] pre-display REJECTED ${leak.violation}: ${leak.detail}`,
+          );
+          // Discard the leaked candidate — it never reaches responseBuffer
+          // (so it can never be persisted or fed to KG extraction either)
+          // and never reaches the client.
+          responseBuffer.length = preModelBufferLen;
+          responseBuffer.push(PROMPT_LEAK_REFUSAL);
+          // Same additive-`error`-field shape this route already uses for
+          // provider exhaustion below — not a new response shape.
+          controller.enqueue(
+            enc.encode(
+              `data: ${JSON.stringify({ content: PROMPT_LEAK_REFUSAL, error: "prompt_leak" })}\n\n`,
+            ),
+          );
+        } else if (served) {
+          for (const frame of bufferedFrames) controller.enqueue(frame);
+        }
+        // `!served` with non-empty, non-leaking `modelText` is unreachable
+        // post-discard-fix (see comment above); if it ever happens anyway,
+        // fail closed and fall through to the `!served` branch below instead
+        // of releasing an unvalidated partial frame.
+      } else if (served) {
+        for (const frame of bufferedFrames) controller.enqueue(frame);
       }
 
       if (!served) {
@@ -716,7 +881,9 @@ export async function POST(
       // the gap, append the honest admission before closing. Mirrors the Python
       // enforce_citation_or_gap_admission so a model that ignores the
       // system-prompt instruction can't ship a confident, ungrounded answer.
-      if (served && !hasGroundingEvidence && !hasCitationOrGapAdmission(responseBuffer.join(""))) {
+      // `!leakBlocked`: a leak-refusal admits nothing about a KB gap and must
+      // never get KB_GAP_ADMISSION appended onto it.
+      if (served && !leakBlocked && !hasGroundingEvidence && !hasCitationOrGapAdmission(responseBuffer.join(""))) {
         responseBuffer.push(KB_GAP_ADMISSION);
         controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: KB_GAP_ADMISSION })}\n\n`));
       }
@@ -749,6 +916,12 @@ export async function POST(
           verified: mc.verified === true,
         }));
         const grounded = manualSources.length > 0;
+        // #3785: a leak-blocked turn persists the REFUSAL (already what
+        // `fullResponse` holds — the leaked candidate was discarded before
+        // this point, never reaching responseBuffer), never cites, and gets
+        // the already-documented "gate_fired" outcome (migration
+        // 032_decision_traces.sql's own comment: "resolved | handoff |
+        // kb_gap | gate_fired | engine_error | ...") — not a new value.
         await withTenantContext(ctx.tenantId, (c) =>
           c.query(
             `INSERT INTO decision_traces
@@ -762,9 +935,9 @@ export async function POST(
               sanitizePII(lastUser.content),
               JSON.stringify(manualEvidence),
               fullResponse,
-              grounded,
-              grounded ? "medium" : "low",
-              grounded ? "resolved" : "kb_gap",
+              leakBlocked ? false : grounded,
+              leakBlocked ? "low" : grounded ? "medium" : "low",
+              leakBlocked ? "gate_fired" : grounded ? "resolved" : "kb_gap",
               servedBy,
               Date.now() - startedAt,
             ],

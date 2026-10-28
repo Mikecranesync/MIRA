@@ -255,6 +255,7 @@ import {
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
+import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "@/capabilities/prompt-leak-guard";
 import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import { progressCancelSignal, reportProgress, wantsProgress, withProgressStream } from "@/capabilities/chat-progress";
@@ -279,7 +280,49 @@ function answerGateEnabled(): boolean {
   return process.env.NOTEBOOK_ANSWER_GATE !== "0";
 }
 
-const BASE_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant for ONE specific machine. Answer ONLY from the numbered reference excerpts provided below.
+// Exported (#3785, prompt-leak-guard): there is no standalone "build the
+// system prompt" function — MACHINE CONTEXT, coverage directives and the
+// hazard/visual sections are assembled inline in handleChatTurn — so these
+// three constants are the closest thing to an importable builder output.
+// prompt-leak-guard.test.ts imports them directly rather than hand-copying
+// the prompt text into test fixtures. Source-read regex tests elsewhere in
+// this repo (general-prompt-no-doc-search.test.ts, isolation-example-passes-
+// gate.test.ts, prompt-abstention-directives.test.ts) keep working unchanged
+// — their regexes match the substring "const NAME = `...`;" and do not
+// anchor on the absence of a leading `export`.
+// Codex #4891 F8: the NFPA 70E "qualified-person work" caution was inline
+// prose inside BASE_SYSTEM_PROMPT's ENERGY STATE paragraph — restatable
+// safety guidance (the same class as ISOLATION_STEP_RULE/RESTART_DIRECTIVE),
+// not a secret meta-instruction, but with no separate identifier to pass to
+// `detectPromptLeak`'s `exclude`. Carved into its own constant and spliced
+// back in at the exact same position so BASE_SYSTEM_PROMPT's rendered text
+// is byte-identical to before; the meta-instruction around it ("NEVER hand
+// over a procedure for measuring, probing...") stays inline and protected.
+export const BASE_NFPA_CAUTION =
+  "That is qualified-person work under NFPA 70E (arc-flash boundary and PPE determination, live-work permit). Redirect to the de-energize + lockout/tagout path, and to a qualified electrician for any diagnostic that genuinely requires energized equipment.";
+
+// Codex #4891 F9: the plant-specific-data examples sentence is restatable technician
+// guidance (a correct abstention answer legitimately repeats "relief valve setpoints,
+// motor inrush baseline..."), same class as BASE_NFPA_CAUTION above. Carved into its
+// own constant and spliced back at the exact same position so BASE_SYSTEM_PROMPT's
+// rendered text is byte-identical; the meta-instruction around it ("If the excerpts
+// do NOT supply...") stays inline and protected.
+export const BASE_SITE_RECORDS_CAUTION =
+  "Some answers require nameplate data, baseline history, or facility configuration that ONLY the technician's site has. Examples: relief valve setpoints, motor inrush baseline, pump suction lift limits, compressor pressure settings.";
+
+// Codex #4891 F10: the ENERGY STATE hazard-point enumeration is restatable
+// safety guidance — a correct isolation answer legitimately lists the same
+// physical-contact points ("wiring, terminals, bus capacitors, guards,
+// belts, chains, couplings, or any rotating or moving part") when telling
+// the technician what to isolate before touching it. Carved out so it is
+// never compared; the surrounding meta-instruction ("state the required
+// energy-isolation state IN THE SAME SENTENCE... not as a trailing
+// caution") describes how the MODEL must write its own answer, not
+// something a technician answer would restate, and stays inline/protected.
+export const BASE_ENERGY_ISOLATION_HAZARD_POINTS =
+  "wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part";
+
+export const BASE_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant for ONE specific machine. Answer ONLY from the numbered reference excerpts provided below.
 
 ANSWER SHAPE — a technician is standing at the machine and needs the answer fast:
 - Lead with the direct answer in the FIRST sentence: the parameter number, terminal number, fault meaning, value, or action. e.g. "P042 [Decel Time 1] sets the deceleration ramp [1]."
@@ -287,13 +330,13 @@ ANSWER SHAPE — a technician is standing at the machine and needs the answer fa
 - Do NOT open with background, generic safety boilerplate, or a restatement of the question.
 
 ENERGY STATE — this rule outranks brevity:
-- If an answer directs physical contact with wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part, state the required energy-isolation state IN THE SAME SENTENCE as the instruction — not as a trailing caution. e.g. "With the drive isolated, locked out and the DC bus confirmed dead with a meter, check continuity across terminals 07-08 [2]." Write the verification without a voltage number — a number there reads as a machine rating.
+- If an answer directs physical contact with ${BASE_ENERGY_ISOLATION_HAZARD_POINTS}, state the required energy-isolation state IN THE SAME SENTENCE as the instruction — not as a trailing caution. e.g. "With the drive isolated, locked out and the DC bus confirmed dead with a meter, check continuity across terminals 07-08 [2]." Write the verification without a voltage number — a number there reads as a machine rating.
 - Never omit that clause to keep the answer short. Brevity is for the explanation, never for the isolation condition.
 - Describe an observation (what a reading means) without an isolation clause; an instruction to touch, open, remove, or probe always carries one.
-- NEVER hand over a procedure for measuring, probing, opening, or otherwise working on equipment energized at 480 V class or higher. That is qualified-person work under NFPA 70E (arc-flash boundary and PPE determination, live-work permit). Redirect to the de-energize + lockout/tagout path, and to a qualified electrician for any diagnostic that genuinely requires energized equipment.
+- NEVER hand over a procedure for measuring, probing, opening, or otherwise working on equipment energized at 480 V class or higher. ${BASE_NFPA_CAUTION}
 
 PLANT-SPECIFIC VALUES — abstain on missing configuration:
-- Some answers require nameplate data, baseline history, or facility configuration that ONLY the technician's site has. Examples: relief valve setpoints, motor inrush baseline, pump suction lift limits, compressor pressure settings.
+- ${BASE_SITE_RECORDS_CAUTION}
 - If the excerpts do NOT supply the specific value AND the answer requires plant-context data not in any manual (e.g. "what's the relief valve setpoint for System 7 in building 3?"), abstain in one sentence. Do NOT guess a generic value.
 - When abstaining on plant-specific data, acknowledge what the technician would need (nameplate, maintenance history, baseline logs) and offer to help once they provide it.
 - Generic knowledge (how relief valves work, what to check when cavitation occurs) is fine. Plant-specific values (THIS machine's setpoint, THIS motor's historical baseline, THIS compressor's configuration) require evidence.
@@ -327,7 +370,45 @@ MACHINE OVERVIEW — if asked what you know about the machine, or for an overvie
  * citation, which is exactly what §1.3 forbids. The route also strips any that
  * survive; this is the first of the two guards, not the only one.
  */
-const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. No manual for this machine has been loaded, so you are reasoning from general electrical, mechanical, and controls knowledge.
+// Codex #4891 F8: same carve-out as BASE_NFPA_CAUTION, for GENERAL_SYSTEM_
+// PROMPT's own SAFETY line (worded slightly differently — "arc-flash
+// boundary/PPE" vs BASE's "arc-flash boundary and PPE determination" — so
+// each prompt gets its own exact-text constant rather than sharing one).
+export const GENERAL_NFPA_CAUTION =
+  "that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized.";
+
+// Codex #4891 F9: the compatibility-unverified caution and the plant-specific-values
+// abstention caution are restatable technician guidance within HONESTY — a correct
+// answer legitimately echoes "unverified... check the manufacturer's documentation"
+// or "abstain plainly... nameplate data or maintenance records are required". Same
+// carve-out technique as GENERAL_NFPA_CAUTION/BASE_SITE_RECORDS_CAUTION above.
+export const GENERAL_COMPATIBILITY_CAUTION =
+  "Do not state compatibility or interchangeability as fact without a source that explicitly supports it. Say plainly that it is unverified and ask to search the exact label text or check the manufacturer's documentation.";
+
+export const GENERAL_SITE_RECORDS_CAUTION =
+  "If a question asks for plant-specific values (relief valve setpoint, motor baseline current, pump suction lift limit, compressor pressure), abstain plainly. The technician's site configuration is not in your training; nameplate data or maintenance records are required.";
+
+// Codex #4891 F10: the "no manual loaded" grounding disclosure in the
+// persona line itself is restatable — a correct general-mode answer
+// legitimately opens with (or includes) exactly this disclosure, often in
+// close paraphrase ("No manual has been loaded, so I'm answering from
+// general knowledge..."). Carved out of the persona sentence and spliced
+// back so the rendered prompt is byte-identical; only the bare identity
+// clause ("You are MIRA, a maintenance assistant helping a technician who
+// is standing at a machine RIGHT NOW.") remains in the protected core.
+export const GENERAL_NO_MANUAL_DISCLOSURE =
+  "No manual for this machine has been loaded, so you are reasoning from general electrical, mechanical, and controls knowledge.";
+
+// Codex #4891 F10: this is the SAME restatable-abstention class as
+// GENERAL_COMPATIBILITY_CAUTION right next to it — a correct answer
+// declining to decode a part number/model suffix/connector code
+// legitimately shares this exact wording. The surrounding "You have NO
+// manual for this machine." stays inline/protected (pure persona-adjacent
+// context, not something a technician answer would restate).
+export const GENERAL_NO_DECODE_CAUTION =
+  "Never decode a part number, model suffix, connector code, or product-family string from pattern-matching.";
+
+export const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. ${GENERAL_NO_MANUAL_DISCLOSURE}
 
 ANSWER SHAPE — the technician needs something they can act on:
 - If the technician is troubleshooting or doing work on equipment, lead with the most likely cause or the first thing to check, in the FIRST sentence, then give a short ordered list of checks, cheapest and safest first.
@@ -336,13 +417,13 @@ ANSWER SHAPE — the technician needs something they can act on:
 - Keep it under about 150 words.
 
 HONESTY:
-- You have NO manual for this machine. Never decode a part number, model suffix, connector code, or product-family string from pattern-matching. Do not state compatibility or interchangeability as fact without a source that explicitly supports it. Say plainly that it is unverified and ask to search the exact label text or check the manufacturer's documentation.
-- If a question asks for plant-specific values (relief valve setpoint, motor baseline current, pump suction lift limit, compressor pressure), abstain plainly. The technician's site configuration is not in your training; nameplate data or maintenance records are required.
+- You have NO manual for this machine. ${GENERAL_NO_DECODE_CAUTION} ${GENERAL_COMPATIBILITY_CAUTION}
+- ${GENERAL_SITE_RECORDS_CAUTION}
 - If the question genuinely cannot be answered without model-specific or plant-specific documentation, say that plainly and name which document would settle it.
 - You searched NO documentation. Never write "the documentation does not specify", "the manual doesn't say", or anything implying you looked something up and it was missing. Say "I'm answering from general knowledge, not this machine's manual" instead.
 - NEVER write bracketed numeric markers like [1] or [2]. You have no sources to cite. There is nothing for a bracket to point at.
 
-SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on 480 V-class equipment — that is qualified-person work under NFPA 70E (arc-flash boundary/PPE, live-work permit); lead with de-energize + lockout/tagout and escalate to a qualified electrician for anything that must be done energized.`;
+SAFETY: assume the equipment may be energized. Where a check requires isolation, say so before the step. NEVER provide an energized-measurement or live-work procedure on 480 V-class equipment — ${GENERAL_NFPA_CAUTION}`;
 
 /**
  * WP-1 guided dead end (owner decision 2026-10-21). Appended to the general prompt ONLY for a turn
@@ -355,7 +436,7 @@ const GUIDED_DEAD_END_DIRECTIVE = `GUIDED PROCEDURE DEAD END — this overrides 
 - Never say or imply that any of your advice comes from their manual, and never cite pages for it.
 - If their message gives no symptom, ask for one before suggesting anything.`;
 // ASI-001: an observation is evidence, not a root cause. Shared by both modes.
-const FIELD_OBSERVATION_DIRECTIVE = `FIELD OBSERVATIONS — this rule outranks a request to lead with the most likely cause:
+export const FIELD_OBSERVATION_DIRECTIVE = `FIELD OBSERVATIONS — this rule outranks a request to lead with the most likely cause:
 - For an unexplained status change, separate the technician's observation from its meaning. A color/status change does not prove a physical failure, loss of a mechanical lock, or permission to operate. Use the site's documented indication mapping if supplied; otherwise say the meaning is unverified.
 - A reported delay is a clue: elapsed time alone does not establish a configured timeout. Do not invent timer values, device models, channel assignments, or a confirmed root cause.
 - If the evidence cannot determine the cause, offer only clearly labeled hypotheses, not confirmed causes. In grounded mode, keep them within the supplied evidence; unrelated excerpts are not support.
@@ -3660,10 +3741,27 @@ async function handleChatTurn(
   // not-a-part-number; otherwise byte-identical.
   // #4143: a photo in context gets the "quote the label text" note — inside the
   // #4131/#4133 label notes, which stay last.
+  // #3785 (prompt-leak-guard): captured in its own const, not just inlined
+  // below, so detectPromptLeak's `exclude` list (further down) can name the
+  // SAME per-turn directive text the model was actually instructed with —
+  // never a re-derivation of it.
+  const identityProposalDirective = identityProposal
+    ? unconfirmedMachineDirective(identityProposal, candidateAcquisitionText)
+    : "";
+  // Codex #4891 F9 (round 5 — architectural inversion): the per-turn hazard/
+  // label-code/photo-provenance text previously extracted into its own
+  // `hazardDirectiveText`/`labelDataNoteText`/`retailCodeNoteText`/
+  // `photoProvenanceNoteText` variables ONLY so it could be named in
+  // `detectPromptLeak`'s `exclude` array — that call now compares against
+  // the protected core alone (see the leak-check below), where none of this
+  // per-turn text is ever present, so those variables and the duplicate
+  // conditionals computing them are gone. `withHazard`, `withLabelData
+  // Identifiers`, and `withPhotoProvenance` still append the real text to
+  // `systemPrompt` via their own independent conditionals, unchanged.
   const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
-      : withVisual + machineContext + (identityProposal ? unconfirmedMachineDirective(identityProposal, candidateAcquisitionText) : ""),
+      : withVisual + machineContext + identityProposalDirective,
  )), lookContext), lookContext), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
@@ -4477,6 +4575,98 @@ async function handleChatTurn(
           } else {
             outputRejected = { kind: validation.kind, violation: validation.violation };
             answerText = validation.replacement;
+          }
+        }
+      }
+
+      // #3785 (prompt-leak-guard): does the ACCEPTED candidate reproduce the
+      // system prompt actually sent for THIS turn (`systemPrompt`, built
+      // above)? Deterministic word-n-gram check — see
+      // capabilities/prompt-leak-guard.ts for the three signals and their
+      // thresholds. Same detection-always / enforce-only-under-the-gate
+      // discipline as the validateAnswer floor above: logged either way,
+      // replaced only when `gate`. Deliberately NOT conditioned on `refused`
+      // — both system prompts contain refusal-shaped sentences the model is
+      // INSTRUCTED to say close to verbatim ("I'm answering from general
+      // knowledge, not this machine's manual"), so an echo of the prompt can
+      // get misclassified as a refusal upstream; that must not exempt it.
+      // Skipped only when something upstream already replaced the candidate
+      // (`outputRejected` already set) — there is nothing left that could
+      // leak. Reuses `kind: "unsafe_answer"` rather than a new kind: that is
+      // the ONLY branch downstream that already (a) excludes
+      // `emittedCitations` and sets `basis: null` so a grounded leak cannot
+      // ship a citation chip or an `oem_documentation` badge, (b) never
+      // persists the replaced text, and (c) renders as the same Safety STOP
+      // grammar (`safety_notice` + `safety_stop` evidence, the `kind:
+      // "safety"` SSE frame) — exactly the "never persist, don't ship it"
+      // contract this needs, already built and already tested.
+      //
+      // Codex #4891 F9 (round 5 — architectural inversion, not another
+      // exclude entry): each round from F4 through F9 found another
+      // conditionally-appended directive/note/data block that a correct,
+      // grounded answer legitimately restates, and the fix was always "add
+      // it to `exclude`". That is whack-a-mole by construction — every
+      // FUTURE appended directive needs the same fix before it ships clean.
+      //
+      // Inverted here: `detectPromptLeak`'s first argument is no longer the
+      // full turn-assembled `systemPrompt` (persona + every conditionally
+      // appended directive/note/data block concatenated together). It is
+      // the PROTECTED CORE for this turn's mode — `BASE_SYSTEM_PROMPT` or
+      // `GENERAL_SYSTEM_PROMPT` alone, the fixed persona line + ALL-CAPS
+      // section-header rule bodies that describe how MIRA must behave
+      // (ANSWER SHAPE/ENERGY STATE/HONESTY/SAFETY/etc.) — text a correct
+      // technician answer would never reproduce. Every per-turn block built
+      // above (`machineContext`, `visualSection`, `machineSection`,
+      // `identityProposalDirective`, `FIELD_OBSERVATION_DIRECTIVE`,
+      // `ISOLATION_STEP_RULE`, `hazardDirectiveText`, `labelDataNoteText`,
+      // `retailCodeNoteText`, `photoProvenanceNoteText`, and
+      // `GUIDED_DEAD_END_DIRECTIVE`) is NEVER part of `BASE_SYSTEM_PROMPT`/
+      // `GENERAL_SYSTEM_PROMPT`'s own text — so it is out of scope by
+      // construction, with no exclude entry needed, for this directive AND
+      // any directive added after this PR. A full-prompt echo (persona +
+      // every directive + per-turn data) still contains the protected core
+      // as a literal substring, so signal 1 (verbatim-run) still fires —
+      // see the inversion-proof test in prompt-leak-guard-route.test.ts.
+      //
+      // `exclude` is kept ONLY for the handful of restatable fragments that
+      // are genuinely INLINE/MIXED within the fixed base-prompt text itself
+      // (not conditionally appended) — the NFPA caution (F8); the
+      // compatibility-unverified caution and the two site-records
+      // abstention cautions (F9, BASE's PLANT-SPECIFIC VALUES / GENERAL's
+      // HONESTY); and, new for F10, the ENERGY STATE hazard-point
+      // enumeration (BASE), the "no manual loaded" grounding disclosure in
+      // the persona line, and the no-decode abstention caution (both
+      // GENERAL). F10's finding was that these last three still matched
+      // CORRECT abstentions/safety-guidance/grounding-disclosure answers —
+      // narrowing the core further, the same carve-and-splice technique as
+      // every prior fragment, rather than widening `exclude` ad hoc. Each is
+      // its own named constant, spliced back into the real BASE_SYSTEM_
+      // PROMPT/GENERAL_SYSTEM_PROMPT text via template interpolation (so the
+      // sent prompt is byte-identical to before), and named here by mode so
+      // `exclude` never carries a caution that isn't actually present in
+      // `protectedCore` for this turn.
+      if (!outputRejected && served && answerText.trim()) {
+        const protectedCore = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
+        const leak = detectPromptLeak(
+          protectedCore,
+          answerText,
+          docGrounded
+            ? [BASE_NFPA_CAUTION, BASE_SITE_RECORDS_CAUTION, BASE_ENERGY_ISOLATION_HAZARD_POINTS]
+            : [
+                GENERAL_NFPA_CAUTION,
+                GENERAL_COMPATIBILITY_CAUTION,
+                GENERAL_SITE_RECORDS_CAUTION,
+                GENERAL_NO_MANUAL_DISCLOSURE,
+                GENERAL_NO_DECODE_CAUTION,
+              ],
+        );
+        if (leak.leaked) {
+          console.error(
+            `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${leak.violation}: ${leak.detail}`,
+          );
+          if (gate) {
+            outputRejected = { kind: "unsafe_answer", violation: leak.violation ?? "prompt-leak" };
+            answerText = PROMPT_LEAK_REFUSAL;
           }
         }
       }
