@@ -28,7 +28,10 @@ export type FunnelEvent =
   | "checkout_completed"
   | "drive_commander_purchase"
   | "activation_completed"
-  | "chat_sent";
+  | "chat_sent"
+  // Free 30-day pilot request (#4877) — properties are utm_* + company_domain
+  // only; never the free-text/email fields. See capabilities/pilot-request.ts.
+  | "pilot_request";
 
 export interface CaptureInput {
   event: FunnelEvent;
