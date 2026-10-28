@@ -223,6 +223,36 @@ export const PROMPT_LEAK_BASE_SITE_RECORDS_FIXTURES: readonly string[] = [
   "This excerpt covers the general procedure but not your site's specific baseline history; values like that come from your own nameplate data or maintenance logs, not the manual [2].",
 ];
 
+/** `GENERAL_NO_DECODE_CAUTION` (notebook, `GENERAL_SYSTEM_PROMPT`'s own
+ *  HONESTY section — general mode, no manual loaded). Codex #4891 F10. */
+export const PROMPT_LEAK_GENERAL_NO_DECODE_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction (F10).
+  "I can't decode a part number, model suffix, connector code, or product-family string from pattern-matching. Please provide the exact manufacturer documentation.",
+  "That nameplate code doesn't decode to a known model suffix or connector code from pattern-matching alone — I'd need the manufacturer's documentation to confirm it.",
+  "I won't guess at what that product-family string means from pattern-matching; check the label against the manufacturer's own part-number guide.",
+  "Decoding a connector code or model suffix from pattern-matching isn't reliable — the manufacturer's documentation is the only source that actually confirms it.",
+];
+
+/** `GENERAL_NO_MANUAL_DISCLOSURE` (notebook, `GENERAL_SYSTEM_PROMPT`'s own
+ *  persona line — general mode, no manual loaded). Codex #4891 F10. */
+export const PROMPT_LEAK_GENERAL_NO_MANUAL_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction (F10).
+  "No manual for this machine has been loaded, so I'm answering from general electrical, mechanical, and controls knowledge.",
+  "There's no manual loaded for this unit, so this is general electrical and mechanical knowledge, not something specific to your machine.",
+  "I'm reasoning from general controls knowledge here since no manual has been loaded for this machine yet.",
+  "Nothing's loaded for this particular machine, so take this as general electrical/mechanical guidance rather than a manual-sourced answer.",
+];
+
+/** `BASE_ENERGY_ISOLATION_HAZARD_POINTS` (notebook, `BASE_SYSTEM_PROMPT`'s own
+ *  ENERGY STATE section — grounded mode, manual loaded). Codex #4891 F10. */
+export const PROMPT_LEAK_BASE_ENERGY_ISOLATION_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction (F10).
+  "Before physical contact with wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part, isolate and lock out the machine.",
+  "Anything involving wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part needs lockout/tagout first [1].",
+  "Don't touch the wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part until the drive is isolated and confirmed dead.",
+  "That check means hands near wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part — lock it out before you start [2].",
+];
+
 /** `ASSET_SAFETY_STOP_CAUTION` (asset chat, the fixed Instructions block's
  *  own lockout/arc-flash/confined-space safety-stop bullet — unconditional). */
 export const PROMPT_LEAK_ASSET_SAFETY_STOP_FIXTURES: readonly string[] = [

@@ -310,6 +310,18 @@ export const BASE_NFPA_CAUTION =
 export const BASE_SITE_RECORDS_CAUTION =
   "Some answers require nameplate data, baseline history, or facility configuration that ONLY the technician's site has. Examples: relief valve setpoints, motor inrush baseline, pump suction lift limits, compressor pressure settings.";
 
+// Codex #4891 F10: the ENERGY STATE hazard-point enumeration is restatable
+// safety guidance — a correct isolation answer legitimately lists the same
+// physical-contact points ("wiring, terminals, bus capacitors, guards,
+// belts, chains, couplings, or any rotating or moving part") when telling
+// the technician what to isolate before touching it. Carved out so it is
+// never compared; the surrounding meta-instruction ("state the required
+// energy-isolation state IN THE SAME SENTENCE... not as a trailing
+// caution") describes how the MODEL must write its own answer, not
+// something a technician answer would restate, and stays inline/protected.
+export const BASE_ENERGY_ISOLATION_HAZARD_POINTS =
+  "wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part";
+
 export const BASE_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant for ONE specific machine. Answer ONLY from the numbered reference excerpts provided below.
 
 ANSWER SHAPE — a technician is standing at the machine and needs the answer fast:
@@ -318,7 +330,7 @@ ANSWER SHAPE — a technician is standing at the machine and needs the answer fa
 - Do NOT open with background, generic safety boilerplate, or a restatement of the question.
 
 ENERGY STATE — this rule outranks brevity:
-- If an answer directs physical contact with wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part, state the required energy-isolation state IN THE SAME SENTENCE as the instruction — not as a trailing caution. e.g. "With the drive isolated, locked out and the DC bus confirmed dead with a meter, check continuity across terminals 07-08 [2]." Write the verification without a voltage number — a number there reads as a machine rating.
+- If an answer directs physical contact with ${BASE_ENERGY_ISOLATION_HAZARD_POINTS}, state the required energy-isolation state IN THE SAME SENTENCE as the instruction — not as a trailing caution. e.g. "With the drive isolated, locked out and the DC bus confirmed dead with a meter, check continuity across terminals 07-08 [2]." Write the verification without a voltage number — a number there reads as a machine rating.
 - Never omit that clause to keep the answer short. Brevity is for the explanation, never for the isolation condition.
 - Describe an observation (what a reading means) without an isolation clause; an instruction to touch, open, remove, or probe always carries one.
 - NEVER hand over a procedure for measuring, probing, opening, or otherwise working on equipment energized at 480 V class or higher. ${BASE_NFPA_CAUTION}
@@ -376,7 +388,27 @@ export const GENERAL_COMPATIBILITY_CAUTION =
 export const GENERAL_SITE_RECORDS_CAUTION =
   "If a question asks for plant-specific values (relief valve setpoint, motor baseline current, pump suction lift limit, compressor pressure), abstain plainly. The technician's site configuration is not in your training; nameplate data or maintenance records are required.";
 
-export const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. No manual for this machine has been loaded, so you are reasoning from general electrical, mechanical, and controls knowledge.
+// Codex #4891 F10: the "no manual loaded" grounding disclosure in the
+// persona line itself is restatable — a correct general-mode answer
+// legitimately opens with (or includes) exactly this disclosure, often in
+// close paraphrase ("No manual has been loaded, so I'm answering from
+// general knowledge..."). Carved out of the persona sentence and spliced
+// back so the rendered prompt is byte-identical; only the bare identity
+// clause ("You are MIRA, a maintenance assistant helping a technician who
+// is standing at a machine RIGHT NOW.") remains in the protected core.
+export const GENERAL_NO_MANUAL_DISCLOSURE =
+  "No manual for this machine has been loaded, so you are reasoning from general electrical, mechanical, and controls knowledge.";
+
+// Codex #4891 F10: this is the SAME restatable-abstention class as
+// GENERAL_COMPATIBILITY_CAUTION right next to it — a correct answer
+// declining to decode a part number/model suffix/connector code
+// legitimately shares this exact wording. The surrounding "You have NO
+// manual for this machine." stays inline/protected (pure persona-adjacent
+// context, not something a technician answer would restate).
+export const GENERAL_NO_DECODE_CAUTION =
+  "Never decode a part number, model suffix, connector code, or product-family string from pattern-matching.";
+
+export const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. ${GENERAL_NO_MANUAL_DISCLOSURE}
 
 ANSWER SHAPE — the technician needs something they can act on:
 - If the technician is troubleshooting or doing work on equipment, lead with the most likely cause or the first thing to check, in the FIRST sentence, then give a short ordered list of checks, cheapest and safest first.
@@ -385,7 +417,7 @@ ANSWER SHAPE — the technician needs something they can act on:
 - Keep it under about 150 words.
 
 HONESTY:
-- You have NO manual for this machine. Never decode a part number, model suffix, connector code, or product-family string from pattern-matching. ${GENERAL_COMPATIBILITY_CAUTION}
+- You have NO manual for this machine. ${GENERAL_NO_DECODE_CAUTION} ${GENERAL_COMPATIBILITY_CAUTION}
 - ${GENERAL_SITE_RECORDS_CAUTION}
 - If the question genuinely cannot be answered without model-specific or plant-specific documentation, say that plainly and name which document would settle it.
 - You searched NO documentation. Never write "the documentation does not specify", "the manual doesn't say", or anything implying you looked something up and it was missing. Say "I'm answering from general knowledge, not this machine's manual" instead.
@@ -4598,22 +4630,35 @@ async function handleChatTurn(
       //
       // `exclude` is kept ONLY for the handful of restatable fragments that
       // are genuinely INLINE/MIXED within the fixed base-prompt text itself
-      // (not conditionally appended) — the NFPA caution (F8) and, new for
-      // F9, the compatibility-unverified caution and the two site-records
-      // abstention cautions (BASE's PLANT-SPECIFIC VALUES, GENERAL's
-      // HONESTY). Each is its own named constant, spliced back into the
-      // real BASE_SYSTEM_PROMPT/GENERAL_SYSTEM_PROMPT text via template
-      // interpolation (so the sent prompt is byte-identical to before), and
-      // named here by mode so `exclude` never carries a caution that isn't
-      // actually present in `protectedCore` for this turn.
+      // (not conditionally appended) — the NFPA caution (F8); the
+      // compatibility-unverified caution and the two site-records
+      // abstention cautions (F9, BASE's PLANT-SPECIFIC VALUES / GENERAL's
+      // HONESTY); and, new for F10, the ENERGY STATE hazard-point
+      // enumeration (BASE), the "no manual loaded" grounding disclosure in
+      // the persona line, and the no-decode abstention caution (both
+      // GENERAL). F10's finding was that these last three still matched
+      // CORRECT abstentions/safety-guidance/grounding-disclosure answers —
+      // narrowing the core further, the same carve-and-splice technique as
+      // every prior fragment, rather than widening `exclude` ad hoc. Each is
+      // its own named constant, spliced back into the real BASE_SYSTEM_
+      // PROMPT/GENERAL_SYSTEM_PROMPT text via template interpolation (so the
+      // sent prompt is byte-identical to before), and named here by mode so
+      // `exclude` never carries a caution that isn't actually present in
+      // `protectedCore` for this turn.
       if (!outputRejected && served && answerText.trim()) {
         const protectedCore = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
         const leak = detectPromptLeak(
           protectedCore,
           answerText,
           docGrounded
-            ? [BASE_NFPA_CAUTION, BASE_SITE_RECORDS_CAUTION]
-            : [GENERAL_NFPA_CAUTION, GENERAL_COMPATIBILITY_CAUTION, GENERAL_SITE_RECORDS_CAUTION],
+            ? [BASE_NFPA_CAUTION, BASE_SITE_RECORDS_CAUTION, BASE_ENERGY_ISOLATION_HAZARD_POINTS]
+            : [
+                GENERAL_NFPA_CAUTION,
+                GENERAL_COMPATIBILITY_CAUTION,
+                GENERAL_SITE_RECORDS_CAUTION,
+                GENERAL_NO_MANUAL_DISCLOSURE,
+                GENERAL_NO_DECODE_CAUTION,
+              ],
         );
         if (leak.leaked) {
           console.error(

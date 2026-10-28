@@ -247,6 +247,19 @@ export const ASSET_SAFETY_STOP_CAUTION =
 // for either: they are simply never part of the comparison text. A full-
 // prompt echo still contains this text as a literal substring, so signal 1
 // still fires — see the inversion-proof test in prompt-leak-guard tests.
+//
+// Round 6 (#4891 F10) audit note: the "If you are unsure, say so — never
+// guess at safety-critical specifications." bullet was investigated as a
+// candidate for the same carve-out (it is abstention wording a correct
+// answer could echo). Mutation-proof disproved it: with the bullet restored,
+// no realistic abstention answer (4 tried, including a close paraphrase of
+// the bullet's own wording) triggered either n-gram signal — the bullet is
+// too short to produce a 12-word verbatim run or clear signal-2 majority, so
+// there is no actual false-positive to fix here. Left in place; narrowing it
+// would be an unevidenced change. (The F10 finding itself only named
+// equipment-notebooks/[id]/chat/route.ts — this route was reviewed on the
+// coordinator's "narrow each route's protected core" instruction, not an
+// independent Codex finding.)
 export const ASSET_PROTECTED_CORE = `You are MIRA, an AI maintenance assistant for industrial equipment built by FactoryLM.
 
 ## Instructions

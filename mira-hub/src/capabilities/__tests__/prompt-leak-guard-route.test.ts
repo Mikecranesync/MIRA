@@ -655,3 +655,47 @@ describe("#4891 F9 — compatibility and site-record explanations are not refuse
     expect(streamed).not.toBe(PROMPT_LEAK_REFUSAL);
   });
 });
+
+describe("#4891 F10 — round 6: correct abstentions/safety-guidance/grounding-disclosures are not refused as a prompt leak", () => {
+  it("Codex's exact no-decode abstention answer is answered, not refused (general mode)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const answer =
+      "I can't decode a part number, model suffix, connector code, or product-family string from pattern-matching. Please provide the exact manufacturer documentation.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const res = await POST(
+      req({ message: "What does this connector code on the label mean?", mode: "general" }),
+      params,
+    );
+    const fr = await frames(res);
+    const streamed = contentOf(fr);
+    expect(streamed).toContain("decode a part number");
+    expect(streamed).not.toBe(PROMPT_LEAK_REFUSAL);
+  });
+
+  it("Codex's exact isolation-hazard-point answer is answered, not refused (grounded mode)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      { docId: DOC_A, filename: "manual.pdf", page: 9, content: "Section 9 covers terminal block access." },
+    ] as never);
+    const answer =
+      "Before physical contact with wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part, isolate and lock out the machine.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const res = await POST(req({ message: "What should I check before opening this cabinet?" }), params);
+    const fr = await frames(res);
+    const streamed = contentOf(fr);
+    expect(streamed).toContain("bus capacitors");
+    expect(streamed).not.toBe(PROMPT_LEAK_REFUSAL);
+  });
+
+  it("Codex's exact no-manual grounding-disclosure answer is answered, not refused (general mode)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const answer =
+      "No manual for this machine has been loaded, so I'm answering from general electrical, mechanical, and controls knowledge.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const res = await POST(req({ message: "What do you know about this machine?", mode: "general" }), params);
+    const fr = await frames(res);
+    const streamed = contentOf(fr);
+    expect(streamed).toContain("general electrical, mechanical, and controls knowledge");
+    expect(streamed).not.toBe(PROMPT_LEAK_REFUSAL);
+  });
+});

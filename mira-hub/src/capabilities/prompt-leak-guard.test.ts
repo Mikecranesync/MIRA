@@ -41,12 +41,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BASE_ENERGY_ISOLATION_HAZARD_POINTS,
   BASE_NFPA_CAUTION,
   BASE_SITE_RECORDS_CAUTION,
   BASE_SYSTEM_PROMPT,
   FIELD_OBSERVATION_DIRECTIVE,
   GENERAL_COMPATIBILITY_CAUTION,
   GENERAL_NFPA_CAUTION,
+  GENERAL_NO_DECODE_CAUTION,
+  GENERAL_NO_MANUAL_DISCLOSURE,
   GENERAL_SITE_RECORDS_CAUTION,
   GENERAL_SYSTEM_PROMPT,
   UNCITED_OEM_CLAIM_TEXT,
@@ -67,6 +70,9 @@ import {
   PROMPT_LEAK_GENERAL_COMPATIBILITY_FIXTURES,
   PROMPT_LEAK_GENERAL_SITE_RECORDS_FIXTURES,
   PROMPT_LEAK_BASE_SITE_RECORDS_FIXTURES,
+  PROMPT_LEAK_GENERAL_NO_DECODE_FIXTURES,
+  PROMPT_LEAK_GENERAL_NO_MANUAL_FIXTURES,
+  PROMPT_LEAK_BASE_ENERGY_ISOLATION_FIXTURES,
 } from "./__fixtures__/prompt-leak-false-positives";
 import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "./prompt-leak-guard";
 
@@ -471,6 +477,77 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
 
     it("a full verbatim echo of BASE_SYSTEM_PROMPT is still flagged even with BASE_SITE_RECORDS_CAUTION excluded", () => {
       const r = detectPromptLeak(BASE_SYSTEM_PROMPT, BASE_SYSTEM_PROMPT, [BASE_SITE_RECORDS_CAUTION]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
+  });
+});
+
+describe("#4891 F10 — round 6: protected cores still matched correct abstentions/safety-guidance/grounding-disclosures", () => {
+  // GENERAL_NO_DECODE_CAUTION — notebook, unconditional, inline in
+  // GENERAL_SYSTEM_PROMPT's HONESTY section.
+  describe("GENERAL_NO_DECODE_CAUTION", () => {
+    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+      const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_GENERAL_NO_DECODE_FIXTURES[0]);
+      expect(r.leaked).toBe(true);
+    });
+
+    it.each(PROMPT_LEAK_GENERAL_NO_DECODE_FIXTURES)(
+      "%s — not flagged once GENERAL_NO_DECODE_CAUTION is excluded",
+      (answer) => {
+        const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, answer, [GENERAL_NO_DECODE_CAUTION]);
+        expect(r.leaked).toBe(false);
+      },
+    );
+
+    it("a full verbatim echo of GENERAL_SYSTEM_PROMPT is still flagged even with GENERAL_NO_DECODE_CAUTION excluded", () => {
+      const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, [GENERAL_NO_DECODE_CAUTION]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
+  });
+
+  // GENERAL_NO_MANUAL_DISCLOSURE — notebook, unconditional, inline in
+  // GENERAL_SYSTEM_PROMPT's persona line.
+  describe("GENERAL_NO_MANUAL_DISCLOSURE", () => {
+    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+      const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_GENERAL_NO_MANUAL_FIXTURES[0]);
+      expect(r.leaked).toBe(true);
+    });
+
+    it.each(PROMPT_LEAK_GENERAL_NO_MANUAL_FIXTURES)(
+      "%s — not flagged once GENERAL_NO_MANUAL_DISCLOSURE is excluded",
+      (answer) => {
+        const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, answer, [GENERAL_NO_MANUAL_DISCLOSURE]);
+        expect(r.leaked).toBe(false);
+      },
+    );
+
+    it("a full verbatim echo of GENERAL_SYSTEM_PROMPT is still flagged even with GENERAL_NO_MANUAL_DISCLOSURE excluded", () => {
+      const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, [GENERAL_NO_MANUAL_DISCLOSURE]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
+  });
+
+  // BASE_ENERGY_ISOLATION_HAZARD_POINTS — notebook, unconditional, inline in
+  // BASE_SYSTEM_PROMPT's ENERGY STATE section.
+  describe("BASE_ENERGY_ISOLATION_HAZARD_POINTS", () => {
+    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+      const r = detectPromptLeak(BASE_SYSTEM_PROMPT, PROMPT_LEAK_BASE_ENERGY_ISOLATION_FIXTURES[0]);
+      expect(r.leaked).toBe(true);
+    });
+
+    it.each(PROMPT_LEAK_BASE_ENERGY_ISOLATION_FIXTURES)(
+      "%s — not flagged once BASE_ENERGY_ISOLATION_HAZARD_POINTS is excluded",
+      (answer) => {
+        const r = detectPromptLeak(BASE_SYSTEM_PROMPT, answer, [BASE_ENERGY_ISOLATION_HAZARD_POINTS]);
+        expect(r.leaked).toBe(false);
+      },
+    );
+
+    it("a full verbatim echo of BASE_SYSTEM_PROMPT is still flagged even with BASE_ENERGY_ISOLATION_HAZARD_POINTS excluded", () => {
+      const r = detectPromptLeak(BASE_SYSTEM_PROMPT, BASE_SYSTEM_PROMPT, [BASE_ENERGY_ISOLATION_HAZARD_POINTS]);
       expect(r.leaked).toBe(true);
       expect(r.violation).toBe("prompt-leak:verbatim-run");
     });
