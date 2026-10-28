@@ -27,14 +27,20 @@
  *   GET  /qr-test                  → Branded QR display page (no auth; ?tenant_id &tenant_name)
  *   GET  /admin/qr-print          → Admin: list assets + select stickers (ADMIN only)
  *   POST /api/admin/qr-print-batch → Admin: UPSERT tags + generate Avery 5163 PDF (ADMIN only)
+ *   POST /api/pilot-request        → Store pilot request intake + notify owner + capture event (#4877, #4881 rework)
  */
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { deployIdentity } from "./capabilities/deploy-identity.js";
 import { hubUrl } from "./capabilities/hub-origin.js";
 import { isCheckoutEnabled } from "./capabilities/checkout-gate.js";
+import {
+  submitPilotRequest,
+  ensurePilotRequestSchema,
+  pilotRequestLimiterKey,
+} from "./capabilities/pilot-request.js";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
@@ -876,6 +882,116 @@ app.post("/api/register", async (c) => {
   } catch (err) {
     console.error("[register] Error:", err);
     return c.json({ error: "Registration failed. Please try again." }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Free 30-day pilot request intake (#4877, reworked #4881) — first five pilot
+// customers, no price shown anywhere.
+//
+// Owner decision (#4881): the Hub signup flow is the pilot application; ads
+// use Meta/Google's native lead-gen forms, not a website-to-React
+// integration. So there is no `/pilot` presentation route here. This JSON
+// API is the intake behind that decision: it stores (and notifies on) a
+// pilot request regardless of where it originated — a lead-form export or
+// import, or any future first-party form — tagged by `lead_source`.
+//
+// Codex round-1 remediation (PR #4881, F2/F3 — both still hold after the
+// page removal; F1, the standalone-page BLOCKER, is resolved by deleting the
+// page rather than migrating it to the shared shell):
+// - F3: a dedicated per-IP rate bucket (NOT shared with /api/register — a
+//   flood of invalid cross-origin pilot submissions must not lock out real
+//   signups, and vice versa), plus a same-origin guard: Content-Type must be
+//   application/json (rejects the no-preflight "simple request" cross-site
+//   POST pattern, e.g. text/plain bodies), and the resolved Origin — or the
+//   Referer's origin when Origin is absent — must be in the allowlist.
+//   Reuses REGISTER_ALLOWED_ORIGINS (PLG_REGISTER_ALLOWED_ORIGINS) rather
+//   than inventing a second origin env var; add a staging web host there
+//   when one exists.
+// - F2: submitPilotRequest() itself no longer lets a stalled owner-email send
+//   block the response after the row has committed — see pilot-request.ts.
+// ---------------------------------------------------------------------------
+
+const PILOT_REQUEST_RATE_BUCKETS = new Map<string, { minute: number[]; hour: number[] }>();
+const PILOT_REQUEST_LIMIT_PER_MINUTE = 5;
+const PILOT_REQUEST_LIMIT_PER_HOUR = 20;
+
+function checkPilotRequestRateLimit(ip: string): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  const minuteAgo = now - 60_000;
+  const hourAgo = now - 3_600_000;
+  const bucket = PILOT_REQUEST_RATE_BUCKETS.get(ip) ?? { minute: [], hour: [] };
+  bucket.minute = bucket.minute.filter((t) => t > minuteAgo);
+  bucket.hour = bucket.hour.filter((t) => t > hourAgo);
+  if (bucket.minute.length >= PILOT_REQUEST_LIMIT_PER_MINUTE) {
+    return { allowed: false, retryAfterSec: Math.ceil((bucket.minute[0] + 60_000 - now) / 1000) };
+  }
+  if (bucket.hour.length >= PILOT_REQUEST_LIMIT_PER_HOUR) {
+    return { allowed: false, retryAfterSec: Math.ceil((bucket.hour[0] + 3_600_000 - now) / 1000) };
+  }
+  bucket.minute.push(now);
+  bucket.hour.push(now);
+  PILOT_REQUEST_RATE_BUCKETS.set(ip, bucket);
+  return { allowed: true, retryAfterSec: 0 };
+}
+
+/**
+ * Resolve the request's claimed origin for the pilot-request guard: the
+ * Origin header when present, else the origin parsed from Referer. Returns
+ * null when neither is present/parseable — callers must treat null as
+ * untrusted (reject), not as "same-origin, allow".
+ */
+function resolvePilotRequestOrigin(c: Context): string | null {
+  const origin = c.req.header("origin");
+  if (origin) return origin;
+  const referer = c.req.header("referer");
+  if (referer) {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+app.post("/api/pilot-request", async (c) => {
+  const contentType = (c.req.header("content-type") || "").toLowerCase();
+  if (!contentType.startsWith("application/json")) {
+    return c.json({ error: "Content-Type must be application/json" }, 415);
+  }
+
+  const claimedOrigin = resolvePilotRequestOrigin(c);
+  if (!claimedOrigin || !REGISTER_ALLOWED_ORIGINS.includes(claimedOrigin)) {
+    return c.json({ error: "Forbidden origin" }, 403);
+  }
+
+  const ip = pilotRequestLimiterKey(c.req.raw.headers);
+  const rl = checkPilotRequestRateLimit(ip);
+  if (!rl.allowed) {
+    c.header("Retry-After", String(rl.retryAfterSec));
+    return c.json(
+      { error: "Too many requests. Please try again in a minute." },
+      429,
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid request body" }, 400);
+  }
+
+  try {
+    const result = await submitPilotRequest(body);
+    if (!result.ok) {
+      return c.json({ errors: result.errors }, 400);
+    }
+    return c.json({ success: true, id: result.id });
+  } catch (err) {
+    console.error("[pilot-request] Error:", err);
+    return c.json({ error: "Could not submit your request. Please try again." }, 500);
   }
 });
 
@@ -2048,7 +2164,7 @@ app.notFound((c) => {
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // Run schema migration on startup
-Promise.all([ensureSchema(), ensureConnectSchema()])
+Promise.all([ensureSchema(), ensureConnectSchema(), ensurePilotRequestSchema()])
   .then(() => console.log("[startup] NeonDB schema verified"))
   .catch((err) => console.warn("[startup] Schema migration skipped:", err));
 
