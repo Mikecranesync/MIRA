@@ -40,9 +40,14 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { BASE_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import {
+  BASE_SYSTEM_PROMPT,
+  GENERAL_SYSTEM_PROMPT,
+  UNCITED_OEM_CLAIM_TEXT,
+} from "@/app/api/equipment-notebooks/[id]/chat/route";
 
 import { ISOLATION_STEP_RULE } from "./answer-shape";
+import { validateAnswer } from "./answer-validation";
 import { PROMPT_LEAK_FALSE_POSITIVE_FIXTURES } from "./__fixtures__/prompt-leak-false-positives";
 import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "./prompt-leak-guard";
 
@@ -140,6 +145,55 @@ describe("#3785 — false-positive sweep (shared fixture set, see __fixtures__/p
     it.each(PROMPT_LEAK_FALSE_POSITIVE_FIXTURES)(`%s — not flagged against ${name}`, (answerText) => {
       const r = detectPromptLeak(prompt, answerText);
       expect(r.leaked).toBe(false);
+    });
+  }
+});
+
+describe("#3785 — a server-written SAFETY BANNER prepended to a candidate must not false-positive", () => {
+  // The route calls detectPromptLeak AFTER validateAnswer's own hazard/
+  // specificity floor has already run (same seam, see route.ts's #3785
+  // comment) — so by the time the hook sees `answerText`, a hazard_warning/
+  // energized_warning path may have already PREPENDED a fixed, server-
+  // written banner to the candidate (owner decision 2026-09-27: flags never
+  // withhold). Real example seen live in this module's own test runs: the
+  // grounded leak-probe candidate tripped `hazard-warning:step-energy-
+  // contradiction` before tripping this guard. These banners reuse safety
+  // vocabulary the prompt also uses (lockout, energized, qualified person),
+  // so they are exactly the shape most at risk of a false positive — but
+  // they are FIXED, SHORT, server-authored strings, never 12 words lifted
+  // from the prompt. Calling the REAL `validateAnswer` (not hand-copying its
+  // replacement template) proves this on the actual generated text.
+  for (const [name, prompt] of Object.entries(PROMPTS)) {
+    it(`validateAnswer's real energized_warning (A4) replacement is not flagged against ${name}`, () => {
+      const v = validateAnswer({
+        answerText: "Re-energize the panel and take the amp reading on each phase with the clamp meter.",
+        question: "Can I check the current while the panel is on?",
+        general: false,
+        served: true,
+        refused: false,
+      });
+      expect(v.ok).toBe(false);
+      if (v.ok) throw new Error("unreachable");
+      expect(v.kind).toBe("energized_warning");
+      expect(detectPromptLeak(prompt, v.replacement).leaked).toBe(false);
+    });
+
+    it(`validateAnswer's real hazard_warning replacement is not flagged against ${name}`, () => {
+      const v = validateAnswer({
+        answerText: "Yes, the TS-440 permits resetting the E-12 fault while the machine remains energized [1].",
+        question: "Can I reset the E-12 fault while it's energized?",
+        general: false,
+        served: true,
+        refused: false,
+      });
+      expect(v.ok).toBe(false);
+      if (v.ok) throw new Error("unreachable");
+      expect(v.kind).toBe("hazard_warning");
+      expect(detectPromptLeak(prompt, v.replacement).leaked).toBe(false);
+    });
+
+    it(`UNCITED_OEM_CLAIM_TEXT is not flagged against ${name}`, () => {
+      expect(detectPromptLeak(prompt, UNCITED_OEM_CLAIM_TEXT).leaked).toBe(false);
     });
   }
 });
