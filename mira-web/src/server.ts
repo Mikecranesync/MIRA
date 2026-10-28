@@ -27,6 +27,8 @@
  *   GET  /qr-test                  → Branded QR display page (no auth; ?tenant_id &tenant_name)
  *   GET  /admin/qr-print          → Admin: list assets + select stickers (ADMIN only)
  *   POST /api/admin/qr-print-batch → Admin: UPSERT tags + generate Avery 5163 PDF (ADMIN only)
+ *   GET  /pilot                   → Free 30-day pilot request form (#4877)
+ *   POST /api/pilot-request        → Store pilot request + notify owner + capture event (#4877)
  */
 
 import { Hono } from "hono";
@@ -34,6 +36,11 @@ import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { deployIdentity } from "./capabilities/deploy-identity.js";
 import { hubUrl } from "./capabilities/hub-origin.js";
+import {
+  submitPilotRequest,
+  ensurePilotRequestSchema,
+} from "./capabilities/pilot-request.js";
+import { renderPilotRequestPage } from "./factorylm-ui/pilot-request-page.js";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
@@ -875,6 +882,44 @@ app.post("/api/register", async (c) => {
   } catch (err) {
     console.error("[register] Error:", err);
     return c.json({ error: "Registration failed. Please try again." }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Free 30-day pilot request (#4877) — first five pilot customers, no price
+// shown anywhere. Reuses checkRegisterRateLimit's per-IP bucket above (one
+// shared bucket for /api/register and /api/pilot-request).
+// ---------------------------------------------------------------------------
+
+app.get("/pilot", (c) => c.html(renderPilotRequestPage()));
+
+app.post("/api/pilot-request", async (c) => {
+  const ip = getClientIp(c.req.raw.headers);
+  const rl = checkRegisterRateLimit(ip);
+  if (!rl.allowed) {
+    c.header("Retry-After", String(rl.retryAfterSec));
+    return c.json(
+      { error: "Too many requests. Please try again in a minute." },
+      429,
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid request body" }, 400);
+  }
+
+  try {
+    const result = await submitPilotRequest(body);
+    if (!result.ok) {
+      return c.json({ errors: result.errors }, 400);
+    }
+    return c.json({ success: true, id: result.id });
+  } catch (err) {
+    console.error("[pilot-request] Error:", err);
+    return c.json({ error: "Could not submit your request. Please try again." }, 500);
   }
 });
 
@@ -2035,7 +2080,7 @@ app.notFound((c) => {
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // Run schema migration on startup
-Promise.all([ensureSchema(), ensureConnectSchema()])
+Promise.all([ensureSchema(), ensureConnectSchema(), ensurePilotRequestSchema()])
   .then(() => console.log("[startup] NeonDB schema verified"))
   .catch((err) => console.warn("[startup] Schema migration skipped:", err));
 
