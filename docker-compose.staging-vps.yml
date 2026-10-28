@@ -482,6 +482,16 @@ services:
       - MIRA_TURN_RECONCILER_STALE_MIN=${MIRA_TURN_RECONCILER_STALE_MIN:-15}
       - MIRA_TURN_RECONCILER_INTERVAL_MIN=${MIRA_TURN_RECONCILER_INTERVAL_MIN:-5}
       - JEV_API_KEY=${JEV_API_KEY:-}
+      # #4877 pilot-application funnel (mira-hub/src/capabilities/pilot-funnel.ts).
+      # All four default empty/off — this line alone does not enable anything;
+      # it only lets a Doppler factorylm/stg value reach the container, the
+      # same #3328-class gap documented in docs/runbooks/pilot-funnel-events.md.
+      # Staging only (this PR) — production wiring is a separate,
+      # owner-authorized change against docker-compose.saas.yml.
+      - PLG_POSTHOG_KEY=${PLG_POSTHOG_KEY:-}
+      - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
+      - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-}
+      - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}
     networks:
       - staging-net
     volumes:
