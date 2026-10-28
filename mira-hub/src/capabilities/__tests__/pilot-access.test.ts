@@ -566,7 +566,13 @@ describe("admitPilotInvite (F1/F2 — the authoritative redemption-time check)",
 });
 
 describe("releasePilotSeatReservation (F4)", () => {
+  it("never touches pilot_seat_reservations when the flag is off (safe before migration 107)", async () => {
+    await releasePilotSeatReservation("tenant-1", "fifth@example.com");
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
   it("deletes only a still-pending reservation for that tenant+email", async () => {
+    process.env.MIRA_PILOT_APPROVAL_REQUIRED = "1";
     await releasePilotSeatReservation("tenant-1", "FIFTH@EXAMPLE.COM");
     const call = queryMock.mock.calls.find((c) => /DELETE FROM pilot_seat_reservations/.test(String(c[0])));
     expect(call).toBeTruthy();

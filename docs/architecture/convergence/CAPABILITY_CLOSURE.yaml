@@ -954,7 +954,7 @@ capabilities:
       - "Apply migration 107 to staging (migration-verify.yml auto-applies on this PR's push) and confirm the schema before setting the flag anywhere."
       - "Staging: set the flag, approve a real tenant through /api/admin/pilots/[tenantId]/approve, invite a 5th crew member, confirm the 409 on a 6th."
       - "Owner decision on production timing after the staging walk."
-    review_by: "2026-12-15"
+    review_by: "2026-12-12"
     notes: >-
       Session-refresh finding (spec item 5): the Hub's `jwt` NextAuth callback
       re-reads status/trialExpiresAt from the DB on every session read

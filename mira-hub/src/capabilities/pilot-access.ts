@@ -423,6 +423,10 @@ export async function redeemPilotSeat(tenantId: string, email: string): Promise<
  *  (`admitPilotInvite`), so releasing a pending row can never cause
  *  overbooking even if a resend races this call. */
 export async function releasePilotSeatReservation(tenantId: string, email: string): Promise<void> {
+  // Same flag gate as reservePilotSeat: with the flag off this must never
+  // touch pilot_seat_reservations, so a deploy that lands before migration 107
+  // reaches an environment cannot add failing queries to the invite path.
+  if (!isPilotApprovalRequired()) return;
   const emailLower = email.trim().toLowerCase();
   await pool.query(
     `DELETE FROM pilot_seat_reservations WHERE tenant_id = $1 AND email_lower = $2 AND status = 'pending'`,
