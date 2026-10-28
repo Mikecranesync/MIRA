@@ -163,6 +163,17 @@ describe.skipIf(!READY)("requireSession denies an ended-pilot cookie on the next
     expect(ctx.userId).toBe(userId);
   });
 
+  it("a trial whose date passed but was never explicitly ended keeps today's API access (no deploy-day lockout)", async () => {
+    const { tenantId } = await makeTenant(`f8-lapsed-${MARK}`);
+    testTenantIds.push(tenantId);
+    const userId = await makeUser(tenantId, `f8-lapsed-${MARK}@example.com`, "trial", new Date(Date.now() - 40 * DAY_MS));
+    mockSessionFor(userId, tenantId);
+
+    const ctx = await requireSession();
+    expect(ctx.status).toBe("trial");
+    expect(ctx.userId).toBe(userId);
+  });
+
   it("an admin passes regardless of trial/pilot state", async () => {
     const { tenantId } = await makeTenant(`f8-admin-${MARK}`);
     testTenantIds.push(tenantId);

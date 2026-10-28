@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { decode } from "next-auth/jwt";
 import { cookies } from "next/headers";
 import { findUserById } from "@/lib/users";
-import { trialAccessDecision } from "@/capabilities/trial-access";
 
 export interface SessionContext {
   userId: string;
@@ -43,10 +42,9 @@ export class UnauthorizedError extends Error {
 
 /**
  * F8 (Mike-authorized post-cap Codex pass, #4882 @ 66f379a90): thrown by
- * `requireSession` when the DB-fresh `status`/`trialExpiresAt` resolve to
- * `trialAccessDecision(...) === "upgrade"` — the pilot ended
- * (`endPilotTenant` moved this user to `expired`) or an ordinary trial ran
- * out. A SUBCLASS of `UnauthorizedError`, deliberately: every existing route
+ * `requireSession` when the DB-fresh `status` is `expired` — the pilot ended
+ * (`endPilotTenant` moved this user to `expired`) or an admin ended access.
+ * A trial whose date merely passed is NOT denied here (see the call site). A SUBCLASS of `UnauthorizedError`, deliberately: every existing route
  * that does `if (err instanceof UnauthorizedError) return 401` already
  * denies this case correctly with zero changes (an `instanceof` check on a
  * subclass is `true`), so introducing this as an unrelated error class would
@@ -152,7 +150,13 @@ export async function requireSession(): Promise<SessionContext> {
     if (user) {
       status = user.status;
       trialExpiresAt = user.trialExpiresAt ? user.trialExpiresAt.toISOString() : null;
-      upgradeRequired = trialAccessDecision(status, user.trialExpiresAt) === "upgrade";
+      // Deny only an EXPLICIT end of access: status 'expired' is written by
+      // endPilotTenant (#4882) or by an admin. A trial whose date has merely
+      // passed keeps today's behavior (the cookie-based page gate sends it to
+      // /upgrade); enforcing the date here would lock every older trial
+      // account out of the API on the first deploy, a much wider change than
+      // ending a pilot needs.
+      upgradeRequired = status === "expired";
     }
   } catch {
     role = "";
@@ -161,9 +165,9 @@ export async function requireSession(): Promise<SessionContext> {
 
   // Thrown OUTSIDE the try/catch above on purpose: the catch block exists
   // only to swallow a DB-lookup failure (fail-safe, see above), never to
-  // swallow this intentional deny. `trialAccessDecision` never returns
-  // "upgrade" for status "pending" or "admin" (or any status without a
-  // lapsed deadline), so pending-approval and admin sessions are unaffected.
+  // swallow this intentional deny. Only status "expired" is denied, so
+  // pending-approval, admin, approved and in-date or past-date trial sessions
+  // are unaffected.
   if (upgradeRequired) {
     throw new SessionUpgradeRequiredError();
   }
