@@ -11,6 +11,7 @@ import {
   PilotTenantNotActiveError,
   PilotTenantNotFoundError,
   admitPilotInvite,
+  applyLegacyUserStatusChange,
   approvePilotTenant,
   endPilotTenant,
   getPilotTenantStatus,
@@ -353,6 +354,68 @@ describe("approvePilotTenant", () => {
     expect(occupancyQuery?.sql).toMatch(
       /FROM pilot_seat_reservations\s+WHERE tenant_id = \$1\s+AND email_lower NOT IN \(\s*SELECT email_lower FROM hub_users WHERE tenant_id = \$1 AND status = 'admin'\s*\)/,
     );
+  });
+});
+
+describe("applyLegacyUserStatusChange (F12, Codex #4882 review round 3)", () => {
+  it("refuses and does not write when the tenant is pilot-tracked ('pending'), AFTER acquiring the tenant-scoped lock", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: "pending" }] })],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    const result = await applyLegacyUserStatusChange("user-1", "tenant-1", "approved");
+    expect(result).toEqual({ outcome: "refused", pilotStatus: "pending" });
+
+    // Lock acquired BEFORE the read, and it's the TENANT lock (778899002),
+    // never the cohort lock (778899001) — this function never decides
+    // cohort admission, only one user's status within one known tenant.
+    const lockCall = client.calls.find((c) => /pg_advisory_xact_lock/.test(c.sql));
+    expect(lockCall?.params).toEqual([778899002, "tenant-1"]);
+    const lockIdx = client.calls.findIndex((c) => /pg_advisory_xact_lock/.test(c.sql));
+    const readIdx = client.calls.findIndex((c) => /SELECT pilot_status FROM hub_tenants/.test(c.sql));
+    expect(lockIdx).toBeLessThan(readIdx);
+
+    // No write, and the transaction rolled back rather than committed.
+    expect(client.calls.some((c) => /UPDATE hub_users/.test(c.sql))).toBe(false);
+    expect(client.calls.some((c) => c.sql === "ROLLBACK")).toBe(true);
+    expect(client.calls.some((c) => c.sql === "COMMIT")).toBe(false);
+  });
+
+  it("refuses when the tenant is pilot-tracked ('active')", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: "active" }] })],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    const result = await applyLegacyUserStatusChange("user-1", "tenant-1", "trial");
+    expect(result).toEqual({ outcome: "refused", pilotStatus: "active" });
+    expect(client.calls.some((c) => /UPDATE hub_users/.test(c.sql))).toBe(false);
+  });
+
+  it("updates the target user's status when the tenant is NOT pilot-tracked (legacy, pilot_status null), inside the SAME transaction that acquired the lock", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: null }] })],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    const result = await applyLegacyUserStatusChange("user-1", "tenant-1", "approved");
+    expect(result).toEqual({ outcome: "updated" });
+
+    const writeCall = client.calls.find((c) => /UPDATE hub_users/.test(c.sql));
+    expect(writeCall?.params).toEqual(["approved", "user-1"]);
+    expect(client.calls.some((c) => c.sql === "COMMIT")).toBe(true);
+    expect(client.calls.some((c) => c.sql === "ROLLBACK")).toBe(false);
+  });
+
+  it("updates when the tenant's pilot is 'ended' (ended is not pilot-tracked for this gate's purposes)", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: "ended" }] })],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    const result = await applyLegacyUserStatusChange("user-1", "tenant-1", "approved");
+    expect(result).toEqual({ outcome: "updated" });
   });
 });
 

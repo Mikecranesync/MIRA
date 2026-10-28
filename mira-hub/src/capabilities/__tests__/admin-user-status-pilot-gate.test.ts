@@ -7,17 +7,29 @@
 //
 // Fix (mira-hub/src/app/(hub)/api/admin/users/[id]/route.ts): with the flag
 // on, if the TARGET user's tenant is pilot-tracked (pilot_status 'pending'
-// or 'active'):
-//   - status 'approved' or 'trial' -> refused with 409, pointing at the
-//     dedicated endpoint (never silently delegated — this legacy route has
-//     no notion of "which tenant", so it cannot safely decide for itself).
-//   - status 'expired' on an ACTIVE pilot tenant -> delegates to
-//     endPilotTenant(tenantId) first (ends the governance window + bulk-
-//     expires crew), then still applies the direct per-row update too (so
-//     the specific targeted row — even an admin's, which endPilotTenant
-//     excludes — matches what was requested).
+// or 'active') and the requested status is 'approved' or 'trial', the check
+// AND the eventual write happen atomically inside
+// applyLegacyUserStatusChange (pilot-access.ts) — refused with 409 (409
+// points at the dedicated endpoint; never silently delegated) when
+// pilot-tracked, applied directly (still via applyLegacyUserStatusChange,
+// not a bare updateUserStatus) when not.
+//
+// F11 (Codex #4882 review round 3): 'expired' is COMPLETELY UNCHANGED from
+// pre-pilot behavior — it affects ONLY the targeted user via a plain
+// updateUserStatus and NEVER consults or mutates tenant-level pilot state.
+// The previous "delegate to endPilotTenant" behavior (removed here) let
+// expiring ONE crew member end the entire organization's pilot and expire
+// every other member, including the owner — that was the bug.
+//
+// F12 (Codex #4882 review round 3): applyLegacyUserStatusChange performs its
+// pilot_status read and its hub_users write in ONE transaction under the
+// same tenant-scoped advisory lock approvePilotTenant/endPilotTenant take,
+// closing the race where activation could land between an unlocked read and
+// an unconditional write.
+//
 // Flag off, or the tenant was never pilot-tracked (pilot_status null/ended),
-// or the requested status is 'pending'/'admin': completely unchanged.
+// or the requested status is 'pending'/'admin': completely unchanged (plain
+// updateUserStatus, no pilot-capability call at all).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
@@ -28,8 +40,7 @@ vi.mock("@/lib/users", async (orig) => ({ ...(await orig<typeof import("@/lib/us
 
 const pa = vi.hoisted(() => ({
   isPilotApprovalRequired: vi.fn(() => false),
-  getPilotTenantStatus: vi.fn(),
-  endPilotTenant: vi.fn(),
+  applyLegacyUserStatusChange: vi.fn(),
 }));
 vi.mock("@/capabilities/pilot-access", async (orig) => ({
   ...(await orig<typeof import("@/capabilities/pilot-access")>()),
@@ -57,8 +68,7 @@ beforeEach(() => {
   um.findUserById.mockReset();
   um.updateUserStatus.mockReset().mockResolvedValue(undefined);
   pa.isPilotApprovalRequired.mockReset().mockReturnValue(false);
-  pa.getPilotTenantStatus.mockReset();
-  pa.endPilotTenant.mockReset();
+  pa.applyLegacyUserStatusChange.mockReset();
   vi.mocked(cookies).mockResolvedValue({
     get: (n: string) => (n === "__Secure-next-auth.session-token" ? { value: "jwt" } : undefined),
   } as never);
@@ -72,83 +82,89 @@ beforeEach(() => {
   });
 });
 
-describe("F10 — legacy admin-user-status PATCH respects pilot tenant governance", () => {
-  it("flag OFF: completely unchanged — approved still goes straight through, no pilot lookup at all", async () => {
+describe("F10/F12 — legacy admin-user-status PATCH respects pilot tenant governance (approved/trial)", () => {
+  it("flag OFF: completely unchanged — approved goes straight through via plain updateUserStatus, no pilot-capability call at all", async () => {
     pa.isPilotApprovalRequired.mockReturnValue(false);
     const res = await patch("approved");
     expect(res.status).toBe(200);
     expect(um.updateUserStatus).toHaveBeenCalledWith("target-1", "approved");
-    expect(pa.getPilotTenantStatus).not.toHaveBeenCalled();
+    expect(pa.applyLegacyUserStatusChange).not.toHaveBeenCalled();
   });
 
-  it("flag ON, target tenant pilot_status 'pending', status 'approved' -> 409, no write, points at the dedicated endpoint", async () => {
+  it("flag ON, status 'approved', applyLegacyUserStatusChange refuses (pilot-tracked tenant) -> 409, points at the dedicated endpoint, plain updateUserStatus never called", async () => {
     pa.isPilotApprovalRequired.mockReturnValue(true);
-    pa.getPilotTenantStatus.mockResolvedValue({ pilotStatus: "pending", pilotExpiresAt: null });
+    pa.applyLegacyUserStatusChange.mockResolvedValue({ outcome: "refused", pilotStatus: "pending" });
     const res = await patch("approved");
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error).toMatch(/\/api\/admin\/pilots\/.*\/approve/);
+    expect(pa.applyLegacyUserStatusChange).toHaveBeenCalledWith("target-1", TARGET_TID, "approved");
     expect(um.updateUserStatus).not.toHaveBeenCalled();
   });
 
-  it("flag ON, target tenant pilot_status 'active', status 'trial' -> 409, no write (this route never grants trial directly for a pilot tenant)", async () => {
+  it("flag ON, status 'trial', applyLegacyUserStatusChange refuses (pilot-tracked tenant) -> 409, plain updateUserStatus never called", async () => {
     pa.isPilotApprovalRequired.mockReturnValue(true);
-    pa.getPilotTenantStatus.mockResolvedValue({ pilotStatus: "active", pilotExpiresAt: new Date() });
+    pa.applyLegacyUserStatusChange.mockResolvedValue({ outcome: "refused", pilotStatus: "active" });
     const res = await patch("trial");
     expect(res.status).toBe(409);
+    expect(pa.applyLegacyUserStatusChange).toHaveBeenCalledWith("target-1", TARGET_TID, "trial");
     expect(um.updateUserStatus).not.toHaveBeenCalled();
   });
 
-  it("flag ON, target tenant pilot_status 'active', status 'expired' -> delegates to endPilotTenant, THEN still applies the direct row update", async () => {
+  it("flag ON, status 'approved', applyLegacyUserStatusChange succeeds (not pilot-tracked) -> 200; the write already happened INSIDE applyLegacyUserStatusChange, so plain updateUserStatus is never called", async () => {
     pa.isPilotApprovalRequired.mockReturnValue(true);
-    pa.getPilotTenantStatus.mockResolvedValue({ pilotStatus: "active", pilotExpiresAt: new Date() });
-    pa.endPilotTenant.mockResolvedValue({ ended: true });
+    pa.applyLegacyUserStatusChange.mockResolvedValue({ outcome: "updated" });
+    const res = await patch("approved");
+    expect(res.status).toBe(200);
+    expect(pa.applyLegacyUserStatusChange).toHaveBeenCalledWith("target-1", TARGET_TID, "approved");
+    expect(um.updateUserStatus).not.toHaveBeenCalled();
+  });
+
+  it("flag ON, status 'approved', target user not found -> falls through to plain updateUserStatus unchanged (no tenant to check)", async () => {
+    pa.isPilotApprovalRequired.mockReturnValue(true);
+    um.findUserById.mockImplementation(async (id: string) => {
+      if (id === "admin-1") return { role: "owner", status: "admin", tenantId: ADMIN_TID } as never;
+      return null; // "target-1" not found this time
+    });
+    const res = await patch("approved");
+    expect(res.status).toBe(200);
+    expect(pa.applyLegacyUserStatusChange).not.toHaveBeenCalled();
+    expect(um.updateUserStatus).toHaveBeenCalledWith("target-1", "approved");
+  });
+});
+
+describe("F11 — legacy admin-user-status PATCH 'expired' never touches tenant-level pilot state", () => {
+  it("flag ON, status 'expired' -> plain updateUserStatus only; applyLegacyUserStatusChange is NEVER called (expiring one user must never cascade to the whole org's pilot)", async () => {
+    pa.isPilotApprovalRequired.mockReturnValue(true);
     const res = await patch("expired");
     expect(res.status).toBe(200);
-    expect(pa.endPilotTenant).toHaveBeenCalledWith(TARGET_TID);
+    expect(pa.applyLegacyUserStatusChange).not.toHaveBeenCalled();
     expect(um.updateUserStatus).toHaveBeenCalledWith("target-1", "expired");
   });
 
-  it("flag ON, target tenant pilot_status 'pending' (never activated), status 'expired' -> does NOT call endPilotTenant (nothing to end), still applies the direct row update", async () => {
-    pa.isPilotApprovalRequired.mockReturnValue(true);
-    pa.getPilotTenantStatus.mockResolvedValue({ pilotStatus: "pending", pilotExpiresAt: null });
+  it("flag OFF, status 'expired' -> identical plain updateUserStatus path (flag state is irrelevant to 'expired')", async () => {
+    pa.isPilotApprovalRequired.mockReturnValue(false);
     const res = await patch("expired");
     expect(res.status).toBe(200);
-    expect(pa.endPilotTenant).not.toHaveBeenCalled();
+    expect(pa.applyLegacyUserStatusChange).not.toHaveBeenCalled();
     expect(um.updateUserStatus).toHaveBeenCalledWith("target-1", "expired");
   });
+});
 
-  it("flag ON, target tenant NEVER pilot-tracked (pilot_status null) -> completely unchanged, legacy approve still works", async () => {
+describe("F10 — statuses outside the governance gate stay completely unaffected", () => {
+  it("flag ON, status 'admin' -> unaffected (platform-admin promotion must still work), no pilot-capability call", async () => {
     pa.isPilotApprovalRequired.mockReturnValue(true);
-    pa.getPilotTenantStatus.mockResolvedValue({ pilotStatus: null, pilotExpiresAt: null });
-    const res = await patch("approved");
-    expect(res.status).toBe(200);
-    expect(um.updateUserStatus).toHaveBeenCalledWith("target-1", "approved");
-  });
-
-  it("flag ON, target tenant pilot_status 'ended' -> completely unchanged (out of this gate's scope)", async () => {
-    pa.isPilotApprovalRequired.mockReturnValue(true);
-    pa.getPilotTenantStatus.mockResolvedValue({ pilotStatus: "ended", pilotExpiresAt: null });
-    const res = await patch("approved");
-    expect(res.status).toBe(200);
-    expect(um.updateUserStatus).toHaveBeenCalledWith("target-1", "approved");
-  });
-
-  it("flag ON, target tenant pilot_status 'active', status 'admin' -> unaffected (platform-admin promotion must still work)", async () => {
-    pa.isPilotApprovalRequired.mockReturnValue(true);
-    pa.getPilotTenantStatus.mockResolvedValue({ pilotStatus: "active", pilotExpiresAt: new Date() });
     const res = await patch("admin");
     expect(res.status).toBe(200);
     expect(um.updateUserStatus).toHaveBeenCalledWith("target-1", "admin");
-    expect(pa.getPilotTenantStatus).not.toHaveBeenCalled();
+    expect(pa.applyLegacyUserStatusChange).not.toHaveBeenCalled();
   });
 
-  it("flag ON, target tenant pilot_status 'active', status 'pending' -> unaffected", async () => {
+  it("flag ON, status 'pending' -> unaffected, no pilot-capability call", async () => {
     pa.isPilotApprovalRequired.mockReturnValue(true);
-    pa.getPilotTenantStatus.mockResolvedValue({ pilotStatus: "active", pilotExpiresAt: new Date() });
     const res = await patch("pending");
     expect(res.status).toBe(200);
     expect(um.updateUserStatus).toHaveBeenCalledWith("target-1", "pending");
-    expect(pa.getPilotTenantStatus).not.toHaveBeenCalled();
+    expect(pa.applyLegacyUserStatusChange).not.toHaveBeenCalled();
   });
 });

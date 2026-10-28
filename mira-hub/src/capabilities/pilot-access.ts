@@ -327,6 +327,71 @@ export async function getPilotTenantStatus(
   };
 }
 
+export type LegacyUserStatusOutcome =
+  | { outcome: "updated" }
+  | { outcome: "refused"; pilotStatus: string };
+
+/**
+ * F12 (Codex #4882 review round 3): the legacy admin user-status PATCH route
+ * (`/api/admin/users/[id]`) grants 'approved'/'trial' to a user only when
+ * that user's tenant is NOT pilot-tracked (pending/active) — but reading
+ * `pilot_status` and writing `hub_users.status` as two separate, unlocked
+ * statements left a window where `approvePilotTenant` could activate the
+ * tenant and sweep every member to trial IN BETWEEN this route's read and
+ * its write. The route's now-stale "not pilot-tracked" decision would then
+ * silently overwrite the freshly-granted trial back to 'approved' with no
+ * expiry — exempting that one member from the pilot window entirely.
+ *
+ * Fix: the read and the write now happen inside ONE transaction, holding the
+ * SAME tenant-scoped advisory lock `approvePilotTenant` / `endPilotTenant` /
+ * `reservePilotSeat` take (never the cohort lock — this function never
+ * decides cohort admission, only a single user's status within one already-
+ * known tenant), with `pilot_status` re-read AFTER the lock is acquired, the
+ * same pattern `reservePilotSeat` already uses for its own tenant read. A
+ * concurrent `approvePilotTenant` call against the same tenant now either
+ * runs entirely before or entirely after this transaction — there is no
+ * interleaving in which this can observe a stale snapshot.
+ *
+ * Scoped to 'approved'/'trial' only. 'expired' never reaches this function
+ * (F11, Codex #4882 review round 3 — a single user's expiry must never
+ * touch tenant-level pilot state; see the route, which applies 'expired' via
+ * a plain, unconditional `updateUserStatus`).
+ */
+export async function applyLegacyUserStatusChange(
+  targetUserId: string,
+  tenantId: string,
+  status: "approved" | "trial",
+): Promise<LegacyUserStatusOutcome> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1, hashtext($2))", [
+      PILOT_SEAT_LOCK_NAMESPACE,
+      tenantId,
+    ]);
+    const { rows } = await client.query(
+      `SELECT pilot_status FROM hub_tenants WHERE id = $1 LIMIT 1`,
+      [tenantId],
+    );
+    const pilotStatus = (rows[0] as { pilot_status?: string } | undefined)?.pilot_status ?? null;
+    if (pilotStatus === "pending" || pilotStatus === "active") {
+      await client.query("ROLLBACK");
+      return { outcome: "refused", pilotStatus };
+    }
+    await client.query(
+      `UPDATE hub_users SET status = $1, updated_at = NOW() WHERE id = $2`,
+      [status, targetUserId],
+    );
+    await client.query("COMMIT");
+    return { outcome: "updated" };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 /**
  * Reserve a pilot seat for an invite (F1/F2/F4). No-op (`reserved: false`)
  * when the flag is off or the tenant isn't an active pilot — the cap only
