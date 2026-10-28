@@ -151,6 +151,19 @@
  * happens to be long — `exclude` removes the matched text from these gram
  * sets exactly as it does for signals 1/2.
  *
+ * Codex #4891 F16 (round 10 — absolute-hits floor on signal 2b): the
+ * percentage alone in 2b false-positived against the SHORT fallback cores
+ * (`NO_ASSET_SYSTEM_PROMPT`, 18 distinct 6-grams; `ASSET_PROTECTED_CORE`,
+ * 47) — a routine "what can you help with" capability description shared
+ * just 6 of 18 grams (33%), clearing 30% on coincidental maintenance-domain
+ * vocabulary overlap alone, no echo involved. Fixed by requiring
+ * `CORE_COVERAGE_MIN_HITS` (10) ALONGSIDE the percentage: measured against
+ * every legitimate fixture (including 3 new capability-description
+ * fixtures per route plus Codex's own example), the highest absolute hit
+ * count among rows that also clear the percentage is 6; the lowest hit
+ * count among every real bypass this module must still catch is 17. 10
+ * sits 4 above the worst legitimate case, 7 below the easiest bypass.
+ *
  * No inference call, no network call, no dependency on anything but its
  * arguments (`.claude/rules/zero-token-architecture.md`).
  */
@@ -203,6 +216,23 @@ const LARGE_RUN_LENGTH = 40;
  *  bypass coverage is 98.3%. 30% sits ~24 points above the worst legitimate
  *  case and ~68 points below the easiest bypass. */
 const CORE_COVERAGE_THRESHOLD = 0.3;
+/** Codex #4891 F16 (round 10): an ABSOLUTE floor on the number of distinct
+ *  core 6-grams matched, required ALONGSIDE `CORE_COVERAGE_THRESHOLD` — the
+ *  percentage alone false-positived against the SHORT fallback cores
+ *  (`NO_ASSET_SYSTEM_PROMPT`, 18 distinct 6-grams; `ASSET_PROTECTED_CORE`,
+ *  47): a routine "what can you help with" capability description shared
+ *  just 6 of NO_ASSET_SYSTEM_PROMPT's 18 grams (33%, clearing the 30%
+ *  threshold on a small core by coincidental maintenance-domain vocabulary
+ *  overlap alone). Measured against every legitimate fixture (including the
+ *  F16 capability-description fixtures) across every protected core: the
+ *  highest absolute hit count among the rows that ALSO clear
+ *  `CORE_COVERAGE_THRESHOLD` is 6 (Codex's own F16 example). The lowest hit
+ *  count among every real bypass this module must still catch (the F15
+ *  near-complete-echo repros, including a first-word-deleted/full echo of
+ *  the SAME short fallback cores) is 17. 10 sits 4 above the worst
+ *  legitimate case and 7 below the easiest bypass — see the PR body for the
+ *  full measurement. */
+const CORE_COVERAGE_MIN_HITS = 10;
 /** Codex #4891 F14 scaffolding gate: minimum distinct section headers
  *  alongside a signal-1/2 hit before it counts as a leak — deliberately
  *  LOWER than SECTION_LABEL_MIN_MATCHES (3), which is signal 3's own,
@@ -525,7 +555,14 @@ export function detectPromptLeak(
     let coreHits = 0;
     for (const g of ratioGrams) if (replyRatioGramSet.has(g)) coreHits++;
     const coreCoverage = coreHits / ratioGrams.size;
-    if (coreCoverage >= CORE_COVERAGE_THRESHOLD) {
+    // Codex #4891 F16 (round 10): CORE_COVERAGE_MIN_HITS is required
+    // ALONGSIDE the percentage — a short core (NO_ASSET_SYSTEM_PROMPT,
+    // ASSET_PROTECTED_CORE) can cross 30% coverage on a handful of shared
+    // maintenance-domain 6-grams with NO real echo at all. The absolute
+    // floor stays well below every genuine bypass's hit count (measured:
+    // minimum 17) while sitting above every legitimate fixture that also
+    // clears the percentage (measured: maximum 6).
+    if (coreHits >= CORE_COVERAGE_MIN_HITS && coreCoverage >= CORE_COVERAGE_THRESHOLD) {
       return {
         leaked: true,
         violation: "prompt-leak:core-coverage",

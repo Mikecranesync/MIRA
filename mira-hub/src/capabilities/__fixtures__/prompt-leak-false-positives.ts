@@ -319,3 +319,40 @@ export const PROMPT_LEAK_ASSET_SAFETY_STOP_FIXTURES: readonly string[] = [
   "That's a lockout/tagout situation. Stop and verify your site's LOTO procedure is in place before touching the breaker.",
   "This question is about electrical safety around a live panel — stop and follow your site's electrical safety procedure before proceeding any further.",
 ];
+
+/** Codex #4891 F16 (round 10): the exact reproduction from the review. A
+ *  routine "what can you help me with" capability description, answered
+ *  against the SHORT `NO_ASSET_SYSTEM_PROMPT` fallback (asset ownership
+ *  succeeded but metadata retrieval failed, so `assetRow` is null) —
+ *  6 of the fallback core's 18 distinct 6-grams matched, a 33% coverage
+ *  that cleared `CORE_COVERAGE_THRESHOLD` with no absolute-hits floor in
+ *  place. See `CORE_COVERAGE_MIN_HITS` in `prompt-leak-guard.ts`. */
+export const PROMPT_LEAK_F16_CODEX_EXAMPLE: readonly string[] = [
+  "I'm MIRA, an AI maintenance assistant for industrial equipment. I answer questions about this asset concisely and accurately, and cite manual sections when referenced.",
+];
+
+/** Codex #4891 F16 — 3 more realistic capability-description answers for
+ *  asset chat, protected ONLY by `CORE_COVERAGE_MIN_HITS` against the short
+ *  `NO_ASSET_SYSTEM_PROMPT`/`ASSET_PROTECTED_CORE` fallbacks (no exclude). */
+export const PROMPT_LEAK_F16_ASSET_FIXTURES: readonly string[] = [
+  "I can help you troubleshoot this asset, explain fault codes, and point you to the right section of the manual if one's linked.",
+  "For this equipment I can answer troubleshooting questions, flag anything that looks unsafe, and tell you when I'm not sure instead of guessing.",
+  "I'm here to help with this specific asset — ask about symptoms, fault codes, or maintenance steps and I'll answer from what's available, citing the manual when I can.",
+];
+
+/** Codex #4891 F16 — 3 capability-description answers for the quickstart
+ *  route, protected ONLY by `CORE_COVERAGE_MIN_HITS` (no exclude). */
+export const PROMPT_LEAK_F16_QUICKSTART_FIXTURES: readonly string[] = [
+  "I can help with general troubleshooting questions about industrial equipment, even without a specific machine profile set up yet.",
+  "Ask me about a symptom, a fault code, or how a component works — I'll do my best from general knowledge since there's no manual loaded for a specific unit yet.",
+  "I'm set up to answer maintenance and troubleshooting questions for industrial equipment; I'll let you know if something needs plant-specific documentation I don't have.",
+];
+
+/** Codex #4891 F16 — 3 capability-description answers for the notebook
+ *  route (both modes), protected ONLY by `CORE_COVERAGE_MIN_HITS` (no
+ *  exclude). */
+export const PROMPT_LEAK_F16_NOTEBOOK_FIXTURES: readonly string[] = [
+  "I can help troubleshoot this machine, answer questions about its components, and cite the manual when one's loaded.",
+  "Ask me what's wrong, what a fault code means, or how to check something safely — I'll answer from the manual if it's loaded, or general knowledge otherwise.",
+  "I'm here to help diagnose issues on this machine — give me a symptom or fault code and I'll walk through it, flagging anything that needs a live safety check first.",
+];

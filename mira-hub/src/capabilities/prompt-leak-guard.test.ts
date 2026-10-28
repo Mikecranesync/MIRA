@@ -59,7 +59,7 @@ import { ISOLATION_STEP_RULE } from "./answer-shape";
 import { validateAnswer } from "./answer-validation";
 import { PHOTO_PROVENANCE_NOTE } from "./photo-provenance";
 import { RESTART_DIRECTIVE } from "./restart-advisory";
-import { ASSET_PROTECTED_CORE } from "@/app/api/assets/[id]/chat/route";
+import { ASSET_PROTECTED_CORE, NO_ASSET_SYSTEM_PROMPT } from "@/app/api/assets/[id]/chat/route";
 import { SYSTEM_PROMPT as QUICKSTART_SYSTEM_PROMPT } from "@/app/api/quickstart/ask/route";
 import {
   PROMPT_LEAK_FALSE_POSITIVE_FIXTURES,
@@ -79,6 +79,10 @@ import {
   PROMPT_LEAK_F14_NOTEBOOK_FIXTURES,
   PROMPT_LEAK_F14_ASSET_FIXTURES,
   PROMPT_LEAK_F14_QUICKSTART_FIXTURES,
+  PROMPT_LEAK_F16_CODEX_EXAMPLE,
+  PROMPT_LEAK_F16_ASSET_FIXTURES,
+  PROMPT_LEAK_F16_QUICKSTART_FIXTURES,
+  PROMPT_LEAK_F16_NOTEBOOK_FIXTURES,
 } from "./__fixtures__/prompt-leak-false-positives";
 import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "./prompt-leak-guard";
 
@@ -890,6 +894,70 @@ describe("#4891 F15 — round 9: scaffolding-independent large-scale signals clo
       const r = detectPromptLeak(QUICKSTART_SYSTEM_PROMPT, answerText);
       expect(r.leaked).toBe(false);
     });
+  });
+});
+
+describe("#4891 F16 — round 10: core-coverage requires an absolute-hits floor, not just a percentage", () => {
+  // Codex's exact repro: a routine capability description shared 6 of
+  // NO_ASSET_SYSTEM_PROMPT's 18 distinct 6-grams (33%) — enough to clear
+  // CORE_COVERAGE_THRESHOLD with no real echo involved.
+  it("Codex's exact F16 example is NOT flagged against NO_ASSET_SYSTEM_PROMPT", () => {
+    const r = detectPromptLeak(NO_ASSET_SYSTEM_PROMPT, PROMPT_LEAK_F16_CODEX_EXAMPLE[0]);
+    expect(r.leaked).toBe(false);
+  });
+
+  it("Codex's exact F16 example is NOT flagged against ASSET_PROTECTED_CORE either", () => {
+    const r = detectPromptLeak(ASSET_PROTECTED_CORE, PROMPT_LEAK_F16_CODEX_EXAMPLE[0]);
+    expect(r.leaked).toBe(false);
+  });
+
+  describe("3 more asset-chat capability descriptions — not flagged against ASSET_PROTECTED_CORE or NO_ASSET_SYSTEM_PROMPT", () => {
+    it.each(PROMPT_LEAK_F16_ASSET_FIXTURES)("%s — vs ASSET_PROTECTED_CORE", (answer) => {
+      expect(detectPromptLeak(ASSET_PROTECTED_CORE, answer).leaked).toBe(false);
+    });
+    it.each(PROMPT_LEAK_F16_ASSET_FIXTURES)("%s — vs NO_ASSET_SYSTEM_PROMPT", (answer) => {
+      expect(detectPromptLeak(NO_ASSET_SYSTEM_PROMPT, answer).leaked).toBe(false);
+    });
+  });
+
+  describe("3 quickstart capability descriptions — not flagged against quickstart SYSTEM_PROMPT", () => {
+    it.each(PROMPT_LEAK_F16_QUICKSTART_FIXTURES)("%s", (answer) => {
+      expect(detectPromptLeak(QUICKSTART_SYSTEM_PROMPT, answer).leaked).toBe(false);
+    });
+  });
+
+  describe("3 notebook capability descriptions — not flagged against either mode's protected core", () => {
+    for (const [name, prompt] of Object.entries(PROMPTS)) {
+      it.each(PROMPT_LEAK_F16_NOTEBOOK_FIXTURES)(`%s — not flagged against ${name}`, (answer) => {
+        expect(detectPromptLeak(prompt, answer).leaked).toBe(false);
+      });
+    }
+  });
+
+  // Regression: the F15 near-complete-echo bypasses this module must still
+  // catch — including against the SAME short fallback cores the F16 fix
+  // touches — must remain refused. These are new cases (F15's own tests
+  // used ASSET_PROTECTED_CORE/QUICKSTART/notebook cores, never
+  // NO_ASSET_SYSTEM_PROMPT specifically).
+  describe("regression: NO_ASSET_SYSTEM_PROMPT bypasses stay caught", () => {
+    it("a full verbatim echo of NO_ASSET_SYSTEM_PROMPT is still flagged", () => {
+      const r = detectPromptLeak(NO_ASSET_SYSTEM_PROMPT, NO_ASSET_SYSTEM_PROMPT);
+      expect(r.leaked).toBe(true);
+    });
+
+    it("NO_ASSET_SYSTEM_PROMPT with its first word deleted is still flagged", () => {
+      expect(NO_ASSET_SYSTEM_PROMPT.startsWith("You ")).toBe(true);
+      const altered = NO_ASSET_SYSTEM_PROMPT.replace(/^You /, "");
+      const r = detectPromptLeak(NO_ASSET_SYSTEM_PROMPT, altered);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:core-coverage");
+    });
+  });
+
+  it("the asset first-word-deleted F15 repro (46/47 core hits) stays caught — the floor doesn't reopen F15", () => {
+    const altered = ASSET_PROTECTED_CORE.replace(/^You /, "");
+    const r = detectPromptLeak(ASSET_PROTECTED_CORE, altered);
+    expect(r.leaked).toBe(true);
   });
 });
 
