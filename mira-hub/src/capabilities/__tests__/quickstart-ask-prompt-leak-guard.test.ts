@@ -10,6 +10,12 @@
  * chat, this route's system prompt carries NO per-turn asset/machine data
  * (public, "no namespace yet"), so `detectPromptLeak` is called with no
  * `exclude` array.
+ *
+ * Lives under `src/capabilities/__tests__/` rather than alongside
+ * `route.ts`'s own `__tests__/` — the Legacy UI Lifecycle Guard's
+ * `_is_hub_api_route` classifier exempts `route.ts` itself but not a
+ * sibling test file; same resolution as the asset-chat and notebook-chat
+ * route tests.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ManualChunk } from "@/lib/manual-rag";

@@ -8,6 +8,13 @@
 // Captures the REAL system prompt via the provider fetch call's own request
 // body (same technique as the notebook chat suite's `sentSystemPrompt()`),
 // never hand-copied.
+//
+// Lives under `src/capabilities/__tests__/` rather than alongside
+// `route.ts`'s own `__tests__/`: the Legacy UI Lifecycle Guard's
+// `_is_hub_api_route` classifier exempts `route.ts` itself (ends in
+// `/route.ts` under an `api` segment) but has no exemption for a sibling
+// test file in that same directory — same resolution as #4891's notebook-
+// chat route test (`src/capabilities/__tests__/prompt-leak-guard-route.test.ts`).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -50,7 +57,7 @@ vi.mock("@/lib/machine-context-packet", () => ({
   renderMachineEvidenceSection: vi.fn(() => ""),
 }));
 
-import { POST } from "../route";
+import { POST } from "@/app/api/assets/[id]/chat/route";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
