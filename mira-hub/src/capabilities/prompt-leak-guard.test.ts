@@ -59,6 +59,8 @@ import { ISOLATION_STEP_RULE } from "./answer-shape";
 import { validateAnswer } from "./answer-validation";
 import { PHOTO_PROVENANCE_NOTE } from "./photo-provenance";
 import { RESTART_DIRECTIVE } from "./restart-advisory";
+import { ASSET_PROTECTED_CORE } from "@/app/api/assets/[id]/chat/route";
+import { SYSTEM_PROMPT as QUICKSTART_SYSTEM_PROMPT } from "@/app/api/quickstart/ask/route";
 import {
   PROMPT_LEAK_FALSE_POSITIVE_FIXTURES,
   PROMPT_LEAK_FIELD_OBSERVATION_FIXTURES,
@@ -73,6 +75,10 @@ import {
   PROMPT_LEAK_GENERAL_NO_DECODE_FIXTURES,
   PROMPT_LEAK_GENERAL_NO_MANUAL_FIXTURES,
   PROMPT_LEAK_BASE_ENERGY_ISOLATION_FIXTURES,
+  PROMPT_LEAK_F14_CODEX_EXAMPLES,
+  PROMPT_LEAK_F14_NOTEBOOK_FIXTURES,
+  PROMPT_LEAK_F14_ASSET_FIXTURES,
+  PROMPT_LEAK_F14_QUICKSTART_FIXTURES,
 } from "./__fixtures__/prompt-leak-false-positives";
 import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "./prompt-leak-guard";
 
@@ -211,13 +217,20 @@ describe("#3785 — false-positive sweep (shared fixture set, see __fixtures__/p
 });
 
 describe("#3785 — Codex F2: FIELD_OBSERVATION_DIRECTIVE is domain guidance, not a secret — correctly applying it is not a leak", () => {
-  // Reproduces the exact bug BEFORE the fix: the directive rides every
-  // turn's prompt, and a correct answer sharing its phrasing (Codex's own
-  // example) was flagged with NO exclusion applied.
-  it("Codex's exact reproduction DOES flag when the directive is not excluded (proves the bug existed)", () => {
+  // Historically reproduced the exact bug BEFORE the F2 fix: the directive
+  // rides every turn's prompt, and a correct answer sharing its phrasing
+  // (Codex's own example) was flagged with NO exclusion applied. Codex
+  // #4891 F14 (round 8): the scaffolding gate now ALSO prevents this single-
+  // sentence fixture from flagging even without `exclude` — it carries
+  // neither the persona line nor 2+ section headers — so this specific
+  // historical reproduction no longer demonstrates the bug on its own. The
+  // `exclude` below remains defense-in-depth (it still removes the matched
+  // text from both gram sets entirely, a strictly stronger guarantee), not
+  // load-bearing for this fixture.
+  it("no longer flags even without excluding FIELD_OBSERVATION_DIRECTIVE — the F14 scaffolding gate closes this architecturally", () => {
     const answer = PROMPT_LEAK_FIELD_OBSERVATION_FIXTURES[0];
     const r = detectPromptLeak(PROMPTS_WITH_FIELD_OBS.GENERAL, answer);
-    expect(r.leaked).toBe(true);
+    expect(r.leaked).toBe(false);
   });
 
   // The fix: route.ts's hook passes FIELD_OBSERVATION_DIRECTIVE in `exclude`
@@ -244,14 +257,16 @@ describe("#3785 — Codex F2: FIELD_OBSERVATION_DIRECTIVE is domain guidance, no
 });
 
 describe("#4891 F5 — ISOLATION_STEP_RULE is shared safety guidance, not a secret — correctly applying it is not a leak", () => {
-  // Reproduces the exact bug BEFORE the fix: ISOLATION_STEP_RULE rides every
-  // turn's prompt (via `withStepSafety`, already baked into GENERAL_WITH_
-  // STEP_SAFETY/BASE_WITH_STEP_SAFETY above) with NO exclusion applied —
-  // Codex's exact reproduction answer is flagged.
-  it("Codex's exact reproduction DOES flag when ISOLATION_STEP_RULE is not excluded (proves the bug existed)", () => {
+  // Historically reproduced the exact bug BEFORE the F5 fix: ISOLATION_STEP_
+  // RULE rides every turn's prompt (via `withStepSafety`, already baked into
+  // GENERAL_WITH_STEP_SAFETY/BASE_WITH_STEP_SAFETY above) with NO exclusion
+  // applied — Codex's exact reproduction answer used to be flagged. Codex
+  // #4891 F14 (round 8): the scaffolding gate now ALSO prevents this,
+  // without any exclude — same disposition as F2's note above.
+  it("no longer flags even without excluding ISOLATION_STEP_RULE — the F14 scaffolding gate closes this architecturally", () => {
     const answer = PROMPT_LEAK_ISOLATION_FIXTURES[0];
     const r = detectPromptLeak(PROMPTS.GENERAL_WITH_STEP_SAFETY, answer);
-    expect(r.leaked).toBe(true);
+    expect(r.leaked).toBe(false);
   });
 
   // The fix: each route's hook now passes ISOLATION_STEP_RULE in `exclude`
@@ -337,9 +352,9 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
   describe("PHOTO_PROVENANCE_NOTE", () => {
     const prompt = `${GENERAL_SYSTEM_PROMPT}\n\n${FIELD_OBSERVATION_DIRECTIVE}\n\n${PHOTO_PROVENANCE_NOTE}`;
 
-    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+    it("no longer flags even without excluding PHOTO_PROVENANCE_NOTE — the Codex #4891 F14 (round 8) scaffolding gate closes this architecturally", () => {
       const r = detectPromptLeak(prompt, PROMPT_LEAK_PHOTO_PROVENANCE_FIXTURES[0]);
-      expect(r.leaked).toBe(true);
+      expect(r.leaked).toBe(false);
     });
 
     it.each(PROMPT_LEAK_PHOTO_PROVENANCE_FIXTURES)("%s — not flagged once PHOTO_PROVENANCE_NOTE is excluded", (answer) => {
@@ -358,9 +373,9 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
   describe("RESTART_DIRECTIVE", () => {
     const prompt = `${GENERAL_SYSTEM_PROMPT}\n\n${FIELD_OBSERVATION_DIRECTIVE}\n\n${RESTART_DIRECTIVE}`;
 
-    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+    it("no longer flags even without excluding RESTART_DIRECTIVE — the Codex #4891 F14 (round 8) scaffolding gate closes this architecturally", () => {
       const r = detectPromptLeak(prompt, PROMPT_LEAK_RESTART_FIXTURES[0]);
-      expect(r.leaked).toBe(true);
+      expect(r.leaked).toBe(false);
     });
 
     it.each(PROMPT_LEAK_RESTART_FIXTURES)("%s — not flagged once RESTART_DIRECTIVE is excluded", (answer) => {
@@ -377,9 +392,9 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
 
   // GENERAL_NFPA_CAUTION — notebook, unconditional, inline in GENERAL_SYSTEM_PROMPT.
   describe("GENERAL_NFPA_CAUTION", () => {
-    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+    it("no longer flags even without excluding GENERAL_NFPA — the Codex #4891 F14 (round 8) scaffolding gate closes this architecturally", () => {
       const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_GENERAL_NFPA_FIXTURES[0]);
-      expect(r.leaked).toBe(true);
+      expect(r.leaked).toBe(false);
     });
 
     it.each(PROMPT_LEAK_GENERAL_NFPA_FIXTURES)("%s — not flagged once GENERAL_NFPA_CAUTION is excluded", (answer) => {
@@ -396,9 +411,9 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
 
   // BASE_NFPA_CAUTION — notebook, unconditional, inline in BASE_SYSTEM_PROMPT.
   describe("BASE_NFPA_CAUTION", () => {
-    it("Codex-style exact reproduction (BASE_SYSTEM_PROMPT's own phrasing) DOES flag when not excluded", () => {
+    it("no longer flags even without excluding BASE_NFPA — the Codex #4891 F14 (round 8) scaffolding gate closes this architecturally", () => {
       const r = detectPromptLeak(BASE_SYSTEM_PROMPT, PROMPT_LEAK_BASE_NFPA_FIXTURES[0]);
-      expect(r.leaked).toBe(true);
+      expect(r.leaked).toBe(false);
     });
 
     it.each(PROMPT_LEAK_BASE_NFPA_FIXTURES)("%s — not flagged once BASE_NFPA_CAUTION is excluded", (answer) => {
@@ -416,9 +431,9 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
   // GENERAL_COMPATIBILITY_CAUTION — notebook, unconditional, inline in
   // GENERAL_SYSTEM_PROMPT's HONESTY section. Codex #4891 F9.
   describe("GENERAL_COMPATIBILITY_CAUTION", () => {
-    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+    it("no longer flags even without excluding GENERAL_COMPATIBILITY — the Codex #4891 F14 (round 8) scaffolding gate closes this architecturally", () => {
       const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_GENERAL_COMPATIBILITY_FIXTURES[0]);
-      expect(r.leaked).toBe(true);
+      expect(r.leaked).toBe(false);
     });
 
     it.each(PROMPT_LEAK_GENERAL_COMPATIBILITY_FIXTURES)(
@@ -439,9 +454,9 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
   // GENERAL_SITE_RECORDS_CAUTION — notebook, unconditional, inline in
   // GENERAL_SYSTEM_PROMPT's HONESTY section. Codex #4891 F9.
   describe("GENERAL_SITE_RECORDS_CAUTION", () => {
-    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+    it("no longer flags even without excluding GENERAL_SITE_RECORDS — the Codex #4891 F14 (round 8) scaffolding gate closes this architecturally", () => {
       const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_GENERAL_SITE_RECORDS_FIXTURES[0]);
-      expect(r.leaked).toBe(true);
+      expect(r.leaked).toBe(false);
     });
 
     it.each(PROMPT_LEAK_GENERAL_SITE_RECORDS_FIXTURES)(
@@ -462,9 +477,9 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
   // BASE_SITE_RECORDS_CAUTION — notebook, unconditional, inline in
   // BASE_SYSTEM_PROMPT's PLANT-SPECIFIC VALUES section. Codex #4891 F9.
   describe("BASE_SITE_RECORDS_CAUTION", () => {
-    it("Codex-style exact reproduction (BASE_SYSTEM_PROMPT's own phrasing) DOES flag when not excluded", () => {
+    it("no longer flags even without excluding BASE_SITE_RECORDS — the Codex #4891 F14 (round 8) scaffolding gate closes this architecturally", () => {
       const r = detectPromptLeak(BASE_SYSTEM_PROMPT, PROMPT_LEAK_BASE_SITE_RECORDS_FIXTURES[0]);
-      expect(r.leaked).toBe(true);
+      expect(r.leaked).toBe(false);
     });
 
     it.each(PROMPT_LEAK_BASE_SITE_RECORDS_FIXTURES)(
@@ -487,9 +502,9 @@ describe("#4891 F10 — round 6: protected cores still matched correct abstentio
   // GENERAL_NO_DECODE_CAUTION — notebook, unconditional, inline in
   // GENERAL_SYSTEM_PROMPT's HONESTY section.
   describe("GENERAL_NO_DECODE_CAUTION", () => {
-    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+    it("no longer flags even without excluding GENERAL_NO_DECODE — the Codex #4891 F14 (round 8) scaffolding gate closes this architecturally", () => {
       const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_GENERAL_NO_DECODE_FIXTURES[0]);
-      expect(r.leaked).toBe(true);
+      expect(r.leaked).toBe(false);
     });
 
     it.each(PROMPT_LEAK_GENERAL_NO_DECODE_FIXTURES)(
@@ -510,9 +525,9 @@ describe("#4891 F10 — round 6: protected cores still matched correct abstentio
   // GENERAL_NO_MANUAL_DISCLOSURE — notebook, unconditional, inline in
   // GENERAL_SYSTEM_PROMPT's persona line.
   describe("GENERAL_NO_MANUAL_DISCLOSURE", () => {
-    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+    it("no longer flags even without excluding GENERAL_NO_MANUAL — the Codex #4891 F14 (round 8) scaffolding gate closes this architecturally", () => {
       const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_GENERAL_NO_MANUAL_FIXTURES[0]);
-      expect(r.leaked).toBe(true);
+      expect(r.leaked).toBe(false);
     });
 
     it.each(PROMPT_LEAK_GENERAL_NO_MANUAL_FIXTURES)(
@@ -533,9 +548,9 @@ describe("#4891 F10 — round 6: protected cores still matched correct abstentio
   // BASE_ENERGY_ISOLATION_HAZARD_POINTS — notebook, unconditional, inline in
   // BASE_SYSTEM_PROMPT's ENERGY STATE section.
   describe("BASE_ENERGY_ISOLATION_HAZARD_POINTS", () => {
-    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+    it("no longer flags even without excluding BASE_ENERGY_ISOLATION — the Codex #4891 F14 (round 8) scaffolding gate closes this architecturally", () => {
       const r = detectPromptLeak(BASE_SYSTEM_PROMPT, PROMPT_LEAK_BASE_ENERGY_ISOLATION_FIXTURES[0]);
-      expect(r.leaked).toBe(true);
+      expect(r.leaked).toBe(false);
     });
 
     it.each(PROMPT_LEAK_BASE_ENERGY_ISOLATION_FIXTURES)(
@@ -584,14 +599,25 @@ describe("#4891 F9 — architectural inversion: protected-core-only comparison, 
     expect(r.leaked).toBe(false);
   });
 
-  it("the SAME new-directive restatement would have been WRONGLY flagged under the old full-prompt mechanism", () => {
+  it("the SAME new-directive restatement is now safe even under the OLD (pre-inversion) full-prompt call shape — two independent layers of defense", () => {
     // Simulates the pre-inversion call shape: `systemPrompt` was the full
-    // turn-assembled prompt (persona + every appended directive), and a new
-    // directive with no entry in `exclude` would show up in that text and
-    // trip signal 1 — the whack-a-mole the coordinator asked to stop.
+    // turn-assembled prompt (persona + every appended directive). Before
+    // Codex #4891 F14 (round 8), this WOULD have wrongly flagged — a new
+    // directive with no entry in `exclude` showed up in that text and
+    // tripped signal 1, the exact whack-a-mole the coordinator asked to
+    // stop (this assertion used to read `toBe(true)` to demonstrate that).
+    // The F14 scaffolding gate now ALSO protects this shape on its own
+    // merits: `answerRestatingTheNewDirective` carries neither the persona
+    // line nor 2+ section headers, so signal 1's hit is gated off even
+    // though the OLD call shape still contains the new directive. The F9
+    // inversion (passing only the protected core, never the full turn-
+    // assembled prompt) remains valuable independently — it keeps
+    // `exclude` lists from growing at all for conditionally-appended
+    // directives — but for THIS specific false-positive shape, either layer
+    // alone would now be sufficient.
     const oldStyleTurnAssembledPrompt = `${GENERAL_SYSTEM_PROMPT}\n\n${HYPOTHETICAL_FUTURE_DIRECTIVE}`;
     const r = detectPromptLeak(oldStyleTurnAssembledPrompt, answerRestatingTheNewDirective);
-    expect(r.leaked).toBe(true);
+    expect(r.leaked).toBe(false);
   });
 
   it("a real full-prompt echo still trips the protected-core comparison (the inversion does not weaken detection)", () => {
@@ -684,6 +710,82 @@ describe("edge cases", () => {
     const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, obfuscated);
     expect(r.leaked).toBe(true);
     expect(r.violation).toBe("prompt-leak:verbatim-run");
+  });
+});
+
+describe("#4891 F14 — round 8: scaffolding gate — signals 1/2 require the persona line OR 2+ section headers", () => {
+  // Codex's three exact reproductions — none previously carved into any
+  // `exclude` constant. Protected architecturally by the gate alone.
+  it("Codex's exact general-mode energized-work refusal is not flagged (no exclude)", () => {
+    const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_F14_CODEX_EXAMPLES[0]);
+    expect(r.leaked).toBe(false);
+  });
+
+  it("Codex's exact grounded-mode energized-work refusal is not flagged (no exclude)", () => {
+    const r = detectPromptLeak(BASE_SYSTEM_PROMPT, PROMPT_LEAK_F14_CODEX_EXAMPLES[1]);
+    expect(r.leaked).toBe(false);
+  });
+
+  it("Codex's exact general-mode documentation-abstention request is not flagged (no exclude)", () => {
+    const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_F14_CODEX_EXAMPLES[2]);
+    expect(r.leaked).toBe(false);
+  });
+
+  // 5 realistic safety/abstention answers per route, none carved, protected
+  // only by the gate.
+  describe("5 notebook safety/abstention answers — not flagged against either mode's protected core", () => {
+    for (const [name, prompt] of Object.entries(PROMPTS)) {
+      it.each(PROMPT_LEAK_F14_NOTEBOOK_FIXTURES)(`%s — not flagged against ${name}`, (answer) => {
+        const r = detectPromptLeak(prompt, answer);
+        expect(r.leaked).toBe(false);
+      });
+    }
+  });
+
+  describe("5 asset-chat safety/abstention answers — not flagged against ASSET_PROTECTED_CORE", () => {
+    it.each(PROMPT_LEAK_F14_ASSET_FIXTURES)("%s", (answer) => {
+      const r = detectPromptLeak(ASSET_PROTECTED_CORE, answer);
+      expect(r.leaked).toBe(false);
+    });
+  });
+
+  describe("5 quickstart safety/abstention answers — not flagged against quickstart SYSTEM_PROMPT", () => {
+    it.each(PROMPT_LEAK_F14_QUICKSTART_FIXTURES)("%s", (answer) => {
+      const r = detectPromptLeak(QUICKSTART_SYSTEM_PROMPT, answer);
+      expect(r.leaked).toBe(false);
+    });
+  });
+
+  // The coordinator's required proof: a 30-word verbatim run of RULE text
+  // with neither the persona line nor 2+ headers is NOT flagged; the SAME
+  // run, prefixed with the real persona line, IS flagged. Both windows are
+  // sliced straight out of the REAL BASE_SYSTEM_PROMPT constant — never
+  // hand-copied — so this test tracks the actual protected core, not a
+  // frozen snapshot of it.
+  describe("the core claim: scaffolding is the ONLY thing that changes the verdict on the same 30-word run", () => {
+    // GROUNDING & CITATIONS' body: 4 bullets, zero section headers, zero
+    // persona text, zero quoted instructed examples — a clean rule-text
+    // window with nothing else that could independently trip the gate.
+    const groundingBody = BASE_SYSTEM_PROMPT.split("GROUNDING & CITATIONS:")[1].split("PREMISE CHECK")[0];
+    const words = groundingBody.split(/\s+/).filter(Boolean);
+    const thirtyWordRun = words.slice(0, 30).join(" ");
+    // Sanity: the window really is a verbatim run long enough to clear
+    // RUN_LENGTH (12) on its own — otherwise this test would prove nothing
+    // about the GATE specifically (it'd just be testing "short replies never
+    // flag", a different, already-covered claim).
+    expect(words.length).toBeGreaterThanOrEqual(30);
+
+    it("the bare 30-word run (no persona, no headers) is NOT flagged", () => {
+      const r = detectPromptLeak(BASE_SYSTEM_PROMPT, thirtyWordRun);
+      expect(r.leaked).toBe(false);
+    });
+
+    it("the SAME 30-word run, prefixed with the real persona line, IS flagged", () => {
+      const personaLine = BASE_SYSTEM_PROMPT.split(". ")[0] + ".";
+      const r = detectPromptLeak(BASE_SYSTEM_PROMPT, `${personaLine} ${thirtyWordRun}`);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
   });
 });
 

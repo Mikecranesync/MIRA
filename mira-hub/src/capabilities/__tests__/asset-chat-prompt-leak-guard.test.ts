@@ -586,3 +586,15 @@ describe("#4891 F8 — ASSET_SAFETY_STOP_CAUTION is excluded, full echo still ca
   });
 });
 
+describe("#4891 F14 — round 8: scaffolding gate protects asset chat too, no exclude needed", () => {
+  it("a realistic safety/abstention answer (no persona, no headers) is answered normally, not blocked", async () => {
+    mockFetchWithAnswer(
+      "I'm not confident on that rating, so I won't guess at a safety-critical number — check the nameplate or manual.",
+    );
+    const res = await POST(makeReq(userMsg("what's the rated output current on this drive?")), makeParams(VALID_UUID));
+    const streamed = contentOf(await readAll(res));
+    expect(streamed).toContain("won't guess at a safety-critical number");
+    expect(streamed).not.toBe(PROMPT_LEAK_REFUSAL);
+  });
+});
+

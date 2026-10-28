@@ -285,3 +285,15 @@ describe("#4891 F13 — QUICKSTART_UNCITED_VALUE_CAUTION is excluded, full echo 
     expect(body.answer).toBe(PROMPT_LEAK_REFUSAL);
   });
 });
+
+describe("#4891 F14 — round 8: scaffolding gate protects quickstart too, no exclude needed", () => {
+  it("a realistic safety/abstention answer (no persona, no headers) is answered normally, not blocked", async () => {
+    const answer =
+      "I can't give you that register address without a cited manual — check the drive's parameter list.";
+    cascade.cascadeComplete.mockResolvedValue({ content: answer, provider: "groq" });
+    const res = await POST(req({ question: "What's the register address for the overcurrent fault?" }));
+    const body = await res.json();
+    expect(body.answer).toContain("check the drive's parameter list");
+    expect(body.answer).not.toBe(PROMPT_LEAK_REFUSAL);
+  });
+});

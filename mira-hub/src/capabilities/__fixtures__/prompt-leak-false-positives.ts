@@ -264,6 +264,52 @@ export const PROMPT_LEAK_QUICKSTART_UNCITED_VALUE_FIXTURES: readonly string[] = 
   "That part number isn't something I can confirm without a manual chunk backing it up — look it up in the drive's parameter list section.",
 ];
 
+/** Codex #4891 F14 (round 8) — the architectural scaffolding-gate fix,
+ *  replacing per-sentence carving. Codex's three exact reproductions: two
+ *  correct energized-work refusals (notebook general + grounded mode) and
+ *  one correct "I need the service manual" documentation request (notebook
+ *  general mode). None was previously carved into an `exclude` constant —
+ *  the scaffolding gate protects them architecturally instead. */
+export const PROMPT_LEAK_F14_CODEX_EXAMPLES: readonly string[] = [
+  // General mode — energized-work refusal.
+  "I cannot provide an energized-measurement or live-work procedure on 480 V-class equipment. De-energize and lock out first.",
+  // Grounded mode — energized-work refusal (BASE_SYSTEM_PROMPT's own phrasing).
+  "I cannot give you a procedure for measuring, probing, opening, or otherwise working on equipment energized at 480 V class or higher. Use the site isolation procedure instead.",
+  // General mode — documentation-abstention request.
+  "This question genuinely cannot be answered without model-specific or plant-specific documentation. Please upload the service manual.",
+];
+
+/** Codex #4891 F14 — 5 realistic safety/abstention answers for the
+ *  NOTEBOOK route (both modes), none carved into any `exclude` constant,
+ *  protected ONLY by the scaffolding gate. */
+export const PROMPT_LEAK_F14_NOTEBOOK_FIXTURES: readonly string[] = [
+  "I won't walk you through measuring that live — de-energize and lock it out first, then take the reading.",
+  "That's 480 V class equipment, so no live probing from me — follow your site's isolation procedure before touching it.",
+  "I can't answer that without model-specific documentation — if you can upload the service manual, I can look it up for you.",
+  "Opening that enclosure energized isn't something I'll walk you through; get it de-energized and locked out first.",
+  "This one needs plant-specific documentation I don't have — the service manual would settle it.",
+];
+
+/** Codex #4891 F14 — 5 realistic safety/abstention answers for the ASSET
+ *  CHAT route, protected ONLY by the scaffolding gate (no exclude). */
+export const PROMPT_LEAK_F14_ASSET_FIXTURES: readonly string[] = [
+  "I'm not confident on that rating, so I won't guess at a safety-critical number — check the nameplate or manual.",
+  "That's a lockout/tagout situation — stop and follow your site's electrical safety procedure before touching it.",
+  "I can't cite a manual section for that without a source — I'd rather say I'm unsure than guess.",
+  "Before opening that panel, treat it as energized and follow your site's isolation procedure.",
+  "I don't have a confirmed spec for that — better to check the OEM manual than guess.",
+];
+
+/** Codex #4891 F14 — 5 realistic safety/abstention answers for the
+ *  QUICKSTART route, protected ONLY by the scaffolding gate (no exclude). */
+export const PROMPT_LEAK_F14_QUICKSTART_FIXTURES: readonly string[] = [
+  "I can't give you that register address without a cited manual — check the drive's parameter list.",
+  "That's a lockout/tagout job — de-energize and lock it out before doing any live measurement.",
+  "I don't have a confirmed fault-code meaning for that without a source — the manual's fault table would settle it.",
+  "This needs the manufacturer's documentation to confirm — I won't guess at that part number.",
+  "Treat that panel as energized until proven otherwise — isolate it before opening anything.",
+];
+
 /** `ASSET_SAFETY_STOP_CAUTION` (asset chat, the fixed Instructions block's
  *  own lockout/arc-flash/confined-space safety-stop bullet — unconditional). */
 export const PROMPT_LEAK_ASSET_SAFETY_STOP_FIXTURES: readonly string[] = [

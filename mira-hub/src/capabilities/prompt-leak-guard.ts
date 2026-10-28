@@ -73,6 +73,43 @@
  * channel (`buildManualUserContent`) are the same kind of residual and are
  * also recorded there, not handled by this module.
  *
+ * Codex #4891 F14 (round 8 — scaffolding gate, replacing per-sentence carving):
+ * rounds F8–F13 each found another individual sentence (a safety caution, an
+ * abstention, a documentation request) that a correct technician answer
+ * legitimately restates close to verbatim, and fixed it by carving that ONE
+ * sentence into its own constant and excluding it — a pattern that cannot
+ * converge, because the prompts contain many such sentences and any one not
+ * yet found is still a live false positive (F14's three examples: a correct
+ * energized-work refusal in both modes, and a correct "I need the service
+ * manual" documentation request — none previously carved). The fix is
+ * architectural, not another carve: Signals 1 and 2 (verbatim-run and
+ * n-gram-overlap) now fire ONLY when the reply ALSO reproduces the prompt's
+ * SCAFFOLDING — either a normalized prefix of the prompt's own persona/
+ * identity sentence ("You are MIRA...", the first sentence of the protected
+ * core), or at least `SCAFFOLDING_HEADER_MIN` (2) of its ALL-CAPS section
+ * headers. A reply that merely states a correct safety caution or abstention
+ * — the SAME content a correct answer would produce unprompted, with no
+ * trace of the document's own identity line or structure — is not a leak;
+ * it reveals nothing the model wasn't supposed to say anyway. Signal 3
+ * (section-label echo) is UNCHANGED: its own threshold
+ * (`SECTION_LABEL_MIN_MATCHES` = 3) already exceeds the scaffolding
+ * requirement, so a structure-preserving paraphrase that keeps 3+ headers is
+ * still caught on its own, independent of signals 1/2's gate.
+ *
+ * ACCEPTED RESIDUAL (recorded, not silently assumed away, same discipline as
+ * the paragraph above): a reply that reproduces a long run of the prompt's
+ * RULE text — a safety caution, an abstention, a documentation request —
+ * with NEITHER the persona line NOR 2+ section headers is not refused. This
+ * is a deliberate, accepted gap, not an oversight: such a reply necessarily
+ * states ONLY behavior a correct, safety-compliant, honestly-abstaining
+ * answer is independently permitted (indeed instructed) to produce — the
+ * persona-less, headerless span alone carries no information that lets a
+ * technician distinguish "the model is reciting its internal rule" from "the
+ * model is just being correct." The moment a reply ALSO carries the identity
+ * line or the document's own structural scaffolding, it stops looking like
+ * an answer and starts looking like the prompt itself — that is exactly what
+ * remains caught.
+ *
  * No inference call, no network call, no dependency on anything but its
  * arguments (`.claude/rules/zero-token-architecture.md`).
  */
@@ -104,6 +141,21 @@ const RATIO_MIN_HITS = 6;
 const RATIO_MIN_REPLY_GRAMS = 8;
 /** Signal 3: minimum distinct section labels found verbatim in the reply. */
 const SECTION_LABEL_MIN_MATCHES = 3;
+/** Codex #4891 F14 scaffolding gate: minimum distinct section headers
+ *  alongside a signal-1/2 hit before it counts as a leak — deliberately
+ *  LOWER than SECTION_LABEL_MIN_MATCHES (3), which is signal 3's own,
+ *  fully independent, header-only threshold. */
+const SCAFFOLDING_HEADER_MIN = 2;
+/** Codex #4891 F14 scaffolding gate: how many normalized words of the
+ *  protected core's own persona/identity sentence (its first sentence) the
+ *  reply must reproduce, contiguously, to count as "stating the persona
+ *  line." Short enough that even a partial echo of just the opening words
+ *  ("You are MIRA, a maintenance...") qualifies; long enough that an
+ *  ordinary technician answer never coincidentally produces it (no
+ *  technician-facing sentence in this repo's fixtures begins "you are
+ *  mira"). Deliberately well below RUN_LENGTH (12) — the persona check is a
+ *  distinct, separate proof, not a second verbatim-run signal. */
+const PERSONA_PREFIX_LEN = 6;
 /** Signal 3: discard any extracted "label" shorter than this — filters
  *  stray short ALL-CAPS tokens that are not real section headers. */
 const SECTION_LABEL_MIN_LEN = 5;
@@ -277,6 +329,43 @@ function stripMarkdownKeepCase(text: string): string {
     .trim();
 }
 
+/** Codex #4891 F14: the protected core's PERSONA/IDENTITY sentence — its
+ *  first sentence — normalized to its first `PERSONA_PREFIX_LEN` words. Every
+ *  protected core in this repo opens with a persona line ("You are MIRA,
+ *  a maintenance..."); this never hardcodes that text, reading it fresh from
+ *  whatever `systemPrompt` the caller actually passed, same discipline as
+ *  `extractSectionLabels`. Takes the FIRST non-empty exclude-filtered
+ *  segment (an exclude never removes the opening of the protected core — the
+ *  carved cautions all sit deeper in the document), splits it at the first
+ *  sentence boundary (". " or a newline, whichever comes first), and
+ *  normalizes. Returns an empty array only if `systemPrompt` is somehow
+ *  empty after exclusion — `replyHasPersonaPrefix` then always reports no
+ *  match, never a false one. */
+function extractPersonaPrefixWords(segments: readonly string[]): string[] {
+  for (const segment of segments) {
+    const trimmed = segment.replace(/^\s+/, "");
+    if (!trimmed) continue;
+    const firstSentence = trimmed.split(/\n|\. /)[0];
+    const words = normalizeWords(firstSentence);
+    if (words.length > 0) return words.slice(0, PERSONA_PREFIX_LEN);
+  }
+  return [];
+}
+
+/** Does the reply contain the persona prefix as a CONTIGUOUS run, in order —
+ *  same mechanism as Signal 1's verbatim-run, just a shorter, separate
+ *  target. A short fixed-length run (not a substring match on raw text)
+ *  so word-boundary obfuscation can't slip past it the way a naive
+ *  `.includes()` could. */
+function replyHasPersonaPrefix(personaPrefixWords: readonly string[], replyWords: readonly string[]): boolean {
+  if (personaPrefixWords.length === 0) return false;
+  const target = personaPrefixWords.join(" ");
+  for (const g of ngrams(replyWords, personaPrefixWords.length)) {
+    if (g === target) return true;
+  }
+  return false;
+}
+
 /**
  * Does `replyText` reproduce `systemPrompt` verbatim, near-verbatim, or as a
  * structure-preserving paraphrase? Pure function: no I/O, no randomness, same
@@ -306,7 +395,11 @@ function stripMarkdownKeepCase(text: string): string {
  * contribute a leak signal. See `buildPromptGramSets`'s docstring for the
  * measured false positive this closes. Callers pass the exact constants the
  * route already carved out for this turn; this module never reconstructs or
- * guesses them.
+ * guesses them. Pre-F14 carve-outs (F8–F13) remain valid and are kept as
+ * defense-in-depth — they remove the matched text from BOTH signals 1/2's
+ * gram sets AND signal 3's label extraction entirely, a strictly stronger
+ * guarantee than the scaffolding gate alone — but F14 itself needed none:
+ * the gate below closes it architecturally.
  */
 export function detectPromptLeak(
   systemPrompt: string,
@@ -323,19 +416,38 @@ export function detectPromptLeak(
   const { runs, ratioGrams } = buildPromptGramSets(dataExcluded);
   const replyWords = normalizeWords(replyText);
 
-  // Signal 1 — verbatim run.
+  // Codex #4891 F14 (round 8) — the SCAFFOLDING GATE. `matchedLabels` and
+  // `hasPersona` are computed ONCE and reused by both the gate (signals 1/2)
+  // and signal 3 itself, so the two can never see a different view of "does
+  // this reply carry the document's own structure." Neither depends on
+  // WHICH signal-1/2 run matched — they're properties of the reply and the
+  // protected core alone — so there's no need to recompute per-candidate-run.
+  const labels = extractSectionLabels(dataExcluded);
+  const strippedReply = stripMarkdownKeepCase(replyText);
+  const matchedLabels = labels.filter((label) => strippedReply.includes(label));
+  const personaPrefixWords = extractPersonaPrefixWords(dataExcluded);
+  const hasPersona = replyHasPersonaPrefix(personaPrefixWords, replyWords);
+  const hasScaffolding = hasPersona || matchedLabels.length >= SCAFFOLDING_HEADER_MIN;
+
+  // Signal 1 — verbatim run. Gated: a matching run alone is the ACCEPTED
+  // RESIDUAL (see the module docstring) unless the reply ALSO carries the
+  // persona line or 2+ section headers.
   for (const g of ngrams(replyWords, RUN_LENGTH)) {
     if (runs.has(g)) {
-      return { leaked: true, violation: "prompt-leak:verbatim-run", detail: g.slice(0, DETAIL_MAX) };
+      if (hasScaffolding) {
+        return { leaked: true, violation: "prompt-leak:verbatim-run", detail: g.slice(0, DETAIL_MAX) };
+      }
+      break; // no scaffolding on THIS reply — true for every other run too; stop checking signal 1 and fall through.
     }
   }
 
   // Signal 2 — n-gram overlap ratio, with an absolute floor on match count.
+  // Same gate as signal 1.
   const replyRatioGrams = ngrams(replyWords, RATIO_NGRAM);
   if (replyRatioGrams.length >= RATIO_MIN_REPLY_GRAMS) {
     const hits = replyRatioGrams.filter((g) => ratioGrams.has(g)).length;
     const ratio = hits / replyRatioGrams.length;
-    if (hits >= RATIO_MIN_HITS && ratio > RATIO_THRESHOLD) {
+    if (hits >= RATIO_MIN_HITS && ratio > RATIO_THRESHOLD && hasScaffolding) {
       return {
         leaked: true,
         violation: "prompt-leak:ngram-overlap",
@@ -345,18 +457,17 @@ export function detectPromptLeak(
   }
 
   // Signal 3 — section-label echo (catches a structure-preserving paraphrase
-  // that Signals 1 and 2 cannot, by construction).
-  const labels = extractSectionLabels(dataExcluded);
-  if (labels.length > 0) {
-    const strippedReply = stripMarkdownKeepCase(replyText);
-    const matched = labels.filter((label) => strippedReply.includes(label));
-    if (matched.length >= SECTION_LABEL_MIN_MATCHES) {
-      return {
-        leaked: true,
-        violation: "prompt-leak:section-labels",
-        detail: matched.join(", ").slice(0, DETAIL_MAX),
-      };
-    }
+  // that Signals 1 and 2 cannot, by construction). UNGATED: its own
+  // threshold (SECTION_LABEL_MIN_MATCHES = 3) already exceeds
+  // SCAFFOLDING_HEADER_MIN (2), so every reply that reaches this signal's
+  // own flag condition already satisfies the scaffolding requirement by
+  // construction — no separate gate check needed here.
+  if (matchedLabels.length >= SECTION_LABEL_MIN_MATCHES) {
+    return {
+      leaked: true,
+      violation: "prompt-leak:section-labels",
+      detail: matchedLabels.join(", ").slice(0, DETAIL_MAX),
+    };
   }
 
   return { leaked: false };
