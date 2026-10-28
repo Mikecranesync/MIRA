@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { decode } from "next-auth/jwt";
 import { cookies } from "next/headers";
 import { findUserById } from "@/lib/users";
+import { trialAccessDecision } from "@/capabilities/trial-access";
 
 export interface SessionContext {
   userId: string;
@@ -37,6 +38,29 @@ export class UnauthorizedError extends Error {
   constructor() {
     super("Unauthorized");
     this.name = "UnauthorizedError";
+  }
+}
+
+/**
+ * F8 (Mike-authorized post-cap Codex pass, #4882 @ 66f379a90): thrown by
+ * `requireSession` when the DB-fresh `status`/`trialExpiresAt` resolve to
+ * `trialAccessDecision(...) === "upgrade"` — the pilot ended
+ * (`endPilotTenant` moved this user to `expired`) or an ordinary trial ran
+ * out. A SUBCLASS of `UnauthorizedError`, deliberately: every existing route
+ * that does `if (err instanceof UnauthorizedError) return 401` already
+ * denies this case correctly with zero changes (an `instanceof` check on a
+ * subclass is `true`), so introducing this as an unrelated error class would
+ * have required touching every one of those call sites to keep them
+ * fail-closed. `sessionOr401` — the ~150-caller shared helper — special-cases
+ * this subclass to return the friendlier 403 below instead of the generic
+ * 401; everywhere else it is caught, this is the same deny-by-default
+ * `UnauthorizedError` behavior as before.
+ */
+export class SessionUpgradeRequiredError extends UnauthorizedError {
+  constructor() {
+    super();
+    this.name = "SessionUpgradeRequiredError";
+    this.message = "Your pilot has ended. Contact FactoryLM to continue.";
   }
 }
 
@@ -93,23 +117,63 @@ export async function requireSession(): Promise<SessionContext> {
   // whole request — the token-based auth itself stays valid, so read routes
   // keep working while every role gate denies. One indexed PK SELECT per
   // authed request; hub_users is tiny.
+  //
+  // F8 (Mike-authorized post-cap Codex pass, #4882 @ 66f379a90, related
+  // pre-existing #3831): `status`/`trialExpiresAt` below are ALSO now taken
+  // from this same already-loaded row, not the JWT claims. The claims are
+  // written once at sign-in and refreshed only when NextAuth's own `jwt`
+  // callback runs (`refreshEntitlementClaims`, src/auth.ts) — a browser-side
+  // session read, not this server-side route path. Without this, ending a
+  // pilot (`endPilotTenant` sets every non-admin member to 'expired')
+  // doesn't deny an already-issued cookie: the holder keeps whatever
+  // status/deadline was in the JWT until their browser happens to refresh
+  // it, which can be long after the admin ended the pilot.
+  //
+  // Deliberately asymmetric fail-safe on lookup failure/missing row: `role`/
+  // `platformAdmin` fail CLOSED to least-privilege (as before) because the
+  // dangerous direction for an unresolved identity is granting excess
+  // capability. `status`/`trialExpiresAt` fail OPEN to the JWT claim — kept
+  // exactly as before this fix — because the entitlement decision below is a
+  // courtesy deny, not a capability grant: denying it wrongly on a transient
+  // DB blip would lock out an otherwise-legitimate, already-authenticated
+  // user, which is a worse failure mode than trusting one stale claim for
+  // one more request. The DB is retried on every subsequent request, so a
+  // blip self-heals; it never compounds into a standing excess grant the way
+  // a wrongly-elevated role would.
   let role = "";
   let platformAdmin = false;
+  let status = (token.status as string) ?? "trial";
+  let trialExpiresAt: string | null = (token.trialExpiresAt as string) ?? null;
+  let upgradeRequired = false;
   try {
     const user = await findUserById(token.uid as string);
     role = (user?.role ?? "").toLowerCase().trim();
     platformAdmin = user?.status === "admin";
+    if (user) {
+      status = user.status;
+      trialExpiresAt = user.trialExpiresAt ? user.trialExpiresAt.toISOString() : null;
+      upgradeRequired = trialAccessDecision(status, user.trialExpiresAt) === "upgrade";
+    }
   } catch {
     role = "";
     platformAdmin = false;
+  }
+
+  // Thrown OUTSIDE the try/catch above on purpose: the catch block exists
+  // only to swallow a DB-lookup failure (fail-safe, see above), never to
+  // swallow this intentional deny. `trialAccessDecision` never returns
+  // "upgrade" for status "pending" or "admin" (or any status without a
+  // lapsed deadline), so pending-approval and admin sessions are unaffected.
+  if (upgradeRequired) {
+    throw new SessionUpgradeRequiredError();
   }
 
   return {
     userId: token.uid as string,
     tenantId: tid,
     email: (token.email as string) ?? "",
-    status: (token.status as string) ?? "trial",
-    trialExpiresAt: (token.trialExpiresAt as string) ?? null,
+    status,
+    trialExpiresAt,
     role,
     platformAdmin,
   };
@@ -128,7 +192,16 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export async function sessionOr401(): Promise<SessionContext | NextResponse> {
   try {
     return await requireSession();
-  } catch {
+  } catch (err) {
+    // F8: the ~150 callers of this shared helper get the friendlier,
+    // specific 403 for an ended pilot / lapsed trial without each one
+    // needing to know about SessionUpgradeRequiredError. Every other
+    // UnauthorizedError (including this subclass, for any of the 9 routes
+    // that call requireSession() directly and catch UnauthorizedError
+    // themselves) still denies via its own existing instanceof check.
+    if (err instanceof SessionUpgradeRequiredError) {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 }

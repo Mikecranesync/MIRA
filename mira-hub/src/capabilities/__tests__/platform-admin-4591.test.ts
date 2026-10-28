@@ -11,7 +11,7 @@ vi.mock("@/lib/users", async (orig) => ({ ...(await orig<typeof import("@/lib/us
 import { cookies } from "next/headers";
 import { decode } from "next-auth/jwt";
 import { findUserById } from "@/lib/users";
-import { requireSession, type SessionContext } from "@/lib/session";
+import { requireSession, UnauthorizedError, type SessionContext } from "@/lib/session";
 import { getCapabilities } from "@/lib/capabilities";
 
 const TID = "11111111-2222-4333-8444-555555555555";
@@ -78,10 +78,20 @@ describe("requireSession derives platformAdmin fresh from hub_users.status (#459
     expect((await requireSession()).platformAdmin).toBe(false);
   });
 
-  it.each(["approved", "pending", "expired", "Admin ", ""])("DB status %j → false", async (status) => {
+  // "expired" deliberately excluded from this list (F8, #4882 @ 66f379a90):
+  // requireSession() now THROWS for a DB status that resolves to the
+  // "upgrade" entitlement decision, so it never reaches a `platformAdmin`
+  // return value to assert on — see the dedicated "expired" test below.
+  it.each(["approved", "pending", "Admin ", ""])("DB status %j → false", async (status) => {
     token();
     vi.mocked(findUserById).mockResolvedValue({ role: "owner", status } as never);
     expect((await requireSession()).platformAdmin).toBe(false);
+  });
+
+  it("DB status 'expired' → requireSession denies before platformAdmin is ever observed (F8, #4882 @ 66f379a90)", async () => {
+    token();
+    vi.mocked(findUserById).mockResolvedValue({ role: "owner", status: "expired" } as never);
+    await expect(requireSession()).rejects.toBeInstanceOf(UnauthorizedError);
   });
 
   it("deleted user or a DB error → false (fail closed), session itself still resolves", async () => {
