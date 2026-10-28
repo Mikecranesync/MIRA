@@ -1145,7 +1145,7 @@ app.post("/api/checkout/start", async (c) => {
     return c.json(
       {
         error:
-          "Online checkout is not available. FactoryLM pilots are free for 30 days — apply at https://app.factorylm.com/signup",
+          `Online checkout is not available. FactoryLM pilots are free for 30 days — apply at ${hubUrl("/signup")}`,
       },
       410
     );

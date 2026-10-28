@@ -522,6 +522,7 @@ services:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - PLG_DAILY_FREE_QUERIES=${PLG_DAILY_FREE_QUERIES:-5}
+      - PLG_CHECKOUT_ENABLED=${PLG_CHECKOUT_ENABLED:-}  # unset = checkout off while pilots are free (#4369); set 1 to restore
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
       # Stripe — staging should NOT charge cards; leave secrets empty unless
