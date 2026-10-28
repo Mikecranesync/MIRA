@@ -4,6 +4,7 @@ import { requireCapability } from "@/lib/capabilities";
 import {
   PilotCohortCapError,
   PilotCohortRenewalError,
+  PilotSeatCapError,
   PilotTenantNotFoundError,
   approvePilotTenant,
   isPilotApprovalRequired,
@@ -39,7 +40,11 @@ export async function POST(
     if (err instanceof PilotTenantNotFoundError) {
       return NextResponse.json({ error: err.message }, { status: 404 });
     }
-    if (err instanceof PilotCohortRenewalError || err instanceof PilotCohortCapError) {
+    if (
+      err instanceof PilotCohortRenewalError ||
+      err instanceof PilotCohortCapError ||
+      err instanceof PilotSeatCapError
+    ) {
       return NextResponse.json({ error: err.message }, { status: 409 });
     }
     console.error("[api/admin/pilots/approve]", err);
