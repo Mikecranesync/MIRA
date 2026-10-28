@@ -254,6 +254,7 @@ import {
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
+import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "@/capabilities/prompt-leak-guard";
 import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import { progressCancelSignal, reportProgress, wantsProgress, withProgressStream } from "@/capabilities/chat-progress";
@@ -278,7 +279,17 @@ function answerGateEnabled(): boolean {
   return process.env.NOTEBOOK_ANSWER_GATE !== "0";
 }
 
-const BASE_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant for ONE specific machine. Answer ONLY from the numbered reference excerpts provided below.
+// Exported (#3785, prompt-leak-guard): there is no standalone "build the
+// system prompt" function — MACHINE CONTEXT, coverage directives and the
+// hazard/visual sections are assembled inline in handleChatTurn — so these
+// three constants are the closest thing to an importable builder output.
+// prompt-leak-guard.test.ts imports them directly rather than hand-copying
+// the prompt text into test fixtures. Source-read regex tests elsewhere in
+// this repo (general-prompt-no-doc-search.test.ts, isolation-example-passes-
+// gate.test.ts, prompt-abstention-directives.test.ts) keep working unchanged
+// — their regexes match the substring "const NAME = `...`;" and do not
+// anchor on the absence of a leading `export`.
+export const BASE_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant for ONE specific machine. Answer ONLY from the numbered reference excerpts provided below.
 
 ANSWER SHAPE — a technician is standing at the machine and needs the answer fast:
 - Lead with the direct answer in the FIRST sentence: the parameter number, terminal number, fault meaning, value, or action. e.g. "P042 [Decel Time 1] sets the deceleration ramp [1]."
@@ -326,7 +337,7 @@ MACHINE OVERVIEW — if asked what you know about the machine, or for an overvie
  * citation, which is exactly what §1.3 forbids. The route also strips any that
  * survive; this is the first of the two guards, not the only one.
  */
-const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. No manual for this machine has been loaded, so you are reasoning from general electrical, mechanical, and controls knowledge.
+export const GENERAL_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant helping a technician who is standing at a machine RIGHT NOW. No manual for this machine has been loaded, so you are reasoning from general electrical, mechanical, and controls knowledge.
 
 ANSWER SHAPE — the technician needs something they can act on:
 - If the technician is troubleshooting or doing work on equipment, lead with the most likely cause or the first thing to check, in the FIRST sentence, then give a short ordered list of checks, cheapest and safest first.
@@ -354,7 +365,7 @@ const GUIDED_DEAD_END_DIRECTIVE = `GUIDED PROCEDURE DEAD END — this overrides 
 - Never say or imply that any of your advice comes from their manual, and never cite pages for it.
 - If their message gives no symptom, ask for one before suggesting anything.`;
 // ASI-001: an observation is evidence, not a root cause. Shared by both modes.
-const FIELD_OBSERVATION_DIRECTIVE = `FIELD OBSERVATIONS — this rule outranks a request to lead with the most likely cause:
+export const FIELD_OBSERVATION_DIRECTIVE = `FIELD OBSERVATIONS — this rule outranks a request to lead with the most likely cause:
 - For an unexplained status change, separate the technician's observation from its meaning. A color/status change does not prove a physical failure, loss of a mechanical lock, or permission to operate. Use the site's documented indication mapping if supplied; otherwise say the meaning is unverified.
 - A reported delay is a clue: elapsed time alone does not establish a configured timeout. Do not invent timer values, device models, channel assignments, or a confirmed root cause.
 - If the evidence cannot determine the cause, offer only clearly labeled hypotheses, not confirmed causes. In grounded mode, keep them within the supplied evidence; unrelated excerpts are not support.
@@ -4338,6 +4349,40 @@ async function handleChatTurn(
           } else {
             outputRejected = { kind: validation.kind, violation: validation.violation };
             answerText = validation.replacement;
+          }
+        }
+      }
+
+      // #3785 (prompt-leak-guard): does the ACCEPTED candidate reproduce the
+      // system prompt actually sent for THIS turn (`systemPrompt`, built
+      // above)? Deterministic word-n-gram check — see
+      // capabilities/prompt-leak-guard.ts for the three signals and their
+      // thresholds. Same detection-always / enforce-only-under-the-gate
+      // discipline as the validateAnswer floor above: logged either way,
+      // replaced only when `gate`. Deliberately NOT conditioned on `refused`
+      // — both system prompts contain refusal-shaped sentences the model is
+      // INSTRUCTED to say close to verbatim ("I'm answering from general
+      // knowledge, not this machine's manual"), so an echo of the prompt can
+      // get misclassified as a refusal upstream; that must not exempt it.
+      // Skipped only when something upstream already replaced the candidate
+      // (`outputRejected` already set) — there is nothing left that could
+      // leak. Reuses `kind: "unsafe_answer"` rather than a new kind: that is
+      // the ONLY branch downstream that already (a) excludes
+      // `emittedCitations` and sets `basis: null` so a grounded leak cannot
+      // ship a citation chip or an `oem_documentation` badge, (b) never
+      // persists the replaced text, and (c) renders as the same Safety STOP
+      // grammar (`safety_notice` + `safety_stop` evidence, the `kind:
+      // "safety"` SSE frame) — exactly the "never persist, don't ship it"
+      // contract this needs, already built and already tested.
+      if (!outputRejected && served && answerText.trim()) {
+        const leak = detectPromptLeak(systemPrompt, answerText);
+        if (leak.leaked) {
+          console.error(
+            `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${leak.violation}: ${leak.detail}`,
+          );
+          if (gate) {
+            outputRejected = { kind: "unsafe_answer", violation: leak.violation ?? "prompt-leak" };
+            answerText = PROMPT_LEAK_REFUSAL;
           }
         }
       }
