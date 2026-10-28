@@ -15,7 +15,7 @@ import {
   isPilotApprovalRequired,
   redeemPilotSeat,
 } from "@/capabilities/pilot-access";
-import { ensureInvitedUser, ensureUserAndTenant } from "../users";
+import { ensureInvitedUser, ensureUserAndTenant } from "@/lib/users";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const queryMock = (pool as any).query as ReturnType<typeof vi.fn>;
