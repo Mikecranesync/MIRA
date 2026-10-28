@@ -34,6 +34,7 @@ import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { deployIdentity } from "./capabilities/deploy-identity.js";
 import { hubUrl } from "./capabilities/hub-origin.js";
+import { isCheckoutEnabled } from "./capabilities/checkout-gate.js";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
@@ -1138,6 +1139,18 @@ app.get("/api/checkout", async (c) => {
 // Direct checkout from pricing page — finds/creates pending tenant then redirects to Stripe.
 // Accepts { email, company? }. Returns { url } for JS redirect or redirects directly.
 app.post("/api/checkout/start", async (c) => {
+  // Kill switch while pilots are free (#4369) — restore with PLG_CHECKOUT_ENABLED=1.
+  // Must stay first: before the rate limiter, any tenant lookup/creation, and any Stripe call.
+  if (!isCheckoutEnabled()) {
+    return c.json(
+      {
+        error:
+          `Online checkout is not available. FactoryLM pilots are free for 30 days — apply at ${hubUrl("/signup")}`,
+      },
+      410
+    );
+  }
+
   const ip = getClientIp(c.req.raw.headers);
   const rl = checkRegisterRateLimit(ip);
   if (!rl.allowed) {
