@@ -37,6 +37,7 @@ import {
 import { canonicalProviders, requestDialectFields } from "@/lib/inference/canonical-cascade";
 import { boundInputTokens, reserveOpenAiAttempt } from "@/capabilities/openai-run-budget";
 import type { CanonicalProvider } from "@/lib/inference/canonical-cascade";
+import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "@/capabilities/prompt-leak-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -195,14 +196,17 @@ async function streamFromProvider(
 }
 
 // ── Asset context ──────────────────────────────────────────────────────────
-function buildSystemPrompt(asset: Record<string, unknown>): string {
+// #3785 (prompt-leak-guard extension): split out so detectPromptLeak's
+// `exclude` can name exactly the per-turn ASSET DATA block — never the fixed
+// persona/instructions around it — the same granularity notebook chat's
+// `machineContext` exclusion uses. Byte-identical concatenation to the prior
+// single-template version; `buildSystemPrompt`'s output is unchanged.
+function buildAssetContextBlock(asset: Record<string, unknown>): string {
   const name = (asset.description as string) ||
     [asset.manufacturer, asset.model_number, asset.equipment_type].filter(Boolean).join(" ") ||
     "Unknown Equipment";
 
-  return `You are MIRA, an AI maintenance assistant for industrial equipment built by FactoryLM.
-
-## Asset in scope
+  return `## Asset in scope
 - Name: ${name}
 - Tag: ${asset.equipment_number ?? "—"}
 - Manufacturer: ${asset.manufacturer ?? "—"}
@@ -214,7 +218,13 @@ function buildSystemPrompt(asset: Record<string, unknown>): string {
 - Install date: ${asset.installation_date ? String(asset.installation_date).slice(0, 10) : "—"}
 - Last maintenance: ${asset.last_maintenance_date ? String(asset.last_maintenance_date).slice(0, 10) : "—"}
 - Last fault: ${asset.last_reported_fault ?? "none recorded"}
-- Work order count: ${asset.work_order_count ?? 0}
+- Work order count: ${asset.work_order_count ?? 0}`;
+}
+
+function buildSystemPrompt(asset: Record<string, unknown>): string {
+  return `You are MIRA, an AI maintenance assistant for industrial equipment built by FactoryLM.
+
+${buildAssetContextBlock(asset)}
 
 ## Instructions
 - Answer questions specifically about this asset using the context above.
@@ -672,11 +682,32 @@ export async function POST(
         controller.enqueue(enc.encode(`data: ${JSON.stringify({ next_check: nextCheck })}\n\n`));
       }
 
+      // #3785 (prompt-leak-guard extension): this route streams provider
+      // deltas LIVE (unlike notebook chat's buffer-then-release gate), so a
+      // leaked system prompt would already be on the wire by the time any
+      // post-hoc check could run. Collect the provider cascade's deltas into
+      // a local, not-yet-visible buffer instead of the real `controller` —
+      // `streamFromProvider`/`drainProviderStream` only ever call
+      // `.enqueue()` on the controller they're given, so this shim satisfies
+      // their whole contract without touching either function. Once the full
+      // candidate is known, validate it, then either replay the buffered SSE
+      // frames verbatim (clean) or discard them and emit the refusal instead
+      // (leaked) — before the real client ever sees a byte of it.
+      const preModelBufferLen = responseBuffer.length;
+      const bufferedFrames: Uint8Array[] = [];
+      const collectingController = { enqueue: (chunk: Uint8Array) => bufferedFrames.push(chunk) };
+
       let served = false;
       let servedBy: string | null = null;
       for (const provider of providers) {
         try {
-          served = await streamFromProvider(provider, fullMessages, controller, enc, responseBuffer);
+          served = await streamFromProvider(
+            provider,
+            fullMessages,
+            collectingController as unknown as ReadableStreamDefaultController<Uint8Array>,
+            enc,
+            responseBuffer,
+          );
           if (served) {
             servedBy = provider.name;
             break;
@@ -684,6 +715,45 @@ export async function POST(
         } catch {
           // cascade
         }
+      }
+
+      // Per-turn DATA the prompt INSTRUCTS the model to restate — the bound
+      // asset's own fields, KG relational context, and live/replayed machine
+      // evidence — must never read as a leak merely because the model
+      // correctly repeats data this turn's prompt happened to carry. Same
+      // mechanism as notebook chat's `machineContext`/`visualSection`/
+      // `machineSection` exclusion (prompt-leak-guard.ts's `exclude` param);
+      // never the fixed persona/instructions around it.
+      const modelText = responseBuffer.slice(preModelBufferLen).join("");
+      let leakBlocked = false;
+      if (served && modelText.trim()) {
+        const leak = detectPromptLeak(groundedSystemPrompt, modelText, [
+          assetRow ? buildAssetContextBlock(assetRow) : "",
+          graphContext,
+          machineMemorySection,
+        ]);
+        if (leak.leaked) {
+          leakBlocked = true;
+          console.error(
+            `[api/assets/:id/chat] pre-display REJECTED ${leak.violation}: ${leak.detail}`,
+          );
+          // Discard the leaked candidate — it never reaches responseBuffer
+          // (so it can never be persisted or fed to KG extraction either)
+          // and never reaches the client.
+          responseBuffer.length = preModelBufferLen;
+          responseBuffer.push(PROMPT_LEAK_REFUSAL);
+          // Same additive-`error`-field shape this route already uses for
+          // provider exhaustion below — not a new response shape.
+          controller.enqueue(
+            enc.encode(
+              `data: ${JSON.stringify({ content: PROMPT_LEAK_REFUSAL, error: "prompt_leak" })}\n\n`,
+            ),
+          );
+        } else {
+          for (const frame of bufferedFrames) controller.enqueue(frame);
+        }
+      } else {
+        for (const frame of bufferedFrames) controller.enqueue(frame);
       }
 
       if (!served) {
@@ -716,7 +786,9 @@ export async function POST(
       // the gap, append the honest admission before closing. Mirrors the Python
       // enforce_citation_or_gap_admission so a model that ignores the
       // system-prompt instruction can't ship a confident, ungrounded answer.
-      if (served && !hasGroundingEvidence && !hasCitationOrGapAdmission(responseBuffer.join(""))) {
+      // `!leakBlocked`: a leak-refusal admits nothing about a KB gap and must
+      // never get KB_GAP_ADMISSION appended onto it.
+      if (served && !leakBlocked && !hasGroundingEvidence && !hasCitationOrGapAdmission(responseBuffer.join(""))) {
         responseBuffer.push(KB_GAP_ADMISSION);
         controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: KB_GAP_ADMISSION })}\n\n`));
       }
@@ -749,6 +821,12 @@ export async function POST(
           verified: mc.verified === true,
         }));
         const grounded = manualSources.length > 0;
+        // #3785: a leak-blocked turn persists the REFUSAL (already what
+        // `fullResponse` holds — the leaked candidate was discarded before
+        // this point, never reaching responseBuffer), never cites, and gets
+        // the already-documented "gate_fired" outcome (migration
+        // 032_decision_traces.sql's own comment: "resolved | handoff |
+        // kb_gap | gate_fired | engine_error | ...") — not a new value.
         await withTenantContext(ctx.tenantId, (c) =>
           c.query(
             `INSERT INTO decision_traces
@@ -762,9 +840,9 @@ export async function POST(
               sanitizePII(lastUser.content),
               JSON.stringify(manualEvidence),
               fullResponse,
-              grounded,
-              grounded ? "medium" : "low",
-              grounded ? "resolved" : "kb_gap",
+              leakBlocked ? false : grounded,
+              leakBlocked ? "low" : grounded ? "medium" : "low",
+              leakBlocked ? "gate_fired" : grounded ? "resolved" : "kb_gap",
               servedBy,
               Date.now() - startedAt,
             ],

@@ -17,6 +17,7 @@ import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, wit
 import { englishSearchQuery } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { translateForSearch } from "@/capabilities/translate-for-search";
+import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "@/capabilities/prompt-leak-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -219,6 +220,27 @@ export async function POST(req: Request) {
   // Model citation hygiene (#4032): some providers emit their own tool-citation
   // markers ("【1†L3-L4】"); normalize them to the [n] form the page renders.
   const answerText = normalizeCitationMarkers(result.content);
+
+  // #3785 (prompt-leak-guard extension): this route has no per-turn asset/
+  // machine data in its SYSTEM prompt at all (public, "no namespace yet")
+  // — the retrieved manual CONTEXT rides in the USER message instead, which
+  // this check never touches — so `exclude` is empty, unlike asset chat and
+  // notebook chat. `messages[0]` is exactly the system message built above
+  // (SYSTEM_PROMPT + the optional safety-flag directive + withStepSafety's
+  // ISOLATION_STEP_RULE). Same reused refusal/response shape this route
+  // already returns everywhere else (`{answer, citations, provider}` —
+  // see the `!result` branch above for provider exhaustion): never a new
+  // response shape, and this route makes NO DB write to guard against
+  // persisting the leak.
+  const leak = detectPromptLeak(messages[0].content, answerText);
+  if (leak.leaked) {
+    console.error(`[quickstart/ask] pre-display REJECTED ${leak.violation}: ${leak.detail}`);
+    return NextResponse.json(
+      { answer: PROMPT_LEAK_REFUSAL, citations: [], provider: result.provider } as AskResponse,
+      { status: 200 },
+    );
+  }
+
   // Ship only the sources the answer actually cited: a general-guidance answer
   // must not arrive with six unrelated source cards (the #1875 contradiction,
   // generalized now that the route answers instead of refusing).
