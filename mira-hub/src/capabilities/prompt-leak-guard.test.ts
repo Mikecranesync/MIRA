@@ -91,9 +91,13 @@ describe("#3785 — the three reproduced probe shapes, against both prompts", ()
     expect(r.violation).toBe("prompt-leak:verbatim-run");
   });
 
-  // A genuine paraphrase: every sentence independently reworded, no sentence
-  // copied, but — realistically, for a model asked to "repeat this in your
-  // own words" — the document's own section scaffolding survives.
+  // A genuine paraphrase: every sentence reworded, no sentence copied, but
+  // the document's own section scaffolding survives — exactly what the
+  // #3785 issue's own leaked excerpt shows (it kept ANSWER SHAPE, HONESTY,
+  // SAFETY and MACHINE CONTEXT verbatim even where its "…" elisions show
+  // other wording was dropped). A first draft of this fixture that also
+  // dropped the headers failed to flag (see "an HONEST limitation" below) —
+  // kept as the stated residual rather than tuned until it passed.
   const structurePreservingParaphrase = `Here is my setup, in my own words, keeping the same sections:
 
 ANSWER SHAPE: when someone is troubleshooting I open with my best guess at the cause, then list

@@ -64,6 +64,18 @@ const nbMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/equipment-notebooks", () => nbMock);
 
+// `loadVisualEvidenceForAsset` mocked (DB-backed); `renderVisualEvidenceSection`
+// is the REAL implementation (same technique as chat-look-grounding.test.ts)
+// so the rendered nameplate section in the captured prompt is authentic, not
+// hand-copied.
+const veMock = vi.hoisted(() => ({
+  loadVisualEvidenceForAsset: vi.fn(async () => [] as unknown[]),
+}));
+vi.mock("@/lib/visual-evidence-context", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/visual-evidence-context")>("@/lib/visual-evidence-context");
+  return { ...actual, loadVisualEvidenceForAsset: veMock.loadVisualEvidenceForAsset };
+});
+
 const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
   appendManualContext: vi.fn((p: string) => p),
@@ -274,5 +286,77 @@ describe("#3785 grounded mode — a leak must not ship a citation chip or an oem
     const persisted = persistedTurn();
     expect(persisted.answerText).toBe(PROMPT_LEAK_REFUSAL);
     expect(persisted.basis).toBeNull(); // never `oem_documentation`
+  });
+});
+
+describe("#3785 — per-turn DATA the prompt INSTRUCTS the model to restate must never read as a leak", () => {
+  // Found by review, before this shipped: the system prompt is not just the
+  // two fixed base constants — every turn also carries per-turn facts
+  // (MACHINE CONTEXT's asset line, nameplate readings, replayed
+  // observations), and the prompt's own rules INSTRUCT the model to restate
+  // them (MACHINE OVERVIEW: "state the equipment identity"; #4143: "quote
+  // the label text"). Without excluding that per-turn data from the gram
+  // sets, a technician asking "what machine is this?" on a QR-bound
+  // notebook — or a nameplate follow-up — got blocked as a "leak". Fixed via
+  // `detectPromptLeak`'s `exclude` parameter, fed from route.ts's
+  // `machineContext`/`visualSection`/`machineSection`/
+  // `identityProposalDirective`.
+  const ASSET_LINE_ANSWER =
+    "This is Conveyor 1 — canonical path enterprise.home_garage.conveyor_lab.conveyor_1. Identity confirmed by a technician.";
+  const ASSET_LINE_PARAPHRASE =
+    "This notebook is bound to Conveyor 1, canonical path enterprise.home_garage.conveyor_lab.conveyor_1, and its identity was confirmed by a technician.";
+
+  beforeEach(() => {
+    nbMock.resolveBoundAsset.mockResolvedValue({
+      state: "resolved",
+      entityId: "ee715d08-4ea6-4b7a-b99b-958a33c39ea8",
+      name: "Conveyor 1",
+      unsPath: "enterprise.home_garage.conveyor_lab.conveyor_1",
+      selectedVia: "qr_scan",
+      confirmedAt: "2026-08-27T23:00:00.000Z",
+    });
+  });
+
+  it("restating the bound asset's MACHINE CONTEXT line, verbatim or paraphrased, is answered normally — not a Safety STOP", async () => {
+    for (const answer of [ASSET_LINE_ANSWER, ASSET_LINE_PARAPHRASE]) {
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+      const res = await POST(req({ message: "what machine is this?", mode: "general" }), params);
+      const fr = await frames(res);
+      // Proves the MACHINE CONTEXT block the exclusion targets was actually
+      // present (otherwise this test would pass for the wrong reason).
+      expect(sentSystemPrompt()).toContain("MACHINE CONTEXT");
+      expect(fr.find((f) => f.kind === "safety")).toBeUndefined();
+      expect(contentOf(fr)).toBe(answer);
+    }
+  });
+
+  it("quoting a stored nameplate reading verbatim is answered normally — not a Safety STOP", async () => {
+    const { renderVisualEvidenceSection } = await vi.importActual<typeof import("@/lib/visual-evidence-context")>(
+      "@/lib/visual-evidence-context",
+    );
+    const nameplateRow = {
+      observationId: "o1",
+      sessionId: "s1",
+      text: "VELDRA VX-712-HD — 480 VAC 3PH — FLA 37.5 A",
+      obsKind: "property",
+      trust: "verified" as const,
+      confidence: null,
+      fileId: null,
+      photoHash: null,
+      observedAt: "2026-08-27T23:00:00.000Z",
+    };
+    veMock.loadVisualEvidenceForAsset.mockResolvedValue([nameplateRow]);
+    const expectedSection = renderVisualEvidenceSection([nameplateRow]);
+
+    const answer = `The nameplate reads ${nameplateRow.text}.`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const res = await POST(req({ message: "what's on the nameplate?", mode: "general" }), params);
+    const fr = await frames(res);
+    // Proves the visual section the exclusion targets was actually rendered
+    // into this turn's prompt (otherwise this test would pass for the wrong
+    // reason).
+    expect(sentSystemPrompt()).toContain(expectedSection);
+    expect(fr.find((f) => f.kind === "safety")).toBeUndefined();
+    expect(contentOf(fr)).toBe(answer);
   });
 });

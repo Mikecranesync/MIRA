@@ -52,13 +52,17 @@
  *     high short-gram overlap survive a real rewrite. But the prompt's own
  *     ALL-CAPS section headers ("ANSWER SHAPE", "HONESTY", "SAFETY", …) are
  *     distinctive, prompt-authored tokens that do not occur in ordinary
- *     maintenance prose, and a model asked to echo/paraphrase its
- *     instructions overwhelmingly preserves the document's own scaffolding
- *     even while rewording the content under it. The labels are extracted
- *     from the ACTUAL prompt by regex (never hardcoded) and matched
- *     case-sensitively (not a lowercase fold like the other two signals,
- *     since "safety" the common word must not match "SAFETY" the header) —
- *     3-or-more distinct labels appearing is the flag.
+ *     maintenance prose. This is not a hypothetical: the #3785 issue's own
+ *     "leaked content (verbatim excerpt returned to the client)" quote kept
+ *     FOUR of them verbatim — ANSWER SHAPE, HONESTY, SAFETY, MACHINE
+ *     CONTEXT — even where the issue's own "…" elisions show other wording
+ *     was dropped or reworded around them. A model asked to echo/paraphrase
+ *     its instructions preserves the document's own scaffolding even while
+ *     rewording the content under it. The labels are extracted from the
+ *     ACTUAL prompt by regex (never hardcoded) and matched case-sensitively
+ *     (not a lowercase fold like the other two signals, since "safety" the
+ *     common word must not match "SAFETY" the header) — 3-or-more distinct
+ *     labels appearing is the flag.
  *
  * Honest scope (same discipline as answer-validation.ts): this is a bounded
  * invariant, not a semantic truth oracle. A FULL rewrite that both avoids
@@ -69,8 +73,8 @@
  * channel (`buildManualUserContent`) are the same kind of residual and are
  * also recorded there, not handled by this module.
  *
- * No inference call, no network call, no dependency on anything but its two
- * string arguments (`.claude/rules/zero-token-architecture.md`).
+ * No inference call, no network call, no dependency on anything but its
+ * arguments (`.claude/rules/zero-token-architecture.md`).
  */
 
 export interface PromptLeakResult {
@@ -160,15 +164,51 @@ function ngrams(words: readonly string[], n: number): string[] {
   return out;
 }
 
-/** Union of n-grams across every quote-excluded segment of the prompt, for
- *  both gram sizes this module uses — one pass over the prompt per call. */
-function buildPromptGramSets(systemPrompt: string): { runs: Set<string>; ratioGrams: Set<string> } {
+/** Remove every occurrence of each `exclude` string FIRST (exact substring,
+ *  not a pattern), splitting on it rather than deleting it so no gram can
+ *  bridge across the removed material — same discipline as the quoted-
+ *  example exclusion. Quoted-example splitting then runs on what remains,
+ *  so a quoted instructed example sitting NEXT TO per-turn data still gets
+ *  excluded. Empty/whitespace-only exclude strings are ignored (an empty
+ *  `.split("")` would explode every segment into individual characters). */
+function removeExcluded(segments: readonly string[], exclude: readonly string[]): string[] {
+  let out = segments.slice();
+  for (const ex of exclude) {
+    if (!ex || !ex.trim()) continue;
+    out = out.flatMap((seg) => seg.split(ex));
+  }
+  return out;
+}
+
+/** Union of n-grams across every excluded/quote-excluded segment of the
+ *  prompt, for both gram sizes this module uses — one pass per call.
+ *
+ *  `exclude`: per-turn DATA sections the prompt carries alongside its fixed
+ *  instructions — MACHINE CONTEXT (the bound asset's name/UNS path),
+ *  visual/nameplate evidence, replayed machine-observation lines, an
+ *  unconfirmed-identity directive. The prompt's own rules INSTRUCT the
+ *  model to restate these facts (MACHINE OVERVIEW: "state the equipment
+ *  identity"; #4143: "quote the label text"; `answerUsesStoredNameplate
+ *  Reading` exists because answers legitimately reuse a nameplate reading
+ *  verbatim) — so "what machine is this?" on a bound asset, or a nameplate
+ *  follow-up, must never be flagged as leaking the PROMPT merely because it
+ *  correctly repeats data the prompt happened to carry this turn. Measured:
+ *  without this exclusion, restating a bound asset's name + UNS path (a
+ *  16-word run) or paraphrasing it (32% 6-gram overlap) both false-
+ *  positived — see prompt-leak-guard-route.test.ts. */
+function buildPromptGramSets(
+  systemPrompt: string,
+  exclude: readonly string[] = [],
+): { runs: Set<string>; ratioGrams: Set<string> } {
   const runs = new Set<string>();
   const ratioGrams = new Set<string>();
-  for (const segment of segmentsExcludingQuotedExamples(systemPrompt)) {
-    const words = normalizeWords(segment);
-    for (const g of ngrams(words, RUN_LENGTH)) runs.add(g);
-    for (const g of ngrams(words, RATIO_NGRAM)) ratioGrams.add(g);
+  const dataExcluded = removeExcluded([systemPrompt], exclude);
+  for (const dataSegment of dataExcluded) {
+    for (const segment of segmentsExcludingQuotedExamples(dataSegment)) {
+      const words = normalizeWords(segment);
+      for (const g of ngrams(words, RUN_LENGTH)) runs.add(g);
+      for (const g of ngrams(words, RATIO_NGRAM)) ratioGrams.add(g);
+    }
   }
   return { runs, ratioGrams };
 }
@@ -206,11 +246,24 @@ function stripMarkdownKeepCase(text: string): string {
  * provider as the system message for THIS turn — verbatim, near-verbatim, or
  * as a structure-preserving paraphrase? Pure function: no I/O, no randomness,
  * same inputs always give the same answer.
+ *
+ * `exclude` (optional): exact substrings of `systemPrompt` that are per-turn
+ * DATA rather than fixed instructions (MACHINE CONTEXT, visual/nameplate
+ * evidence, replayed observations, an unconfirmed-identity directive) — the
+ * model is correctly INSTRUCTED to restate these, so they must never
+ * contribute a leak signal. See `buildPromptGramSets`'s docstring for the
+ * measured false positive this closes. Callers pass the exact variables the
+ * route already computed for this turn; this module never reconstructs or
+ * guesses them.
  */
-export function detectPromptLeak(systemPrompt: string, replyText: string): PromptLeakResult {
+export function detectPromptLeak(
+  systemPrompt: string,
+  replyText: string,
+  exclude: readonly string[] = [],
+): PromptLeakResult {
   if (!systemPrompt.trim() || !replyText.trim()) return { leaked: false };
 
-  const { runs, ratioGrams } = buildPromptGramSets(systemPrompt);
+  const { runs, ratioGrams } = buildPromptGramSets(systemPrompt, exclude);
   const replyWords = normalizeWords(replyText);
 
   // Signal 1 — verbatim run.

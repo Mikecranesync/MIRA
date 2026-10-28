@@ -3532,10 +3532,17 @@ async function handleChatTurn(
   // not-a-part-number; otherwise byte-identical.
   // #4143: a photo in context gets the "quote the label text" note — inside the
   // #4131/#4133 label notes, which stay last.
+  // #3785 (prompt-leak-guard): captured in its own const, not just inlined
+  // below, so detectPromptLeak's `exclude` list (further down) can name the
+  // SAME per-turn directive text the model was actually instructed with —
+  // never a re-derivation of it.
+  const identityProposalDirective = identityProposal
+    ? unconfirmedMachineDirective(identityProposal, candidateAcquisitionText)
+    : "";
   const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
-      : withVisual + machineContext + (identityProposal ? unconfirmedMachineDirective(identityProposal, candidateAcquisitionText) : ""),
+      : withVisual + machineContext + identityProposalDirective,
  )), lookContext), lookContext), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
@@ -4374,8 +4381,25 @@ async function handleChatTurn(
       // grammar (`safety_notice` + `safety_stop` evidence, the `kind:
       // "safety"` SSE frame) — exactly the "never persist, don't ship it"
       // contract this needs, already built and already tested.
+      //
+      // `exclude` names the per-turn DATA sections `systemPrompt` carries
+      // alongside its fixed instructions — the bound asset's name/UNS path
+      // (`machineContext`), nameplate/visual evidence (`visualSection`),
+      // replayed observation lines (`machineSection`), and an unconfirmed-
+      // identity directive (`identityProposalDirective`). The prompt's own
+      // rules INSTRUCT the model to restate these (MACHINE OVERVIEW: "state
+      // the equipment identity"; #4143: "quote the label text"), so without
+      // this exclusion a technician asking "what machine is this?" on a
+      // bound asset, or a nameplate follow-up, would get its answer flagged
+      // as a prompt leak — measured and fixed, see
+      // prompt-leak-guard-route.test.ts.
       if (!outputRejected && served && answerText.trim()) {
-        const leak = detectPromptLeak(systemPrompt, answerText);
+        const leak = detectPromptLeak(systemPrompt, answerText, [
+          machineContext,
+          visualSection,
+          machineSection,
+          identityProposalDirective,
+        ]);
         if (leak.leaked) {
           console.error(
             `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${leak.violation}: ${leak.detail}`,
