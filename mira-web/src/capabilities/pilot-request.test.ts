@@ -317,6 +317,38 @@ describe("submitPilotRequest", () => {
     expect(result).toEqual({ ok: true, id: row.id });
   });
 
+  // Codex round-1 F2 (PR #4881): a stalled owner-email send must never block
+  // the response for a row that already committed.
+  test("F2: a never-resolving notifyOwner still yields a prompt success response", async () => {
+    const row = fakeRow();
+    const start = Date.now();
+    const result = await submitPilotRequest(VALID_INPUT, {
+      insert: async () => row,
+      // Never resolves/rejects — simulates a stalled Resend request.
+      notifyOwner: () => new Promise<boolean>(() => {}),
+      capture: () => {},
+    });
+    const elapsedMs = Date.now() - start;
+    expect(result).toEqual({ ok: true, id: row.id });
+    // Must return long before the internal NOTIFY_OWNER_TIMEOUT_MS (10s) —
+    // the response path never awaits notifyOwner at all.
+    expect(elapsedMs).toBeLessThan(200);
+  });
+
+  test("F2: notifyOwner is still invoked (fire-and-forget) even though it isn't awaited", async () => {
+    const row = fakeRow();
+    let notifyInvoked = false;
+    await submitPilotRequest(VALID_INPUT, {
+      insert: async () => row,
+      notifyOwner: async () => {
+        notifyInvoked = true;
+        return true;
+      },
+      capture: () => {},
+    });
+    expect(notifyInvoked).toBe(true);
+  });
+
   test("capture throwing does not lose the stored row", async () => {
     const row = fakeRow();
     const result = await submitPilotRequest(VALID_INPUT, {

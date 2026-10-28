@@ -31,7 +31,7 @@
  *   POST /api/pilot-request        → Store pilot request + notify owner + capture event (#4877)
  */
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { deployIdentity } from "./capabilities/deploy-identity.js";
@@ -887,15 +887,80 @@ app.post("/api/register", async (c) => {
 
 // ---------------------------------------------------------------------------
 // Free 30-day pilot request (#4877) — first five pilot customers, no price
-// shown anywhere. Reuses checkRegisterRateLimit's per-IP bucket above (one
-// shared bucket for /api/register and /api/pilot-request).
+// shown anywhere.
+//
+// Codex round-1 remediation (PR #4881, F2/F3):
+// - F3: a dedicated per-IP rate bucket (NOT shared with /api/register — a
+//   flood of invalid cross-origin pilot submissions must not lock out real
+//   signups, and vice versa), plus a same-origin guard: Content-Type must be
+//   application/json (rejects the no-preflight "simple request" cross-site
+//   POST pattern, e.g. text/plain bodies), and the resolved Origin — or the
+//   Referer's origin when Origin is absent — must be in the allowlist.
+//   Reuses REGISTER_ALLOWED_ORIGINS (PLG_REGISTER_ALLOWED_ORIGINS) rather
+//   than inventing a second origin env var; add a staging web host there
+//   when one exists.
+// - F2: submitPilotRequest() itself no longer lets a stalled owner-email send
+//   block the response after the row has committed — see pilot-request.ts.
 // ---------------------------------------------------------------------------
+
+const PILOT_REQUEST_RATE_BUCKETS = new Map<string, { minute: number[]; hour: number[] }>();
+const PILOT_REQUEST_LIMIT_PER_MINUTE = 5;
+const PILOT_REQUEST_LIMIT_PER_HOUR = 20;
+
+function checkPilotRequestRateLimit(ip: string): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  const minuteAgo = now - 60_000;
+  const hourAgo = now - 3_600_000;
+  const bucket = PILOT_REQUEST_RATE_BUCKETS.get(ip) ?? { minute: [], hour: [] };
+  bucket.minute = bucket.minute.filter((t) => t > minuteAgo);
+  bucket.hour = bucket.hour.filter((t) => t > hourAgo);
+  if (bucket.minute.length >= PILOT_REQUEST_LIMIT_PER_MINUTE) {
+    return { allowed: false, retryAfterSec: Math.ceil((bucket.minute[0] + 60_000 - now) / 1000) };
+  }
+  if (bucket.hour.length >= PILOT_REQUEST_LIMIT_PER_HOUR) {
+    return { allowed: false, retryAfterSec: Math.ceil((bucket.hour[0] + 3_600_000 - now) / 1000) };
+  }
+  bucket.minute.push(now);
+  bucket.hour.push(now);
+  PILOT_REQUEST_RATE_BUCKETS.set(ip, bucket);
+  return { allowed: true, retryAfterSec: 0 };
+}
+
+/**
+ * Resolve the request's claimed origin for the pilot-request guard: the
+ * Origin header when present, else the origin parsed from Referer. Returns
+ * null when neither is present/parseable — callers must treat null as
+ * untrusted (reject), not as "same-origin, allow".
+ */
+function resolvePilotRequestOrigin(c: Context): string | null {
+  const origin = c.req.header("origin");
+  if (origin) return origin;
+  const referer = c.req.header("referer");
+  if (referer) {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 app.get("/pilot", (c) => c.html(renderPilotRequestPage()));
 
 app.post("/api/pilot-request", async (c) => {
+  const contentType = (c.req.header("content-type") || "").toLowerCase();
+  if (!contentType.startsWith("application/json")) {
+    return c.json({ error: "Content-Type must be application/json" }, 415);
+  }
+
+  const claimedOrigin = resolvePilotRequestOrigin(c);
+  if (!claimedOrigin || !REGISTER_ALLOWED_ORIGINS.includes(claimedOrigin)) {
+    return c.json({ error: "Forbidden origin" }, 403);
+  }
+
   const ip = getClientIp(c.req.raw.headers);
-  const rl = checkRegisterRateLimit(ip);
+  const rl = checkPilotRequestRateLimit(ip);
   if (!rl.allowed) {
     c.header("Retry-After", String(rl.retryAfterSec));
     return c.json(

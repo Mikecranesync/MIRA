@@ -321,6 +321,29 @@ export type SubmitPilotRequestResult =
  * of a downstream failure: notifyOwner/capture errors are caught and logged,
  * never thrown back to the caller once the row exists.
  */
+// Codex round-1 F2 (PR #4881): a stalled Resend request must never block the
+// response for a row that already committed. Bound the owner notification
+// with a hard deadline and never await it on the response path.
+const NOTIFY_OWNER_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    // Don't let this bookkeeping timer keep the process alive.
+    (timer as unknown as { unref?: () => void }).unref?.();
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 export async function submitPilotRequest(
   input: unknown,
   deps: SubmitPilotRequestDeps = {},
@@ -334,11 +357,15 @@ export async function submitPilotRequest(
 
   const row = await insert(validated.value);
 
-  try {
-    await notifyOwner(row, validated.value);
-  } catch (err) {
-    console.error("[pilot-request] owner notification failed:", err);
-  }
+  // Fire-and-forget, deadline-bounded: the response below must not wait on
+  // this. A failure (including a timeout) is logged, never thrown back to
+  // the caller — the stored row is the thing that matters, and it already
+  // committed above.
+  withTimeout(notifyOwner(row, validated.value), NOTIFY_OWNER_TIMEOUT_MS, "owner notification").catch(
+    (err) => {
+      console.error("[pilot-request] owner notification failed:", err);
+    },
+  );
 
   try {
     capture(row, validated.value);
