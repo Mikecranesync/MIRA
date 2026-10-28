@@ -183,6 +183,8 @@ services:
       - PLG_DAILY_FREE_QUERIES=${PLG_DAILY_FREE_QUERIES:-5}
       - PLG_CHECKOUT_ENABLED=${PLG_CHECKOUT_ENABLED:-}  # unset = checkout off while pilots are free (#4369); set 1 to restore
       - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - PLG_POSTHOG_KEY=${PLG_POSTHOG_KEY:-}  # site + server funnel events; empty = no-op stub
+      - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
@@ -898,6 +900,10 @@ services:
       # Magic-link + team-invite email sender (Resend). Without this the Hub
       # silently skips the send and logs the magic URL instead (login broken).
       - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - PLG_POSTHOG_KEY=${PLG_POSTHOG_KEY:-}  # pilot funnel events (pilot-funnel.ts); empty = no-op
+      - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
+      - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-}
+      - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}  # empty = off (open signup)
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/api/auth}
       - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/api/auth}
       # Sign-in OAuth client. Named HUB_AUTH_GOOGLE_* to avoid collision with
