@@ -22,7 +22,7 @@ import {
 } from "@/lib/approved-context";
 import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import { withAnswerLanguage } from "@/capabilities/answer-language";
-import { ISOLATION_STEP_RULE, withStepSafety } from "@/capabilities/answer-shape";
+import { withStepSafety } from "@/capabilities/answer-shape";
 import {
   buildMachineContextPacket,
   renderMachineEvidenceSection,
@@ -232,6 +232,33 @@ function buildAssetContextBlock(asset: Record<string, unknown>): string {
 // naturally reproduces.
 export const ASSET_SAFETY_STOP_CAUTION =
   "If the question involves lockout/tagout, arc flash, confined space, or electrical safety, stop and instruct the tech to follow site safety procedures before proceeding.";
+
+// Codex #4891 F9 (round 5 — architectural inversion): the PROTECTED CORE for
+// this route when an asset is bound — the fixed persona + instructions text a
+// correct technician answer would never reproduce, compared ONLY against this
+// (not the full turn-assembled `groundedSystemPrompt`). Unlike notebook chat's
+// BASE_SYSTEM_PROMPT/GENERAL_SYSTEM_PROMPT, `buildSystemPrompt` has no
+// pre-existing fixed-only constant — its per-turn `buildAssetContextBlock`
+// asset-data block is interpolated directly into the template — so this is a
+// hand-written constant: the SAME literal persona + "## Instructions" text as
+// `buildSystemPrompt`, with the asset-context block and ASSET_SAFETY_STOP_
+// CAUTION deliberately OMITTED (per-turn data and a restatable caution,
+// neither of them protected meta-instruction). No `exclude` entry is needed
+// for either: they are simply never part of the comparison text. A full-
+// prompt echo still contains this text as a literal substring, so signal 1
+// still fires — see the inversion-proof test in prompt-leak-guard tests.
+export const ASSET_PROTECTED_CORE = `You are MIRA, an AI maintenance assistant for industrial equipment built by FactoryLM.
+
+## Instructions
+- Answer questions specifically about this asset using the context above.
+- If you cite a manual section, say so explicitly (e.g., "Per the OEM service manual, §3.4…").
+- If you are unsure, say so — never guess at safety-critical specifications.
+- Keep answers concise and actionable. Techs are on the floor.`;
+
+// The no-asset fallback prompt (used when `assetRow` is falsy) carries no
+// per-turn data at all — it is already a fixed-only constant, so it doubles
+// as its own protected core with no carve-out needed.
+export const NO_ASSET_SYSTEM_PROMPT = `You are MIRA, an AI maintenance assistant for industrial equipment. Answer questions about this asset concisely and accurately. Cite manual sections when referenced.`;
 
 function buildSystemPrompt(asset: Record<string, unknown>): string {
   return `You are MIRA, an AI maintenance assistant for industrial equipment built by FactoryLM.
@@ -570,9 +597,7 @@ export async function POST(
   // Returns "" if KG not populated; never throws (graceful fallback)
   const graphContext = await buildGraphContext(ctx.tenantId, lastUser.content, id).catch(() => "");
 
-  const baseSystemPrompt = assetRow
-    ? buildSystemPrompt(assetRow)
-    : `You are MIRA, an AI maintenance assistant for industrial equipment. Answer questions about this asset concisely and accurately. Cite manual sections when referenced.`;
+  const baseSystemPrompt = assetRow ? buildSystemPrompt(assetRow) : NO_ASSET_SYSTEM_PROMPT;
 
   const withGraph = graphContext
     ? `${baseSystemPrompt}\n\n## Knowledge Graph Context\nThe following relational context was retrieved from the plant knowledge graph. Use it to give more specific, history-aware answers.\n\n${graphContext}`
@@ -771,24 +796,20 @@ export async function POST(
       // load-bearing fix on its own — see the PR body for the mutation-proof
       // breakdown of what each half catches.
       if (modelText.trim()) {
-        const leak = detectPromptLeak(groundedSystemPrompt, modelText, [
-          assetRow ? buildAssetContextBlock(assetRow) : "",
-          graphContext,
-          machineMemorySection,
-          ISOLATION_STEP_RULE,
-          // Codex #4891 F5 audit: `flagDirectiveFor` (hazardBanner's sibling)
-          // is the SAME class as ISOLATION_STEP_RULE — shared safety prose a
-          // correct hazard answer legitimately restates (confirmed by a
-          // throwaway repro: "Only a person trained in electrical safety and
-          // shock hazards can perform this work..." false-positived against
-          // the real ELECTRICAL_HAZARD_DIRECTIVE text). Only present when
-          // `safetyFlag` fired this turn; empty string is a no-op exclude.
-          safetyFlag ? flagDirectiveFor(safetyFlag) : "",
-          // Codex #4891 F8 audit: ASSET_SAFETY_STOP_CAUTION (the fixed
-          // Instructions bullet's own lockout/arc-flash/confined-space
-          // safety-stop wording) — unconditional, same restatable class.
-          ASSET_SAFETY_STOP_CAUTION,
-        ]);
+        // Codex #4891 F9 (round 5 — architectural inversion): compare ONLY
+        // against this turn's PROTECTED CORE (ASSET_PROTECTED_CORE when an
+        // asset is bound, NO_ASSET_SYSTEM_PROMPT otherwise) — never the full
+        // turn-assembled `groundedSystemPrompt`. Every per-turn block built
+        // above (`buildAssetContextBlock`, `graphContext`,
+        // `machineMemorySection`, ISOLATION_STEP_RULE via `withStepSafety`,
+        // `flagDirectiveFor`, KB_GAP_SYSTEM_INSTRUCTION) is NEVER part of
+        // either protected-core constant's own text, so it is out of scope
+        // by construction — no exclude entry needed, for these or any
+        // directive added later. ASSET_SAFETY_STOP_CAUTION is likewise out
+        // of scope: it is deliberately omitted from ASSET_PROTECTED_CORE
+        // (see that constant's comment), not merely excluded.
+        const protectedCore = assetRow ? ASSET_PROTECTED_CORE : NO_ASSET_SYSTEM_PROMPT;
+        const leak = detectPromptLeak(protectedCore, modelText);
         if (leak.leaked) {
           leakBlocked = true;
           console.error(

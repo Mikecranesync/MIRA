@@ -278,18 +278,34 @@ function stripMarkdownKeepCase(text: string): string {
 }
 
 /**
- * Does `replyText` reproduce `systemPrompt` — the exact string sent to the
- * provider as the system message for THIS turn — verbatim, near-verbatim, or
- * as a structure-preserving paraphrase? Pure function: no I/O, no randomness,
- * same inputs always give the same answer.
+ * Does `replyText` reproduce `systemPrompt` verbatim, near-verbatim, or as a
+ * structure-preserving paraphrase? Pure function: no I/O, no randomness, same
+ * inputs always give the same answer.
  *
- * `exclude` (optional): exact substrings of `systemPrompt` that are per-turn
- * DATA rather than fixed instructions (MACHINE CONTEXT, visual/nameplate
- * evidence, replayed observations, an unconfirmed-identity directive) — the
- * model is correctly INSTRUCTED to restate these, so they must never
+ * Codex #4891 F9 (round 5 — architectural inversion): `systemPrompt` is the
+ * caller's PROTECTED CORE for this turn's mode — the fixed persona line and
+ * the ALL-CAPS section-header rule bodies describing how the model must
+ * behave (HONESTY/ANSWER SHAPE/SAFETY/etc.), i.e. text a correct technician
+ * answer would never reproduce — NOT the full turn-assembled prompt a route
+ * sends to the provider. Every conditionally-appended directive/note/data
+ * block (machine/asset context, visual evidence, hazard/isolation/restart
+ * directives, label/retail/photo notes, KB-gap instructions — current ones
+ * and any added after this change) is out of scope by construction once the
+ * caller passes only its protected core: this function never reconstructs or
+ * re-assembles the turn's full prompt, so text that was never part of the
+ * argument can never contribute a leak signal. This function's signature and
+ * behavior are UNCHANGED by the inversion — only what callers pass as
+ * `systemPrompt` changed; see each route's call site for its protected-core
+ * definition.
+ *
+ * `exclude` (optional): exact substrings of `systemPrompt` (the protected
+ * core) that are themselves restatable technician guidance MIXED INLINE
+ * within the fixed text (e.g. an NFPA/compatibility/site-records caution
+ * sentence inside a section the model is otherwise instructed to follow) —
+ * the model is correctly INSTRUCTED to restate these, so they must never
  * contribute a leak signal. See `buildPromptGramSets`'s docstring for the
- * measured false positive this closes. Callers pass the exact variables the
- * route already computed for this turn; this module never reconstructs or
+ * measured false positive this closes. Callers pass the exact constants the
+ * route already carved out for this turn; this module never reconstructs or
  * guesses them.
  */
 export function detectPromptLeak(

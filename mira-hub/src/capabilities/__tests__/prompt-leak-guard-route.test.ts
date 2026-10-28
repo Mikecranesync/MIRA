@@ -608,3 +608,50 @@ describe("#4891 F8 — the NFPA 'qualified-person work' caution inline in both b
     expect(streamed).not.toBe(PROMPT_LEAK_REFUSAL);
   });
 });
+
+describe("#4891 F9 — compatibility and site-record explanations are not refused as a prompt leak", () => {
+  it("a compatibility-unverified answer is answered, not refused (general mode)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const answer =
+      "I won't state compatibility or interchangeability as fact without a source that explicitly supports it — it's unverified, so check the exact label text or the manufacturer's documentation.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const res = await POST(
+      req({ message: "Is this replacement drive interchangeable with the original?", mode: "general" }),
+      params,
+    );
+    const fr = await frames(res);
+    const streamed = contentOf(fr);
+    expect(streamed).toContain("compatibility or interchangeability as fact");
+    expect(streamed).not.toBe(PROMPT_LEAK_REFUSAL);
+  });
+
+  it("a plant-specific-value abstention answer is answered, not refused (general mode)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const answer =
+      "That's a plant-specific value — relief valve setpoint, motor baseline current, pump suction lift limit, compressor pressure — so I'll abstain plainly. Your site configuration is not in my training; nameplate data or maintenance records are required.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const res = await POST(
+      req({ message: "What's the relief valve setpoint for System 7?", mode: "general" }),
+      params,
+    );
+    const fr = await frames(res);
+    const streamed = contentOf(fr);
+    expect(streamed).toContain("plant-specific value");
+    expect(streamed).not.toBe(PROMPT_LEAK_REFUSAL);
+  });
+
+  it("a plant-specific-value abstention answer is answered, not refused (grounded mode)", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      { docId: DOC_A, filename: "manual.pdf", page: 4, content: "Section 4 covers cavitation troubleshooting." },
+    ] as never);
+    const answer =
+      "That's one of those values the excerpts don't cover — examples include relief valve setpoints, motor inrush baseline, pump suction lift limits, compressor pressure settings, and it needs your site's own nameplate data or maintenance history [1].";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const res = await POST(req({ message: "What's this pump's suction lift limit?" }), params);
+    const fr = await frames(res);
+    const streamed = contentOf(fr);
+    expect(streamed).toContain("relief valve setpoints");
+    expect(streamed).not.toBe(PROMPT_LEAK_REFUSAL);
+  });
+});

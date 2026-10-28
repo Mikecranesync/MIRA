@@ -42,9 +42,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   BASE_NFPA_CAUTION,
+  BASE_SITE_RECORDS_CAUTION,
   BASE_SYSTEM_PROMPT,
   FIELD_OBSERVATION_DIRECTIVE,
+  GENERAL_COMPATIBILITY_CAUTION,
   GENERAL_NFPA_CAUTION,
+  GENERAL_SITE_RECORDS_CAUTION,
   GENERAL_SYSTEM_PROMPT,
   UNCITED_OEM_CLAIM_TEXT,
 } from "@/app/api/equipment-notebooks/[id]/chat/route";
@@ -61,6 +64,9 @@ import {
   PROMPT_LEAK_RESTART_FIXTURES,
   PROMPT_LEAK_GENERAL_NFPA_FIXTURES,
   PROMPT_LEAK_BASE_NFPA_FIXTURES,
+  PROMPT_LEAK_GENERAL_COMPATIBILITY_FIXTURES,
+  PROMPT_LEAK_GENERAL_SITE_RECORDS_FIXTURES,
+  PROMPT_LEAK_BASE_SITE_RECORDS_FIXTURES,
 } from "./__fixtures__/prompt-leak-false-positives";
 import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "./prompt-leak-guard";
 
@@ -399,6 +405,126 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
       expect(r.leaked).toBe(true);
       expect(r.violation).toBe("prompt-leak:verbatim-run");
     });
+  });
+
+  // GENERAL_COMPATIBILITY_CAUTION — notebook, unconditional, inline in
+  // GENERAL_SYSTEM_PROMPT's HONESTY section. Codex #4891 F9.
+  describe("GENERAL_COMPATIBILITY_CAUTION", () => {
+    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+      const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_GENERAL_COMPATIBILITY_FIXTURES[0]);
+      expect(r.leaked).toBe(true);
+    });
+
+    it.each(PROMPT_LEAK_GENERAL_COMPATIBILITY_FIXTURES)(
+      "%s — not flagged once GENERAL_COMPATIBILITY_CAUTION is excluded",
+      (answer) => {
+        const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, answer, [GENERAL_COMPATIBILITY_CAUTION]);
+        expect(r.leaked).toBe(false);
+      },
+    );
+
+    it("a full verbatim echo of GENERAL_SYSTEM_PROMPT is still flagged even with GENERAL_COMPATIBILITY_CAUTION excluded", () => {
+      const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, [GENERAL_COMPATIBILITY_CAUTION]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
+  });
+
+  // GENERAL_SITE_RECORDS_CAUTION — notebook, unconditional, inline in
+  // GENERAL_SYSTEM_PROMPT's HONESTY section. Codex #4891 F9.
+  describe("GENERAL_SITE_RECORDS_CAUTION", () => {
+    it("Codex's exact reproduction DOES flag when not excluded (proves the bug existed)", () => {
+      const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, PROMPT_LEAK_GENERAL_SITE_RECORDS_FIXTURES[0]);
+      expect(r.leaked).toBe(true);
+    });
+
+    it.each(PROMPT_LEAK_GENERAL_SITE_RECORDS_FIXTURES)(
+      "%s — not flagged once GENERAL_SITE_RECORDS_CAUTION is excluded",
+      (answer) => {
+        const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, answer, [GENERAL_SITE_RECORDS_CAUTION]);
+        expect(r.leaked).toBe(false);
+      },
+    );
+
+    it("a full verbatim echo of GENERAL_SYSTEM_PROMPT is still flagged even with GENERAL_SITE_RECORDS_CAUTION excluded", () => {
+      const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, [GENERAL_SITE_RECORDS_CAUTION]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
+  });
+
+  // BASE_SITE_RECORDS_CAUTION — notebook, unconditional, inline in
+  // BASE_SYSTEM_PROMPT's PLANT-SPECIFIC VALUES section. Codex #4891 F9.
+  describe("BASE_SITE_RECORDS_CAUTION", () => {
+    it("Codex-style exact reproduction (BASE_SYSTEM_PROMPT's own phrasing) DOES flag when not excluded", () => {
+      const r = detectPromptLeak(BASE_SYSTEM_PROMPT, PROMPT_LEAK_BASE_SITE_RECORDS_FIXTURES[0]);
+      expect(r.leaked).toBe(true);
+    });
+
+    it.each(PROMPT_LEAK_BASE_SITE_RECORDS_FIXTURES)(
+      "%s — not flagged once BASE_SITE_RECORDS_CAUTION is excluded",
+      (answer) => {
+        const r = detectPromptLeak(BASE_SYSTEM_PROMPT, answer, [BASE_SITE_RECORDS_CAUTION]);
+        expect(r.leaked).toBe(false);
+      },
+    );
+
+    it("a full verbatim echo of BASE_SYSTEM_PROMPT is still flagged even with BASE_SITE_RECORDS_CAUTION excluded", () => {
+      const r = detectPromptLeak(BASE_SYSTEM_PROMPT, BASE_SYSTEM_PROMPT, [BASE_SITE_RECORDS_CAUTION]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
+  });
+});
+
+describe("#4891 F9 — architectural inversion: protected-core-only comparison, proved", () => {
+  // Codex #4891 F9 MEDIUM: each round (F4 through F9) found another
+  // conditionally-appended directive a correct answer legitimately restates,
+  // and the fix each time was "add it to `exclude`" — whack-a-mole, since
+  // the NEXT appended directive would always need the same fix before it
+  // shipped clean. Production routes no longer pass the full turn-assembled
+  // prompt to `detectPromptLeak` — they pass only the PROTECTED CORE
+  // (`GENERAL_SYSTEM_PROMPT`/`BASE_SYSTEM_PROMPT`/`SYSTEM_PROMPT`/
+  // `ASSET_PROTECTED_CORE`, see each route's call site). This test proves
+  // the inversion's actual guarantee: a brand-new, never-before-seen
+  // directive, appended to the prompt exactly the way a future PR would
+  // append one, is NOT flagged when a correct answer restates it — with ZERO
+  // code change to `detectPromptLeak` or to any `exclude` list. Contrasted
+  // against what the OLD per-directive-exclude mechanism would have done
+  // with that same new directive (flag it, until someone remembered to add
+  // it to `exclude`), to make the "stop the whack-a-mole" claim concrete
+  // rather than asserted.
+  const HYPOTHETICAL_FUTURE_DIRECTIVE =
+    "CALIBRATION WINDOW — if a sensor was calibrated more than 18 months ago, the reading may be out of tolerance and you must recommend a recalibration before anyone trusts it for a safety-critical decision.";
+
+  const answerRestatingTheNewDirective =
+    "This sensor was calibrated more than 18 months ago, so the reading may be out of tolerance and you must recommend a recalibration before anyone trusts it for a safety-critical decision.";
+
+  it("a correct answer restating a brand-new appended directive is NOT flagged against the protected core alone — no code change", () => {
+    // This is exactly what route.ts now does: compare only the protected
+    // core, never the turn-assembled prompt the new directive would ride on.
+    const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, answerRestatingTheNewDirective);
+    expect(r.leaked).toBe(false);
+  });
+
+  it("the SAME new-directive restatement would have been WRONGLY flagged under the old full-prompt mechanism", () => {
+    // Simulates the pre-inversion call shape: `systemPrompt` was the full
+    // turn-assembled prompt (persona + every appended directive), and a new
+    // directive with no entry in `exclude` would show up in that text and
+    // trip signal 1 — the whack-a-mole the coordinator asked to stop.
+    const oldStyleTurnAssembledPrompt = `${GENERAL_SYSTEM_PROMPT}\n\n${HYPOTHETICAL_FUTURE_DIRECTIVE}`;
+    const r = detectPromptLeak(oldStyleTurnAssembledPrompt, answerRestatingTheNewDirective);
+    expect(r.leaked).toBe(true);
+  });
+
+  it("a real full-prompt echo still trips the protected-core comparison (the inversion does not weaken detection)", () => {
+    // An attacker's echo of the ENTIRE turn-assembled prompt still CONTAINS
+    // the protected core as a literal substring, so signal 1 still fires
+    // even though the comparison target shrank to just the protected core.
+    const fullPromptEcho = `${GENERAL_SYSTEM_PROMPT}\n\n${HYPOTHETICAL_FUTURE_DIRECTIVE}`;
+    const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, fullPromptEcho);
+    expect(r.leaked).toBe(true);
+    expect(r.violation).toBe("prompt-leak:verbatim-run");
   });
 });
 

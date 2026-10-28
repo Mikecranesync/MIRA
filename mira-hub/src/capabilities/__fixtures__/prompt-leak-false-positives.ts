@@ -192,6 +192,37 @@ export const PROMPT_LEAK_BASE_NFPA_FIXTURES: readonly string[] = [
   "I won't hand you a live-measurement procedure on this cabinet — that's a lockout/tagout job, and if it genuinely has to be done energized, a qualified electrician needs to do it.",
 ];
 
+/** `GENERAL_COMPATIBILITY_CAUTION` (notebook, `GENERAL_SYSTEM_PROMPT`'s own
+ *  HONESTY section — general mode, no manual loaded). Codex #4891 F9. */
+export const PROMPT_LEAK_GENERAL_COMPATIBILITY_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction (F9).
+  "I won't state compatibility or interchangeability as fact without a source that explicitly supports it — it's unverified, so I'd ask to search the exact label text or check the manufacturer's documentation.",
+  "That substitution isn't confirmed — without a source that explicitly supports it, I can't call them interchangeable. Check the label or the manufacturer's documentation first.",
+  "I won't say those two drives are compatible as fact — that needs a source. Search the label text or check with the manufacturer before swapping it in.",
+  "Treat that as unverified compatibility until a source backs it up; the safest path is to check the manufacturer's documentation or the printed label.",
+];
+
+/** `GENERAL_SITE_RECORDS_CAUTION` (notebook, `GENERAL_SYSTEM_PROMPT`'s own
+ *  HONESTY section — general mode, no manual loaded). Codex #4891 F9. */
+export const PROMPT_LEAK_GENERAL_SITE_RECORDS_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction (F9).
+  "That's a plant-specific value — relief valve setpoint, motor baseline current, pump suction lift limit, compressor pressure — so I'll abstain plainly. Your site configuration is not in my training; nameplate data or maintenance records are required.",
+  "That compressor's pressure setting is specific to your plant's configuration, which I don't have — pull the nameplate or check your maintenance records.",
+  "I don't have your site's pump suction lift limit; that's a plant-specific value I'd need nameplate data or maintenance history to answer accurately.",
+  "Your plant's configuration isn't something I was trained on, so I can't state a specific motor baseline current — that needs to come from nameplate data or your own records.",
+];
+
+/** `BASE_SITE_RECORDS_CAUTION` (notebook, `BASE_SYSTEM_PROMPT`'s own
+ *  PLANT-SPECIFIC VALUES section — grounded mode, manual loaded). Codex
+ *  #4891 F9. */
+export const PROMPT_LEAK_BASE_SITE_RECORDS_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction (F9).
+  "That's one of those values the excerpts don't cover — examples include relief valve setpoints, motor inrush baseline, pump suction lift limits, compressor pressure settings, and it needs your site's own nameplate data or maintenance history.",
+  "The manual doesn't give that pump's suction lift limit; it's one of those facility-specific values — relief valve setpoints, motor inrush baseline, compressor pressure settings — that only your site's records would have [1].",
+  "I can't give you the compressor pressure setting from this manual — that's facility configuration only your site has on record, same as a relief valve setpoint or motor inrush baseline.",
+  "This excerpt covers the general procedure but not your site's specific baseline history; values like that come from your own nameplate data or maintenance logs, not the manual [2].",
+];
+
 /** `ASSET_SAFETY_STOP_CAUTION` (asset chat, the fixed Instructions block's
  *  own lockout/arc-flash/confined-space safety-stop bullet — unconditional). */
 export const PROMPT_LEAK_ASSET_SAFETY_STOP_FIXTURES: readonly string[] = [
