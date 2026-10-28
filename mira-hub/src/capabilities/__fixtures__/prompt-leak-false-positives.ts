@@ -253,6 +253,17 @@ export const PROMPT_LEAK_BASE_ENERGY_ISOLATION_FIXTURES: readonly string[] = [
   "That check means hands near wiring, terminals, bus capacitors, guards, belts, chains, couplings, or any rotating or moving part — lock it out before you start [2].",
 ];
 
+/** `QUICKSTART_UNCITED_VALUE_CAUTION` (quickstart, `SYSTEM_PROMPT`'s own
+ *  Rules bullet — the uncited-parameter/register/value/fault-code
+ *  abstention). Codex #4891 F13. */
+export const PROMPT_LEAK_QUICKSTART_UNCITED_VALUE_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction (F13).
+  "I cannot state a specific parameter number, register address, terminal number, torque/voltage/current value, part number or fault-code meaning without a supporting manual. Check the drive manual's parameter list.",
+  "Without a cited manual, I can't give you the exact register address or fault-code meaning — that's in the drive manual's parameter list.",
+  "I don't have a source for that specific terminal number or torque value, so I won't state one; check the manual's parameter list for the confirmed figure.",
+  "That part number isn't something I can confirm without a manual chunk backing it up — look it up in the drive's parameter list section.",
+];
+
 /** `ASSET_SAFETY_STOP_CAUTION` (asset chat, the fixed Instructions block's
  *  own lockout/arc-flash/confined-space safety-stop bullet — unconditional). */
 export const PROMPT_LEAK_ASSET_SAFETY_STOP_FIXTURES: readonly string[] = [

@@ -64,7 +64,21 @@ interface AskResponse {
   provider: string | null;
 }
 
-const SYSTEM_PROMPT = [
+// Codex #4891 F13: restatable grounding/abstention guidance — a correct
+// answer declining to state an uncited parameter number, register address,
+// terminal number, torque/voltage/current value, part number, or fault-code
+// meaning (and redirecting to the manual section instead) legitimately
+// echoes this exact list and instruction. Carved into its own constant so
+// it can be named in `detectPromptLeak`'s `exclude`. Kept as the exact
+// original wrapped text (same embedded newlines + 2-space continuation
+// indent as the four array entries it replaces below) so splicing it back
+// into `SYSTEM_PROMPT`'s array+join construction renders byte-identically —
+// proved by an exact-equality test in quickstart-ask-prompt-leak-guard.test.ts
+// against the pre-carve-out literal value.
+export const QUICKSTART_UNCITED_VALUE_CAUTION =
+  "Never state a specific parameter number, register address, terminal\n  number, torque/voltage/current value, part number or fault-code meaning\n  unless a CONTEXT chunk you cite says it. For those, say which manual\n  section to check instead (e.g. 'the drive manual's parameter list').";
+
+export const SYSTEM_PROMPT = [
   "You are MIRA, a maintenance intelligence assistant for industrial",
   "equipment. You are answering an anonymous user on a public quickstart",
   "page — they have no namespace yet, and you must NEVER pretend to know",
@@ -79,10 +93,7 @@ const SYSTEM_PROMPT = [
   "  2. General guidance: anything the CONTEXT does not cover. Put it",
   "     under the heading 'General guidance (not from a manual):' and give",
   "     practical, standard industrial-maintenance advice.",
-  "- Never state a specific parameter number, register address, terminal",
-  "  number, torque/voltage/current value, part number or fault-code meaning",
-  "  unless a CONTEXT chunk you cite says it. For those, say which manual",
-  "  section to check instead (e.g. 'the drive manual's parameter list').",
+  `- ${QUICKSTART_UNCITED_VALUE_CAUTION}`,
   "- Answer in the language the technician wrote in. Keep manual titles,",
   "  parameter names and citations as they are.",
   "- Keep answers tight — 4-8 short bullets max. A maintenance tech is",
@@ -229,8 +240,8 @@ export async function POST(req: Request) {
   // data concatenated into its own text (the retrieved manual CONTEXT rides
   // in the USER message, which this check never touches; the safety-flag
   // directive and ISOLATION_STEP_RULE are concatenated SEPARATELY, never
-  // inside `SYSTEM_PROMPT` itself) — so it needs no carve-out constant and no
-  // `exclude` entry: both of those conditionally-appended directives are out
+  // inside `SYSTEM_PROMPT` itself) — so neither of those conditionally-
+  // appended directives needs a carve-out or an `exclude` entry: they're out
   // of scope by construction, for these and any directive added later. A
   // full-prompt echo still contains `SYSTEM_PROMPT` as a literal substring,
   // so signal 1 still fires. Same reused refusal/response shape this route
@@ -238,7 +249,15 @@ export async function POST(req: Request) {
   // the `!result` branch above for provider exhaustion): never a new
   // response shape, and this route makes NO DB write to guard against
   // persisting the leak.
-  const leak = detectPromptLeak(SYSTEM_PROMPT, answerText);
+  //
+  // Codex #4891 F13 (round 7): `SYSTEM_PROMPT` itself still contained one
+  // restatable grounding/abstention span — the uncited-value caution — mixed
+  // inline (not conditionally appended), so it needed the SAME carve-and-
+  // splice treatment F9/F10 gave the notebook route's base prompts. See
+  // `QUICKSTART_UNCITED_VALUE_CAUTION`'s definition above for the carve-out
+  // and the byte-identical-rendering proof; excluded here so a correct
+  // abstention echoing it is never mistaken for a leak.
+  const leak = detectPromptLeak(SYSTEM_PROMPT, answerText, [QUICKSTART_UNCITED_VALUE_CAUTION]);
   if (leak.leaked) {
     console.error(`[quickstart/ask] pre-display REJECTED ${leak.violation}: ${leak.detail}`);
     return NextResponse.json(
