@@ -597,4 +597,96 @@ describe.skipIf(!READY)("pilot access against real Postgres (#4878, Codex #4664 
       runAdmit(tenantId, `f9-admit-fifth-${MARK}@example.com`),
     ).resolves.toEqual({ isPilotTenant: true, pilotExpiresAt: expect.any(Date) });
   });
+
+  it("F9 round 2 (Codex #4882 review) — a retained reservation for a since-promoted admin never consumes a seat: reservation AND direct redemption of a 5th customer succeed, a 6th is rejected", async () => {
+    const { tenantId, ownerId } = await makeTenant(`f9r2-${MARK}`);
+    testTenantIds.push(tenantId);
+    // owner + 3 crew = 4 non-admin members.
+    for (let i = 0; i < 3; i++) {
+      await testPool.query(
+        `INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'approved')`,
+        [`f9r2-crew-${MARK}-${i}@example.com`, tenantId],
+      );
+    }
+    // Defensive: this test activates TWO tenants (see below), so clear any
+    // other test's still-active tenant first — same pattern used elsewhere
+    // in this file (the 5-org COHORT cap, not the seat cap, is what this
+    // guards; unrelated to the bug this test proves).
+    await testPool.query(
+      `UPDATE hub_tenants SET pilot_status = 'ended' WHERE pilot_status = 'active' AND id <> $1`,
+      [tenantId],
+    );
+    await approvePilotTenant(tenantId, "admin-f9r2");
+
+    // Reserve and redeem an invite for a user who will later become an
+    // admin. Redemption deliberately RETAINS the reservation row
+    // (pending -> redeemed in place, by design — see redeemPilotSeat).
+    const promotedEmail = `f9r2-promoted-${MARK}@example.com`;
+    await expect(reservePilotSeat(tenantId, promotedEmail)).resolves.toEqual({ reserved: true });
+    await redeemPilotSeat(tenantId, promotedEmail);
+    const { rows: retainedRows } = await testPool.query(
+      `SELECT status FROM pilot_seat_reservations WHERE tenant_id = $1 AND email_lower = $2`,
+      [tenantId, promotedEmail],
+    );
+    expect(retainedRows).toHaveLength(1);
+    expect(retainedRows[0].status).toBe("redeemed");
+
+    // Promote that user to platform admin. The membership row no longer
+    // counts (status <> 'admin' already excludes it); the retained
+    // reservation row is the bug this test proves is fixed.
+    await testPool.query(`INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'admin')`, [
+      promotedEmail,
+      tenantId,
+    ]);
+
+    // 4 non-admin members are present. Without the fix, the retained
+    // reservation for the now-admin email still occupies a seat in the
+    // UNION, so this would incorrectly reject at "5 occupied, cap 5".
+    await expect(
+      reservePilotSeat(tenantId, `f9r2-fifth-customer-${MARK}@example.com`),
+    ).resolves.toEqual({ reserved: true });
+
+    // Direct redemption (no prior reservation — the F2 path) of a
+    // DIFFERENT 5th-customer email behaves the same way. Use a fresh
+    // tenant for this half so the two "5th customer" checks don't share
+    // seat state.
+    const { tenantId: tenantId2 } = await makeTenant(`f9r2-admit-${MARK}`);
+    testTenantIds.push(tenantId2);
+    for (let i = 0; i < 3; i++) {
+      await testPool.query(
+        `INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'approved')`,
+        [`f9r2-admit-crew-${MARK}-${i}@example.com`, tenantId2],
+      );
+    }
+    // Clear any OTHER test's leftover active tenant, but never this test's
+    // own first tenant — it must stay active for the final control below.
+    await testPool.query(
+      `UPDATE hub_tenants SET pilot_status = 'ended' WHERE pilot_status = 'active' AND id NOT IN ($1, $2)`,
+      [tenantId, tenantId2],
+    );
+    await approvePilotTenant(tenantId2, "admin-f9r2-admit");
+    const promotedEmail2 = `f9r2-admit-promoted-${MARK}@example.com`;
+    await expect(reservePilotSeat(tenantId2, promotedEmail2)).resolves.toEqual({ reserved: true });
+    await redeemPilotSeat(tenantId2, promotedEmail2);
+    await testPool.query(`INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'admin')`, [
+      promotedEmail2,
+      tenantId2,
+    ]);
+    await expect(
+      runAdmit(tenantId2, `f9r2-admit-fifth-customer-${MARK}@example.com`),
+    ).resolves.toEqual({ isPilotTenant: true, pilotExpiresAt: expect.any(Date) });
+
+    // CONTROL: the cap still correctly rejects a 6th real customer on the
+    // first tenant — 4 non-admin + the 5th customer's reservation = 5,
+    // at the cap (the promoted admin's retained reservation still does
+    // NOT count).
+    await expect(
+      reservePilotSeat(tenantId, `f9r2-sixth-customer-${MARK}@example.com`),
+    ).rejects.toBeInstanceOf(PilotSeatCapError);
+
+    const { rows: ownerRows } = await testPool.query(`SELECT status FROM hub_users WHERE id = $1`, [
+      ownerId,
+    ]);
+    expect(ownerRows[0].status).toBe("trial");
+  });
 });

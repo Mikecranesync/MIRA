@@ -328,6 +328,32 @@ describe("approvePilotTenant", () => {
     const result = await approvePilotTenant("tenant-at-cap", "admin-1");
     expect(result.status).toBe("activated");
   });
+
+  it("F9 round 2 (Codex #4882 review) — approval's own occupancy count also excludes a reservation row retained by a since-promoted admin", async () => {
+    const client = makeClient([
+      [
+        /FROM hub_tenants WHERE id = \$1 FOR UPDATE/,
+        () => ({
+          rows: [{ id: "tenant-1", owner_user_id: "owner-1", pilot_status: "pending" }],
+        }),
+      ],
+      [/SELECT COUNT\(\*\)::int AS n FROM hub_tenants WHERE pilot_status = 'active'/, () => ({ rows: [{ n: 0 }] })],
+      [/FROM hub_users WHERE tenant_id = \$1 AND status <> 'admin'/, () => ({ rows: [{ n: 4 }] })],
+      [
+        /UPDATE hub_tenants[\s\S]*SET pilot_status = 'active'/,
+        () => ({
+          rows: [{ id: "tenant-1", pilot_status: "active", pilot_approved_at: "2026-10-28T00:00:00.000Z", pilot_expires_at: "2026-11-27T00:00:00.000Z", pilot_approved_by: "admin-1" }],
+        }),
+      ],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    await approvePilotTenant("tenant-1", "admin-1");
+    const occupancyQuery = client.calls.find((c) => /COUNT\(DISTINCT email_lower\)/.test(c.sql));
+    expect(occupancyQuery?.sql).toMatch(
+      /FROM pilot_seat_reservations\s+WHERE tenant_id = \$1\s+AND email_lower NOT IN \(\s*SELECT email_lower FROM hub_users WHERE tenant_id = \$1 AND status = 'admin'\s*\)/,
+    );
+  });
 });
 
 describe("endPilotTenant", () => {
@@ -502,6 +528,28 @@ describe("reservePilotSeat", () => {
       reserved: true,
     });
   });
+
+  it("F9 round 2 (Codex #4882 review) — the occupancy count excludes a reservation row retained by a user later promoted to admin", async () => {
+    process.env.MIRA_PILOT_APPROVAL_REQUIRED = "1";
+    const client = makeClient([
+      [/SELECT pilot_status FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: "active" }] })],
+      [/FROM hub_users WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/FROM pilot_seat_reservations WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/COUNT\(DISTINCT email_lower\)/, () => ({ rows: [{ n: 4 }] })],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    await reservePilotSeat("tenant-1", "fifth@example.com");
+    const occupancyQuery = client.calls.find((c) => /COUNT\(DISTINCT email_lower\)/.test(c.sql));
+    // The pilot_seat_reservations branch of the UNION must exclude any
+    // reservation whose email belongs to a current admin in this tenant —
+    // redemption retains the reservation row even after the user is
+    // promoted, and an admin never occupies a seat (same exemption as the
+    // hub_users branch, applied consistently to BOTH branches of the union).
+    expect(occupancyQuery?.sql).toMatch(
+      /FROM pilot_seat_reservations\s+WHERE tenant_id = \$1\s+AND email_lower NOT IN \(\s*SELECT email_lower FROM hub_users WHERE tenant_id = \$1 AND status = 'admin'\s*\)/,
+    );
+  });
 });
 
 describe("admitPilotInvite (F1/F2 — the authoritative redemption-time check)", () => {
@@ -634,6 +682,27 @@ describe("admitPilotInvite (F1/F2 — the authoritative redemption-time check)",
         "fifth@example.com",
       ),
     ).resolves.toEqual({ isPilotTenant: true, pilotExpiresAt: new Date("2026-11-27T00:00:00.000Z") });
+  });
+
+  it("F9 round 2 (Codex #4882 review) — the redemption-time occupancy count excludes a reservation row retained by a user later promoted to admin", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/, () => ({
+        rows: [{ pilot_status: "active", pilot_expires_at: "2026-11-27T00:00:00.000Z" }],
+      })],
+      [/FROM hub_users WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/FROM pilot_seat_reservations WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/COUNT\(DISTINCT email_lower\)/, () => ({ rows: [{ n: 4 }] })],
+    ]);
+    await admitPilotInvite(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      client as any,
+      "tenant-1",
+      "fifth@example.com",
+    );
+    const occupancyQuery = client.calls.find((c) => /COUNT\(DISTINCT email_lower\)/.test(c.sql));
+    expect(occupancyQuery?.sql).toMatch(
+      /FROM pilot_seat_reservations\s+WHERE tenant_id = \$1\s+AND email_lower NOT IN \(\s*SELECT email_lower FROM hub_users WHERE tenant_id = \$1 AND status = 'admin'\s*\)/,
+    );
   });
 });
 

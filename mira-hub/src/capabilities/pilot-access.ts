@@ -214,11 +214,21 @@ export async function approvePilotTenant(
     // admins are exempt (never converted by any pilot transition, so they
     // never occupy a pilot seat; matches the admin carve-out on the
     // tenant-wide UPDATE below).
+    // F9 round 2 (Codex #4882 review): a reservation row is never deleted on
+    // redemption (by design — see redeemPilotSeat), so a user who redeemed a
+    // seat and was LATER promoted to admin still has a retained reservation
+    // row. That row must be excluded too, the same way the admin's own
+    // hub_users row is excluded above — otherwise the UNION still counts
+    // that one admin via their reservation, undoing the exemption.
     const { rows: seatRows } = await client.query(
       `SELECT COUNT(DISTINCT email_lower)::int AS n FROM (
          SELECT email_lower FROM hub_users WHERE tenant_id = $1 AND status <> 'admin'
          UNION
-         SELECT email_lower FROM pilot_seat_reservations WHERE tenant_id = $1
+         SELECT email_lower FROM pilot_seat_reservations
+         WHERE tenant_id = $1
+           AND email_lower NOT IN (
+             SELECT email_lower FROM hub_users WHERE tenant_id = $1 AND status = 'admin'
+           )
        ) seats`,
       [tenantId],
     );
@@ -378,11 +388,18 @@ export async function reservePilotSeat(
     // occupies a pilot seat, so they must never be counted against the cap
     // here either (this COUNT was the only one of the three that still
     // counted every hub_users row).
+    // F9 round 2 (Codex #4882 review): exclude a reservation retained by a
+    // user who was later promoted to admin — see approvePilotTenant's
+    // identical comment.
     const { rows: occupiedRows } = await client.query(
       `SELECT COUNT(DISTINCT email_lower)::int AS n FROM (
          SELECT email_lower FROM hub_users WHERE tenant_id = $1 AND status <> 'admin'
          UNION
-         SELECT email_lower FROM pilot_seat_reservations WHERE tenant_id = $1
+         SELECT email_lower FROM pilot_seat_reservations
+         WHERE tenant_id = $1
+           AND email_lower NOT IN (
+             SELECT email_lower FROM hub_users WHERE tenant_id = $1 AND status = 'admin'
+           )
        ) seats`,
       [tenantId],
     );
@@ -530,11 +547,17 @@ export async function admitPilotInvite(
   // activation.
   // F9 (Codex #4882 review): same admin exemption as reservePilotSeat /
   // approvePilotTenant — a platform admin never occupies a pilot seat.
+  // F9 round 2: exclude a reservation retained by a user later promoted to
+  // admin — see approvePilotTenant's identical comment for the full reason.
   const { rows: occupiedRows } = await client.query(
     `SELECT COUNT(DISTINCT email_lower)::int AS n FROM (
        SELECT email_lower FROM hub_users WHERE tenant_id = $1 AND status <> 'admin'
        UNION
-       SELECT email_lower FROM pilot_seat_reservations WHERE tenant_id = $1
+       SELECT email_lower FROM pilot_seat_reservations
+       WHERE tenant_id = $1
+         AND email_lower NOT IN (
+           SELECT email_lower FROM hub_users WHERE tenant_id = $1 AND status = 'admin'
+         )
      ) seats`,
     [tenantId],
   );
