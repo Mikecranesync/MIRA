@@ -105,7 +105,7 @@ describe("#3785 — the three reproduced probe shapes, against both prompts", ()
     it(`verbatim echo of ${name} is flagged`, () => {
       const r = detectPromptLeak(prompt, prompt);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
 
     it(`a verbatim echo prefixed with chatty filler ("Sure, here it is:\\n\\n") is still flagged (${name})`, () => {
@@ -251,7 +251,7 @@ describe("#3785 — Codex F2: FIELD_OBSERVATION_DIRECTIVE is domain guidance, no
     it(`a full verbatim echo of ${name} is still flagged even with FIELD_OBSERVATION_DIRECTIVE excluded`, () => {
       const r = detectPromptLeak(prompt, prompt, [FIELD_OBSERVATION_DIRECTIVE]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   }
 });
@@ -290,7 +290,7 @@ describe("#4891 F5 — ISOLATION_STEP_RULE is shared safety guidance, not a secr
       const prompt = PROMPTS[name];
       const r = detectPromptLeak(prompt, prompt, [ISOLATION_STEP_RULE]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   }
 });
@@ -365,7 +365,7 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
     it("a full verbatim echo is still flagged even with PHOTO_PROVENANCE_NOTE excluded", () => {
       const r = detectPromptLeak(prompt, prompt, [PHOTO_PROVENANCE_NOTE]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   });
 
@@ -386,7 +386,7 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
     it("a full verbatim echo is still flagged even with RESTART_DIRECTIVE excluded", () => {
       const r = detectPromptLeak(prompt, prompt, [RESTART_DIRECTIVE]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   });
 
@@ -405,7 +405,7 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
     it("a full verbatim echo of GENERAL_SYSTEM_PROMPT is still flagged even with GENERAL_NFPA_CAUTION excluded", () => {
       const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, [GENERAL_NFPA_CAUTION]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   });
 
@@ -424,7 +424,7 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
     it("a full verbatim echo of BASE_SYSTEM_PROMPT is still flagged even with BASE_NFPA_CAUTION excluded", () => {
       const r = detectPromptLeak(BASE_SYSTEM_PROMPT, BASE_SYSTEM_PROMPT, [BASE_NFPA_CAUTION]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   });
 
@@ -447,7 +447,7 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
     it("a full verbatim echo of GENERAL_SYSTEM_PROMPT is still flagged even with GENERAL_COMPATIBILITY_CAUTION excluded", () => {
       const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, [GENERAL_COMPATIBILITY_CAUTION]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   });
 
@@ -470,7 +470,7 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
     it("a full verbatim echo of GENERAL_SYSTEM_PROMPT is still flagged even with GENERAL_SITE_RECORDS_CAUTION excluded", () => {
       const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, [GENERAL_SITE_RECORDS_CAUTION]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   });
 
@@ -493,7 +493,7 @@ describe("#4891 F8 — systematic audit: every newly-excluded restatable span, p
     it("a full verbatim echo of BASE_SYSTEM_PROMPT is still flagged even with BASE_SITE_RECORDS_CAUTION excluded", () => {
       const r = detectPromptLeak(BASE_SYSTEM_PROMPT, BASE_SYSTEM_PROMPT, [BASE_SITE_RECORDS_CAUTION]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   });
 });
@@ -518,7 +518,7 @@ describe("#4891 F10 — round 6: protected cores still matched correct abstentio
     it("a full verbatim echo of GENERAL_SYSTEM_PROMPT is still flagged even with GENERAL_NO_DECODE_CAUTION excluded", () => {
       const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, [GENERAL_NO_DECODE_CAUTION]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   });
 
@@ -541,7 +541,7 @@ describe("#4891 F10 — round 6: protected cores still matched correct abstentio
     it("a full verbatim echo of GENERAL_SYSTEM_PROMPT is still flagged even with GENERAL_NO_MANUAL_DISCLOSURE excluded", () => {
       const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, [GENERAL_NO_MANUAL_DISCLOSURE]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   });
 
@@ -564,7 +564,7 @@ describe("#4891 F10 — round 6: protected cores still matched correct abstentio
     it("a full verbatim echo of BASE_SYSTEM_PROMPT is still flagged even with BASE_ENERGY_ISOLATION_HAZARD_POINTS excluded", () => {
       const r = detectPromptLeak(BASE_SYSTEM_PROMPT, BASE_SYSTEM_PROMPT, [BASE_ENERGY_ISOLATION_HAZARD_POINTS]);
       expect(r.leaked).toBe(true);
-      expect(r.violation).toBe("prompt-leak:verbatim-run");
+      expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
     });
   });
 });
@@ -627,7 +627,7 @@ describe("#4891 F9 — architectural inversion: protected-core-only comparison, 
     const fullPromptEcho = `${GENERAL_SYSTEM_PROMPT}\n\n${HYPOTHETICAL_FUTURE_DIRECTIVE}`;
     const r = detectPromptLeak(GENERAL_SYSTEM_PROMPT, fullPromptEcho);
     expect(r.leaked).toBe(true);
-    expect(r.violation).toBe("prompt-leak:verbatim-run");
+    expect(r.violation).toMatch(/^prompt-leak:(verbatim-run|large-verbatim-run)$/);
   });
 });
 
@@ -785,6 +785,110 @@ describe("#4891 F14 — round 8: scaffolding gate — signals 1/2 require the pe
       const r = detectPromptLeak(BASE_SYSTEM_PROMPT, `${personaLine} ${thirtyWordRun}`);
       expect(r.leaked).toBe(true);
       expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
+  });
+});
+
+describe("#4891 F15 — round 9: scaffolding-independent large-scale signals close the near-complete-echo bypass", () => {
+  // Codex's exact F15 reproductions: deleting ONLY the opening word kills
+  // the persona-prefix match (signals 1/2's gate), and ASSET_PROTECTED_CORE/
+  // SYSTEM_PROMPT have no qualifying ALL-CAPS headers either — so under F14
+  // alone these were `leaked: false` despite reproducing virtually the
+  // entire protected core.
+  it("Codex's exact repro — ASSET_PROTECTED_CORE with its first word deleted IS flagged", () => {
+    expect(ASSET_PROTECTED_CORE.startsWith("You ")).toBe(true);
+    const altered = ASSET_PROTECTED_CORE.replace(/^You /, "");
+    const r = detectPromptLeak(ASSET_PROTECTED_CORE, altered);
+    expect(r.leaked).toBe(true);
+    expect(["prompt-leak:large-verbatim-run", "prompt-leak:core-coverage"]).toContain(r.violation);
+  });
+
+  it("Codex's exact repro — quickstart SYSTEM_PROMPT with its first word deleted IS flagged", () => {
+    expect(QUICKSTART_SYSTEM_PROMPT.startsWith("You ")).toBe(true);
+    const altered = QUICKSTART_SYSTEM_PROMPT.replace(/^You /, "");
+    const r = detectPromptLeak(QUICKSTART_SYSTEM_PROMPT, altered);
+    expect(r.leaked).toBe(true);
+    expect(["prompt-leak:large-verbatim-run", "prompt-leak:core-coverage"]).toContain(r.violation);
+  });
+
+  // Codex's exact notebook repro: "You are MIRA," -> "MIRA is", every
+  // ALL-CAPS header lowercased — against BOTH modes' protected core.
+  function alteredNotebookEcho(core: string): string {
+    return core
+      .replace(/You are MIRA,/, "MIRA is")
+      .replace(/^([A-Z][A-Z0-9&/ -]{3,60}?)(?=:|\s—|\s\()/gm, (m) => m.toLowerCase());
+  }
+  for (const [name, prompt] of Object.entries(PROMPTS)) {
+    it(`Codex's exact repro — ${name}'s persona swapped + headers lowercased IS flagged`, () => {
+      const altered = alteredNotebookEcho(prompt);
+      expect(altered).not.toContain("You are MIRA,");
+      const r = detectPromptLeak(prompt, altered);
+      expect(r.leaked).toBe(true);
+      expect(["prompt-leak:large-verbatim-run", "prompt-leak:core-coverage"]).toContain(r.violation);
+    });
+  }
+
+  // The coordinator's required proof for the large-scale signals: a
+  // 45-word verbatim run of pure RULE text (no persona, no headers — same
+  // GROUNDING & CITATIONS window as the F14 test above, extended) IS
+  // flagged once it clears LARGE_RUN_LENGTH (40); the SAME text truncated
+  // to 25 words (still no scaffolding, still under 40) is NOT.
+  describe("the core claim: LARGE_RUN_LENGTH (40), not scaffolding, decides the verdict on a long rule-text run", () => {
+    const groundingBody = BASE_SYSTEM_PROMPT.split("GROUNDING & CITATIONS:")[1].split("PREMISE CHECK")[0];
+    const words = groundingBody.split(/\s+/).filter(Boolean);
+    expect(words.length).toBeGreaterThanOrEqual(45);
+    const run45 = words.slice(0, 45).join(" ");
+    const run25 = words.slice(0, 25).join(" ");
+
+    it("the 45-word run (no persona, no headers) IS flagged", () => {
+      const r = detectPromptLeak(BASE_SYSTEM_PROMPT, run45);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:large-verbatim-run");
+    });
+
+    it("the SAME text truncated to 25 words (no persona, no headers) is NOT flagged", () => {
+      const r = detectPromptLeak(BASE_SYSTEM_PROMPT, run25);
+      expect(r.leaked).toBe(false);
+    });
+  });
+
+  // All prior-round fixtures still pass under the new signals (regression
+  // control — the large-scale signals must not reopen any F2/F5/F8-F14
+  // false positive). Re-sweeps the exact same fixture arrays the earlier
+  // describe blocks already proved clean, now with the F15 signals live.
+  describe("regression: every prior-round false-positive fixture still clears both new large-scale signals", () => {
+    const allLegitFixtures = [
+      ...PROMPT_LEAK_FALSE_POSITIVE_FIXTURES,
+      ...PROMPT_LEAK_FIELD_OBSERVATION_FIXTURES,
+      ...PROMPT_LEAK_ISOLATION_FIXTURES,
+      ...PROMPT_LEAK_PHOTO_PROVENANCE_FIXTURES,
+      ...PROMPT_LEAK_RESTART_FIXTURES,
+      ...PROMPT_LEAK_GENERAL_NFPA_FIXTURES,
+      ...PROMPT_LEAK_BASE_NFPA_FIXTURES,
+      ...PROMPT_LEAK_GENERAL_COMPATIBILITY_FIXTURES,
+      ...PROMPT_LEAK_GENERAL_SITE_RECORDS_FIXTURES,
+      ...PROMPT_LEAK_BASE_SITE_RECORDS_FIXTURES,
+      ...PROMPT_LEAK_GENERAL_NO_DECODE_FIXTURES,
+      ...PROMPT_LEAK_GENERAL_NO_MANUAL_FIXTURES,
+      ...PROMPT_LEAK_BASE_ENERGY_ISOLATION_FIXTURES,
+      ...PROMPT_LEAK_F14_CODEX_EXAMPLES,
+      ...PROMPT_LEAK_F14_NOTEBOOK_FIXTURES,
+      ...PROMPT_LEAK_F14_ASSET_FIXTURES,
+      ...PROMPT_LEAK_F14_QUICKSTART_FIXTURES,
+    ];
+    for (const [name, prompt] of Object.entries(PROMPTS)) {
+      it.each(allLegitFixtures)(`%s — not flagged against ${name}`, (answerText) => {
+        const r = detectPromptLeak(prompt, answerText);
+        expect(r.leaked).toBe(false);
+      });
+    }
+    it.each(PROMPT_LEAK_F14_ASSET_FIXTURES)("%s — not flagged against ASSET_PROTECTED_CORE", (answerText) => {
+      const r = detectPromptLeak(ASSET_PROTECTED_CORE, answerText);
+      expect(r.leaked).toBe(false);
+    });
+    it.each(PROMPT_LEAK_F14_QUICKSTART_FIXTURES)("%s — not flagged against quickstart SYSTEM_PROMPT", (answerText) => {
+      const r = detectPromptLeak(QUICKSTART_SYSTEM_PROMPT, answerText);
+      expect(r.leaked).toBe(false);
     });
   });
 });

@@ -14,9 +14,11 @@
  * the ANSWER against the one fixed, known string that must never appear in
  * it is a closed, deterministic problem.
  *
- * Three independent, PROMPT-DERIVED signals, each computed fresh from the
+ * Five independent, PROMPT-DERIVED signals, each computed fresh from the
  * system prompt that was actually built for this turn (never hand-copied,
- * never hardcoded elsewhere):
+ * never hardcoded elsewhere). Signals 1b and 2b (Codex #4891 F15, round 9)
+ * are documented after signal 3 and the F14 scaffolding-gate section below,
+ * since they only make sense in contrast to it:
  *
  *  1. VERBATIM RUN — the reply contains a run of >= RUN_LENGTH (12)
  *     consecutive normalized words that also appear, in that order, in the
@@ -96,19 +98,58 @@
  * requirement, so a structure-preserving paraphrase that keeps 3+ headers is
  * still caught on its own, independent of signals 1/2's gate.
  *
- * ACCEPTED RESIDUAL (recorded, not silently assumed away, same discipline as
- * the paragraph above): a reply that reproduces a long run of the prompt's
- * RULE text — a safety caution, an abstention, a documentation request —
- * with NEITHER the persona line NOR 2+ section headers is not refused. This
- * is a deliberate, accepted gap, not an oversight: such a reply necessarily
- * states ONLY behavior a correct, safety-compliant, honestly-abstaining
- * answer is independently permitted (indeed instructed) to produce — the
- * persona-less, headerless span alone carries no information that lets a
- * technician distinguish "the model is reciting its internal rule" from "the
- * model is just being correct." The moment a reply ALSO carries the identity
- * line or the document's own structural scaffolding, it stops looking like
- * an answer and starts looking like the prompt itself — that is exactly what
- * remains caught.
+ * ACCEPTED RESIDUAL, as narrowed by F15 (recorded, not silently assumed
+ * away, same discipline as the paragraph above): a reply that reproduces a
+ * run of the prompt's RULE text — a safety caution, an abstention, a
+ * documentation request — SHORT enough to clear both large-scale floors
+ * (under `LARGE_RUN_LENGTH` words AND under `CORE_COVERAGE_THRESHOLD` of
+ * the core), with NEITHER the persona line NOR 2+ section headers, is not
+ * refused. This is a deliberate, accepted gap, not an oversight: such a
+ * reply necessarily states ONLY behavior a correct, safety-compliant,
+ * honestly-abstaining answer is independently permitted (indeed instructed)
+ * to produce — the persona-less, headerless, short-enough span alone
+ * carries no information that lets a technician distinguish "the model is
+ * reciting its internal rule" from "the model is just being correct." The
+ * moment a reply ALSO carries the identity line, 2+ section headers, a
+ * run of 40+ words, or 30%+ of the core's own distinct 6-grams, it stops
+ * looking like an answer and starts looking like the prompt itself — that
+ * is exactly what remains caught, on four independent paths now instead of
+ * two.
+ *
+ * Codex #4891 F15 (round 9 — scaffolding-independent large-scale signals):
+ * F14's gate closed the per-sentence false-positive problem but opened a
+ * bypass — delete just the prompt's opening word so the persona-prefix
+ * match no longer lands, or swap "You are MIRA," for "MIRA is" and
+ * lowercase the section headers, and a near-COMPLETE echo of the protected
+ * core sailed through signals 1 and 2 unflagged, scaffolding or not. Fixed
+ * with two new signals that fire regardless of `hasScaffolding`:
+ *
+ *  1b. LARGE VERBATIM RUN — a run of >= `LARGE_RUN_LENGTH` (40) consecutive
+ *      words shared with the core. Measured against all 1191 existing
+ *      false-positive fixture/core pairs (every round, #3785 through F14)
+ *      plus every "must stay caught" echo/paraphrase/F15-reproduction
+ *      shape (Codex's exact asset/quickstart first-word-deleted repros and
+ *      the notebook persona-swap + lowercased-header repro): the longest
+ *      run any LEGITIMATE answer ever shares with any protected core is 23
+ *      words; the shortest run any F15 bypass still produces is 63 words.
+ *      40 sits 17 words above the worst legitimate case, 23 words below
+ *      the easiest bypass.
+ *  2b. CORE COVERAGE — the reply reproduces >= `CORE_COVERAGE_THRESHOLD`
+ *      (30%) of the protected core's OWN distinct RATIO_NGRAM-grams —
+ *      coverage of the CORE, not signal 2's "share of the reply" (a short
+ *      reply can satisfy a reply-side ratio by chance; a long near-
+ *      complete echo can dilute a reply-side ratio with a little chatty
+ *      filler — neither can escape a floor measured against the core's own
+ *      size). Same measurement: worst legitimate coverage across all
+ *      fixture/core pairs is 6.2%; easiest F15 bypass coverage is 98.3%.
+ *      30% sits ~24 points above the worst legitimate case, ~68 points
+ *      below the easiest bypass.
+ *
+ * Both reuse the SAME `dataExcluded`-derived gram sets signals 1–3 use
+ * (never re-derived), so a carved caution (F8–F13's `exclude` entries)
+ * still can't trip this gate just because a legitimate restatement of it
+ * happens to be long — `exclude` removes the matched text from these gram
+ * sets exactly as it does for signals 1/2.
  *
  * No inference call, no network call, no dependency on anything but its
  * arguments (`.claude/rules/zero-token-architecture.md`).
@@ -141,6 +182,27 @@ const RATIO_MIN_HITS = 6;
 const RATIO_MIN_REPLY_GRAMS = 8;
 /** Signal 3: minimum distinct section labels found verbatim in the reply. */
 const SECTION_LABEL_MIN_MATCHES = 3;
+/** Codex #4891 F15 (round 9) scaffolding-independent signal 1b: a single
+ *  verbatim run of at least this many consecutive normalized words is a
+ *  leak regardless of `hasScaffolding`. Measured against all 1191 existing
+ *  false-positive fixture/core pairs (every round, #3785 through F14) and
+ *  every "must stay caught" echo/paraphrase/F15-reproduction shape: the
+ *  longest run any LEGITIMATE answer ever shares with any protected core is
+ *  23 words; the shortest run any F15 bypass (persona/header removed or
+ *  altered) still produces is 63 words. 40 sits 17 words above the worst
+ *  legitimate case and 23 words below the easiest bypass — see the module
+ *  docstring and the PR body for the full measurement. */
+const LARGE_RUN_LENGTH = 40;
+/** Codex #4891 F15 (round 9) scaffolding-independent signal 2b: the share
+ *  of the protected core's OWN distinct RATIO_NGRAM-grams that the reply
+ *  must reproduce — coverage of the CORE, not Signal 2's "share of the
+ *  reply" (so a short reply can't look like "100% overlap" by chance, and a
+ *  near-complete echo of a LARGE core can't hide by diluting its ratio with
+ *  a little chatty filler). Same measurement as LARGE_RUN_LENGTH: worst
+ *  legitimate coverage across all fixture/core pairs is 6.2%; easiest F15
+ *  bypass coverage is 98.3%. 30% sits ~24 points above the worst legitimate
+ *  case and ~68 points below the easiest bypass. */
+const CORE_COVERAGE_THRESHOLD = 0.3;
 /** Codex #4891 F14 scaffolding gate: minimum distinct section headers
  *  alongside a signal-1/2 hit before it counts as a leak — deliberately
  *  LOWER than SECTION_LABEL_MIN_MATCHES (3), which is signal 3's own,
@@ -274,17 +336,24 @@ function removeExcluded(segments: readonly string[], exclude: readonly string[])
 /** Takes the ALREADY exclude-filtered segments (see `removeExcluded` in
  *  `detectPromptLeak`) — never re-derives them — so this signal and Signal 3
  *  (`extractSectionLabels`) see exactly the same segmentation. */
-function buildPromptGramSets(dataExcluded: readonly string[]): { runs: Set<string>; ratioGrams: Set<string> } {
+function buildPromptGramSets(
+  dataExcluded: readonly string[],
+): { runs: Set<string>; ratioGrams: Set<string>; largeRuns: Set<string> } {
   const runs = new Set<string>();
   const ratioGrams = new Set<string>();
+  const largeRuns = new Set<string>();
   for (const dataSegment of dataExcluded) {
     for (const segment of segmentsExcludingQuotedExamples(dataSegment)) {
       const words = normalizeWords(segment);
       for (const g of ngrams(words, RUN_LENGTH)) runs.add(g);
       for (const g of ngrams(words, RATIO_NGRAM)) ratioGrams.add(g);
+      // Codex #4891 F15 (round 9): the large-run signal's own n-gram set,
+      // built the SAME way (per quote-excluded segment, so a run can never
+      // bridge across removed material) — see detectPromptLeak.
+      for (const g of ngrams(words, LARGE_RUN_LENGTH)) largeRuns.add(g);
     }
   }
-  return { runs, ratioGrams };
+  return { runs, ratioGrams, largeRuns };
 }
 
 /** The prompt's own ALL-CAPS section headers, extracted by structure (start
@@ -413,8 +482,57 @@ export function detectPromptLeak(
   // segmentation of the prompt, never two independently-derived ones that
   // could silently drift apart.
   const dataExcluded = removeExcluded([systemPrompt], exclude);
-  const { runs, ratioGrams } = buildPromptGramSets(dataExcluded);
+  const { runs, ratioGrams, largeRuns } = buildPromptGramSets(dataExcluded);
   const replyWords = normalizeWords(replyText);
+
+  // Codex #4891 F15 (round 9) — SCAFFOLDING-INDEPENDENT LARGE-SCALE SIGNALS.
+  // F14's scaffolding gate (persona prefix OR 2+ headers) closed the false-
+  // positive problem, but opened a bypass: delete just the prompt's opening
+  // word ("You are MIRA..." -> "are MIRA...") so the persona-prefix match no
+  // longer lands, or swap "You are MIRA," for "MIRA is" and lowercase the
+  // section headers — and a near-COMPLETE echo of the protected core (every
+  // rule, every instruction, missing only cosmetic scaffolding) sailed
+  // through signals 1 and 2 unflagged. A reply that reproduces THIS MUCH of
+  // the core is not "stating a correct safety caution" (the accepted
+  // residual the module docstring documents) — it IS the prompt, persona
+  // line or not. These two checks fire regardless of `hasScaffolding`, and
+  // run FIRST, ahead of the scaffolding gate, because a near-complete echo
+  // should never survive on a scaffolding technicality:
+  //
+  //  1b. LARGE VERBATIM RUN — a run of >= LARGE_RUN_LENGTH (40) consecutive
+  //      words shared with the core, measured the same way as signal 1 but
+  //      against `largeRuns` instead of `runs`.
+  //  2b. CORE COVERAGE — the reply reproduces >= CORE_COVERAGE_THRESHOLD
+  //      (30%) of the protected core's OWN distinct RATIO_NGRAM-grams
+  //      (coverage of the CORE — not signal 2's "share of the reply", which
+  //      a short reply can satisfy by chance and a long near-complete echo
+  //      can dilute with a little chatty filler).
+  //
+  // Both reuse `largeRuns`/`ratioGrams`, already built from `dataExcluded`
+  // (the same `exclude`-filtered, quote-excluded segmentation signals 1–3
+  // use) — never re-derived — so a carved caution (F8–F13) still can't trip
+  // this gate just because a legitimate restatement of it happens to be
+  // long. See the constants' docstrings for the measured margins (23-point/
+  // 17-word floor above every legitimate fixture, 68-point/23-word ceiling
+  // below every reproduced bypass).
+  for (const g of ngrams(replyWords, LARGE_RUN_LENGTH)) {
+    if (largeRuns.has(g)) {
+      return { leaked: true, violation: "prompt-leak:large-verbatim-run", detail: g.slice(0, DETAIL_MAX) };
+    }
+  }
+  if (ratioGrams.size > 0) {
+    const replyRatioGramSet = new Set(ngrams(replyWords, RATIO_NGRAM));
+    let coreHits = 0;
+    for (const g of ratioGrams) if (replyRatioGramSet.has(g)) coreHits++;
+    const coreCoverage = coreHits / ratioGrams.size;
+    if (coreCoverage >= CORE_COVERAGE_THRESHOLD) {
+      return {
+        leaked: true,
+        violation: "prompt-leak:core-coverage",
+        detail: `${coreHits}/${ratioGrams.size} core ${RATIO_NGRAM}-grams covered (${Math.round(coreCoverage * 100)}%)`,
+      };
+    }
+  }
 
   // Codex #4891 F14 (round 8) — the SCAFFOLDING GATE. `matchedLabels` and
   // `hasPersona` are computed ONCE and reused by both the gate (signals 1/2)
