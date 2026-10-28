@@ -107,3 +107,34 @@ export const PROMPT_LEAK_FIELD_OBSERVATION_FIXTURES: readonly string[] = [
   "Don't force the output or bypass the interlock to test it — treat the earlier green indication as unverified, not as permission to proceed. Follow the site's lockout procedure before touching anything.",
   "An old troubleshooting note from last month isn't proof of today's cause — let's confirm with the current alarm and timestamp before assuming it's the same fault.",
 ];
+
+/**
+ * Codex #4891 F5 — `ISOLATION_STEP_RULE` (`src/capabilities/answer-shape.ts`)
+ * rides EVERY turn's prompt in all three chat routes (asset, quickstart,
+ * notebook) via `withStepSafety`, and — like `FIELD_OBSERVATION_DIRECTIVE` —
+ * it is shared safety GUIDANCE the model is INSTRUCTED to apply, not a
+ * secret meta-instruction: a correct LOTO/isolation answer legitimately
+ * shares its wording. Codex's exact reproduction: a technician asks whether
+ * power should be restored to verify absence of voltage; the correct answer
+ * ("verify de-energized, still locked out, with a meter — never by
+ * re-energizing") shares a 12-word run with the rule's own unquoted prose
+ * (distinct from the ALREADY-covered single-quoted instructed EXAMPLE inside
+ * the same rule — see the adversarial fixture above, "With the panel
+ * isolated, locked out and the bus confirmed dead..."). Fixture 1 is Codex's
+ * exact example; 2-6 mirror the rule's other clauses (meter-proven-on-a-
+ * known-source, never-both-isolated-and-energized, a later de-energized-vs-
+ * energized step split, no-voltage-number-in-the-verification, general LOTO
+ * before opening an enclosure) the same way the FIELD_OBSERVATION fixtures
+ * mirror that directive's bullets. Tested against a prompt that INCLUDES
+ * `ISOLATION_STEP_RULE` with it passed in `detectPromptLeak`'s `exclude` —
+ * the same mechanism as FIELD_OBSERVATION_DIRECTIVE, not a new one.
+ */
+export const PROMPT_LEAK_ISOLATION_FIXTURES: readonly string[] = [
+  // Codex's exact reproduction (F5 finding body, verbatim).
+  "Absence of voltage is verified with the equipment still locked out, using a meter proven on a known source — never by re-energizing.",
+  "Before touching the terminals, lock out the disconnect and prove your meter on a known live source first, then confirm zero volts across L1-L2 with the drive still isolated.",
+  "Don't restore power to take that reading — keep the lockout in place for the whole check. If you genuinely need it energized, that has to be its own later step with the lockout removed by a qualified person under the energized-work procedure.",
+  "This step opens the enclosure, so state the isolation up front: with the main breaker locked out, inspect the terminals for scorching before going any further.",
+  "A step is either isolated or it's energized — never write both into one step. Finish the de-energized inspection first; the live amp-draw reading is a separate step after power is properly restored.",
+  "Keep the voltage check itself free of a specific number here — just confirm zero energy with a meter while locked out; the manual's parameter table is where the actual rated voltage lives.",
+];

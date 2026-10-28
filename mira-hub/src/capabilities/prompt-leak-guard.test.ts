@@ -52,6 +52,7 @@ import { validateAnswer } from "./answer-validation";
 import {
   PROMPT_LEAK_FALSE_POSITIVE_FIXTURES,
   PROMPT_LEAK_FIELD_OBSERVATION_FIXTURES,
+  PROMPT_LEAK_ISOLATION_FIXTURES,
 } from "./__fixtures__/prompt-leak-false-positives";
 import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "./prompt-leak-guard";
 
@@ -216,6 +217,43 @@ describe("#3785 — Codex F2: FIELD_OBSERVATION_DIRECTIVE is domain guidance, no
   for (const [name, prompt] of Object.entries(PROMPTS_WITH_FIELD_OBS)) {
     it(`a full verbatim echo of ${name} is still flagged even with FIELD_OBSERVATION_DIRECTIVE excluded`, () => {
       const r = detectPromptLeak(prompt, prompt, [FIELD_OBSERVATION_DIRECTIVE]);
+      expect(r.leaked).toBe(true);
+      expect(r.violation).toBe("prompt-leak:verbatim-run");
+    });
+  }
+});
+
+describe("#4891 F5 — ISOLATION_STEP_RULE is shared safety guidance, not a secret — correctly applying it is not a leak", () => {
+  // Reproduces the exact bug BEFORE the fix: ISOLATION_STEP_RULE rides every
+  // turn's prompt (via `withStepSafety`, already baked into GENERAL_WITH_
+  // STEP_SAFETY/BASE_WITH_STEP_SAFETY above) with NO exclusion applied —
+  // Codex's exact reproduction answer is flagged.
+  it("Codex's exact reproduction DOES flag when ISOLATION_STEP_RULE is not excluded (proves the bug existed)", () => {
+    const answer = PROMPT_LEAK_ISOLATION_FIXTURES[0];
+    const r = detectPromptLeak(PROMPTS.GENERAL_WITH_STEP_SAFETY, answer);
+    expect(r.leaked).toBe(true);
+  });
+
+  // The fix: each route's hook now passes ISOLATION_STEP_RULE in `exclude`
+  // (same per-turn/restatable-content mechanism as FIELD_OBSERVATION_
+  // DIRECTIVE and MACHINE CONTEXT) — Codex's example AND 5 more realistic
+  // LOTO/isolation answers must all clear, against both prompt shapes that
+  // carry the rule.
+  for (const name of ["GENERAL_WITH_STEP_SAFETY", "BASE_WITH_STEP_SAFETY"] as const) {
+    it.each(PROMPT_LEAK_ISOLATION_FIXTURES)(`%s — not flagged against ${name} once ISOLATION_STEP_RULE is excluded`, (answerText) => {
+      const r = detectPromptLeak(PROMPTS[name], answerText, [ISOLATION_STEP_RULE]);
+      expect(r.leaked).toBe(false);
+    });
+  }
+
+  // Control: excluding ISOLATION_STEP_RULE must NOT blind the guard to a
+  // full prompt echo — the persona opening line and HONESTY/SAFETY/
+  // Instructions sections are untouched by this exclusion and still carry a
+  // 12-word run.
+  for (const name of ["GENERAL_WITH_STEP_SAFETY", "BASE_WITH_STEP_SAFETY"] as const) {
+    it(`a full verbatim echo of ${name} is still flagged even with ISOLATION_STEP_RULE excluded`, () => {
+      const prompt = PROMPTS[name];
+      const r = detectPromptLeak(prompt, prompt, [ISOLATION_STEP_RULE]);
       expect(r.leaked).toBe(true);
       expect(r.violation).toBe("prompt-leak:verbatim-run");
     });

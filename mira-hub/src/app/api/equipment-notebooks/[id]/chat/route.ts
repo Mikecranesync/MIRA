@@ -129,7 +129,7 @@ import {
   pickLockoutChunk,
 } from "@/capabilities/energized-work-stop";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
-import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
+import { ISOLATION_STEP_RULE, normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { withLabelDataIdentifiers } from "@/capabilities/label-data-identifiers";
 import { withPhotoProvenance } from "@/capabilities/photo-provenance";
 import { withRetailCodeNote } from "@/capabilities/retail-codes";
@@ -3539,6 +3539,19 @@ async function handleChatTurn(
   const identityProposalDirective = identityProposal
     ? unconfirmedMachineDirective(identityProposal, candidateAcquisitionText)
     : "";
+  // Codex #4891 F5 audit: the hazard directive text actually spliced into
+  // `withHazard` above (ELECTRICAL_HAZARD_DIRECTIVE or safetyFlagDirective)
+  // is the same restatable-safety-guidance class as ISOLATION_STEP_RULE — a
+  // correct hazard answer legitimately shares its wording (confirmed by a
+  // throwaway repro against the real directive text). Mirrors exactly which
+  // branch of `withHazard`'s conditional actually fired this turn; RESTART_
+  // DIRECTIVE is NOT included here (no repro found a false positive against
+  // it — see the PR's hazard ledger).
+  const hazardDirectiveText = electricalHazardDirective
+    ? ELECTRICAL_HAZARD_DIRECTIVE
+    : safetyTrigger
+      ? safetyFlagDirective(safetyTrigger)
+      : "";
   const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
       ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
@@ -4411,6 +4424,16 @@ async function handleChatTurn(
           machineSection,
           identityProposalDirective,
           FIELD_OBSERVATION_DIRECTIVE,
+          // Codex #4891 F5: ISOLATION_STEP_RULE rides every turn's prompt via
+          // withStepSafety and is shared safety GUIDANCE (not a secret
+          // instruction) — a correct LOTO/isolation answer legitimately
+          // restates it, same exclusion class as FIELD_OBSERVATION_DIRECTIVE
+          // above. The persona/HONESTY/SAFETY sections are untouched, so a
+          // full-prompt echo still trips verbatim-run.
+          ISOLATION_STEP_RULE,
+          // Same audit, the hazard-directive text actually injected this
+          // turn (see `hazardDirectiveText` above) — empty string is a no-op.
+          hazardDirectiveText,
         ]);
         if (leak.leaked) {
           console.error(

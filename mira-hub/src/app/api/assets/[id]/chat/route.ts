@@ -22,7 +22,7 @@ import {
 } from "@/lib/approved-context";
 import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import { withAnswerLanguage } from "@/capabilities/answer-language";
-import { withStepSafety } from "@/capabilities/answer-shape";
+import { ISOLATION_STEP_RULE, withStepSafety } from "@/capabilities/answer-shape";
 import {
   buildMachineContextPacket,
   renderMachineEvidenceSection,
@@ -700,6 +700,21 @@ export async function POST(
       let served = false;
       let servedBy: string | null = null;
       for (const provider of providers) {
+        // Codex #4891 F4: a provider that emits a delta and THEN errors
+        // mid-stream (a read rejection, an abort) throws out of
+        // `streamFromProvider` — caught below, cascading to the next
+        // provider — but it has already pushed its partial text into the
+        // SHARED `responseBuffer`/`bufferedFrames` before throwing. Left in
+        // place, that partial text either (a) survives to the final
+        // `!served` check below and gets released UNCHECKED if every
+        // remaining provider also fails, or (b) gets silently concatenated
+        // in front of a LATER provider's clean answer if one succeeds.
+        // Snapshot this attempt's starting length and roll back to it on
+        // ANY non-success (throw OR a clean `false`) so a failed attempt
+        // never leaves a trace for the next attempt or the final check to
+        // inherit.
+        const preAttemptBufferLen = responseBuffer.length;
+        const preAttemptFramesLen = bufferedFrames.length;
         try {
           served = await streamFromProvider(
             provider,
@@ -712,8 +727,12 @@ export async function POST(
             servedBy = provider.name;
             break;
           }
+          responseBuffer.length = preAttemptBufferLen;
+          bufferedFrames.length = preAttemptFramesLen;
         } catch {
-          // cascade
+          // cascade — discard this attempt's partial buffer first (see above).
+          responseBuffer.length = preAttemptBufferLen;
+          bufferedFrames.length = preAttemptFramesLen;
         }
       }
 
@@ -723,14 +742,36 @@ export async function POST(
       // correctly repeats data this turn's prompt happened to carry. Same
       // mechanism as notebook chat's `machineContext`/`visualSection`/
       // `machineSection` exclusion (prompt-leak-guard.ts's `exclude` param);
-      // never the fixed persona/instructions around it.
+      // never the fixed persona/instructions around it. ISOLATION_STEP_RULE
+      // (Codex #4891 F5) is excluded the same way: it rides every turn's
+      // prompt via `withStepSafety` below, and is domain safety GUIDANCE a
+      // correct answer legitimately restates, not a secret instruction — the
+      // persona/Instructions text around it is untouched, so a real full-
+      // prompt echo still trips the verbatim-run signal.
       const modelText = responseBuffer.slice(preModelBufferLen).join("");
       let leakBlocked = false;
-      if (served && modelText.trim()) {
+      // Codex #4891 F4: gate on whether there IS buffered text to check, not
+      // on `served` — a candidate must be validated before release/persist
+      // regardless of which cascade path produced it. With the per-attempt
+      // discard above in place, `modelText` is already empty whenever
+      // `served` is false (every failed attempt's partial text was rolled
+      // back), so this is a fail-closed backstop, not an independently
+      // load-bearing fix on its own — see the PR body for the mutation-proof
+      // breakdown of what each half catches.
+      if (modelText.trim()) {
         const leak = detectPromptLeak(groundedSystemPrompt, modelText, [
           assetRow ? buildAssetContextBlock(assetRow) : "",
           graphContext,
           machineMemorySection,
+          ISOLATION_STEP_RULE,
+          // Codex #4891 F5 audit: `flagDirectiveFor` (hazardBanner's sibling)
+          // is the SAME class as ISOLATION_STEP_RULE — shared safety prose a
+          // correct hazard answer legitimately restates (confirmed by a
+          // throwaway repro: "Only a person trained in electrical safety and
+          // shock hazards can perform this work..." false-positived against
+          // the real ELECTRICAL_HAZARD_DIRECTIVE text). Only present when
+          // `safetyFlag` fired this turn; empty string is a no-op exclude.
+          safetyFlag ? flagDirectiveFor(safetyFlag) : "",
         ]);
         if (leak.leaked) {
           leakBlocked = true;
@@ -749,10 +790,14 @@ export async function POST(
               `data: ${JSON.stringify({ content: PROMPT_LEAK_REFUSAL, error: "prompt_leak" })}\n\n`,
             ),
           );
-        } else {
+        } else if (served) {
           for (const frame of bufferedFrames) controller.enqueue(frame);
         }
-      } else {
+        // `!served` with non-empty, non-leaking `modelText` is unreachable
+        // post-discard-fix (see comment above); if it ever happens anyway,
+        // fail closed and fall through to the `!served` branch below instead
+        // of releasing an unvalidated partial frame.
+      } else if (served) {
         for (const frame of bufferedFrames) controller.enqueue(frame);
       }
 

@@ -15,7 +15,7 @@ import {
 import { stripConflictingVendors } from "@/lib/vendor-relevance";
 import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, withSafetyFlag } from "@/lib/safety-classifier";
 import { englishSearchQuery } from "@/capabilities/answer-language";
-import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
+import { ISOLATION_STEP_RULE, normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "@/capabilities/prompt-leak-guard";
 
@@ -222,17 +222,28 @@ export async function POST(req: Request) {
   const answerText = normalizeCitationMarkers(result.content);
 
   // #3785 (prompt-leak-guard extension): this route has no per-turn asset/
-  // machine data in its SYSTEM prompt at all (public, "no namespace yet")
-  // — the retrieved manual CONTEXT rides in the USER message instead, which
-  // this check never touches — so `exclude` is empty, unlike asset chat and
-  // notebook chat. `messages[0]` is exactly the system message built above
-  // (SYSTEM_PROMPT + the optional safety-flag directive + withStepSafety's
-  // ISOLATION_STEP_RULE). Same reused refusal/response shape this route
-  // already returns everywhere else (`{answer, citations, provider}` —
-  // see the `!result` branch above for provider exhaustion): never a new
-  // response shape, and this route makes NO DB write to guard against
-  // persisting the leak.
-  const leak = detectPromptLeak(messages[0].content, answerText);
+  // machine data in its SYSTEM prompt (public, "no namespace yet") — the
+  // retrieved manual CONTEXT rides in the USER message instead, which this
+  // check never touches. `messages[0]` is exactly the system message built
+  // above (SYSTEM_PROMPT + the optional safety-flag directive +
+  // withStepSafety's ISOLATION_STEP_RULE). Codex #4891 F5: ISOLATION_STEP_
+  // RULE DOES need excluding even here — it's shared safety GUIDANCE a
+  // correct LOTO/isolation answer legitimately restates, not per-turn data,
+  // and it rides this prompt unconditionally via `withStepSafety`. Same
+  // mechanism as asset/notebook chat's exclusion; SYSTEM_PROMPT's own Rules
+  // text is untouched, so a real full-prompt echo still trips verbatim-run.
+  // Same reused refusal/response shape this route already returns
+  // everywhere else (`{answer, citations, provider}` — see the `!result`
+  // branch above for provider exhaustion): never a new response shape, and
+  // this route makes NO DB write to guard against persisting the leak.
+  // Codex #4891 F5 audit: `flagDirectiveFor` is the same restatable-safety-
+  // guidance class as ISOLATION_STEP_RULE (confirmed by a throwaway repro
+  // against the real directive text), present only when `safetyTrigger`
+  // fired this turn.
+  const leak = detectPromptLeak(messages[0].content, answerText, [
+    ISOLATION_STEP_RULE,
+    safetyTrigger ? flagDirectiveFor(safetyTrigger) : "",
+  ]);
   if (leak.leaked) {
     console.error(`[quickstart/ask] pre-display REJECTED ${leak.violation}: ${leak.detail}`);
     return NextResponse.json(
