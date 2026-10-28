@@ -1,6 +1,15 @@
 /**
  * #4877 — pilot-funnel hook on new-account registration.
- * Run: npx vitest run src/app/api/auth/register/route.test.ts
+ * Run: npx vitest run src/capabilities/__tests__/register-route.test.ts
+ *
+ * Lives under src/capabilities/__tests__/ (not co-located with route.ts)
+ * per `.claude/rules/factorylm-unified-ui-cutover.md` — the guard's
+ * `_is_hub_api_route` classifier only preserves a file named exactly
+ * `route.ts` under `app/**`, so a co-located `route.test.ts` is classified
+ * guarded (no `.test.ts` carve-out exists for `mira-hub/src/app/**`). The
+ * same convention PR #4882 used for `pilot-approve-route.test.ts`: the test
+ * file lives in capabilities/__tests__/ and imports the route handler from
+ * its real path.
  *
  * The module-level per-IP rate limiter in route.ts is shared across every
  * test in this file (it's a module-level Map, not reset by vi.clearAllMocks),
@@ -32,7 +41,7 @@ vi.mock("@/capabilities/pilot-funnel", () => ({
 
 import { findUserByEmail, ensureUserAndTenant } from "@/lib/users";
 import { attributionFromRequest, handlePilotApplicationSubmitted } from "@/capabilities/pilot-funnel";
-import { POST } from "./route";
+import { POST } from "@/app/api/auth/register/route";
 
 const mockFindUserByEmail = vi.mocked(findUserByEmail);
 const mockEnsureUserAndTenant = vi.mocked(ensureUserAndTenant);
