@@ -35,4 +35,8 @@ CVE-2026-40217
 # litellm<1.85.2 and even the latest openviking (0.5.2.1) caps litellm<1.91.2.
 # mira-mcp does not run the LiteLLM proxy server, so the endpoint does not
 # exist in our image. Re-evaluate every openviking bump.
-GHSA-g5ff-637f-6q2m
+# Owner: Mike Harper (security exception), decided 2026-10-28.
+# Expires 2026-12-15: Trivy fails the build again after that date.
+# Remediation: #4865 (remove, replace or fork openviking so litellm >= 1.95.0).
+# #4809 (openviking 0.5.1.1) does NOT fix it: openviking 0.5.x caps litellm <1.91.2.
+GHSA-g5ff-637f-6q2m exp:2026-12-15
