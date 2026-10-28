@@ -80,6 +80,33 @@ vi.mock("@/lib/tenant-context", () => ({
 const poolMock = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })) }));
 vi.mock("@/lib/db", () => ({ default: poolMock }));
 
+// Codex R1 F1 (#4894): verifyVisualEntry() (internal to route.ts) calls
+// photoLinkedToTarget to turn a raw client-supplied fileId into a VERIFIED
+// photo link — or null when the claim doesn't resolve (foreign tenant,
+// nonexistent file, not linked to this notebook). Default: unverified
+// (null), so a bare visualEvidence.fileId claim never exempts a turn unless
+// a test explicitly makes it resolve.
+const workspaceFilesMock = vi.hoisted(() => ({
+  photoLinkedToTarget: vi.fn(async () => null as { fileId: string; capturedAt: string } | null),
+}));
+vi.mock("@/lib/workspace-files", () => workspaceFilesMock);
+
+// Needed only so a VERIFIED photo claim doesn't crash the route further
+// downstream (loadVisualEvidenceForPhoto et al.) — null/[] throughout means
+// "no descriptor, no prior observations", which is fine for these tests;
+// what's under test is whether the off-topic short-circuit fires, not the
+// photo-descriptor pipeline itself.
+const visualEvidenceContextMock = vi.hoisted(() => ({
+  blockingLookHazard: vi.fn(() => null),
+  loadVisualEvidenceForAsset: vi.fn(async () => [] as unknown[]),
+  renderVisualEvidenceSection: vi.fn(() => ""),
+  loadVisualEvidenceForPhoto: vi.fn(async () => null as unknown),
+  loadRecentLookObservations: vi.fn(async () => []),
+  renderLookObservationSection: vi.fn(() => ""),
+  renderPriorLookObservationsSection: vi.fn(() => ""),
+}));
+vi.mock("@/lib/visual-evidence-context", () => visualEvidenceContextMock);
+
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { SCOPE_REPLY } from "@/capabilities/scope-check";
 
@@ -260,5 +287,80 @@ describe("notebook chat off-topic scope check (#3786)", () => {
     expect(fetch).not.toHaveBeenCalled();
     expect(domainMock.recordTurn).not.toHaveBeenCalled();
     expect(domainMock.validateChatSources).not.toHaveBeenCalled();
+  });
+
+  // Codex R1 F1 (#4894, MEDIUM): the off-topic exemption must be checked
+  // against the VERIFIED visual entry, not the raw unverified
+  // visualEvidence.fileId the client sends. Before the fix, `offTopicTrigger`
+  // included `!visualClaimFileId` directly, so attaching ANY fileId —
+  // including one that fails verification — disabled the scope check before
+  // `verifyVisualEntry` ever ran, and the exemption was never reconsidered
+  // after verification rejected the claim.
+  it("the #3786 probe with a NONEXISTENT fileId attached still gets the scope reply, zero provider calls (the exact Codex R1 F1 regression)", async () => {
+    // Default mock: photoLinkedToTarget resolves null (the file doesn't
+    // link to this notebook) — simulates a nonexistent/foreign claim.
+    workspaceFilesMock.photoLinkedToTarget.mockResolvedValueOnce(null);
+    const res = await POST(
+      chatReq({
+        message: PROBE_3786,
+        sourceDocIds: [DOC_A],
+        visualEvidence: { fileId: "99999999-9999-4999-8999-999999999999" },
+      }),
+      params,
+    );
+
+    expect(res.status).toBe(200);
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    const frames = await readFrames(res);
+    expect(frameKinds(frames)).toEqual(["sources", "status", "[DONE]"]);
+    expect(JSON.parse(frames[1])).toMatchObject({ status: "insufficient_evidence", message: SCOPE_REPLY });
+  });
+
+  it("the #3786 probe with a REAL VERIFIED photo attached is exempted — proceeds to retrieval/provider, not the scope reply", async () => {
+    // photoLinkedToTarget resolves a real link this time: the claim verifies.
+    workspaceFilesMock.photoLinkedToTarget.mockResolvedValueOnce({
+      fileId: "77777777-7777-4777-8777-777777777777",
+      capturedAt: "2026-10-28T00:00:00.000Z",
+    });
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    stubProvider("Here's what I see in your photo and the manual.");
+    const res = await POST(
+      chatReq({
+        message: PROBE_3786,
+        sourceDocIds: [DOC_A],
+        visualEvidence: { fileId: "77777777-7777-4777-8777-777777777777" },
+      }),
+      params,
+    );
+    await res.text();
+
+    // NOT scope-replied: a verified photo is equipment evidence, so the
+    // turn falls through to the real pipeline — retrieval and the provider
+    // both ran, which is the opposite of the off-topic contract.
+    expect(ragMock.retrieveNodeChunks).toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
+    const rec = recordedTurn();
+    expect(rec.answerText).not.toBe(SCOPE_REPLY);
+  });
+
+  it("a real verified photo turn carrying an ORDINARY maintenance question still proceeds normally (control)", async () => {
+    workspaceFilesMock.photoLinkedToTarget.mockResolvedValueOnce({
+      fileId: "77777777-7777-4777-8777-777777777777",
+      capturedAt: "2026-10-28T00:00:00.000Z",
+    });
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    stubProvider("F0004 is an overcurrent fault.");
+    const res = await POST(
+      chatReq({
+        message: "What does F0004 mean on this drive?",
+        sourceDocIds: [DOC_A],
+        visualEvidence: { fileId: "77777777-7777-4777-8777-777777777777" },
+      }),
+      params,
+    );
+    await res.text();
+    expect(ragMock.retrieveNodeChunks).toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
   });
 });

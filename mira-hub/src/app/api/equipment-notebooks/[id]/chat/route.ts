@@ -1479,18 +1479,19 @@ async function handleChatTurn(
   // of reaching the model. `!questionSafetyTrigger && !energizedAskEarly` is
   // belt-and-suspenders — `isOffTopic` already never fires on a message
   // `matchSafetyStop` would catch, but safety must win even if the two ever
-  // disagree. `!visualClaimFileId` errs toward answering: a turn carrying a
-  // photo has equipment evidence attached to it even when the question text
-  // alone would look off-topic, and the photo pipeline below (verifyVisualEntry
-  // etc.) must still run so the attachment isn't lost from the record. See
-  // `@/capabilities/scope-check` for the parity note (the Python classifier
-  // this is ported from never actually returns `off_topic` — the header there
-  // explains why).
+  // disagree. See `@/capabilities/scope-check` for the parity note (the
+  // Python classifier this is ported from never actually returns `off_topic`
+  // — the header there explains why).
+  //
+  // Codex R1 F1 (#4894, MEDIUM): deliberately NOT gated on the raw
+  // `visualClaimFileId` here. That's an unverified client-supplied id — a
+  // caller could attach a nonexistent/foreign file id to an off-topic probe
+  // and have it exempt the turn before `verifyVisualEntry` ever runs,
+  // disabling the scope check with a claim that later turns out to be
+  // worthless. The photo exemption is applied below, AFTER verification,
+  // against the real `visualEntry` — see the short-circuit block there.
   const offTopicTrigger =
-    !questionSafetyTrigger &&
-    !energizedAskEarly &&
-    !visualClaimFileId &&
-    isOffTopic(message);
+    !questionSafetyTrigger && !energizedAskEarly && isOffTopic(message);
   // #3763: the energized-electrical hazard sentinel is a DIRECTIVE, not a stop.
   // The answer still streams, framed by the NFPA 70E directive injected below,
   // and the turn persists a safety_notice evidence entry. Every other non-null
@@ -1650,17 +1651,35 @@ async function handleChatTurn(
   const docIds: string[] = validated.ok ? validated.docIds : [];
   const nodeId = validated.ok ? validated.nodeId : null;
 
-  // #3786 (T-5 part 2, option A) — deterministic scope reply. BEFORE any
-  // retrieval, BEFORE the photo/identity pipeline, BEFORE every provider
-  // call: `offTopicTrigger` was computed purely from the question text, so
-  // nothing below this point can still run for an off-topic turn. Persisted
-  // with `answerStatus: "insufficient_evidence"` — the same non-answered
-  // status Gate G's abstain uses below — so this is never counted as an
-  // answered turn, and reload replays the same fixed reply rather than
-  // re-evaluating (the classifier is pure, but the persisted row is the
-  // source of truth on reload either way, matching every other terminal
-  // path in this route). `@/capabilities/scope-check` has the parity note.
-  if (offTopicTrigger) {
+  // Verify the claimed photo before any terminal refusal (including the
+  // #3786 off-topic scope reply right below — Codex R1 F1, #4894: the
+  // exemption for a photo-bearing turn must be checked against the VERIFIED
+  // entry, not the raw unverified `visualClaimFileId`, or an attacker could
+  // exempt an off-topic probe just by attaching a nonexistent/foreign file
+  // id). This bounded, tenant-scoped lookup does not make the photo
+  // grounding and never delays a stop on provider/RAG work; it only
+  // preserves the attachment on the record.
+  const evidenceMaterializeSpan = tracer.startSpan("evidence.materialize", undefined, rootCtx);
+  const visualEntry = await releaseClaimOnFailure(() =>
+    verifyVisualEntry(ctx.tenantId, notebookId, visualClaimFileId),
+  );
+
+  // #3786 (T-5 part 2, option A) — deterministic scope reply. BEFORE
+  // retrieval and BEFORE every provider call: `offTopicTrigger` was computed
+  // purely from the question text, and is now combined with `!visualEntry`
+  // (the server-VERIFIED photo claim, not the raw client-supplied id) —
+  // a turn carrying a real, verified photo has equipment evidence attached
+  // even when the question text alone would look off-topic, and errs toward
+  // answering; a turn whose photo claim failed verification (wrong tenant,
+  // nonexistent file, not linked to this notebook) gets no such exemption.
+  // Persisted with `answerStatus: "insufficient_evidence"` — the same
+  // non-answered status Gate G's abstain uses below — so this is never
+  // counted as an answered turn, and reload replays the same fixed reply
+  // rather than re-evaluating (the classifier is pure, but the persisted
+  // row is the source of truth on reload either way, matching every other
+  // terminal path in this route). `@/capabilities/scope-check` has the
+  // parity note.
+  if (offTopicTrigger && !visualEntry) {
     const offTopicGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "abstained";
     rec.stage("answer_gate", {
@@ -1717,11 +1736,11 @@ async function handleChatTurn(
     });
     setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": offTopicTurnRowId }, offTopicPersistSpan);
     endTimed(offTopicPersistSpan, "persist");
+    // Close the span `verifyVisualEntry` was measured under — this block now
+    // runs after it starts (moved here by the Codex R1 F1 fix), so an early
+    // return here must end it like every other exit path in this function does.
+    evidenceMaterializeSpan.end();
     endRoot();
-    // A local encoder, not the outer `enc` — that binding is declared later
-    // in this function (TDZ: referencing it here throws
-    // "Cannot access 'enc' before initialization"), and this block must run
-    // before everything else in the function anyway.
     const offTopicEnc = new TextEncoder();
     const offTopicStream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -1755,14 +1774,6 @@ async function handleChatTurn(
       },
     });
   }
-
-  // Verify the claimed photo before any terminal refusal. This bounded,
-  // tenant-scoped lookup does not make the photo grounding and never delays a
-  // stop on provider/RAG work; it only preserves the attachment on the record.
-  const evidenceMaterializeSpan = tracer.startSpan("evidence.materialize", undefined, rootCtx);
-  const visualEntry = await releaseClaimOnFailure(() =>
-    verifyVisualEntry(ctx.tenantId, notebookId, visualClaimFileId),
-  );
 
   // #3888 — load the structured descriptor by the SERVER-VERIFIED photo id.
   // The client rider carries only a fileId; any client `hazards` field is never
