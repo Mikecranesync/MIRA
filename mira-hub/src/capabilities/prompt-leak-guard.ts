@@ -106,16 +106,33 @@ const SECTION_LABEL_MIN_LEN = 5;
 /** Bound on the logged excerpt — never a reason to grow the leaked text. */
 const DETAIL_MAX = 160;
 
-/** The prompts write their INSTRUCTED example outputs as double-quoted spans
- *  (e.g. `e.g. "P042 [Decel Time 1] sets the deceleration ramp [1]."`). Those
- *  spans are text the model is RIGHT to produce close to verbatim; they are
- *  not the governing instruction. Splitting on them (rather than deleting
- *  the quotes and leaving the surrounding words adjacent) guarantees no gram
- *  ever bridges across a removed span into a run that was never contiguous
- *  in the source. Straight double quotes only — confirmed the only quote
- *  character either prompt uses (no curly quotes, no nesting). */
+/** The prompts write their INSTRUCTED example outputs as quoted spans — some
+ *  double-quoted (e.g. `e.g. "P042 [Decel Time 1] sets the deceleration ramp
+ *  [1]."` in `BASE_SYSTEM_PROMPT`), some SINGLE-quoted (e.g. `ISOLATION_STEP_
+ *  RULE`, appended to every turn's prompt by `withStepSafety`: `'with the
+ *  drive locked out and the DC bus confirmed dead with a meter, check…'`).
+ *  Measured and confirmed a real false positive: that single-quoted example
+ *  shares a 12-word run with a legitimate, safety-correct answer that
+ *  follows the instruction almost verbatim ("…locked out and the DC bus
+ *  confirmed dead with a meter, check…") — double-quote-only exclusion
+ *  flagged it. Those spans are text the model is RIGHT to produce close to
+ *  verbatim; they are not the governing instruction. Splitting on them
+ *  (rather than deleting the quotes and leaving the surrounding words
+ *  adjacent) guarantees no gram ever bridges across a removed span into a
+ *  run that was never contiguous in the source.
+ *
+ *  The single-quote pattern is apostrophe-safe: the opening `'` must NOT be
+ *  preceded by a letter/digit (so a possessive/contraction apostrophe like
+ *  "site's" or "doesn't" is never mistaken for an opening quote), and the
+ *  closing `'` must NOT be followed by one (so an apostrophe inside the
+ *  quoted text that happens to be followed by a letter is skipped rather
+ *  than closing the span early). Known, accepted limitation: because the
+ *  character class excludes `'` entirely, a quoted span whose OWN content
+ *  contains an internal apostrophe/contraction fails to match (left
+ *  un-excluded) rather than closing early — checked against both prompts'
+ *  actual quoted spans, none contain one. */
 function segmentsExcludingQuotedExamples(text: string): string[] {
-  return text.split(/"[^"]*"/g);
+  return text.split(/"[^"]*"|(?<![\p{L}\p{N}])'[^'\n]+?'(?![\p{L}\p{N}])/gu);
 }
 
 /** Lowercase, strip zero-width/format characters BEFORE collapsing
