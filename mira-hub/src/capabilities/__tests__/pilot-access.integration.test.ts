@@ -534,4 +534,67 @@ describe.skipIf(!READY)("pilot access against real Postgres (#4878, Codex #4664 
     const result = await approvePilotTenant(tenantId, "admin-f5-at-cap");
     expect(result.status).toBe("activated");
   });
+
+  it("F9 (Codex #4882 review) — a platform admin sharing the tenant never consumes a seat: 4 non-admin + 1 admin still has room for a 5th non-admin invite; a 6th is rejected", async () => {
+    const { tenantId, ownerId } = await makeTenant(`f9-admin-exempt-${MARK}`);
+    testTenantIds.push(tenantId);
+    // owner (non-admin, from makeTenant) + 3 more non-admin crew = 4 non-admin.
+    for (let i = 0; i < 3; i++) {
+      await testPool.query(
+        `INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'approved')`,
+        [`f9-crew-${MARK}-${i}@example.com`, tenantId],
+      );
+    }
+    // + 1 platform admin — must never occupy a pilot seat.
+    await testPool.query(
+      `INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'admin')`,
+      [`f9-admin-${MARK}@example.com`, tenantId],
+    );
+    // 5 hub_users rows total (4 non-admin + 1 admin), but only 4 count toward
+    // the 5-seat cap.
+
+    const approval = await approvePilotTenant(tenantId, "admin-f9");
+    expect(approval.status).toBe("activated");
+
+    // Buggy code counts all 5 hub_users rows and rejects this immediately —
+    // the fix counts 4 non-admin rows, leaving exactly one seat free.
+    await expect(
+      reservePilotSeat(tenantId, `f9-fifth-${MARK}@example.com`),
+    ).resolves.toEqual({ reserved: true });
+    await redeemPilotSeat(tenantId, `f9-fifth-${MARK}@example.com`);
+
+    // CONTROL: the cap still correctly rejects a 6th non-admin seat —
+    // 4 existing non-admin members + the fifth's (now redeemed) reservation
+    // = 5 occupied, at the cap.
+    await expect(
+      reservePilotSeat(tenantId, `f9-sixth-${MARK}@example.com`),
+    ).rejects.toBeInstanceOf(PilotSeatCapError);
+
+    const { rows: ownerRows } = await testPool.query(`SELECT status FROM hub_users WHERE id = $1`, [
+      ownerId,
+    ]);
+    expect(ownerRows[0].status).toBe("trial");
+  });
+
+  it("F9 — admitPilotInvite's own redemption-time occupancy check (no prior reservation) is likewise admin-exempt", async () => {
+    const { tenantId } = await makeTenant(`f9-admit-${MARK}`);
+    testTenantIds.push(tenantId);
+    for (let i = 0; i < 3; i++) {
+      await testPool.query(
+        `INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'approved')`,
+        [`f9-admit-crew-${MARK}-${i}@example.com`, tenantId],
+      );
+    }
+    await testPool.query(
+      `INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'admin')`,
+      [`f9-admit-admin-${MARK}@example.com`, tenantId],
+    );
+    await approvePilotTenant(tenantId, "admin-f9-admit");
+
+    // No reservation on record for this email — admitPilotInvite re-checks
+    // capacity itself (F2) rather than trusting a pre-existing reservation.
+    await expect(
+      runAdmit(tenantId, `f9-admit-fifth-${MARK}@example.com`),
+    ).resolves.toEqual({ isPilotTenant: true, pilotExpiresAt: expect.any(Date) });
+  });
 });

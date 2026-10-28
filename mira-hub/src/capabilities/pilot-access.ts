@@ -373,9 +373,14 @@ export async function reservePilotSeat(
       return { reserved: true };
     }
 
+    // F9 (Codex #4882 review): exclude platform admins, same as
+    // approvePilotTenant's `status <> 'admin'` exemption — an admin never
+    // occupies a pilot seat, so they must never be counted against the cap
+    // here either (this COUNT was the only one of the three that still
+    // counted every hub_users row).
     const { rows: occupiedRows } = await client.query(
       `SELECT COUNT(DISTINCT email_lower)::int AS n FROM (
-         SELECT email_lower FROM hub_users WHERE tenant_id = $1
+         SELECT email_lower FROM hub_users WHERE tenant_id = $1 AND status <> 'admin'
          UNION
          SELECT email_lower FROM pilot_seat_reservations WHERE tenant_id = $1
        ) seats`,
@@ -523,9 +528,11 @@ export async function admitPilotInvite(
   // F2: no reservation on record — re-check capacity now rather than
   // trusting a token that may predate the seat cap or the tenant's own
   // activation.
+  // F9 (Codex #4882 review): same admin exemption as reservePilotSeat /
+  // approvePilotTenant — a platform admin never occupies a pilot seat.
   const { rows: occupiedRows } = await client.query(
     `SELECT COUNT(DISTINCT email_lower)::int AS n FROM (
-       SELECT email_lower FROM hub_users WHERE tenant_id = $1
+       SELECT email_lower FROM hub_users WHERE tenant_id = $1 AND status <> 'admin'
        UNION
        SELECT email_lower FROM pilot_seat_reservations WHERE tenant_id = $1
      ) seats`,

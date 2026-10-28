@@ -470,6 +470,38 @@ describe("reservePilotSeat", () => {
     });
     expect(client.calls.some((c) => /INSERT INTO pilot_seat_reservations/.test(c.sql))).toBe(true);
   });
+
+  it("F9 (Codex #4882 review) — the occupancy count excludes platform admins, same as approvePilotTenant's exemption", async () => {
+    process.env.MIRA_PILOT_APPROVAL_REQUIRED = "1";
+    const client = makeClient([
+      [/SELECT pilot_status FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: "active" }] })],
+      [/FROM hub_users WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/FROM pilot_seat_reservations WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/COUNT\(DISTINCT email_lower\)/, () => ({ rows: [{ n: 4 }] })],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    await reservePilotSeat("tenant-1", "fifth@example.com");
+    const occupancyQuery = client.calls.find((c) => /COUNT\(DISTINCT email_lower\)/.test(c.sql));
+    expect(occupancyQuery?.sql).toMatch(/FROM hub_users WHERE tenant_id = \$1 AND status <> 'admin'/);
+  });
+
+  it("F9 — a tenant with 4 non-admin members + 1 platform admin still has room for a 5th non-admin seat", async () => {
+    process.env.MIRA_PILOT_APPROVAL_REQUIRED = "1";
+    const client = makeClient([
+      [/SELECT pilot_status FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: "active" }] })],
+      [/FROM hub_users WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/FROM pilot_seat_reservations WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      // 4 non-admin + 1 admin = 5 hub_users rows total, but the admin-excluding
+      // count this test pins returns 4 — the admin never occupies a seat.
+      [/COUNT\(DISTINCT email_lower\)/, () => ({ rows: [{ n: 4 }] })],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    await expect(reservePilotSeat("tenant-1", "fifth@example.com")).resolves.toEqual({
+      reserved: true,
+    });
+  });
 });
 
 describe("admitPilotInvite (F1/F2 — the authoritative redemption-time check)", () => {
@@ -562,6 +594,46 @@ describe("admitPilotInvite (F1/F2 — the authoritative redemption-time check)",
       admitPilotInvite(client as any, "tenant-1", "unreserved@example.com"),
     ).resolves.toEqual({ isPilotTenant: true, pilotExpiresAt: new Date("2026-11-27T00:00:00.000Z") });
     expect(client.calls.some((c) => /INSERT INTO pilot_seat_reservations/.test(c.sql))).toBe(true);
+  });
+
+  it("F9 (Codex #4882 review) — the redemption-time occupancy count excludes platform admins, same as approvePilotTenant's exemption", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/, () => ({
+        rows: [{ pilot_status: "active", pilot_expires_at: "2026-11-27T00:00:00.000Z" }],
+      })],
+      [/FROM hub_users WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/FROM pilot_seat_reservations WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/COUNT\(DISTINCT email_lower\)/, () => ({ rows: [{ n: 4 }] })],
+    ]);
+    await admitPilotInvite(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      client as any,
+      "tenant-1",
+      "fifth@example.com",
+    );
+    const occupancyQuery = client.calls.find((c) => /COUNT\(DISTINCT email_lower\)/.test(c.sql));
+    expect(occupancyQuery?.sql).toMatch(/FROM hub_users WHERE tenant_id = \$1 AND status <> 'admin'/);
+  });
+
+  it("F9 — a tenant with 4 non-admin members + 1 platform admin still has room for a 5th non-admin redeemed directly, no prior reservation", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/, () => ({
+        rows: [{ pilot_status: "active", pilot_expires_at: "2026-11-27T00:00:00.000Z" }],
+      })],
+      [/FROM hub_users WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      [/FROM pilot_seat_reservations WHERE tenant_id = \$1 AND email_lower = \$2/, () => ({ rows: [] })],
+      // 4 non-admin + 1 admin = 5 hub_users rows total, but the admin-excluding
+      // count this test pins returns 4 — the admin never occupies a seat.
+      [/COUNT\(DISTINCT email_lower\)/, () => ({ rows: [{ n: 4 }] })],
+    ]);
+    await expect(
+      admitPilotInvite(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        client as any,
+        "tenant-1",
+        "fifth@example.com",
+      ),
+    ).resolves.toEqual({ isPilotTenant: true, pilotExpiresAt: new Date("2026-11-27T00:00:00.000Z") });
   });
 });
 
