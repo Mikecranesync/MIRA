@@ -293,6 +293,24 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/** Template vars for `emails/pilot-request-notify.html` (exported for tests, #4901). */
+export function ownerNotifyVars(
+  row: StoredPilotRequest,
+  value: ValidPilotRequest,
+): Record<string, string> {
+  return {
+    NAME: escapeHtml(value.name),
+    WORK_EMAIL: escapeHtml(value.workEmail),
+    COMPANY: escapeHtml(value.company),
+    EQUIPMENT: escapeHtml(value.equipment || "(not provided)"),
+    LEAD_SOURCE: escapeHtml(value.leadSource),
+    UTM_SOURCE: escapeHtml(value.utmSource ?? "(none)"),
+    UTM_MEDIUM: escapeHtml(value.utmMedium ?? "(none)"),
+    UTM_CAMPAIGN: escapeHtml(value.utmCampaign ?? "(none)"),
+    REQUEST_ID: escapeHtml(row.id),
+  };
+}
+
 async function defaultNotifyOwner(
   row: StoredPilotRequest,
   value: ValidPilotRequest,
@@ -301,16 +319,7 @@ async function defaultNotifyOwner(
     to: OWNER_EMAIL,
     subject: `New free pilot request — ${value.company}`,
     templateName: "pilot-request-notify",
-    vars: {
-      NAME: escapeHtml(value.name),
-      WORK_EMAIL: escapeHtml(value.workEmail),
-      COMPANY: escapeHtml(value.company),
-      EQUIPMENT: escapeHtml(value.equipment || "(not provided)"),
-      UTM_SOURCE: escapeHtml(value.utmSource ?? "(none)"),
-      UTM_MEDIUM: escapeHtml(value.utmMedium ?? "(none)"),
-      UTM_CAMPAIGN: escapeHtml(value.utmCampaign ?? "(none)"),
-      REQUEST_ID: escapeHtml(row.id),
-    },
+    vars: ownerNotifyVars(row, value),
   });
 }
 
