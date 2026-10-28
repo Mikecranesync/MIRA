@@ -30,17 +30,34 @@ import { PILOT_COHORT_MAX_ORGS, PILOT_SEAT_MAX_USERS, PILOT_WINDOW_DAYS } from "
  * F3 — `approvePilotTenant` moves EVERY existing non-admin user in the
  *      tenant to the org's trial deadline, not just the owner — pre-existing
  *      'approved' crew would otherwise stay approved forever (middleware
- *      only gates trial/pending/expired).
+ *      only gates trial/pending/expired). Review round 2: approval also
+ *      takes the tenant-scoped seat lock (fixed order: cohort lock, then
+ *      tenant lock — see `approvePilotTenant`) and `admitPilotInvite`'s
+ *      tenant read is `FOR UPDATE`, so a legacy (NULL pilot_status) tenant's
+ *      redemption can never race activation and insert/restore an 'approved'
+ *      member after approval's tenant-wide sweep already ran.
  * F4 — `releasePilotSeatReservation` undoes a reservation whose invite
  *      creation failed right after (`team/route.ts`), so a 500 after the
  *      seat was reserved doesn't permanently strand it. `UNIQUE (tenant_id,
  *      email_lower)` also means resending a still-pending invite finds the
  *      existing row instead of reserving a second seat.
+ * F5 — `approvePilotTenant` refuses to activate a tenant whose existing
+ *      non-admin members + pending reservations already exceed
+ *      `PILOT_SEAT_MAX_USERS` (e.g. a legacy tenant with 6 members from the
+ *      unrestricted pre-pilot invite flow) — it never silently grants trial
+ *      access to more than the cap.
  * Reservation rows are never deleted on redemption — `status` transitions
  * `pending` -> `redeemed` in place, so "redeeming an invite never frees a
  * seat, even temporarily" is true by construction. (A row IS deleted by
  * `releasePilotSeatReservation`, but only while still `pending` and only
  * when the invite that would have redeemed it never came into existence.)
+ *
+ * Lock order (documented once, binding everywhere): COHORT LOCK
+ * (`PILOT_COHORT_LOCK_KEY`) before the TENANT LOCK (`PILOT_SEAT_LOCK_NAMESPACE`
+ * + `hashtext(tenantId)`). Only `approvePilotTenant` ever takes the cohort
+ * lock, and it always takes it first; `admitPilotInvite`, `reservePilotSeat`,
+ * and `endPilotTenant` take only the tenant lock. No code path acquires them
+ * in the reverse order, so this cannot deadlock.
  */
 
 export function isPilotApprovalRequired(): boolean {
@@ -145,7 +162,26 @@ export async function approvePilotTenant(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // Fixed global lock order — documented once, applied everywhere a pilot
+    // decision touches more than one scope: COHORT LOCK FIRST, then the
+    // TENANT-SCOPED lock. admitPilotInvite and endPilotTenant only ever take
+    // the tenant lock (never the cohort lock), so this order can never
+    // deadlock against them — there is no second code path that could ever
+    // acquire the two locks in the opposite order.
     await client.query("SELECT pg_advisory_xact_lock($1)", [PILOT_COHORT_LOCK_KEY]);
+    // F3 (Codex #4664 / #4878 review round 2): the SAME tenant-scoped lock
+    // admitPilotInvite/endPilotTenant take, acquired BEFORE reading the
+    // tenant row. Without this, a legacy (pilot_status IS NULL) tenant's
+    // redemption could read NULL, decide "legacy/non-pilot", and — after
+    // approval commits its tenant-wide trial sweep — insert or update the
+    // recipient as 'approved' with no expiry, racing the activation. With
+    // this lock (plus admitPilotInvite's FOR UPDATE read, above), the two
+    // operations always serialize: whichever commits first is fully visible
+    // to the other, never a torn read.
+    await client.query("SELECT pg_advisory_xact_lock($1, hashtext($2))", [
+      PILOT_SEAT_LOCK_NAMESPACE,
+      tenantId,
+    ]);
 
     const { rows } = await client.query(
       `SELECT id, owner_user_id, pilot_status, pilot_approved_at, pilot_expires_at, pilot_approved_by
@@ -169,6 +205,25 @@ export async function approvePilotTenant(
     );
     if (Number((countRows[0] as { n: number } | undefined)?.n ?? 0) >= PILOT_COHORT_MAX_ORGS) {
       throw new PilotCohortCapError();
+    }
+
+    // F5 (Codex #4664 / #4878 review round 2): a tenant that accumulated
+    // members through the unrestricted legacy invite flow (flag off, or
+    // never activated) before ever being pilot-tracked may already be over
+    // the 5-seat cap. Reject rather than silently admitting all of them —
+    // admins are exempt (never converted by any pilot transition, so they
+    // never occupy a pilot seat; matches the admin carve-out on the
+    // tenant-wide UPDATE below).
+    const { rows: seatRows } = await client.query(
+      `SELECT COUNT(DISTINCT email_lower)::int AS n FROM (
+         SELECT email_lower FROM hub_users WHERE tenant_id = $1 AND status <> 'admin'
+         UNION
+         SELECT email_lower FROM pilot_seat_reservations WHERE tenant_id = $1
+       ) seats`,
+      [tenantId],
+    );
+    if (Number((seatRows[0] as { n: number } | undefined)?.n ?? 0) > PILOT_SEAT_MAX_USERS) {
+      throw new PilotSeatCapError();
     }
 
     const { rows: updated } = await client.query(
@@ -420,8 +475,14 @@ export async function admitPilotInvite(
     tenantId,
   ]);
 
+  // F3 (Codex #4664 / #4878 review round 2): FOR UPDATE, not a plain SELECT —
+  // approvePilotTenant also locks this row (and now also takes this same
+  // tenant advisory lock, below), so a concurrent activation can never be
+  // "in flight but uncommitted" while this read decides NULL/pending/ended.
+  // Either this read commits first (approve then sees the real outcome), or
+  // approve's row lock is already held and this blocks until approve commits.
   const { rows: tenantRows } = await client.query(
-    `SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = $1 LIMIT 1`,
+    `SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = $1 LIMIT 1 FOR UPDATE`,
     [tenantId],
   );
   const tenantRow = tenantRows[0] as

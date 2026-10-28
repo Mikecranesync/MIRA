@@ -369,4 +369,169 @@ describe.skipIf(!READY)("pilot access against real Postgres (#4878, Codex #4664 
     const adminRow = byId.get(String(admin.id));
     expect(adminRow?.status).toBe("admin");
   });
+
+  it("F3 — approvePilotTenant genuinely BLOCKS while a redemption holds the tenant lock (the mechanism, proven directly)", async () => {
+    const { tenantId } = await makeTenant(`f3-block-${MARK}`);
+    testTenantIds.push(tenantId);
+    await testPool.query(
+      `UPDATE hub_tenants SET pilot_status = 'ended' WHERE pilot_status = 'active' AND id <> $1`,
+      [tenantId],
+    );
+
+    const holdClient = await testPool.connect();
+    try {
+      await holdClient.query("BEGIN");
+      // The identical lock admitPilotInvite/endPilotTenant take.
+      await holdClient.query("SELECT pg_advisory_xact_lock($1, hashtext($2))", [778899002, tenantId]);
+
+      const start = Date.now();
+      // approvePromise may settle (fulfill OR reject) before this test ever
+      // awaits it directly below — give it a handler immediately so an
+      // early rejection (e.g. this test failing under a mutation) can never
+      // surface as an unhandled rejection that corrupts a LATER test.
+      const approvePromise = approvePilotTenant(tenantId, "admin-f3-block");
+      const approveSettled = approvePromise.then(
+        () => "resolved" as const,
+        () => "resolved" as const,
+      );
+
+      await new Promise((r) => setTimeout(r, 300));
+      const raceResult = await Promise.race([
+        approveSettled,
+        new Promise<"still-pending">((r) => setTimeout(() => r("still-pending"), 0)),
+      ]);
+      expect(raceResult).toBe("still-pending");
+
+      await holdClient.query("COMMIT");
+      const result = await approvePromise;
+      expect(result.status).toBe("activated");
+      expect(Date.now() - start).toBeGreaterThanOrEqual(290);
+    } catch (err) {
+      await holdClient.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      holdClient.release();
+    }
+  });
+
+  it("F3 — a redemption that already decided 'legacy' (held open, uncommitted) blocks approval until it commits; approval's sweep still converts it to trial, never leaves it approved", async () => {
+    // A LEGACY tenant: pilot_status is NULL (never activated), exactly the
+    // precondition Codex's F3 evidence names.
+    const { tenantId } = await makeTenant(`f3-interleave-${MARK}`);
+    testTenantIds.push(tenantId);
+    await testPool.query(
+      `UPDATE hub_tenants SET pilot_status = 'ended' WHERE pilot_status = 'active' AND id <> $1`,
+      [tenantId],
+    );
+    const email = `f3-interleave-member-${MARK}@example.com`;
+
+    const admitClient = await testPool.connect();
+    try {
+      await admitClient.query("BEGIN");
+      // Reproduces admitPilotInvite's own first two steps exactly: the
+      // tenant-scoped lock, then the FOR UPDATE tenant read — decides
+      // "legacy" (NULL), exactly as the real function would, with its
+      // hub_users write still pending (not yet issued).
+      await admitClient.query("SELECT pg_advisory_xact_lock($1, hashtext($2))", [778899002, tenantId]);
+      const { rows: tenantSnap } = await admitClient.query(
+        "SELECT pilot_status FROM hub_tenants WHERE id = $1 LIMIT 1 FOR UPDATE",
+        [tenantId],
+      );
+      expect(tenantSnap[0].pilot_status).toBeNull();
+
+      // Approval attempts to run concurrently — it must BLOCK on the tenant
+      // lock this in-flight "redemption" still holds. Same early-settle
+      // handler as the sibling F3 test above: approvePromise must not be
+      // allowed to surface an unhandled rejection if it settles early under
+      // a mutation, since that would hang this test on the final `await` or
+      // leak a rejection into a later test's process.
+      const approvePromise = approvePilotTenant(tenantId, "admin-f3-interleave");
+      const approveSettled = approvePromise.then(
+        () => "resolved" as const,
+        () => "resolved" as const,
+      );
+      await new Promise((r) => setTimeout(r, 300));
+      const raceResult = await Promise.race([
+        approveSettled,
+        new Promise<"still-pending">((r) => setTimeout(() => r("still-pending"), 0)),
+      ]);
+      expect(raceResult).toBe("still-pending");
+
+      // The "redemption" now completes its legacy-branch write and commits
+      // — exactly what ensureInvitedUser's non-pilot branch does.
+      await admitClient.query(
+        `INSERT INTO hub_users (email, tenant_id, name, role, status) VALUES ($1, $2, NULL, 'technician', 'approved')`,
+        [email, tenantId],
+      );
+      await admitClient.query("COMMIT");
+
+      const approveResult = await approvePromise;
+      expect(approveResult.status).toBe("activated");
+    } catch (err) {
+      await admitClient.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      admitClient.release();
+    }
+
+    const { rows } = await testPool.query(
+      `SELECT status, trial_expires_at FROM hub_users WHERE tenant_id = $1 AND email_lower = $2`,
+      [tenantId, email],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("trial");
+    expect(rows[0].status).not.toBe("approved");
+    expect(rows[0].trial_expires_at).not.toBeNull();
+  });
+
+  it("F5 — approving a legacy tenant with 6 existing members is rejected; tenant stays not-active, nobody converted", async () => {
+    const { tenantId, ownerId } = await makeTenant(`f5-over-${MARK}`);
+    testTenantIds.push(tenantId);
+    const crewIds: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const {
+        rows: [crew],
+      } = await testPool.query(
+        `INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'approved') RETURNING id`,
+        [`f5-over-crew-${MARK}-${i}@example.com`, tenantId],
+      );
+      crewIds.push(String(crew.id));
+    }
+    // owner + 5 crew = 6 total non-admin members.
+
+    await expect(approvePilotTenant(tenantId, "admin-f5-over")).rejects.toBeInstanceOf(
+      PilotSeatCapError,
+    );
+
+    const { rows: tenantRows } = await testPool.query(
+      `SELECT pilot_status FROM hub_tenants WHERE id = $1`,
+      [tenantId],
+    );
+    expect(tenantRows[0].pilot_status).toBeNull();
+
+    const { rows: ownerRows } = await testPool.query(`SELECT status FROM hub_users WHERE id = $1`, [
+      ownerId,
+    ]);
+    expect(ownerRows[0].status).toBe("trial"); // unchanged from makeTenant's seed value
+    const { rows: crewRows } = await testPool.query(
+      `SELECT status FROM hub_users WHERE id = ANY($1)`,
+      [crewIds],
+    );
+    expect(crewRows.every((r: { status: string }) => r.status === "approved")).toBe(true);
+  });
+
+  it("CONTROL — approving a legacy tenant with exactly 5 existing members succeeds", async () => {
+    const { tenantId } = await makeTenant(`f5-at-cap-${MARK}`);
+    testTenantIds.push(tenantId);
+    for (let i = 0; i < 4; i++) {
+      await testPool.query(
+        `INSERT INTO hub_users (email, tenant_id, status) VALUES ($1, $2, 'approved')`,
+        [`f5-at-cap-crew-${MARK}-${i}@example.com`, tenantId],
+      );
+    }
+    // owner + 4 crew = 5 total — exactly at the cap, not over it.
+
+    const result = await approvePilotTenant(tenantId, "admin-f5-at-cap");
+    expect(result.status).toBe("activated");
+  });
 });

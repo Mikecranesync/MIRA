@@ -228,6 +228,106 @@ describe("approvePilotTenant", () => {
       PilotTenantNotFoundError,
     );
   });
+
+  it("F3 — takes the cohort lock, then the SAME tenant lock admitPilotInvite/endPilotTenant use, before reading the tenant row", async () => {
+    const client = makeClient([
+      [
+        /FROM hub_tenants WHERE id = \$1 FOR UPDATE/,
+        () => ({
+          rows: [{ id: "tenant-1", owner_user_id: "owner-1", pilot_status: "pending" }],
+        }),
+      ],
+      [/SELECT COUNT\(\*\)::int AS n FROM hub_tenants WHERE pilot_status = 'active'/, () => ({ rows: [{ n: 0 }] })],
+      [
+        /UPDATE hub_tenants[\s\S]*SET pilot_status = 'active'/,
+        () => ({
+          rows: [
+            {
+              id: "tenant-1",
+              pilot_status: "active",
+              pilot_approved_at: "2026-10-28T00:00:00.000Z",
+              pilot_expires_at: "2026-11-27T00:00:00.000Z",
+              pilot_approved_by: "admin-1",
+            },
+          ],
+        }),
+      ],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    await approvePilotTenant("tenant-1", "admin-1");
+
+    const cohortLockIndex = client.calls.findIndex(
+      (c) => /pg_advisory_xact_lock\(\$1\)$/.test(c.sql.trim()) && c.params[0] === 778899001,
+    );
+    const tenantLockIndex = client.calls.findIndex(
+      (c) => /pg_advisory_xact_lock\(\$1, hashtext\(\$2\)\)/.test(c.sql) && c.params[0] === 778899002,
+    );
+    const tenantReadIndex = client.calls.findIndex((c) => /FROM hub_tenants WHERE id = \$1 FOR UPDATE/.test(c.sql));
+
+    expect(cohortLockIndex).toBeGreaterThanOrEqual(0);
+    expect(tenantLockIndex).toBeGreaterThan(cohortLockIndex);
+    expect(tenantReadIndex).toBeGreaterThan(tenantLockIndex);
+    expect(client.calls[tenantLockIndex].params).toEqual([778899002, "tenant-1"]);
+  });
+
+  it("F5 — refuses to activate a legacy tenant whose existing non-admin members already exceed the seat cap", async () => {
+    const client = makeClient([
+      [
+        /FROM hub_tenants WHERE id = \$1 FOR UPDATE/,
+        () => ({
+          rows: [{ id: "tenant-over", owner_user_id: "owner-over", pilot_status: null }],
+        }),
+      ],
+      [/SELECT COUNT\(\*\)::int AS n FROM hub_tenants WHERE pilot_status = 'active'/, () => ({ rows: [{ n: 0 }] })],
+      [
+        /FROM hub_users WHERE tenant_id = \$1 AND status <> 'admin'/,
+        () => ({ rows: [{ n: PILOT_SEAT_MAX_USERS + 1 }] }),
+      ],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    await expect(approvePilotTenant("tenant-over", "admin-1")).rejects.toBeInstanceOf(
+      PilotSeatCapError,
+    );
+    // Never activated, never wrote hub_users.
+    expect(client.calls.some((c) => /SET pilot_status = 'active'/.test(c.sql))).toBe(false);
+    expect(client.calls.some((c) => /UPDATE hub_users/.test(c.sql))).toBe(false);
+  });
+
+  it("F5 — a tenant AT exactly the seat cap still activates (the cap rejects over, not at)", async () => {
+    const client = makeClient([
+      [
+        /FROM hub_tenants WHERE id = \$1 FOR UPDATE/,
+        () => ({
+          rows: [{ id: "tenant-at-cap", owner_user_id: "owner-at-cap", pilot_status: null }],
+        }),
+      ],
+      [/SELECT COUNT\(\*\)::int AS n FROM hub_tenants WHERE pilot_status = 'active'/, () => ({ rows: [{ n: 0 }] })],
+      [
+        /FROM hub_users WHERE tenant_id = \$1 AND status <> 'admin'/,
+        () => ({ rows: [{ n: PILOT_SEAT_MAX_USERS }] }),
+      ],
+      [
+        /UPDATE hub_tenants[\s\S]*SET pilot_status = 'active'/,
+        () => ({
+          rows: [
+            {
+              id: "tenant-at-cap",
+              pilot_status: "active",
+              pilot_approved_at: "2026-10-28T00:00:00.000Z",
+              pilot_expires_at: "2026-11-27T00:00:00.000Z",
+              pilot_approved_by: "admin-1",
+            },
+          ],
+        }),
+      ],
+    ]);
+    connectMock.mockResolvedValue(client);
+
+    const result = await approvePilotTenant("tenant-at-cap", "admin-1");
+    expect(result.status).toBe("activated");
+  });
 });
 
 describe("endPilotTenant", () => {
@@ -373,6 +473,19 @@ describe("reservePilotSeat", () => {
 });
 
 describe("admitPilotInvite (F1/F2 — the authoritative redemption-time check)", () => {
+  it("F3 — reads the tenant row FOR UPDATE, not a plain SELECT, so it can't race an activation", async () => {
+    const client = makeClient([
+      [/SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: null }] })],
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await admitPilotInvite(client as any, "tenant-1", "x@example.com");
+
+    const tenantRead = client.calls.find((c) =>
+      /SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/.test(c.sql),
+    );
+    expect(tenantRead?.sql).toMatch(/FOR UPDATE/);
+  });
+
   it("is not a pilot tenant when pilot_status is NULL — caller keeps legacy behavior", async () => {
     const client = makeClient([
       [/SELECT pilot_status, pilot_expires_at FROM hub_tenants WHERE id = \$1/, () => ({ rows: [{ pilot_status: null }] })],
