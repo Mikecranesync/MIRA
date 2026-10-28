@@ -36,44 +36,26 @@ does not email Mike on every signup.
 | `PILOT_OWNER_EMAIL` | `factorylm/stg`, `factorylm/prd` | Optional. Defaults to `mike@factorylm.com` in code if unset. |
 | `MIRA_PILOT_APPROVAL_REQUIRED` | `factorylm/stg`, `factorylm/prd` | Introduced by PR #4882; default off. Gates the owner email in this PR too. |
 
-### ⚠️ Doppler alone is not enough — compose wiring is a separate, NOT-YET-DONE step
+### Compose wiring: staging is done in this PR, production is not
 
-`docker-compose.saas.yml` and `docker-compose.staging-vps.yml` are **guarded
-root-compose files** under `.claude/rules/factorylm-unified-ui-cutover.md`
-(`tools/ui_surface_lifecycle_guard.py`), so this PR does not edit them. None
-of `PLG_POSTHOG_KEY`, `PLG_POSTHOG_HOST`, `PILOT_OWNER_EMAIL`, or
-`MIRA_PILOT_APPROVAL_REQUIRED` is forwarded into the `mira-hub` service's
-`environment:` block in either compose file today — and neither is
-`PLG_POSTHOG_KEY` for `mira-web`'s own existing server-side capture
-(`mira-web/src/lib/posthog-server.ts`), which has the identical gap. This is
-the exact "Doppler says one thing, the container reads its code default"
-failure class `docs/architecture/convergence/CAPABILITY_CLOSURE.yaml` was
-written to catch (#3328).
+`docker-compose.staging-vps.yml` forwards `PLG_POSTHOG_KEY`, `PLG_POSTHOG_HOST`,
+`PILOT_OWNER_EMAIL`, `MIRA_PILOT_APPROVAL_REQUIRED` and `RESEND_API_KEY` into
+the staging `mira-hub` service (all default empty = off / no-op; an empty
+`PLG_POSTHOG_HOST` falls back to `https://us.i.posthog.com` in code).
 
-**Before any staging test-event checklist below can pass, a separate guarded
-compose PR must add these four lines to the `mira-hub` service's
-`environment:` block** in `docker-compose.saas.yml` (and the `stg-mira-hub`
-equivalent in `docker-compose.staging-vps.yml`):
-
-```yaml
-      - PLG_POSTHOG_KEY=${PLG_POSTHOG_KEY:-}
-      - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-https://us.i.posthog.com}
-      - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-mike@factorylm.com}
-      - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-0}
-```
-
-Until that lands, setting the Doppler key alone does **nothing** — the
-container still reads `undefined` for all four.
+`docker-compose.saas.yml` (production) is **not** changed. Production wiring is
+a separate, owner-authorized PR; until it lands, setting the Doppler keys in
+`factorylm/prd` does nothing for the Hub.
 
 ## Test-event checklist (staging, before any ads run)
 
-Run this only after BOTH (a) the compose-wiring PR above has merged and
-deployed to staging, and (b) `PLG_POSTHOG_KEY` is set in `factorylm/stg`.
+Run this only after BOTH (a) this PR has merged and deployed to staging, and
+(b) `PLG_POSTHOG_KEY` is set in `factorylm/stg`.
 
-1. `curl -s https://stg.app.factorylm.com/api/version` — confirm the deployed
-   SHA includes this PR and the compose-wiring PR.
+1. `curl -s https://app-staging.factorylm.com/api/version` — confirm the deployed
+   SHA includes this PR.
 2. Register a brand-new account at the staging signup URL with a UTM query
-   string, e.g. `https://stg.app.factorylm.com/signup?utm_source=test&utm_medium=checklist&utm_campaign=pilot-funnel-verify`.
+   string, e.g. `https://app-staging.factorylm.com/signup?utm_source=test&utm_medium=checklist&utm_campaign=pilot-funnel-verify`.
 3. In the PostHog project, confirm one `pilot_application_submitted` event
    landed with `distinct_id` equal to the new tenant id and
    `properties.utm_source == "test"`.
