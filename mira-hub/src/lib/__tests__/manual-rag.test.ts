@@ -30,11 +30,20 @@ function makeClient(scriptedRows: Array<Record<string, unknown>[]>): {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const query = vi.fn(async (sql: string, params: unknown[]) => {
     calls.push({ sql, params });
+    // The T-1 bookkeeping queries (code selectivity count, question-IDF table,
+    // rare-term recall) return no rows here and do not consume a scripted lane:
+    // these scenarios script WHICH lanes run and what each returns.
+    if (sql.includes("WITH ORDINALITY") || sql.includes("names_document") || sql.includes("quote_literal(lex)")) return { rows: [] };
     const rows = scriptedRows.shift() ?? [];
     return { rows };
   });
   return { client: { query } as unknown as PoolClient, calls };
 }
+
+// Retrieval LANE calls only: the T-1 bookkeeping queries (code selectivity
+// count, question-IDF table, rare-term recall) are not lanes a scenario scripts.
+const lanes = (calls: Array<{ sql: string; params: unknown[] }>) =>
+  calls.filter((c) => !(c.sql.includes("WITH ORDINALITY") || c.sql.includes("names_document") || c.sql.includes("quote_literal(lex)")));
 
 const row = (overrides: Partial<Record<string, unknown>> = {}) => ({
   content: "Set torque to 35 ft-lbs on motor mount bolts.",
@@ -863,15 +872,15 @@ describe("retrieveNodeChunks", () => {
     });
     expect(out).toHaveLength(1);
     expect(out[0].title).toBe("gs10_fault_codes.pdf");
-    expect(calls).toHaveLength(2);
+    expect(lanes(calls)).toHaveLength(2);
     // First query is the precise AND (plainto), with the BM25 content match.
-    expect(calls[0].sql).toContain("plainto_tsquery('english', $2)");
-    expect(calls[0].sql).not.toContain("replace(");
+    expect(lanes(calls)[0].sql).toContain("plainto_tsquery('english', $2)");
+    expect(lanes(calls)[0].sql).not.toContain("replace(");
     // Fallback rewrites '&' → '|' so a conversational question still grounds.
-    expect(calls[1].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
+    expect(lanes(calls)[1].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
     // node scoping + route discriminator preserved on both queries.
-    expect(calls[1].sql).toContain("ingest_route = 'v2'");
-    expect(calls[1].sql).toContain("metadata->>'node_id'");
+    expect(lanes(calls)[1].sql).toContain("ingest_route = 'v2'");
+    expect(lanes(calls)[1].sql).toContain("metadata->>'node_id'");
   });
 
   it("expands a synonym query into extra recall passes (vocabulary bridge)", async () => {
@@ -905,8 +914,8 @@ describe("retrieveNodeChunks", () => {
       unsPath: null,
     });
     expect(out).toHaveLength(1);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].sql).not.toContain("replace(");
+    expect(lanes(calls)).toHaveLength(1);
+    expect(lanes(calls)[0].sql).not.toContain("replace(");
   });
 
   it("resolves the subtree before retrieving when unsPath is set", async () => {
@@ -917,10 +926,10 @@ describe("retrieveNodeChunks", () => {
       unsPath: "enterprise.garage.demo_cell.cv_101",
     });
     expect(out).toHaveLength(1);
-    expect(calls).toHaveLength(2);
-    expect(calls[0].sql).toContain("uns_path <@ $2::ltree");
+    expect(lanes(calls)).toHaveLength(2);
+    expect(lanes(calls)[0].sql).toContain("uns_path <@ $2::ltree");
     // retrieval is scoped to the resolved subtree ids
-    expect(calls[1].params[2]).toEqual(["n-1", "child-1"]);
+    expect(lanes(calls)[1].params[2]).toEqual(["n-1", "child-1"]);
   });
 
   it("adds the approved-only filter for node retrieval when enabled", async () => {
@@ -1357,9 +1366,9 @@ describe("retrieveNodeChunks docId scope", () => {
       docId: DOC_ID,
     });
     expect(out).toHaveLength(1);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].sql).toContain("doc_id = ANY($5::uuid[])");
-    expect(calls[0].params).toContainEqual([DOC_ID]);
+    expect(lanes(calls)).toHaveLength(1);
+    expect(lanes(calls)[0].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(lanes(calls)[0].params).toContainEqual([DOC_ID]);
   });
 
   it("keeps the doc_id filter on the OR fallback (gate F holds for conversational queries)", async () => {
@@ -1369,10 +1378,10 @@ describe("retrieveNodeChunks docId scope", () => {
       unsPath: null,
       docId: DOC_ID,
     });
-    expect(calls).toHaveLength(2);
-    expect(calls[0].sql).toContain("doc_id = ANY($5::uuid[])");
-    expect(calls[1].sql).toContain("doc_id = ANY($5::uuid[])");
-    expect(calls[1].params).toContainEqual([DOC_ID]);
+    expect(lanes(calls)).toHaveLength(2);
+    expect(lanes(calls)[0].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(lanes(calls)[1].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(lanes(calls)[1].params).toContainEqual([DOC_ID]);
   });
 
   it("omits the doc_id filter entirely when no docId is given (node-scope unchanged)", async () => {
