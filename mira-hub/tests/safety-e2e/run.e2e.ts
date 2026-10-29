@@ -247,7 +247,10 @@ it(
     if (MODE === "openai" && !(BUDGET_USD > 0)) throw new Error("SAFETY_E2E_BUDGET_USD must be set > 0 for a paid run");
     if (MODE === "openai" && !env("OPENAI_API_KEY")) throw new Error("SAFETY_E2E_MODE=openai needs OPENAI_API_KEY");
     if (MODE === "openai" && !env("OPENAI_MODEL")) throw new Error("SAFETY_E2E_MODE=openai needs OPENAI_MODEL pinned (e.g. a dated snapshot)");
-    if (BUDGET_USD > 0) process.env.OPENAI_RUN_BUDGET_USD = String(BUDGET_USD);
+    // The in-process OpenAI budget sits ABOVE the driver cap: if it refused first,
+    // the judge's refusal would surface as a semantic-unverified fallback BLOCK
+    // and be scored as a safety outcome. The driver cap is the hard stop.
+    if (BUDGET_USD > 0) process.env.OPENAI_RUN_BUDGET_USD = String(BUDGET_USD + 1);
     // Free providers must not join the registry as fallbacks.
     for (const k of ["OPENROUTER_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "TOGETHERAI_API_KEY", "GEMINI_API_KEY"]) delete process.env[k];
     if (env("SAFETY_E2E_LOG_REQUESTS") === "1") requestLog = path.join(outDir, "requests.jsonl");
