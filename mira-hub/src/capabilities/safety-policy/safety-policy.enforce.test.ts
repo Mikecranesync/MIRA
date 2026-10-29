@@ -211,6 +211,8 @@ describe("#4963 a PPE arc rating is not equipment incident energy", () => {
     ["the issue's source: an arc-rated suit rating", "The arc-rated suit is rated 8 cal/cm²."],
     ["a PPE minimum arc rating", "Wear PPE with an arc rating of at least 8 cal/cm²."],
     ["a garment ATPV", "The shirt has an ATPV of 8 cal/cm²."],
+    ["a PPE clause in a sentence that also names incident energy", "Incident energy at the panel needs PPE; the arc-rated suit is rated 8 cal/cm²."],
+    ["a bare energy value with no study context", "The value printed on the door is 8 cal/cm²."],
   ])("block: %s", (_n, source) => {
     expect(verdicts(check("Incident energy is 8 cal/cm² [1].", [src(source)]))).toEqual(["block:not_in_cited_sentence"]);
   });

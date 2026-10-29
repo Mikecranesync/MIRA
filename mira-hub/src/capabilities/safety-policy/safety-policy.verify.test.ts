@@ -399,6 +399,7 @@ describe("#4962 tight continuation", () => {
     ["#4962 control: an imperative wait right after", "Capacitors remain charged. Wait 5 minutes."],
     ["anaphoric 'this charge'", "Capacitors remain charged after power is removed. Allow 5 minutes for this charge to dissipate."],
     ["same list item", "\u2611 Capacitors remain charged after power is removed. Give them 5 minutes.\n\u2611 Only qualified personnel may service the drive."],
+    ["same list item, no imperative or anaphor", "\u2611 Capacitors remain charged after power is removed. The safe interval is 5 minutes.\n\u2611 Only qualified personnel may service the drive."],
     ["a wrapped line inside one paragraph still continues", "Capacitors remain charged\nafter power is removed. Wait 5 minutes."],
   ])("pass: %s", (_n, chunk) => {
     expect(verdicts(check(FIVE_MIN, [manual(chunk)], F.GS10))).toEqual(["pass"]);
