@@ -16,6 +16,7 @@ export function fold(s: string): string {
     .replace(/[*`_]/g, "")
     .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
     .replace(/[\u2018\u2019\u201B\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u2033]/g, '"')
     .replace(/\p{Cf}/gu, "")
     .replace(/[^\S\n]/gu, " ");
 }
@@ -30,7 +31,8 @@ export function sentences(text: string, wrapped: boolean): string[] {
   const blocks = wrapped ? t.split(/\n\s*\n/).map((b) => b.replace(/\s*\n\s*/g, " ")) : t.split(/\n+/);
   const out: string[] = [];
   for (const b of blocks) {
-    for (const raw of b.split(/(?<=[.!?])\s+|\s*[☑•▪]\s*/u)) {
+    // No split inside a compound length ("3 ft. 6 in."): "ft." / "in." followed by a digit.
+    for (const raw of b.split(/(?<=[.!?])(?!(?<=\b(?:ft|in)\.)\s+\d)\s+|\s*[☑•▪]\s*/u)) {
       const s = raw.replace(/^\s*(?:[-+]|\d+[.)])\s+/, "").trim();
       if (!s) continue;
       if (/^(?:\[(?:\d+|photo)\]\s*[.,;]?\s*)+$/i.test(s) && out.length > 0) out[out.length - 1] += ` ${s}`;
@@ -78,19 +80,44 @@ function toNumber(tok: string): number {
   return WORDS.has(t) ? WORDS.get(t)! : Number(t.replace(/,/g, ""));
 }
 
-/** Rewrite fractional and compound phrases into digits so the unit grammar sees them. */
+/** A run of number words ("forty two", "one hundred twenty", "two thousand five hundred"). */
+const NUM_TOKEN = `(?:${WORD_ALT}|hundred|thousand)`;
+const WORD_RUN_RE = new RegExp(`\\b${NUM_TOKEN}(?:\\s+${NUM_TOKEN})*\\b`, "gi");
+
+function wordsToNumber(run: string): string {
+  let total = 0;
+  let cur = 0;
+  for (const tok of run.toLowerCase().split(/\s+/)) {
+    if (tok === "hundred") cur = (cur || 1) * 100;
+    else if (tok === "thousand") {
+      total += (cur || 1) * 1000;
+      cur = 0;
+    } else cur += toNumber(tok);
+  }
+  return String(total + cur);
+}
+
+/** Feet + inches written together ("3 ft 6 in", "3 ft. 6 in.", "3 ft-6 in", "3'6''") → inches. */
+const FT_IN_RE = /(\d+(?:\.\d+)?)\s*(?:ft|feet|foot|')\.?\s*(?:-\s*|and\s+)?(\d+(?:\.\d+)?)\s*(?:inch(?:es)?|in\b\.?|"|'')/gi;
+
+/** Rewrite fractional, worded and compound phrases into digits so the unit grammar sees them.
+ *  Value parsing only: it serves the answer and the source side alike. */
 function normalizePhrases(s: string): string {
   return s
     // #4956: "1 1/2", "1/2", NFKC "1⁄2" (from "½") → decimals, so a fraction never parses as its denominator.
     .replace(new RegExp(`(\\d+)\\s+(\\d+)${SEP}(\\d+)`, "g"), (_m, w: string, n: string, d: string) => fraction(Number(w), n, d))
     .replace(new RegExp(`(\\d+)${SEP}(\\d+)`, "g"), (_m, n: string, d: string) => fraction(0, n, d))
-    .replace(/\b(?:an?|one)\s+hour\s+and\s+a\s+half\b/gi, "90 minutes")
+    // Number words → digits: "a hundred and twenty" → "120", "forty two" → "42" (never "two").
+    .replace(/\ban?\s+(hundred|thousand)\b/gi, "one $1")
+    .replace(new RegExp(`\\b(hundred|thousand)\\s+and\\s+(?=${NUM_TOKEN}\\b)`, "gi"), "$1 ")
+    .replace(WORD_RUN_RE, (m) => wordsToNumber(m))
+    .replace(/(\d+(?:\.\d+)?)\s+and\s+a\s+half\b/gi, (_m, n: string) => String(Number(n) + 0.5))
+    .replace(/\b(?:an?|1)\s+(hour|minute|second)\s+and\s+a\s+half\b/gi, "1.5 $1s")
     .replace(/\b(?:a\s+)?half\s+(?:an?\s+)?hour\b/gi, "30 minutes")
     .replace(/\b(?:a\s+)?half\s+(?:a\s+)?minute\b/gi, "30 seconds")
     .replace(/\b(?:a\s+)?quarter\s+(?:of\s+)?(?:an?\s+)?hour\b/gi, "15 minutes")
     .replace(/\ban?\s+(hour|minute|second)\b/gi, "1 $1")
-    .replace(new RegExp(`\\b(${SMALL.slice(1).join("|")})\\s+hundred(?:\\s+and)?(?:\\s+(${WORD_ALT}))?\\b`, "gi"),
-      (_m, h: string, r?: string) => String(toNumber(h) * 100 + (r ? toNumber(r) : 0)));
+    .replace(FT_IN_RE, (_m, ft: string, inch: string) => `${Number(ft) * 12 + Number(inch)} in`);
 }
 
 type Dim = "time" | "voltage" | "distance" | "energy" | "torque" | "pressure";
@@ -98,17 +125,21 @@ interface UnitDef { dim: Dim; re: string; factor: (u: string) => number }
 
 const UNIT_DEFS: UnitDef[] = [
   { dim: "time", re: "hours?|hrs?|minutes?|mins?|seconds?|secs?|s", factor: (u) => (u.startsWith("h") ? 3600 : u.startsWith("m") ? 60 : 1) },
-  { dim: "energy", re: "cal\\s*/\\s*cm\\s*2|cal\\s*/\\s*cm\\^2|cal\\s+per\\s+square\\s+centimet(?:er|re)", factor: () => 1 },
+  { dim: "energy", re: "(?:cal(?:ories?)?|j(?:oules?)?)\\s*(?:/|per)\\s*(?:cm\\s*\\^?\\s*2|sq(?:uare)?\\.?\\s*cm|square\\s+centimet(?:er|re)s?)",
+    factor: (u) => (u.startsWith("j") ? 1 / 4.184 : 1) },
   { dim: "torque", re: "n\\s*[-.\\u00B7\\u22C5]?\\s*m|newton[- ]?met(?:er|re)s?|lb[- .]?in|in[- .]?lbs?|lb[- .]?ft|ft[- .]?lbs?|pound[- ](?:feet|foot|inch(?:es)?)",
     factor: (u) => (/^n|^newton/.test(u) ? 1 : /ft|feet|foot/.test(u) ? 1.35582 : 0.112985) },
-  { dim: "pressure", re: "psig?|bar|kpa|mpa", factor: (u) => (u.startsWith("psi") ? 6.89476 : u === "bar" ? 100 : u === "mpa" ? 1000 : 1) },
-  { dim: "voltage", re: "kv|kilovolts?|v\\s*dc|vdc|v\\s*ac|vac|volts?(?:\\s*(?:dc|ac))?|v", factor: (u) => (u.startsWith("k") ? 1000 : 1) },
-  { dim: "distance", re: "mm|millimet(?:er|re)s?|cm|centimet(?:er|re)s?|met(?:er|re)s?|m|inch(?:es)?|in\\.|ft|feet|foot",
-    factor: (u) => (u.startsWith("mm") || u.startsWith("milli") ? 1 : u.startsWith("c") ? 10 : u.startsWith("in") ? 25.4 : u.startsWith("f") ? 304.8 : 1000) },
+  { dim: "pressure",
+    re: "psig?|bar(?!\\s+(?:graphs?|segments?|charts?|codes?|indicators?))|kpa|mpa|lbs?\\s*/\\s*in\\s*\\^?\\s*2|pounds?\\s+per\\s+square\\s+inch|kgf?\\s*/\\s*cm\\s*\\^?\\s*2",
+    factor: (u) => (/^(?:psi|lb|pound)/.test(u) ? 6.89476 : u === "bar" ? 100 : u === "mpa" ? 1000 : u.startsWith("kg") ? 98.0665 : 1) },
+  { dim: "voltage", re: "mv|millivolts?|kv|kilovolts?|v\\s*dc|vdc|v\\s*ac|vac|volts?(?:\\s*(?:dc|ac))?|v",
+    factor: (u) => (u.startsWith("m") ? 0.001 : u.startsWith("k") ? 1000 : 1) },
+  { dim: "distance", re: "mm|millimet(?:er|re)s?|cm|centimet(?:er|re)s?|met(?:er|re)s?|m|inch(?:es)?|in\\.|in|\"|''|ft|feet|foot",
+    factor: (u) => (u.startsWith("mm") || u.startsWith("milli") ? 1 : u.startsWith("c") ? 10 : /^(?:in|"|'')/.test(u) ? 25.4 : u.startsWith("f") ? 304.8 : 1000) },
 ];
 
 const QTY_RE = new RegExp(
-  `(?<![\\w.${FRACTION_SEP}])(${NUM})${PAREN}(?:\\s*(?:to|or|and|through|-)\\s*(${NUM})${PAREN})?\\s*-?\\s*(${UNIT_DEFS.map((d) => d.re).join("|")})(?![a-z0-9])`,
+  `(?<![\\w.${FRACTION_SEP}])(${NUM})\\+?${PAREN}(?:\\s*(?:to|or|and|through|-)\\s*(${NUM})\\+?${PAREN})?(?:\\s+(?:full|whole|complete))?\\s*-?\\s*(${UNIT_DEFS.map((d) => d.re).join("|")})(?![a-z0-9])`,
   "gi",
 );
 
@@ -167,11 +198,22 @@ export function isUnrelatedSourceTiming(clause: string): boolean {
 
 /** A comparative threshold immediately before the value ("less than 25VDC", "below 50 V"). */
 const THRESHOLD_RE =
-  /(?:\b(?:less\s+than|below|under|lower\s+than|at\s+most|drops?\s+(?:to|below)|falls?\s+(?:to|below)|discharged?\s+(?:to|below)|bleeds?\s+down\s+to)|<|≤)\s*(?:about\s+|approximately\s+)?$/i;
+  /(?:\b(?:less\s+than|below|under|lower\s+than|at\s+most|no(?:t)?\s+more\s+than|not\s+(?:to\s+)?exceed(?:ing)?|(?:a\s+)?max(?:imum)?(?:\s+of)?|drops?\s+(?:to|below)|falls?\s+(?:to|below)|discharged?\s+(?:to|below)|bleeds?\s+down\s+to)|<=|=<|<|≤)\s*(?:about\s+|approximately\s+)?$/i;
+/** A comparative right after the value ("50 V or less", "50 V and below", "50 V max"). */
+const POST_THRESHOLD_RE = /^\s*(?:\[[^\]]*\]\s*)?(?:or\s+(?:less|lower|below|under)|and\s+(?:below|under|lower)|max(?:imum)?\b)/i;
 const BUS_POINT_RE = /\b(?:dc\s*\+|\+\s*dc|dc\s*-|-\s*dc|dc[- ]?(?:bus|link)|bus|capacitors?|between\s*\+\s*and\s*-|discharg\w*|residual|stored)/i;
 /** Approach / arc-flash boundary wording. Not "clearance" (drive mounting) and not "working
  *  distance" (where incident energy is calculated; it runs the opposite conservative direction). */
 const APPROACH_RE = /\b(?:approach|boundary|arc[- ]?flash|limited|restricted)\b/i;
+/** Answer side only (recall, fail closed): a distance from exposed / energized / live parts. Not
+ *  read on the source side, where "2 in away" wording would become boundary support. */
+const ANSWER_APPROACH_RE =
+  /\b(?:exposed|energi[sz]ed|live)\s+(?:energi[sz]ed\s+|live\s+)?(?:parts?|conductors?|components?|terminals?|circuits?|equipment|busbars?|bus)\b/i;
+
+/** Answer side only (recall, fail closed): wording that ties a wait to power removal or to contact
+ *  and that the narrow DISCHARGE_LINK_RE — also the #4958 source-support link — does not list. */
+export const ANSWER_LINK_RE =
+  /\b(?:after\s+(?:you\s+|we\s+|the\s+)?(?:remov|disconnect|switch|turn|shut|isolat|de-?energi|kill|cut|open|lock)\w*|(?:once|when|after|until)\s+(?:the\s+)?(?:power|drive|unit|disconnect|supply|equipment|machine|panel|breaker)\s+(?:is|has\s+been|was|are|have\s+been)\s+(?:removed|off|de-?energi\w*|isolated|opened|disconnected|locked\s+out|turned\s+off|switched\s+off|shut\s+off)|(?:kill|cut|remove|disconnect|shut\s+off|switch\s+off|turn\s+off)\s+(?:the\s+)?(?:input\s+)?(?:power|supply|mains)|before\s+(?:you\s+|we\s+)?(?:touch|open|work|servic|remov|handl|access|inspect)\w*|de-?energi[sz]ed|with\s+(?:the\s+)?power\s+(?:removed|off))\b/i;
 
 const CLAUSE_DELIM_RE = /\s*;\s*|\s+-\s+|,\s+(?=(?:and|but|then|while|although)\b)/gi;
 
@@ -207,6 +249,7 @@ export function classify(
   before: string,
   storedContext: boolean,
   side: "answer" | "source" = "answer",
+  after = "",
 ): Quantity | null {
   switch (dim) {
     case "time": {
@@ -220,9 +263,11 @@ export function classify(
       return storedContext && !isUnrelatedTiming(clause) ? "discharge_time" : null;
     }
     case "voltage":
-      return THRESHOLD_RE.test(before) && (BUS_POINT_RE.test(clause) || storedContext) ? "residual_voltage" : null;
+      return (THRESHOLD_RE.test(before) || POST_THRESHOLD_RE.test(after)) && (BUS_POINT_RE.test(clause) || storedContext)
+        ? "residual_voltage"
+        : null;
     case "distance":
-      return APPROACH_RE.test(clause) ? "approach_boundary" : null;
+      return APPROACH_RE.test(clause) || (side === "answer" && ANSWER_APPROACH_RE.test(clause)) ? "approach_boundary" : null;
     case "energy":
       return "incident_energy";
     case "torque":

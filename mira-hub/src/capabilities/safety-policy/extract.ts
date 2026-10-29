@@ -11,7 +11,7 @@
  */
 import { applicability } from "./verify";
 import { chunkStatements, statementsOf, unparsedDischargeTime } from "./statements";
-import { DISCHARGE_LINK_RE, STORED_RE, answerParagraphs, fold, isUnrelatedTiming, sameValue } from "./text";
+import { ANSWER_LINK_RE, DISCHARGE_LINK_RE, STORED_RE, answerParagraphs, fold, isUnrelatedTiming, sameValue } from "./text";
 import { QUANTITY_UNIT, type BoundAsset, type EvidenceChunk, type Quantity, type TypedNumber } from "./types";
 
 export const markerToChunkId = (m: string) => (m.toLowerCase() === "photo" ? "photo" : `c${m}`);
@@ -45,7 +45,10 @@ export interface Extraction {
 
 export function extractNumbers(opts: ExtractOptions): Extraction {
   const q = fold(opts.question ?? "");
-  const questionContext = STORED_RE.test(q) && !isUnrelatedTiming(q);
+  // Answer side, fail closed: a wait tied to power removal or to contact is a discharge context
+  // even without a capacitor word (in the sentence, earlier in its paragraph, or in the question).
+  const linked = (s: string) => DISCHARGE_LINK_RE.test(s) || ANSWER_LINK_RE.test(s);
+  const questionContext = (STORED_RE.test(q) || linked(q)) && !isUnrelatedTiming(q);
   const byId = new Map(opts.chunks.map((c) => [c.id, c]));
   const states = (c: EvidenceChunk, quantity: Quantity, value: number) =>
     chunkStatements(c).some((s) => s.quantity === quantity && sameValue(quantity, s.value, value));
@@ -55,10 +58,8 @@ export function extractNumbers(opts: ExtractOptions): Extraction {
   for (const paragraph of answerParagraphs(opts.answerText)) {
     let seenStored = false;
     for (const sentence of paragraph) {
-      // Answer side is fail-closed: a wait tied to power removal or to contact ("5 minutes after
-      // power is removed") is a discharge claim even without a capacitor word.
-      const ctx = STORED_RE.test(sentence) || DISCHARGE_LINK_RE.test(sentence) || seenStored || questionContext;
-      seenStored = seenStored || STORED_RE.test(sentence);
+      const ctx = STORED_RE.test(sentence) || linked(sentence) || seenStored || questionContext;
+      seenStored = seenStored || STORED_RE.test(sentence) || linked(sentence);
       if (unparsedDischargeTime(sentence, ctx)) unparsed.push("discharge_time");
       const cited = citedIds(sentence);
       for (const st of statementsOf(sentence, ctx)) {

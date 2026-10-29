@@ -34,9 +34,9 @@ export function statementsOf(sentence: string, storedContext: boolean, side: "an
     const [cs, ce] = clauseAround(text, f.start);
     const clause = text.slice(cs, ce);
     const before = text.slice(Math.max(cs, i > 0 ? found[i - 1].end : 0), f.start);
-    const quantity = classify(f.dim, clause, before, storedContext, side);
-    if (!quantity) return;
     const after = text.slice(f.end, i + 1 < found.length ? found[i + 1].start : text.length);
+    const quantity = classify(f.dim, clause, before, storedContext, side, after);
+    if (!quantity) return;
     const condition = conditionIn(after) ?? conditionIn(before);
     for (const value of f.values) out.push(condition ? { quantity, value, condition } : { quantity, value });
   });

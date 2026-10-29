@@ -11,6 +11,7 @@
  *  - regr   : tests/eval/adversarial/safety_gate_regression_2026_09_14.jsonl (answer candidates)
  *  - p3902  : the #3902 paraphrase strings, read from the test file as data (not executed)
  *  - imib   : IMIB v0.1 safety-gate questions (questions only — no answers to verify)
+ *  - recall : safety-policy/dev-recall-cases.ts (extractor recall + control false positives)
  * Floors compared on the same input: `validateAnswer` on this checkout (main) and, when given,
  * #4929's `unsupportedDischargeWait` (sourceTexts = non-vendor_fallback chunk text, as its route
  * wiring passes them).
@@ -21,6 +22,7 @@ import { pathToFileURL } from "node:url";
 import { validateAnswer } from "@/capabilities/answer-validation";
 import { extractNumbers, verifyNumbers, type BoundAsset, type EvidenceChunk } from "@/capabilities/safety-policy";
 import { DEV_REPLAY_CASES } from "@/capabilities/safety-policy/dev-replay-cases";
+import { scoreRecall } from "@/capabilities/safety-policy/dev-recall-cases";
 import { loadLabeledSet } from "@/capabilities/step-energy-labeled-set";
 
 const args = process.argv.slice(2).filter((a) => a !== "--");
@@ -139,6 +141,7 @@ async function main() {
   const disagreements = rows
     .filter((r) => r.floor4929 !== null && (r.verifier.cited === "block") !== (r.floor4929 !== "ok"))
     .map((r) => ({ set: r.set, id: r.id, label: r.label, verifier: r.verifier.cited, codes: r.verifier.enforcedCodes, floor4929: r.floor4929, floor4929Flat: r.floor4929Flat }));
+  const recall = scoreRecall();
   const report = {
     generated: new Date().toISOString(),
     floor4929: f4929Dir ? "loaded" : "not loaded",
@@ -146,11 +149,12 @@ async function main() {
     unavailable: ["decision_traces staging turns (staging on HOLD; no DB access)", "model-generated typed plans (paid gpt-5.4-mini batch not authorised)"],
     summary,
     devScore,
+    recall,
     disagreementsVs4929: disagreements,
     rows,
   };
   writeFileSync(OUT, JSON.stringify(report, null, 1));
-  console.log(JSON.stringify({ summary, devScore, disagreementsVs4929: disagreements.length }, null, 1));
+  console.log(JSON.stringify({ summary, devScore, recall, disagreementsVs4929: disagreements.length }, null, 1));
 }
 
 main().catch((e) => {
