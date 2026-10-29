@@ -359,6 +359,16 @@ describe("NodeChat MessageBubble — assistant markdown (#4880 defect 4)", () =>
     expect(html).not.toContain("**line_1_conveyor**");
   });
 
+  it("control: a safety-stop message keeps its verbatim plain-text render", () => {
+    const stop = "**STOP.** De-energize and apply LOTO before\nopening the cabinet.";
+    const html = renderToStaticMarkup(
+      <MessageBubble msg={{ id: "s1", role: "assistant", content: stop, isSafetyStop: true }} />,
+    );
+    expect(html).toContain("**STOP.** De-energize and apply LOTO before\nopening the cabinet.");
+    expect(html).toContain("whitespace-pre-wrap");
+    expect(html).not.toContain("<strong>");
+  });
+
   it("control: the technician's own message is still shown verbatim", () => {
     const html = renderToStaticMarkup(
       <MessageBubble msg={{ id: "u1", role: "user", content: "is **this** a fault?" }} />,

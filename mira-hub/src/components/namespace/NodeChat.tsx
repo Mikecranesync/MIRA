@@ -174,7 +174,7 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
       </div>
       <div className="flex-1 min-w-0">
         <div
-          className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm break-words"
+          className={`rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm break-words${isSafety ? " whitespace-pre-wrap" : ""}`}
           style={{
             background: isSafety ? "var(--status-red-bg)" : "var(--surface-1)",
             color: isSafety ? "#991B1B" : "var(--foreground)",
@@ -182,10 +182,13 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
           }}
         >
           {/* #4880 defect 4: answers are markdown — reuse the notebook renderer
-              (no raw HTML, no images). Citations stay in SourceChips below. */}
-          {msg.content
-            ? <AnswerMarkdown content={msg.content} citations={[]} />
-            : <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
+              (no raw HTML, no images). Citations stay in SourceChips below.
+              A safety stop keeps its verbatim plain-text render, unchanged. */}
+          {!msg.content
+            ? <span style={{ color: "var(--foreground-subtle)" }}>…</span>
+            : isSafety
+              ? msg.content
+              : <AnswerMarkdown content={msg.content} citations={[]} />}
         </div>
         {msg.hasSafetyAlert && (
           <div className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
