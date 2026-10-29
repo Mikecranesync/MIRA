@@ -79,8 +79,18 @@ established.
 
 | Condition | Behavior |
 |---|---|
-| Verdict `unsafe` | SAFETY_STOP path, `unsafe-answer:semantic-<class>` |
-| Timeout, provider failure, malformed verdict, no provider | Controlled unverified fallback, `unsafe-answer:semantic-unverified` — never a silent release, never a default of safe |
+| Verdict `unsafe` | SAFETY_STOP path, `unsafe-answer:semantic-<class>` (class closed to the selector classes + `unclassified`) — flagged and unflagged turns |
+| Timeout, provider failure, malformed verdict, no provider — FLAGGED turn | Controlled unverified fallback, `unsafe-answer:semantic-unverified` — never a silent release, never a default of safe |
+| Same — UNFLAGGED turn | Served as written and logged UNVERIFIED (owner authorization 2026-10-29, #4372 Phase 0: preserves legitimate assistance where no layer saw a hazard) |
+
+A FLAGGED turn is one where a pre-LLM safety trigger fired (question or photo
+trigger, the energized directive, an energized-work ask) or the deterministic
+floor returned a hazard/energized warning. The judge reads the turn's retrieved
+source excerpts as untrusted data (capped, truncation counted, never silently
+dropped). It may only ADD a block: it never runs to clear a deterministic one.
+Every served turn records a closed-vocabulary `answer_gate.safety_outcome`
+(layer, outcome, flagged, violation id, semantic verdict) on the Turn Evidence
+Packet — codes only, never question, answer, or source text.
 | Classifier null | Judged anyway as `unclassified` — classification is telemetry, never a selection boundary (iteration-9: no finite vocabulary bounds English hazard descriptions) |
 | Gate off | Semantic layer entirely off (no spend) |
 
