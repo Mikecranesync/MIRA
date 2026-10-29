@@ -20,6 +20,8 @@
  * checks spent + SAFETY_E2E_CASE_WORST_USD against SAFETY_E2E_BUDGET_USD and
  * aborts the run (exit non-zero, partial results kept) when it would exceed it.
  * OPENAI_RUN_BUDGET_USD is also set to the same cap as a second floor.
+ * Usage is priced from GEN_PRICE_PER_MTOK (or SAFETY_E2E_PRICE_IN/OUT_PER_MTOK);
+ * a capped run on a model with no valid price is refused, never metered at $0.
  *
  * Inputs never live in the repo: SAFETY_E2E_CASES (blind jsonl from
  * tools/safety_e2e/prepare_cases.py) and SAFETY_E2E_OUT must both resolve
@@ -51,10 +53,39 @@ const env = (k: string, d = ""): string => (process.env[k] ?? "").trim() || d;
 const MODE = env("SAFETY_E2E_MODE", "ollama");
 const BUDGET_USD = Number(env("SAFETY_E2E_BUDGET_USD", MODE === "ollama" ? "0" : ""));
 const CASE_WORST_USD = Number(env("SAFETY_E2E_CASE_WORST_USD", "0.05"));
-const PRICE_IN = Number(env("SAFETY_E2E_PRICE_IN_PER_MTOK", "0.75"));
-const PRICE_OUT = Number(env("SAFETY_E2E_PRICE_OUT_PER_MTOK", "4.5"));
 const OLLAMA_URL = env("SAFETY_E2E_OLLAMA_URL", "http://127.0.0.1:11434").replace(/\/$/, "");
 const GEN_MODEL = env("SAFETY_E2E_GEN_MODEL", MODE === "ollama" ? "mira:latest" : env("OPENAI_MODEL", "gpt-5.4-mini"));
+
+// ── generator price (fails closed) ──────────────────────────────────────────
+// The $ cap is only as good as the price it multiplies. A model with no list
+// price, or a price that is not a finite number > 0 ("abc" → NaN made every cap
+// comparison false; "0" metered every call at $0), refuses a capped run instead
+// of being metered at a flat default or at $0.
+// List prices, USD per 1M tokens, standard tier:
+//   gpt-5.4-mini  https://developers.openai.com/api/docs/pricing (fetched 2026-10-29;
+//                 equal to tools/review_router/prices.json and the openai-run-budget defaults)
+const GEN_PRICE_PER_MTOK: Readonly<Record<string, { in: number; out: number }>> = {
+  "gpt-5.4-mini": { in: 0.75, out: 4.5 },
+};
+/** A listed model id, or a dated snapshot of one (gpt-5.4-mini-2026-03-17). */
+function listPrice(model: string): { in: number; out: number } | null {
+  return GEN_PRICE_PER_MTOK[model] ?? GEN_PRICE_PER_MTOK[model.replace(/-\d{4}-\d{2}-\d{2}$/, "")] ?? null;
+}
+function resolvePrice(model: string): { in: number; out: number } | string {
+  const rawIn = env("SAFETY_E2E_PRICE_IN_PER_MTOK");
+  const rawOut = env("SAFETY_E2E_PRICE_OUT_PER_MTOK");
+  if (rawIn || rawOut) {
+    const pIn = Number(rawIn);
+    const pOut = Number(rawOut);
+    const ok = (p: number) => Number.isFinite(p) && p > 0;
+    if (!ok(pIn) || !ok(pOut)) return `SAFETY_E2E_PRICE_IN/OUT_PER_MTOK must both be finite numbers > 0 (got "${rawIn}", "${rawOut}")`;
+    return { in: pIn, out: pOut };
+  }
+  return listPrice(model) ?? `no list price for generator model "${model}": add it to GEN_PRICE_PER_MTOK (source + date) or set SAFETY_E2E_PRICE_IN/OUT_PER_MTOK`;
+}
+// Set in the test body once the price resolves; 0 only on an uncapped (free, local) run.
+let PRICE_IN = 0;
+let PRICE_OUT = 0;
 const LIMIT = Number(env("SAFETY_E2E_LIMIT", "0"));
 
 function repoRoot(): string {
@@ -247,6 +278,17 @@ it(
     if (MODE === "openai" && !(BUDGET_USD > 0)) throw new Error("SAFETY_E2E_BUDGET_USD must be set > 0 for a paid run");
     if (MODE === "openai" && !env("OPENAI_API_KEY")) throw new Error("SAFETY_E2E_MODE=openai needs OPENAI_API_KEY");
     if (MODE === "openai" && !env("OPENAI_MODEL")) throw new Error("SAFETY_E2E_MODE=openai needs OPENAI_MODEL pinned (e.g. a dated snapshot)");
+    if (!(Number.isFinite(BUDGET_USD) && BUDGET_USD >= 0)) throw new Error("refusing: SAFETY_E2E_BUDGET_USD must be a finite number >= 0");
+    if (!(Number.isFinite(CASE_WORST_USD) && CASE_WORST_USD >= 0)) throw new Error("refusing: SAFETY_E2E_CASE_WORST_USD must be a finite number >= 0");
+    // Price the model the provider is actually asked for: in openai mode that is
+    // OPENAI_MODEL (what canonicalProviders() sends), not a display label.
+    const price = resolvePrice(MODE === "openai" ? env("OPENAI_MODEL") : GEN_MODEL);
+    if (typeof price === "string") {
+      if (BUDGET_USD > 0) throw new Error(`refusing: ${price}`);
+    } else {
+      PRICE_IN = price.in;
+      PRICE_OUT = price.out;
+    }
     // The in-process OpenAI budget sits ABOVE the driver cap: if it refused first,
     // the judge's refusal would surface as a semantic-unverified fallback BLOCK
     // and be scored as a safety outcome. The driver cap is the hard stop.
@@ -335,7 +377,7 @@ it(
         break;
       }
     }
-    const summary = { build, build_tree: buildTree, build_parents: buildParents, mode: MODE, gen_model: GEN_MODEL, n_cases: cases.length, aborted, meter, budget_usd: BUDGET_USD };
+    const summary = { build, build_tree: buildTree, build_parents: buildParents, mode: MODE, gen_model: GEN_MODEL, n_cases: cases.length, aborted, meter, budget_usd: BUDGET_USD, price_per_mtok: { in: PRICE_IN, out: PRICE_OUT } };
     writeFileSync(path.join(outDir, "run.summary.json"), JSON.stringify(summary, null, 1) + "\n");
     if (aborted) throw new Error(`safety-e2e ABORTED (${aborted}); partial results in ${genOut}`);
   },

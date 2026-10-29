@@ -14,11 +14,15 @@ read from the pipeline's own persisted safety_stop). Number support and
 notice checks are computed deterministically in score.py; the grader is used
 only for the meaning judgement (instructs_hazard / refusal).
 
-Spend cap (fails closed): before each call the worst case
-(input chars/4 + max_tokens output) is priced with --price-in/--price-out and
-checked against --budget-usd; actual usage is metered from the response. The
-run exits 3 (partial grades kept) when the next call could exceed the cap.
+Spend cap (fails closed): before each attempt the worst case
+(input chars/4 + max_tokens output) is priced and checked against
+--budget-usd; actual usage is metered from the response. The run exits 3
+(partial grades kept) when the next attempt could exceed the cap.
 --budget-usd 0 is legal only for a free local endpoint (--free).
+Prices come from GRADER_PRICE_PER_MTOK for the --model, or from BOTH
+--price-in/--price-out (finite, > 0). A paid model with no price is refused
+rather than metered at a default or at $0. A response without a usage block,
+or an attempt that errors after it was sent, is booked at its worst case.
 
 Usage:
   uv run --with httpx tools/safety_e2e/grade.py --cases DIR/cases.blind.jsonl \
@@ -33,6 +37,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import random
 import sys
@@ -43,6 +48,49 @@ import httpx
 
 PROMPT_VERSION = "safety-e2e-grader-v1"
 RUBRIC = Path(__file__).with_name("rubric.md")
+
+# List prices, USD per 1M tokens (prompt, completion), for paid grader models.
+#   openai/gpt-oss-120b  OpenRouter public model list https://openrouter.ai/api/v1/models
+#                        (fetched 2026-10-29: prompt $0.15, completion $0.60)
+GRADER_PRICE_PER_MTOK: dict[str, tuple[float, float]] = {
+    "openai/gpt-oss-120b": (0.15, 0.60),
+}
+
+
+def _finite_pos(x: float | None) -> bool:
+    return x is not None and math.isfinite(x) and x > 0
+
+
+def resolve_price(model: str, price_in: float | None, price_out: float | None):
+    """(price_in, price_out) for a paid grader, or an error string (fail closed)."""
+    if price_in is None and price_out is None:
+        if model not in GRADER_PRICE_PER_MTOK:
+            return (
+                f"no list price for grader model {model}: add it to GRADER_PRICE_PER_MTOK"
+                " (source + date) or pass both --price-in and --price-out"
+            )
+        return GRADER_PRICE_PER_MTOK[model]
+    if not (_finite_pos(price_in) and _finite_pos(price_out)):
+        return (
+            f"--price-in/--price-out must both be finite numbers > 0 (got {price_in}, {price_out})"
+        )
+    return price_in, price_out
+
+
+def billed_usd(usage: object, worst_usd: float, price_in: float, price_out: float) -> float:
+    """Cost of one landed response. Unknown token counts are not free: no usage
+    block, or a non-numeric/negative count, books the attempt's worst case."""
+    u = usage if isinstance(usage, dict) else {}
+    pt, ct = u.get("prompt_tokens"), u.get("completion_tokens")
+
+    def known(v: object) -> bool:
+        return (
+            isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v >= 0
+        )
+
+    if not (known(pt) and known(ct)):
+        return worst_usd
+    return (pt * price_in + ct * price_out) / 1e6
 
 
 def load_jsonl(p: Path) -> list[dict]:
@@ -90,8 +138,18 @@ def main() -> int:
     ap.add_argument("--api-key-env", default="")
     ap.add_argument("--budget-usd", type=float, default=0.0)
     ap.add_argument("--free", action="store_true", help="local endpoint, no spend")
-    ap.add_argument("--price-in", type=float, default=0.15, help="USD per 1M input tokens")
-    ap.add_argument("--price-out", type=float, default=0.60, help="USD per 1M output tokens")
+    ap.add_argument(
+        "--price-in",
+        type=float,
+        default=None,
+        help="USD per 1M input tokens (else the model's list price)",
+    )
+    ap.add_argument(
+        "--price-out",
+        type=float,
+        default=None,
+        help="USD per 1M output tokens (else the model's list price)",
+    )
     ap.add_argument("--max-tokens", type=int, default=400)
     ap.add_argument("--timeout", type=float, default=120)
     ap.add_argument("--seed", type=int, default=20261029)
@@ -100,9 +158,17 @@ def main() -> int:
     )
     a = ap.parse_args()
 
-    if not a.free and a.budget_usd <= 0:
+    if not a.free and not (math.isfinite(a.budget_usd) and a.budget_usd > 0):
         print("refusing: a non-free grader needs --budget-usd > 0", file=sys.stderr)
         return 2
+    if a.free:
+        price_in, price_out = 0.0, 0.0  # local endpoint: no spend to meter
+    else:
+        price = resolve_price(a.model, a.price_in, a.price_out)
+        if isinstance(price, str):
+            print(f"refusing: {price}", file=sys.stderr)
+            return 2
+        price_in, price_out = price
     cases = {c["id"]: c for c in load_jsonl(a.cases)}
     rubric = RUBRIC.read_text()
     rubric_sha = hashlib.sha256(rubric.encode()).hexdigest()
@@ -148,15 +214,8 @@ def main() -> int:
                 {"role": "user", "content": user_message(gid, c["question"], answer, c["sources"])},
             ]
             worst = (
-                sum(len(m["content"]) for m in msgs) / 4 * a.price_in + a.max_tokens * a.price_out
+                sum(len(m["content"]) for m in msgs) / 4 * price_in + a.max_tokens * price_out
             ) / 1e6
-            if not a.free and spent + worst > a.budget_usd:
-                print(
-                    f"ABORT budget: spent {spent:.4f} + worst {worst:.4f} > cap {a.budget_usd}",
-                    file=sys.stderr,
-                )
-                rc = 3
-                break
             body = {
                 "model": a.model,
                 "messages": msgs,
@@ -166,7 +225,18 @@ def main() -> int:
             }
             t0 = time.time()
             verdict, raw, usage, err = None, "", {}, None
+            attempts = 0
             for _attempt in range(2):
+                # Every attempt (the retry included) is pre-checked against the cap.
+                if not a.free and spent + worst > a.budget_usd:
+                    print(
+                        f"ABORT budget: spent {spent:.4f} + worst {worst:.4f} > cap {a.budget_usd}",
+                        file=sys.stderr,
+                    )
+                    rc = 3
+                    break
+                attempts += 1
+                booked = False
                 try:
                     r = client.post(
                         f"{a.base_url.rstrip('/')}/chat/completions",
@@ -175,18 +245,20 @@ def main() -> int:
                     )
                     r.raise_for_status()
                     d = r.json()
-                    raw = d["choices"][0]["message"].get("content") or ""
                     usage = d.get("usage") or {}
-                    spent += (
-                        (usage.get("prompt_tokens") or 0) * a.price_in
-                        + (usage.get("completion_tokens") or 0) * a.price_out
-                    ) / 1e6
+                    spent += billed_usd(usage, worst, price_in, price_out)
+                    booked = True
+                    raw = d["choices"][0]["message"].get("content") or ""
                     verdict = parse_verdict(raw)
                     if verdict:
                         break
                     err = "unparseable"
-                except (httpx.HTTPError, KeyError, ValueError) as e:
+                except (httpx.HTTPError, KeyError, ValueError, TypeError, AttributeError) as e:
                     err = f"{type(e).__name__}: {e}"[:200]
+                    if not booked:
+                        spent += worst  # it may have been billed; never book it as free
+            if attempts == 0:
+                break
             fo.write(
                 json.dumps(
                     {
@@ -211,6 +283,8 @@ def main() -> int:
             )
             fo.flush()
             written += 1
+            if rc:
+                break
     print(
         json.dumps(
             {"to_grade": len(items), "graded": written, "spent_usd": round(spent, 6), "rc": rc}
