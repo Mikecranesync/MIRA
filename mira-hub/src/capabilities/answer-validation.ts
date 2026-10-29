@@ -1273,6 +1273,7 @@ const DISCHARGE_LINK_RE =
 // not a claim and not support.
 const CHARGE_UP_RE =
   /\b(?:power(?:ing)?[- ]?up|start[- ]?up|pre-?charg\w*|to\s+charge|charg(?:es|ed)?\s+(?:up|within|in)|charging|charge[- ]up)\b/i;
+const OTHER_SUBJECT_RE = /\b(?:leds?|lamps?|lights?|indicators?|display|screen|keypad|motors?|fans?|pumps?|brakes?)\b/i;
 const UNRELATED_TIMING_RE = /\b(?:accel\w*|decel\w*|ramp\w*|fans?|boot\w*|time-?outs?|scan\s+time|response\s+time)\b/i;
 
 // Codex #4929 r2 F2: judge each clause, not the whole sentence, and a clause is
@@ -1352,14 +1353,18 @@ const splitSentences = (text: string) => text.split(/(?<=[.!?])\s+|\n+/).filter(
  *  is a claim unless the sentence is positively unrelated timing, so "the caps
  *  can remain charged for 5 minutes" counts as much as "wait 5 minutes". */
 export function unsupportedDischargeWait(answerText: string, question: string, sourceTexts: string[]): string | null {
-  const sentences = splitSentences(foldForDetection(answerText));
+  // Codex #4929 r4 F2: stored-energy context carries through the rest of its
+  // paragraph (an intervening "Lock out the disconnect." does not break it); a
+  // blank line is a topic change.
+  const paragraphs = foldForDetection(answerText).split(/\n\s*\n/).map(splitSentences);
   const q = foldForDetection(question);
   const questionContext = STORED_ENERGY_CONTEXT_RE.test(q) && !isUnrelatedTiming(q);
   let supported: Set<number> | null = null;
-  for (let i = 0; i < sentences.length; i++) {
-    const s = sentences[i];
-    const sentenceContext =
-      STORED_ENERGY_CONTEXT_RE.test(s) || (i > 0 && STORED_ENERGY_CONTEXT_RE.test(sentences[i - 1])) || questionContext;
+  for (const sentences of paragraphs) {
+  let seenStored = false;
+  for (const s of sentences) {
+    const sentenceContext = STORED_ENERGY_CONTEXT_RE.test(s) || seenStored || questionContext;
+    seenStored = seenStored || STORED_ENERGY_CONTEXT_RE.test(s);
     if (!sentenceContext) continue;
     for (const clause of splitClauses(s)) {
       const { seconds: claimed, unparsed } = parseDurations(clause);
@@ -1372,18 +1377,27 @@ export function unsupportedDischargeWait(answerText: string, question: string, s
           // coordinated proposition stands alone, and one that mentions fan,
           // boot or ramp timing at all supports nothing. A miss only shows the
           // safe fallback.
-          const props = splitSentences(foldForDetection(src))
-            .flatMap(splitClauses)
-            .flatMap((c) => c.split(/\s+(?:and|or|but)\s+/i));
-          for (const x of props) {
-            if (UNRELATED_TIMING_RE.test(x) || isUnrelatedTiming(x)) continue;
-            if (!STORED_ENERGY_CONTEXT_RE.test(x) && !DISCHARGE_LINK_RE.test(x)) continue;
-            for (const n of parseDurations(x).seconds) supported.add(n);
-          }
+          // Codex #4929 r4 F1: a post-shutdown time supports a discharge wait only
+          // when its own proposition names stored energy, or it is a bare
+          // post-isolation wait (no LED/display/motor/fan subject) directly after
+          // a stored-energy sentence, as on a drive warning label.
+          const srcSentences = splitSentences(foldForDetection(src));
+          srcSentences.forEach((sent, j) => {
+            const prevStored = j > 0 && STORED_ENERGY_CONTEXT_RE.test(srcSentences[j - 1]);
+            for (const x of splitClauses(sent).flatMap((c) => c.split(/\s+(?:and|or|but)\s+/i))) {
+              if (UNRELATED_TIMING_RE.test(x) || isUnrelatedTiming(x)) continue;
+              const ok =
+                STORED_ENERGY_CONTEXT_RE.test(x) ||
+                (DISCHARGE_LINK_RE.test(x) && !OTHER_SUBJECT_RE.test(x) && prevStored);
+              if (!ok) continue;
+              for (const n of parseDurations(x).seconds) supported!.add(n);
+            }
+          });
         }
       }
       if (claimed.some((n) => !supported!.has(n))) return s.slice(0, 160);
     }
+  }
   }
   return null;
 }

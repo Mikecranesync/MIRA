@@ -225,3 +225,26 @@ describe("unsupportedDischargeWait — conservative support (each rule on its ow
     expect(unsupportedDischargeWait(A, DC_Q, ["The cooling fan for the DC bus runs 5 minutes after shutdown."])).not.toBeNull();
   });
 });
+
+// Codex round 4 on #4929 (F1, F2).
+describe("unsupportedDischargeWait — Codex round 4", () => {
+  const A = "Wait 5 minutes for the DC bus capacitors to discharge.";
+  it("F1: a post-shutdown time about another subject (LED, motor, display) is not support", () => {
+    for (const src of [
+      "After shutdown, the status LED remains lit for 5 minutes. Verify the DC bus is at zero before touching terminals.",
+      "After shutdown, let the motor cool for 5 minutes. Verify the DC bus is at zero before touching terminals.",
+      "After power off the display stays on for 5 minutes. The DC bus must be verified at zero.",
+    ]) expect(unsupportedDischargeWait(A, DC_Q, [src]), src).not.toBeNull();
+  });
+  it("F1 control: a proposition that ties the time to the DC bus is support", () => {
+    expect(unsupportedDischargeWait(A, DC_Q, ["The DC bus discharges within 5 minutes after shutdown."])).toBeNull();
+  });
+  it("F2: stored-energy context carries through the paragraph past an intervening step", () => {
+    const a = "The DC bus capacitors retain charge after shutdown. Lock out the disconnect. Wait 5 minutes before opening the cover.";
+    expect(unsupportedDischargeWait(a, "How do I replace the drive?", [])).not.toBeNull();
+  });
+  it("F2 control: a later paragraph on another topic is not carried", () => {
+    const a = "The DC bus capacitors stay charged, so use the drive label's wait time and measure to zero.\n\nAfter the swap, set the accel to ramp in 5 seconds and run the conveyor test.";
+    expect(unsupportedDischargeWait(a, "How do I replace the drive?", [])).toBeNull();
+  });
+});
