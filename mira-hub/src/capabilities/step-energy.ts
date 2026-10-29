@@ -2,9 +2,10 @@
  * #4122 — a step that is both isolated and energized. Two prompt rounds lowered
  * the rate but plateaued (23 -> 13 -> 12 of 35 answers); the #4101 technician
  * review confirmed the harm ("if you tighten it after the power's on that's a
- * dangerous situation"). This deterministic check finds the step and lets the
- * route put the energized-work banner above the full answer (owner rule: safety
- * flags never withhold the answer).
+ * dangerous situation"). This deterministic check finds the step.
+ * Owner decision 2026-10-16 (#4122/#3790): a lockout/energy contradiction is
+ * replaced with SAFETY_STOP (validateAnswer A2a). The coherent written
+ * restore-then-measure shape still warns without withholding (#3984).
  *
  * A step is a sentence, list item or heading line. A step is flagged when an
  * isolation state (locked out, isolated, de-energized, power off) is in force —
@@ -20,19 +21,29 @@
 
 const ISOLATED =
   /\b(?:lock(?:ed)?[\s-]?out|lockout(?:\/tagout)?|LOTO|isolated|de[\s-]?energi[sz]ed|power(?:ed)?\s+(?:off|down)|with (?:the )?power (?:removed|off))\b/i;
-const RESTORE =
-  /\b(?:remove (?:the )?lock(?:out)?|lock(?:out)? (?:is )?removed|restore (?:the )?power|power (?:is )?restored|re[\s-]?energi[sz](?:e|es|ed|ing)\b|re-?apply power|reconnect(?:ing)? (?:the )?power|turn (?:the )?power (?:back )?on|power (?:it|the \w+) (?:back )?(?:on|up)|bring (?:it|the \w+) back (?:up|on(?:line)?)|apply (?:main |the )?(?:power|voltage))\b/i;
+/** Written restore — verb-first and object-first ("the lockout is removed",
+ *  "power is restored"). Exported so the isolation tracker reuses this
+ *  grammar instead of a second phrase list. */
+export const RESTORE =
+  /\b(?:remove (?:the )?(?:lock[\s-]?outs?|loto|lock\s*\/\s*tags?)|lock(?:out)? (?:is )?removed|restor(?:e|es|ed|ing) (?:the )?power|power (?:is )?restored|re[\s-]?energi[sz](?:e|es|ed|ing)\b|re-?apply power|reconnect(?:ing)? (?:the )?power|turn (?:the )?power (?:back )?on|power (?:it|the \w+) (?:back )?(?:on|up)|bring (?:it|the \w+) back (?:up|on(?:line)?)|apply (?:main |the )?(?:power|voltage))\b/i;
 const DEAD_CHECK =
   /\b(?:absence of voltage|zero (?:volts|voltage|energy)|0\s?V\b|no voltage|(?:voltage|power) is (?:absent|off|removed)|is de[\s-]?energi[sz]ed|are de[\s-]?energi[sz]ed|is dead|are dead|confirmed dead|verif\w* (?:it is |they are )?dead|continuity|resistance|insulation|megger|open[\s-]circuit|(?:voltage |non-contact )?tester|test meter|test[\s-]lead|(?:low|high)[\s-]voltage|voltage (?:class|rating)|rated voltage)\b/gi;
 /** The lockout is taken off in this very step — a correct later energized step. */
-const LOCKOUT_REMOVED =
+export const LOCKOUT_REMOVED =
   /\b(?:remov\w* (?:the )?lock[\s-]?out|lock[\s-]?out (?:has been |is )?removed|lock[\s-]?out removal|locked out removed)\b/i;
-/** Isolation stated as still in force — contradicts any restore in the same step. */
-const STILL_ISOLATED = /\b(?:still (?:locked[\s-]?out|isolated|de[\s-]?energi[sz]ed)|under (?:lock[\s-]?out|LOTO)(?![\s-]*(?:removal|removed))|with the lock[\s-]?out (?:still )?in place)\b/i;
+/** Isolation stated as still in force — contradicts any restore in the same step.
+ *  Exported so the isolation tracker in answer-validation.ts reuses this grammar
+ *  instead of duplicating a phrase list (a restore "under lockout" must not
+ *  end isolation). */
+export const STILL_ISOLATED = /\b(?:still (?:locked[\s-]?out|isolated|de[\s-]?energi[sz]ed)|under (?:lock[\s-]?out|LOTO)(?![\s-]*(?:removal|removed))|with the lock[\s-]?out (?:still )?in place)\b/i;
 /** "with the VFD powered and the motor terminals isolated" — powered, not isolated. */
 const EXPLICITLY_POWERED = /\b(?:with|while) (?:the )?\w+ (?:powered|energi[sz]ed|running)\b/i;
 const LIVE_READING =
   /\b(?:measure|check|read|verify|confirm|test)\w*\b[^.;\n]{0,60}?\b(?:voltage|volts|current|amps?|frequency|(?:output|supply)(?! terminals? (?:are|is) tight| wiring| connections?| for (?:proper|loose|open|shorted)))\b/i;
+/** Existing OPERATE atom — bare "energize the circuit", not re-energize
+ *  (RESTORE already covers re-energize). */
+const ENERGIZE_CIRCUIT = /(?<!de[\s-])energi[sz]e (?:the )?(?:\w+ )?circuit/i;
+const SEQUENCE_WORD = /\b(?:then|after|afterwards|once|next|finally)\b/i;
 const OPERATE =
   /\b(?:press(?:ing)? (?:the )?(?:start|run)|commanded to run|re-?issue (?:a )?run|run command|start the (?:motor|machine|drive)|power (?:it|the \w+) (?:back )?(?:on|up)|power-?up|re[\s-]?energi[sz]e|restore (?:the )?power|reconnect(?:ing)? (?:the )?power|reset (?:it|the (?:breaker|overload|fault))|watch (?:for|the handle)|trips? again|display|LEDs?|status (?:screen|indicator)|fault (?:code|screen|display)|jog\w*|(?<!de[\s-])energi[sz]e (?:the )?(?:\w+ )?circuit|apply (?:main |the )?(?:power|voltage)|bring (?:it|the \w+) back (?:up|on(?:line)?))\b/i;
 
@@ -97,7 +108,7 @@ export function stepEnergyContradiction(answerText: string): string | null {
       // A sequence ("…isolated and locked out, then restore power") is not simultaneous.
       // r2 F1: a lockout stated as CONTINUING ("still in place") is never ended by "then";
       // a lockout stated as a condition followed by a sequence is ("…locked out, then restore").
-      if (!removed && (still || (STATE_ISOLATED.test(t) && !/\b(?:then|after|afterwards|once|next|finally)\b/i.test(t)))) return raw;
+      if (!removed && (still || (STATE_ISOLATED.test(t) && !SEQUENCE_WORD.test(t)))) return raw;
       // Otherwise it is the transition out of isolation: it closes every scope.
       scopeOpen = false; listScope = false; lineIso = -1;
       continue;
@@ -129,4 +140,14 @@ export function stepEnergyContradiction(answerText: string): string | null {
     if (isolatedHere && !inList) listScope = true;
   }
   return null;
+}
+
+/** Sequential "energize the circuit and measure …" using OPERATE's existing
+ *  energize-circuit atom plus LIVE_READING. Simultaneous isolation
+ *  (STILL_ISOLATED / STATE_ISOLATED without a sequence word) is not this
+ *  shape — those stay A2a BLOCK. No new phrase list. */
+export function sequentialEnergizeThenMeasure(step: string): boolean {
+  if (STILL_ISOLATED.test(step)) return false;
+  if (STATE_ISOLATED.test(step) && !SEQUENCE_WORD.test(step)) return false;
+  return ENERGIZE_CIRCUIT.test(step) && LIVE_READING.test(step);
 }

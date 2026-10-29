@@ -21,6 +21,7 @@
  * preservation tests in answer-validation-unicode-hyphen.test.ts instead.
  */
 import { describe, expect, it } from "vitest";
+import { SAFETY_STOP } from "@/lib/safety-classifier";
 import { validateAnswer, type AnswerValidation, ENERGIZED_WARNING } from "./answer-validation";
 
 const check = (answerText: string, question = "How do I get the phase currents?"): AnswerValidation =>
@@ -151,36 +152,33 @@ describe("#3973 Unicode mutation corpus — safe answers stay safe", () => {
 });
 
 describe("#3973 the corpus also proves detection is not weakened by mutation", () => {
-  // OWNER DECISION 2026-09-27 (Mike): "no answer blocking, just safety flags".
-  // The candidate is no longer withheld/replaced for a hazard-affirmation
-  // rule (A1/A2/A3) — it is served with a hazard banner above it, mutated
-  // bytes and all. This is the opposite assertion from before the policy
-  // change (which required NO fragment of the candidate in the replacement),
-  // and is deliberately NOT weaker: every mutated form must still (a) be
-  // DETECTED (r.ok === false, same violation-producing rule) and (b) carry
-  // the safety-flag banner — the only thing that changed is that the
-  // candidate itself now also reaches the technician, quoted above it.
+  // OWNER DECISION 2026-10-16 (Mike, #4122/#3790): every hazard-affirmation
+  // rule (A1/A2/A3) now BLOCKS — replaces the candidate with SAFETY_STOP,
+  // never serving any fragment of it, under any Unicode mutation. The one
+  // deliberately preserved exception is A4 (an explicitly WRITTEN
+  // restore-to-measure sequence, #3984, Mike 2026-09-26): it still warns and
+  // keeps the candidate, under every mutation.
   for (const [name, seed] of HAZARDOUS) {
-    it(`detection and the safety-flag banner survive every mutated form of "${name}"`, () => {
+    it(`detection survives every mutated form of "${name}", and the policy (block vs. A4's warn) does not shift`, () => {
+      const baselineResult = check(seed);
+      const baselineKind = baselineResult.ok ? null : baselineResult.kind;
       for (const [mname, mutate] of MUTATORS) {
         const mutated = mutate(seed);
         const r = check(mutated);
         expect(r.ok, `LEAKED under ${mname}: ${JSON.stringify(mutated)}`).toBe(false);
         if (r.ok) continue;
-        // #3984: A4 (restore-to-measure) already warned rather than withheld,
-        // pre-dating the 2026-09-27 policy — unchanged here.
+        expect(r.kind, `${mname} shifted the policy (block vs. warn)`).toBe(baselineKind);
         if (r.kind === "energized_warning") {
+          // A4: the candidate is kept, warned above.
           expect(r.replacement.startsWith(ENERGIZED_WARNING), `${mname} lost the warning`).toBe(true);
+          expect(r.replacement, `${mname} dropped the candidate instead of warning it`).toContain(mutated);
         } else {
-          expect(r.kind, `${mname} produced the wrong kind`).toBe("hazard_warning");
-          expect(
-            r.replacement.startsWith("⚠️ **Safety flag on a step below:**"),
-            `${mname} lost the safety-flag banner`,
-          ).toBe(true);
+          // Every other rule: a fresh, candidate-independent block — the
+          // mutated hazardous bytes must never reach the technician.
+          expect(r.kind, `${mname} produced the wrong kind`).toBe("unsafe_answer");
+          expect(r.replacement).toBe(SAFETY_STOP);
+          expect(r.replacement, `${mname} leaked the candidate into the block`).not.toContain(mutated);
         }
-        // and the mutated candidate itself must still reach the technician —
-        // it is quoted/served, never silently dropped.
-        expect(r.replacement, `${mname} dropped the candidate instead of flagging it`).toContain(mutated);
       }
     });
   }

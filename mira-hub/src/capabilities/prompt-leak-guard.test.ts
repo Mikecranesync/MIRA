@@ -664,7 +664,10 @@ describe("#3785 — a server-written SAFETY BANNER prepended to a candidate must
       expect(detectPromptLeak(prompt, v.replacement).leaked).toBe(false);
     });
 
-    it(`validateAnswer's real hazard_warning replacement is not flagged against ${name}`, () => {
+    // #4471: a hazard affirmation is no longer served under a banner — its
+    // replacement is the terminal SAFETY_STOP (kind unsafe_answer). The point
+    // of this case is unchanged: a server-written replacement is never a leak.
+    it(`validateAnswer's real unsafe_answer (SAFETY_STOP) replacement is not flagged against ${name}`, () => {
       const v = validateAnswer({
         answerText: "Yes, the TS-440 permits resetting the E-12 fault while the machine remains energized [1].",
         question: "Can I reset the E-12 fault while it's energized?",
@@ -674,7 +677,7 @@ describe("#3785 — a server-written SAFETY BANNER prepended to a candidate must
       });
       expect(v.ok).toBe(false);
       if (v.ok) throw new Error("unreachable");
-      expect(v.kind).toBe("hazard_warning");
+      expect(v.kind).toBe("unsafe_answer");
       expect(detectPromptLeak(prompt, v.replacement).leaked).toBe(false);
     });
 
