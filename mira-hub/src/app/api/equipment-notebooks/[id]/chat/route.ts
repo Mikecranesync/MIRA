@@ -4561,7 +4561,13 @@ async function handleChatTurn(
           `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
         );
         if (gate) {
-          if (validation.kind === "energized_warning") {
+          if (validation.kind === "isolation_advisory") {
+            // #4858 layered onto #4471: a hands-on answer that passed every
+            // #4471 block gets a fixed isolation notice above it, served as an
+            // ordinary answered turn. Not terminal, no outputRejected, and no
+            // energized-electrical chip (the advisory stays off safetyTrigger).
+            answerText = validation.replacement;
+          } else if (validation.kind === "energized_warning") {
             // #3984 (Mike 2026-09-26): warn and keep troubleshooting. The
             // replacement is the candidate with a warning above it, served as
             // an ordinary answered turn — not a Safety STOP. The existing

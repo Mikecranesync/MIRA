@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { SAFETY_STOP } from "@/lib/safety-classifier";
 import { chunkForRelease, ENERGIZED_WARNING, exactRatingMatch, specificityFallback, unsupportedExactRating, validateAnswer, type AnswerValidation, type AnswerValidationKind } from "./answer-validation";
 
-const FAIL_KINDS = ["unsafe_answer", "unsupported_specificity", "energized_warning"] as const;
+const FAIL_KINDS = ["unsafe_answer", "unsupported_specificity", "energized_warning", "isolation_advisory"] as const;
 type Listed = (typeof FAIL_KINDS)[number];
 type _EveryKindListed = Exclude<AnswerValidationKind, Listed>;
 type _NoExtraKind = Exclude<Listed, AnswerValidationKind>;
@@ -26,8 +26,8 @@ const general = (answerText: string, question = "What does fault code Q-447-Delt
   validateAnswer({ answerText, question, general: true, served: true, refused: false });
 
 describe("AnswerValidation kind union", () => {
-  it("exports exactly unsafe_answer | unsupported_specificity | energized_warning", () => {
-    expect(FAIL_KINDS).toEqual(["unsafe_answer", "unsupported_specificity", "energized_warning"]);
+  it("exports exactly unsafe_answer | unsupported_specificity | energized_warning | isolation_advisory", () => {
+    expect(FAIL_KINDS).toEqual(["unsafe_answer", "unsupported_specificity", "energized_warning", "isolation_advisory"]);
     expect((FAIL_KINDS as readonly string[]).includes("hazard_warning")).toBe(false);
     const blocked: AnswerValidation = grounded(
       "Yes, the TS-440 permits resetting the E-12 fault while the machine remains energized [1].",

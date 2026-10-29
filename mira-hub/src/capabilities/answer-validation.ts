@@ -32,6 +32,7 @@ import { SAFETY_STOP } from "@/lib/safety-classifier";
 
 import { LOCKOUT_REMOVED, RESTORE, STILL_ISOLATED, sequentialEnergizeThenMeasure, stepEnergyContradiction } from "./step-energy";
 import { firstUngovernedMatch } from "./hazard-modifiers";
+import { isolationBannerFor } from "./isolation-advisory";
 
 /** Fail kinds `validateAnswer` can emit. Hub-internal — not persisted, not
  *  an SSE frame kind. Mobile/web consume `safety` / `safety_notice` /
@@ -39,7 +40,8 @@ import { firstUngovernedMatch } from "./hazard-modifiers";
 export type AnswerValidationKind =
   | "unsafe_answer"
   | "unsupported_specificity"
-  | "energized_warning";
+  | "energized_warning"
+  | "isolation_advisory";
 
 export type AnswerValidation =
   | { ok: true }
@@ -1345,6 +1347,22 @@ function falseCapabilityClaim(text: string): string | null {
  *  replaces a whole answer, so it needs the same sentence standing alone. */
 const toStandaloneSentence = (bulletLine: string) => bulletLine.replace(/^- If you need the document itself:\s*/, "");
 
+/** #4858 (layered onto #4471, owner decision 4/7 2026-10-29): the isolation
+ *  advisory is a NOTICE, not a block — the candidate is served under a fixed
+ *  banner. Its own kind so the route serves it as an ordinary answered turn
+ *  without the energized-electrical chip; it is only ever built from the
+ *  pass-through tail of `energizedWarningOr`, i.e. after every #4471
+ *  SAFETY_STOP and specificity rule has already declined the answer. */
+function isolationAdvisory(banner: string, answerText: string): AnswerValidation {
+  return {
+    ok: false,
+    kind: "isolation_advisory",
+    violation: "hazard-warning:isolation-advisory",
+    detail: banner.slice(0, 160),
+    replacement: `${banner}\n\n${answerText}`,
+  };
+}
+
 /** #3984 (Mike, 2026-09-26): the ONE deliberately-preserved warning-tier
  *  shape — an explicitly WRITTEN restore ("lock out, verify zero volts, then
  *  a qualified person removes the lockout and restores power to measure") is
@@ -1363,15 +1381,23 @@ function energizedWarningOr(restore: string | null, answerText: string): AnswerV
   // already BLOCKed at A2a; this catch is the unmatched sequential
   // restore-then-measure wording those restore grammars miss.
   if (!restore) {
-    const step = stepEnergyContradiction(foldForDetection(answerText));
-    if (!step) return { ok: true };
-    return {
-      ok: false,
-      kind: "energized_warning",
-      violation: "energized-warning:energized-procedure",
-      detail: step.slice(0, 160),
-      replacement: `${ENERGIZED_WARNING}\n\n${answerText}`,
-    };
+    const scan = foldForDetection(answerText);
+    const step = stepEnergyContradiction(scan);
+    if (step) {
+      return {
+        ok: false,
+        kind: "energized_warning",
+        violation: "energized-warning:energized-procedure",
+        detail: step.slice(0, 160),
+        replacement: `${ENERGIZED_WARNING}\n\n${answerText}`,
+      };
+    }
+    // #4858: a hands-on answer with no isolation / verify-dead language gets
+    // the fixed notice. Warns; never withholds (owner 2026-10-27). Reached
+    // only when no #4471 block, no specificity rule and no energized warning
+    // applied — the "only on passing answers" guard is this position.
+    const notice = isolationBannerFor(scan);
+    return notice ? isolationAdvisory(notice, answerText) : { ok: true };
   }
   return {
     ok: false,
