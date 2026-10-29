@@ -66,6 +66,28 @@ describe("renderDischargeProcedure", () => {
     expect(text).not.toMatch(/10 minutes/);
   });
 
+  // D3 (round 3 check): a known rating selects the matching conditioned wait; unknown renders the longest.
+  it("D3: a known 50 hp rating renders only the ≥ 40 hp wait (10 minutes), never the 5-minute one", () => {
+    const chunks = [F.gs10p63("c1")];
+    const bound = { ...F.GS10, rating: { value: 50, unit: "hp" as const } };
+    const text = renderDischargeProcedure({ chunks, bound });
+    expect(text).toMatch(/wait at least 10 minutes/);
+    expect(text).not.toMatch(/\b5 minutes\b/);
+    expect(reverify(text, chunks, bound).checks.filter((c) => c.verdict.startsWith("block:"))).toEqual([]);
+  });
+
+  it("D3: the verifier picks the conditioned wait for a known rating (5 hp → 5 min passes, 50 hp → 5 min blocks)", () => {
+    const a = "Wait 5 minutes for the capacitors to discharge [1].";
+    expect(reverify(a, [F.gs10p63()], { ...F.GS10, rating: { value: 5, unit: "hp" } }).checks.map((c) => c.verdict)).toEqual(["pass"]);
+    expect(reverify(a, [F.gs10p63()], { ...F.GS10, rating: { value: 50, unit: "hp" } }).checks.map((c) => c.verdict)).toEqual([
+      "block:not_most_conservative",
+    ]);
+  });
+
+  it("D3: an unknown rating renders the longest time as the fallback", () => {
+    expect(renderDischargeProcedure({ chunks: [F.gs10p63("c1")], bound: F.GS10 })).toMatch(/wait the longest time the manual gives, 10 minutes/);
+  });
+
   it("numberSafeFallback renders only for a blocked verdict", () => {
     const chunks = [F.gs10p64()];
     const blocked = reverify("Wait 3 minutes for the capacitors to discharge [1].", chunks, F.GS10);
