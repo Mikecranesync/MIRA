@@ -151,10 +151,11 @@ export default function OnboardingPage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6 sm:p-10" data-testid="onboarding-page">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">Build your namespace</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">Set up your agreed pilot scope</h1>
         <p className="mt-1 max-w-2xl text-sm text-slate-500">
-          A namespace gives MIRA the factory context to ground every answer. We&apos;ll start
-          with one site and one line — you can add more later from the namespace tab.
+          Start with the site and line agreed for your pilot. Upload a manual, wait for indexing,
+          then ask a question covered by that manual and open its source page.
+          Validate accuracy and safety before operational activation.
         </p>
       </header>
 
@@ -235,7 +236,7 @@ export default function OnboardingPage() {
         {activeStep === "try" && (
           <TryStep
             payloads={payloads}
-            onTry={() => router.push("/quickstart")}
+            onTry={() => router.push("/namespace")}
             onValidate={() => advance("validate")}
             onSkip={() => router.replace("/namespace")}
           />
@@ -516,18 +517,18 @@ function TryStep({
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Namespace ready.</h2>
           <p className="mt-1 text-sm text-slate-600">
-            MIRA now knows about <span className="font-medium text-slate-900">{lineName}</span>.
-            Ask a real maintenance question and get a cited answer from the OEM corpus —
-            fault codes, troubleshooting steps, part references.
+            Your workspace includes <span className="font-medium text-slate-900">{lineName}</span>.
+            Open your uploaded manual in the namespace and ask about that document.
+            Check the cited page, model, and revision before using the answer.
           </p>
         </div>
       </div>
       <div className="rounded-md border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
-        <strong>Example asks:</strong>
+        <strong>First-answer checklist:</strong>
         <ul className="mt-1 list-disc space-y-0.5 pl-5">
-          <li>What does fault F0004 mean on a PowerFlex 525?</li>
-          <li>How do I reset an Allen-Bradley 1756-EN2T module?</li>
-          <li>Common causes of overheating on a SEW-Eurodrive gearmotor?</li>
+          <li>Choose a question whose answer you can check in your manual.</li>
+          <li>Open the citation and compare the answer with the source page.</li>
+          <li>If a source is missing or wrong, stop and report it for review.</li>
         </ul>
       </div>
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -546,7 +547,7 @@ function TryStep({
             className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
             data-testid="onboarding-try-mira"
           >
-            <MessageSquare className="h-4 w-4" /> Try MIRA now
+            <MessageSquare className="h-4 w-4" /> Open your manuals
           </button>
           <button
             type="button"
@@ -758,7 +759,7 @@ function UploadStep({
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Your manual is ready.</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Ask a real question about <span className="font-medium text-slate-900">{lineNode.name}</span> — MIRA answers from the manual you just uploaded, with citations.
+              Ask a question covered by the manual for <span className="font-medium text-slate-900">{lineNode.name}</span>. Open any citation and verify the source page. Indexing is complete; accuracy and safety still need validation.
             </p>
           </div>
         </div>

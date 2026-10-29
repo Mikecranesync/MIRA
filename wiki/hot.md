@@ -1,5 +1,9 @@
 # Conversation follow repair — 2026-10-24
 
+## Customer journey draft — 2026-10-29
+
+Isolated `fix/unified-pilot-first-experience`: [current offer](../docs/product/current-pilot-offer.md) and [source inventory / verification boundaries](../docs/product/pilot-first-experience-inventory.md). Public copy remains #4570, namespace UI #4932, consent #4930, held terms #4845. No deployed customer success is claimed. Existing operational handoffs below are preserved.
+
 PR #4703 / #4680 incorporates merged runner fix #4700 without force-push. Follow now re-arms from an accepted Composer send, not changing message IDs, preserving scroll-away through live-to-persisted replacement. Focused regression red: 6 failures; green: 38 tests; shared suite: 440 pass; TypeScript/build pass. Exact-head review, CI and same-release deployed behavior remain gates. Watcher continuation and proof: `~/.factorylm/issue-repair-watch/queue.json`; worktree `conversation-continuity`. Foreman send/persistence and Notebook Prover answer ownership unchanged.
 
 ---

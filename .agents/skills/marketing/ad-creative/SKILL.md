@@ -4,6 +4,10 @@ description: "When the user wants to generate, iterate, or scale ad creative —
 metadata:
   version: 1.1.0
 ---
+## Current offer override (2026-10-29)
+
+Read `docs/product/current-pilot-offer.md` before drafting acquisition copy. Use the five free, scoped 30-day pilots, manual approval and separate paid continuation. Older pricing/trial examples are historical, not the active offer. Native Meta/Google lead forms plus Hub signup remain the application route. Do not launch campaigns or revive held terms.
+
 
 # Ad Creative
 
