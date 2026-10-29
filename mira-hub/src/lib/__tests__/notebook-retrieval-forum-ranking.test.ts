@@ -135,13 +135,14 @@ const ask = (client: PoolClient, q: string) =>
   retrieveNodeChunks(client, "t-1", q, { nodeId: "n-1", unsPath: null, topK: 6, docIds: ["d-1"], rawQuery: q, validatedDocScope: true });
 
 describe("retrieveNodeChunks — the OR recall pass keys on lexical coverage, not pool size", () => {
-  it("t4-77 tq-42: an exact lane that found two rows no longer silences the OR pass", async () => {
-    const q = "Walk me through locking out the M340 rack so I can swap the BMXAMI0810. What do I lock and in what order?";
+  it("an exact lane that found two rows no longer silences the OR pass (t4-77 tq-42 shape)", async () => {
+    const q = "Walk me through locking out the rack before I swap the module after the F81 fault. What do I lock and in what order?";
     const { client, calls } = makeClient((sql) => {
-      if (isRegexLane(sql)) return [row(58, "BMXAMI0810 wiring", 0, ["bmxami0810"]), row(374, "BMXAMI0810 spec", 0, ["bmxami0810"])];
+      if (isRegexLane(sql) || sql.includes("ILIKE ANY(")) return [row(58, "F81 Comm Loss", 0, ["f81"]), row(94, "F81 fault table", 0, ["f81"])];
       return [];
     });
     await ask(client, q);
+    expect(calls.filter((c) => isRegexLane(c.sql)).length).toBeGreaterThanOrEqual(1); // the lane did run and did return rows
     const orPasses = calls.filter((c) => isOr(c.sql) && c.params[1] === q);
     expect(orPasses.length).toBeGreaterThanOrEqual(1);
   });
@@ -196,13 +197,14 @@ describe("retrieveNodeChunks — IDF coverage in the rerank", () => {
   ];
   const common = row(145, "RS-232 communication cable wiring and the communication channel", 1.0, ["communic", "cabl", "rs-232"]);
   const bootp = row(160, "Configure using BOOTP: the controller broadcasts BOOTP requests at power-up", 0.4, ["bootp", "configur", "control"]);
-  const cover = row(1, "Controller User Manual, controller controller", 0.5, ["control"]);
+  const cover = row(1, "Controller User Manual, controller controller", 0.9, ["control"]);
 
   it("fn-ml1100-8: the BOOTP page outranks the page dense in common words", async () => {
+    // Both rows come from the SAME pass (common first, higher rank), so only the
+    // coverage feature can put the BOOTP page ahead.
     const { client } = makeClient((sql) => {
       if (isIdf(sql)) return idfRows;
       if (isOr(sql)) return [common, bootp];
-      if (isRare(sql)) return [bootp];
       return [];
     });
     const out = await ask(client, q);

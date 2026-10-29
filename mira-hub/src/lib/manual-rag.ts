@@ -1861,7 +1861,9 @@ export async function retrieveNodeChunks(
   };
   await addLexical(AND_TSQUERY, expanded.variants[0]);
   for (const v of expanded.variants.slice(1)) await addLexical(OR_TSQUERY, v);
-  await addLexical(RARE_TSQUERY, opts.rawQuery?.trim() || expanded.variants[0]);
+  // Recall for the question's rare words. Not lexical coverage: the full OR pass
+  // below must still run when the AND and synonym passes found nothing.
+  add(await runRetrieval(RARE_TSQUERY, opts.rawQuery?.trim() || expanded.variants[0]));
   add(await runExactLane(expanded.exactTokens.map((t) => `%${t}%`)));
   // The code the technician JUST named gets its own whole-token pass with its
   // own window BEFORE the combined pass (Codex r8 on #4360): the combined query
