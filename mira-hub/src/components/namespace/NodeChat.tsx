@@ -80,26 +80,59 @@ export function restoreComposer(current: string, failedMessage: string): string 
   return current.trim() ? current : failedMessage;
 }
 
+/** Only absolute http(s) URLs open; an uploaded document's `node-doc/<id>/<file>` storage path would 404. */
+function isOpenableUrl(url: string | null): url is string {
+  return !!url && /^https?:\/\//i.test(url);
+}
+
 function SourceChips({ sources }: { sources: Source[] }) {
   if (!sources || sources.length === 0) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
-      {sources.map((s) => (
-        <span
-          key={`${s.index}-${s.title}`}
-          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]"
-          style={{
-            background: "var(--surface-1)",
-            border: "1px solid var(--border)",
-            color: "var(--foreground-muted)",
-          }}
-          title={s.url ?? s.title}
-        >
-          <FileText className="h-2.5 w-2.5" style={{ color: "var(--brand-blue)" }} />
-          [{s.index}] {s.title}
-          {s.page != null ? ` p.${s.page}` : ""}
-        </span>
-      ))}
+      {sources.map((s) => {
+        const element = (
+          <>
+            <FileText className="h-2.5 w-2.5" style={{ color: "var(--brand-blue)" }} />
+            [{s.index}] {s.title}
+            {s.page != null ? ` p.${s.page}` : ""}
+          </>
+        );
+
+        if (isOpenableUrl(s.url)) {
+          return (
+            <a
+              key={`${s.index}-${s.title}`}
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] hover:opacity-80 transition-opacity cursor-pointer"
+              style={{
+                background: "var(--surface-1)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground-muted)",
+              }}
+              title={`Open ${s.title}`}
+            >
+              {element}
+            </a>
+          );
+        }
+
+        return (
+          <span
+            key={`${s.index}-${s.title}`}
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]"
+            style={{
+              background: "var(--surface-1)",
+              border: "1px solid var(--border)",
+              color: "var(--foreground-muted)",
+            }}
+            title={s.title}
+          >
+            {element}
+          </span>
+        );
+      })}
     </div>
   );
 }
