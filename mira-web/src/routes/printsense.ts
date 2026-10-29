@@ -15,27 +15,37 @@
  * UnderVoltage on a PowerFlex 525 — the exploration draft's "F5 = DC bus
  * undervoltage" was itself a misread and died here).
  *
- * No browser upload here: the free surface is the Telegram concierge; the
- * complete-package path is the managed pilot. Analytics lines carry event
- * names and counts only — never emails, questions, or file content.
+ * No browser upload here: the public path is Talk to Mike / the free 30-day
+ * pilot request; the complete-package path is the managed pilot. Analytics
+ * lines carry event names and counts only — never emails, questions, or file content.
  */
 import { Hono } from "hono";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import {
+  loadCapabilities,
+  provenText,
+  type CapabilitiesFile,
+} from "../capabilities/marketing-claims/index.js";
+import { escHtml } from "../lib/html.js";
 
-const DATA_DIR = process.env.PRINTSENSE_LEADS_DIR ?? "/data/printsense-leads";
 const EMAIL_RE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
+function printsenseDataDir(): string {
+  return process.env.PRINTSENSE_LEADS_DIR ?? "/data/printsense-leads";
+}
+
 function record(file: string, row: object) {
-  mkdirSync(DATA_DIR, { recursive: true });
-  appendFileSync(join(DATA_DIR, file), JSON.stringify(row) + "\n", "utf-8");
+  const dir = printsenseDataDir();
+  mkdirSync(dir, { recursive: true });
+  appendFileSync(join(dir, file), JSON.stringify(row) + "\n", "utf-8");
 }
 
 export const printsensePage = new Hono();
 
 printsensePage.get("/printsense", (c) => {
   record("funnel.jsonl", { at: Date.now(), event: "landing_viewed" });
-  return c.html(PAGE);
+  return c.html(renderPrintsenseLanding());
 });
 
 printsensePage.post("/printsense/interest", async (c) => {
@@ -43,7 +53,7 @@ printsensePage.post("/printsense/interest", async (c) => {
   const email = String(body.email ?? "").trim().toLowerCase();
   const wantsPilot = body.pilot === "on" || body.pilot === "true";
   if (!EMAIL_RE.test(email)) {
-    return c.html(PAGE.replace("<!--MSG-->",
+    return c.html(renderPrintsenseLanding(undefined,
       `<p class="ps-msg ps-msg-bad">Please use a valid work email.</p>`), 400);
   }
   // Lead data (CRM, not analytics) — email lives here and only here.
@@ -53,9 +63,9 @@ printsensePage.post("/printsense/interest", async (c) => {
     at: Date.now(),
     event: wantsPilot ? "package_request_submitted" : "interest_submitted",
   });
-  return c.html(PAGE.replace("<!--MSG-->",
+  return c.html(renderPrintsenseLanding(undefined,
     `<p class="ps-msg ps-msg-ok">Thanks — we'll reach out within one
-     business day. Fastest path: message our Telegram bot now.</p>`));
+     business day. Fastest path: talk to Mike.</p>`));
 });
 
 // Inline SVG micro-icons (stroke:currentColor) — never emoji.
@@ -70,7 +80,22 @@ const I_PAUSE =
 const I_STOP =
   '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-1px"><path d="M8 2L14.5 13.5H1.5z"/><path d="M8 6.5V10"/><path d="M8 11.8v.4"/></svg>';
 
-const PAGE = `<!doctype html>
+export function renderPrintsenseLanding(
+  data?: CapabilitiesFile,
+  message = "<!--MSG-->",
+): string {
+  const caps = data ?? loadCapabilities();
+  const mira =
+    provenText("notebook-cited-answer", caps) ??
+    "In an equipment notebook, MIRA answers from an uploaded OEM manual and cites the page.";
+  const notebook =
+    provenText("equipment-notebook-not-cmms", caps) ??
+    "An equipment notebook for maintenance crews. Not a CMMS. No PLC data, no work-order writes.";
+  const cta = caps.contact.cta;
+  const href = caps.contact.href;
+  const signupCta = caps.contact.signup_cta;
+  const signupHref = caps.contact.signup_href;
+  return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PrintSense — cited answers from your electrical prints</title>
@@ -182,7 +207,7 @@ const PAGE = `<!doctype html>
 </style></head><body>
 <nav class="ps-nav"><div class="ps-nav-in">
   <a href="/" class="ps-logo">PrintSense <small>by FactoryLM</small></a>
-  <a class="ps-nav-cta" href="https://t.me/FactoryLM_Diagnose">Try in Telegram</a>
+  <a class="ps-nav-cta" href="${escHtml(href)}">${escHtml(cta)}</a>
 </div></nav>
 <div class="ps-wrap">
 
@@ -194,8 +219,8 @@ const PAGE = `<!doctype html>
     cited troubleshooting knowledge. It does not replace engineering review or claim complete
     reconstruction.</strong> Send one print page and a question &mdash; a human-reviewed, cited
     answer comes back, every claim tied to a page and a location on it.</p>
-    <a class="ps-cta" href="https://t.me/FactoryLM_Diagnose">Try in Telegram</a>
-    <a class="ps-cta-ghost" href="#pilot">Analyze my complete machine package</a>
+    <a class="ps-cta" href="${escHtml(signupHref)}">${escHtml(signupCta)}</a>
+    <a class="ps-cta-ghost" href="${escHtml(href)}">${escHtml(cta)}</a>
     <p class="ps-note">Read-only &middot; anything we can't prove is listed as unresolved, never guessed</p>
   </div>
 
@@ -309,20 +334,19 @@ advanced_reasoning_unavailable</div></div>
       <span class="ps-here">You are here</span></div>
     <div class="ps-rung"><div class="lvl">Then</div><h3>MIRA</h3>
       <div class="who">for the maintenance team</div>
-      <p>Grounded troubleshooting that cites its sources &mdash; Telegram, web, and the CMMS.</p></div>
+      <p>${escHtml(mira)}</p></div>
     <div class="ps-rung"><div class="lvl">Finally</div><h3>FactoryLM</h3>
       <div class="who">for the plant</div>
-      <p>The maintenance-context layer: manuals, PLC tags, and fault history structured into
-      AI-ready context.</p></div>
+      <p>${escHtml(notebook)}</p></div>
   </div>
 </section>
 
-<!--MSG-->
+${message}
 <section class="ps-block" id="pilot">
-  <h2>Managed package pilot (paid)</h2>
+  <h2>Managed package pilot</h2>
   <div class="ps-card"><p>Send the complete print package; we return searchable, cited
-  troubleshooting knowledge for the whole machine &mdash; reviewed, confidential, with
-  introductory pilot pricing.</p>
+  troubleshooting knowledge for the whole machine &mdash; reviewed, confidential.
+  Talk to Mike for fit; this page does not publish amounts.</p>
   <form method="post" action="/printsense/interest" class="ps-form">
     <label>Work email <input type="email" name="email" required></label>
     <label><input type="checkbox" name="pilot"> I want the complete-package pilot</label>
@@ -334,7 +358,8 @@ advanced_reasoning_unavailable</div></div>
 <footer class="ps-footer"><div class="ps-wrap">
   PrintSense is read-only print intelligence from FactoryLM, grounded by the MIRA knowledge
   layer. It escalates to humans &mdash; it never acts. &middot;
-  <a href="https://t.me/FactoryLM_Diagnose">Try in Telegram</a> &middot;
-  <a href="mailto:mike@factorylm.com">Talk to Mike</a>
+  <a href="${escHtml(signupHref)}">${escHtml(signupCta)}</a> &middot;
+  <a href="${escHtml(href)}">${escHtml(cta)}</a>
 </div></footer>
 </body></html>`;
+}

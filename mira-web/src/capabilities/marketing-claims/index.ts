@@ -19,6 +19,9 @@ export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 export const CLAIM_KINDS = ["capability", "limit"] as const;
 export type ClaimKind = (typeof CLAIM_KINDS)[number];
 
+export const OFFER_STATUSES = ["approved"] as const;
+export type OfferStatus = (typeof OFFER_STATUSES)[number];
+
 export const CITED_PROOF_ID = "cited-micro810-oct19";
 
 /** Proven rows whose copy mentions citations, answers, or uploads. Flip these together in tests. */
@@ -64,6 +67,13 @@ export interface MarketingContact {
 
 export interface MarketingChrome {
   ai_note: string;
+  connectors_note: string;
+}
+
+export interface MarketingOffer {
+  id: string;
+  text: string;
+  status: OfferStatus;
 }
 
 export type MarketingSlots = Record<SlotKey, string[]>;
@@ -73,6 +83,7 @@ export interface CapabilitiesFile {
   updated: string;
   contact: MarketingContact;
   chrome: MarketingChrome;
+  offers: MarketingOffer[];
   slots: MarketingSlots;
   claims: MarketingClaim[];
 }
@@ -218,6 +229,28 @@ export function effectiveLimitations(
   return provenTexts(data.slots.limitations, data);
 }
 
+export function offerById(
+  id: string,
+  data: CapabilitiesFile = loadCapabilities()
+): MarketingOffer | undefined {
+  return data.offers.find((o) => o.id === id);
+}
+
+export function offerText(
+  id: string,
+  data: CapabilitiesFile = loadCapabilities()
+): string | undefined {
+  const row = offerById(id, data);
+  if (!row || row.status !== "approved") return undefined;
+  return row.text;
+}
+
+export function approvedOffers(
+  data: CapabilitiesFile = loadCapabilities()
+): MarketingOffer[] {
+  return data.offers.filter((o) => o.status === "approved");
+}
+
 export function unpublishedClaimIds(
   data: CapabilitiesFile = loadCapabilities()
 ): string[] {
@@ -274,7 +307,12 @@ function bullets(lines: string[]): string {
 }
 
 function pricesLine(data: CapabilitiesFile): string {
-  return `First five approved teams can request a free 30-day MIRA pilot (five seats each). No dollar prices are published. Request at ${data.contact.signup_href} or talk to Mike: ${data.contact.email}`;
+  const pilot =
+    offerText("free-30-day-pilot", data) ??
+    "First five approved teams can request a free 30-day MIRA pilot (five seats each).";
+  const credit = offerText("limited-free-lifetime-credit", data);
+  const creditBit = credit ? ` ${credit}` : "";
+  return `${pilot}${creditBit} No dollar prices are published. Request at ${data.contact.signup_href} or talk to Mike: ${data.contact.email}`;
 }
 
 function stewardBody(data: CapabilitiesFile): string {
@@ -370,6 +408,28 @@ export function assertCapabilities(data: CapabilitiesFile): void {
   }
   if (!data.chrome?.ai_note?.trim()) {
     throw new Error("capabilities.json chrome.ai_note is required");
+  }
+  if (!data.chrome?.connectors_note?.trim()) {
+    throw new Error("capabilities.json chrome.connectors_note is required");
+  }
+  if (!Array.isArray(data.offers) || data.offers.length === 0) {
+    throw new Error("capabilities.json must list at least one offer");
+  }
+  const offerIds = new Set<string>();
+  for (const offer of data.offers) {
+    if (!offer.id || !/^[a-z0-9-]+$/.test(offer.id)) {
+      throw new Error(`invalid offer id: ${offer.id}`);
+    }
+    if (offerIds.has(offer.id)) {
+      throw new Error(`duplicate offer id: ${offer.id}`);
+    }
+    offerIds.add(offer.id);
+    if (!offer.text?.trim()) {
+      throw new Error(`offer ${offer.id} is missing text`);
+    }
+    if (!OFFER_STATUSES.includes(offer.status)) {
+      throw new Error(`offer ${offer.id} has invalid status ${offer.status}`);
+    }
   }
   if (!data.slots || typeof data.slots !== "object") {
     throw new Error("capabilities.json slots is required");

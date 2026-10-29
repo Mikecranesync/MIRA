@@ -13,7 +13,8 @@ test("GET /printsense renders honest positioning", async () => {
   expect(res.status).toBe(200);
   const html = await res.text();
   expect(html).toContain("does not replace engineering review");
-  expect(html).toContain("Try in Telegram");
+  expect(html).toContain("Talk to Mike");
+  expect(html).not.toContain("Telegram");
   expect(html).toContain("advanced_reasoning_unavailable");
   expect(html).not.toContain("#0"); // no hardcoded hex — tokens only
 });

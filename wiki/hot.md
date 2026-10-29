@@ -1,3 +1,9 @@
+# Honest landing Codex P2s — 2026-10-29
+
+Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Mike approved all five Codex P2s on the same draft: registry `offers` (free 30-day pilot + limited free lifetime credit, no amounts), `chrome.connectors_note` (optional and not yet available), public prices stripped from terms/PrintSense, feature/blog/PrintSense copy sourced from proven claims, honest-claims widened to every public HTML + llms + feature pages + blog renderer + PrintSense + terms, `/buy` Talk to Mike uses `--amber` on `#0d0e11`. No merge, deploy, labels, ready, or Codex. mira-web full suite: 561 pass / 18 fail (19 pre-existed on main; none new).
+
+---
+
 # Conversation follow repair — 2026-10-24
 
 PR #4703 / #4680 incorporates merged runner fix #4700 without force-push. Follow now re-arms from an accepted Composer send, not changing message IDs, preserving scroll-away through live-to-persisted replacement. Focused regression red: 6 failures; green: 38 tests; shared suite: 440 pass; TypeScript/build pass. Exact-head review, CI and same-release deployed behavior remain gates. Watcher continuation and proof: `~/.factorylm/issue-repair-watch/queue.json`; worktree `conversation-continuity`. Foreman send/persistence and Notebook Prover answer ownership unchanged.

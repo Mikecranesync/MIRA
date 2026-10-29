@@ -1,33 +1,98 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderHome } from "../home.js";
 import { renderCmms, renderSamplePlaceholder } from "../cmms.js";
 import { renderLimitations } from "../limitations.js";
 import { renderSecurity } from "../security.js";
 import { navbar, footer } from "../_topbar.js";
+import { FEATURES, renderFeaturePage } from "../../lib/feature-renderer.js";
+import {
+  renderBlogIndex,
+  renderBlogPost,
+  renderFaultCodeIndex,
+  renderFaultCodePage,
+} from "../../lib/blog-renderer.js";
+import type { BlogPost } from "../../data/blog-posts.js";
+import type { FaultCode } from "../../data/fault-codes.js";
+import { renderPrintsenseLanding } from "../../routes/printsense.js";
 
 const PUBLIC_DIR = join(process.cwd(), "public");
+const SRC_DIR = join(process.cwd(), "src");
 
 function readPublic(file: string): string {
   return readFileSync(join(PUBLIC_DIR, file), "utf-8");
 }
+
+const RENDERER_POST: BlogPost = {
+  slug: "honest-claims-renderer-fixture",
+  title: "Renderer fixture",
+  description: "Chrome-only fixture for the blog renderer CTA.",
+  date: "2026-10-29",
+  author: "FactoryLM",
+  category: "Guides",
+  readingTime: "1 min read",
+  heroEmoji: "F",
+  sections: [{ type: "paragraph", text: "Fixture body for renderer chrome." }],
+  relatedPosts: [],
+  relatedFaultCodes: [],
+};
+
+const RENDERER_FAULT: FaultCode = {
+  slug: "honest-claims-fault-fixture",
+  title: "Fixture fault",
+  equipment: "Fixture drive",
+  manufacturer: "Fixture",
+  faultCode: "F000",
+  description: "Fixture description.",
+  commonCauses: ["Fixture cause"],
+  recommendedFix: "Fixture step.",
+  relatedCodes: [],
+  metaDescription: "Fixture meta.",
+};
+
+const publicHtmlPages = readdirSync(PUBLIC_DIR)
+  .filter((f) => f.endsWith(".html"))
+  .sort()
+  .map((f) => ({
+    name: `/${f.replace(/\.html$/, "")}`,
+    html: readPublic(f),
+  }));
+
+const publicLlms = readdirSync(PUBLIC_DIR)
+  .filter((f) => /^llms.*\.txt$/.test(f))
+  .sort()
+  .map((f) => ({ name: `/${f}`, html: readPublic(f) }));
+
+const featurePages = Object.values(FEATURES).map((feature) => ({
+  name: `/feature/${feature.slug}`,
+  html: renderFeaturePage(feature),
+}));
 
 const pages: Array<{ name: string; html: string }> = [
   { name: "/", html: renderHome("https://factorylm.com/") },
   { name: "/cmms", html: renderCmms("https://factorylm.com/cmms") },
   { name: "/limitations", html: renderLimitations("https://factorylm.com/limitations") },
   { name: "/security", html: renderSecurity("https://factorylm.com/security") },
-  { name: "/pricing", html: readPublic("pricing.html") },
-  { name: "/buy", html: readPublic("buy.html") },
-  { name: "/trust", html: readPublic("trust.html") },
-  { name: "/privacy", html: readPublic("privacy.html") },
   { name: "/sample", html: renderSamplePlaceholder() },
-  { name: "/assess", html: readPublic("assess.html") },
-  // /terms is deliberately absent: it is a contract, changed only by a versioned,
-  // owner-approved amendment with notice (Codex F2 on #4570), never by this suite.
-  { name: "/llms.txt", html: readPublic("llms.txt") },
-  { name: "/llms-full.txt", html: readPublic("llms-full.txt") },
+  { name: "/printsense (route)", html: renderPrintsenseLanding() },
+  { name: "/blog (renderer)", html: renderBlogIndex([], 0) },
+  {
+    name: "/blog/post (renderer)",
+    html: renderBlogPost(RENDERER_POST, [RENDERER_POST], []),
+  },
+  { name: "/blog/fault-codes (renderer)", html: renderFaultCodeIndex([]) },
+  {
+    name: "/blog/fault (renderer)",
+    html: renderFaultCodePage(RENDERER_FAULT, [RENDERER_FAULT]),
+  },
+  {
+    name: "blog-renderer.ts",
+    html: readFileSync(join(SRC_DIR, "lib", "blog-renderer.ts"), "utf-8"),
+  },
+  ...publicHtmlPages,
+  ...publicLlms,
+  ...featurePages,
   { name: "nav+footer", html: navbar() + footer() },
 ];
 
@@ -35,6 +100,7 @@ const DONT_SAY: Array<{ label: string; re: RegExp }> = [
   { label: "every answer / every time", re: /every answer|every time/i },
   { label: "no hallucinations", re: /hallucinat/i },
   { label: "instantly", re: /\binstantly\b/i },
+  { label: "in seconds", re: /\bin seconds\b/i },
   { label: "PowerFlex 755 trip-history sample", re: /PowerFlex 755|trip-history|trip history/i },
   { label: "scanned manuals", re: /scanned manuals/i },
   { label: "25 machines", re: /25 machines/i },
@@ -241,6 +307,24 @@ describe("public marketing copy — don't-say list and no published prices", () 
       expect(body).not.toMatch(/\bsensors\b/i);
       expect(body).not.toMatch(/work orders/i);
     }
+  });
+
+  test("covers every public HTML file, llms*.txt, feature pages, PrintSense, terms, and the blog renderer", () => {
+    const names = pages.map((p) => p.name);
+    for (const file of readdirSync(PUBLIC_DIR).filter((f) => f.endsWith(".html"))) {
+      expect(names).toContain(`/${file.replace(/\.html$/, "")}`);
+    }
+    for (const file of readdirSync(PUBLIC_DIR).filter((f) => /^llms.*\.txt$/.test(f))) {
+      expect(names).toContain(`/${file}`);
+    }
+    expect(names).toContain("/terms");
+    expect(names).toContain("/printsense");
+    expect(names).toContain("/printsense (route)");
+    expect(names).toContain("/feature/fault-diagnosis");
+    expect(names).toContain("/feature/cmms-integration");
+    expect(names).toContain("/feature/voice-vision");
+    expect(names).toContain("blog-renderer.ts");
+    expect(names).toContain("/blog (renderer)");
   });
 
   test("primary CTA is the free-pilot signup; Talk to Mike and Sign in stay reachable", () => {

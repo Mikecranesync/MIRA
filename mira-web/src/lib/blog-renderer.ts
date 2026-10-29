@@ -6,6 +6,11 @@
 
 import type { FaultCode } from "../data/fault-codes.js";
 import type { BlogPost, BlogSection } from "../data/blog-posts.js";
+import {
+  loadCapabilities,
+  provenText,
+  type CapabilitiesFile,
+} from "../capabilities/marketing-claims/index.js";
 
 const BASE_URL = "https://factorylm.com";
 
@@ -135,6 +140,21 @@ function siteFooter(): string {
 // chat). Removed the FAB until /api/mira/session has a real backend.
 // See CRA-60 / GitHub #992.
 
+function marketingCtaCard(
+  heading: string,
+  data: CapabilitiesFile = loadCapabilities(),
+): string {
+  const body =
+    provenText("notebook-cited-answer", data) ??
+    "In an equipment notebook, MIRA answers from an uploaded OEM manual and cites the page.";
+  return `<div class="cta-card fade-in">
+    <h3>${escHtml(heading)}</h3>
+    <p>${escHtml(body)}</p>
+    <a href="${escAttr(data.contact.signup_href)}" class="btn-primary">${escHtml(data.contact.signup_cta)} ${ARROW_SVG}</a>
+    <p style="margin-top:12px"><a href="${escAttr(data.contact.href)}">${escHtml(data.contact.cta)}</a></p>
+  </div>`;
+}
+
 function scripts(): string {
   return `<script>
   (function(){var n=document.getElementById('main-nav');function u(){n.classList.toggle('scrolled',window.scrollY>10)}window.addEventListener('scroll',u,{passive:true});u()})();
@@ -215,11 +235,7 @@ ${nav({ currentPath: "/blog" })}
 
   ${buildRelatedHtml(related, relatedCodes)}
 
-  <div class="cta-card fade-in">
-    <h3>Try Mira — AI that reads your equipment manuals</h3>
-    <p>Type a fault code, describe a symptom, or upload a photo. Get the diagnostic answer in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
-  </div>
+  ${marketingCtaCard("Ask Mira — it cites the page")}
 </article>
 
 </main>
@@ -364,11 +380,7 @@ ${fixSteps}
 
   ${relatedHtml}
 
-  <div class="cta-card fade-in">
-    <h3>Still stuck? Ask Mira.</h3>
-    <p>Paste your fault code into Mira and get an answer from your actual equipment manuals in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
-  </div>
+  ${marketingCtaCard("Still stuck? Ask Mira.")}
 </article>
 
 </main>
@@ -453,11 +465,7 @@ ${postCards}
 </div>
 
 <div class="inner" style="padding-bottom: 48px;">
-  <div class="cta-card fade-in">
-    <h3>Get answers faster with MIRA AI</h3>
-    <p>Type a fault code and get the fix from your equipment manuals in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
-  </div>
+  ${marketingCtaCard("Ask Mira from your equipment manuals")}
 </div>
 
 </main>
@@ -533,11 +541,7 @@ ${nav({ currentPath: "/blog" })}
 <div class="inner">
 ${sections}
 
-  <div class="cta-card fade-in" style="margin-bottom: 48px;">
-    <h3>Can\u2019t find your fault code?</h3>
-    <p>Ask Mira \u2014 AI that reads your equipment manuals and gives you the answer in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
-  </div>
+  ${marketingCtaCard("Can\u2019t find your fault code?")}
 </div>
 
 </main>

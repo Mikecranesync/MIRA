@@ -225,6 +225,20 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(pricing).not.toContain("Find reliable answers in your own equipment manuals");
   });
 
+  test("/pricing JSON-LD, body, and FAQ are backed by approved offers and connectors_note", () => {
+    const pricing = readPricing();
+    expect(data.chrome.connectors_note).toMatch(/optional/i);
+    expect(data.chrome.connectors_note).toMatch(/not yet available/i);
+    expect(data.chrome.connectors_note).toMatch(/MIRA stands alone/i);
+    expect(pricing).toContain(data.chrome.connectors_note);
+    for (const offer of data.offers.filter((o) => o.status === "approved")) {
+      expect(pricing, `/pricing missing offer ${offer.id}`).toContain(offer.text);
+    }
+    const lifetime = data.offers.find((o) => o.id === "limited-free-lifetime-credit");
+    expect(lifetime?.text).toMatch(/limited free lifetime credit/i);
+    expect(lifetime?.text).not.toMatch(/\$\d/);
+  });
+
   test("without citation claims, generated surfaces drop cites/answers-from wording", () => {
     const stripped = structuredClone(data);
     for (const id of CITATION_CLAIM_IDS) {
