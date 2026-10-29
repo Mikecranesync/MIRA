@@ -451,11 +451,12 @@ export default function NamespacePage() {
         }}
       />
 
-      {/* Split pane */}
-      <div className="flex min-h-0 flex-1">
+      {/* Split pane — #4880 defect 3: below md the fixed 280px tree left Ask
+          MIRA a ~132px column at 412px, so phones stack tree over content. */}
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* Tree panel */}
         <div
-          className="w-[280px] shrink-0 overflow-auto border-r border-gray-400 bg-[#f0f0f0] font-mono text-[13px]"
+          className="w-full max-h-[35%] md:max-h-none md:w-[280px] shrink-0 overflow-auto border-b md:border-b-0 md:border-r border-gray-400 bg-[#f0f0f0] font-mono text-[13px]"
           data-testid="namespace-tree-panel"
         >
           {loading ? (
