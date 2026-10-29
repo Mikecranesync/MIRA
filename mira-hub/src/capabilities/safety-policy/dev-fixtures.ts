@@ -120,3 +120,14 @@ export const gs10th1o = (id = "c1", extra: Partial<EvidenceChunk> = {}) => manua
 export const gs4warn = (id = "c1", extra: Partial<EvidenceChunk> = {}) => manualChunk(id, GS4_P6_3_WARNING, GS4, GS4_SHA, "6-3", extra);
 export const pf40p9 = (id = "c1", extra: Partial<EvidenceChunk> = {}) => manualChunk(id, PF40_P9, PF40, PF40_SHA, "9", extra);
 export const acs355p18 = (id = "c1", extra: Partial<EvidenceChunk> = {}) => manualChunk(id, ACS355_P18, ACS355, ACS355_SHA, "18", extra);
+
+/** A photo observation whose label was identified as the GS10 (the route sets manufacturer/model
+ *  from the turn's nameplate identification); override to model a mismatch or no identification. */
+export const gs10photo = (extra: Partial<EvidenceChunk> = {}): EvidenceChunk => ({
+  id: "photo",
+  origin: "photo",
+  content: "Label text: WARNING - Risk of electric shock. Capacitors stay charged; wait 10 minutes after power is removed.",
+  manufacturer: GS10.manufacturer,
+  modelNumber: GS10.modelNumber,
+  ...extra,
+});

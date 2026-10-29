@@ -12,6 +12,7 @@ import {
   conditionIn,
   findQuantities,
   hasUnparsedTime,
+  isUnrelatedSourceTiming,
   isUnrelatedTiming,
   normalizedSentence,
   sentences,
@@ -23,8 +24,9 @@ export interface Statement {
   condition?: Condition;
 }
 
-/** Values stated in one sentence. `storedContext`: stored-energy context is in force for it. */
-export function statementsOf(sentence: string, storedContext: boolean): Statement[] {
+/** Values stated in one sentence. `storedContext`: stored-energy context is in force for it.
+ *  `side`: answers are read broadly (fail closed), sources narrowly (support must be explicit). */
+export function statementsOf(sentence: string, storedContext: boolean, side: "answer" | "source" = "answer"): Statement[] {
   const text = normalizedSentence(sentence);
   const found = findQuantities(sentence);
   const out: Statement[] = [];
@@ -32,7 +34,7 @@ export function statementsOf(sentence: string, storedContext: boolean): Statemen
     const [cs, ce] = clauseAround(text, f.start);
     const clause = text.slice(cs, ce);
     const before = text.slice(Math.max(cs, i > 0 ? found[i - 1].end : 0), f.start);
-    const quantity = classify(f.dim, clause, before, storedContext);
+    const quantity = classify(f.dim, clause, before, storedContext, side);
     if (!quantity) return;
     const after = text.slice(f.end, i + 1 < found.length ? found[i + 1].start : text.length);
     const condition = conditionIn(after) ?? conditionIn(before);
@@ -52,8 +54,8 @@ export function chunkStatements(chunk: EvidenceChunk): Statement[] {
   const out: Statement[] = [];
   ss.forEach((s, j) => {
     const own = STORED_RE.test(s);
-    const carried = j > 0 && STORED_RE.test(ss[j - 1]) && CARRY_RE.test(s) && !isUnrelatedTiming(s);
-    out.push(...statementsOf(s, own || carried));
+    const carried = j > 0 && STORED_RE.test(ss[j - 1]) && CARRY_RE.test(s) && !isUnrelatedSourceTiming(s);
+    out.push(...statementsOf(s, own || carried, "source"));
   });
   return out;
 }

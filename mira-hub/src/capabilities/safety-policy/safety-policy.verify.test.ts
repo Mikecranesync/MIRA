@@ -107,14 +107,11 @@ describe("Decision 4 applicability (A1–A5): only an applicable source supports
     expect(verdicts(check(a, [F.gs4warn()], F.GS4))).toEqual(["pass"]);
   });
 
-  it("A3 no bound asset: no manual chunk applies; a photo observation of the asset does", () => {
+  it("A3 no bound asset: no manual chunk applies, and no photo either (#4955)", () => {
     expect(verdicts(check(WAIT10, [F.gs10p64()], null))).toEqual(["block:not_bound_asset"]);
-    const photo: EvidenceChunk = {
-      id: "photo",
-      origin: "photo",
-      content: "Label text: WARNING - Risk of electric shock. Capacitors stay charged; wait 10 minutes after power is removed.",
-    };
-    expect(verdicts(check("Wait 10 minutes for the capacitors to discharge [photo].", [photo], null))).toEqual(["pass"]);
+    expect(verdicts(check("Wait 10 minutes for the capacitors to discharge [photo].", [F.gs10photo()], null))).toEqual([
+      "block:not_bound_asset",
+    ]);
   });
 
   it("A3 an approved document for the asset applies even when the chunk's model string differs", () => {
@@ -249,3 +246,62 @@ describe("turn verdict and determinism (G6)", () => {
     expect(new Set(runs).size).toBe(1);
   });
 });
+
+// PR #4953 Codex round-1 follow-ups: #4954 (F1), #4955 (F2), #4956 (F3).
+describe("review follow-ups", () => {
+  const FAULT_CHECK = manual("Troubleshooting\n\nAfter a fault has been cleared, wait 5 seconds before checking the DC bus voltage.");
+  const FIVE_S = "Wait 5 seconds for the DC bus capacitors to discharge [1].";
+
+  it("#4954 block: a fault-reset delay that mentions the DC bus is not a discharge time", () => {
+    expect(verdicts(check(FIVE_S, [FAULT_CHECK], F.GS10))).toEqual(["block:not_in_cited_sentence"]);
+  });
+
+  it("#4954 control: a discharge sentence that mentions the bus still supports its time", () => {
+    const real = manual("After a fault, remove power and wait 5 seconds for the DC bus capacitors to discharge.");
+    expect(verdicts(check(FIVE_S, [real], F.GS10))).toEqual(["pass"]);
+  });
+
+  it("#4954 control: the answer side still claims a fault-worded wait near the bus (fail closed)", () => {
+    const ex = extractNumbers({ answerText: "After a fault has been cleared, wait 5 seconds before touching the DC bus.", chunks: [], bound: F.GS10 });
+    expect(ex.numbers.map((n) => n.quantity)).toEqual(["discharge_time"]);
+  });
+
+  const PHOTO_A = "Wait 10 minutes for the capacitors to discharge [photo].";
+
+  it("#4955 block: a photo of another model's label does not support the bound asset", () => {
+    expect(verdicts(check(PHOTO_A, [F.gs10photo({ modelNumber: "GS4" })], F.GS10))).toEqual(["block:not_bound_asset"]);
+  });
+
+  it("#4955 block: a photo with no identified asset does not apply", () => {
+    expect(verdicts(check(PHOTO_A, [F.gs10photo({ manufacturer: undefined, modelNumber: undefined })], F.GS10))).toEqual([
+      "block:not_bound_asset",
+    ]);
+  });
+
+  it("#4955 control: a photo identified as the bound asset applies (no page or verified flag needed)", () => {
+    expect(verdicts(check(PHOTO_A, [F.gs10photo()], F.GS10))).toEqual(["pass"]);
+  });
+
+  const halfAndOne = (half: string) => [
+    manual(`Wait ${half} minute for the DC bus capacitors to discharge.`, "c1"),
+    manual("Wait 1 minute for the DC bus capacitors to discharge.", "c2"),
+  ];
+
+  for (const half of ["1/2", "\u00BD"]) {
+    it(`#4956 '${half} minute' is 30 seconds, so citing it alone is not the most conservative`, () => {
+      const r = check(`Wait ${half} minute for the capacitors to discharge [1].`, halfAndOne(half), F.GS10);
+      expect(r.checks.map((c) => c.number?.value)).toEqual([30]);
+      expect(verdicts(r)).toEqual(["block:not_most_conservative"]);
+    });
+  }
+
+  it("#4956 control: the 1-minute source still passes as the most conservative", () => {
+    expect(verdicts(check("Wait 1 minute for the capacitors to discharge [2].", halfAndOne("1/2"), F.GS10))).toEqual([
+      "pass_most_conservative",
+    ]);
+  });
+});
+
+function manual(content: string, id = "c1"): EvidenceChunk {
+  return F.manualChunk(id, content, F.GS10, F.GS10_SHA, "6-9");
+}

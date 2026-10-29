@@ -7,7 +7,7 @@
  *  A2 `retrievalScope: "vendor_fallback"` (a sibling model's manual) is never support.
  *  A3 a manual chunk must be for the bound asset: its `docId` is one of the asset's approved
  *     documents, or its manufacturer AND model match the asset (case/punctuation-insensitive).
- *     No bound asset ⇒ no manual chunk applies. A photo observation is of the bound asset.
+ *     No bound asset ⇒ nothing applies. A photo applies only when identified as the bound asset (#4955).
  *  A4 a manual chunk must be `verified === true` unless its `docId` is approved for the asset;
  *     `verified` undefined is treated as false (fail closed).
  *  A5 a manual chunk must carry a page (`sourcePage` or `pageLabel`) so the cite can be shown.
@@ -32,12 +32,15 @@ const norm = (s: string | undefined | null) => (s ?? "").toLowerCase().replace(/
 export function applicability(chunk: EvidenceChunk, bound: BoundAsset | null): NumberVerdict | null {
   if (chunk.origin === "technician") return "block:technician_number";
   if (chunk.retrievalScope === "vendor_fallback") return "block:vendor_fallback";
-  if (chunk.origin === "photo") return null;
   if (!bound) return "block:not_bound_asset";
-  const approvedDoc = !!chunk.docId && (bound.docIds ?? []).includes(chunk.docId);
   const models = [bound.modelNumber, ...(bound.modelAliases ?? [])].map(norm).filter(Boolean);
-  const sameAsset =
-    approvedDoc || (norm(chunk.manufacturer) !== "" && norm(chunk.manufacturer) === norm(bound.manufacturer) && models.includes(norm(chunk.modelNumber)));
+  const identifiedAs = (c: EvidenceChunk) =>
+    norm(c.manufacturer) !== "" && norm(c.manufacturer) === norm(bound.manufacturer) && models.includes(norm(c.modelNumber));
+  // #4955: a photo supports the bound asset only when its label was identified as that asset.
+  // A live label has no page or verified flag; its provenance is the identification itself.
+  if (chunk.origin === "photo") return identifiedAs(chunk) ? null : "block:not_bound_asset";
+  const approvedDoc = !!chunk.docId && (bound.docIds ?? []).includes(chunk.docId);
+  const sameAsset = approvedDoc || identifiedAs(chunk);
   if (!sameAsset) return "block:not_bound_asset";
   if (chunk.verified !== true && !approvedDoc) return "block:unverified_source";
   if (chunk.sourcePage == null && !(chunk.pageLabel ?? "").trim()) return "block:no_page";

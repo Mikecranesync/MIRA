@@ -23,6 +23,8 @@ const photo: EvidenceChunk = {
   id: "photo",
   origin: "photo",
   content: "Label text: WARNING - Risk of electric shock. Capacitors stay charged; wait 10 minutes after power is removed.",
+  manufacturer: F.GS10.manufacturer,
+  modelNumber: F.GS10.modelNumber,
 };
 
 export const DEV_REPLAY_CASES: ReplayCase[] = [

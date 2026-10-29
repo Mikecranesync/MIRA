@@ -59,6 +59,12 @@ const WORD_ALT = [...WORDS.keys()].sort((a, b) => b.length - a.length).join("|")
 const NUM = `(?:\\d{1,3}(?:,\\d{3})+|\\d+(?:\\.\\d+)?|\\.\\d+|${WORD_ALT})`;
 const PAREN = `(?:\\s*\\(\\s*\\d+(?:\\.\\d+)?\\s*\\))?`;
 
+/** w + n/d as a decimal string; a zero denominator becomes a non-number so nothing is parsed. */
+function fraction(w: number, n: string, d: string): string {
+  const v = w + Number(n) / Number(d);
+  return Number(d) === 0 || !Number.isFinite(v) ? "NaN" : String(Number(v.toFixed(6)));
+}
+
 function toNumber(tok: string): number {
   const t = tok.toLowerCase();
   return WORDS.has(t) ? WORDS.get(t)! : Number(t.replace(/,/g, ""));
@@ -67,6 +73,9 @@ function toNumber(tok: string): number {
 /** Rewrite fractional and compound phrases into digits so the unit grammar sees them. */
 function normalizePhrases(s: string): string {
   return s
+    // #4956: "1 1/2", "1/2", NFKC "1⁄2" (from "½") → decimals, so a fraction never parses as its denominator.
+    .replace(/(\d+)\s+(\d+)\s*[/\u2044]\s*(\d+)/g, (_m, w: string, n: string, d: string) => fraction(Number(w), n, d))
+    .replace(/(\d+)\s*[/\u2044]\s*(\d+)/g, (_m, n: string, d: string) => fraction(0, n, d))
     .replace(/\b(?:an?|one)\s+hour\s+and\s+a\s+half\b/gi, "90 minutes")
     .replace(/\b(?:a\s+)?half\s+(?:an?\s+)?hour\b/gi, "30 minutes")
     .replace(/\b(?:a\s+)?half\s+(?:a\s+)?minute\b/gi, "30 seconds")
@@ -91,7 +100,7 @@ const UNIT_DEFS: UnitDef[] = [
 ];
 
 const QTY_RE = new RegExp(
-  `(?<![\\w.])(${NUM})${PAREN}(?:\\s*(?:to|or|and|through|-)\\s*(${NUM})${PAREN})?\\s*-?\\s*(${UNIT_DEFS.map((d) => d.re).join("|")})(?![a-z0-9])`,
+  `(?<![\\w./\\u2044])(${NUM})${PAREN}(?:\\s*(?:to|or|and|through|-)\\s*(${NUM})${PAREN})?\\s*-?\\s*(${UNIT_DEFS.map((d) => d.re).join("|")})(?![a-z0-9])`,
   "gi",
 );
 
@@ -134,10 +143,18 @@ const UNRELATED_TIMING_RE =
   /\b(?:accel\w*|decel\w*|ramp\w*|fans?|boot\w*|time-?outs?|scan\s+time|response\s+time|after\s+a\s+fault|fault\s+(?:has\s+been\s+)?cleared|performing\s+reset|cycle\s+the\s+power|cool\w*|overheat\w*|detection\s+time)\b/i;
 const CHARGE_UP_RE = /\b(?:power(?:ing)?[- ]?up|start[- ]?up|pre-?charg\w*|recharg\w*|to\s+charge|charging|apply\s+(?:input\s+)?power)\b/i;
 
-/** Timing that is not a discharge wait: ramps, fans, fault resets, recharging, cooling. */
+/** Timing that is not a discharge wait: ramps, fans, fault resets, recharging, cooling.
+ *  Answer side (fail closed): any stored-energy word keeps a fault-worded wait a discharge claim. */
 export function isUnrelatedTiming(clause: string): boolean {
   if (UNRELATED_TIMING_RE.test(clause) && !STORED_RE.test(clause)) return true;
   return CHARGE_UP_RE.test(clause) && !DISCHARGE_LINK_RE.test(clause);
+}
+
+/** Source side (#4954): naming the DC bus does not turn a fault-reset or check delay into a
+ *  discharge time; only a discharge or contact link does. Support is read narrowly. */
+export function isUnrelatedSourceTiming(clause: string): boolean {
+  if (UNRELATED_TIMING_RE.test(clause) && !DISCHARGE_LINK_RE.test(clause)) return true;
+  return isUnrelatedTiming(clause);
 }
 
 /** A comparative threshold immediately before the value ("less than 25VDC", "below 50 V"). */
@@ -174,10 +191,18 @@ export function clauseAround(text: string, at: number): [number, number] {
  * the value, and whether stored-energy context is in force (the sentence, its paragraph, or the
  * question). Null = not hazard-critical.
  */
-export function classify(dim: Dim, clause: string, before: string, storedContext: boolean): Quantity | null {
+export function classify(
+  dim: Dim,
+  clause: string,
+  before: string,
+  storedContext: boolean,
+  side: "answer" | "source" = "answer",
+): Quantity | null {
   switch (dim) {
-    case "time":
-      return storedContext && !isUnrelatedTiming(clause) ? "discharge_time" : null;
+    case "time": {
+      const unrelated = side === "source" ? isUnrelatedSourceTiming(clause) : isUnrelatedTiming(clause);
+      return storedContext && !unrelated ? "discharge_time" : null;
+    }
     case "voltage":
       return THRESHOLD_RE.test(before) && (BUS_POINT_RE.test(clause) || storedContext) ? "residual_voltage" : null;
     case "distance":
