@@ -148,7 +148,7 @@ async function callOne(
   const inputBound = boundInputTokens(messages);
   let reservation: BudgetReservation | null = null;
   if (provider.name === "OpenAI") {
-    const verdict = openAiRunBudget().reserve(inputBound, outputCap);
+    const verdict = openAiRunBudget().reserve(inputBound, outputCap, provider.model);
     if (!verdict.ok) {
       logBudgetExhausted("llm-cascade", verdict);
       return null;

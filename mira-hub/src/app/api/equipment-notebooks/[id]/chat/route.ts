@@ -4033,7 +4033,7 @@ async function handleChatTurn(
         // cascade, so a block from an earlier provider must never price this one.
         let attemptUsage: unknown = null;
         if (provider.name === "OpenAI") {
-          const verdict = openAiRunBudget().reserve(inputBound, requestCap);
+          const verdict = openAiRunBudget().reserve(inputBound, requestCap, provider.model);
           if (!verdict.ok) {
             logBudgetExhausted("notebook-chat", verdict);
             if (seam) attempted.push(provider.name);
@@ -4049,7 +4049,7 @@ async function handleChatTurn(
           // Residual: an answer denser than the hold's 8 bytes per token makes
           // the judge re-reserve, which can be refused (see answer-safety-check).
           if (judgeWillRun && !judgeHold) {
-            const judgeVerdict = openAiRunBudget().reserve(judgeInputBound, JUDGE_OUTPUT_TOKENS);
+            const judgeVerdict = openAiRunBudget().reserve(judgeInputBound, JUDGE_OUTPUT_TOKENS, provider.model);
             if (!judgeVerdict.ok) {
               verdict.reservation.release();
               logBudgetExhausted("notebook-chat+safety-judge", judgeVerdict);

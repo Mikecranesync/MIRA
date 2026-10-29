@@ -637,7 +637,7 @@ export const openAiVisionCall: VisionCall = async ({ prompt, images, temperature
     logVisionModelUnverified("vision-call", provider.model);
     throw new Error("recognizer_model_unverified");
   }
-  const verdict = openAiRunBudget().reserve(inputBound, maxTokens);
+  const verdict = openAiRunBudget().reserve(inputBound, maxTokens, provider.model);
   if (!verdict.ok) {
     logBudgetExhausted("vision-call", verdict);
     throw new Error("recognizer_budget_exhausted");
