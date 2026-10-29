@@ -199,3 +199,30 @@ describe("numberSafeFallback renders the DC-bus procedure only for a DC-bus bloc
     expect(numberSafeFallback(r, { chunks, bound: F.GS10 })).toMatch(/measure DC\+ to DC-/);
   });
 });
+
+// Round 3, #4963 (Codex round 2 F2): a PPE / garment arc rating is not the equipment's incident
+// energy. On the source side an energy value supports incident_energy only with incident-energy or
+// arc-flash-study context; the answer side stays broad (fail closed).
+describe("#4963 a PPE arc rating is not equipment incident energy", () => {
+  it.each([
+    ["the issue's source: an arc-rated suit rating", "The arc-rated suit is rated 8 cal/cm²."],
+    ["a PPE minimum arc rating", "Wear PPE with an arc rating of at least 8 cal/cm²."],
+    ["a garment ATPV", "The shirt has an ATPV of 8 cal/cm²."],
+  ])("block: %s", (_n, source) => {
+    expect(verdicts(check("Incident energy is 8 cal/cm² [1].", [src(source)]))).toEqual(["block:not_in_cited_sentence"]);
+  });
+
+  it.each([
+    ["the issue's control", "Incident energy is 8 cal/cm²."],
+    ["an arc flash label value", "The arc flash label lists 8 cal/cm² at a working distance of 18 in."],
+    ["a study result next to PPE wording", "Per the arc flash study, incident energy is 8 cal/cm²; wear PPE rated above it."],
+  ])("pass: %s", (_n, source) => {
+    expect(verdicts(check("Incident energy is 8 cal/cm² [1].", [src(source)]))).toEqual(["pass"]);
+  });
+
+  it("answer side stays broad: a PPE rating claim citing a PPE-only source still blocks (fail closed)", () => {
+    expect(verdicts(check("Wear a suit rated 8 cal/cm² [1].", [src("The arc-rated suit is rated 8 cal/cm².")]))).toEqual([
+      "block:not_in_cited_sentence",
+    ]);
+  });
+});

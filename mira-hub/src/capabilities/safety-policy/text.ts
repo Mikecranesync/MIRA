@@ -259,6 +259,12 @@ const ANSWER_POST_THRESHOLD_RE = /^\s*(?:\[[^\]]*\]\s*)?max(?:imum)?\b/i;
 const BUS_POINT_RE = /\b(?:dc\s*\+|\+\s*dc|dc\s*-|-\s*dc|dc[- ]?(?:bus|link)|bus|capacitors?|between\s*\+\s*and\s*-|discharg\w*|residual|stored)/i;
 /** Approach / arc-flash boundary wording. Not "clearance" (drive mounting) and not "working
  *  distance" (where incident energy is calculated; it runs the opposite conservative direction). */
+/** Source context that makes an energy density the equipment's incident energy (#4963). */
+const INCIDENT_CTX_RE =
+  /\b(?:incident\s+energy|arc[- ]?flash\s+(?:study|analysis|label|hazard\s+analysis|risk\s+assessment|calculation|boundary)|available\s+(?:arc\s+)?energy|working\s+distance)\b/i;
+/** A PPE / garment arc rating (#4963): not the equipment's incident energy. */
+const PPE_RATING_RE =
+  /\b(?:arc[- ]?rated|ppe|suits?|garments?|clothing|shirts?|jackets?|coveralls?|hoods?|gloves?|face\s*shields?|balaclavas?|atpv|ebt|arc\s+ratings?|hrc)\b/i;
 const APPROACH_RE = /\b(?:approach|boundary|arc[- ]?flash|limited|restricted)\b/i;
 /** Answer side only (recall, fail closed): a distance from exposed / energized / live parts. Not
  *  read on the source side, where "2 in away" wording would become boundary support. */
@@ -336,6 +342,12 @@ export function classify(
     case "distance":
       return APPROACH_RE.test(clause) || (side === "answer" && ANSWER_APPROACH_RE.test(clause)) ? "approach_boundary" : null;
     case "energy":
+      // #4963: on the source side an energy density is the equipment's incident energy only with
+      // incident-energy / arc-flash-study context, and not when its clause is a PPE / garment arc
+      // rating ("The arc-rated suit is rated 8 cal/cm²"). The answer side stays broad (fail closed).
+      if (side === "source" && (!INCIDENT_CTX_RE.test(sentence) || (PPE_RATING_RE.test(clause) && !INCIDENT_CTX_RE.test(clause)))) {
+        return null;
+      }
       return "incident_energy";
     case "torque":
       return "torque";
