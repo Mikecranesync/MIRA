@@ -1,3 +1,9 @@
+# Honest landing Codex round 2 — 2026-10-29
+
+Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Codex round 2 on `c08384e0` (ISSUES_FOUND, 4 P2) fixed on the same draft: Drive Commander `/drive-commander/powerflex-525` drops `$197/yr` and checkout, CTA is Talk to Mike / free 30-day pilot; blog articles no longer claim auto work-order creation, a free CMMS tier, or "in seconds"; `provenText()` no longer falls back when a claim is unproven; honest-claims is recursive over public HTML, renders every real blog post plus Drive Commander and marketing renderers, uses semantic bans (auto+CMMS/work order, any `$`, timing promises), and has mutation + notebook-cited-answer flip tests. No merge, deploy, labels, ready, or Codex. mira-web full suite at new tip: 598 pass / 18 fail (21 fail on `origin/main`; the 18 remaining are pre-existing Neon/cookie/admin/DC-Pro).
+
+---
+
 # Honest landing Codex P2s — 2026-10-29
 
 Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Mike approved all five Codex P2s on the same draft: registry `offers` (free 30-day pilot + limited free lifetime credit, no amounts), `chrome.connectors_note` (optional and not yet available), public prices stripped from terms/PrintSense, feature/blog/PrintSense copy sourced from proven claims, honest-claims widened to every public HTML + llms + feature pages + blog renderer + PrintSense + terms, `/buy` Talk to Mike uses `--amber` on `#0d0e11`. No merge, deploy, labels, ready, or Codex. mira-web full suite: 561 pass / 18 fail (19 pre-existed on main; none new).

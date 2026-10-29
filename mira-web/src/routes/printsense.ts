@@ -85,12 +85,8 @@ export function renderPrintsenseLanding(
   message = "<!--MSG-->",
 ): string {
   const caps = data ?? loadCapabilities();
-  const mira =
-    provenText("notebook-cited-answer", caps) ??
-    "In an equipment notebook, MIRA answers from an uploaded OEM manual and cites the page.";
-  const notebook =
-    provenText("equipment-notebook-not-cmms", caps) ??
-    "An equipment notebook for maintenance crews. Not a CMMS. No PLC data, no work-order writes.";
+  const mira = provenText("notebook-cited-answer", caps);
+  const notebook = provenText("equipment-notebook-not-cmms", caps);
   const cta = caps.contact.cta;
   const href = caps.contact.href;
   const signupCta = caps.contact.signup_cta;
@@ -334,10 +330,10 @@ advanced_reasoning_unavailable</div></div>
       <span class="ps-here">You are here</span></div>
     <div class="ps-rung"><div class="lvl">Then</div><h3>MIRA</h3>
       <div class="who">for the maintenance team</div>
-      <p>${escHtml(mira)}</p></div>
+      ${mira ? `<p>${escHtml(mira)}</p>` : ""}</div>
     <div class="ps-rung"><div class="lvl">Finally</div><h3>FactoryLM</h3>
       <div class="who">for the plant</div>
-      <p>${escHtml(notebook)}</p></div>
+      ${notebook ? `<p>${escHtml(notebook)}</p>` : ""}</div>
   </div>
 </section>
 

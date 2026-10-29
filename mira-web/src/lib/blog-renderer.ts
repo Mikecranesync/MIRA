@@ -144,12 +144,11 @@ function marketingCtaCard(
   heading: string,
   data: CapabilitiesFile = loadCapabilities(),
 ): string {
-  const body =
-    provenText("notebook-cited-answer", data) ??
-    "In an equipment notebook, MIRA answers from an uploaded OEM manual and cites the page.";
+  const body = provenText("notebook-cited-answer", data);
+  const bodyHtml = body ? `<p>${escHtml(body)}</p>` : "";
   return `<div class="cta-card fade-in">
     <h3>${escHtml(heading)}</h3>
-    <p>${escHtml(body)}</p>
+    ${bodyHtml}
     <a href="${escAttr(data.contact.signup_href)}" class="btn-primary">${escHtml(data.contact.signup_cta)} ${ARROW_SVG}</a>
     <p style="margin-top:12px"><a href="${escAttr(data.contact.href)}">${escHtml(data.contact.cta)}</a></p>
   </div>`;
@@ -170,6 +169,7 @@ export function renderBlogPost(
   post: BlogPost,
   allPosts: BlogPost[],
   allCodes: FaultCode[],
+  data: CapabilitiesFile = loadCapabilities(),
 ): string {
   const canonical = `${BASE_URL}/blog/${post.slug}`;
 
@@ -235,7 +235,7 @@ ${nav({ currentPath: "/blog" })}
 
   ${buildRelatedHtml(related, relatedCodes)}
 
-  ${marketingCtaCard("Ask Mira — it cites the page")}
+  ${marketingCtaCard("Ask Mira — it cites the page", data)}
 </article>
 
 </main>
@@ -253,6 +253,7 @@ ${scripts()}
 export function renderFaultCodePage(
   fc: FaultCode,
   allCodes: FaultCode[],
+  data: CapabilitiesFile = loadCapabilities(),
 ): string {
   const canonical = `${BASE_URL}/blog/${fc.slug}`;
   const causes = fc.commonCauses.map((c) => `      <li>${escHtml(c)}</li>`).join("\n");
@@ -380,7 +381,7 @@ ${fixSteps}
 
   ${relatedHtml}
 
-  ${marketingCtaCard("Still stuck? Ask Mira.")}
+  ${marketingCtaCard("Still stuck? Ask Mira.", data)}
 </article>
 
 </main>
@@ -398,6 +399,7 @@ ${scripts()}
 export function renderBlogIndex(
   posts: BlogPost[],
   faultCodeCount: number,
+  data: CapabilitiesFile = loadCapabilities(),
 ): string {
   const canonical = `${BASE_URL}/blog`;
   const sorted = [...posts].sort((a, b) => b.date.localeCompare(a.date));
@@ -465,7 +467,7 @@ ${postCards}
 </div>
 
 <div class="inner" style="padding-bottom: 48px;">
-  ${marketingCtaCard("Ask Mira from your equipment manuals")}
+  ${marketingCtaCard("Ask Mira from your equipment manuals", data)}
 </div>
 
 </main>
@@ -480,7 +482,10 @@ ${scripts()}
 // Fault code library index
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function renderFaultCodeIndex(faultCodes: FaultCode[]): string {
+export function renderFaultCodeIndex(
+  faultCodes: FaultCode[],
+  data: CapabilitiesFile = loadCapabilities(),
+): string {
   const canonical = `${BASE_URL}/blog/fault-codes`;
 
   const grouped = new Map<string, FaultCode[]>();
@@ -541,7 +546,7 @@ ${nav({ currentPath: "/blog" })}
 <div class="inner">
 ${sections}
 
-  ${marketingCtaCard("Can\u2019t find your fault code?")}
+  ${marketingCtaCard("Can\u2019t find your fault code?", data)}
 </div>
 
 </main>

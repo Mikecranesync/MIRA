@@ -75,7 +75,7 @@ const blogPages: PageCase[] = [
     ? [
         {
           name: `/blog/${FAULT_CODES[0].slug}`,
-          html: renderFaultCodePage(FAULT_CODES[0], BLOG_POSTS, FAULT_CODES),
+          html: renderFaultCodePage(FAULT_CODES[0], FAULT_CODES),
         },
       ]
     : []),

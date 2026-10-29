@@ -253,16 +253,19 @@ describe("renderDriveLandingPage entitlement gate", () => {
     expect(html).not.toContain('class="pro-lock"');
   });
 
-  test("CTA copy leads with $197/yr (annual is lead SKU)", async () => {
+  test("public CTA is Talk to Mike / free 30-day pilot, with no published price", async () => {
     const { renderDriveLandingPage } = await import("../drive-commander-renderer.js");
     const { getPack } = await import("../drive-pack-data.js");
     const pack = getPack("siemens-g120");
     if (!pack) return;
 
     const html = renderDriveLandingPage(pack, { isPro: false });
-    // Lead price must be annual $197/yr
-    expect(html).toContain("$197/yr");
-    // $29/mo must not appear as a standalone lead offer
+    expect(html).toContain("Request a free 30-day pilot");
+    expect(html).toContain("Talk to Mike");
+    expect(html).toContain("https://app.factorylm.com/signup");
+    expect(html).not.toContain("$197/yr");
     expect(html).not.toContain("$29/mo");
+    expect(html).not.toMatch(/checkout\/session/);
+    expect(html).not.toMatch(/\$[\d,]+/);
   });
 });

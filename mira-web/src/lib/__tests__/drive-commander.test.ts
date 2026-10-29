@@ -389,19 +389,25 @@ describe("de-slop invariants", () => {
     expect(/#[0-9a-fA-F]{6}\b/.test(body.replace(/#[\w-]+"/g, ""))).toBe(false);
   });
 
-  test("?checkout=success renders a confirmation and hides the Pro sell", () => {
+  test("?checkout=success renders a confirmation and hides the Pro lock", () => {
     const paid = renderDriveLandingPage(pack, { checkout: "success" });
     expect(paid).toContain("Payment confirmed");
-    expect(paid).not.toContain("Unlock Drive Commander Pro");
-    // plain load still sells Pro and shows no banner
-    expect(landing).toContain("Unlock Drive Commander Pro");
+    expect(paid).not.toContain('class="pro-lock"');
+    expect(paid).not.toContain("Request a free 30-day pilot");
+    expect(landing).toContain('class="pro-lock"');
+    expect(landing).toContain("Request a free 30-day pilot");
+    expect(landing).toContain("Talk to Mike");
+    expect(landing).not.toContain("$197");
+    expect(landing).not.toMatch(/checkout\/session/);
     expect(landing).not.toContain("Payment confirmed");
   });
 
-  test("?checkout=cancelled renders the quiet note", () => {
+  test("?checkout=cancelled renders the quiet note and keeps the pilot CTA", () => {
     const cancelled = renderDriveLandingPage(pack, { checkout: "cancelled" });
     expect(cancelled).toContain("Checkout cancelled");
-    expect(cancelled).toContain("Unlock Drive Commander Pro");
+    expect(cancelled).toContain('class="pro-lock"');
+    expect(cancelled).toContain("Request a free 30-day pilot");
+    expect(cancelled).not.toContain("$197");
   });
 });
 
