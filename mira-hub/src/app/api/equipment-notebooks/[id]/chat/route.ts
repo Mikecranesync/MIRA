@@ -255,7 +255,7 @@ import {
   isWeakEvidenceEntry,
 } from "@/lib/notebook-chat-types";
 import { buildFollowupSuggestions } from "@/lib/notebook-followups";
-import { chunkForRelease, validateAnswer } from "@/capabilities/answer-validation";
+import { chunkForRelease, safetyFloorsMode, shadowSafetyFloor, validateAnswer } from "@/capabilities/answer-validation";
 import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "@/capabilities/prompt-leak-guard";
 import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
@@ -4564,6 +4564,9 @@ async function handleChatTurn(
         ].filter(Boolean),
       });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
+      // #4372 decision 1: NOTEBOOK_SAFETY_FLOORS_MODE=shadow serves the #4929/#4931
+      // floors as non-blocking flags and logs the would-be block (default enforce).
+      const floorShadow = gate ? shadowSafetyFloor(validation, answerText, safetyFloorsMode()) : null;
       // Safety Phase 0 (#4372): which layer decided, recorded on the packet as
       // closed-vocabulary codes only. A FLAGGED turn is one where a pre-LLM
       // safety trigger fired (question/photo trigger, the energized directive,
@@ -4576,9 +4579,11 @@ async function handleChatTurn(
         // so only `energized_warning` remains a served floor warning here.
         // Whether `isolation_advisory` should also flag the turn is an OPEN
         // policy question (see the STG lane report), deliberately not decided here.
-        gate && !validation.ok && validation.kind === "energized_warning"
-          ? validation.violation
-          : null;
+        floorShadow
+          ? floorShadow.wouldBlock
+          : gate && !validation.ok && validation.kind === "energized_warning"
+            ? validation.violation
+            : null;
       const flaggedTurn = preLlmTriggered || floorWarning !== null;
       let semanticVerdictCode: SafetyOutcome["semantic_verdict"] = "not_run";
       let semanticDecided = false;
@@ -4588,10 +4593,12 @@ async function handleChatTurn(
       const gateMatch = !validation.ok && validation.match ? validation.match : null;
       if (!validation.ok) {
         console.error(
-          `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
+          `[notebook-chat] pre-display ${gate ? (floorShadow ? "SHADOW would-block (served)" : "REJECTED") : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
         );
         if (gate) {
-          if (validation.kind === "isolation_advisory") {
+          if (floorShadow) {
+            answerText = floorShadow.servedText;
+          } else if (validation.kind === "isolation_advisory") {
             // #4858 layered onto #4471: a hands-on answer that passed every
             // #4471 block gets a fixed isolation notice above it, served as an
             // ordinary answered turn. Not terminal, no outputRejected, and no

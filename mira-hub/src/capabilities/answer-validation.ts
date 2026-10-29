@@ -1594,6 +1594,44 @@ What to do:
 
 If you add this drive's manual or a photo of its warning label and ask again, I'll quote its figure with a reference.`;
 
+// ── Safety-floor SHADOW mode (#4372, Mike decisions 1 + 4) ────────────────────
+// The #4931 blocks (every `unsafe_answer` validateAnswer returns — origin/main
+// served these as `hazard_warning` flags, owner decision 2026-09-27) and the
+// #4929 discharge-wait rule must be evaluable WITHOUT blocking. Shadow mode keeps
+// detection and logs the would-be block, but serves what a non-blocking floor
+// serves: the candidate with the quoted-step flag above it (main's grammar), or
+// the candidate unchanged for the discharge-wait accuracy rule (absent on main).
+// Default is ENFORCE: any value other than exactly "shadow" keeps blocking, so a
+// typo can never silently drop a floor. The prompt-leak guard, the exact-rating
+// rule and every other validator are untouched in both modes.
+export type SafetyFloorsMode = "enforce" | "shadow";
+
+export function safetyFloorsMode(): SafetyFloorsMode {
+  return process.env.NOTEBOOK_SAFETY_FLOORS_MODE === "shadow" ? "shadow" : "enforce";
+}
+
+export const DISCHARGE_WAIT_VIOLATION = "unsupported-specificity:discharge-wait-time";
+
+/** In shadow mode, what to serve instead of a #4929/#4931 block; null = no change. */
+export function shadowSafetyFloor(
+  validation: AnswerValidation,
+  answerText: string,
+  mode: SafetyFloorsMode,
+): { servedText: string; wouldBlock: string } | null {
+  if (mode !== "shadow" || validation.ok) return null;
+  if (validation.kind === "unsafe_answer") {
+    const step = validation.detail.replace(/\s+/g, " ").trim().slice(0, 160);
+    return {
+      wouldBlock: validation.violation,
+      servedText: `⚠️ **Safety flag on a step below:** “${step}”. Do not do that on energized, pressurized or moving equipment — isolate it and verify zero energy first.\n\n${answerText}`,
+    };
+  }
+  if (validation.violation === DISCHARGE_WAIT_VIOLATION) {
+    return { wouldBlock: validation.violation, servedText: answerText };
+  }
+  return null;
+}
+
 export function validateAnswer(opts: {
   answerText: string;
   question: string;
@@ -1766,7 +1804,7 @@ export function validateAnswer(opts: {
     return {
       ok: false,
       kind: "unsupported_specificity",
-      violation: "unsupported-specificity:discharge-wait-time",
+      violation: DISCHARGE_WAIT_VIOLATION,
       detail: wait,
       replacement: DISCHARGE_WAIT_FALLBACK,
     };

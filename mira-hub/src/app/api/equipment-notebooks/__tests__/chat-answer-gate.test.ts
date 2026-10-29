@@ -401,6 +401,39 @@ describe("F1 (Codex review) — bare imperative unsafe instruction through the r
   });
 });
 
+describe("#4372 NOTEBOOK_SAFETY_FLOORS_MODE through the real handler", () => {
+  beforeEach(() => {
+    process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
+  });
+  const CANDIDATE = "Reset the E-12 fault while the machine is energized. This clears the error [1].";
+
+  it("shadow: the #4931 block is served as a flag above the candidate, citation kept", async () => {
+    process.env.NOTEBOOK_SAFETY_FLOORS_MODE = "shadow";
+    vi.stubGlobal("fetch", vi.fn(async () => completingProvider(CANDIDATE)));
+    const res = await POST(chatReq({ message: "How do I clear the E-12 fault?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+    const released = contentOf(frames);
+    expect(released).not.toBe(SAFETY_STOP);
+    expect(released).toContain("⚠️ **Safety flag on a step below:**");
+    expect(released).toContain(CANDIDATE);
+    expect(frames.find((f) => f.kind === "sources")).not.toMatchObject({ citations: [] });
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn().answerText).toContain(CANDIDATE);
+  });
+
+  for (const mode of [undefined, "enforce", "Shadow"]) {
+    it(`control (${mode ?? "unset"}): the same candidate is blocked with SAFETY_STOP`, async () => {
+      if (mode === undefined) delete process.env.NOTEBOOK_SAFETY_FLOORS_MODE;
+      else process.env.NOTEBOOK_SAFETY_FLOORS_MODE = mode;
+      vi.stubGlobal("fetch", vi.fn(async () => completingProvider(CANDIDATE)));
+      const res = await POST(chatReq({ message: "How do I clear the E-12 fault?", sourceDocIds: [DOC_A] }), params);
+      const frames = parseFrames(await res.text());
+      expect(contentOf(frames)).toBe(SAFETY_STOP);
+      expect(frames.find((f) => f.kind === "sources")).toMatchObject({ citations: [] });
+    });
+  }
+});
+
 describe("F1 iteration-2 probes — clause boundaries and maintenance verbs through the real handler", () => {
   // #4372: these pin the DETERMINISTIC floor's flag-not-block behavior, so the
   // judge is switched off to isolate it. A floor warning makes the turn FLAGGED,
