@@ -198,9 +198,13 @@ export function isUnrelatedSourceTiming(clause: string): boolean {
 
 /** A comparative threshold immediately before the value ("less than 25VDC", "below 50 V"). */
 const THRESHOLD_RE =
-  /(?:\b(?:less\s+than|below|under|lower\s+than|at\s+most|no(?:t)?\s+more\s+than|not\s+(?:to\s+)?exceed(?:ing)?|(?:a\s+)?max(?:imum)?(?:\s+of)?|drops?\s+(?:to|below)|falls?\s+(?:to|below)|discharged?\s+(?:to|below)|bleeds?\s+down\s+to)|<=|=<|<|≤)\s*(?:about\s+|approximately\s+)?$/i;
-/** A comparative right after the value ("50 V or less", "50 V and below", "50 V max"). */
-const POST_THRESHOLD_RE = /^\s*(?:\[[^\]]*\]\s*)?(?:or\s+(?:less|lower|below|under)|and\s+(?:below|under|lower)|max(?:imum)?\b)/i;
+  /(?:\b(?:less\s+than|below|under|lower\s+than|at\s+most|no(?:t)?\s+more\s+than|drops?\s+(?:to|below)|falls?\s+(?:to|below)|discharged?\s+(?:to|below)|bleeds?\s+down\s+to)|<=|=<|<|≤)\s*(?:about\s+|approximately\s+)?$/i;
+/** A comparative right after the value ("50 V or less", "50 V and below"). */
+const POST_THRESHOLD_RE = /^\s*(?:\[[^\]]*\]\s*)?(?:or\s+(?:less|lower|below|under)|and\s+(?:below|under|lower))/i;
+/** Answer side only: "a maximum of 50 V", "not to exceed 50 V", "50 V max". In a source these
+ *  phrase a RATING ceiling ("the DC bus can reach a maximum of 800 VDC"), never a meter threshold. */
+const ANSWER_THRESHOLD_RE = /\b(?:not\s+(?:to\s+)?exceed(?:ing)?|(?:a\s+)?max(?:imum)?(?:\s+of)?)\s*(?:about\s+|approximately\s+)?$/i;
+const ANSWER_POST_THRESHOLD_RE = /^\s*(?:\[[^\]]*\]\s*)?max(?:imum)?\b/i;
 const BUS_POINT_RE = /\b(?:dc\s*\+|\+\s*dc|dc\s*-|-\s*dc|dc[- ]?(?:bus|link)|bus|capacitors?|between\s*\+\s*and\s*-|discharg\w*|residual|stored)/i;
 /** Approach / arc-flash boundary wording. Not "clearance" (drive mounting) and not "working
  *  distance" (where incident energy is calculated; it runs the opposite conservative direction). */
@@ -262,10 +266,13 @@ export function classify(
       // Answer side (fail closed, unchanged): any duration in stored-energy context is a claim.
       return storedContext && !isUnrelatedTiming(clause) ? "discharge_time" : null;
     }
-    case "voltage":
-      return (THRESHOLD_RE.test(before) || POST_THRESHOLD_RE.test(after)) && (BUS_POINT_RE.test(clause) || storedContext)
-        ? "residual_voltage"
-        : null;
+    case "voltage": {
+      const threshold =
+        THRESHOLD_RE.test(before) ||
+        POST_THRESHOLD_RE.test(after) ||
+        (side === "answer" && (ANSWER_THRESHOLD_RE.test(before) || ANSWER_POST_THRESHOLD_RE.test(after)));
+      return threshold && (BUS_POINT_RE.test(clause) || storedContext) ? "residual_voltage" : null;
+    }
     case "distance":
       return APPROACH_RE.test(clause) || (side === "answer" && ANSWER_APPROACH_RE.test(clause)) ? "approach_boundary" : null;
     case "energy":

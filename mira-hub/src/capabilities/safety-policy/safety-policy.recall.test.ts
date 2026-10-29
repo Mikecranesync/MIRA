@@ -53,6 +53,25 @@ describe("recall widening stays on the answer side", () => {
     }
   });
 
+  // A rating ceiling is not a meter threshold: "maximum", "not to exceed" and a postfix "max" are
+  // read as thresholds on the answer side only (fail closed), never as source support.
+  it.each([
+    ["The DC bus can reach a maximum of 800 VDC.", "Measure DC+ to DC- and confirm it reads below 800 V [1]."],
+    ["DC bus voltage: 820 VDC max.", "Measure DC+ to DC- and confirm it reads below 820 V [1]."],
+    ["DC bus voltage must not exceed 850 VDC.", "Measure DC+ to DC- and confirm it reads below 850 V [1]."],
+  ])("a rating ceiling is not threshold support: %j", (sentence, answer) => {
+    const chunks = [src(sentence)];
+    const ex = extractNumbers({ answerText: answer, chunks, bound: F.GS10 });
+    const r = verifyNumbers({ numbers: ex.numbers, unparsed: ex.unparsed, chunks, bound: F.GS10 });
+    expect(r.checks.map((c) => c.verdict)).toEqual(["block:not_in_cited_sentence"]);
+  });
+
+  it("control: a source '50 V or less' still supports a 50 V meter threshold", () => {
+    const chunks = [src("The DC bus should read 50 V or less before you touch it.")];
+    const ex = extractNumbers({ answerText: "Confirm the DC bus reads below 50 V [1].", chunks, bound: F.GS10 });
+    expect(verifyNumbers({ numbers: ex.numbers, chunks, bound: F.GS10 }).checks.map((c) => c.verdict)).toEqual(["pass"]);
+  });
+
   it("source side reads the value fully: '3 ft 6 in' is 42 in, so an answer of 3 ft does not pass", () => {
     const chunks = [src("The limited approach boundary is 3 ft 6 in.")];
     const run = (answerText: string) => {
