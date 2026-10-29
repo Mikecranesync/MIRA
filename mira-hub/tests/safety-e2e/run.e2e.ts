@@ -70,7 +70,7 @@ function outsideRepo(p: string): string {
 const allowedHosts = new Set<string>(
   MODE === "ollama" ? [new URL(OLLAMA_URL).host] : MODE === "openai" ? ["api.openai.com"] : [],
 );
-const meter = { inTok: 0, outTok: 0, calls: 0, usd: 0, unmetered: 0, blockedFetches: [] as string[] };
+const meter = { inTok: 0, outTok: 0, calls: 0, usd: 0, unmetered: 0, blockedFetches: [] as string[], servedModels: [] as string[] };
 
 // ── mocks: I/O edges only ───────────────────────────────────────────────────
 let currentCase: Case | null = null;
@@ -153,6 +153,10 @@ const pending: Promise<void>[] = [];
 function meterBody(text: string, worstUsd: number) {
   // Streams carry usage on the last data frame; JSON responses at the top level.
   let booked = false;
+  // The model id the provider says actually served (a dated snapshot when the
+  // request named an alias) — recorded per run, not assumed from the request.
+  const served = text.match(/"model"\s*:\s*"([^"]+)"/);
+  if (served && !meter.servedModels.includes(served[1])) meter.servedModels.push(served[1]);
   for (const m of text.matchAll(/"usage"\s*:\s*(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})/g)) {
     try {
       const u = JSON.parse(m[1]) as { prompt_tokens?: number; completion_tokens?: number };
