@@ -1490,6 +1490,33 @@ describe("Gate-7 r7: unmatched restore-then-measure still WARNS via the step-ene
     if (!v.ok) expect(v.violation).not.toBe("unsafe-answer:lockout-step-contradiction");
   });
 
+  // #4943: the manufacturer's own verification (GS10 ch. 6, 1910.333(b)(2)(iv)(B)):
+  // a charge LED going OUT under lockout is evidence of de-energization, not powered work.
+  it.each([
+    ["grounded", (answerText: string) => grounded(answerText, "how long until I can touch the dc bus")],
+    ["general", (answerText: string) => general(answerText, "how long until I can touch the dc bus")],
+  ] as const)("%s lane: waiting for the charge LED to go out, then measuring to 0 V, is not a contradiction", (_lane, run) => {
+    for (const text of [
+      "Lock out the drive, wait for the charge LED to go out, then measure DC+ to DC- and confirm 0 V before touching anything.",
+      "With the drive locked out, wait until the CHARGE lamp is off, then confirm less than 25 VDC between + and - with a meter.",
+      "Lock out the disconnect. Once the display goes dark, measure across DC+ and DC- and verify zero volts.",
+    ]) {
+      const v = run(text);
+      if (!v.ok) expect(v.violation, text).not.toBe("unsafe-answer:lockout-step-contradiction");
+    }
+  });
+
+  it("#4943 controls: reading LEDs or the display under lockout still BLOCKs", () => {
+    for (const text of [
+      "With the drive locked out, check the fault LEDs and read the code on the display.",
+      "Lock out the drive, then watch the status LEDs while you reset the fault.",
+    ]) {
+      const v = grounded(text, "how do I clear the fault");
+      expect(v.ok, text).toBe(false);
+      if (!v.ok) expect(v.violation, text).toBe("unsafe-answer:lockout-step-contradiction");
+    }
+  });
+
   it("control: removal BEFORE energize and measure is not a lockout contradiction", () => {
     const v = grounded(
       "Remove the lockout, then energize the circuit and measure the output voltage.",

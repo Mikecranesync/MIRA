@@ -44,6 +44,11 @@ const LIVE_READING =
  *  (RESTORE already covers re-energize). */
 const ENERGIZE_CIRCUIT = /(?<!de[\s-])energi[sz]e (?:the )?(?:\w+ )?circuit/i;
 const SEQUENCE_WORD = /\b(?:then|after|afterwards|once|next|finally)\b/i;
+/** #4943: an indicator going OUT, OFF or DARK is de-energization evidence (the GS10
+ *  "charge LED off, then measure" check), not an observation that needs power. Blanked
+ *  before OPERATE is tested; reading LEDs or a display that is lit still counts. */
+const INDICATOR_DARK = /\b(?:leds?|lamps?|lights?|indicators?|display)\b(?:\s+\w+){0,3}?\s+(?:out|off|dark)\b/gi;
+const operates = (x: string): boolean => OPERATE.test(x.replace(INDICATOR_DARK, " "));
 const LOCKOUT_ASSERTED = /\b(?:lock(?:ed|ing)?[\s-]?out|loto|tag(?:ged)?[\s-]?out)\b/i;
 const OPERATE =
   /\b(?:press(?:ing)? (?:the )?(?:start|run)|commanded to run|re-?issue (?:a )?run|run command|start the (?:motor|machine|drive)|power (?:it|the \w+) (?:back )?(?:on|up)|power-?up|re[\s-]?energi[sz]e|restore (?:the )?power|reconnect(?:ing)? (?:the )?power|reset (?:it|the (?:breaker|overload|fault))|watch (?:for|the handle)|trips? again|display|LEDs?|status (?:screen|indicator)|fault (?:code|screen|display)|jog\w*|(?<!de[\s-])energi[sz]e (?:the )?(?:\w+ )?circuit|apply (?:main |the )?(?:power|voltage)|bring (?:it|the \w+) back (?:up|on(?:line)?))\b/i;
@@ -144,7 +149,7 @@ export function stepEnergyContradiction(answerText: string): string | null {
       .map((c) => (c && DEAD_PURPOSE.test(c) ? " " : (c ?? "")))
       .join("");
     const liveReading = LIVE_READING.test(withoutDeadPurpose.replace(DEAD_CHECK, " "));
-    const needsPower = OPERATE.test(t) || liveReading;
+    const needsPower = operates(t) || liveReading;
     // Codex #4146 F3: isolation carries within one list item; in prose, only into a step
     // that moves or powers the machine ("Lock out first. Then reset the fault" is left alone).
     const sameItem = lineIso === s.line && (inList || MOTION.test(t));
@@ -207,7 +212,7 @@ function isolatedPowerInOrder(step: string, isolatedAtStart: boolean): boolean {
     const lock = iso ? null : ISOLATED.exec(head);
     if ((iso || (lock && !EXPLICITLY_POWERED.test(head)))) {
       const tail = lock ? head.slice(lock.index) : head;
-      if (OPERATE.test(tail) || LIVE_READING.test(tail.replace(DEAD_CHECK, " "))) return true;
+      if (operates(tail) || LIVE_READING.test(tail.replace(DEAD_CHECK, " "))) return true;
     }
     if (!r) return false;
     rest = rest.slice(r.end);
