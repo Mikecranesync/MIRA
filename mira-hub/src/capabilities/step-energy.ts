@@ -116,6 +116,16 @@ export function stepEnergyContradiction(answerText: string): string | null {
       // r2 F1: a lockout stated as CONTINUING ("still in place") is never ended by "then";
       // a lockout stated as a condition followed by a sequence is ("…locked out, then restore").
       if (!removed && (still || (STATE_ISOLATED.test(t) && !SEQUENCE_WORD.test(t)))) return raw;
+      // Codex #4931 r2 F1 (BLOCKER): the restore ends isolation only from where it
+      // is written. Work that needs power BEFORE it in this step ("…locked out,
+      // energize the circuit and measure, then remove the lockout") is still
+      // judged under the isolation in force.
+      const at = restoreIndex(t);
+      const prefix = t.slice(0, at);
+      const prefixIsolated =
+        scopeOpen || (listScope && inList) || lineIso === s.line ||
+        (ISOLATED.test(prefix) && !EXPLICITLY_POWERED.test(prefix));
+      if (prefixIsolated && (OPERATE.test(prefix) || LIVE_READING.test(prefix.replace(DEAD_CHECK, " ")))) return raw;
       // Otherwise it is the transition out of isolation: it closes every scope.
       scopeOpen = false; listScope = false; lineIso = -1;
       continue;
@@ -155,12 +165,21 @@ export function stepEnergyContradiction(answerText: string): string | null {
  *  shape — those stay A2a BLOCK. No new phrase list. */
 export function sequentialEnergizeThenMeasure(step: string): boolean {
   if (STILL_ISOLATED.test(step)) return false;
-  // Codex #4931 r1 F1 (BLOCKER): a sequence word does not end a lockout. A step
-  // that asserts lockout/tagout, without removing it in that step, stays an
-  // A2a contradiction; only a bare de-energized state may take the warn path.
-  if (LOCKOUT_ASSERTED.test(step) && !LOCKOUT_REMOVED.test(step)) return false;
+  const energize = ENERGIZE_CIRCUIT.exec(step);
+  if (energize === null) return false;
+  // Codex #4931 r1 F1 / r2 F1 (BLOCKER): a sequence word does not end a lockout,
+  // and neither does a removal written AFTER the energize. A step that asserts
+  // lockout/tagout stays an A2a contradiction unless the lockout is removed
+  // before the circuit is energized; only a bare de-energized state may warn.
+  if (LOCKOUT_ASSERTED.test(step) && !(restoreIndex(step) < energize.index)) return false;
   if (STATE_ISOLATED.test(step) && !SEQUENCE_WORD.test(step)) return false;
   // Ordered, not co-occurrence: the live reading must come after the energize.
-  const energize = ENERGIZE_CIRCUIT.exec(step);
-  return energize !== null && LIVE_READING.test(step.slice(energize.index + energize[0].length));
+  return LIVE_READING.test(step.slice(energize.index + energize[0].length));
+}
+
+/** Where the first restore / lockout removal is written in a step, or the
+ *  step length when there is none. */
+function restoreIndex(step: string): number {
+  const hits = [RESTORE.exec(step), LOCKOUT_REMOVED.exec(step)].filter((m): m is RegExpExecArray => m !== null);
+  return hits.length ? Math.min(...hits.map((m) => m.index)) : step.length;
 }

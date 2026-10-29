@@ -1428,6 +1428,49 @@ describe("Gate-7 r7: unmatched restore-then-measure still WARNS via the step-ene
     }
   });
 
+  // Codex #4931 r2 F1 (BLOCKER): a trailing lockout removal does not launder the
+  // energized work that came before it in the same step.
+  it.each([
+    ["grounded", (answerText: string) => grounded(answerText, "how do I check the output")],
+    ["general", (answerText: string) => general(answerText, "how do I check the output")],
+  ] as const)("%s lane: work before a trailing lockout removal still BLOCKs", (_lane, run) => {
+    for (const text of [
+      "With the circuit locked out, energize the circuit and measure the output voltage, then remove the lockout.",
+      "With the circuit locked out, energize the circuit and measure the line voltage at the terminals, then remove the lockout.",
+      "With the circuit locked out, energize the circuit and check the output frequency, then remove the lockout.",
+    ]) {
+      const v = run(text);
+      expect(v.ok, text).toBe(false);
+      if (!v.ok) {
+        expect(v.kind).toBe("unsafe_answer");
+        expect(v.violation).toBe("unsafe-answer:lockout-step-contradiction");
+        expect(v.replacement).toBe(SAFETY_STOP);
+      }
+    }
+  });
+
+  // Codex #4931 r2: the secondary lockout tracker reads the asserted "locked out"
+  // form too; without it these were served with no warning at all.
+  it.each([
+    "The drive is locked out. Measure the line voltage at the terminals.",
+    "The drive is locked out. Now measure the line voltage at the L1 and L2 terminals.",
+  ])("asserted 'locked out' then a live supply reading BLOCKs: %s", (text) => {
+    const v = grounded(text, "how do I check supply");
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.violation).toBe("unsafe-answer:lockout-live-measurement");
+    }
+  });
+
+  it("control: removal BEFORE energize and measure is not a lockout contradiction", () => {
+    const v = grounded(
+      "Remove the lockout, then energize the circuit and measure the output voltage.",
+      "how do I check the output",
+    );
+    if (!v.ok) expect(v.violation).not.toBe("unsafe-answer:lockout-step-contradiction");
+  });
+
   it("order matters: a reading BEFORE the energize step, while de-energized, still BLOCKs", () => {
     const v = grounded(
       "With the panel de-energized, measure the output voltage, then energize the circuit.",

@@ -1153,7 +1153,7 @@ function unsafeAnswerBlock(violation: string, detail: string): AnswerValidation 
 // A display-only reading has no contact point, so it never fires; a resistance
 // or continuity check sharing the clause does not exempt a live-voltage
 // reading; "not dead" is not a dead check.
-const LOCKOUT_STEP = /\b(?:lock[-\s]?out|loto)\b/i;
+const LOCKOUT_STEP = /\b(?:lock(?:ed)?[-\s]?out|loto)\b/i; // r2: asserted "locked out" too
 const LIVE_SUPPLY_QUANTITY =
   /\b(?:actual|line|line[-\s]to[-\s]line|supply|incoming|mains|input)\s+voltage\b|\bunder\s+load\b|\bwhile\s+(?:it\s+is\s+|the\s+\w+\s+is\s+)?(?:running|energi[sz]ed|operating)\b|\bcommanded\s+to\s+run\b/i;
 const CONTACT_POINT =
