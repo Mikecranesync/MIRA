@@ -1275,10 +1275,17 @@ const CHARGE_UP_RE =
   /\b(?:power(?:ing)?[- ]?up|start[- ]?up|pre-?charg\w*|to\s+charge|charg(?:es|ed)?\s+(?:up|within|in)|charging|charge[- ]up)\b/i;
 const UNRELATED_TIMING_RE = /\b(?:accel\w*|decel\w*|ramp\w*|fans?|boot\w*|time-?outs?|scan\s+time|response\s+time)\b/i;
 
-function isUnrelatedTiming(sentence: string): boolean {
-  if (UNRELATED_TIMING_RE.test(sentence)) return true;
-  return CHARGE_UP_RE.test(sentence) && !DISCHARGE_LINK_RE.test(sentence);
+// Codex #4929 r2 F2: judge each clause, not the whole sentence, and a clause is
+// unrelated timing only when it carries no stored-energy wording of its own.
+function isUnrelatedTiming(clause: string): boolean {
+  if (UNRELATED_TIMING_RE.test(clause) && !STORED_ENERGY_CONTEXT_RE.test(clause)) return true;
+  return CHARGE_UP_RE.test(clause) && !DISCHARGE_LINK_RE.test(clause);
 }
+
+/** Clauses split at ";", a spaced or em dash, and ", and/but/while …" joins.
+ *  An unspaced en dash stays inside: it is a range ("3–5 minutes"). */
+const splitClauses = (sentence: string) =>
+  sentence.split(/\s*;\s*|\s+[—–]\s+|—|,\s+(?=(?:and|but|while|although|whereas)\b)|\s+(?=(?:while|whereas)\b)/i).filter((x) => x.trim());
 
 function toNumber(token: string): number {
   const t = token.toLowerCase();
@@ -1317,22 +1324,24 @@ export function unsupportedDischargeWait(answerText: string, question: string, s
   let supported: Set<number> | null = null;
   for (let i = 0; i < sentences.length; i++) {
     const s = sentences[i];
-    const claimed = durationsInSeconds(s);
-    if (claimed.length === 0 || isUnrelatedTiming(s)) continue;
-    const context =
+    const sentenceContext =
       STORED_ENERGY_CONTEXT_RE.test(s) || (i > 0 && STORED_ENERGY_CONTEXT_RE.test(sentences[i - 1])) || questionContext;
-    if (!context) continue;
-    if (supported === null) {
-      supported = new Set<number>();
-      for (const src of sourceTexts) {
-        for (const x of splitSentences(foldForDetection(src))) {
-          if (isUnrelatedTiming(x)) continue;
-          if (!STORED_ENERGY_CONTEXT_RE.test(x) && !DISCHARGE_LINK_RE.test(x)) continue;
-          for (const n of durationsInSeconds(x)) supported.add(n);
+    if (!sentenceContext) continue;
+    for (const clause of splitClauses(s)) {
+      const claimed = durationsInSeconds(clause);
+      if (claimed.length === 0 || isUnrelatedTiming(clause)) continue;
+      if (supported === null) {
+        supported = new Set<number>();
+        for (const src of sourceTexts) {
+          for (const x of splitSentences(foldForDetection(src)).flatMap(splitClauses)) {
+            if (isUnrelatedTiming(x)) continue;
+            if (!STORED_ENERGY_CONTEXT_RE.test(x) && !DISCHARGE_LINK_RE.test(x)) continue;
+            for (const n of durationsInSeconds(x)) supported.add(n);
+          }
         }
       }
+      if (claimed.some((n) => !supported!.has(n))) return s.slice(0, 160);
     }
-    if (claimed.some((n) => !supported!.has(n))) return s.slice(0, 160);
   }
   return null;
 }

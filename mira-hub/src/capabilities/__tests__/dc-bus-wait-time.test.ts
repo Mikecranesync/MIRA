@@ -168,3 +168,27 @@ describe("unsupportedDischargeWait — support needs a stored-energy source sent
     expect(unsupportedDischargeWait("Wait 5 minutes for the DC bus capacitors to discharge.", DC_Q, src)).not.toBeNull();
   });
 });
+
+// Codex round 2 on #4929 (F2): evaluate clauses, not whole sentences.
+describe("unsupportedDischargeWait — Codex round 2", () => {
+  it("F2: a fan clause in the same sentence does not exempt the discharge claim", () => {
+    const a = "Wait 5 minutes for the DC bus capacitors to discharge; the cooling fan may continue running during this time.";
+    expect(unsupportedDischargeWait(a, DC_Q, [])).not.toBeNull();
+    expect(unsupportedDischargeWait("Wait 5 minutes for the capacitors to discharge while the fan keeps running.", DC_Q, [])).not.toBeNull();
+    expect(unsupportedDischargeWait("Wait 5 minutes for the capacitors to discharge — the fan may still spin.", DC_Q, [])).not.toBeNull();
+  });
+  it("a range written with an en dash is still one claim with two endpoints", () => {
+    const src = ["Wait 5 minutes for the DC bus capacitors to discharge."];
+    expect(unsupportedDischargeWait("Wait 3–5 minutes for the capacitors to discharge.", DC_Q, src)).not.toBeNull();
+  });
+  it("a fan timing clause next to a discharge claim the source supports passes", () => {
+    const a = "Wait 15 minutes for the DC bus capacitors to discharge; the cooling fan runs for 2 minutes after shutdown.";
+    expect(unsupportedDischargeWait(a, DC_Q, [LABEL])).toBeNull();
+  });
+});
+
+describe("unsupportedDischargeWait — a fan word inside the discharge clause", () => {
+  it("does not make the clause unrelated timing", () => {
+    expect(unsupportedDischargeWait("Wait 5 minutes for the fan-cooled bus capacitors to discharge.", DC_Q, [])).not.toBeNull();
+  });
+});

@@ -167,3 +167,31 @@ describe("decision 4 — Codex round 1 F4 (route)", () => {
     expect(persistedAnswer()).toContain("10 seconds after power-up");
   });
 });
+
+describe("decision 4 — Codex round 2 F1 (sibling-model evidence is not support)", () => {
+  it("a vendor_fallback chunk stating the figure does not authorize it for the bound drive", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      {
+        docId: DOC_A,
+        filename: "sibling-manual.pdf",
+        page: 9,
+        content: "WARNING: Wait 5 minutes after removing power for the DC bus capacitors to discharge.",
+        retrievalScope: "vendor_fallback",
+      },
+    ]);
+    const text = await streamed(await POST(req({ message: QUESTION }), params));
+    expect(text).toContain(FALLBACK_HEAD);
+    expect(text).not.toContain("5 minutes");
+    expect(persistedAnswer()).not.toContain("5 minutes");
+  });
+
+  it("route: a fan clause does not let the unsupported figure through", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const answer = "Wait 5 minutes for the DC bus capacitors to discharge; the cooling fan may continue running.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const text = await streamed(await POST(req({ message: QUESTION, mode: "general" }), params));
+    expect(text).not.toContain("5 minutes");
+    expect(persistedAnswer()).not.toContain("5 minutes");
+  });
+});
