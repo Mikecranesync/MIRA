@@ -27,21 +27,52 @@ export function fold(s: string): string {
  * markers ("[1]") belongs to the sentence before it.
  */
 export function sentences(text: string, wrapped: boolean): string[] {
+  return sentenceUnits(text, wrapped).map((u) => u.text);
+}
+
+/** A sentence with where it sits: its paragraph (blank-line block), and its list item within that
+ *  paragraph (`item` = -1 when it is plain paragraph text, not a bullet or numbered item). */
+export interface SentenceUnit {
+  text: string;
+  para: number;
+  item: number;
+}
+
+const ITEM_START_RE = /^\s*(?:[☑•▪]|\d+[.)]\s)/u;
+
+export function sentenceUnits(text: string, wrapped: boolean): SentenceUnit[] {
   // Source PDFs: a "!" standing alone in the left margin (the ATTENTION icon in Rockwell manuals) is
   // layout, not punctuation; left in, "wait three\n!  minutes" splits into two sentences.
   const t = wrapped ? fold(text).replace(/(^|\n)[^\S\n]*!(?=[^\S\n])/g, "$1").replace(/(?<=\s)!(?=\s+[a-z])/g, "") : fold(text);
-  const blocks = wrapped ? t.split(/\n\s*\n/).map((b) => b.replace(/\s*\n\s*/g, " ")) : t.split(/\n+/);
-  const out: string[] = [];
-  for (const b of blocks) {
-    // No split inside a compound length ("3 ft. 6 in."), nor after an abbreviated unit that the
-    // sentence continues past in lowercase ("Wait 5 min. for the capacitors to discharge").
-    for (const raw of b.split(/(?<=[.!?])(?!(?<=\b(?:ft|in)\.)\s+\d)(?!(?<=\b(?:mins?|secs?|hrs?)\.)\s+[a-z])\s+|\s*[☑•▪]\s*/u)) {
-      const s = raw.replace(/^\s*(?:[-+]|\d+[.)])\s+/, "").trim();
-      if (!s) continue;
-      if (/^(?:\[(?:\d+|photo)\]\s*[.,;]?\s*)+$/i.test(s) && out.length > 0) out[out.length - 1] += ` ${s}`;
-      else out.push(s);
+  // Wrapped (source) text: a blank line ends a paragraph; inside it, a line that starts with a
+  // bullet or "1." starts a list item, and other line breaks are wraps. Answers: every line is its own.
+  const paras = wrapped ? t.split(/\n\s*\n/) : t.split(/\n+/);
+  const out: SentenceUnit[] = [];
+  paras.forEach((p, para) => {
+    const items: Array<{ text: string; item: number }> = [];
+    let n = -1;
+    for (const line of wrapped ? p.split("\n") : [p]) {
+      if (ITEM_START_RE.test(line) || items.length === 0) {
+        if (ITEM_START_RE.test(line)) n++;
+        items.push({ text: line, item: ITEM_START_RE.test(line) ? n : -1 });
+      } else items[items.length - 1].text += ` ${line}`;
     }
-  }
+    for (const it of items) {
+      const segs = it.text.replace(/\s+/g, " ").split(/\s*[☑•▪]\s*/u);
+      segs.forEach((seg, k) => {
+        // The bullet that opened the line keeps its item; an inline bullet ("... ☑ next") opens a new one.
+        const item = k === 0 || (k === 1 && segs[0].trim() === "") ? it.item : ++n;
+        // No split inside a compound length ("3 ft. 6 in."), nor after an abbreviated unit that the
+        // sentence continues past in lowercase ("Wait 5 min. for the capacitors to discharge").
+        for (const raw of seg.split(/(?<=[.!?])(?!(?<=\b(?:ft|in)\.)\s+\d)(?!(?<=\b(?:mins?|secs?|hrs?)\.)\s+[a-z])\s+/u)) {
+          const s = raw.replace(/^\s*(?:[-+]|\d+[.)])\s+/, "").trim();
+          if (!s) continue;
+          if (/^(?:\[(?:\d+|photo)\]\s*[.,;]?\s*)+$/i.test(s) && out.length > 0) out[out.length - 1].text += ` ${s}`;
+          else out.push({ text: s, para, item });
+        }
+      });
+    }
+  });
   return out;
 }
 
@@ -194,6 +225,11 @@ const STRONG_STORED_RE =
  *  removal, or names stored charge. A source time is discharge support when this holds for its own
  *  sentence or the sentence right next to it in the same chunk, and it is not positively unrelated
  *  timing (fault reset, ramps, fans, recharge, reforming, cooling, power cycling). */
+/** #4962 tight continuation, sentence j-1 → j: an imperative wait opening j ("Capacitors remain
+ *  charged. Wait 5 minutes."), or j referring back ("this charge", "these capacitors"). */
+export const CONTINUES_RE =
+  /^\s*(?:then\s+)?(?:wait|allow|give)\b|\b(?:this|these|that|those|the)\s+(?:stored\s+)?(?:capacitors?|caps|charge|voltage|energy)\b|\b(?:it|they|them)\s+(?:to\s+)?(?:discharge|bleed|drain|dissipate)\w*/i;
+
 export const sourceSupport = (sentence: string) =>
   DISCHARGE_LINK_RE.test(sentence) || ANSWER_LINK_RE.test(sentence) || STRONG_STORED_RE.test(sentence);
 

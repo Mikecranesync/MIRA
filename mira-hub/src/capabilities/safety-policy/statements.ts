@@ -14,8 +14,9 @@ import {
   hasUnparsedTime,
   isUnrelatedSourceTiming,
   isUnrelatedTiming,
+  CONTINUES_RE,
   normalizedSentence,
-  sentences,
+  sentenceUnits,
   sourceSupport,
 } from "./text";
 
@@ -56,15 +57,23 @@ const CARRY_RE = /^\s*(?:wait|allow|after)\b/i;
 
 /** Every statement a source chunk makes (manual text is line-wrapped PDF text). */
 export function chunkStatements(chunk: EvidenceChunk): Statement[] {
-  const ss = sentences(chunk.content, true);
+  const us = sentenceUnits(chunk.content, true);
   const out: Statement[] = [];
-  const support = ss.map(sourceSupport);
-  ss.forEach((s, j) => {
+  const support = us.map((u) => sourceSupport(u.text));
+  us.forEach((u, j) => {
+    const s = u.text;
+    const prev = j > 0 && us[j - 1].para === u.para ? us[j - 1] : null; // never across a paragraph
     const own = STORED_RE.test(s);
-    const carried = j > 0 && STORED_RE.test(ss[j - 1]) && CARRY_RE.test(s) && !isUnrelatedSourceTiming(s);
-    // Round 2b: a time is discharge support when its own sentence or an adjacent one in this chunk
-    // ties it to discharge, contact or power removal, or names stored charge (sourceSupport).
-    const timeSupport = support[j] || (j > 0 && support[j - 1]) || (j + 1 < ss.length && support[j + 1]);
+    const carried = !!prev && STORED_RE.test(prev.text) && CARRY_RE.test(s) && !isUnrelatedSourceTiming(s);
+    // #4962 (round 3): a time is discharge support when its own sentence ties it to discharge,
+    // contact or power removal, or names stored charge (sourceSupport); or by tight continuation
+    // from the previous sentence of the same paragraph — an imperative wait or an anaphor
+    // (CONTINUES_RE) — or from any sentence of the same list item.
+    const sameItem = (k: number) => u.item >= 0 && us[k].para === u.para && us[k].item === u.item && support[k];
+    const timeSupport =
+      support[j] ||
+      (!!prev && support[j - 1] && CONTINUES_RE.test(s)) ||
+      us.some((_x, k) => k !== j && sameItem(k));
     out.push(...statementsOf(s, own || carried, "source", timeSupport));
   });
   return out;

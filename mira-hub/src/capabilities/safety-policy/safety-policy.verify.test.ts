@@ -355,7 +355,6 @@ describe("round 2b: the source link reads OEM phrasing", () => {
   const FIVE_S = "Wait 5 seconds for the DC bus capacitors to discharge [1].";
 
   it.each([
-    ["link in the next sentence", "Wait 5 minutes. The DC bus capacitors stay charged after power is removed."],
     ["link in the previous sentence", "The DC bus capacitors stay charged after power is removed. Wait 5 minutes."],
     ["stored-charge wording, no link verb", "The capacitors may hold a lethal charge for up to 5 minutes."],
     ["answer-side link words", "Wait 5 minutes after you remove power before touching the capacitors."],
@@ -375,6 +374,33 @@ describe("round 2b: the source link reads OEM phrasing", () => {
     ["a link two sentences away does not count", "The capacitors store a lethal charge. Read this manual first. Before checking the DC bus voltage, wait 5 seconds."],
   ])("block: %s", (_n, chunk) => {
     expect(verdicts(check(FIVE_S, [manual(chunk)], F.GS10))).toEqual(["block:not_in_cited_sentence"]);
+  });
+});
+
+// Round 3, #4962 (Codex round 2 F1): support carries only through tight continuation — an imperative
+// wait right after a stored-charge sentence, an anaphoric "this/these/the capacitors", or the same
+// list item — and never across a paragraph boundary.
+describe("#4962 tight continuation", () => {
+  const FIVE_S = "Wait 5 seconds for the capacitors to discharge [1].";
+  const FIVE_MIN = "Wait 5 minutes for the capacitors to discharge [1].";
+
+  it.each([
+    ["#4962: an unrelated duration before a stored-charge sentence", "Hold START for 5 seconds. Capacitors retain a lethal charge after power is removed.", FIVE_S],
+    ["round 2b flipped: a link only in the NEXT sentence", "Wait 5 minutes. The DC bus capacitors stay charged after power is removed.", FIVE_MIN],
+    ["a stored-charge paragraph does not carry into the next paragraph", "Capacitors remain charged.\n\nWait 5 minutes.", FIVE_MIN],
+    ["a non-imperative sentence after a stored-charge sentence", "Capacitors remain charged. The keypad times out after 5 minutes.", FIVE_MIN],
+    ["a different list item", "\u2611 Capacitors remain charged after power is removed.\n\u2611 Hold START for 5 seconds.", FIVE_S],
+  ])("block: %s", (_n, chunk, answer) => {
+    expect(verdicts(check(answer, [manual(chunk)], F.GS10))).toEqual(["block:not_in_cited_sentence"]);
+  });
+
+  it.each([
+    ["#4962 control: an imperative wait right after", "Capacitors remain charged. Wait 5 minutes."],
+    ["anaphoric 'this charge'", "Capacitors remain charged after power is removed. Allow 5 minutes for this charge to dissipate."],
+    ["same list item", "\u2611 Capacitors remain charged after power is removed. Give them 5 minutes.\n\u2611 Only qualified personnel may service the drive."],
+    ["a wrapped line inside one paragraph still continues", "Capacitors remain charged\nafter power is removed. Wait 5 minutes."],
+  ])("pass: %s", (_n, chunk) => {
+    expect(verdicts(check(FIVE_MIN, [manual(chunk)], F.GS10))).toEqual(["pass"]);
   });
 });
 
