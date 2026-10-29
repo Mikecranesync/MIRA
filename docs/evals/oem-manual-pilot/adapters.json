@@ -1,0 +1,6 @@
+{
+  "capabilities/observability/tracing.ts": "export const setSpanAttrs=()=>{};\n",
+  "lib/uploads.ts": "export const createUpload=()=>{throw new Error(\"outside selected writer proof\")}; export const updateUploadStatus=createUpload;\n",
+  "lib/node-document-proposals.ts": "export const proposeDocumentEdgesForNode=()=>{throw new Error(\"unexpected proposal\")};\n",
+  "lib/db.ts": "import { Pool } from \"pg\"; export default new Pool({host:process.env.PROOF_SOCKET,port:55439,database:\"postgres\",user:process.env.PROOF_DB_USER,max:2});\n"
+}

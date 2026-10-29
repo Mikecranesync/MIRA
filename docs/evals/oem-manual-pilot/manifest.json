@@ -1,0 +1,31 @@
+{
+  "corpora": [
+    {
+      "corpus_id": "battenfeld-plus-b2",
+      "oem": "Battenfeld",
+      "model": "PLUS 350/75 and PLUS 350V/75",
+      "revision": "TB4GBV01 05/00 / TB4GBV00 9/99; cover serials 25336 / 25556",
+      "pages": 132,
+      "sha256": "cb1aac5b549e04290b126677429d12bbd02ec878ec3e5438ff2eaf9f2e132a41",
+      "url": "https://wb-bg.com/upload/manuals/Operating_Manual_B2.pdf"
+    },
+    {
+      "corpus_id": "battenfeld-vmr-b6",
+      "oem": "Wittmann Battenfeld",
+      "model": "VM R B6 family",
+      "revision": "VMRGBV02_0315; 25 March 2015; exact machine unconfirmed",
+      "pages": 226,
+      "sha256": "05928c71a5958b2c1430562d1751eeaa1e186ba14fc72baf279a0cdb38414453",
+      "url": "https://wb-bg.com/upload/manuals/VMR_INSTRUCTION_MANUAL.pdf"
+    },
+    {
+      "corpus_id": "apsx-pim-v3",
+      "oem": "APSX",
+      "model": "PIM V3",
+      "revision": "V4.5; mixed date/footer",
+      "pages": 45,
+      "sha256": "ebdbe350c3565f85e192c2d3babf4a75f1f3916501821fc227a4ceab08248f5a",
+      "url": "https://apsx.com/images/uploaded/APSX-PIM%20User%20Manual.pdf"
+    }
+  ]
+}
