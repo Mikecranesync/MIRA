@@ -281,15 +281,24 @@ const SAFETY_DEVICE_RE =
 const REACH_IN_RE =
   /\b(?:reach(?:ing)?\s+(?:in|into|inside|under|through|over)|(?:put|stick|get)(?:ting)?\s+(?:my|your|his|her|their|a)\s+(?:hand|arm|fingers?)|by\s+hand|climb(?:ing)?\s+(?:in|into|inside|onto)|step(?:ping)?\s+(?:in|into|inside))\b/;
 const IN_MOTION_RE =
-  /\b(?:running|moving|in\s+motion|still\s+turning|without\s+(?:stopping|shutting|turning|powering|locking)|while\s+it\s+(?:runs|moves|cycles))\b/;
+  /\b(?:running|moving|operating|in\s+operation|cycling|in\s+motion|still\s+turning|without\s+(?:stopping|shutting|turning|powering|locking)|while\s+(?:it|the\s+\w+)\s+(?:runs|moves|cycles|operates|is\s+(?:on|active|live))|while\s+it'?s\s+(?:on|active|live))\b/;
 const DC_BUS_RE = /\b(?:dc[- ]?(?:bus|link)|bus\s+cap(?:acitor)?s?|capacitors?|caps)\b/;
 const DISCHARGE_ASK_RE =
   /\b(?:discharg\w*|bleed\w*|wait\w*|touch\w*|hold\w*\s+(?:a\s+)?charge|stored\s+energy|after\s+(?:power(?:ing)?|shut\w*|turn\w*|kill\w*|switch\w*))\b|\bhow\s+(?:soon|long)\b/;
 
+const CHARGE_UP_ASK_RE = /\b(?:power(?:ing)?[- ]?up|start[- ]?up|pre-?charg\w*|to\s+charge|charg(?:es|ing)?\s+up|charging)\b/;
+const DISCHARGE_WORD_RE =
+  /\b(?:discharg\w*|bleed\w*|drain\w*|touch\w*|stored\s+energy|hold\w*\s+(?:a\s+)?charge|still\s+charged|after\s+(?:power(?:ing)?\s+(?:off|down)|shut\w*|turn\w*\s+off|kill\w*|switch\w*\s+off|remov\w*|disconnect\w*))\b/;
+function chargingOnly(msg: string): boolean {
+  return CHARGE_UP_ASK_RE.test(msg) && !DISCHARGE_WORD_RE.test(msg);
+}
+
 function notebookHazardIntent(msg: string): string | null {
   if (DEFEAT_VERB_RE.test(msg) && SAFETY_DEVICE_RE.test(msg)) return SAFETY_DEVICE_DEFEAT;
   if (REACH_IN_RE.test(msg) && IN_MOTION_RE.test(msg)) return MOVING_MACHINERY_REACH;
-  if (DC_BUS_RE.test(msg) && DISCHARGE_ASK_RE.test(msg)) return STORED_ELECTRICAL_ENERGY;
+  // Codex #4929 F4: "how long after power-up does the DC bus take to charge" is
+  // a charging question, not a discharge ask.
+  if (DC_BUS_RE.test(msg) && DISCHARGE_ASK_RE.test(msg) && !chargingOnly(msg)) return STORED_ELECTRICAL_ENERGY;
   return null;
 }
 

@@ -124,3 +124,18 @@ describe("decision 4 — stored-energy directive", () => {
     expect(safetyFlagDirective(MOVING_MACHINERY_REACH)).toContain("Answer it fully");
   });
 });
+
+// Codex round 1 on #4929: F3 (operating/cycling reach-in) and F4 (charging is not discharge).
+describe("Codex round 1 — trigger coverage", () => {
+  it("F3: reach-in while operating or cycling is flagged", () => {
+    expect(notebookSafetyTrigger("Can I reach into the conveyor while it is operating?")).toBe(MOVING_MACHINERY_REACH);
+    expect(notebookSafetyTrigger("put my hand inside while the machine is cycling to grab the part")).toBe(MOVING_MACHINERY_REACH);
+  });
+  it("F3 controls: operating/cycling without reach-in stays unflagged", () => {
+    expect(notebookSafetyTrigger("the conveyor is operating slower than normal")).toBeNull();
+    expect(notebookSafetyTrigger("the press keeps cycling twice per start, which parameter")).toBeNull();
+  });
+  it("F4: a DC-bus charging question is not a stored-energy discharge ask", () => {
+    expect(notebookSafetyTrigger("How long after power-up does the DC bus take to charge?")).not.toBe(STORED_ELECTRICAL_ENERGY);
+  });
+});

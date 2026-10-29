@@ -1262,9 +1262,23 @@ const DURATION_RE = new RegExp(
   "gi",
 );
 const STORED_ENERGY_CONTEXT_RE =
-  /\b(?:capacitors?|caps|dc[- ]?(?:bus|link)|bus\s+(?:voltage|capacitors?|caps)|stored\s+(?:energy|charge)|residual\s+(?:voltage|charge)|discharg\w*|bleed\w*|electric(?:al)?\s+shock|shock\s+hazard|hazardous\s+voltage|dangerous\s+voltage)\b/i;
-const WAIT_CONTEXT_RE =
-  /\b(?:wait\w*|allow\w*|give\b|discharg\w*|bleed\w*|until|at\s+least|minimum|before\s+(?:touch|open|work|servic|remov|handl|measur|access)\w*|after\s+(?:remov|disconnect|switch|turn|shut|isolat|de-?energi|power|lock)\w*)/i;
+  /\b(?:capacitors?|caps|dc[- ]?(?:bus|link)|bus\s+(?:voltage|capacitors?|caps)|stored\s+(?:energy|charge)|residual\s+(?:voltage|charge)|discharg\w*|bleed\w*|retain\w*\s+(?:a\s+)?(?:hazardous\s+)?(?:voltage|charge)|(?:remain|stay|still)\w*\s+charged|electric(?:al)?\s+shock|shock\s+hazard|hazardous\s+voltage|dangerous\s+voltage)\b/i;
+// A source sentence supports a figure only when the sentence itself ties the
+// duration to discharge, retained charge, or a post-isolation / pre-touch
+// interval (Codex #4929 F2: a neighbouring stored-energy sentence is not enough).
+const DISCHARGE_LINK_RE =
+  /\b(?:discharg\w*|bleed\w*|drain\w*|retain\w*|(?:remain|stay|still)\w*\s+charged|stored\s+(?:energy|charge)|residual|after\s+(?:remov\w*|disconnect\w*|switch\w*\s+off|turn\w*\s+off|shut\w*|isolat\w*|de-?energi\w*|power(?:ing)?\s+(?:off|down)|lock\w*)|power\s+(?:is\s+)?removed|before\s+(?:touch|open|work|servic|remov|handl|access)\w*|(?:do\s+not|don't|never)\s+touch|safe\s+to\s+touch)\b/i;
+// Timing that is not a discharge wait (Codex #4929 F4): charging on power-up,
+// boot, ramps and fans. A sentence matching these, with no discharge link, is
+// not a claim and not support.
+const CHARGE_UP_RE =
+  /\b(?:power(?:ing)?[- ]?up|start[- ]?up|pre-?charg\w*|to\s+charge|charg(?:es|ed)?\s+(?:up|within|in)|charging|charge[- ]up)\b/i;
+const UNRELATED_TIMING_RE = /\b(?:accel\w*|decel\w*|ramp\w*|fans?|boot\w*|time-?outs?|scan\s+time|response\s+time)\b/i;
+
+function isUnrelatedTiming(sentence: string): boolean {
+  if (UNRELATED_TIMING_RE.test(sentence)) return true;
+  return CHARGE_UP_RE.test(sentence) && !DISCHARGE_LINK_RE.test(sentence);
+}
 
 function toNumber(token: string): number {
   const t = token.toLowerCase();
@@ -1291,27 +1305,31 @@ function durationsInSeconds(text: string): number[] {
 
 const splitSentences = (text: string) => text.split(/(?<=[.!?])\s+|\n+/).filter((x) => x.trim());
 
-/** The answer's first unsupported discharge-wait sentence, or null. */
+/** The answer's first unsupported discharge-wait sentence, or null.
+ *
+ *  Fail closed (Codex #4929 F1): in a stored-energy conversation every duration
+ *  is a claim unless the sentence is positively unrelated timing, so "the caps
+ *  can remain charged for 5 minutes" counts as much as "wait 5 minutes". */
 export function unsupportedDischargeWait(answerText: string, question: string, sourceTexts: string[]): string | null {
   const sentences = splitSentences(foldForDetection(answerText));
-  const questionContext = STORED_ENERGY_CONTEXT_RE.test(foldForDetection(question));
+  const q = foldForDetection(question);
+  const questionContext = STORED_ENERGY_CONTEXT_RE.test(q) && !isUnrelatedTiming(q);
   let supported: Set<number> | null = null;
   for (let i = 0; i < sentences.length; i++) {
     const s = sentences[i];
-    if (!WAIT_CONTEXT_RE.test(s)) continue;
     const claimed = durationsInSeconds(s);
-    if (claimed.length === 0) continue;
+    if (claimed.length === 0 || isUnrelatedTiming(s)) continue;
     const context =
       STORED_ENERGY_CONTEXT_RE.test(s) || (i > 0 && STORED_ENERGY_CONTEXT_RE.test(sentences[i - 1])) || questionContext;
     if (!context) continue;
     if (supported === null) {
       supported = new Set<number>();
       for (const src of sourceTexts) {
-        const ss = splitSentences(foldForDetection(src));
-        ss.forEach((x, j) => {
-          const near = [ss[j - 1], x, ss[j + 1]].some((y) => y !== undefined && STORED_ENERGY_CONTEXT_RE.test(y));
-          if (near) for (const n of durationsInSeconds(x)) supported!.add(n);
-        });
+        for (const x of splitSentences(foldForDetection(src))) {
+          if (isUnrelatedTiming(x)) continue;
+          if (!STORED_ENERGY_CONTEXT_RE.test(x) && !DISCHARGE_LINK_RE.test(x)) continue;
+          for (const n of durationsInSeconds(x)) supported.add(n);
+        }
       }
     }
     if (claimed.some((n) => !supported!.has(n))) return s.slice(0, 160);

@@ -155,3 +155,15 @@ describe("decision 4 — grounded turn", () => {
     expect(text).not.toContain(FALLBACK_HEAD);
   });
 });
+
+describe("decision 4 — Codex round 1 F4 (route)", () => {
+  it("a power-up charging answer is streamed and persisted unchanged", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const answer = "Wait 10 seconds after power-up for the DC bus to charge, then check the ready light.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const text = await streamed(await POST(req({ message: "How long after power-up does the DC bus take to charge?", mode: "general" }), params));
+    expect(text).toContain("10 seconds after power-up");
+    expect(text).not.toContain(FALLBACK_HEAD);
+    expect(persistedAnswer()).toContain("10 seconds after power-up");
+  });
+});

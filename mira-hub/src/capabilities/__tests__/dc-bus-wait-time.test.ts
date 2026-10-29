@@ -136,3 +136,35 @@ describe("validateAnswer — decision 4 runs in both lanes, sources or not", () 
     expect(validateAnswer({ ...base, answerText: DISCHARGE_WAIT_FALLBACK, general: true }).ok).toBe(true);
   });
 });
+
+// Codex round 1 on #4929 (F1, F2, F4).
+describe("unsupportedDischargeWait — Codex round 1", () => {
+  it("F1: a figure without a wait verb is still a claim", () => {
+    expect(unsupportedDischargeWait("The DC bus capacitors can remain charged for 5 minutes.", DC_Q, [])).not.toBeNull();
+    expect(unsupportedDischargeWait("They retain voltage for about 5 minutes.", DC_Q, [])).not.toBeNull();
+    expect(unsupportedDischargeWait("Do not touch the bus terminals for 5 minutes.", DC_Q, [])).not.toBeNull();
+  });
+
+  it("F2: a duration next to a stored-energy sentence does not support a discharge wait", () => {
+    const src = ["DC bus capacitors can retain hazardous voltage after shutdown. The cooling fan runs for 5 minutes after shutdown."];
+    expect(unsupportedDischargeWait("Wait 5 minutes for the DC bus capacitors to discharge.", DC_Q, src)).not.toBeNull();
+  });
+
+  it("F4: power-up charging timing is not a discharge wait", () => {
+    const q = "How long after power-up does the DC bus take to charge?";
+    expect(unsupportedDischargeWait("Wait 10 seconds after power-up for the DC bus to charge.", q, [])).toBeNull();
+    expect(unsupportedDischargeWait("The precharge relay closes about 2 seconds after the DC bus charges up.", q, [])).toBeNull();
+  });
+
+  it("unrelated timing in a DC-bus conversation is not a claim", () => {
+    expect(unsupportedDischargeWait("Raise the decel time from 2 seconds to 5 seconds.", "DC bus overvoltage on decel", [])).toBeNull();
+    expect(unsupportedDischargeWait("Set the accel time to 5 seconds.", DC_Q, [])).toBeNull();
+  });
+});
+
+describe("unsupportedDischargeWait — support needs a stored-energy source sentence", () => {
+  it("a neutral duration in a source does not support a discharge wait", () => {
+    const src = ["Allow 5 minutes for the enclosure to cool down."];
+    expect(unsupportedDischargeWait("Wait 5 minutes for the DC bus capacitors to discharge.", DC_Q, src)).not.toBeNull();
+  });
+});
