@@ -1463,6 +1463,33 @@ describe("Gate-7 r7: unmatched restore-then-measure still WARNS via the step-ene
     }
   });
 
+  // Codex #4931 r3 F1 (BLOCKER): an earlier restore must not mask a later lockout.
+  it.each([
+    ["grounded", (answerText: string) => grounded(answerText, "how do I check the output")],
+    ["general", (answerText: string) => general(answerText, "how do I check the output")],
+  ] as const)("%s lane: restore, then lockout, then energized work BLOCKs", (_lane, run) => {
+    for (const text of [
+      "Restore power, then lock out the circuit, energize the circuit and check the output frequency.",
+      "Restore power, then lock out the circuit, energize the circuit and measure the output voltage.",
+    ]) {
+      const v = run(text);
+      expect(v.ok, text).toBe(false);
+      if (!v.ok) {
+        expect(v.kind, text).toBe("unsafe_answer");
+        expect(v.violation).toBe("unsafe-answer:lockout-step-contradiction");
+        expect(v.replacement).toBe(SAFETY_STOP);
+      }
+    }
+  });
+
+  it("control: lockout, then removal, then energized work is not a lockout contradiction", () => {
+    const v = grounded(
+      "Lock out the circuit, then remove the lockout, energize the circuit and measure the output voltage.",
+      "how do I check the output",
+    );
+    if (!v.ok) expect(v.violation).not.toBe("unsafe-answer:lockout-step-contradiction");
+  });
+
   it("control: removal BEFORE energize and measure is not a lockout contradiction", () => {
     const v = grounded(
       "Remove the lockout, then energize the circuit and measure the output voltage.",

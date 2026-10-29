@@ -120,12 +120,10 @@ export function stepEnergyContradiction(answerText: string): string | null {
       // is written. Work that needs power BEFORE it in this step ("…locked out,
       // energize the circuit and measure, then remove the lockout") is still
       // judged under the isolation in force.
-      const at = restoreIndex(t);
-      const prefix = t.slice(0, at);
-      const prefixIsolated =
-        scopeOpen || (listScope && inList) || lineIso === s.line ||
-        (ISOLATED.test(prefix) && !EXPLICITLY_POWERED.test(prefix));
-      if (prefixIsolated && (OPERATE.test(prefix) || LIVE_READING.test(prefix.replace(DEAD_CHECK, " ")))) return raw;
+      // Codex #4931 r3 F1 (BLOCKER): walk every restore in order. An earlier
+      // restore does not mask a later lockout ("Restore power, then lock out the
+      // circuit, energize the circuit and check the output frequency").
+      if (isolatedPowerInOrder(t, scopeOpen || (listScope && inList) || lineIso === s.line)) return raw;
       // Otherwise it is the transition out of isolation: it closes every scope.
       scopeOpen = false; listScope = false; lineIso = -1;
       continue;
@@ -171,15 +169,58 @@ export function sequentialEnergizeThenMeasure(step: string): boolean {
   // and neither does a removal written AFTER the energize. A step that asserts
   // lockout/tagout stays an A2a contradiction unless the lockout is removed
   // before the circuit is energized; only a bare de-energized state may warn.
-  if (LOCKOUT_ASSERTED.test(step) && !(restoreIndex(step) < energize.index)) return false;
+  // r3: the LAST event before the energize decides: a lockout after the last
+  // restore ("Restore power, then lock out the circuit, energize …") blocks.
+  // "remove the lockout" is a removal, not a lockout: blank restore phrases
+  // (same length, so indexes hold) before looking for the lockout.
+  const blank = (x: string, re: RegExp) => x.replace(new RegExp(re.source, re.flags + "g"), (m) => " ".repeat(m.length));
+  const lastLock = lastIndexBefore(LOCKOUT_ASSERTED, blank(blank(step, RESTORE), LOCKOUT_REMOVED), energize.index);
+  const lastRestore = Math.max(lastIndexBefore(RESTORE, step, energize.index), lastIndexBefore(LOCKOUT_REMOVED, step, energize.index));
+  if (lastLock >= 0 && !(lastRestore > lastLock)) return false;
   if (STATE_ISOLATED.test(step) && !SEQUENCE_WORD.test(step)) return false;
   // Ordered, not co-occurrence: the live reading must come after the energize.
   return LIVE_READING.test(step.slice(energize.index + energize[0].length));
 }
 
-/** Where the first restore / lockout removal is written in a step, or the
- *  step length when there is none. */
-function restoreIndex(step: string): number {
+/** The first restore / lockout removal written in a step, or null. */
+function firstRestore(step: string): { index: number; end: number } | null {
   const hits = [RESTORE.exec(step), LOCKOUT_REMOVED.exec(step)].filter((m): m is RegExpExecArray => m !== null);
-  return hits.length ? Math.min(...hits.map((m) => m.index)) : step.length;
+  if (!hits.length) return null;
+  const m = hits.reduce((a, b) => (b.index < a.index ? b : a));
+  return { index: m.index, end: m.index + m[0].length };
+}
+
+/** Where the first restore / lockout removal is written, or the step length. */
+function restoreIndex(step: string): number {
+  return firstRestore(step)?.index ?? step.length;
+}
+
+/** Ordered events within one step: each restore ends isolation, and a lockout
+ *  written after it opens isolation again. True when work that needs power is
+ *  written while isolation is in force. */
+function isolatedPowerInOrder(step: string, isolatedAtStart: boolean): boolean {
+  let iso = isolatedAtStart;
+  let rest = step;
+  for (;;) {
+    const r = firstRestore(rest);
+    const head = r ? rest.slice(0, r.index) : rest;
+    const lock = iso ? null : ISOLATED.exec(head);
+    if ((iso || (lock && !EXPLICITLY_POWERED.test(head)))) {
+      const tail = lock ? head.slice(lock.index) : head;
+      if (OPERATE.test(tail) || LIVE_READING.test(tail.replace(DEAD_CHECK, " "))) return true;
+    }
+    if (!r) return false;
+    rest = rest.slice(r.end);
+    iso = false;
+  }
+}
+
+/** Index of the last match of `re` that starts before `end`, or -1. */
+function lastIndexBefore(re: RegExp, step: string, end: number): number {
+  let last = -1;
+  for (const m of step.matchAll(new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g"))) {
+    if (m.index >= end) break;
+    last = m.index;
+  }
+  return last;
 }
