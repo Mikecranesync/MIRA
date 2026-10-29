@@ -198,6 +198,11 @@ describe("SYS-2 — anything that cannot be classified fails closed", () => {
     expect(run(base).checks.map((c) => c.verdict)).toEqual(["pass"]);
   });
 
+  it("control: a well-formed rating condition is accepted by the schema", () => {
+    const r = run({ ...base, condition: { op: "ge", value: 40, unit: "hp" } });
+    expect(r.checks.map((c) => c.verdict)).not.toContain("block:schema");
+  });
+
   it.each([
     ["unit not canonical for the quantity", { ...base, unit: "V" }],
     ["unit not in the vocabulary", { ...base, unit: "min" }],
@@ -206,6 +211,12 @@ describe("SYS-2 — anything that cannot be classified fails closed", () => {
     ["non-finite value", { ...base, value: Number.POSITIVE_INFINITY }],
     ["negative value", { ...base, value: -1 }],
     ["missing sourceChunkId key", { quantity: "discharge_time", value: 600, unit: "s" }],
+    ["empty sourceChunkId", { ...base, sourceChunkId: "" }],
+    ["condition with an unknown op", { ...base, condition: { op: "lt", value: 30, unit: "hp" } }],
+    ["condition with a non-positive rating", { ...base, condition: { op: "le", value: 0, unit: "hp" } }],
+    ["condition with an unknown key", { ...base, condition: { op: "le", value: 30, unit: "hp", note: "x" } }],
+    ["an array instead of an object", [base]],
+    ["null", null],
   ])("block:schema — %s", (_name, n) => {
     const r = run(n);
     expect(r.checks.map((c) => c.verdict)).toEqual(["block:schema"]);
