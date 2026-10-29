@@ -11,7 +11,9 @@ import {
 } from "./consent-texts";
 
 // Pinned hashes of every PUBLISHED version. Adding a published version adds a
-// row here; editing a published text must fail this file. Never update a row.
+// row here; never update a row. These pins live in the candidate tree, so a
+// commit can edit text and pin together: the authority is the CI gate that
+// compares against the PR base (scripts/check-consent-immutability.ts, #4934).
 const PINNED_PUBLISHED: Record<string, string> = {};
 
 describe("consent text registry", () => {

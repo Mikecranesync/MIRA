@@ -3,7 +3,9 @@
  *
  * Each version names the exact words an applicant agreed to, and its sha256.
  * A published version is immutable: changing a word means a new version, never
- * an edit (consent-texts.test.ts pins every published hash). A request row
+ * an edit. CI enforces this against the PR base commit
+ * (mira-web/scripts/check-consent-immutability.ts, #4934), not against a pin the
+ * same commit could edit; the test-local pins are a second, weaker check. A request row
  * stores the version and the sha256 of the text, so what an applicant agreed to
  * can be checked later.
  *

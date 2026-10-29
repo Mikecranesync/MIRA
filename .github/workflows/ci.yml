@@ -865,6 +865,32 @@ jobs:
           src/__tests__/printsense-landing.test.ts
           src/lib/__tests__/components.test.ts
           src/lib/__tests__/hub-handoff.test.ts
+          src/capabilities/consent-texts.test.ts
+          src/capabilities/consent-immutability.test.ts
+          src/capabilities/pilot-request.test.ts
+
+      # #4934: published consent wording is immutable against the PR BASE, not
+      # against a pin the same PR can edit. The base commit's copy of the
+      # checker runs when it exists, so a PR cannot weaken it in lockstep; the
+      # candidate copy runs only when the base has none (first introduction).
+      - name: Consent wording immutability vs PR base
+        if: steps.web.outputs.web == 'true' && github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE_SHA" ]; then echo "::error::no pull_request base sha"; exit 2; fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          checker=mira-web/scripts/check-consent-immutability.ts
+          if git cat-file -e "${BASE_SHA}:${checker}" 2>/dev/null; then
+            trusted="$RUNNER_TEMP/check-consent-immutability.ts"
+            git show "${BASE_SHA}:${checker}" > "$trusted"
+            echo "Running the base commit's checker (${BASE_SHA})"
+          else
+            trusted="$checker"
+            echo "::notice::checker absent at base; running the candidate copy (first introduction)"
+          fi
+          bun "$trusted" --base "$BASE_SHA"
 
   architecture-check:
     name: Architecture Check
