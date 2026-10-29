@@ -62,3 +62,20 @@ test("2026-07-17 rebuild: showcase structure with honest claims, no slop markers
   expect(html).toContain("UnderVoltage");
   expect(html).not.toContain("DC bus undervoltage");
 });
+
+test("paid print consulting is separate from the free MIRA application", async () => {
+  const html = await (await printsensePage.request("/printsense")).text();
+  expect(html).toContain("Separate paid print-package consulting");
+  expect(html).toContain("five free, scoped 30-day MIRA pilots");
+  expect(html).toContain('href="https://app.factorylm.com/signup/"');
+  expect(html).not.toContain("Managed package pilot (paid)");
+  const response = await printsensePage.request("/printsense/interest", { method: "POST", body: new URLSearchParams({ email: "fixture@example.invalid", pilot: "on" }) });
+  expect(await response.text()).toContain("not pilot approval or product access");
+});
+
+test("historical static preview cannot pretend to submit an application", () => {
+  const html = readFileSync(join(import.meta.dir, "../../public/printsense.html"), "utf8");
+  expect(html).toContain("Historical concept preview");
+  expect(html).toContain('name="robots" content="noindex"');
+  expect(html).not.toContain('onsubmit=');
+});

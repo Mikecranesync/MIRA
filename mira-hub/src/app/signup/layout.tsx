@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Create Account",
-  description: "Create your FactoryLM account and get AI-powered industrial maintenance answers from cited OEM sources.",
+  title: "Apply for a free MIRA pilot",
+  description: "Apply for one of five free, scoped 30-day MIRA pilots. Manual approval before onboarding; waiting uses no pilot days. Paid continuation agreed separately.",
   alternates: {
-    canonical: "https://app.factorylm.com/hub/signup",
+    canonical: "https://app.factorylm.com/signup/",
   },
 };
 

@@ -8,12 +8,17 @@ import { API_BASE } from "@/lib/config";
 export default function PendingApprovalPage() {
   const [checking, setChecking] = useState(false);
   const [approved, setApproved] = useState(false);
+  const [notice, setNotice] = useState("");
 
   async function checkStatus() {
     setChecking(true);
+    setNotice("");
     try {
-      const res = await fetch(`${API_BASE}/api/auth/check-approval/`);
-      if (!res.ok) return;
+      const res = await fetch(`${API_BASE}/api/auth/check-approval/`, { cache: "no-store" });
+      if (!res.ok) {
+        setNotice(res.status === 401 ? "Your session has expired. Sign out and sign in again." : "We could not check your application. Please try again.");
+        return;
+      }
       const { status } = await res.json() as { status: string };
       if (status === "approved" || status === "admin" || status === "trial") {
         setApproved(true);
@@ -21,7 +26,13 @@ export default function PendingApprovalPage() {
         setTimeout(() => {
           signOut({ callbackUrl: `/login?callbackUrl=${API_BASE}/feed` });
         }, 1500);
+      } else if (status === "pending") {
+        setNotice("Your application is still awaiting review. Your pilot clock has not started. You can safely sign out and return later.");
+      } else {
+        setNotice("Your access status has changed. Sign out and sign in again, or contact Mike for help.");
       }
+    } catch {
+      setNotice("We could not connect. Your application is unchanged. Please try again.");
     } finally {
       setChecking(false);
     }
@@ -47,7 +58,7 @@ export default function PendingApprovalPage() {
           <>
             <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-4" />
             <h1 className="text-xl font-bold text-white mb-2">You&apos;re approved!</h1>
-            <p className="text-slate-400 text-sm">Signing you in now…</p>
+            <p className="text-slate-400 text-sm">Please sign in again to continue to your workspace and onboarding.</p>
           </>
         ) : (
           <>
@@ -55,16 +66,16 @@ export default function PendingApprovalPage() {
               <Clock className="w-5 h-5 text-yellow-400" />
               <span className="text-yellow-400 text-sm font-medium">Pending Approval</span>
             </div>
-            <h1 className="text-xl font-bold text-white mb-3">Your account is under review</h1>
+            <h1 className="text-xl font-bold text-white mb-3">Your pilot application is under review</h1>
             <p className="text-slate-400 text-sm leading-relaxed mb-6">
-              Thanks for signing up for FactoryLM. An admin will review your request shortly.
-              You&apos;ll get access to AI-powered maintenance diagnostics, work order management,
-              and the full CMMS suite once approved.
+              You have applied for one of five free, scoped 30-day MIRA pilots.
+              We review applications manually and agree the scope before approval and onboarding.
+              Your pilot clock has not started. Applying does not reserve a place.
             </p>
 
             <div className="space-y-3 text-left mb-8 p-4 rounded-lg" style={{ backgroundColor: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.2)" }}>
-              <p className="text-xs font-semibold text-blue-300 uppercase tracking-wide">What you&apos;ll get</p>
-              {["AI diagnostic assistant (15 sec vs 3 hours)", "Work order & PM scheduling", "Asset management & parts tracking", "Multi-channel tech support (Telegram, Slack)"].map(f => (
+              <p className="text-xs font-semibold text-blue-300 uppercase tracking-wide">What happens next</p>
+              {["Agree the equipment, manuals, and questions for your pilot", "After approval, onboard and upload your manual", "Check the source pages and validate answers before operational use", "Discuss any paid continuation separately"].map(f => (
                 <div key={f} className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
                   <span className="text-sm text-slate-300">{f}</span>
@@ -72,6 +83,8 @@ export default function PendingApprovalPage() {
               ))}
             </div>
 
+            <p className="text-sm text-slate-300 mb-4" role="status" aria-live="polite">{notice}</p>
+            <p className="text-sm text-slate-400 mb-4">Questions about your application? <a className="text-blue-400 underline" href="mailto:mike@factorylm.com?subject=MIRA%20pilot%20application">Contact Mike</a>.</p>
             <button
               onClick={checkStatus}
               disabled={checking}

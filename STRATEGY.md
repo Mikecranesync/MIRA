@@ -1,5 +1,7 @@
 # FactoryLM Go-To-Market Strategy
 
+> **Commercial update — 2026-10-29:** The current first experience is [five free, scoped 30-day pilots](docs/product/current-pilot-offer.md), manually approved. Older self-service, assessment-first and paid-pilot ladder descriptions below are historical strategy, not the current offer. Consulting remains separate.
+
 > **Canonical wedge: `NORTH_STAR.md` (2026-06-22). This GTM doc is reconciled to it.** The wedge is the
 > **maintenance-context layer (FactoryLM) + the grounded agent (MIRA) that proves it** — *lead with
 > context, not copilot.* **Product-led self-serve is the PRIMARY motion;** the $500 Assessment is a

@@ -45,7 +45,7 @@ export default function SignupPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || "Could not create account");
+        setError(res.status === 409 ? "You already have an account. Sign in below to check your application or return to your workspace." : data.error || "Could not submit your application. Please try again.");
         return;
       }
       const result = await signIn("credentials", { email, password, redirect: false });
@@ -66,7 +66,13 @@ export default function SignupPage() {
   async function handleGoogle() {
     setGoogleLoading(true);
     setError("");
-    await signIn("google", { callbackUrl: "/feed" });
+    try {
+      await signIn("google", { callbackUrl: "/feed" });
+    } catch {
+      setError("Google sign-in could not start. Try again or use email below.");
+    } finally {
+      setGoogleLoading(false);
+    }
   }
 
   return (
@@ -94,16 +100,16 @@ export default function SignupPage() {
             <Factory className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">FactoryLM</h1>
-          <p className="text-slate-400 text-sm mt-1">Create your workspace to:</p>
+          <p className="text-slate-400 text-sm mt-1">Apply for a free 30-day MIRA pilot</p>
           <ul className="mt-3 space-y-1.5 text-sm text-slate-300">
-            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Build your namespace — first site &amp; line</li>
-            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Ask MIRA a fault-code question, get a cited answer</li>
-            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Answers cite our OEM manual library — not guesses</li>
+            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> One of five manually approved, scoped pilots</li>
+            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Agree your equipment and manual scope with us</li>
+            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Onboard, upload a manual, and inspect answer sources</li>
           </ul>
           <p className="text-slate-500 text-xs mt-3 max-w-xs text-center">
-            Track faults, work orders, assets, manuals, and shift handoffs in one place.
+            Applying creates your account, not immediate workspace access. We review your request before onboarding.
           </p>
-          <p className="text-slate-500 text-xs mt-2">7-day free trial — no credit card.</p>
+          <p className="text-slate-500 text-xs mt-2">Your 30 days start when your scoped pilot is approved. Waiting uses no pilot days. Paid continuation is agreed separately.</p>
         </div>
 
         <div
@@ -130,7 +136,7 @@ export default function SignupPage() {
                 <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" />
               </svg>
             )}
-            <span>Continue with Google</span>
+            <span>Apply with Google</span>
           </button>
 
           <div className="flex items-center gap-3 my-4">
@@ -206,10 +212,10 @@ export default function SignupPage() {
             >
               {loading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Creating account
+                  <Loader2 className="w-4 h-4 animate-spin" /> Submitting application
                 </>
               ) : (
-                "Create account"
+                "Apply for a free pilot"
               )}
             </Button>
           </form>
@@ -231,8 +237,7 @@ export default function SignupPage() {
           <div className="mt-4 rounded-lg border border-slate-700/50 bg-slate-800/40 px-3 py-2.5 flex gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <p className="text-xs text-slate-400 leading-relaxed">
-              Your manuals and maintenance data stay private to your organization and are never used to
-              train external models.{" "}
+              Before uploading company manuals, review our data-handling information and confirm you have permission to share them.{" "}
               <a
                 href={LEGAL.security}
                 target="_blank"
@@ -253,11 +258,15 @@ export default function SignupPage() {
         </div>
 
         <p className="text-center text-sm text-slate-400 mt-4">
-          Want to try first?{" "}
+          Explore the public sample first?{" "}
           <Link href="/quickstart" className="text-blue-400 hover:text-blue-300 font-medium">
             Ask a sample question
           </Link>{" "}
-          — no signup.
+          — shared examples, not your private workspace.
+        </p>
+
+        <p className="text-center text-xs text-slate-400 mt-3">
+          Need a separate paid assessment or consulting engagement? <a className="underline" href="mailto:mike@factorylm.com?subject=FactoryLM%20paid%20consulting">Ask about consulting</a>.
         </p>
 
         <p className="text-center text-xs text-slate-500 mt-3">

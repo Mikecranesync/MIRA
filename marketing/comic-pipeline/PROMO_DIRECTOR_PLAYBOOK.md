@@ -1,5 +1,7 @@
 # Promo Director Playbook
 
+> Current campaign override (2026-10-29): use [the free 30-day pilot offer](../../docs/product/current-pilot-offer.md). Manual approval before onboarding; no instant-access, payment or guaranteed-results promise. Older price anchors and trial examples below are historical. No campaign launch is authorized by this playbook.
+
 **Version:** 1.0 (2026-04-27)
 **Audience:** anyone (or any agent) producing a MIRA / FactoryLM promo or demo video.
 **Single source of truth.** The `.claude/skills/promo-director` skill reads this doc; future manifests inherit its defaults; reviewers grade against it.

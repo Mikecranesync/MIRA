@@ -150,7 +150,7 @@ function LoginFormInner() {
           <h1 className="text-2xl font-bold text-white tracking-tight">FactoryLM</h1>
           <p className="text-slate-400 text-sm mt-1">Sign in to your maintenance workspace</p>
           <p className="text-slate-500 text-xs mt-2 max-w-xs text-center">
-            Faults, work orders, assets, manuals, and shift handoffs — grounded in your factory namespace.
+            Return to your workspace or check your pilot application. New applications require manual approval before onboarding.
           </p>
         </div>
 
@@ -348,7 +348,7 @@ function LoginFormInner() {
           <p className="text-center text-sm text-slate-400 mt-6">
             Don&apos;t have an account?{" "}
             <Link href="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
-              Start free trial
+              Apply for a free 30-day pilot
             </Link>
           </p>
         </div>
