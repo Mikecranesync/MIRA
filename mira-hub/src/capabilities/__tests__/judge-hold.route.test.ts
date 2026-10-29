@@ -209,7 +209,11 @@ describe("#4355 option 1 — OpenAI answers only when its safety judge also fits
     expect(turn).toMatchObject({ answerStatus: "answered" });
     expect(calls.openaiAnswer).toBe(1);
     expect(calls.openaiJudge).toBe(1);
-    expect(reserve.mock.calls).toContainEqual([judgeHoldInputBound(QUESTION, 800), JUDGE_OUTPUT_TOKENS]);
+    // #4372: the judge also reads the retrieved sources, so they size its room.
+    expect(reserve.mock.calls).toContainEqual([
+      judgeHoldInputBound(QUESTION, 800, groundedChunks.map((c) => c.content)),
+      JUDGE_OUTPUT_TOKENS,
+    ]);
     // Dollar arithmetic may retain sub-picodollar IEEE-754 subtraction dust.
     expect(openAiRunBudget().heldUsd).toBeCloseTo(0, 12);
   });
