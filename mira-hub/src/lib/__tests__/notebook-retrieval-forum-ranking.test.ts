@@ -196,7 +196,7 @@ describe("retrieveNodeChunks — IDF coverage in the rerank", () => {
     { lex: "control", df: 1, n: 200, names_document: true },
   ];
   const common = row(145, "RS-232 communication cable wiring and the communication channel", 1.0, ["communic", "cabl", "rs-232"]);
-  const bootp = row(160, "Configure using BOOTP: the controller broadcasts BOOTP requests at power-up", 0.4, ["bootp", "configur", "control"]);
+  const bootp = row(160, "Configure using BOOTP: the controller broadcasts BOOTP requests at power-up", 0.8, ["bootp", "configur", "control"]);
   const cover = row(1, "Controller User Manual, controller controller", 0.9, ["control"]);
 
   it("fn-ml1100-8: the BOOTP page outranks the page dense in common words", async () => {
