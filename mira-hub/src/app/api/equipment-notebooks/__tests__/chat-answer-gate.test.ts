@@ -873,3 +873,46 @@ describe("grounded pass-through (regression)", () => {
     expect(lastTurn().answerText).toContain("below 200 C");
   });
 });
+
+describe("#4858 on #4471 — isolation advisory through the real handler (owner decision 4/7, 2026-10-29)", () => {
+  const BANNER = "⚠️ **Before hands-on work.**";
+
+  it("a hands-on answer that passes every #4471 block is served as an ordinary answered turn under the notice", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => completingProvider("Replace the input fuse [1].")));
+    const res = await POST(chatReq({ message: "How do I clear the E-12 fault?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+
+    const released = contentOf(frames);
+    // The restart advisory (reset question) may ride above; the isolation
+    // notice sits directly above the kept candidate.
+    expect(released).toContain(`${BANNER} Disconnect power per the manual.`);
+    expect(released.indexOf(BANNER)).toBeLessThan(released.indexOf("Replace the input fuse [1]."));
+    expect(released).not.toBe(SAFETY_STOP);
+    expect(frames.find((f) => f.kind === "safety")).toBeUndefined();
+    expect(frames.find((f) => f.kind === "status")).toMatchObject({ status: "answered" });
+    expect(frames.find((f) => f.kind === "evidence")).toMatchObject({ basis: "oem_documentation" });
+
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn().answerText).toContain(BANNER);
+    expect(lastTurn().answerText).toContain("Replace the input fuse [1].");
+    expect(lastTurn().basis).toBe("oem_documentation");
+    expect(lastTurn().evidence.some((e) => e.kind === "safety_stop")).toBe(false);
+  });
+
+  it("layering: the same hands-on answer that trips a #4471 rule is a terminal SAFETY_STOP with no notice", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => completingProvider("Replace the input fuse while the drive remains energized [1].")),
+    );
+    const res = await POST(chatReq({ message: "How do I clear the E-12 fault?", sourceDocIds: [DOC_A] }), params);
+    const frames = parseFrames(await res.text());
+
+    const released = contentOf(frames);
+    expect(released).toBe(SAFETY_STOP);
+    expect(released).not.toContain(BANNER);
+    expect(frames.find((f) => f.kind === "safety")).toMatchObject({ trigger: "unsafe-answer:imperative-energized-action" });
+    await vi.waitFor(() => expect(domainMock.recordTurn).toHaveBeenCalled());
+    expect(lastTurn().answerText).toBe(SAFETY_STOP);
+    expect(lastTurn().basis).toBeNull();
+  });
+});

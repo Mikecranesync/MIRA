@@ -89,7 +89,12 @@ const INSTRUCTION_RE = new RegExp(
     "|" +
     "\\b(?:or|and(?:\\s+then)?|then|so|also|otherwise|you\\s+(?:can|should|must|may|need\\s+to|have\\s+to|will\\s+need\\s+to))\\s+" +
     ")" +
-    VERB_SRC,
+    VERB_SRC +
+    // Re-close the word boundary VERB_SRC strips: without it "or touches the
+    // circuit follows your site's lockout procedure" (the alarm-card site
+    // line) read as the instruction "touch" and drew the notice onto a
+    // sentence that is itself isolation language (31 alarm-card reds).
+    "\\b",
   "gi",
 );
 
