@@ -169,7 +169,9 @@ export function isUnrelatedSourceTiming(clause: string): boolean {
 const THRESHOLD_RE =
   /(?:\b(?:less\s+than|below|under|lower\s+than|at\s+most|drops?\s+(?:to|below)|falls?\s+(?:to|below)|discharged?\s+(?:to|below)|bleeds?\s+down\s+to)|<|≤)\s*(?:about\s+|approximately\s+)?$/i;
 const BUS_POINT_RE = /\b(?:dc\s*\+|\+\s*dc|dc\s*-|-\s*dc|dc[- ]?(?:bus|link)|bus|capacitors?|between\s*\+\s*and\s*-|discharg\w*|residual|stored)/i;
-const APPROACH_RE = /\b(?:approach|boundary|arc[- ]?flash|limited|restricted|clearance|working\s+distance)\b/i;
+/** Approach / arc-flash boundary wording. Not "clearance" (drive mounting) and not "working
+ *  distance" (where incident energy is calculated; it runs the opposite conservative direction). */
+const APPROACH_RE = /\b(?:approach|boundary|arc[- ]?flash|limited|restricted)\b/i;
 
 const CLAUSE_DELIM_RE = /\s*;\s*|\s+-\s+|,\s+(?=(?:and|but|then|while|although)\b)/gi;
 

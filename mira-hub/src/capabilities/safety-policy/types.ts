@@ -24,10 +24,17 @@ export const QUANTITIES = [
 export type Quantity = (typeof QUANTITIES)[number];
 
 /**
- * Quantities the Phase 1 verdict enforces (the DC-bus slice: the discharge wait and the meter
- * threshold that must follow it). The rest are extracted and verified but reported as deferred.
+ * Quantities the Phase 1 verdict enforces: the DC-bus slice (the discharge wait and the meter
+ * threshold that must follow it) plus, since round 2, the approach boundary, the incident energy
+ * and pressure. Torque stays deferred: extracted and verified, reported, never decides the turn.
  */
-export const ENFORCED_QUANTITIES: readonly Quantity[] = ["discharge_time", "residual_voltage"];
+export const ENFORCED_QUANTITIES: readonly Quantity[] = [
+  "discharge_time",
+  "residual_voltage",
+  "approach_boundary",
+  "incident_energy",
+  "pressure",
+];
 
 /** Canonical units, one per dimension; every value is stored converted to these. */
 export const UNITS = ["s", "V", "mm", "cal/cm2", "N*m", "kPa"] as const;
@@ -111,6 +118,9 @@ export const NUMBER_VERDICTS = [
   "block:not_most_conservative",
   /** The source states the value only for a rating (≤ 30 hp); the answer dropped it. */
   "block:condition_dropped",
+  /** Sources state several values for a quantity with no safe direction (pressure, torque) and
+   *  the answer does not carry the source's condition: no value can be chosen. */
+  "block:no_safe_direction",
 ] as const;
 export type NumberVerdict = (typeof NUMBER_VERDICTS)[number];
 

@@ -1,5 +1,6 @@
 /**
  * L3 evidence verifier (design doc §3, §4.2): NUM-1, NUM-2 and SYS-2 over typed numbers.
+ * Enforced: discharge_time, residual_voltage, approach_boundary, incident_energy, pressure.
  * Deterministic; proves that an applicable source states the value, not that the source is right.
  *
  * Applicability (owner decision 4, written down so each rule is testable on its own):
@@ -57,6 +58,20 @@ export const CONSERVATIVE: Record<Quantity, "max" | "min" | null> = {
   pressure: null,
 };
 
+/**
+ * NUM-1 value match, answer vs source, in canonical units. Exact for time and voltage. For the
+ * converted quantities a unit conversion may round by up to 1%, but only toward the safer side
+ * when there is one (max: the answer may round up, min: down); with no safe direction, either way.
+ */
+export function matchesSource(q: Quantity, answer: number, source: number): boolean {
+  if (!sameValue(q, answer, source)) return false;
+  const eps = 1e-9 * Math.max(1, Math.abs(answer), Math.abs(source));
+  const dir = CONSERVATIVE[q];
+  if (dir === "max") return answer >= source - eps;
+  if (dir === "min") return answer <= source + eps;
+  return true;
+}
+
 function inQuestion(n: TypedNumber, question: string): boolean {
   return sentences(question, false).some((s) =>
     statementsOf(s, true).some((st) => st.quantity === n.quantity && sameValue(n.quantity, st.value, n.value)),
@@ -105,11 +120,12 @@ export function verifyNumbers(input: VerifyInput): VerifyResult {
     const why = applicability(chunk, input.bound);
     if (why) return why;
     // NUM-1: the cited chunk itself states the value, in a sentence about this quantity.
-    const stated = stmts(chunk).filter((s) => s.quantity === n.quantity && sameValue(n.quantity, s.value, n.value));
+    const stated = stmts(chunk).filter((s) => s.quantity === n.quantity && matchesSource(n.quantity, n.value, s.value));
     if (stated.length === 0) return own ? "block:technician_number" : "block:not_in_cited_sentence";
     // NUM-2: across every applicable source this turn, several values ⇒ the most conservative,
     // or the value with the source's own condition. A known asset rating drops the values whose
-    // condition provably excludes it (a ≥ 40 hp time for a 5 hp drive).
+    // condition provably excludes it (a ≥ 40 hp time for a 5 hp drive). With no safe direction
+    // (pressure, torque) only the single stated value or the source's own condition can pass.
     const rating = input.bound?.rating;
     const covers = (s: Statement) => conditionCovers(s.condition, rating);
     const matching = stated.filter(covers);
@@ -118,8 +134,9 @@ export function verifyNumbers(input: VerifyInput): VerifyResult {
     const dir = CONSERVATIVE[n.quantity];
     const extreme = values.length === 0 ? null : dir === "max" ? Math.max(...values) : dir === "min" ? Math.min(...values) : null;
     const atLeastAsSafe =
-      extreme !== null && (sameValue(n.quantity, n.value, extreme) || (dir === "max" ? n.value > extreme : n.value < extreme));
-    if (matching.length === 0) return atLeastAsSafe ? "pass_most_conservative" : "block:not_most_conservative";
+      extreme !== null && (matchesSource(n.quantity, n.value, extreme) || (dir === "max" ? n.value > extreme : n.value < extreme));
+    const noChoice: NumberVerdict = dir === null ? "block:no_safe_direction" : "block:not_most_conservative";
+    if (matching.length === 0) return atLeastAsSafe ? "pass_most_conservative" : noChoice;
     const unconditioned = matching.some((s) => !s.condition);
     const conditioned = matching.some(
       (s) => !!s.condition && (sameCondition(s.condition, n.condition) || rating?.unit === s.condition.unit),
@@ -130,7 +147,7 @@ export function verifyNumbers(input: VerifyInput): VerifyResult {
     }
     if (atLeastAsSafe) return "pass_most_conservative";
     if (conditioned) return "pass_conditioned";
-    return "block:not_most_conservative";
+    return noChoice;
   }
 
   // Turn verdict over ENFORCED checks only; deferred quantities are reported, never decide.

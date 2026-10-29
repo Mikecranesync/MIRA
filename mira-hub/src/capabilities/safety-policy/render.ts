@@ -14,7 +14,7 @@
 import { chunkStatements, type Statement } from "./statements";
 import { conditionCovers, sameCondition, sameValue } from "./text";
 import { applicability } from "./verify";
-import type { BoundAsset, Condition, EvidenceChunk, VerifyResult } from "./types";
+import type { BoundAsset, Condition, EvidenceChunk, Quantity, VerifyResult } from "./types";
 
 export const chunkIdToMarker = (id: string) => (id === "photo" ? "[photo]" : `[${id.replace(/^c/, "")}]`);
 
@@ -76,7 +76,19 @@ export function renderDischargeProcedure(opts: { chunks: EvidenceChunk[]; bound:
   return lines.join("\n");
 }
 
-/** The number-safe replacement for a blocked turn, or null when the verifier did not block. */
+const DC_BUS: Quantity[] = ["discharge_time", "residual_voltage"];
+
+/** The quantity-neutral replacement when the blocked number is not a DC-bus figure (pressure,
+ *  approach boundary, incident energy): no number, no procedure, never "safe". */
+export const NEUTRAL_FALLBACK =
+  "I can't give that figure: no applicable source for this equipment states it. Use the value on the equipment's own label or in its manual, or your site's energy-control or arc-flash documentation, and follow your lockout/tagout procedure.";
+
+/** The number-safe replacement for a blocked turn, or null when the verifier did not block.
+ *  The DC-bus procedure only when a DC-bus check (or an unclassifiable one) blocked. */
 export function numberSafeFallback(result: VerifyResult, opts: { chunks: EvidenceChunk[]; bound: BoundAsset | null }): string | null {
-  return result.verdict === "block" ? renderDischargeProcedure(opts) : null;
+  if (result.verdict !== "block") return null;
+  const dcBlock = result.checks.some(
+    (c) => c.enforced && c.verdict.startsWith("block:") && (c.number === null || DC_BUS.includes(c.number.quantity)),
+  );
+  return dcBlock ? renderDischargeProcedure(opts) : NEUTRAL_FALLBACK;
 }
