@@ -2,6 +2,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ComposerButton, MessageBubble, NodeChat, isEnterToSend, restoreComposer } from "./NodeChat";
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 // Static-markup coverage for NodeChat's own MessageBubble (FLEET-006).
 // Same pattern as AssetChat.test.tsx, adapted for NodeChat's real
 // ChatMessage shape: `sources` (citation chips), not `nextCheck`/`traceId`
@@ -357,6 +361,55 @@ describe("NodeChat MessageBubble — assistant markdown (#4880 defect 4)", () =>
     );
     expect(html).toContain("<strong>line_1_conveyor</strong>");
     expect(html).not.toContain("**line_1_conveyor**");
+  });
+
+  // #4948: node and document names come from tenant data and from the
+  // `docname` query string, so the welcome bubble must show them as text,
+  // never parse them as markdown inside MIRA's own message.
+  const hostileNames = [
+    "[Re-authenticate](https://evil.example)",
+    "<https://evil.example>",
+    "![x](https://evil.example/p.png)",
+    "# Session expired",
+    "- step one",
+    "a** then **b",
+  ];
+
+  for (const name of hostileNames) {
+    it(`renders a node name as literal text in the welcome bubble: ${name}`, () => {
+      const html = renderToStaticMarkup(
+        <NodeChat nodeId="n1" nodeName={name} unsPath="enterprise.garage.line3" />,
+      );
+      const bubble = html.slice(html.indexOf("Hi — I"));
+      expect(bubble).not.toContain("evil.example\"");
+      expect(bubble).not.toMatch(/<(a|img|h[1-6]|li|ul|ol)[\s>]/);
+      expect(bubble).toContain(`<strong>${escapeHtml(name)}</strong>`);
+    });
+
+    it(`renders a document name as literal text in the welcome bubble: ${name}`, () => {
+      const html = renderToStaticMarkup(
+        <NodeChat
+          nodeId="n1"
+          nodeName="Line 3"
+          unsPath="enterprise.garage.line3"
+          docId="00000000-0000-0000-0000-000000000000"
+          docName={name}
+        />,
+      );
+      const bubble = html.slice(html.indexOf("Hi — I"));
+      expect(bubble).not.toContain("evil.example\"");
+      expect(bubble).not.toMatch(/<(a|img|h[1-6]|li|ul|ol)[\s>]/);
+      expect(bubble).toContain(`<strong>${escapeHtml(name)}</strong>`);
+    });
+  }
+
+  it("control: assistant-answer markdown links still render as links", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble
+        msg={{ id: "a2", role: "assistant", content: "See [the manual](https://example.com/m.pdf)." }}
+      />,
+    );
+    expect(html).toContain('href="https://example.com/m.pdf"');
   });
 
   it("control: a safety-stop message keeps its verbatim plain-text render", () => {

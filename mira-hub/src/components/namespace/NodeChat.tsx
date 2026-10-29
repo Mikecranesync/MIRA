@@ -48,11 +48,30 @@ interface NodeChatProps {
   docName?: string;
 }
 
-const WELCOME = (name: string) =>
-  `Hi — I'm MIRA. Ask me about **${name}** and everything beneath it in the namespace.\n\nI answer only from the documents attached to this part of your namespace, and I cite the source. If nothing's attached here yet, attach a manual and ask again.`;
+// #4948: node and document names are tenant data (and `docname` comes from the
+// query string), so they render as React text nodes, never as markdown.
+function Welcome({ name }: { name: string }) {
+  return (
+    <>
+      <p>Hi — I&apos;m MIRA. Ask me about <strong>{name}</strong> and everything beneath it in the namespace.</p>
+      <p className="mt-2">
+        I answer only from the documents attached to this part of your namespace, and I cite the source. If
+        nothing&apos;s attached here yet, attach a manual and ask again.
+      </p>
+    </>
+  );
+}
 
-const DOC_WELCOME = (doc: string) =>
-  `Hi — I'm MIRA. Ask me anything about **${doc}**.\n\nI answer only from this document, and I cite the page. If it doesn't cover your question, I'll say so.`;
+function DocWelcome({ doc }: { doc: string }) {
+  return (
+    <>
+      <p>Hi — I&apos;m MIRA. Ask me anything about <strong>{doc}</strong>.</p>
+      <p className="mt-2">
+        I answer only from this document, and I cite the page. If it doesn&apos;t cover your question, I&apos;ll say so.
+      </p>
+    </>
+  );
+}
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -463,7 +482,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
     }
   }
 
-  const welcome = docId ? DOC_WELCOME(docName ?? "this document") : WELCOME(nodeName);
+  const welcome = docId ? <DocWelcome doc={docName ?? "this document"} /> : <Welcome name={nodeName} />;
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 360 }}>
@@ -525,7 +544,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
               border: "1px solid var(--border)",
             }}
           >
-            <AnswerMarkdown content={welcome} citations={[]} />
+            {welcome}
           </div>
         </div>
 
