@@ -1,0 +1,146 @@
+name: Isolated safety-build route (non-main)
+
+# Thin wrapper (#4372, Mike decision 4) around tools/isolated-route/isolated-route.sh,
+# which holds every refusal and is the real mechanism. It runs ONE non-main
+# integration commit (the tip of a `stg-combined/*` branch) as a loopback-only hub
+# with its own disposable Postgres on the co-hosted staging/production VPS.
+#
+# - It is NOT staging: compose project `mira-iso`, `iso-*` names, port 4600-4699,
+#   no Doppler, no staging/prod database, no nginx vhost. Reach it by SSH tunnel.
+# - It never writes a `staging-receipt-*` artifact, and its name is deliberately
+#   not "Deploy to Staging VPS", so retrieval-acceptance.yml (workflow_run on that
+#   name) and deploy-vps.yml (staging receipt) can never consume it.
+# - The script and compose file come from the TRUSTED base (this workflow's main
+#   checkout); the candidate SHA is only the hub build context (SDLC v1 §5.2).
+# - Shares the `staging-environment` concurrency group with deploy-staging.yml
+#   and retrieval-acceptance.yml so it never runs during a staging deploy or audit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "up | down | status"
+        required: true
+        type: choice
+        options: [up, down, status]
+      integration_sha:
+        description: "action=up: tip of a stg-combined/* branch (40 lowercase hex, NOT on main)"
+        required: false
+        default: ""
+        type: string
+      floors_mode:
+        description: "action=up: NOTEBOOK_SAFETY_FLOORS_MODE for the build (inert unless the build reads it)"
+        required: false
+        default: enforce
+        type: choice
+        options: [enforce, shadow]
+      approval:
+        description: "action=up: type exactly GO-ISO-<integration_sha>"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-environment
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    name: Authorize non-main integration SHA
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Authorize isolated-route inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISO_ROUTE_ENABLED: ${{ vars.ISO_ROUTE_ENABLED }}
+          ACTION: ${{ inputs.action }}
+          SHA: ${{ inputs.integration_sha }}
+          FLOORS: ${{ inputs.floors_mode }}
+          APPROVAL: ${{ inputs.approval }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] || fail "manual workflow_dispatch only"
+          [ "$GITHUB_REF" = "refs/heads/main" ] || fail "dispatch from refs/heads/main (the trusted script lives there)"
+          [ "$ISO_ROUTE_ENABLED" = "true" ] || fail "repository variable ISO_ROUTE_ENABLED is not 'true' (owner switch, off by default)"
+          case "$ACTION" in up|down|status) ;; *) fail "action must be up, down or status" ;; esac
+          [ "$ACTION" = "up" ] || exit 0
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || fail "integration_sha must be 40 lowercase hex characters"
+          [ "$APPROVAL" = "GO-ISO-$SHA" ] || fail "approval must be exactly GO-ISO-<integration_sha>"
+          case "$FLOORS" in enforce|shadow) ;; *) fail "floors_mode must be enforce or shadow" ;; esac
+          # Inverse of deploy-staging.yml: the SHA must NOT be on main. `ahead` or
+          # `diverged` only; identical/behind (on main) and any API error STOP.
+          STATUS="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$SHA" --jq '.status' 2>/dev/null || true)"
+          case "$STATUS" in
+            ahead|diverged) ;;
+            *) fail "integration_sha is on main or unverifiable (compare status: ${STATUS:-api error}); main builds use deploy-staging.yml" ;;
+          esac
+          TIP_REF="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/heads/stg-combined/" \
+            --jq ".[] | select(.object.sha == \"$SHA\") | .ref" 2>/dev/null | head -1 || true)"
+          [ -n "$TIP_REF" ] || fail "integration_sha is not the tip of any stg-combined/* branch"
+          echo "Authorized $SHA ($TIP_REF, compare=$STATUS, floors=$FLOORS)"
+
+  run:
+    name: Run isolated route on the staging host
+    needs: authorize
+    runs-on: ubuntu-latest
+    environment: staging-deploy
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Resolve host and set up SSH
+        env:
+          STAGING_HOST: ${{ vars.STAGING_HOST }}
+          STAGING_HOST_KEY: ${{ vars.STAGING_HOST_KEY }}
+          DEPLOY_USER: ${{ vars.STAGING_DEPLOY_USER }}
+          STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || [ "$DEPLOY_USER" = "root" ]; then
+            echo "::error::STAGING_DEPLOY_USER is missing, invalid or root"; exit 1
+          fi
+          [[ "$STAGING_HOST" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$STAGING_HOST" =~ ^[a-z0-9]([a-z0-9-]{0,62}\.)+[a-z]{2,}$ ]] || {
+            echo "::error::STAGING_HOST is missing or invalid"; exit 1; }
+          PINNED="$(grep -E "^${STAGING_HOST//./\\.} " deployment/known_hosts.factorylm-prod | head -1 || true)"
+          [ -z "$PINNED" ] || STAGING_HOST_KEY="$(printf '%s\n' "$PINNED" | awk '{print $2" "$3}')"
+          [[ "$STAGING_HOST_KEY" =~ ^ssh-ed25519\ AAAA[0-9A-Za-z+/]+=*$ ]] || {
+            echo "::error::no pinned ssh-ed25519 host key for STAGING_HOST"; exit 1; }
+          [ -n "$STAGING_DEPLOY_SSH_KEY" ] || { echo "::error::STAGING_DEPLOY_SSH_KEY is not configured"; exit 1; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$STAGING_DEPLOY_SSH_KEY" > ~/.ssh/iso_key
+          printf '%s %s\n' "$STAGING_HOST" "$STAGING_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/iso_key ~/.ssh/known_hosts
+
+      - name: Run the trusted script on the host
+        env:
+          ACTION: ${{ inputs.action }}
+          SHA: ${{ inputs.integration_sha }}
+          FLOORS: ${{ inputs.floors_mode }}
+          STAGING_HOST: ${{ vars.STAGING_HOST }}
+          DEPLOY_USER: ${{ vars.STAGING_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          # Re-validate here: this job must not trust that `authorize` saw the same values.
+          if [ "$ACTION" = "up" ]; then
+            [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::bad integration_sha"; exit 1; }
+            case "$FLOORS" in enforce|shadow) ;; *) echo "::error::bad floors_mode"; exit 1 ;; esac
+          fi
+          case "$ACTION" in
+            up) REMOTE_CMD="MIRA_ISO_APPROVED_SHA=$SHA bash \"\$d/isolated-route.sh\" up --sha $SHA --floors $FLOORS --schema" ;;
+            down) REMOTE_CMD="bash \"\$d/isolated-route.sh\" down" ;;
+            status) REMOTE_CMD="bash \"\$d/isolated-route.sh\" status" ;;
+            *) echo "::error::bad action"; exit 1 ;;
+          esac
+          # Ship ONLY the two trusted files; run; remove the temp dir on every exit.
+          tar -C tools/isolated-route -cf - isolated-route.sh docker-compose.isolated-route.yml \
+            | ssh -i ~/.ssh/iso_key -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile=~/.ssh/known_hosts -l "$DEPLOY_USER" "$STAGING_HOST" \
+                "d=\$(mktemp -d) && trap 'rm -rf \"\$d\"' EXIT && tar -x -C \"\$d\" && $REMOTE_CMD"

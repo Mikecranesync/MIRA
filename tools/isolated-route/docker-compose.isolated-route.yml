@@ -1,0 +1,106 @@
+# Isolated safety-build route (#4372, Mike decision 4) — TRUSTED compose file.
+#
+# Brought up ONLY by tools/isolated-route/isolated-route.sh, which supplies every
+# ${ISO_*} value and refuses to run without an explicit non-main SHA + approval.
+# This file comes from the trusted base (the checkout the script runs from); the
+# candidate tree is only the hub BUILD CONTEXT (${ISO_SRC}). Nothing here reads
+# Doppler, staging or production configuration.
+#
+# Isolation contract (checked by the script before and after):
+#   - compose project `mira-iso`; every container / network is `iso-*` — never
+#     `stg-*`, `staging-*` or `factorylm-staging*` (deploy-staging.yml safeguard 4)
+#   - one published port, loopback only, outside every staging/prod port
+#     (default 4601; staging uses 4000-4901 named ports, prod 3xxx/8xxx/9xxx)
+#   - its own disposable Postgres on tmpfs: no volume, no host port, gone on `down`
+#   - no LLM keys unless the operator passes an allowlisted env file (see script)
+name: mira-iso
+
+services:
+  iso-db:
+    image: pgvector/pgvector:pg16
+    container_name: iso-db
+    restart: "no"
+    environment:
+      - POSTGRES_USER=iso
+      - POSTGRES_DB=iso
+      - POSTGRES_PASSWORD=${ISO_DB_PASSWORD:?ISO_DB_PASSWORD is required}
+    # The Hub's pg Pool always negotiates TLS (src/lib/db.ts ssl:{...}), so the
+    # disposable database serves a throwaway self-signed certificate.
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        openssl req -x509 -nodes -newkey rsa:2048 -days 2 -subj /CN=iso-db
+        -keyout /tmp/iso.key -out /tmp/iso.crt >/dev/null 2>&1 &&
+        chown postgres /tmp/iso.key /tmp/iso.crt && chmod 600 /tmp/iso.key &&
+        exec docker-entrypoint.sh postgres -c ssl=on
+        -c ssl_cert_file=/tmp/iso.crt -c ssl_key_file=/tmp/iso.key
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iso -d iso"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    networks: [iso-net]
+    labels:
+      factorylm.isolated-route: "1"
+
+  iso-mira-hub:
+    build:
+      context: ${ISO_SRC:?ISO_SRC is required}
+      dockerfile: mira-hub/Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_PATH: ""
+        NEXT_PUBLIC_API_BASE: ""
+        MIRA_GIT_SHA: ${ISO_SHA:?ISO_SHA is required}
+        MIRA_APP_VERSION: ${ISO_VERSION:-isolated-route}
+        MIRA_BUILD_TIME: ${ISO_BUILD_TIME:-unknown}
+      labels:
+        factorylm.isolated-route: "1"
+    image: mira-iso-hub:${ISO_SHA}
+    container_name: iso-mira-hub
+    restart: "no"
+    depends_on:
+      iso-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${ISO_PORT:-4601}:3000"
+    # Explicit allowlist. Compose passes ONLY what is listed; the script writes
+    # the env file and never sources Doppler.
+    environment:
+      - NEON_DATABASE_URL=postgres://iso:${ISO_DB_PASSWORD}@iso-db:5432/iso
+      - AUTH_SECRET=${ISO_AUTH_SECRET:?ISO_AUTH_SECRET is required}
+      - NEXTAUTH_URL=http://localhost:${ISO_PORT:-4601}/api/auth
+      - NEXTAUTH_URL_INTERNAL=http://127.0.0.1:3000/api/auth
+      - NEXT_PUBLIC_APP_URL=http://localhost:${ISO_PORT:-4601}
+      - HUB_TENANT_ID=${ISO_TENANT_ID:?ISO_TENANT_ID is required}
+      - ADMIN_EMAILS=
+      - INGEST_URL=disabled://isolated-route
+      - OPENWEBUI_BASE_URL=disabled://isolated-route
+      - OPENWEBUI_API_KEY=
+      - NANGO_SERVER_URL=disabled://isolated-route
+      - MIRA_ASK_URL=disabled://isolated-route
+      - OLLAMA_BASE_URL=disabled://isolated-route
+      - OTEL_EXPORTER_OTLP_ENDPOINT=
+      # Safety builds under test. NOTEBOOK_SEMANTIC_CHECK=0 keeps the paid
+      # OpenAI judge off unless the operator explicitly sets it to 1.
+      - NOTEBOOK_ANSWER_GATE=1
+      - NOTEBOOK_SEMANTIC_CHECK=${ISO_SEMANTIC_CHECK:-0}
+      - NOTEBOOK_SAFETY_FLOORS_MODE=${ISO_FLOORS_MODE:-enforce}
+      # LLM providers — empty unless the operator's allowlisted env file sets them.
+      - GROQ_API_KEY=${ISO_GROQ_API_KEY:-}
+      - CEREBRAS_API_KEY=${ISO_CEREBRAS_API_KEY:-}
+      - TOGETHERAI_API_KEY=${ISO_TOGETHERAI_API_KEY:-}
+      - OPENAI_API_KEY=${ISO_OPENAI_API_KEY:-}
+      - OPENAI_RUN_BUDGET_USD=${ISO_OPENAI_RUN_BUDGET_USD:-1}
+      - MIRA_ISOLATED_ROUTE=1
+    networks: [iso-net]
+    labels:
+      factorylm.isolated-route: "1"
+
+networks:
+  iso-net:
+    name: iso-net
+    labels:
+      factorylm.isolated-route: "1"
