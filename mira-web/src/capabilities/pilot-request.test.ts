@@ -21,6 +21,7 @@ import {
   type StoredPilotRequest,
   pilotRequestLimiterKey,
   ownerNotifyVars,
+  checkConsentTextVersion,
 } from "./pilot-request";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -113,6 +114,27 @@ describe("validatePilotRequest", () => {
     delete input.consent;
     const { errors } = requireInvalid(input);
     expect(errors.join(" ")).toMatch(/consent is required/i);
+  });
+
+  // #4902 — the row names the wording version it was recorded under.
+  test("records the current consent version, with no sha for v1's unrecorded wording", () => {
+    const result = validatePilotRequest(VALID_INPUT);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.consentTextVersion).toBe(CONSENT_TEXT_VERSION);
+      expect(result.value.consentTextSha256).toBeNull();
+    }
+  });
+
+  test("accepts consent_text_version when it names the current version", () => {
+    expect(validatePilotRequest({ ...VALID_INPUT, consent_text_version: CONSENT_TEXT_VERSION }).ok).toBe(true);
+  });
+
+  test("rejects a consent_text_version that is not the current one (drafts included)", () => {
+    for (const v of ["pilot-consent-v2", "pilot-consent-v9", 2]) {
+      const { errors } = requireInvalid({ ...VALID_INPUT, consent_text_version: v });
+      expect(errors.join(" ")).toMatch(/consent_text_version must be/);
+    }
   });
 
   test("consent truthy-but-not-boolean-true is rejected (no coercion)", () => {
@@ -235,6 +257,8 @@ const VALID: ValidPilotRequest = {
   company: "Acme Manufacturing",
   equipment: "Allen-Bradley PLCs",
   consent: true,
+  consentTextVersion: CONSENT_TEXT_VERSION,
+  consentTextSha256: null,
   utmSource: "google",
   utmMedium: "cpc",
   utmCampaign: "pilot-launch",
@@ -272,6 +296,9 @@ describe("insertPilotRequest", () => {
     expect(values[4]).toBe(VALID.equipment);
     expect(values[5]).toBe(true);
     expect(values[6]).toBe(CONSENT_TEXT_VERSION);
+    // #4902: v1's wording was never recorded, so its sha column stays NULL.
+    expect(values[7]).toBeNull();
+    expect(sql).toContain("consent_text_sha256");
     expect(values).toContain(VALID.utmSource);
     expect(values).toContain(VALID.utmCampaign);
     expect(values).toContain(VALID.referrer);
@@ -511,5 +538,25 @@ describe("owner notification email (#4901)", () => {
     );
     expect(vars.LEAD_SOURCE).toBe("meta_lead_form&lt;b&gt;");
     expect(vars.REQUEST_ID).toBe("req-1");
+  });
+});
+
+// #4902 — once the current wording is published, a request must name it.
+describe("checkConsentTextVersion", () => {
+  const published = { version: "pilot-consent-test", status: "published" as const, text: "Published words.", sha256: "f".repeat(64), note: "" };
+  const unrecorded = { version: "pilot-consent-v1", status: "text_not_recorded" as const, text: null, sha256: null, note: "" };
+
+  test("published current: a request that omits the version is rejected", () => {
+    expect(checkConsentTextVersion(undefined, published)).toMatch(/is required/);
+  });
+  test("published current: naming it is accepted", () => {
+    expect(checkConsentTextVersion("pilot-consent-test", published)).toBeNull();
+  });
+  test("any current: naming another version is rejected", () => {
+    expect(checkConsentTextVersion("pilot-consent-v1", published)).toMatch(/must be pilot-consent-test/);
+    expect(checkConsentTextVersion("pilot-consent-v2", unrecorded)).toMatch(/must be pilot-consent-v1/);
+  });
+  test("unrecorded current (v1): omitting the version stays allowed", () => {
+    expect(checkConsentTextVersion(undefined, unrecorded)).toBeNull();
   });
 });

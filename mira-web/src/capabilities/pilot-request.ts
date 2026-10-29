@@ -21,6 +21,7 @@
 import { neon } from "@neondatabase/serverless";
 import { sendEmail } from "../lib/mailer.js";
 import { captureServerEvent } from "../lib/posthog-server.js";
+import { CURRENT_PILOT_CONSENT_VERSION, consentText, type ConsentText } from "./consent-texts.js";
 
 function sql() {
   const url = process.env.NEON_DATABASE_URL;
@@ -30,8 +31,12 @@ function sql() {
 
 const OWNER_EMAIL = "mike@factorylm.com";
 
-/** Bumped whenever the consent copy shown to the submitter materially changes. */
-export const CONSENT_TEXT_VERSION = "pilot-consent-v1";
+/**
+ * The consent version new rows are recorded under (#4902). The wording itself
+ * lives in consent-texts.ts; a new wording is a new version there, never an
+ * edit here.
+ */
+export const CONSENT_TEXT_VERSION = CURRENT_PILOT_CONSENT_VERSION;
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -47,6 +52,7 @@ const ALLOWED_FIELDS = new Set([
   "company",
   "equipment",
   "consent",
+  "consent_text_version",
   "utm_source",
   "utm_medium",
   "utm_campaign",
@@ -82,6 +88,10 @@ export interface ValidPilotRequest {
   company: string;
   equipment: string;
   consent: true;
+  /** Version of the wording the submitter agreed to (#4902). */
+  consentTextVersion: string;
+  /** sha256 of that wording; null for a version whose text was never recorded. */
+  consentTextSha256: string | null;
   utmSource: string | null;
   utmMedium: string | null;
   utmCampaign: string | null;
@@ -94,6 +104,20 @@ export interface ValidPilotRequest {
 export type PilotRequestValidation =
   | { ok: true; value: ValidPilotRequest }
   | { ok: false; errors: string[] };
+
+/**
+ * #4902: the error for a submitted `consent_text_version`, or null. Pure, so the
+ * published-wording branch is tested before any wording is approved.
+ */
+export function checkConsentTextVersion(sent: unknown, current: ConsentText): string | null {
+  if (sent !== undefined && sent !== current.version) {
+    return `consent_text_version must be ${current.version}.`;
+  }
+  if (sent === undefined && current.status === "published") {
+    return `consent_text_version is required (${current.version}).`;
+  }
+  return null;
+}
 
 /** Pure validator — no I/O. Rejects unknown fields outright. */
 export function validatePilotRequest(input: unknown): PilotRequestValidation {
@@ -139,6 +163,14 @@ export function validatePilotRequest(input: unknown): PilotRequestValidation {
   if (body.consent !== true) {
     errors.push("Consent is required.");
   }
+
+  // #4902: once the current version has recorded wording, the submitter must
+  // name it, so the row proves which words were agreed to. While the current
+  // version is v1 (no recorded wording) the field stays optional, but a wrong
+  // value is still rejected rather than stored.
+  const current = consentText(CONSENT_TEXT_VERSION)!;
+  const consentVersionError = checkConsentTextVersion(body.consent_text_version, current);
+  if (consentVersionError) errors.push(consentVersionError);
 
   const utmOut: Record<string, string | null> = {};
   for (const field of UTM_FIELDS) {
@@ -198,6 +230,8 @@ export function validatePilotRequest(input: unknown): PilotRequestValidation {
       company,
       equipment,
       consent: true,
+      consentTextVersion: current.version,
+      consentTextSha256: current.sha256,
       utmSource: utmOut.utm_source ?? null,
       utmMedium: utmOut.utm_medium ?? null,
       utmCampaign: utmOut.utm_campaign ?? null,
@@ -239,6 +273,7 @@ export async function ensurePilotRequestSchema(): Promise<void> {
       equipment             TEXT NOT NULL DEFAULT '',
       consent               BOOLEAN NOT NULL,
       consent_text_version  TEXT NOT NULL,
+      consent_text_sha256   TEXT,
       consent_at            TIMESTAMPTZ NOT NULL,
       utm_source            TEXT,
       utm_medium            TEXT,
@@ -252,6 +287,11 @@ export async function ensurePilotRequestSchema(): Promise<void> {
   await db`
     ALTER TABLE plg_pilot_requests
       ADD COLUMN IF NOT EXISTS lead_source TEXT NOT NULL DEFAULT 'direct'`;
+  // #4902: NULL on every pre-existing row — those were stamped v1, whose
+  // wording was never recorded. Never back-filled.
+  await db`
+    ALTER TABLE plg_pilot_requests
+      ADD COLUMN IF NOT EXISTS consent_text_sha256 TEXT`;
   await db`
     CREATE INDEX IF NOT EXISTS idx_plg_pilot_requests_created_at
       ON plg_pilot_requests (created_at DESC)`;
@@ -266,11 +306,11 @@ export async function insertPilotRequest(
   const rows = (await db`
     INSERT INTO plg_pilot_requests (
       id, name, work_email, company, equipment, consent, consent_text_version,
-      consent_at, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+      consent_text_sha256, consent_at, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
       referrer, status, lead_source, created_at
     ) VALUES (
       ${id}, ${value.name}, ${value.workEmail}, ${value.company}, ${value.equipment},
-      ${value.consent}, ${CONSENT_TEXT_VERSION}, NOW(),
+      ${value.consent}, ${value.consentTextVersion}, ${value.consentTextSha256}, NOW(),
       ${value.utmSource}, ${value.utmMedium}, ${value.utmCampaign}, ${value.utmContent}, ${value.utmTerm},
       ${value.referrer}, 'new', ${value.leadSource}, NOW()
     )
