@@ -4,7 +4,7 @@
  * Each version names the exact words an applicant agreed to, and its sha256.
  * A published version is immutable: changing a word means a new version, never
  * an edit. CI enforces this against the PR base commit
- * (mira-web/scripts/check-consent-immutability.ts, #4934), not against a pin the
+ * (mira-web/scripts/check-consent-immutability.mjs, #4934), not against a pin the
  * same commit could edit; the test-local pins are a second, weaker check. A request row
  * stores the version and the sha256 of the text, so what an applicant agreed to
  * can be checked later.
@@ -16,6 +16,7 @@
  * no wording may be attached to them after the fact.
  */
 import { createHash } from "node:crypto";
+import registryJson from "./consent-texts.json";
 
 export type ConsentTextStatus = "published" | "draft" | "text_not_recorded";
 
@@ -33,29 +34,17 @@ export function consentSha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
-const V2_DRAFT =
-  "I'm requesting a free 30-day FactoryLM pilot. There is no charge and no payment " +
-  "details are collected. FactoryLM may email me about this request and the pilot. " +
-  "My information is handled under the FactoryLM Privacy Policy at factorylm.com/privacy.";
+// The wording lives in consent-texts.json, never in code: the CI gate
+// (scripts/check-consent-immutability.mjs) parses that file as plain data at the
+// PR base and at the candidate, so no candidate code runs while it decides.
+function deepFreeze<T>(o: T): T {
+  for (const v of Object.values(o as object)) if (v && typeof v === "object") deepFreeze(v);
+  return Object.freeze(o);
+}
 
-export const CONSENT_TEXTS: Readonly<Record<string, ConsentText>> = Object.freeze({
-  "pilot-consent-v1": {
-    version: "pilot-consent-v1",
-    status: "text_not_recorded",
-    text: null,
-    sha256: null,
-    note:
-      "Emitted by #4881 (3c4476c78) with no consent string in the repo; the form that " +
-      "showed it was removed before merge. Records consent:true only (#4902).",
-  },
-  "pilot-consent-v2": {
-    version: "pilot-consent-v2",
-    status: "draft",
-    text: V2_DRAFT,
-    sha256: consentSha256(V2_DRAFT),
-    note: "DRAFT pending owner approval (#4902). Not shown to anyone and not current.",
-  },
-});
+export const CONSENT_TEXTS: Readonly<Record<string, Readonly<ConsentText>>> = deepFreeze(
+  registryJson as unknown as Record<string, ConsentText>,
+);
 
 /**
  * The version a new pilot request is recorded under. Switch it to a version
