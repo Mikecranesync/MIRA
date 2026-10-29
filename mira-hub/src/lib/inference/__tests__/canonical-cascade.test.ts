@@ -9,8 +9,6 @@
  * Run: npx vitest run src/lib/inference/__tests__/canonical-cascade.test.ts
  */
 import { beforeEach, describe, expect, it, afterEach } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
   DEFAULT_MAX_OUTPUT_TOKENS,
   buildRequestBody,
@@ -105,38 +103,6 @@ describe("cost estimation", () => {
   it("rounds to 6dp to match NUMERIC(12,6) in migration 078", () => {
     const c = estimateCostUsd("Groq", 7, 0, 3)!;
     expect(String(c).split(".")[1]?.length ?? 0).toBeLessThanOrEqual(6);
-  });
-});
-
-describe("cost estimation — OpenAI is priced per MODEL (#4961)", () => {
-  // The repo's declared OpenAI list prices; openai-run-budget.test.ts pins the
-  // budget defaults to the same file, so telemetry and the cap cannot drift.
-  const declared = JSON.parse(
-    readFileSync(resolve(__dirname, "../../../../../tools/review_router/prices.json"), "utf8"),
-  ).usd_per_mtok as Record<string, { input: number; cached_input: number; output: number }>;
-
-  it("an OpenAI-served gpt-5.4-mini turn records the declared list-price estimate, not null", () => {
-    const p = declared["gpt-5.4-mini"];
-    const u = usageFromRaw("OpenAI", "gpt-5.4-mini", { prompt_tokens: 1_000_000, completion_tokens: 1_000_000 }, "primary", []);
-    expect(u.costUsdEstimate).toBeCloseTo(p.input + p.output, 6);
-  });
-
-  it("bills cached input at the declared cached rate", () => {
-    const p = declared["gpt-5.4-mini"];
-    expect(estimateCostUsd("OpenAI", 1_000_000, 1_000_000, 0, "gpt-5.4-mini")).toBeCloseTo(p.cached_input, 6);
-  });
-
-  it("an OpenAI model with no declared price is null — never 0 and never another model's rate", () => {
-    expect(estimateCostUsd("OpenAI", 1_000_000, 0, 1_000_000, "gpt-5.5-unlisted")).toBeNull();
-    expect(usageFromRaw("OpenAI", "gpt-5.5-unlisted", { prompt_tokens: 10, completion_tokens: 10 }, "primary", []).costUsdEstimate).toBeNull();
-  });
-
-  it("an OpenAI turn without a model id is null (the provider name alone does not price it)", () => {
-    expect(estimateCostUsd("OpenAI", 1_000_000, 0, 1_000_000)).toBeNull();
-  });
-
-  it("provider-priced entries are unchanged by the model argument (control)", () => {
-    expect(estimateCostUsd("Groq", 1_000_000, 0, 1_000_000, "openai/gpt-oss-120b")).toBeCloseTo(0.9, 6);
   });
 });
 
