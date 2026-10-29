@@ -1409,6 +1409,37 @@ describe("Gate-7 r7: unmatched restore-then-measure still WARNS via the step-ene
     }
   });
 
+  // Codex #4931 r1 F1 (BLOCKER): a sequence word must not end a lockout.
+  it.each([
+    ["grounded", (answerText: string) => grounded(answerText, "how do I check the output")],
+    ["general", (answerText: string) => general(answerText, "how do I check the output")],
+  ] as const)("%s lane: a sequence word with lockout asserted still BLOCKs", (_lane, run) => {
+    for (const text of [
+      "With the circuit locked out, measure the line voltage at the terminals, then energize the control circuit.",
+      "With the circuit locked out, then energize the circuit and measure the output voltage.",
+    ]) {
+      const v = run(text);
+      expect(v.ok).toBe(false);
+      if (!v.ok) {
+        expect(v.kind).toBe("unsafe_answer");
+        expect(v.violation).toBe("unsafe-answer:lockout-step-contradiction");
+        expect(v.replacement).toBe(SAFETY_STOP);
+      }
+    }
+  });
+
+  it("order matters: a reading BEFORE the energize step, while de-energized, still BLOCKs", () => {
+    const v = grounded(
+      "With the panel de-energized, measure the output voltage, then energize the circuit.",
+      "how do I check the output",
+    );
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.kind).toBe("unsafe_answer");
+      expect(v.violation).toBe("unsafe-answer:lockout-step-contradiction");
+    }
+  });
+
   it("simultaneous isolation + energize-then-measure still BLOCKs", () => {
     const v = grounded(simultaneous, "how do I check the output");
     expect(v.ok).toBe(false);

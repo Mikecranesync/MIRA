@@ -44,6 +44,7 @@ const LIVE_READING =
  *  (RESTORE already covers re-energize). */
 const ENERGIZE_CIRCUIT = /(?<!de[\s-])energi[sz]e (?:the )?(?:\w+ )?circuit/i;
 const SEQUENCE_WORD = /\b(?:then|after|afterwards|once|next|finally)\b/i;
+const LOCKOUT_ASSERTED = /\b(?:lock(?:ed|ing)?[\s-]?out|loto|tag(?:ged)?[\s-]?out)\b/i;
 const OPERATE =
   /\b(?:press(?:ing)? (?:the )?(?:start|run)|commanded to run|re-?issue (?:a )?run|run command|start the (?:motor|machine|drive)|power (?:it|the \w+) (?:back )?(?:on|up)|power-?up|re[\s-]?energi[sz]e|restore (?:the )?power|reconnect(?:ing)? (?:the )?power|reset (?:it|the (?:breaker|overload|fault))|watch (?:for|the handle)|trips? again|display|LEDs?|status (?:screen|indicator)|fault (?:code|screen|display)|jog\w*|(?<!de[\s-])energi[sz]e (?:the )?(?:\w+ )?circuit|apply (?:main |the )?(?:power|voltage)|bring (?:it|the \w+) back (?:up|on(?:line)?))\b/i;
 
@@ -154,6 +155,12 @@ export function stepEnergyContradiction(answerText: string): string | null {
  *  shape — those stay A2a BLOCK. No new phrase list. */
 export function sequentialEnergizeThenMeasure(step: string): boolean {
   if (STILL_ISOLATED.test(step)) return false;
+  // Codex #4931 r1 F1 (BLOCKER): a sequence word does not end a lockout. A step
+  // that asserts lockout/tagout, without removing it in that step, stays an
+  // A2a contradiction; only a bare de-energized state may take the warn path.
+  if (LOCKOUT_ASSERTED.test(step) && !LOCKOUT_REMOVED.test(step)) return false;
   if (STATE_ISOLATED.test(step) && !SEQUENCE_WORD.test(step)) return false;
-  return ENERGIZE_CIRCUIT.test(step) && LIVE_READING.test(step);
+  // Ordered, not co-occurrence: the live reading must come after the energize.
+  const energize = ENERGIZE_CIRCUIT.exec(step);
+  return energize !== null && LIVE_READING.test(step.slice(energize.index + energize[0].length));
 }
