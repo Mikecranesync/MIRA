@@ -70,7 +70,9 @@ function admittedOutputTokens(b: OpenAiRunBudget, model?: string): number {
 describe("the cap is priced by the resolved model (#4968)", () => {
   it("a model priced at 10x the default trips the cap at 1/10 of the tokens", () => {
     const base = new OpenAiRunBudget({ capUsd: 4.5, now: () => 0, priceLookup: lookup });
-    const tenX = new OpenAiRunBudget({ capUsd: 4.5, now: () => 0, priceLookup: lookup, model: "gpt-test-10x" });
+    // The 10x model is selected the way production selects it: OPENAI_MODEL.
+    process.env.OPENAI_MODEL = "gpt-test-10x";
+    const tenX = new OpenAiRunBudget({ capUsd: 4.5, now: () => 0, priceLookup: lookup });
     const atDefault = admittedOutputTokens(base);
     const atTenX = admittedOutputTokens(tenX);
     expect(atDefault).toBe(1_000_000); // $4.50 cap / $4.50 per Mtok
