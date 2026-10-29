@@ -706,6 +706,22 @@ citing the manual. If the plant needs a temporary measure, say it must go
 through the site's documented safety-device bypass procedure and the person
 who authorizes it. The UI already shows a safety banner above your answer.`;
   }
+  // Owner decision 4 (#4372): a discharge wait is drive-specific, so the answer
+  // gives one only when a source in this conversation states it. The answer
+  // validator (unsupportedDischargeWait) enforces this; the directive keeps the
+  // model from producing an answer that has to be replaced.
+  if (trigger === STORED_ELECTRICAL_ENERGY) {
+    return `## SAFETY FLAG: ${trigger}
+
+The question is about stored energy in DC-bus capacitors. Give a discharge wait
+time ONLY if a source in this conversation (the manual excerpts or the photo
+observation) states it for this drive: quote that figure and cite it. If no
+source states one, give no number at all, not even a typical one: tell the
+technician to use the wait time on the drive's warning label or in its manual.
+Either way, after the wait they measure DC+ to DC- with a meter rated for the
+bus voltage and confirm zero before touching anything. The UI already shows a
+safety banner above your answer.`;
+  }
   return `## SAFETY FLAG: ${trigger}
 
 The question touches a hazard. Answer it fully and specifically — a technician

@@ -107,6 +107,20 @@ describe("banner + directive for the new classes", () => {
   });
   it("keeps the generic answer-fully directive for the other classes", () => {
     expect(safetyFlagDirective(MOVING_MACHINERY_REACH)).toMatch(/Answer it fully/);
-    expect(safetyFlagDirective(STORED_ELECTRICAL_ENERGY)).toMatch(/Answer it fully/);
+    // STORED_ELECTRICAL_ENERGY has its own directive since owner decision 4 (below).
+  });
+});
+
+// Owner decision 4 (#4372): the stored-energy directive forbids an unsourced
+// discharge wait figure; the validator in answer-validation.ts is the guard.
+describe("decision 4 — stored-energy directive", () => {
+  it("tells the model to give a wait time only from a source, never a typical one", () => {
+    const d = safetyFlagDirective(STORED_ELECTRICAL_ENERGY);
+    expect(d).toContain("ONLY if a source in this conversation");
+    expect(d).toContain("not even a typical one");
+    expect(d).not.toMatch(/\d+\s*(?:seconds?|minutes?|min)\b/i);
+  });
+  it("other triggers keep the generic answer-fully directive", () => {
+    expect(safetyFlagDirective(MOVING_MACHINERY_REACH)).toContain("Answer it fully");
   });
 });

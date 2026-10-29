@@ -1231,6 +1231,105 @@ function energizedWarningOr(restore: string | null, answerText: string): AnswerV
  * Entry point                                                               *
  * ------------------------------------------------------------------------ */
 
+// ── Owner decision 4 (#4372, 2026-10-29): DC-bus discharge wait times ─────────
+// "Block equipment-specific wait-time numbers unless an applicable verified
+// source supports them." A discharge wait is drive-specific (frame size, bus
+// capacitance, bleeder design), and the wrong drive's figure is the hazard, so
+// hedging does NOT exempt ("typically 5 minutes" is blocked). A claimed wait is
+// supported only when the same length of time appears in a passage retrieved
+// for this turn (or the photo observation) that is itself about stored
+// electrical energy. The technician's own message is never a source.
+const SMALL_NUMBER_WORDS = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+  "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+];
+const TENS_WORDS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+const NUMBER_WORDS: Map<string, number> = (() => {
+  const m = new Map<string, number>();
+  SMALL_NUMBER_WORDS.forEach((w, i) => m.set(w, i));
+  for (let t = 2; t < 10; t++) {
+    m.set(TENS_WORDS[t], t * 10);
+    for (let u = 1; u < 10; u++) m.set(`${TENS_WORDS[t]}-${SMALL_NUMBER_WORDS[u]}`, t * 10 + u);
+  }
+  return m;
+})();
+const NUM_TOKEN = `(?:\\d+(?:\\.\\d+)?|${[...NUMBER_WORDS.keys()].sort((a, b) => b.length - a.length).join("|")})`;
+const PAREN_NUM = "(?:\\s*\\(\\s*\\d+(?:\\.\\d+)?\\s*\\))?";
+const DURATION_UNIT = "(seconds?|secs?|s|minutes?|mins?|min|hours?|hrs?|hr)";
+// "5 minutes", "five (5) minutes", "5-minute", "5mins", "3 to 5 minutes", "3–5 min".
+const DURATION_RE = new RegExp(
+  `\\b(${NUM_TOKEN})${PAREN_NUM}(?:\\s*(?:to|or|and|-|–|—)\\s*(${NUM_TOKEN})${PAREN_NUM})?\\s*-?\\s*${DURATION_UNIT}(?![a-z])`,
+  "gi",
+);
+const STORED_ENERGY_CONTEXT_RE =
+  /\b(?:capacitors?|caps|dc[- ]?(?:bus|link)|bus\s+(?:voltage|capacitors?|caps)|stored\s+(?:energy|charge)|residual\s+(?:voltage|charge)|discharg\w*|bleed\w*|electric(?:al)?\s+shock|shock\s+hazard|hazardous\s+voltage|dangerous\s+voltage)\b/i;
+const WAIT_CONTEXT_RE =
+  /\b(?:wait\w*|allow\w*|give\b|discharg\w*|bleed\w*|until|at\s+least|minimum|before\s+(?:touch|open|work|servic|remov|handl|measur|access)\w*|after\s+(?:remov|disconnect|switch|turn|shut|isolat|de-?energi|power|lock)\w*)/i;
+
+function toNumber(token: string): number {
+  const t = token.toLowerCase();
+  return NUMBER_WORDS.has(t) ? NUMBER_WORDS.get(t)! : Number(t);
+}
+
+function unitSeconds(unit: string): number {
+  const u = unit.toLowerCase();
+  if (u.startsWith("h")) return 3600;
+  if (u.startsWith("m")) return 60;
+  return 1;
+}
+
+/** Every duration in the text, in seconds (each range endpoint separately). */
+function durationsInSeconds(text: string): number[] {
+  const out: number[] = [];
+  for (const m of text.matchAll(DURATION_RE)) {
+    const k = unitSeconds(m[3]);
+    out.push(toNumber(m[1]) * k);
+    if (m[2]) out.push(toNumber(m[2]) * k);
+  }
+  return out.filter((n) => Number.isFinite(n));
+}
+
+const splitSentences = (text: string) => text.split(/(?<=[.!?])\s+|\n+/).filter((x) => x.trim());
+
+/** The answer's first unsupported discharge-wait sentence, or null. */
+export function unsupportedDischargeWait(answerText: string, question: string, sourceTexts: string[]): string | null {
+  const sentences = splitSentences(foldForDetection(answerText));
+  const questionContext = STORED_ENERGY_CONTEXT_RE.test(foldForDetection(question));
+  let supported: Set<number> | null = null;
+  for (let i = 0; i < sentences.length; i++) {
+    const s = sentences[i];
+    if (!WAIT_CONTEXT_RE.test(s)) continue;
+    const claimed = durationsInSeconds(s);
+    if (claimed.length === 0) continue;
+    const context =
+      STORED_ENERGY_CONTEXT_RE.test(s) || (i > 0 && STORED_ENERGY_CONTEXT_RE.test(sentences[i - 1])) || questionContext;
+    if (!context) continue;
+    if (supported === null) {
+      supported = new Set<number>();
+      for (const src of sourceTexts) {
+        const ss = splitSentences(foldForDetection(src));
+        ss.forEach((x, j) => {
+          const near = [ss[j - 1], x, ss[j + 1]].some((y) => y !== undefined && STORED_ENERGY_CONTEXT_RE.test(y));
+          if (near) for (const n of durationsInSeconds(x)) supported!.add(n);
+        });
+      }
+    }
+    if (claimed.some((n) => !supported!.has(n))) return s.slice(0, 160);
+  }
+  return null;
+}
+
+/** The answer served in place of an unsupported discharge wait time. It gives
+ *  the safe procedure without any figure of its own. */
+export const DISCHARGE_WAIT_FALLBACK = `I won't give a capacitor discharge wait time for this drive: none of the sources in this conversation states one, and the right figure depends on the exact drive.
+
+What to do:
+- Use the wait time printed on the drive's warning label or stated in its manual.
+- After that wait, measure across DC+ and DC- with a meter rated for the bus voltage, and confirm it reads zero before you touch anything.
+- If it has not dropped to zero, keep waiting and measure again. Do not short the bus to discharge it.
+
+If you add this drive's manual or a photo of its warning label and ask again, I'll quote its figure with a reference.`;
+
 export function validateAnswer(opts: {
   answerText: string;
   question: string;
@@ -1245,6 +1344,9 @@ export function validateAnswer(opts: {
    *  notebook (this turn started it, or a recorded one is still running), so a
    *  specificity fallback must not tell the technician to fetch it themselves. */
   manualSearchRunning?: ManualSearchRunning;
+  /** Owner decision 4: passages retrieved for THIS turn (chunk text, photo
+   *  observation). A DC-bus discharge wait time must appear in one. */
+  sourceTexts?: string[];
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
@@ -1356,6 +1458,20 @@ export function validateAnswer(opts: {
         ),
       };
     }
+  }
+
+  // Owner decision 4 (#4372): a DC-bus discharge wait time needs a source that
+  // states it — both lanes, sources or not, refusals included ("I can't confirm,
+  // but typically 5 minutes" is still the number).
+  const wait = unsupportedDischargeWait(answerText, question, opts.sourceTexts ?? []);
+  if (wait) {
+    return {
+      ok: false,
+      kind: "unsupported_specificity",
+      violation: "unsupported-specificity:discharge-wait-time",
+      detail: wait,
+      replacement: DISCHARGE_WAIT_FALLBACK,
+    };
   }
 
   // B — general lane only. The grounded lane's specificity discipline is the
