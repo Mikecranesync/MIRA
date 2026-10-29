@@ -88,7 +88,8 @@
     "rrule": "^2.8.1",
     "tailwind-merge": "^3.5.0",
     "unpdf": "^1.6.2",
-    "xml2js": "^0.6.2"
+    "xml2js": "^0.6.2",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
