@@ -173,6 +173,11 @@ cmd_up() {
   done
   rm -rf "$ROOT/src"; mkdir -p "$ROOT/src"
   git -C "$ROOT/repo.git" archive "$sha" | tar -x -C "$ROOT/src"
+  # Shadow must never be silently inert: a build that does not read the flag
+  # would serve enforce while the receipt says shadow.
+  if [ "$floors" = shadow ] && ! grep -rqs NOTEBOOK_SAFETY_FLOORS_MODE "$ROOT/src/mira-hub/src"; then
+    die "--floors shadow, but $sha does not read NOTEBOOK_SAFETY_FLOORS_MODE (it would be silently inert)"
+  fi
   write_env "$sha" "$floors"
   ( unset OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_HEADERS; DOCKER_BUILDKIT=1 dc build --pull iso-mira-hub )
   dc up -d --remove-orphans

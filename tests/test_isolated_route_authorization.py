@@ -28,6 +28,7 @@ echo "docker $*" >> "$FAKE_LOG"
 case "$1" in
   ps)
     case "$*" in
+      *"--filter"*) ;;
       *"-aq"*) [ -n "$FAKE_OTHER_ID" ] && echo "$FAKE_OTHER_ID" ;;
       *"{{.Ports}}"*) [ -n "$FAKE_PORT_HOLDER" ] && echo "$FAKE_PORT_HOLDER" ;;
     esac ;;
@@ -41,6 +42,7 @@ case "$1" in
     esac ;;
   image)
     case "$*" in *"{{.Id}}"*) echo "sha256:fake" ;; esac ;;
+  run) cat > /dev/null ;;
 esac
 exit 0
 """
@@ -73,13 +75,23 @@ def remote(tmp_path_factory) -> dict:
         _git(work, "commit", "-qam", f"c{i}")
     c2 = _git(work, "rev-parse", "HEAD")
     c1 = _git(work, "rev-parse", "HEAD~1")
+    _git(work, "checkout", "-qb", "stg-combined/flag", c2)
+    (work / "mira-hub" / "src").mkdir(parents=True)
+    (work / "mira-hub" / "src" / "floors.ts").write_text('process.env.NOTEBOOK_SAFETY_FLOORS_MODE === "shadow";\n')
+    (work / "mira-hub" / "scripts").mkdir()
+    (work / "mira-hub" / "scripts" / "setup-integration-db.mjs").write_text("// fixture\n")
+    (work / "mira-hub" / "db").mkdir()
+    (work / "mira-hub" / "db" / "001.sql").write_text("-- fixture\n")
+    _git(work, "add", "mira-hub")
+    _git(work, "commit", "-qm", "flag")
+    flag = _git(work, "rev-parse", "HEAD")
     _git(work, "checkout", "-qb", "bravo/pr", m)
     (work / "f").write_text("p")
     _git(work, "commit", "-qam", "p")
     p = _git(work, "rev-parse", "HEAD")
     bare = tmp_path_factory.mktemp("remote") / "r.git"
     _git(work, "clone", "-q", "--bare", str(work), str(bare))
-    return {"url": str(bare), "main": m, "tip": c2, "not_tip": c1, "pr": p}
+    return {"url": str(bare), "main": m, "tip": c2, "not_tip": c1, "pr": p, "flag": flag}
 
 
 def _run(tmp_path: Path, remote: dict, *args: str, **env_over: str) -> subprocess.CompletedProcess[str]:
@@ -129,6 +141,19 @@ def test_control_accepts_approved_stg_combined_tip(tmp_path, remote):
     assert "compose -p mira-iso" in calls and " build --pull iso-mira-hub" in calls
     env_file = (tmp_path / "mira-iso" / "run.env").read_text()
     assert "NEON_DATABASE_URL" not in env_file and "OPENAI" not in env_file  # no inherited secrets
+
+
+def test_refuses_shadow_on_a_build_that_does_not_read_the_flag(tmp_path, remote):
+    result = _run(tmp_path, remote, "up", "--sha", remote["tip"], "--floors", "shadow")
+    _assert_refused(result, "does not read NOTEBOOK_SAFETY_FLOORS_MODE", tmp_path)
+
+
+def test_control_accepts_shadow_on_a_build_that_reads_the_flag(tmp_path, remote):
+    result = _run(tmp_path, remote, "up", "--sha", remote["flag"], "--floors", "shadow",
+                  MIRA_ISO_APPROVED_SHA=remote["flag"], FAKE_SERVED_SHA=remote["flag"])
+    assert result.returncode == 0, result.stderr
+    assert '"floors_mode":"shadow"' in result.stdout
+    assert "ISO_FLOORS_MODE=shadow" in (tmp_path / "mira-iso" / "run.env").read_text()
 
 
 @pytest.mark.parametrize("sha", ["A" * 40, "a" * 39, ""])
@@ -277,3 +302,40 @@ def test_workflow_authorizer_refuses(tmp_path, kwargs, needle):
     result = _run_authorizer(tmp_path, **kwargs)
     assert result.returncode != 0, result.stdout
     assert needle in result.stdout
+
+
+def _run_host_step(tmp_path: Path, remote: dict, action: str, sha: str = "", floors: str = "enforce"):
+    """Execute the workflow's real ssh step with a fake ssh that runs the remote
+    command locally (stdin piped), so the nested quoting is exercised end to end."""
+    script = next(s for s in _workflow()["jobs"]["run"]["steps"] if s.get("name") == "Run the trusted script on the host")["run"]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    (bin_dir / "ssh").write_text('#!/bin/bash\nfor last; do :; done\nexec bash -c "$last"\n')
+    (bin_dir / "ssh").chmod(0o755)
+    for name, body in (("docker", _FAKE_DOCKER), ("curl", _FAKE_CURL)):
+        (bin_dir / name).write_text(body)
+        (bin_dir / name).chmod(0o755)
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("MIRA_ISO_", "FAKE_"))}
+    env.update(
+        PATH=f"{bin_dir}{os.pathsep}{env['PATH']}", ACTION=action, SHA=sha, FLOORS=floors,
+        STAGING_HOST="203.0.113.7", DEPLOY_USER="staging-deploy",
+        MIRA_ISO_REMOTE=remote["url"], MIRA_ISO_ROOT=str(tmp_path / "mira-iso"), MIRA_ISO_PORT="4699",
+        FAKE_LOG=str(tmp_path / "docker.log"), FAKE_COUNTER=str(tmp_path / "counter"),
+        FAKE_SERVED_SHA=sha, FAKE_OTHER_ID="id1",
+    )
+    return subprocess.run(["bash", "-c", script], cwd=_ROOT, env=env, capture_output=True, text=True, check=False)
+
+
+def test_workflow_host_step_runs_up_then_down_through_ssh(tmp_path, remote):
+    up = _run_host_step(tmp_path, remote, "up", remote["flag"], "shadow")
+    assert up.returncode == 0, up.stderr
+    assert f'"sha":"{remote["flag"]}"' in up.stdout and '"floors_mode":"shadow"' in up.stdout
+    down = _run_host_step(tmp_path, remote, "down")
+    assert down.returncode == 0, down.stderr
+    assert "down complete" in down.stdout and not (tmp_path / "mira-iso").exists()
+
+
+def test_workflow_host_step_rejects_bad_sha_before_ssh(tmp_path, remote):
+    result = _run_host_step(tmp_path, remote, "up", "x; touch /tmp/pwned", "enforce")
+    assert result.returncode != 0 and "bad integration_sha" in result.stdout
+    assert not (tmp_path / "docker.log").exists()
