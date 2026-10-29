@@ -20,7 +20,7 @@
  */
 
 export const ISOLATED =
-  /\b(?:lock(?:ed)?[\s-]?out|lockout(?:\/tagout)?|LOTO|isolated|de[\s-]?energi[sz]ed|power(?:ed)?\s+(?:off|down)|with (?:the )?power (?:removed|off))\b/i;
+  /\b(?:lock(?:ed)?[\s-]?out|lockout(?:\/tagout)?|tag(?:ged)?[\s-]?out|LOTO|isolated|de[\s-]?energi[sz]ed|power(?:ed)?\s+(?:off|down)|with (?:the )?power (?:removed|off))\b/i;
 /** Written restore — verb-first and object-first ("the lockout is removed",
  *  "power is restored"). Exported so the isolation tracker reuses this
  *  grammar instead of a second phrase list. */

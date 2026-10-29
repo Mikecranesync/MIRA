@@ -1517,6 +1517,25 @@ describe("Gate-7 r7: unmatched restore-then-measure still WARNS via the step-ene
     }
   });
 
+  // Codex #4931 r4 F1 (BLOCKER): tag-out is an energy-control state like lockout.
+  it.each([
+    ["grounded", (answerText: string) => grounded(answerText, "how do I check the output")],
+    ["general", (answerText: string) => general(answerText, "how do I check the output")],
+  ] as const)("%s lane: restore, then tag out, then energized work BLOCKs", (_lane, run) => {
+    for (const text of [
+      "Restore power, then tag out the circuit, energize the circuit and check the output frequency.",
+      "Restore power, then tag out the circuit, energize the circuit and measure the output voltage.",
+      "Restore power. With the circuit tagged out, energize the circuit and measure the output voltage.",
+    ]) {
+      const v = run(text);
+      expect(v.ok, text).toBe(false);
+      if (!v.ok) {
+        expect(v.kind, text).toBe("unsafe_answer");
+        expect(v.violation, text).toBe("unsafe-answer:lockout-step-contradiction");
+      }
+    }
+  });
+
   it("control: removal BEFORE energize and measure is not a lockout contradiction", () => {
     const v = grounded(
       "Remove the lockout, then energize the circuit and measure the output voltage.",
