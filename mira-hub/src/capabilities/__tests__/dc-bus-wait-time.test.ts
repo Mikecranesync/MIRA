@@ -192,3 +192,36 @@ describe("unsupportedDischargeWait — a fan word inside the discharge clause", 
     expect(unsupportedDischargeWait("Wait 5 minutes for the fan-cooled bus capacitors to discharge.", DC_Q, [])).not.toBeNull();
   });
 });
+
+// Codex round 3 on #4929 (F1, F2).
+describe("unsupportedDischargeWait — Codex round 3", () => {
+  it("F1: natural-language durations are claims", () => {
+    expect(unsupportedDischargeWait("Wait half an hour for the DC bus to discharge before touching it.", DC_Q, [])).not.toBeNull();
+    expect(unsupportedDischargeWait("Wait a quarter hour for the DC bus to discharge.", DC_Q, [])).not.toBeNull();
+    expect(unsupportedDischargeWait("Give the capacitors a few minutes to discharge.", DC_Q, [])).not.toBeNull();
+  });
+  it("F1: compound hundreds are read whole, never as their suffix", () => {
+    const a = "Wait one hundred twenty seconds for the DC bus capacitors to discharge.";
+    expect(unsupportedDischargeWait(a, DC_Q, ["Wait 20 seconds for the DC bus capacitors to discharge."])).not.toBeNull();
+    expect(unsupportedDischargeWait(a, DC_Q, ["Wait two minutes for the DC bus capacitors to discharge."])).toBeNull();
+    expect(unsupportedDischargeWait(a, DC_Q, ["Wait 120 seconds for the DC bus capacitors to discharge."])).toBeNull();
+  });
+  it("F1: a supported natural-language figure passes", () => {
+    expect(unsupportedDischargeWait("Wait half an hour for the DC bus to discharge.", DC_Q, ["Wait 30 minutes for the DC bus capacitors to discharge."])).toBeNull();
+  });
+  it("F2: a fan duration joined by a bare 'and' in the source is not support", () => {
+    const src = ["DC bus capacitors discharge after shutdown and the cooling fan runs for 5 minutes."];
+    expect(unsupportedDischargeWait("Wait 5 minutes for the DC bus capacitors to discharge.", DC_Q, src)).not.toBeNull();
+    expect(unsupportedDischargeWait("Wait 5 minutes for the DC bus capacitors to discharge.", DC_Q, ["Wait 5 minutes for the DC bus capacitors to discharge."])).toBeNull();
+  });
+});
+
+describe("unsupportedDischargeWait — conservative support (each rule on its own)", () => {
+  const A = "Wait 5 minutes for the DC bus capacitors to discharge.";
+  it("a bare 'and' separates propositions even with no fan/boot word", () => {
+    expect(unsupportedDischargeWait(A, DC_Q, ["DC bus capacitors discharge within 3 minutes and the drive restarts in 5 minutes."])).not.toBeNull();
+  });
+  it("a single proposition that mentions fan timing supports nothing", () => {
+    expect(unsupportedDischargeWait(A, DC_Q, ["The cooling fan for the DC bus runs 5 minutes after shutdown."])).not.toBeNull();
+  });
+});

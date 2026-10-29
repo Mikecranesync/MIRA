@@ -195,3 +195,23 @@ describe("decision 4 — Codex round 2 F1 (sibling-model evidence is not support
     expect(persistedAnswer()).not.toContain("5 minutes");
   });
 });
+
+describe("decision 4 — Codex round 3 (route)", () => {
+  it("F1: 'half an hour' never reaches the stream or the saved turn", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+    const answer = "Wait half an hour for the DC bus to discharge before touching it.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(answer), { status: 200 })));
+    const text = await streamed(await POST(req({ message: QUESTION, mode: "general" }), params));
+    expect(text).not.toContain("half an hour");
+    expect(persistedAnswer()).not.toContain("half an hour");
+  });
+  it("F2: a mixed fan/discharge source sentence does not authorize the figure", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      { docId: DOC_A, filename: "manual.pdf", page: 3, content: "DC bus capacitors discharge after shutdown and the cooling fan runs for 5 minutes." },
+    ]);
+    const text = await streamed(await POST(req({ message: QUESTION }), params));
+    expect(text).not.toContain("5 minutes");
+    expect(persistedAnswer()).not.toContain("5 minutes");
+  });
+});

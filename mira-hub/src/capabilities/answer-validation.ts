@@ -1299,6 +1299,40 @@ function unitSeconds(unit: string): number {
   return 1;
 }
 
+// Codex #4929 r3 F1: rewrite fractional and compound-hundred phrases into digits
+// before parsing, so "half an hour" is 30 minutes and "one hundred twenty
+// seconds" is 120 seconds (never its "twenty seconds" suffix).
+const SMALL_WORD_ALT = SMALL_NUMBER_WORDS.slice(1).join("|");
+const TENS_WORD_ALT = [...NUMBER_WORDS.keys()].filter((k) => NUMBER_WORDS.get(k)! >= 20).sort((a, b) => b.length - a.length).join("|");
+const HUNDREDS_RE = new RegExp(
+  `\\b(${SMALL_WORD_ALT})\\s+hundred(?:\\s+and)?(?:\\s+(${TENS_WORD_ALT}|${SMALL_WORD_ALT}))?\\b`,
+  "gi",
+);
+function normalizeDurations(text: string): string {
+  return text
+    .replace(/\b(?:an?|one)\s+hour\s+and\s+a\s+half\b/gi, "90 minutes")
+    .replace(/\b(?:a\s+)?half\s+(?:an?\s+)?hour\b/gi, "30 minutes")
+    .replace(/\b(?:a\s+)?half\s+(?:a\s+)?minute\b/gi, "30 seconds")
+    .replace(/\b(?:a\s+)?quarter\s+(?:of\s+)?(?:an?\s+)?hour\b/gi, "15 minutes")
+    .replace(/\ban?\s+(hour|minute|second)\b/gi, "1 $1")
+    .replace(HUNDREDS_RE, (_m, h: string, rest?: string) =>
+      String(toNumber(h) * 100 + (rest ? toNumber(rest) : 0)),
+    );
+}
+
+const TIME_UNIT_WORD_RE = /\b(?:seconds?|secs?|minutes?|mins?|hours?|hrs?)\b/gi;
+
+/** Durations in the text, in seconds (each range endpoint separately), and
+ *  whether some time unit could not be parsed ("a few minutes"). An unparsed
+ *  unit in a discharge context fails closed (Codex #4929 r3 F1). */
+function parseDurations(text: string): { seconds: number[]; unparsed: boolean } {
+  const t = normalizeDurations(text);
+  const seconds = durationsInSeconds(t);
+  const units = (t.match(TIME_UNIT_WORD_RE) ?? []).length;
+  const parsed = [...t.matchAll(DURATION_RE)].length;
+  return { seconds, unparsed: units > parsed };
+}
+
 /** Every duration in the text, in seconds (each range endpoint separately). */
 function durationsInSeconds(text: string): number[] {
   const out: number[] = [];
@@ -1328,15 +1362,23 @@ export function unsupportedDischargeWait(answerText: string, question: string, s
       STORED_ENERGY_CONTEXT_RE.test(s) || (i > 0 && STORED_ENERGY_CONTEXT_RE.test(sentences[i - 1])) || questionContext;
     if (!sentenceContext) continue;
     for (const clause of splitClauses(s)) {
-      const claimed = durationsInSeconds(clause);
-      if (claimed.length === 0 || isUnrelatedTiming(clause)) continue;
+      const { seconds: claimed, unparsed } = parseDurations(clause);
+      if ((claimed.length === 0 && !unparsed) || isUnrelatedTiming(clause)) continue;
+      if (unparsed) return s.slice(0, 160);
       if (supported === null) {
         supported = new Set<number>();
         for (const src of sourceTexts) {
-          for (const x of splitSentences(foldForDetection(src)).flatMap(splitClauses)) {
-            if (isUnrelatedTiming(x)) continue;
+          // Support is deliberately conservative (Codex #4929 r3 F2): every
+          // coordinated proposition stands alone, and one that mentions fan,
+          // boot or ramp timing at all supports nothing. A miss only shows the
+          // safe fallback.
+          const props = splitSentences(foldForDetection(src))
+            .flatMap(splitClauses)
+            .flatMap((c) => c.split(/\s+(?:and|or|but)\s+/i));
+          for (const x of props) {
+            if (UNRELATED_TIMING_RE.test(x) || isUnrelatedTiming(x)) continue;
             if (!STORED_ENERGY_CONTEXT_RE.test(x) && !DISCHARGE_LINK_RE.test(x)) continue;
-            for (const n of durationsInSeconds(x)) supported.add(n);
+            for (const n of parseDurations(x).seconds) supported.add(n);
           }
         }
       }
