@@ -73,6 +73,7 @@ export function extractNumbers(opts: ExtractOptions): Extraction {
         const n: TypedNumber = { quantity: st.quantity, value: st.value, unit: QUANTITY_UNIT[st.quantity], sourceChunkId: source };
         if (st.condition) n.condition = st.condition;
         if (st.comparator) n.comparator = st.comparator;
+        if (st.role) n.role = st.role;
         numbers.push(n);
       }
     }

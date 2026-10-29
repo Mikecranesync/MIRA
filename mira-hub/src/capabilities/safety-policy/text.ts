@@ -377,6 +377,11 @@ export function comparatorOf(before: string, after: string): Comparator | undefi
   return undefined;
 }
 
+/** D1: a pressure stated as a LIMIT — relief / safety valve, maximum (working) pressure, rated
+ *  pressure, burst, cut-out, do-not-exceed. "rated 30 hp" is a rating condition, not a limit. */
+export const PRESSURE_LIMIT_RE =
+  /\b(?:relief|safety\s+valve|max(?:imum)?\.?|mawp|rated(?!\s+\d+(?:\.\d+)?\s*(?:hp|kw)\b)|pressure\s+rating|burst|limit\w*|cut-?out|exceed\w*)\b/i;
+
 /** An exact-zero voltage MEASUREMENT claim (D2): a measuring point or a meter reading in the sentence. */
 export const ZERO_CLAIM_RE = /\b(?:dc\s*[+-]|bus|capacitors?|between\s*\+\s*and\s*-|terminals?|meter|multimeter|reads?|reading|measure\w*)/i;
 

@@ -7,7 +7,7 @@
  */
 import { COMPARATORS, QUANTITIES, QUANTITY_UNIT, UNITS, type Condition, type Quantity, type TypedNumber, type Unit } from "./types";
 
-const NUMBER_KEYS = new Set(["quantity", "value", "unit", "sourceChunkId", "condition", "comparator"]);
+const NUMBER_KEYS = new Set(["quantity", "value", "unit", "sourceChunkId", "condition", "comparator", "role"]);
 const CONDITION_KEYS = new Set(["op", "value", "unit"]);
 const CONDITION_OPS = ["le", "ge", "eq"] as const;
 const CONDITION_UNITS = ["hp", "kW"] as const;
@@ -52,6 +52,10 @@ export function parseTypedNumber(raw: unknown): TypedNumber | null {
   if (raw.comparator !== undefined) {
     if (!includes(COMPARATORS, raw.comparator)) return null;
     out.comparator = raw.comparator;
+  }
+  if (raw.role !== undefined) {
+    if (raw.role !== "limit" || quantity !== "pressure") return null;
+    out.role = "limit";
   }
   return out;
 }

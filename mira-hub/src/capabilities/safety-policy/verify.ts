@@ -124,17 +124,32 @@ export function verifyNumbers(input: VerifyInput): VerifyResult {
     if (!chunk) return "block:unknown_chunk";
     const why = applicability(chunk, input.bound);
     if (why) return why;
-    // NUM-1: the cited chunk itself states the value, in a sentence about this quantity.
-    const stated = stmts(chunk).filter((s) => s.quantity === n.quantity && matchesSource(n.quantity, n.value, s.value));
+    const rating = input.bound?.rating;
+    const covers = (s: Statement) => conditionCovers(s.condition, rating);
+    const role = (x: { role?: "limit" }) => x.role ?? "operating";
+    // D1 (Mike, round 3): an operating pressure above any applicable relief / maximum / rated limit
+    // for the bound asset blocks, whatever the cited chunk says.
+    if (n.quantity === "pressure" && role(n) === "operating") {
+      const limits = applicable.flatMap(stmts).filter((s) => s.quantity === "pressure" && s.role === "limit" && covers(s));
+      if (limits.some((l) => n.value > l.value && !sameValue("pressure", n.value, l.value))) return "block:exceeds_limit";
+    }
+    // NUM-1: the cited chunk itself states the value, in a sentence about this quantity, in the same
+    // role (an operating pressure is not supported by a relief setting, nor the reverse).
+    const stated = stmts(chunk).filter(
+      (s) => s.quantity === n.quantity && role(s) === role(n) && matchesSource(n.quantity, n.value, s.value),
+    );
     if (stated.length === 0) return own ? "block:technician_number" : "block:not_in_cited_sentence";
     // NUM-2: across every applicable source this turn, several values ⇒ the most conservative,
     // or the value with the source's own condition. A known asset rating drops the values whose
     // condition provably excludes it (a ≥ 40 hp time for a 5 hp drive). With no safe direction
     // (pressure, torque) only the single stated value or the source's own condition can pass.
-    const rating = input.bound?.rating;
-    const covers = (s: Statement) => conditionCovers(s.condition, rating);
     const matching = stated.filter(covers);
-    const all = applicable.flatMap(stmts).filter((s) => s.quantity === n.quantity && covers(s));
+    // D1: limits never compete with operating values. A limit claim is checked only against its
+    // cited statement (relief, maximum and rated limits are different facts, not rival values).
+    const all =
+      role(n) === "limit"
+        ? matching
+        : applicable.flatMap(stmts).filter((s) => s.quantity === n.quantity && role(s) === "operating" && covers(s));
     const values = [...new Set(all.map((s) => s.value))];
     const dir = CONSERVATIVE[n.quantity];
     const extreme = values.length === 0 ? null : dir === "max" ? Math.max(...values) : dir === "min" ? Math.min(...values) : null;

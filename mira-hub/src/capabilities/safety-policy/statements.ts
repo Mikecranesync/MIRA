@@ -16,6 +16,7 @@ import {
   isUnrelatedTiming,
   CONTINUES_RE,
   ZERO_CLAIM_RE,
+  PRESSURE_LIMIT_RE,
   comparatorOf,
   normalizedSentence,
   sentenceUnits,
@@ -27,6 +28,7 @@ export interface Statement {
   value: number;
   condition?: Condition;
   comparator?: Comparator;
+  role?: "limit";
 }
 
 /** Values stated in one sentence. `storedContext`: stored-energy context is in force for it.
@@ -60,6 +62,7 @@ export function statementsOf(
       const st: Statement = { quantity, value };
       if (condition) st.condition = condition;
       if (cmp && f.values.length === 1) st.comparator = cmp;
+      if (quantity === "pressure" && PRESSURE_LIMIT_RE.test(clause)) st.role = "limit";
       out.push(st);
     }
   });

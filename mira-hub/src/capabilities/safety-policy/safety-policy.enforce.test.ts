@@ -101,9 +101,11 @@ describe.each(CASES)("NUM-1 / NUM-2 for $q", (c) => {
   it("conflicting applicable sources: the most conservative value, or none for pressure", () => {
     const chunks = [src(c.source, "c1"), src(c.other, "c2")];
     if (c.q === "pressure") {
-      // No safe direction: neither value can be chosen without the source's own condition.
-      expect(verdicts(check(c.pass, chunks))).toEqual(["block:no_safe_direction"]);
-      expect(verdicts(check(c.otherAnswer, chunks))).toEqual(["block:no_safe_direction"]);
+      // D1 (Mike, round 3): the relief setting is a LIMIT, not a competing operating value. Mike's
+      // example: 1,000 psi operating cited, 1,500 psi relief also retrieved → pass; the relief
+      // setting quoted as a limit passes too.
+      expect(verdicts(check(c.pass, chunks))).toEqual(["pass"]);
+      expect(verdicts(check(c.otherAnswer, chunks))).toEqual(["pass"]);
     } else {
       // Max direction: the smaller distance / energy is not the conservative one.
       expect(verdicts(check(c.pass, chunks))).toEqual(["block:not_most_conservative"]);
@@ -225,5 +227,53 @@ describe("#4963 a PPE arc rating is not equipment incident energy", () => {
     expect(verdicts(check("Wear a suit rated 8 cal/cm² [1].", [src("The arc-rated suit is rated 8 cal/cm².")]))).toEqual([
       "block:not_in_cited_sentence",
     ]);
+  });
+});
+
+// Round 3, D1 (Mike: a relief pressure is a ceiling). A relief / maximum / rated / limit pressure is
+// a LIMIT role: it never competes with an operating value, but an operating value above an
+// applicable limit for the asset blocks (block:exceeds_limit).
+describe("D1 pressure limits", () => {
+  const OP = "The accumulator precharge pressure is 1,000 psi.";
+  const RELIEF = "The pump relief valve is set at 1,500 psi.";
+
+  it("Mike's example: 1,000 psi operating cited, 1,500 psi relief retrieved → pass", () => {
+    expect(verdicts(check("Precharge the accumulator to 1,000 psi [1].", [src(OP, "c1"), src(RELIEF, "c2")]))).toEqual(["pass"]);
+  });
+
+  it("an operating value of 1,600 psi with a 1,500 psi relief → block:exceeds_limit", () => {
+    expect(verdicts(check("Set the operating pressure to 1,600 psi [1].", [src(RELIEF, "c1")]))).toEqual(["block:exceeds_limit"]);
+    // even when another chunk states the 1,600 operating value
+    const both = [src("Set the system operating pressure to 1,600 psi.", "c1"), src(RELIEF, "c2")];
+    expect(verdicts(check("Set the operating pressure to 1,600 psi [1].", both))).toEqual(["block:exceeds_limit"]);
+  });
+
+  it.each([
+    ["maximum working pressure", "The maximum working pressure is 1,500 psi."],
+    ["rated pressure", "The hose is rated to 1,500 psi."],
+    ["do not exceed", "Do not exceed 1,500 psi."],
+  ])("a %s is a limit too: 1,600 operating blocks, 1,000 operating passes", (_n, limit) => {
+    expect(verdicts(check("Set the operating pressure to 1,600 psi [1].", [src(limit, "c1")]))).toEqual(["block:exceeds_limit"]);
+    expect(verdicts(check("Precharge the accumulator to 1,000 psi [1].", [src(OP, "c1"), src(limit, "c2")]))).toEqual(["pass"]);
+  });
+
+  it("control: two different operating pressures with no condition still block as no_safe_direction", () => {
+    const chunks = [src(OP, "c1"), src("The pump discharge pressure is 1,500 psi.", "c2")];
+    expect(verdicts(check("Precharge the accumulator to 1,000 psi [1].", chunks))).toEqual(["block:no_safe_direction"]);
+  });
+
+  it("control: an operating value cited to the relief sentence is not stated there (roles must match)", () => {
+    expect(verdicts(check("Set the operating pressure to 1,500 psi [1].", [src(RELIEF, "c1")]))).toEqual(["block:not_in_cited_sentence"]);
+  });
+
+  it("control: a limit from another asset does not apply (A3)", () => {
+    const other = F.manualChunk("c2", RELIEF, F.GS4, F.GS4_SHA, "2-14");
+    expect(verdicts(check("Precharge the accumulator to 1,000 psi [1].", [src(OP, "c1"), other]))).toEqual(["pass"]);
+    expect(verdicts(check("Set the operating pressure to 1,600 psi [1].", [src("Set the system operating pressure to 1,600 psi.", "c1"), other]))).toEqual(["pass"]);
+  });
+
+  it("a rating condition ('rated 30 hp') is not a pressure limit", () => {
+    const cond = "Precharge is 1,000 psi for units rated 30 hp or less and 1,500 psi for units rated 40 hp or more.";
+    expect(verdicts(check("For units rated 30 hp or less, precharge the accumulator to 1,000 psi [1].", [src(cond)]))).toEqual(["pass_conditioned"]);
   });
 });

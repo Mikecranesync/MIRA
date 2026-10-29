@@ -73,6 +73,8 @@ export interface TypedNumber {
   condition?: Condition;
   /** The comparator the answer states for the value, when it states one (#4964). */
   comparator?: Comparator;
+  /** D1: "limit" = a relief / maximum / rated / do-not-exceed value (pressure); absent = operating. */
+  role?: "limit";
 }
 
 /** Where an evidence chunk came from. `technician` is the technician's own text: never support. */
@@ -130,6 +132,8 @@ export const NUMBER_VERDICTS = [
   /** Sources state several values for a quantity with no safe direction (pressure, torque) and
    *  the answer does not carry the source's condition: no value can be chosen. */
   "block:no_safe_direction",
+  /** D1 (round 3): an operating pressure above an applicable relief / maximum / rated limit. */
+  "block:exceeds_limit",
 ] as const;
 export type NumberVerdict = (typeof NUMBER_VERDICTS)[number];
 
