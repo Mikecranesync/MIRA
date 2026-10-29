@@ -13,6 +13,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Bot, Send, AlertTriangle, RotateCcw, FileText, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
+import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { nodeChatFailureMessage } from "@/factorylm-ui/onboarding-try-mira";
 
 interface Source {
@@ -173,14 +174,18 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
       </div>
       <div className="flex-1 min-w-0">
         <div
-          className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm whitespace-pre-wrap"
+          className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm break-words"
           style={{
             background: isSafety ? "var(--status-red-bg)" : "var(--surface-1)",
             color: isSafety ? "#991B1B" : "var(--foreground)",
             border: isSafety ? "1px solid #FECACA" : "1px solid var(--border)",
           }}
         >
-          {msg.content || <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
+          {/* #4880 defect 4: answers are markdown — reuse the notebook renderer
+              (no raw HTML, no images). Citations stay in SourceChips below. */}
+          {msg.content
+            ? <AnswerMarkdown content={msg.content} citations={[]} />
+            : <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
         </div>
         {msg.hasSafetyAlert && (
           <div className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
@@ -517,7 +522,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
               border: "1px solid var(--border)",
             }}
           >
-            <p className="whitespace-pre-line">{welcome}</p>
+            <AnswerMarkdown content={welcome} citations={[]} />
           </div>
         </div>
 

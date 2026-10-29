@@ -332,3 +332,38 @@ describe("NodeChat restoreComposer", () => {
     expect(restoreComposer("   \n\t  ", "What does fault F005 mean?")).toBe("What does fault F005 mean?");
   });
 });
+
+// #4880 defect 4: the namespace "Ask MIRA" answer showed raw markdown
+// (`**Overcurrent**`) because MessageBubble printed msg.content as plain text.
+describe("NodeChat MessageBubble — assistant markdown (#4880 defect 4)", () => {
+  const walkAnswer =
+    "**Overcurrent** during acceleration.\n\n- **check** the motor leads\n- reset the fault [1]";
+
+  it("renders assistant markdown as <strong>/<li>, never literal ** markers", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble msg={{ id: "a1", role: "assistant", content: walkAnswer }} />,
+    );
+    expect(html).toContain("<strong>Overcurrent</strong>");
+    expect(html).toContain("<strong>check</strong>");
+    expect((html.match(/<li/g) ?? []).length).toBe(2);
+    expect(html).not.toContain("**");
+    // NodeChat cites through its own SourceChips row, so an inline [1] stays text.
+    expect(html).toContain("[1]");
+  });
+
+  it("renders the welcome bubble's **node name** as bold, not raw markers", () => {
+    const html = renderToStaticMarkup(
+      <NodeChat nodeId="n1" nodeName="line_1_conveyor" unsPath="enterprise.lake_wales_plant.line_1_conveyor" />,
+    );
+    expect(html).toContain("<strong>line_1_conveyor</strong>");
+    expect(html).not.toContain("**line_1_conveyor**");
+  });
+
+  it("control: the technician's own message is still shown verbatim", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble msg={{ id: "u1", role: "user", content: "is **this** a fault?" }} />,
+    );
+    expect(html).toContain("is **this** a fault?");
+    expect(html).not.toContain("<strong>");
+  });
+});
