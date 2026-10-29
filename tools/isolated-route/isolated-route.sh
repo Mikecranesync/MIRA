@@ -24,7 +24,7 @@
 # consume anything this route produces).
 #
 # Env: MIRA_ISO_APPROVED_SHA (up), MIRA_ISO_REMOTE (git URL, default GitHub),
-#      MIRA_ISO_ROOT (default /opt/mira-iso), MIRA_ISO_PORT (default 4601),
+#      MIRA_ISO_ROOT (default $HOME/mira-iso), MIRA_ISO_PORT (default 4601),
 #      MIRA_ISO_LLM_ENV_FILE (optional; allowlisted ISO_* LLM keys only).
 set -euo pipefail
 
@@ -32,7 +32,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.isolated-route.yml"
 PROJECT=mira-iso
 REMOTE="${MIRA_ISO_REMOTE:-https://github.com/Mikecranesync/MIRA.git}"
-ROOT="${MIRA_ISO_ROOT:-/opt/mira-iso}"
+# Default under the deploy user's home: writable without root, and `down` can
+# remove it entirely (a /opt path would need root to recreate on the next `up`).
+ROOT="${MIRA_ISO_ROOT:-$HOME/mira-iso}"
 PORT="${MIRA_ISO_PORT:-4601}"
 HUB_IMAGE_REPO=mira-iso-hub
 # Images `up` may pull; `down` removes one only if `up` recorded it as absent.
