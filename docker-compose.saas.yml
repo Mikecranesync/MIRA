@@ -901,6 +901,7 @@ services:
       # silently skips the send and logs the magic URL instead (login broken).
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - PLG_POSTHOG_KEY=${PLG_POSTHOG_KEY:-}  # pilot funnel events (pilot-funnel.ts); empty = no-op
+      - HUBSPOT_API_KEY=${HUBSPOT_API_KEY:-}  # signup lead capture (api/auth/register captureHubSpotLead); empty = no-op. Production only: staging test signups must not create leads
       - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
       - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-}
       - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}  # empty = off (open signup)
