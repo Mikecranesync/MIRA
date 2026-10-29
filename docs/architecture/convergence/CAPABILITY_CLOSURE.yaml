@@ -921,9 +921,9 @@ capabilities:
       - "mira-hub/db/migrations/107_pilot_access.sql"
     environments:
       dev: unset
-      staging: unset
-      production: unset
-    state: deployed_disabled
+      staging: unset                        # set 2026-10-28 then reverted: acceptance provisioning could not pass the gate (#4927)
+      production: "1"                       # Doppler factorylm/prd, owner-approved 2026-10-28; deploy-vps run 40792666768 at 272ce162c (v3.427.1), hub builtAt 2026-10-29T00:17:02Z
+    state: production_enabled
     owner: "Mike Harper"
     ci_jobs:
       - mira-hub-unit        # pilot-access.test.ts + users-pilot-approval.test.ts + the pre-existing users-pilot/users-invites suites (regression)
@@ -940,30 +940,25 @@ capabilities:
       - "https://github.com/Mikecranesync/MIRA/issues/4768"
       - "https://github.com/Mikecranesync/MIRA/pull/4664#issuecomment-6397466915   # Codex F1/F2/F4 findings this record fixes"
     rollback: >-
-      Unset MIRA_PILOT_APPROVAL_REQUIRED (or leave it unset — it was never
-      forwarded by any compose file; see blocker). hub_tenants.pilot_status
-      stays NULL for every tenant created with the flag off, so
-      ensureUserAndTenant/ensureInvitedUser/reservePilotSeat all take their
-      pre-#4878 branch, byte-for-byte. The migration's columns/table are
-      additive and inert; no data to unwind.
+      Delete MIRA_PILOT_APPROVAL_REQUIRED from Doppler factorylm/prd and
+      redeploy the same release through deploy-vps.yml (the hub reads it at
+      container start via docker-compose.saas.yml). Tenants created while the
+      flag was on keep pilot_status 'pending'/'active'; with the flag off every
+      pilot branch is skipped, so they behave as ordinary trial tenants.
+      The migration's columns/table are additive; no data to unwind.
     reason: >-
-      Off by default per the spec (#4878) — this is a new approval gate, not
-      a bug fix, and must be a deliberate owner decision to flip on. Also off
-      in EVERY environment for a second, structural reason: wiring the flag
-      through docker-compose.staging-vps.yml (the spec's instruction) was
-      BLOCKED by tools/ui_surface_lifecycle_guard.py — root compose filenames
-      are a guarded control-plane path requiring the exact-head Codex
-      adversarial-review envelope (or the legacy-ui-exception label flow),
-      neither of which this implementation session is authorized to produce.
-      The code (capabilities/pilot-access.ts, the two admin routes, the
-      users.ts branches, the migration) is complete and tested; only the
-      compose passthrough is missing.
+      Production on by owner decision 2026-10-28 (signup = pilot application;
+      the five-org cohort is enforced from here). Staging stays OFF until
+      #4927 lands: the retrieval-acceptance stranger registers fresh and was
+      held at /pending-approval, so a gated staging could not produce the
+      acceptance receipt every production deploy needs. Verified on staging
+      with the flag on (2026-10-28): a new signup's session reads status
+      pending and /hub/, /v3/, /api/assets/, /api/notebooks/, /api/me/ all
+      307 to /pending-approval/.
     acknowledged_rules: []
     promotion_criteria:
-      - "Unblock the docker-compose.staging-vps.yml edit through the lifecycle guard's authorized path (Codex adversarial-review GREEN/CONVERGED, or the audited legacy-ui-exception), then forward MIRA_PILOT_APPROVAL_REQUIRED alongside the hub's other feature flags."
-      - "Apply migration 107 to staging (migration-verify.yml auto-applies on this PR's push) and confirm the schema before setting the flag anywhere."
-      - "Staging: set the flag, approve a real tenant through /api/admin/pilots/[tenantId]/approve, invite a 5th crew member, confirm the 409 on a 6th."
-      - "Owner decision on production timing after the staging walk."
+      - "Merge #4927's provisioner fix, set the flag in Doppler factorylm/stg, redeploy staging, and confirm retrieval-acceptance PASSes with the gate on."
+      - "Staging walk not yet done: approve a real tenant through /api/admin/pilots/[tenantId]/approve, invite a 5th crew member, confirm the 409 on a 6th (needs a platform-admin session)."
     review_by: "2026-12-12"
     notes: >-
       Session-refresh finding (spec item 5): the Hub's `jwt` NextAuth callback
