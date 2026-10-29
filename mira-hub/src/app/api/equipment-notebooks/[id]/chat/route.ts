@@ -4547,6 +4547,14 @@ async function handleChatTurn(
         refused,
         evidenceSufficient,
         manualSearchRunning: fallbackSearchRunning,
+        // Owner decision 4 (#4372): a DC-bus discharge wait time must appear in
+        // a passage retrieved for this turn or in the photo observation. A
+        // sibling model's passage (vendor_fallback) is never support for the
+        // bound drive's figure (Codex #4929 r2 F1).
+        sourceTexts: [
+          ...chunks.filter((c) => c.retrievalScope !== "vendor_fallback").map((c) => c.content),
+          lookContext,
+        ].filter(Boolean),
       });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
       // #4098: which quantity word + unit the exact-rating rule matched —
