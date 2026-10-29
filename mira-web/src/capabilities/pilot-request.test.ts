@@ -20,7 +20,10 @@ import {
   type ValidPilotRequest,
   type StoredPilotRequest,
   pilotRequestLimiterKey,
+  ownerNotifyVars,
 } from "./pilot-request";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
 // validatePilotRequest — pure, no I/O
@@ -484,5 +487,29 @@ describe("pilotRequestLimiterKey (Codex #4881 F5)", () => {
   });
   test("falls back to 'unknown' with no forwarding headers", () => {
     expect(pilotRequestLimiterKey(new Headers())).toBe("unknown");
+  });
+});
+
+describe("owner notification email (#4901)", () => {
+  const template = readFileSync(join(import.meta.dir, "../../emails/pilot-request-notify.html"), "utf8");
+
+  test("template no longer names the removed /pilot page", () => {
+    expect(template).not.toContain("via /pilot");
+  });
+
+  test("template shows the lead source the request came in on", () => {
+    expect(template).toContain("{{LEAD_SOURCE}}");
+  });
+
+  test("vars carry the request's lead_source, HTML-escaped", () => {
+    const vars = ownerNotifyVars(
+      { id: "req-1" } as StoredPilotRequest,
+      {
+        name: "Ana", workEmail: "ana@plant.example", company: "Plant Co", equipment: "",
+        consent: true, leadSource: "meta_lead_form<b>", utmSource: null, utmMedium: null, utmCampaign: null,
+      } as unknown as ValidPilotRequest,
+    );
+    expect(vars.LEAD_SOURCE).toBe("meta_lead_form&lt;b&gt;");
+    expect(vars.REQUEST_ID).toBe("req-1");
   });
 });
