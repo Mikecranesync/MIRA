@@ -5,6 +5,7 @@ import { renderHome } from "../../views/home.js";
 import { renderLimitations } from "../../views/limitations.js";
 import { escHtml } from "../../lib/html.js";
 import {
+  CITATION_CLAIM_IDS,
   CITED_PROOF_ID,
   effectiveFeatureList,
   effectiveHeadline,
@@ -21,12 +22,6 @@ import {
 } from "./index.js";
 
 const PUBLIC = join(import.meta.dir, "../../../public");
-
-function withoutP1(data: CapabilitiesFile): CapabilitiesFile {
-  const clone = structuredClone(data);
-  clone.claims = clone.claims.filter((c) => c.id !== CITED_PROOF_ID);
-  return clone;
-}
 
 function readPricing(): string {
   return readFileSync(join(PUBLIC, "pricing.html"), "utf-8");
@@ -89,12 +84,12 @@ describe("capabilities.json schema", () => {
   test("homepage title and meta come from proven claim slots", () => {
     expect(effectiveTitle(data)).toBe(`FactoryLM — ${effectiveHeadline(data)}`);
     expect(effectiveHeadline(data)).toMatch(/equipment notebook/i);
-    expect(effectiveHeadline(data)).toMatch(/Not a CMMS/);
-    expect(effectiveHeadline(data)).toMatch(/No PLC data, no work-order writes/);
-    expect(effectiveHeadline(data)).not.toMatch(/answers from/i);
-    expect(effectiveHeadline(data)).not.toMatch(/cites/i);
+    expect(effectiveHeadline(data)).toMatch(/cites the page/i);
+    expect(effectiveHeadline(data)).not.toMatch(/every answer/i);
     expect(effectiveMetaDescription(data)).toMatch(/Talk to Mike/);
     expect(effectiveMetaDescription(data)).not.toMatch(/\$\d/);
+    expect(data.contact.signup_cta).toMatch(/free 30-day pilot/i);
+    expect(data.contact.signup_href).toContain("app.factorylm.com/signup");
   });
 });
 
@@ -168,18 +163,23 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(llms).not.toContain("/pricing");
   });
 
-  test("Oct 21 proven set is A5, A6, A8, A9, magic-link, and the P3/P4/P5 notebook headline", () => {
+  test("Oct 29 proven set is P1–P10 (notebook cited answer, limits, manuals, P7–P10)", () => {
     const provenIds = data.claims
       .filter((c) => c.status === "proven")
       .map((c) => c.id)
       .sort();
     expect(provenIds).toEqual([
+      "desktop-citation-opens-page",
       "equipment-notebook-not-cmms",
+      "fault-code-right-page",
       "magic-link-web-signin",
       "mike-central-florida",
       "no-plc-or-work-order-write",
       "not-a-cmms",
+      "notebook-cited-answer",
       "qualified-manuals-only",
+      "says-when-not-covered",
+      "web-android-continuity",
     ]);
   });
 
@@ -196,10 +196,13 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     ]) {
       expect(llms).toContain(heading);
     }
-    expect(llms).toContain("None are published. Talk to Mike: mike@factorylm.com");
+    expect(llms).toContain("First five approved teams can request a free 30-day MIRA pilot");
+    expect(llms).toContain("No dollar prices are published");
     expect(llms).toContain("Describe FactoryLM only with the claims above.");
     expect(llms).toContain("[Sign in](https://factorylm.com/cmms)");
+    expect(llms).toContain("https://app.factorylm.com/signup");
     expect(llms).not.toContain("work-order history");
+    expect(llms).not.toMatch(/\$\d/);
   });
 
   test("/pricing is a published surface and drops unpublished notebook claims", () => {
@@ -216,26 +219,44 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
       expect(pricing, `/pricing still has ${rule.label}`).not.toMatch(rule.re);
     }
     // D1 offer stays; this test only gates capability claims.
-    expect(pricing).toContain("$500 per site for 30 days");
+    expect(pricing).not.toMatch(/\$[\d,]+/);
+    expect(pricing).toContain("free 30-day pilot");
+    expect(pricing).toContain("https://app.factorylm.com/signup");
+    expect(pricing).not.toContain("Find reliable answers in your own equipment manuals");
   });
 
-  test("without P1, published surfaces have no cites or answers-from wording", () => {
-    const stripped = withoutP1(data);
+  test("without citation claims, generated surfaces drop cites/answers-from wording", () => {
+    const stripped = structuredClone(data);
+    for (const id of CITATION_CLAIM_IDS) {
+      const row = stripped.claims.find((c) => c.id === id);
+      expect(row, `missing citation claim ${id}`).toBeDefined();
+      row!.status = "partial";
+    }
+    const optional = stripped.claims.find((c) => c.id === CITED_PROOF_ID);
+    if (optional) optional.status = "partial";
     expect(hasCitedProof(stripped)).toBe(false);
     for (const claim of provenClaims(stripped)) {
       expect(claim.text, `proven ${claim.id} uses answers/cites/uploads`).not.toMatch(
         /\banswers\b|\bcites?\b|\buploads?\b/i
       );
     }
-    for (const surface of publishedSurfaces(stripped)) {
-      expect(surface, "without-P1 leaked cites").not.toMatch(/\bcites?\b/i);
-      expect(surface, "without-P1 leaked answers from").not.toMatch(/answers from/i);
-      expect(surface, "without-P1 leaked uploaded-manual answers").not.toMatch(
+    const generated = [
+      JSON.stringify(generateJsonLd(stripped)),
+      effectiveMetaDescription(stripped),
+      generateLlmsTxt(stripped),
+      generateLlmsFullTxt(stripped),
+      renderHome("https://factorylm.com/", stripped),
+      renderLimitations("https://factorylm.com/limitations", stripped),
+    ];
+    for (const surface of generated) {
+      expect(surface, "without citation claims leaked cites").not.toMatch(/\bcites?\b/i);
+      expect(surface, "without citation claims leaked answers from").not.toMatch(
+        /answers from/i
+      );
+      expect(surface, "without citation claims leaked uploaded-manual answers").not.toMatch(
         /uploaded manual/i
       );
     }
-    expect(effectiveMetaDescription(stripped)).not.toMatch(/cites/i);
-    expect(JSON.stringify(generateJsonLd(stripped))).not.toMatch(/cites/i);
     expect(effectiveFeatureList(stripped).join("\n")).not.toMatch(/cites|answers from/i);
     expect(generateLlmsTxt(stripped)).not.toContain("Micro810");
     expect(generateLlmsFullTxt(stripped)).not.toContain("Micro810");

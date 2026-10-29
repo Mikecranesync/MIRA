@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FactoryLM — Find reliable answers in your own equipment manuals</title>
-  <meta name="description" content="Find reliable answers in your own equipment manuals. Pilot: $500 per site for 30 days, one maintenance team, no automatic renewal. Talk to Mike.">
+  <title>Free 30-day pilot — FactoryLM (first five teams)</title>
+  <meta name="description" content="First five approved teams get a free 30-day MIRA pilot (5 seats each). Early adopters can lock in limited free lifetime credit. Request at app.factorylm.com/signup or talk to Mike — mike@factorylm.com.">
   <link rel="canonical" href="https://factorylm.com/pricing">
-  <meta property="og:title" content="FactoryLM — Find reliable answers in your own equipment manuals">
-  <meta property="og:description" content="Find reliable answers in your own equipment manuals. Pilot: $500 per site for 30 days, one maintenance team, no automatic renewal. Talk to Mike.">
+  <meta property="og:title" content="Free 30-day pilot — FactoryLM">
+  <meta property="og:description" content="Free 30-day pilot for the first five approved teams (5 seats each). Early adopters can lock in limited free lifetime credit. Request a seat or talk to Mike.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://factorylm.com/pricing">
   <meta property="og:image" content="https://factorylm.com/og-image.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="FactoryLM — Find reliable answers in your own equipment manuals">
-  <meta name="twitter:description" content="Find reliable answers in your own equipment manuals. Pilot: $500 per site for 30 days, one maintenance team, no automatic renewal. Talk to Mike.">
+  <meta name="twitter:title" content="Free 30-day pilot — FactoryLM">
+  <meta name="twitter:description" content="Free 30-day pilot for the first five approved teams (5 seats each). Early adopters can lock in limited free lifetime credit. Talk to Mike.">
   <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,15 +24,19 @@
     :root {
       --bg: #0d0e11;
       --surface: #13141a;
+      --surface-hi: #1a1b22;
       --border: rgba(255,255,255,0.07);
       --border-hi: rgba(255,255,255,0.14);
       --text: #e8eaf0;
       --text-dim: rgba(255,255,255,0.55);
       --text-faint: rgba(255,255,255,0.48);
       --amber: #f0a000;
+      --amber-dim: rgba(240,160,0,0.12);
+      --teal: #00d4aa;
       --font: 'Inter', sans-serif;
       --max-w: 1080px;
     }
+    html { scroll-behavior: smooth; }
     body {
       background: var(--bg);
       color: var(--text);
@@ -40,21 +44,31 @@
       font-size: 15px;
       line-height: 1.6;
       -webkit-font-smoothing: antialiased;
-      min-height: 100dvh;
+    }
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(240,160,0,0.06) 0%, transparent 60%);
+      pointer-events: none;
     }
     .inner { max-width: var(--max-w); margin: 0 auto; padding: 0 40px; }
     @media (max-width: 768px) { .inner { padding: 0 24px; } }
+
     nav {
       height: 56px;
       border-bottom: 1px solid var(--border);
       background: rgba(13,14,17,0.85);
+      backdrop-filter: blur(12px);
       position: sticky; top: 0; z-index: 100;
     }
     .nav-inner {
       max-width: var(--max-w); margin: 0 auto; padding: 0 40px;
       height: 100%; display: flex; align-items: center; justify-content: space-between;
     }
-    .nav-logo { text-decoration: none; color: var(--text); font-weight: 500; font-size: 15px; }
+    .nav-logo {
+      display: flex; align-items: center; gap: 8px;
+      text-decoration: none; color: var(--text); font-weight: 500; font-size: 15px;
+    }
     .nav-links { display: flex; gap: 28px; list-style: none; }
     .nav-links a {
       font-size: 14px; color: rgba(255,255,255,0.6); text-decoration: none;
@@ -63,57 +77,217 @@
     .nav-links a:hover { color: var(--text); }
     .nav-cta {
       font-size: 13px; font-weight: 700; color: #0a0a08;
-      background: var(--amber);
+      background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%);
+      border: 1px solid rgba(255,255,255,0.12);
       border-radius: 6px; padding: 11px 14px; text-decoration: none;
       min-height: 44px; display: flex; align-items: center;
     }
+    .nav-cta-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border-hi);
+      margin-right: 10px;
+    }
     @media (max-width: 640px) { .nav-links { display: none; } }
-    .hero { padding: 100px 0 40px; text-align: center; }
+
+    .hero { padding: 100px 0 60px; text-align: center; }
+    .hero-eyebrow {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
+      color: var(--text-faint); margin-bottom: 16px; font-weight: 500;
+    }
     .hero h1 {
       font-size: clamp(32px, 4.5vw, 48px); font-weight: 400;
       letter-spacing: -0.03em; line-height: 1.12; margin-bottom: 16px;
     }
+    .hero h1 em { font-style: normal; color: var(--amber); }
     .hero p {
-      font-size: 17px; color: var(--text-dim); max-width: 560px;
-      margin: 0 auto 28px; font-weight: 300; line-height: 1.6;
+      font-size: 17px; color: var(--text-dim); max-width: 580px;
+      margin: 0 auto; font-weight: 300; line-height: 1.6;
     }
-    .talk {
-      display: inline-flex; align-items: center; justify-content: center;
-      min-height: 44px; padding: 12px 24px; border-radius: 6px;
-      background: var(--amber); color: #0a0a08;
-      font-weight: 700; text-decoration: none;
+
+    .pricing-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      gap: 20px; padding: 40px 0 80px;
+      max-width: 720px; margin: 0 auto;
     }
-    .price-card {
-      max-width: 520px; margin: 0 auto 28px;
+    @media (max-width: 760px) { .pricing-grid { grid-template-columns: 1fr; max-width: 420px; } }
+
+    .pricing-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 32px 28px;
-      text-align: left;
+      padding: 36px 28px;
+      display: flex; flex-direction: column;
+      scroll-margin-top: 72px;
     }
-    .price-card h2 { font-size: 22px; font-weight: 500; margin-bottom: 12px; }
-    .price-card p { font-size: 16px; color: var(--text-dim); margin: 0; }
-    .signin-note { margin-top: 16px; font-size: 14px; color: var(--text-faint); }
-    .signin-note a { color: var(--text); }
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 24px 0; margin-top: 80px;
+    .pricing-card.featured {
+      border-color: var(--amber);
+      box-shadow: 0 0 30px rgba(240,160,0,0.08);
+      position: relative;
     }
-    .footer-inner { display: flex; justify-content: space-between; align-items: center; }
-    .footer-links { display: flex; gap: 20px; list-style: none; }
-    .footer-links a { color: var(--text-faint); text-decoration: none; font-size: 13px; }
+    .pricing-card.featured::before {
+      content: 'Early adopter';
+      position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+      background: var(--amber); color: #0a0a08;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 3px 12px; border-radius: 4px;
+    }
+
+    .card-tier {
+      font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--amber); font-weight: 600; margin-bottom: 8px;
+    }
+    .card-price {
+      font-size: 36px; font-weight: 600; letter-spacing: -0.03em;
+      line-height: 1.1; margin-bottom: 4px;
+    }
+    .card-price .unit {
+      font-size: 15px; font-weight: 400; color: var(--text-dim);
+    }
+    .card-desc {
+      font-size: 14px; color: var(--text-dim); margin-bottom: 28px;
+      line-height: 1.5; font-weight: 300;
+    }
+
+    .card-features {
+      list-style: none; flex: 1; margin-bottom: 28px;
+    }
+    .card-features li {
+      font-size: 14px; color: var(--text);
+      padding: 7px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; gap: 8px;
+    }
+    .card-features li::before {
+      content: ''; display: block;
+      width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 8l3.5 3.5L13 5' stroke='%2300d4aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center;
+    }
+
+    .card-cta {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 44px; text-align: center;
+      padding: 12px 20px; border-radius: 6px;
+      font-size: 14px; font-weight: 600; text-decoration: none;
+      transition: opacity 150ms;
+    }
+    .card-cta:hover { opacity: 0.9; }
+    .card-cta-primary {
+      background: var(--amber); color: #0a0a08;
+    }
+    .card-cta-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border-hi);
+    }
+    .card-footnote {
+      text-align: center; font-size: 12px;
+      color: var(--text-faint); margin-top: 12px;
+      font-weight: 400;
+    }
+    .card-footnote a { color: var(--amber); text-decoration: underline; }
+
+    .comparison {
+      text-align: center; padding: 0 0 80px;
+      border-top: 1px solid var(--border); padding-top: 60px;
+    }
+    .comparison h2 {
+      font-size: 24px; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 12px;
+    }
+    .comparison p {
+      font-size: 15px; color: var(--text-dim); max-width: 600px;
+      margin: 0 auto 32px; font-weight: 300; line-height: 1.65;
+    }
+    .comp-table {
+      max-width: 640px; margin: 0 auto;
+      border: 1px solid var(--border); border-radius: 8px;
+      overflow: hidden;
+    }
+    .comp-row {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      font-size: 13px;
+    }
+    .comp-row + .comp-row { border-top: 1px solid var(--border); }
+    .comp-row.header { background: var(--surface-hi); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .comp-cell { padding: 10px 16px; }
+    .comp-cell:not(:first-child) { text-align: center; color: var(--text-dim); }
+    .comp-cell.highlight { color: var(--amber); font-weight: 500; }
+
+    .faq { padding: 0 0 80px; }
+    .faq h2 { font-size: 24px; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 24px; text-align: center; }
+    .faq-item { border-bottom: 1px solid var(--border); max-width: 640px; margin: 0 auto; }
+    .faq-q {
+      font-size: 15px; font-weight: 500; padding: 16px 0; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .faq-q::after { content: '+'; font-size: 18px; color: var(--text-faint); }
+    .faq-q.open::after { content: '−'; }
+    .faq-a {
+      font-size: 14px; color: var(--text-dim); line-height: 1.65;
+      padding: 0 0 16px; display: none; font-weight: 300;
+    }
+    .faq-q.open + .faq-a { display: block; }
+
     .skip-link {
       position: fixed; top: -100%; left: 0; z-index: 9999;
       background: var(--amber); color: #0a0a08;
       font-size: 14px; font-weight: 700;
-      padding: 12px 20px; text-decoration: none;
+      padding: 12px 20px;
+      border-radius: 0 0 6px 0;
+      text-decoration: none;
+      transition: top 0.1s;
     }
-    .skip-link:focus { top: 0; }
+    .skip-link:focus { top: 0; outline: 3px solid #0a0a08; outline-offset: 2px; }
+
+    :focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 3px;
+      border-radius: 3px;
+    }
+
+    #main-content { scroll-margin-top: 64px; }
+    .faq-q:focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 2px;
+      border-radius: 3px;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px 0;
+      font-size: 13px; color: var(--text-faint);
+    }
+    .footer-inner { display: flex; justify-content: space-between; align-items: center; }
+    .footer-links { display: flex; gap: 20px; list-style: none; }
+    .footer-links a { color: var(--text-faint); text-decoration: none; font-size: 13px; }
+    .footer-links a:hover { color: var(--text-dim); }
   </style>
+  <!-- PostHog analytics (closes #618) — server injects PLG_POSTHOG_KEY; no-op stub if unset -->
   <script src="/posthog-init.js" defer></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "FactoryLM — MIRA maintenance Q&amp;A",
+    "url": "https://factorylm.com/pricing",
+    "description": "Free 30-day pilot for the first five approved maintenance teams (5 seats each). Early adopters can lock in limited free lifetime credit. MIRA works from your manuals on its own; CMMS connectors are optional.",
+    "brand": { "@type": "Organization", "name": "FactoryLM" },
+    "offers": [
+      {
+        "@type": "Offer",
+        "name": "Early-adopter free 30-day pilot",
+        "description": "First five approved teams: free 30-day scoped MIRA pilot, five seats each. Request at app.factorylm.com/signup or talk to Mike.",
+        "price": "0",
+        "priceCurrency": "USD",
+        "url": "https://app.factorylm.com/signup",
+        "availability": "https://schema.org/LimitedAvailability"
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
+
   <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <nav>
     <div class="nav-inner">
       <a href="/" class="nav-logo" aria-label="FactoryLM home">FactoryLM</a>
@@ -123,31 +297,154 @@
         <li><a href="/limitations">Limitations</a></li>
         <li><a href="/security">Security</a></li>
       </ul>
-      <a href="/cmms" class="nav-cta" style="background:transparent;color:var(--text);border:1px solid var(--border-hi);margin-right:10px;">Sign in</a>
-      <a href="mailto:mike@factorylm.com" class="nav-cta" data-cta="pricing-nav-talk">Talk to Mike</a>
+      <a href="/cmms" class="nav-cta nav-cta-ghost">Sign in</a>
+      <a href="https://app.factorylm.com/signup" class="nav-cta" data-cta="pricing-nav-pilot">Request a free 30-day pilot</a>
     </div>
   </nav>
+
   <main id="main-content">
     <section class="hero">
       <div class="inner">
-        <h1>Find reliable answers in your own equipment manuals</h1>
-        <p>FactoryLM helps technicians troubleshoot.</p>
-        <div class="price-card">
-          <h2>Pilot: $500 per site for 30 days</h2>
-          <p>One maintenance team. No automatic renewal. No self-serve checkout: talk to Mike to start a pilot.</p>
+        <div class="hero-eyebrow">First five teams</div>
+        <h1>Start with a <em>free 30-day pilot.</em></h1>
+        <p>We're opening five free, tightly scoped FactoryLM/MIRA pilots for approved maintenance teams — five seats each, one machine to start, your manuals, thirty days. Early adopters among those first five can lock in limited free lifetime credit. Talk to us for fit and terms.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="inner">
+        <div class="pricing-grid">
+
+          <div class="pricing-card featured">
+            <div class="card-tier">Free pilot — first five teams</div>
+            <div class="card-price">Free 30 days <span class="unit">· 5 seats</span></div>
+            <div class="card-desc">Approved teams only. One named asset notebook with your OEM manuals. Discovery walk before a seat is awarded. No self-serve checkout.</div>
+            <ul class="card-features">
+              <li>Five seats for 30 days on one named asset</li>
+              <li>Crew Q&amp;A with page citations when the manual covers the question</li>
+              <li>Discovery walk to confirm fit before award</li>
+              <li>Wrap-up notes at the end of 30 days</li>
+              <li>Early-adopter lifetime credit available on those seats (terms with Mike)</li>
+              <li>MIRA works from manuals on its own — CMMS connectors optional</li>
+            </ul>
+            <a href="https://app.factorylm.com/signup" class="card-cta card-cta-primary" data-cta="pricing-free-pilot">Request a free 30-day pilot →</a>
+            <p class="card-footnote">Five teams × five seats. Form complete ≠ team awarded. Or <a href="mailto:mike@factorylm.com?subject=FactoryLM%20free%2030-day%20pilot%20request">talk to Mike</a>.</p>
+          </div>
+
+          <div class="pricing-card">
+            <div class="card-tier">After the five pilots</div>
+            <div class="card-price">Talk to us</div>
+            <div class="card-desc">Continuation, extra seats, and multi-plant scope are custom. We do not publish a self-serve price menu while this early-adopter offer runs.</div>
+            <ul class="card-features">
+              <li>No public monthly plan menu on this page</li>
+              <li>No automatic renewal implied</li>
+              <li>Extra seats beyond credited ones: talk to Mike</li>
+              <li>CMMS connectors optional if/when scoped later</li>
+              <li>Reference tool only — not a safety sign-off</li>
+              <li>Direct line to Mike + the team</li>
+            </ul>
+            <a href="mailto:mike@factorylm.com?subject=FactoryLM%20continuation%20%2F%20scope" class="card-cta card-cta-ghost" data-cta="pricing-talk-continuation">Email mike@factorylm.com →</a>
+            <p class="card-footnote">Lifetime credit fine print (transferability, cancel) agreed with Mike — not invented here.</p>
+          </div>
+
         </div>
-        <a href="mailto:mike@factorylm.com" class="talk" data-cta="pricing-talk">Talk to Mike</a>
-        <p class="signin-note">Already using FactoryLM? <a href="/cmms">Sign in</a>.</p>
+      </div>
+    </section>
+
+    <section class="comparison" id="pilot-includes">
+      <div class="inner">
+        <h2>What's in a free pilot seat</h2>
+        <p>Scoped use for one awarded team — not unlimited machines, seats, or plants.</p>
+        <div class="comp-table" style="max-width:560px;text-align:left;">
+          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Five seats · 30 days · one named asset notebook</div></div>
+          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Approved OEM manuals bound to that asset</div></div>
+          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Cited answers when the manual covers the question</div></div>
+          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Discovery walk before award · wrap-up notes at day 30</div></div>
+          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Early-adopter limited free lifetime credit on those seats (terms with Mike)</div></div>
+        </div>
+        <p style="margin-top:16px;font-size:12px;color:var(--text-faint);">Not included: unlimited teams or machines, work-order writes, live PLC data, or safety / return-to-service responsibility. <a href="mailto:mike@factorylm.com?subject=FactoryLM%20pilot%20scope" style="color:var(--amber);text-decoration:underline;">Ask Mike about scope →</a></p>
+      </div>
+    </section>
+
+    <section class="comparison">
+      <div class="inner">
+        <h2>MIRA stands alone</h2>
+        <p>MIRA works with your manuals on its own. CMMS connectors are optional — never required to get value from a pilot.</p>
+        <div class="comp-table">
+          <div class="comp-row header">
+            <div class="comp-cell">What you get</div>
+            <div class="comp-cell">Generic AI / seat SaaS</div>
+            <div class="comp-cell highlight">FactoryLM</div>
+          </div>
+          <div class="comp-row">
+            <div class="comp-cell">Answers grounded in your OEM manuals</div>
+            <div class="comp-cell">Often uncited</div>
+            <div class="comp-cell highlight">Cited when covered</div>
+          </div>
+          <div class="comp-row">
+            <div class="comp-cell">Works without replacing your CMMS</div>
+            <div class="comp-cell">Switch / rip-and-replace</div>
+            <div class="comp-cell highlight">Optional connectors</div>
+          </div>
+          <div class="comp-row">
+            <div class="comp-cell">Early-adopter free pilot seats</div>
+            <div class="comp-cell">Self-serve paid trial</div>
+            <div class="comp-cell highlight">Approval-gated · five teams</div>
+          </div>
+          <div class="comp-row">
+            <div class="comp-cell">Safety sign-off / LOTO responsibility</div>
+            <div class="comp-cell">Varies</div>
+            <div class="comp-cell highlight">Yours — reference tool only</div>
+          </div>
+        </div>
+        <p style="margin-top:16px;font-size:12px;color:var(--text-faint);">A pilot does not require a CMMS. Connectors, if scoped later, are optional add-ons — we don't replace yours.</p>
+      </div>
+    </section>
+
+    <section class="faq">
+      <div class="inner">
+        <h2>Questions</h2>
+
+        <div class="faq-item">
+          <div class="faq-q">Is there a monthly price on the site during the five pilots?</div>
+          <div class="faq-a">No self-serve monthly menu. The public offer is the free early-adopter 30-day pilot for the first five approved teams (five seats each). Continuation beyond credited seats is custom with Mike.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">What about the old Assessment / paid plan menu?</div>
+          <div class="faq-a">Retired from this public page while the early-adopter offer runs. Talk to Mike if you need a scoped engagement outside the five free pilots.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">What is the early-adopter lifetime credit?</div>
+          <div class="faq-a">Early adopters among the first five awarded teams can lock in limited free lifetime credit covering those initial five seats. Transferability, cancel effects, and any extras are agreed with Mike — we do not invent amounts or fine print on this page.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Do you replace my CMMS?</div>
+          <div class="faq-a">No. MIRA stands alone on your manuals. CMMS connectors are optional add-ons — never implied as required for a pilot.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Why not a self-serve sign-up?</div>
+          <div class="faq-a">Pilots are approval-gated so we can confirm fit, manuals, and seat caps (five teams × five seats). Applying or emailing Mike is not the same as being awarded a team.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Multi-plant or more than five seats?</div>
+          <div class="faq-a">Talk to Mike. Extra seats beyond the credited five, and multi-plant scope, are custom — not self-serve checkout.</div>
+        </div>
+
       </div>
     </section>
   </main>
+
   <footer>
     <div class="inner">
       <div class="footer-inner">
         <a href="/" class="nav-logo" style="font-size:13px;" aria-label="FactoryLM home">FactoryLM</a>
         <ul class="footer-links">
           <li><a href="/limitations">Limitations</a></li>
-          <li><a href="/security">Security</a></li>
           <li><a href="/trust">Trust</a></li>
           <li><a href="/privacy">Privacy</a></li>
           <li><a href="/terms">Terms</a></li>
@@ -155,5 +452,21 @@
       </div>
     </div>
   </footer>
+
+  <script>
+    document.querySelectorAll('.faq-q').forEach(function (q) {
+      q.setAttribute('tabindex', '0');
+      q.setAttribute('role', 'button');
+      q.setAttribute('aria-expanded', 'false');
+      function toggle() {
+        var open = q.classList.toggle('open');
+        q.setAttribute('aria-expanded', String(open));
+      }
+      q.addEventListener('click', toggle);
+      q.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      });
+    });
+  </script>
 </body>
 </html>

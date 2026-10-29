@@ -44,11 +44,14 @@ describe("shared topbar partial — contract", () => {
     }
   });
 
-  test("primary CTA is 'Sign in' linking to factorylm.com/cmms", () => {
+  test("primary CTA is the free-pilot signup; Sign in stays a ghost button", () => {
     const html = navbar();
     expect(html).toContain("Sign in");
     expect(html).toContain(`href="${APEX}/cmms"`);
     expect(html).toContain("fl-btn-ghost");
+    expect(html).toContain("Request a free 30-day pilot");
+    expect(html).toContain("https://app.factorylm.com/signup");
+    expect(html).not.toContain(">Pricing<");
   });
 
   test("aria-current='page' is set only on the matching link", () => {

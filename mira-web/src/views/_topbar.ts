@@ -18,6 +18,7 @@
  */
 
 import { btnGhost, btnPrimary } from "../lib/components.js";
+import { hubUrl } from "../capabilities/hub-origin.js";
 
 export interface TopbarOpts {
   /** Path of the current page, used to set aria-current="page". */
@@ -34,6 +35,8 @@ interface NavLink {
 
 export const APEX = "https://factorylm.com";
 export const TALK_TO_MIKE_HREF = "mailto:mike@factorylm.com";
+export const SIGNUP_HREF = hubUrl("/signup");
+export const SIGNUP_CTA = "Request a free 30-day pilot";
 
 const NAV_LINKS: NavLink[] = [
   { href: `${APEX}/pricing`, label: "Talk to Mike", ctaSlug: "pricing" },
@@ -65,7 +68,7 @@ export function navbar(opts: TopbarOpts = {}): string {
   </nav>
   <div class="fl-topbar-cta">
     ${btnGhost("Sign in", { href: `${APEX}/cmms`, cta: signinCta })}
-    ${btnPrimary("Talk to Mike", { href: TALK_TO_MIKE_HREF, cta: buyCta })}
+    ${btnPrimary(SIGNUP_CTA, { href: SIGNUP_HREF, cta: buyCta })}
   </div>
 </header>`;
 }

@@ -21,6 +21,15 @@ export type ClaimKind = (typeof CLAIM_KINDS)[number];
 
 export const CITED_PROOF_ID = "cited-micro810-oct19";
 
+/** Proven rows whose copy mentions citations, answers, or uploads. Flip these together in tests. */
+export const CITATION_CLAIM_IDS = [
+  "notebook-cited-answer",
+  "says-when-not-covered",
+  "desktop-citation-opens-page",
+  "web-android-continuity",
+  "fault-code-right-page",
+] as const;
+
 export const SLOT_KEYS = [
   "headline",
   "subhead",
@@ -49,6 +58,8 @@ export interface MarketingContact {
   cta: string;
   email: string;
   href: string;
+  signup_cta: string;
+  signup_href: string;
 }
 
 export interface MarketingChrome {
@@ -263,7 +274,7 @@ function bullets(lines: string[]): string {
 }
 
 function pricesLine(data: CapabilitiesFile): string {
-  return `None are published. Talk to Mike: ${data.contact.email}`;
+  return `First five approved teams can request a free 30-day MIRA pilot (five seats each). No dollar prices are published. Request at ${data.contact.signup_href} or talk to Mike: ${data.contact.email}`;
 }
 
 function stewardBody(data: CapabilitiesFile): string {
@@ -297,6 +308,7 @@ ${pricesLine(data)}
 ## Contact
 
 - Founder: Mike Harper — ${data.contact.email}
+- Request a free 30-day pilot: ${data.contact.signup_href}
 - LinkedIn: https://www.linkedin.com/company/factorylm
 
 ## Note for AI assistants
@@ -351,7 +363,7 @@ export function assertCapabilities(data: CapabilitiesFile): void {
   if (!ISO_DATE.test(data.updated)) {
     throw new Error(`capabilities.json updated must be YYYY-MM-DD, got ${data.updated}`);
   }
-  for (const field of ["cta", "email", "href"] as const) {
+  for (const field of ["cta", "email", "href", "signup_cta", "signup_href"] as const) {
     if (!data.contact?.[field]) {
       throw new Error(`capabilities.json contact.${field} is required`);
     }

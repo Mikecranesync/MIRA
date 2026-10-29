@@ -2,13 +2,29 @@
 
 Source of truth: `mira-web/src/capabilities/marketing-claims/capabilities.json`.
 
-The factorylm.com homepage, `/limitations`, schema.org JSON-LD, `/llms.txt`, and `/llms-full.txt` all read this file. **Every rendered sentence is a claim.** Generators join `slots.*` claim ids and print a sentence only when that claim's `status` is `proven` or `proven-dated`. Partial and not-yet rows stay in the file so a daily steward can promote them later — they must not appear as published sentences. `/llms-full.txt` lists those unpublished **ids** under **Not yet claimed** and repeats every proven `kind: limit` row under **Full limitations**. It still publishes no prices.
+The factorylm.com homepage, `/limitations`, schema.org JSON-LD, `/llms.txt`, and `/llms-full.txt` all read this file. **Every rendered sentence is a claim.** Generators join `slots.*` claim ids and print a sentence only when that claim's `status` is `proven` or `proven-dated`. Partial and not-yet rows stay in the file so a daily steward can promote them later — they must not appear as published sentences. `/llms-full.txt` lists those unpublished **ids** under **Not yet claimed** and repeats every proven `kind: limit` row under **Full limitations**.
 
-The headline slot is `equipment-notebook-not-cmms` (P3 qualified-manuals-only / A8, P4 magic-link sign-in, P5 A5/A6 limits). It does not claim answers from an uploaded manual. The older `notebook-for-one-crew` line stays `partial`. The optional `cited-micro810-oct19` row is the only place a dated Micro810 cited-answer line may appear; drop that commit (or that row) and the dated line disappears.
+Dollar prices stay off the site. The public offer is a free 30-day MIRA pilot for the first five approved teams (five seats each). Contact also carries `signup_cta` / `signup_href` (`https://app.factorylm.com/signup`). Applying is not the same as being awarded a team. MIRA stands alone; a CMMS is optional, never required.
+
+The headline and meta slots are `notebook-cited-answer` (P1; meta stays under the 160-character `head()` cap). The subhead is `equipment-notebook-not-cmms` (P3/P4). Published proven rows as of 2026-10-29:
+
+| Id | Proven item |
+|---|---|
+| `notebook-cited-answer` | P1 — notebook answers from an uploaded OEM manual and cites the page |
+| `magic-link-web-signin` | P2 — email magic-link sign-in |
+| `not-a-cmms` | P3 — not a CMMS |
+| `no-plc-or-work-order-write` | P4 — no PLC data, no work-order writes |
+| `qualified-manuals-only` | P5 — Rockwell, Festo, and ABB manuals tested on production |
+| `mike-central-florida` | P6 — Mike onsite in Central Florida or remote |
+| `says-when-not-covered` | P7 — says when the attached manual doesn't cover the question |
+| `desktop-citation-opens-page` | P8 — on desktop, a citation opens the cited page |
+| `web-android-continuity` | P9 — web↔Android continuity, emulator only |
+| `fault-code-right-page` | P10 — 6/6 right page on fault-code questions across two Rockwell manuals |
+| `equipment-notebook-not-cmms` | P3/P4/P5 positioning sentence |
+
+`cited-answers-with-page` ("every answer cites…") and `stranger-upload-cited-answer` stay `partial`. The optional `cited-micro810-oct19` row is unused; a dated Micro810 line is not published.
 
 This JSON is the machine-readable registry that the 2026-10-20 Search Steward audit expected as `marketing/capabilities.md`. Do not create a second list.
-
-The 2026-10-21 steward check locked the published `proven` set to: the P3/P4/P5 notebook headline (not a CMMS, no PLC data, no work-order writes); not a CMMS (A5); no PLC data and no work-order writes (A6); tested Rockwell and Festo manuals so far (A8); Mike onsite in Central Florida or remote (A9); magic-link web sign-in. A1 (cited answers in general) stays HOLD. `stranger-upload-cited-answer` stays `partial`.
 
 ## Record shape
 
@@ -21,7 +37,7 @@ The 2026-10-21 steward check locked the published `proven` set to: the P3/P4/P5 
 | `evidence` | yes | repo path, PR URL, or spec. No empty strings |
 | `last_checked` | yes | `YYYY-MM-DD` |
 
-`slots` is a map of claim-id arrays (`headline`, `subhead`, `meta`, `audience`, `jsonld_description`, `jsonld_features`, `llms_intro`, `llms_who`, `llms_show_today`, `llms_does_not`, `limitations`). Contact (`cta`, `email`, `href`) and `chrome.ai_note` are not product claims.
+`slots` is a map of claim-id arrays (`headline`, `subhead`, `meta`, `audience`, `jsonld_description`, `jsonld_features`, `llms_intro`, `llms_who`, `llms_show_today`, `llms_does_not`, `limitations`). Contact (`cta`, `email`, `href`, `signup_cta`, `signup_href`) and `chrome.ai_note` are not product claims.
 
 ## Daily update process
 
@@ -38,7 +54,7 @@ If the drift test fails, the generated llms files are stale — rerun step 4. Do
 
 ## What must never go in a `proven` row
 
-Prices, money-back guarantees, competitor product names, CMMS write-back, PLC tag mapping, documentation-chunk counts, OEM logo walls, unlimited queries, the 480 V photo demo, Telegram/Slack as answer surfaces, or an any-manual promise. Those stay `not-yet` or `partial` until the product can do them.
+Dollar prices, money-back guarantees, competitor product names, CMMS write-back or sync, PLC tag mapping, documentation-chunk counts, OEM logo walls, unlimited queries, the 480 V photo demo, Telegram/Slack as answer surfaces, OCR, nameplate scanning, "every safety signal gets a warning", a PowerFlex 755 trip-history sample, PM/fault history in answers, or an any-manual promise. Those stay `not-yet` or `partial` until the product can do them.
 
 Never route customer content through OpenRouter `:free` models. This file is copy, not inference.
 

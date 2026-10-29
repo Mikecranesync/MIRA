@@ -35,7 +35,7 @@ const DONT_SAY: Array<{ label: string; re: RegExp }> = [
   { label: "every answer / every time", re: /every answer|every time/i },
   { label: "no hallucinations", re: /hallucinat/i },
   { label: "instantly", re: /\binstantly\b/i },
-  { label: "fault codes as a feature", re: /fault codes?|F005/i },
+  { label: "PowerFlex 755 trip-history sample", re: /PowerFlex 755|trip-history|trip history/i },
   { label: "scanned manuals", re: /scanned manuals/i },
   { label: "25 machines", re: /25 machines/i },
   { label: "won't give lockout steps", re: /won'?t give lockout/i },
@@ -49,7 +49,13 @@ const DONT_SAY: Array<{ label: string; re: RegExp }> = [
   { label: "480 V photo STOP", re: /480\s*V/ },
   { label: "voice notes to RCA", re: /voice notes/i },
   { label: "MIRA flags hazards with a warning", re: /flags hazards/i },
-  { label: "OCR-confidence claims", re: /OCR confidence/i },
+  { label: "OCR claims", re: /\bOCR\b/i },
+  { label: "nameplate scanning", re: /nameplate/i },
+  { label: "Digital Transformation title", re: /Digital Transformation/i },
+  { label: "every safety signal", re: /every safety signal/i },
+  { label: "PM history in answers", re: /PM history/i },
+  { label: "Start free no credit card", re: /Start free|no credit card/i },
+  { label: "active pilot claim", re: /active pilot/i },
   { label: "Enterprise SSO/SAML", re: /\bSAML\b|\bon-prem\b/i },
   { label: "14-day money-back", re: /14-day money-back|money-back guarantee/i },
   { label: "Cooperative/Community/Free tiers", re: /Knowledge Cooperative|Community tier|Free-tier/i },
@@ -71,19 +77,13 @@ const DONT_SAY: Array<{ label: string; re: RegExp }> = [
   { label: "CI cross-tenant build-fail claim", re: /fails the build if any row leaks|queries as Tenant B/i },
 ];
 
-// Owner decision D1 (2026-10-27): $500 per site for 30 days, one maintenance team,
-// no automatic renewal, no self-serve checkout. It is the only price any page may publish,
-// and only on /pricing. The follow-on $399 / $3,990 price was not decided.
-const D1_PRICE = "$500";
-const D1_PHRASES = [
-  "$500 per site for 30 days",
-  "One maintenance team",
-  "No automatic renewal",
-  "No self-serve checkout",
-];
-
 function dollarAmounts(html: string): string[] {
   return html.match(/\$[\d,]+/g) ?? [];
+}
+
+/** /pricing may publish schema.org price 0 for the free pilot. No other dollar amounts. */
+function schemaPriceValues(html: string): string[] {
+  return [...html.matchAll(/"price"\s*:\s*"?([^",}\s]+)"?/g)].map((m) => m[1]);
 }
 
 function marketingSurface(name: string, html: string): string {
@@ -94,7 +94,7 @@ function marketingSurface(name: string, html: string): string {
   );
 }
 
-describe("public marketing copy — don't-say list and only the D1 price", () => {
+describe("public marketing copy — don't-say list and no published prices", () => {
   for (const page of pages) {
     test(`${page.name}: drops the don't-say list and removed claims`, () => {
       const surface = marketingSurface(page.name, page.html);
@@ -106,16 +106,26 @@ describe("public marketing copy — don't-say list and only the D1 price", () =>
   }
 
   for (const page of pages) {
-    test(`${page.name}: publishes no price except D1 on /pricing`, () => {
-      const allowed = page.name === "/pricing" ? [D1_PRICE] : [];
-      for (const amount of dollarAmounts(page.html)) {
-        expect(allowed, `${page.name} contains an unapproved price ${amount}`).toContain(amount);
-      }
+    test(`${page.name}: publishes no dollar price`, () => {
+      expect(
+        dollarAmounts(page.html),
+        `${page.name} still contains a dollar amount`
+      ).toEqual([]);
+      expect(page.html, `${page.name} still contains $500`).not.toContain("$500");
+      expect(page.html, `${page.name} still contains $499`).not.toContain("$499");
       expect(page.html, `${page.name} still contains $399`).not.toContain("$399");
       expect(page.html, `${page.name} still contains $3,990`).not.toMatch(
         /\$3,990|\$3990/
       );
+      expect(page.html).not.toMatch(/\$2-5K|\$2,\d{3}|\$5,\d{3}/);
       expect(page.html).not.toMatch(/14-day money-back|money-back guarantee/i);
+      const prices = schemaPriceValues(page.html);
+      const allowed = page.name === "/pricing" ? ["0"] : [];
+      for (const value of prices) {
+        expect(allowed, `${page.name} has unapproved schema price ${value}`).toContain(
+          value
+        );
+      }
     });
   }
 
@@ -151,10 +161,8 @@ describe("public marketing copy — don't-say list and only the D1 price", () =>
     expect(trust).not.toContain("We don't name providers");
     expect(privacy).toContain("Tenant isolation");
     expect(privacy).toContain("never shared with other tenants");
-    expect(privacy).toMatch(/OpenAI/);
-    expect(privacy).toContain("The full and current list lives at");
-    expect(privacy).not.toContain("We don't name providers");
-    expect(privacy).not.toContain("We don't publish an inference-provider list");
+    // Codex F3 / owner F2=(a): privacy.html is identical to main. Processor
+    // list changes need a versioned amendment; do not require OpenAI here.
   });
 
   test("public pages show no Open CMMS text", () => {
@@ -176,46 +184,54 @@ describe("public marketing copy — don't-say list and only the D1 price", () =>
     expect(pricing).not.toContain("Open the machine's notebook");
     expect(pricing).not.toContain("find the right manual passage");
     expect(pricing).not.toContain("record what fixed it");
-    expect(pricing).toMatch(
-      /<h1>\s*Find reliable answers in your own equipment manuals\s*<\/h1>/
-    );
-    expect(pricing).toMatch(
-      /<meta name="description" content="[^"]*Talk to Mike[^"]*"/i
-    );
-    expect(pricing).toContain('data-cta="pricing-talk">Talk to Mike</a>');
+    expect(pricing).not.toContain("Find reliable answers in your own equipment manuals");
+    expect(pricing).toMatch(/<h1>\s*Start with a <em>free 30-day pilot\.<\/em>\s*<\/h1>/);
+    expect(pricing).toContain("https://app.factorylm.com/signup");
+    expect(pricing).toContain("Talk to Mike");
     expect(pricing).not.toContain("<title>Pricing — FactoryLM</title>");
     expect(pricing).not.toMatch(/<h1>\s*Talk to Mike\s*<\/h1>/);
     expect(pricing).not.toMatch(/<h1>\s*Pricing\s*<\/h1>/);
+    expect(pricing).not.toContain(">Pricing<");
   });
 
-  test("/pricing and /buy are Talk to Mike only, with no Offer prices in JSON-LD or meta", () => {
+  test("/pricing and /buy point at the free pilot request, with no paid Offer", () => {
     for (const name of ["/pricing", "/buy"] as const) {
       const html = pages.find((p) => p.name === name)!.html;
       expect(html, `${name} is missing Talk to Mike`).toContain("Talk to Mike");
-      expect(html, `${name} still has an Offer block`).not.toMatch(
-        /"@type"\s*:\s*"Offer"/
+      expect(html, `${name} is missing the signup CTA`).toContain(
+        "https://app.factorylm.com/signup"
       );
-      expect(html, `${name} still has a schema price`).not.toMatch(/"price"/);
-      const allowed = name === "/pricing" ? [D1_PRICE] : [];
-      for (const amount of dollarAmounts(html)) {
-        expect(allowed, `${name} has an unapproved price ${amount}`).toContain(amount);
-      }
+      expect(html, `${name} is missing the free-pilot request`).toContain(
+        "Request a free 30-day pilot"
+      );
       expect(html, `${name} links to a checkout`).not.toMatch(/href="[^"]*(checkout|stripe)/i);
       expect(html, `${name} still has $499`).not.toContain("$499");
+      expect(html, `${name} still has $500`).not.toContain("$500");
       expect(html, `${name} still has $2-5K`).not.toMatch(/\$2-5K|\$2,\d{3}|\$5,\d{3}/);
+      if (name === "/buy") {
+        expect(html, `${name} still has an Offer block`).not.toMatch(
+          /"@type"\s*:\s*"Offer"/
+        );
+        expect(html, `${name} still has a schema price`).not.toMatch(/"price"/);
+      } else {
+        expect(html, `${name} is missing the free Offer`).toMatch(
+          /"@type"\s*:\s*"Offer"/
+        );
+        expect(schemaPriceValues(html)).toEqual(["0"]);
+      }
     }
   });
 
-  test("/pricing states Mike's D1 pilot offer exactly (2026-10-27)", () => {
+  test("/pricing states the free 30-day pilot offer with no dollar amounts", () => {
     const pricing = pages.find((p) => p.name === "/pricing")!.html;
-    // The visible page body, not just meta tags, must carry the offer.
     const body = pricing.match(/<main[\s\S]*?<\/main>/)?.[0] ?? "";
     expect(body, "/pricing has no <main> body").not.toBe("");
-    for (const phrase of D1_PHRASES) {
-      expect(body, `/pricing body is missing D1 wording: ${phrase}`).toContain(phrase);
-    }
-    expect(pricing).not.toContain("no published price");
-    expect(pricing).not.toContain("not published here");
+    expect(body).toContain("Free 30 days");
+    expect(body).toContain("first five teams");
+    expect(body).toContain("MIRA works from manuals on its own");
+    expect(body).toContain("https://app.factorylm.com/signup");
+    expect(body).not.toContain("$500");
+    expect(pricing).not.toContain("Find reliable answers in your own equipment manuals");
   });
 
   test("/llms.txt omits sensors and work orders", () => {
@@ -227,13 +243,16 @@ describe("public marketing copy — don't-say list and only the D1 price", () =>
     }
   });
 
-  test("primary CTA is Talk to Mike; self-signup is Sign in only", () => {
+  test("primary CTA is the free-pilot signup; Talk to Mike and Sign in stay reachable", () => {
     const chrome = navbar() + footer();
+    expect(chrome).toContain("Request a free 30-day pilot");
+    expect(chrome).toContain("https://app.factorylm.com/signup");
     expect(chrome).toContain("Talk to Mike");
     expect(chrome).toContain("Sign in");
     expect(chrome).not.toContain("Book $500");
     expect(chrome).not.toContain("Get Started");
     expect(chrome).not.toContain(">CMMS<");
+    expect(chrome).not.toContain(">Pricing<");
     expect(chrome).not.toContain("/assess");
   });
 });

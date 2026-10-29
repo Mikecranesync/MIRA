@@ -1,5 +1,5 @@
 import { head } from "../lib/head.js";
-import { btnPrimary } from "../lib/components.js";
+import { btnGhost, btnPrimary } from "../lib/components.js";
 import { escHtml } from "../lib/html.js";
 import {
   effectiveHeadline,
@@ -19,21 +19,24 @@ function hero(data: CapabilitiesFile): string {
   const headline = effectiveHeadline(data) || "FactoryLM";
   const subhead = effectiveSubhead(data);
   const capabilities = provenByKind("capability", data);
-  const body = capabilities.map((c) => c.text).join(" ");
+  const claims = capabilities
+    .map((c) => `<li>${escHtml(c.text)}</li>`)
+    .join("");
   const sub = subhead
     ? `<h2 class="fl-hero-h2">${escHtml(subhead)}</h2>`
     : "";
-  const para = body
-    ? `<p class="fl-hero-sub">${escHtml(body)}</p>`
+  const list = claims
+    ? `<ul class="fl-hero-claims">${claims}</ul>`
     : "";
   return `<section class="fl-hero" aria-labelledby="fl-hero-h1">
   <div class="fl-hero-inner">
     <p class="fl-hero-eyebrow">FactoryLM</p>
     <h1 id="fl-hero-h1" class="fl-hero-h1">${escHtml(headline)}</h1>
     ${sub}
-    ${para}
+    ${list}
     <div class="fl-hero-cta">
-      ${btnPrimary(escHtml(data.contact.cta), { href: escHtml(data.contact.href), cta: "hero-talk" })}
+      ${btnPrimary(escHtml(data.contact.signup_cta), { href: escHtml(data.contact.signup_href), cta: "hero-pilot" })}
+      ${btnGhost(escHtml(data.contact.cta), { href: escHtml(data.contact.href), cta: "hero-talk" })}
     </div>
     <p class="fl-hero-cta-foot">Already using FactoryLM? <a href="/cmms" data-cta="hero-signin">Sign in</a>.</p>
   </div>
@@ -79,7 +82,8 @@ function aboutMike(data: CapabilitiesFile): string {
   return `<section class="fl-section fl-pricing-teaser" aria-labelledby="fl-about-h">
   <h2 id="fl-about-h" class="fl-section-h">${escHtml(mike)}</h2>
   <div class="fl-hero-cta">
-    ${btnPrimary(escHtml(data.contact.cta), { href: escHtml(data.contact.href), cta: "about-talk" })}
+    ${btnPrimary(escHtml(data.contact.signup_cta), { href: escHtml(data.contact.signup_href), cta: "about-pilot" })}
+    ${btnGhost(escHtml(data.contact.cta), { href: escHtml(data.contact.href), cta: "about-talk" })}
   </div>
 </section>`;
 }
@@ -145,6 +149,26 @@ const PAGE_STYLES = `
   max-width: 720px;
   margin: 0 auto var(--fl-sp-8);
   line-height: 1.55;
+}
+.fl-hero-claims {
+  list-style: none;
+  margin: 0 auto var(--fl-sp-8);
+  padding: 0;
+  max-width: 720px;
+  text-align: left;
+}
+.fl-hero-claims li {
+  font-size: var(--fl-type-md);
+  color: var(--fl-muted-600);
+  line-height: 1.5;
+  padding: 8px 0 8px 22px;
+  position: relative;
+}
+.fl-hero-claims li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--fl-navy-900);
 }
 .fl-hero-cta {
   display: flex; gap: var(--fl-sp-4); justify-content: center; flex-wrap: wrap;
@@ -364,7 +388,7 @@ export function renderHome(
     ${aboutMike(data)}
   </main>
   ${footer()}
-  <a href="${escHtml(data.contact.href)}" class="fl-mobile-cta" data-cta="mobile-sticky-talk">${escHtml(data.contact.cta)}</a>
+  <a href="${escHtml(data.contact.signup_href)}" class="fl-mobile-cta" data-cta="mobile-sticky-pilot">${escHtml(data.contact.signup_cta)}</a>
   <script src="/sun-toggle.js"></script>
 </body>
 </html>`;
