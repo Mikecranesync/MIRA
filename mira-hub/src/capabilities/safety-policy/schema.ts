@@ -5,9 +5,9 @@
  *
  * Pure + dependency-free (no zod — same convention as lib/contextualization/intake-contract.ts).
  */
-import { QUANTITIES, QUANTITY_UNIT, UNITS, type Condition, type Quantity, type TypedNumber, type Unit } from "./types";
+import { COMPARATORS, QUANTITIES, QUANTITY_UNIT, UNITS, type Condition, type Quantity, type TypedNumber, type Unit } from "./types";
 
-const NUMBER_KEYS = new Set(["quantity", "value", "unit", "sourceChunkId", "condition"]);
+const NUMBER_KEYS = new Set(["quantity", "value", "unit", "sourceChunkId", "condition", "comparator"]);
 const CONDITION_KEYS = new Set(["op", "value", "unit"]);
 const CONDITION_OPS = ["le", "ge", "eq"] as const;
 const CONDITION_UNITS = ["hp", "kW"] as const;
@@ -48,6 +48,10 @@ export function parseTypedNumber(raw: unknown): TypedNumber | null {
     const condition = parseCondition(raw.condition);
     if (condition === null) return null;
     out.condition = condition;
+  }
+  if (raw.comparator !== undefined) {
+    if (!includes(COMPARATORS, raw.comparator)) return null;
+    out.comparator = raw.comparator;
   }
   return out;
 }

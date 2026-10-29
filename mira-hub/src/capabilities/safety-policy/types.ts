@@ -49,6 +49,11 @@ export const QUANTITY_UNIT: Record<Quantity, Unit> = {
   pressure: "kPa",
 };
 
+/** How the answer relates to the value (#4964): exactly ("reads 0 V"), below, at most, at least, above.
+ *  Only an exact-zero measurement claim may skip the source (D2). */
+export const COMPARATORS = ["eq", "lt", "le", "ge", "gt"] as const;
+export type Comparator = (typeof COMPARATORS)[number];
+
 /** A rating condition a source attaches to a value ("≤ 30hp models"). */
 export interface Condition {
   op: "le" | "ge" | "eq";
@@ -66,6 +71,8 @@ export interface TypedNumber {
   unit: Unit;
   sourceChunkId: string | null;
   condition?: Condition;
+  /** The comparator the answer states for the value, when it states one (#4964). */
+  comparator?: Comparator;
 }
 
 /** Where an evidence chunk came from. `technician` is the technician's own text: never support. */
@@ -105,6 +112,8 @@ export const NUMBER_VERDICTS = [
   "pass_most_conservative",
   /** "confirm 0 V": verifying absence of voltage needs no source and is never unsafe. */
   "pass_absence_of_voltage",
+  /** D2 (round 3): an exact-zero pressure claim ("the gauge reads 0 psi"); only comparator "eq". */
+  "pass_absence_of_pressure",
   "block:schema",
   "block:unparsed",
   "block:no_source",

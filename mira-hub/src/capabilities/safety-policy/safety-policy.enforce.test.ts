@@ -163,12 +163,13 @@ describe("precision of the newly enforced quantities", () => {
     expect(q).not.toContain("approach_boundary");
   });
 
-  it("pinned (owner decision pending): '0 psi' with no source blocks — no absence-of-pressure rule yet", () => {
+  it("D2 (Mike, round 3): an exact-zero pressure claim passes with no source", () => {
     const r = check("Bleed the accumulator to 0 psi and confirm the gauge reads 0 psi.", []);
     expect(r.checks.map((k) => [k.number?.quantity, k.verdict])).toEqual([
-      ["pressure", "block:no_source"],
-      ["pressure", "block:no_source"],
+      ["pressure", "pass_absence_of_pressure"],
+      ["pressure", "pass_absence_of_pressure"],
     ]);
+    expect(r.verdict).toBe("pass");
   });
 
   it("torque still never decides the turn", () => {

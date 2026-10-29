@@ -74,8 +74,9 @@ describe("NUM-1 — a hazard-critical number needs an applicable source stating 
   });
 
   it("pass: verifying absence of voltage (0 V) needs no source — the #4943 OEM procedure is not blocked", () => {
+    // D2 (round 3): an exact-zero measurement claim is extracted (comparator "eq") and passes.
     const r = check("Lock out the drive, wait for the charge LED to go out, then measure DC+ to DC- and confirm 0 V.", [], F.GS10);
-    expect(r.verdict).toBe("no_numbers"); // "0 V" with no threshold word is not a threshold claim
+    expect(verdicts(r)).toEqual(["pass_absence_of_voltage"]);
     const r2 = check("Lock out the drive, then measure DC+ to DC- and confirm the bus drops to 0 V.", [], F.GS10);
     expect(verdicts(r2)).toEqual(["pass_absence_of_voltage"]);
     expect(r2.verdict).toBe("pass");
@@ -401,6 +402,58 @@ describe("#4962 tight continuation", () => {
     ["a wrapped line inside one paragraph still continues", "Capacitors remain charged\nafter power is removed. Wait 5 minutes."],
   ])("pass: %s", (_n, chunk) => {
     expect(verdicts(check(FIVE_MIN, [manual(chunk)], F.GS10))).toEqual(["pass"]);
+  });
+});
+
+// Round 3, D2 (Mike: exact zero only, voltage AND pressure) + #4964 (Codex round 2 F3): the
+// comparator rides on the typed number; only an exact-zero measurement claim needs no source.
+describe("D2 / #4964 exact zero only", () => {
+  it.each([
+    ["below 0 V", "Measure DC+ to DC- and confirm the reading is below 0 V."],
+    ["at most 0 V", "Measure DC+ to DC- and confirm it is at most 0 V."],
+    ["less than 0 VDC", "Confirm the DC bus is less than 0 VDC."],
+    ["below 0 psi", "Bleed the accumulator until the gauge reads below 0 psi."],
+    ["0 psi or less", "Bleed the line to 0 psi or less."],
+  ])("block with no chunks: %s", (_n, answer) => {
+    const r = check(answer, [], F.GS10);
+    expect(verdicts(r)).toEqual(["block:no_source"]);
+    expect(r.verdict).toBe("block");
+  });
+
+  it.each([
+    ["confirm 0 V", "Measure DC+ to DC- and confirm 0 V.", "pass_absence_of_voltage"],
+    ["reads 0 V", "The DC bus reads 0 V on the meter.", "pass_absence_of_voltage"],
+    ["drops to 0 V", "Confirm the bus drops to 0 V.", "pass_absence_of_voltage"],
+    ["zero volts", "Confirm the DC bus reads zero volts.", "pass_absence_of_voltage"],
+    ["gauge reads 0 psi", "Confirm the pressure gauge reads 0 psi.", "pass_absence_of_pressure"],
+  ])("pass with no chunks: %s", (_n, answer, code) => {
+    expect(verdicts(check(answer, [], F.GS10))).toEqual([code]);
+  });
+
+  it.each([
+    ["no voltage present", "Ensure by measuring with a multimeter that there is no voltage present."],
+    ["gauge reads zero", "Confirm the pressure gauge reads zero."],
+  ])("no number, nothing to block: %s", (_n, answer) => {
+    expect(check(answer, [], F.GS10).verdict).toBe("no_numbers");
+  });
+
+  it("the comparator is carried in TypedNumber", () => {
+    const cmp = (a: string) => extractNumbers({ answerText: a, chunks: [], bound: F.GS10 }).numbers.map((n) => n.comparator);
+    expect(cmp("Confirm the DC bus is below 50 VDC.")).toEqual(["lt"]);
+    expect(cmp("Confirm the DC bus reads 50 V or less.")).toEqual(["le"]);
+    expect(cmp("Confirm the DC bus reads 0 V.")).toEqual(["eq"]);
+    expect(cmp("Wait at least 5 minutes for the capacitors to discharge.")).toEqual(["ge"]);
+  });
+
+  it("schema: a typed zero needs comparator 'eq' for the exception; a missing or inequality comparator does not get it", () => {
+    const zero = { quantity: "residual_voltage", value: 0, unit: "V", sourceChunkId: null };
+    const run = (n: unknown) => verifyNumbers({ numbers: [n], chunks: [], bound: F.GS10 }).checks.map((c) => c.verdict);
+    expect(run({ ...zero, comparator: "eq" })).toEqual(["pass_absence_of_voltage"]);
+    expect(run(zero)).toEqual(["block:no_source"]);
+    expect(run({ ...zero, comparator: "lt" })).toEqual(["block:no_source"]);
+    expect(run({ ...zero, comparator: "le" })).toEqual(["block:no_source"]);
+    expect(run({ ...zero, comparator: "below" })).toEqual(["block:schema"]);
+    expect(run({ quantity: "pressure", value: 0, unit: "kPa", sourceChunkId: null, comparator: "eq" })).toEqual(["pass_absence_of_pressure"]);
   });
 });
 

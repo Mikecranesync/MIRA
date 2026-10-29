@@ -5,7 +5,7 @@
  * Detection only: nothing here is rendered. The fold is local on purpose (answer-validation.ts keeps
  * its own private `foldForDetection`; this module must not change that file while #4929/#4931 are open).
  */
-import type { Condition, Quantity } from "./types";
+import type { Comparator, Condition, Quantity } from "./types";
 
 /** Fold Unicode into the ASCII shape the rules below are written against. */
 export function fold(s: string): string {
@@ -355,6 +355,30 @@ export function classify(
       return "pressure";
   }
 }
+
+const ABOUT = "\\s*(?:about\\s+|approximately\\s+|~\\s*)?$";
+const CMP_BEFORE: Array<[RegExp, Comparator]> = [
+  [new RegExp(`(?:\\b(?:at\\s+most|no(?:t)?\\s+more\\s+than|not\\s+(?:to\\s+)?exceed(?:ing)?|(?:a\\s+)?max(?:imum)?(?:\\s+of)?)|≤|<=|=<)${ABOUT}`, "i"), "le"],
+  [new RegExp(`(?:\\b(?:less\\s+than|below|under|lower\\s+than|(?:drops?|falls?|discharged?)\\s+below)|<)${ABOUT}`, "i"), "lt"],
+  [new RegExp(`(?:\\b(?:at\\s+least|no(?:t)?\\s+less\\s+than|(?:a\\s+)?min(?:imum)?(?:\\s+of)?)|≥|>=|=>)${ABOUT}`, "i"), "ge"],
+  [new RegExp(`(?:\\b(?:more\\s+than|over|above|greater\\s+than)|>)${ABOUT}`, "i"), "gt"],
+  [new RegExp(`(?:\\b(?:(?:drops?|falls?|discharged?|bleeds?(?:\\s+down)?|bled(?:\\s+down)?)\\s+to|reads?|reading\\s+(?:is|of)|confirm|verify|measures?|shows?|equals?|is|to)|=)${ABOUT}`, "i"), "eq"],
+];
+const CMP_AFTER: Array<[RegExp, Comparator]> = [
+  [/^\s*(?:\[[^\]]*\]\s*)?(?:or\s+(?:less|lower|below|under)|and\s+(?:below|under|lower)|max(?:imum)?\b)/i, "le"],
+  [/^\s*(?:\[[^\]]*\]\s*)?(?:or\s+(?:more|longer|greater|above|over)|min(?:imum)?\b)/i, "ge"],
+];
+
+/** The comparator an answer states for a value, from the text right before and after it (#4964).
+ *  Undefined when none is stated; an exact-zero exception needs "eq" (fail closed). */
+export function comparatorOf(before: string, after: string): Comparator | undefined {
+  for (const [re, c] of CMP_AFTER) if (re.test(after)) return c;
+  for (const [re, c] of CMP_BEFORE) if (re.test(before)) return c;
+  return undefined;
+}
+
+/** An exact-zero voltage MEASUREMENT claim (D2): a measuring point or a meter reading in the sentence. */
+export const ZERO_CLAIM_RE = /\b(?:dc\s*[+-]|bus|capacitors?|between\s*\+\s*and\s*-|terminals?|meter|multimeter|reads?|reading|measure\w*)/i;
 
 const COND_RES: Array<[RegExp, Condition["op"]]> = [
   [/(?:≤|<=|<|\bup\s+to|\bunder|\bbelow|\bless\s+than|\bat\s+most)\s*(\d+(?:\.\d+)?)\s*(hp|kw)\b/i, "le"],

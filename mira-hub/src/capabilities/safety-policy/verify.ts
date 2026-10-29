@@ -112,7 +112,12 @@ export function verifyNumbers(input: VerifyInput): VerifyResult {
   }
 
   function verdictFor(n: TypedNumber): NumberVerdict {
-    if (n.quantity === "residual_voltage" && n.value === 0) return "pass_absence_of_voltage";
+    // D2 / #4964: only an exact-zero claim (comparator "eq") needs no source; "below / at most 0"
+    // needs applicable cited evidence like any other value.
+    if (n.value === 0 && n.comparator === "eq") {
+      if (n.quantity === "residual_voltage") return "pass_absence_of_voltage";
+      if (n.quantity === "pressure") return "pass_absence_of_pressure";
+    }
     const own = input.question ? inQuestion(n, input.question) : false;
     if (n.sourceChunkId === null) return own ? "block:technician_number" : "block:no_source";
     const chunk = byId.get(n.sourceChunkId);

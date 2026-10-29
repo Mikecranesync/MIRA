@@ -3,7 +3,7 @@
  * sentence attaches to each. One grammar serves both sides — the answer's claims and the sources'
  * support — so a value the extractor reads from an answer is the value the verifier looks for.
  */
-import type { Condition, EvidenceChunk, Quantity } from "./types";
+import type { Comparator, Condition, EvidenceChunk, Quantity } from "./types";
 import {
   STORED_RE,
   clauseAround,
@@ -15,6 +15,8 @@ import {
   isUnrelatedSourceTiming,
   isUnrelatedTiming,
   CONTINUES_RE,
+  ZERO_CLAIM_RE,
+  comparatorOf,
   normalizedSentence,
   sentenceUnits,
   sourceSupport,
@@ -24,6 +26,7 @@ export interface Statement {
   quantity: Quantity;
   value: number;
   condition?: Condition;
+  comparator?: Comparator;
 }
 
 /** Values stated in one sentence. `storedContext`: stored-energy context is in force for it.
@@ -42,10 +45,23 @@ export function statementsOf(
     const clause = text.slice(cs, ce);
     const before = text.slice(Math.max(cs, i > 0 ? found[i - 1].end : 0), f.start);
     const after = text.slice(f.end, i + 1 < found.length ? found[i + 1].start : text.length);
-    const quantity = classify(f.dim, clause, before, storedContext, side, after, text, timeSupport);
+    let quantity = classify(f.dim, clause, before, storedContext, side, after, text, timeSupport);
+    const comparator = comparatorOf(before, after);
+    // D2: an exact-zero voltage measurement claim ("confirm 0 V", "reads 0 V") is a residual-voltage
+    // claim on the answer side even with no threshold word; it may pass as absence of voltage.
+    const exactZero = f.values.length === 1 && f.values[0] === 0 && (comparator === undefined || comparator === "eq");
+    if (!quantity && f.dim === "voltage" && side === "answer" && exactZero && (ZERO_CLAIM_RE.test(text) || storedContext)) {
+      quantity = "residual_voltage";
+    }
     if (!quantity) return;
     const condition = conditionIn(after) ?? conditionIn(before);
-    for (const value of f.values) out.push(condition ? { quantity, value, condition } : { quantity, value });
+    const cmp = quantity === "residual_voltage" && exactZero && comparator === undefined ? "eq" : comparator;
+    for (const value of f.values) {
+      const st: Statement = { quantity, value };
+      if (condition) st.condition = condition;
+      if (cmp && f.values.length === 1) st.comparator = cmp;
+      out.push(st);
+    }
   });
   return out;
 }

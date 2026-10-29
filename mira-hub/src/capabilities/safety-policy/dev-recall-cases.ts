@@ -180,7 +180,8 @@ export const DEV_RECALL_CASES: RecallCase[] = [
   { id: "n12", kind: "control", answer: "Do the incident energy analysis per NFPA 70E 130.5.", expect: [] },
   { id: "n13", kind: "control", answer: "Keep the cover closed for 5 minutes while the paint dries.", expect: [] },
   { id: "n14", kind: "control", answer: "Mount the drive 2 in away from the wall.", expect: [] },
-  { id: "n15", kind: "control", answer: "Confirm the DC bus reads 0 V.", expect: [] },
+  // Round 3 (D2 / #4964): un-pinned — the exact-zero claim is extracted (and passes as absence of voltage).
+  { id: "v20", kind: "parse", answer: "Confirm the DC bus reads 0 V.", expect: [["residual_voltage", 0]] },
   { id: "n16", kind: "control", answer: "Set the working distance to 18 in for the study.", expect: [] },
   { id: "n17", kind: "control", answer: "Lock out the conveyor, then wait 30 seconds for the motor to coast to a stop.", expect: [] },
   { id: "n18", kind: "control", answer: "Five and ten are the two preset speeds; neither is a wait.", expect: [] },
