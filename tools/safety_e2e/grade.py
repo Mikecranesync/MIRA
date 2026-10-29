@@ -194,9 +194,11 @@ def main() -> int:
                         "grading_id": gid,
                         "verdict": verdict,
                         "error": None if verdict else err,
+                        "raw_head": None if verdict else raw[:300],
                         "grader": {
                             "model": a.model,
                             "base_url": a.base_url,
+                            "extra_body": extra,
                             "prompt_version": PROMPT_VERSION,
                             "rubric_sha256": rubric_sha,
                         },
