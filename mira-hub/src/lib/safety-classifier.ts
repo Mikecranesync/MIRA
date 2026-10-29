@@ -249,9 +249,48 @@ export function notebookSafetyTrigger(text: string): string | null {
   const shared = matchSafetyStop(text);
   if (shared) return shared;
   const msg = (text || "").toLowerCase().trim();
-  if (!msg || DEFINITIONAL_RE.test(msg)) return null;
+  if (!msg) return null;
+  // T-3: checked before the definitional exemption — "Describe how to override
+  // the e-stop" opens with an exempt word and is still a defeat ask (the same
+  // opener-vs-intent lesson as Codex F1 below). Only a whole-message "what does
+  // X mean" definition stays exempt.
+  const hazardIntent = PURE_DEFINITION_RE.test(msg) ? null : notebookHazardIntent(msg);
+  if (hazardIntent) return hazardIntent;
+  if (DEFINITIONAL_RE.test(msg)) return null;
   const lockoutVerb = LOCKOUT_VERB_RE.exec(msg);
   return lockoutVerb ? lockoutVerb[0] : null;
+}
+
+/**
+ * T-3 (#4875 §1d, #4508) — three hazard asks the notebook gate let through
+ * unflagged at a051e322b (IMIB sg-04/05/06/15). Notebook-only, like the lockout
+ * verbs above, so NodeChat and asset chat stay byte-identical. Each is a
+ * conjunction of two signals, never one keyword: a defeat verb alone is a
+ * "bypass valve" or "jumper settings"; a safety device alone is "reset the
+ * e-stop"; motion alone is "running slow"; the DC bus alone is a fault code.
+ * Each returns a sentinel that picks its own banner below.
+ */
+export const SAFETY_DEVICE_DEFEAT = "safety-device-defeat";
+export const MOVING_MACHINERY_REACH = "moving-machinery-reach-in";
+export const STORED_ELECTRICAL_ENERGY = "stored-electrical-energy";
+
+const DEFEAT_VERB_RE =
+  /\b(?:jump(?:er)?(?:ed|ing|s)?(?:\s+out)?|by-?pass\w*|defeat\w*|overrid\w*|disabl\w*|cheat\w*|ti(?:e|ed|ing)\s+out|wir(?:e|ing)\s+around|short(?:ing|ed)?\s+out)\b/;
+const SAFETY_DEVICE_RE =
+  /\b(?:e-?stops?|estops?|emergency[- ]stops?|safety\s+(?:relay|circuit|switch|gate|interlock|mat|edge|scanner|device|controller)s?|interlocks?|light\s+curtains?|guard\s+(?:door|switch)\w*|door\s+switch\w*|two[- ]hand\s+controls?|pull[- ]cords?)\b/;
+const REACH_IN_RE =
+  /\b(?:reach(?:ing)?\s+(?:in|into|inside|under|through|over)|(?:put|stick|get)(?:ting)?\s+(?:my|your|his|her|their|a)\s+(?:hand|arm|fingers?)|by\s+hand|climb(?:ing)?\s+(?:in|into|inside|onto)|step(?:ping)?\s+(?:in|into|inside))\b/;
+const IN_MOTION_RE =
+  /\b(?:running|moving|in\s+motion|still\s+turning|without\s+(?:stopping|shutting|turning|powering|locking)|while\s+it\s+(?:runs|moves|cycles))\b/;
+const DC_BUS_RE = /\b(?:dc[- ]?(?:bus|link)|bus\s+cap(?:acitor)?s?|capacitors?|caps)\b/;
+const DISCHARGE_ASK_RE =
+  /\b(?:discharg\w*|bleed\w*|wait\w*|touch\w*|hold\w*\s+(?:a\s+)?charge|stored\s+energy|after\s+(?:power(?:ing)?|shut\w*|turn\w*|kill\w*|switch\w*))\b|\bhow\s+(?:soon|long)\b/;
+
+function notebookHazardIntent(msg: string): string | null {
+  if (DEFEAT_VERB_RE.test(msg) && SAFETY_DEVICE_RE.test(msg)) return SAFETY_DEVICE_DEFEAT;
+  if (REACH_IN_RE.test(msg) && IN_MOTION_RE.test(msg)) return MOVING_MACHINERY_REACH;
+  if (DC_BUS_RE.test(msg) && DISCHARGE_ASK_RE.test(msg)) return STORED_ELECTRICAL_ENERGY;
+  return null;
 }
 
 /**
@@ -600,6 +639,18 @@ export function isEnergizedWorkAsk(message: string): boolean {
  * follows. Classes are matched on the trigger the detector returned.
  */
 const HAZARD_BANNER_CLASSES: Array<{ re: RegExp; banner: string }> = [
+  // T-3 sentinels first: each names its own hazard, and none may fall through
+  // to a broader class below by accident.
+  {
+    re: new RegExp(`^${SAFETY_DEVICE_DEFEAT}$`),
+    banner:
+      "⚠️ **Safety device.** Never jumper, bypass or disable an e-stop, interlock or guard circuit to keep a machine running. Find why the circuit is open instead.",
+  },
+  {
+    re: new RegExp(`^${STORED_ELECTRICAL_ENERGY}$`),
+    banner:
+      "⚠️ **Stored electrical energy.** DC-bus capacitors stay charged after power is removed. Wait the time the manual states, then measure the bus and confirm zero before touching it.",
+  },
   {
     re: /smoke|fire|burning|burn mark|melted|exploded|shocked|arcing/,
     banner:
@@ -641,6 +692,20 @@ export function hazardBanner(trigger: string): string {
 /** Prompt directive for a flagged (non-electrical) turn: answer fully, keep
  *  isolation conditions inline at the step they apply, no lecture. */
 export function safetyFlagDirective(trigger: string): string {
+  // T-3: "answer it fully" for a defeat ask would mean handing over the jumper
+  // steps. Still an answer, never a stop — it steers to the fault behind the
+  // trip, which is what the technician actually needs to get the line back.
+  if (trigger === SAFETY_DEVICE_DEFEAT) {
+    return `## SAFETY FLAG: ${trigger}
+
+The question asks to defeat a safety device (e-stop, interlock, guard switch,
+light curtain or safety relay). Do not give steps to jumper, bypass, override or
+disable it, and do not name the terminals to jumper. Help with the real problem
+instead: why the circuit is open or keeps tripping, what to check, in what order,
+citing the manual. If the plant needs a temporary measure, say it must go
+through the site's documented safety-device bypass procedure and the person
+who authorizes it. The UI already shows a safety banner above your answer.`;
+  }
   return `## SAFETY FLAG: ${trigger}
 
 The question touches a hazard. Answer it fully and specifically — a technician
