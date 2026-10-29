@@ -4737,11 +4737,11 @@ async function handleChatTurn(
         }
       }
 
-      // A SAFETY_STOP replacement is terminal and self-contained (#4471): no
-      // banner goes above it. "Before you reset or restart" stacked over a stop
-      // for an energized-reset answer (#4645 landed after #4471's base) would
-      // read as permission to proceed.
-      if (flagBanner && served && !refused && answerText && outputRejected?.kind !== "unsafe_answer") {
+      // #4471 remount: the #4645 restart ADVISORY ("Before you reset or
+      // restart…") never goes above a SAFETY_STOP replacement — over a stop
+      // for an energized-reset answer it reads as permission to proceed. Hazard
+      // banners keep their every-outcome policy (safety-classifier.ts).
+      if (flagBanner && served && !refused && answerText && !(restartAdvisory && outputRejected?.kind === "unsafe_answer")) {
         answerText = `${flagBanner}\n\n${answerText}`;
       }
 
