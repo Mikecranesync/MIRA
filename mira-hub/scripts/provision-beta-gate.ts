@@ -169,6 +169,25 @@ async function provisionAfterRegister(tenantId: string) {
       `INSERT INTO tenants (id, name, contact_email) VALUES ($1,$2,$3) ON CONFLICT (id) DO NOTHING`,
       [tenantId, `betagate_${SUFFIX}`, CREDS.email],
     );
+    // #4927: with MIRA_PILOT_APPROVAL_REQUIRED on, register makes the stranger
+    // 'pending' and middleware 307s every API call to /pending-approval. Put
+    // THIS run's own tenant back on the flag-off path (pilot_status NULL,
+    // owner on a trial) — exactly what register writes with the flag off, so
+    // with the flag off both UPDATEs match nothing. NULL (not 'active') keeps
+    // the throwaway tenant out of the 5-org cohort count.
+    await owner.query(
+      `UPDATE hub_users SET status = 'trial', trial_expires_at = NOW() + INTERVAL '1 day', updated_at = NOW()
+       WHERE tenant_id = $1 AND status = 'pending'`,
+      [tenantId],
+    );
+    try {
+      await owner.query(`UPDATE hub_tenants SET pilot_status = NULL WHERE id = $1 AND pilot_status = 'pending'`, [
+        tenantId,
+      ]);
+    } catch (err) {
+      // Pre-107 schema has no pilot_status column — nothing to undo there.
+      if ((err as { code?: string }).code !== "42703") throw err;
+    }
   } finally {
     await owner.end();
   }
@@ -203,6 +222,9 @@ async function provisionAfterRegister(tenantId: string) {
     method: "POST",
     headers: { "content-type": "application/json", cookie: cookieHeader },
     body: JSON.stringify({ name: `Beta Gate Folder ${SUFFIX}` }),
+    // A gate redirect (e.g. 307 /pending-approval) must fail here as a 3xx,
+    // not be followed into a page that reads as `200 {}` (#4927).
+    redirect: "manual",
   });
   const nodeJson = (await nodeRes.json().catch(() => ({}))) as { node?: { id?: string } };
   if (nodeRes.status !== 201 || !nodeJson.node?.id) {
