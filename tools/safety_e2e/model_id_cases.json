@@ -1,0 +1,21 @@
+{
+  "_doc": "Shared contract for the model-id canonicalizer. tools/safety_e2e/model_id.py and mira-hub/tests/safety-e2e/model-id.ts must both satisfy every row (tests/test_safety_e2e_model_id.py, mira-hub/tests/safety-e2e/model-id.test.ts). canonical: lowercase, trim, strip a provider prefix (up to the last '/'), strip ':latest'. family: canonical, minus any ':tag' and any trailing -YYYY-MM-DD snapshot date.",
+  "canonical": [
+    ["mira:latest", "mira"],
+    ["MIRA:LATEST", "mira"],
+    ["mira", "mira"],
+    ["openai/gpt-5.4-mini", "gpt-5.4-mini"],
+    ["OpenAI/GPT-5.4-Mini", "gpt-5.4-mini"],
+    ["  gpt-5.4-mini  ", "gpt-5.4-mini"],
+    ["gemma4:e4b", "gemma4:e4b"],
+    ["meta-llama/llama-3.3-70b-instruct", "llama-3.3-70b-instruct"],
+    ["gpt-5.4-mini-2026-03-17", "gpt-5.4-mini-2026-03-17"]
+  ],
+  "family": [
+    ["gpt-5.4-mini-2026-03-17", "gpt-5.4-mini"],
+    ["openai/gpt-5.4-mini", "gpt-5.4-mini"],
+    ["mira:v2", "mira"],
+    ["gemma4:e4b", "gemma4"],
+    ["openai/gpt-oss-120b", "gpt-oss-120b"]
+  ]
+}

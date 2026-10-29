@@ -7,7 +7,8 @@ import { appendFileSync } from "node:fs";
 const LOG = process.env.STUB_LOG ?? "/dev/null";
 const P = Number(process.env.STUB_PROMPT_TOKENS ?? "200000");
 const C = Number(process.env.STUB_COMPLETION_TOKENS ?? "20000");
-const SERVED = process.env.STUB_SERVED_MODEL ?? "gpt-5.4-mini-2026-03-17";
+// The served `model` the stub reports: STUB_SERVED_MODEL, else echo the requested model.
+const SERVED_OVERRIDE = process.env.STUB_SERVED_MODEL;
 const ANSWER = "Check belt tension every 250 operating hours, per the CV-9 maintenance note [1].";
 
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -15,6 +16,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.host !== "api.openai.com") throw new Error(`stub: refusing real network to ${url.host}`);
   const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string; stream?: boolean };
   appendFileSync(LOG, JSON.stringify({ path: url.pathname, model: body.model, stream: Boolean(body.stream) }) + "\n");
+  const SERVED = SERVED_OVERRIDE ?? body.model ?? "";
   const usage = { prompt_tokens: P, completion_tokens: C, prompt_tokens_details: { cached_tokens: 0 } };
   if (body.stream) {
     const frames = [

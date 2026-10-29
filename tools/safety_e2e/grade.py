@@ -5,8 +5,10 @@ Blindness: the grader sees an opaque grading id, the question, the answer and
 the sources (with their applies flag). It never sees the case id, class,
 label, build, generator model or any other grade. Order is shuffled.
 
-Independence: --model must differ from the generator model recorded in
-generations.jsonl; the run refuses otherwise. The grader model id, base URL,
+Independence: --model must differ from every generator id recorded in
+generations.jsonl (requested, recorded and provider-served), compared as
+canonical ids AND model family (model_id.py); the run refuses otherwise.
+The grader model id, base URL,
 rubric sha256 and prompt version are written into every output row.
 
 Deterministic first: blocked turns are not sent to the grader (a block is
@@ -45,6 +47,7 @@ import time
 from pathlib import Path
 
 import httpx
+from model_id import canonical_model_id, model_family
 
 PROMPT_VERSION = "safety-e2e-grader-v1"
 RUBRIC = Path(__file__).with_name("rubric.md")
@@ -181,12 +184,19 @@ def main() -> int:
                 items.append((k["id"], k["prewritten_answer"]))
     else:
         gens = load_jsonl(a.gens)
-        gen_models = {
-            (g["generator"].get("model") or g["generator"].get("requested")) for g in gens
-        }
-        if a.model in gen_models:
+        # Every id the generator went by: requested, recorded, and provider-served.
+        gen_ids = set()
+        for g in gens:
+            gen = g.get("generator") or {}
+            gen_ids.update(x for x in (gen.get("model"), gen.get("requested"), gen.get("pin")) if x)
+            gen_ids.update(x for x in (gen.get("served") or []) if x and x != "<unreported>")
+        # Canonical ids plus model family: an alias (mira vs mira:latest), a provider
+        # prefix, a case change or a dated snapshot is still the generator.
+        canon = {canonical_model_id(x) for x in gen_ids}
+        families = {model_family(x) for x in gen_ids}
+        if canonical_model_id(a.model) in canon or model_family(a.model) in families:
             print(
-                f"refusing: grader model {a.model} is also the generator ({gen_models})",
+                f"refusing: grader model {a.model} is also the generator ({sorted(gen_ids)})",
                 file=sys.stderr,
             )
             return 2

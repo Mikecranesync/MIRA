@@ -23,6 +23,11 @@
  * Usage is priced from GEN_PRICE_PER_MTOK (or SAFETY_E2E_PRICE_IN/OUT_PER_MTOK);
  * a capped run on a model with no valid price is refused, never metered at $0.
  *
+ * Generator pin (fails closed): every provider-reported served model id must
+ * canonicalize (model-id.ts) to the pin (OPENAI_MODEL, or SAFETY_E2E_GEN_MODEL
+ * for ollama) or to a dated snapshot listed in SAFETY_E2E_PIN_SNAPSHOTS. A
+ * mismatch is recorded on the case's row and aborts before the next case.
+ *
  * Inputs never live in the repo: SAFETY_E2E_CASES (blind jsonl from
  * tools/safety_e2e/prepare_cases.py) and SAFETY_E2E_OUT must both resolve
  * outside the repository.
@@ -38,6 +43,7 @@ import { NextRequest } from "next/server";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import path from "node:path";
+import { checkServedPin, invalidSnapshots, UNREPORTED } from "./model-id";
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 
@@ -87,6 +93,11 @@ function resolvePrice(model: string): { in: number; out: number } | string {
 let PRICE_IN = 0;
 let PRICE_OUT = 0;
 const LIMIT = Number(env("SAFETY_E2E_LIMIT", "0"));
+// Generator pin: the model the provider is asked for, plus any dated snapshots
+// the operator EXPLICITLY accepts (comma-separated). Every served model id must
+// canonicalize to one of these (model-id.ts), or the run aborts.
+const PIN = MODE === "openai" ? env("OPENAI_MODEL") : GEN_MODEL;
+const PIN_SNAPSHOTS = env("SAFETY_E2E_PIN_SNAPSHOTS").split(",").map((s) => s.trim()).filter(Boolean);
 
 function repoRoot(): string {
   return execSync("git rev-parse --show-toplevel", { cwd: HERE }).toString().trim();
@@ -181,13 +192,16 @@ import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 // ── metered, allowlisted fetch ──────────────────────────────────────────────
 const realFetch = globalThis.fetch;
 const pending: Promise<void>[] = [];
-function meterBody(text: string, worstUsd: number) {
+let caseServed: string[] = [];
+function meterBody(text: string, worstUsd: number, ok = false) {
   // Streams carry usage on the last data frame; JSON responses at the top level.
   let booked = false;
   // The model id the provider says actually served (a dated snapshot when the
   // request named an alias) — recorded per run, not assumed from the request.
   const served = text.match(/"model"\s*:\s*"([^"]+)"/);
   if (served && !meter.servedModels.includes(served[1])) meter.servedModels.push(served[1]);
+  // Pin evidence: every successful response names the model that served it.
+  if (ok) caseServed.push(served ? served[1] : UNREPORTED);
   for (const m of text.matchAll(/"usage"\s*:\s*(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})/g)) {
     try {
       const u = JSON.parse(m[1]) as { prompt_tokens?: number; completion_tokens?: number };
@@ -237,7 +251,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     meterBody("", worst); // the request may have been billed before the abort
     throw e;
   }
-  pending.push(res.clone().text().then((t) => meterBody(t, worst), () => meterBody("", worst)));
+  pending.push(res.clone().text().then((t) => meterBody(t, worst, res.ok), () => meterBody("", worst)));
   return res;
 }) as typeof fetch;
 
@@ -282,6 +296,8 @@ it(
     if (!(Number.isFinite(CASE_WORST_USD) && CASE_WORST_USD >= 0)) throw new Error("refusing: SAFETY_E2E_CASE_WORST_USD must be a finite number >= 0");
     // Price the model the provider is actually asked for: in openai mode that is
     // OPENAI_MODEL (what canonicalProviders() sends), not a display label.
+    const badSnapshots = invalidSnapshots(PIN, PIN_SNAPSHOTS);
+    if (badSnapshots.length) throw new Error(`refusing: SAFETY_E2E_PIN_SNAPSHOTS entries are not dated snapshots of ${PIN}: ${badSnapshots.join(",")}`);
     const price = resolvePrice(MODE === "openai" ? env("OPENAI_MODEL") : GEN_MODEL);
     if (typeof price === "string") {
       if (BUDGET_USD > 0) throw new Error(`refusing: ${price}`);
@@ -315,6 +331,7 @@ it(
         break;
       }
       currentCase = c;
+      caseServed = [];
       persisted.turns = [];
       persisted.usage = [];
       layerLog.length = 0;
@@ -341,6 +358,7 @@ it(
       // The turn record is persisted after the stream closes; wait for it.
       for (let i = 0; i < 60 && persisted.usage.length === 0; i++) await new Promise((r) => setTimeout(r, 50));
       await Promise.all(pending.splice(0));
+      const pinCheck = checkServedPin(PIN, PIN_SNAPSHOTS, caseServed);
       const turn = (persisted.turns[0] ?? {}) as { answerStatus?: string; answerText?: string; evidence?: Array<{ kind?: string; trigger?: string }> };
       const evidence = (turn.evidence ?? []).map((e) => ({ kind: e.kind, trigger: e.trigger ?? null }));
       const stop = evidence.find((e) => e.kind === "safety_stop") ?? null;
@@ -350,7 +368,8 @@ it(
         build,
         build_tree: buildTree,
         mode: grounded ? "grounded" : "general",
-        generator: { mode: MODE, provider: usageFrame?.provider ?? null, model: usageFrame?.model ?? null, requested: GEN_MODEL },
+        generator: { mode: MODE, provider: usageFrame?.provider ?? null, model: usageFrame?.model ?? null, requested: GEN_MODEL, pin: PIN, served: [...caseServed] },
+        pin_check: pinCheck,
         http_status: httpStatus,
         error,
         latency_ms: Date.now() - t0,
@@ -370,6 +389,12 @@ it(
         meter_after: { usd: Number(meter.usd.toFixed(6)), in_tok: meter.inTok, out_tok: meter.outTok, calls: meter.calls },
       };
       appendFileSync(genOut, JSON.stringify(row) + "\n");
+      // A served model that is not the pinned generator: the row above records
+      // it, and no further case runs.
+      if (!pinCheck.ok) {
+        aborted = `pin: ${pinCheck.reason}`;
+        break;
+      }
       // Non-allowlisted fetches were refused (never sent); they are counted in
       // meter.blockedFetches and the run summary, not treated as an abort.
       if (BUDGET_USD > 0 && meter.usd > BUDGET_USD) {
