@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { ensureUserAndTenant, findUserByEmail } from "@/lib/users";
 import { attributionFromRequest, handlePilotApplicationSubmitted } from "@/capabilities/pilot-funnel";
+import { currentSignupTermsConsent } from "@/capabilities/hub-signup-terms";
 
 export const dynamic = "force-dynamic";
 
@@ -112,7 +113,14 @@ export async function POST(req: Request) {
     }
     const passwordHash = await bcrypt.hash(password, 12);
     const nameStr = typeof name === "string" ? name.trim() || undefined : undefined;
-    const result = await ensureUserAndTenant({ email: trimmed, passwordHash, name: nameStr });
+    // #4902: record the consent wording the signup page renders (registry
+    // pinned to page.tsx by src/capabilities/__tests__/hub-signup-terms.test.ts).
+    const result = await ensureUserAndTenant({
+      email: trimmed,
+      passwordHash,
+      name: nameStr,
+      termsConsent: currentSignupTermsConsent(),
+    });
     captureHubSpotLead(trimmed, nameStr).catch(() => {});
     // #4877 — pilot-application funnel. `existing` above is null, so this is
     // genuinely a NEW account (not the Google-OAuth/magic-link signup paths

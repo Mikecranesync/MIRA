@@ -74,6 +74,11 @@ export function ensureSchema(): Promise<void> {
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ`);
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS plan TEXT`);
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS preferences JSONB NOT NULL DEFAULT '{}'`);
+    // #4902 signup consent (mirrors migration 109). No DEFAULT on purpose:
+    // existing rows stay NULL = "not recorded", never back-filled.
+    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS terms_version TEXT`);
+    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS terms_sha256 TEXT`);
+    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ`);
     // hub_tenants — add slug + settings for Phase 2 multi-tenancy
     await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS slug TEXT`);
     await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'`);
@@ -283,6 +288,12 @@ export interface EnsureUserAndTenantInput {
   googleSub?: string;
   name?: string;
   passwordHash?: string;
+  /**
+   * #4902: consent wording the signup page showed (from
+   * @/capabilities/hub-signup-terms). Recorded with server NOW() only when a
+   * NEW account is created; omitted → all three terms_* columns stay NULL.
+   */
+  termsConsent?: { version: string; sha256: string };
 }
 
 export async function ensureUserAndTenant(
@@ -338,19 +349,23 @@ export async function ensureUserAndTenant(
     // (the admin approve route starts it), and the tenant is marked a pilot
     // applicant so the admin cohort view can find it.
     const pilotMode = isPilotApprovalRequired();
+    // #4902: consent columns. terms_accepted_at is server NOW() only when a
+    // version was supplied; otherwise all three stay NULL (not recorded).
+    const termsVersion = input.termsConsent?.version ?? null;
+    const termsSha256 = input.termsConsent?.sha256 ?? null;
     const {
       rows: [user],
     } = await client.query(
       pilotMode
-        ? `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at)
-       VALUES ($1, $2, $3, $4, $5, 'pending', NULL)
+        ? `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at, terms_version, terms_sha256, terms_accepted_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending', NULL, $6::text, $7::text, CASE WHEN $6::text IS NULL THEN NULL ELSE NOW() END)
        RETURNING id, email`
-        : `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at)
-       VALUES ($1, $2, $3, $4, $5, 'trial', NOW() + ($6::int * INTERVAL '1 day'))
+        : `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at, terms_version, terms_sha256, terms_accepted_at)
+       VALUES ($1, $2, $3, $4, $5, 'trial', NOW() + ($6::int * INTERVAL '1 day'), $7::text, $8::text, CASE WHEN $7::text IS NULL THEN NULL ELSE NOW() END)
        RETURNING id, email`,
       pilotMode
-        ? [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null]
-        : [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null, PILOT_WINDOW_DAYS],
+        ? [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null, termsVersion, termsSha256]
+        : [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null, PILOT_WINDOW_DAYS, termsVersion, termsSha256],
     );
     if (pilotMode) {
       await client.query(`UPDATE hub_tenants SET pilot_status = 'pending' WHERE id = $1`, [tenantId]);

@@ -88,6 +88,8 @@ describe("pilot invite and trial window persistence (#4362)", () => {
       "tenant-1",
       "Buyer",
       PILOT_WINDOW_DAYS,
+      null, // #4902 terms_version — no consent supplied → not recorded
+      null, // #4902 terms_sha256
     ]);
   });
 });

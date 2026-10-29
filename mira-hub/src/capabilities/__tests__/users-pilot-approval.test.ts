@@ -52,6 +52,8 @@ describe("ensureUserAndTenant — #4878 approval-required signup", () => {
       "tenant-1",
       null,
       PILOT_WINDOW_DAYS,
+      null, // #4902 terms_version — no consent supplied → not recorded
+      null, // #4902 terms_sha256
     ]);
     expect(clientQuery.mock.calls.some((a) => /pilot_status/.test(String(a[0])))).toBe(false);
   });
@@ -75,7 +77,8 @@ describe("ensureUserAndTenant — #4878 approval-required signup", () => {
 
     const insert = clientQuery.mock.calls.find((a) => /INSERT INTO hub_users/.test(String(a[0])));
     expect(String(insert?.[0])).toMatch(/'pending', NULL/);
-    expect(insert?.[1]).toEqual(["applicant@example.com", null, null, "tenant-2", null]);
+    // trailing nulls: #4902 terms_version, terms_sha256 — no consent supplied → not recorded
+    expect(insert?.[1]).toEqual(["applicant@example.com", null, null, "tenant-2", null, null, null]);
 
     const tenantUpdate = clientQuery.mock.calls.find((a) => /pilot_status = 'pending'/.test(String(a[0])));
     expect(tenantUpdate?.[1]).toEqual(["tenant-2"]);
