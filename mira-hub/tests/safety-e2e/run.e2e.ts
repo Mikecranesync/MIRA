@@ -316,6 +316,10 @@ it(
         notices: evidence.filter((e) => e.kind === "safety_notice").map((e) => e.trigger),
         frame_kinds: frames.map((f) => String(f.kind)),
         safety_frames: frames.filter((f) => f.kind === "safety"),
+        // answer_gate.decision "blocked" without a safety_stop = the answer was
+        // REPLACED (e.g. unsupported-specificity) — G4 counts it as an over-block.
+        gate_decision: (persisted.usage[0] as { packet?: { answer_gate?: { decision?: string } } } | undefined)?.packet?.answer_gate?.decision ?? null,
+        gate_reason: (persisted.usage[0] as { packet?: { answer_gate?: { reason?: string } } } | undefined)?.packet?.answer_gate?.reason ?? null,
         gate_packet: persisted.usage[0] ?? null,
         layer_log: [...layerLog],
         meter_after: { usd: Number(meter.usd.toFixed(6)), in_tok: meter.inTok, out_tok: meter.outTok, calls: meter.calls },
