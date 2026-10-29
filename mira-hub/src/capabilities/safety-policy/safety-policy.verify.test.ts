@@ -303,6 +303,50 @@ describe("review follow-ups", () => {
   });
 });
 
+// PR #4957 Codex round-1 follow-up #4958 (F1): on the SOURCE side a time is discharge support only
+// when its own clause carries an explicit discharge or contact link — "unrelated unless linked".
+describe("#4958 source timing needs a discharge or contact link in its own clause", () => {
+  const FIVE_S = "Wait 5 seconds for the DC bus capacitors to discharge [1].";
+
+  it.each([
+    ["fault reset, then a bus check", "To reset a fault, wait 5 seconds and check the DC bus voltage."],
+    ["a check delay before reading the bus", "Before checking the DC bus voltage, wait 5 seconds."],
+    ["a bus word with no link at all", "The DC bus voltage display updates after 5 seconds."],
+  ])("block: %s is not discharge support", (_n, sentence) => {
+    expect(verdicts(check(FIVE_S, [manual(sentence)], F.GS10))).toEqual(["block:not_in_cited_sentence"]);
+  });
+
+  it.each([
+    ["discharge-linked", "Wait 5 seconds for the DC bus capacitors to discharge."],
+    ["contact-linked", "Before touching the DC bus terminals, wait 5 seconds."],
+    ["power-removal-linked", "The DC bus stays energized; wait 5 seconds after power is removed."],
+  ])("control: a %s sentence still supports its time", (_n, sentence) => {
+    expect(verdicts(check(FIVE_S, [manual(sentence)], F.GS10))).toEqual(["pass"]);
+  });
+
+  it.each([
+    ["GS10 p6-4 'after all display lamps have gone out'", "Wait at least 10 minutes after all display lamps have gone out [1].", F.gs10p64(), F.GS10],
+    ["GS10 p6-3 warning (carried context, lamp subject)", "Wait at least five minutes after all display lamps have turned off [1].", F.gs10warn(), F.GS10],
+    ["PF40 'Wait three minutes for capacitors to discharge'", "Wait three minutes for capacitors to discharge [1].", F.pf40p9(), F.PF40],
+    ["ABB ACS355 'wait for 5 minutes to let the ... capacitors discharge'", "Wait 5 minutes for the capacitors to discharge [1].", F.acs355p18(), F.ACS355],
+  ] as const)("OEM sentence still passes: %s", (_n, answer, chunk, bound) => {
+    expect(verdicts(check(answer, [chunk], bound))).toEqual(["pass"]);
+  });
+
+  it("pinned: a link in ANOTHER clause of the sentence is not support (split at ';' or a spaced dash)", () => {
+    for (const sentence of ["The DC bus capacitors may still be charged; wait 5 minutes.", "Wait 5 minutes - the capacitors may still be charged."]) {
+      expect(verdicts(check("Wait 5 minutes for the capacitors to discharge [1].", [manual(sentence)], F.GS10))).toEqual([
+        "block:not_in_cited_sentence",
+      ]);
+    }
+  });
+
+  it("the answer side stays fail-closed: the same unlinked wording in an answer is still a discharge claim", () => {
+    const ex = extractNumbers({ answerText: "To reset a fault, wait 5 seconds and check the DC bus voltage.", chunks: [], bound: F.GS10 });
+    expect(ex.numbers.map((n) => [n.quantity, n.value])).toEqual([["discharge_time", 5]]);
+  });
+});
+
 function manual(content: string, id = "c1"): EvidenceChunk {
   return F.manualChunk(id, content, F.GS10, F.GS10_SHA, "6-9");
 }

@@ -208,8 +208,14 @@ export function classify(
 ): Quantity | null {
   switch (dim) {
     case "time": {
-      const unrelated = side === "source" ? isUnrelatedSourceTiming(clause) : isUnrelatedTiming(clause);
-      return storedContext && !unrelated ? "discharge_time" : null;
+      // #4958 source side: "unrelated unless linked". A source time is discharge support only when
+      // its OWN clause carries an explicit discharge or contact link; a bus word nearby is not
+      // enough. The unrelated-timing exclusion stays as an extra guard (it only narrows).
+      if (side === "source") {
+        return storedContext && DISCHARGE_LINK_RE.test(clause) && !isUnrelatedSourceTiming(clause) ? "discharge_time" : null;
+      }
+      // Answer side (fail closed, unchanged): any duration in stored-energy context is a claim.
+      return storedContext && !isUnrelatedTiming(clause) ? "discharge_time" : null;
     }
     case "voltage":
       return THRESHOLD_RE.test(before) && (BUS_POINT_RE.test(clause) || storedContext) ? "residual_voltage" : null;
