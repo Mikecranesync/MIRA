@@ -28,20 +28,33 @@
  * Zero-token by design — no inference call (`.claude/rules/zero-token-architecture.md`).
  */
 
-import { stepEnergyContradiction } from "./step-energy";
+import { SAFETY_STOP } from "@/lib/safety-classifier";
+
+import { LOCKOUT_REMOVED, RESTORE, STILL_ISOLATED, sequentialEnergizeThenMeasure, stepEnergyContradiction } from "./step-energy";
 import { firstUngovernedMatch } from "./hazard-modifiers";
+import { isolationBannerFor } from "./isolation-advisory";
+
+/** Fail kinds `validateAnswer` can emit. Hub-internal — not persisted, not
+ *  an SSE frame kind. Mobile/web consume `safety` / `safety_notice` /
+ *  `safety_stop`, never this union. There is no `hazard_warning` alias. */
+export type AnswerValidationKind =
+  | "unsafe_answer"
+  | "unsupported_specificity"
+  | "energized_warning"
+  | "isolation_advisory";
 
 export type AnswerValidation =
   | { ok: true }
   | {
       ok: false;
-      /** `energized_warning` (#3984, Mike 2026-09-26) and `hazard_warning`
-       *  (Mike 2026-09-27, "no answer blocking, just safety flags") are NOT
-       *  withholds: the replacement is the candidate itself with a warning
-       *  above it, and the caller serves it as an ordinary answered turn.
-       *  `unsupported_specificity` is an accuracy rule, not a safety one, and
-       *  still replaces. */
-      kind: "unsafe_answer" | "unsupported_specificity" | "energized_warning" | "hazard_warning";
+      /** `energized_warning` (#3984, Mike 2026-09-26) is NOT a withhold: the
+       *  replacement is the candidate itself with a warning above it, and the
+       *  caller serves it as an ordinary answered turn — the one deliberately
+       *  preserved exception (see `energizedWarningOr`). `unsafe_answer`
+       *  (owner decision 2026-10-16, #4122/#3790) and `unsupported_specificity`
+       *  (an accuracy rule, not a safety one) both replace with a fresh,
+       *  candidate-independent answer — never the rejected text. */
+      kind: AnswerValidationKind;
       /** Machine-readable id, e.g. `unsafe-answer:permits-energized`. */
       violation: string;
       /** Bounded excerpt of the matched text, for server logs only. */
@@ -466,7 +479,6 @@ const RESTORE_ENERGY_SRC =
   "(?:re[-\\s]?energi[sz]\\w*|restore\\s+(?:the\\s+)?power|" +
   "power\\s+(?:\\w+\\s+){0,3}back\\s+(?:on|up)|" +
   "(?:turn|switch|bring|put)\\s+(?:\\w+\\s+){0,3}back\\s+(?:on|up))";
-const RESTORE_ENERGY = new RegExp("\\b" + RESTORE_ENERGY_SRC, "i");
 // A narrower action set than HAZARD_ACTIONS on purpose: "work", "replace" and
 // "service" all appear in the legitimate restore-power sentence.
 const MEASURE_ACTION_SRC =
@@ -484,14 +496,61 @@ const EXTERNAL_READING_INTRO = /\buse\s+(?:(?:the|an?|installed|external|remote|
 const MEASURE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + MEASURE_ACTION_SRC, "i");
 const RESTORE_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+" + RESTORE_ENERGY_SRC, "i");
 
+/** A restore-to-measure excerpt plus the [start, end) span it covers in the
+ *  scanned text. Masking uses this span so a later identical sentence is not
+ *  treated as part of the pairing. */
+type RestoreSpan = { excerpt: string; start: number; end: number };
+
+function partsWithOffsets(text: string, re: RegExp): { text: string; start: number; end: number }[] {
+  const out: { text: string; start: number; end: number }[] = [];
+  const g = new RegExp(re.source, `${re.flags.replace("g", "")}g`);
+  let start = 0;
+  let m: RegExpExecArray | null;
+  while ((m = g.exec(text))) {
+    out.push({ text: text.slice(start, m.index), start, end: m.index });
+    start = m.index + m[0].length;
+  }
+  out.push({ text: text.slice(start), start, end: text.length });
+  return out;
+}
+
+function spansOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+  return aStart < bEnd && aEnd > bStart;
+}
+
+/** Restore events already recognized elsewhere: A4's RESTORE_ENERGY_SRC plus
+ *  the isolation-tracker's RESTORE / LOCKOUT_REMOVED. No new phrase list —
+ *  object-first and inflected restores ("power is restored") must pair the
+ *  same way "restore power" does. */
+function restoreEventsIn(clause: string): RegExpExecArray[] {
+  const patterns = [
+    new RegExp("\\b" + RESTORE_ENERGY_SRC, "gi"),
+    new RegExp(RESTORE.source, "gi"),
+    new RegExp(LOCKOUT_REMOVED.source, "gi"),
+  ];
+  const out: RegExpExecArray[] = [];
+  const seen = new Set<string>();
+  for (const re of patterns) {
+    for (const m of clause.matchAll(re)) {
+      const key = `${m.index}:${m[0].length}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(m);
+    }
+  }
+  return out;
+}
+
 /** Carry an affirmative restoration across prose/list steps. Prohibitions
  * apply only to their own clause; a safe opening cannot excuse a later
  * instruction. An explicit isolate/lockout/verify step ends that interval.
  * Retain original answer text elsewhere: this scans detection-only text. */
-function restoreEnergyToMeasure(text: string): string | null {
+function restoreEnergyToMeasure(text: string): RestoreSpan | null {
   let restored: string | null = null;
+  let restoreStart = -1;
   let electrical = false;
-  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+  for (const sent of partsWithOffsets(text, /(?<=[.!?])\s+|\n+/)) {
+    const sentence = sent.text;
     // A completed affirmative isolation step ends the energized interval at
     // its verification, not at the end of the sentence. Keep scanning suffixes
     // such as "then re-energize" and never let a negated shutdown reset state.
@@ -508,7 +567,7 @@ function restoreEnergyToMeasure(text: string): string | null {
       }
       let frontedSource = "";
       for (const clause of segments[segmentIndex].split(CLAUSE_BOUNDARY)) {
-        const restorations = [...clause.matchAll(new RegExp("\\b" + RESTORE_ENERGY_SRC, "gi"))];
+        const restorations = restoreEventsIn(clause);
         const actions = [...clause.matchAll(new RegExp("\\b" + MEASURE_ACTION_SRC, "gi"))];
         if (actions.length === 0 && restorations.length === 0 && EXTERNAL_READING.test(clause)) {
           frontedSource = clause;
@@ -552,6 +611,7 @@ function restoreEnergyToMeasure(text: string): string | null {
           if (event.prohibited) continue;
           if (event.kind === "restore") {
             restored = sentence;
+            restoreStart = sent.start;
             electrical = ELECTRICAL_MEASUREMENT_CONTEXT.test(clause);
             continue;
           }
@@ -583,7 +643,11 @@ function restoreEnergyToMeasure(text: string): string | null {
           });
           if (!CONTACT_MEASUREMENT.test(action) && readsDisplay && allSourcesExternal) continue;
           if (electrical || ELECTRICAL_MEASUREMENT_CONTEXT.test(action)) {
-            return restored === sentence ? sentence : `${restored}\n${sentence}`;
+            return {
+              excerpt: restored === sentence ? sentence : `${restored}\n${sentence}`,
+              start: restoreStart,
+              end: sent.end,
+            };
           }
         }
 
@@ -598,6 +662,8 @@ function restoreEnergyToMeasure(text: string): string | null {
  *  other hazard action and no pressurized/motion relation. Used only after A4
  *  has fired, so A2 does not re-impose a stop on the very measurement A4 now
  *  warns about, while every other hazard clause is still scanned.
+ *  Only clauses whose offsets overlap the A4 span are masked. A later
+ *  identical sentence is a different span and is judged on its own.
  *  Decided, not inherited: a live measurement that also says "without
  *  de-energizing" (A2's no-isolation form) is masked too — it is the same
  *  energized-measurement category the owner put in the warn lane (#3984), and
@@ -605,21 +671,30 @@ function restoreEnergyToMeasure(text: string): string | null {
  *  A masked prohibited measurement ("never probe the live terminals, and …")
  *  no longer shields a sibling hazard clause: the prohibition only ever bound
  *  the probing, so the sibling is judged on its own (pinned in the wire test). */
-function maskLiveMeasurementClauses(text: string): string {
+function maskLiveMeasurementClauses(text: string, restoreScope: RestoreSpan): string {
   const measure = new RegExp("\\b" + MEASURE_ACTION_SRC, "gi");
   const otherRelations = HAZARD_RELATIONS.filter((r) => r.id !== "energized");
-  return text.replace(/[^.!?\n]+/g, (sentence) =>
-    sentence
+  return text.replace(/[^.!?\n]+/g, (sentence, offset: number) => {
+    let rel = 0;
+    return sentence
       .split(new RegExp(`(${CLAUSE_BOUNDARY.source})`, "i"))
       .map((clause) => {
+        const clauseStart = offset + rel;
+        const clauseEnd = clauseStart + clause.length;
+        rel += clause.length;
+        const inRestore = spansOverlap(clauseStart, clauseEnd, restoreScope.start, restoreScope.end);
         if (!new RegExp("\\b" + MEASURE_ACTION_SRC, "i").test(clause)) return clause;
         if (!ELECTRICAL_MEASUREMENT_CONTEXT.test(clause) && !CONTACT_MEASUREMENT.test(clause)) return clause;
         if (HAZARD_ACTION_ANY.test(clause.replace(measure, " "))) return clause;
         if (otherRelations.some((r) => r.re.test(clause))) return clause;
+        // Restore-scoped measurement clauses are A4's warn shape. A
+        // prohibited measurement outside that excerpt is not an instruction
+        // and must not exempt a sibling hazard in the same sentence.
+        if (!inRestore && !MEASURE_PROHIBITION.test(clause)) return clause;
         return clause.replace(/[^\s]/g, " ");
       })
-      .join(""),
-  );
+      .join("");
+  });
 }
 
 /* ------------------------------------------------------------------------ *
@@ -1042,17 +1117,21 @@ If you add this machine's manual as a source and ask again, I'll give you the ex
  *  technician keeps troubleshooting; this is a caution, not a stop. */
 export const ENERGIZED_WARNING = `⚠️ **Energized equipment.** Any step below that restores power or takes a reading on live conductors is energized work: qualified person, energized-work permit, arc-flash assessment and the PPE it specifies (NFPA 70E). Where you can, read the value from the drive, MCC metering or a power monitor instead of opening the enclosure.`;
 
-/** A step MIRA flagged as hazardous stays in the answer, quoted in a warning
- *  above it (owner decision 2026-09-27). The tech sees exactly which step. */
-function hazardWarning(violation: string, detail: string, answerText: string): AnswerValidation {
-  const step = detail.replace(/\s+/g, " ").trim().slice(0, 160);
-  return {
-    ok: false,
-    kind: "hazard_warning",
-    violation,
-    detail,
-    replacement: `⚠️ **Safety flag on a step below:** “${step}”. Do not do that on energized, pressurized or moving equipment — isolate it and verify zero energy first.\n\n${answerText}`,
-  };
+/** #4122/#3790 (owner decision 2026-10-16): the highest-confidence hazard
+ *  shapes — an affirmed LOTO bypass, a step that is both locked out and
+ *  powered, a live reading with no restore ever written, a rigging
+ *  overload — are replaced, not flagged. #4040 (2026-09-27, "no answer
+ *  blocking, just safety flags") moved every one of these to a warning that
+ *  kept the unsafe instruction in the served text under a banner; #4122's
+ *  staging capture showed the direct cost ("re-energize the control supply
+ *  under lockout") and #3790's poisoned-document repro showed the same gap
+ *  from the other side (a wrong/adversarial manual "certifying" energized
+ *  work as safe). The replacement is the shared SAFETY_STOP text — never the
+ *  matched step, never any text from the rejected candidate or the document
+ *  that produced it — so a poisoned source can supply the AFFIRMATION but
+ *  can never supply what the technician actually reads. */
+function unsafeAnswerBlock(violation: string, detail: string): AnswerValidation {
+  return { ok: false, kind: "unsafe_answer", violation, detail: detail.slice(0, 160), replacement: SAFETY_STOP };
 }
 
 // #4110 (staging 134eec706, Q3): "De-energize, lockout/tagout … verify zero
@@ -1061,11 +1140,12 @@ function hazardWarning(violation: string, detail: string, answerText: string): A
 // restore that is never written, so the explicit restore-to-measure rule never
 // fired and the answer was served with no energized-work banner (2 of 5 turns).
 //
-// Design (#4111 review rounds 1-2): this rule only ADDS the banner and never
-// withholds the answer, so a miss costs more than an extra warning. Each
-// bolted-on exemption (display reading, dead check, splitting on "and") opened
-// a new bypass. The rule therefore fires on a positive shape and keeps only
-// two exemptions, both clause-scoped:
+// Design (#4111 review rounds 1-2) was warn-and-keep. Owner decision
+// 2026-10-16 (#4122/#3790): the same shape — a live supply reading at a
+// contact point after lockout with NO restore written — is A2a
+// `unsafe-answer:lockout-live-measurement` and replaces with SAFETY_STOP.
+// Detection still fires on a positive shape and keeps only two exemptions,
+// both clause-scoped:
 //   fire   = after an affirmative lockout, a clause with a measure verb, a live
 //            supply quantity, and a physical CONTACT point;
 //   exempt = that clause affirmatively verifies ABSENCE of voltage, or that
@@ -1073,7 +1153,7 @@ function hazardWarning(violation: string, detail: string, answerText: string): A
 // A display-only reading has no contact point, so it never fires; a resistance
 // or continuity check sharing the clause does not exempt a live-voltage
 // reading; "not dead" is not a dead check.
-const LOCKOUT_STEP = /\b(?:lock[-\s]?out|loto)\b/i;
+const LOCKOUT_STEP = /\b(?:lock(?:ed)?[-\s]?out|loto)\b/i; // r2: asserted "locked out" too
 const LIVE_SUPPLY_QUANTITY =
   /\b(?:actual|line|line[-\s]to[-\s]line|supply|incoming|mains|input)\s+voltage\b|\bunder\s+load\b|\bwhile\s+(?:it\s+is\s+|the\s+\w+\s+is\s+)?(?:running|energi[sz]ed|operating)\b|\bcommanded\s+to\s+run\b/i;
 const CONTACT_POINT =
@@ -1087,54 +1167,110 @@ const MEASURE_VERB = new RegExp("\\b" + MEASURE_ACTION_SRC, "i");
 const METER = /\b(?:multi[-\s]?meter|volt[-\s]?meter|voltage\s+tester|clamp[-\s]?meter|meter)\b/i;
 const LOCKOUT_PROHIBITION = new RegExp("\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+(?:lock[-\\s]?out|loto)\\b", "i");
 
-function liveMeasurementAfterLockout(text: string): string | null {
+// Codex #4471 r1 F1: an affirmative lockout REMOVAL ends isolation, and the
+// restore vocabulary the isolation tracker accepts covers the inflected and
+// "power on"/"reconnect" forms a numbered procedure actually uses ("a qualified
+// person removes the lockout and restores power"). Without this, "removes the
+// lockout" re-read as another isolation event and "restores power" was not a
+// restore, so a coherent written restore-then-measure procedure was BLOCKED as
+// a no-restore contradiction. Local to this tracker on purpose: the shared
+// RESTORE_ENERGY_SRC (A4/A2 masking) is unchanged.
+// The object of a LOTO removal is lockout / LOTO / lock-and-tag / lock/tag —
+// never a bare mechanical "lock" ("Remove the lock nut …" is fastener work).
+const LOCKOUT_REMOVAL_SRC =
+  "(?:remov\\w*|lift\\w*|clear\\w*|releas\\w*|tak(?:e[sn]?|ing)\\s+off|took\\s+off)\\s+(?:(?:the|your|all|their|his|her|its)\\s+){0,2}(?:lock[-\\s]?outs?|loto|locks?\\s+and\\s+tags?|lock\\s*/\\s*tags?)\\b";
+const RESTORE_VARIANT_SRC =
+  "(?:restor(?:e|es|ed|ing)\\s+(?:(?:the|its)\\s+)?(?:power|energy|supply|voltage)|" +
+  "reconnect\\w*\\s+(?:(?:the|its)\\s+)?(?:power|supply|mains)|" +
+  "(?:turn|switch)\\w*\\s+(?:(?:the|its)\\s+)?power\\s+(?:back\\s+)?on|" +
+  "power(?:s|ed|ing)?\\s+(?:it\\s+|the\\s+\\w+\\s+)?back\\s+(?:on|up))\\b";
+const ENDS_ISOLATION = new RegExp(
+  "\\b(?:" + LOCKOUT_REMOVAL_SRC + "|" + RESTORE_VARIANT_SRC + "|" + RESTORE_ENERGY_SRC + ")",
+  "i",
+);
+const ENDS_ISOLATION_PROHIBITION = new RegExp(
+  "\\b" + NEG_HEAD_SRC + NEG_AUX_GAP_SRC + "\\s+(?:" + LOCKOUT_REMOVAL_SRC + "|" + RESTORE_VARIANT_SRC + "|" + RESTORE_ENERGY_SRC + ")",
+  "i",
+);
+
+/** `blocked`: a live supply reading at a contact point after a lockout with NO
+ *  restore ever written (self-contradiction — A2a blocks it). `restored`: the
+ *  same reading after an explicitly WRITTEN lockout removal / power restore —
+ *  the coherent #3984 restore-to-measure shape, which only warns (A4). */
+type LockoutMeasurement = { blocked: string | null; restored: RestoreSpan | null };
+
+function isLiveSupplyContactReading(step: string): boolean {
+  return (
+    MEASURE_VERB.test(step) &&
+    LIVE_SUPPLY_QUANTITY.test(step) &&
+    (CONTACT_POINT.test(step) || CONTACT_MEASUREMENT.test(step) || METER.test(step)) &&
+    !VERIFIES_ABSENCE.test(step) &&
+    !MEASURE_PROHIBITION.test(step)
+  );
+}
+
+function liveMeasurementAfterLockout(text: string): LockoutMeasurement {
   let isolated = false;
-  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
-    for (const clause of sentence.split(CLAUSE_BOUNDARY)) {
+  let restoredAfterLockout = false;
+  let restored: RestoreSpan | null = null;
+  for (const sent of partsWithOffsets(text, /(?<=[.!?])\s+|\n+/)) {
+    for (const cl of partsWithOffsets(sent.text, CLAUSE_BOUNDARY)) {
       // #4111 review round 3: "then" starts a separate action, so an exemption
       // in one step cannot cover the next. "and" is NOT split, so a shared
       // prohibition ("do not probe and measure …") keeps governing its verbs.
-      for (let step of clause.split(/\bthen\b/i)) {
+      for (const rawStep of partsWithOffsets(cl.text, /\bthen\b/i)) {
+        let step = rawStep.text;
+        let stepStart = sent.start + cl.start + rawStep.start;
         if (!step.trim()) continue;
-        // Only an affirmative restore ends isolation; "do not restore" does not.
-        if (RESTORE_ENERGY.test(step) && !RESTORE_PROHIBITION.test(step)) {
+        // Only an affirmative restore ends isolation; "do not restore" does
+        // not. A prohibition anywhere in the step ("do not remove the lockout
+        // or restore power") keeps it isolated. A restore in a step that
+        // still states isolation ("restores power under lockout") is the
+        // contradiction itself — reuse STILL_ISOLATED, do not end isolation.
+        // Do not `continue` after a real restore: "remove the lockout and
+        // measure …" is A4's coherent warn shape, and a live reading BEFORE
+        // the restore in the same unsplit step is still a contradiction.
+        const ended =
+          !RESTORE_PROHIBITION.test(step) &&
+          !ENDS_ISOLATION_PROHIBITION.test(step) &&
+          !STILL_ISOLATED.test(step)
+            ? (ENDS_ISOLATION.exec(step) ?? RESTORE.exec(step) ?? LOCKOUT_REMOVED.exec(step))
+            : null;
+        if (ended) {
+          const before = step.slice(0, ended.index);
+          if (isolated && isLiveSupplyContactReading(before)) {
+            return { blocked: before.trim(), restored: null };
+          }
+          if (isolated) restoredAfterLockout = true;
           isolated = false;
-          continue;
+          // Consume the removal/restore match so "remove the lockout" is not
+          // re-read as a new isolation event, then scan the remainder.
+          stepStart += ended.index + ended[0].length;
+          step = step.slice(ended.index + ended[0].length);
         }
         // A lockout isolates, and the rest of the SAME step is still checked
         // ("lock out the drive and measure …", review round 3 F1).
         const lock = LOCKOUT_STEP.exec(step);
         if (lock && !LOCKOUT_PROHIBITION.test(step)) {
           isolated = true;
+          stepStart += lock.index + lock[0].length;
           step = step.slice(lock.index + lock[0].length);
         }
-        if (!isolated) continue;
-        if (
-          MEASURE_VERB.test(step) &&
-          LIVE_SUPPLY_QUANTITY.test(step) &&
-          (CONTACT_POINT.test(step) || CONTACT_MEASUREMENT.test(step) || METER.test(step)) &&
-          !VERIFIES_ABSENCE.test(step) &&
-          !MEASURE_PROHIBITION.test(step)
-        ) {
-          return step.trim();
+        if (!isolated && !restoredAfterLockout) continue;
+        if (isLiveSupplyContactReading(step)) {
+          if (isolated) return { blocked: step.trim(), restored: null };
+          // A restore covers the first live reading after it (same clause or
+          // the next list step — the #3984 coherent shape). It does not latch
+          // for the rest of the answer: a later unrelated live reading is
+          // again isolated and BLOCKS.
+          restored ??= { excerpt: step.trim(), start: stepStart, end: stepStart + step.length };
+          restoredAfterLockout = false;
+          isolated = true;
         }
       }
     }
   }
-  return null;
-}
-
-/** #4122: a step that is both locked out and powered stays in the answer, quoted in
- *  a warning above it (owner decision 2026-09-27: flags never withhold). */
-function stepEnergyWarning(step: string, answerText: string): AnswerValidation {
-  const quoted = step.replace(/\s+/g, " ").trim().slice(0, 160);
-  return {
-    ok: false,
-    kind: "hazard_warning",
-    violation: "hazard-warning:step-energy-contradiction",
-    detail: quoted,
-    replacement: `⚠️ **Lockout conflict in a step below:** “${quoted}”. That step mixes locked-out work with power on. Inspect, tighten and replace with the equipment locked out; any check that needs power is a separate step, after a qualified person removes the lockout and restores power under your site's energized-work procedure.\n\n${answerText}`,
-  };
+  return { blocked: null, restored };
 }
 
 // #4185/#4186 (the #4160 Pixel walk incident, c5941295415): the model
@@ -1211,12 +1347,57 @@ function falseCapabilityClaim(text: string): string | null {
  *  replaces a whole answer, so it needs the same sentence standing alone. */
 const toStandaloneSentence = (bulletLine: string) => bulletLine.replace(/^- If you need the document itself:\s*/, "");
 
+/** #4858 (layered onto #4471, owner decision 4/7 2026-10-29): the isolation
+ *  advisory is a NOTICE, not a block — the candidate is served under a fixed
+ *  banner. Its own kind so the route serves it as an ordinary answered turn
+ *  without the energized-electrical chip; it is only ever built from the
+ *  pass-through tail of `energizedWarningOr`, i.e. after every #4471
+ *  SAFETY_STOP and specificity rule has already declined the answer. */
+function isolationAdvisory(banner: string, answerText: string): AnswerValidation {
+  return {
+    ok: false,
+    kind: "isolation_advisory",
+    violation: "hazard-warning:isolation-advisory",
+    detail: banner.slice(0, 160),
+    replacement: `${banner}\n\n${answerText}`,
+  };
+}
+
+/** #3984 (Mike, 2026-09-26): the ONE deliberately-preserved warning-tier
+ *  shape — an explicitly WRITTEN restore ("lock out, verify zero volts, then
+ *  a qualified person removes the lockout and restores power to measure") is
+ *  a coherent, if risky, energized-work procedure, not a contradiction. It
+ *  still rides as a banner over the full answer. The self-contradictory
+ *  shapes (a step that is both locked out and powered; a live reading after
+ *  a lockout with no restore ever written) are checked earlier, in
+ *  `validateAnswer`, and BLOCK — see `unsafeAnswerBlock` above. */
 function energizedWarningOr(restore: string | null, answerText: string): AnswerValidation {
+  // `restore` is A4 (RESTORE_ENERGY_SRC plus the existing RESTORE /
+  // LOCKOUT_REMOVED grammars) or the isolation-tracker pairing. A null
+  // here is not a silent pass: main's fallback still runs
+  // `stepEnergyContradiction` on the same folded text. When that existing
+  // detector finds isolation + needs-power, WARN (keep the candidate under
+  // ENERGIZED_WARNING) — never `{ ok: true }`. Simultaneous lockout+power
+  // already BLOCKed at A2a; this catch is the unmatched sequential
+  // restore-then-measure wording those restore grammars miss.
   if (!restore) {
-    // Codex #4146 r3 F2: scan the same folded text every other rule here scans —
-    // markdown emphasis and curly apostrophes must not change the result.
-    const step = stepEnergyContradiction(foldForDetection(answerText));
-    return step ? stepEnergyWarning(step, answerText) : { ok: true };
+    const scan = foldForDetection(answerText);
+    const step = stepEnergyContradiction(scan);
+    if (step) {
+      return {
+        ok: false,
+        kind: "energized_warning",
+        violation: "energized-warning:energized-procedure",
+        detail: step.slice(0, 160),
+        replacement: `${ENERGIZED_WARNING}\n\n${answerText}`,
+      };
+    }
+    // #4858: a hands-on answer with no isolation / verify-dead language gets
+    // the fixed notice. Warns; never withholds (owner 2026-10-27). Reached
+    // only when no #4471 block, no specificity rule and no energized warning
+    // applied — the "only on passing answers" guard is this position.
+    const notice = isolationBannerFor(scan);
+    return notice ? isolationAdvisory(notice, answerText) : { ok: true };
   }
   return {
     ok: false,
@@ -1483,45 +1664,79 @@ export function validateAnswer(opts: {
     // Negation / caution / hypothetical scope is decided once, by the shared
     // ConText-style modifier table (hazard-modifiers.ts), not per rule.
     const m = firstUngovernedMatch(p.re, affirmationScanText);
-    if (m) return hazardWarning(`unsafe-answer:${p.id}`, m[0].slice(0, 160), answerText);
+    if (m) return unsafeAnswerBlock(`unsafe-answer:${p.id}`, m[0]);
+  }
+
+  // A2a (#4122/#4110/#4111, owner decision 2026-10-16): a step that is both
+  // locked out and powered, or a live supply reading at a contact point after
+  // a lockout with NO restore ever written, is a self-contradiction — not an
+  // energized-work procedure to warn about, a sentence that cannot describe a
+  // real sequence of events. #4122's staging capture ("re-energize the
+  // control supply under lockout") is exactly this shape. Checked BEFORE A4's
+  // restore-to-measure detection and independent of it, so an incidental
+  // "re-energize" elsewhere in the same answer can never launder a genuine
+  // contradiction down to A4's warning (an answer can contain both shapes).
+  // Scans the same markdown/Unicode-folded copy as every other rule here.
+  const lockoutStepContradiction = stepEnergyContradiction(scanText);
+  // Sequential "de-energized. Energize the circuit and measure …" is the
+  // unmatched-restore warn shape (#3984 / Gate-7 r7), not a same-step
+  // contradiction. A2a would otherwise swallow it as SAFETY_STOP before
+  // `energizedWarningOr`'s existing stepEnergyContradiction fallback can
+  // WARN. Simultaneous isolation (under lockout / with … locked out)
+  // still BLOCKs. Uses OPERATE's existing energize-circuit atom — no new
+  // phrase list.
+  if (lockoutStepContradiction && !sequentialEnergizeThenMeasure(lockoutStepContradiction)) {
+    return unsafeAnswerBlock("unsafe-answer:lockout-step-contradiction", lockoutStepContradiction);
+  }
+  const lockoutMeasurement = liveMeasurementAfterLockout(scanText);
+  if (lockoutMeasurement.blocked) {
+    return unsafeAnswerBlock("unsafe-answer:lockout-live-measurement", lockoutMeasurement.blocked);
   }
 
   // A4 (#3973 → #3984): restoring power in order to take a reading.
   //
-  // OWNER DECISION 2026-09-26 (Mike, #3984): this category WARNS and lets the
-  // technician keep troubleshooting — it no longer withholds the answer. The
-  // detector below is unchanged; only the response changed. Rationale from the
-  // owner: an energized state gets a clear warning, then MIRA moves on; the
-  // withhold path turned every restore-then-measure answer into a dead end and
-  // was on track to become another prolonged safety mission (#3982 over-block,
-  // #3984 under-block). Every OTHER hazard rule (A1, A2's non-energized
-  // relations, A3) still replaces the answer with the Safety STOP.
+  // OWNER DECISION 2026-09-26 (Mike, #3984): this ONE category — an explicitly
+  // WRITTEN restore ("lock out, verify zero volts, THEN a qualified person
+  // removes the lockout and restores power to measure") — WARNS and lets the
+  // technician keep troubleshooting; it is a coherent, if risky, procedure,
+  // not a contradiction (A2a above), so it still does not withhold the
+  // answer. Rationale from the owner: an energized state gets a clear
+  // warning, then MIRA moves on; the withhold path turned every
+  // restore-then-measure answer into a dead end and was on track to become
+  // another prolonged safety mission (#3982 over-block, #3984 under-block).
+  // Every OTHER hazard rule (A1, A2, A2a, A3) replaces the answer with the
+  // Safety STOP.
   //
   // Detection stays unconditional and runs before A2 for the same reason as
   // before: the same sentence usually satisfies A2's `energized` relation, and
   // letting A2 stop it would silently re-impose the withhold.
-  const restore = restoreEnergyToMeasure(scanText) ?? liveMeasurementAfterLockout(scanText);
+  // Codex #4471 r1 F1: a live reading after an explicitly written lockout
+  // removal / power restore ("a qualified person removes the lockout and
+  // restores power … measure the supply voltage") is the same coherent shape,
+  // in vocabulary the A4 grammar does not cover — warn, keep the procedure.
+  const restore = restoreEnergyToMeasure(scanText) ?? lockoutMeasurement.restored;
 
   // A2 — the clause-level inversion, both lanes, refusals included. Runs
   // AFTER the head grammars so their pinned violation ids are preserved.
   // #3984 + #4005 review: when A4 has already turned this answer into a
-  // warning, blank ONLY the clauses that are themselves live electrical
-  // measurements, then run A2 unchanged over the rest. Exempting A2's whole
+  // warning, blank ONLY the live-measurement clauses inside that A4 excerpt,
+  // then run A2 unchanged over the rest. A restore in one clause must not
+  // mask a later live-measurement or hazard clause. Exempting A2's whole
   // `energized` relation was wrong twice over: it is first-match (so it hid a
   // later motion step), and it also covers "while the conveyor is running"
   // (so it hid mechanical hazards in the SAME sentence). Any other hazard
   // clause — reaching into moving machinery, bleeding a pressurized line,
-  // resetting a fault while energized — is still scanned and still STOPS.
+  // resetting a fault while energized — is still scanned and still BLOCKS.
   const hazard = clauseHazardViolation(
-    restore ? maskLiveMeasurementClauses(affirmationScanText) : affirmationScanText,
+    restore ? maskLiveMeasurementClauses(affirmationScanText, restore) : affirmationScanText,
   );
   if (hazard) {
-    return hazardWarning(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence.slice(0, 160), answerText);
+    return unsafeAnswerBlock(`unsafe-answer:clause-hazard-${hazard.relId}`, hazard.sentence);
   }
 
   // A3 — rigging overload (same-unit rated-capacity comparison, both lanes).
   const rig = riggingOverload(scanText);
-  if (rig) return hazardWarning("unsafe-answer:rigging-overload", rig, answerText);
+  if (rig) return unsafeAnswerBlock("unsafe-answer:rigging-overload", rig);
 
   // A4' (#4185/#4186) — a false capability-denial claim, both lanes,
   // unconditional on `refused`: it is wrong regardless of how the rest of the
@@ -1559,7 +1774,7 @@ export function validateAnswer(opts: {
 
   // B — general lane only. The grounded lane's specificity discipline is the
   // citation contract, already enforced upstream.
-  if (!general || refused) return energizedWarningOr(restore, answerText);
+  if (!general || refused) return energizedWarningOr(restore?.excerpt ?? null, answerText);
 
   for (const p of FABRICATED_DOC_PATTERNS) {
     const m = p.re.exec(scanText);
@@ -1613,7 +1828,7 @@ export function validateAnswer(opts: {
     };
   }
 
-  return energizedWarningOr(restore, answerText);
+  return energizedWarningOr(restore?.excerpt ?? null, answerText);
 }
 
 /** Split accepted text into whitespace-boundary pieces (~≤120 chars) so the

@@ -4539,6 +4539,9 @@ async function handleChatTurn(
           console.error("[notebook-chat] manual-search re-read failed:", err instanceof Error ? err.message : err);
         }
       }
+      // The candidate as generated, before any validator replacement: the
+      // prompt-leak guard below checks THIS text (see its comment).
+      const candidateBeforeValidation = answerText;
       const validation = validateAnswer({
         answerText,
         question: message,
@@ -4566,9 +4569,11 @@ async function handleChatTurn(
           `[notebook-chat] pre-display ${gate ? "REJECTED" : "flagged (gate off)"} ${validation.violation}: ${validation.detail}`,
         );
         if (gate) {
-          if (validation.kind === "hazard_warning") {
-            // 2026-09-27: a step the gate flags stays in the answer, quoted in
-            // a warning above it — served as an ordinary answered turn.
+          if (validation.kind === "isolation_advisory") {
+            // #4858 layered onto #4471: a hands-on answer that passed every
+            // #4471 block gets a fixed isolation notice above it, served as an
+            // ordinary answered turn. Not terminal, no outputRejected, and no
+            // energized-electrical chip (the advisory stays off safetyTrigger).
             answerText = validation.replacement;
           } else if (validation.kind === "energized_warning") {
             // #3984 (Mike 2026-09-26): warn and keep troubleshooting. The
@@ -4653,11 +4658,19 @@ async function handleChatTurn(
       // sent prompt is byte-identical to before), and named here by mode so
       // `exclude` never carries a caution that isn't actually present in
       // `protectedCore` for this turn.
-      if (!outputRejected && served && answerText.trim()) {
+      // #4471 remount: a verbatim prompt echo carries the prompt's own LOTO
+      // rules, which the hazard validator above can match and replace with
+      // SAFETY_STOP first. The guard therefore checks the ORIGINAL candidate,
+      // and a leak takes precedence over an unsafe_answer replacement — both
+      // are terminal `unsafe_answer` (no citations, no basis, never persisted),
+      // so only the shown refusal and the violation label change. An
+      // unsupported_specificity refusal still ends the check: nothing of the
+      // candidate is left to leak.
+      if (outputRejected?.kind !== "unsupported_specificity" && served && candidateBeforeValidation.trim()) {
         const protectedCore = docGrounded ? BASE_SYSTEM_PROMPT : GENERAL_SYSTEM_PROMPT;
         const leak = detectPromptLeak(
           protectedCore,
-          answerText,
+          candidateBeforeValidation,
           docGrounded
             ? [BASE_NFPA_CAUTION, BASE_SITE_RECORDS_CAUTION, BASE_ENERGY_ISOLATION_HAZARD_POINTS]
             : [
@@ -4738,7 +4751,13 @@ async function handleChatTurn(
         }
       }
 
-      if (flagBanner && served && !refused && answerText) answerText = `${flagBanner}\n\n${answerText}`;
+      // #4471 remount: the #4645 restart ADVISORY ("Before you reset or
+      // restart…") never goes above a SAFETY_STOP replacement — over a stop
+      // for an energized-reset answer it reads as permission to proceed. Hazard
+      // banners keep their every-outcome policy (safety-classifier.ts).
+      if (flagBanner && served && !refused && answerText && !(restartAdvisory && outputRejected?.kind === "unsafe_answer")) {
+        answerText = `${flagBanner}\n\n${answerText}`;
+      }
 
       // #4068 — owner decision 2026-09-27 ("allow with a warning"): an answer
       // grounded on related-manual pages (the same-family fallback) may relay
