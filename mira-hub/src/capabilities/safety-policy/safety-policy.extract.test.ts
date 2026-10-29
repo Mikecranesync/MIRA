@@ -24,6 +24,16 @@ describe("extractor — what counts as a discharge-time claim", () => {
     expect(values(answer)).toEqual([["discharge_time", seconds]]);
   });
 
+  it.each([
+    ["1\u22152 minute", 30], // #4959: U+2215 division slash, never 120 s
+    ["1\u00BD minutes", 90], // NFKC folds "1½" to "11⁄2": must not read as 5.5 minutes
+    ["2\u00BD minutes", 150],
+    ["\u00BC hour", 900],
+    ["1 1\u22152 minutes", 90],
+  ])("fractions: %j is %d s", (wait, seconds) => {
+    expect(values(`Wait ${wait} for the capacitors to discharge.`)).toEqual([["discharge_time", seconds]]);
+  });
+
   it("extracts both ends of a range", () => {
     expect(values("Wait 3 to 5 minutes for the capacitors to discharge.")).toEqual([
       ["discharge_time", 180],

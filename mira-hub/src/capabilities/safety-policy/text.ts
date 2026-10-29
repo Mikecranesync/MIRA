@@ -10,6 +10,8 @@ import type { Condition, Quantity } from "./types";
 /** Fold Unicode into the ASCII shape the rules below are written against. */
 export function fold(s: string): string {
   return s
+    // NFKC turns "1½" into "11⁄2" (eleven halves); keep the whole number apart from the fraction.
+    .replace(/(\d)([\u00BC-\u00BE\u2150-\u215E])/g, "$1 $2")
     .normalize("NFKC")
     .replace(/[*`_]/g, "")
     .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
@@ -59,6 +61,12 @@ const WORD_ALT = [...WORDS.keys()].sort((a, b) => b.length - a.length).join("|")
 const NUM = `(?:\\d{1,3}(?:,\\d{3})+|\\d+(?:\\.\\d+)?|\\.\\d+|${WORD_ALT})`;
 const PAREN = `(?:\\s*\\(\\s*\\d+(?:\\.\\d+)?\\s*\\))?`;
 
+/** Fraction separators (#4959): "/", U+2044 FRACTION SLASH (NFKC of "½") and U+2215 DIVISION
+ *  SLASH (survives NFKC). One class, used by the fraction normalizer AND the QTY_RE lookbehind,
+ *  so a number can never start right after a separator the normalizer does not know. */
+export const FRACTION_SEP = "/\\u2044\\u2215";
+const SEP = `\\s*[${FRACTION_SEP}]\\s*`;
+
 /** w + n/d as a decimal string; a zero denominator becomes a non-number so nothing is parsed. */
 function fraction(w: number, n: string, d: string): string {
   const v = w + Number(n) / Number(d);
@@ -74,8 +82,8 @@ function toNumber(tok: string): number {
 function normalizePhrases(s: string): string {
   return s
     // #4956: "1 1/2", "1/2", NFKC "1⁄2" (from "½") → decimals, so a fraction never parses as its denominator.
-    .replace(/(\d+)\s+(\d+)\s*[/\u2044]\s*(\d+)/g, (_m, w: string, n: string, d: string) => fraction(Number(w), n, d))
-    .replace(/(\d+)\s*[/\u2044]\s*(\d+)/g, (_m, n: string, d: string) => fraction(0, n, d))
+    .replace(new RegExp(`(\\d+)\\s+(\\d+)${SEP}(\\d+)`, "g"), (_m, w: string, n: string, d: string) => fraction(Number(w), n, d))
+    .replace(new RegExp(`(\\d+)${SEP}(\\d+)`, "g"), (_m, n: string, d: string) => fraction(0, n, d))
     .replace(/\b(?:an?|one)\s+hour\s+and\s+a\s+half\b/gi, "90 minutes")
     .replace(/\b(?:a\s+)?half\s+(?:an?\s+)?hour\b/gi, "30 minutes")
     .replace(/\b(?:a\s+)?half\s+(?:a\s+)?minute\b/gi, "30 seconds")
@@ -100,7 +108,7 @@ const UNIT_DEFS: UnitDef[] = [
 ];
 
 const QTY_RE = new RegExp(
-  `(?<![\\w./\\u2044])(${NUM})${PAREN}(?:\\s*(?:to|or|and|through|-)\\s*(${NUM})${PAREN})?\\s*-?\\s*(${UNIT_DEFS.map((d) => d.re).join("|")})(?![a-z0-9])`,
+  `(?<![\\w.${FRACTION_SEP}])(${NUM})${PAREN}(?:\\s*(?:to|or|and|through|-)\\s*(${NUM})${PAREN})?\\s*-?\\s*(${UNIT_DEFS.map((d) => d.re).join("|")})(?![a-z0-9])`,
   "gi",
 );
 

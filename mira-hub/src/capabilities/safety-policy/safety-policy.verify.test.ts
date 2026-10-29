@@ -287,7 +287,8 @@ describe("review follow-ups", () => {
     manual("Wait 1 minute for the DC bus capacitors to discharge.", "c2"),
   ];
 
-  for (const half of ["1/2", "\u00BD"]) {
+  // #4959: U+2215 DIVISION SLASH survives NFKC; it must read as a fraction like "/" and U+2044.
+  for (const half of ["1/2", "\u00BD", "1\u22152", "1\u20442"]) {
     it(`#4956 '${half} minute' is 30 seconds, so citing it alone is not the most conservative`, () => {
       const r = check(`Wait ${half} minute for the capacitors to discharge [1].`, halfAndOne(half), F.GS10);
       expect(r.checks.map((c) => c.number?.value)).toEqual([30]);
