@@ -62,6 +62,12 @@ export const DEV_RECALL_CASES: RecallCase[] = [
   { id: "t33", kind: "parse", answer: `Wait ≥ 5 minutes ${DC}`, expect: [["discharge_time", 300]] },
   { id: "t34", kind: "parse", answer: `Wait ~5 minutes ${DC}`, expect: [["discharge_time", 300]] },
   { id: "t35", kind: "parse", answer: `Wait 2½ minutes ${DC}`, expect: [["discharge_time", 150]] },
+  { id: "t37", kind: "parse", answer: `Wait five minutes minimum ${DC}`, expect: [["discharge_time", 300]] },
+  { id: "t38", kind: "parse", answer: "Discharge time: 5 min", expect: [["discharge_time", 300]] },
+  { id: "t39", kind: "parse", answer: `Wait 5\u201310 min. ${DC}`, expect: [["discharge_time", 300], ["discharge_time", 600]] },
+  { id: "t40", kind: "parse", answer: `Wait 5 minutes or more ${DC}`, expect: [["discharge_time", 300]] },
+  { id: "t41", kind: "parse", answer: `Wait at least 5 min (300 s) ${DC}`, expect: [["discharge_time", 300]] },
+  { id: "t42", kind: "parse", answer: `Wait 0.5 hr ${DC}`, expect: [["discharge_time", 1800]] },
   { id: "t36", kind: "parse", answer: `1. Open the disconnect.\n2. Wait *five* minutes ${DC}`, expect: [["discharge_time", 300]] },
 
   // ── discharge_time: the sentence must be read as a discharge / contact wait ─────────────
@@ -78,6 +84,16 @@ export const DEV_RECALL_CASES: RecallCase[] = [
   { id: "c09", kind: "context", answer: "Wait 5 minutes with power off, then measure.", expect: [["discharge_time", 300]] },
   { id: "c10", kind: "context", answer: "Allow 5 minutes after the disconnect is opened.", expect: [["discharge_time", 300]] },
   { id: "c11", kind: "context", answer: "Cut power and give it 5 minutes before working on the drive.", expect: [["discharge_time", 300]] },
+  // round 2b: OEM-shaped answers (ACS355 / GS4 / GS10 wording from ~/.factorylm/imib-manuals)
+  { id: "c12", kind: "context", answer: "Disconnect the drive from the power line and wait five minutes.", expect: [["discharge_time", 300]] },
+  { id: "c13", kind: "context", answer: "Disconnect all power to the drive and wait 5 minutes before making any connection.", expect: [["discharge_time", 300]] },
+  { id: "c14", kind: "context", answer: "Wait at least 5 minutes after the display lamps go out.", expect: [["discharge_time", 300]] },
+  { id: "c15", kind: "context", answer: "Turn off the AC input power, remove the cover and wait at least 10 minutes.", expect: [["discharge_time", 600]] },
+  { id: "c16", kind: "context", question: "How long after I disconnect the input power before I can work on it?", answer: "Wait 5 minutes.",
+    expect: [["discharge_time", 300]] },
+  { id: "c17", kind: "context", answer: "Wait 5 min. for the DC bus capacitors to discharge.", expect: [["discharge_time", 300]] },
+  { id: "c18", kind: "context", answer: "Capacitor discharge wait \u2014 5 minutes.", expect: [["discharge_time", 300]] },
+  { id: "c19", kind: "context", answer: "Wait 5 minutes, then verify the capacitors are discharged.", expect: [["discharge_time", 300]] },
 
   // ── residual_voltage (meter threshold) ───────────────────────────────────────────────────
   { id: "v01", kind: "parse", answer: "Measure DC+ to DC- and confirm it is below 50 V.", expect: [["residual_voltage", 50]] },
@@ -96,6 +112,9 @@ export const DEV_RECALL_CASES: RecallCase[] = [
   { id: "v14", kind: "parse", answer: "Confirm the DC bus reads less than 50 V DC.", expect: [["residual_voltage", 50]] },
   { id: "v15", kind: "context", answer: "Confirm the DC bus is not more than 50 volts.", expect: [["residual_voltage", 50]] },
   { id: "v16", kind: "parse", answer: "Confirm the DC bus reads **< 50 V**.", expect: [["residual_voltage", 50]] },
+  { id: "v17", kind: "context", answer: "Measure between + and -; it should be less than 25VDC.", expect: [["residual_voltage", 25]] },
+  { id: "v18", kind: "context", answer: "The voltage between + and - should be less than 25VDC.", expect: [["residual_voltage", 25]] },
+  { id: "v19", kind: "parse", answer: "Verify the bus has bled down to under 50 VDC.", expect: [["residual_voltage", 50]] },
 
   // ── approach_boundary ────────────────────────────────────────────────────────────────────
   { id: "a01", kind: "parse", answer: "The limited approach boundary is 3 ft 6 in.", expect: [["approach_boundary", FT_IN]] },
@@ -123,6 +142,7 @@ export const DEV_RECALL_CASES: RecallCase[] = [
   { id: "e07", kind: "parse", answer: "Wear PPE rated for at least 40 cal/cm².", expect: [["incident_energy", 40]] },
   { id: "e08", kind: "parse", answer: "Use an 8-cal/cm² arc-rated shirt.", expect: [["incident_energy", 8]] },
   { id: "e09", kind: "parse", answer: "Incident energy is **1.2 cal/cm²**.", expect: [["incident_energy", 1.2]] },
+  { id: "e11", kind: "parse", answer: "Arc flash incident energy: 8.2 cal/cm2", expect: [["incident_energy", 8.2]] },
   { id: "e10", kind: "parse", answer: "Wear a 40 cal suit.", expect: [["incident_energy", 40]],
     knownMiss: "bare 'cal' (an arc rating with no area unit) is ambiguous; not read as incident energy" },
 
@@ -141,6 +161,8 @@ export const DEV_RECALL_CASES: RecallCase[] = [
   { id: "p12", kind: "parse", answer: "The line holds ninety psi.", expect: [["pressure", 90 * PSI]] },
   { id: "p13", kind: "parse", answer: "The line holds 90 pounds per square inch.", expect: [["pressure", 90 * PSI]] },
   { id: "p14", kind: "parse", answer: "The hydraulic system is rated 3,000 PSI.", expect: [["pressure", 3000 * PSI]] },
+  { id: "p16", kind: "parse", answer: "Bleed the accumulator to 0 psi.", expect: [["pressure", 0]] },
+  { id: "a15", kind: "parse", answer: "The arc flash boundary is 4 feet.", expect: [["approach_boundary", 1219.2]] },
   { id: "p15", kind: "parse", answer: "The line holds 1.5 bar.", expect: [["pressure", 150]] },
 
   // ── controls: nothing hazard-critical may be extracted ───────────────────────────────────

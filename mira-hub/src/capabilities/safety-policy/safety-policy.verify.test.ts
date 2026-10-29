@@ -333,17 +333,48 @@ describe("#4958 source timing needs a discharge or contact link in its own claus
     expect(verdicts(check(answer, [chunk], bound))).toEqual(["pass"]);
   });
 
-  it("pinned: a link in ANOTHER clause of the sentence is not support (split at ';' or a spaced dash)", () => {
+  it("round 2b: a link in ANOTHER clause of the same sentence is support (split at ';' or a spaced dash)", () => {
     for (const sentence of ["The DC bus capacitors may still be charged; wait 5 minutes.", "Wait 5 minutes - the capacitors may still be charged."]) {
-      expect(verdicts(check("Wait 5 minutes for the capacitors to discharge [1].", [manual(sentence)], F.GS10))).toEqual([
-        "block:not_in_cited_sentence",
-      ]);
+      expect(verdicts(check("Wait 5 minutes for the capacitors to discharge [1].", [manual(sentence)], F.GS10))).toEqual(["pass"]);
     }
   });
 
   it("the answer side stays fail-closed: the same unlinked wording in an answer is still a discharge claim", () => {
     const ex = extractNumbers({ answerText: "To reset a fault, wait 5 seconds and check the DC bus voltage.", chunks: [], bound: F.GS10 });
     expect(ex.numbers.map((n) => [n.quantity, n.value])).toEqual([["discharge_time", 5]]);
+  });
+});
+
+// Round 2b (sealed G4 finding on db35317c2): the source link may sit anywhere in the time's sentence
+// or in the sentence right next to it in the same chunk, and the support vocabulary includes the
+// answer-side context words and explicit stored-charge wording. A bare bus word is still not enough,
+// and positively unrelated timing (fault reset, ramps, fans, recharge, cooling, power cycling) stays
+// excluded in the time's own clause.
+describe("round 2b: the source link reads OEM phrasing", () => {
+  const FIVE_MIN = "Wait 5 minutes for the capacitors to discharge [1].";
+  const FIVE_S = "Wait 5 seconds for the DC bus capacitors to discharge [1].";
+
+  it.each([
+    ["link in the next sentence", "Wait 5 minutes. The DC bus capacitors stay charged after power is removed."],
+    ["link in the previous sentence", "The DC bus capacitors stay charged after power is removed. Wait 5 minutes."],
+    ["stored-charge wording, no link verb", "The capacitors may hold a lethal charge for up to 5 minutes."],
+    ["answer-side link words", "Wait 5 minutes after you remove power before touching the capacitors."],
+    ["power-removal noun", "Hazardous voltage remains on the DC bus for 5 minutes after power removal."],
+    ["display lamps go out", "Capacitors stay energized. Wait 5 minutes after the display lamps go out."],
+  ])("pass: %s", (_n, chunk) => {
+    expect(verdicts(check(FIVE_MIN, [manual(chunk)], F.GS10))).toEqual(["pass"]);
+  });
+
+  it.each([
+    ["#4958 fault reset then bus check", "To reset a fault, wait 5 seconds and check the DC bus voltage."],
+    ["#4958 check delay", "Before checking the DC bus voltage, wait 5 seconds."],
+    ["a bus word only", "The DC bus voltage display updates after 5 seconds."],
+    ["fault reset next to a discharge sentence", "Remove power and wait for the capacitors to discharge. To reset a fault, wait 5 seconds."],
+    ["power cycling next to a discharge sentence", "The capacitors stay charged after power is removed. Remove power, wait 5 seconds, then reapply power to clear the fault."],
+    ["cooling fan next to a discharge sentence", "The capacitors stay charged after power is removed. The cooling fan runs for 5 seconds after stop."],
+    ["a link two sentences away does not count", "The capacitors store a lethal charge. Read this manual first. Before checking the DC bus voltage, wait 5 seconds."],
+  ])("block: %s", (_n, chunk) => {
+    expect(verdicts(check(FIVE_S, [manual(chunk)], F.GS10))).toEqual(["block:not_in_cited_sentence"]);
   });
 });
 

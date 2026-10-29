@@ -27,12 +27,15 @@ export function fold(s: string): string {
  * markers ("[1]") belongs to the sentence before it.
  */
 export function sentences(text: string, wrapped: boolean): string[] {
-  const t = fold(text);
+  // Source PDFs: a "!" standing alone in the left margin (the ATTENTION icon in Rockwell manuals) is
+  // layout, not punctuation; left in, "wait three\n!  minutes" splits into two sentences.
+  const t = wrapped ? fold(text).replace(/(^|\n)[^\S\n]*!(?=[^\S\n])/g, "$1").replace(/(?<=\s)!(?=\s+[a-z])/g, "") : fold(text);
   const blocks = wrapped ? t.split(/\n\s*\n/).map((b) => b.replace(/\s*\n\s*/g, " ")) : t.split(/\n+/);
   const out: string[] = [];
   for (const b of blocks) {
-    // No split inside a compound length ("3 ft. 6 in."): "ft." / "in." followed by a digit.
-    for (const raw of b.split(/(?<=[.!?])(?!(?<=\b(?:ft|in)\.)\s+\d)\s+|\s*[☑•▪]\s*/u)) {
+    // No split inside a compound length ("3 ft. 6 in."), nor after an abbreviated unit that the
+    // sentence continues past in lowercase ("Wait 5 min. for the capacitors to discharge").
+    for (const raw of b.split(/(?<=[.!?])(?!(?<=\b(?:ft|in)\.)\s+\d)(?!(?<=\b(?:mins?|secs?|hrs?)\.)\s+[a-z])\s+|\s*[☑•▪]\s*/u)) {
       const s = raw.replace(/^\s*(?:[-+]|\d+[.)])\s+/, "").trim();
       if (!s) continue;
       if (/^(?:\[(?:\d+|photo)\]\s*[.,;]?\s*)+$/i.test(s) && out.length > 0) out[out.length - 1] += ` ${s}`;
@@ -179,8 +182,20 @@ export const STORED_RE =
 export const DISCHARGE_LINK_RE =
   /\b(?:discharg\w*|bleed\w*|drain\w*|(?:remain|stay|still)\w*\s+charged|stored|residual|after\s+(?:remov\w*|disconnect\w*|switch\w*\s+off|turn\w*\s+off|shut\w*|isolat\w*|de-?energi\w*|power(?:ing)?\s+(?:off|down)|lock\w*|all\s+display)|power\s+(?:is\s+)?(?:removed|off)|before\s+(?:touch|open|work|servic|remov|handl|access|inspect)\w*)\b/i;
 const UNRELATED_TIMING_RE =
-  /\b(?:accel\w*|decel\w*|ramp\w*|fans?|boot\w*|time-?outs?|scan\s+time|response\s+time|after\s+a\s+fault|fault\s+(?:has\s+been\s+)?cleared|performing\s+reset|cycle\s+the\s+power|cool\w*|overheat\w*|detection\s+time)\b/i;
+  /\b(?:accel\w*|decel\w*|ramp\w*|fans?|boot\w*|time-?outs?|scan\s+time|response\s+time|after\s+a\s+fault|fault\s+(?:has\s+been\s+)?cleared|reset\w*|re-?apply\w*|cycle\s+the\s+power|power[- ]?cycl\w*|reform\w*|cool\w*|overheat\w*|detection\s+time)\b/i;
 const CHARGE_UP_RE = /\b(?:power(?:ing)?[- ]?up|start[- ]?up|pre-?charg\w*|recharg\w*|to\s+charge|charging|apply\s+(?:input\s+)?power)\b/i;
+
+/** Stored-charge wording strong enough to make a nearby source time a discharge figure on its own.
+ *  Not a bare "DC bus" / "bus voltage" (the #4958 class: a bus check or display delay). */
+const STRONG_STORED_RE =
+  /\b(?:capacitors?|caps|stored\s+(?:energy|charge)|residual\s+(?:voltage|charge)|(?:remain|stay|still)\w*\s+(?:charged|energi[sz]ed|live)|(?:hold|holds|retain|retains)\s+(?:a\s+)?(?:\w+\s+)?charge|hazardous\s+voltage|dangerous\s+voltage|lethal|shock\s+hazard|electric(?:al)?\s+shock)\b/i;
+
+/** Round 2b source support (#4958 reworked): a sentence that ties time to discharge, contact or power
+ *  removal, or names stored charge. A source time is discharge support when this holds for its own
+ *  sentence or the sentence right next to it in the same chunk, and it is not positively unrelated
+ *  timing (fault reset, ramps, fans, recharge, reforming, cooling, power cycling). */
+export const sourceSupport = (sentence: string) =>
+  DISCHARGE_LINK_RE.test(sentence) || ANSWER_LINK_RE.test(sentence) || STRONG_STORED_RE.test(sentence);
 
 /** Timing that is not a discharge wait: ramps, fans, fault resets, recharging, cooling.
  *  Answer side (fail closed): any stored-energy word keeps a fault-worded wait a discharge claim. */
@@ -214,12 +229,14 @@ const APPROACH_RE = /\b(?:approach|boundary|arc[- ]?flash|limited|restricted)\b/
 const ANSWER_APPROACH_RE =
   /\b(?:exposed|energi[sz]ed|live)\s+(?:energi[sz]ed\s+|live\s+)?(?:parts?|conductors?|components?|terminals?|circuits?|equipment|busbars?|bus)\b/i;
 
-/** Answer side only (recall, fail closed): wording that ties a wait to power removal or to contact
- *  and that the narrow DISCHARGE_LINK_RE — also the #4958 source-support link — does not list. */
+/** Wording that ties a wait to power removal, to contact, or to the display going dark, beyond
+ *  DISCHARGE_LINK_RE. Answer side since round 2 (recall); source side too since round 2b, where
+ *  OEM manuals phrase their waits exactly this way ("wait ... after disconnecting the input power"). */
 export const ANSWER_LINK_RE =
-  /\b(?:after\s+(?:you\s+|we\s+|the\s+)?(?:remov|disconnect|switch|turn|shut|isolat|de-?energi|kill|cut|open|lock)\w*|(?:once|when|after|until)\s+(?:the\s+)?(?:power|drive|unit|disconnect|supply|equipment|machine|panel|breaker)\s+(?:is|has\s+been|was|are|have\s+been)\s+(?:removed|off|de-?energi\w*|isolated|opened|disconnected|locked\s+out|turned\s+off|switched\s+off|shut\s+off)|(?:kill|cut|remove|disconnect|shut\s+off|switch\s+off|turn\s+off)\s+(?:the\s+)?(?:input\s+)?(?:power|supply|mains)|before\s+(?:you\s+|we\s+)?(?:touch|open|work|servic|remov|handl|access|inspect)\w*|de-?energi[sz]ed|with\s+(?:the\s+)?power\s+(?:removed|off))\b/i;
+  /\b(?:after\s+(?:you\s+|we\s+|i\s+|the\s+)?(?:remov|disconnect|switch|turn|shut|isolat|de-?energi|kill|cut|open|lock)\w*|(?:kill|cut|remove|disconnect|isolate|shut\s+off|switch\s+off|turn\s+off)\s+(?:\w+\s+){0,4}?(?:power(?:\s+line)?|supply|mains)\b|(?:power|supply|mains)\s+(?:removal|disconnection|isolation)|removal\s+of\s+(?:the\s+)?(?:\w+\s+)?(?:power|supply|mains)|(?:display|lamps?|leds?|indicators?)\s+(?:\w+\s+){0,2}?(?:go|goes|gone|went|turn|turns|turned|are|is|have|has)\s+(?:gone\s+|turned\s+)?(?:out|off|dark)|(?:once|when|after|until)\s+(?:the\s+)?(?:power|drive|unit|disconnect|supply|equipment|machine|panel|breaker)\s+(?:is|has\s+been|was|are|have\s+been)\s+(?:removed|off|de-?energi\w*|isolated|opened|disconnected|locked\s+out|turned\s+off|switched\s+off|shut\s+off)|(?:kill|cut|remove|disconnect|shut\s+off|switch\s+off|turn\s+off)\s+(?:the\s+)?(?:input\s+)?(?:power|supply|mains)|before\s+(?:you\s+|we\s+)?(?:touch|open|work|servic|remov|handl|access|inspect)\w*|de-?energi[sz]ed|with\s+(?:the\s+)?power\s+(?:removed|off))\b/i;
 
-const CLAUSE_DELIM_RE = /\s*;\s*|\s+-\s+|,\s+(?=(?:and|but|then|while|although)\b)/gi;
+// Not the "-" of a terminal pair ("between + and - should be").
+const CLAUSE_DELIM_RE = /\s*;\s*|(?<!\+\s{0,3}and)\s+-\s+|,\s+(?=(?:and|but|then|while|although)\b)/gi;
 
 /** Clauses split at ";", spaced dashes and ", and/but/then" joins. */
 export function clauses(sentence: string): string[] {
@@ -254,14 +271,18 @@ export function classify(
   storedContext: boolean,
   side: "answer" | "source" = "answer",
   after = "",
+  sentence = clause,
+  timeSupport = storedContext,
 ): Quantity | null {
   switch (dim) {
     case "time": {
-      // #4958 source side: "unrelated unless linked". A source time is discharge support only when
-      // its OWN clause carries an explicit discharge or contact link; a bus word nearby is not
-      // enough. The unrelated-timing exclusion stays as an extra guard (it only narrows).
+      // Source side (#4958, reworked in round 2b): `timeSupport` = sourceSupport() holds for the
+      // time's sentence or an adjacent one (chunkStatements). The unrelated-timing exclusion reads
+      // the time's clause, and the whole sentence when nothing in it names discharge ("Remove power,
+      // wait 5 seconds, then reapply power to clear the fault"). A bare bus word is never support.
       if (side === "source") {
-        return storedContext && DISCHARGE_LINK_RE.test(clause) && !isUnrelatedSourceTiming(clause) ? "discharge_time" : null;
+        const unrelated = isUnrelatedSourceTiming(clause) || (UNRELATED_TIMING_RE.test(sentence) && !DISCHARGE_LINK_RE.test(sentence));
+        return timeSupport && !unrelated ? "discharge_time" : null;
       }
       // Answer side (fail closed, unchanged): any duration in stored-energy context is a claim.
       return storedContext && !isUnrelatedTiming(clause) ? "discharge_time" : null;
@@ -271,7 +292,10 @@ export function classify(
         THRESHOLD_RE.test(before) ||
         POST_THRESHOLD_RE.test(after) ||
         (side === "answer" && (ANSWER_THRESHOLD_RE.test(before) || ANSWER_POST_THRESHOLD_RE.test(after)));
-      return threshold && (BUS_POINT_RE.test(clause) || storedContext) ? "residual_voltage" : null;
+      // Answer side (recall): a measuring point anywhere in the sentence ("Measure between + and -;
+      // it should be less than 25VDC"). Source side keeps it to the clause.
+      const point = BUS_POINT_RE.test(clause) || (side === "answer" && BUS_POINT_RE.test(sentence));
+      return threshold && (point || storedContext) ? "residual_voltage" : null;
     }
     case "distance":
       return APPROACH_RE.test(clause) || (side === "answer" && ANSWER_APPROACH_RE.test(clause)) ? "approach_boundary" : null;

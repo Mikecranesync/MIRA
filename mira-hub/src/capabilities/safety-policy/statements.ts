@@ -16,6 +16,7 @@ import {
   isUnrelatedTiming,
   normalizedSentence,
   sentences,
+  sourceSupport,
 } from "./text";
 
 export interface Statement {
@@ -26,7 +27,12 @@ export interface Statement {
 
 /** Values stated in one sentence. `storedContext`: stored-energy context is in force for it.
  *  `side`: answers are read broadly (fail closed), sources narrowly (support must be explicit). */
-export function statementsOf(sentence: string, storedContext: boolean, side: "answer" | "source" = "answer"): Statement[] {
+export function statementsOf(
+  sentence: string,
+  storedContext: boolean,
+  side: "answer" | "source" = "answer",
+  timeSupport = storedContext,
+): Statement[] {
   const text = normalizedSentence(sentence);
   const found = findQuantities(sentence);
   const out: Statement[] = [];
@@ -35,7 +41,7 @@ export function statementsOf(sentence: string, storedContext: boolean, side: "an
     const clause = text.slice(cs, ce);
     const before = text.slice(Math.max(cs, i > 0 ? found[i - 1].end : 0), f.start);
     const after = text.slice(f.end, i + 1 < found.length ? found[i + 1].start : text.length);
-    const quantity = classify(f.dim, clause, before, storedContext, side, after);
+    const quantity = classify(f.dim, clause, before, storedContext, side, after, text, timeSupport);
     if (!quantity) return;
     const condition = conditionIn(after) ?? conditionIn(before);
     for (const value of f.values) out.push(condition ? { quantity, value, condition } : { quantity, value });
@@ -52,10 +58,14 @@ const CARRY_RE = /^\s*(?:wait|allow|after)\b/i;
 export function chunkStatements(chunk: EvidenceChunk): Statement[] {
   const ss = sentences(chunk.content, true);
   const out: Statement[] = [];
+  const support = ss.map(sourceSupport);
   ss.forEach((s, j) => {
     const own = STORED_RE.test(s);
     const carried = j > 0 && STORED_RE.test(ss[j - 1]) && CARRY_RE.test(s) && !isUnrelatedSourceTiming(s);
-    out.push(...statementsOf(s, own || carried, "source"));
+    // Round 2b: a time is discharge support when its own sentence or an adjacent one in this chunk
+    // ties it to discharge, contact or power removal, or names stored charge (sourceSupport).
+    const timeSupport = support[j] || (j > 0 && support[j - 1]) || (j + 1 < ss.length && support[j + 1]);
+    out.push(...statementsOf(s, own || carried, "source", timeSupport));
   });
   return out;
 }

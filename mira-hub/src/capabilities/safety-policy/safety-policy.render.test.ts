@@ -56,7 +56,8 @@ describe("renderDischargeProcedure", () => {
     expect(text).toMatch(/For drives rated 30 hp or less, wait at least 5 minutes .*\[1\]\./);
     expect(text).toMatch(/For drives rated 40 hp or more, wait at least 10 minutes .*\[1\]\./);
     expect(text).toMatch(/wait the longest time the manual gives, 10 minutes \[1\]\./);
-    expect(text).toMatch(/confirm the reading is below 25 V \[2\]\./);
+    // Both pages state < 25 VDC; since round 2b p6-3's "between + and -" sentence is read too.
+    expect(text).toMatch(/confirm the reading is below 25 V \[[12]\]\./);
   });
 
   it("a known 5 hp rating renders the single applicable time", () => {

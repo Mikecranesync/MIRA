@@ -38,10 +38,18 @@ describe("dev recall table", () => {
 describe("recall widening stays on the answer side", () => {
   const src = (content: string) => F.manualChunk("c1", content, F.GS10, F.GS10_SHA, "2-14");
 
+  // Round 2b moved the power-removal context words to both sides (OEM sources phrase waits that way);
+  // the approach cue stays answer-only.
   it.each([
     ["a wait after power removal with 'you'", "Wait 5 minutes after you remove power.", "discharge_time"],
-    ["'away from exposed energized' parts", "Stay 10 ft away from exposed energized conductors.", "approach_boundary"],
     ["a wait once the drive is de-energized", "Wait 5 minutes once the drive is de-energized.", "discharge_time"],
+  ] as const)("round 2b: %s is a claim in an answer AND support in a source", (_n, sentence, q) => {
+    expect(extractNumbers({ answerText: sentence, chunks: [], bound: F.GS10 }).numbers.map((n) => n.quantity)).toContain(q);
+    expect(chunkStatements(src(sentence)).map((s) => s.quantity)).toContain(q);
+  });
+
+  it.each([
+    ["'away from exposed energized' parts", "Stay 10 ft away from exposed energized conductors.", "approach_boundary"],
   ] as const)("%s is a claim in an answer but not support in a source", (_n, sentence, q) => {
     expect(extractNumbers({ answerText: sentence, chunks: [], bound: F.GS10 }).numbers.map((n) => n.quantity)).toContain(q);
     expect(chunkStatements(src(sentence)).map((s) => s.quantity)).not.toContain(q);
