@@ -19,7 +19,7 @@ describe("extractor — what counts as a discharge-time claim", () => {
     ["Allow 5-minute discharge of the bus capacitors.", 300],
     ["Wait five (5) minutes after power is removed before touching the terminals.", 300],
     ["Wait 120 seconds after power is removed before you open the cover.", 120],
-    ["Wait FIVE‑minutes for the capacitors to discharge.", 300],
+    ["Wait\u00A0FIVE\u2011minutes for the capacitors\u200B to discharge.", 300],
   ])("extracts %j", (answer, seconds) => {
     expect(values(answer)).toEqual([["discharge_time", seconds]]);
   });

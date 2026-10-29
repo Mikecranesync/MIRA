@@ -22,7 +22,8 @@ const CASES: Array<[string, EvidenceChunk[], BoundAsset | null]> = [
   ["GS10 p6-3, 5 hp rating known", [F.gs10p63("c1")], { ...F.GS10, rating: { value: 5, unit: "hp" } }],
   ["PowerFlex 40 single value", [F.pf40p9("c1")], F.PF40],
   ["sibling vendor_fallback only", [F.gs4warn("c1", { retrievalScope: "vendor_fallback" })], F.GS10],
-  ["single conditioned value", [F.manualChunk("c1", "When the power is off after 5 minutes for ≤ 30hp models, confirm that the capacitors have fully discharged.", F.GS10, F.GS10_SHA, "6-3")], F.GS10],
+  ["threshold stated only for a rating", [F.manualChunk("c1", "For ≥ 40hp models the voltage between DC+ and DC- should be less than 50VDC.", F.GS10, F.GS10_SHA, "6-9")], F.GS10],
+  ["single conditioned value",[F.manualChunk("c1", "When the power is off after 5 minutes for ≤ 30hp models, confirm that the capacitors have fully discharged.", F.GS10, F.GS10_SHA, "6-3")], F.GS10],
 ];
 
 describe("renderDischargeProcedure", () => {

@@ -12,8 +12,8 @@ export function fold(s: string): string {
   return s
     .normalize("NFKC")
     .replace(/[*`_]/g, "")
-    .replace(/[‐-―−﹘﹣－]/g, "-")
-    .replace(/[‘’‛′]/g, "'")
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+    .replace(/[\u2018\u2019\u201B\u2032]/g, "'")
     .replace(/\p{Cf}/gu, "")
     .replace(/[^\S\n]/gu, " ");
 }

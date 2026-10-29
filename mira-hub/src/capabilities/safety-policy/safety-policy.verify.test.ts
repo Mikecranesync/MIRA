@@ -48,6 +48,14 @@ describe("NUM-1 — a hazard-critical number needs an applicable source stating 
     expect(verdicts(check(WAIT10, [F.gs10p64()], F.GS10))).toEqual(["pass"]);
   });
 
+  it("block: the value is in another retrieved chunk, not in the one the sentence cites", () => {
+    const chunks = [F.gs10th1o("c1"), F.gs10p64("c2")];
+    expect(verdicts(check("Wait at least 10 minutes for the DC bus capacitors to discharge [1].", chunks, F.GS10))).toEqual([
+      "block:not_in_cited_sentence",
+    ]);
+    expect(verdicts(check("Wait at least 10 minutes for the DC bus capacitors to discharge [2].", chunks, F.GS10))).toEqual(["pass"]);
+  });
+
   it("block: a cite to a chunk that was not retrieved this turn", () => {
     const r = check("Wait at least 10 minutes for the DC bus capacitors to discharge [7].", [F.gs10p64()], F.GS10);
     expect(verdicts(r)).toEqual(["block:unknown_chunk"]);
@@ -215,6 +223,12 @@ describe("turn verdict and determinism (G6)", () => {
     const r = check("Torque the DC bus terminals to 4.4 lb-in [1].", [F.gs10p64()], F.GS10);
     expect(r.checks.map((c) => [c.verdict, c.enforced])).toEqual([["block:not_in_cited_sentence", false]]);
     expect(r.verdict).toBe("no_numbers");
+    const mixed = check(`${WAIT10} Torque the DC bus terminals to 4.4 lb-in [1].`, [F.gs10p64()], F.GS10);
+    expect(mixed.checks.map((c) => [c.verdict, c.enforced])).toEqual([
+      ["pass", true],
+      ["block:not_in_cited_sentence", false],
+    ]);
+    expect(mixed.verdict).toBe("pass");
   });
 
   it("identical verdicts on rerun", () => {
