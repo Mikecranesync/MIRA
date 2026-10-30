@@ -25,6 +25,7 @@ import re
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 PAGE_SPLIT = re.compile(r"\n?===== PAGE (\d+) =====\n")
 MODEL_TOKEN = re.compile(r"\b\d[A-Z]{1,3}\d{3,4}[A-Z0-9]*\b")
@@ -159,10 +160,14 @@ def parse_parts_list(page_text: str, page_no: int) -> tuple[list[str], list[Part
         desc, notes = _clean_desc(m["desc"])
         desc, applies = _applies_to(desc, models)
         qty_by_model, status = _parse_qty(m["qty"], models)
-        if status != "single":
-            # a per-model quantity only applies to the models it names
-            if qty_by_model is not None:
-                qty_by_model = {k: v for k, v in qty_by_model.items() if k in applies}
+        # F6 (#4993): a per-model quantity applies only to the models the row
+        # names, whether the raw string had one shared value ("single") or
+        # one value per model ("resolved"). The old `status != "single"`
+        # guard skipped this filter for "single" rows, so a row like
+        # "Crankshaft, Dual End ... – 5CP6120" with qty "1" listed that part
+        # for every model in the sheet, not just 5CP6120.
+        if qty_by_model is not None:
+            qty_by_model = {k: v for k, v in qty_by_model.items() if k in applies}
         matl = None if m["matl"] in DASHES else m["matl"]
         parts.append(
             Part(
@@ -326,6 +331,28 @@ def run_checks(
                 )
                 continue
             std_part = ki.part_by_material.get(std) if std else None
+            # F7 (#4994): a kit item whose STD (standard) material has no
+            # part number — e.g. the real 5CP6120 item 120, where NBR (STD)
+            # is null and only STHT (.3400) carries a part — used to fall
+            # straight through to the quantity-only check below and report
+            # `pass`, a false assurance that the standard-material kit covers
+            # that item. A missing material-specific part is reported as
+            # `not_covered` (chosen over `fail` to distinguish "this material
+            # simply doesn't supply the part" from a parts-list mismatch),
+            # and never reaches the quantity check.
+            if std is not None and std_part is None:
+                checks.append(
+                    {
+                        "check": "kit_qty_covers_pump",
+                        "kit": kit.kind,
+                        "item": ki.item,
+                        "material": std,
+                        "status": "not_covered",
+                        "detail": f"{std} has no part number for item {ki.item} in this kit; "
+                        "that material cannot cover this item",
+                    }
+                )
+                continue
             if std_part and std_part not in {p.part for p in listed}:
                 checks.append(
                     {
@@ -345,6 +372,7 @@ def run_checks(
                         "check": "kit_qty_covers_pump",
                         "kit": kit.kind,
                         "item": ki.item,
+                        "material": std,
                         "status": "unknown",
                         "detail": f"parts-list qty '{listed[0].qty_raw}' is ambiguous",
                     }
@@ -357,6 +385,7 @@ def run_checks(
                         "check": "kit_qty_covers_pump",
                         "kit": kit.kind,
                         "item": ki.item,
+                        "material": std,
                         "status": status,
                         "detail": f"{ki.qty_per_kit} per kit x {kit.required_per_pump} kits = {expected}; parts list {sorted(got)}",
                     }
@@ -419,8 +448,34 @@ def load_text(path: Path) -> tuple[str, dict]:
     return data.decode("utf-8"), source
 
 
+def _kit_item_key(it: dict) -> tuple:
+    # An item with no item number (e.g. an unlabeled "SS-Spring" kit-only
+    # row) has no stable numeric identity; its description text is the only
+    # thing the sheet gives us to match it across revisions. Two such rows
+    # that happen to share identical description text are NOT distinguished
+    # further — a documented, intentional gap (F11 remediation: "explicitly
+    # identify any intentionally unsupported comparison scope").
+    if it.get("item") is not None:
+        return ("item", it["item"])
+    return ("desc", it.get("description"))
+
+
+def _kit_item_label(key: tuple) -> Any:
+    return key[1] if key[0] == "item" else None
+
+
 def diff_breakdowns(a: dict, b: dict) -> list[dict]:
-    """Row-level differences between two breakdowns (e.g. two revisions)."""
+    """Row-level differences between two breakdowns (e.g. two revisions).
+
+    Compares: parts-list `qty_raw` and `applies_to`; optional/service parts
+    `qty`; kit numbers per material; kit-item part-by-material mapping;
+    kit-item `qty_per_kit`; kit `required_per_pump`.
+
+    Known, intentionally unsupported scope (F11): kit item ORDER, footnote
+    text, and item-less kit rows are matched by description text only (see
+    `_kit_item_key`) — two different items that happen to share description
+    text collapse into one comparison.
+    """
 
     def key(p: dict) -> tuple:
         return (p.get("item"), p.get("part"))
@@ -433,16 +488,111 @@ def diff_breakdowns(a: dict, b: dict) -> list[dict]:
             out.append({"item": k[0], "part": k[1], "change": "only_in_a"})
         elif k not in pa:
             out.append({"item": k[0], "part": k[1], "change": "only_in_b"})
-        elif pa[k]["qty_raw"] != pb[k]["qty_raw"]:
+        else:
+            if pa[k]["qty_raw"] != pb[k]["qty_raw"]:
+                out.append(
+                    {
+                        "item": k[0],
+                        "part": k[1],
+                        "change": "qty",
+                        "a": pa[k]["qty_raw"],
+                        "b": pb[k]["qty_raw"],
+                    }
+                )
+            if pa[k]["applies_to"] != pb[k]["applies_to"]:
+                out.append(
+                    {
+                        "item": k[0],
+                        "part": k[1],
+                        "change": "applies_to",
+                        "a": pa[k]["applies_to"],
+                        "b": pb[k]["applies_to"],
+                    }
+                )
+
+    # Optional/service parts: simple (part, qty) rows, keyed by part number.
+    for section in ("optional_parts", "service_parts"):
+        sa = {s["part"]: s for s in a[section]}
+        sb = {s["part"]: s for s in b[section]}
+        for part_no in sorted(set(sa) | set(sb)):
+            if part_no not in sb:
+                out.append({"section": section, "part": part_no, "change": "only_in_a"})
+            elif part_no not in sa:
+                out.append({"section": section, "part": part_no, "change": "only_in_b"})
+            elif sa[part_no]["qty"] != sb[part_no]["qty"]:
+                out.append(
+                    {
+                        "section": section,
+                        "part": part_no,
+                        "change": "qty",
+                        "a": sa[part_no]["qty"],
+                        "b": sb[part_no]["qty"],
+                    }
+                )
+
+    # Kits: indexed by kind. A second kit of the same kind in one breakdown
+    # is a documented gap — only the first is addressable here, since `kind`
+    # is the only stable cross-revision identity a kit has.
+    ka = {kt["kind"]: kt for kt in a["kits"]}
+    kb = {kt["kind"]: kt for kt in b["kits"]}
+    for kind in sorted(set(ka) | set(kb)):
+        if kind not in kb:
+            out.append({"kit": kind, "change": "only_in_a"})
+            continue
+        if kind not in ka:
+            out.append({"kit": kind, "change": "only_in_b"})
+            continue
+        kit_a, kit_b = ka[kind], kb[kind]
+        if kit_a["required_per_pump"] != kit_b["required_per_pump"]:
             out.append(
                 {
-                    "item": k[0],
-                    "part": k[1],
-                    "change": "qty",
-                    "a": pa[k]["qty_raw"],
-                    "b": pb[k]["qty_raw"],
+                    "kit": kind,
+                    "change": "kit_required_per_pump",
+                    "a": kit_a["required_per_pump"],
+                    "b": kit_b["required_per_pump"],
                 }
             )
+        materials = sorted(set(kit_a["kit_by_material"]) | set(kit_b["kit_by_material"]))
+        for mat in materials:
+            va = kit_a["kit_by_material"].get(mat)
+            vb = kit_b["kit_by_material"].get(mat)
+            if va != vb:
+                out.append({"kit": kind, "material": mat, "change": "kit_number", "a": va, "b": vb})
+        ia = {_kit_item_key(it): it for it in kit_a["items"]}
+        ib = {_kit_item_key(it): it for it in kit_b["items"]}
+        for item_key in sorted(set(ia) | set(ib), key=str):
+            if item_key not in ib:
+                out.append({"kit": kind, "item": _kit_item_label(item_key), "change": "only_in_a"})
+                continue
+            if item_key not in ia:
+                out.append({"kit": kind, "item": _kit_item_label(item_key), "change": "only_in_b"})
+                continue
+            ra, rb = ia[item_key], ib[item_key]
+            if ra["qty_per_kit"] != rb["qty_per_kit"]:
+                out.append(
+                    {
+                        "kit": kind,
+                        "item": _kit_item_label(item_key),
+                        "change": "kit_item_qty",
+                        "a": ra["qty_per_kit"],
+                        "b": rb["qty_per_kit"],
+                    }
+                )
+            item_materials = sorted(set(ra["part_by_material"]) | set(rb["part_by_material"]))
+            for mat in item_materials:
+                va = ra["part_by_material"].get(mat)
+                vb = rb["part_by_material"].get(mat)
+                if va != vb:
+                    out.append(
+                        {
+                            "kit": kind,
+                            "item": _kit_item_label(item_key),
+                            "material": mat,
+                            "change": "kit_item_part",
+                            "a": va,
+                            "b": vb,
+                        }
+                    )
     return out
 
 

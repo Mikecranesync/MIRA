@@ -30,14 +30,14 @@
   },
   "parts": {
     "label": "verified",
-    "source": "DS p.3 SERVICE PARTS and p.4 SEAL KITS / VALVE KITS; kit coverage checked by tools/parts-breakdown (12/12 pass)",
+    "source": "DS p.3 SERVICE PARTS and p.4 SEAL KITS / VALVE KITS; kit coverage checked by tools/parts-breakdown (11/12 pass, 1 not_covered — item 120 NBR)",
     "required": [
       { "part": "33628", "description": "Kit, Seal – Standard NBR", "qty": 1, "basis": "DS p.3; 'One (1) seal kit required per pump' DS p.4", "condition": "ONLY if the pump's seal material is NBR (standard). Other materials: FPM 31628, EPDM 31648, HT 31638, STHT 76536 (DS p.4)", "label": "proposed" },
       { "part": "30820", "description": "Kit, Valve – Standard NBR", "qty": 2, "basis": "DS p.3; 'Two (2) valve kits required per pump' DS p.4; SM p.2 'Two Valve Kits are needed for complete valve change'", "condition": "NBR standard; FPM 31263, EPDM 31259 (DS p.4)", "label": "proposed" },
       { "part": "6107", "description": "Oil, Bottle (21 oz) ISO 68 Hydraulic", "qty": 1, "basis": "DS p.3 service parts; crankcase capacity 17 oz / 0.50 l (DS p.1, SM p.1)", "label": "verified" },
       { "part": "6124", "description": "Gasket, Liquid (3 oz)", "qty": 1, "basis": "DS p.3; SM p.5 'For certain applications apply liquid gasket… See Tech Bulletin 053'", "condition": "only if Tech Bulletin 053 applies to this model/application", "label": "proposed" }
     ],
-    "kit_contents_check": { "label": "verified", "source": "DS p.2 parts list vs DS p.4 kit tables; tools/parts-breakdown coverage checks 12/12 pass", "detail": "seal kit items 98, 106, 120, 121, 125 at 3 per kit × 1 kit = 3 each on the parts list; valve kit items 162, 163, 164, 166, 167, 168, 172 at 3 per kit × 2 kits = 6 each on the parts list (DS p.2 vs p.4)" },
+    "kit_contents_check": { "label": "verified", "source": "DS p.2 parts list vs DS p.4 kit tables; tools/parts-breakdown coverage checks 11/12 pass, 1 not_covered", "detail": "seal kit items 98, 106, 121, 125 and valve kit items 162, 163, 164, 166, 167, 168, 172 at their expected per-pump quantity on the parts list; item 120 is NOT verified for the standard NBR (STD) seal kit — DS p.4 shows no NBR (STD) part number for item 120, only STHT (.3400) (49436); ordering the standard NBR kit alone will not supply a replacement for item 120 (DS p.2 vs p.4)" },
     "inspect_replace_if_worn": [
       { "item": 90, "part": "46841", "description": "Plunger (M20 x 50), ceramic", "qty": 3, "source": "DS p.2; SM p.3 'Examine Ceramic Plunger for cracks or scoring'", "label": "proposed" },
       { "item": 100, "part": "46749", "description": "Retainer, Seal", "qty": 3, "source": "DS p.2; SM p.3 'Remove the Seal Retainer … examine for wear'", "label": "proposed" },

@@ -123,6 +123,21 @@ def test_continuation_row_inherits_item_and_applies_to_named_models(bd):
     assert by_part["100004"]["description"] == "Crankshaft, Single End"
 
 
+# F6 (#4993): a "single" qty (one shared raw value, e.g. "1") used to be
+# listed for EVERY model in the sheet, ignoring `applies_to` — so the two
+# mutually-exclusive crankshafts (100003 for 9XP1000 only, 100004 for the
+# other two) both claimed qty 1 for all three models. Mirrors the real
+# 5CP6120 bug: part 46928 (applies_to=["5CP6120"]) and 48233
+# (applies_to=["5CP6120CS", "5CP6120CSSG1"]) must not both be orderable for
+# a single 5CP6120 pump.
+def test_single_qty_filtered_by_applies_to_for_continuation_rows(bd):
+    by_part = {p["part"]: p for p in bd["parts"]}
+    assert by_part["100003"]["qty_status"] == "single"
+    assert by_part["100003"]["qty_by_model"] == {"9XP1000": 1}
+    assert by_part["100004"]["qty_status"] == "single"
+    assert by_part["100004"]["qty_by_model"] == {"9XP1000CS": 1, "9XP1000G": 1}
+
+
 def test_markers_material_and_notes(bd):
     by_part = {p["part"]: p for p in bd["parts"]}
     assert by_part["100001"]["rohs"] is True
@@ -186,6 +201,21 @@ def test_consistency_check_unknown_when_qty_ambiguous():
     assert bad and bad[0]["status"] == "unknown"
 
 
+# F7 (#4994): a kit item whose STD material has no part number used to fall
+# through to the quantity-only check and report `pass` — mirrors the real
+# 5CP6120 item 120 (NBR (STD)=null, STHT (.3400)='49436'). Drop item 106's
+# NBR part here (keep the other two materials) to reproduce that shape
+# without any real manufacturer data.
+def test_kit_item_missing_its_std_material_part_cannot_pass_coverage():
+    broken = FIXTURE.replace(
+        "106 100006 — — Seal, Low-Pressure 3", "106 — 100016 100026 Seal, Low-Pressure 3"
+    )
+    out = cb.to_dict(cb.parse_text(broken))
+    check = next(c for c in out["checks"] if c["kit"] == "seal" and c["item"] == 106)
+    assert check["status"] == "not_covered"
+    assert check["status"] != "pass"
+
+
 def test_revision_and_exploded_view_page(bd):
     assert bd["source"]["revision"] == "Rev B 5/22"
     assert bd["source"]["document_part_number"] == "123456"
@@ -212,6 +242,40 @@ def test_diff_reports_qty_change_and_extra_row(bd):
     assert {"item": 8, "part": "100002", "change": "qty", "a": "2–1–0", "b": "2–1"} in diff
     assert {"item": 120, "part": "100010", "change": "only_in_b"} in diff
     assert len(diff) == 2
+
+
+# F11 (#4998): diff_breakdowns only ever compared the main parts list, so a
+# changed seal/valve kit number, or a changed kit-item quantity, produced NO
+# diff entry at all — a technician comparing revisions would be told
+# "nothing changed" when the kit itself changed. Each scenario below changes
+# exactly one kit-level field and nothing else.
+def test_diff_reports_kit_number_change_and_kit_item_quantity_change(bd):
+    kit_number_changed = cb.to_dict(
+        cb.parse_text(
+            FIXTURE.replace(
+                "9XP1000,\n9XP1000CS 300001 300011 * 300021",
+                "9XP1000,\n9XP1000CS 300001 399999 * 300021",
+            )
+        )
+    )
+    diff1 = cb.diff_breakdowns(bd, kit_number_changed)
+    assert {
+        "kit": "seal",
+        "material": "FPM (.0110)",
+        "change": "kit_number",
+        "a": "300011",
+        "b": "399999",
+    } in diff1
+
+    kit_qty_changed = cb.to_dict(
+        cb.parse_text(
+            FIXTURE.replace(
+                "106 100006 — — Seal, Low-Pressure 3", "106 100006 — — Seal, Low-Pressure 5"
+            )
+        )
+    )
+    diff2 = cb.diff_breakdowns(bd, kit_qty_changed)
+    assert {"kit": "seal", "item": 106, "change": "kit_item_qty", "a": 3, "b": 5} in diff2
 
 
 def test_cli_writes_json(tmp_path):
