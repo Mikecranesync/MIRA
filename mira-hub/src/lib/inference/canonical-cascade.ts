@@ -225,6 +225,11 @@ export function canonicalProviders(): CanonicalProvider[] {
   ];
 }
 
+/** A provider-reported token count: a non-negative safe integer. */
+function isTokenCount(n: unknown): n is number {
+  return typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
+}
+
 export function estimateCostUsd(
   provider: string,
   inputTokens: number | null,
@@ -240,11 +245,20 @@ export function estimateCostUsd(
       : PRICE_PER_MTOK[provider];
   // Unpriced provider (or unpriced OpenAI model) → null, never 0. See PRICE_PER_MTOK.
   if (!price) return null;
-  const fresh = Math.max(0, (inputTokens ?? 0) - (cachedInputTokens ?? 0));
+  // Missing or invalid counts → null, never 0 (#4978). A lost usage frame
+  // (the route tolerates a failed post-stop drain) leaves the counts null; 0
+  // would book a paid turn as free and hide it from tenantSpendSince's
+  // `IS NULL` unpriced count (migration 080). Input and output are required;
+  // an absent cached count is 0 (prompt_tokens_details is optional), but a
+  // present one must be valid and cannot exceed the prompt.
+  if (!isTokenCount(inputTokens) || !isTokenCount(outputTokens)) return null;
+  const cached = cachedInputTokens ?? 0;
+  if (!isTokenCount(cached) || cached > inputTokens) return null;
+  const fresh = inputTokens - cached;
   const cost =
     (fresh / 1_000_000) * price.input +
-    ((cachedInputTokens ?? 0) / 1_000_000) * price.input * CACHED_INPUT_DISCOUNT +
-    ((outputTokens ?? 0) / 1_000_000) * price.output;
+    (cached / 1_000_000) * price.input * CACHED_INPUT_DISCOUNT +
+    (outputTokens / 1_000_000) * price.output;
   // 6dp matches NUMERIC(12,6) in migration 078.
   return Number(cost.toFixed(6));
 }
