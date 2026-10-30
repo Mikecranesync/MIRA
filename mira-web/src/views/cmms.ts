@@ -231,9 +231,9 @@ const PLAN_LABELS: Record<string, { eyebrow: string; h1: string; sub: string }> 
     sub: "You're signing in to the Maintenance Operating Layer. Send yourself a magic link — no password, no demo call.",
   },
   integrated: {
-    eyebrow: "Operating Layer + CMMS write-back",
-    h1: "MIRA + your CMMS. Diagnostics become work orders.",
-    sub: "You're signing in to the Operating Layer with CMMS sync. Send yourself a magic link — no password, no demo call.",
+    eyebrow: "Operating Layer",
+    h1: "MIRA on a structured namespace.",
+    sub: "You're signing in to the Operating Layer. Send yourself a magic link — no password, no demo call.",
   },
 };
 
@@ -294,8 +294,8 @@ function whatHappensNext(): string {
     </li>
     <li class="fl-step">
       <div class="fl-step-marker">${stateBadge("indexed", "Work orders + PMs")}</div>
-      <h3 class="fl-step-h">CMMS write-back</h3>
-      <p class="fl-step-body">PM schedules extracted from OEM manuals. Diagnostics from MIRA become work orders — synced to MaintainX, Limble, UpKeep, or Atlas.</p>
+      <h3 class="fl-step-h">Work orders + PMs</h3>
+      <p class="fl-step-body">PM schedules extracted from OEM manuals.</p>
     </li>
     <li class="fl-step">
       <div class="fl-step-marker">${stateBadge("indexed", "Grounded AI")}</div>

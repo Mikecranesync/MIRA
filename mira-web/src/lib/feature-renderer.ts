@@ -108,7 +108,7 @@ export const FEATURES: Record<string, Feature> = {
       { src: "/public/screenshots/fault-diagnosis-01.webp", alt: "User asks MIRA about PowerFlex F-012 fault code", caption: "Ask a fault code", description: "Type or voice a fault code into chat. MIRA searches your uploaded OEM manuals and returns a cited answer in seconds." },
       { src: "/public/screenshots/fault-diagnosis-02.webp", alt: "MIRA streaming a diagnostic response with manual citations", caption: "Real-time diagnosis", description: "MIRA matches the fault code to your specific OEM manual section, ranks candidates by confidence, and streams the answer in real time." },
       { src: "/public/screenshots/fault-diagnosis-03.webp", alt: "Full diagnostic response with root cause and manual citation", caption: "Cited answer", description: "When the answer comes from your OEM manual, it shows the specific page, so you can check the root cause and corrective action against the source." },
-      { src: "/public/screenshots/fault-diagnosis-04.webp", alt: "Work order auto-created from MIRA diagnostic conversation", caption: "Auto work order", description: "MIRA auto-creates a work order from the diagnosis — asset, description, priority, and parts already filled in." },
+      { src: "/public/screenshots/fault-diagnosis-04.webp", alt: "Work order from a MIRA diagnostic conversation", caption: "Work order", description: "A work order from the diagnosis with asset, description, priority, and parts." },
     ],
     benefits: [
       {
@@ -135,13 +135,11 @@ export const FEATURES: Record<string, Feature> = {
     slug: "cmms-integration",
     category: "CMMS Integration",
     title: "CMMS Integration | FactoryLM",
-    tagline: ["Work orders that", "write themselves"],
+    tagline: ["Not a CMMS", "replacement"],
     lede:
-      "When Mira identifies a maintenance action, it creates the work order directly in your CMMS — with the asset, fault description, part numbers, and estimated time already filled in.",
+      "Half of every maintenance hour is admin: finding the asset, typing the description, looking up the part number, assigning the technician.",
     longBody: [
-      "Half of every maintenance hour is admin: finding the asset, typing the description, looking up the part number, assigning the technician. Mira skips that whole loop.",
-      "When your team resolves a fault in chat, Mira drafts the work order as a side effect. Asset ID is matched from the equipment manual metadata. Parts are auto-filled from the cited manual section. Priority is inferred from the fault severity. Estimated time comes from similar past work orders in your history.",
-      "Ships with Atlas CMMS built in — the open-source CMMS designed for this workflow. Atlas tracks assets, schedules PMs, handles work orders, and syncs with Mira in real time over a shared Postgres. If you already run Maintenance Connection, eMaint, MaintainX, or Fiix, the pluggable adapter layer gives you the same flow through those systems.",
+      "Half of every maintenance hour is admin: finding the asset, typing the description, looking up the part number, assigning the technician.",
       "The best work order is the one your technicians don't have to type.",
     ],
     slides: [
@@ -187,22 +185,12 @@ export const FEATURES: Record<string, Feature> = {
       },
     ],
     screenshots: [
-      { src: "/public/screenshots/cmms-integration-01.webp", alt: "Atlas CMMS work order list with open and active orders", caption: "Work order list", description: "See all open, in-progress, and completed work orders in one view. AI-generated work orders appear alongside manually created ones." },
-      { src: "/public/screenshots/cmms-integration-02.webp", alt: "Work order detail showing AI-generated description and parts", caption: "Work order detail", description: "Each work order includes the AI-generated description, identified parts, estimated repair time, and priority — ready for the technician." },
-      { src: "/public/screenshots/cmms-integration-03.webp", alt: "Equipment asset registry with status indicators", caption: "Asset registry", description: "Your equipment registry with real-time status indicators. MIRA knows your assets and matches faults to the right equipment automatically." },
+      { src: "/public/screenshots/cmms-integration-01.webp", alt: "Atlas CMMS work order list with open and active orders", caption: "Work order list", description: "See all open, in-progress, and completed work orders in one view." },
+      { src: "/public/screenshots/cmms-integration-02.webp", alt: "Work order detail showing AI-generated description and parts", caption: "Work order detail", description: "Each work order includes the description, identified parts, estimated repair time, and priority." },
+      { src: "/public/screenshots/cmms-integration-03.webp", alt: "Equipment asset registry with status indicators", caption: "Asset registry", description: "Your equipment registry with real-time status indicators." },
       { src: "/public/screenshots/cmms-integration-04.webp", alt: "Preventive maintenance schedule calendar view", caption: "PM schedules", description: "Preventive maintenance schedules with due dates, intervals, and compliance tracking. Never miss a PM again." },
     ],
     benefits: [
-      {
-        label: "AUTO",
-        title: "Zero typing between fault and work order",
-        body: "Mira drafts the work order as a byproduct of resolving the fault. Your techs approve it with one tap.",
-      },
-      {
-        label: "PLUG IN",
-        title: "Works with your CMMS or ours",
-        body: "Atlas CMMS is built in. If you already run MaintainX, Fiix, or Limble, the pluggable adapter layer gives you the same flow through your existing system.",
-      },
       {
         label: "MEMORY",
         title: "Every fix becomes training data",
@@ -210,7 +198,7 @@ export const FEATURES: Record<string, Feature> = {
       },
     ],
     videoEnvVar: "LOOM_FEATURE_CMMS_URL",
-    videoCaption: "Mira drafts a work order in Atlas CMMS from a chat conversation",
+    videoCaption: "Work order view in Atlas CMMS",
   },
 
   "voice-vision": {
@@ -264,7 +252,7 @@ export const FEATURES: Record<string, Feature> = {
           { label: "Voice", value: "Kokoro TTS · 180 wpm" },
           { label: "Script", value: "\"Replace cable, reroute 4× dia...\"" },
           { label: "Duration", value: "11 seconds" },
-          { label: "Work order", value: "Auto-created", accent: "teal" },
+          { label: "Work order", value: "Draft text", accent: "teal" },
         ],
       },
     ],

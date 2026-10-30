@@ -1,21 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { Database, Plug, Webhook, Key, ExternalLink, Clock } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Database, Plug, Webhook, Key, ExternalLink, Clock, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
+import { API_BASE } from "@/lib/config";
+import { getConnection, removeConnection } from "@/lib/connections";
+import { connectorCardControls } from "@/lib/connector-card-controls";
 
 type Tab = "cmms" | "webhooks" | "api";
 
-type CmmsSystem = {
-  id: string;
-  name: string;
-  emoji: string;
-  description: string;
-  connected: boolean;
-  viaMcp: boolean;
-  syncStats?: { assets: number; workorders: number; lastSync: string };
-};
+const MAINTAINX_DESCRIPTION = "Adapter code exists. Not proven.";
 
 type WebhookTarget = {
   id: string;
@@ -25,35 +20,6 @@ type WebhookTarget = {
   healthy: boolean;
   lastCall: string;
 };
-
-const CMMS_SYSTEMS: CmmsSystem[] = [
-  {
-    id: "atlas", name: "Atlas CMMS", emoji: "🗺️",
-    description: "Your connected CMMS. MIRA writes WOs, syncs diagnostics, and reads asset data from Atlas.",
-    connected: true, viaMcp: false,
-    syncStats: { assets: 47, workorders: 312, lastSync: "2 min ago" },
-  },
-  {
-    id: "limble", name: "Limble CMMS", emoji: "🔩",
-    description: "Cloud-native CMMS popular with mid-market facilities. Available via MIRA MCP connector.",
-    connected: false, viaMcp: true,
-  },
-  {
-    id: "maintainx", name: "MaintainX", emoji: "🔧",
-    description: "Mobile-first CMMS with strong technician UX. Available via MIRA MCP connector.",
-    connected: false, viaMcp: true,
-  },
-  {
-    id: "upkeep", name: "UpKeep", emoji: "⬆️",
-    description: "Asset operations platform with strong IoT integrations. Available via MIRA MCP connector.",
-    connected: false, viaMcp: true,
-  },
-  {
-    id: "fiix", name: "Fiix",  emoji: "🔨",
-    description: "Rockwell Automation's CMMS. Available via MIRA MCP connector.",
-    connected: false, viaMcp: true,
-  },
-];
 
 const WEBHOOKS: WebhookTarget[] = [
   { id: "w1", name: "Slack — #maintenance-alerts", url: "https://hooks.slack.com/services/T0…", events: ["safety_alert", "wo_created", "pm_overdue"], healthy: true,  lastCall: "7:15 AM" },
@@ -107,93 +73,72 @@ export default function IntegrationsPage() {
 }
 
 function CmmsTab({ t }: { t: ReturnType<typeof useTranslations> }) {
-  const connected = CMMS_SYSTEMS.filter(c => c.connected);
-  const available = CMMS_SYSTEMS.filter(c => !c.connected);
+  const [maintainx, setMaintainx] = useState<{ connected: boolean; displayName?: string }>({
+    connected: false,
+  });
+  const refresh = useCallback(() => {
+    setMaintainx(getConnection("maintainx"));
+  }, []);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const controls = connectorCardControls({
+    connected: maintainx.connected,
+    statusLabel: "In testing",
+  });
+
+  async function disconnectMaintainx() {
+    await fetch(`${API_BASE}/api/integrations/nango/connect/?provider=maintainx`, {
+      method: "DELETE",
+    });
+    removeConnection("maintainx");
+    refresh();
+  }
 
   return (
     <div className="space-y-6">
-      {/* Connected */}
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>
-          {t("connected")}
+          In testing
         </h2>
-        {connected.map(sys => (
-          <div key={sys.id} className="card p-4 mb-2">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
-                style={{ backgroundColor: "var(--surface-1)" }}>
-                {sys.emoji}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{sys.name}</span>
-                  <span className="flex items-center gap-1 text-[11px] font-medium" style={{ color: "#16A34A" }}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                    {t("connected")}
-                  </span>
-                </div>
-                <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>{sys.description}</p>
-              </div>
-            </div>
-
-            {sys.syncStats && (
-              <div className="grid grid-cols-3 gap-3 mt-3">
-                {[
-                  { label: t("assets"),     value: sys.syncStats.assets.toString() },
-                  { label: t("workOrders"), value: sys.syncStats.workorders.toString() },
-                  { label: t("lastSync"),   value: sys.syncStats.lastSync },
-                ].map(s => (
-                  <div key={s.label} className="p-2 rounded-lg" style={{ backgroundColor: "var(--surface-1)" }}>
-                    <div className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{s.value}</div>
-                    <div className="text-[10px]" style={{ color: "var(--foreground-subtle)" }}>{s.label}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex gap-2 mt-3">
-              <Button size="sm" variant="secondary" className="text-xs h-7 gap-1">
-                <ExternalLink className="w-3 h-3" />
-                {t("openCmms")}
-              </Button>
-              <Button size="sm" variant="secondary" className="text-xs h-7">
-                {t("configure")}
-              </Button>
-            </div>
+        <div className="card p-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+            style={{ backgroundColor: "var(--surface-1)" }}>
+            🔧
           </div>
-        ))}
-      </section>
-
-      {/* Available */}
-      <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>
-          {t("available")}
-        </h2>
-        <div className="space-y-2">
-          {available.map(sys => (
-            <div key={sys.id} className="card p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
-                style={{ backgroundColor: "var(--surface-1)" }}>
-                {sys.emoji}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{sys.name}</span>
-                  {sys.viaMcp && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                      style={{ backgroundColor: "#EFF6FF", color: "#2563EB" }}>
-                      {t("viaMcp")}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs mt-0.5 line-clamp-1" style={{ color: "var(--foreground-muted)" }}>{sys.description}</p>
-              </div>
-              <Button size="sm" className="text-xs h-7 px-3 flex-shrink-0"
-                style={{ backgroundColor: "var(--brand-blue)", color: "white" }}>
-                {t("connect")}
-              </Button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>MaintainX</span>
+              {maintainx.connected && (
+                <span className="flex items-center gap-1 text-[11px] font-medium" style={{ color: "#16A34A" }}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                  {t("connected")}
+                </span>
+              )}
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                style={{ backgroundColor: "#FEF3C7", color: "#92400E" }}
+              >
+                In testing
+              </span>
             </div>
-          ))}
+            <p className="text-xs mt-0.5 line-clamp-1" style={{ color: "var(--foreground-muted)" }}>
+              {maintainx.connected
+                ? (maintainx.displayName ?? "MaintainX")
+                : MAINTAINX_DESCRIPTION}
+            </p>
+          </div>
+          {controls.showDisconnect && (
+            <Button
+              size="sm" variant="secondary" className="text-xs h-7 w-7 p-0 flex-shrink-0"
+              onClick={disconnectMaintainx}
+              style={{ color: "#DC2626" }}
+              title="Disconnect"
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          )}
         </div>
       </section>
     </div>

@@ -124,7 +124,7 @@ Best for:
 - Team coordination and reporting
 
 ### Entry Point 2: The FactoryLM Telegram bot
-The zero-friction entry point. Takes 30 seconds. Send a photo of a piece of equipment to a Telegram chat. The AI identifies the equipment, assesses its condition, and creates a work order in your CMMS automatically.
+The zero-friction entry point. Takes 30 seconds. Send a photo of a piece of equipment to a Telegram chat. The AI identifies the equipment and assesses its condition.
 
 Best for:
 - Quick fault logging when you don't have time to open a browser

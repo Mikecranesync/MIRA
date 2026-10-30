@@ -13,6 +13,7 @@ import {
   type Provider,
   type ConnectionMeta,
 } from "@/lib/connections";
+import { connectorCardControls } from "@/lib/connector-card-controls";
 
 type AuthStatus = {
   telegram: { configured: boolean; botUsername: string | null };
@@ -33,14 +34,19 @@ type CardProps = {
   connectedLabel: string;
   disabled?: boolean;
   disabledReason?: string;
-  comingSoon?: boolean;
+  statusLabel?: string;
   infoOnly?: boolean;
 };
 
 function ConnectorCard({
   emoji, name, description, conn, onConnect, onDisconnect,
-  connectedLabel, disabled, disabledReason, comingSoon, infoOnly,
+  connectedLabel, disabled, disabledReason, statusLabel, infoOnly,
 }: CardProps) {
+  const controls = connectorCardControls({
+    connected: conn.connected,
+    statusLabel,
+    infoOnly,
+  });
   return (
     <div className="card p-4">
       <div className="flex items-center gap-3">
@@ -62,12 +68,12 @@ function ConnectorCard({
                 Connected
               </span>
             )}
-            {comingSoon && (
+            {statusLabel && (
               <span
                 className="text-[10px] px-1.5 py-0.5 rounded font-medium"
                 style={{ backgroundColor: "#FEF3C7", color: "#92400E" }}
               >
-                Coming Soon
+                {statusLabel}
               </span>
             )}
           </div>
@@ -82,14 +88,16 @@ function ConnectorCard({
           )}
         </div>
 
-        {!comingSoon && !infoOnly && (
+        {(controls.showConnect || controls.showDisconnect) && (
           <div className="flex-shrink-0">
-            {conn.connected ? (
+            {controls.showDisconnect ? (
               <div className="flex gap-1.5">
-                <Button size="sm" variant="secondary" className="text-xs h-7 px-2.5 gap-1">
-                  <Settings className="w-3 h-3" />
-                  Manage
-                </Button>
+                {!statusLabel && (
+                  <Button size="sm" variant="secondary" className="text-xs h-7 px-2.5 gap-1">
+                    <Settings className="w-3 h-3" />
+                    Manage
+                  </Button>
+                )}
                 <Button
                   size="sm" variant="secondary" className="text-xs h-7 w-7 p-0"
                   onClick={onDisconnect}
@@ -169,14 +177,11 @@ function ChannelsInner() {
     dropbox: { hasOAuth: false },
     confluence: { hasOAuth: false },
   });
-  const [modal, setModal] = useState<"telegram" | "openwebui" | "maintainx" | null>(null);
+  const [modal, setModal] = useState<"telegram" | "openwebui" | null>(null);
   const [telegramToken, setTelegramToken] = useState("");
   const [telegramLoading, setTelegramLoading] = useState(false);
   const [telegramError, setTelegramError] = useState<string | null>(null);
   const [openwebuiUrl, setOpenwebuiUrl] = useState("http://localhost:3000");
-  const [maintainxKey, setMaintainxKey] = useState("");
-  const [maintainxLoading, setMaintainxLoading] = useState(false);
-  const [maintainxError, setMaintainxError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setConnections(getAllConnections());
@@ -258,34 +263,6 @@ function ChannelsInner() {
     refresh();
   }
 
-  async function handleMaintainxConnect() {
-    setMaintainxLoading(true);
-    setMaintainxError(null);
-    try {
-      const res = await fetch(`${API_BASE}/api/integrations/nango/connect/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: "maintainx", apiKey: maintainxKey.trim() }),
-      });
-      const data = await res.json() as { ok?: boolean; error?: string };
-      if (data.ok) {
-        setConnection("maintainx", {
-          connected: true,
-          displayName: "MaintainX",
-        });
-        setModal(null);
-        setMaintainxKey("");
-        refresh();
-      } else {
-        setMaintainxError(data.error ?? "Invalid API key — check MaintainX Settings → API");
-      }
-    } catch {
-      setMaintainxError("Network error — please try again");
-    } finally {
-      setMaintainxLoading(false);
-    }
-  }
-
   const telegramConn = conn("telegram");
   const slackConn = conn("slack");
   const teamsConn = conn("teams");
@@ -296,16 +273,10 @@ function ChannelsInner() {
   const confluenceConn = conn("confluence");
   const maintainxConn = conn("maintainx");
 
-  // Atlas CMMS is FactoryLM's built-in CMMS — always live and rendered as an
-  // info-only card (line ~414), so it never lands in the localStorage-backed
-  // `connections` map. Count it alongside the user-connected providers so the
-  // header matches what the cards show (fixes "0 connected" vs Atlas Connected).
   // Email is a derived info card mirroring google/microsoft and is intentionally
   // not counted here to avoid double-counting those providers.
-  const ATLAS_BUILT_IN_CONNECTIONS = 1;
   const connectedCount =
-    Object.values(connections).filter(c => c?.connected).length +
-    ATLAS_BUILT_IN_CONNECTIONS;
+    Object.values(connections).filter(c => c?.connected).length;
 
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
@@ -364,15 +335,6 @@ function ChannelsInner() {
               disabledReason="Azure app credentials not configured"
             />
             <ConnectorCard
-              emoji="💬" name="WhatsApp"
-              description="Secondary channel for techs who prefer WhatsApp — same MIRA capabilities"
-              conn={{ connected: false }}
-              onConnect={() => {}}
-              onDisconnect={() => {}}
-              connectedLabel=""
-              comingSoon
-            />
-            <ConnectorCard
               emoji="📧" name="Email"
               description="Connect via Google or Microsoft in Document Sources below to enable email ingest"
               conn={{ connected: googleConn.connected || microsoftConn.connected }}
@@ -406,46 +368,17 @@ function ChannelsInner() {
           <div className="space-y-2">
             <ConnectorCard
               emoji="🔧" name="MaintainX"
-              description="Sync work orders, assets, and parts — AI-powered diagnostics flow directly into MaintainX"
+              description="Adapter code exists. Not proven."
               conn={maintainxConn}
-              onConnect={() => {
-                setMaintainxKey(maintainxConn.workspace ?? "");
-                setModal("maintainx");
-              }}
+              onConnect={() => {}}
               onDisconnect={async () => {
                 await fetch(`${API_BASE}/api/integrations/nango/connect/?provider=maintainx`, {
                   method: "DELETE",
                 });
                 disconnect("maintainx");
               }}
-              connectedLabel="Work orders and assets syncing via Nango"
-            />
-            <ConnectorCard
-              emoji="🗂️" name="Atlas CMMS"
-              description="FactoryLM's built-in CMMS — connected automatically"
-              conn={{ connected: true }}
-              onConnect={() => {}}
-              onDisconnect={() => {}}
-              connectedLabel="Live — work orders sync in real time"
-              infoOnly
-            />
-            <ConnectorCard
-              emoji="📋" name="Limble"
-              description="Sync Limble work orders and assets with MIRA diagnostics"
-              conn={{ connected: false }}
-              onConnect={() => {}}
-              onDisconnect={() => {}}
-              connectedLabel=""
-              comingSoon
-            />
-            <ConnectorCard
-              emoji="🛠️" name="UpKeep"
-              description="Connect UpKeep for automated work order creation from MIRA fault analysis"
-              conn={{ connected: false }}
-              onConnect={() => {}}
-              onDisconnect={() => {}}
-              connectedLabel=""
-              comingSoon
+              connectedLabel={maintainxConn.displayName ?? "MaintainX"}
+              statusLabel="In testing"
             />
           </div>
         </section>
@@ -548,62 +481,6 @@ function ChannelsInner() {
             <Button
               size="sm" variant="secondary" className="text-xs h-8 px-3"
               onClick={() => { setModal(null); setTelegramError(null); setTelegramToken(""); }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </Modal>
-      )}
-
-      {/* MaintainX modal */}
-      {modal === "maintainx" && (
-        <Modal
-          title="Connect MaintainX"
-          onClose={() => { setModal(null); setMaintainxError(null); setMaintainxKey(""); }}
-        >
-          <p className="text-xs mb-3" style={{ color: "var(--foreground-muted)" }}>
-            Generate an API key at{" "}
-            <span className="font-mono font-semibold">
-              Settings → Integrations → API → New Key
-            </span>{" "}
-            (Business plan or above required). Your key is stored encrypted via Nango — MIRA never
-            stores it directly.
-          </p>
-          <input
-            type="password"
-            value={maintainxKey}
-            onChange={e => setMaintainxKey(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && maintainxKey.trim()) handleMaintainxConnect(); }}
-            placeholder="Paste your MaintainX API key"
-            className="w-full text-xs px-3 py-2.5 rounded-lg border outline-none font-mono"
-            style={{
-              backgroundColor: "var(--surface-1)",
-              borderColor: "var(--border)",
-              color: "var(--foreground)",
-            }}
-            autoFocus
-          />
-          {maintainxError && (
-            <p className="text-xs mt-2 flex items-center gap-1.5" style={{ color: "#DC2626" }}>
-              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-              {maintainxError}
-            </p>
-          )}
-          <div className="flex gap-2 mt-4">
-            <Button
-              size="sm"
-              className="flex-1 text-xs h-8 gap-1.5"
-              style={{ backgroundColor: "var(--brand-blue)", color: "white" }}
-              onClick={handleMaintainxConnect}
-              disabled={!maintainxKey.trim() || maintainxLoading}
-            >
-              {maintainxLoading
-                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Connecting…</>
-                : <><CheckCircle className="w-3.5 h-3.5" />Save & Connect</>}
-            </Button>
-            <Button
-              size="sm" variant="secondary" className="text-xs h-8 px-3"
-              onClick={() => { setModal(null); setMaintainxError(null); setMaintainxKey(""); }}
             >
               Cancel
             </Button>

@@ -62,7 +62,7 @@ const PLANS = [
     name: "Operating Layer",
     price: "$499",
     period: "/mo per plant",
-    description: "MIRA in production on a structured namespace. Telegram + web + CMMS write-back. Quarterly namespace audits.",
+    description: "MIRA in production on a structured namespace. Telegram + web. Quarterly namespace audits.",
     highlight: null,
     color: "#7C3AED",
     cta: "Subscribe",
@@ -71,7 +71,6 @@ const PLANS = [
     features: [
       "Unlimited MIRA queries, whole team",
       "Cited OEM answers + fault history",
-      "CMMS write-back (MaintainX, Limble, UpKeep, Atlas)",
       "Continuous structuring as assets come online",
       "Quarterly namespace quality audit",
       "14-day money-back guarantee",

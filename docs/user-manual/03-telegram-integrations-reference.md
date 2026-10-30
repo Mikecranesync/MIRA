@@ -10,14 +10,13 @@
 
 ## 11.1 What the Telegram bot does
 
-The FactoryLM Telegram bot is the fastest path to getting equipment data into your CMMS.
+The FactoryLM Telegram bot is the fastest path to logging equipment from the floor.
 
 **The flow:**
 1. You see a piece of equipment that needs attention
 2. You take a photo on Telegram and send it to the bot
 3. The AI identifies the equipment, assesses its condition, and notes any visible issues
-4. A work order is automatically created in your CMMS
-5. You receive a reply with a direct link to the work order and the asset
+4. You receive a reply with what was identified
 
 Total time: under 30 seconds. No logging in. No forms. No typing asset names.
 
@@ -232,47 +231,17 @@ In this case, the bot will say:
 
 ---
 
-## 12.1 Your included CMMS (Atlas) — nothing to do
+## 12.1 CMMS connectors
 
-Every FactoryLM subscription includes **Atlas CMMS** — a full-featured maintenance management system. It's provisioned automatically when your account activates.
+MIRA works without a CMMS. No connector is Working.
 
-When you log into MIRA, Atlas is already there:
-- Work orders you create in MIRA appear in Atlas
-- Assets you add in MIRA appear in Atlas
-- PM schedules you build in MIRA run in Atlas
+### MaintainX
 
-If you've never used a CMMS before, Atlas is where you start. It handles work orders, asset tracking, PM scheduling, and parts inventory — everything a maintenance department needs.
+> **Current status:** In testing. Adapter code exists; not proven. There is no self-serve connect button.
 
-You do not need to configure Atlas. It's ready.
+Email support@factorylm.com to request setup. Do not expect a Settings → CMMS → Connect flow.
 
----
-
-## 12.2 Connecting MaintainX
-
-> **Current status:** Available on request. Self-serve connector setup is in development (GitHub issue #2165). Email support@factorylm.com to request connection — turnaround time is typically 1 business day.
-
-**What you'll need:**
-- A MaintainX account with admin access
-- A MaintainX API key with read/write permissions on Work Orders, Assets, and Locations
-
-**What syncs once connected:**
-- Work orders created in MIRA appear in MaintainX
-- Assets in MaintainX are visible in MIRA's asset picker
-- Recent fault history from MaintainX feeds into MIRA's diagnostics
-
----
-
-## 12.3 Connecting Limble CMMS
-
-> **Current status:** Available on request — same process as MaintainX above.
-
-Contact support@factorylm.com with your Limble account details and we'll configure the connection.
-
----
-
-## 12.4 Connecting Fiix
-
-> **Current status:** Available on request — same process above.
+Other named CMMS connectors are not listed until they have code or are proven.
 
 ---
 
@@ -606,19 +575,7 @@ This bug is being fixed before the QR system's general release.
 
 ## CMMS / Work orders
 
-### MIRA can't see my work orders
-1. Check Settings → Integrations → [your CMMS] → Status. Should show green "Connected."
-2. If red or showing an error: your API key may have expired or been revoked. Generate a new key in your CMMS and re-enter it in MIRA.
-3. If you use Atlas (the default): it's always connected. If you can't see WOs, contact support.
-
-### MIRA created a duplicate work order
-- Open the duplicate in your CMMS and delete it
-- To prevent recurrence: when MIRA proposes a WO, look at the "Similar existing WOs" panel before confirming. If a matching WO already exists, tap "Link to existing" instead of "Create new."
-
-### A work order I approved in MIRA isn't showing in my external CMMS
-- Check Settings → Integrations for any sync errors
-- Most CMMS connections sync within 30 seconds. Wait 1–2 minutes and refresh
-- If still missing after 2 minutes: email support@factorylm.com with the WO number
+No CMMS connector is Working. There is no self-serve Settings → Integrations → Connect flow for an external CMMS. Email support@factorylm.com if you have a connector that is In testing.
 
 ---
 
@@ -901,14 +858,7 @@ A: All connections use TLS (HTTPS). Data at rest is encrypted on our cloud provi
 
 | Platform | Status | Notes |
 |---|---|---|
-| **Atlas CMMS** | ✅ Live — included | Provisioned automatically at activation |
-| **MaintainX** | 🟡 Beta — on request | Email support@factorylm.com |
-| **Limble CMMS** | 🟡 Beta — on request | Email support@factorylm.com |
-| **Fiix** | 🟡 Beta — on request | Email support@factorylm.com |
-| **UpKeep** | 🔲 Roadmap | Contact us if needed |
-| **eMaint** | 🔲 Roadmap | Contact us if needed |
-| **IBM Maximo** | 🔲 Roadmap | Contact us for enterprise timeline |
-| **SAP PM** | 🔲 Roadmap | Contact us for enterprise timeline |
+| **MaintainX** | In testing | Adapter code exists; not proven. Email support@factorylm.com |
 
 ---
 

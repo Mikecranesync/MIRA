@@ -56,17 +56,9 @@ MIRA works out of the box with 100+ common vendors in the shared knowledge base.
 - Manuals are processed in the background (2–10 minutes for a typical 300-page PDF)
 - Once processed, MIRA cites these manuals in every relevant answer
 
-## 6. Connect your CMMS (optional)
+## 6. CMMS connectors (optional)
 
-If you use Atlas CMMS: nothing to do. Your Atlas workspace was provisioned at activation.
-
-If you use MaintainX, Limble, or Fiix: see [CMMS integration](cmms-integration.md) for connection steps.
-
-Once connected, MIRA can:
-- List open work orders for any asset
-- Create new work orders from a diagnostic
-- Auto-close work orders when a fault is resolved
-- Pull recent fault history into every diagnosis
+MIRA works without a CMMS. See [CMMS integration](cmms-integration.md) for current connector status. No connector is Working. There is no self-serve connect flow.
 
 ## 7. Invite your team
 
