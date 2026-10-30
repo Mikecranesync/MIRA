@@ -132,6 +132,19 @@ const PRICE_PER_MTOK: Record<string, { input: number; output: number }> = {
   OpenRouter: { input: 0.2, output: 0.52 },
 };
 
+/**
+ * OpenAI bills per MODEL and `OPENAI_MODEL` can name any model, so OpenAI is
+ * priced by model id — never by the provider name (#4961). Standard-tier list
+ * prices, USD per 1M tokens, from https://developers.openai.com/api/docs/pricing
+ * (fetched 2026-10-29: gpt-5.4-mini $0.75 in / $0.075 cached / $4.50 out). They
+ * equal `tools/review_router/prices.json`, which the test pins. A model missing
+ * here estimates to null (unpriced), never 0 and never another model's rate.
+ * Invalidation trigger: an OpenAI price change, or a new OPENAI_MODEL in use.
+ */
+const OPENAI_PRICE_PER_MTOK_BY_MODEL: Record<string, { input: number; output: number }> = {
+  "gpt-5.4-mini": { input: 0.75, output: 4.5 },
+};
+
 /** Cached input is billed at ~10% of the input rate across these providers. */
 const CACHED_INPUT_DISCOUNT = 0.1;
 
@@ -212,20 +225,40 @@ export function canonicalProviders(): CanonicalProvider[] {
   ];
 }
 
+/** A provider-reported token count: a non-negative safe integer. */
+function isTokenCount(n: unknown): n is number {
+  return typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
+}
+
 export function estimateCostUsd(
   provider: string,
   inputTokens: number | null,
   cachedInputTokens: number | null,
   outputTokens: number | null,
+  model?: string | null,
 ): number | null {
-  const price = PRICE_PER_MTOK[provider];
-  // Unpriced provider → null, never 0. See PRICE_PER_MTOK.
+  const price =
+    provider === "OpenAI"
+      ? model
+        ? OPENAI_PRICE_PER_MTOK_BY_MODEL[model.trim()]
+        : undefined
+      : PRICE_PER_MTOK[provider];
+  // Unpriced provider (or unpriced OpenAI model) → null, never 0. See PRICE_PER_MTOK.
   if (!price) return null;
-  const fresh = Math.max(0, (inputTokens ?? 0) - (cachedInputTokens ?? 0));
+  // Missing or invalid counts → null, never 0 (#4978). A lost usage frame
+  // (the route tolerates a failed post-stop drain) leaves the counts null; 0
+  // would book a paid turn as free and hide it from tenantSpendSince's
+  // `IS NULL` unpriced count (migration 080). Input and output are required;
+  // an absent cached count is 0 (prompt_tokens_details is optional), but a
+  // present one must be valid and cannot exceed the prompt.
+  if (!isTokenCount(inputTokens) || !isTokenCount(outputTokens)) return null;
+  const cached = cachedInputTokens ?? 0;
+  if (!isTokenCount(cached) || cached > inputTokens) return null;
+  const fresh = inputTokens - cached;
   const cost =
     (fresh / 1_000_000) * price.input +
-    ((cachedInputTokens ?? 0) / 1_000_000) * price.input * CACHED_INPUT_DISCOUNT +
-    ((outputTokens ?? 0) / 1_000_000) * price.output;
+    (cached / 1_000_000) * price.input * CACHED_INPUT_DISCOUNT +
+    (outputTokens / 1_000_000) * price.output;
   // 6dp matches NUMERIC(12,6) in migration 078.
   return Number(cost.toFixed(6));
 }
@@ -255,7 +288,7 @@ export function usageFromRaw(
     inputTokens,
     cachedInputTokens,
     outputTokens,
-    costUsdEstimate: estimateCostUsd(provider, inputTokens, cachedInputTokens, outputTokens),
+    costUsdEstimate: estimateCostUsd(provider, inputTokens, cachedInputTokens, outputTokens, model),
     status,
     attempted,
   };
