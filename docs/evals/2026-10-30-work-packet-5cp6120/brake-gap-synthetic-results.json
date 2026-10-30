@@ -77,7 +77,7 @@
    "before": {
     "status": "pass",
     "reasons": [
-     "converted 0.07 in to 1.778 mm (explicit)",
+     "converted 0.07 in to 1.778 mm (explicit, exact decimal)",
      "1.778 mm vs 0.8\u20132.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 \u00a74.2"
     ],
     "compared_value": 1.778,
