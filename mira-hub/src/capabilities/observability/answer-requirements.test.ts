@@ -10,6 +10,8 @@ import {
   evaluateAnswerRequirements,
   ANSWER_REQUIREMENTS,
   ANSWER_REQUIREMENTS_VERSION,
+  R4_VERBATIM_OVERRIDE,
+  r4NoInventedValues,
 } from "./answer-requirements";
 import type { TurnEvidencePacket } from "./turn-evidence-packet";
 import type { JevDecisionRecord } from "./jev-decision";
@@ -215,6 +217,51 @@ describe("evaluateAnswerRequirements", () => {
     });
     const result = evaluateAnswerRequirements(packet)!;
     expect(result.failed).toContain("R4_NO_INVENTED_VALUES");
+  });
+
+  // #4870 T-2 — the R4 verbatim-override policy option. Mike decides; it ships OFF.
+  describe("R4 verbatim override (policy option, default OFF)", () => {
+    const jevHigh = (answerGate: Partial<TurnEvidencePacket["answer_gate"]> = {}) =>
+      makePacket({
+        answer_gate: { ...makePacket().answer_gate, numeric_claims: 2, numeric_claims_unsupported: 0, ...answerGate },
+        jev_decision: {
+          ...makePacket().jev_decision!,
+          signals: { ...makePacket().jev_decision!.signals, unsupported_numerics: 0.8 },
+        },
+      });
+    const on = { verbatimOverride: true };
+
+    it("is OFF by default: JEV alone still fails R4 even when every claim is supported", () => {
+      expect(R4_VERBATIM_OVERRIDE).toBe(false);
+      expect(evaluateAnswerRequirements(jevHigh())!.failed).toContain("R4_NO_INVENTED_VALUES");
+      expect(r4NoInventedValues(jevHigh()).status).toBe("fail");
+    });
+    it("ON: every numeric claim supported verbatim → JEV unsupported_numerics alone does not fail", () => {
+      const r = r4NoInventedValues(jevHigh(), on);
+      expect(r.status).toBe("pass");
+      expect(r.signal).toBe("numeric_claims_supported (det)");
+    });
+    it("ON: no numeric claim found → the override does not apply (JEV decides)", () => {
+      expect(r4NoInventedValues(jevHigh({ numeric_claims: 0 }), on).status).toBe("fail");
+    });
+    it("ON: one unsupported claim → the override does not apply", () => {
+      expect(r4NoInventedValues(jevHigh({ numeric_claims_unsupported: 1 }), on).status).toBe("fail");
+    });
+    it("ON: a packet from a build without the counts → the override does not apply", () => {
+      const p = jevHigh();
+      delete (p.answer_gate as Record<string, unknown>).numeric_claims;
+      delete (p.answer_gate as Record<string, unknown>).numeric_claims_unsupported;
+      expect(r4NoInventedValues(p, on).status).toBe("fail");
+    });
+    it("ON: a deterministic flag still fails R4 (the override never clears det)", () => {
+      expect(r4NoInventedValues(jevHigh({ ungrounded_unit_claim: true }), on).status).toBe("fail");
+      expect(r4NoInventedValues(jevHigh({ cited_values_unsupported: 1 }), on).status).toBe("fail");
+    });
+    it("ON control: a low JEV score with supported claims passes as before", () => {
+      const p = jevHigh();
+      p.jev_decision!.signals.unsupported_numerics = 0.2;
+      expect(r4NoInventedValues(p, on).status).toBe("pass");
+    });
   });
 
   it("R6_CALIBRATED fails when over_specificity >= 0.7", () => {

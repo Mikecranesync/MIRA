@@ -47,6 +47,67 @@ export type AnswerRequirementsVerdict = {
 };
 
 /**
+ * #4870 T-2 — R4 policy option, Mike's decision, shipped OFF. Mike's calibration fix 1 says a
+ * number that appears verbatim in the evidence is supported. When ON: if the deterministic
+ * check found at least one numeric claim in the answer (`answer_gate.numeric_claims`) and the
+ * chunks in context or the photo reading support ALL of them (`numeric_claims_unsupported`
+ * = 0), and neither deterministic flag fired, the JEV `unsupported_numerics` signal ALONE does
+ * not fail R4. It never clears a deterministic flag, never applies when no claim was found, and
+ * never applies to a packet from a build that does not record the counts. Flipping it changes
+ * R4 verdicts: bump ANSWER_REQUIREMENTS_VERSION in the same change.
+ */
+export const R4_VERBATIM_OVERRIDE = false;
+
+/** R4_NO_INVENTED_VALUES. `opts` exists so both policies are testable; the registry passes
+ *  the shipped constant. */
+export function r4NoInventedValues(
+  p: TurnEvidencePacket,
+  opts: { verbatimOverride?: boolean } = { verbatimOverride: R4_VERBATIM_OVERRIDE },
+): { status: "pass" | "fail" | "unjudged"; signal?: string; value?: number | boolean; threshold?: number } {
+  const jevSig = p.jev_decision?.signals?.unsupported_numerics;
+  const detUngrounded = p.answer_gate.ungrounded_unit_claim ?? false;
+  const detUnsupported = p.answer_gate.cited_values_unsupported ?? 0;
+
+  const jevUnjudged = typeof jevSig !== "number";
+  const detFail = detUngrounded || detUnsupported > 0;
+
+  if (jevUnjudged && detFail) {
+    return {
+      status: "fail" as const,
+      signal: "unsupported_numerics (det)",
+      value: detUnsupported,
+    };
+  }
+  if (jevUnjudged && !detFail) {
+    return { status: "unjudged" as const };
+  }
+
+  // JEV is present
+  const threshold = PROVISIONAL_THRESHOLDS.unsupported_numerics;
+  const jevPass = (jevSig as number) < threshold;
+  const claims = p.answer_gate.numeric_claims;
+  const claimsUnsupported = p.answer_gate.numeric_claims_unsupported;
+  if (
+    opts.verbatimOverride === true &&
+    !detFail &&
+    !jevPass &&
+    typeof claims === "number" &&
+    claims >= 1 &&
+    claimsUnsupported === 0
+  ) {
+    return { status: "pass" as const, signal: "numeric_claims_supported (det)", value: claims };
+  }
+  const pass = jevPass && !detFail;
+
+  return {
+    status: pass ? ("pass" as const) : ("fail" as const),
+    signal: "unsupported_numerics",
+    value: jevSig,
+    threshold: detFail ? undefined : threshold,
+  };
+}
+
+/**
  * Registry of all requirements, exported for test assertions.
  * Each requirement names its stage, precondition, and JEV/deterministic checks.
  */
@@ -110,37 +171,7 @@ export const ANSWER_REQUIREMENTS = [
     name: "No number/setting absent from the evidence",
     stage: "generation" as const,
     precondition: (_: TurnEvidencePacket) => true,
-    check: (p: TurnEvidencePacket) => {
-      const jevSig = p.jev_decision?.signals?.unsupported_numerics;
-      const detUngrounded = p.answer_gate.ungrounded_unit_claim ?? false;
-      const detUnsupported = p.answer_gate.cited_values_unsupported ?? 0;
-
-      const jevUnjudged = typeof jevSig !== "number";
-      const detFail = detUngrounded || detUnsupported > 0;
-
-      if (jevUnjudged && detFail) {
-        return {
-          status: "fail" as const,
-          signal: "unsupported_numerics (det)",
-          value: detUnsupported,
-        };
-      }
-      if (jevUnjudged && !detFail) {
-        return { status: "unjudged" as const };
-      }
-
-      // JEV is present
-      const threshold = PROVISIONAL_THRESHOLDS.unsupported_numerics;
-      const jevPass = (jevSig as number) < threshold;
-      const pass = jevPass && !detFail;
-
-      return {
-        status: pass ? ("pass" as const) : ("fail" as const),
-        signal: "unsupported_numerics",
-        value: jevSig,
-        threshold: detFail ? undefined : threshold,
-      };
-    },
+    check: (p: TurnEvidencePacket) => r4NoInventedValues(p),
   },
   {
     id: "R5_USES_RELEVANT_EVIDENCE",
