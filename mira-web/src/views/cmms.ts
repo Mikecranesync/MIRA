@@ -1,10 +1,5 @@
 import { head } from "../lib/head.js";
-import {
-  btnPrimary,
-  btnGhost,
-  stateBadge,
-  compareBlock,
-} from "../lib/components.js";
+import { btnPrimary, btnGhost } from "../lib/components.js";
 import { navbar, footer } from "./_topbar.js";
 
 const PAGE_STYLES = `
@@ -226,22 +221,22 @@ const FORM_SCRIPT = `
 
 const PLAN_LABELS: Record<string, { eyebrow: string; h1: string; sub: string }> = {
   mira: {
-    eyebrow: "Operating Layer — $499/mo per plant",
-    h1: "MIRA in production. On a structured namespace.",
-    sub: "You're signing in to the Maintenance Operating Layer. Send yourself a magic link — no password, no demo call.",
+    eyebrow: "Sign in",
+    h1: "Sign in to FactoryLM.",
+    sub: "Send yourself a magic link. It's not a CMMS and doesn't replace yours.",
   },
   integrated: {
-    eyebrow: "Operating Layer + CMMS write-back",
-    h1: "MIRA + your CMMS. Diagnostics become work orders.",
-    sub: "You're signing in to the Operating Layer with CMMS sync. Send yourself a magic link — no password, no demo call.",
+    eyebrow: "Sign in",
+    h1: "Sign in to FactoryLM.",
+    sub: "Send yourself a magic link. It's not a CMMS and doesn't replace yours.",
   },
 };
 
 function hero(plan?: string): string {
   const copy = (plan ? PLAN_LABELS[plan] : undefined) ?? {
-    eyebrow: "Maintenance Operating Layer",
-    h1: "Sign in to your Operating Layer.",
-    sub: "One component of your maintenance transformation. Send yourself a magic link — no password, no demo call.",
+    eyebrow: "Sign in",
+    h1: "Sign in to FactoryLM.",
+    sub: "Send yourself a magic link. It's not a CMMS and doesn't replace yours.",
   };
   const planHidden = plan
     ? `<input type="hidden" id="cmms-plan" name="plan" value="${plan}">`
@@ -273,55 +268,15 @@ function hero(plan?: string): string {
       ✓ Check your inbox — your magic link is on its way (it expires in 10 minutes).
     </div>
 
-    <p class="fl-cmms-buy-cta" style="margin-top:1.5rem;font-size:0.9rem;color:var(--text-dim,#888);">
-      Ready to buy? ${btnGhost("View plans →", { href: "/buy", cta: "cmms-hero-buy" })}
-    </p>
-
-    <p class="fl-reassurance">No credit card. No call. No demo.</p>
+    <p class="fl-reassurance">Already using FactoryLM? This is the sign-in page.</p>
   </div>
 </section>`;
 }
 
-function whatHappensNext(): string {
+function whatItIsNot(): string {
   return `<section class="fl-section" aria-labelledby="fl-steps-h">
-  <h2 id="fl-steps-h" class="fl-section-h">The Operating Layer is one component.</h2>
-  <p class="fl-section-sub">It's where MIRA runs after we've structured your maintenance namespace. Most plants start with an Assessment, not here.</p>
-  <ol class="fl-steps" aria-label="What the Operating Layer includes">
-    <li class="fl-step">
-      <div class="fl-step-marker">${stateBadge("indexed", "Asset registry")}</div>
-      <h3 class="fl-step-h">Asset hierarchy + nameplates</h3>
-      <p class="fl-step-body">Machines, sub-components, and the manuals bound to each. Captured during your pilot, maintained continuously.</p>
-    </li>
-    <li class="fl-step">
-      <div class="fl-step-marker">${stateBadge("indexed", "Work orders + PMs")}</div>
-      <h3 class="fl-step-h">CMMS write-back</h3>
-      <p class="fl-step-body">PM schedules extracted from OEM manuals. Diagnostics from MIRA become work orders — synced to MaintainX, Limble, UpKeep, or Atlas.</p>
-    </li>
-    <li class="fl-step">
-      <div class="fl-step-marker">${stateBadge("indexed", "Grounded AI")}</div>
-      <h3 class="fl-step-h">MIRA on the floor</h3>
-      <p class="fl-step-body">Telegram, Slack, web. When the answer comes from your manuals, MIRA shows the manual and the page, so your tech can check it.</p>
-    </li>
-  </ol>
-  <p style="text-align:center; margin-top: var(--fl-sp-6); color: var(--fl-muted-600); font-size: var(--fl-type-base);">
-    New to FactoryLM? <a href="/buy" style="color: var(--fl-navy-900);">Start with a $500 Assessment →</a>
-  </p>
-</section>`;
-}
-
-function compareSection(): string {
-  return `<section class="fl-section" aria-labelledby="fl-compare-h">
-  <h2 id="fl-compare-h" class="fl-section-h">The namespace is the difference.</h2>
-  <p class="fl-section-sub">Same prompt. Generic AI vs. AI running on a structured Maintenance Intelligence Namespace.</p>
-  ${compareBlock(
-    "Why is the Powerflex 755 tripping F005 at 1,200 RPM?",
-    "Generic AI (no namespace)",
-    "F005 is typically caused by undervoltage at the input or a brownout condition. Check incoming line voltage and confirm your PLC tag mapping.",
-    "No plant context. No manual citation. No history. Hallucination risk.",
-    "MIRA on your namespace",
-    "F005 on this drive (Asset POW-755-A12) means DC bus undervoltage. Last 7 days show 4 trips at the same RPM band, all overnight. Manual §6.2 says to check the bus capacitor bank — your 2024-12-14 PM noted bulging on cap 3.",
-    ["Manual §6.2 (PowerFlex 755)", "PM 2024-12-14", "Trips: last 7 d"]
-  )}
+  <h2 id="fl-steps-h" class="fl-section-h">It's not a CMMS.</h2>
+  <p class="fl-section-sub">It doesn't replace yours. It doesn't write work orders. It doesn't connect to PLCs.</p>
 </section>`;
 }
 
@@ -333,27 +288,17 @@ export function renderCmms(reqUrl?: string): string {
 
   const headHtml = head(
     {
-      title: "Maintenance Operating Layer — FactoryLM",
+      title: "Sign in — FactoryLM",
       description:
-        "Sign in to the Operating Layer where MIRA runs on your structured Maintenance Intelligence Namespace. One component of the broader transformation.",
+        "Sign in to FactoryLM. It's not a CMMS and doesn't replace yours.",
       canonical: "https://factorylm.com/cmms",
       jsonLd: {
         "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
+        "@type": "WebPage",
         "@id": "https://factorylm.com/cmms#app",
-        name: "FactoryLM Maintenance Operating Layer",
-        applicationCategory: "BusinessApplication",
-        operatingSystem: "Web",
+        name: "Sign in — FactoryLM",
         url: "https://factorylm.com/cmms",
-        description: "The Operating Layer is where MIRA — FactoryLM's AI execution layer — runs on a structured Maintenance Intelligence Namespace. Asset registry, work orders, PM scheduling, and grounded AI answers from cited OEM documentation.",
-        offers: {
-          "@type": "Offer",
-          name: "Operating Layer",
-          price: "499",
-          priceCurrency: "USD",
-          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "per plant per month" },
-          url: "https://factorylm.com/buy",
-        },
+        description: "Sign in to FactoryLM. It's not a CMMS and doesn't replace yours.",
         publisher: { "@id": "https://factorylm.com/#org" },
       },
     },
@@ -371,8 +316,7 @@ export function renderCmms(reqUrl?: string): string {
   ${navbar({ currentPath: "/cmms", ctaPrefix: "cmms" })}
   <main>
     ${hero(validPlan)}
-    ${whatHappensNext()}
-    ${compareSection()}
+    ${whatItIsNot()}
   </main>
   ${footer({ ctaPrefix: "cmms" })}
   <script>${FORM_SCRIPT}</script>
@@ -410,7 +354,7 @@ export function renderSamplePlaceholder(): string {
   <main>
     <div class="fl-sample-card">
       <h1>You're signed in.</h1>
-      <p>Your sample workspace will appear here once Phase 1 ships. For now, the fastest way to feel the product is to upload your first manual — MIRA will OCR it, chunk it, and let you ask questions with citations.</p>
+      <p>Your sample workspace will appear here once Phase 1 ships. For now, upload your first manual.</p>
       <div class="fl-sample-cta">
         <a id="cmms-btn" href="#" class="fl-btn fl-btn-primary" data-cta="sample-cmms" style="display:none">Open CMMS</a>
         ${btnPrimary("Upload your first manual", { href: "/activated", cta: "sample-upload" })}
