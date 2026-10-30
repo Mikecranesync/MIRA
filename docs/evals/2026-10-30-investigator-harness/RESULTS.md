@@ -75,9 +75,9 @@ to follow-up questions** (6 of the numbers appear verbatim in the question; one 
 caused part of the investigator's over-caution, and on this set there is **no evidence that the baseline showed unsupported numbers**.
 
 **SEALED scenarios (n = 33; author + blind reviewer agreed on the right mode)**
-Scored on the delivered outcome with `.planning/…/results/score_scenarios.py`. The frozen `score_eval.py` counted post-check downgrades
-(`post_check_failed`) as errors and dropped them, and read 0/0 because the sealed answer key is a list, not an id-keyed dict — its E3
-output is not used (scorer defect, see hazard ledger).
+Scored on the delivered outcome (a post-check downgrade is what the technician sees). The frozen `score_eval.py` had two defects —
+it dropped `post_check_failed` rows as errors and read 0/0 on the list-format sealed key — fixed after the run (scoring only, no arm
+re-run) with regression tests; the fixed scorer and the independent `evidence/scripts/score_scenarios.py` give identical numbers.
 | | H1 | H2 |
 |---|---:|---:|
 | right mode | 16/33 | 18/33 |
@@ -114,8 +114,17 @@ H1 30/33, H2 31/33. **Treat the H2 > H1 > H0 ordering as possibly format bias:**
 | **total** | | **1.9023** |
 Per case: H0 ≈ $0.0029, H1 ≈ $0.0027, H2 ≈ $0.0035.
 
-## 5. Checks run
+## 5. Changes after the freeze (none re-ran an arm)
+`score_eval.py` scorer fix + 2 tests; a doc comment in `tools/investigator/ingest.ts` reworded (the architecture scanner read it as an
+INSERT without `is_private`; the real INSERT sets `is_private = true`); 7 `knowledge_entries` read-allowlist entries for the offline
+bench scripts (hash-pinned, with reasons); ruff format of one test file; this folder's `evidence/`. The frozen commit `b9b27a19b` stays
+in the branch history on purpose (history not squashed) so the sealed results' code can be checked out exactly.
+
+## 6. Checks run
 mira-hub vitest: investigator 209/209; full suite 10,706 passed + the 10 files that need non-hub fixtures (251 tests) pass once those
 fixtures are present (the sparse worktree omits them — environmental, verified by adding them). tsc clean (hub + `tools/investigator/tsconfig.json`).
-Bench TS scripts: judge 18/18, fusion 14/14. pytest `tools/investigator/tests` 34/34. ruff format/check clean. Mutation checks: one per file
+Bench TS scripts: judge 18/18, fusion 14/14. pytest `tools/investigator/tests` 36/36. ruff format/check clean.
+Local policy checks on the diff: UI lifecycle guard classifier — 0 of the changed paths guarded; `knowledge_entries` read-filter checker — 0 issues
+from this branch (37 remaining all name files outside the sparse worktree); `tests/test_architecture.py` is_private writer check passes;
+capability-closure `--discover` — no new gate flags (the investigator is not wired to any route and adds no flag). Mutation checks: one per file
 (lane reports + the coverage-threshold mutation failing 2 named tests).

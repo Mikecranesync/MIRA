@@ -48,7 +48,8 @@ hides:
     output, not presented as an independent measurement.
   - There is no top-level `error` field. A row that failed hard is read from
     `stop_reason` instead (`model_error` / `post_check_failed` are treated as
-    errors here; `budget_exhausted` is also excluded from the substantive
+    errors here (post_check_failed was too until 2026-10-30 — it is a delivered, downgraded answer and now
+    scores normally); `budget_exhausted` is also excluded from the substantive
     metrics' denominators — no real synthesis happened for that case — but
     counted separately, since the run stopping there is itself informative).
 
@@ -82,7 +83,10 @@ Row = Dict[str, Any]
 
 # A row with no real synthesis — excluded from every substantive metric's
 # denominator, counted only in the plain error/stop tally.
-FAILURE_STOP_REASONS = {"model_error", "post_check_failed", "budget_exhausted"}
+# post_check_failed is NOT a failure: the runner downgraded the answer (to follow_up / stop_escalate) and that downgraded
+# answer is what the technician sees, so it is scored like any other delivered outcome (2026-10-30 correction; the first
+# version dropped those rows, which hid exactly the cases the post-check exists for).
+FAILURE_STOP_REASONS = {"model_error", "budget_exhausted"}
 
 # --- reuse: identical Wilson CI used by score_retrieval.py / this repo's own
 #     docs/evals score.py scripts. Not re-derived, just not import-shared
@@ -318,7 +322,11 @@ def load_bench_accepted(bench_questions_dir: str) -> Dict[str, List[int]]:
 
 
 def load_scenario_labels(path: str) -> Dict[str, Dict[str, Any]]:
-    return json.load(open(path))
+    """SEALED-C keys are written as a list of {id, expected_mode, ...}; an id-keyed dict is accepted too."""
+    raw = json.load(open(path))
+    if isinstance(raw, list):
+        return {item["id"]: item for item in raw}
+    return raw
 
 
 def load_human_labels_csv(path: str) -> Dict[Tuple[str, str], Dict[str, str]]:

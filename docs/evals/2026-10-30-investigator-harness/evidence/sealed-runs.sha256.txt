@@ -1,0 +1,14 @@
+6d1b0a432e2faeb3f29c946adc8d2e7af3669c4b3c510f160932b27d0dc5fb47  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/fs4-b0p-k10.jsonl
+aacadc392a93791341aefca95c26bbd418e8c31b65ad5004fc7434205a3eb629  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/fs4-b2-k10.jsonl
+46c0699743c70362ada8f45f9427548c746f7b6dfaec57dea365d5835253cbc4  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/fs4-b4-k10.jsonl
+083c23ddfe1ce3be045ddabcde5c42e7e3aa69f4e4e09d29660cdf76c343eab1  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/fs4-H0.jsonl
+ff6dffd27b04a66181e5db3e19c444e7077d1c8e21c4eb40c0d0c34b12d4f6cd  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/fs4-H1.jsonl
+4edf23019a9bd5767eed77f893b36cb4dd6956b1b9895b502689df807fb68af5  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/fs4-H2.jsonl
+0f195f9db4356b042b45ed184cb7805700553b6f84b4fd14b9b3ce3f723a046f  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/fs4-off-k10.jsonl
+5b9d68d00bf0b410e6b15a027b71a69a00e4110d2309b327857746c83ebe64ee  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/fs4-rewrite-k10.jsonl
+24ba04de3cf2789ff926a74e2b1fb5372d0f4da83f97f61a951fbb5b6530ba97  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/r80-H0.jsonl
+6f7e41f8ea51b9607c4c59bb70a9f15d4f970e2ba7b9026f78ad3555bdf007c8  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/r80-H1.jsonl
+6b257f8c51c316c1b2f8dcbe4bf75fd217040a5b1957dcc6a5ee6f9cb82696e8  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/r80-H2.jsonl
+097e113daca2242d34f82a2b296d4957ef7da8eb7917c229fb2f26063f889e66  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/sc-H0.jsonl
+880afce8845d60bff2b3ba81ba30746012fc7ef14dab311e460674778d011a70  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/sc-H1.jsonl
+e1a103f93c9e1cdbc9be0fb8c60744beb0ed57d4c629c0625bec1c2e9ec1e271  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/sealed-runs/sc-H2.jsonl

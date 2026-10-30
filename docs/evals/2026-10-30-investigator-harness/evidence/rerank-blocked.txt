@@ -1,0 +1,4 @@
+B3 first run invalid: hub timeout 1500 ms < reranker latency ~2 s (int8-avx2 on ARM); rows kept for the record
+Retry (fp32, NOTEBOOK_RERANK_TIMEOUT_MS=5000 = the Hub's max): reranker latency 3.4–5.8 s per 50 passages on CHARLIE (Colima ARM VM),
+12 "busy, refused"; 17/29 forum-fresh rows still identical to off (fallback). B3 is BLOCKED on this host: the existing cross-encoder
+cannot answer inside the Hub's 5 s ceiling here. Needs an x86 AVX2 host (the int8-avx2 variant it was built for) to be measured.

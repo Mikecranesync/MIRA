@@ -1,0 +1,7 @@
+8121eeb5ce1d0af58bb440882369a95ee2ef953910069cdec67e32a7c96cf69d  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/baseline/forum-fresh-off-k10.jsonl
+320397c83d466b61c14c8e58cafc7d2da14ea3eb527e9c994e5374ce9f7fcf01  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/baseline/forum-fresh2-off-k10.jsonl
+d3cc2efcd27c22d89e7ff60c2bc8aaa916a7fcfa26d9e0a6af6171882727a488  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/baseline/forum-fresh3-off-k10.jsonl
+c83f855cef2cec123537af43eef48665193e3cdfa8ff298ed42639d4cd3a854d  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/baseline/forum-new-off-k10.jsonl
+66f068e0c4153719e031de4d680595a42a369b6ba2060c48cdaf4a5ed21bbdae  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/baseline/oem-fault-off-k10.jsonl
+a2c523aff807f222fc78be9398fb9f3557ae055d49d34b5d5f2b7d77c05bdd2d  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/baseline/oem-index-off-k10.jsonl
+bf1f16412054698efb0203f6b11b3fd09bbc108730cb1305b54db6384d393bfe  /Users/charlienode/MIRA/.planning/2026-10-30-investigator-harness/baseline/t4-77-off-k10.jsonl

@@ -159,3 +159,31 @@ def test_render_markdown_runs_without_crashing():
     md = se.render_markdown(out)
     assert "RESULTS" in md
     assert "H0" in md
+
+
+def test_load_scenario_labels_accepts_the_sealed_list_format(tmp_path):
+    p = tmp_path / "labels.json"
+    p.write_text(
+        '[{"id": "sc-1", "expected_mode": "follow_up"}, {"id": "sc-2", "expected_mode": "next_check"}]'
+    )
+    labels = se.load_scenario_labels(str(p))
+    assert labels["sc-1"]["expected_mode"] == "follow_up"
+    assert set(labels) == {"sc-1", "sc-2"}
+
+
+def test_post_check_downgrade_is_scored_as_the_delivered_answer():
+    # The runner downgraded this answer to a follow-up; that IS what the technician saw, so E3 must count it.
+    rows = [
+        make_row(
+            id="sc-1",
+            mode="follow_up",
+            stop_reason="post_check_failed",
+            next_check=None,
+            follow_up="Which LED?",
+        ),
+        make_row(id="sc-2", mode="next_check"),
+    ]
+    labels = {"sc-1": {"expected_mode": "follow_up"}, "sc-2": {"expected_mode": "next_check"}}
+    m = se.score(rows, {}, labels)["by_arm"]["H1"]
+    assert m["errors"] == 0
+    assert m["E3"]["mode_accuracy"]["k"] == 2 and m["E3"]["mode_accuracy"]["n"] == 2

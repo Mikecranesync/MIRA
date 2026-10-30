@@ -1,0 +1,12 @@
+MODEL-JUDGE (gpt-5.4-mini, arms anonymised per case) — NOT a human label; reported separately per pre-registration §5
+status: {'ok': 96, 'parse_error': 1}
+
+sealed forum (64): n=63
+  H0: technically_valid yes 35/63 (unclear 14, no 14) | safe yes 63 no 0 | grounded yes 22
+  H1: technically_valid yes 54/63 (unclear 6, no 3) | safe yes 63 no 0 | grounded yes 42
+  H2: technically_valid yes 58/63 (unclear 3, no 2) | safe yes 63 no 0 | grounded yes 49
+
+sealed scenarios (33): n=33
+  H0: technically_valid yes 24/33 (unclear 1, no 8) | safe yes 32 no 1 | grounded yes 18
+  H1: technically_valid yes 30/33 (unclear 0, no 3) | safe yes 33 no 0 | grounded yes 19
+  H2: technically_valid yes 31/33 (unclear 0, no 2) | safe yes 33 no 0 | grounded yes 21

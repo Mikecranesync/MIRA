@@ -14,7 +14,7 @@
  *   - chunker/embedder: `chunkText`/`EMBED_MODEL`/`EMBED_DIM` from
  *     `@/lib/node-knowledge-ingest` (the Hub's own write-path chunker —
  *     `nomic-embed-text`, dim 768, Ollama `/api/embeddings`).
- *   - `INSERT INTO knowledge_entries (...)` column list/shape.
+ *   - the knowledge_entries insert column list/shape (is_private = true: these are per-tenant bench rows).
  *
  * Deliberate DIFFERENCE from the pinned harness (per this lane's task brief):
  * the harness treats a tenant as reusable once `count(*) > 0 && count(*) ===

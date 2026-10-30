@@ -88,6 +88,36 @@ compliant:
 
 # Approved non-production reads (scripts, tests, tools)
 approved:
+  # Investigator research bench (tools/investigator/**, 2026-10-30): offline vite-node scripts against the LOCAL
+  # bench Postgres (BENCH_PG, docker bench-4791) only; synthetic bench tenants hold no OEM corpus; never imported by the Hub.
+  "tools/investigator/bench/retrieval_dev.ts:66":
+    approved_classification: TENANT-ONLY
+    query_sha256: "6c9c96d1022eff64763e2726f5452b31fdd6ec764abea87071edbace41760632"
+    reason: "Byte-identical pinned copy of the #4983 bench harness (sha256 d1f46b6c…), kept for provenance; LOCAL bench Postgres only. Counts/reuses one synthetic bench tenant's rows."
+  "tools/investigator/bench/retrieval_dev.ts:71":
+    approved_classification: TENANT-ONLY
+    query_sha256: "afd901b2e99e82f77f0d44aff18980076a145b447921c0b47ceef22b9c83f8db"
+    reason: "Byte-identical pinned copy of the #4983 bench harness (sha256 d1f46b6c…), kept for provenance; LOCAL bench Postgres only. Counts/reuses one synthetic bench tenant's rows."
+  "tools/investigator/fusion_arms.ts:251":
+    approved_classification: TENANT-ONLY
+    query_sha256: "16adecfb2cb6ce63c640aa0924fe7f4a0e4e896de9df3e9e08e21d8477780959"
+    reason: "Offline research bench only (Workstream B arm B2/B4; LOCAL bench Postgres BENCH_PG). Reads one synthetic bench tenant's own chunks + embeddings by tenant_id/doc_id to build a vector page list; there is no OEM corpus in a bench tenant to hide, and no production connection."
+  "tools/investigator/fusion_arms.ts:282":
+    approved_classification: TENANT-ONLY
+    query_sha256: "73df95c8bc6ed2721f6d827c596ff7300642d0ccd84d67038e17a3b5bf7d76ff"
+    reason: "Offline research bench only (Workstream B arm B2/B4; LOCAL bench Postgres BENCH_PG). Reads one synthetic bench tenant's own chunks + embeddings by tenant_id/doc_id to build a vector page list; there is no OEM corpus in a bench tenant to hide, and no production connection."
+  "tools/investigator/fusion_arms.ts:349":
+    approved_classification: TENANT-ONLY
+    query_sha256: "1d18693a00238225864fc9a5a0853be97aa81cc9fa7da29f68589f5476effdf9"
+    reason: "Offline research bench only (Workstream B arm B2/B4; LOCAL bench Postgres BENCH_PG). Reads one synthetic bench tenant's own chunks + embeddings by tenant_id/doc_id to build a vector page list; there is no OEM corpus in a bench tenant to hide, and no production connection."
+  "tools/investigator/ingest.ts:206":
+    approved_classification: TENANT-ONLY
+    query_sha256: "84f6fa5260dfb402c6bf419b6728ac1655b3474f20cf2aec0b506537887fa78f"
+    reason: "Offline research bench only (LOCAL bench Postgres BENCH_PG). Completeness check on a NEW synthetic bench tenant before an INSERT-only ingest; refuses existing bench sets. No production connection."
+  "tools/investigator/run_cases.ts:352":
+    approved_classification: TENANT-ONLY
+    query_sha256: "8f1d8a894a9ff29167ca858ccbb2fd6a30f0d1040a14b47ff63a6e4a30441cd3"
+    reason: "Offline research bench only (never imported by the Hub runtime; runs via vite-node against the LOCAL bench Postgres BENCH_PG, docker bench-4791). Maps each bench manual to the synthetic bench tenant that already holds it — a SELECT over bench tenants, no production data."
   # Offline defect lab (#3165) - corpus-wide EXISTENCE COUNT for a parameter
   # token, deliberately unfiltered. It is the aggregate shared-corpus class the
   # hybrid law keeps universal (.claude/rules/knowledge-entries-tenant-scoping.md
